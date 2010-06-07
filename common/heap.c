@@ -1,0 +1,598 @@
+/* **********************************************************
+ * Copyright (c) 2009 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#include "dr_api.h"
+#include "alloc.h"
+#include "redblack.h"
+#ifdef LINUX
+# include <string.h> /* strncmp */
+#endif
+
+/***************************************************************************
+ * UTILS
+ *
+ */
+
+#ifdef WINDOWS
+static size_t
+region_size(app_pc start)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    if (dr_virtual_query(start, &mbi, sizeof(mbi)) != sizeof(mbi))
+        return 0;
+    return mbi.RegionSize;
+}
+#endif
+
+size_t
+allocation_size(app_pc start, app_pc *base)
+{
+#ifdef WINDOWS
+    app_pc pc = start;
+    MEMORY_BASIC_INFORMATION mbi;
+    app_pc alloc_base;
+    size_t size;
+
+    if (dr_virtual_query(pc, &mbi, sizeof(mbi)) != sizeof(mbi))
+        return 0;
+    if (mbi.State == MEM_FREE) {
+        if (base != NULL)
+            *base = NULL;
+        return mbi.RegionSize;
+    }
+
+    alloc_base = mbi.AllocationBase;
+    pc = (app_pc) mbi.BaseAddress + mbi.RegionSize;
+    size = pc - alloc_base;
+
+    /* keep querying until reach next alloc base */
+    do {
+        if (dr_virtual_query(pc, &mbi, sizeof(mbi)) != sizeof(mbi))
+            break;
+        if (mbi.State == MEM_FREE || mbi.AllocationBase != alloc_base)
+            break;
+        ASSERT(mbi.RegionSize > 0, "error querying memory");
+        size += mbi.RegionSize;
+        if (pc + mbi.RegionSize < pc) /* wraparound */
+            break;
+        pc += mbi.RegionSize;
+    } while (true);
+    ASSERT(alloc_base + size > start || alloc_base + size == NULL, "query mem error");
+    if (base != NULL)
+        *base = alloc_base;
+    return size;
+#else /* WINDOWS */
+    size_t size;
+    if (dr_query_memory(start, base, &size, NULL))
+        return size;
+    else
+        return 0;
+#endif /* WINDOWS */
+}
+
+#ifdef LINUX
+app_pc
+get_heap_start(void)
+{
+    static app_pc heap_start; /* cached value */
+    if (heap_start == NULL) {
+        app_pc cur_brk = get_brk();
+        dr_mem_info_t info;
+        /* Locate the heap */
+        if (!dr_query_memory_ex(cur_brk - 1, &info)) {
+            ASSERT(false, "cannot find heap region");
+            return NULL;
+        }
+        ASSERT(!dr_memory_is_dr_internal(info.base_pc), "heap location error");
+        ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
+        ASSERT(info.base_pc + info.size == cur_brk, "heap location error");
+        heap_start = info.base_pc;
+    }
+    return heap_start;
+}
+#endif
+
+#ifdef WINDOWS
+app_pc
+get_ntdll_base(void)
+{
+    static app_pc ntdll_base; /* cached value */
+    if (ntdll_base == NULL) {
+        module_data_t *data = dr_lookup_module_by_name("ntdll.dll");
+        ASSERT(data != NULL, "cannot find ntdll.dll");
+        ntdll_base = data->start;
+        dr_free_module_data(data);
+        ASSERT(ntdll_base != NULL, "internal error finding ntdll.dll base");
+    }
+    return ntdll_base;
+}
+#endif
+
+/* On Windows, "msvcp*.dll" is the C++ runtime library, and "msvcr*.dll" is
+ * the C runtime library.  Note that "msvcirt.dll" is the IO stream library.
+ * C runtime library names include "msvcr71.dll", "msvcrt.dll", "msvcrt20.dll".
+ */
+app_pc
+get_libc_base(void)
+{
+    static app_pc libc_base; /* cached value */
+    if (libc_base == NULL) {
+        dr_module_iterator_t *iter;
+        module_data_t *data;
+        iter = dr_module_iterator_start();
+        while (dr_module_iterator_hasnext(iter)) {
+            const char *modname;
+            data = dr_module_iterator_next(iter);
+            modname = dr_module_preferred_name(data);
+            if (modname != NULL) {
+                if (strncmp(modname, IF_WINDOWS_ELSE("msvcr", "libc."), 5) == 0) {
+#ifdef WINDOWS
+                    /* If we see both msvcrt.dll and MSVCRNN.dll (e.g., MSVCR80.dll),
+                     * we want the latter, as the former is only there b/c of a small
+                     * number of imports from the latter.
+                     */
+                    if (libc_base != NULL || strncmp(modname, "msvcrt.", 7) != 0)
+#endif
+                        libc_base = data->start;
+                }
+            }
+            dr_free_module_data(data);
+#ifdef LINUX
+            /* Just take first, in unlikely case there are multiple */
+            if (libc_base != NULL)
+                break;
+#endif
+        }
+        dr_module_iterator_stop(iter);
+    }
+    return libc_base;
+}
+
+/***************************************************************************
+ * HEAP WALK
+ *
+ */
+
+#ifdef WINDOWS
+GET_NTDLL(RtlLockHeap, (IN HANDLE Heap));
+GET_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
+GET_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
+                               OUT HANDLE *Heaps));
+GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
+                        OUT PROCESS_HEAP_ENTRY *Info));
+GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
+                        IN ULONG flags,
+                        IN PVOID ptr));
+#endif
+
+/* Walks the heap and calls the "cb_region" callback for each heap region or arena
+ * and the "cb_chunk" callback for each malloc block.
+ */
+void
+heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
+              void (*cb_chunk)(app_pc,app_pc))
+{
+#ifdef WINDOWS
+    /* We have two choices: RtlEnumProcessHeaps or RtlGetProcessHeaps */
+    uint cap_heaps = 10;
+    byte **heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
+    PROCESS_HEAP_ENTRY heap_info;
+    uint i;
+    uint num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
+    LOG(2, "walking %d heaps\n", num_heaps);
+    if (num_heaps > cap_heaps) {
+        global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
+        cap_heaps = num_heaps;
+        heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
+        num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
+        ASSERT(cap_heaps >= num_heaps, "heap walk error");
+    }
+    for (i = 0; i < num_heaps; i++) {
+        size_t size, commit_size;
+        app_pc base;
+        LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
+        memset(&heap_info, 0, sizeof(heap_info));
+        /* While init time is assumed to be single-threaded there are
+         * enough exceptions to that that we grab the lock: */
+        RtlLockHeap(heaps[i]);
+        /* For tracking heap regions we use full reservation region */
+        size = allocation_size(heaps[i], &base);
+        ASSERT(base == heaps[i], "heap not at allocation base");
+        commit_size = region_size(heaps[i]);
+        ASSERT(commit_size == size ||
+               !dr_memory_is_readable(base+commit_size, size-commit_size),
+               "heap not committed followed by reserved");
+        if (cb_region != NULL)
+            cb_region(base, base+size, heaps[i]);
+        while (NT_SUCCESS(RtlWalkHeap(heaps[i], &heap_info))) {
+            /* What I see doesn't quite match my quick reading of MSDN HeapWalk
+             * docs.  Not really clear where cbOverhead space is: before or after
+             * lpData?  Seems to not be after.  And what's up with these wFlags=0
+             * entries?  For wFlags=0, RtlSizeHeap gives a too-big # when
+             * passed lpData.
+             */
+            /* I've seen bogus lpData fields => RtlSizeHeap crashes if free mem.
+             * I've also seen bogus lpData pointing into not-yet-committed
+             * end of a heap!  Ridiculous.
+             */
+            size_t sz;
+            bool bad_chunk = false;
+            /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista */
+            if (TEST(PROCESS_HEAP_UNCOMMITTED_RANGE, heap_info.wFlags) ||
+                /* Vista calls RtlReportCriticalFailure on wFlags==0 chunks */
+                (running_on_Vista_or_later() && heap_info.wFlags == 0) ||
+                (app_pc)heap_info.lpData < base ||
+                (app_pc)heap_info.lpData >= base+commit_size)
+                bad_chunk = true;
+            LOG(2, "heap %x "PFX"-"PFX"-"PFX" %d "PFX","PFX" %x %x %x\n",
+                heap_info.wFlags, heap_info.lpData,
+                (app_pc)heap_info.lpData + heap_info.cbOverhead,
+                (app_pc)heap_info.lpData + heap_info.cbOverhead + heap_info.cbData,
+                heap_info.iRegionIndex, heap_info.Region.lpFirstBlock,
+                heap_info.Region.lpLastBlock,
+                heap_info.cbData,
+                (bad_chunk ? 0 : RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData)),
+                ((bad_chunk || running_on_Vista_or_later()) ? 0 :
+                 RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData +
+                             heap_info.cbOverhead)));
+            if (bad_chunk)
+                continue;
+            /* Seems like I should be able to ignore all but PROCESS_HEAP_REGION,
+             * but that's not the case.  I also thought I might need to walk
+             * the Region.lpFirstBlock for PROCESS_HEAP_REGION using
+             * RtlSizeHeap, but can't skip headers that way, and all regions seem
+             * to show up in the RtlWalkHeap anyway.
+             */
+            sz = RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData);
+            /* I'm skipping wFlags==0 if can't get valid size as I've seen such
+             * regions given out in later mallocs
+             */
+            if (sz != -1 && (heap_info.wFlags > 0 || sz == heap_info.cbData)) {
+                if (cb_chunk != NULL) {
+                    cb_chunk((app_pc)heap_info.lpData,
+                             (app_pc)heap_info.lpData + heap_info.cbData);
+                }
+            }
+        }
+        RtlUnlockHeap(heaps[i]);
+    }
+    global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
+#else /* WINDOWS */
+    /* Once we have early injection (PR 204554) we won't need this.
+     * For now we assume the typical glibc malloc that uses the
+     * "boundary tag" method with the size of a chunk at offset 4
+     * and the 2 lower bits of the size marking mmap and prev-in-use.
+     */
+    app_pc cur_brk = get_brk();
+    app_pc heap_start, pc;
+    size_t sz;
+
+    heap_start = get_heap_start();
+    pc = heap_start;
+
+    LOG(1, "\nwalking heap from "PFX" to "PFX"\n", heap_start, cur_brk);
+    if (cb_region != NULL)
+        cb_region(heap_start, cur_brk);
+    while (pc < cur_brk) {
+        app_pc user_start = pc + sizeof(sz)*2;
+        sz = *(size_t *)(pc + sizeof(sz));
+        /* mmapped heap chunks should be found by memory_walk().
+         * shouldn't show up in the heap here.  FIXME: we won't add to
+         * the malloc table though: but for now we'll wait until
+         * we hit such a scenario.  Not sure how to fix: try and
+         * guess whether mmap has a heap header I suppose.
+         */
+        ASSERT(!TEST(2, sz), "mmap chunk shouldn't be in middle of heap");
+        sz &= ~3;
+        LOG(3, "  heap chunk "PFX"-"PFX"\n", pc, pc+sz);
+        if (pc + sz >= cur_brk) {
+            /* malloc_usable_size() will crash trying to read next chunk's
+             * prev size field so just quit now
+             */
+            LOG(2, "    == 'top' of heap\n\n");
+            ASSERT(pc + sz == cur_brk, "'top' of heap has unexpected size");
+            break;
+        }
+        /* Whether this chunk is allocated or free is stored in the next
+         * chunk's size field.  Xref PR 474912.
+         */
+        ASSERT(pc + sz + sizeof(sz)*2 < cur_brk, "'top' of heap missing!");
+        if (TEST(1, *((size_t*)(pc + sz + sizeof(sz))))) {
+            /* In-use */
+            LOG(2, "  heap in-use chunk "PFX"-"PFX"\n", pc, pc+sz + sizeof(sz));
+# ifdef DEBUG
+            if (malloc_usable_size != NULL) {
+                size_t check_sz = malloc_usable_size(user_start);
+                /* The prev_size of next chunk is really a usable footer
+                 * for this chunk
+                 */
+                ASSERT(check_sz - sizeof(sz) == (pc + sz - user_start),
+                       "libc malloc doesn't match assumptions");
+            }
+# endif
+            if (cb_chunk != NULL)
+                cb_chunk(user_start, pc + sz + sizeof(sz));
+        }
+        pc += sz;
+    }
+#endif /* WINDOWS */
+}
+
+/***************************************************************************
+ * HEAP REGION LIST
+ *
+ * For tracking the heap reservation regions, so we can suppress heap header
+ * accesses from non-exported heap routines (like RtlpHeapIsLocked)
+ */
+
+/* We use a red-black tree so we can look up intervals efficiently.
+ * We could use a sorted array-based binary tree instead, which
+ * might be more efficient for most apps, since we have relatively
+ * few insertions and deletions.
+ * We store a "bool arena" as our custom field.
+ * An arena is a region used to dole out malloc chunks: versus
+ * a single, oversized alloc allocated outside of the main arena.
+ */
+static rb_tree_t *heap_tree;
+static void *heap_lock;
+
+/* Payload stored in each node */
+typedef struct _heap_info_t {
+    bool arena;
+#ifdef WINDOWS
+    HANDLE heap;
+#endif
+} heap_info_t;
+
+#ifdef STATISTICS
+uint heap_regions;
+#endif
+
+/* provided by user */
+static void (*cb_add)(app_pc start, app_pc end, dr_mcontext_t *mc);
+static void (*cb_remove)(app_pc start, app_pc end, dr_mcontext_t *mc);
+
+static void
+heap_info_delete(void *p)
+{
+    heap_info_t *info = (heap_info_t *) p;
+    global_free(info, sizeof(*info), HEAPSTAT_RBTREE);
+}
+
+void
+heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
+                 void (*region_remove_cb)(app_pc, app_pc, dr_mcontext_t *mc))
+{
+    heap_lock = dr_mutex_create();
+    cb_add = region_add_cb;
+    cb_remove = region_remove_cb;
+    heap_tree = rb_tree_create(heap_info_delete);
+}
+
+void
+heap_region_exit(void)
+{
+    dr_mutex_lock(heap_lock);
+    rb_tree_destroy(heap_tree);
+    dr_mutex_unlock(heap_lock);
+    dr_mutex_destroy(heap_lock);
+}
+
+void
+heap_region_add(app_pc start, app_pc end, bool arena, dr_mcontext_t *mc)
+{
+    heap_info_t *info = (heap_info_t *) global_alloc(sizeof(*info), HEAPSTAT_RBTREE);
+    IF_DEBUG(rb_node_t *existing;)
+    dr_mutex_lock(heap_lock);
+    LOG(2, "adding heap region "PFX"-"PFX" %s\n", start, end,
+        arena ? "arena" : "chunk");
+    STATS_INC(heap_regions);
+    if (cb_add != NULL)
+        cb_add(start, end, mc);
+    info->arena = arena;
+    IF_WINDOWS(info->heap = INVALID_HANDLE_VALUE;)
+    IF_DEBUG(existing =)
+        rb_insert(heap_tree, start, (end - start), (void *) info);
+    ASSERT(existing == NULL, "new heap region overlaps w/ existing");
+    dr_mutex_unlock(heap_lock);
+}
+
+static heap_info_t *
+heap_info_clone(heap_info_t *info)
+{
+    heap_info_t *info2 = (heap_info_t *)
+        global_alloc(sizeof(*info2), HEAPSTAT_RBTREE);
+    ASSERT(info != NULL, "invalid param");
+    memcpy(info2, info, sizeof(*info2));
+    return info2;
+}
+
+bool
+heap_region_remove(app_pc start, app_pc end, dr_mcontext_t *mc)
+{
+    rb_node_t *node = NULL;
+    app_pc node_start;
+    size_t node_size;
+    dr_mutex_lock(heap_lock);
+    node = rb_overlaps_node(heap_tree, start, end);
+    if (node != NULL) {
+        heap_info_t *info, *clone = NULL;
+        rb_node_fields(node, &node_start, &node_size, (void **)&info);
+        LOG(2, "removing heap region "PFX"-"PFX" from "PFX"-"PFX"\n",
+            start, end, node_start, node_start + node_size);
+        STATS_DEC(heap_regions);
+        /* we assume overlaps at most one node, and that the info field can
+         * be cloned or reused for any remaining piece(s) after removal
+         */
+        ASSERT(node_start + node_size >= end, "shouldn't remove multiple regions");
+        if (cb_remove != NULL)
+            cb_remove(start, end, mc);
+        if (node_start < start || node_start + node_size > end)
+            clone = heap_info_clone(info);
+        rb_delete(heap_tree, node); /* deletes info */
+        if (node_start < start) {
+            ASSERT(clone != NULL, "error in earlier clone cond");
+            rb_insert(heap_tree, node_start, (start - node_start), (void *)clone);
+            if (node_start + node_size > end)
+                clone = heap_info_clone(clone);
+            else
+                clone = NULL;
+            STATS_INC(heap_regions);
+        }
+        if (node_start + node_size > end) {
+            ASSERT(clone != NULL, "error in earlier clone cond");
+            rb_insert(heap_tree, end, (node_start + node_size - end), (void *)clone);
+            clone = NULL;
+            STATS_INC(heap_regions);
+        }
+        ASSERT(clone == NULL, "error in earlier clone cond");
+    }
+    dr_mutex_unlock(heap_lock);
+    return node != NULL;
+}
+
+bool
+heap_region_adjust(app_pc start, app_pc new_end)
+{
+    rb_node_t *node = NULL;
+    app_pc node_start;
+    size_t node_size;
+    dr_mutex_lock(heap_lock);
+    node = rb_in_node(heap_tree, start);
+    if (node != NULL) {
+        heap_info_t *info, *clone;
+        rb_node_fields(node, &node_start, &node_size, (void **)&info);
+        ASSERT(start == node_start, "adjust: invalid start");
+        LOG(2, "adjusting heap region from "PFX"-"PFX" to "PFX"-"PFX"\n",
+            start, node_start + node_size, node_start, new_end);
+        /* FIXME: have cb take in a "modify" vs "add"? */
+        if (cb_add != NULL)
+            cb_add(node_start, new_end, 0);
+        clone = heap_info_clone(info);
+        rb_delete(heap_tree, node); /* deletes info */
+        rb_insert(heap_tree, node_start, (new_end - node_start), (void *)clone);
+    }
+    dr_mutex_unlock(heap_lock);
+    return node != NULL;
+}
+
+app_pc
+heap_region_end(app_pc pc)
+{
+    rb_node_t *node = NULL;
+    app_pc node_start;
+    size_t node_size;
+    app_pc res = NULL;
+    dr_mutex_lock(heap_lock);
+    node = rb_in_node(heap_tree, pc);
+    if (node != NULL) {
+        rb_node_fields(node, &node_start, &node_size, NULL);
+        res = node_start + node_size;
+    }
+    dr_mutex_unlock(heap_lock);
+    return res;
+}
+
+bool
+is_in_heap_region(app_pc pc)
+{
+    bool res = false;
+    dr_mutex_lock(heap_lock);
+    res = (rb_in_node(heap_tree, pc) != NULL);
+    dr_mutex_unlock(heap_lock);
+    return res;
+}
+
+bool
+is_entirely_in_heap_region(app_pc start, app_pc end)
+{
+    rb_node_t *node = NULL;
+    app_pc node_start;
+    size_t node_size;
+    bool res = false;
+    dr_mutex_lock(heap_lock);
+    node = rb_overlaps_node(heap_tree, start, end);
+    if (node != NULL) {
+        /* we do not support passing in a range that include multiple
+         * nodes, even when the nodes are adjacent (we don't do merging)
+         */
+        rb_node_fields(node, &node_start, &node_size, NULL);
+        res = (start >= node_start && end <= node_start + node_size);
+    }
+    dr_mutex_unlock(heap_lock);
+    return res;
+}
+
+bool
+is_in_heap_region_arena(app_pc pc)
+{
+    rb_node_t *node = NULL;
+    bool res = false;
+    heap_info_t *info;
+    dr_mutex_lock(heap_lock);
+    node = rb_in_node(heap_tree, pc);
+    if (node != NULL) {
+        rb_node_fields(node, NULL, NULL, (void **)&info);
+        res = info->arena;
+    }
+    dr_mutex_unlock(heap_lock);
+    return res;
+}
+
+#ifdef WINDOWS
+bool
+heap_region_set_heap(app_pc pc, HANDLE heap)
+{
+    rb_node_t *node = NULL;
+    dr_mutex_lock(heap_lock);
+    node = rb_in_node(heap_tree, pc);
+    if (node != NULL) {
+        heap_info_t *info;
+        app_pc node_start;
+        size_t node_size;
+        rb_node_fields(node, &node_start, &node_size, (void **)&info);
+        if (info->heap != heap) {
+            ASSERT(info->heap == INVALID_HANDLE_VALUE, "conflicts in Heap for region");
+            info->heap = heap;
+            LOG(2, "set heap region "PFX"-"PFX" Heap to "PFX"\n",
+                node_start, node_start + node_size, heap);
+        }
+    }
+    dr_mutex_unlock(heap_lock);
+    return node != NULL;
+}
+
+HANDLE
+heap_region_get_heap(app_pc pc)
+{
+    rb_node_t *node = NULL;
+    HANDLE res = INVALID_HANDLE_VALUE;
+    heap_info_t *info;
+    dr_mutex_lock(heap_lock);
+    node = rb_in_node(heap_tree, pc);
+    if (node != NULL) {
+        rb_node_fields(node, NULL, NULL, (void **)&info);
+        res = info->heap;
+    }
+    dr_mutex_unlock(heap_lock);
+    return res;
+}
+#endif /* WINDOWS */

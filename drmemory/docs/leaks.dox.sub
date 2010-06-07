@@ -1,0 +1,73 @@
+Dr. Memory divides all memory that is still allocated at the time it does
+its leak scan into 3 categories:
+
+ -# Memory that is still reachable by the application.  This is NOT
+    considered a leak.  It is reported as "still-reachable allocation(s)" in
+    Dr. Memory's summary.  Many applications do not explicitly free memory
+    whose lifetime matches the process lifetime and this is not considered
+    an error by Dr. Memory.
+ -# Memory that is definitely not reachable by the application (at least,
+    not by an aligned pointer to the start or middle of the allocated
+    block).  This is called a "leak" by Dr. Memory, as there is no way for
+    the application to free this memory: it has lost any handle it had to
+    the memory.
+ -# Memory that is reachable only via pointers to the middle of the
+    allocation, rather than the head.  This is called a "possible leak" by
+    Dr. Memory.  These may or may not be legimitate pointers to that
+    allocation.  There are several cases of known legitimate pointers:
+    - One class of legitimate mid-allocation pointers includes C++ arrays
+      allocated via new[] whose elements have destructors.  The new[]
+      operators adds a header but returns to the caller the address past
+      the header.
+    - Another class, for some C++ compilers, includes instances of a
+      pointer to a class with multiple inheritance that is cast to one of
+      the parents: it can end up pointing to the subobject representation
+      in the middle of the allocation.
+    - A final example is a custom malloc wrapper that uses a header and
+      passes a pointer offset into the result from malloc.  The free
+      wrapper subtracts from the passed-in pointer in order to compute the
+      pointer to the head of the allocated block.
+
+By default, Dr. Memory performs leak checking at application exit, or when
+a mid-run check is requested via \p -nudge (see \ref sec_daemon).  Nudges
+can be used to help determine when the last pointer to an allocation was
+lost, if the callstack of the allocation is not sufficient to pinpoint the
+error in the source code.  Each nudge will perform a full leak scan and by
+nudging periodically the first instance of a particular leak can be used to
+identify when the leak occurred.
+
+On Windows, when HeapDestroy is called, any live allocations inside are
+reported as possible leaks.  This can be disabled, since some applications
+may consider it correct behavior, with the \p -no_check_leaks_on_destroy
+option.
+
+Dr. Memory reports the number of leaks, possible leaks, and still-reachable
+allocations. \if drmemory By default, only the count of leaks is reported.
+To ask Dr. Memory to record the callstack at which each leaked allocation
+was created, use the option \p -check_leaks.  To further do so for possible
+leaks, additionally add the \p -possible_leaks option.  \endif
+\if drheapstat The callstack for the allocation of each leak and possible leak
+is gathered by default.  \endif
+To also show callstacks for reachable
+allocations, add the \p -show_reachable option in addition to \p
+-check_leaks.  Now, leaks will show up as full error reports in the results
+file.  Reachable allocations will be in the \p global.pid.log file inside
+the log directory, labeled as <tt>REACHABLE LEAK</tt>.
+
+Here are example lines from Dr. Memory's output summary:
+
+\code
+:::Dr.Memory:::       9 unique,   282 total,   5860 byte(s) of leak(s)
+:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
+:::Dr.Memory:::     125 still-reachable allocation(s)
+:::Dr.Memory:::          (re-run with "-check_leaks -show_reachable" for details)
+\endcode
+
+There are known sources of false positives where a memory allocation may
+actually be reachable by the application, but Dr. Memory's algorithm will
+determine that it is unreachable.  These cases include:
+
+ - The only stored pointers to an allocation are not aligned to 4 bytes.
+ - The only stored pointers to an allocation are encrypted.
+ - There is some custom mechanism to reach these allocations that does not
+   involve a direct stored pointer into any part of the allocated block.

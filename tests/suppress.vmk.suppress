@@ -1,0 +1,101 @@
+# **********************************************************
+# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; 
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+# FIXME: once PR 363063 is fixed and we have module names on visor, then we
+# don't need this file anymore - suppress.lin.suppress will work for both linux
+# and visor.
+#
+# uninitialized read: full callstack based mod+offs suppression */
+UNINITIALIZED READ
+<+0x575>
+<+0x7d7>
+<+0x8a4>
+
+# uninitialized read: top frame based mod+offs suppression */
+UNINITIALIZED READ
+<+0x5a0>
+
+# uninitialized read: full callstack based mod!func suppression */
+UNINITIALIZED READ
+suppress!uninit_test3
+suppress!test
+suppress!main
+
+# uninitialized read: top frame based mod!func suppression */
+UNINITIALIZED READ
+suppress!uninit_test4
+
+#-------------------------------------------------------------------------------
+
+# unaddressable access: full callstack based mod+offs suppression */
+UNADDRESSABLE ACCESS
+<+0x61c>
+<+0x821>
+<+0x8a4>
+
+# unaddressable access: top frame based mod+offs suppression */
+UNADDRESSABLE ACCESS
+<+0x647>
+
+# unaddressable access: full callstack based mod!func suppression */
+UNADDRESSABLE ACCESS
+suppress!unaddr_test3
+suppress!test
+suppress!main
+
+# unaddressable access: top frame based mod!func suppression */
+UNADDRESSABLE ACCESS
+suppress!unaddr_test4
+
+#-------------------------------------------------------------------------------
+
+# leak: full callstack based mod+offs suppression */
+LEAK
+<+0x6ca>
+<+0x856>
+<+0x8a4>
+
+# leak: top frame based mod+offs suppression */
+LEAK
+<+0x6ef>
+
+# leak: full callstack based mod!func suppression */
+LEAK
+suppress!leak_test3
+suppress!test
+suppress!main
+
+# leak: top frame based mod!func suppression */
+LEAK
+suppress!leak_test4
+
+#-------------------------------------------------------------------------------
+
+UNADDRESSABLE ACCESS
+suppress!invalid_free_test1
+
+LEAK
+suppress!invalid_free_test1
+
+INVALID FREE
+suppress!invalid_free_test1
+
+WARNING
+*!warning_test1

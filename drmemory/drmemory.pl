@@ -1,0 +1,587 @@
+#!/usr/bin/perl
+
+# **********************************************************
+# Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
+# **********************************************************
+
+# Dr. Memory: the memory debugger
+# 
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; 
+# version 2.1 of the License, and no later version.
+# 
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+# 
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+### drmemory.pl
+###
+### Wrapper script for Dr. Memory.
+###
+### Requirements:
+### - DynamoRIO version 1.4.1: bundled with release package
+### On Linux:
+### - perl, binutils (addr2line, objdump)
+### On Windows:
+### - for cygwin apps: objdump, nm, addr2line
+###     => packages needed: perl, binutils
+### - for non-cygwin apps: nothing
+
+use Getopt::Long;
+use File::Temp qw(tempfile);
+use File::Basename;
+use File::Glob ':glob';
+use File::stat; # plain stat doesn't work on cygwin perl
+use IPC::Open3;
+use Cwd qw(abs_path cwd);
+# locate our module in same dir as script
+# RealBin resolves symlinks for us
+use FindBin;
+use lib "$FindBin::RealBin";
+
+# $^O is either "linux", "cygwin", or "MSWin32"
+$is_unix = ($^O eq "linux") ? 1 : 0;
+if ($is_unix) {
+    $is_vmk = (`uname -s` =~ /VMkernel/) ? 1 : 0;
+} else {
+    $is_vmk = 0;
+}
+# we support running from a cygwin perl
+$is_cygwin_perl = ($^O eq "cygwin") ? 1 : 0;
+# we also support using windows perl or perl->.exe to run cygwin apps
+$is_cygwin_avail =
+    (!$is_unix &&
+     ($ENV{'PATH'} =~ m|[\\/]cygwin[\\/]| || $ENV{'PATH'} =~ m!(^|:)/usr!)) ? 1 : 0;
+
+if ($is_vmk) {
+    # we could have drmemory_aux and copy in drmemory_{vmk,win32,linux}
+    # but until we have other os-specific code we do runtime "use".
+    # note that DEFAULT => have to qualify, for some reason, so we use All.
+    eval "use frontend_vmk qw(:All)";
+    eval "use drmemory_vmk qw(:All)";
+    &vmk_init();
+}
+
+# do NOT use $0 as we need to support symlinks to this file
+# RealBin resolves symlinks for us
+($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
+$perl2exe = (-e "$scriptpath/bin32/postprocess.exe") ? 1 : 0;
+# when using perl->exe we do not have a drmemory/bin subdir
+$drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
+# handle the top-level bin symlink being dereferenced (PR 527580)
+$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/bin32");
+$default_home = $symlink_deref ? "$scriptpath/../drmemory" : "$scriptpath/../";
+$default_home = abs_path($default_home);
+$default_home = &canonicalize_path($default_home);
+$bindir = "bin/bin32";
+
+$drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
+$drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
+
+# We include client option usage here and pass them through (PR 478146)
+$options_usage = "";
+# Since we compile this script on Windows simpler to use a dynamic include rather
+# than statically generating a separate script.
+do 'options-perl.pl';
+for ($i=0; $i<=$#script_ops; $i++) {
+    $options_usage .= sprintf("  %-30s [%8s]  %s\n", $script_ops[$i*3],
+                              $script_ops[$i*3+1], $script_ops[$i*3+2]);
+}
+$usage = "usage: $0 [options] -- <executable> [args ...]\noptions:\n$options_usage";
+
+$verbose = 0;
+$drmemory_home = $default_home;
+# normally we're packaged with a DR release laid out in "dynamorio":
+$dr_home = ($drmem_bin_subdir || $symlink_deref) ?
+    "$default_home/../dynamorio" : "$default_home/dynamorio";
+$use_vmtree = $is_vmk;
+$use_release = 0;
+$use_dr_debug = 0;
+$logdir = "";
+$batch = 0; # batch mode: no popups please
+# -shared_slowpath requires -disable_traces
+#   (actually it doesn't anymore: new trace event rebuilds trace from IR so
+#   if we re-insert in for_trace bbs it will work.)
+# to save space we use -bb_single_restore_prefix
+# PR 415155: our code expansion causes us to exceed max bb size sometimes
+$def_dr_ops = "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256";
+$user_ops = "";
+$nudge_pid = "";
+$pid_file = "";
+$external_pid_file = 0;
+my $prefix = ":::Dr.Memory:::";
+my $aggregate = 0;
+my $use_default_suppress = 1;
+my $skip_postprocess = 0;
+
+# PR 527650: perl GetOptions negation prefix is -no or -no-
+# We add support for -no_ so that prefix can be used for both perl and client
+for ($i = 0; $i <= $#ARGV; $i++) {
+    # not using map() b/c want to stop at --
+    last if ($ARGV[$i] =~ /^--$/);
+    # record whether we changed it, since when restoring we don't want to change
+    # an option like -node or sthg
+    if ($ARGV[$i] =~ s/^-no_/-no/) {
+        # we can't mirror @ARGV since GetOptions will mutate it, so we use
+        # a hash and assume we never have -nooption and -option!
+        $changed_negation{$ARGV[$i]} = 1;
+    }
+}
+# I'd use "require_order" to make it optional to use "--" to split app
+#  ops from tool ops, but w/ PR 478146 we do need --
+# pass_through: instead of complaining about unknown options, leave in ARGV
+#  so we can pass to client
+Getopt::Long::Configure("pass_through");
+if (!GetOptions("dr=s" => \$dr_home,
+                "drmemory=s" => \$drmemory_home,
+                "srcfilter=s" => \$srcfilter,
+                "ops=s" => \$user_ops, # for backward compat only
+                "dr_ops=s" => \$dr_ops,
+                "release" => \$use_release,
+                "dr_debug" => \$use_dr_debug,
+                "v" => \$verbose,
+                "batch" => \$batch,
+                "nudge=s" => \$nudge_pid,
+                "pid_file=s" => \$pid_file,
+                "use_vmtree!" => \$use_vmtree,
+                "aggregate" => \$aggregate,
+                "skip_postprocess" => \$skip_postprocess,
+                # client options that we process first here:
+                "suppress=s" => \$suppfile,
+                "default_suppress!" => \$use_default_suppress,
+                "logdir=s" => \$logdir)) {
+    die $usage;
+}
+# Restore negation prefixes
+for ($i = 0; $i <= $#ARGV; $i++) {
+    last if ($ARGV[$i] =~ /^--$/);
+    $ARGV[$i] =~ s/^-no/-no_/ if ($changed_negation{$ARGV[$i]});
+}
+if ($#ARGV >= 0 && $ARGV[0] =~ /^-/) {
+    while ($#ARGV >= 0 && $ARGV[0] !~ /^--$/) {
+        $user_ops .= " $ARGV[0]";
+        shift;
+    }
+    shift if ($#ARGV >= 0 && $ARGV[0] =~ /^--$/);
+}
+die "$usage\n" unless ($#ARGV >= 0 || $nudge_pid ne "");
+
+$dr_home = &canonicalize_path($dr_home);
+$drmemory_home = &canonicalize_path($drmemory_home);
+$suppfile = &canonicalize_path($suppfile);
+$logdir = &canonicalize_path($logdir);
+
+# Until the tool is more mature, debug is the default so we can get asserts.
+# To make release default: change param -release to -debug, and update
+# tests/CMakeLists.sh to pass -debug and not -release.
+$libdir = ($use_release) ? "release" : "debug";
+
+$dr_debug = ($use_dr_debug) ? "-debug" : "";
+$dr_libdir = ($use_dr_debug) ? "debug" : "release";
+
+$vmtree = ($use_vmtree) ? "--use_vmtree" : "";
+
+if ($use_vmtree) {
+    die "VMTREE not defined\n$usage\n" if ($ENV{'VMTREE'} eq "");
+    die "VMTREE $ENV{'VMTREE'} not found\n$usage\n" if (! -e $ENV{'VMTREE'});
+}
+
+die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"
+    if (! -e "$dr_home/lib32/$dr_libdir/$drlibname");
+
+die "$drmemlibname not found in $drmemory_home/$bindir/$libdir\n$usage\n"
+    if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname");
+
+nudge($nudge_pid) if ($nudge_pid ne "");
+
+$suppress_drmem = "";
+if ($suppfile ne "") {
+    die "suppression file $suppfile not found\n$usage\n"
+        if (! -e $suppfile);
+    $suppress_drmem = "-suppress `$suppfile`";
+}
+
+@orig_argv = @ARGV;
+
+if ($aggregate) {
+    # rest of args are directory names
+} else {
+    $apppath = &canonicalize_path($ARGV[0]);
+    $app = fileparse($apppath);
+    shift;
+
+    # we need to store the rest of the original command line for passing args to the app,
+    # including shell redirection.
+    @appcmdline = ("$apppath");
+    # PR 459374: support running shell built-ins and scripts
+    #   $apppath = $ENV{'SHELL'} if (! -e $apppath);
+    #   $appcmdline = "$apppath $appcmdline" if (! -e $apppath);
+    # FIXME: not so sure we should support that: we'd have to run
+    # with -c "cmdline" for some shells, which might conflict w/ quoting
+    # in the app args: seems reasonable to require user to pass us a
+    # real executable, so must prefix scripts with shell or perl.
+    die "application $apppath not found\n$usage\n" unless (-e $apppath);
+    push @appcmdline, &vmk_app_pre_args(\@ARGV) if ($is_vmk);
+    push @appcmdline, @ARGV;
+}
+
+if (!logdir_ok($logdir)) {
+    print "$prefix Specified logdir $logdir is invalid\n" if ($logdir ne '');
+    # default log dir is the "logs" dir from install package
+    $logdir = ($drmem_bin_subdir || ! -e "$default_home/drmemory") ?
+        "$default_home/logs" : "$default_home/drmemory/logs";
+    if ($is_vmk) {
+        # . may not have much space so try /scratch first
+        # FIXME: create drmemory subdir
+        $logdir = "/scratch" unless (logdir_ok($logdir));
+    }
+    # last choice is cur dir.  canonicalize in case running w/ cygwin perl.
+    $logdir = &canonicalize_path(&cwd()) unless (logdir_ok($logdir));
+}
+
+if ($is_unix) {
+    $app_is_win32 = 0;
+} elsif ($is_cygwin_avail) {
+    # is app cygwin or native windows?
+    $app_is_win32 = (&system_filter_stderr("(not found)|(not recognized)",
+                                           ("objdump -h \"$apppath\" | grep -q '\.stab'"))
+                     == 0) ? 0 : 1;
+} else {
+    $app_is_win32 = 1;
+}
+
+my $win32_a2l = "$drmemory_home/$bindir/winsyms.exe";
+
+# it's difficult to get " or ' past drrun so we use `
+$ops = "-logdir `$logdir` $suppress_drmem $user_ops";
+$ops .= " -no_default_suppress" unless ($use_default_suppress);
+
+if ($aggregate) {
+    # nothing to deploy
+} elsif ($is_unix) {
+    my $drrun = "$dr_home/bin32/drrun";
+    if ($is_vmk) {
+        $ops = &vmk_tool_ops($apppath, $ops);
+        $def_dr_ops = &vmk_dr_ops($apppath, $def_dr_ops);
+    }
+    if ($ENV{'SHELL'} =~ /\/ash/) {
+        # PR 470752: ash forks on exec!  so we bypass drrun and set env vars below
+    } else {
+        @appcmdline = ("$drrun", "-dr_home", "$dr_home",
+                       "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
+                       "0", "$ops", "-ops", "$def_dr_ops $dr_ops",
+                       @appcmdline);
+        splice @appcmdline, 1, 0, "$dr_debug" if ($dr_debug ne '');
+    }
+} else {
+    $drrun = "$dr_home/bin32/drrun.exe";
+    
+    # PR 485412: pass in addresses of statically-included libc routines for
+    # replacement.  We only support this for native Windows since we'd need
+    # to add nm or another tool to do reverse lookup for cygwin or linux;
+    # plus, cygwin/linux apps are less likely to have static libc.
+    if ($app_is_win32) {
+        # Since Windows-only we can quote the path and don't need open2
+        my $addrs = `"$win32_a2l" -e "$apppath" -s memset memcpy memchr strchr strrchr strlen strcmp strncmp strcpy strncpy strcat strncat`;
+        $addrs =~ s/\r?\n/,/g;
+        # Only if we get all 12 should we pass it in since order matters
+        if ($addrs =~ /([^,]+,){12,12}/) {
+            $ops .= " -libc_addrs $addrs";
+        }
+    }
+
+    # PR 459481: we can get the app's pid from drinject via a file
+    if ($pid_file eq "") {
+        ($fh, $pid_file) = tempfile();
+        die "temp file $pid_file not empty!\n"
+            unless (&get_file_size($pid_file) == 0);
+        close($fh); # let drinject write to it
+    } else {
+        $external_pid_file = 1;
+    }
+    $pid_file = &canonicalize_path($pid_file);
+    print "temp file for pid is $pid_file\n" if ($verbose);
+    
+    # With new config file scheme (PR 212034) AppInit is not set for
+    # normal registration and so we no longer have to suppress it here.
+    # We can also configure and run in one step using a one-time config file 
+    # that requires no unregistration.
+
+    # use array to support paths with spaces (system() splits single arg on spaces)
+    @deploycmdline = ("$drrun", "-pidfile", "$pid_file", "-quiet", "-root", "$dr_home",
+                   "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
+                   "0", "$ops", "-ops", "$def_dr_ops $dr_ops");
+    push @deploycmdline, ("$dr_debug") if ($dr_debug ne "");
+    @appcmdline = (@deploycmdline, @appcmdline);
+}
+
+$procid = $$;
+
+if ($aggregate) {
+    # not running app
+    &post_process();
+    exit 0;
+}
+
+if (!$skip_postprocess) {
+    # PR 425335: we must run the app in the foreground (in case takes stdin)
+    # so we run the rest of our script sideline
+    if (!$is_unix && !$is_cygwin_perl) {
+        # pp-produced .exe crashes on exit from child of fork
+        $using_threads = 1;
+        eval "use threads ()";
+        $child = threads->create(\&post_process);
+    } else {
+        $using_threads = 0;
+        unless (fork()) {
+            # PR 511242: Ctrl-C on an app launched with drmemory.pl should only
+            # terminate the app, not postprocess.pl, to avoid an incomplete results
+            # file.  By default the shell terminates all processes in the app's
+            # group, so we move postprocess to its own group.  If we want headless
+            # support we can change this to setsid.
+            setpgrp(0,0) or die "Unable to setpgrp\n";
+            &post_process();
+            exit 0;
+        }
+    }   
+}
+
+print "running app: \"".join(' ',@appcmdline)."\"\n" if ($verbose);
+
+if ($is_unix) {
+    # use exec to keep the same pid (PR 459481)
+    if ($ENV{'SHELL'} =~ /\/ash/) {
+        # PR 470752: ash forks on exec!  so we bypass the drrun script
+        $ENV{'LD_LIBRARY_PATH'} = "$dr_home/lib32/$dr_libdir:$ENV{'LD_LIBRARY_PATH'}";
+        $ENV{'LD_PRELOAD'} = "libdynamorio.so libdrpreload.so";
+        $ENV{'DYNAMORIO_LOGDIR'} = (-d "$drmemory_home/logs") ?
+            "$drmemory_home/logs" : $ENV{'PWD'};
+        $ENV{'DYNAMORIO_OPTIONS'} = "-code_api -client_lib ".
+            "\"$drmemory_home/$bindir/$libdir/$drmemlibname;0;$ops\" $def_dr_ops $dr_ops";
+        $ENV{'DYNAMORIO_RUNUNDER'} = "1";
+    }
+    exec(@appcmdline); # array to handle spaces in paths
+    die "Failed to exec ".join(' ',@appcmdline)."\n";
+} else {
+    system(@appcmdline); # array to handle spaces in paths
+    my $status = $?;
+    $child->join() if ($using_threads);
+    exit $status;
+}
+
+#-------------------------------------------------------------------------------
+
+sub post_process()
+{
+    my $logsubdir = "";
+    if (!$aggregate) {
+        if (!$is_unix) {
+            # Retrieve pid.  Avoid opening file until drinject has written to it,
+            # to avoid blocking the write.
+            while (&get_file_size($pid_file) <= 0) {
+                sleep 1;
+            }
+            open(PIDF, "< $pid_file") || die "Can't open $pid_file: $!\n";
+            $procid = <PIDF>;
+            chomp $procid;
+            close(PIDF);
+            unlink $pid_file if (!$external_pid_file);
+            die "Malformed $pid_file: \"$procid\"\n" unless ($procid =~ /^\d+$/);
+        }
+
+        print "app has pid $procid\n" if ($verbose);
+
+        # With PR 408644, the client creates the log dir, to better handle
+        # fork+exec -- but that means our post-processing has to go find
+        # the logdir.
+        my $iters = 0;
+        print "looking for $logdir/DrMemory-*.$procid.*\n" if ($verbose);
+        while ($logsubdir eq "") {
+            # get the latest dir matching our pid
+            # we do not match app name to avoid assumptions there
+            # FIXME: on an exec we may get the wrong dir if it happens too fast
+            # use bsd_glob to not split on whitespace
+            @dirs = bsd_glob("$logdir/DrMemory-*.$procid.*");
+            @dirs = sort(sort_by_time @dirs);
+
+            $logsubdir = $dirs[0];
+            # On unix/cygwin we could use "ps" to see if app is around
+            die "Giving up on finding logdir: assuming process $procid died\n"
+                if ($iters++ > 180);
+
+            # it may be a while before the logfile appears
+            sleep 1 if ($logsubdir eq "");
+        }
+        print "found app logdir $logsubdir\n" if ($verbose);
+        $iters = 0;
+        # wait for log file to be created before invoking postprocess script
+        while (! -e "$logsubdir/global.$procid.log") {
+            sleep 1;
+            # On unix/cygwin we could use "ps" to see if app is around
+            die "Giving up on finding logdir: assuming process $procid died\n"
+                if ($iters++ > 60);
+        }
+    }
+
+    # Post-process to get line numbers and create suppression file.
+    # FIXME: have option to send to stderr to see point of occurrence?
+    # I do have -pause_at_*.  Would want online symbol queries.
+    my $exeop = "";
+    if (!$is_unix) {
+        $libcmd = "$win32_a2l -f";
+        $exeop = "-cygwin" if (!$app_is_win32);
+    } else {
+        # postprocess.pl itself massages a call to addr2line
+        $libcmd = "";
+    }
+
+    &vmk_pre_script_setup() if ($is_vmk);
+
+    $extraargs = ($user_ops =~ /-quiet/) ? "-q" : "";
+
+    # we don't need the prefix since sending to a file instead of stdout
+    my @postcmd;
+    if ($perl2exe) {
+        @postcmd = ("$drmemory_home/$bindir/postprocess.exe");
+    } else {
+        @postcmd = ("$^X", "$drmemory_home/$bindir/postprocess.pl");
+    }
+    push @postcmd, "-v" if ($verbose);
+    push @postcmd, ("-p", "", "-c", "$libcmd");
+    push @postcmd, ("-f", "$srcfilter") if ($srcfilter ne '');
+    push @postcmd, "$exeop" if ($exeop ne '');
+    push @postcmd, ("-dr_home", "$dr_home") if (!$is_unix && !$is_cygwin_perl);
+    push @postcmd, "$vmtree" if ($vmtree ne '');
+    push @postcmd, "$extraargs" if ($extraargs ne '');
+    # Don't use suppress_drmem as perl option parsing doesn't like ``
+    push @postcmd, ("-suppress", "$suppfile") if ($suppress_drmem ne '');
+    push @postcmd, ("-nodefault_suppress") unless ($use_default_suppress);
+    # Include app cmdline in results file (PR 470920)
+    push @postcmd, ("-appid", join(' ', @orig_argv));
+    push @postcmd, "-batch" if ($batch);
+    push @postcmd, ("-drmemdir", "$libdir");
+    if ($aggregate) {
+        push @postcmd, ("-aggregate", @ARGV);
+    } else {
+        # We need to pass in path to executable to work around i#138 via -x
+        push @postcmd, ("-x",  "$apppath");
+        push @postcmd, ("-l", "$logsubdir");
+    }
+    print "postcmd is \"".join(' ', @postcmd)."\"\n" if ($verbose);
+    if ($using_threads) {
+        system(@postcmd); # array to handle spaces in paths
+    } else {
+        exec(@postcmd); # array to handle spaces in paths
+    }
+    return 0;
+}
+
+#-------------------------------------------------------------------------------
+# utility subroutines
+
+sub get_file_size($f) {
+    my ($f) = @_;
+    my $sa = stat($f);
+    return ($sa) ? $sa->size : -1;
+}
+
+# note: no args, as $a and $b are globals
+sub sort_by_time {
+    my $sa1 = stat($a);
+    my $sa2 = stat($b);
+    return 0 if (!$sa1 || !$sa2); # just avoid bad deref
+    # larger numbers are later and we want most recent first
+    return $sa2->ctime <=> $sa1->ctime;
+}
+
+sub system_filter_stderr($filter, @cmd) {
+    my ($filter, @cmd) = @_;
+    my ($in, $out, $err);
+    my $pid;
+    # open3 throws exception on failure so use eval to catch it
+    eval { # try
+        $pid = open3($in, $out, $err, @cmd);
+        1;
+    } or do { # catch
+        if ($@ and $@ =~ /^open3:/) {
+            print "$@ running @cmdline: $!\n" if ($verbose);
+            return -1;
+        }
+    };
+    waitpid($pid, 0);
+    my $res = $?;
+    while (<$err>) {
+        print stderr $_ unless (/$filter/);
+    }
+    while (<$out>) {
+        print $_ unless (/$filter/);
+    }
+    close($in);
+    close($out);
+    close($err);
+    return $res;
+}
+
+# We want all paths to use forward slashes to avoid problems w/
+# double-escaping through layers of interpretation (Windows
+# handles forward just fine).  If on cygwin we want to support
+# unix paths, so convert those to mixed (drive-letter + forward
+# slashes).
+sub canonicalize_path($p) {
+    my ($p) = @_;
+    return "" if ($p eq "");
+    # Use cygpath if available, it will convert /home to c:\cygwin\home, etc.
+    if ($is_cygwin_avail) {
+        $cp = `cygpath -mai \"$p\"`;
+        chomp $cp;
+        return $cp if ($cp ne "");
+        # do drive letter conversion by hand: /x => x:
+        $p =~ s|^/([a-z])/|\1:/|;
+    } else {
+        $p =~ s|\\|/|g;
+        $p =~ s|//+|/|g; # clean up double slashes
+    }
+    return (-e "$p") ? abs_path("$p") : "$p"; # abs_path requires existence
+}
+
+# This routine does not return
+sub nudge($p) {
+    my ($pid) = @_;
+    # PR 428709/PR 474554: user tells us when daemon app is "finished"
+    # and we nudge it to get end-of-run data like leaks and stats.
+    # We do not try to kill the app, so this can be used repeatedly.
+    if ($is_vmk) {
+        &vmk_nudge_cmd($pid);
+    } else {
+        my @cmd;
+        if ($is_unix) {
+            push @cmd, ("$dr_home/bin32/nudgeunix", "-client", "0", "0");
+        } else {
+            push @cmd, ("$dr_home/bin32/DRcontrol.exe", "-client_nudge", "0");
+        }
+        push @cmd, ("-pid", "$pid");
+        exec(@cmd); # array to handle spaces in paths
+        die "Failed to exec ".join(' ',@cmd)."\n";
+    }
+    die "Failed to run -nudge command\n";
+}
+
+sub logdir_ok($l) {
+    my ($logdir) = @_;
+    return 0 if ($logdir eq "" || ! -d $logdir || ! -w $logdir);
+    # -w fails to detect read-only mounts
+    my $touch = "$logdir/_drmem_test_" . $$;
+    die "Tmp file $touch exists!\n" if (-e $touch);
+    if (mkdir $touch) {
+        rmdir $touch || die "Unable to remove temp dir $touch\n";
+        return 1;
+    }
+    return 0;
+}
+

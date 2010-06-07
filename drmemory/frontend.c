@@ -1,0 +1,570 @@
+/* **********************************************************
+ * Copyright (c) 2010 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/* Dr. Memory: the memory debugger
+ * a.k.a. DRMemory == DynamoRIO Memory checker
+ *
+ * This is the front end for launching applications under Dr. Memory on
+ * Windows when using online symbols via the drsyms DynamoRIO Extension.
+ * PR 540913 was the original PR for online symbol processing.
+ * Versus perl-based sideline processing:
+ * - Cygwin uses a separate build b/c drsyms doesn't support its symbols
+ *   yet (PR 561181 covers adding cygwin symbol support to drsyms)
+ * - Not supporting these features that are in postprocess.pl:
+ *   o groups: just going to eliminate the feature
+ *   o during-run summary + counts: just going to eliminate the feature
+ *   o -aggregate: not supporting on Windows
+ *   o -srcfilter: not supporting on Windows
+ * - Very large symbol files that do not fit in the app address space
+ *   are not yet supported: drsyms will eventually have symbol server
+ *   support for those (PR 243532).
+ */
+
+#include "dr_api.h" /* for the types */
+#include "dr_inject.h"
+#include "dr_config.h"
+#include <assert.h>
+#include <stdio.h>
+
+#define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
+#define MAX_APP_CMDLINE 4096
+
+/* maybe DR should export these */
+#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
+#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof(buf[0]))
+#define BUFFER_LAST_ELEMENT(buf)    buf[BUFFER_SIZE_ELEMENTS(buf) - 1]
+#define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
+
+/* -shared_slowpath requires -disable_traces
+ * to save space we use -bb_single_restore_prefix
+ * PR 415155: our code expansion causes us to exceed max bb size sometimes
+ * PR 561775: drsyms (esp newer versions) uses a lot of stack, which
+ *   caused DR 20K stack to overlow, so upping to 36K (biggest callstack
+ *   is module load event where DR has already used a bunch of stack,
+ *   and PR 486382 does name-to-addr symbol lookup)
+ */
+#define DEFAULT_DR_OPS \
+    "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -stack_size 36K"
+
+#define DRMEM_CLIENT_ID 0
+
+static bool verbose;
+static bool quiet;
+static bool batch; /* no popups */
+#define prefix ":::Dr.Memory::: "
+
+#define fatal(msg, ...) do { \
+    fprintf(stderr, "ERROR: " msg "\n", __VA_ARGS__);    \
+    fflush(stderr); \
+    exit(1); \
+} while (0)
+
+#define warn(msg, ...) do { \
+    if (!quiet) { \
+        fprintf(stderr, "WARNING: " msg "\n", __VA_ARGS__); \
+        fflush(stderr); \
+    } \
+} while (0)
+
+#define info(msg, ...) do { \
+    if (verbose) { \
+        fprintf(stderr, "INFO: " msg "\n", __VA_ARGS__); \
+        fflush(stderr); \
+    } \
+} while (0)
+
+static void
+print_usage(void)
+{
+    fprintf(stderr, "usage: Dr. Memory [options] -- <app and args to run>\n");
+#define OPTION(nm, def, short, long) \
+    fprintf(stderr, "  %-30s [%8s]  %s\n", nm, def, short);
+#include "optionsx.h"
+#undef OPTION
+}
+
+#define usage(msg, ...) do {                                    \
+    fprintf(stderr, "\n");                                      \
+    fprintf(stderr, "ERROR: " msg "\n\n", __VA_ARGS__);         \
+    print_usage();                                              \
+    exit(1);                                                    \
+} while (0)
+
+#define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
+    len = _snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
+    sofar += (len < 0 ? 0 : len); \
+    assert((bufsz) > (sofar)); \
+    /* be paranoid: though usually many calls in a row and could delay until end */ \
+    (buf)[(bufsz)-1] = '\0';                                 \
+} while (0)
+
+static bool
+ends_in_exe(const char *s)
+{
+    /* really we want caseless strstr */
+    size_t len = strlen(s);
+    return (len > 4 && s[len-4] == '.' &&
+            (s[len-3] == 'E' || s[len-3] == 'e') &&
+            (s[len-2] == 'X' || s[len-2] == 'x') &&
+            (s[len-1] == 'E' || s[len-1] == 'e'));
+}
+
+static void
+get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
+{
+    _searchenv(app, "PATH", buf);
+    buf[buflen - 1] = '\0';
+    if (buf[0] == '\0') {
+        /* may need to append .exe, FIXME : other executable types */
+        char tmp_buf[MAXIMUM_PATH];
+        _snprintf(tmp_buf, BUFFER_SIZE_ELEMENTS(tmp_buf), "%s%s", app, ".exe");
+        buf[buflen - 1] = '\0';
+        _searchenv(tmp_buf, "PATH", buf);
+    }
+    if (buf[0] == '\0') {
+        /* last try: expand w/ cur dir */
+        GetFullPathName(app, buflen, buf, NULL);
+        buf[buflen - 1] = '\0';
+    }
+}
+
+/* i#200/PR 459481: communicate child pid via file */
+static void
+write_pid_to_file(const char *pidfile, process_id_t pid)
+{
+    HANDLE f = CreateFile(pidfile, GENERIC_WRITE, FILE_SHARE_READ,
+                          NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) {
+        warn("cannot open %s: %d", pidfile, GetLastError());
+    } else {
+        TCHAR pidbuf[16];
+        BOOL ok;
+        DWORD written;
+        _snprintf(pidbuf, BUFFER_SIZE_ELEMENTS(pidbuf), "%d\n", pid);
+        NULL_TERMINATE_BUFFER(pidbuf);
+        ok = WriteFile(f, pidbuf, (DWORD)strlen(pidbuf), &written, NULL);
+        assert(ok && written == strlen(pidbuf));
+        CloseHandle(f);
+    }
+}
+
+/* Rather than iterating to find the most recent dir w/ pid in name,
+ * or risk running into the client option length limit by passing in a
+ * file to write the results to, the client always writes to
+ * <logdir>/resfile.<pid>.  There is a race here since we're reading
+ * it after the app exited and another app of same pid could start up,
+ * but we live with it since extremely unlikely.
+ */
+static void
+process_results_file(const char *logdir, process_id_t pid)
+{
+    HANDLE f;
+    char fname[MAXIMUM_PATH];
+    char resfile[MAXIMUM_PATH];
+    DWORD read;
+    if (quiet && batch)
+        return;
+    _snprintf(fname, BUFFER_SIZE_ELEMENTS(fname), "%s/resfile.%d", logdir, pid);
+    NULL_TERMINATE_BUFFER(fname);
+    f = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ,
+                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE) {
+        warn("unable to locate results file since can't open %s: %d",
+             fname, GetLastError());
+        return;
+    }
+    if (!ReadFile(f, resfile, BUFFER_SIZE_ELEMENTS(resfile), &read, NULL)) {
+        warn("unable to locate results file since can't read %s: %d",
+             fname, GetLastError());
+        CloseHandle(f);
+        return;
+    }
+    assert(read < BUFFER_SIZE_ELEMENTS(resfile));
+    resfile[read] = '\0';
+    CloseHandle(f);
+    /* We are now done with the file */
+    if (!DeleteFile(fname)) {
+        warn("unable to delete temp file %s: %d", fname, GetLastError());
+    }
+
+    if (!quiet) {
+        /* Even with console-writing support from drsyms, the client cannot write
+         * to a cmd console from the exit event: nor can it write for a graphical
+         * application (xref i#261/PR 562198).  Thus when within cmd we always
+         * paste the results from the file here.
+         *
+         * Identifying cmd: for a Windows app, env vars do not help us: even
+         * when launched from a cygwin shell, ComSpec is set and SHELL,
+         * etc. are not.  So we check whether the bottom 2 bits of the std
+         * handles are set: if so, these are handled by csrss, and thus
+         * we're in cmd.
+         */
+        bool in_cmd = ((((ptr_int_t)GetStdHandle(STD_OUTPUT_HANDLE)) & 0x10000003)
+                       == 0x3);
+        if (in_cmd) {
+            FILE *stream;
+            char line[100];
+            bool found_summary = false;
+            if ((stream = fopen(resfile, "r" )) != NULL) {
+                while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
+                    if (!found_summary)
+                        found_summary = (strstr(line, "ERRORS FOUND:") == line);
+                    if (found_summary)
+                        fprintf(stderr, "%s%s", prefix, line);
+                }
+                fclose(stream);
+            }
+        }
+    }
+    if (!batch) {
+        /* Pop up notepad in background w/ results file */
+        PROCESS_INFORMATION pi;
+        STARTUPINFO si;
+        char cmd[MAXIMUM_PATH*2];
+        ZeroMemory(&si, sizeof(si));
+        si.cb = sizeof(si);
+        _searchenv("notepad.exe", "PATH", fname);
+        NULL_TERMINATE_BUFFER(fname);
+        _snprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), "%s %s", fname, resfile);
+        NULL_TERMINATE_BUFFER(cmd);
+        if (!CreateProcess(fname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
+            warn("cannot run \"%s\": %d", cmd, GetLastError());
+        } else {
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+        }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    char *process = NULL;
+    char *dr_root = NULL;
+    char *drmem_root = NULL;
+    char default_dr_root[MAXIMUM_PATH];
+    char default_drmem_root[MAXIMUM_PATH];
+    char client_path[MAXIMUM_PATH];
+
+    char client_ops[MAX_DR_CMDLINE];
+    size_t cliops_sofar = 0; /* for BUFPRINT to client_ops */
+    char dr_ops[MAX_DR_CMDLINE];
+    size_t drops_sofar = 0; /* for BUFPRINT to dr_ops */
+    ssize_t len; /* shared by all BUFPRINT */
+
+    /* passed through to client but first we make absolute and check existence.
+     * we also use logdir to find results.txt and launch notepad.
+     */
+    char logdir[MAXIMUM_PATH];
+    char suppress[MAXIMUM_PATH];
+
+    bool use_dr_debug = false;
+    bool use_drmem_debug = true;
+    char *pidfile = NULL;
+    process_id_t nudge_pid = 0;
+
+    char *app_name;
+    char full_app_name[MAXIMUM_PATH];
+    char app_cmdline[MAX_APP_CMDLINE];
+
+    int errcode;
+    void *inject_data;
+    int i;
+    char *c;
+    char buf[MAXIMUM_PATH];
+    process_id_t pid;
+
+    /* Default root: we assume this exe is <root>/bin/drmemory.exe */
+    get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
+    c = buf + strlen(buf) - 1;
+    while (*c != '\\' && *c != '/' && c > buf)
+        c--;
+    _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "../dynamorio");
+    NULL_TERMINATE_BUFFER(buf);
+    GetFullPathName(buf, BUFFER_SIZE_ELEMENTS(default_dr_root), default_dr_root, NULL);
+    NULL_TERMINATE_BUFFER(default_dr_root);
+    dr_root = default_dr_root;
+
+    /* assuming we're in bin/ (mainly due to CPack NSIS limitations) */
+    _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "..");
+    NULL_TERMINATE_BUFFER(buf);
+    GetFullPathName(buf, BUFFER_SIZE_ELEMENTS(default_drmem_root),
+                    default_drmem_root, NULL);
+    NULL_TERMINATE_BUFFER(default_drmem_root);
+    drmem_root = default_drmem_root;
+
+    BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+             drops_sofar, len, "%s ", DEFAULT_DR_OPS);
+
+    /* default logdir */
+    _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/drmemory/logs", drmem_root);
+    NULL_TERMINATE_BUFFER(logdir);
+    if (_access(logdir, 0) == -1) {
+        /* try w/o the drmemory */
+        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/logs", drmem_root);
+        NULL_TERMINATE_BUFFER(logdir);
+        if (_access(logdir, 0) == -1) {
+            /* try logs in cur dir */
+            GetFullPathName("./logs", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            NULL_TERMINATE_BUFFER(logdir);
+            if (_access(logdir, 0) == -1) {
+                /* try cur dir */
+                GetFullPathName(".", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+                NULL_TERMINATE_BUFFER(logdir);
+            }
+        }
+    }
+
+    /* parse command line */
+    /* FIXME PR 487993: use optionsx.h to construct this parsing code */
+    for (i=1; i<argc; i++) {
+
+        /* note that we pass unknown args to client, until -- */
+        if (strcmp(argv[i], "--") == 0) {
+            i++;
+            break;
+	}
+        /* drag-and-drop does not include "--" so we try to identify the app.
+         * we explicitly parse -logdir and -suppress, and all the other
+         * client ops that take args take numbers so this should be safe.
+         */
+        else if (argv[i][0] != '-' && ends_in_exe(argv[i])) {
+            /* leave i alone: this is the app itself */
+            break;
+	}
+        else if (strcmp(argv[i], "-v") == 0) {
+            verbose = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-quiet") == 0) {
+            /* -quiet is also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "%s ", argv[i]);
+            quiet = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-batch") == 0) {
+            batch = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-dr_debug") == 0) {
+            use_dr_debug = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-release") == 0) {
+            use_drmem_debug = false;
+            continue;
+        }
+        else if (!strcmp(argv[i], "-version")) {
+#if defined(BUILD_NUMBER) && defined(VERSION_NUMBER)
+          printf("Dr. Memory version %s -- build %d\n", STRINGIFY(VERSION_NUMBER),
+                 BUILD_NUMBER);
+#elif defined(BUILD_NUMBER)
+          printf("Dr. Memory custom build %d -- %s\n", BUILD_NUMBER, __DATE__);
+#else
+          printf("Dr. Memory custom build -- %s, %s\n", __DATE__, __TIME__);
+#endif
+          exit(0);
+        }
+        else if (strcmp(argv[i], "-dr") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            dr_root = argv[++i];
+        }
+        else if (strcmp(argv[i], "-drmemory") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            drmem_root = argv[++i];
+        }
+        else if (strcmp(argv[i], "-nudge") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            nudge_pid = strtoul(argv[++i], NULL, 10);
+        }        
+        else if (strcmp(argv[i], "-dr_ops") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                     drops_sofar, len, "%s ", argv[++i]);
+        }
+        else if (strcmp(argv[i], "-pid_file") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            pidfile = argv[++i];
+        }
+        else if (strcmp(argv[i], "-logdir") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            /* make absolute */
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            NULL_TERMINATE_BUFFER(logdir);
+            /* added to client ops below */
+        }
+        else if (strcmp(argv[i], "-suppress") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            /* front-end provides relative-to-absolute and existence check */
+            /* make absolute */
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(logdir), suppress, NULL);
+            NULL_TERMINATE_BUFFER(suppress);
+            if (_access(suppress, 0) == -1) {
+                fatal("cannot find -suppress file %s", suppress);
+                goto error; /* actually won't get here */
+            }
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "-suppress `%s` ", suppress);
+        }
+        else {
+            /* pass to client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "%s ", argv[i]);
+        }
+    }
+
+    if (nudge_pid != 0) {
+        dr_config_status_t res;
+        if (i < argc)
+            usage("%s", "-nudge does not take an app to run");
+        /* could also complain about other client or app specific ops */
+        res = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, 0, INFINITE);
+        if (res != DR_SUCCESS) {
+            fatal("error nudging %d%s", nudge_pid,
+                  (res == DR_NUDGE_PID_NOT_INJECTED) ? ": no such Dr. Memory process"
+                  : "");
+            assert(false); /* shouldn't get here */
+        }
+        exit(0);
+    }
+
+    if (i >= argc)
+        usage("%s", "no app specified");
+    app_name = argv[i++];
+    get_full_path(app_name, full_app_name, BUFFER_SIZE_ELEMENTS(full_app_name));
+    if (full_app_name[0] != '\0')
+        app_name = full_app_name;
+    info("targeting application: \"%s\"", app_name);
+
+    /* note that we want target app name as part of cmd line
+     * (FYI: if we were using WinMain, the pzsCmdLine passed in
+     *  does not have our own app name in it)
+     * it's easier to construct than to call GetCommandLine() and then
+     * remove our own args.
+     */
+    c = app_cmdline;
+    c += _snprintf(c, BUFFER_SIZE_ELEMENTS(app_cmdline) - (c - app_cmdline),
+                   "\"%s\"", app_name);
+    for (; i < argc; i++) {
+        c += _snprintf(c, BUFFER_SIZE_ELEMENTS(app_cmdline) - (c - app_cmdline),
+                       " \"%s\"", argv[i]);
+    }
+    NULL_TERMINATE_BUFFER(app_cmdline);
+    assert(c - app_cmdline < BUFFER_SIZE_ELEMENTS(app_cmdline));
+    info("app cmdline: %s", app_cmdline);
+
+    if (_access(dr_root, 0) == -1) {
+        fatal("invalid -dr_root %s", dr_root);
+        goto error; /* actually won't get here */
+    }
+    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+              "%s/lib32/%s/dynamorio.dll", dr_root,
+              use_dr_debug ? "debug" : "release");
+    NULL_TERMINATE_BUFFER(buf);
+    if (_access(buf, 0) == -1) {
+        fatal("cannot find DynamoRIO library %s", buf);
+        goto error; /* actually won't get here */
+    }
+
+    /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
+    _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+              "%s/bin/%s/drmemorylib.dll", drmem_root,
+              use_drmem_debug ? "debug" : "release");
+    NULL_TERMINATE_BUFFER(client_path);
+    if (_access(client_path, 0) == -1) {
+        fatal("invalid -drmem_root: cannot find %s", client_path);
+        goto error; /* actually won't get here */
+    }
+
+    if (_access(logdir, 0) == -1) {
+        fatal("invalid -logdir: cannot find %s", logdir);
+        goto error; /* actually won't get here */
+    }
+    info("logdir is \"%s\"", logdir);
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-logdir `%s` ", logdir);
+
+    /* we need to locate the results file */
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-resfile_out ");
+
+    errcode = dr_inject_process_create(app_name, app_cmdline, &inject_data);
+    if (errcode != 0) {
+        int sofar = _snprintf(app_cmdline, BUFFER_SIZE_ELEMENTS(app_cmdline), 
+                              "failed to create process for \"%s\": ", app_name);
+        if (sofar > 0) {
+            FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                          NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                          (LPTSTR) app_cmdline + sofar,
+                          BUFFER_SIZE_ELEMENTS(app_cmdline) - sofar*sizeof(char), NULL);
+        }
+        NULL_TERMINATE_BUFFER(app_cmdline);
+        fatal("%s", app_cmdline);
+        goto error; /* actually won't get here */
+    }
+
+    pid = dr_inject_get_process_id(inject_data);
+    if (pidfile != NULL)
+        write_pid_to_file(pidfile, pid);
+
+    process = dr_inject_get_image_name(inject_data);
+    /* we don't care if this app is already registered for DR b/c our
+     * this-pid config will override
+     */
+    info("configuring %s pid=%d dr_ops=\"%s\"", process, pid, dr_ops);
+    if (dr_register_process(process, pid,
+                            false/*local*/, dr_root,  DR_MODE_CODE_MANIPULATION,
+                            use_dr_debug, DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
+        fatal("failed to register DynamoRIO configuration");
+        goto error; /* actually won't get here */
+    }
+    info("configuring client \"%s\" ops=\"%s\"", client_path, client_ops);
+    if (dr_register_client(process, pid,
+                           false/*local*/, DR_PLATFORM_DEFAULT, DRMEM_CLIENT_ID,
+                           0, client_path, client_ops) != DR_SUCCESS) {
+        fatal("failed to register DynamoRIO client configuration");
+        goto error; /* actually won't get here */
+    }
+    if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
+        fatal("unable to inject");
+        goto error; /* actually won't get here */
+    }
+
+    dr_inject_process_run(inject_data);
+    info("waiting for app to exit...");
+    errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
+    if (errcode != WAIT_OBJECT_0)
+        info("failed to wait for app: %d\n", errcode);
+    errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
+    process_results_file(logdir, pid);
+    return errcode;
+ error:
+    dr_inject_process_exit(inject_data, false);
+    return 1;
+}
+

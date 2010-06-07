@@ -1,0 +1,447 @@
+/* **********************************************************
+ * Copyright (c) 2009 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_using Using Dr. Memory
+
+This section gives an overview of how to use Dr. Memory, divided into the
+following sub-sections:
+
+ - \ref sec_linux
+ - \ref sec_windows
+ - \ref sec_running
+ - \ref sec_errors
+
+See also the full reference of Dr. Memory's runtime options:
+ - \ref page_options
+
+\if VMX86_SERVER
+When running on ESXi, see the additional instructions for setup and running
+of Dr. Memory:
+ - \ref page_ESXi
+\endif
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_linux Setup on Linux
+
+This section describes requirements, setup instructions, and other concerns
+prior to running Dr. Memory on Linux.
+
+********************
+\subsection sec_linux_utils Utilities
+
+Ensure your Linux machine has the following utilities installed:
+
+ - perl
+ - objdump
+ - addr2line
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_windows Setup on Windows
+
+This section describes requirements, setup instructions, and other concerns
+prior to running Dr. Memory on Windows.
+
+********************
+\subsection sec_windows_utils Utilities
+
+Dr. Memory displays results using \p notepad by default.  If it is not on
+the PATH a message pointing to the file containing the results will be
+displayed.  The option \p -batch can be used to disable the launch of \p
+notepad at application exit.
+
+********************
+\subsection sec_windows_cygwin Dr. Memory and Cygwin
+
+If you wish to run Cygwin applications under Dr. Memory, you will need to
+use the separate Cygwin build of Dr. Memory as the regular Windows build is
+not able to read Cygwin symbols.  Also, make sure you have the following
+Cygwin utilities installed:
+
+ - perl
+ - objdump (binutils package)
+ - addr2line (binutils package)
+
+For this Alpha release, on Windows it is recommended to use native Windows
+applications (i.e., built via cl.exe or Visual Studio rather than g++) as
+there are many false positives in the Cygwin libraries.
+
+The regular Dr. Memory build can be executed just fine from a Cygwin
+shell when targeting non-Cygwin applications.
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_running Running Dr. Memory
+
+The first step is to unzip or untar the Dr. Memory package.
+
+********************
+\subsection sec_app_prep Prepare Your Application
+
+In order to obtain line number information, compile your target
+application with debugging information enabled (e.g., "/Zi" for cl.exe
+or "-g" for gcc or g++).
+
+If you want to run your application with stripped libraries or binaries and
+have the unstripped versions in separate locations, you can point at those
+locations using the \p DRMEMORY_LIB_PATH environment variable, which is a
+colon-separated list of directories.
+
+********************
+\subsection sec_invocation Invoking Dr. Memory
+
+Run your application as you normally would from a command prompt (on
+Windows, either the \p cmd shell or a Cygwin prompt), with \p \FRONT_END
+and "--" prefixed to the command line (the "--" separates any arguments to
+Dr. Memory from the application being run).
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -- \if WINDOWS c:/path/to/my/app \else /path/to/my/app \endif args to my app
+</tt>
+
+\if WINDOWS
+On Windows, if you used the installer and checked the box to add \p
+\FRONT_END to your PATH, you can simply type into your shell:
+
+\par
+<tt>\FRONT_END -- c:/path/to/my/app args to my app
+</tt>
+
+You can also drag-and-drop your application onto \p \FRONT_END in 
+Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
+installation.
+
+\endif
+
+********************
+\subsection sec_results Examining the Results
+
+Dr. Memory's results are written to a file called \p results.txt inside
+a subdirectory created for each invocation of Dr. Memory, inside
+Dr. Memory's log directory.  The log directory by default is the \p logs
+subdirectory of the unpacked installation.  It can be changed with the \p
+-logdir option:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -logdir \if WINDOWS c:/logs \else /tmp/drmem \endif -- myapp
+</tt>
+
+When an application is executed under Dr. Memory's control, it creates a
+subdirectory in the base log directory named
+"DrMemory-<appname>.<pid>.NNN", where NNN is a counter that is incremented
+to ensure unique names.
+
+For full details on the errors reported by Dr. Memory, see \ref sec_errors.
+
+If you would like to attach a debugger at the point an error is first
+detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
+options (see \ref page_options).
+
+********************
+\subsection sec_aggregate Aggregating Results From Multiple Processes
+
+Dr. Memory supports aggregating results from multiple log directories,
+whether from multiple processes of a multi-process application or from
+multiple runs of the same application.  Simply use the \p -aggregate option
+and supply the list of log directories, or a single directory containing
+the log directories as sub-directories to aggregate all of them:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000 
+</tt>
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate /parent/logdir/
+</tt>
+
+********************
+\subsection sec_leaks Leak Checking
+
+INCLUDEFILE leaks.dox.sub
+
+********************
+\subsection sec_daemon Applications That Do Not Exit
+
+While Dr. Memory updates the \p results.txt file as the application runs,
+it does not perform leak checking or produce a summary of errors until the
+end of the run.  For applications that do not have a normal exit, such as
+daemons, Dr. Memory provides a method of forcing end-of-run actions.
+
+Run \p \FRONT_END with the \p -nudge option and the process identifier of
+the application in order to request leak checking and other end-of-run
+actions:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -nudge processid
+</tt>
+
+********************
+\subsection sec_suppress Suppressing Errors
+
+Dr. Memory generates a file named \p suppress.txt alongside the \p
+results.txt file.  To suppress errors from being reported in future runs,
+edit this file to contain just the errors you wish to suppress.  Then pass
+the file to \p \FRONT_END with the -suppress option:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -suppress \if WINDOWS c:/suppress-custom.txt \else /tmp/suppress-custom.txt \endif -- myapp
+</tt>
+
+The suppress.txt generated by Dr. Memory will contain suppression information
+only for those errors that weren't suppressed using the -suppress option.  For
+each error resported in suppress.txt, there will be two types of call stacks,
+one showing \p <module+offset> type frames and the other \p module!function
+\p types frames.  Either type of call stack can be used and it is enough if one
+of those two is specified.   The \p module!function are more general and
+more robust across different versions of a module.  Also, the \p
+module!function callstacks support wildcards in either the module or
+function name, and they support prefix matching.  Prefix matching means
+that the callstack in the suppression file is considered a match if it
+matches the top of any actual callstack during a run.  This allows
+specifying only the first few frames of a callstack and have it match any
+callstack whose first frames match those frames, regardless of subsequent
+frames.  Currently the \p <module+offset> frames do not support either
+wildcards or prefix matching on Linux or Cygwin: on Windows they do support
+both just like \p module!function callstacks do.
+
+Note: Don't mix the two types of frames in one call stack.  If you do so,
+suppression won't work.
+
+Suppression files can have empty lines and comment lines (begining with #).
+There should be no leading white space for the actual suppression information.
+
+Another method is to filter the reported errors to focus on particular
+source files.  Use the \p -srcfilter option to do this:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -srcfilter hello.c -- ./hello
+</tt>
+
+The \p -srcfilter option is not available in the Windows version of Dr. Memory.
+
+Dr. Memory comes with a set of default suppressions to avoid known false
+positives in system libraries.  These can be disabled with the option
+-no_default_suppress.
+
+********************
+\subsection sec_replace Replaced Routines
+
+Dr. Memory replaces several string and memory routines in the C library,
+executable, and other libraries, in order to avoid false positives from
+extremely-optimized versions of these routines.  So if an application
+expects a crash inside a routine like \p strlen, do not be alarmed if it
+shows up as \p replace_strlen in the Dr. Memory library rather than \p
+strlen in the C library.
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_errors Error Types Reported by Dr. Memory
+
+Each error found by Dr. Memory is listed in the \p results.txt file (see
+\ref sec_results).  The error report includes an error number, the type of
+error, the address and size of the memory access in question (if applicable
+to the error type), a timestamp and thread identifier indicating when and
+where the error was detected, and a callstack of the application at the
+point of the error.
+
+The following subsections describe each type of error.  Leaks are described
+in \ref sec_leaks.
+
+********************
+\subsection sec_unaddr Unaddressable Access
+
+Dr. Memory considers any read or write of a memory location that was not
+allocated as an "unaddressable access".  An allocation is:
+
+ - A call to mmap (or mremap) (or Windows equivalents VirtualAlloc or
+   MapViewOfFile) outside of a heap or stack region.
+ - A call to malloc (or calloc or realloc, or Windows equivalents
+   HeapAlloc or HeapReAlloc or the Local or Global versions) inside of a 
+   heap region
+ - An extension of the stack in a stack region, either via raw instructions
+   or via alloca.
+
+An unaddressable access is an access to an invalid memory address.
+Examples include a buffer overflow, reading off the end of an array,
+reading or writing to memory that has been freed (often referred to as
+a "use-after-free" error), reading beyond the top of the stack, etc.
+
+The heap allocator may pad the size requested by the application.  The
+padded region beyond what the application asked for is considered
+unaddressable by Dr. Memory.
+
+When an unaddressable access occurs in a heap region, Dr. Memory attempts
+to provide additional information about nearby valid allocations and
+whether the target address is inside a region that has been freed.  For
+example, here is a sample error report:
+
+\code
+Error #1: UNADDRESSABLE ACCESS: reading 0x098893f3-0x098893f4 1 byte(s)
+Elapsed time = 0:00:00.136 in thread 18291
+Note: prev lower malloc:  0x098893f0-0x098893f2
+0x08048839 <malloc+0x839> malloc!main
+    /work/dr/misc/internal/clients/drmemory/tests/malloc.c:95
+0x0092dbb6 <libc.so.6+0x16bb6> libc.so.6<nosyms>!__libc_start_main
+    ??:0
+0x08048691 <malloc+0x691> malloc!_start
+    ??:0
+\endcode
+
+Note how the "prev lower malloc" ends at 0x098893f2 just before the invalid
+address 0x098893f3, indicating a read that went one byte too far.
+
+Here is another example:
+
+\code
+Error #2: UNADDRESSABLE ACCESS: reading 0x001337a8-0x001337ac 4 byte(s)
+Elapsed time = 0:00:01.328 in thread 2072
+Note: next higher malloc: 0x001337e0-0x00133830
+Note: prev lower malloc:  0x00133708-0x0013373a
+Note: 0x001337a8-0x001337ac overlaps freed memory 0x001337a8-0x001337b8
+0x00401272 <suppress.exe+0x1272> suppress.exe!unaddr_test1+0x22
+    e:\derek\dr\misc\internal\clients\drmemory\tests\suppress.c:79+0x3
+0x004010dc <suppress.exe+0x10dc> suppress.exe!test+0x7c
+    e:\derek\dr\misc\internal\clients\drmemory\tests\suppress.c:177+0xc
+0x00401042 <suppress.exe+0x1042> suppress.exe!main+0x32
+    e:\derek\dr\misc\internal\clients\drmemory\tests\suppress.c:199+0x0
+0x00401bcd <suppress.exe+0x1bcd> suppress.exe!__tmainCRTStartup+0x15f
+    f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327+0x12
+0x7d4e9982 <KERNEL32.dll+0x29982> KERNEL32.dll!BaseProcessInitPostImport+0x8d
+    ??:0
+\endcode
+
+In this case Dr. Memory is able to report that the target address is inside
+a malloc area that has been freed and has not been re-allocated since.
+
+This additional information, and the addresses accessed, only apply to the
+first error with that callstack that Dr. Memory sees.  Any subsequent
+errors with the same callstack will increment the duplicate count for that
+error <em>but further individual information about each duplicate is not
+provided</em>.
+
+********************
+\subsection sec_uninit Uninitialized Read
+
+If the application reads from addressable memory that has not been written
+to since it was allocated, Dr. Memory reports an "uninitialized read"
+error.  In order to avoid false positives, Dr. Memory does not report the
+use of uninitialized memory until something "meaningful" is done with that
+memory, such as a comparison or conditional branch or passing it to a
+system call.  Variables or fields smaller than a word are often initialized
+without their containing word (variables and fields are typically
+word-aligned) being initialized.  When these variables or fields are then
+copied, the uninitialized portion of each word is technically being read as
+an uninitialized value, but reporting such reads as errors would result in
+far too many errors.
+
+When passing data structures to a system call, if the structure is
+initialized field-by-field then padding bytes may be left uninitialized.
+Dr. Memory will report errors on these as it does not know whether the
+kernel or a receipient on the other end might read it.  To avoid these
+errors, memset the entire structure, or use a Dr. Memory error suppression
+(see \ref sec_suppress) to ignore the error.
+
+Here is an example of an uninitialized read error:
+
+\code
+Error #2: UNINITIALIZED READ: reading 0xffbae108-0xffbae114 12 byte(s) within 0xffbae100-0xffbae114
+Elapsed time = 0:00:00.214 in thread 19298
+system call socketcall setsockopt args
+    <system call>
+0x08049a65 <my-socket-test+0x1a65> my-socket-test!main
+    ??:0
+0x0092dbb6 <libc.so.6+0x16bb6> libc.so.6<nosyms>!__libc_start_main
+    ??:0
+0x080489b1 <my-socket-test+0x9b1> my-socket-test!_start
+    ??:0
+\endcode
+
+When only part of a larger region is uninitialized, Dr. Memory reports the
+containing range to make it easier to track down the problem.  This
+typically happens with buffers or structures passed to system calls.  Note
+also in this example how Dr. Memory reports which part of the socketcall
+system call checks discovered this error.
+
+********************
+\subsection sec_invfree Invalid Free
+
+Whenever a pointer that does not refer to a valid malloc region is passed
+to free(), Dr. Memory reports an "invalid free" error.  Here the problem is
+immediately apparent as 0x00001234 is not a valid heap address at all:
+
+\code
+Error #4: INVALID FREE: freeing 0x00001234
+Elapsed time = 0:00:00.263 in thread 19755
+0x08048a71 <malloc+0xa71> malloc!main
+    /work/dr/misc/internal/clients/drmemory/tests/malloc.c:161
+0x0092dbb6 <libc.so.6+0x16bb6> libc.so.6<nosyms>!__libc_start_main
+    ??:0
+0x08048691 <malloc+0x691> malloc!_start
+    ??:0
+\endcode
+
+********************
+\subsection sec_warning Warning
+
+Dr. Memory reports warnings about unusual memory-related conditions that an
+application developer might like to know about.  For example:
+
+\code
+Error #5: WARNING: heap allocation failed 
+Elapsed time = 0:00:04.562 in thread 2668
+0x00401366 <malloc.exe+0x1366> malloc.exe!main+0x356
+    e:\derek\dr\linux\internal\clients\drmemory\tests\malloc.c:172+0x1e
+0x0040219e <malloc.exe+0x219e> malloc.exe!__tmainCRTStartup+0x15f
+    f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327+0x12
+0x7d4e9982 <KERNEL32.dll+0x29982> KERNEL32.dll!BaseProcessInitPostImport+0x8d
+    ??:0
+\endcode
+
+****************************************************************************
+****************************************************************************
+*/
+/* It's good to split up large C comments: we've hit some sort of doxygen
+ * internal buffering error before if one comment gets too long.
+ */
