@@ -727,6 +727,9 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                          pcs->frames[i].loc.syscall_aux);
             }
             BUFPRINT(buf, bufsz, *sofar, len, ""NL);
+#ifdef USE_DRSYMS
+            BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"<system call>"NL);
+#endif
         } else {
             /* We assume no valid address will have offset 0 */
             if (num_frames == 0) {
@@ -769,7 +772,7 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
             } else {
                 BUFPRINT(buf, bufsz, *sofar, len, "<not in a module>"NL);
 #ifdef USE_DRSYMS
-                IF_WINDOWS(BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);)
+                BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);
 #endif
             }
         }

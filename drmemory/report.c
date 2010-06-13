@@ -424,7 +424,6 @@ write_suppress_pattern(uint type, char *cstack, bool symbolic)
             end = strchr(epos, '\n');
             ASSERT(end != NULL, "suppress generation error");
             dr_fprintf(f_suppress, "%.*s"NL, end - epos, epos);
-            end--; /* for \n search below */
         } else if (symbolic) {
             epos = strchr(eframe, '>');
             ASSERT(epos != NULL && *(epos+1) == ' ', "suppress generation error");
@@ -471,7 +470,10 @@ on_suppression_list(uint type, char *cstack)
             ASSERT(eframe != NULL, "suppression search error");
             if (*eframe == '\0')
                 goto supp_done; /* no match: pattern longer than error */
-            if (spec->symbolic) {
+            epos = strstr(eframe, "system call");
+            if (epos != NULL) {
+                /* system call - nothing to do here */
+            } else if (spec->symbolic) {
                 epos = strchr(eframe, '>');
                 ASSERT(epos != NULL && *(epos+1) == ' ', "suppress parse error");
                 epos += 2; /* skip '> ' */
