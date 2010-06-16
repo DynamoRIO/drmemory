@@ -226,7 +226,8 @@ extern file_t f_global;
         NOTIFY("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
                dr_get_thread_id(dr_get_current_drcontext()), \
                __FILE__,  __LINE__, #x, msg); \
-        dr_messagebox("ASSERT FAILURE: %s:%d: %s (%s)", __FILE__,  __LINE__, #x, msg); \
+        if (USE_MSGBOX) \
+            dr_messagebox("ASSERT FAILURE: %s:%d: %s (%s)", __FILE__,  __LINE__, #x, msg); \
         drmemory_abort(); \
     } \
 } while (0)
