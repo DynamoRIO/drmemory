@@ -56,7 +56,8 @@ set(cmake_ver_string
 set(arg_nightly OFF)  # whether to report the results
 set(arg_long OFF)     # whether to run the long suite
 set(arg_already_built OFF) # for testing on ESXi w/ already-built suite
-set(arg_vmk_only OFF) # for testing on ESXi: only run vmk builds
+set(arg_test_vmk OFF) # for testing of ESXi on Linux: run vmk builds
+set(arg_vmk_only  OFF) # for testing on ESXi: run only vmk builds
 set(arg_include "")   # cmake file to include up front
 set(arg_preload "")   # cmake file to include prior to each 32-bit build
 set(arg_preload64 "") # cmake file to include prior to each 64-bit build
@@ -82,6 +83,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "already_built")
     set(arg_already_built ON)
   endif (${arg} STREQUAL "already_built")
+  if (${arg} STREQUAL "test_vmk")
+    set(arg_test_vmk ON)
+  endif (${arg} STREQUAL "test_vmk")
   if (${arg} STREQUAL "vmk_only")
     set(arg_vmk_only ON)
   endif (${arg} STREQUAL "vmk_only")
@@ -113,21 +117,25 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   endif (UNIX)
 endforeach (arg)
 
+if (arg_test_vmk AND arg_vmk_only)
+  message(FATAL_ERROR "you can't specify both test_vmk and vmk_only")
+endif (arg_test_vmk AND arg_vmk_only)
+
 if (NOT arg_vmk_only)
   if (NOT EXISTS "${DR_path}")
     # env var DYNAMORIO_HOME is fallback
     set(DR_path "$ENV{DYNAMORIO_HOME}/cmake")
   endif (NOT EXISTS "${DR_path}")
   if (NOT EXISTS "${DR_path}")
-    message(FATAL_ERROR "cannot find DynamoRIO Linux build at ${DR_path}")
+    message(FATAL_ERROR "cannot find DynamoRIO build at ${DR_path}")
   endif (NOT EXISTS "${DR_path}")
 endif (NOT arg_vmk_only)
 
-if (UNIX)
+if (arg_vmk_only OR arg_test_vmk)
   if (NOT EXISTS "${DRvmk_path}")
     message(FATAL_ERROR "cannot find DynamoRIO VMKERNEL build at ${DRvmk_path}")
   endif (NOT EXISTS "${DRvmk_path}")
-endif (UNIX)
+endif (arg_vmk_only OR arg_test_vmk)
 
 # allow setting the base cache variables via an include file
 set(base_cache "")
@@ -368,18 +376,20 @@ foreach (tool ${tools})
       " ON) # only run release tests for long suite
   endif (NOT arg_vmk_only)
   if (UNIX)
-    testbuild("${name}-vmk-debug-32" OFF "
-      ${tool}
-      DynamoRIO_DIR:PATH=${DRvmk_path}
-      CMAKE_BUILD_TYPE:STRING=Debug
-      VMKERNEL:BOOL=ON
-      " OFF)
-    testbuild("${name}-vmk-release-32" OFF "
-      ${tool}
-      DynamoRIO_DIR:PATH=${DRvmk_path}
-      CMAKE_BUILD_TYPE:STRING=Release
-      VMKERNEL:BOOL=ON
-      " ON) # only run release tests for long suite
+    if (arg_vmk_only OR arg_test_vmk)
+      testbuild("${name}-vmk-debug-32" OFF "
+        ${tool}
+        DynamoRIO_DIR:PATH=${DRvmk_path}
+        CMAKE_BUILD_TYPE:STRING=Debug
+        VMKERNEL:BOOL=ON
+        " OFF)
+      testbuild("${name}-vmk-release-32" OFF "
+        ${tool}
+        DynamoRIO_DIR:PATH=${DRvmk_path}
+        CMAKE_BUILD_TYPE:STRING=Release
+        VMKERNEL:BOOL=ON
+        " ON) # only run release tests for long suite
+    endif (arg_vmk_only OR arg_test_vmk)
   else (UNIX)
     if ("${tool}" MATCHES "MEMORY")
       # No online symbol support for cygwin yet so using separate build
