@@ -119,6 +119,7 @@ drmemory_options_t options = {
     true,      /* replace_libc */
     {'\0'},    /* libc_addrs */
     true,      /* check_push */
+    false,     /* single_arg_slowpath */
 
 #ifdef TOOL_DR_HEAPSTAT
     false,     /* time_instrs */
@@ -129,10 +130,11 @@ drmemory_options_t options = {
     false,     /* dump */
     1,         /* dump_freq */
     64,        /* snapshots: must be power of 2 */
+    5,         /* peak_threshold */
 
     true,      /* staleness */
     1000,      /* stale_granularity */
-    true,      /* stale_blind_store */
+    false,     /* stale_blind_store */
     true,      /* stale_ignore_sp */
 #endif /* TOOL_DR_HEAPSTAT */
 };
@@ -369,6 +371,10 @@ options_init(const char *opstr)
             options.check_push = true;
         } else if (stri_eq(word, "-no_check_push")) {
             options.check_push = false;
+        } else if (stri_eq(word, "-single_arg_slowpath")) {
+            options.single_arg_slowpath = true;
+        } else if (stri_eq(word, "-no_single_arg_slowpath")) {
+            options.single_arg_slowpath = false;
 #ifdef TOOL_DR_HEAPSTAT
         } else if (stri_eq(word, "-time_instrs")) {
             options.time_instrs = true;
@@ -412,6 +418,10 @@ options_init(const char *opstr)
                 usage_error("-snapshots", "");
             if ((options.snapshots & (~(options.snapshots-1))) != options.snapshots)
                 usage_error("-snapshots must be power of 2", "");
+        } else if (stri_eq(word, "-peak_threshold")) {
+            s = get_option_word(s, word);
+            if (s == NULL || sscanf(word, "%d", &options.peak_threshold) == -1)
+                usage_error("-peak_threshold", "");
         } else if (stri_eq(word, "-staleness")) {
             options.staleness = true;
         } else if (stri_eq(word, "-no_staleness")) {

@@ -81,7 +81,7 @@ static hashtable_t known_table;
 
 #ifdef LINUX
 /* PR 424847: prevent app from closing our logfiles */
-# define LOGFILE_HASH_BITS 8
+# define LOGFILE_HASH_BITS 6
 hashtable_t logfile_table;
 #endif
 
@@ -152,6 +152,8 @@ dump_statistics(void)
                pop_slowpath+pop_fastpath+pop4_fastpath);
     dr_fprintf(f_global, "slow instead of fast: %8u, b/c unaligned: %8u\n",
                slow_instead_of_fast, slowpath_unaligned);
+    dr_fprintf(f_global, "app instrs: fastpath: %7u, no dup: %7u, xl8: %7u\n",
+               app_instrs_fastpath, app_instrs_no_dup, xl8_app_for_slowpath);
     dr_fprintf(f_global, "addr exceptions: header: %7u, tls: %5u, alloca: %5u\n",
                heap_header_exception, tls_exception, alloca_exception);
     dr_fprintf(f_global, "more addr exceptions: ld DR: %5u\n", loader_DRlib_exception);

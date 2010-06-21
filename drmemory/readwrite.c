@@ -40,18 +40,16 @@
 #endif
 
 /* State restoration: need to record which bbs have eflags-save-at-top.
- * Fixed size for now but may need realloc since #bbs can get large 
- * (=> PR 446683) (we're only storing those that don't touch eflags though).
  * We store the app pc of the last instr in the bb.
  */
-#define BB_HASH_BITS 14
+#define BB_HASH_BITS 12
 hashtable_t bb_table;
 
 /* PR 493257: share shadow translation across multiple instrs.  But, abandon
  * sharing for memrefs that cross 64K boundaries and keep exiting to slowpath.
  * This table tracks slowpath exits and whether to share.
  */
-#define XL8_SHARING_HASH_BITS 12
+#define XL8_SHARING_HASH_BITS 10
 hashtable_t xl8_sharing_table;
 
 #ifdef STATISTICS
@@ -106,6 +104,9 @@ uint xl8_not_shared_mem2mem;
 uint xl8_not_shared_offs;
 uint xl8_not_shared_slowpaths;
 uint slowpath_unaligned;
+uint app_instrs_fastpath;
+uint app_instrs_no_dup;
+uint xl8_app_for_slowpath;
 #endif
 
 /***************************************************************************
@@ -221,6 +222,30 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot)
     }
 }
 
+bool
+is_spill_slot_opnd(void *drcontext, opnd_t op)
+{
+    static uint offs_min_own, offs_max_own, offs_min_DR, offs_max_DR;
+    if (offs_max_DR == 0) {
+        offs_min_own = opnd_get_disp(opnd_create_own_spill_slot(0));
+        offs_max_own = opnd_get_disp(opnd_create_own_spill_slot
+                                     (options.num_spill_slots - 1));
+        offs_min_DR = opnd_get_disp(dr_reg_spill_slot_opnd(drcontext, SPILL_SLOT_1));
+        offs_max_DR = opnd_get_disp(dr_reg_spill_slot_opnd
+                                    (drcontext, dr_max_opnd_accessible_spill_slot()));
+    }
+    if (opnd_is_far_base_disp(op) &&
+        opnd_get_index(op) == REG_NULL &&
+        opnd_get_segment(op) == SEG_FS) {
+        uint offs = opnd_get_disp(op);
+        if (offs >= offs_min_own && offs <= offs_max_own)
+            return true;
+        if (offs >= offs_min_DR && offs <= offs_max_DR)
+            return true;
+    }
+    return false;
+}
+
 /***************************************************************************
  * STATE RESTORATION
  */
@@ -243,8 +268,19 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     bb_saved_info_t *save;
 
 #ifdef TOOL_DR_MEMORY
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt;
+    ASSERT(pt != NULL, "pt shouldn't be null");
+    cpt = (client_per_thread_t *) pt->client_data;
+
     if (options.leaks_only || !options.shadowing)
         return true;
+
+    /* Are we asking DR to translate just pc?  Then return true and ignore regs */
+    if (cpt->self_translating) {
+        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
+        return true;
+    }
 #endif
 
     hashtable_lock(&bb_table);
@@ -393,6 +429,9 @@ event_fragment_delete(void *drcontext, void *tag)
      * Without removing, new code that replaces old code at the same address
      * can fail to be optimized b/c it will use the old code's history: so
      * a perf failure, not a correctness failure.
+     * -single_arg_slowpath adds a second entry with cache pc for each app
+     * pc entry, which is harder to delete but we're not deleting anything
+     * now anyway.
      */
 }
 
@@ -1432,6 +1471,42 @@ slow_path(app_pc pc, app_pc decode_pc)
      * here b/c we don't have the bb tag.  Eflags may not be restored
      * but we don't rely on them here.
      */
+
+    /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769)
+     * we always pass NULL for decode_pc
+     */
+    if (decode_pc == NULL) {
+        /* not using safe_read since in cache */
+        byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
+        ASSERT(pc == NULL, "invalid params");
+        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
+        /* If the ret pc is a jmp, we know to walk forward, bypassing
+         * spills, to find the app instr (we assume app jmp never
+         * needs slowpath).  If using a cloned app instr, then ret pc
+         * points directly there.  Since we want to skip the clone and
+         * the jmp, we always skip the instr at ret pc when returning.
+         */
+        pc = decode_next_pc(drcontext, ret_pc);
+        ASSERT(pc != NULL, "invalid stored app instr");
+        set_own_tls_value(SPILL_SLOT_2, (reg_t) pc);
+        if (*ret_pc == 0xe9) {
+            /* walk forward to find the app pc */
+            instr_init(drcontext, &inst);
+            do {
+                instr_reset(drcontext, &inst);
+                decode_pc = pc;
+                pc = decode(drcontext, decode_pc, &inst);
+                ASSERT(pc != NULL, "invalid app instr copy");
+            } while (instr_is_spill(&inst) || instr_is_restore(&inst));
+            instr_reset(drcontext, &inst);
+        } else
+            decode_pc = ret_pc;
+        /* if we want the app addr later, we'll have to translate to get it */
+        loc.u.addr.valid = false;
+        loc.u.addr.pc = decode_pc;
+        pc = NULL;
+    } else
+        ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
     
     instr_init(drcontext, &inst);
     instr_sz = decode(drcontext, decode_pc, &inst) - decode_pc;
@@ -1675,7 +1750,24 @@ slow_path(app_pc pc, app_pc decode_pc)
     instr_free(drcontext, &inst);
 
     /* call this last after freeing inst in case it does a synchronous flush */
-    slow_path_xl8_sharing(pc, pc + instr_sz, memop, &mc);
+    slow_path_xl8_sharing(&loc, instr_sz, memop, &mc);
+
+    DOLOG(2, {
+        if (!options.single_arg_slowpath) {
+            /* Test translation when have both args */
+            /* we want the ultimate target, not whole_bb_spills_enabled()'s
+             * SPILL_SLOT_5 intermediate target
+             */
+            byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
+            client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+            /* ensure event_restore_state() returns true */
+            byte *xl8;
+            cpt->self_translating = true;
+            xl8 = dr_app_pc_from_cache_pc(ret_pc);
+            cpt->self_translating = false;
+            ASSERT(xl8 == pc, "xl8 doesn't match");
+        }
+    });
 
     return true;
 #endif /* !TOOL_DR_HEAPSTAT */
@@ -1708,9 +1800,9 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (mi == NULL) {
             ASSERT(!whole_bb_spills_enabled(), "whole-bb needs tls preserved");
             PRE(bb, inst,
-                INSTR_CREATE_mov_st(drcontext,
-                                    spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                    OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
+                INSTR_CREATE_mov_imm(drcontext,
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_1),
+                                     OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
             /* FIXME: this hardcoded address will be wrong if this
              * fragment is shifted, or copied into a trace is created =>
              * requires -disable_traces (or registering for trace event)
@@ -1718,9 +1810,9 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * this particular fragment is thread-private?!?)
              */
             PRE(bb, inst,
-                INSTR_CREATE_mov_st(drcontext,
-                                    spill_slot_opnd(drcontext, SPILL_SLOT_2),
-                                    opnd_create_instr(appinst)));
+                INSTR_CREATE_mov_imm(drcontext,
+                                     spill_slot_opnd(drcontext, SPILL_SLOT_2),
+                                     opnd_create_instr(appinst)));
             PRE(bb, inst,
                 INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_slowpath_entry)));
         } else {
@@ -1770,23 +1862,43 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
             ASSERT(r1 >= 0 && r1 < SPILL_REG_NUM, "shared slowpath index error");
             ASSERT(r2 >= 0 && r2 < SPILL_REG_NUM, "shared slowpath index error");
-            PRE(bb, inst,
-                INSTR_CREATE_mov_st(drcontext,
-                                    (r1 == SPILL_REG_NONE) ?
-                                    spill_slot_opnd(drcontext, SPILL_SLOT_1) :
-                                    opnd_create_reg(s1->reg),
-                                    OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
-            PRE(bb, inst,
-                INSTR_CREATE_mov_st(drcontext, 
-                                    (r2 == SPILL_REG_NONE) ?
-                                    spill_slot_opnd(drcontext, SPILL_SLOT_2) :
-                                    opnd_create_reg(s2->reg),
-                                    opnd_create_instr(appinst)));
             tgt = (whole_bb_spills_enabled() ?
                    shared_slowpath_entry_global[r1][r2][r3]:
                    shared_slowpath_entry_local[r1][r2][r3][ef]);
             ASSERT(tgt != NULL, "targeting un-generated slowpath");
-            PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt)));
+            if (options.single_arg_slowpath) {
+                /* for jmp-to-slowpath optimization: we point at app instr, or a
+                 * clone of it, for pc to decode from (PR 494769), as the
+                 * retaddr, and thus do not need a second parameter.
+                 */
+                mi->appclone = instr_clone(drcontext, inst);
+                mi->slow_store_retaddr =
+                    INSTR_CREATE_mov_imm(drcontext, 
+                                         (r2 == SPILL_REG_NONE) ?
+                                         spill_slot_opnd(drcontext, SPILL_SLOT_2) :
+                                         opnd_create_reg(s2->reg),
+                                         opnd_create_instr(mi->appclone));
+                PRE(bb, inst, mi->slow_store_retaddr);
+                mi->slow_jmp = INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt));
+                PRE(bb, inst, mi->slow_jmp);
+                instr_set_ok_to_mangle(mi->appclone, false);
+                instr_set_translation(mi->appclone, NULL);
+                PRE(bb, inst, mi->appclone);
+            } else {
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_imm(drcontext,
+                                         (r1 == SPILL_REG_NONE) ?
+                                         spill_slot_opnd(drcontext, SPILL_SLOT_1) :
+                                         opnd_create_reg(s1->reg),
+                                         OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_imm(drcontext, 
+                                         (r2 == SPILL_REG_NONE) ?
+                                         spill_slot_opnd(drcontext, SPILL_SLOT_2) :
+                                         opnd_create_reg(s2->reg),
+                                         opnd_create_instr(appinst)));
+                PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_pc(tgt)));
+            }
         }
         PRE(bb, inst, appinst);
     } else {
@@ -1899,6 +2011,26 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                                                        r2 <= SPILL_REG_EBX_DEAD));
                     }
                     shared_slowpath_spill(drcontext, ilist, r2, SPILL_SLOT_2);
+                    if (options.single_arg_slowpath) {
+                        /* for jmp-to-slowpath optimization we don't have 2nd
+                         * param, so pass 0 (PR 494769)
+                         */
+                        if (r1 >= SPILL_REG_EAX && r1 <= SPILL_REG_EBX) {
+                            PRE(ilist, NULL, INSTR_CREATE_mov_imm
+                                (drcontext,
+                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX)),
+                                 OPND_CREATE_INT32(0)));
+                        } else if (r1 >= SPILL_REG_EAX_DEAD && r1 <= SPILL_REG_EBX_DEAD) {
+                            PRE(ilist, NULL, INSTR_CREATE_mov_imm
+                                (drcontext,
+                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX_DEAD)),
+                                 OPND_CREATE_INT32(0)));
+                        } else {
+                            PRE(ilist, NULL, INSTR_CREATE_mov_st
+                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1), 
+                                 OPND_CREATE_INT32(0)));
+                        }
+                    }
                     shared_slowpath_spill(drcontext, ilist, r1, SPILL_SLOT_1);
 
                     if (whole_bb_spills_enabled()) {
@@ -2059,6 +2191,8 @@ instrument_exit(void)
 #endif
     if (!options.leaks_only) {
         dr_mutex_destroy(gencode_lock);
+        LOG(1, "final bb table size: %u bits, %u entries\n",
+            bb_table.table_bits, bb_table.entries);
         hashtable_delete(&bb_table);
         hashtable_delete(&xl8_sharing_table);
 #ifdef TOOL_DR_MEMORY
@@ -2130,18 +2264,43 @@ get_stringop_range(reg_t base, reg_t count, reg_t eflags, uint opsz,
     }
 }
 
+#ifdef TOOL_DR_MEMORY
+/* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
+static app_pc
+translate_cache_pc(byte *pc_to_xl8)
+{
+    app_pc res;
+    void *drcontext = dr_get_current_drcontext();
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt;
+    ASSERT(pt != NULL, "pt shouldn't be null");
+    cpt = (client_per_thread_t *) pt->client_data;
+    ASSERT(cpt != NULL, "pt shouldn't be null");
+    ASSERT(pc_to_xl8 != NULL, "invalid param");
+    ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
+    /* ensure event_restore_state() returns true */
+    cpt->self_translating = true;
+    res = dr_app_pc_from_cache_pc(pc_to_xl8);
+    cpt->self_translating = false;
+    ASSERT(res != NULL, "failure to determine app pc on slowpath");
+    STATS_INC(xl8_app_for_slowpath);
+    LOG(3, "translated "PFX" to "PFX" for slowpath\n", pc_to_xl8, res);
+    return res;
+}
+#endif
+
 app_pc
 loc_to_pc(app_loc_t *loc)
 {
     ASSERT(loc != NULL && loc->type == APP_LOC_PC, "invalid param");
     if (!loc->u.addr.valid) {
 #ifdef TOOL_DR_MEMORY
-# if 0 /* FIXME disabled until merge w/ PR 494769 diff */
+        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
         /* pc field holds cache pc that must be translated */
-        /* TODO: ASSERT on it being a DR pc, if go that route after merge */
+        ASSERT(dr_memory_is_dr_internal(loc->u.addr.pc), "invalid untranslated pc");
         loc->u.addr.pc = translate_cache_pc(loc->u.addr.pc);
+        ASSERT(loc->u.addr.pc != NULL, "translation failed");
         loc->u.addr.valid = true;
-# endif
 #else
         ASSERT(false, "NYI");
 #endif
@@ -2155,7 +2314,7 @@ loc_to_print(app_loc_t *loc)
     ASSERT(loc != NULL, "invalid param");
     if (loc->type == APP_LOC_PC) {
         /* perf hit to translate so only at high loglevel */
-        DOLOG(2, { return loc_to_pc(loc); });
+        DOLOG(3, { return loc_to_pc(loc); });
         return loc->u.addr.valid ? NULL : loc->u.addr.pc;
     } else {
         ASSERT(loc->type == APP_LOC_SYSCALL, "unknown type");
@@ -2576,6 +2735,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     }
 #endif
     memset(&bi, 0, sizeof(bi));
+    memset(&mi, 0, sizeof(mi));
 
     LOG(5, "in instrument_bb\n");
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
@@ -2736,6 +2896,55 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         /* None of the "continues" above need to be processed here */
         if (!options.leaks_only && options.shadowing)
             fastpath_pre_app_instr(drcontext, bb, inst, &bi, &mi);
+
+        if (mi.appclone != NULL) {
+            instr_t *nxt = instr_get_next(mi.appclone);
+            ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
+            while (nxt != NULL &&
+                   (instr_is_label(nxt) || instr_is_spill(nxt) || instr_is_restore(nxt)))
+                nxt = instr_get_next(nxt);
+            ASSERT(nxt != NULL, "app clone error");
+            DOLOG(3, {
+                per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+                LOG(3, "comparing: ");
+                instr_disassemble(drcontext, mi.appclone, pt->f);
+                LOG(3, "\n");
+                LOG(3, "with: ");
+                instr_disassemble(drcontext, nxt, pt->f);
+                LOG(3, "\n");
+            });
+            STATS_INC(app_instrs_fastpath);
+            /* only destroy if app instr won't be mangled */
+            if (instr_same(mi.appclone, nxt) &&
+                !instr_is_cti(nxt) &&
+                /* FIXME PR 494769: -single_arg_slowpath cannot be on by default
+                 * until b/c we can't predict whether an instr will be mangled
+                 * for selfmod!  Also, today we're not looking for mangling of
+                 * instr_has_rel_addr_reference().  The option is off by default
+                 * until that's addressed by implementing i#156/PR 306163 and
+                 * adding post-mangling bb and trace events.
+                 */
+                !instr_is_syscall(nxt) &&
+                !instr_is_interrupt(nxt)) {
+                ASSERT(mi.slow_store_retaddr != NULL, "slowpath opt error");
+                ASSERT(opnd_is_instr(instr_get_src(mi.slow_store_retaddr, 0)) &&
+                       opnd_get_instr(instr_get_src(mi.slow_store_retaddr, 0)) ==
+                       mi.appclone, "slowpath opt error");
+                /* point at the jmp so slow_path() knows to return right afterward */
+                instr_set_src(mi.slow_store_retaddr, 0, opnd_create_instr(mi.slow_jmp));
+                instrlist_remove(bb, mi.appclone);
+                instr_destroy(drcontext, mi.appclone);
+                mi.appclone = NULL;
+                STATS_INC(app_instrs_no_dup);
+            } else {
+                DOLOG(3, {
+                    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+                    LOG(3, "need dup for: ");
+                    instr_disassemble(drcontext, mi.appclone, pt->f);
+                    LOG(3, "\n");
+                });
+            }
+        }
     }
     LOG(5, "\texiting instrument_bb\n");
 

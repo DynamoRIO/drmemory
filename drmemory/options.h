@@ -239,6 +239,9 @@ typedef struct _drmemory_options_t {
     /* whether to check that pushes are writing to unaddressable memory */
     bool check_push;
 
+    /* use single arg for jmp-to-slowpath and derive second (PR 494769) */
+    bool single_arg_slowpath;
+
 #ifdef TOOL_DR_HEAPSTAT
 
     /* Unit of time.  Simpler to use bools than a single-option string. */
@@ -255,6 +258,8 @@ typedef struct _drmemory_options_t {
     uint dump_freq;
     /* Number of in-memory snapshots, if -no_dump. */
     uint snapshots;
+    /* Peak snapshot accuracy */
+    uint peak_threshold;
 
     /* Whether to track staleness of heap allocations */
     bool staleness;

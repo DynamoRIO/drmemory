@@ -62,6 +62,9 @@ typedef struct _client_per_thread_t {
     /* pointer for finding shadow regs for other threads */
     void *shadow_regs;
 
+    /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
+    bool self_translating;
+
 #ifdef TOOL_DR_HEAPSTAT
 # ifdef LINUX
     int64 filepos; /* f_callstack file position */

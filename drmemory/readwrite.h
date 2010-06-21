@@ -30,9 +30,10 @@
 #include "callstack.h" /* for app_loc_t */
 
 /* we only need a little over 2 pages for whole_bb_spills_enabled(): could get
- * onto 2 pages by not emitting SPILL_REG_NONE
+ * onto 2 pages by not emitting SPILL_REG_NONE.
+ * -no_single_arg_slowpath needs only 10 pages.
  */
-#define SHARED_SLOWPATH_SIZE (whole_bb_spills_enabled() ? PAGE_SIZE*10 : PAGE_SIZE*7)
+#define SHARED_SLOWPATH_SIZE (whole_bb_spills_enabled() ? PAGE_SIZE*11 : PAGE_SIZE*7)
 
 void
 instrument_init(void);
@@ -109,6 +110,9 @@ extern uint xl8_not_shared_slowpaths;
 extern uint slowpath_unaligned;
 extern uint alloc_stack_count;
 extern uint delayed_free_bytes;
+extern uint app_instrs_fastpath;
+extern uint app_instrs_no_dup;
+extern uint xl8_app_for_slowpath;
 #endif
 
 extern hashtable_t bb_table;
@@ -178,6 +182,9 @@ restore_reg(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg,
 
 opnd_t
 spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
+
+bool
+is_spill_slot_opnd(void *drcontext, opnd_t op);
 
 bool
 reg_is_gpr(reg_id_t reg);

@@ -177,14 +177,31 @@ client_malloc_data_free(void *data);
  * already had its data set: in such cases, existing_data is set.
  * For all new entries, mc and post_call will be non-NULL, unless
  * during init time (i.e., pre-existing allocations).
+ * The alloc entry is NOT in the alloc hashtable yet and will NOT show
+ * up in hashtable iteration: use client_add_malloc_post for
+ * a proper hashtable view.
  */
 void *
-client_add_malloc(app_pc start, app_pc end, app_pc real_end,
-                  void *existing_data, dr_mcontext_t *mc, app_pc post_call);
+client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
+                      void *existing_data, dr_mcontext_t *mc, app_pc post_call);
 
-/* A lock is held around the call to this routine */
+/* Called after the new alloc entry has been added to the alloc hashtable. */
 void
-client_remove_malloc(app_pc start, app_pc end, app_pc real_end, void *data);
+client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data);
+
+/* A lock is held around the call to this routine.
+ * The alloc entry has NOT been removed from the alloc hashtable yet and
+ * WILL show up in hashtable iteration: use client_remove_malloc_post for
+ * a proper hashtable view.
+ */
+void
+client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data);
+
+/* Called after the alloc entry has been removed from the alloc hashtable.
+ * The client data has been freed and so is not available.
+ */
+void
+client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end);
 
 void
 client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,

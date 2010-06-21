@@ -434,7 +434,6 @@ is_alloc_sysroutine(app_pc pc)
 
 /* Hashtable so we can remember post-call pcs (since
  * post-cti-instrumentation is not supported by DR).
- * Fixed size: we don't bother w/ realloc (PR 446683 covers fixing that).
  * Synchronized externally to safeguard the externally-allocated payload.
  */
 #define POST_CALL_TABLE_HASH_BITS 10
@@ -481,9 +480,6 @@ static hashtable_t call_site_table;
  * reporting we also track the callstack for each alloc.
  * Synchronized externally to safeguard the externally-allocated payload.
  */
-/* FIXME PR 446683: we may want dynamic resizing for this one: some
- * apps have 500K+ outstanding simultaneous allocs
- */
 /* There are several cases where having an interval tree instead of a
  * hashtable would be useful:
  * - leak scanning wouldn't have to create its own interval tree by
@@ -497,7 +493,7 @@ static hashtable_t call_site_table;
  * benchmarks (and there aren't substantially more lookups than
  * insertions and deletions), so sticking with a hashtable!
  */
-#define ALLOC_TABLE_HASH_BITS 17
+#define ALLOC_TABLE_HASH_BITS 12
 static hashtable_t malloc_table;
 /* we could switch to a full-fledged known-owner lock, or a recursive lock.
  * xref i#129.
@@ -617,6 +613,8 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
+    LOG(1, "final malloc table size: %u bits, %u entries\n",
+        malloc_table.table_bits, malloc_table.entries);
     /* we can't hold malloc_table.lock b/c report_leak() acquires it
      * for malloc_get_caller()
      */
@@ -711,8 +709,8 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     /* grab lock around client call and hashtable operations */
     locked_by_me = malloc_lock_if_not_held_by_me();
 
-    e->data = client_add_malloc(e->start, e->end, e->end + e->usable_extra,
-                                NULL, mc, post_call);
+    e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
+                                    NULL, mc, post_call);
 
     ASSERT(is_entirely_in_heap_region(start, end), "heap data struct inconsistency");
     /* We invalidate rather than remove on a free and finalize the remove
@@ -727,6 +725,9 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
         ASSERT(node == NULL, "error in large malloc tree");
         STATS_INC(num_large_mallocs);
     }
+
+    /* PR 567117: client event with entry in hashtable */
+    client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
 
     malloc_unlock_if_locked_by_me(locked_by_me);
     if (old_e != NULL) {
@@ -759,8 +760,13 @@ malloc_lookup(app_pc start)
 static void
 malloc_entry_remove(malloc_entry_t *e)
 {
+    app_pc start, end, real_end;
     ASSERT(e != NULL, "invalid arg");
-    client_remove_malloc(e->start, e->end, e->end + e->usable_extra, e->data);
+    /* cache values for post-event */
+    start = e->start;
+    end = e->end;
+    real_end = e->end + e->usable_extra;
+    client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
     if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
         rb_node_t *node = rb_find(large_malloc_tree, e->start);
         ASSERT(node != NULL, "error in large malloc tree");
@@ -769,6 +775,8 @@ malloc_entry_remove(malloc_entry_t *e)
     }
     if (hashtable_remove(&malloc_table, e->start))
         STATS_INC(num_frees);
+    /* PR 567117: client event with entry removed from hashtable */
+    client_remove_malloc_post(start, end, real_end);
 }
 
 void
@@ -789,16 +797,18 @@ malloc_set_valid(app_pc start, bool valid)
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
     if (e != NULL) {
+        /* cache values for post-event */
+        app_pc start = e->start, end = e->end, real_end = e->end + e->usable_extra;
         /* FIXME: should we tell client whether undoing false call failure prediction? */
         /* Call client BEFORE updating hashtable, to be consistent w/
          * other add/remove calls, so that any hashtable iteration will
          * NOT find the changes yet (PR 560824)
          */
         if (valid) {
-            e->data = client_add_malloc(e->start, e->end, e->end + e->usable_extra,
-                                        e->data, NULL, NULL);
+            e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
+                                            e->data, NULL, NULL);
         } else {
-            client_remove_malloc(e->start, e->end, e->end + e->usable_extra, e->data);
+            client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
         }
         ASSERT((TEST(MALLOC_VALID, e->flags) && !valid) ||
                (!TEST(MALLOC_VALID, e->flags) && valid),
@@ -813,6 +823,8 @@ malloc_set_valid(app_pc start, bool valid)
                     rb_insert(large_malloc_tree, e->start, e->end - e->start, NULL);
                 ASSERT(node == NULL, "error in large malloc tree");
             }
+            /* PR 567117: client event with entry in hashtable */
+            client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
         } else {
             e->flags &= ~MALLOC_VALID;
             if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
@@ -822,6 +834,8 @@ malloc_set_valid(app_pc start, bool valid)
                 if (node != NULL)
                     rb_delete(large_malloc_tree, node);
             }
+            /* PR 567117: client event with entry removed from hashtable */
+            client_remove_malloc_post(start, end, real_end);
         }
     } /* ok to be NULL: a race where re-used in malloc and then freed already */
     malloc_unlock_if_locked_by_me(locked_by_me);
@@ -2157,7 +2171,7 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
                "alloc should be entirely inside Heap");
         /* we already called client_handle_heap_destroy() for whole-heap handling.
          * we also call a special cb for individual handling.
-         * additionally, client_remove_malloc() will be called by malloc_remove().
+         * additionally, client_remove_malloc_*() will be called by malloc_remove().
          */
         client_remove_malloc_on_destroy(info->heap, start, end);
         /* yes the iteration can handle this.  this involves another lookup but

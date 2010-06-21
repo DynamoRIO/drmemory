@@ -41,13 +41,12 @@
  * malloc_table (via malloc_lock()), which makes the coordinated
  * operations with malloc_table atomic.
  */
-#define ASTACK_TABLE_HASH_BITS 14
+#define ASTACK_TABLE_HASH_BITS 8
 static hashtable_t alloc_stack_table;
 
 #ifdef LINUX
 /* Track all signal handlers registered by app so we can instrument them */
-/* fixed size: we don't bother w/ realloc */
-#define SIGHAND_HASH_BITS 8
+#define SIGHAND_HASH_BITS 6
 hashtable_t sighand_table;
 
 /* PR 418629: to determine stack bounds accurately we track anon mmaps */
@@ -161,6 +160,8 @@ void
 alloc_drmem_exit(void)
 {
     alloc_exit(); /* must be before deleting alloc_stack_table */
+    LOG(1, "final alloc stack table size: %u bits, %u entries\n",
+        alloc_stack_table.table_bits, alloc_stack_table.entries);
     hashtable_delete(&alloc_stack_table);
 #ifdef LINUX
     hashtable_delete(&sighand_table);
@@ -282,8 +283,8 @@ client_malloc_data_free(void *data)
 }
 
 void *
-client_add_malloc(app_pc start, app_pc end, app_pc real_end,
-                  void *existing_data, dr_mcontext_t *mc, app_pc post_call)
+client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
+                      void *existing_data, dr_mcontext_t *mc, app_pc post_call)
 {
     packed_callstack_t *pcs;
     if (existing_data != NULL)
@@ -321,9 +322,21 @@ client_add_malloc(app_pc start, app_pc end, app_pc real_end,
 }
 
 void
-client_remove_malloc(app_pc start, app_pc end, app_pc real_end, void *data)
+client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data)
+{
+    /* nothing to do */
+}
+
+void
+client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data)
 {
     /* nothing to do: client_malloc_data_free() does the work */
+}
+
+void
+client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end)
+{
+    /* nothing to do */
 }
 
 void
@@ -1609,7 +1622,8 @@ void
 client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
                        void *client_data)
 {
-    leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
+    if (options.count_leaks)
+        leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
 }
 
 void

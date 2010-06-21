@@ -118,7 +118,7 @@ typedef struct _stored_error_t {
     struct _stored_error_t *next;
 } stored_error_t;
 
-#define ERROR_HASH_BITS 12
+#define ERROR_HASH_BITS 8
 hashtable_t error_table;
 /* We need an outer lock to synchronize stored_error_t data access.
  * Since we never remove from error_table we could instead have

@@ -26,6 +26,8 @@
 #ifndef _FASTPATH_H_
 #define _FASTPATH_H_ 1
 
+#include "callstack.h" /* app_loc_t */
+
 /* reg liveness */
 enum {
     LIVE_UNKNOWN,
@@ -96,6 +98,10 @@ typedef struct _fastpath_info_t {
     scratch_reg_info_t reg3;
     /* is this instr using shared xl8? */
     bool use_shared;
+    /* for jmp-to-slowpath optimization (PR 494769) */
+    instr_t *appclone;
+    instr_t *slow_store_retaddr;
+    instr_t *slow_jmp;
 } fastpath_info_t;
 
 /* Share inter-instruction info across whole bb */
@@ -172,7 +178,7 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
                       bb_info_t *bi, bool added_instru, bool translating);
 
 void
-slow_path_xl8_sharing(app_pc pc, app_pc nxt_pc, opnd_t memop, dr_mcontext_t *mc);
+slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_t *mc);
 
 /***************************************************************************
  * For stack.c: perhaps should move stack.c's fastpath code here and avoid
@@ -209,5 +215,15 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                         bool get_value, bool value_in_reg2, bool need_offs,
                         bool zero_rest_of_offs,
                         reg_id_t reg1, reg_id_t reg2, reg_id_t reg3);
+
+/***************************************************************************
+ * Utility routines
+ */
+
+bool
+instr_is_spill(instr_t *inst);
+
+bool
+instr_is_restore(instr_t *inst);
 
 #endif /* _FASTPATH_H_ */

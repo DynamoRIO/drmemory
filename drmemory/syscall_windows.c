@@ -31,7 +31,6 @@
 
 /* We need a hashtable to map system call # to index in table, since syscall #s
  * vary by Windows version.
- * Our table is fixed size: we don't bother w/ realloc.
  */
 #define SYSTABLE_HASH_BITS 8
 static hashtable_t systable;

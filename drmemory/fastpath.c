@@ -663,16 +663,33 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 }
 
 void
-slow_path_xl8_sharing(app_pc pc, app_pc nxt_pc, opnd_t memop, dr_mcontext_t *mc)
+slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_t *mc)
 {
     /* PR 493257: share shadow translation across multiple instrs */
-    uint xl8_sharing_cnt = (uint) hashtable_lookup(&xl8_sharing_table, pc);
+    uint xl8_sharing_cnt;
+    app_pc pc, nxt_pc;
+    bool translated = true;
+    ASSERT(loc != NULL && loc->type == APP_LOC_PC, "invalid param");
+    if (options.single_arg_slowpath) {
+        /* We don't want to pay the xl8 cost every time so we have
+         * an additional entry for the cache pc and we only xl8 when
+         * that crosses the threshold.  This may be superior anyway since
+         * app pc can be duplicated in other bbs where it might behave
+         * differently (though seems unlikely).
+         */
+        translated = loc->u.addr.valid;
+        pc = loc->u.addr.pc;
+    } else
+        pc = loc_to_pc(loc);
+    nxt_pc = pc + inst_sz;
+    xl8_sharing_cnt = (uint) hashtable_lookup(&xl8_sharing_table, pc);
     if (xl8_sharing_cnt > 0) {
         ASSERT(!opnd_is_null(memop), "error in xl8 sharing");
         /* Since we can't share across 64K boundaries we exit to slowpath.
-         * If this happens too often, abandong sharing.
+         * If this happens too often, abandon sharing.
          */
         if (xl8_sharing_cnt > XL8_SHARING_THRESHOLD &&
+            /* 2* is signal to not flush again */
             xl8_sharing_cnt < 2*XL8_SHARING_THRESHOLD) {
             STATS_INC(xl8_not_shared_slowpaths);
             /* We don't need a synchronous flush: go w/ most performant.
@@ -682,6 +699,14 @@ slow_path_xl8_sharing(app_pc pc, app_pc nxt_pc, opnd_t memop, dr_mcontext_t *mc)
              * we'll never want -coarse_units.
              */
             LOG(3, "slow_path_xl8_sharing: flushing "PFX"\n", pc);
+            if (!translated) {
+                /* Now we have to xl8 */
+                pc = loc_to_pc(loc);
+                /* We've been incrementing the cache pc entry, but the
+                 * hashtable_add_replace below will tell the
+                 * instrumentation to not share this app pc again.
+                 */
+            }
             dr_unlink_flush_region(pc, 1);
             /* If this instr has other reasons to go to slowpath, don't flush
              * repeatedly: only flush if it's actually due to addr sharing
@@ -693,14 +718,21 @@ slow_path_xl8_sharing(app_pc pc, app_pc nxt_pc, opnd_t memop, dr_mcontext_t *mc)
             /* We don't care about races: threshold is low enough we won't overflow */
             hashtable_add_replace(&xl8_sharing_table, pc, (void *) xl8_sharing_cnt);
         }
+    } else if (!translated && !opnd_is_null(memop)) {
+        hashtable_add(&xl8_sharing_table, pc, (void *)1);
     }
-    if (hashtable_lookup(&xl8_sharing_table, nxt_pc) > 0) {
+
+    /* For -single_arg_slowpath we don't want to xl8 so we always
+     * clear, assuming reg1 is scratch if not used for sharing.
+     */
+    if (!translated ||
+        hashtable_lookup(&xl8_sharing_table, nxt_pc) > 0) {
         /* We're sharing w/ the next instr.  We had the addr in reg1 and we need
          * to put it back there.  shared_slowpath will xchg slot1 w/ reg1.  We
          * only support sharing w/ 1 memop so we ignore multiple here.
          */
         byte *addr;
-        byte *memref = opnd_compute_address(memop, mc);
+        byte *memref = opnd_is_null(memop) ? NULL : opnd_compute_address(memop, mc);
         if (!ALIGNED(memref, sizeof(void*))) {
             /* If we exited b/c unaligned, do not share => all subsequent instrs
              * sharing this translation will exit to slowpath
@@ -3448,17 +3480,20 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
     bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
 }
 
-static bool
+bool
 instr_is_spill(instr_t *inst)
 {
     return (instr_get_opcode(inst) == OP_mov_st &&
-            opnd_is_far_base_disp(instr_get_dst(inst, 0)) &&
-            opnd_get_index(instr_get_dst(inst, 0)) == REG_NULL &&
-            opnd_get_segment(instr_get_dst(inst, 0)) == SEG_FS &&
+            is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_dst(inst, 0)) &&
             opnd_is_reg(instr_get_src(inst, 0)));
-    /* should we also check that disp is in our or DR's TLS range?
-     * but we don't know DR's
-     */
+}
+
+bool
+instr_is_restore(instr_t *inst)
+{
+    return (instr_get_opcode(inst) == OP_mov_ld &&
+            is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
+            opnd_is_reg(instr_get_dst(inst, 0)));
 }
 
 void
