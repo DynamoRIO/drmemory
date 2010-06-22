@@ -119,6 +119,9 @@ extern uint op_verbose_level;
 extern bool op_pause_at_assert;
 extern bool op_pause_via_loop;
 extern file_t f_global;
+#ifdef USE_DRSYMS
+extern file_t f_results;
+#endif
 
 /* Workarounds for i#261 where DR can't write to cmd console.
  *
@@ -154,6 +157,8 @@ extern file_t f_global;
 
 /* for notifying user 
  * FIXME: should add messagebox, controlled by option
+ * FIXME: postprocess.pl should propagate asserts and errors
+ *        to results file on Linux (see i#7)
  */
 #ifdef TOOL_DR_MEMORY
 # define PREFIX ":::Dr.Memory::: "
@@ -167,15 +172,12 @@ extern file_t f_global;
         PRINT_CONSOLE(__VA_ARGS__); \
     }                                         \
 } while (0)
-#ifdef WINDOWS
-# define NOTIFY_ERROR(...) do { \
+#define NOTIFY_ERROR(...) do { \
     NOTIFY(__VA_ARGS__); \
+    IF_DRSYMS(ELOGF(0, f_results, __VA_ARGS__)); \
     if (USE_MSGBOX) \
-        dr_messagebox(__VA_ARGS__); \
+        IF_WINDOWS(dr_messagebox(__VA_ARGS__)); \
 } while (0)
-#else
-# define NOTIFY_ERROR(...) NOTIFY(__VA_ARGS__)
-#endif
 #define NOTIFY_COND(cond, f, ...) do { \
     ELOGF(0, f, __VA_ARGS__); \
     if ((cond) && op_print_stderr) { \
@@ -220,27 +222,14 @@ extern file_t f_global;
  * use it as a statement anyway.
  */
 #ifdef DEBUG
-# ifdef WINDOWS
-#  define ASSERT(x, msg) do { \
+# define ASSERT(x, msg) do { \
     if (!(x)) { \
-        NOTIFY("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
-               dr_get_thread_id(dr_get_current_drcontext()), \
-               __FILE__,  __LINE__, #x, msg); \
-        if (USE_MSGBOX) \
-            dr_messagebox("ASSERT FAILURE: %s:%d: %s (%s)", __FILE__,  __LINE__, #x, msg); \
+        NOTIFY_ERROR("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
+                     dr_get_thread_id(dr_get_current_drcontext()), \
+                     __FILE__,  __LINE__, #x, msg); \
         drmemory_abort(); \
     } \
 } while (0)
-# else
-#  define ASSERT(x, msg) do { \
-    if (!(x)) { \
-        NOTIFY("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
-               dr_get_thread_id(dr_get_current_drcontext()), \
-               __FILE__,  __LINE__, #x, msg); \
-        drmemory_abort(); \
-    } \
-} while (0)
-# endif
 #else
 # define ASSERT(x, msg) /* nothing */
 #endif
