@@ -124,9 +124,6 @@ static app_pc modtree_max_end;
 static bool
 module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT);
 
-static bool
-is_in_module(byte *pc);
-
 /***************************************************************************/
 
 size_t
@@ -1091,7 +1088,8 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
     return res;
 }
 
-static bool
+/* this is exported for PR 570839 for is_image() */
+bool
 is_in_module(byte *pc)
 {
     /* We cache the last page queried for performance */

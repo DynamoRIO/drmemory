@@ -192,6 +192,9 @@ callstack_module_load(void *drcontext, const module_data_t *info, bool loaded);
 void
 callstack_module_unload(void *drcontext, const module_data_t *info);
 
+bool
+is_in_module(byte *pc);
+
 /****************************************************************************
  * Printing routines
  */

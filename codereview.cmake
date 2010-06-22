@@ -265,6 +265,7 @@ else (REVERT)
 
   file(READ ${NOTES} string)
   string(REGEX REPLACE "^.*\ntoreview:\r?\n" "" pubnotes "${string}")
+  string(REGEX REPLACE "^toreview:\r?\n" "" pubnotes "${pubnotes}")
   if ("${string}" STREQUAL "${pubnotes}")
     message(FATAL_ERROR "${NOTES} is missing \"toreview:\" marker")
   endif ("${string}" STREQUAL "${pubnotes}")

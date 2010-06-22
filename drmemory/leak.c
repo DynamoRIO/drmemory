@@ -186,34 +186,92 @@ leak_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
 }
 #endif
 
-/* Helper for PR 484544 */
+/* PR 570839: this is a perf hit so we avoid dr_safe_read(), on
+ * Windows at least.  No races since world is suspended, but we
+ * should do a cached query in case app made part of heap
+ * unreadable: or better use try/except for windows and linux.
+ */
+static inline bool
+leak_safe_read_heap(void *base, void **var)
+{
+    /* FIXME: use try/except: for now blindly reading and always returning true */
+    *var = *((void **)base);
+    return true;
+}
+
+/* Helper for PR 484544.  Do not export: assumes world is suspended! */
 static bool
 is_text(byte *ptr)
 {
     dr_mem_info_t info;
+    /* PR 570839: avoid perf hit by caching.  World is suspended so no locks needed
+     * and no races, so the page protections remain constant throughout the scan.
+     */
+    static byte *last_start = NULL;
+    static byte *last_end = NULL;
+    static bool last_ans = false;
+    if (ptr < (byte *)PAGE_SIZE)
+        return false;
+    if (ptr >= last_start && ptr < last_end)
+        return last_ans;
     /* FIXME i#270: DR should provide a section iterator! */
-    return (dr_query_memory_ex(ptr, &info) &&
-            info.type == DR_MEMTYPE_IMAGE &&
-            TESTALL(DR_MEMPROT_READ | DR_MEMPROT_EXEC, info.prot) &&
-            !TEST(DR_MEMPROT_WRITE, info.prot));
+    last_ans = (dr_query_memory_ex(ptr, &info) &&
+                info.type == DR_MEMTYPE_IMAGE &&
+                TESTALL(DR_MEMPROT_READ | DR_MEMPROT_EXEC, info.prot) &&
+                !TEST(DR_MEMPROT_WRITE, info.prot));
+    last_start = info.base_pc;
+    last_end = info.base_pc + info.size;
+    return last_ans;
+}
+
+/* Helper for PR 484544.  Do not export: assumes world is suspended! */
+static bool
+is_image(byte *ptr)
+{
+    dr_mem_info_t info;
+    /* PR 570839: avoid perf hit by caching.  World is suspended so no locks needed
+     * and no races, so the page protections remain constant throughout the scan.
+     */
+    static byte *last_start = NULL;
+    static byte *last_end = NULL;
+    static bool last_ans = false;
+    if (ptr < (byte *)PAGE_SIZE)
+        return false;
+    if (ptr >= last_start && ptr < last_end) {
+        LOG(4, "is_image match "PFX": cached in "PFX"-"PFX" => %d\n",
+            ptr, last_start, last_end, last_ans);
+        return last_ans;
+    }
+    /* Even w/ the caching this is too slow on spec2k gap so we use the
+     * fast module check from callstack.c
+     */
+    if (!is_in_module(ptr))
+        return false;
+    /* FIXME i#270: DR should provide a section iterator! */
+    last_ans = (dr_query_memory_ex(ptr, &info) &&
+                info.type == DR_MEMTYPE_IMAGE &&
+                /* Turns out many libraries are loaded w/ the read-only data
+                 * sections in a writable segment!  They have an rx segment and
+                 * an rw segment and no read-only segment.  So we do not check
+                 * for lack of DR_MEMPROT_WRITE.  Is it worth going to disk
+                 * for each module at load time and constructing a section map?
+                 * Xref i#270: DR-provided section iterator.
+                 */
+                TEST(DR_MEMPROT_READ, info.prot));
+    last_start = info.base_pc;
+    last_end = info.base_pc + info.size;
+    LOG(4, "is_image no match "PFX", now cached "PFX"-"PFX" => %d\n",
+        ptr, last_start, last_end, last_ans);
+    return last_ans;
 }
 
 /* Heuristic for PR 484544 */
 static bool
 is_vtable(byte *ptr)
 {
-    dr_mem_info_t info;
-    if (ALIGNED(ptr, sizeof(void*)) &&
-        dr_query_memory_ex(ptr, &info) &&
-        info.type == DR_MEMTYPE_IMAGE &&
-        /* Turns out many libraries are loaded w/ the read-only data
-         * sections in a writable segment!  They have an rx segment and
-         * an rw segment and no read-only segment.  So we do not check
-         * for lack of DR_MEMPROT_WRITE.  Is it worth going to disk
-         * for each module at load time and constructing a section map?
-         * Xref i#270: DR-provided section iterator.
-         */
-        TEST(DR_MEMPROT_READ, info.prot)) {
+    if (ptr < (byte *)PAGE_SIZE)
+        return false;
+    if (ALIGNED(ptr, sizeof(void*)) && is_image(ptr)) {
         /* We have no symbols so we use heuristics: see if looks like
          * a table of ptrs to funcs.
          * We assume has at least 2 non-NULL entries (is that always true?).
@@ -258,8 +316,11 @@ is_vtable(byte *ptr)
         }
         return (num_found >= 2);
     } else {
-        if (dr_query_memory_ex(ptr, &info))
-            LOG(3, "\tis_vtable "PFX": %d, %d\n", ptr, info.type, info.prot);
+        DOLOG(3, {
+            dr_mem_info_t info;
+            if (dr_query_memory_ex(ptr, &info))
+                LOG(3, "\tis_vtable "PFX": %d, %d\n", ptr, info.type, info.prot);
+        });
     }
     return false;
 }
@@ -283,7 +344,7 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
          */
         if (pointer == chunk_start + sizeof(size_t)) {
             size_t count;
-            if (safe_read(chunk_start, sizeof(count), &count) &&
+            if (leak_safe_read_heap(chunk_start, (void **) &count) &&
                 count > 0 && count < (chunk_end - chunk_start - sizeof(size_t)) &&
                 (chunk_end - chunk_start - sizeof(size_t)) % count == 0) {
                 LOG(3, "\tmid-chunk "PFX" is post-new[]-header => ok\n", pointer);
@@ -304,16 +365,19 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
          * pointer is the (hidden) first field, not the last field.
          */
         byte *val1, *val2;
-        if (ALIGNED(pointer, sizeof(void*)) &&
-            safe_read(pointer, sizeof(val1), &val1) &&
-            safe_read(chunk_start, sizeof(val2), &val2)) {
-            LOG(4, "\tmid="PFX", top="PFX"\n", val1, val2);
-            if (is_vtable(val1) && 
-                is_vtable(val2)) {
-                LOG(3, "\tmid-chunk "PFX" is multi-inheritance parent ptr => ok\n",
-                    pointer);
-                STATS_INC(midchunk_postinheritance_ptrs);
-                return true;
+        if (ALIGNED(pointer, sizeof(void*))) {
+            LOG(4, "\tmid="PFX", top="PFX"\n",
+                /* risky perhaps but v4: */ *(byte **)pointer, *(byte **)chunk_start);
+            if (leak_safe_read_heap(pointer, (void **) &val1) &&
+            /* PR 570839: check for non-addresses to avoid call cost */
+                val1 > (byte *)PAGE_SIZE && is_vtable(val1)) {
+                if (leak_safe_read_heap(chunk_start, (void **) &val2) &&
+                    val2 > (byte *)PAGE_SIZE && is_vtable(val2)) {
+                    LOG(3, "\tmid-chunk "PFX" is multi-inheritance parent ptr => ok\n",
+                        pointer);
+                    STATS_INC(midchunk_postinheritance_ptrs);
+                    return true;
+                }
             }
         }
     }
@@ -325,8 +389,8 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
          */
         size_t length, capacity;
         if (pointer == chunk_start + 3*sizeof(size_t) &&
-            safe_read(chunk_start, sizeof(length), &length) &&
-            safe_read(chunk_start + sizeof(size_t), sizeof(capacity), &capacity)) {
+            leak_safe_read_heap(chunk_start, (void **) &length) &&
+            leak_safe_read_heap(chunk_start + sizeof(size_t), (void **) &capacity)) {
             LOG(4, "\tstring length="PIFX", capacity="PIFX", alloc="PIFX"\n",
                 length, capacity, chunk_end - chunk_start);
             if (length <= capacity &&
@@ -354,7 +418,7 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
          */
         if (pointer == chunk_start + MALLOC_CHUNK_ALIGNMENT) {
             size_t val;
-            if (safe_read(chunk_start, sizeof(val), &val) &&
+            if (leak_safe_read_heap(chunk_start, (void **) &val) &&
                 val == (chunk_end - chunk_start)) {
                 LOG(3, "\tmid-chunk "PFX" is post-size => ok\n", pointer);
                 STATS_INC(midchunk_postsize_ptrs);
