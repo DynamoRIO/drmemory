@@ -190,6 +190,28 @@ typedef enum _PROCESSINFOCLASS {
     MaxProcessInfoClass
 } PROCESSINFOCLASS;
 
+typedef enum _THREADINFOCLASS {
+    ThreadBasicInformation,
+    ThreadTimes,
+    ThreadPriority,
+    ThreadBasePriority,
+    ThreadAffinityMask,
+    ThreadImpersonationToken,
+    ThreadDescriptorTableEntry,
+    ThreadEnableAlignmentFaultFixup,
+    ThreadEventPair_Reusable,
+    ThreadQuerySetWin32StartAddress,
+    ThreadZeroTlsCell,
+    ThreadPerformanceCount,
+    ThreadAmILastThread,
+    ThreadIdealProcessor,
+    ThreadPriorityBoost,
+    ThreadSetTlsArrayAddress,
+    ThreadIsIoPending,
+    ThreadHideFromDebugger,
+    MaxThreadInfoClass
+} THREADINFOCLASS;
+
 typedef LONG KPRIORITY;
 typedef struct _PROCESS_BASIC_INFORMATION {
     NTSTATUS ExitStatus;
@@ -201,10 +223,80 @@ typedef struct _PROCESS_BASIC_INFORMATION {
 } PROCESS_BASIC_INFORMATION;
 typedef PROCESS_BASIC_INFORMATION *PPROCESS_BASIC_INFORMATION;
 
+typedef struct _THREAD_BASIC_INFORMATION { // Information Class 0
+    NTSTATUS ExitStatus;
+    PNT_TIB TebBaseAddress;
+    CLIENT_ID ClientId;
+    KAFFINITY AffinityMask;
+    KPRIORITY Priority;
+    KPRIORITY BasePriority;
+} THREAD_BASIC_INFORMATION, *PTHREAD_BASIC_INFORMATION;
+
+#define InitializeObjectAttributes( p, n, a, r, s ) {   \
+    (p)->Length = sizeof( OBJECT_ATTRIBUTES );          \
+    (p)->RootDirectory = r;                             \
+    (p)->Attributes = a;                                \
+    (p)->ObjectName = n;                                \
+    (p)->SecurityDescriptor = s;                        \
+    (p)->SecurityQualityOfService = NULL;               \
+    }
+
+#define OBJ_CASE_INSENSITIVE    0x00000040L
+
+GET_NTDLL(NtQueryInformationThread, (IN HANDLE ThreadHandle,
+                                     IN THREADINFOCLASS ThreadInformationClass,
+                                     OUT PVOID ThreadInformation,
+                                     IN ULONG ThreadInformationLength,
+                                     OUT PULONG ReturnLength OPTIONAL));
+
+GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
+                         IN ACCESS_MASK DesiredAccess,
+                         IN POBJECT_ATTRIBUTES ObjectAttributes,
+                         IN PCLIENT_ID ClientId));
+
+GET_NTDLL(NtClose, (IN HANDLE Handle));
+
+
 TEB *
 get_TEB(void)
 {
     return (TEB *) __readfsdword(offsetof(TEB, Self));
+}
+
+TEB *
+get_TEB_from_handle(HANDLE h)
+{
+    uint pid, got;
+    THREAD_BASIC_INFORMATION info;
+    NTSTATUS res;
+    memset(&info, 0, sizeof(THREAD_BASIC_INFORMATION));
+    res = NtQueryInformationThread(h, ThreadBasicInformation,
+                                   &info, sizeof(THREAD_BASIC_INFORMATION), &got);
+    if (!NT_SUCCESS(res) || got != sizeof(THREAD_BASIC_INFORMATION)) {
+        ASSERT(false, "internal error");
+        return NULL;
+    }
+    return (TEB *) info.TebBaseAddress;
+}
+
+TEB *
+get_TEB_from_tid(thread_id_t tid)
+{
+    HANDLE h;
+    TEB *teb = NULL;
+    NTSTATUS res;
+    OBJECT_ATTRIBUTES oa;
+    CLIENT_ID cid;
+    /* these aren't really HANDLEs */
+    cid.UniqueProcess = (HANDLE) dr_get_process_id();
+    cid.UniqueThread = (HANDLE) tid;
+    InitializeObjectAttributes(&oa, NULL, OBJ_CASE_INSENSITIVE, NULL, NULL);
+    res = NtOpenThread(&h, THREAD_QUERY_INFORMATION, &oa, &cid);
+    if (NT_SUCCESS(res)) {
+        teb = get_TEB_from_handle(h);
+        NtClose(h);
+    }
+    return teb;
 }
 
 static uint

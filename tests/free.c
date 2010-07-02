@@ -46,6 +46,13 @@ main()
         c = *(((char *)p[i])+3); /* error: unaddressable, if delayed free */
     }
 
+    /* Ensure we report this as a freed access (PR 572716) */
+    {
+        char *x = malloc(8);
+        free(x);
+        *(x+1) = 0;
+    }
+
     printf("all done\n");
     return 0;
 }

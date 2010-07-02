@@ -36,6 +36,7 @@ run_func(void *arg)
         VirtualQuery(&mbi, &mbi, sizeof(mbi));
         Sleep(100);
     }
+    _endthread(); /* closes the thread handle for us */
     return 0;
 }
 

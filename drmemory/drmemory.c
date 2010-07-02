@@ -86,7 +86,7 @@ hashtable_t logfile_table;
 #endif
 
 static void
-set_thread_initial_structures(void);
+set_thread_initial_structures(void *drcontext);
 
 client_id_t client_id;
 
@@ -336,8 +336,16 @@ event_thread_init(void *drcontext)
     create_thread_logfile(drcontext);
     LOGPT(2, pt, "in event_thread_init()\n");
     if (options.shadowing) {
-        if (!options.leaks_only)
-            set_thread_initial_structures();
+        if (!options.leaks_only) {
+            /* For 1st thread we can't get mcontext so we wait for 1st bb.
+             * For subsequent we can.  Xref i#117/PR 395156.
+             */
+            static bool first_time = true;
+            if (first_time) /* 1st thread: no lock needed */
+                first_time = false;
+            else
+                set_thread_initial_structures(drcontext);
+        }
         shadow_thread_init(drcontext);
     }
     syscall_thread_init(drcontext);
@@ -358,6 +366,13 @@ event_thread_exit(void *drcontext)
 #endif
     }
 #ifdef WINDOWS
+    if (!options.leaks_only && options.shadowing) {
+        /* the kernel de-allocs teb so we need to explicitly handle it */
+        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        ASSERT(teb != NULL, "invalid param");
+        shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
+    }
+
     while (pt->prev != NULL)
         pt = pt->prev;
     while (pt != NULL) {
@@ -721,15 +736,11 @@ set_initial_unicode_string(UNICODE_STRING *us)
 }
 #endif
 
-static void
-set_thread_initial_structures(void)
-{
 #ifdef WINDOWS
-    TEB *teb = get_TEB();
-    /* FIXME: we currently assume the whole TEB except the 64 tls slots are
-     * defined, b/c we're not in early enough to watch the others.
-     */
-    LOG(2, "setting initial structures for thread w/ TEB "PFX"\n", teb);
+void
+set_teb_initial_shadow(TEB *teb)
+{
+    ASSERT(teb != NULL, "invalid param");
     set_initial_range((app_pc)teb, (app_pc)teb + offsetof(TEB, TlsSlots));
     /* FIXME: ideally we would know which fields were added in which windows
      * versions, and only define as far as the current version.
@@ -738,6 +749,29 @@ set_thread_initial_structures(void)
      */
     set_initial_range((app_pc)teb + offsetof(TEB, TlsLinks),
                       (app_pc)teb + sizeof(*teb));
+}
+#endif
+
+/* Called for 1st thread at 1st bb (b/c can't get mcontext at thread init:
+ * i#117/PR 395156) and later threads from thread init event.
+ */
+static void
+set_thread_initial_structures(void *drcontext)
+{
+#ifdef WINDOWS
+    dr_mcontext_t mc;
+    byte *stack_reserve;
+    size_t stack_reserve_sz;
+    IF_DEBUG(bool ok;)
+    TEB *teb = get_TEB();
+    /* FIXME: we currently assume the whole TEB except the 64 tls slots are
+     * defined, b/c we're not in early enough to watch the others.
+     */
+    /* For non-primary threads we typically add the TEB in post-NtCreateThread,
+     * but for remotely created threads we need to process here as well.
+     */
+    LOG(2, "setting initial structures for thread w/ TEB "PFX"\n", teb);
+    set_teb_initial_shadow(teb);
 
     if (is_wow64_process()) {
         /* Add unknown wow64-only structure TEB->0xf70->0x14d0
@@ -764,18 +798,44 @@ set_thread_initial_structures(void)
             set_initial_range((app_pc)PAGE_START(ref1), (app_pc)PAGE_START(teb));
         }
     }
+
+    /* PR 408521: for other injection types we need to get cur esp so we
+     * can set base part of stack for primary thread.
+     * For drinject, stack is clean, except on Vista where a few words
+     * are above esp.
+     * Note that this is the start esp: the APC esp is handled in
+     * client_handle_Ki.
+     */
+    IF_DEBUG(ok = )
+        dr_get_mcontext(drcontext, &mc, NULL);
+    ASSERT(ok, "unable to get mcontext for thread");
+    ASSERT(mc.xsp <= (reg_t)teb->StackBase && mc.xsp > (reg_t)teb->StackLimit,
+           "initial xsp for thread invalid");
+    /* Even for XP+ where csrss frees the stack, the stack alloc is in-process
+     * and we see it and mark defined since a non-heap alloc.
+     * Thus we must mark unaddr explicitly here.
+     */
+    stack_reserve_sz = allocation_size((byte *)mc.xsp, &stack_reserve);
+    LOG(1, "thread initial stack: "PFX"-"PFX"-"PFX", TOS="PFX"\n",
+        stack_reserve, teb->StackLimit, teb->StackBase, mc.xsp);
+    ASSERT(stack_reserve <= (byte *)teb->StackLimit, "invalid stack reserve");
+    ASSERT(stack_reserve + stack_reserve_sz == teb->StackBase,
+           "abnormal initial thread stack");
+    shadow_set_range(stack_reserve, (byte *)mc.xsp, SHADOW_UNADDRESSABLE);
+    set_initial_range((byte *)mc.xsp, (byte *)teb->StackBase);
 #else /* WINDOWS */
     /* Anything to do here?  most per-thread user address space structures
      * will be written by user-space code, which we will observe.
      * This includes a thread's stack: we'll see the mmap to allocate,
      * and we'll see the initial function's argument written to the stack, etc.
      * We do want to change the stack from defined to unaddressable,
-     * but we can't get the stack bounds here (xref PR 395156: can't
-     * get mcontext here) so we instead watch the arg to SYS_clone.
+     * but we originally couldn't get the stack bounds here (xref PR
+     * 395156) so we instead watch the arg to SYS_clone.
      */
 #endif /* WINDOWS */
 }
 
+/* We can't get app xsp at init time (i#117) so we call this on 1st bb */
 static void
 set_initial_structures(void *drcontext)
 {
@@ -785,8 +845,6 @@ set_initial_structures(void *drcontext)
     /* We can't use teb->ProcessEnvironmentBlock b/c i#249 points it at private PEB */
     PEB *peb = get_app_PEB();
     RTL_USER_PROCESS_PARAMETERS *pparam = peb->ProcessParameters;
-    /* We can't get app xsp at init time (i#117) so we call this on 1st bb */
-    dr_mcontext_t mc;
     /* Mark the PEB structs we know about defined
      * FIXME: should we go to the end of the page to cover unknown fields,
      * at the risk of false negatives?
@@ -841,19 +899,10 @@ set_initial_structures(void *drcontext)
         pc = (app_pc) KUSER_SHARED_DATA_START;
         set_initial_range(pc, pc + sizeof(KUSER_SHARED_DATA));
     }
-
-    /* PR 408521: for other injection types we need to get cur esp so we
-     * can set base part of stack for primary thread.
-     * For drinject, stack is clean, except on Vista where a few words
-     * are above esp.
-     * FIXME: what about new threads
-     */
-    dr_get_mcontext(drcontext, &mc, NULL);
-    ASSERT(mc.xsp <= (reg_t)teb->StackBase && mc.xsp > (reg_t)teb->StackLimit,
-           "initial xsp for first thread invalid");
-    set_initial_range((app_pc)mc.xsp, (app_pc)teb->StackBase);
 #else /* WINDOWS */
-    /* We can't get app xsp at init time (i#117) so we call this on 1st bb */
+    /* We can't get app xsp at init time (i#117) so we call this on 1st bb 
+     * For subsequent threads we do this when handling the clone syscall
+     */
     dr_mcontext_t mc;
     app_pc stack_base;
     size_t stack_size;
@@ -870,7 +919,7 @@ set_initial_structures(void *drcontext)
     /* FIXME: vdso, if not covered by memory_walk() */
 #endif /* WINDOWS */
 
-    set_thread_initial_structures();
+    set_thread_initial_structures(drcontext);
 }
 
 static void
@@ -1027,6 +1076,10 @@ event_fork(void *drcontext)
     create_thread_logfile(drcontext);
     LOGF(0, f_global, "new logfile after fork\n");
     LOG(0, "new logfile after fork fd=%d\n", pt->f);
+    if (!options.shadowing) {
+        /* notify postprocess (PR 574018) */
+        LOG(0, "\n*********\nDISABLING MEMORY CHECKING via option\n");
+    }
 
     report_fork_init();
 }

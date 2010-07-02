@@ -122,11 +122,17 @@ bitmapx2_dword(bitmap_t bm, uint i)
  * MEMORY SHADOWING DATA STRUCTURES
  */
 
+/* We divide the 32-bit address space uniformly into 16-bit units */
+#define SHADOW_SPLIT_BITS 16
+
 /* Holds shadow state for a 64K unit of memory (the basic allocation
  * unit size on Windows)
  */
-#define ALLOC_UNIT (64*1024)
+#define ALLOC_UNIT (1 << (SHADOW_SPLIT_BITS))
 typedef uint shadow_block_t[BITMAPx2_IDX(ALLOC_UNIT)];
+
+/* 2 shadow bits per app byte */
+#define SHADOW_GRANULARITY 4
 
 /* Shadow state for 4GB address space
  * FIXME: drop top 1GB, or top 2GB if not /3GB, since only user space.
@@ -135,9 +141,13 @@ typedef uint shadow_block_t[BITMAPx2_IDX(ALLOC_UNIT)];
  * Note that this arrangement is hardcoded into the inlined instrumentation
  * routines in fastpath.c.
  */
-#define TABLE_ENTRIES (64*1024)
-shadow_block_t *shadow_table[TABLE_ENTRIES];
-#define TABLE_IDX(addr) (((ptr_uint_t)(addr) & 0xffff0000) >> 16)
+#define TABLE_ENTRIES (1 << (32 - (SHADOW_SPLIT_BITS)))
+/* We store the displacement (shadow minus app) from the base to
+ * shrink instrumentation size (PR 553724)
+ */
+ptr_int_t shadow_table[TABLE_ENTRIES];
+#define TABLE_IDX(addr) (((ptr_uint_t)(addr) & 0xffff0000) >> (SHADOW_SPLIT_BITS))
+#define ADDR_OF_BASE(table_idx) ((ptr_uint_t)(table_idx) << (SHADOW_SPLIT_BITS))
 
 /* PR 448701: special blocks for all-identical 64K chunks */
 static shadow_block_t *special_unaddressable;
@@ -247,6 +257,24 @@ create_special_block(uint dwordval)
     return block;
 }
 
+/* FIXME: share w/ staleness.c */
+static void
+set_shadow_table(uint idx, shadow_block_t *block)
+{
+    /* We store the displacement (shadow minus app) (PR 553724) */
+    shadow_table[idx] = ((ptr_int_t)block) - (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY);
+    LOG(2, "setting shadow table idx %d for block "PFX" to "PFX"\n",
+        idx, block, shadow_table[idx]);
+}
+
+static shadow_block_t *
+get_shadow_table(uint idx)
+{
+    /* We store the displacement (shadow minus app) (PR 553724) */
+    return (shadow_block_t *)
+        (shadow_table[idx] + (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY));
+}
+
 static void
 shadow_table_init(void)
 {
@@ -256,7 +284,7 @@ shadow_table_init(void)
     special_defined = create_special_block(SHADOW_DWORD_DEFINED);
     special_bitlevel = create_special_block(SHADOW_DWORD_BITLEVEL);
     for (i = 0; i < TABLE_ENTRIES; i++)
-        shadow_table[i] = special_unaddressable;
+        set_shadow_table(i, special_unaddressable);
 }
 
 static void
@@ -265,7 +293,7 @@ shadow_table_exit(void)
     uint i;
     shadow_block_t *block;
     for (i = 0; i < TABLE_ENTRIES; i++) {
-        block = shadow_table[i];
+        block = get_shadow_table(i);
         if (!block_is_special(block)) {
             global_free(((byte*)block) - SHADOW_REDZONE_SIZE,
                         SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
@@ -290,7 +318,7 @@ get_shadow_block_size(void)
 bool
 shadow_get_special(app_pc addr, uint *val)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     if (val != NULL)
         *val = shadow_get_byte(addr);
     return block_is_special(block);
@@ -299,13 +327,13 @@ shadow_get_special(app_pc addr, uint *val)
 static void
 shadow_set_special(app_pc addr, uint val)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     if (!block_is_special(block)) {
         global_free(((byte*)block) - SHADOW_REDZONE_SIZE,
                     SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
         STATS_INC(shadow_block_free);
     }
-    shadow_table[TABLE_IDX(addr)] = val_to_special(val);
+    set_shadow_table(TABLE_IDX(addr), val_to_special(val));
 #ifdef STATISTICS
     if (val == SHADOW_UNADDRESSABLE)
         STATS_INC(num_special_unaddressable);
@@ -320,14 +348,14 @@ shadow_set_special(app_pc addr, uint val)
 uint
 shadow_get_byte(app_pc addr)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     return bitmapx2_get(*block, ((ptr_uint_t)addr) % ALLOC_UNIT);
 }
 
 uint
 shadow_get_dword(app_pc addr)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     return bitmapx2_byte(*block, ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) % ALLOC_UNIT);
 }
 
@@ -335,7 +363,7 @@ shadow_get_dword(app_pc addr)
 void
 shadow_set_byte(app_pc addr, uint val)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     ASSERT(val <= 4, "invalid shadow value");
     /* Note that we can come here for SHADOW_SPECIAL_DEFINED, for mmap
      * regions used for calloc (we mark headers as unaddressable), etc.
@@ -366,7 +394,7 @@ shadow_set_byte(app_pc addr, uint val)
          * though still have race between app access and shadow update,
          * but if race between thread shadow updates there's a race in the app
          */
-        shadow_table[TABLE_IDX(addr)] = block;
+        set_shadow_table(TABLE_IDX(addr), block);
     }
     LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
     bitmapx2_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
@@ -375,7 +403,7 @@ shadow_set_byte(app_pc addr, uint val)
 byte *
 shadow_translation_addr(app_pc addr)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     size_t mod = ((ptr_uint_t)addr) % ALLOC_UNIT;
     return ((byte *)(*block)) + BLOCK_AS_BYTE_ARRAY_IDX(mod);
 }
@@ -383,7 +411,7 @@ shadow_translation_addr(app_pc addr)
 byte *
 shadow_translation_addr_using_offset(app_pc addr, byte *target)
 {
-    shadow_block_t *block = shadow_table[TABLE_IDX(addr)];
+    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     LOG(2, "for addr="PFX" target="PFX" => block "PFX" offs "PFX"\n",
         addr, target, block,
         (((ptr_uint_t)target) & ((ALLOC_UNIT -1) * sizeof(uint) / BITMAPx2_UNIT)));
@@ -408,7 +436,7 @@ shadow_replace_special(app_pc addr)
     /* kind of a hack to get shadow_set_byte to replace, since it won't re-instate */
     shadow_set_byte(addr, (val == SHADOW_DEFINED) ? SHADOW_UNDEFINED : SHADOW_DEFINED);
     shadow_set_byte(addr, val);
-    block = shadow_table[TABLE_IDX(addr)];
+    block = get_shadow_table(TABLE_IDX(addr));
     return ((byte *)(*block)) + BLOCK_AS_BYTE_ARRAY_IDX(mod);
 }
 
@@ -510,7 +538,7 @@ shadow_check_range(app_pc start, size_t size, uint expect,
         } else if (shadow_get_special(pc, &val)) {
             incr = ALLOC_UNIT - (pc - (app_pc)ALIGN_BACKWARD(pc, ALLOC_UNIT));
         } else {
-            shadow_block_t *block = shadow_table[TABLE_IDX(pc)];
+            shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
             val = bitmapx2_dword(*block, ((ptr_uint_t)pc) % ALLOC_UNIT);
             val = dqword_to_val(val);
             if (val == UINT_MAX) {
@@ -587,7 +615,7 @@ shadow_next_dword(app_pc start, app_pc end, uint expect)
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(ALIGNED(start, 4), "invalid start pc");
     while (pc < end) {
-        shadow_block_t *block = shadow_table[TABLE_IDX(pc)];
+        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
         LOG(5, "shadow_next_dword: checking "PFX"\n", pc);
         if (block_is_special(block)) {
             uint blockval = shadow_get_byte(pc);
@@ -630,7 +658,7 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
     ASSERT(ALIGNED(start, 4), "invalid start pc");
     ASSERT(end < start, "invalid end pc");
     while (pc > end) {
-        shadow_block_t *block = shadow_table[TABLE_IDX(pc)];
+        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
         LOG(5, "shadow_next_dword: checking "PFX"\n", pc);
         if (block_is_special(block)) {
             uint blockval = shadow_get_byte(pc);

@@ -25,7 +25,6 @@
 #include "dr_api.h"
 #include "utils.h"
 
-#define SYSCALL_NUM_ARG_STORE  6 /* if raise this need to stop at 6 on Linux */
 #define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(12, 6)
 
 /* Additonal per-thread data.

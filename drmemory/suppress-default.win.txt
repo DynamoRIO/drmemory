@@ -21,4 +21,11 @@
 ###########################################################################
 # Dr. Memory default suppression file
 
-# currently empty
+# When I use _beginthreadex() I see this leak even when explicitly calling
+# _endthread().  Not sure whether csrss frees it when it frees the stack
+# but suppressing under the assumption it's a false positive.
+# I don't see this when using CreateThread.
+LEAK
+ntdll.dll!RtlAllocateActivationContextStack
+KERNEL32.dll!CreateRemoteThread
+KERNEL32.dll!CreateThread

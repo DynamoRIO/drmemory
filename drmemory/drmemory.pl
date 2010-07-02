@@ -188,8 +188,14 @@ $dr_libdir = ($use_dr_debug) ? "debug" : "release";
 $vmtree = ($use_vmtree) ? "--use_vmtree" : "";
 
 if ($use_vmtree) {
-    die "VMTREE not defined\n$usage\n" if ($ENV{'VMTREE'} eq "");
-    die "VMTREE $ENV{'VMTREE'} not found\n$usage\n" if (! -e $ENV{'VMTREE'});
+    if (!defined($ENV{"VMTREE"})) {
+        # don't die: just a warning (PR 573991)
+        print stderr "WARNING: VMTREE environment variable is not set!\n".
+            "Symbols may not be found.  To correct set VMTREE and/or ".
+            "DRMEMORY_LIB_PATH.  Disable this warning via -no_use_vmtree.\n";
+    } else {
+        die "VMTREE $ENV{'VMTREE'} not found\n$usage\n" if (! -e $ENV{'VMTREE'});
+    }
 }
 
 die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"

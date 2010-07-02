@@ -278,7 +278,8 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
 
     /* Are we asking DR to translate just pc?  Then return true and ignore regs */
     if (cpt->self_translating) {
-        ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
+        ASSERT(options.single_arg_slowpath || options.verbose >= 3,
+               "only used for single_arg_slowpath or -verbose 3+");
         return true;
     }
 #endif
@@ -1752,7 +1753,7 @@ slow_path(app_pc pc, app_pc decode_pc)
     /* call this last after freeing inst in case it does a synchronous flush */
     slow_path_xl8_sharing(&loc, instr_sz, memop, &mc);
 
-    DOLOG(2, {
+    DOLOG(3, {
         if (!options.single_arg_slowpath) {
             /* Test translation when have both args */
             /* we want the ultimate target, not whole_bb_spills_enabled()'s
@@ -2739,6 +2740,10 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
 
     LOG(5, "in instrument_bb\n");
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
+#ifdef TOOL_DR_MEMORY
+    LOG(4, "shadow register values:\n");
+    DOLOG(4, { print_shadow_registers(); });
+#endif
 
     if (!options.leaks_only && options.shadowing) {
 #ifdef TOOL_DR_MEMORY

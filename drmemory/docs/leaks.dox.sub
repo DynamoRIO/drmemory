@@ -71,3 +71,10 @@ determine that it is unreachable.  These cases include:
  - The only stored pointers to an allocation are encrypted.
  - There is some custom mechanism to reach these allocations that does not
    involve a direct stored pointer into any part of the allocated block.
+
+One known problem comes from using glib's memory allocator.  To avoid false
+positives when using glib, set the following environment variables when
+running your application:
+
+ - G_SLICE=always-malloc
+ - G_DEBUG=gc-friendly

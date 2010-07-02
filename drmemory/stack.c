@@ -900,14 +900,14 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
             INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg3.reg),
                              OPND_CREATE_INT32(-options.stack_swap_threshold)));
         /* We need to verify whether it's a real swap */
-        add_jcc_slowpath(drcontext, bb, NULL, OP_jl_short, &mi);
+        add_jcc_slowpath(drcontext, bb, NULL, OP_jl/*short doesn't reach*/, &mi);
     }
 
     /* Ensure the size is 4-aligned so our loop works out */
     PRE(bb, NULL,
         INSTR_CREATE_test(drcontext, opnd_create_reg(mi.reg3.reg),
                           OPND_CREATE_INT32(0x3)));
-    add_jcc_slowpath(drcontext, bb, NULL, OP_jnz_short, &mi);
+    add_jcc_slowpath(drcontext, bb, NULL, OP_jnz/*short doesn't reach*/, &mi);
 
     PRE(bb, NULL, loop_shadow_lookup);
     /* To support crossing 64K blocks we must decrement xsp prior to translating
@@ -926,7 +926,16 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
                             mi.reg1.reg, mi.reg2.reg, mi.reg3.reg);
-    /* now addr of shadow byte is in reg1 and offs within shadow block is in reg2 */
+    /* now addr of shadow byte is in reg1.
+     * we want offs within shadow block in reg2: but storing displacement
+     * in shadow table (PR 553724) means add_shadow_table_lookup no longer computes
+     * the offs so we must compute it ourselves.
+     * rather than re-cmp to decide whether to sub we duplicate the code in
+     * the two loops and sub in the loop_push.
+     */
+    PRE(bb, NULL,
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg2.reg),
+                            opnd_create_reg(REG_ESP)));
 
     /* we need separate loops for inc vs dec */
     PRE(bb, NULL,
@@ -942,6 +951,13 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
 
     /******* increasing loop *******/
+    /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
+    /* compute offs within shadow block */
+    PRE(bb, NULL,
+        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
+                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
+    PRE(bb, NULL,
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
     /* calculate end of shadow block */
     PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
     PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
@@ -1003,6 +1019,15 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
 
     /******* decreasing loop *******/
     PRE(bb, NULL, loop_push);
+    /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
+    /* compute offs within shadow block */
+    PRE(bb, NULL,
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(4)));
+    PRE(bb, NULL,
+        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
+                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
+    PRE(bb, NULL,
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
     /* calculate start of shadow block */
     PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
     PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),

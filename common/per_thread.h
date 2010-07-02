@@ -28,7 +28,11 @@
  * The user must set up a per_thread_t pointer in the drcontext tls.
  */
 
-#define SYSCALL_NUM_ARG_STORE  6 /* if raise this need to stop at 6 on Linux */
+#ifdef WINDOWS
+# define SYSCALL_NUM_ARG_STORE 10
+#else
+# define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
+#endif
 
 #define MAX_HEAP_NESTING 4
 

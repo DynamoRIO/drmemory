@@ -87,4 +87,9 @@ byte *
 mmap_walk(app_pc start, size_t size,
           IF_WINDOWS_(MEMORY_BASIC_INFORMATION *mbi_start) bool add);
 
+#ifdef WINDOWS
+void
+set_teb_initial_shadow(TEB *teb);
+#endif
+
 #endif /* _DRMEMORY_H_ */

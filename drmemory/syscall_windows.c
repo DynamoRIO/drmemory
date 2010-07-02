@@ -35,6 +35,9 @@
 #define SYSTABLE_HASH_BITS 8
 static hashtable_t systable;
 
+/* Syscalls that need special processing */
+int sysnum_CreateThread;
+
 /* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME PR 406350: IIS syscalls!
  * FIXME PR 406351: add XP and Vista syscalls!
@@ -68,6 +71,7 @@ static hashtable_t systable;
  *   NtSendWaitReplyChannel(
  *   NtSetContextChannel(
  * Also made manual additions for post-syscall write sizes
+ * and to set arg size for 0-args syscalls to 0 (xref PR 534421)
  */
 #define W (SYSARG_WRITE)
 #define R (0)
@@ -164,7 +168,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtFlushInstructionCache", 12, },
     {0,"NtFlushKey", 4, },
     {0,"NtFlushVirtualMemory", 16, 1,sizeof(PVOID),W, 2,sizeof(ULONG),W, 3,sizeof(IO_STATUS_BLOCK),W, },
-    {0,"NtFlushWriteBuffer", 4, },
+    {0,"NtFlushWriteBuffer", 0, },
     {0,"NtFreeUserPhysicalPages", 12, 1,sizeof(ULONG),W, 2,sizeof(ULONG),R, },
     {0,"NtFreeVirtualMemory", 16, 1,sizeof(PVOID),W, 2,sizeof(ULONG),W, },
     {0,"NtFsControlFile", 40, 4,sizeof(IO_STATUS_BLOCK),W, 8,-9,W, },
@@ -180,7 +184,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtInitializeRegistry", 4, 0,0,IB, },
     {0,"NtInitiatePowerAction", 16, 3,0,IB, },
     {0,"NtIsProcessInJob", 8, },
-    {0,"NtIsSystemResumeAutomatic", 4, },
+    {0,"NtIsSystemResumeAutomatic", 0, },
     {0,"NtListenChannel", 8, 1,sizeof(CHANNEL_MESSAGE),W, },
     {0,"NtListenPort", 8, 1,sizeof(PORT_MESSAGE),WP, },
     {0,"NtLoadDriver", 4, 0,sizeof(UNICODE_STRING),R, },
@@ -330,7 +334,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtSetEventBoostPriority", 4, },
     {0,"NtSetHighEventPair", 4, },
     {0,"NtSetHighWaitLowEventPair", 4, },
-    {0,"NtSetHighWaitLowThread", 4, },
+    {0,"NtSetHighWaitLowThread", 0, },
     {0,"NtSetInformationDebugObject", 20, 4,sizeof(ULONG),W, },
     {0,"NtSetInformationFile", 20, 1,sizeof(IO_STATUS_BLOCK),W, },
     {0,"NtSetInformationJobObject", 16, },
@@ -344,7 +348,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtSetLdtEntries", 16, },
     {0,"NtSetLowEventPair", 4, },
     {0,"NtSetLowWaitHighEventPair", 4, },
-    {0,"NtSetLowWaitHighThread", 4, },
+    {0,"NtSetLowWaitHighThread", 0, },
     {0,"NtSetQuotaInformationFile", 16, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_USER_QUOTA_INFORMATION),R, },
     {0,"NtSetSecurityObject", 12, 2,sizeof(SECURITY_DESCRIPTOR),R, },
     {0,"NtSetSystemEnvironmentValue", 8, 0,sizeof(UNICODE_STRING),R, 1,sizeof(UNICODE_STRING),R, },
@@ -367,7 +371,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtTerminateJobObject", 8, },
     {0,"NtTerminateProcess", 8, },
     {0,"NtTerminateThread", 8, },
-    {0,"NtTestAlert", 4, },
+    {0,"NtTestAlert", 0, },
     {0,"NtTraceEvent", 16, 3,sizeof(EVENT_TRACE_HEADER),R, },
     {0,"NtTranslateFilePath", 16, 0,sizeof(FILE_PATH),R, 2,sizeof(FILE_PATH),W, },
     {0,"NtUnloadDriver", 4, 0,sizeof(UNICODE_STRING),R, },
@@ -390,7 +394,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtWriteFileGather", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,sizeof(FILE_SEGMENT_ELEMENT),R, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
     {0,"NtWriteRequestData", 24, 1,sizeof(PORT_MESSAGE),R, 5,sizeof(ULONG),W, },
     {0,"NtWriteVirtualMemory", 20, 4,sizeof(ULONG),W, },
-    {0,"NtYieldExecution", 4, },
+    {0,"NtYieldExecution", 0, },
 
 };
 #undef W
@@ -452,9 +456,11 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
                           (void *) &syscall_info[i]);
             LOG(2, "system call %s = %d\n", syscall_info[i].name, syscall_info[i].num);
         } else {
-            LOG(2, "WARNING; could not find system call %s\n", syscall_info[i].name);
+            LOG(2, "WARNING: could not find system call %s\n", syscall_info[i].name);
         }
     }
+    sysnum_CreateThread = sysnum_from_name(drcontext, ntdll_base, "NtCreateThread");
+    ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
 }
 
 void
@@ -525,4 +531,34 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
 void
 os_shadow_post_syscall(void *drcontext, int sysnum)
 {
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    dr_mcontext_t mc;
+    /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
+     * client_post_syscall() where common/alloc.c identifies the sysnum: but
+     * for things that don't have anything to do w/ mem alloc I think it's
+     * cleaner to have it all in here rather than having to edit both files.
+     * Perhaps NtContinue and NtSetContextThread should also be here?  OTOH,
+     * the teb is an alloc.
+     */
+    if (sysnum == sysnum_CreateThread && NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        /* Even on XP+ where csrss frees the stack, the stack alloc happens
+         * in-process and we see it.  The TEB alloc, however, is done by
+         * the kernel, and kernel32!CreateRemoteThread writes to the TEB
+         * prior to the thread resuming, so we handle it here.
+         * We also process the TEB in set_thread_initial_structures() in
+         * case someone creates a thread remotely, or in-process but custom
+         * so it's not suspended at this point.
+         */
+        HANDLE thread_handle;
+        /* If not suspended, let set_thread_initial_structures() handle it to
+         * avoid races: though since setting as defined the only race would be
+         * the thread exiting
+         */
+        if (pt->sysarg[7]/*bool suspended*/ &&
+            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
+            TEB *teb = get_TEB_from_handle(thread_handle);
+            LOG(1, "TEB for new thread: "PFX"\n", teb);
+            set_teb_initial_shadow(teb);
+        }
+    }
 }

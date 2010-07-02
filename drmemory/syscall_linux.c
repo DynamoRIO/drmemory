@@ -722,8 +722,9 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
     }
 
     /* PR 418629: we need to change the stack from defined (marked when it
-     * was allocated) to unaddressable.  We can't get the stack bounds in
-     * the thread init event (xref PR 395156) so we watch here.
+     * was allocated) to unaddressable.  Originally we couldn't get the stack
+     * bounds in the thread init event (xref PR 395156) so we watch here:
+     * we could move this code now but not worth it.
      * FIXME: should we watch SYS_exit and put stack back to defined
      * in case it's re-used?  Seems better to leave it unaddressable
      * since may be more common to have racy accesses we want to flag
@@ -2203,6 +2204,56 @@ handle_pre_select(void *drcontext, dr_mcontext_t *mc, int sysnum)
 #define PRCTL_NAME_SZ 16 /* from man page */
 
 static void
+check_prctl_whitelist(byte *prctl_arg1)
+{
+    /* disable instrumentation on seeing prctl(PR_SET_NAME) that does not
+     * match any of the specified ,-separated names (PR 574018)
+     */
+    char nm[PRCTL_NAME_SZ+1];
+    ASSERT(options.prctl_whitelist[0] != '\0', "caller should check for empty op");
+    if (safe_read(prctl_arg1, PRCTL_NAME_SZ, nm)) {
+        bool on_whitelist = false;
+        char *s, *next;
+        char *list_end = options.prctl_whitelist + strlen(options.prctl_whitelist);
+        size_t white_sz;
+        NULL_TERMINATE_BUFFER(nm);
+        LOG(1, "prctl set name %s\n", nm);
+        s = options.prctl_whitelist;
+        while (s < list_end) {
+            next = strchr(s, ',');
+            if (next == NULL)
+                white_sz = (list_end - s);
+            else
+                white_sz = (next - s);
+            LOG(2, "comparing \"%s\" with whitelist entry \"%.*s\" sz=%d\n",
+                nm, white_sz, s, white_sz);
+            if (strncmp(nm, s, white_sz) == 0) {
+                LOG(0, "prctl name %s matches whitelist\n", nm);
+                on_whitelist = true;
+                break;
+            }
+            s += white_sz + 1 /* skip , itself */;
+        }
+        if (!on_whitelist) {
+            /* ideally: suspend world, then set options, then flush
+             * w/o resuming.
+             * FIXME: just setting options is unsafe if another thread
+             * hits an event and fails to restore state or sthg.
+             * Fortunately we expect most uses of PR_SET_NAME to be
+             * immediately after forking.
+             * Ideally we'd call dr_suspend_all_other_threads()
+             * and nest dr_flush_region() inside it but both want
+             * the same master lock: should check whether easy to support
+             * via internal vars indicating whether lock held.
+             */
+            ELOGF(0, f_global, "\n*********\nDISABLING MEMORY CHECKING for %s\n", nm);
+            options.shadowing = false;
+            dr_flush_region(0, ~((ptr_uint_t)0));
+        }
+    }
+}
+
+static void
 handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
 {
     uint request = (uint) dr_syscall_get_param(drcontext, 0);
@@ -2251,6 +2302,8 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
         check_sysmem((request == PR_GET_NAME) ? MEMREF_CHECK_ADDRESSABLE :
                      MEMREF_CHECK_DEFINEDNESS, SYS_prctl,
                      (app_pc) arg1, PRCTL_NAME_SZ, mc, NULL);
+        if (request == PR_SET_NAME && options.prctl_whitelist[0] != '\0')
+            check_prctl_whitelist((byte *)arg1);
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown prctl request %d\n", request); 

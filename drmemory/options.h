@@ -242,6 +242,11 @@ typedef struct _drmemory_options_t {
     /* use single arg for jmp-to-slowpath and derive second (PR 494769) */
     bool single_arg_slowpath;
 
+    /* disable instrumentation on seeing prctl(PR_SET_NAME) that does not
+     * match any of these ,-separated names (PR 574018)
+     */
+    char prctl_whitelist[MAXIMUM_PATH];
+
 #ifdef TOOL_DR_HEAPSTAT
 
     /* Unit of time.  Simpler to use bools than a single-option string. */

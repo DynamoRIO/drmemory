@@ -1645,7 +1645,9 @@ mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
  *     - mi->offs is reg1_8h
  *   Else:
  *     - reg3 has not been touched
- *     - reg2 holds the offset within the shadow block
+ *     - reg2 has been clobbered (this routine no longer computes the offset
+ *       within the shadow block: caller can do so via
+ *         "movzx reg2, reg_32_to_16(orig_addr); shr reg2, 2"
  * If !get_value and !need_offs:
  *   reg1, reg3, and reg3 can be any 32-bit regs
  * Else, they should be a,b,c,d for 8-bit sub-reg
@@ -1673,19 +1675,9 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     mark_matching_scratch_reg(drcontext, bb, mi, reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg2);
     mark_eflags_used(drcontext, bb, mi->bb);
-    /* Bottom 16 bits */
-#ifdef TOOL_DR_HEAPSTAT
-    /* Staleness stores displacement so wants copy of whole addr */
+    /* Shadow table stores displacement so we want copy of whole addr */
     PRE(bb, inst,
         INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
-    /* Staleness has 1 shadow byte per 8 app bytes and doesn't care about alignment */
-    PRE(bb, inst,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg2), OPND_CREATE_INT8(3)));
-#else
-    PRE(bb, inst,
-        INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg2),
-                           opnd_create_reg(reg_32_to_16(reg1))));
-#endif
     ASSERT(mi->memsz <= 4 || !need_offs, "unsupported fastpath memsz");
 #ifdef TOOL_DR_MEMORY
     if (mi->memsz > 1) {
@@ -1721,24 +1713,6 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
      * to data section our assumptions will no longer be valid.
      */
 #endif
-    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
-     * saves us from having to clear the lower bits here via OP_and or sthg (PR
-     * 553724).
-     */
-    PRE(bb, inst,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT8(16)));
-
-    /* Index into table: no collisions and no tag storage since full size */
-#ifdef TOOL_DR_HEAPSTAT
-    /* Storing displacement, so add table result to app addr */
-    PRE(bb, inst,
-        INSTR_CREATE_add(drcontext, opnd_create_reg(reg2), opnd_create_base_disp
-                         (REG_NULL, reg1, 4, (uint)shadow_table, OPSZ_PTR)));
-#else
-    PRE(bb, inst,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg1), opnd_create_base_disp
-                            (REG_NULL, reg1, 4, (uint)shadow_table, OPSZ_PTR)));
-#endif
 
     if (need_offs) {
         /* Need 3rd scratch reg: can't ror and add since can't add 16-bit reg
@@ -1749,34 +1723,46 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          * later (e.g., insert_check_defined())
          */
         mark_matching_scratch_reg(drcontext, bb, mi, reg3);
+        /* FIXME: does this really need top 16 bits zeroed?  can save 1 byte
+         * using mov_st instead of movzx
+         */
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, opnd_create_reg(reg3),
-                                opnd_create_reg(reg2)));
+            INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg3),
+                               opnd_create_reg(reg_32_to_16(reg2))));
     }
+
+    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
+     * saves us from having to clear the lower bits here via OP_and or sthg (PR
+     * 553724).
+     */
+    PRE(bb, inst,
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg2), OPND_CREATE_INT8(16)));
+
     /* Instead of finding the uint array index we go straight to the single
      * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
      * If sub-dword but not aligned we go ahead and get shadow byte for
      * containing dword.
      */
-#ifdef TOOL_DR_MEMORY
     PRE(bb, inst,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg2), OPND_CREATE_INT8(2)));
-#endif
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg1),
+                         /* Staleness has 1 shadow byte per 8 app bytes */
+                         OPND_CREATE_INT8(IF_DRMEM_ELSE(2, 3))));
+
+    /* Index into table: no collisions and no tag storage since full size */
+    /* Storing displacement, so add table result to app addr */
+    PRE(bb, inst,
+        INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), opnd_create_base_disp
+                         (REG_NULL, reg2, 4, (uint)shadow_table, OPSZ_PTR)));
+
     if (get_value) {
         /* load value from shadow table to reg1 */
         PRE(bb, inst,
             INSTR_CREATE_movzx(drcontext,
                                opnd_create_reg(value_in_reg2 ? reg2 : reg1),
                                opnd_create_base_disp
-                               (reg1, reg2, 1, 0, mi->memsz == 8 ? OPSZ_2 : OPSZ_1)));
+                               (reg1, REG_NULL, 0, 0, mi->memsz == 8 ? OPSZ_2 : OPSZ_1)));
     } else {
-#ifdef TOOL_DR_MEMORY
-        PRE(bb, inst,
-            INSTR_CREATE_lea(drcontext, opnd_create_reg(reg1),
-                             opnd_create_base_disp(reg1, reg2, 1, 0, OPSZ_lea)));
-#else
-        /* more efficient for staleness to directly access via reg1+reg2 */
-#endif
+        /* addr is already in reg1 */
     }
     if (need_offs) {
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
@@ -2737,12 +2723,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* shouldn't be other srcs */
         ASSERT(opnd_is_null(shadow_src2), "mem2mem error");
 #else
-        /* shadow lookup left reg3+reg2 holding address */
+        /* shadow lookup left reg3 holding address */
         if (!options.stale_blind_store) {
             /* FIXME: measure perf to see which is better */
             /* cmp and avoid store can be faster than blindly storing */
             PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg2.reg, 0),
+                INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
                                  OPND_CREATE_INT8(0)));
             mark_eflags_used(drcontext, bb, mi->bb);
             PRE(bb, inst,
@@ -2750,7 +2736,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  opnd_create_instr(fastpath_restore)));
         }
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg2.reg, 0),
+            INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg3.reg, 0),
                                 OPND_CREATE_INT8(1)));
 #endif
     }
@@ -3193,12 +3179,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                             false, false/*!need_offs*/, false/*!zero_rest*/,
                             mi->reg1.reg, mi->reg2.reg, mi->reg3.reg);
     ASSERT(reg1_8 != REG_NULL && mi->reg1.used, "reg spill error");
-    /* shadow lookup left reg1+reg2 holding address */
+    /* shadow lookup left reg1 holding address */
     if (!options.stale_blind_store) {
         /* FIXME: measure perf to see which is better */
         /* cmp and avoid store can be faster than blindly storing */
         PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg2.reg, 0),
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                              OPND_CREATE_INT8(0)));
         mark_eflags_used(drcontext, bb, mi->bb);
         /* too bad there's no cmovcc to memory! */
@@ -3207,7 +3193,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              opnd_create_instr(fastpath_restore)));
     }
     PRE(bb, inst,
-        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg2.reg, 0),
+        INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                             OPND_CREATE_INT8(1)));
 #endif /* TOOL_DR_MEMORY */
 

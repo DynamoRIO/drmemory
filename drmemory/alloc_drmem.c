@@ -481,8 +481,17 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
          * simply exclude from our leak report.
          */
         app_pc pass_to_free;
+        size_t real_size;
         dr_mutex_lock(delay_free_lock);
-        rb_insert(delay_free_tree, real_base, size, NULL);
+        /* Store real base and real size: i.e., including redzones (PR 572716) */
+        if (base != real_base) {
+            ASSERT(base - real_base == options.redzone_size, "redzone mismatch");
+            real_size = size + 2*options.redzone_size;
+        } else {
+            /* A pre-us alloc w/ no redzone */
+            real_size = size;
+        }
+        rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
         if (DELAY_FREE_FULL()) {
 #ifdef WINDOWS
             app_pc pass_heap = delay_free_list[delay_free_head].heap;
@@ -584,19 +593,23 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
     DOLOG(3, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
     node = rb_overlaps_node(delay_free_tree, start, end);
     if (node != NULL) {
-        /* we store real base so exclude redzone */
+        /* we store real base and real size, so exclude redzone since we only
+         * want to report overlap with app-requested base and size
+         */
         app_pc real_base;
         size_t size;
-        rb_node_fields(node, &real_base, &size, NULL);
+        bool has_redzone;
+        rb_node_fields(node, &real_base, &size, (void **)&has_redzone);
         LOG(3, "\toverlap real base: "PFX"\n", real_base);
-        if (start >= real_base + options.redzone_size ||
-            end > real_base + options.redzone_size) {
+        if (!has_redzone ||
+            (start < real_base + size - options.redzone_size &&
+             end >= real_base + options.redzone_size)) {
             res = true;
             if (free_start != NULL)
                 *free_start = real_base + options.redzone_size;
             /* size is the app-asked-for-size */
             if (free_end != NULL)
-                *free_end = real_base + options.redzone_size + size;
+                *free_end = real_base + size - options.redzone_size;
         }
     }
     dr_mutex_unlock(delay_free_lock);
@@ -608,9 +621,18 @@ client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
 {
 #ifdef WINDOWS
     if (!options.leaks_only && options.shadowing) {
-        if (anon)
-            shadow_set_range(base, base+size, SHADOW_UNDEFINED);
-        else
+        if (anon) {
+            if (pt->in_heap_routine == 0)
+                shadow_set_range(base, base+size, SHADOW_DEFINED);
+            else {
+                /* FIXME PR 575260: should we do what we do on linux and leave
+                 * unaddr?  I haven't yet studied what Windows Heap behavior is
+                 * for very large allocations.  For now marking entire
+                 * as undefined and ignoring headers.
+                 */
+                shadow_set_range(base, base+size, SHADOW_UNDEFINED);
+            }
+        } else
             mmap_walk(base, size, IF_WINDOWS_(NULL) true/*add*/);
     }
 #else
@@ -763,8 +785,12 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
-    while (shadow_get_byte(sp) == SHADOW_UNADDRESSABLE &&
-           (stop_esp == NULL || sp < stop_esp)) {
+    while ((stop_esp != NULL && sp < stop_esp) ||
+           /* if not on main stack, go until non-unaddr: we could walk off
+            * into an adjacent free space is the problem though.
+            * should do mem query!
+            */
+           (stop_esp == NULL && shadow_get_byte(sp) == SHADOW_UNADDRESSABLE)) {
         shadow_set_byte(sp, SHADOW_DEFINED);
         sp++;
         if (sp - (byte *) mc->esp >= TYPICAL_STACK_MIN_SIZE) {
@@ -798,27 +824,34 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 #ifdef WINDOWS
     if (sysnum == sysnum_continue) {
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
-        /* FIXME: what if the syscall fails? */
         if (cxt != NULL) {
+            /* FIXME: what if the syscall fails? */
             byte *sp;
+            register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Eax));
+            register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Ecx));
+            register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Edx));
+            register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Ebx));
+            register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
+            register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Esp));
+            register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Esi));
+            register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Edi));
             if (cxt->Esp < mc.esp) {
                 if (mc.esp - cxt->Esp < options.stack_swap_threshold) {
-                    for (sp = (byte *) mc.esp - 1; sp >= (byte *) cxt->Esp; sp--)
-                        shadow_set_byte(sp, SHADOW_UNDEFINED);
+                    shadow_set_range((byte *) cxt->Esp, (byte *) mc.esp, SHADOW_UNDEFINED);
                     LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
                         cxt->Esp, mc.esp);
                 }
             } else if (cxt->Esp - mc.esp < options.stack_swap_threshold) {
-                for (sp = (byte *) mc.esp; sp < (byte *) cxt->Esp; sp++)
-                    shadow_set_byte(sp, SHADOW_UNADDRESSABLE);
-                LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
+                shadow_set_range((byte *) mc.esp, (byte *) cxt->Esp, SHADOW_UNADDRESSABLE);
+                LOG(2, "NtContinue: marked stack "PFX"-"PFX" as unaddressable\n",
                     mc.esp, cxt->Esp);
             }
         }
     } else if (sysnum == sysnum_setcontext) {
-        /* FIXME: we need to know whether the thread is in this
+        /* FIXME PR 575434: we need to know whether the thread is in this
          * process or not, and then get its current context so we can
-         * change the esp between old and new values.
+         * change the esp between old and new values and set the register
+         * shadow values.
          */
         ASSERT(false, "NtSetContextThread NYI");
     }
@@ -1622,6 +1655,9 @@ void
 client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
                        void *client_data)
 {
+    /* don't report leaks if we never scanned (could have bailed for PR 574018) */
+    if (!options.leaks_only && !options.shadowing)
+        return;
     if (options.count_leaks)
         leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
 }

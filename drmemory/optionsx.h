@@ -117,3 +117,5 @@ OPTION("-pause_via_loop", "false", "Pause via loop (not wait for stdin)",
        "Used in conjunction with -pause_at_uninitialized and -pause_at_uninitialized on Linux, this option causes Dr. Memory to pause via an infinite loop instead of waiting for stdin.  Dr. Memory will not continue beyond the first such error found.")
 OPTION("-leaks_only", "false", "Check only for leaks and not memory access errors",
        "Puts Dr. Memory into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")
+OPTION("-prctl_whitelist", "''", "Disable instrumentation unless PR_SET_NAME is on list",
+       "If this list is non-empty, when Dr. Memory sees prctl(PR_SET_NAME) and the name is not on the list, then Dr. Memory will disable its instrumentation for the rest of the process and for all of its child processes.")

@@ -120,6 +120,7 @@ drmemory_options_t options = {
     {'\0'},    /* libc_addrs */
     true,      /* check_push */
     false,     /* single_arg_slowpath */
+    {'\0'},    /* prctl_whitelist */
 
 #ifdef TOOL_DR_HEAPSTAT
     false,     /* time_instrs */
@@ -375,6 +376,14 @@ options_init(const char *opstr)
             options.single_arg_slowpath = true;
         } else if (stri_eq(word, "-no_single_arg_slowpath")) {
             options.single_arg_slowpath = false;
+        } else if (stri_eq(word, "-prctl_whitelist")) {
+            s = get_option_word(s, word);
+            if (s == NULL)
+                option_error("-prctl_whitelist");
+            dr_snprintf(options.prctl_whitelist,
+                        BUFFER_SIZE_ELEMENTS(options.prctl_whitelist),
+                        "%s", word);
+            NULL_TERMINATE_BUFFER(options.prctl_whitelist);
 #ifdef TOOL_DR_HEAPSTAT
         } else if (stri_eq(word, "-time_instrs")) {
             options.time_instrs = true;

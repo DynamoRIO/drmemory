@@ -409,6 +409,12 @@ safe_read(void *base, size_t size, void *out_buf);
 TEB *
 get_TEB(void);
 
+TEB *
+get_TEB_from_handle(HANDLE h);
+
+TEB *
+get_TEB_from_tid(thread_id_t tid);
+
 PEB *
 get_app_PEB(void);
 

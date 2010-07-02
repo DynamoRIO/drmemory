@@ -82,6 +82,7 @@ $no_sys_paths = 0; # look in /lib, etc. for symbol files?
 $aggregate = 0;
 my $use_default_suppress = 1;
 my $default_suppress_file = "$bindir/suppress-default.txt";
+my $drmem_disabled = 0;
 
 # Use an error cache to prevent processing duplicates; indexed by error info
 # excluding read/write message in the first line.  PR 420942.
@@ -432,6 +433,13 @@ sub process_all_errors()
             $nudge_count++;
             $logs{$logfile}{"bytes read"} = tell $fh;   # tell shouldn't fail
             die "tell on $fh failed: $!\n" if ($logs{$logfile}{"bytes read"} == -1);
+            next;
+        }
+        elsif (/^DISABLING MEMORY CHECKING/) {
+            # PR 574018: Dr. Memory instrumentation disabled
+            print "\n\n****************\nMEMORY CHECKS DISABLED FROM THIS POINT ON\n\n";
+            $drmem_disabled = 1;
+            $logs{$logfile}{"bytes read"} = tell $fh;   # tell shouldn't fail
             next;
         }
         # PR 425858: skip non-error-related lines in logfile
@@ -934,6 +942,8 @@ sub print_summary($fh, $reset, $summary_only)
 
     # PR 477013: print a full summary
     print $fh "$pfx\n";
+    print $fh $pfx."MEMORY CHECKS WERE DISABLED FOR AT LEAST PART OF THIS RUN!\n"
+        if ($drmem_disabled);
     print $fh $pfx."ERRORS FOUND:\n";
     foreach $type (@err_type_keys) {
         if ($type =~ /LEAK/) {
@@ -1023,11 +1033,27 @@ sub init_libsearch_path ($use_vmtree)
             # This path contains the debug files for userworld libraries.
             "/build/scons/package/devel/linux32/$buildtype/esx/uwlibs/usr/lib/debug/lib",
 
+            # These paths contain more debug files.
+            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/sbin",
+            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/bin",
+            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/lib",
+            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/usr/lib/vmware/esxcli",
+            # TODO PR 575713: add later once have 64-bit support
+            # Note that current toolchain objdump doesn't seem to support elf64
+            # "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/lib64",
+
             # This path contains the unstripped userworld libraries.
             "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/lib",
 
             # This path contains unstripped hostd.
-            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/sbin"
+            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/sbin",
+
+            # These paths contains more unstripped libraries incl for sfcbd.
+            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/usr/lib",
+            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/usr/lib/vmware/esxcli",
+            # TODO PR 575713: add later once have 64-bit support
+            # Note that current toolchain objdump doesn't seem to support elf64
+            # "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/lib64",
         );
 
         my @cim_paths = (
@@ -1041,10 +1067,15 @@ sub init_libsearch_path ($use_vmtree)
         my @aam_paths = ("/opt/vmware/aam/lib");
         push @libsearch, @aam_paths;        # shouldn't prepend VMTREE for this
 
-        if ($use_vmtree) {
-            die "VMTREE environment variable must be defined when using --use_vmtree\n"
-                if (!defined($ENV{"VMTREE"}));
-            die "VMTREE: ".$ENV{"VMTREE"}." doesn't exist\n" if (!-e $ENV{"VMTREE"});
+        if ($use_vmtree ne '') {
+            if (!defined($ENV{"VMTREE"})) {
+                # don't die: just a warning (PR 573991)
+                print stderr "WARNING: VMTREE environment variable is not set!\n".
+                    "Symbols may not be found.  To correct set VMTREE and/or ".
+                    "DRMEMORY_LIB_PATH.  Disable this warning via -no_use_vmtree.\n";
+            } else {
+                die "VMTREE: ".$ENV{"VMTREE"}." doesn't exist\n" if (!-e $ENV{"VMTREE"});
+            }
 
             foreach $path (@bora_paths, @cim_paths) {
                 push @libsearch, $ENV{"VMTREE"}.$path;
@@ -1251,6 +1282,8 @@ sub lookup_symbol($modpath_in, $addr_in)
             };
             print stderr "Running $pid = \"".join(' ', @cmdline)."\"\n" if ($verbose);
             print "INFO: Running $pid = \"".join(' ', @cmdline)."\"\n" if ($verbose);
+            # we do not want coredumps when addr2line crashes (PR 558271)
+            &vmk_disable_cores($pid) if ($is_vmk);
             $addr_pipes{$pipekey}{"pid"} = $pid;
             $addr_pipes{$pipekey}{"read"} = $read;
             $addr_pipes{$pipekey}{"write"} = $write;

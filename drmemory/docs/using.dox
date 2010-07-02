@@ -31,6 +31,11 @@ following sub-sections:
  - \ref sec_windows
  - \ref sec_running
  - \ref sec_errors
+  - \ref sec_unaddr
+  - \ref sec_uninit
+  - \ref sec_invfree
+  - \ref sec_leaks
+  - \ref sec_warning
 
 See also the full reference of Dr. Memory's runtime options:
  - \ref page_options
@@ -150,6 +155,13 @@ installation.
 
 \endif
 
+When running scripts it is best to explicitly invoke the interpreter rather
+than invoking the script directly.  For example:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -- /usr/bin/perl ./myscript.pl
+</tt>
+
 ********************
 \subsection sec_results Examining the Results
 
@@ -190,11 +202,6 @@ the log directories as sub-directories to aggregate all of them:
 \par
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate /parent/logdir/
 </tt>
-
-********************
-\subsection sec_leaks Leak Checking
-
-INCLUDEFILE leaks.dox.sub
 
 ********************
 \subsection sec_daemon Applications That Do Not Exit
@@ -421,6 +428,11 @@ Elapsed time = 0:00:00.263 in thread 19755
 0x08048691 <malloc+0x691> malloc!_start
     ??:0
 \endcode
+
+********************
+\subsection sec_leaks Memory Leaks
+
+INCLUDEFILE leaks.dox.sub
 
 ********************
 \subsection sec_warning Warning

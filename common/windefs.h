@@ -503,6 +503,7 @@ typedef struct _CLIENT_ID {
     HANDLE UniqueProcess;
     HANDLE UniqueThread;
 } CLIENT_ID;
+typedef CLIENT_ID *PCLIENT_ID;
 
 typedef struct _GDI_TEB_BATCH
 {
