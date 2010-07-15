@@ -98,14 +98,7 @@ drmemory_options_t options = {
     true,      /* loads_use_table */
     true,      /* stores_use_table */
     5,         /* num_spill_slots */
-    false,     /* ignore_heap_refs: PR 408526: not safe to use!
-                * On Windows, it suppresses LdrShutdownProcess
-                * and thus has potential for false negatives.
-                * In general, varies based on when util routines used
-                * by alloc code are called vs other uses: if memset
-                * called first by alloc code, now every use of it
-                * has all mem refs ignored!  Not safe.
-                */
+    true,      /* check_ignore_unaddr, using dynamic checks from PR 578892 */
     false,     /* thread_logs */
     IF_DRSYMS_ELSE(true, false), /* summary */
     false,     /* statistics */
@@ -121,6 +114,7 @@ drmemory_options_t options = {
     true,      /* check_push */
     false,     /* single_arg_slowpath */
     {'\0'},    /* prctl_whitelist */
+    true,      /* repstr_to_loop */
 
 #ifdef TOOL_DR_HEAPSTAT
     false,     /* time_instrs */
@@ -330,10 +324,10 @@ options_init(const char *opstr)
             options.statistics = true;
         } else if (stri_eq(word, "-no_statistics")) {
             options.statistics = false;
-        } else if (stri_eq(word, "-ignore_heap_refs")) {
-            options.ignore_heap_refs = true;
-        } else if (stri_eq(word, "-no_ignore_heap_refs")) {
-            options.ignore_heap_refs = false;
+        } else if (stri_eq(word, "-check_ignore_unaddr")) {
+            options.check_ignore_unaddr = true;
+        } else if (stri_eq(word, "-no_check_ignore_unaddr")) {
+            options.check_ignore_unaddr = false;
         } else if (stri_eq(word, "-pause_at_unaddressable")) {
             options.pause_at_unaddressable = true;
         } else if (stri_eq(word, "-pause_at_uninitialized")) {
@@ -376,6 +370,10 @@ options_init(const char *opstr)
             options.single_arg_slowpath = true;
         } else if (stri_eq(word, "-no_single_arg_slowpath")) {
             options.single_arg_slowpath = false;
+        } else if (stri_eq(word, "-repstr_to_loop")) {
+            options.repstr_to_loop = true;
+        } else if (stri_eq(word, "-no_repstr_to_loop")) {
+            options.repstr_to_loop = false;
         } else if (stri_eq(word, "-prctl_whitelist")) {
             s = get_option_word(s, word);
             if (s == NULL)

@@ -71,7 +71,7 @@ static uint64 timestamp_start;
 enum {
     ERROR_UNADDRESSABLE,
     ERROR_UNDEFINED,
-    ERROR_INVALID_FREE,
+    ERROR_INVALID_HEAP_ARG,
     ERROR_WARNING,
     ERROR_LEAK,
     ERROR_POSSIBLE_LEAK,
@@ -81,7 +81,7 @@ enum {
 static const char *const error_name[] = {
     "unaddressable access(es)",
     "uninitialized access(es)",
-    "invalid free(s)",
+    "invalid heap argument(s)",
     "warning(s)",
     "leak(s)",    
     "possible leak(s)",    
@@ -90,7 +90,7 @@ static const char *const error_name[] = {
 static const char *const suppress_name[] = {
     "UNADDRESSABLE ACCESS",
     "UNINITIALIZED READ",
-    "INVALID FREE",
+    "INVALID HEAP ARGUMENT",
     "WARNING",
     "LEAK",    
     "POSSIBLE LEAK",    
@@ -329,7 +329,7 @@ read_suppression_file(file_t f)
          *       the bug is fixed
          *
          * For USE_DRSYMS, this client now also supports mod!func callstacks:
-         * INVALID FREE
+         * INVALID HEAP ARGUMENT
          * suppress.exe!invalid_free_test1
          * suppress.exe!test
          * suppress.exe!main
@@ -752,7 +752,7 @@ report_summary_to_file(file_t f, bool stderr_too)
                                 " for details)"NL);
                 }
             }
-        } else if (i != ERROR_INVALID_FREE || options.check_invalid_frees) {
+        } else if (i != ERROR_INVALID_HEAP_ARG || options.check_invalid_frees) {
             NOTIFY_COND(notify, f, "  %5d unique, %5d total %s"NL,
                         num_unique[i], num_total[i], error_name[i]);
         }
@@ -1146,7 +1146,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
              * FIXME: use dr_loc_t here as well for cleaner multi-type
              */
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                     "reading register %s"NL, (addr == (app_pc)REG_INVALID) ?
+                     "reading register %s"NL, (addr == (app_pc)REG_EFLAGS) ?
                      "eflags" : get_register_name((reg_id_t)(ptr_uint_t)addr));
         } else {
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
@@ -1161,12 +1161,13 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
             } else
                 BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
         }
-    } else if (type == ERROR_INVALID_FREE) {
+    } else if (type == ERROR_INVALID_HEAP_ARG) {
         /* Note that on Windows the call stack will likely show libc, since
          * we monitor Rtl inside ntdll
          */
+        ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "INVALID FREE: freeing "PFX""NL, addr);
+                 "INVALID HEAP ARGUMENT: %s "PFX""NL, msg, addr);
     } else if (type == ERROR_WARNING) {
         ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sWARNING: %s"NL,
@@ -1218,16 +1219,17 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
 }
 
 void
-report_invalid_free(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc)
+report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
+                        const char *routine)
 {
-    if (addr == NULL) {
+    if (addr == NULL && strcmp(routine, IF_WINDOWS_ELSE("HeapFree", "free")) == 0) {
         /* free(NULL) is documented as always being properly handled (nop)
          * so we separate as not really "invalid" but just a warning
          */
         if (options.warn_null_ptr)
             report_warning(loc, mc, "free() called with NULL pointer");
     } else {
-        report_error(ERROR_INVALID_FREE, loc, addr, 0, false, NULL, NULL, NULL, mc);
+        report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL, routine, mc);
     }
 }
 

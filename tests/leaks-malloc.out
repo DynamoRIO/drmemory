@@ -30,22 +30,16 @@ HeapFree failed 87
 !endif
 all done
 :::Dr.Memory::: ERRORS FOUND:
-# on unix free touches the invalid address; not so on winxp it seems
-!if WINDOWS
 :::Dr.Memory:::       1 unique,    20 total unaddressable access(es)
-!endif
-!if UNIX
-:::Dr.Memory:::       2 unique,    21 total unaddressable access(es)
-!endif
 :::Dr.Memory:::       2 unique,     2 total uninitialized access(es)
 !if WINDOWS
 # we have an extra test for invalid heap params
-:::Dr.Memory:::       2 unique,     2 total invalid free(s)
+:::Dr.Memory:::       2 unique,     2 total invalid heap argument(s)
 # we get a warning about heap alloc failing from HeapReAlloc(,NULL,)
 :::Dr.Memory:::       1 unique,     1 total warning(s)
 !endif
 !if UNIX
-:::Dr.Memory:::       1 unique,     1 total invalid free(s)
+:::Dr.Memory:::       1 unique,     1 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 !endif
 :::Dr.Memory:::       2 unique,     2 total,     59 byte(s) of leak(s)

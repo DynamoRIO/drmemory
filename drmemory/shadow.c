@@ -1191,7 +1191,9 @@ typedef struct _shadow_registers_t {
      * a single tracked value.
      */
     byte eflags;
-    byte padding[3];
+    /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
+    byte in_heap_routine;
+    byte padding[2];
 #endif
 #ifdef LINUX
     /* We store segment bases here for dynamic access from thread-shared code */
@@ -1228,6 +1230,18 @@ opnd_create_shadow_eflags_slot(void)
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
          offsetof(shadow_registers_t, eflags), OPSZ_1,
+         /* we do NOT want an addr16 prefix since most likely going to run on
+          * Core or Core2, and P4 doesn't care that much */
+         false, true, false);
+}
+
+/* Opnd to acquire in_heap_routine TLS counter. Used for PR 578892. */
+opnd_t
+opnd_create_shadow_inheap_slot(void)
+{
+    return opnd_create_far_base_disp_ex
+        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
+         offsetof(shadow_registers_t, in_heap_routine), OPSZ_1,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
@@ -1447,6 +1461,15 @@ set_shadow_eflags(uint val)
 {
     shadow_registers_t *sr = get_shadow_registers();
     sr->eflags = (byte) val;
+}
+
+void
+set_shadow_inheap(uint val)
+{
+    shadow_registers_t *sr;
+    ASSERT(options.shadowing, "incorrectly called");
+    sr = get_shadow_registers();
+    sr->in_heap_routine = (byte) val;
 }
 
 /* assumes val was obtained from get_shadow_register(),

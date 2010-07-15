@@ -33,7 +33,7 @@ following sub-sections:
  - \ref sec_errors
   - \ref sec_unaddr
   - \ref sec_uninit
-  - \ref sec_invfree
+  - \ref sec_invarg
   - \ref sec_leaks
   - \ref sec_warning
 
@@ -412,14 +412,15 @@ also in this example how Dr. Memory reports which part of the socketcall
 system call checks discovered this error.
 
 ********************
-\subsection sec_invfree Invalid Free
+\subsection sec_invarg Invalid Heap Argument
 
 Whenever a pointer that does not refer to a valid malloc region is passed
-to free(), Dr. Memory reports an "invalid free" error.  Here the problem is
-immediately apparent as 0x00001234 is not a valid heap address at all:
+to free() or other malloc-related routines, Dr. Memory reports an "invalid
+heap argument" error.  Here the problem is immediately apparent as
+0x00001234 is not a valid heap address at all:
 
 \code
-Error #4: INVALID FREE: freeing 0x00001234
+Error #4: INVALID HEAP ARGUMENT: free 0x00001234
 Elapsed time = 0:00:00.263 in thread 19755
 0x08048a71 <malloc+0xa71> malloc!main
     /work/dr/misc/internal/clients/drmemory/tests/malloc.c:161

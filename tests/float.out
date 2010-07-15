@@ -30,7 +30,7 @@ all done
 !if UNIX
 :::Dr.Memory:::       6 unique,     6 total uninitialized access(es)
 !endif
-:::Dr.Memory:::       0 unique,     0 total invalid free(s)
+:::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 :::Dr.Memory:::       0 total,      0 byte(s) of leak(s)
 :::Dr.Memory:::       0 total,      0 byte(s) of possible leak(s)

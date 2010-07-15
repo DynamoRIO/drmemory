@@ -20,6 +20,7 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 
 typedef unsigned char byte;
 
@@ -174,6 +175,164 @@ regtest()
     printf("after regtest\n");
 }
 
+void
+subdword_test(void)
+{
+    /* source of uninits: on Windows a stack buffer is filled w/ 0xcc
+     * in debug build (PR 473614) so we use malloc
+     */
+    char *undef = (char *) malloc(128);
+    int val;
+    printf("before subdword test\n");
+#ifdef WINDOWS
+    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
+    __asm {
+        /* loads */
+        mov   eax, 0
+        mov   ecx, undef
+        add   al, byte ptr [ecx + 37]
+        js    uninit
+      uninit:
+        sub   ah, al
+        mov   val, eax
+        /* stores */
+        mov   eax, 0
+        sub   byte ptr [ecx + 1], ah
+        js    uninit2
+      uninit2:
+        nop
+    }
+#else
+    /* values we can recognize, but stay under undef[128] */
+    asm("mov   %0, %%ecx" : : "g"(undef) : "ecx");
+    /* loads */
+    asm("mov   $0, %eax");
+    asm("add   37(%ecx), %al"); /* write to flags */
+    asm("js    uninit"); /* uninit eflags! */
+    asm("uninit:");
+    asm("sub   %al, %ah");
+    asm("mov   %%eax, %0" : "=m"(val));
+    /* stores */
+    asm("mov   $0, %eax");
+    asm("sub   %ah, 1(%ecx)"); /* write to flags */
+    asm("js    uninit2"); /* uninit eflags! */
+    asm("uninit2:");
+#endif
+    if (val == 0) /* uninit */
+        array[0] = val;
+    printf("after subdword test\n");
+    free(undef);
+}
+
+/* Tests PR 580123: add fastpath for rep string instrs */
+void
+repstr_test(void)
+{
+    char *undef = (char *) malloc(128);
+    char *a1 = (char *) malloc(15);
+    char *a2 = (char *) malloc(15);
+    int i;
+    for (i = 0; i < 15; i++) {
+        /* leave one in the middle undef */
+        if (i != 7)
+            a1[i] = 0;
+    }
+    printf("before repstr test\n");
+#ifdef WINDOWS
+    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
+    __asm {
+        mov   edi, a1
+        mov   esi, a2
+        mov   ecx, 15
+        rep   movsb
+        mov   edi, a2
+        mov   eax, 1
+        mov   ecx, 15
+        rep   stosb
+        mov   edi, a2
+        cmp   byte ptr [7 + edi], 1
+        jne   stos_error
+      stos_error:
+        mov   edi, a1
+        mov   esi, a2
+        mov   ecx, 15
+        repne cmpsb
+        mov   edi, a1
+        mov   eax, 1
+        xadd  dword ptr [edi], eax
+    }
+#else
+    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
+    asm("mov   %0, %%esi" : : "g"(a2) : "esi");
+    asm("mov   $15, %ecx");
+    asm("rep movsb");
+    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
+    asm("mov   $1, %eax");
+    asm("mov   $15, %ecx");
+    asm("rep stosb");
+    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
+    asm("cmpb  $1, 7(%edi)");
+    asm("jne   stos_error");
+    asm("stos_error:");
+    /* should be no error on the movs, and the stos should make a2[7] defined,
+     * but the cmps should hit error on a1[7] 
+     */
+    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
+    asm("mov   %0, %%esi" : : "g"(a2) : "esi");
+    asm("mov   $15, %ecx");
+    asm("repne cmpsb");
+    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
+    asm("mov   $1, %eax");
+    asm("xadd  %eax, (%edi)");
+#endif
+    printf("after repstr test\n");
+    free(undef);
+}
+
+/* Tests PR 425622: eflags shadow propagation */
+void
+eflags_test(void)
+{
+    char *undef = (char *) malloc(16);
+    printf("before eflags test\n");
+#ifdef WINDOWS
+    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
+    __asm {
+        mov   edi, undef
+        mov   ecx, dword ptr [4 + edi]
+        add   ecx, eax
+        adc   ecx, 0
+        cmovb ecx, ebx /* error: cmovcc is a cmp for -check_cmps */
+        mov   ecx, dword ptr [8 + edi]
+        sub   ecx, 1
+        sbb   ecx, ecx
+        jb    eflags_test_label1 /* error: eflags prop through sbb (PR 425622) */
+      eflags_test_label1:
+        mov   ecx, dword ptr [12 + edi]
+        sub   ecx, 1
+        setb  cl
+        cmp   cl, 4 /* error: eflags prop through setcc (PR 408552) */
+    }
+#else
+    asm("mov   %0, %%edi" : : "g"(undef) : "edi");
+    asm("mov   4(%edi), %ecx");
+    asm("add   %eax, %ecx");
+    asm("adc   $0, %ecx");
+    asm("cmovb %ebx, %ecx"); /* error: cmovcc is a cmp for -check_cmps */
+    asm("mov   8(%edi), %ecx");
+    asm("sub   $1, %ecx");
+    asm("sbb   %ecx, %ecx");
+    asm("jb    eflags_test_label1"); /* error: eflags prop through sbb (PR 425622) */
+    asm("eflags_test_label1:");
+    asm("mov   12(%edi), %ecx");
+    asm("sub   $1, %ecx");
+    asm("setb  %cl");
+    asm("cmp   $4, %cl"); /* error: eflags prop through setcc (PR 408552) */
+#endif
+    printf("after eflags test\n");
+    free(undef);
+}
+
 int
 main()
 {
@@ -185,5 +344,13 @@ main()
 #endif
 
     regtest();
+
+    /* test sub-dword w/ part of dword undef */
+    subdword_test();
+
+    repstr_test();
+
+    eflags_test();
+
     return 0;
 }

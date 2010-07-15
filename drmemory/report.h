@@ -59,7 +59,8 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
                       dr_mcontext_t *mc);
 
 void
-report_invalid_free(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc);
+report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
+                        const char *routine);
 
 void
 report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg);

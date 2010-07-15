@@ -33,11 +33,11 @@ all done
 :::Dr.Memory:::       0 unique,     0 total unaddressable access(es)
 :::Dr.Memory:::       0 unique,     0 total uninitialized access(es)
 !if WINDOWS
-:::Dr.Memory:::       2 unique,     2 total invalid free(s)
+:::Dr.Memory:::       2 unique,     2 total invalid heap argument(s)
 :::Dr.Memory:::       1 unique,     1 total warning(s)
 !endif
 !if UNIX
-:::Dr.Memory:::       1 unique,     1 total invalid free(s)
+:::Dr.Memory:::       1 unique,     1 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 !endif
 :::Dr.Memory:::       2 unique,     2 total,     59 byte(s) of leak(s)

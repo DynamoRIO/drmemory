@@ -179,9 +179,9 @@ typedef struct _drmemory_options_t {
     uint num_spill_slots;
 
     /* whether to suppress instrumentation (vs dynamic exceptions) for heap code
-     * PR 408526: this is unsafe and should not be used!
+     * PR 578892: this is now done dynamically and is pretty safe
      */
-    bool ignore_heap_refs;
+    bool check_ignore_unaddr;
 
     /* PR 456181/PR 457001: on some filesystems we can't create a file per
      * thread, so we support sending everything to the global log.
@@ -246,6 +246,9 @@ typedef struct _drmemory_options_t {
      * match any of these ,-separated names (PR 574018)
      */
     char prctl_whitelist[MAXIMUM_PATH];
+
+    /* PR 580123: add fastpath for rep string instrs by converting to normal loop */
+    bool repstr_to_loop;
 
 #ifdef TOOL_DR_HEAPSTAT
 

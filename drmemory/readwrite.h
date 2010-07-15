@@ -29,6 +29,9 @@
 #include "fastpath.h"
 #include "callstack.h" /* for app_loc_t */
 
+/* there is no REG_EFLAGS so we use the REG_INVALID sentinel */
+#define REG_EFLAGS REG_INVALID
+
 /* we only need a little over 2 pages for whole_bb_spills_enabled(): could get
  * onto 2 pages by not emitting SPILL_REG_NONE.
  * -no_single_arg_slowpath needs only 10 pages.
@@ -65,6 +68,11 @@ enum {
 #ifdef STATISTICS
 /* per-opcode counts */
 extern uint64 slowpath_count[OP_LAST+1];
+extern uint64 slowpath_sz1;
+extern uint64 slowpath_sz2;
+extern uint64 slowpath_sz4;
+extern uint64 slowpath_sz8;
+extern uint64 slowpath_szOther;
 /* FIXME: make generalized stats infrastructure */
 extern uint slowpath_executions;
 extern uint read_slowpath;
@@ -90,7 +98,6 @@ extern uint strmem_unaddr_exception;
 extern uint strrchr_exception;
 extern uint andor_exception;
 extern uint loader_DRlib_exception;
-extern uint heap_func_ref_ignored;
 extern uint reg_dead;
 extern uint reg_xchg;
 extern uint reg_spill;

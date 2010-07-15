@@ -55,7 +55,7 @@ uint push_addressable_mmap;
 /* number of swap triggers that aren't really swaps before we increase
  * the swap threshold
  */
-#define MAX_NUMBER_NON_SWAPS 32
+#define MAX_NUMBER_NON_SWAPS 16
 
 /* we use the stack_swap_threshold for other parts of the code like
  * callstacks and Ki handling so don't let it get too small:
@@ -254,8 +254,8 @@ typedef enum {
     ESP_ADJUST_NEGATIVE,
     ESP_ADJUST_POSITIVE,
     ESP_ADJUST_RET_IMMED, /* positive, but after a pop */
-    ESP_ADJUST_FAST_LAST = ESP_ADJUST_RET_IMMED,
     ESP_ADJUST_AND, /* and with a mask */
+    ESP_ADJUST_FAST_LAST = ESP_ADJUST_AND, /* we only support and w/ immed in fastpath */
     ESP_ADJUST_INVALID,
 } esp_adjust_t;
 
@@ -676,6 +676,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         absolute = true;
         if (opnd_is_reg(arg) && opnd_uses_reg(arg, REG_ESP))
             arg = instr_get_src(inst, 1);
+    } else if (opc == OP_and && opnd_is_immed_int(arg)) {
+        absolute = true;
     } else {
         return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi);
     }
@@ -740,6 +742,11 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst, INSTR_CREATE_lea(drcontext, opnd_create_reg(reg_mod), arg));
         ASSERT(!negate, "esp adjust OP_lea error");
         ASSERT(type == ESP_ADJUST_ABSOLUTE, "esp adjust OP_lea error");
+    } else if (opc == OP_and) {
+        PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg_mod),
+                                          opnd_create_reg(REG_XSP)));
+        /* app is about to execute and, so flags are dead */
+        PRE(bb, inst, INSTR_CREATE_and(drcontext, opnd_create_reg(reg_mod), arg));
     } else if (opnd_is_immed_int(arg)) {
         if (negate) {
             /* PR 416446: can't use opnd_get_size(arg) since max negative is
@@ -772,7 +779,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg1.reg),
                                 opnd_create_reg(REG_XSP)));
         ASSERT(type != ESP_ADJUST_RET_IMMED, "ret ignored for -leaks_only");
-        if (type != ESP_ADJUST_ABSOLUTE) {
+        if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_AND) {
             /* calculate the end of the loop */
             PRE(bb, inst,
                 INSTR_CREATE_add(drcontext, opnd_create_reg(reg_mod),
@@ -786,7 +793,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
         /* now we know we're decreasing stack addresses, so start zeroing
          * my intution says impact on scratch regs (#, flexibility) of rep stos
-         * makes this loop preferable even if slightly bigger instru
+         * and not having to preserve df makes this loop preferable
+         * even if slightly bigger instru
          */
         PRE(bb, inst, loop_repeat);
         PRE(bb, inst,
@@ -831,6 +839,9 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     return true;
 }
 
+/* Note that handle_special_shadow_fault() makes assumptions about the exact
+ * instr sequence here so it can find the slowpath entry point
+ */
 static void
 generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
                                     bool eflags_live, esp_adjust_t type)
@@ -865,10 +876,12 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* save the 2 args for retrieval at end */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()+1), opnd_create_reg(REG_ECX)));
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()+1),
+         opnd_create_reg(REG_ECX))); /* holds delta or abs val */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()), opnd_create_reg(REG_EDX)));
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()),
+         opnd_create_reg(REG_EDX))); /* holds retaddr */
 
     if (eflags_live)
         insert_save_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
@@ -884,7 +897,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     }
 
     /* for absolute, calculate the delta */
-    if (type == ESP_ADJUST_ABSOLUTE) {
+    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_AND/*abs passed to us*/) {
         PRE(bb, NULL,
             INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
                              opnd_create_reg(mi.reg1.reg)));
@@ -923,19 +936,32 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg), OPND_CREATE_INT8(4)));
     PRE(bb, NULL, shadow_lookup);
     mi.memsz = 4;
+    /* for looping back through the xl8 addr is not REG_ESP so we must store it.
+     * we don't have a free scratch reg so we use a DR slot.
+     */
+    spill_reg(drcontext, bb, NULL, mi.reg1.reg, esp_spill_slot_base()+2);
+    /* we don't need a 3rd scratch for the lookup, and we rely on reg3 being preserved */
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
-                            mi.reg1.reg, mi.reg2.reg, mi.reg3.reg);
+                            mi.reg1.reg, mi.reg2.reg, REG_NULL);
+
     /* now addr of shadow byte is in reg1.
      * we want offs within shadow block in reg2: but storing displacement
      * in shadow table (PR 553724) means add_shadow_table_lookup no longer computes
      * the offs so we must compute it ourselves.
-     * rather than re-cmp to decide whether to sub we duplicate the code in
-     * the two loops and sub in the loop_push.
      */
+    restore_reg(drcontext, bb, NULL, mi.reg2.reg, esp_spill_slot_base()+2);
+    /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
+    /* compute offs within shadow block */
     PRE(bb, NULL,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg2.reg),
-                            opnd_create_reg(REG_ESP)));
+        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
+                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
+    PRE(bb, NULL,
+        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
+    /* calculate start of shadow block */
+    PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
+    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
+                                   opnd_create_reg(mi.reg1.reg)));
 
     /* we need separate loops for inc vs dec */
     PRE(bb, NULL,
@@ -951,21 +977,14 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      */
 
     /******* increasing loop *******/
-    /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
-    /* compute offs within shadow block */
-    PRE(bb, NULL,
-        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
-                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
-    PRE(bb, NULL,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
-    /* calculate end of shadow block */
-    PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
-    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
-                                   opnd_create_reg(mi.reg1.reg)));
+    /* calculate end of shadow block: reg2 holds start currently */
     PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
                                    OPND_CREATE_INT32(get_shadow_block_size())));
     /* loop for increasing stack addresses = pop */
     PRE(bb, NULL, loop_pop_repeat);
+    /* I measured cmp-and-store-if-no-match on speck2k gcc and it was
+     * marginally slower so doing a blind store
+     */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
                             OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
@@ -1006,35 +1025,39 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
             INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg1.reg),
                              OPND_CREATE_INT8(4)));
     }
-    PRE(bb, NULL,
-        INSTR_CREATE_add
-        (drcontext, opnd_create_reg(mi.reg1.reg),
-         spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+    if (type == ESP_ADJUST_ABSOLUTE) {
+        /* TLS slot holds abs esp so re-compute orig delta */
+        PRE(bb, NULL,
+            INSTR_CREATE_mov_ld
+            (drcontext, opnd_create_reg(mi.reg2.reg),
+             spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+        PRE(bb, NULL,
+            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg),
+                             opnd_create_reg(mi.reg1.reg)));
+        PRE(bb, NULL,
+            INSTR_CREATE_add
+            (drcontext, opnd_create_reg(mi.reg1.reg), opnd_create_reg(mi.reg2.reg)));
+    } else {
+        PRE(bb, NULL,
+            INSTR_CREATE_add
+            (drcontext, opnd_create_reg(mi.reg1.reg),
+             spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+    }
     PRE(bb, NULL,
         INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg),
                          opnd_create_reg(mi.reg3.reg)));
     PRE(bb, NULL, INSTR_CREATE_jmp_short(drcontext,
                                          opnd_create_instr(loop_shadow_lookup)));
 
-
     /******* decreasing loop *******/
     PRE(bb, NULL, loop_push);
-    /* FIXME: if we aligned shadow blocks to 16K we could simplify this block-end calc */
-    /* compute offs within shadow block */
-    PRE(bb, NULL,
-        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(4)));
-    PRE(bb, NULL,
-        INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
-                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
-    PRE(bb, NULL,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
-    /* calculate start of shadow block */
-    PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(mi.reg2.reg)));
-    PRE(bb, NULL, INSTR_CREATE_add(drcontext, opnd_create_reg(mi.reg2.reg),
-                                   opnd_create_reg(mi.reg1.reg)));
+    /* start of shadow block is in reg2, shadow addr is in reg1, count is in reg3 */
     /* loop for decreasing stack addresses = push */
     PRE(bb, NULL, loop_push_repeat);
     /* we decremented xsp pre-xl8 so store before dec */
+    /* I measured cmp-and-store-if-no-match on speck2k gcc and it was
+     * marginally slower so doing a blind store
+     */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM8(mi.reg1.reg, 0),
                             OPND_CREATE_INT8((char)SHADOW_DWORD_UNDEFINED)));

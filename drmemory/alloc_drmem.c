@@ -340,11 +340,11 @@ client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end)
 }
 
 void
-client_invalid_free(app_pc pc, app_pc target, dr_mcontext_t *mc)
+client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine)
 {
     app_loc_t loc;
     pc_to_loc(&loc, pc);
-    report_invalid_free(&loc, target, mc);
+    report_invalid_heap_arg(&loc, target, mc, routine);
 }
 
 void

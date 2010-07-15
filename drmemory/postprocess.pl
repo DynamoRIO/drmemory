@@ -110,13 +110,13 @@ my $drmem_disabled = 0;
 # Tie::IxHash is not a standard module so we do it the hard way
 @err_type_keys = ("UNADDRESSABLE ACCESS",
                   "UNINITIALIZED READ",
-                  "INVALID FREE",
+                  "INVALID HEAP ARGUMENT",
                   "WARNING",
                   "LEAK",
                   "POSSIBLE LEAK");
 %err_types = ("UNADDRESSABLE ACCESS" => "unaddressable access(es)",
               "UNINITIALIZED READ"   => "uninitialized access(es)",
-              "INVALID FREE"         => "invalid free(s)",
+              "INVALID HEAP ARGUMENT"=> "invalid heap argument(s)",
               "WARNING"              => "warning(s)",
               "LEAK"                 => "leak(s)",
               "POSSIBLE LEAK"        => "possible leak(s)");
@@ -709,7 +709,7 @@ sub parse_error($arr_ref, $err_str)
         # We must include all the text after the error type to match
         # the client's output for online syms (xref PR 540913)
         if ($line =~ /^Error #\s*(\d+)+: (UN\w+\s+\w+)(:.*)$/ ||
-            $line =~ /^Error #\s*(\d+)+: (INVALID FREE)(:.*)$/ ||
+            $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (REPORTED WARNING:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+ byte.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+ byte.*)$/) {
@@ -722,7 +722,7 @@ sub parse_error($arr_ref, $err_str)
             $error{"modoffs"} = [];
             $supp .= "$2\n";
             if ($line =~ /^Error #\s*\d+: UN\w+\s+\w+:/ ||
-                $line =~ /^Error #\s*\d+: INVALID FREE:/ ||
+                $line =~ /^Error #\s*\d+: INVALID HEAP ARGUMENT:/ ||
                 $line =~ /^Error #\s*\d+: REPORTED WARNING:/) {
                 if ($line =~ /^Error #\s*\d+: REPORTED WARNING:\s+(.*)$/) {
                     # strip the REPORTED from the msg
@@ -730,8 +730,7 @@ sub parse_error($arr_ref, $err_str)
                     $error{"type"} = "WARNING";
                 }
             } elsif ($line =~ /^Error #\s*\d+: LEAK/ || 
-                     $line =~ /^Error #\s*\d+: POSSIBLE LEAK/ ||
-                     $line =~ /^Error #\s*\d+: INVALID/) {
+                     $line =~ /^Error #\s*\d+: POSSIBLE LEAK/) {
                 # nothing else for now
             } else {
                 die "Unrecognized error type: $line";
@@ -1509,7 +1508,7 @@ sub is_line_start_of_error($line)
     my ($line) = @_;
     if ($line =~ /^Error #\s*\d+: (UNADDRESSABLE ACCESS)/ ||
         $line =~ /^Error #\s*\d+: (UNINITIALIZED READ)/ ||
-        $line =~ /^Error #\s*\d+: (INVALID FREE)/ ||
+        $line =~ /^Error #\s*\d+: (INVALID HEAP ARGUMENT)/ ||
         $line =~ /^Error #\s*\d+: REPORTED (WARNING)/ ||
         $line =~ /^Error #\s*\d+: (LEAK)/ ||
         $line =~ /^Error #\s*\d+: (POSSIBLE LEAK)/) {
@@ -1528,7 +1527,7 @@ sub is_line_start_of_suppression($line)
     my ($line) = @_;
     if ($line =~ /^(UNADDRESSABLE ACCESS)/ ||
         $line =~ /^(UNINITIALIZED READ)/ ||
-        $line =~ /^(INVALID FREE)/ ||
+        $line =~ /^(INVALID HEAP ARGUMENT)/ ||
         $line =~ /^REPORTED (WARNING)/ ||
         $line =~ /^(LEAK)/ ||
         $line =~ /^(POSSIBLE LEAK)/) {

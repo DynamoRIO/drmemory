@@ -210,6 +210,9 @@ opnd_create_shadow_reg_slot(reg_id_t reg);
 opnd_t
 opnd_create_shadow_eflags_slot(void);
 
+opnd_t
+opnd_create_shadow_inheap_slot(void);
+
 #ifdef LINUX
 opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz);
@@ -232,6 +235,9 @@ get_shadow_eflags(void);
 
 void
 set_shadow_eflags(uint val);
+
+void
+set_shadow_inheap(uint val);
 
 bool
 is_shadow_register_defined(byte val);

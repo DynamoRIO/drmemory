@@ -43,33 +43,38 @@
 #endif
 
 static int *int_p;
+static int forcond;
 
-static int uninit_test1(int *val_p)
+static void uninit_test1(int *val_p)
 {
     int x = 1;
     printf("testing uninitialized access\n");
-    return (*val_p & x) ? 1 : 0;
+    if (*val_p & x)
+        forcond = 1;
 }
 
-static int uninit_test2(int *val_p)
+static void uninit_test2(int *val_p)
 {
     int x = 1;
     printf("testing uninitialized access\n");
-    return (*val_p & x) ? 1 : 0;
+    if (*val_p & x)
+        forcond = 1;
 }
 
-static int uninit_test3(int *val_p)
+static void uninit_test3(int *val_p)
 {
     int x = 1;
     printf("testing uninitialized access\n");
-    return (*val_p & x) ? 1 : 0;
+    if (*val_p & x)
+        forcond = 1;
 }
 
-static int uninit_test4(int *val_p)
+static void uninit_test4(int *val_p)
 {
     int x = 1;
     printf("testing uninitialized access\n");
-    return (*val_p & x) ? 1 : 0;
+    if (*val_p & x)
+        forcond = 1;
 }
 
 static int unaddr_test1(int *val_p)

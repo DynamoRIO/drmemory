@@ -75,7 +75,8 @@ void
 alloc_exit(void);
 
 void
-alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst);
+alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
+                 bool *entering_alloc, bool *exiting_alloc);
 
 bool
 alloc_syscall_filter(void *drcontext, int sysnum);
@@ -227,7 +228,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                    _IF_WINDOWS(app_pc *heap INOUT));
 
 void
-client_invalid_free(app_pc pc, app_pc target, dr_mcontext_t *mc);
+client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine);
 
 void
 client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon);
@@ -264,5 +265,11 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt);
 
 void
 client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt);
+
+void
+client_entering_heap_routine(void);
+
+void
+client_exiting_heap_routine(void);
 
 #endif /* _ALLOC_H_ */

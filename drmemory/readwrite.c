@@ -55,6 +55,12 @@ hashtable_t xl8_sharing_table;
 #ifdef STATISTICS
 /* per-opcode counts */
 uint64 slowpath_count[OP_LAST+1];
+/* per-opsz counts */
+uint64 slowpath_sz1;
+uint64 slowpath_sz2;
+uint64 slowpath_sz4;
+uint64 slowpath_sz8;
+uint64 slowpath_szOther;
 
 /* PR 423757: periodic stats dump */
 uint next_stats_dump;
@@ -528,6 +534,49 @@ opc_is_stringop(uint opc)
             opc == OP_cmps || opc == OP_scas || opc == OP_scas);
 }
 
+static instr_t *
+create_nonloop_stringop(void *drcontext, instr_t *inst)
+{
+    instr_t *res;
+    int nsrc = instr_num_srcs(inst);
+    int ndst = instr_num_dsts(inst);
+    uint opc = instr_get_opcode(inst);
+    int i;
+    ASSERT(opc_is_stringop_loop(opc), "invalid param");
+    switch (opc) {
+    case OP_rep_ins:    opc = OP_ins; break;;
+    case OP_rep_outs:   opc = OP_outs; break;;
+    case OP_rep_movs:   opc = OP_movs; break;;
+    case OP_rep_stos:   opc = OP_stos; break;;
+    case OP_rep_lods:   opc = OP_lods; break;;
+    case OP_rep_cmps:   opc = OP_cmps; break;;
+    case OP_repne_cmps: opc = OP_cmps; break;;
+    case OP_rep_scas:   opc = OP_scas; break;;
+    case OP_repne_scas: opc = OP_scas; break;;
+    default: ASSERT(false, "not a stringop loop opcode"); return NULL;
+    }
+    res = instr_build(drcontext, opc, ndst - 1, nsrc - 1);
+    /* We assume xcx is last src and last dst */
+    ASSERT(opnd_is_reg(instr_get_src(inst, nsrc - 1)) &&
+           opnd_uses_reg(instr_get_src(inst, nsrc - 1), REG_XCX),
+           "rep opnd order assumption violated");
+    ASSERT(opnd_is_reg(instr_get_dst(inst, ndst - 1)) &&
+           opnd_uses_reg(instr_get_dst(inst, ndst - 1), REG_XCX),
+           "rep opnd order assumption violated");
+    for (i = 0; i < nsrc - 1; i++)
+        instr_set_src(res, i, instr_get_src(inst, i));
+    for (i = 0; i < ndst - 1; i++)
+        instr_set_dst(res, i, instr_get_dst(inst, i));
+    instr_set_translation(res, instr_get_app_pc(inst));
+    return res;
+}
+
+static bool
+opc_is_loop(uint opc)
+{
+    return (opc == OP_jecxz || opc == OP_loop || opc == OP_loope || opc == OP_loopne);
+}
+
 static bool
 opc_is_move(uint opc)
 {
@@ -727,6 +776,7 @@ always_check_definedness(instr_t *inst, int opnum)
 {
     uint opc = instr_get_opcode(inst);
     return ((opc == OP_leave && opnum == 0) /* ebp */ ||
+            /* count of loop is important: check it */
             (opc_is_stringop_loop(opc) && opnd_is_reg(instr_get_src(inst, opnum)) &&
              reg_overlap(opnd_get_reg(instr_get_src(inst, opnum)), REG_ECX)) ||
             /* always check %cl.  FIXME PR 408549: Valgrind propagates it (if undefined,
@@ -742,11 +792,15 @@ instr_check_definedness(instr_t *inst)
 {
     uint opc = instr_get_opcode(inst);
     return 
+        /* always check conditional jumps */
+        instr_is_cbr(inst) ||
         (options.check_non_moves && !opc_is_move(opc)) ||
         (options.check_cmps &&
-         /* a compare writes eflags but nothing else */
-         (instr_num_dsts(inst) == 0 &&
-          TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) ||
+         /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc */
+         ((instr_num_dsts(inst) == 0 &&
+           TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) ||
+          opc_is_loop(opc) || opc_is_cmovcc(opc) || opc_is_fcmovcc(opc) ||
+          opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps)) ||
         /* if eip is a destination we have to check the corresponding
          * source.  for ret or call, the other dsts/srcs are just esp, which
          * has to be checked as an addressing register anyway. */
@@ -772,9 +826,8 @@ result_is_always_defined(instr_t *inst)
      *   - and with 0
      *   - or with ~0
      *   - xor with self
-     *   - sbb with self (PR 425498): though we can only put this here b/c
-     *     we haven't yet done PR 425622, since sbb-with-self's result
-     *     should be equal to the eflags shadow, not blindly defined: FIXME
+     *   - sbb with self (PR 425498): now handled via num_true_srcs since must
+     *     propagate eflags (PR 425622)
      */
     int opc = instr_get_opcode(inst);
     /* Though our general non-const per-byte 0/1 checking would cover this,
@@ -790,8 +843,6 @@ result_is_always_defined(instr_t *inst)
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          opnd_get_immed_int(instr_get_src(inst, 0)) == ~0) ||
         (opc == OP_xor &&
-         opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1))) ||
-        (opc == OP_sbb &&
          opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))) {
         STATS_INC(andor_exception);
         return true;
@@ -848,7 +899,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
         /* FIXME PR 406535: verify there's no chance of a true positive */
         static const byte RAWMEMCHR_PATTERN[9] =
             {0xbf, 0xff, 0xfe, 0xfe, 0xfe, 0x31, 0xd1, 0x01, 0xcf};
-        if (reg == REG_INVALID /* code for eflags */ &&
+        if (reg == REG_EFLAGS &&
             (instr_get_opcode(&inst) == OP_jnb ||
              instr_get_opcode(&inst) == OP_jnb_short) &&
             /* FIXME: use safe_read into a buffer instead */
@@ -891,7 +942,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     /* we stop prior to the mov-imm opcode since it varies */
     static const byte STR_ROUTINE_PATTERN[5] =
         {0xff, 0xfe, 0xfe, 0xfe, 0x01};
-    if (reg == REG_INVALID /* code for eflags */ &&
+    if (reg == REG_EFLAGS &&
         (instr_get_opcode(&inst) == OP_jnb ||
          instr_get_opcode(&inst) == OP_jnb_short) &&
         dr_memory_is_readable(pc - skip - sizeof(STR_ROUTINE_PATTERN),
@@ -936,7 +987,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     static const byte STRRCHR_PATTERN_2[7] =
         {0x81, 0xca, 0xff, 0xfe, 0xfe, 0xfe, 0x42};
     ASSERT(sizeof(STRRCHR_PATTERN_1) == sizeof(STRRCHR_PATTERN_2), "size changed");
-    if (reg == REG_INVALID /* code for eflags */ &&
+    if (reg == REG_EFLAGS &&
         /* I've seen OP_je_short as well (in esxi glibc) => allowing any jcc */
         instr_is_cbr(&inst) &&
         dr_memory_is_readable(pc - sizeof(STRRCHR_PATTERN_1),
@@ -1252,7 +1303,7 @@ integrate_register_shadow(instr_t *inst, int opnum,
                           reg_id_t reg, uint shadow, bool pushpop)
 {
     uint shift = 0;
-    uint regsz = opnd_size_in_bytes(reg_get_size(reg));
+    uint regsz = (reg == REG_EFLAGS) ? 1 : opnd_size_in_bytes(reg_get_size(reg));
     int opc = instr_get_opcode(inst);
     /* PR 426162: ignore stack register source if instr also has memref
      * using same register as addressing register, since memref will do a
@@ -1368,21 +1419,6 @@ register_shadow_mark_defined(reg_id_t reg)
 }
 #endif /* TOOL_DR_MEMORY */
 
-static bool
-should_ignore_heap_refs(per_thread_t *pt, app_pc pc)
-{
-#ifdef TOOL_DR_HEAPSTAT
-    /* FIXME: should never get here: need cleaner way of sharing code */
-    ASSERT(false, "not a heapstat func");
-    return false;
-#else
-    return (options.ignore_heap_refs && 
-            pt->in_heap_routine > 0 &&
-            IF_WINDOWS_ELSE(pc > ntdll_base && pc < ntdll_end,
-                            pc > libc_base && pc < libc_end));
-#endif
-}
-
 /* PR 530902: cmovcc should ignore src+dst unless eflags matches.  For both
  * cmovcc and fcmovcc we treat an unmatched case as though the source and
  * dest do not exist: certainly source should not propagate to dest, whether
@@ -1403,6 +1439,11 @@ num_true_srcs(instr_t *inst, dr_mcontext_t *mc)
         if (!instr_cmovcc_triggered(inst, mc->xflags))
             return 0;
     }
+    /* sbb with self should consider all srcs except eflags defined (thus can't
+     * be in result_is_always_defined) (PR 425498, PR 425622)
+     */
+    if (opc == OP_sbb && opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))
+        return 0;
     return instr_num_srcs(inst);
 }
 
@@ -1419,13 +1460,12 @@ num_true_dsts(instr_t *inst, dr_mcontext_t *mc)
 }
 
 /* Does everything in C code, except for handling non-push/pop writes to esp 
- * FIXME: pass in ignore_heap: right now we bounce out to the exception check
  */
 bool
 slow_path(app_pc pc, app_pc decode_pc)
 {
     void *drcontext = dr_get_current_drcontext();
-#if defined(TOOL_DR_MEMORY) || defined(DEBUG)
+#ifdef DEBUG
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #endif
     dr_mcontext_t mc;
@@ -1442,7 +1482,6 @@ slow_path(app_pc pc, app_pc decode_pc)
      */
     uint shadow_vals[OPND_SHADOW_ARRAY_LEN];
     bool check_definedness, pushpop, pushpop_stackop, src_undef = false;
-    bool ignore_heap = false;
     bool check_srcs_after;
     opnd_t memop = opnd_create_null();
 #endif
@@ -1514,10 +1553,43 @@ slow_path(app_pc pc, app_pc decode_pc)
     ASSERT(instr_valid(&inst), "invalid instr");
     opc = instr_get_opcode(&inst);
 
+#ifdef STATISTICS
     STATS_INC(slowpath_count[opc]);
-    LOG(3, "\nslow_path "PFX": ", pc);
-    DOLOG(3, { instr_disassemble(drcontext, &inst, pt->f); });
-    LOG(3, "\n");
+    {
+        opnd_size_t sz;
+        if (instr_num_dsts(&inst) > 0 &&
+            !opnd_is_pc(instr_get_dst(&inst, 0)) &&
+            !opnd_is_instr(instr_get_dst(&inst, 0)))
+            sz = opnd_get_size(instr_get_dst(&inst, 0));
+        else if (instr_num_srcs(&inst) > 0 &&
+                 !opnd_is_pc(instr_get_src(&inst, 0)) &&
+                 !opnd_is_instr(instr_get_src(&inst, 0)))
+            sz = opnd_get_size(instr_get_src(&inst, 0));
+        else
+            sz = OPSZ_0;
+        if (sz == OPSZ_1)
+            STATS_INC(slowpath_sz1);
+        else if (sz == OPSZ_2)
+            STATS_INC(slowpath_sz2);
+        else if (sz == OPSZ_4)
+            STATS_INC(slowpath_sz4);
+        else if (sz == OPSZ_8)
+            STATS_INC(slowpath_sz8);
+        else
+            STATS_INC(slowpath_szOther);
+    }
+#endif
+
+    DOLOG(3, { 
+        LOG(3, "\nslow_path "PFX": ", pc);
+        instr_disassemble(drcontext, &inst, pt->f);
+        if (instr_num_dsts(&inst) > 0 &&
+            opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
+            LOG(3, " | 0x%x",
+                shadow_get_byte(opnd_compute_address(instr_get_dst(&inst, 0), &mc)));
+        }
+        LOG(3, "\n");
+    });
 
 #ifdef TOOL_DR_HEAPSTAT
     return slow_path_for_staleness(drcontext, &mc, &inst, &loc);
@@ -1561,17 +1633,12 @@ slow_path(app_pc pc, app_pc decode_pc)
     /* Initialize to defined so we can aggregate operands as we go.
      * This works with no-source instrs (rdtsc, etc.)
      * This also makes small->large work out w/o any special processing
-     * (movsz, movzx): but FIXME: are there any src/dst size
+     * (movsz, movzx, cwde, etc.): but FIXME: are there any src/dst size
      * mismatches where we do NOT want to set dst bytes beyond count
      * of src bytes to defined?
      */
     for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
         shadow_vals[i] = SHADOW_DEFINED;
-
-    if (should_ignore_heap_refs(pt, pc)) {
-        LOG(2, "ignoring heap refs for in-heap %d pc "PFX"\n", pt->in_heap_routine, pc);
-        ignore_heap = true;
-    }
 
     num_srcs = (IF_WINDOWS_ELSE(opc == OP_sysenter, false)) ? 1 :
         ((opc == OP_lea) ? 2 : num_true_srcs(&inst, &mc));
@@ -1609,10 +1676,6 @@ slow_path(app_pc pc, app_pc decode_pc)
              */
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            else if (ignore_heap) {
-                STATS_INC(heap_func_ref_ignored);
-                continue;
-            }
             /* handle_mem_ref calls result_is_always_defined() from
              * check_undefined_exceptions() so we don't call it here
              */
@@ -1667,6 +1730,24 @@ slow_path(app_pc pc, app_pc decode_pc)
         });
     }
 
+    /* eflags source */
+    if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst))) {
+        uint shadow = get_shadow_eflags();
+        if (result_is_always_defined(&inst)) {
+            /* if result defined regardless, don't propagate (is
+             * equivalent to propagating SHADOW_DEFINED) or check */
+        } else if (check_definedness) {
+            check_register_defined(drcontext, REG_EFLAGS, &loc, 1, &mc);
+        } else {
+            /* See above: we only propagate when not checking */
+            integrate_register_shadow
+                (&inst, 0, 
+                 /* do not combine srcs if checking after */
+                 check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
+                 REG_EFLAGS, shadow, pushpop);
+        }
+    }
+
     if (check_srcs_after && !check_definedness/*avoid recursing after goto below*/) {
         /* turn back on for dsts */
         check_definedness = instr_check_definedness(&inst);
@@ -1681,24 +1762,6 @@ slow_path(app_pc pc, app_pc decode_pc)
             for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
                 shadow_vals[i] = SHADOW_DEFINED;
             goto check_srcs;
-        }
-    }
-
-    if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst))) {
-        /* FIXME PR 425622: we're not propagating eflags shadow info
-         * at all: e.g., for sbb it should flow into the register
-         * shadow state.  For now we report error on any undefined
-         * eflags read, regardless of -check_cmps.  Fastpath bails to
-         * slowpath on undefined eflags.
-         */
-        if (!is_shadow_register_defined(get_shadow_eflags())) {
-            /* there is no REG_EFLAGS so pass REG_INVALID */
-#ifdef TOOL_DR_MEMORY /* really should be around entire routine(s) */
-            if (!check_undefined_reg_exceptions(drcontext, &loc, REG_INVALID, &mc))
-                report_undefined_read(&loc, (app_pc)REG_INVALID, 1, NULL, NULL, &mc);
-#endif
-            /* now reset to avoid complaining on every branch from here on out */
-            set_shadow_eflags(SHADOW_DWORD_DEFINED);
         }
     }
 
@@ -1717,10 +1780,6 @@ slow_path(app_pc pc, app_pc decode_pc)
             opnd = adjust_memop(&inst, opnd, true, &sz, &pushpop_stackop);
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            else if (ignore_heap) {
-                STATS_INC(heap_func_ref_ignored);
-                continue;
-            }
             if (check_definedness) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
                 /* since checking, we mark as SHADOW_DEFINED (see above) */
@@ -1753,8 +1812,8 @@ slow_path(app_pc pc, app_pc decode_pc)
     /* call this last after freeing inst in case it does a synchronous flush */
     slow_path_xl8_sharing(&loc, instr_sz, memop, &mc);
 
-    DOLOG(3, {
-        if (!options.single_arg_slowpath) {
+    DOLOG(4, {
+        if (!options.single_arg_slowpath && pc == decode_pc/*else retpc not in tls3*/) {
             /* Test translation when have both args */
             /* we want the ultimate target, not whole_bb_spills_enabled()'s
              * SPILL_SLOT_5 intermediate target
@@ -1766,7 +1825,13 @@ slow_path(app_pc pc, app_pc decode_pc)
             cpt->self_translating = true;
             xl8 = dr_app_pc_from_cache_pc(ret_pc);
             cpt->self_translating = false;
-            ASSERT(xl8 == pc, "xl8 doesn't match");
+            LOG(3, "translation test: cache="PFX", orig="PFX", xl8="PFX"\n",
+                ret_pc, pc, xl8);
+            ASSERT(xl8 == pc || 
+                   /* for repstr_to_loop we pass one byte in */
+                   (options.repstr_to_loop && opc_is_stringop(opc) &&
+                    (*xl8 == 0xf2 || *xl8 == 0xf3)),
+                   "xl8 doesn't match");
         }
     });
 
@@ -1774,18 +1839,30 @@ slow_path(app_pc pc, app_pc decode_pc)
 #endif /* !TOOL_DR_HEAPSTAT */
 }
 
+static app_pc
+instr_shared_slowpath_decode_pc(instr_t *inst)
+{
+    if (!options.shared_slowpath)
+        return NULL;
+    if (instr_get_note(inst) != NULL)
+        return (app_pc) instr_get_note(inst);
+    if (instr_get_app_pc(inst) == instr_get_raw_bits(inst))
+        return instr_get_app_pc(inst);
+    return NULL;
+}
+
 bool
 instr_can_use_shared_slowpath(instr_t *inst)
 {
-    return (options.shared_slowpath &&
-            instr_get_app_pc(inst) == instr_get_raw_bits(inst));
+    return (instr_shared_slowpath_decode_pc(inst) != NULL);
 }
 
 void
 instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi)
 {
-    if (instr_can_use_shared_slowpath(inst)) {
+    app_pc decode_pc = instr_shared_slowpath_decode_pc(inst);
+    if (decode_pc != NULL) {
         /* Since the clean call instr sequence is quite long we share
          * it among all bbs.  Rather than switch to a clean stack we jmp
          * there and jmp back.  Since we don't nest we can get away
@@ -1803,7 +1880,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_mov_imm(drcontext,
                                      spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                     OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
+                                     OPND_CREATE_INTPTR(decode_pc)));
             /* FIXME: this hardcoded address will be wrong if this
              * fragment is shifted, or copied into a trace is created =>
              * requires -disable_traces (or registering for trace event)
@@ -1891,7 +1968,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                          (r1 == SPILL_REG_NONE) ?
                                          spill_slot_opnd(drcontext, SPILL_SLOT_1) :
                                          opnd_create_reg(s1->reg),
-                                         OPND_CREATE_INTPTR(instr_get_app_pc(inst))));
+                                         OPND_CREATE_INTPTR(decode_pc)));
                 PRE(bb, inst,
                     INSTR_CREATE_mov_imm(drcontext, 
                                          (r2 == SPILL_REG_NONE) ?
@@ -2698,19 +2775,150 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
                        dr_mcontext_t *mc)
 {
 #ifdef TOOL_DR_MEMORY
-    if (!is_shadow_register_defined(get_shadow_register(reg))) {
+    uint shadow = (reg == REG_EFLAGS) ? get_shadow_eflags() : get_shadow_register(reg);
+    if (!is_shadow_register_defined(shadow)) {
         if (!check_undefined_reg_exceptions(drcontext, loc, reg, mc)) {
             /* FIXME: report which bytes within reg via container params? */
             report_undefined_read(loc, (app_pc)(ptr_int_t)reg, sz, NULL, NULL, mc);
-            /* Set to defined to avoid duplicate errors */
-            register_shadow_mark_defined(reg);
+            if (reg == REG_EFLAGS) {
+                /* now reset to avoid complaining on every branch from here on out */
+                set_shadow_eflags(SHADOW_DWORD_DEFINED);
+            } else {
+                /* Set to defined to avoid duplicate errors */
+                register_shadow_mark_defined(reg);
+            }
         }
     }
     /* check again, since exception may have marked as defined */
-    return is_shadow_register_defined(get_shadow_register(reg));
+    shadow = (reg == REG_EFLAGS) ? get_shadow_eflags() : get_shadow_register(reg);
+    return is_shadow_register_defined(shadow);
 #else
     return true;
 #endif
+}
+
+/* PR 580123: add fastpath for rep string instrs by converting to normal loop */
+static void
+convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
+{
+    instr_t *inst, *next_inst;
+    bool delete_rest = false;
+    uint opc;
+
+    ASSERT(options.repstr_to_loop, "shouldn't be called");
+
+    /* Make a rep string instr be its own bb: the loop is going to
+     * duplicate the tail anyway, and have to terminate at the added cbr.
+     */
+    for (inst = instrlist_first(bb);
+         inst != NULL;
+         inst = next_inst) {
+        next_inst = instr_get_next(inst);
+        opc = instr_get_opcode(inst);
+        if (delete_rest) {
+            instrlist_remove(bb, inst);
+            instr_destroy(drcontext, inst);
+        } else if (opc_is_stringop_loop(opc)) {
+            delete_rest = true;
+            if (inst != instrlist_first(bb)) {
+                instrlist_remove(bb, inst);
+                instr_destroy(drcontext, inst);
+            }
+        }
+    }
+
+    /* Convert to a regular loop if it's the sole instr */
+    inst = instrlist_first(bb);
+    opc = instr_get_opcode(inst);
+    if (opc_is_stringop_loop(opc)) {
+        app_pc xl8 = instr_get_app_pc(inst);
+        opnd_t xcx = instr_get_dst(inst, instr_num_dsts(inst) - 1);
+        instr_t *loop, *pre_loop, *jecxz, *zero, *iter;
+        ASSERT(opnd_uses_reg(xcx, REG_XCX), "rep string opnd order mismatch");
+        ASSERT(inst == instrlist_last(bb), "repstr not alone in bb");
+
+        pre_loop = INSTR_CREATE_label(drcontext);
+        /* hack to handle loop decrementing xcx: simpler if could have 2 cbrs! */
+        zero = INSTR_CREATE_mov_imm(drcontext, xcx,
+                                    opnd_create_immed_int(1, opnd_get_size(xcx)));
+        iter = INSTR_CREATE_label(drcontext);
+
+        /* if xcx is 0 we'll skip ahead and will restore the whole-bb regs
+         * at the bottom of the bb so make sure we save first.
+         * this relies on fastpath_top_of_bb() executing earlier, so once
+         * change to app-to-app before all instru may have to recognize
+         * the meta-jecxz during initial instru.
+         */
+        if (whole_bb_spills_enabled()) {
+            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
+            mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
+            mark_eflags_used(drcontext, bb, bi);
+            /* eflag saving may have clobbered xcx, which we need for jecxz */
+            if (bi->reg1.reg == REG_XCX || bi->reg2.reg == REG_XCX) {
+                insert_spill_global(drcontext, bb, inst,
+                                    (bi->reg1.reg == REG_XCX) ? &bi->reg1 : &bi->reg2,
+                                    false/*restore*/);
+            }
+        }
+
+        /* A rep string instr does check for 0 up front.  DR limits us
+         * to 1 cbr so we have to make a meta cbr.  If ecx is uninit
+         * the loop* will catch it so we're ok not instrumenting this.
+         * I would just jecxz to loop, but w/ instru it can't reach so
+         * I have to add yet more meta-jmps that will execute each
+         * iter.  Grrr.
+         */
+        jecxz = INSTR_CREATE_jecxz(drcontext, opnd_create_instr(zero));
+        /* be sure to match the same counter reg width */
+        instr_set_src(jecxz, 1, xcx);
+        PRE(bb, inst, jecxz);
+        PRE(bb, inst, INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(iter)));
+        PRE(bb, inst, zero);
+        /* if app ecx is spilled must spill the 1 */
+        if (whole_bb_spills_enabled() && bi->reg1.reg == REG_XCX)
+            insert_spill_global(drcontext, bb, inst, &bi->reg1, true/*save*/);
+        if (whole_bb_spills_enabled() && bi->reg2.reg == REG_XCX)
+            insert_spill_global(drcontext, bb, inst, &bi->reg2, true/*save*/);
+        /* target the instrumentation for the loop, not loop itself */
+        PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_instr(pre_loop)));
+        PRE(bb, inst, iter);
+
+        PREXL8(bb, inst, INSTR_XL8(create_nonloop_stringop(drcontext, inst), xl8));
+        /* tell instr_can_use_shared_slowpath() to use past the rep prefix */
+        instr_set_note(instr_get_prev(inst), (void *)(xl8 + 1));
+
+        PRE(bb, inst, pre_loop);
+        if (opc == OP_rep_cmps || opc == OP_rep_scas) {
+            loop = INSTR_CREATE_loope(drcontext, opnd_create_pc(xl8));
+        } else if (opc == OP_repne_cmps || opc == OP_repne_scas) {
+            loop = INSTR_CREATE_loopne(drcontext, opnd_create_pc(xl8));
+        } else {
+            loop = INSTR_CREATE_loop(drcontext, opnd_create_pc(xl8));
+        }
+        /* be sure to match the same counter reg width */
+        instr_set_src(loop, 1, xcx);
+        instr_set_dst(loop, 0, xcx);
+        /* tell instr_can_use_shared_slowpath() to use the rep prefix: should
+         * bail b4 loop emulation since will go to slowpath only if ecx is uninit.
+         * If run with -no_fastpath then DR will emulate the whole loop on
+         * each iteration through it: so we don't do this transformation then.
+         */
+        ASSERT(options.fastpath, "-no_fastpath not supported");
+        instr_set_note(loop, (void *)xl8);
+        PREXL8(bb, inst, INSTR_XL8(loop, xl8));
+
+        /* now throw out the orig instr */
+        instrlist_remove(bb, inst);
+        instr_destroy(drcontext, inst);
+    }
+}
+
+/* Conversions to app code itself that should happen before instrumentation */
+static void
+app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi)
+{
+    if (options.repstr_to_loop && options.fastpath)
+        convert_repstr_to_loop(drcontext, bb, bi);
 }
 
 dr_emit_flags_t
@@ -2718,11 +2926,12 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
               bool for_trace, bool translating)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    instr_t *inst, *next_inst;
+    instr_t *inst, *next_inst, *first;
     uint i;
     app_pc pc;
     uint opc;
-    bool ignore_heap = false, has_gpr, has_mem;
+    bool has_gpr, has_mem;
+    bool check_ignore_unaddr = false, entering_alloc, exiting_alloc;
     bb_info_t bi;
     fastpath_info_t mi;
     bool added_instru = false;
@@ -2745,6 +2954,32 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     DOLOG(4, { print_shadow_registers(); });
 #endif
 
+    /* Rather than having DR store translations, it takes less space for us to
+     * use the bb table we already have
+     */
+    if (translating && !options.leaks_only) {
+        bb_saved_info_t *save;
+        hashtable_lock(&bb_table);
+        save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
+        ASSERT(save != NULL, "missing bb info");
+        if (save->check_ignore_unaddr)
+            check_ignore_unaddr = true;
+        hashtable_unlock(&bb_table);
+    } else {
+        /* We want to ignore unaddr refs by heap routines (when touching headers,
+         * etc.).  We want to stay on the fastpath so we put checks there.
+         * We decide up front since in_heap_routine changes dynamically
+         * and if we recreate partway into the first bb we'll get it wrong:
+         * though now that we're checking the first bb from alloc_instrument
+         * it doesn't matter.
+         */
+        check_ignore_unaddr = (options.check_ignore_unaddr && pt->in_heap_routine > 0);
+        DOLOG(2, {
+            if (check_ignore_unaddr)
+                LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
+        });
+    }
+
     if (!options.leaks_only && options.shadowing) {
 #ifdef TOOL_DR_MEMORY
         /* String routine replacement */
@@ -2753,15 +2988,36 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         fastpath_top_of_bb(drcontext, tag, bb, &bi);
     }
 
+    app_to_app_transformations(drcontext, bb, &bi);
+    first = instrlist_first(bb);
+
     for (inst = instrlist_first(bb);
          inst != NULL;
          inst = next_inst) {
 
 	next_inst = instr_get_next(inst);
+        /* app_to_app_transformations does insert some meta instrs: ignore them */
+        if (!instr_ok_to_mangle(inst))
+            continue;
         pc = instr_get_app_pc(inst);
 
         /* Memory allocation tracking */
-        alloc_instrument(drcontext, bb, inst);
+        alloc_instrument(drcontext, bb, inst, &entering_alloc, &exiting_alloc);
+        /* We can't change check_ignore_unaddr in the middle b/c of recreation
+         * so only set if entering/exiting on first
+         */
+        if (inst == first && options.check_ignore_unaddr) {
+            if (entering_alloc) {
+                check_ignore_unaddr = true;
+                LOG(2, "entering heap routine: adding nop-if-mem-unaddr checks\n");
+            } else if (exiting_alloc) {
+                /* we wait until post-call so pt->in_heap_routine >0 in post-call
+                 * bb event, so avoid adding checks there
+                 */
+                check_ignore_unaddr = false;
+                LOG(2, "exiting heap routine: NOT adding nop-if-mem-unaddr checks\n");
+            }
+        }
 
 #if defined(LINUX) && defined(TOOL_DR_MEMORY)
         if (hashtable_lookup(&sighand_table, (void*)pc) != NULL &&
@@ -2810,21 +3066,6 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
              opnd_same(instr_get_dst(inst, 0), instr_get_dst(inst, 1))))
             continue;
 
-        /* We ignore non-stack (identified by opcode) memory references, for
-         * heap routines.  Ideally we would know which fields were header fields
-         * and watch all references; instead we assume the allocation code is
-         * clean and avoid false positives on the headers.  We assume that
-         * in_heap_routine will be incremented prior to any bb creation; we rule
-         * out exception filters when walking up the stack out of the heap
-         * routine by checking the source address (all heap routines are in
-         * ntdll/libc).
-         */
-        if (should_ignore_heap_refs(pt, pc)) {
-            LOG(2, "not instrumenting heap refs for in-heap %d pc "PFX"\n",
-                 pt->in_heap_routine, pc);
-            ignore_heap = true;
-        }
-
         /* if there are no gpr or mem operands, we can ignore it */
         has_gpr = false;
         has_mem = false;
@@ -2862,7 +3103,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
 
         if (!options.leaks_only && options.shadowing) {
             if (instr_ok_for_instrument_fastpath(inst, &mi, &bi)) {
-                instrument_fastpath(drcontext, bb, inst, &mi, ignore_heap);
+                instrument_fastpath(drcontext, bb, inst, &mi, check_ignore_unaddr);
                 added_instru = true;
             } else {
                 LOG(3, "fastpath unavailable "PFX": ", pc);
@@ -2954,13 +3195,11 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     LOG(5, "\texiting instrument_bb\n");
 
     if (!options.leaks_only && options.shadowing)
-        fastpath_bottom_of_bb(drcontext, tag, bb, &bi, added_instru, translating);
+        fastpath_bottom_of_bb(drcontext, tag, bb, &bi, added_instru, translating,
+                              check_ignore_unaddr);
 
-    /* our ignore_heap affects our instrumentation, and will not be duplicated
-     * on state recreation, so we'd better ask for it to be stored.
+    /* We store whether check_ignore_unaddr in our own data struct to avoid
+     * DR having to store translations, so we can recreate deterministically.
      */
-    if (options.ignore_heap_refs)
-        return DR_EMIT_STORE_TRANSLATIONS;
-    else
-        return DR_EMIT_DEFAULT;
+    return DR_EMIT_DEFAULT;
 }

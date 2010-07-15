@@ -18,4 +18,35 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# empty
+!if WINDOWS
+Error #1: UNINITIALIZED READ: reading register eflags
+registers.c:194
+Error #2: UNINITIALIZED READ: reading register eflags
+registers.c:201
+Error #3: UNINITIALIZED READ: reading 1 byte
+registers.c:221
+Error #4: UNINITIALIZED READ: reading 1 byte(s)
+registers.c:259
+Error #5: UNINITIALIZED READ: reading register eflags
+registers.c:305
+Error #6: UNINITIALIZED READ: reading register eflags
+registers.c:309
+Error #7: UNINITIALIZED READ: reading register cl
+registers.c:314
+!endif
+!if UNIX
+Error #1: UNINITIALIZED READ: reading register eflags
+registers.c:211
+Error #2: UNINITIALIZED READ: reading register eflags
+registers.c:218
+Error #3: UNINITIALIZED READ: reading register eax
+registers.c:221
+Error #4: UNINITIALIZED READ: reading 1 byte(s)
+registers.c:283
+Error #5: UNINITIALIZED READ: reading register eflags
+registers.c:321
+Error #6: UNINITIALIZED READ: reading register eflags
+registers.c:325
+Error #7: UNINITIALIZED READ: reading register cl
+registers.c:330
+!endif

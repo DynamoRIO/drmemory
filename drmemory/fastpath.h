@@ -72,6 +72,7 @@ typedef struct _fastpath_info_t {
     bool load;
     bool pushpop;
     bool mem2mem;
+    bool load2x; /* two mem sources */
 
     /* filled in by adjust_opnds_for_fastpath() */
     reg_id_t src_reg;
@@ -85,7 +86,6 @@ typedef struct _fastpath_info_t {
     uint memsz; /* primary memory ref size (may be <opsz for movzx/movsx) */
     opnd_t offs; /* if sub-dword, offset within containing dword */
     bool zero_rest_of_offs; /* when calculate mi->offs, zero rest of bits in reg */
-    bool ignore_heap;
     bool pushpop_stackop;
     bool need_offs;
     bool need_slowpath;
@@ -132,6 +132,8 @@ typedef struct _bb_saved_info_t {
     byte ignore_next_delete;
     bool eflags_saved:1;
     app_pc last_instr;
+    /* For PR 578892, to avoid DR having to store translations */
+    bool check_ignore_unaddr;
 } bb_saved_info_t;
 
 bool
@@ -150,7 +152,7 @@ initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi);
 
 void
 instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
-                    fastpath_info_t *mi, bool ignore_heap);
+                    fastpath_info_t *mi, bool check_ignore_unaddr);
 
 /* Whole-bb spilling */
 bool
@@ -175,7 +177,8 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 void
 fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
-                      bb_info_t *bi, bool added_instru, bool translating);
+                      bb_info_t *bi, bool added_instru, bool translating,
+                      bool check_ignore_unaddr);
 
 void
 slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_t *mc);

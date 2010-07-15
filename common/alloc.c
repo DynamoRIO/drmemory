@@ -405,7 +405,6 @@ is_alloc_routine(app_pc pc)
     return false;
 }
 
-#ifdef DEBUG
 const char *
 get_alloc_routine_name(app_pc pc)
 {
@@ -416,7 +415,6 @@ get_alloc_routine_name(app_pc pc)
     }
     return "<not found>";
 }
-#endif
 
 static bool
 is_alloc_sysroutine(app_pc pc)
@@ -1190,8 +1188,8 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                      * may have to implement the complex scheme in my notes
                      * for handling failed frees
                      */
-                    client_invalid_free((app_pc)sysnum/*use sysnum as pc*/,
-                                        base, mc);
+                    client_invalid_heap_arg((app_pc)sysnum/*use sysnum as pc*/,
+                                            base, mc, "HeapFree");
                 } else {
                     pt->expect_sys_to_fail = false;
                 }
@@ -1512,6 +1510,23 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
 # define ARGNUM_SIZE_PTR 1
 #endif
 
+/* As part of PR 578892 we must report invalid heap block args to all routines,
+ * since we ignore unaddr inside the routines.
+ * Caller should check for NULL separately if it's not an invalid arg.
+ */
+static bool
+check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_site,
+                       const char *routine)
+{
+    if (malloc_end(block) == NULL) {
+        /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
+        client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
+                                block, mc, routine);
+        return false;
+    }
+    return true;
+}
+
 /**************************************************
  * FREE
  */
@@ -1565,8 +1580,8 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
         } else {
             pt->expect_lib_to_fail = true;
             /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
-            client_invalid_free(inside ? get_retaddr_at_entry(mc) : call_site,
-                                base, mc);
+            client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
+                                    base, mc, IF_WINDOWS_ELSE("HeapFree", "free"));
         }
     } else {
         app_pc change_base;
@@ -1646,7 +1661,7 @@ handle_free_post(void *drcontext, dr_mcontext_t *mc)
  */
 
 static void
-handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     pt->in_heap_adjusted = pt->in_heap_routine;
@@ -1654,7 +1669,13 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
         /* store the block being asked about, in case routine changes the param */
         pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR, inside);
         /* ensure wasn't allocated before we took control (so no redzone) */
-        if (pt->alloc_base != NULL &&
+        if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
+                                   /* FIXME: should have caller invoke and use
+                                    * alloc_routine_name?  kernel32 names better
+                                    * than Rtl though
+                                    */
+                                   IF_WINDOWS_ELSE("HeapSize", "malloc_usable_size")) &&
+            pt->alloc_base != NULL &&
             !malloc_is_pre_us(pt->alloc_base) &&
             /* non-recursive: else we assume base already adjusted */
             pt->in_heap_routine == 1) {
@@ -1905,6 +1926,11 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     pt->in_realloc = true;
     pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE, inside);
     real_base = pt->alloc_base;
+    if (!check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
+                                IF_WINDOWS_ELSE("HeapReAlloc", "realloc"))) {
+        pt->expect_lib_to_fail = true;
+        return;
+    }
     if (op_redzone_size > 0) {
         ASSERT(op_redzone_size >= 4, "redzone < 4 not supported");
         if (malloc_is_pre_us(pt->alloc_base)) {
@@ -2233,7 +2259,8 @@ handle_destroy_post(void *drcontext, dr_mcontext_t *mc)
  */
 
 static void
-handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site,
+                    const char *routine)
 {
     /* 3 related routines here:
      *   BOOLEAN NTAPI
@@ -2260,8 +2287,9 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
     pt->in_heap_adjusted = pt->in_heap_routine;
     LOG(2, "Rtl*User*Heap "PFX", "PFX", "PFX"\n",
         APP_ARG(mc, 1, inside), APP_ARG(mc, 2, inside), APP_ARG(mc, 3, inside));
-    if (op_redzone_size > 0) {
-        pt->alloc_base = (app_pc) APP_ARG(mc, 3, inside);
+    pt->alloc_base = (app_pc) APP_ARG(mc, 3, inside);
+    if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site, routine) &&
+        op_redzone_size > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
         if (pt->alloc_base != NULL &&
             !malloc_is_pre_us(pt->alloc_base) &&
@@ -2287,7 +2315,7 @@ handle_userinfo_post(void *drcontext, dr_mcontext_t *mc)
  */
 
 static void
-handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site)
 {
     /* we need to adjust the pointer to take into account our redzone
      * (otherwise the validate code calls ntdll!DbgPrint, DR complains
@@ -2300,10 +2328,12 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
         app_pc block = (app_pc) APP_ARG(mc, 3, inside);
         if (block == NULL) {
             ASSERT(false, "RtlValidateHeap on entire heap not supported");
-        } else if (!malloc_is_pre_us(block)) {
-            LOG(2, "RtlValidateHeap: changing "PFX" to "PFX"\n",
-                block, block - op_redzone_size);
-            *((app_pc *)(APP_ARG_ADDR(mc, 3, inside))) = block - op_redzone_size;
+        } else if (check_valid_heap_block(block, mc, inside, call_site, "HeapValidate")) {
+            if (!malloc_is_pre_us(block)) {
+                LOG(2, "RtlValidateHeap: changing "PFX" to "PFX"\n",
+                    block, block - op_redzone_size);
+                *((app_pc *)(APP_ARG_ADDR(mc, 3, inside))) = block - op_redzone_size;
+            }
         }
     } 
 }
@@ -2449,6 +2479,8 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         indirect ? "indirect" : "direct",
         pt->in_heap_routine > 0 ? " recursive" : "",
         inside ? "post-retaddr" : "pre-retaddr");
+    if (pt->in_heap_routine == 0)
+        client_entering_heap_routine();
     pt->in_heap_routine++;
     /* Exceed array depth => just don't record: only needed on jmp-to-post-call-bb */
     if (pt->in_heap_routine < MAX_HEAP_NESTING)
@@ -2473,7 +2505,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
         pt->alloc_heap = (app_pc) APP_ARG(&mc, 1, inside);
 #endif
-        handle_size_pre(drcontext, &mc, inside);
+        handle_size_pre(drcontext, &mc, inside, call_site);
     }
     else if (expect == alloc_routine_addr[HEAP_MALLOC] ||
              expect == alloc_routine_addr[HEAP_REALLOC]
@@ -2517,12 +2549,13 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         handle_destroy_pre(drcontext, &mc, inside);
     }
     else if (expect == alloc_routine_addr[HEAP_VALIDATE]) {
-        handle_validate_pre(drcontext, &mc, inside);
+        handle_validate_pre(drcontext, &mc, inside, call_site);
     }
     else if (expect == alloc_routine_addr[HEAP_GETINFO] ||
              expect == alloc_routine_addr[HEAP_SETINFO] ||
              expect == alloc_routine_addr[HEAP_SETFLAGS]) {
-        handle_userinfo_pre(drcontext, &mc, inside);
+        handle_userinfo_pre(drcontext, &mc, inside, call_site,
+                            get_alloc_routine_name(expect));
     }
 #endif
 }
@@ -2594,6 +2627,8 @@ handle_alloc_post(app_pc func, app_pc post_call)
             func, get_alloc_routine_name(func));
         return;
     }
+    if (pt->in_heap_routine == 0)
+        client_exiting_heap_routine();
 
     if (func == alloc_routine_addr[HEAP_FREE]) {
         handle_free_post(drcontext, &mc);
@@ -2897,16 +2932,23 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
     }
 }
 
-
 void
-alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst)
+alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
+                 bool *entering_alloc, bool *exiting_alloc)
 {
     app_pc pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
+    if (entering_alloc != NULL)
+        *entering_alloc = false;
+    if (exiting_alloc != NULL)
+        *exiting_alloc = false;
     if (op_track_heap) {
         app_pc callee = post_call_lookup(pc);
-        if (callee != NULL)
+        if (callee != NULL) {
             instrument_post_alloc_site(drcontext, bb, inst, callee, pc);
+            if (exiting_alloc != NULL)
+                *exiting_alloc = true;
+        }
     }
     if (is_alloc_sysroutine(pc)) {
         insert_hook(drcontext, bb, inst, pc);
@@ -2914,6 +2956,8 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst)
     if (op_track_heap) {
         if (is_alloc_routine(pc)) {
             insert_hook(drcontext, bb, inst, pc);
+            if (entering_alloc != NULL)
+                *entering_alloc = true;
         }
         if ((instr_is_call(inst)
              IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) ||

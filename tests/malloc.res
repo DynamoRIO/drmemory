@@ -25,7 +25,7 @@ Error #2: UNINITIALIZED READ
 malloc.c:105
 Error #3: UNINITIALIZED READ
 malloc.c:118
-Error #4: INVALID FREE
+Error #4: INVALID HEAP ARGUMENT
 !if WINDOWS
 # addr2line and winsyms report slightly different results here
 malloc.c:160
@@ -33,14 +33,9 @@ malloc.c:160
 !if UNIX
 malloc.c:161
 !endif
-!if UNIX
-# on unix free touches the invalid address; not so on winxp it seems
-Error #5: UNADDRESSABLE ACCESS: reading 4 byte(s)
-malloc.c:161
-!endif
 !if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:172
-Error #6: INVALID FREE
+Error #6: INVALID HEAP ARGUMENT
 malloc.c:179
 !endif

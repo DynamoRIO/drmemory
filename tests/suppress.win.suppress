@@ -21,14 +21,14 @@
 # uninitialized read: full callstack based mod+offs suppression */
 #
 UNINITIALIZED READ
-<suppress.exe+0x1179>
+<suppress.exe+0x1177>
 <suppress.exe+0x1070>
 <suppress.exe+0x1042>
 
 # uninitialized read: top frame based mod+offs suppression */
 #
 UNINITIALIZED READ
-<suppress.exe+0x11b9>
+<suppress.exe+0x11c7>
 
 # uninitialized read: full callstack based mod!func suppression */
 UNINITIALIZED READ
@@ -45,14 +45,14 @@ suppress.exe!uninit_test4
 # unaddressable access: full callstack based mod+offs suppression */
 #
 UNADDRESSABLE ACCESS
-<suppress.exe+0x1272>
+<suppress.exe+0x12b2>
 <suppress.exe+0x10dc>
 <suppress.exe+0x1042>
 
 # unaddressable access: top frame based mod+offs suppression */
 #
 UNADDRESSABLE ACCESS
-<suppress.exe+0x12b2>
+<suppress.exe+0x12f2>
 
 # unaddressable access: full callstack based mod!func suppression */
 UNADDRESSABLE ACCESS
@@ -68,14 +68,14 @@ suppress.exe!unaddr_test4
 # leak: full callstack based mod+offs suppression */
 #
 LEAK
-<suppress.exe+0x137e>
+<suppress.exe+0x13be>
 <suppress.exe+0x1119>
 <suppress.exe+0x1042>
 
 # leak: top frame based mod+offs suppression */
 #
 LEAK
-<suppress.exe+0x13ce>
+<suppress.exe+0x140e>
 
 # leak: full callstack based mod!func suppression */
 LEAK
@@ -95,7 +95,7 @@ suppress.exe!invalid_free_test1
 LEAK
 suppress.exe!invalid_free_test1
 
-INVALID FREE
+INVALID HEAP ARGUMENT
 suppress.exe!invalid_free_test1
 
 WARNING

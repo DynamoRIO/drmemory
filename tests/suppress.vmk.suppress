@@ -25,12 +25,12 @@
 # uninitialized read: full callstack based mod+offs suppression */
 UNINITIALIZED READ
 <+0x575>
-<+0x7d7>
-<+0x8a4>
+<+0x7ef>
+<+0x8bc>
 
 # uninitialized read: top frame based mod+offs suppression */
 UNINITIALIZED READ
-<+0x5a0>
+<+0x5a6>
 
 # uninitialized read: full callstack based mod!func suppression */
 UNINITIALIZED READ
@@ -46,13 +46,13 @@ suppress!uninit_test4
 
 # unaddressable access: full callstack based mod+offs suppression */
 UNADDRESSABLE ACCESS
-<+0x61c>
-<+0x821>
-<+0x8a4>
+<+0x634>
+<+0x839>
+<+0x8bc>
 
 # unaddressable access: top frame based mod+offs suppression */
 UNADDRESSABLE ACCESS
-<+0x647>
+<+0x65f>
 
 # unaddressable access: full callstack based mod!func suppression */
 UNADDRESSABLE ACCESS
@@ -68,13 +68,13 @@ suppress!unaddr_test4
 
 # leak: full callstack based mod+offs suppression */
 LEAK
-<+0x6ca>
-<+0x856>
-<+0x8a4>
+<+0x6e2>
+<+0x86e>
+<+0x8bc>
 
 # leak: top frame based mod+offs suppression */
 LEAK
-<+0x6ef>
+<+0x707>
 
 # leak: full callstack based mod!func suppression */
 LEAK
@@ -94,7 +94,7 @@ suppress!invalid_free_test1
 LEAK
 suppress!invalid_free_test1
 
-INVALID FREE
+INVALID HEAP ARGUMENT
 suppress!invalid_free_test1
 
 WARNING

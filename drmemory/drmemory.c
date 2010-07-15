@@ -161,7 +161,6 @@ dump_statistics(void)
                strlen_exception, strcpy_exception, strmem_unaddr_exception);
     dr_fprintf(f_global, "def exceptions:  andor: %7u, rawmemchr: %5u, strrchr: %5u\n",
                andor_exception, rawmemchr_exception, strrchr_exception);
-    dr_fprintf(f_global, "ignored heap func mem refs: %5u\n", heap_func_ref_ignored);
     dr_fprintf(f_global, "reg spills: dead:%8u, xchg:%8u, spill:%8u slow:%8u own:%8u\n",
                reg_dead, reg_xchg, reg_spill, reg_spill_slow, reg_spill_own);
     dr_fprintf(f_global, "bb reg spills: used %8u, unused %8u\n",
@@ -210,6 +209,12 @@ dump_statistics(void)
                        i, decode_opcode_name(i), slowpath_count[i]);
         }
     }
+    dr_fprintf(f_global, "\nPer-size slow path executions:\n");
+    dr_fprintf(f_global, "\t1-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz1);
+    dr_fprintf(f_global, "\t2-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz2);
+    dr_fprintf(f_global, "\t4-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz4);
+    dr_fprintf(f_global, "\t8-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz8);
+    dr_fprintf(f_global, "\tOther:  %12"UINT64_FORMAT_CODE"\n", slowpath_szOther);
 }
 #endif /* STATISTICS */
 
@@ -401,7 +406,9 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
 {
     IF_DEBUG(per_thread_t *pt = (per_thread_t *)
              dr_get_tls_field(dr_get_current_drcontext()));
-    LOGPT(2, pt, "in event_basic_block(tag="PFX")\n", tag);
+    LOGPT(2, pt, "in event_basic_block(tag="PFX")%s%s\n", tag,
+          for_trace ? " for trace" : "",
+          translating ? " translating" : "");
     return instrument_bb(drcontext, tag, bb, for_trace, translating);
 }
 

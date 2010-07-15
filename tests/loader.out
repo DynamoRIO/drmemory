@@ -31,7 +31,7 @@ libloaderlib.so failure
 :::Dr.Memory::: ERRORS FOUND:
 :::Dr.Memory:::       0 unique,     0 total unaddressable access(es)
 :::Dr.Memory:::       0 unique,     0 total uninitialized access(es)
-:::Dr.Memory:::       0 unique,     0 total invalid free(s)
+:::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 :::Dr.Memory:::       0 total,      0 byte(s) of leak(s)
 :::Dr.Memory:::       0 total,      0 byte(s) of possible leak(s)

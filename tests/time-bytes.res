@@ -18,7 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: INVALID FREE 
+Error #1: INVALID HEAP ARGUMENT 
 !if WINDOWS
 # addr2line and winsyms report slightly different results here
 malloc.c:160
@@ -29,7 +29,7 @@ malloc.c:161
 !if WINDOWS
 Error #2: WARNING: heap allocation failed
 malloc.c:172
-Error #3: INVALID FREE 
+Error #3: INVALID HEAP ARGUMENT 
 malloc.c:179
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
