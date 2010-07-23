@@ -20,16 +20,16 @@
 #
 !if WINDOWS
 # extra leak due to encoded pointer: PR 482555
-Error #1: LEAK 128 bytes
+Error #1: LEAK 128 direct bytes + 0 indirect bytes
 crtheap.c:61
-Error #2: LEAK 42 bytes
-infloop.c:79
-Error #3: LEAK 17 bytes
+Error #2: LEAK 160 direct bytes + 0 indirect bytes
+infloop.c:91
+Error #3: LEAK 42 direct bytes + 17 indirect bytes
 infloop.c:80
 !endif
 !if UNIX
-Error #1: LEAK 42 bytes
-infloop.c:79
-Error #2: LEAK 17 bytes
+Error #1: LEAK 160 direct bytes + 0 indirect bytes
+infloop.c:91
+Error #2: LEAK 42 direct bytes + 17 indirect bytes
 infloop.c:80
 !endif

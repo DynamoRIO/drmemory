@@ -1216,6 +1216,7 @@ opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg)
 {
     reg_id_t r = reg_to_pointer_sized(reg);
+    ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base + (r - REG_EAX), OPSZ_1,
@@ -1227,6 +1228,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
 opnd_t
 opnd_create_shadow_eflags_slot(void)
 {
+    ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
          offsetof(shadow_registers_t, eflags), OPSZ_1,
@@ -1239,6 +1241,7 @@ opnd_create_shadow_eflags_slot(void)
 opnd_t
 opnd_create_shadow_inheap_slot(void)
 {
+    ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base +
          offsetof(shadow_registers_t, in_heap_routine), OPSZ_1,
@@ -1252,6 +1255,7 @@ opnd_create_shadow_inheap_slot(void)
 static uint
 tls_base_offs(void)
 {
+    ASSERT(options.shadowing, "incorrectly called");
     return tls_shadow_base +
         offsetof(shadow_registers_t, IF_X64_ELSE(gs_base, fs_base));
 }
@@ -1260,6 +1264,7 @@ opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
 {
     uint stored_base_offs;
+    ASSERT(options.shadowing, "incorrectly called");
     ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
     stored_base_offs = tls_shadow_base +
         ((seg == SEG_FS) ? offsetof(shadow_registers_t, fs_base) : 
@@ -1278,10 +1283,12 @@ get_shadow_registers(void)
 {
 #ifdef WINDOWS
     byte *teb_addr = (byte *) get_TEB();
+    ASSERT(options.shadowing, "incorrectly called");
     return (shadow_registers_t *) (teb_addr + tls_shadow_base);
 #else
     uint offs = tls_base_offs();
     byte *seg_base;
+    ASSERT(options.shadowing, "incorrectly called");
     asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
     asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
     asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
@@ -1374,6 +1381,7 @@ void
 print_shadow_registers(void)
 {
     IF_DEBUG(shadow_registers_t *sr = get_shadow_registers());
+    ASSERT(options.shadowing, "shouldn't be called");
     LOG(0, "    eax=%02x ecx=%02x edx=%02x ebx=%02x "
         "esp=%02x ebp=%02x esi=%02x edi=%02x efl=%x\n",
         sr->eax, sr->ecx, sr->edx, sr->ebx, sr->esp, sr->ebp,
@@ -1395,6 +1403,7 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
 {
     byte val;
     opnd_size_t sz = reg_get_size(reg);
+    ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     val = *(((byte*)sr) + reg_shadow_offs(reg));
     if (sz == OPSZ_1)
@@ -1413,6 +1422,7 @@ byte
 get_shadow_register(reg_id_t reg)
 {
     shadow_registers_t *sr = get_shadow_registers();
+    ASSERT(options.shadowing, "incorrectly called");
     return get_shadow_register_common(sr, reg);
 }
 
@@ -1425,6 +1435,7 @@ get_thread_shadow_register(void *drcontext, reg_id_t reg)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     shadow_registers_t *sr = (shadow_registers_t *) cpt->shadow_regs;
+    ASSERT(options.shadowing, "incorrectly called");
     return get_shadow_register_common(sr, reg);
 }
 
@@ -1434,6 +1445,7 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
     shadow_registers_t *sr = get_shadow_registers();
     uint shift = bytenum*2;
     byte *addr;
+    ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     addr = ((byte*)sr) + reg_shadow_offs(reg);
     *addr = set_2bits(*addr, val, shift);
@@ -1444,6 +1456,7 @@ register_shadow_set_dword(reg_id_t reg, uint val)
 {
     shadow_registers_t *sr = get_shadow_registers();
     byte *addr;
+    ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     addr = ((byte*)sr) + reg_shadow_offs(reg);
     *addr = (byte) val;
@@ -1453,6 +1466,7 @@ byte
 get_shadow_eflags(void)
 {
     shadow_registers_t *sr = get_shadow_registers();
+    ASSERT(options.shadowing, "incorrectly called");
     return sr->eflags;
 }
 
@@ -1460,6 +1474,7 @@ void
 set_shadow_eflags(uint val)
 {
     shadow_registers_t *sr = get_shadow_registers();
+    ASSERT(options.shadowing, "incorrectly called");
     sr->eflags = (byte) val;
 }
 
@@ -1498,6 +1513,7 @@ opnd_t
 opnd_create_own_spill_slot(uint index)
 {
     ASSERT(index < options.num_spill_slots, "spill slot index overflow");
+    ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1,
          tls_shadow_base + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t), OPSZ_PTR,

@@ -719,7 +719,11 @@ report_summary_to_file(file_t f, bool stderr_too)
     dr_fprintf(f, ""NL);
     dr_fprintf(f, "DUPLICATE ERROR COUNTS:"NL);
     for (err = error_head; err != NULL; err = err->next) {
-        if (err->count > 1 && !err->suppressed) {
+        if (err->count > 1 && !err->suppressed &&
+            /* possible leaks are left with id==0 and should be ignored
+             * except in summary, unless -possible_leaks
+             */
+            (err->errtype != ERROR_POSSIBLE_LEAK || options.possible_leaks)) {
             ASSERT(err->id > 0, "error id wrong");
             dr_fprintf(f, "\tError #%d: %6d"NL, err->id, err->count);
         }
@@ -1004,7 +1008,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
                     found = true;
                     prev_end = start + size;
                     BUFPRINT(buf, bufsz, *sofar, len,
-                             "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX, start, end);
+                             "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX, start,
+                             prev_end);
                     break;
                 } /* else probably an earlier unaddr error, for which we marked
                    * the memory as addressable!
@@ -1076,6 +1081,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
      * If perf of dup check is an issue we can add -report_all_max or something.
      */
     if (err->count > 1) {
+        ASSERT(err->id != 0, "duplicate should have id");
         if (err->suppressed)
             num_suppressions_matched++;
         else {
@@ -1085,6 +1091,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         dr_mutex_unlock(error_lock);
         goto report_error_done;
     }
+    ASSERT(err->id == 0, "non-duplicate should not have id");
     num_total_errors++;
     if (options.report_max >= 0 && num_total_errors >= options.report_max) {
         num_throttled_errors++;
@@ -1292,8 +1299,8 @@ report_leak_stats_revert(void)
 }
 
 void
-report_leak(bool known_malloc, app_pc addr, size_t size, bool early,
-            bool reachable, bool maybe_reachable, uint shadow_state,
+report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
+            bool early, bool reachable, bool maybe_reachable, uint shadow_state,
             packed_callstack_t *pcs)
 {
     /* If not in a known malloc region it could be an unaddressable byte
@@ -1395,13 +1402,15 @@ report_leak(bool known_malloc, app_pc addr, size_t size, bool early,
                     num_suppressed_leaks++;
                 else {
                     /* We only count bytes for non-suppressed leaks */
+                    /* Total size does not distinguish direct from indirect (PR 576032) */
                     if (maybe_reachable)
-                        num_bytes_possible_leaked += size;
+                        num_bytes_possible_leaked += size + indirect_size;
                     else
-                        num_bytes_leaked += size;
+                        num_bytes_leaked += size + indirect_size;
                 }
                 DOLOG(3, {
-                    LOG(3, "Duplicate leak of %d bytes:\n", size);
+                    LOG(3, "Duplicate leak of %d (%d indirect) bytes:\n",
+                        size, indirect_size);
                     packed_callstack_log(err->pcs, f_global);
                 });
                 dr_mutex_unlock(error_lock);
@@ -1425,22 +1434,39 @@ report_leak(bool known_malloc, app_pc addr, size_t size, bool early,
 
         sofar = 0; /* now we print to start */
         if (!suppressed && type < ERROR_MAX_VAL) {
-            acquire_error_number(err);
+            /* We can have identical leaks across nudges: keep same error #.
+             * Multiple nudges are kind of messy wrt leaks: we try to not
+             * increment counts or add new leaks that were there in the
+             * last nudge, but we do re-print the callstacks so it's
+             * easy to see all the nudges at that point.
+             */
+            if (err->id == 0 && (!maybe_reachable || options.possible_leaks))
+                acquire_error_number(err);
+            else {
+                /* num_unique was set to 0 after nudge */
+#ifdef STATISTICS /* for num_nudges */
+                ASSERT(err->id == 0 || num_nudges > 0 ||
+                       (maybe_reachable && !options.possible_leaks),
+                       "invalid dup error report!");
+#endif
+                num_unique[err->errtype]++;
+            }
             printed_leading_newline = true;
             BUFPRINT(buf, bufsz, sofar, len, NL"Error #%d: ", err->id);
             /* We only count bytes for non-suppressed leaks */
+            /* Total size does not distinguish direct from indirect (PR 576032) */
             if (maybe_reachable)
-                num_bytes_possible_leaked += size;
+                num_bytes_possible_leaked += size + indirect_size;
             else
-                num_bytes_leaked += size;
+                num_bytes_leaked += size + indirect_size;
         }
     } else if (type < ERROR_MAX_VAL) {
         /* no dup checking */
         num_unique[type]++;
         if (maybe_reachable)
-            num_bytes_possible_leaked += size;
+            num_bytes_possible_leaked += size + indirect_size;
         else
-            num_bytes_leaked += size;
+            num_bytes_leaked += size + indirect_size;
     }
 
     /* ensure starts at beginning of line (can be in middle of another log) */
@@ -1467,9 +1493,11 @@ report_leak(bool known_malloc, app_pc addr, size_t size, bool early,
      * reachability-based leak scanning
      */
     BUFPRINT(buf, bufsz, sofar, len,
-             "LEAK %d bytes: "PFX"-"PFX""NL, size, addr, addr+size);
+             "LEAK %d direct bytes "PFX"-"PFX" + %d indirect bytes"NL,
+             size, addr, addr+size, indirect_size);
     buf_print = buf;
-    if (options.check_leaks) {
+    if ((type == ERROR_LEAK && options.check_leaks) ||
+        (type == ERROR_POSSIBLE_LEAK && options.possible_leaks)) {
         ASSERT(pcs != NULL, "malloc must have callstack");
         /* Now shift the prefix to abut the callstack */
         ASSERT(sofar < MAX_ERROR_INITIAL_LINES, "buffer too small");

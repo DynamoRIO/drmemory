@@ -28,6 +28,7 @@
 #include "readwrite.h"
 #include "fastpath.h"
 #include "shadow.h"
+#include "stack.h"
 
 #ifdef LINUX
 # include <signal.h> /* for SIGSEGV */
@@ -2482,9 +2483,13 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
         /* We don't know whether a write since DR isn't providing that info but
          * shouldn't matter enough to be worth our determining
          */
-        LOG(3, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
+        LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
             info->raw_mcontext.xip, info->mcontext.xip, target);
-        if (is_in_special_shadow_block(target)) {
+        if (options.leaks_only) {
+            if (handle_zeroing_fault(drcontext, target, &info->raw_mcontext,
+                                     &info->mcontext))
+                return DR_SIGNAL_SUPPRESS;
+        } else if (is_in_special_shadow_block(target)) {
             ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
             handle_special_shadow_fault(drcontext, target, &info->raw_mcontext,
                                         &info->mcontext, info->fault_fragment_info.tag);
@@ -2505,8 +2510,13 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
 # ifdef TOOL_DR_MEMORY
     if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
-        if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
-            is_in_special_shadow_block(target)) {
+        if (options.leaks_only &&
+            excpt->record->ExceptionInformation[0] == 1 /* write */) {
+            if (handle_zeroing_fault(drcontext, target, &excpt->raw_mcontext,
+                                     &excpt->mcontext))
+                return false;
+        } else if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+                   is_in_special_shadow_block(target)) {
             handle_special_shadow_fault(drcontext, target, &excpt->raw_mcontext,
                                         &excpt->mcontext, excpt->fault_fragment_info.tag);
             /* Re-execute the faulting cache instr.  If we ever change to redirect
@@ -3746,6 +3756,7 @@ whole_bb_spills_enabled(void)
 #ifdef TOOL_DR_HEAPSTAT
             options.staleness &&
 #endif
+            options.shadowing && 
             /* should we enable whole-bb for -leaks_only?
              * we'd need to enable bb table and state restore on fault.
              * since it's rare to have more than one stack adjust in a

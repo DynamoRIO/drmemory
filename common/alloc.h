@@ -68,7 +68,8 @@ extern uint num_frees;
 #endif
 
 void
-alloc_init(bool track_heap, size_t redzone_size, bool size_in_redzone,
+alloc_init(bool track_allocs, bool track_heap,
+           size_t redzone_size, bool size_in_redzone,
            bool record_allocs, bool get_padded_size);
 
 void

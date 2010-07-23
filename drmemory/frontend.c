@@ -69,6 +69,7 @@
 static bool verbose;
 static bool quiet;
 static bool batch; /* no popups */
+static bool no_resfile; /* no results file expected */
 #define prefix ":::Dr.Memory::: "
 
 #define fatal(msg, ...) do { \
@@ -180,7 +181,7 @@ process_results_file(const char *logdir, process_id_t pid)
     char fname[MAXIMUM_PATH];
     char resfile[MAXIMUM_PATH];
     DWORD read;
-    if (quiet && batch)
+    if (no_resfile || (quiet && batch))
         return;
     _snprintf(fname, BUFFER_SIZE_ELEMENTS(fname), "%s/resfile.%d", logdir, pid);
     NULL_TERMINATE_BUFFER(fname);
@@ -374,10 +375,12 @@ int main(int argc, char *argv[])
         }
         else if (!strcmp(argv[i], "-version")) {
 #if defined(BUILD_NUMBER) && defined(VERSION_NUMBER)
-          printf("Dr. Memory version %s -- build %d\n", STRINGIFY(VERSION_NUMBER),
-                 BUILD_NUMBER);
+          printf("Dr. Memory version %s -- build %d\n", VERSION_STRING, BUILD_NUMBER);
 #elif defined(BUILD_NUMBER)
           printf("Dr. Memory custom build %d -- %s\n", BUILD_NUMBER, __DATE__);
+#elif defined(VERSION_NUMBER)
+          printf("Dr. Memory version %s -- custom build %s, %s\n",
+                 VERSION_STRING, __DATE__, __TIME__);
 #else
           printf("Dr. Memory custom build -- %s, %s\n", __DATE__, __TIME__);
 #endif
@@ -432,6 +435,8 @@ int main(int argc, char *argv[])
                      cliops_sofar, len, "-suppress `%s` ", suppress);
         }
         else {
+            if (strcmp(argv[i], "-perturb_only") == 0)
+                no_resfile = true;
             /* pass to client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "%s ", argv[i]);

@@ -117,7 +117,8 @@ is_register_defined(void *drcontext, reg_id_t reg);
 void
 alloc_drmem_init(void)
 {
-    alloc_init(options.track_heap,
+    alloc_init(options.track_allocs,
+               options.track_heap,
                options.redzone_size,
                options.size_in_redzone,
                true, /* record allocs: used to only need for -count_leaks */
@@ -980,11 +981,13 @@ client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    ASSERT(pt != NULL, "pt shouldn't be null");
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    cpt->signal_xsp = (app_pc) info->mcontext.xsp;
-    LOG(2, "signal interrupted app at xsp="PFX"\n", cpt->signal_xsp);
+    if (options.shadowing) {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        ASSERT(pt != NULL, "pt shouldn't be null");
+        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+        cpt->signal_xsp = (app_pc) info->mcontext.xsp;
+        LOG(2, "signal interrupted app at xsp="PFX"\n", cpt->signal_xsp);
+    }
     return DR_SIGNAL_DELIVER;
 }
 
@@ -1663,11 +1666,12 @@ client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
 }
 
 void
-client_found_leak(app_pc start, app_pc end, bool pre_us, bool reachable,
+client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
+                  bool pre_us, bool reachable,
                   bool maybe_reachable, void *client_data)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) client_data;
-    report_leak(true, start, end - start, pre_us, reachable,
+    report_leak(true, start, end - start, indirect_bytes, pre_us, reachable,
                 maybe_reachable, SHADOW_UNKNOWN, pcs);
 }
 

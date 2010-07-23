@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -35,6 +35,7 @@
 #include "shadow.h"
 #include "syscall.h"
 #include "replace.h"
+#include "perturb.h"
 #ifdef TOOL_DR_HEAPSTAT
 # include "../drheapstat/staleness.h"
 #endif
@@ -2836,6 +2837,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
         instr_t *loop, *pre_loop, *jecxz, *zero, *iter;
         ASSERT(opnd_uses_reg(xcx, REG_XCX), "rep string opnd order mismatch");
         ASSERT(inst == instrlist_last(bb), "repstr not alone in bb");
+        LOG(3, "converting rep string into regular loop\n");
 
         pre_loop = INSTR_CREATE_label(drcontext);
         /* hack to handle loop decrementing xcx: simpler if could have 2 cbrs! */
@@ -2917,7 +2919,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 static void
 app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 {
-    if (options.repstr_to_loop && options.fastpath)
+    if (options.repstr_to_loop && options.fastpath && options.shadowing)
         convert_repstr_to_loop(drcontext, bb, bi);
 }
 
@@ -2950,34 +2952,41 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     LOG(5, "in instrument_bb\n");
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
 #ifdef TOOL_DR_MEMORY
-    LOG(4, "shadow register values:\n");
-    DOLOG(4, { print_shadow_registers(); });
+    DOLOG(4, { 
+        if (options.shadowing) {
+            LOG(4, "shadow register values:\n");
+            print_shadow_registers();
+        }
+    });
 #endif
 
     /* Rather than having DR store translations, it takes less space for us to
      * use the bb table we already have
      */
-    if (translating && !options.leaks_only) {
-        bb_saved_info_t *save;
-        hashtable_lock(&bb_table);
-        save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
-        ASSERT(save != NULL, "missing bb info");
-        if (save->check_ignore_unaddr)
-            check_ignore_unaddr = true;
-        hashtable_unlock(&bb_table);
-    } else {
-        /* We want to ignore unaddr refs by heap routines (when touching headers,
-         * etc.).  We want to stay on the fastpath so we put checks there.
-         * We decide up front since in_heap_routine changes dynamically
-         * and if we recreate partway into the first bb we'll get it wrong:
-         * though now that we're checking the first bb from alloc_instrument
-         * it doesn't matter.
-         */
-        check_ignore_unaddr = (options.check_ignore_unaddr && pt->in_heap_routine > 0);
-        DOLOG(2, {
-            if (check_ignore_unaddr)
-                LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
-        });
+    if (options.shadowing) {
+        if (translating) {
+            bb_saved_info_t *save;
+            hashtable_lock(&bb_table);
+            save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
+            ASSERT(save != NULL, "missing bb info");
+            if (save->check_ignore_unaddr)
+                check_ignore_unaddr = true;
+            hashtable_unlock(&bb_table);
+        } else {
+            /* We want to ignore unaddr refs by heap routines (when touching headers,
+             * etc.).  We want to stay on the fastpath so we put checks there.
+             * We decide up front since in_heap_routine changes dynamically
+             * and if we recreate partway into the first bb we'll get it wrong:
+             * though now that we're checking the first bb from alloc_instrument
+             * it doesn't matter.
+             */
+            check_ignore_unaddr = (options.check_ignore_unaddr &&
+                                   pt->in_heap_routine > 0);
+            DOLOG(2, {
+                if (check_ignore_unaddr)
+                    LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
+            });
+        }
     }
 
     if (!options.leaks_only && options.shadowing) {
@@ -3001,12 +3010,17 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
             continue;
         pc = instr_get_app_pc(inst);
 
+        if (options.perturb) {
+            /* Perturb timing */
+            perturb_instrument(drcontext, bb, inst);
+        }
+
         /* Memory allocation tracking */
         alloc_instrument(drcontext, bb, inst, &entering_alloc, &exiting_alloc);
         /* We can't change check_ignore_unaddr in the middle b/c of recreation
          * so only set if entering/exiting on first
          */
-        if (inst == first && options.check_ignore_unaddr) {
+        if (inst == first && options.shadowing && options.check_ignore_unaddr) {
             if (entering_alloc) {
                 check_ignore_unaddr = true;
                 LOG(2, "entering heap routine: adding nop-if-mem-unaddr checks\n");
@@ -3020,8 +3034,8 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         }
 
 #if defined(LINUX) && defined(TOOL_DR_MEMORY)
-        if (hashtable_lookup(&sighand_table, (void*)pc) != NULL &&
-            !options.leaks_only && options.shadowing) {
+        if (!options.leaks_only && options.shadowing &&
+            hashtable_lookup(&sighand_table, (void*)pc) != NULL) {
             instrument_signal_handler(drcontext, bb, inst, pc);
         }
 #endif
@@ -3056,7 +3070,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
 #ifdef WINDOWS
         ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
-        if (!options.shadowing)
+        if (!options.shadowing && !options.leaks_only)
             continue;
         if (instr_is_interrupt(inst))
             continue;
@@ -3129,7 +3143,8 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
          * leak scan (PR 520916).  yes, I realize it may not be perfectly
          * transparent.
          */
-        if (instr_writes_esp(inst)) {
+        if ((options.leaks_only || options.shadowing) &&
+            instr_writes_esp(inst)) {
             /* any new spill must be after the fastpath instru */
             bi.spill_after = instr_get_prev(inst);
             if (instrument_esp_adjust(drcontext, bb, inst, &bi)) {
@@ -3194,9 +3209,10 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     }
     LOG(5, "\texiting instrument_bb\n");
 
-    if (!options.leaks_only && options.shadowing)
+    if (!options.leaks_only && options.shadowing) {
         fastpath_bottom_of_bb(drcontext, tag, bb, &bi, added_instru, translating,
                               check_ignore_unaddr);
+    }
 
     /* We store whether check_ignore_unaddr in our own data struct to avoid
      * DR having to store translations, so we can recreate deterministically.

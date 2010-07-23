@@ -41,6 +41,8 @@ uint stack_swap_triggers;
 uint push_addressable;
 uint push_addressable_heap;
 uint push_addressable_mmap;
+uint zero_loop_aborts_fault;
+uint zero_loop_aborts_thresh;
 #endif
 
 /***************************************************************************
@@ -632,6 +634,150 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     return true;
 }
 
+/* Handle a fault while zeroing the app stack (PR 570843) */
+bool
+handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
+                     dr_mcontext_t *mc)
+{
+    /* We inline our code so we can't just check is_in_gencode.
+     * We aborting the loop if this is our fault.
+     * This risks false negatives but presumably the fault indicates
+     * the current end of the stack so there shouldn't be stale data
+     * beyond it.
+     */
+    bool ours = false;
+    byte *nxt_pc;
+    instr_t inst, app_inst;
+    byte *pc = raw_mc->pc;
+    ASSERT(options.leaks_only, "only used for -leaks_only");
+
+    instr_init(drcontext, &app_inst);
+    decode(drcontext, mc->pc, &app_inst);
+
+    instr_init(drcontext, &inst);
+    nxt_pc = decode(drcontext, pc, &inst);
+
+    if (instr_get_opcode(&inst) == OP_mov_st &&
+        opnd_is_immed_int(instr_get_src(&inst, 0)) &&
+        opnd_get_immed_int(instr_get_src(&inst, 0)) == 0 &&
+        /* if raw instr is a store but app instr write esp, assume
+         * it's our instru
+         */
+        instr_get_opcode(&app_inst) != OP_mov_st &&
+        instr_writes_esp(&app_inst)) {
+        /* walk past the store and jmp */
+        instr_reset(drcontext, &inst);
+        pc = nxt_pc;
+        nxt_pc = decode(drcontext, pc, &inst);
+        ASSERT(instr_get_opcode(&inst) == OP_jmp_short, "jmp follows store");
+        LOG(2, "zeroing write fault @"PFX" => sending to end of loop "PFX"\n",
+            raw_mc->pc, nxt_pc);
+        STATS_INC(zero_loop_aborts_fault);
+        raw_mc->pc = nxt_pc;
+        ours = true;
+    }
+    instr_free(drcontext, &app_inst);
+    instr_free(drcontext, &inst);
+    return ours;
+}
+
+/* Inserts stack zeroing loop for -leaks_only */
+static void
+insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
+                    bb_info_t *bi, fastpath_info_t *mi, reg_id_t reg_mod,
+                    esp_adjust_t type, instr_t *retaddr, bool eflags_live)
+{
+    instr_t *loop_repeat = INSTR_CREATE_label(drcontext);
+    /* since we statically know we don't need slowpath (even if unaligned:
+     * ok to write unaligned dwords via mov_st) and we only go in one
+     * direction and don't need address translation, the loop is small
+     * enough to inline
+     */
+    if (whole_bb_spills_enabled())
+        mark_eflags_used(drcontext, bb, bi);
+    else if (eflags_live)
+        insert_save_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
+    PRE(bb, inst,
+        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg1.reg),
+                            opnd_create_reg(REG_XSP)));
+    ASSERT(type != ESP_ADJUST_RET_IMMED, "ret ignored for -leaks_only");
+    if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_AND) {
+        /* calculate the end of the loop */
+        PRE(bb, inst,
+            INSTR_CREATE_add(drcontext, opnd_create_reg(reg_mod),
+                             opnd_create_reg(mi->reg1.reg)));
+    }
+    /* only zero if allocating stack, not when deallocating */
+    PRE(bb, inst,
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg_mod),
+                         opnd_create_reg(REG_XSP)));
+    PRE(bb, inst,
+        INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
+    /* now we know we're decreasing stack addresses, so start zeroing
+     * my intution says impact on scratch regs (#, flexibility) of rep stos
+     * and not having to preserve df makes this loop preferable
+     * even if slightly bigger instru for loop itself
+     */
+
+    /* We don't have a slowpath so we can't verify whether a swap so we just
+     * bail if it could be and risk false negatives which are preferable to
+     * zeroing out non-stack app memory!
+     * We assume a swap would not happen w/ a relative adjustment.
+     */
+    if (type == ESP_ADJUST_ABSOLUTE || type == ESP_ADJUST_AND/*abs passed to us*/) {
+        PRE(bb, inst,
+            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi->reg1.reg),
+                             opnd_create_reg(reg_mod)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg1.reg),
+                             OPND_CREATE_INT32(options.stack_swap_threshold)));
+#ifdef STATISTICS
+        if (options.statistics) {
+            instr_t *nostat = INSTR_CREATE_label(drcontext);
+            PRE(bb, inst,
+                INSTR_CREATE_jcc(drcontext, OP_jl_short, opnd_create_instr(nostat)));
+            PRE(bb, inst,
+                INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32
+                                 (REG_NULL, (int)&zero_loop_aborts_thresh)));
+            PRE(bb, inst,
+                INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(retaddr)));
+            PRE(bb, inst, nostat);
+        } else {
+#endif
+            PRE(bb, inst,
+                INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
+#ifdef STATISTICS
+        }
+#endif
+        /* Restore xsp to reg1 */
+        PRE(bb, inst,
+            INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg1.reg),
+                                opnd_create_reg(REG_XSP)));
+    }
+
+    PRE(bb, inst, loop_repeat);
+    PRE(bb, inst,
+        INSTR_CREATE_sub(drcontext, opnd_create_reg(mi->reg1.reg),
+                         OPND_CREATE_INT8(4)));
+    PRE(bb, inst,
+        INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg1.reg),
+                         opnd_create_reg(reg_mod)));
+    PRE(bb, inst,
+        INSTR_CREATE_jcc(drcontext, OP_jl_short, opnd_create_instr(retaddr)));
+    /* The exact sequence after this potentially-faulting store is assumed
+     * in handle_zeroing_fault()
+     */
+    PREXL8M(bb, inst,
+            INSTR_XL8(INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                                          OPND_CREATE_INT32(0)),
+                      instr_get_app_pc(inst)));
+    PRE(bb, inst,
+        INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(loop_repeat)));
+    PRE(bb, inst, retaddr);
+    if (eflags_live)
+        insert_restore_aflags(drcontext, bb, inst, &mi->eax, mi->aflags);
+}
+
 /* Instrument an esp modification that is not also a read or write
  * Returns whether instrumented
  */
@@ -765,54 +911,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, true/*save*/, false);
     if (!SHADOW_STACK_POINTER()) {
-        instr_t *loop_repeat = INSTR_CREATE_label(drcontext);
-        /* since we statically know we don't need slowpath (even if unaligned:
-         * ok to write unaligned dwords via mov_st) and we only go in one
-         * direction and don't need address translation, the loop is small
-         * enough to inline
-         */
-        if (whole_bb_spills_enabled())
-            mark_eflags_used(drcontext, bb, bi);
-        else if (eflags_live)
-            insert_save_aflags(drcontext, bb, inst, &mi.eax, mi.aflags);
-        PRE(bb, inst,
-            INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg1.reg),
-                                opnd_create_reg(REG_XSP)));
-        ASSERT(type != ESP_ADJUST_RET_IMMED, "ret ignored for -leaks_only");
-        if (type != ESP_ADJUST_ABSOLUTE && type != ESP_ADJUST_AND) {
-            /* calculate the end of the loop */
-            PRE(bb, inst,
-                INSTR_CREATE_add(drcontext, opnd_create_reg(reg_mod),
-                                 opnd_create_reg(mi.reg1.reg)));
-        }
-        /* only zero if allocating stack, not when deallocating */
-        PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg_mod),
-                             opnd_create_reg(REG_XSP)));
-        PRE(bb, inst,
-            INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
-        /* now we know we're decreasing stack addresses, so start zeroing
-         * my intution says impact on scratch regs (#, flexibility) of rep stos
-         * and not having to preserve df makes this loop preferable
-         * even if slightly bigger instru
-         */
-        PRE(bb, inst, loop_repeat);
-        PRE(bb, inst,
-            INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg1.reg),
-                             OPND_CREATE_INT8(4)));
-        PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg1.reg),
-                             opnd_create_reg(reg_mod)));
-        PRE(bb, inst,
-            INSTR_CREATE_jcc(drcontext, OP_jl_short, opnd_create_instr(retaddr)));
-        PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, OPND_CREATE_MEM32(mi.reg1.reg, 0),
-                                OPND_CREATE_INT32(0)));
-        PRE(bb, inst,
-            INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(loop_repeat)));
-        PRE(bb, inst, retaddr);
-        if (eflags_live)
-            insert_restore_aflags(drcontext, bb, inst, &mi.eax, mi.aflags);
+        insert_zeroing_loop(drcontext, bb, inst, bi, &mi, reg_mod, type,
+                            retaddr, eflags_live);
     } else {
         /* should we trade speed for space and move this spill/restore into
          * shared_fastpath? then need to nail down which of reg2 vs reg1 is which.

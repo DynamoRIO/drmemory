@@ -34,5 +34,5 @@ child has exited
 :::Dr.Memory:::       2 unique,     2 total uninitialized access(es)
 :::Dr.Memory:::       1 unique,     1 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
-:::Dr.Memory:::       2 total,     59 byte(s) of leak(s)
-:::Dr.Memory:::       0 total,      0 byte(s) of possible leak(s)
+:::Dr.Memory:::       3 total,    155 byte(s) of leak(s)
+:::Dr.Memory:::       1 total,     16 byte(s) of possible leak(s)

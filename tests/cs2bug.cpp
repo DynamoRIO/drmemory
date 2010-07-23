@@ -87,6 +87,14 @@ int main()
      */
     a[4] = 12;
     delete a;
-    
+
+    /* test PR 576032: std::string shouldn't show up */
+#ifndef WINDOWS
+    /* FIXME PR 587093: disabling on Windows until figure out why callstack messed up */
+    std::string onstack = "leakme";
+    static std::string *outer = new std::string(onstack);
+    outer = NULL;
+#endif
+
     std::cout << "bye" << std::endl;
 }

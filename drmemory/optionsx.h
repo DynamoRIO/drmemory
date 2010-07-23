@@ -28,6 +28,7 @@
 /* OPTION(name, default val, short descr, long descr) */
 
 /* Front-end-script options.  We present a unified list of options to users. */
+OPTION("-version", "", "Display Dr. Memory version", "Display Dr. Memory version")
 OPTION("-dr <path>", "", "Path to DynamoRIO installation",
        "The path to the DynamoRIO installation to use.  Not needed when using a released Dr. Memory package.")
 OPTION("-drmemory <path>", "", "Path to Dr. Memory installation",
@@ -36,6 +37,12 @@ OPTION("-srcfilter <name>", "", "Only show errors referencing named file",
        "Do not show errors that do not reference the named source file somewhere in their callstacks.")
 OPTION("-nudge <pid>", "", "Process id to nudge",
        "Use this option to 'nudge' an already-running process in order to request leak checking and other Dr. Memory actions that normally only occur when the process exits.")
+OPTION("-skip_results", "false", "Do not produce results while running the application (requires a post-run -results step)",
+       "Do not produce results while running the application.  This can reduce resource usage if the symbol files for the application are large.  To obtain the results, after the application run is finished, use the -results option in a separate step.")
+OPTION("-results <logdir>", "", "Produce results from a -skip_results run",
+       "Use this option as the second step in a -skip_results run.  Pass the name of the log directory created by the -skip_results application run.  The results.txt will then be filled in.")
+OPTION("-results_app <path>", "", "Use with -results: specify app from -skip_results run",
+       "Use this option when invoking -results on a different machine from where the application was run with -skip_results.  When -results is invoked without this option also specified, the path to the application that was used to run it with -skip_results is assumed.")
 OPTION("-aggregate <logdir list>", "", "Produce aggregate error report",
        "Pass a list of log directories to produce an aggregate error report.  Useful for applications that consist of a group of separate processes.")
 #ifdef VMX86_SERVER
@@ -44,9 +51,6 @@ OPTION("-use_vmtree", "true", "Use VMTREE and VMBLD env vars to locate symbols",
 #endif
 OPTION("-v", "", "Display verbose information in the Dr. Memory front end",
        "Display verbose information in the Dr. Memory front end")
-#ifdef USE_DRSYMS
-OPTION("-version", "", "Display Dr. Memory version", "Display Dr. Memory version")
-#endif
 
 /* Client options */
 OPTION("-check_leaks", "false", "Whether to store leak callstacks",
@@ -119,3 +123,11 @@ OPTION("-leaks_only", "false", "Check only for leaks and not memory access error
        "Puts Dr. Memory into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")
 OPTION("-prctl_whitelist", "''", "Disable instrumentation unless PR_SET_NAME is on list",
        "If this list is non-empty, when Dr. Memory sees prctl(PR_SET_NAME) and the name is not on the list, then Dr. Memory will disable its instrumentation for the rest of the process and for all of its child processes.")
+OPTION("-perturb", "false", "Perturb thread scheduling to increase chances of catching races",
+       "Adds random delays to thread synchronization and other operations to try and increase the chances of catching race conditions.")
+OPTION("-perturb_only", "false", "Perturb thread scheduling but disable memory checking",
+       "Adds random delays to thread synchronization and other operations to try and increase the chances of catching race conditions, but disables all memory checking to create a low-overhead tool that executes significantly faster.  However, without memory checking race conditions will only be detected if they result in an actual crash or other externally visible change in behavior.  When this option is enabled, Dr. Memory will not produce an error summary or results.txt.")
+OPTION("-perturb_max", "50", "Maximum delay added by -perturb",
+       "This option sets the maximum delay added by -perturb, in milliseconds for thread operations and in custom units for instruction-level operations.  Delays added will be randomly selected from 0 up to -perturb_max.")
+OPTION("-perturb_seed", "0", "Seed used for random delays added by -perturb",
+       "To reproduce the random delays added by -perturb, pass the seed from the logfile from the target run to this option.  There may still be non-determinism in the rest of the system, however.")

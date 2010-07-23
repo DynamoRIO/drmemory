@@ -36,6 +36,8 @@ extern uint stack_swap_triggers;
 extern uint push_addressable;
 extern uint push_addressable_heap;
 extern uint push_addressable_mmap;
+extern uint zero_loop_aborts_fault;
+extern uint zero_loop_aborts_thresh;
 #endif
 
 /* since we dynamically adjust options.stack_swap_threshold we use a separate
@@ -70,5 +72,9 @@ esp_fastpath_update_swap_threshold(void *drcontext, int new_threshold);
 bool
 handle_push_addressable(app_loc_t *loc, app_pc addr, app_pc start_addr,
                         size_t sz, dr_mcontext_t *mc);
+
+bool
+handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
+                     dr_mcontext_t *mc);
 
 #endif /* _STACK_H_ */

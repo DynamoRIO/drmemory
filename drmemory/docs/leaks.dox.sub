@@ -14,19 +14,45 @@ its leak scan into 3 categories:
  -# Memory that is reachable only via pointers to the middle of the
     allocation, rather than the head.  This is called a "possible leak" by
     Dr. Memory.  These may or may not be legimitate pointers to that
-    allocation.  There are several cases of known legitimate pointers:
+    allocation.  There are several cases of known legitimate pointers
+    that Dr. Memory recognizes using heuristics.  None of these are
+    listed as possible leaks unless the corresponding option is turned
+    off:
     - One class of legitimate mid-allocation pointers includes C++ arrays
       allocated via new[] whose elements have destructors.  The new[]
       operators adds a header but returns to the caller the address past
-      the header.
+      the header.  You can suppress Dr. Memory's identification of such
+      mid-allocation pointers, causing them to show up as possible leaks,
+      with the \p -no_midchunk_new_ok runtime option.
     - Another class, for some C++ compilers, includes instances of a
       pointer to a class with multiple inheritance that is cast to one of
       the parents: it can end up pointing to the subobject representation
-      in the middle of the allocation.
+      in the middle of the allocation.  You can suppress Dr. Memory's
+      identification of such mid-allocation pointers, causing them to show
+      up as possible leaks, with the \p -no_midchunk_inheritance_ok runtime
+      option.
+    - The std::string class stores a \p char[] array in the middle of an
+      allocation but points to the start of the allocation.  You can
+      suppress Dr. Memory's identification of such mid-allocation pointers,
+      causing them to show up as possible leaks, with the
+      \p -no_midchunk_string_ok runtime option.
     - A final example is a custom malloc wrapper that uses a header and
       passes a pointer offset into the result from malloc.  The free
       wrapper subtracts from the passed-in pointer in order to compute the
-      pointer to the head of the allocated block.
+      pointer to the head of the allocated block.  You can suppress
+      Dr. Memory's identification of such mid-allocation pointers, causing
+      them to show up as possible leaks, with the \p -no_midchunk_size_ok
+      runtime option.
+
+The two categories of leaks ("leaks" and "possible leaks") are further
+broken down into direct and indirect leaks.  An indirect leak is a heap
+object that is reachable by a pointer to its start address, but with all
+such pointers originating in leaked objects.  Leaks can be thought of as
+trees, with the top-level object the direct leaks and all child objects
+indirect leaks.  Dr. Memory reports the size of all the child indirect
+leaks for each direct leak, but does not report a detailed callstack for
+indirect leaks.  If the direct leak is addressed, the indirect leaks should
+no longer be leaked, making their details unnecessary.
 
 By default, Dr. Memory performs leak checking at application exit, or when
 a mid-run check is requested via \p -nudge (see \ref sec_daemon).  Nudges

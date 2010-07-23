@@ -31,7 +31,7 @@
 ### On Windows:
 ### - for cygwin apps: objdump, nm, addr2line
 ###     => packages needed: perl, binutils
-### - for non-cygwin apps: nothing
+### - for non-cygwin apps: not used: replaced by drmemory.exe
 
 use Getopt::Long;
 use File::Temp qw(tempfile);
@@ -96,6 +96,7 @@ for ($i=0; $i<=$#script_ops; $i++) {
 $usage = "usage: $0 [options] -- <executable> [args ...]\noptions:\n$options_usage";
 
 $verbose = 0;
+$version = 0;
 $drmemory_home = $default_home;
 # normally we're packaged with a DR release laid out in "dynamorio":
 $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
@@ -104,6 +105,8 @@ $use_vmtree = $is_vmk;
 $use_release = 0;
 $use_dr_debug = 0;
 $logdir = "";
+$perturb_only = 0;
+$perturb = 0;
 $batch = 0; # batch mode: no popups please
 # -shared_slowpath requires -disable_traces
 #   (actually it doesn't anymore: new trace event rebuilds trace from IR so
@@ -119,6 +122,8 @@ my $prefix = ":::Dr.Memory:::";
 my $aggregate = 0;
 my $use_default_suppress = 1;
 my $skip_postprocess = 0;
+my $just_postprocess = 0;
+my $postprocess_apppath = "";
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
@@ -146,17 +151,27 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "release" => \$use_release,
                 "dr_debug" => \$use_dr_debug,
                 "v" => \$verbose,
+                "version" => \$version,
                 "batch" => \$batch,
                 "nudge=s" => \$nudge_pid,
                 "pid_file=s" => \$pid_file,
                 "use_vmtree!" => \$use_vmtree,
                 "aggregate" => \$aggregate,
-                "skip_postprocess" => \$skip_postprocess,
+                "skip_postprocess|skip_results" => \$skip_postprocess,
+                "results" => \$just_postprocess,
+                "results_app=s" => \$postprocess_apppath,
                 # client options that we process first here:
                 "suppress=s" => \$suppfile,
                 "default_suppress!" => \$use_default_suppress,
-                "logdir=s" => \$logdir)) {
+                "logdir=s" => \$logdir,
+                "perturb_only" => \$perturb_only,
+                # required so perl option parser won't interpret as -perturb_only
+                "perturb" => \$perturb)) {
     die $usage;
+}
+if ($version) {
+    print "Dr. Memory version @VERSION_NUMBER@ -- build @BUILD_NUMBER@\n";
+    exit 0;
 }
 # Restore negation prefixes
 for ($i = 0; $i <= $#ARGV; $i++) {
@@ -171,6 +186,9 @@ if ($#ARGV >= 0 && $ARGV[0] =~ /^-/) {
     shift if ($#ARGV >= 0 && $ARGV[0] =~ /^--$/);
 }
 die "$usage\n" unless ($#ARGV >= 0 || $nudge_pid ne "");
+
+die "$usage\n" if ($skip_postprocess && $just_postprocess); # mut exclusive
+die "$usage\n" if ($postprocess_apppath ne '' && !$just_postprocess);
 
 $dr_home = &canonicalize_path($dr_home);
 $drmemory_home = &canonicalize_path($drmemory_home);
@@ -198,13 +216,17 @@ if ($use_vmtree) {
     }
 }
 
-die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"
-    if (! -e "$dr_home/lib32/$dr_libdir/$drlibname");
-
+if (!($aggregate || $just_postprocess)) {
+    die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"
+        if (! -e "$dr_home/lib32/$dr_libdir/$drlibname");
+}
+# even for post-run symbols, need drmem lib for replaced routine symbols    
 die "$drmemlibname not found in $drmemory_home/$bindir/$libdir\n$usage\n"
     if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname");
 
 nudge($nudge_pid) if ($nudge_pid ne "");
+
+$skip_postprocess = 1 if ($perturb_only);
 
 $suppress_drmem = "";
 if ($suppfile ne "") {
@@ -217,6 +239,10 @@ if ($suppfile ne "") {
 
 if ($aggregate) {
     # rest of args are directory names
+} elsif ($just_postprocess) {
+    # should be a single arg containing a directory name
+    die "A single directory expected\n$usage\n" unless 
+        ($#ARGV == 0 && -d $ARGV[0]);
 } else {
     $apppath = &canonicalize_path($ARGV[0]);
     $app = fileparse($apppath);
@@ -267,8 +293,10 @@ my $win32_a2l = "$drmemory_home/$bindir/winsyms.exe";
 # it's difficult to get " or ' past drrun so we use `
 $ops = "-logdir `$logdir` $suppress_drmem $user_ops";
 $ops .= " -no_default_suppress" unless ($use_default_suppress);
+$ops .= " -perturb_only" if ($perturb_only);
+$ops .= " -perturb" if ($perturb);
 
-if ($aggregate) {
+if ($aggregate || $just_postprocess) {
     # nothing to deploy
 } elsif ($is_unix) {
     my $drrun = "$dr_home/bin32/drrun";
@@ -329,33 +357,31 @@ if ($aggregate) {
 
 $procid = $$;
 
-if ($aggregate) {
+if ($aggregate || $just_postprocess) {
     # not running app
     &post_process();
     exit 0;
 }
 
-if (!$skip_postprocess) {
-    # PR 425335: we must run the app in the foreground (in case takes stdin)
-    # so we run the rest of our script sideline
-    if (!$is_unix && !$is_cygwin_perl) {
-        # pp-produced .exe crashes on exit from child of fork
-        $using_threads = 1;
-        eval "use threads ()";
-        $child = threads->create(\&post_process);
-    } else {
-        $using_threads = 0;
-        unless (fork()) {
-            # PR 511242: Ctrl-C on an app launched with drmemory.pl should only
-            # terminate the app, not postprocess.pl, to avoid an incomplete results
-            # file.  By default the shell terminates all processes in the app's
-            # group, so we move postprocess to its own group.  If we want headless
-            # support we can change this to setsid.
-            setpgrp(0,0) or die "Unable to setpgrp\n";
-            &post_process();
-            exit 0;
-        }
-    }   
+# PR 425335: we must run the app in the foreground (in case takes stdin)
+# so we run the rest of our script sideline
+if (!$is_unix && !$is_cygwin_perl) {
+    # pp-produced .exe crashes on exit from child of fork
+    $using_threads = 1;
+    eval "use threads ()";
+    $child = threads->create(\&post_process);
+} else {
+    $using_threads = 0;
+    unless (fork()) {
+        # PR 511242: Ctrl-C on an app launched with drmemory.pl should only
+        # terminate the app, not postprocess.pl, to avoid an incomplete results
+        # file.  By default the shell terminates all processes in the app's
+        # group, so we move postprocess to its own group.  If we want headless
+        # support we can change this to setsid.
+        setpgrp(0,0) or die "Unable to setpgrp\n";
+        &post_process();
+        exit 0;
+    }
 }
 
 print "running app: \"".join(' ',@appcmdline)."\"\n" if ($verbose);
@@ -386,7 +412,7 @@ if ($is_unix) {
 sub post_process()
 {
     my $logsubdir = "";
-    if (!$aggregate) {
+    if (!($aggregate || $just_postprocess)) {
         if (!$is_unix) {
             # Retrieve pid.  Avoid opening file until drinject has written to it,
             # to avoid blocking the write.
@@ -426,12 +452,43 @@ sub post_process()
         }
         print "found app logdir $logsubdir\n" if ($verbose);
         $iters = 0;
+        if ($skip_postprocess) {
+            open(RESFILE, "> $logsubdir/results.txt") ||
+                die "Can't create $logsubdir/results.txt: $!";
+            # work around lack of full path so that -results knows
+            # path to executable (xref PR 401580.  i#138/PR 307636 are now
+            # implemented and used on windows but not on *nix).
+            print RESFILE "Results for \"$apppath\" are not available because ".
+                "-skip_results was specified!\n";
+            print RESFILE "To fill in this file, run with \"-results $logsubdir\".\n";
+            close(RESFILE);
+            print STDERR "$prefix To obtain results, run with: -results $logsubdir\n";
+            return 0;
+        }
         # wait for log file to be created before invoking postprocess script
         while (! -e "$logsubdir/global.$procid.log") {
             sleep 1;
             # On unix/cygwin we could use "ps" to see if app is around
             die "Giving up on finding logdir: assuming process $procid died\n"
                 if ($iters++ > 60);
+        }
+    }
+
+    if ($just_postprocess) {
+        # support running on another machine that doesn't have same path
+        $logsubdir = $ARGV[0];
+        if ($postprocess_apppath ne '') {
+            $apppath = $postprocess_apppath;
+        } else {
+            # retrieve app name from results.txt file
+            open(RESFILE, "< $logsubdir/results.txt") ||
+                die "Can't open $logsubdir/results.txt: $!";
+            $_ = <RESFILE>;
+            if (/Results for "(.*)" are not/) {
+                $apppath = $1;
+            } else {
+                die "Malformed $logsubdir/results.txt: not from a -skip_results run!\n";
+            }
         }
     }
 
@@ -472,10 +529,11 @@ sub post_process()
     push @postcmd, ("-appid", join(' ', @orig_argv));
     push @postcmd, "-batch" if ($batch);
     push @postcmd, ("-drmemdir", "$libdir");
-    if ($aggregate) {
+    if ($aggregate || $just_postprocess) {
         push @postcmd, ("-aggregate", @ARGV);
-    } else {
-        # We need to pass in path to executable to work around i#138 via -x
+    }
+    if (!$aggregate) {
+        # We need to pass in path to executable to work around PR 401580 via -x
         push @postcmd, ("-x",  "$apppath");
         push @postcmd, ("-l", "$logsubdir");
     }

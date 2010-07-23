@@ -65,8 +65,15 @@ typedef struct _drmemory_options_t {
     /* PR 520916: leak-check-only mode */
     bool leaks_only;
 
-    /* for debugging: -no_ to disable all shadowing and do nothing but track mallocs */
+    /* for debugging and -leaks_only and -perturb_only modes:
+     * -no_ to disable all shadowing and do nothing but track mallocs
+     */
     bool shadowing;
+
+    /* for debugging and -leaks_only and -perturb_only modes:
+     * -no_ to disable all malloc and alloc syscall tracking
+     */
+    bool track_allocs;
 
     /* Whether to record call stacks for allocations for reporting
      * when leaks are detected.
@@ -105,6 +112,18 @@ typedef struct _drmemory_options_t {
     /* Whether to print out reachable "leaks". */
     bool show_reachable;
 
+    /* Perturb synchronization-related actions to try and hit races */
+    bool perturb;
+
+    /* Perturb but do not check for memory errors or track allocs */
+    bool perturb_only;
+
+    /* Maximum delay introduced by -perturb, in milliseconds */
+    uint perturb_max;
+
+    /* Seed used for random delays by -perturb */
+    uint perturb_seed;
+
     /**************************************************
      * TOOL-SPECIFIC OPTIONS
      */
@@ -127,6 +146,7 @@ typedef struct _drmemory_options_t {
      * Nowadays we use the heap info for other things, like thread
      * stack identification (PR 418629), and don't really support
      * turning this off.
+     * Requires track_allocs.
      */
     bool track_heap;
 

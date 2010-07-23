@@ -55,6 +55,10 @@ rb_tree_destroy(rb_tree_t *tree);
 void
 rb_node_fields(rb_node_t *node, byte **base OUT, size_t *size OUT, void **client OUT);
 
+/* Modify the client field of a node. */
+void
+rb_node_set_client(rb_node_t *node, void *client);
+
 /* Insert a node into the tree.  If an existing node overlaps with [base,base+size),
  * returns that node; else, adds a new node and returns NULL.
  */

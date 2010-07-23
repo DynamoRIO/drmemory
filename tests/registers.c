@@ -262,8 +262,8 @@ repstr_test(void)
         xadd  dword ptr [edi], eax
     }
 #else
-    asm("mov   %0, %%edi" : : "g"(a1) : "edi");
-    asm("mov   %0, %%esi" : : "g"(a2) : "esi");
+    asm("mov   %0, %%esi" : : "g"(a1) : "esi");
+    asm("mov   %0, %%edi" : : "g"(a2) : "edi");
     asm("mov   $15, %ecx");
     asm("rep movsb");
     asm("mov   %0, %%edi" : : "g"(a2) : "edi");

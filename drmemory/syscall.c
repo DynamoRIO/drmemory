@@ -27,6 +27,7 @@
 #include "readwrite.h"
 #include "syscall_os.h"
 #include "alloc.h"
+#include "perturb.h"
 #ifdef LINUX
 # include "sysnum_linux.h"
 #endif
@@ -388,6 +389,8 @@ event_pre_syscall(void *drcontext, int sysnum)
     res = os_shared_pre_syscall(drcontext, sysnum);
     if (!options.leaks_only && options.shadowing)
         res = os_shadow_pre_syscall(drcontext, sysnum) && res;
+    if (options.perturb)
+        res = perturb_pre_syscall(drcontext, sysnum) && res;
     return res;
 }
 

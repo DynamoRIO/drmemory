@@ -67,6 +67,8 @@ extern app_pc app_end;
 #ifdef STATISTICS
 void 
 dump_statistics(void);
+
+extern uint num_nudges;
 #endif /* STATISTICS */
 
 #ifdef LINUX

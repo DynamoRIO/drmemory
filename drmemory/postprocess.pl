@@ -173,7 +173,14 @@ open(STDOUT, "> $outfile") || die "Can't redirect stdout to $outfile: $!";
 open(SUMM_OUT, "> $sumfile") || die "Can't open $sumfile: $!";
 
 if ($aggregate) {
-    print "Dr. Memory aggregate results for @ARGV\n" if (!$leaks_only);
+    if (!$leaks_only) {
+        if ($#ARGV == 0) {
+            # this is likely to be -results so don't say "Aggregate"
+            print "Dr. Memory results for @ARGV\n";
+        } else {
+            print "Dr. Memory aggregate results for @ARGV\n";
+        }
+    }
 } else {
     # PR 426484: if app is killed, exit instead of spinning forever
     $pid = bsd_glob("$logdir/global.*.log"); # bsd_glob to not split on whitespace
@@ -242,7 +249,14 @@ if ($aggregate) {
     }
 
     foreach $dir (@dirs) {
-        print stderr "Aggregating $dir\n" if (!$leaks_only);
+        if (!$leaks_only) {
+            if ($#dirs == 0) {
+                # this is likely to be -results so don't say "Aggregating"
+                print stderr "Producing results for $dir\n";
+            } else {
+                print stderr "Aggregating $dir\n";
+            }
+        }
         die "Aggregation error: $dir does not exist\n" unless (-e "$dir");
         # if passed in -x and only one dir we don't require results.txt.
         # note that we can't just turn off $aggregate when processing
@@ -469,8 +483,10 @@ sub process_all_errors()
                 my $name = $client_errnum_to_name[$1];
                 # subtract 1 b/c we've already added one instance
                 my $dup_count = ($2 - 1);
-                # we store separately rather than add to dup_count, to avoid
+                # subtract dups we've already accounted for, to avoid
                 # accumulating when this data is printed multiple times on nudges
+                $dup_count -= $error_cache{$name}{"dup_count_seen"};
+                $error_cache{$name}{"dup_count_seen"} = $dup_count;
                 if ($error_cache{$name}{"suppressed"}) {
                     # if we suppressed then DR's dup count should be added to
                     # suppression count not error count
@@ -483,6 +499,10 @@ sub process_all_errors()
                     $error_cache{$name}{"dup_count_client"} += $dup_count;
                     $error_summary{$error_cache{$name}{"type"}}{"extra_client"} +=
                         $dup_count;
+                    if ($error_cache{$name}{"type"} =~ /LEAK/) {
+                        $error_summary{$error{"type"}}{"bytes"} +=
+                            $error_cache{$name}{"numbytes"} * $dup_count;
+                    }
                 }
             } else {
                 $found_duplicate_start = 0;
@@ -499,6 +519,15 @@ sub process_all_errors()
                 $client_leak_summary .= $_;
                 $no_leak_info = 1 if (/of leak/);
                 $no_possible_leak_info = 1 if (/of possible leak/);
+            } elsif (/of possible leak/) {
+                # With -check_leaks but not -possible_leaks we do have
+                # unique+total for possible but not separate errors
+                my $tmp = $_;
+                $_ = <$fh>; # ok since ERRORS IGNORED match is below
+                if (/re-run.*possible_leak/) {
+                    $client_leak_summary .= $tmp . $_;
+                    $no_possible_leak_info = 1;
+                }
             }
         }
         if (/^ERRORS IGNORED:/) {
@@ -555,6 +584,7 @@ sub process_one_error($raw_error_lines_array_ref)
         $errnum++;
         parse_error($lines, $err_str);
         $error_cache{$err_str}{"type"} = $error{"type"};
+        $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
         lookup_addr();
         my ($err_str_ref, $err_cstack_ref) = generate_error_info();
 
@@ -574,12 +604,9 @@ sub process_one_error($raw_error_lines_array_ref)
             # PR 477013: keep counts per type
             $error_summary{$error{"type"}}{"unique"}++;
             $error_summary{$error{"type"}}{"total"}++;
-            # The flavor text for leaks has whitespace and then the number,
-            # with text after: we let perl grab the number.
-            die "Error: numbytes ".$error{"numbytes"}." not numeric"
-                unless ($error{"type"} !~ /LEAK/ || $error{"numbytes"} =~ /^\s*\d+/);
-            $error_summary{$error{"type"}}{"bytes"} += $error{"numbytes"} if
-                ($error{"type"} =~ /LEAK/);
+            if ($error{"type"} =~ /LEAK/) {
+                $error_summary{$error{"type"}}{"bytes"} += $error{"numbytes"};
+            }
         } else {
             # If doesn't pass the source filter we count toward suppression stats
             # since not worth having separate set of counts.
@@ -711,13 +738,12 @@ sub parse_error($arr_ref, $err_str)
         if ($line =~ /^Error #\s*(\d+)+: (UN\w+\s+\w+)(:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (REPORTED WARNING:.*)$/ ||
-            $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+ byte.*)$/ ||
-            $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+ byte.*)$/) {
+            $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+.*)$/ ||
+            $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+.*)$/) {
             $client_errnum_to_name[$1] = $err_str;
             $error{"name"} = $2;
             $error{"type"} = $2;
-            # Really this is all the flavor text: only used numerically for leaks
-            $error{"numbytes"} = $3;
+            $error{"details"} = $3;
             $error{"addr"} = [];
             $error{"modoffs"} = [];
             $supp .= "$2\n";
@@ -731,7 +757,11 @@ sub parse_error($arr_ref, $err_str)
                 }
             } elsif ($line =~ /^Error #\s*\d+: LEAK/ || 
                      $line =~ /^Error #\s*\d+: POSSIBLE LEAK/) {
-                # nothing else for now
+                if ($error{"details"} =~ /\s(\d+) direct.*\s(\d+) indirect/) {
+                    $error{"numbytes"} = $1 + $2;
+                } else {
+                    die "Error: unknown leak detail text ".$error{"details"}."\n";
+                }
             } else {
                 die "Unrecognized error type: $line";
             }
@@ -882,7 +912,7 @@ sub generate_error_info()
     $err_str = "$prefix\n";
     # numbytes and aux_info are currently only for the 1st unique (PR 423750
     # covers providing such info for dups)
-    $err_str .= $prefix."Error \#$errnum: ".$error{"name"}.$error{"numbytes"}."\n";
+    $err_str .= $prefix."Error \#$errnum: ".$error{"name"}.$error{"details"}."\n";
     # When aggregating we'll just take the first timestamp + thread id
     $err_str .= $prefix."Elapsed time = ".$error{"time"}.
         " in thread ".$error{"thread"}."\n" if (defined($error{"time"}));

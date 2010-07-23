@@ -22,7 +22,6 @@ cmake_minimum_required(VERSION 2.6)
 
 project(DrMemory)
 
-set(DEFINES )
 option(VMKERNEL "target vmkernel")
 if (VMKERNEL)
   # if we get enough of these, should use a configure.h, but would need to
@@ -90,6 +89,13 @@ else (TOOL_DR_HEAPSTAT)
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
 
+set(BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
+
+set(DEFINES ${DEFINES}
+  -DBUILD_NUMBER=${BUILD_NUMBER}
+  -DVERSION_NUMBER=${VERSION_NUMBER}
+  -DVERSION_STRING="${VERSION_NUMBER}")
+
 if (WIN32)
   # i#44/PR 243532: online symbol access
   option(USE_DRSYMS "use drsyms DR Extension online symbols instead of post-processing"
@@ -149,6 +155,9 @@ else ()
   set(CMAKE_BUILD_TYPE "Release")
   set(DEBUG OFF)
 endif ()
+
+# new set_property() doesn't want -D but our cpp invocation above does
+string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
 
@@ -380,7 +389,8 @@ if (TOOL_DR_HEAPSTAT)
     drmemory/stack.c
     drmemory/readwrite.c
     drmemory/fastpath.c
-    drmemory/shadow.c)
+    drmemory/shadow.c
+    drmemory/perturb.c)
 else (TOOL_DR_HEAPSTAT)
   # Dr. Memory
   set(srcs
@@ -398,6 +408,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/report.c
     drmemory/replace.c
     drmemory/leak.c
+    drmemory/perturb.c
     common/utils.c
     common/redblack.c
     common/crypto.c)
@@ -423,6 +434,9 @@ if (WIN32 AND USE_DRSYMS)
   add_executable(${toolname} drmemory/frontend.c)
   configure_DynamoRIO_standalone(${toolname})
   target_link_libraries(${toolname} drinjectlib drconfiglib)
+  set_target_properties(${toolname} PROPERTIES
+    VERSION ${VERSION_NUMBER})
+  set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 else (WIN32 AND USE_DRSYMS)
   set(client_target ${toolname})
 endif (WIN32 AND USE_DRSYMS)
@@ -468,15 +482,9 @@ endif (WIN32)
 
 set_target_properties(${client_target} PROPERTIES
   VERSION ${VERSION_NUMBER})
-# should go into a configure.h if we get enough of these
-set(DEFINES ${DEFINES} -DVERSION_STRING="${VERSION_NUMBER}")
-
-# new set_property() doesn't want -D but our cpp invocation above does
-string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
-set(BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
-
+# should go into a configure.h if we get enough of these
 set(script_aux "")
 if (PERL_TO_EXE)
   foreach (pl ${scripts})
@@ -506,7 +514,7 @@ endif (PERL_TO_EXE)
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" COPYONLY)
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
   if (VMKERNEL)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/common/frontend_vmk.pm"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/frontend_vmk.pm" COPYONLY)
@@ -518,7 +526,7 @@ if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
     set(script_aux "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl")
   endif (NOT USE_DRSYMS)
-  set(script_main "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
+  set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl"
     "${options_for_perl}")
 endif (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
 if (WIN32)

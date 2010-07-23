@@ -34,5 +34,11 @@ bye
 :::Dr.Memory:::       1 unique,     1 total uninitialized access(es)
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
-:::Dr.Memory:::       1 total,      4 byte(s) of leak(s)
-:::Dr.Memory:::       0 total,      0 byte(s) of possible leak(s)
+!if UNIX
+:::Dr.Memory:::       2 unique,     2 total,     27 byte(s) of leak(s)
+!endif
+!if WINDOWS
+# FIXME PR 587093: string code disabled for now
+:::Dr.Memory:::       1 unique,     1 total,      4 byte(s) of leak(s)
+!endif
+:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)

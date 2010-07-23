@@ -26,7 +26,8 @@
 # * nudge = command to run perl script that takes -nudge for nudge
 # * toolbindir = location of DynamoRIO tools dir
 # * VMKERNEL = whether running on vmkernel
-# * postcmd = post-process command for Dr. Heapstat leak results
+# * postcmd = post-process command for Dr. Heapstat leak results or
+#     Dr. Memory -skip_results + -results
 #
 # these allow for parameterization for more portable tests (PR 544430)
 # env vars will override; else passed-in default settings will be used:
@@ -74,6 +75,16 @@ endif()
 ##################################################
 # run the test
 
+# used for sleeping, and for nudge test
+find_program(PERL perl)
+if (NOT PERL)
+  message(FATAL_ERROR "cannot find perl")
+endif (NOT PERL)
+
+# use perl since /bin/sleep not on all platforms
+set(SLEEP_SHORT ${PERL} -e "sleep(0.2)")
+set(SLEEP_LONG ${PERL} -e "sleep(2)")
+
 # intra-arg space=@@ and inter-arg space=@
 set(cmd_with_at ${cmd})
 string(REGEX REPLACE "@@" " " cmd "${cmd}")
@@ -82,11 +93,6 @@ string(REGEX REPLACE "@" ";" cmd "${cmd}")
 if ("${cmd}" MATCHES "run_in_bg")
   # nudge test
   # modeled after DR's runall.cmake
-  find_program(PERL perl)
-  if (NOT PERL)
-    message(FATAL_ERROR "cannot find perl")
-  endif (NOT PERL)
-
   string(REGEX MATCHALL "-out@[^@]+@" out "${cmd_with_at}")
   string(REGEX REPLACE "-out@([^@]+)@" "\\1" out "${out}")
 
@@ -109,10 +115,6 @@ if ("${cmd}" MATCHES "run_in_bg")
   if (cmd_result)
     message(FATAL_ERROR "*** ${cmd} failed (${cmd_result}): ${cmd_err}***\n")
   endif (cmd_result)
-
-  # use perl since /bin/sleep not on all platforms
-  set(SLEEP_SHORT ${PERL} -e "sleep(0.2)")
-  set(SLEEP_LONG ${PERL} -e "sleep(2)")
 
   if (VMKERNEL)
     # have to wait for probe loop init
@@ -277,16 +279,22 @@ endforeach (line)
 # check results.txt
 
 if (resmatch)
-  if (TOOL_DR_HEAPSTAT)
-    set(data_prefix "Data is in ")
+  if (NOT "${postcmd}" STREQUAL "")
     string(REGEX REPLACE "@@" " " postcmd "${postcmd}")
     string(REGEX REPLACE "@" ";" postcmd "${postcmd}")
+  endif (NOT "${postcmd}" STREQUAL "")
+  if (TOOL_DR_HEAPSTAT)
+    set(data_prefix "Data is in ")
   else (TOOL_DR_HEAPSTAT)
-    set(data_prefix "Details: ")
+    if ("${postcmd}" STREQUAL "")
+      set(data_prefix "Details: ")
+    else ()
+      set(data_prefix "To obtain results, run with: -results ")
+    endif ()
   endif (TOOL_DR_HEAPSTAT)
   # it may not be created yet
   while (NOT "${cmd_err}" MATCHES "${data_prefix}")
-    # there is no sleep command so we spin
+    execute_process(COMMAND ${SLEEP_SHORT})
   endwhile ()
   string(REGEX MATCHALL "${data_prefix}([^\n]+)[\n]" resfiles "${cmd_err}")
   
@@ -299,9 +307,9 @@ if (resmatch)
     string(REGEX REPLACE "${data_prefix}" "" resfile "${resfile}")
     string(REGEX REPLACE "[\n]" "" resfile "${resfile}")
 
-    if (TOOL_DR_HEAPSTAT)
+    if (NOT "${postcmd}" STREQUAL "")
       # generate resfile
-      set(thiscmd "${postcmd};-profdir;${resfile}")
+      set(thiscmd "${postcmd};${resfile}")
       execute_process(COMMAND ${thiscmd}
         RESULT_VARIABLE postcmd_result
         ERROR_VARIABLE postcmd_err
@@ -311,9 +319,9 @@ if (resmatch)
           "*** ${thiscmd} failed (${postcmd_result}): ${postcmd_err}***\n")
       endif (postcmd_result)
       set(resfile "${resfile}/results.txt")
-    else (TOOL_DR_HEAPSTAT)
+    else (NOT "${postcmd}" STREQUAL "")
       set(postcmd_err "")
-    endif (TOOL_DR_HEAPSTAT)
+    endif (NOT "${postcmd}" STREQUAL "")
 
     file(READ "${resfile}" contents)
     string(LENGTH "${contents}" reslen)

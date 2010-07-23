@@ -18,9 +18,26 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-:::Dr.Heapstat:::       2 unique,     2 total,     59 byte(s) of leak(s)
-:::Dr.Heapstat:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
-Error #1: LEAK 42 bytes
+:::Dr.Heapstat:::       3 unique,     3 total,    155 byte(s) of leak(s)
+:::Dr.Heapstat:::       1 unique,     1 total,     16 byte(s) of possible leak(s)
+# Different order based on hashtable iterator order
+!if UNIX
+Error #1: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
-Error #2: LEAK 17 bytes
-malloc.c:197
+Error #2: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:228
+Error #3: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:233
+Error #4: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:234
+!endif
+!if WINDOWS
+Error #1: LEAK 42 direct bytes + 17 indirect bytes
+malloc.c:196
+Error #2: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:233
+Error #3: LEAK 16 direct bytes + 64 indirect bytes
+malloc.c:234
+Error #4: LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:228
+!endif

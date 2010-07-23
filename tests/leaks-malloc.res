@@ -34,10 +34,12 @@ malloc.c:160
 malloc.c:161
 !endif
 !if UNIX
-Error #5: LEAK 42 bytes
+Error #5: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
-Error #6: LEAK 17 bytes
-malloc.c:197
+Error #6: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:228
+Error #7: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:234
 !endif
 !if WINDOWS
 Error #5: WARNING: heap allocation failed
@@ -46,8 +48,10 @@ Error #6: INVALID HEAP ARGUMENT
 malloc.c:179
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
-Error #7: LEAK 42 bytes
+Error #7: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
-Error #8: LEAK 17 bytes
-malloc.c:197
+Error #8: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:228
+Error #9: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:234
 !endif

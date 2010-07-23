@@ -48,6 +48,12 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
 
+file(GLOB dox_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox")
+file(GLOB dox_files_gen "${PROJECT_BINARY_DIR}/*.dox")
+file(GLOB sub_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.sub")
+file(GLOB in_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.in")
+file(GLOB imgs "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.png")
+
 set(options_for_docs "${PROJECT_BINARY_DIR}/docs/options-docs.dox.in")
 add_custom_command(
   OUTPUT "${options_for_docs}"
@@ -61,7 +67,8 @@ add_custom_command(
 set(doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 add_custom_command(
   OUTPUT ${doxyfile}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
+  DEPENDS ${dox_files}
+          ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
           ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
           ${PROJECT_SOURCE_DIR}/${tooldir}/docs/options-base.dox.in
           ${options_for_docs}
@@ -98,11 +105,6 @@ add_custom_command(
   )
 
 set(docsgen ${CMAKE_CURRENT_BINARY_DIR}/html/index.html)
-file(GLOB dox_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox")
-file(GLOB dox_files_gen "${PROJECT_BINARY_DIR}/*.dox")
-file(GLOB sub_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.sub")
-file(GLOB in_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.in")
-file(GLOB imgs "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.png")
 add_custom_command(
   OUTPUT ${docsgen} # among other files
   DEPENDS ${dox_files} ${dox_files_gen} ${sub_files} ${in_files} ${imgs}

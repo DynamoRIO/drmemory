@@ -18,7 +18,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: INVALID HEAP ARGUMENT 
+Error #1: INVALID HEAP ARGUMENT
 !if WINDOWS
 # addr2line and winsyms report slightly different results here
 malloc.c:160
@@ -29,18 +29,22 @@ malloc.c:161
 !if WINDOWS
 Error #2: WARNING: heap allocation failed
 malloc.c:172
-Error #3: INVALID HEAP ARGUMENT 
+Error #3: INVALID HEAP ARGUMENT
 malloc.c:179
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
-Error #4: LEAK 42 bytes
+Error #4: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
-Error #5: LEAK 17 bytes
-malloc.c:197
+Error #5: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:228
+Error #6: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:234
 !endif
 !if UNIX
-Error #2: LEAK 17 bytes
-malloc.c:197
-Error #3: LEAK 42 bytes
+Error #2: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
+Error #3: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:228
+Error #4: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:234
 !endif

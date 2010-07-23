@@ -399,12 +399,14 @@ syscall_num(void *drcontext, byte *entry)
 extern const char *get_syscall_name(int sysnum);
 # endif
 
+/* Returns -1 on failure */
 int
 sysnum_from_name(void *drcontext, app_pc ntdll_base, const char *name)
 {
     int num;
     app_pc entry = (app_pc) dr_get_proc_address(ntdll_base, name);
-    ASSERT(entry != NULL, "can't find required ntdll export");
+    if (entry == NULL)
+        return -1;
     num = syscall_num(drcontext, entry);
     ASSERT(num != -1, "error finding key syscall number");
 # ifdef TOOL_DR_MEMORY

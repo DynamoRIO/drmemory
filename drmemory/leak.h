@@ -39,7 +39,8 @@ extern uint midchunk_string_ptrs;
 /* Must be provided by client */
 
 void
-client_found_leak(app_pc start, app_pc end, bool pre_us, bool reachable,
+client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
+                  bool pre_us, bool reachable,
                   bool maybe_reachable, void *client_data);
 
 /**************************/

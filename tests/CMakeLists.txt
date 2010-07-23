@@ -131,15 +131,17 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake"
   "${CMAKE_CURRENT_BINARY_DIR}/runtest.cmake" COPYONLY)
 set(cmd_script -P "./runtest.cmake")
 
-# test_ops should have words separated by ; so they'll be separate
-# arguments on the cmdline, while the others should be separated
-# by spaces and will remain a single arg.
+# test_ops and drmem_ops should have words separated by ; so they'll
+# be separate arguments on the cmdline, while dr_ops should be
+# separated by spaces and will remain a single arg.
 # be wary of trailing spaces or extra spaces: could cause problems.
 # Note: For args with spaces (or multiple args) passed via drmem_ops a ;
 # should be used instead of each space.  Otherwise, the whole of
 # drmem_ops is passed in as a single argument, which results in
 # options parsing errors in drmemory.pl and drmem client.
-function(newtest_nobuild test exe test_ops drmem_ops dr_ops)
+# The postprocess arg is a bool that applies on for Dr. Memory:
+# whether to run the front-end with -results after the app is run.
+function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   get_relative_location(${exe} exepath)
 
   set(cmd ${cmd_base})
@@ -177,7 +179,16 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops)
   string(REGEX REPLACE ";" "@" cmd "${cmd}")
   string(REGEX REPLACE " " "@@" nudge "${cmd_base}")
   string(REGEX REPLACE ";" "@" nudge "${nudge}")
-  set(postcmd "${cmd_base};-view_leaks;-x;${exepath}")
+  if (TOOL_DR_HEAPSTAT)
+    set(postcmd "${cmd_base};-view_leaks;-x;${exepath};-profdir")
+  else (TOOL_DR_HEAPSTAT)
+    if (postprocess)
+      # test -skip_results + -results (PR 575481)
+      set(postcmd "${cmd_base};-results")
+    else (postprocess)
+      set(postcmd "")
+    endif (postprocess)
+  endif (TOOL_DR_HEAPSTAT)
   string(REGEX REPLACE " " "@@" postcmd "${postcmd}")
   string(REGEX REPLACE ";" "@" postcmd "${postcmd}")
   add_test(${test} ${CMAKE_COMMAND}
@@ -195,13 +206,13 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops)
     ${cmd_script})
 endfunction(newtest_nobuild)
 
-function(newtest_ex test source test_ops drmem_ops dr_ops)
+function(newtest_ex test source test_ops drmem_ops dr_ops postprocess)
   tobuild(${test} ${source})
-  newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}")
+  newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}" ${postprocess})
 endfunction(newtest_ex)
 
 function(newtest test source)
-  newtest_ex(${test} ${source} "" "" "")
+  newtest_ex(${test} ${source} "" "" "" OFF)
 endfunction(newtest)
 
 newtest(hello hello.c)
@@ -211,7 +222,7 @@ newtest(registers registers.c)
 # linux glibc backtrace on hashtable curiosities causing problems:
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason
-newtest(cs2bug cs2bug.cpp)
+newtest_ex(cs2bug cs2bug.cpp "" "-check_leaks" "" OFF)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -224,12 +235,12 @@ if (UNIX)
     newtest(clone clone.c)
   endif (NOT VMKERNEL)
   get_relative_location(malloc malloc_path)
-  newtest_ex(execve execve.c "${malloc_path}" "" "")
+  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF)
   newtest(pthreads pthreads.c)
   target_link_libraries(pthreads pthread)
   tobuild_lib(loaderlib loader.lib.c)
   get_relative_location(loaderlib loaderlib_path)
-  newtest_ex(loader loader.c "${loaderlib_path}" "" "")
+  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF)
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
@@ -242,8 +253,8 @@ if (NOT TOOL_DR_HEAPSTAT)
   # PR 464804: test runtime options
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
-  newtest_nobuild(leaks-malloc malloc "" "-check_leaks" "")
-  newtest_nobuild(leaks-only malloc "" "-leaks_only -check_leaks" "")
+  newtest_nobuild(leaks-malloc malloc "" "-check_leaks" "" OFF)
+  newtest_nobuild(leaks-only malloc "" "-leaks_only;-check_leaks" "" OFF)
 
   # FIXME: PR 477111 - test suppression file generation via multiple runs
   if (UNIX)
@@ -256,17 +267,30 @@ if (NOT TOOL_DR_HEAPSTAT)
     set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.win.suppress")
   endif (UNIX)
   newtest_ex(suppress suppress.c ""
-    "-suppress;${supp_file};-callstack_max_frames;3;-check_leaks" "")
+    "-suppress;${supp_file};-callstack_max_frames;3;-check_leaks" "" OFF)
 
   set(nudge_test_args "-check_leaks;-possible_leaks;")
 
-else (NOT TOOL_DR_HEAPSTAT)
-  newtest_ex(stale stale.c "" "-staleness -stale_granularity 100" "")
+  if (UNIX)
+    # test -skip_results + -results (PR 575481)
+    newtest_nobuild(skip-results malloc "" "-skip_results;-check_leaks" "" ON)
+  endif (UNIX)
 
-  newtest_nobuild(time-allocs malloc "" "-time_allocs" "")
-  newtest_nobuild(time-bytes malloc "" "-time_bytes" "")
-  newtest_nobuild(time-instrs malloc "" "-time_instrs" "")
-  newtest_nobuild(dump malloc "" "-dump" "")
+  # For -perturb_only we do not have a .res file so that runtest.cmake
+  # won't wait for a message showing that results are ready
+  if (UNIX)
+    newtest_nobuild(perturb pthreads "" "-perturb_only" "" OFF)
+  else (UNIX)
+    newtest_nobuild(perturb winthreads  "" "-perturb_only" "" OFF)
+  endif (UNIX)
+
+else (NOT TOOL_DR_HEAPSTAT)
+  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF)
+
+  newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF)
+  newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF)
+  newtest_nobuild(time-instrs malloc "" "-time_instrs" "" OFF)
+  newtest_nobuild(dump malloc "" "-dump" "" OFF)
 
   set(nudge_test_args "")
 endif (NOT TOOL_DR_HEAPSTAT)
@@ -278,4 +302,4 @@ get_relative_location(infloop infloop_path)
 # the test to run as a final drmem arg
 newtest_nobuild(nudge run_in_bg 
   "-out;./nudge-out"
-  "${nudge_test_args}--;${infloop_path}" "")
+  "${nudge_test_args}--;${infloop_path}" "" OFF)

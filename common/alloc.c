@@ -176,6 +176,7 @@ typedef struct {
 #endif
 
 /* Options */
+static bool op_track_allocs;
 static bool op_track_heap;
 static size_t op_redzone_size;
 static bool op_size_in_redzone;
@@ -540,15 +541,22 @@ malloc_entry_free(void *v)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
+/* If track_allocs is false, only callbacks and callback returns are tracked.
+ * Else: if track_heap is false, only syscall allocs are tracked;
+ *       else, syscall allocs and mallocs are tracked.
+ */
 void
-alloc_init(bool track_heap, size_t redzone_size, bool size_in_redzone,
+alloc_init(bool track_allocs, bool track_heap,
+           size_t redzone_size, bool size_in_redzone,
            bool record_allocs, bool get_padded_size)
 {
 #ifdef WINDOWS
     void *drcontext = dr_get_current_drcontext();
 #endif
     app_pc alloc_lib;
-    op_track_heap = track_heap;
+    op_track_allocs = track_allocs;
+    ASSERT(track_allocs || !track_heap, "track_heap requires track_allocs");
+    op_track_heap = track_allocs && track_heap;
     op_redzone_size = redzone_size;
     op_size_in_redzone = size_in_redzone;
     op_record_allocs = record_allocs;
@@ -556,26 +564,35 @@ alloc_init(bool track_heap, size_t redzone_size, bool size_in_redzone,
 
 #ifdef WINDOWS
     alloc_lib = get_ntdll_base();
-    addr_KiAPC = (app_pc) dr_get_proc_address(alloc_lib,
-                                              "KiUserApcDispatcher");
     addr_KiCallback = (app_pc) dr_get_proc_address(alloc_lib,
                                                    "KiUserCallbackDispatcher");
-    addr_KiException = (app_pc) dr_get_proc_address(alloc_lib,
-                                                    "KiUserExceptionDispatcher");
-    addr_KiRaise = (app_pc) dr_get_proc_address(alloc_lib,
-                                                "KiRaiseUserExceptionDispatcher");
-    /* Assuming that KiUserCallbackExceptionHandler,
-     * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
-     * entered from the kernel.
-     */
+    if (op_track_allocs) {
+        addr_KiAPC = (app_pc) dr_get_proc_address(alloc_lib,
+                                                  "KiUserApcDispatcher");
+        addr_KiException = (app_pc) dr_get_proc_address(alloc_lib,
+                                                        "KiUserExceptionDispatcher");
+        addr_KiRaise = (app_pc) dr_get_proc_address(alloc_lib,
+                                                    "KiRaiseUserExceptionDispatcher");
+        /* Assuming that KiUserCallbackExceptionHandler,
+         * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
+         * entered from the kernel.
+         */
 
-    sysnum_mmap = sysnum_from_name(drcontext, alloc_lib, "NtMapViewOfSection");
-    sysnum_munmap = sysnum_from_name(drcontext, alloc_lib, "NtUnmapViewOfSection");
-    sysnum_valloc = sysnum_from_name(drcontext, alloc_lib, "NtAllocateVirtualMemory");
-    sysnum_vfree = sysnum_from_name(drcontext, alloc_lib, "NtFreeVirtualMemory");
-    sysnum_continue = sysnum_from_name(drcontext, alloc_lib, "NtContinue");
-    sysnum_cbret = sysnum_from_name(drcontext, alloc_lib, "NtCallbackReturn");
-    sysnum_setcontext = sysnum_from_name(drcontext, alloc_lib, "NtSetContextThread");
+        sysnum_mmap = sysnum_from_name(drcontext, alloc_lib, "NtMapViewOfSection");
+        ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
+        sysnum_munmap = sysnum_from_name(drcontext, alloc_lib, "NtUnmapViewOfSection");
+        ASSERT(sysnum_munmap != -1, "error finding alloc syscall #");
+        sysnum_valloc = sysnum_from_name(drcontext, alloc_lib, "NtAllocateVirtualMemory");
+        ASSERT(sysnum_valloc != -1, "error finding alloc syscall #");
+        sysnum_vfree = sysnum_from_name(drcontext, alloc_lib, "NtFreeVirtualMemory");
+        ASSERT(sysnum_vfree != -1, "error finding alloc syscall #");
+        sysnum_continue = sysnum_from_name(drcontext, alloc_lib, "NtContinue");
+        ASSERT(sysnum_continue != -1, "error finding alloc syscall #");
+        sysnum_cbret = sysnum_from_name(drcontext, alloc_lib, "NtCallbackReturn");
+        ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
+        sysnum_setcontext = sysnum_from_name(drcontext, alloc_lib, "NtSetContextThread");
+        ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
+    }
 #else
     alloc_lib = get_libc_base();
 #endif
@@ -592,15 +609,17 @@ alloc_init(bool track_heap, size_t redzone_size, bool size_in_redzone,
 #endif
     }
 
-    hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
-                      false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
-                      NULL, NULL);
-    large_malloc_tree = rb_tree_create(NULL);
-    hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
-                      false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
-                      NULL, NULL);
-    hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
-                   false/*!strdup*/);
+    if (op_track_allocs) {
+        hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
+                          false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
+                          NULL, NULL);
+        large_malloc_tree = rb_tree_create(NULL);
+        hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
+                          false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
+                          NULL, NULL);
+        hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
+    }
 }
 
 void
@@ -611,6 +630,8 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
+    if (!op_track_allocs)
+        return;
     LOG(1, "final malloc table size: %u bits, %u entries\n",
         malloc_table.table_bits, malloc_table.entries);
     /* we can't hold malloc_table.lock b/c report_leak() acquires it

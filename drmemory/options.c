@@ -57,6 +57,7 @@ drmemory_options_t options = {
 #endif
     false,     /* leaks_only */
     true,      /* shadowing */
+    true,      /* track_allocs */
 #ifdef TOOL_DR_MEMORY
     false,     /* check_leaks: uses too much space by default
                 * turn on once have binary callstacks (PR 424179)?
@@ -76,6 +77,10 @@ drmemory_options_t options = {
     true,      /* midchunk_inheritance_ok */
     true,      /* midchunk_string_ok */
     false,     /* show_reachable */
+    false,     /* perturb */
+    false,     /* perturb_only */
+    50,        /* perturb_max */
+    0,         /* perturb_seed */
 
     /* drmem-specific but drheapstat needs to share same code */
     true,      /* check_invalid_frees */
@@ -354,14 +359,36 @@ options_init(const char *opstr)
             options.use_default_suppress = false;
         } else if (stri_eq(word, "-leaks_only")) {
             options.leaks_only = true;
-            /* for performance use only DR's slots */
-            options.num_spill_slots = 0;
         } else if (stri_eq(word, "-no_leaks_only")) {
             options.leaks_only = false;
         } else if (stri_eq(word, "-shadowing")) {
             options.shadowing = true;
         } else if (stri_eq(word, "-no_shadowing")) {
             options.shadowing = false;
+        } else if (stri_eq(word, "-track_allocs")) {
+            options.track_allocs = true;
+        } else if (stri_eq(word, "-no_track_allocs")) {
+            options.track_allocs = false;
+#ifdef TOOL_DR_MEMORY
+        /* not supporting perturb with heapstat: can add easily later */
+        /* XXX: some of the other options here shouldn't be allowed for heapstat either */
+        } else if (stri_eq(word, "-perturb")) {
+            options.perturb = true;
+        } else if (stri_eq(word, "-no_perturb")) {
+            options.perturb = false;
+        } else if (stri_eq(word, "-perturb_only")) {
+            options.perturb_only = true;
+        } else if (stri_eq(word, "-no_perturb_only")) {
+            options.perturb_only = false;
+        } else if (stri_eq(word, "-perturb_max")) {
+            s = get_option_word(s, word);
+            if (s == NULL || sscanf(word, "%d", &options.perturb_max) <= 0)
+                option_error("-perturb_max");
+        } else if (stri_eq(word, "-perturb_seed")) {
+            s = get_option_word(s, word);
+            if (s == NULL || sscanf(word, "%d", &options.perturb_seed) <= 0)
+                option_error("-perturb_seed");
+#endif
         } else if (stri_eq(word, "-check_push")) {
             options.check_push = true;
         } else if (stri_eq(word, "-no_check_push")) {
@@ -461,5 +488,23 @@ options_init(const char *opstr)
     if (time_args > 1)
         usage_error("only one -time_* arg may be specified", "");
 #endif
+
+    /* Set dependent options after all processing in case overruled
+     * by a later negative option.
+     */
+    if (options.leaks_only || options.perturb_only) {
+        /* for performance use only DR's slots */
+        options.num_spill_slots = 0;
+        /* we now disable shadowing for leaks_only so we could clean up
+         * all the existing checks for both to only check shadowing
+         */
+        options.shadowing = false;
+    }
+    if (options.perturb_only) {
+        options.perturb = true;
+        options.track_allocs = false;
+    }
+    if (!options.track_allocs)
+        options.track_heap = false;
 }
 

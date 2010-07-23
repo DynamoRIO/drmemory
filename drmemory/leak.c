@@ -35,6 +35,8 @@ enum {
     MALLOC_REACHABLE    = MALLOC_CLIENT_2,
     /* Reachable via a mid-chunk pointer (PR 476482) */
     MALLOC_MAYBE_REACHABLE = MALLOC_CLIENT_3,
+    /* Indirect leak (PR 576032) */
+    MALLOC_INDIRECTLY_REACHABLE = MALLOC_CLIENT_4,
 };
 
 /* For queueing up regions to scan */
@@ -145,12 +147,9 @@ void
 leak_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
                      void *client_data)
 {
-    if (!TEST(MALLOC_IGNORE_LEAK, client_flags)) {
-        client_found_leak(start, end, pre_us,
-                          TEST(MALLOC_REACHABLE, client_flags), 
-                          TEST(MALLOC_MAYBE_REACHABLE, client_flags),
-                          client_data);
-    }
+    /* we now need our reachability_data_t passed in so we must do
+     * our own post-leak-scan iter instead of using the exit-time iter
+     */
 }
 
 #ifdef WINDOWS
@@ -177,7 +176,7 @@ leak_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
         return;
     client_flags = malloc_get_client_flags(start);
     if (!TEST(MALLOC_IGNORE_LEAK, client_flags)) {
-        client_found_leak(start, end, malloc_is_pre_us(start), false,
+        client_found_leak(start, end, 0, malloc_is_pre_us(start), false,
                           /* Report as a possible leak since technically not
                            * incorrect to free heap w/ live mallocs inside
                            */
@@ -185,6 +184,137 @@ leak_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
     }
 }
 #endif
+
+/***************************************************************************
+ * Splitting indirectly leaked bytes from direct (PR 576032) 
+ */
+
+typedef struct _unreach_entry_t {
+    /* If this is an unreachable or maybe-reachable entry, the sum of
+     * directly-reachable child leaks and a pointer to the parent for
+     * updating when the children are themselves scanned.
+     */
+    size_t indirect_bytes;
+    struct _unreach_entry_t *parent;
+} unreach_entry_t;
+
+static unreach_entry_t *
+unreach_entry_alloc(void)
+{
+    unreach_entry_t *e = global_alloc(sizeof(*e), HEAPSTAT_MISC);
+    memset(e, 0, sizeof(*e));
+    return e;
+}
+
+static void
+rb_cleanup_entries(rb_node_t *node, void *iter_data)
+{
+    unreach_entry_t *e;
+    ASSERT(node != NULL, "invalid param");
+    rb_node_fields(node, NULL, NULL, (void*)&e);
+    if (e != NULL)
+        global_free(e, sizeof(*e), HEAPSTAT_MISC);
+}
+
+/* 
+ * Design:
+ * * in top-level summary, just list total bytes (direct+indirect):
+ *   do not split, for simplicity
+ * * indirect leaks are only top-chunk-pointer reachable: any mid-chunk
+ *   becomes its own possible leak, since if fixed top level the indirect
+ *   would still be listed as a possible leak
+ * * top-level (both normal and possible) leaks have their byte amounts
+ *   split into direct and indirect
+ * * off-by-default option could also list callstacks of indirect leaks
+ *   but not worth effort to label w/ which is top-level for each:
+ *   just label "INDIRECT LEAK" or "DEPENDENT LEAK".
+ *   I punted on this: only if someone requests it is it worth the effort to
+ *   add it, since IMHO it's not likely to be all that useful.
+ *
+ * Algorithm:
+ * 1) scan unreach A:
+ *    A is indirect: leave alone
+ *    A points to B:
+ *      if B reachable: leave alone.
+ *      if B indirect: leave alone: someone else claimed
+ *      if B maybe-reachable: change from maybe to indirect and follow else below
+ *        => maybe-queue walk should check indirect flag
+ *      else mark B indirect and add B's bytes + B's indirect bytes to top
+ *        parent's indirect bytes.
+ *        point B's parent pointer to top parent.
+ *        use rbtree to hold these values.
+ *    A maybe-points to B:
+ *      if B reachable: leave alone.
+ *      if B indirect: leave alone: someone else claimed
+ *      if B maybe-reachable: nothing to do
+ *      else mark B maybe-reachable: add to maybe-queue
+ * 2) then walk maybe-queue: indirect trumps maybe, so only claim unclaimed
+ *    directs as maybe-indirect
+ */
+static void
+mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
+              byte *child_start, byte *child_end, uint flags,
+              rb_node_t *node_child/*OPTIONAL*/)
+{
+    if (TEST(MALLOC_REACHABLE, flags)) {
+        /* if reachable through some other parent: leave alone */
+    } else {
+        /* if maybe-reachable: change to indirect by marking,
+         *    and the maybe-reachable queue walk will ignore.
+         * if already indirect: if someone else claimed, leave alone;
+         *    else update parent size
+         * if nothing yet: mark as indirect
+         */
+        /* We need the sum of the sizes of all indirect children of
+         * every top-level direct leak, but we're not doing a
+         * depth-first walk, so we must later update parents when we
+         * process their children.  We also don't have any other good
+         * place to store the size so we use the rbtree.
+         */
+        unreach_entry_t *unreach_child, *unreach_parent;
+        rb_node_t *node_parent = rb_in_node(data->alloc_tree, ptr_parent);
+        ASSERT(node_parent != NULL, "unreachable must be in heap");
+        if (node_child == NULL) /* optional */
+            node_child = rb_find(data->alloc_tree, ptr_child);
+        ASSERT(node_child != NULL, "reachable object must be in rbtree");
+        rb_node_fields(node_child, NULL, NULL, (void*)&unreach_child);
+        rb_node_fields(node_parent, NULL, NULL, (void *)&unreach_parent);
+        /* rb client fields allocated lazily */
+        if (unreach_child == NULL) {
+            unreach_child = unreach_entry_alloc();
+            rb_node_set_client(node_child, (void *)unreach_child);
+        }
+        if (unreach_parent == NULL) {
+            unreach_parent = unreach_entry_alloc();
+            rb_node_set_client(node_parent, (void *)unreach_parent);
+        }
+
+        if (TEST(MALLOC_INDIRECTLY_REACHABLE, flags)) {
+            ASSERT(unreach_child->parent != NULL &&
+                   unreach_child->parent != unreach_parent,
+                   "node should be already claimed");
+        } else {
+            IF_DEBUG(bool found;)
+            unreach_entry_t *top = unreach_parent;
+            /* be sure to check for circular reference */
+            while (top->parent != NULL && top->parent != top)
+                top = top->parent;
+            /* claim the child */
+            top->indirect_bytes +=
+                unreach_child->indirect_bytes + (child_end - child_start);
+            /* any future additions to the child (from scanning its children)
+             * should go to top-level (i.e., direct leak) parent
+             */
+            unreach_child->parent = top;
+
+            IF_DEBUG(found =)
+                malloc_set_client_flag(child_start, MALLOC_INDIRECTLY_REACHABLE);
+            ASSERT(found, "malloc chunk must be in hashtable");
+        }
+    }
+}
+
+/***************************************************************************/
 
 /* PR 570839: this is a perf hit so we avoid dr_safe_read(), on
  * Windows at least.  No races since world is suspended, but we
@@ -438,14 +568,15 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
     bool add_reachable = false, add_maybe_reachable = false;
     uint flags = 0;
     bool reachable = false;
+    rb_node_t *node = NULL;
     if (chunk_end != NULL) {
         flags = malloc_get_client_flags(pointer);
         LOG(3, "\t"PFX" points to chunk "PFX"-"PFX"\n", ptr_addr, pointer, chunk_end);
         chunk_start = pointer;
         reachable = true;
     } else {
-        rb_node_t *node = rb_in_node(data->alloc_tree, pointer);
         size_t chunk_size;
+        node = rb_in_node(data->alloc_tree, pointer);
         if (node != NULL) {
             rb_node_fields(node, &chunk_start, &chunk_size, NULL);
             chunk_end = chunk_start + chunk_size;
@@ -466,7 +597,9 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
                 reachable = true;
                 LOG(3, "\t  mid-chunk "PFX" in "PFX"-"PFX" is reachable\n",
                     pointer, chunk_start, chunk_end);
-            } else if (!TESTANY(MALLOC_MAYBE_REACHABLE | MALLOC_REACHABLE, flags)) {
+            } else if (!TESTANY(MALLOC_MAYBE_REACHABLE | MALLOC_REACHABLE |
+                                /* indirect trumps maybe */
+                                MALLOC_INDIRECTLY_REACHABLE, flags)) {
                 add_maybe_reachable = true;
             }
         } else {
@@ -487,17 +620,15 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
         }
     }
     if (reachable) {
-        if (data->primary_scan && !TEST(MALLOC_REACHABLE, flags)) {
-            add_reachable = true;
+        if (data->primary_scan) {
+            if (!TEST(MALLOC_REACHABLE, flags))
+                add_reachable = true;
             /* if already on the maybe-reachable queue we'll just ignore in
              * the secondary scan
              */
+        } else {
+            mark_indirect(data, ptr_addr, pointer, chunk_start, chunk_end, flags, node);
         }
-        /* Even if the head is pointed at, if that pointer was reached
-         * by a mid-chunk pointer, the target is maybe-reachable
-         */
-        if (!data->primary_scan && !TEST(MALLOC_MAYBE_REACHABLE, flags))
-            add_maybe_reachable = true;
     }
     if (add_reachable || add_maybe_reachable) {
         /* Mark chunk as reachable using the client flag and add to
@@ -509,6 +640,7 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
                                    add_reachable ? MALLOC_REACHABLE :
                                    MALLOC_MAYBE_REACHABLE);
         ASSERT(found, "malloc chunk must be in hashtable");
+        ASSERT(!add_reachable || data->primary_scan, "only add reachable in primary");
         /* Add to queue of chunks to scan */
         add = (pc_entry_t *) global_alloc(sizeof(*add), HEAPSTAT_MISC);
         add->start = chunk_start;
@@ -679,24 +811,52 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
 }
 
 static void
+malloc_iterate_identify_indirect_cb(app_pc start, app_pc end, app_pc real_end,
+                                    bool pre_us, uint client_flags,
+                                    void *client_data, void *iter_data)
+{
+    reachability_data_t *data = (reachability_data_t *) iter_data;
+    ASSERT(data != NULL, "invalid iteration data");
+    ASSERT(start != NULL && start <= end, "invalid params");
+    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE,
+                 client_flags)) {
+        check_reachability_helper(start, end, false, (void *)data);
+    }
+}
+
+static void
 malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
                   bool pre_us, uint client_flags,
                   void *client_data, void *iter_data)
 {
+    reachability_data_t *data = (reachability_data_t *) iter_data;
+    ASSERT(data != NULL, "invalid iteration data");
     ASSERT(start != NULL && start <= end, "invalid params");
-    LOG(4, "malloc iter: "PFX"-"PFX"%s%s%s%s\n", start, end,
+    LOG(4, "malloc iter: "PFX"-"PFX"%s%s%s%s%s\n", start, end,
         pre_us ? ", pre-us" : "",
         TEST(MALLOC_IGNORE_LEAK, client_flags) ? ", ignore leak" : "",
         TEST(MALLOC_REACHABLE, client_flags) ? ", reachable" : "", 
-        TEST(MALLOC_MAYBE_REACHABLE, client_flags) ? ", maybe reachable" : "");
-    if (!TEST(MALLOC_IGNORE_LEAK, client_flags)) {
-        client_found_leak(start, end, pre_us,
+        TEST(MALLOC_MAYBE_REACHABLE, client_flags) ? ", maybe reachable" : "",
+        TEST(MALLOC_INDIRECTLY_REACHABLE, client_flags) ? ", indirectly reachable" : "");
+    /* If requested in future we can add a -show_indirectly_reachable: for now
+     * we never print detailed info for them, just add their sizes to
+     * their parent direct leaks
+     */
+    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_INDIRECTLY_REACHABLE, client_flags)) {
+        rb_node_t *node = rb_find(data->alloc_tree, start);
+        unreach_entry_t *unreach;
+        ASSERT(node != NULL, "must be in rbtree");
+        rb_node_fields(node, NULL, NULL, (void *)&unreach);
+        client_found_leak(start, end, 
+                          (unreach == NULL) ? 0 : unreach->indirect_bytes, 
+                          pre_us,
                           TEST(MALLOC_REACHABLE, client_flags), 
                           TEST(MALLOC_MAYBE_REACHABLE, client_flags),
                           client_data);
     }
     /* clear for any subsequent reachability walks */
-    malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE);
+    malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
+                             MALLOC_INDIRECTLY_REACHABLE);
 }
 
 static void
@@ -706,6 +866,10 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
 {
     rb_tree_t *alloc_tree = (rb_tree_t *) iter_data;
     ASSERT(alloc_tree != NULL, "invalid iteration data");
+    /* We use NULL for client b/c we only need unreach_entry_t for the
+     * leaks, a small fraction (for most apps!) of the total and thus
+     * best allocated lazily
+     */
     rb_insert(alloc_tree, start, (end - start), NULL);
 }
 
@@ -782,13 +946,25 @@ leak_scan_for_leaks(bool at_exit)
         next_e = e->next;
         global_free(e, sizeof(*e), HEAPSTAT_MISC);
     }
-
-    LOG(3, "\nwalking maybe-reachable-chunk queue\n");
     data.primary_scan = false;
+
+    /* now split direct from indirect leaks, and perhaps find new maybe-reachable.
+     * indirect trumps maybe-reachable, so do this walk first.
+     */
+    LOG(3, "\nwalking unreachable chunks\n");
+    malloc_iterate(malloc_iterate_identify_indirect_cb, &data);
+
+    /* split direct from indirect among maybe-reachable */
+    LOG(3, "\nwalking maybe-reachable-chunk queue\n");
     for (e = data.midreachq_head; e != NULL; e = next_e) {
-        if (TEST(MALLOC_REACHABLE, malloc_get_client_flags(e->start))) {
+        uint flags = malloc_get_client_flags(e->start);
+        if (TEST(MALLOC_REACHABLE, flags)) {
             /* This was later marked as fully-reachable and added to reachq,
              * so ignore it here
+             */
+        } else if (TEST(MALLOC_INDIRECTLY_REACHABLE, flags)) {
+            /* This was later marked as indirectly-reachable and accounted for
+             * in its parent size, so ignore it here
              */
         } else {
             check_reachability_helper(e->start, e->end, false, &data);
@@ -797,12 +973,11 @@ leak_scan_for_leaks(bool at_exit)
         global_free(e, sizeof(*e), HEAPSTAT_MISC);
     }
 
+    /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
+    malloc_iterate(malloc_iterate_cb, &data);
+
     if (!at_exit || !op_have_defined_info) {
         IF_DEBUG(bool ok;)
-        if (!at_exit) {
-            /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
-            malloc_iterate(malloc_iterate_cb, NULL);
-        }
         ASSERT(drcontexts != NULL, "dr_suspend_all_other_threads never fails");
         if (drcontexts != NULL) {
             IF_DEBUG(ok =)
@@ -814,6 +989,7 @@ leak_scan_for_leaks(bool at_exit)
     /* We do not maintain the tree throughout execution: we make a new one for
      * each reachability scan.
      */
+    rb_iterate(data.alloc_tree, rb_cleanup_entries, NULL);
     rb_tree_destroy(data.alloc_tree);
     rb_tree_destroy(data.stack_tree);
 }

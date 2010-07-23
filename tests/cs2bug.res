@@ -22,3 +22,13 @@ Error #1: UNINITIALIZED READ
 cs2bug.cpp:80
 Error #2: UNADDRESSABLE ACCESS: writing 4 byte(s)
 cs2bug.cpp:88
+!if UNIX
+Error #3: LEAK 4 direct bytes + 0 indirect bytes
+cs2bug.cpp:79
+Error #4: LEAK 4 direct bytes + 19 indirect bytes
+cs2bug.cpp:95
+!endif
+!if WINDOWS
+# FIXME PR 587093: string code disabled for now
+Error #3: LEAK 4 direct bytes + 0 indirect bytes
+!endif

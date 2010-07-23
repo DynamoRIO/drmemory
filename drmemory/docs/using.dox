@@ -220,6 +220,31 @@ actions:
 </tt>
 
 ********************
+\subsection sec_twostep Post-Run Symbol Processing
+
+Some applications have very large symbol files.  To reduce resource usage
+during an application run, symbol processing can be disabled while the
+application executes and instead be performed after the run.  Use the \p
+-skip_results option when running the application.  Once finished, re-run
+Dr. Memory with the \p -results option and the log directory created during
+the run (which contains the raw data):
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -skip_results -- myapp myargs
+</tt>
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -results DrMemory-myapp.9876.000
+</tt>
+
+If \p -results is invoked on a different machine where the application
+executable is not located at the same path as when it was executed with \p
+-skip_results, use the \p -results_app parameter to specify the executable
+along with the \p -results parameter.
+
+The \p -skip_results option is not currently available on Windows.
+
+********************
 \subsection sec_suppress Suppressing Errors
 
 Dr. Memory generates a file named \p suppress.txt alongside the \p
@@ -318,6 +343,27 @@ a "use-after-free" error), reading beyond the top of the stack, etc.
 The heap allocator may pad the size requested by the application.  The
 padded region beyond what the application asked for is considered
 unaddressable by Dr. Memory.
+
+Consider this example code:
+\code
+char *x = malloc(8);
+char c = *(x+8);
+\endcode
+
+Here is a diagram of the resulting heap allocation:
+\htmlonly
+<table cellspacing=0 cellpadding=10 border=0>
+<tr><td align="right">malloc header:</td>
+    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr>
+<tr><td align="right">x:            </td>
+    <td bgcolor="#a7d588" width=50>uninitialized</td></tr>
+<tr><td align="right">x + 8:        </td>
+    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr></td></tr>
+</table>
+\endhtmlonly
+
+Dr. Memory will report an unaddressable access error on the second line of
+the example code, because <tt>x+8</tt> is not an addressable location.
 
 When an unaddressable access occurs in a heap region, Dr. Memory attempts
 to provide additional information about nearby valid allocations and

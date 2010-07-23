@@ -64,6 +64,7 @@
 #include "replace.h"
 #include "leak.h"
 #include "stack.h"
+#include "perturb.h"
 #include <stddef.h> /* for offsetof */
 
 char logsubdir[MAXIMUM_PATH];
@@ -130,11 +131,14 @@ app_pc app_end;
  * some are now split off into stack.c
  */
 
+uint num_nudges;
+
 void 
 dump_statistics(void)
 {
     int i;
     dr_fprintf(f_global, "Statistics:\n");
+    dr_fprintf(f_global, "nudges: %d\n", num_nudges);
     dr_fprintf(f_global, "adjust_esp:%10u slow; %10u fast\n", adjust_esp_executions,
                adjust_esp_fastpath);
     dr_fprintf(f_global, "slow_path invocations: %10u\n", slowpath_executions);
@@ -192,6 +196,13 @@ dump_statistics(void)
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,
                midchunk_postinheritance_ptrs, midchunk_string_ptrs);
+    if (options.perturb) {
+        perturb_dump_statistics();
+    }
+    if (options.leaks_only) {
+        dr_fprintf(f_global, "zeroing loop aborts: %6u fault, %6u thresh\n",
+                   zero_loop_aborts_fault, zero_loop_aborts_thresh);
+    }
 
     heap_dump_stats(f_global);
 
@@ -238,6 +249,9 @@ event_exit(void)
 
     instrument_exit();
 
+    if (options.perturb)
+        perturb_exit();
+
     /* heap_region_exit() also checks for memory leaks,
      * so it must be called before shadow_exit() or alloc_exit().
      * FIXME: also report leaks from non-heap NtAllocateVirtualMemory?
@@ -254,7 +268,8 @@ event_exit(void)
     dump_statistics();
 #endif
 
-    report_exit();
+    if (!options.perturb_only)
+        report_exit();
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.
@@ -355,6 +370,8 @@ event_thread_init(void *drcontext)
     }
     syscall_thread_init(drcontext);
     report_thread_init(drcontext);
+    if (options.perturb)
+        perturb_thread_init();
 }
 
 static void 
@@ -362,6 +379,8 @@ event_thread_exit(void *drcontext)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     LOGPT(2, pt, "in event_thread_exit() %d\n", dr_get_thread_id(drcontext));
+    if (options.perturb)
+        perturb_thread_exit();
     report_thread_exit(drcontext);
     if (options.thread_logs) {
         dr_fprintf(pt->f, "LOG END\n");
@@ -973,7 +992,8 @@ set_initial_layout(void)
      * walk to find it.
      */
 #ifdef WINDOWS
-    heap_walk();
+    if (options.leaks_only || options.shadowing)
+        heap_walk();
     if (!options.leaks_only && options.shadowing) {
         set_initial_structures(dr_get_current_drcontext());
         memory_walk();
@@ -983,9 +1003,11 @@ set_initial_layout(void)
         /* identify stack before memory walk */
         set_initial_structures(dr_get_current_drcontext());
     }
-    /* leaks_only still needs memory_walk to find heap base */
-    memory_walk();
-    heap_walk();
+    if (options.leaks_only || options.shadowing) {
+        /* leaks_only still needs memory_walk to find heap base */
+        memory_walk();
+        heap_walk();
+    }
 #endif
 }
 
@@ -1029,25 +1051,27 @@ create_global_logfile(void)
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
 #ifdef USE_DRSYMS
-    f_results = open_logfile("results.txt", false, -1);
-    if (options.resfile_out) {
-        /* notify front-end of results path */
-        file_t outf;
-        char fname[MAXIMUM_PATH];
-        dr_snprintf(fname, BUFFER_SIZE_ELEMENTS(fname), "%s%cresfile.%d",
-                    options.logdir, DIRSEP, dr_get_process_id());
-        NULL_TERMINATE_BUFFER(fname);
-        outf = dr_open_file(fname, DR_FILE_WRITE_OVERWRITE);
-        if (outf == INVALID_FILE)
-            usage_error("Cannot write to \"%s\", aborting\n", fname);
-        else {
-            dr_fprintf(outf, "%s%cresults.txt", logsubdir, DIRSEP);
+    if (!options.perturb_only) {
+        f_results = open_logfile("results.txt", false, -1);
+        if (options.resfile_out) {
+            /* notify front-end of results path */
+            file_t outf;
+            char fname[MAXIMUM_PATH];
+            dr_snprintf(fname, BUFFER_SIZE_ELEMENTS(fname), "%s%cresfile.%d",
+                        options.logdir, DIRSEP, dr_get_process_id());
+            NULL_TERMINATE_BUFFER(fname);
+            outf = dr_open_file(fname, DR_FILE_WRITE_OVERWRITE);
+            if (outf == INVALID_FILE)
+                usage_error("Cannot write to \"%s\", aborting\n", fname);
+            else {
+                dr_fprintf(outf, "%s%cresults.txt", logsubdir, DIRSEP);
 # undef dr_close_file
-            dr_close_file(outf);
+                dr_close_file(outf);
 # define dr_close_file DO_NOT_USE_dr_close_file
+            }
         }
+        f_suppress = open_logfile("suppress.txt", false, -1);
     }
-    f_suppress = open_logfile("suppress.txt", false, -1);
 #else
     /* PR 453867: we need to tell postprocess.pl when to fork a new copy.
      * Risky to write to parent logdir, since could be in middle
@@ -1089,6 +1113,9 @@ event_fork(void *drcontext)
     }
 
     report_fork_init();
+
+    if (options.perturb)
+        perturb_fork_init();
 }
 
 static dr_signal_action_t
@@ -1120,6 +1147,12 @@ event_nudge(void *drcontext, uint64 argument)
     int local_count = atomic_add32_return_sum(&nudge_count, 1);
     LOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
 #endif
+#ifdef STATISTICS
+    dump_statistics();
+#endif
+    STATS_INC(num_nudges);
+    if (options.perturb_only)
+        return;
     report_leak_stats_checkpoint();
     check_reachability(false/*!at exit*/);
     report_summary();
@@ -1130,7 +1163,8 @@ event_nudge(void *drcontext, uint64 argument)
 static void
 event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-    callstack_module_load(drcontext, info, loaded);
+    if (!options.perturb_only)
+        callstack_module_load(drcontext, info, loaded);
     if (!options.leaks_only && options.shadowing)
         replace_module_load(drcontext, info, loaded);
 #ifdef VMX86_SERVER
@@ -1142,7 +1176,8 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 static void
 event_module_unload(void *drcontext, const module_data_t *info)
 {
-    callstack_module_unload(drcontext, info);
+    if (!options.perturb_only)
+        callstack_module_unload(drcontext, info);
     if (!options.leaks_only && options.shadowing)
         replace_module_unload(drcontext, info);
 }
@@ -1216,17 +1251,16 @@ dr_init(client_id_t id)
     dr_register_nudge_event(event_nudge, client_id);
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);
-    if (!options.leaks_only && options.shadowing)
-        dr_register_signal_event(event_signal);
+    dr_register_signal_event(event_signal);
 #else
-    if (!options.leaks_only && options.shadowing)
-        dr_register_exception_event(event_exception);
+    dr_register_exception_event(event_exception);
 #endif
 
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Memory version %s\n", VERSION_STRING);
 
-    report_init();
+    if (!options.perturb_only)
+        report_init();
 
     if (options.shadowing)
         shadow_init();
@@ -1306,6 +1340,9 @@ dr_init(client_id_t id)
 
     hashtable_init(&known_table, KNOWN_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
     alloc_drmem_init();
+
+    if (options.perturb)
+        perturb_init();
 
     instrument_init();
 }

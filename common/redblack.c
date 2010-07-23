@@ -93,6 +93,14 @@ rb_node_fields(rb_node_t *node, byte **base OUT, size_t *size OUT, void **client
         *client = node->client;
 }
 
+/* Modify the client field of a node. */
+void
+rb_node_set_client(rb_node_t *node, void *client)
+{
+    ASSERT(node != NULL, "invalid param");
+    ASSERT(node != NIL, "should not set fields of NIL!");
+    node->client = client;
+}
 
 /* Allocate a new node */
 static rb_node_t *
@@ -662,7 +670,8 @@ void
 rb_iterate(rb_tree_t *tree, void (*iter_cb)(rb_node_t *, void *), void *iter_data)
 {
     ASSERT(tree != NULL && iter_cb != NULL, "invalid params");
-    iterate_helper(tree->root, iter_cb, iter_data);
+    if (tree->root != NIL)
+        iterate_helper(tree->root, iter_cb, iter_data);
 }
 
 /***************************************************************************/

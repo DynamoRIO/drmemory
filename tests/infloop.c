@@ -71,6 +71,7 @@ static void *p2;
 void
 foo(void)
 {
+    int i;
     void *p1;
 
     /* error: both leaked, though one points to other neither is reachable
@@ -82,6 +83,13 @@ foo(void)
     /* not a leak: still reachable through persistent pointer p2 */
     p2 = malloc(8);
     *((void**)p2) = malloc(19);
+
+    /* Ensure duplicate leaks are counted properly (xref PR 578897) even
+     * across multiple nudges
+     */
+    for (i = 0; i < 20; i++) {
+        p1 = malloc(160);
+    }
 }
 
 int
