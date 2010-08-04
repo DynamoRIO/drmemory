@@ -2394,7 +2394,7 @@ loc_to_print(app_loc_t *loc)
     if (loc->type == APP_LOC_PC) {
         /* perf hit to translate so only at high loglevel */
         DOLOG(3, { return loc_to_pc(loc); });
-        return loc->u.addr.valid ? NULL : loc->u.addr.pc;
+        return loc->u.addr.valid ? loc->u.addr.pc : NULL;
     } else {
         ASSERT(loc->type == APP_LOC_SYSCALL, "unknown type");
         return (app_pc) loc->u.syscall.sysnum;
@@ -2632,14 +2632,16 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     if (stack_base == NULL) {
                         stack_size = allocation_size((app_pc)mc->esp, &stack_base);
                     }
-                    LOG(3, "comparing %08x %08x %08x %08x %08x\n",
+                    LOG(3, "comparing %08x %08x %08x %08x\n",
                           addr+i, stack_base, stack_base+stack_size, mc->esp);
                     if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
                         addr+i < (app_pc)mc->esp) {
                         LOG(2, "unaddressable beyond TOS: leaving unaddressable\n");
                     } else {
 #ifdef WIN32
-                        if (options.define_unknown_regions && !is_in_heap_region(addr)) {
+                        if (options.define_unknown_regions && 
+                            !is_in_heap_region(addr) &&
+                            (addr+i < stack_base || addr+i >= stack_base+stack_size)) {
                             /* PR 464106: handle memory allocated by other
                              * processes by treating as fully defined, after
                              * reporting 1st UNADDR.

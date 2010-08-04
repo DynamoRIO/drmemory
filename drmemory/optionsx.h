@@ -75,8 +75,8 @@ OPTION("-suppress <file>", "", "File containing errors to suppress",
        "File containing errors to suppress.  See \\ref sec_suppress.")
 OPTION("-[no_]default_suppress", "", "Use the set of default suppressions",
        "Use the set of default suppressions that come with Dr. Memory.  See \\ref sec_suppress.")
-OPTION("-callstack_max_frames <N>", "20", "How many call stack frames to display",
-       "How many call stack frames to display in each error report.")
+OPTION("-callstack_max_frames <N>", "20", "How many call stack frames to record",
+       "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
 OPTION("-check_cmps", "true", "Check register definedness of cmps",
        "Report definedness errors on compares instead of waiting for conditional jmps.")
 OPTION("-check_non_moves", "false", "Check register definedness of non-moves",

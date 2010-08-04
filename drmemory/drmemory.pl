@@ -45,12 +45,19 @@ use Cwd qw(abs_path cwd);
 use FindBin;
 use lib "$FindBin::RealBin";
 
+# do NOT use $0 as we need to support symlinks to this file
+# RealBin resolves symlinks for us
+($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
+
 # $^O is either "linux", "cygwin", or "MSWin32"
 $is_unix = ($^O eq "linux") ? 1 : 0;
 if ($is_unix) {
     $is_vmk = (`uname -s` =~ /VMkernel/) ? 1 : 0;
+    # support post-processing on linux box vs vmk data
+    $vs_vmk = (-e "$scriptpath/frontend_vmk.pm");
 } else {
     $is_vmk = 0;
+    $vs_vmk = 0;
 }
 # we support running from a cygwin perl
 $is_cygwin_perl = ($^O eq "cygwin") ? 1 : 0;
@@ -59,18 +66,15 @@ $is_cygwin_avail =
     (!$is_unix &&
      ($ENV{'PATH'} =~ m|[\\/]cygwin[\\/]| || $ENV{'PATH'} =~ m!(^|:)/usr!)) ? 1 : 0;
 
-if ($is_vmk) {
+if ($is_vmk || $vs_vmk) {
     # we could have drmemory_aux and copy in drmemory_{vmk,win32,linux}
     # but until we have other os-specific code we do runtime "use".
     # note that DEFAULT => have to qualify, for some reason, so we use All.
     eval "use frontend_vmk qw(:All)";
-    eval "use drmemory_vmk qw(:All)";
-    &vmk_init();
+    eval "use drmemory_vmk qw(:All)" if ($is_vmk);
+    &vmk_init() if ($is_vmk);
 }
 
-# do NOT use $0 as we need to support symlinks to this file
-# RealBin resolves symlinks for us
-($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
 $perl2exe = (-e "$scriptpath/bin32/postprocess.exe") ? 1 : 0;
 # when using perl->exe we do not have a drmemory/bin subdir
 $drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
@@ -101,7 +105,7 @@ $drmemory_home = $default_home;
 # normally we're packaged with a DR release laid out in "dynamorio":
 $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
     "$default_home/../dynamorio" : "$default_home/dynamorio";
-$use_vmtree = $is_vmk;
+$use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
 $use_release = 0;
 $use_dr_debug = 0;
 $logdir = "";
@@ -203,9 +207,7 @@ $libdir = ($use_release) ? "release" : "debug";
 $dr_debug = ($use_dr_debug) ? "-debug" : "";
 $dr_libdir = ($use_dr_debug) ? "debug" : "release";
 
-$vmtree = ($use_vmtree) ? "--use_vmtree" : "";
-
-if ($use_vmtree) {
+if ($use_vmtree && !$skip_postprocess) {
     if (!defined($ENV{"VMTREE"})) {
         # don't die: just a warning (PR 573991)
         print stderr "WARNING: VMTREE environment variable is not set!\n".
@@ -520,7 +522,7 @@ sub post_process()
     push @postcmd, ("-f", "$srcfilter") if ($srcfilter ne '');
     push @postcmd, "$exeop" if ($exeop ne '');
     push @postcmd, ("-dr_home", "$dr_home") if (!$is_unix && !$is_cygwin_perl);
-    push @postcmd, "$vmtree" if ($vmtree ne '');
+    push @postcmd, "-use_vmtree" if ($use_vmtree);
     push @postcmd, "$extraargs" if ($extraargs ne '');
     # Don't use suppress_drmem as perl option parsing doesn't like ``
     push @postcmd, ("-suppress", "$suppfile") if ($suppress_drmem ne '');

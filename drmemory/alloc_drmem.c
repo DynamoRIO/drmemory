@@ -827,25 +827,38 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
         if (cxt != NULL) {
             /* FIXME: what if the syscall fails? */
-            byte *sp;
-            register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Eax));
-            register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Ecx));
-            register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Edx));
-            register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Ebx));
-            register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
-            register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Esp));
-            register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Esi));
-            register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Edi));
-            if (cxt->Esp < mc.esp) {
-                if (mc.esp - cxt->Esp < options.stack_swap_threshold) {
-                    shadow_set_range((byte *) cxt->Esp, (byte *) mc.esp, SHADOW_UNDEFINED);
-                    LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
-                        cxt->Esp, mc.esp);
+            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
+                register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Esp));
+# ifndef X64
+                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
+# endif
+            }
+            if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt->ContextFlags)) {
+                register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Eax));
+                register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Ecx));
+                register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Edx));
+                register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Ebx));
+# ifdef X64
+                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
+# endif
+                register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Esi));
+                register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Edi));
+            }
+            /* Mark stack AFTER reading cxt since cxt may be on stack! */
+            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
+                if (cxt->Esp < mc.esp) {
+                    if (mc.esp - cxt->Esp < options.stack_swap_threshold) {
+                        shadow_set_range((byte *) cxt->Esp, (byte *) mc.esp,
+                                         SHADOW_UNDEFINED);
+                        LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
+                            cxt->Esp, mc.esp);
+                    }
+                } else if (cxt->Esp - mc.esp < options.stack_swap_threshold) {
+                    shadow_set_range((byte *) mc.esp, (byte *) cxt->Esp,
+                                     SHADOW_UNADDRESSABLE);
+                    LOG(2, "NtContinue: marked stack "PFX"-"PFX" as unaddressable\n",
+                        mc.esp, cxt->Esp);
                 }
-            } else if (cxt->Esp - mc.esp < options.stack_swap_threshold) {
-                shadow_set_range((byte *) mc.esp, (byte *) cxt->Esp, SHADOW_UNADDRESSABLE);
-                LOG(2, "NtContinue: marked stack "PFX"-"PFX" as unaddressable\n",
-                    mc.esp, cxt->Esp);
             }
         }
     } else if (sysnum == sysnum_setcontext) {

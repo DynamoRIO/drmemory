@@ -159,6 +159,7 @@ static shadow_block_t *special_bitlevel;
 
 #ifdef STATISTICS
 uint shadow_block_alloc;
+/* b/c of PR 580017 we no longer free any non-specials so this is always 0 */
 uint shadow_block_free;
 uint num_special_unaddressable;
 uint num_special_undefined;
@@ -263,7 +264,7 @@ set_shadow_table(uint idx, shadow_block_t *block)
 {
     /* We store the displacement (shadow minus app) (PR 553724) */
     shadow_table[idx] = ((ptr_int_t)block) - (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY);
-    LOG(2, "setting shadow table idx %d for block "PFX" to "PFX"\n",
+    LOG(3, "setting shadow table idx %d for block "PFX" to "PFX"\n",
         idx, block, shadow_table[idx]);
 }
 
@@ -327,12 +328,22 @@ shadow_get_special(app_pc addr, uint *val)
 static void
 shadow_set_special(app_pc addr, uint val)
 {
+    /* PR 580017: We cannot replace a non-special with a special: more
+     * accurately, we cannot free a non-special b/c we could have a
+     * use-after-free in our own code.  Rather than a fancy delayed deletion
+     * algorithm, or having specials be files that are mmapped at the same
+     * address as non-specials thus supported swapping back and forth w/o
+     * changing the address (which saves pagefile but not address space: so
+     * should do it for 64-bit), we only replace specials with other specials.
+     * This still covers the biggest win for specials, the initial unaddr and
+     * the initial libraries.  Note that we do not want large stack
+     * allocs/deallocs to use specials anyway as the subsequent faults are perf
+     * hits (observed in gcc).
+     */
+#ifdef DEBUG
     shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    if (!block_is_special(block)) {
-        global_free(((byte*)block) - SHADOW_REDZONE_SIZE,
-                    SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-        STATS_INC(shadow_block_free);
-    }
+    ASSERT(block_is_special(block), "cannot replace non-special with special");
+#endif
     set_shadow_table(TABLE_IDX(addr), val_to_special(val));
 #ifdef STATISTICS
     if (val == SHADOW_UNADDRESSABLE)
@@ -388,6 +399,7 @@ shadow_set_byte(app_pc addr, uint val)
         memset(((byte*)block) + SHADOW_BLOCK_ALLOC_SZ - SHADOW_REDZONE_SIZE,
                SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
         block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
+        ASSERT(ALIGNED(block, 4), "esp fastpath assumes block aligned to 4");
         STATS_INC(shadow_block_alloc);
         memset(block, dwordval, sizeof(*block));
         /* FIXME: thread safety: add mutex in all shadow routines:
@@ -446,15 +458,32 @@ shadow_set_range(app_pc start, app_pc end, uint val)
 {
     app_pc pc = start;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(val <= 4, "invalid shadow value");
     LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
     if (end - start > 0x10000000)
         LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n", start, end);
-    while (pc < end) {
-        if (val != SHADOW_DEFINED_BITLEVEL /* no special for that one */ &&
+    while (pc < end && pc >= start/*overflow*/) {
+        if (shadow_get_special(pc, NULL) &&
             ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
             shadow_set_special(pc, val);
             pc += ALLOC_UNIT;
         } else {
+            if (ALIGNED(pc, SHADOW_GRANULARITY)) {
+                app_pc block_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
+                if (block_end <= end && block_end > start/*overflow*/) {
+                    shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
+                    if (!block_is_special(block)) {
+                        uint *array_start =
+                            &(*block)[BITMAPx2_IDX(((ptr_uint_t)pc) % ALLOC_UNIT)];
+                        byte *memset_start = ((byte *)array_start) +
+                            (((ptr_uint_t)pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
+                        memset(memset_start, val_to_dword[val],
+                               (block_end - pc) / SHADOW_GRANULARITY);
+                        pc = block_end;
+                        continue;
+                    }
+                }
+            }
             /* FIXME optimize: set 4 aligned bytes at a time */
             shadow_set_byte(pc, val);
             pc++;
@@ -1345,6 +1374,7 @@ shadow_registers_thread_init(void *drcontext)
         sr->esp = SHADOW_DWORD_DEFINED;
 #endif
     }
+    sr->in_heap_routine = 0;
 #endif /* TOOL_DR_MEMORY */
 
 #ifdef LINUX

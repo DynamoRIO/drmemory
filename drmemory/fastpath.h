@@ -217,7 +217,8 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                         fastpath_info_t *mi,
                         bool get_value, bool value_in_reg2, bool need_offs,
                         bool zero_rest_of_offs,
-                        reg_id_t reg1, reg_id_t reg2, reg_id_t reg3);
+                        reg_id_t reg1, reg_id_t reg2, reg_id_t reg3,
+                        bool jcc_short_slowpath);
 
 /***************************************************************************
  * Utility routines

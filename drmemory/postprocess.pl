@@ -43,6 +43,25 @@ my $bindir = ($is_cygwin) ? "$FindBin::Bin" : "$FindBin::RealBin";
 # we can't use var here since evaluated in first pass so we duplicate
 use lib ($is_cygwin) ? "$FindBin::Bin/.." : "$FindBin::RealBin/..";
 
+# do NOT use $0 as we need to support symlinks to this file
+# RealBin resolves symlinks for us
+($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
+
+if ($is_unix) {
+    $is_vmk = (`uname -s` =~ /VMkernel/) ? 1 : 0;
+    # support post-processing on linux box vs vmk data
+    $vs_vmk = (-e "$scriptpath/../frontend_vmk.pm");
+} else {
+    $is_vmk = 0;
+    $vs_vmk = 0;
+}
+
+if ($is_vmk || $vs_vmk) {
+    eval "use frontend_vmk qw(:All)";
+    eval "use drmemory_vmk qw(:All)" if ($is_vmk);
+    $vmk_grp = &vmk_drmem_group() if ($is_vmk);
+}
+
 # PR 453867: we need to store the original command line
 @myargs = @ARGV;
 
@@ -59,7 +78,7 @@ $exename = "";
 $is_cygwin_exe = 0;
 $logdir = "";
 $srcfilter = "";
-$use_vmtree = "";
+$use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
 $dr_home = "";
 $quiet = 0;
 $batch = 0;     # batch testing: no popups please
@@ -164,7 +183,6 @@ if ($leaks_only) {
     $default_prefix = ":::Dr.Heapstat::: ";
 }
 
-($scriptname,$scriptpath,$suffix) = fileparse($0);
 ($module,$baselogdir,$suffix) = fileparse($logdir);
 
 $outfile = "$logdir/results.txt";
@@ -225,12 +243,6 @@ if ($use_default_suppress) {
 open(SUPP_OUT, "> $logdir/suppress.txt") ||
     die "Error creating $logdir/suppress.txt\n";
 read_suppression_info($supp_syms_file) if (-f $supp_syms_file);
-
-if ($is_vmk) {
-    eval "use frontend_vmk qw(:All)";
-    eval "use drmemory_vmk qw(:All)";
-    $vmk_grp = &vmk_drmem_group() if ($is_vmk);
-}
 
 $SIG{PIPE} = \&sigpipe_handler;
 sub sigpipe_handler {
@@ -1046,70 +1058,12 @@ sub init_libsearch_path ($use_vmtree)
     my ($use_vmtree) = @_;
 
     if ($is_unix) {
-        my $buildtype = "beta";
-        if (defined($ENV{"VMBLD"})) {
-            $buildtype = $ENV{"VMBLD"};
-        } elsif ($is_vmk && `uname -v` =~ /(\w+)\s+build/) {
-            $buildtype = lc($1);
-            $buildtype = "obj" if ($buildtype eq "debug");
-        }
-
         # Can also set colon-sep path in env var
         # Env var goes first to allow overriding system paths
         @libsearch = ( split(':', $ENV{"DRMEMORY_LIB_PATH"}) );
 
-        my @bora_paths = (
-            # This path contains the debug files for userworld libraries.
-            "/build/scons/package/devel/linux32/$buildtype/esx/uwlibs/usr/lib/debug/lib",
-
-            # These paths contain more debug files.
-            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/sbin",
-            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/bin",
-            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/lib",
-            "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/usr/lib/vmware/esxcli",
-            # TODO PR 575713: add later once have 64-bit support
-            # Note that current toolchain objdump doesn't seem to support elf64
-            # "/build/scons/package/devel/linux32/$buildtype/esx/debugInfo/usr/lib/debug/lib64",
-
-            # This path contains the unstripped userworld libraries.
-            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/lib",
-
-            # This path contains unstripped hostd.
-            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/sbin",
-
-            # These paths contains more unstripped libraries incl for sfcbd.
-            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/usr/lib",
-            "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/usr/lib/vmware/esxcli",
-            # TODO PR 575713: add later once have 64-bit support
-            # Note that current toolchain objdump doesn't seem to support elf64
-            # "/build/scons/package/devel/linux32/$buildtype/esx/vmvisor/sys-unstripped/lib64",
-        );
-
-        my @cim_paths = (
-            # if using imported oss-cim component then up to user to untar
-            # cim-unstripped.tgz and point at it using DRMEMORY_LIB_PATH
-            "/../oss-cim/build/$buildtype/esx/cim-tgz/install/lib",
-            "/../oss-cim/build/$buildtype/esx/cim-tgz/install/bin",
-            "/../oss-cim/build/$buildtype/esx/cim-tgz/install/sbin",
-        );
-
-        my @aam_paths = ("/opt/vmware/aam/lib");
-        push @libsearch, @aam_paths;        # shouldn't prepend VMTREE for this
-
-        if ($use_vmtree ne '') {
-            if (!defined($ENV{"VMTREE"})) {
-                # don't die: just a warning (PR 573991)
-                print stderr "WARNING: VMTREE environment variable is not set!\n".
-                    "Symbols may not be found.  To correct set VMTREE and/or ".
-                    "DRMEMORY_LIB_PATH.  Disable this warning via -no_use_vmtree.\n";
-            } else {
-                die "VMTREE: ".$ENV{"VMTREE"}." doesn't exist\n" if (!-e $ENV{"VMTREE"});
-            }
-
-            foreach $path (@bora_paths, @cim_paths) {
-                push @libsearch, $ENV{"VMTREE"}.$path;
-            }
-        }
+        &vmk_bora_paths(\@libsearch, $use_vmtree, $no_sys_paths, $is_vmk)
+            if ($vs_vmk);
 
         # PR 485412: replaced libc routines show up inside drmem lib
         push @libsearch, "$scriptpath/$drmem_dir";
@@ -1118,8 +1072,6 @@ sub init_libsearch_path ($use_vmtree)
         if (!$no_sys_paths) {
             push @libsearch, ('/lib',
                               '/usr/lib',
-                              '/usr/lib/vmware',
-                              '/usr/lib/vmware/vmacore',
                               # standard debuginfo paths for linux
                               '/usr/lib/debug/lib',
                               '/usr/lib/debug/usr/lib');

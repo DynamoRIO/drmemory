@@ -290,9 +290,11 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
         }
 
         if (TEST(MALLOC_INDIRECTLY_REACHABLE, flags)) {
-            ASSERT(unreach_child->parent != NULL &&
-                   unreach_child->parent != unreach_parent,
-                   "node should be already claimed");
+            /* node is already claimed: either by another parent,
+             * or by this parent if this chunk has two pointers
+             * to the same child
+             */
+            ASSERT(unreach_child->parent != NULL, "node should be already claimed");
         } else {
             IF_DEBUG(bool found;)
             unreach_entry_t *top = unreach_parent;
@@ -306,6 +308,9 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
              * should go to top-level (i.e., direct leak) parent
              */
             unreach_child->parent = top;
+            LOG(4, "mark_indirect: top "PFX" claiming child "PFX","PFX
+                " through parent "PFX","PFX"\n",
+                top, unreach_child, ptr_child, unreach_parent, ptr_parent);
 
             IF_DEBUG(found =)
                 malloc_set_client_flag(child_start, MALLOC_INDIRECTLY_REACHABLE);

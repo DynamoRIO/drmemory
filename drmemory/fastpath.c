@@ -1767,7 +1767,7 @@ mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
  *     - reg2 has been clobbered (this routine no longer computes the offset
  *       within the shadow block: caller can do so via
  *         "movzx reg2, reg_32_to_16(orig_addr); shr reg2, 2"
- * If !get_value and !need_offs:
+ * If !get_value and !need_offs and !zero_rest_of_offs:
  *   reg1, reg3, and reg3 can be any 32-bit regs
  * Else, they should be a,b,c,d for 8-bit sub-reg
  */
@@ -1776,7 +1776,8 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                         fastpath_info_t *mi,
                         bool get_value, bool value_in_reg2, bool need_offs,
                         bool zero_rest_of_offs,
-                        reg_id_t reg1, reg_id_t reg2, reg_id_t reg3)
+                        reg_id_t reg1, reg_id_t reg2, reg_id_t reg3,
+                        bool jcc_short_slowpath)
 {
     /* Shadow memory table lookup:
      * 1) Shift to get 64K base
@@ -1786,11 +1787,13 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
      *    no need to cmp to a tag.
      * 3) Result points to 8K shadow chunk
      */
-    reg_id_t reg1_8h = reg_32_to_8h(reg1);
+    reg_id_t reg1_8h = REG_NULL;
     reg_id_t reg2_8h = reg_32_to_8h(reg2);
     reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8(reg3);
     reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8h(reg3);
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
+    if (need_offs || zero_rest_of_offs)
+        reg1_8h = reg_32_to_8h(reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg2);
     mark_eflags_used(drcontext, bb, mi->bb);
@@ -1812,7 +1815,8 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                               OPND_CREATE_INT8(mi->memsz == 4 ? 0x3 :
                                                (mi->memsz == 8 ? 0x3 : 0x1))));
         /* With PR 448701 a short jcc reaches */
-        add_jcc_slowpath(drcontext, bb, inst, OP_jnz_short, mi);
+        add_jcc_slowpath(drcontext, bb, inst,
+                         jcc_short_slowpath ? OP_jnz_short : OP_jnz, mi);
         if (mi->memsz == 8) {
             /* PR 504162: keep 4-byte-aligned 8-byte fp ops on fastpath.
              * We checked for 4-byte alignment, so ensure doesn't straddle 64K.
@@ -1821,7 +1825,8 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2),
                                  OPND_CREATE_INT32(0xfffc)));
-            add_jcc_slowpath(drcontext, bb, inst, OP_je_short, mi);
+            add_jcc_slowpath(drcontext, bb, inst,
+                             jcc_short_slowpath ? OP_je_short : OP_je, mi);
         }
     }
 #else
@@ -2421,16 +2426,10 @@ handle_special_shadow_fault(void *drcontext, byte *target,
         instr_init(drcontext, &inst);
         nxt_pc = decode(drcontext, pc, &inst);
         do {
-            /* Look for the start of slowpath inside esp_adjust fastpath: a
-             * load from TLS into ecx
+            /* Look for the start of slowpath inside esp_adjust fastpath.
+             * For simplicity we insert a nop there.
              */
-            if (instr_get_opcode(&inst) == OP_mov_ld &&
-                opnd_is_far_base_disp(instr_get_src(&inst, 0)) &&
-                opnd_is_reg(instr_get_dst(&inst, 0)) &&
-                opnd_get_reg(instr_get_dst(&inst, 0)) == REG_XCX) {
-                ASSERT(opnd_get_index(instr_get_src(&inst, 0)) == REG_NULL, "bad tls");
-                ASSERT(opnd_get_segment(instr_get_src(&inst, 0)) == SEG_FS, "bad tls");
-                ASSERT(opnd_is_reg(instr_get_dst(&inst, 0)), "bad tls");
+            if (instr_get_opcode(&inst) == OP_nop) {
                 LOG(3, "write fault in gencode "PFX" => xl8 to slowpath "PFX"\n",
                     raw_mc->pc, pc);
                 raw_mc->pc = pc;
@@ -2958,7 +2957,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                 false/*val in reg1*/, false/*no offs*/, false/*no offs*/,
                                 mi->reg3.reg, mi->reg2.reg,
-                                mi->reg1.reg/*won't be touched!*/);
+                                mi->reg1.reg/*won't be touched!*/, true/*jcc short*/);
         ASSERT(reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
 #ifdef TOOL_DR_MEMORY
         PRE(bb, inst,
@@ -3031,7 +3030,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                     true/*val in reg2*/,
                                     mi->need_offs || need_nonoffs_reg3,
                                     mi->zero_rest_of_offs,
-                                    mi->reg1.reg, mi->reg2.reg, mi->reg3.reg);
+                                    mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
+                                    true/*jcc short*/);
             /* For mi->need_offs, we assume that all uses of reg2 below are
              * low 8 bits only! 
              */
@@ -3498,7 +3498,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #else /* TOOL_DR_MEMORY */
     add_shadow_table_lookup(drcontext, bb, inst, mi, false/*addr not value*/,
                             false, false/*!need_offs*/, false/*!zero_rest*/,
-                            mi->reg1.reg, mi->reg2.reg, mi->reg3.reg);
+                            mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
+                            true/*jcc short*/);
     ASSERT(reg1_8 != REG_NULL && mi->reg1.used, "reg spill error");
     /* shadow lookup left reg1 holding address */
     if (!options.stale_blind_store) {
