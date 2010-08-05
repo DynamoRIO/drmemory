@@ -230,8 +230,20 @@ extern file_t f_results;
         drmemory_abort(); \
     } \
 } while (0)
+# define ASSERT_NOT_TESTED(msg) do { \
+    static int assert_not_tested_printed = 0; \
+    if (!assert_not_tested_printed) { \
+        /* This singleton-like implementation has a data race. \
+         * However, in the worst case this will result in printing the message \
+         * twice which isn't a big deal \
+         */ \
+        assert_not_tested_printed = 1; \
+        NOTIFY("Not tested - %s @%s:%d\n", msg, __FILE__, __LINE__); \
+    } \
+} while (0)
 #else
 # define ASSERT(x, msg) /* nothing */
+# define ASSERT_NOT_TESTED(msg) /* nothing */
 #endif
 
 #ifdef DEBUG

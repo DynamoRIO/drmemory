@@ -37,6 +37,7 @@ enum {
     SYSARG_POST_SIZE_8BYTES = 0x00000010,
     /* the param holding the size is a pointer b/c it's an IN OUT var */
     SYSARG_LENGTH_INOUT     = 0x00000020,
+    SYSARG_CONTEXT          = 0x00000040,
 
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference
@@ -124,5 +125,13 @@ vmkuw_shadow_pre_syscall(void *drcontext, int sysnum);
 void
 vmkuw_shadow_post_syscall(void *drcontext, int sysnum);
 #endif
+
+/* returns true if the given argument was processed in a non-standard way
+ * (e.g. OS-specific structures) and we should skip the standard check
+ */
+bool
+os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                             const syscall_arg_t *arg_info,
+                             app_pc start, uint size);
 
 #endif /* _SYSCALL_OS_H_ */

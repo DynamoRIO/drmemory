@@ -2601,3 +2601,10 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
 #endif /* VMX86_SERVER */
 }
 
+bool
+os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                             const syscall_arg_t *arg_info,
+                             app_pc start, uint size) {
+    return false;
+}
+

@@ -115,7 +115,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtCompleteConnectPort", 4, },
     {0,"NtCompressKey", 4, },
     {0,"NtConnectPort", 32, 0,sizeof(HANDLE),W, 1,sizeof(UNICODE_STRING),R, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R, 3,sizeof(PORT_VIEW),W, 4,sizeof(REMOTE_PORT_VIEW),W, 5,sizeof(ULONG),W, 6,-7,WI, 7,sizeof(ULONG),W, },
-    {0,"NtContinue", 8, 0,sizeof(CONTEXT),R, 1,0,IB, },
+    {0,"NtContinue", 8, 0,sizeof(CONTEXT),R|SYSARG_CONTEXT, 1,0,IB, },
     {0,"NtCreateChannel", 8, 0,sizeof(HANDLE),W, 1,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateDebugObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,0,IB, },
     {0,"NtCreateDirectoryObject", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
@@ -138,7 +138,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtCreateSection", 28, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(LARGE_INTEGER),R, },
     {0,"NtCreateSemaphore", 20, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateSymbolicLinkObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(UNICODE_STRING),R, },
-    {0,"NtCreateThread", 32, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(CLIENT_ID),W, 5,sizeof(CONTEXT),R, 6,sizeof(USER_STACK),R, 7,0,IB, },
+    {0,"NtCreateThread", 32, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(CLIENT_ID),W, 5,sizeof(CONTEXT),R|SYSARG_CONTEXT, 6,sizeof(USER_STACK),R, 7,0,IB, },
     {0,"NtCreateTimer", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateToken", 52, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(LUID),R, 5,sizeof(LARGE_INTEGER),R, 6,sizeof(TOKEN_USER),R, 7,sizeof(TOKEN_GROUPS),R, 8,sizeof(TOKEN_PRIVILEGES),R, 9,sizeof(TOKEN_OWNER),R, 10,sizeof(TOKEN_PRIMARY_GROUP),R, 11,sizeof(TOKEN_DEFAULT_DACL),R, 12,sizeof(TOKEN_SOURCE),R, },
     {0,"NtCreateWaitablePort", 20, 0,sizeof(HANDLE),W, 1,sizeof(OBJECT_ATTRIBUTES),R, },
@@ -172,7 +172,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtFreeUserPhysicalPages", 12, 1,sizeof(ULONG),W, 2,sizeof(ULONG),R, },
     {0,"NtFreeVirtualMemory", 16, 1,sizeof(PVOID),W, 2,sizeof(ULONG),W, },
     {0,"NtFsControlFile", 40, 4,sizeof(IO_STATUS_BLOCK),W, 8,-9,W, },
-    {0,"NtGetContextThread", 8, 1,sizeof(CONTEXT),W, },
+    {0,"NtGetContextThread", 8, 1,sizeof(CONTEXT),W|SYSARG_CONTEXT, },
     {0,"NtGetCurrentProcessorNumber", 4, },
     {0,"NtGetDevicePowerState", 8, 1,sizeof(DEVICE_POWER_STATE),W, },
     {0,"NtGetPlugPlayEvent", 16, 2,-3,W, },
@@ -279,7 +279,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtQueryVirtualMemory", 24, 3,-4,W, 5,sizeof(ULONG),W, },
     {0,"NtQueryVolumeInformationFile", 20, 1,sizeof(IO_STATUS_BLOCK),W, 2,-3,W, },
     {0,"NtQueueApcThread", 20, },
-    {0,"NtRaiseException", 12, 0,sizeof(EXCEPTION_RECORD),R, 1,sizeof(CONTEXT),R, 2,0,IB, },
+    {0,"NtRaiseException", 12, 0,sizeof(EXCEPTION_RECORD),R, 1,sizeof(CONTEXT),R|SYSARG_CONTEXT, 2,0,IB, },
     {0,"NtRaiseHardError", 24, 3,sizeof(ULONG_PTR),R, 5,sizeof(ULONG),W, },
     {0,"NtReadFile", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,-6,W, 5,-4,(W|IO), 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
     {0,"NtReadFileScatter", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,sizeof(FILE_SEGMENT_ELEMENT),R, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
@@ -324,7 +324,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtSetBootEntryOrder", 8, },
     {0,"NtSetBootOptions", 8, 0,sizeof(BOOT_OPTIONS),R, },
     {0,"NtSetContextChannel", 4, },
-    {0,"NtSetContextThread", 8, 1,sizeof(CONTEXT),R, },
+    {0,"NtSetContextThread", 8, 1,sizeof(CONTEXT),R|SYSARG_CONTEXT, },
     {0,"NtSetDebugFilterState", 12, 2,0,IB, },
     {0,"NtSetDefaultHardErrorPort", 4, },
     {0,"NtSetDefaultLocale", 8, 0,0,IB, },
@@ -561,4 +561,120 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
             set_teb_initial_shadow(teb);
         }
     }
+}
+
+bool
+os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                             const syscall_arg_t *arg_info,
+                             app_pc start, uint size) {
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                      MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    if (TEST(SYSARG_PORT_MESSAGE, arg_info->flags)) {
+        /* variable-length */
+        PORT_MESSAGE pm;
+        if (safe_read(start, sizeof(pm), &pm)) {
+            /* guess which side of union is used */
+            if (pm.u1.s1.DataLength != 0)
+                size = pm.u1.s1.TotalLength;
+            else
+                size = pm.u1.Length;
+            if (size < sizeof(pm))
+                size = sizeof(pm);
+            LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
+        }
+        check_sysmem(check_type, sysnum, start, size, mc, NULL);
+        return true;
+    }
+    if (TEST(SYSARG_CONTEXT, arg_info->flags)) {
+#if !defined(_X86_) || defined(X64)
+# error CONTEXT read handler is not yet implemented on non-x86
+#else /* defined(_X86_) */
+        /* The 'c' pointer will only be used for retrieving pointers
+         * for the CONTEXT fields, hence we can do without safe_read.
+         */
+        const CONTEXT *c = (CONTEXT *)start;
+        DWORD context_flags;
+        check_sysmem(check_type, sysnum, start, sizeof(context_flags),
+                     mc, NULL);
+        if (!safe_read((void*)&c->ContextFlags, sizeof(context_flags),
+                       &context_flags)) {
+            /* if safe_read fails due to CONTEXT being unaddr, the preceding
+             * check_sysmem should have raised the error, and there's
+             * no point in trying to further check the CONTEXT
+             */
+            return true;
+        }
+
+        ASSERT(TEST(CONTEXT_i486, context_flags),
+                "ContextFlags doesn't have CONTEXT_i486 bit set");
+
+        /* CONTEXT structure on x86 consists of the following sections:
+         * a) DWORD ContextFlags
+         *
+         * The following fields should be defined if the corresponding
+         * flags are set:
+         * b) DWORD Dr{0...3, 6, 7}        - CONTEXT_DEBUG_REGISTERS,
+         * c) FLOATING_SAVE_AREA FloatSave - CONTEXT_FLOATING_POINT,
+         * d) DWORD Seg{G,F,E,D}s          - CONTEXT_SEGMENTS,
+         * e) DWORD E{di,si,bx,dx,cx,ax}   - CONTEXT_INTEGER,
+         * f) DWORD Ebp, Eip, SegCs,
+         *          EFlags, Esp, SegSs     - CONTEXT_CONTROL,
+         * g) BYTE ExtendedRegisters[...]  - CONTEXT_EXTENDED_REGISTERS.
+         */
+
+        if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
+            ASSERT_NOT_TESTED("CONTEXT_DEBUG_REGISTERS flag is set");
+#define CONTEXT_NUM_DEBUG_REGS 6
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&c->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
+                         mc, NULL);
+        }
+        if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
+            ASSERT_NOT_TESTED("CONTEXT_FLOATING_POINT flag is set");
+            check_sysmem(check_type, sysnum,
+                    (app_pc)&c->FloatSave, sizeof(c->FloatSave),
+                    mc, NULL);
+        }
+        if (TESTALL(CONTEXT_SEGMENTS, context_flags)) {
+#define CONTEXT_NUM_SEG_REGS 4
+            check_sysmem(check_type, sysnum,
+                    (app_pc)&c->SegGs, CONTEXT_NUM_SEG_REGS*sizeof(DWORD),
+                    mc, NULL);
+        }
+        if (TESTALL(CONTEXT_INTEGER, context_flags) &&
+            sysnum != sysnum_CreateThread) {
+            /* For some reason, c->Edi...Eax are not initialized when calling
+             * NtCreateThread though CONTEXT_INTEGER flag is set
+             */
+#define CONTEXT_NUM_INT_REGS 6
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&c->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
+                         mc, NULL);
+        }
+        if (TESTALL(CONTEXT_CONTROL, context_flags)) {
+#define CONTEXT_NUM_CTRL_REGS 6
+            if (sysnum != sysnum_CreateThread) {
+                /* Ebp is not initialized when calling NtCreateThread,
+                 * so we skip it
+                 */
+                check_sysmem(check_type, sysnum,
+                             (app_pc)&c->Ebp, sizeof(DWORD),
+                             mc, NULL);
+            }
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&c->Eip,
+                         (CONTEXT_NUM_CTRL_REGS - 1)*sizeof(DWORD),
+                         mc, NULL);
+        }
+        if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
+            ASSERT_NOT_TESTED("CONTEXT_EXTENDED_REGISTERS flag is set");
+            check_sysmem(check_type, sysnum,
+                    (app_pc)&c->ExtendedRegisters,
+                    sizeof(c->ExtendedRegisters),
+                    mc, NULL);
+        }
+        return true;
+#endif
+    }
+    return false;
 }

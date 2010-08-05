@@ -321,20 +321,10 @@ process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
          * we should check here since harder to undo post-syscall on failure.
          */
         if (start != NULL && size > 0) {
-#ifdef WINDOWS
-            if (TEST(SYSARG_PORT_MESSAGE, sysinfo->arg[i].flags)) {
-                /* variable-length */
-                PORT_MESSAGE *pm = (PORT_MESSAGE *) start;
-                /* guess which side of union is used */
-                if (pm->u1.s1.DataLength != 0)
-                    size = pm->u1.s1.TotalLength;
-                else
-                    size = pm->u1.Length;
-                if (size < sizeof(*pm))
-                    size = sizeof(*pm);
-                LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", i, size);
-            }
-#endif
+            bool skip = os_handle_syscall_arg_access(sysnum, mc, i,
+                                                     &sysinfo->arg[i],
+                                                     start, size);
+
             /* pass syscall # as pc for reporting purposes */
             /* we treat in-out read-and-write as simply read, since if
              * not defined we'll report and then mark as defined anyway.
@@ -342,9 +332,11 @@ process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
             /* FIXME PR 408536: for write, check addressability here and do not
              * commit the write until post-syscall
              */
-            check_sysmem((TEST(SYSARG_WRITE, sysinfo->arg[i].flags) ?
-                          MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS),
-                         sysnum, start, size, mc, NULL);
+            if (!skip) {
+                check_sysmem((TEST(SYSARG_WRITE, sysinfo->arg[i].flags) ?
+                             MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS),
+                             sysnum, start, size, mc, NULL);
+            }
         }
     }
 }
