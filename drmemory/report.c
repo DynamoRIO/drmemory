@@ -1081,11 +1081,11 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
      * If perf of dup check is an issue we can add -report_all_max or something.
      */
     if (err->count > 1) {
-        ASSERT(err->id != 0, "duplicate should have id");
-        if (err->suppressed)
+        if (err->suppressed) {
             num_suppressions_matched++;
-        else {
+        } else {
             /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
+            ASSERT(err->id != 0, "duplicate should have id");
             reporting = true;
         }
         dr_mutex_unlock(error_lock);
