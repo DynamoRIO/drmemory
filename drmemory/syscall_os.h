@@ -25,12 +25,14 @@
 enum {
     /* syscall_arg_t.flags */
     SYSARG_WRITE           = 0x00000001,
-    SYSARG_PORT_MESSAGE    = 0x00000002,
+
+    /* The following flags are used on Windows. */
     /* BOOLEAN is only 1 byte so ok if only lsb is defined
      * FIXME: are we going to need the sizes of all the params, esp.
      * when we move to 64-bit?
      */
-    SYSARG_INLINED_BOOLEAN = 0x00000004,
+    SYSARG_INLINED_BOOLEAN = 0x00000002,
+    SYSARG_PORT_MESSAGE    = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */
     SYSARG_POST_SIZE_IO_STATUS = 0x00000008,
     /* the size points at a poiner-to-8-byte value param */
@@ -38,7 +40,9 @@ enum {
     /* the param holding the size is a pointer b/c it's an IN OUT var */
     SYSARG_LENGTH_INOUT     = 0x00000020,
     SYSARG_CONTEXT          = 0x00000040,
+    SYSARG_EXCEPTION_RECORD = 0x00000080,
 
+    /* The following flags are used on Linux. */
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference
      */

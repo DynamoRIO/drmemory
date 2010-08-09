@@ -226,7 +226,6 @@ safe_strnlen(const char *str, size_t max)
  */
 #define W (SYSARG_WRITE)
 #define R (0)
-#define IB (SYSARG_INLINED_BOOLEAN)
 #define CSTRING (SYSARG_SIZE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_info[] = {
@@ -577,7 +576,6 @@ syscall_info_t syscall_info[] = {
 };
 #undef W
 #undef R
-#undef IB
 #undef CSTRING
 #undef RET
 

@@ -279,7 +279,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtQueryVirtualMemory", 24, 3,-4,W, 5,sizeof(ULONG),W, },
     {0,"NtQueryVolumeInformationFile", 20, 1,sizeof(IO_STATUS_BLOCK),W, 2,-3,W, },
     {0,"NtQueueApcThread", 20, },
-    {0,"NtRaiseException", 12, 0,sizeof(EXCEPTION_RECORD),R, 1,sizeof(CONTEXT),R|SYSARG_CONTEXT, 2,0,IB, },
+    {0,"NtRaiseException", 12, 0,sizeof(EXCEPTION_RECORD),R|SYSARG_EXCEPTION_RECORD, 1,sizeof(CONTEXT),R|SYSARG_CONTEXT, 2,0,IB, },
     {0,"NtRaiseHardError", 24, 3,sizeof(ULONG_PTR),R, 5,sizeof(ULONG),W, },
     {0,"NtReadFile", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,-6,W, 5,-4,(W|IO), 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
     {0,"NtReadFileScatter", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,sizeof(FILE_SEGMENT_ELEMENT),R, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
@@ -563,118 +563,177 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
     }
 }
 
+static bool handle_port_message_access(int sysnum, dr_mcontext_t *mc,
+                                       uint arg_num,
+                                       const syscall_arg_t *arg_info,
+                                       app_pc start, uint size) {
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    /* variable-length */
+    PORT_MESSAGE pm;
+    if (safe_read(start, sizeof(pm), &pm)) {
+        /* guess which side of union is used */
+        if (pm.u1.s1.DataLength != 0)
+            size = pm.u1.s1.TotalLength;
+        else
+            size = pm.u1.Length;
+        if (size < sizeof(pm))
+            size = sizeof(pm);
+        LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
+    }
+    check_sysmem(check_type, sysnum, start, size, mc, NULL);
+    return true;
+}
+
+static bool handle_context_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                  const syscall_arg_t *arg_info,
+                                  app_pc start, uint size) {
+#if !defined(_X86_) || defined(X64)
+# error CONTEXT read handler is not yet implemented on non-x86
+#else /* defined(_X86_) */
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    /* The 'cxt' pointer will only be used for retrieving pointers
+     * for the CONTEXT fields, hence we can do without safe_read.
+     */
+    const CONTEXT *cxt = (CONTEXT *)start;
+    DWORD context_flags;
+    check_sysmem(check_type, sysnum, start, sizeof(context_flags),
+                 mc, NULL);
+    if (!safe_read((void*)&cxt->ContextFlags, sizeof(context_flags),
+                   &context_flags)) {
+        /* if safe_read fails due to CONTEXT being unaddr, the preceding
+         * check_sysmem should have raised the error, and there's
+         * no point in trying to further check the CONTEXT
+         */
+        return true;
+    }
+
+    ASSERT(TEST(CONTEXT_i486, context_flags),
+           "ContextFlags doesn't have CONTEXT_i486 bit set");
+
+    /* CONTEXT structure on x86 consists of the following sections:
+     * a) DWORD ContextFlags
+     *
+     * The following fields should be defined if the corresponding
+     * flags are set:
+     * b) DWORD Dr{0...3, 6, 7}        - CONTEXT_DEBUG_REGISTERS,
+     * c) FLOATING_SAVE_AREA FloatSave - CONTEXT_FLOATING_POINT,
+     * d) DWORD Seg{G,F,E,D}s          - CONTEXT_SEGMENTS,
+     * e) DWORD E{di,si,bx,dx,cx,ax}   - CONTEXT_INTEGER,
+     * f) DWORD Ebp, Eip, SegCs, EFlags, Esp, SegSs - CONTEXT_CONTROL,
+     * g) BYTE ExtendedRegisters[...]  - CONTEXT_EXTENDED_REGISTERS.
+     */
+
+    if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
+        ASSERT_NOT_TESTED("CONTEXT_DEBUG_REGISTERS flag is set");
+#define CONTEXT_NUM_DEBUG_REGS 6
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
+                     mc, NULL);
+    }
+    if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
+        ASSERT_NOT_TESTED("CONTEXT_FLOATING_POINT flag is set");
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
+                     mc, NULL);
+    }
+    /* Segment registers are 16-bits each but stored with 16-bit gaps
+     * so we can't use sizeof(cxt->Seg*s);
+     */
+#define SIZE_SEGMENT_REG 2
+    if (TESTALL(CONTEXT_SEGMENTS, context_flags)) {
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegGs, SIZE_SEGMENT_REG, mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegFs, SIZE_SEGMENT_REG, mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegEs, SIZE_SEGMENT_REG, mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, mc, NULL);
+    }
+    if (TESTALL(CONTEXT_INTEGER, context_flags) &&
+        sysnum != sysnum_CreateThread) {
+        /* For some reason, cxt->Edi...Eax are not initialized when calling
+         * NtCreateThread though CONTEXT_INTEGER flag is set
+         */
+#define CONTEXT_NUM_INT_REGS 6
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
+                     mc, NULL);
+    }
+    if (TESTALL(CONTEXT_CONTROL, context_flags)) {
+        if (sysnum != sysnum_CreateThread) {
+            /* Ebp is not initialized when calling NtCreateThread,
+             * so we skip it
+             */
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&cxt->Ebp, sizeof(DWORD),
+                         mc, NULL);
+        }
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->Eip, sizeof(cxt->Eip), mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->Esp, sizeof(cxt->Esp), mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, mc, NULL);
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, mc, NULL);
+    }
+    if (TESTALL(CONTEXT_EXTENDED_REGISTERS, context_flags)) {
+        ASSERT_NOT_TESTED("CONTEXT_EXTENDED_REGISTERS flag is set");
+        check_sysmem(check_type, sysnum,
+                     (app_pc)&cxt->ExtendedRegisters,
+                     sizeof(cxt->ExtendedRegisters), mc, NULL);
+    }
+    return true;
+#endif
+}
+
+static bool handle_exception_record_access(int sysnum, dr_mcontext_t *mc,
+                                           uint arg_num,
+                                           const syscall_arg_t *arg_info,
+                                           app_pc start, uint size) {
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    const EXCEPTION_RECORD *er = (EXCEPTION_RECORD *)start;
+    DWORD num_params;
+    /* According to MSDN, NumberParameters stores the number of defined
+     * elements of the ExceptionInformation array
+     * at the end of the EXCEPTION_RECORD structure.
+     * http://msdn.microsoft.com/en-us/library/aa363082(VS.85).aspx
+     */
+    check_sysmem(check_type, sysnum,
+                 start, sizeof(*er) - sizeof(er->ExceptionInformation),
+                 mc, NULL);
+    ASSERT(sizeof(num_params) == sizeof(er->NumberParameters), "");
+    if (safe_read((void*)&er->NumberParameters, sizeof(num_params),
+                  &num_params)) {
+        check_sysmem(check_type, sysnum,
+                     (app_pc)er->ExceptionInformation,
+                     num_params * sizeof(er->ExceptionInformation[0]),
+                     mc, NULL);
+    }
+    return true;
+}
+
 bool
 os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                              const syscall_arg_t *arg_info,
                              app_pc start, uint size) {
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                      MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
     if (TEST(SYSARG_PORT_MESSAGE, arg_info->flags)) {
-        /* variable-length */
-        PORT_MESSAGE pm;
-        if (safe_read(start, sizeof(pm), &pm)) {
-            /* guess which side of union is used */
-            if (pm.u1.s1.DataLength != 0)
-                size = pm.u1.s1.TotalLength;
-            else
-                size = pm.u1.Length;
-            if (size < sizeof(pm))
-                size = sizeof(pm);
-            LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
-        }
-        check_sysmem(check_type, sysnum, start, size, mc, NULL);
-        return true;
+        return handle_port_message_access(sysnum, mc, arg_num, arg_info,
+                                          start, size);
     }
     if (TEST(SYSARG_CONTEXT, arg_info->flags)) {
-#if !defined(_X86_) || defined(X64)
-# error CONTEXT read handler is not yet implemented on non-x86
-#else /* defined(_X86_) */
-        /* The 'c' pointer will only be used for retrieving pointers
-         * for the CONTEXT fields, hence we can do without safe_read.
-         */
-        const CONTEXT *c = (CONTEXT *)start;
-        DWORD context_flags;
-        check_sysmem(check_type, sysnum, start, sizeof(context_flags),
-                     mc, NULL);
-        if (!safe_read((void*)&c->ContextFlags, sizeof(context_flags),
-                       &context_flags)) {
-            /* if safe_read fails due to CONTEXT being unaddr, the preceding
-             * check_sysmem should have raised the error, and there's
-             * no point in trying to further check the CONTEXT
-             */
-            return true;
-        }
-
-        ASSERT(TEST(CONTEXT_i486, context_flags),
-                "ContextFlags doesn't have CONTEXT_i486 bit set");
-
-        /* CONTEXT structure on x86 consists of the following sections:
-         * a) DWORD ContextFlags
-         *
-         * The following fields should be defined if the corresponding
-         * flags are set:
-         * b) DWORD Dr{0...3, 6, 7}        - CONTEXT_DEBUG_REGISTERS,
-         * c) FLOATING_SAVE_AREA FloatSave - CONTEXT_FLOATING_POINT,
-         * d) DWORD Seg{G,F,E,D}s          - CONTEXT_SEGMENTS,
-         * e) DWORD E{di,si,bx,dx,cx,ax}   - CONTEXT_INTEGER,
-         * f) DWORD Ebp, Eip, SegCs,
-         *          EFlags, Esp, SegSs     - CONTEXT_CONTROL,
-         * g) BYTE ExtendedRegisters[...]  - CONTEXT_EXTENDED_REGISTERS.
-         */
-
-        if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
-            ASSERT_NOT_TESTED("CONTEXT_DEBUG_REGISTERS flag is set");
-#define CONTEXT_NUM_DEBUG_REGS 6
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&c->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
-                         mc, NULL);
-        }
-        if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
-            ASSERT_NOT_TESTED("CONTEXT_FLOATING_POINT flag is set");
-            check_sysmem(check_type, sysnum,
-                    (app_pc)&c->FloatSave, sizeof(c->FloatSave),
-                    mc, NULL);
-        }
-        if (TESTALL(CONTEXT_SEGMENTS, context_flags)) {
-#define CONTEXT_NUM_SEG_REGS 4
-            check_sysmem(check_type, sysnum,
-                    (app_pc)&c->SegGs, CONTEXT_NUM_SEG_REGS*sizeof(DWORD),
-                    mc, NULL);
-        }
-        if (TESTALL(CONTEXT_INTEGER, context_flags) &&
-            sysnum != sysnum_CreateThread) {
-            /* For some reason, c->Edi...Eax are not initialized when calling
-             * NtCreateThread though CONTEXT_INTEGER flag is set
-             */
-#define CONTEXT_NUM_INT_REGS 6
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&c->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
-                         mc, NULL);
-        }
-        if (TESTALL(CONTEXT_CONTROL, context_flags)) {
-#define CONTEXT_NUM_CTRL_REGS 6
-            if (sysnum != sysnum_CreateThread) {
-                /* Ebp is not initialized when calling NtCreateThread,
-                 * so we skip it
-                 */
-                check_sysmem(check_type, sysnum,
-                             (app_pc)&c->Ebp, sizeof(DWORD),
-                             mc, NULL);
-            }
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&c->Eip,
-                         (CONTEXT_NUM_CTRL_REGS - 1)*sizeof(DWORD),
-                         mc, NULL);
-        }
-        if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
-            ASSERT_NOT_TESTED("CONTEXT_EXTENDED_REGISTERS flag is set");
-            check_sysmem(check_type, sysnum,
-                    (app_pc)&c->ExtendedRegisters,
-                    sizeof(c->ExtendedRegisters),
-                    mc, NULL);
-        }
-        return true;
-#endif
+        return handle_context_access(sysnum, mc, arg_num, arg_info,
+                                     start, size);
+    }
+    if (TEST(SYSARG_EXCEPTION_RECORD, arg_info->flags)) {
+        return handle_exception_record_access(sysnum, mc, arg_num, arg_info,
+                                              start, size);
     }
     return false;
 }
