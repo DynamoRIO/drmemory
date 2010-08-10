@@ -41,6 +41,8 @@ enum {
     SYSARG_LENGTH_INOUT     = 0x00000020,
     SYSARG_CONTEXT          = 0x00000040,
     SYSARG_EXCEPTION_RECORD = 0x00000080,
+    SYSARG_SECURITY_QOS     = 0x00000100,
+    SYSARG_SECURITY_DESCRIPTOR = 0x00000200,
 
     /* The following flags are used on Linux. */
     /* syscall_arg_t.size, using values that cannot be mistaken for

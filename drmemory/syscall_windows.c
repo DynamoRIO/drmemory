@@ -82,13 +82,13 @@ int sysnum_CreateThread;
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
 syscall_info_t syscall_info[] = {
     {0,"NtAcceptConnectPort", 24, 0,sizeof(HANDLE),W, 2,sizeof(PORT_MESSAGE),R, 3,0,IB, 4,sizeof(PORT_VIEW),W, 5,sizeof(REMOTE_PORT_VIEW),W, },
-    {0,"NtAccessCheck", 32, 0,sizeof(SECURITY_DESCRIPTOR),R, 3,sizeof(GENERIC_MAPPING),R, 4,sizeof(PRIVILEGE_SET),W, 5,sizeof(ULONG),R, 6,sizeof(ACCESS_MASK),W, 7,sizeof(BOOLEAN),W, },
-    {0,"NtAccessCheckAndAuditAlarm", 44, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R, 6,sizeof(GENERIC_MAPPING),R, 7,0,IB, 8,sizeof(ACCESS_MASK),W, 9,sizeof(BOOLEAN),W, 10,sizeof(BOOLEAN),W, },
-    {0,"NtAccessCheckByType", 44, 0,sizeof(SECURITY_DESCRIPTOR),R, 1,sizeof(SID),R, 4,sizeof(OBJECT_TYPE_LIST),R, 6,sizeof(GENERIC_MAPPING),R, 7,sizeof(PRIVILEGE_SET),R, 8,sizeof(ULONG),R, 9,sizeof(ACCESS_MASK),W, 10,sizeof(ULONG),W, },
-    {0,"NtAccessCheckByTypeAndAuditAlarm", 64, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R, 5,sizeof(SID),R, 9,sizeof(OBJECT_TYPE_LIST),R, 11,sizeof(GENERIC_MAPPING),R, 12,0,IB, 13,sizeof(ACCESS_MASK),W, 14,sizeof(ULONG),W, 15,sizeof(BOOLEAN),W, },
-    {0,"NtAccessCheckByTypeResultList", 44, 0,sizeof(SECURITY_DESCRIPTOR),R, 1,sizeof(SID),R, 4,sizeof(OBJECT_TYPE_LIST),R, 6,sizeof(GENERIC_MAPPING),R, 7,sizeof(PRIVILEGE_SET),R, 8,sizeof(ULONG),R, 9,sizeof(ACCESS_MASK),W, 10,sizeof(ULONG),W, },
-    {0,"NtAccessCheckByTypeResultListAndAuditAlarm", 64, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R, 5,sizeof(SID),R, 9,sizeof(OBJECT_TYPE_LIST),R, 11,sizeof(GENERIC_MAPPING),R, 12,0,IB, 13,sizeof(ACCESS_MASK),W, 14,sizeof(ULONG),W, 15,sizeof(ULONG),W, },
-    {0,"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", 68, 0,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(UNICODE_STRING),R, 5,sizeof(SECURITY_DESCRIPTOR),R, 6,sizeof(SID),R, 10,sizeof(OBJECT_TYPE_LIST),R, 12,sizeof(GENERIC_MAPPING),R, 13,0,IB, 14,sizeof(ACCESS_MASK),W, 15,sizeof(ULONG),W, 16,sizeof(ULONG),W, },
+    {0,"NtAccessCheck", 32, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 3,sizeof(GENERIC_MAPPING),R, 4,sizeof(PRIVILEGE_SET),W, 5,sizeof(ULONG),R, 6,sizeof(ACCESS_MASK),W, 7,sizeof(BOOLEAN),W, },
+    {0,"NtAccessCheckAndAuditAlarm", 44, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 6,sizeof(GENERIC_MAPPING),R, 7,0,IB, 8,sizeof(ACCESS_MASK),W, 9,sizeof(BOOLEAN),W, 10,sizeof(BOOLEAN),W, },
+    {0,"NtAccessCheckByType", 44, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 1,sizeof(SID),R, 4,sizeof(OBJECT_TYPE_LIST),R, 6,sizeof(GENERIC_MAPPING),R, 7,sizeof(PRIVILEGE_SET),R, 8,sizeof(ULONG),R, 9,sizeof(ACCESS_MASK),W, 10,sizeof(ULONG),W, },
+    {0,"NtAccessCheckByTypeAndAuditAlarm", 64, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 5,sizeof(SID),R, 9,sizeof(OBJECT_TYPE_LIST),R, 11,sizeof(GENERIC_MAPPING),R, 12,0,IB, 13,sizeof(ACCESS_MASK),W, 14,sizeof(ULONG),W, 15,sizeof(BOOLEAN),W, },
+    {0,"NtAccessCheckByTypeResultList", 44, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 1,sizeof(SID),R, 4,sizeof(OBJECT_TYPE_LIST),R, 6,sizeof(GENERIC_MAPPING),R, 7,sizeof(PRIVILEGE_SET),R, 8,sizeof(ULONG),R, 9,sizeof(ACCESS_MASK),W, 10,sizeof(ULONG),W, },
+    {0,"NtAccessCheckByTypeResultListAndAuditAlarm", 64, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 5,sizeof(SID),R, 9,sizeof(OBJECT_TYPE_LIST),R, 11,sizeof(GENERIC_MAPPING),R, 12,0,IB, 13,sizeof(ACCESS_MASK),W, 14,sizeof(ULONG),W, 15,sizeof(ULONG),W, },
+    {0,"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", 68, 0,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(UNICODE_STRING),R, 5,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 6,sizeof(SID),R, 10,sizeof(OBJECT_TYPE_LIST),R, 12,sizeof(GENERIC_MAPPING),R, 13,0,IB, 14,sizeof(ACCESS_MASK),W, 15,sizeof(ULONG),W, 16,sizeof(ULONG),W, },
     {0,"NtAddAtom", 12, 0,-1,R, 2,sizeof(USHORT),W, },
     {0,"NtAddBootEntry", 8, 0,sizeof(UNICODE_STRING),R, 1,sizeof(UNICODE_STRING),R, },
     {0,"NtAddDriverEntry", 8, 0,sizeof(UNICODE_STRING),R, 1,sizeof(UNICODE_STRING),R, },
@@ -114,7 +114,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtCompareTokens", 12, 2,sizeof(BOOLEAN),W, },
     {0,"NtCompleteConnectPort", 4, },
     {0,"NtCompressKey", 4, },
-    {0,"NtConnectPort", 32, 0,sizeof(HANDLE),W, 1,sizeof(UNICODE_STRING),R, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R, 3,sizeof(PORT_VIEW),W, 4,sizeof(REMOTE_PORT_VIEW),W, 5,sizeof(ULONG),W, 6,-7,WI, 7,sizeof(ULONG),W, },
+    {0,"NtConnectPort", 32, 0,sizeof(HANDLE),W, 1,sizeof(UNICODE_STRING),R, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS, 3,sizeof(PORT_VIEW),W, 4,sizeof(REMOTE_PORT_VIEW),W, 5,sizeof(ULONG),W, 6,-7,WI, 7,sizeof(ULONG),W, },
     {0,"NtContinue", 8, 0,sizeof(CONTEXT),R|SYSARG_CONTEXT, 1,0,IB, },
     {0,"NtCreateChannel", 8, 0,sizeof(HANDLE),W, 1,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateDebugObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,0,IB, },
@@ -180,7 +180,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtGetWriteWatch", 28, 4,sizeof(ULONG),W, 5,sizeof(ULONG),W, 6,sizeof(ULONG),W, },
     {0,"NtImpersonateAnonymousToken", 4, },
     {0,"NtImpersonateClientOfPort", 8, 1,sizeof(PORT_MESSAGE),R, },
-    {0,"NtImpersonateThread", 12, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R, },
+    {0,"NtImpersonateThread", 12, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS, },
     {0,"NtInitializeRegistry", 4, 0,0,IB, },
     {0,"NtInitiatePowerAction", 16, 3,0,IB, },
     {0,"NtIsProcessInJob", 8, },
@@ -215,7 +215,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtOpenKey", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenKeyedEvent", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenMutant", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
-    {0,"NtOpenObjectAuditAlarm", 48, 0,sizeof(UNICODE_STRING),R, 1,sizeof(PVOID),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R, 8,sizeof(PRIVILEGE_SET),R, 9,0,IB, 10,0,IB, 11,sizeof(BOOLEAN),W, },
+    {0,"NtOpenObjectAuditAlarm", 48, 0,sizeof(UNICODE_STRING),R, 1,sizeof(PVOID),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 8,sizeof(PRIVILEGE_SET),R, 9,0,IB, 10,0,IB, 11,sizeof(BOOLEAN),W, },
     {0,"NtOpenProcess", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(CLIENT_ID),R, },
     {0,"NtOpenProcessToken", 12, 2,sizeof(HANDLE),W, },
     {0,"NtOpenProcessTokenEx", 16, 3,sizeof(HANDLE),W, },
@@ -266,6 +266,9 @@ syscall_info_t syscall_info[] = {
     {0,"NtQueryPortInformationProcess", 4, },
     {0,"NtQueryQuotaInformationFile", 36, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_USER_QUOTA_INFORMATION),W, 4,0,IB, 5,sizeof(FILE_QUOTA_LIST_INFORMATION),R, 7,sizeof(SID),R, 8,0,IB, },
     {0,"NtQuerySection", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    /* FIXME NtQuerySecurityObject may not initialize some fields
+     * of SECURITY_DESCRIPTOR, depends on the 2nd argument.
+     */
     {0,"NtQuerySecurityObject", 20, 2,sizeof(SECURITY_DESCRIPTOR),W, 4,sizeof(ULONG),W, },
     {0,"NtQuerySemaphore", 20, 2,-3,W, 4,sizeof(ULONG),W, },
     {0,"NtQuerySymbolicLinkObject", 12, 1,sizeof(UNICODE_STRING),W, 2,sizeof(ULONG),W, },
@@ -319,7 +322,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtSaveKey", 8, },
     {0,"NtSaveKeyEx", 12, },
     {0,"NtSaveMergedKeys", 12, },
-    {0,"NtSecureConnectPort", 36, 0,sizeof(HANDLE),W, 1,sizeof(UNICODE_STRING),R, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R, 3,sizeof(PORT_VIEW),W, 4,sizeof(SID),R, 5,sizeof(REMOTE_PORT_VIEW),W, 6,sizeof(ULONG),W, 7,-8,WI, 8,sizeof(ULONG),W, },
+    {0,"NtSecureConnectPort", 36, 0,sizeof(HANDLE),W, 1,sizeof(UNICODE_STRING),R, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS, 3,sizeof(PORT_VIEW),W, 4,sizeof(SID),R, 5,sizeof(REMOTE_PORT_VIEW),W, 6,sizeof(ULONG),W, 7,-8,WI, 8,sizeof(ULONG),W, },
     {0,"NtSendWaitReplyChannel", 16, 3,sizeof(CHANNEL_MESSAGE),W, },
     {0,"NtSetBootEntryOrder", 8, },
     {0,"NtSetBootOptions", 8, 0,sizeof(BOOT_OPTIONS),R, },
@@ -350,7 +353,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtSetLowWaitHighEventPair", 4, },
     {0,"NtSetLowWaitHighThread", 0, },
     {0,"NtSetQuotaInformationFile", 16, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_USER_QUOTA_INFORMATION),R, },
-    {0,"NtSetSecurityObject", 12, 2,sizeof(SECURITY_DESCRIPTOR),R, },
+    {0,"NtSetSecurityObject", 12, 2,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, },
     {0,"NtSetSystemEnvironmentValue", 8, 0,sizeof(UNICODE_STRING),R, 1,sizeof(UNICODE_STRING),R, },
     {0,"NtSetSystemInformation", 12, 1,-2,W, },
     {0,"NtSetSystemPowerState", 12, },
@@ -532,7 +535,6 @@ void
 os_shadow_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc;
     /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
      * client_post_syscall() where common/alloc.c identifies the sysnum: but
      * for things that don't have anything to do w/ mem alloc I think it's
@@ -719,6 +721,53 @@ static bool handle_exception_record_access(int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
+static bool handle_security_qos_access(int sysnum, dr_mcontext_t *mc,
+                                       uint arg_num,
+                                       const syscall_arg_t *arg_info,
+                                       app_pc start, uint size) {
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    const SECURITY_QUALITY_OF_SERVICE *s = (SECURITY_QUALITY_OF_SERVICE *)start;
+    /* The SECURITY_QUALITY_OF_SERVICE structure is
+     * DWORD + DWORD + unsigned char + BOOLEAN
+     * so it takes 12 bytes (and its Length field value is 12)
+     * but only 10 must be initialized.
+     */
+    check_sysmem(check_type, sysnum, start,
+                 sizeof(s->Length) + sizeof(s->ImpersonationLevel) +
+                 sizeof(s->ContextTrackingMode) + sizeof(s->EffectiveOnly),
+                 mc, NULL);
+    return true;
+}
+
+static bool handle_security_descriptor_access(int sysnum, dr_mcontext_t *mc,
+                                              uint arg_num,
+                                              const syscall_arg_t *arg_info,
+                                              app_pc start, uint size) {
+    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
+                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
+    SECURITY_DESCRIPTOR_CONTROL flags;
+    /* The SECURITY_DESCRIPTOR structure has two fields at the end (Sacl, Dacl)
+     * which must be init only when the corresponding bits of Control are set.
+     */
+    ASSERT(start + sizeof(*s) == (app_pc)&s->Dacl + sizeof(s->Dacl), "");
+    check_sysmem(check_type, sysnum, start, (app_pc)&s->Sacl - start, mc, NULL);
+
+    ASSERT(sizeof(flags) == sizeof(s->Control), "");
+    if (safe_read((void*)&s->Control, sizeof(flags), &flags)) {
+        if (TEST(SE_SACL_PRESENT, flags)) {
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&s->Sacl, sizeof(s->Sacl), mc, NULL);
+        }
+        if (TEST(SE_DACL_PRESENT, flags)) {
+            check_sysmem(check_type, sysnum,
+                         (app_pc)&s->Dacl, sizeof(s->Dacl), mc, NULL);
+        }
+    }
+    return true;
+}
+
 bool
 os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                              const syscall_arg_t *arg_info,
@@ -734,6 +783,14 @@ os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
     if (TEST(SYSARG_EXCEPTION_RECORD, arg_info->flags)) {
         return handle_exception_record_access(sysnum, mc, arg_num, arg_info,
                                               start, size);
+    }
+    if (TEST(SYSARG_SECURITY_QOS, arg_info->flags)) {
+        return handle_security_qos_access(sysnum, mc, arg_num, arg_info,
+                                          start, size);
+    }
+    if (TEST(SYSARG_SECURITY_DESCRIPTOR, arg_info->flags)) {
+        return handle_security_descriptor_access(sysnum, mc, arg_num, arg_info,
+                                                 start, size);
     }
     return false;
 }
