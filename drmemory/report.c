@@ -39,7 +39,7 @@
 #include <limits.h>
 
 static uint error_id; /* errors + leaks */
-static uint num_total_errors;
+static uint num_reported_errors;
 static uint num_total_leaks;
 static uint num_throttled_errors;
 static uint num_throttled_leaks;
@@ -678,7 +678,7 @@ report_fork_init(void)
         num_unique[i] = 0;
         num_total[i] = 0;
     }
-    num_total_errors = 0;
+    num_reported_errors = 0;
     num_total_leaks = 0;
     num_throttled_errors = 0;
     num_throttled_leaks = 0;
@@ -1075,29 +1075,32 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     ssize_t len = 0;
     size_t sofar = 0;
 
-    err = record_error(type, NULL, loc, mc, false/*no lock */);
     /* Our report_max throttling is post-dup-checking, to make the option
      * useful (else if 1st error has 20K instances, won't see any others).
-     * If perf of dup check is an issue we can add -report_all_max or something.
+     * Also, num_reported_errors doesn't count suppressed errors.
+     * Also, suppressed errors are printed to the log until report_max is
+     * reached so they can fill it up.
+     * FIXME Perhaps we can avoid printing suppressed errors at all by default.
+     * If perf of dup check or suppression matching is an issue
+     * we can add -report_all_max or something.
      */
+    if (options.report_max >= 0 && num_reported_errors >= options.report_max) {
+        num_throttled_errors++;
+        goto report_error_done;
+    }
+    err = record_error(type, NULL, loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {
             num_suppressions_matched++;
         } else {
-            /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
             ASSERT(err->id != 0, "duplicate should have id");
+            /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
             reporting = true;
         }
         dr_mutex_unlock(error_lock);
         goto report_error_done;
     }
     ASSERT(err->id == 0, "non-duplicate should not have id");
-    num_total_errors++;
-    if (options.report_max >= 0 && num_total_errors >= options.report_max) {
-        num_throttled_errors++;
-        dr_mutex_unlock(error_lock);
-        goto report_error_done;
-    }
 
     /* We need to know whether suppressed so we can prefix "Error" with "SUPPRESSED"
      * and print the right error #.  So we go ahead and do that partway into
@@ -1119,6 +1122,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         num_total[type]--;
     } else {
         acquire_error_number(err);
+        num_reported_errors++;
     }
     dr_mutex_unlock(error_lock);
 
