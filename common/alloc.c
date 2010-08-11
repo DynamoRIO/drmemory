@@ -171,9 +171,6 @@ See ~/extsw/ReactOS-0.3.1/lib/rtl/heap.c
 #else
 # include "windefs.h"
 #endif
-#ifdef USE_DRSYMS
-# include "drsyms.h"
-#endif
 #include <string.h>
 
 #ifdef LINUX
@@ -502,17 +499,13 @@ is_alloc_sysroutine(app_pc pc)
 #endif
 
 static app_pc
-lookup_symbol(const module_data_t *mod, const char *name)
+lookup_symbol_or_export(const module_data_t *mod, const char *name)
 {
 #ifdef USE_DRSYMS
     if (mod->full_path != NULL) {
-        size_t modoffs;
-        /* We rely on drsym_init() having been called during init */
-        drsym_error_t symres =
-            drsym_lookup_symbol(mod->full_path, name, &modoffs);
-        LOG(2, "sym lookup of %s in %s => %d\n", name, mod->full_path, symres);
-        if (symres == DRSYM_SUCCESS)
-            return mod->start + modoffs;
+        app_pc res = lookup_symbol(mod, name);
+        if (res != NULL)
+            return res;
     }
 #endif
     return (app_pc) dr_get_proc_address(mod->handle, name);
@@ -533,7 +526,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
     for (i = 0; i < num_possible; i++) {
         alloc_routine_entry_t *e;
-        app_pc pc = lookup_symbol(mod, possible[i].name);
+        app_pc pc = lookup_symbol_or_export(mod, possible[i].name);
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
         if (pc != NULL) {
             IF_DEBUG(bool is_new;)
@@ -988,7 +981,7 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         int i;
         dr_mutex_lock(alloc_routine_lock);
         for (i = 0; i < POSSIBLE_LIBC_ROUTINE_NUM; i++) {
-            app_pc pc = lookup_symbol(info, possible_libc_routines[i].name);
+            app_pc pc = lookup_symbol_or_export(info, possible_libc_routines[i].name);
             if (pc != NULL) {
                 IF_DEBUG(bool found = )
                     hashtable_remove(&alloc_routine_table, (void *)pc);
@@ -997,7 +990,7 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         }
 #ifdef WINDOWS
         for (i = 0; i < POSSIBLE_DBGCRT_ROUTINE_NUM; i++) {
-            app_pc pc = lookup_symbol(info, possible_dbgcrt_routines[i].name);
+            app_pc pc = lookup_symbol_or_export(info, possible_dbgcrt_routines[i].name);
             if (pc != NULL) {
                 IF_DEBUG(bool found = )
                     hashtable_remove(&alloc_routine_table, (void *)pc);

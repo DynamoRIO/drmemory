@@ -411,6 +411,11 @@ drmemory_abort(void);
 bool
 safe_read(void *base, size_t size, void *out_buf);
 
+#ifdef USE_DRSYMS
+app_pc
+lookup_symbol(const module_data_t *mod, const char *symname);
+#endif
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

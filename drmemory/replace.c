@@ -416,17 +416,10 @@ replace_in_module(const module_data_t *mod, bool add)
         }
 #ifdef USE_DRSYMS
         else {
-            size_t modoffs;
             /* PR 486382: look up these symbols online for all modules.
              * We rely on drsym_init() having been called during init.
              */
-            drsym_error_t symres =
-                drsym_lookup_symbol(mod->full_path, replace_routine_name[i], &modoffs);
-            LOG(2, "sym lookup of %s in %s => %d\n", replace_routine_name[i],
-                mod->full_path, symres);
-            if (symres == DRSYM_SUCCESS) {
-                addr = mod->start + modoffs;
-            }
+            addr = lookup_symbol(mod, replace_routine_name[i]);
         }
 #endif
         if (addr != NULL) {

@@ -26,6 +26,9 @@
 #include "dr_api.h"
 #include "per_thread.h"
 #include "utils.h"
+#ifdef USE_DRSYMS
+# include "drsyms.h"
+#endif
 #ifdef WINDOWS
 # include "windefs.h"
 #else
@@ -102,6 +105,50 @@ safe_read(void *base, size_t size, void *out_buf)
     return (dr_safe_read(base, size, out_buf, &bytes_read) &&
             bytes_read == size);
 }
+
+#ifdef USE_DRSYMS
+app_pc
+lookup_symbol(const module_data_t *mod, const char *symname)
+{
+    /* We have to specify the module via "modname!symname".
+     * We must use the same modname as in full_path.
+     */
+# define MAX_SYM_WITH_MOD_LEN 256
+    char sym_with_mod[MAX_SYM_WITH_MOD_LEN];
+    size_t modoffs;
+    drsym_error_t symres;
+    char *fname = NULL, *c;
+
+    if (mod->full_path == NULL)
+        return NULL;
+
+    for (c = mod->full_path; *c != '\0'; c++) {
+        if (*c == DIRSEP IF_WINDOWS(|| *c == '\\'))
+            fname = c;
+    }
+    fname++;
+    ASSERT(fname != NULL, "unable to get fname for module");
+    /* now get rid of extension */
+    for (; c > fname && *c != '.'; c--)
+        ; /* nothing */
+
+    ASSERT(c - fname < BUFFER_SIZE_ELEMENTS(sym_with_mod), "sizes way off");
+    modoffs = dr_snprintf(sym_with_mod, c - fname, "%s", fname);
+    ASSERT(modoffs > 0, "error printing modname!symname");
+    modoffs = dr_snprintf(sym_with_mod + modoffs,
+                          BUFFER_SIZE_ELEMENTS(sym_with_mod) - modoffs,
+                          "!%s", symname);
+    ASSERT(modoffs > 0, "error printing modname!symname");
+
+    /* We rely on drsym_init() having been called during init */
+    symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs);
+    LOG(2, "sym lookup of %s in %s => %d\n", sym_with_mod, mod->full_path, symres);
+    if (symres == DRSYM_SUCCESS)
+        return mod->start + modoffs;
+    else
+        return NULL;
+}
+#endif
 
 /***************************************************************************
  * OPTION PARSING
