@@ -71,30 +71,40 @@ typedef struct _delay_free_t {
     app_pc addr;
 #ifdef WINDOWS
     /* We assume the only flag even at Rtl level is HEAP_NO_SERIALIZE so we only have
-     * to record the Heap (xref PR 502150)
+     * to record the Heap (xref PR 502150).
+     * This is also used for the block type for _dbg routines.
      */
-    app_pc heap;
+    ptr_int_t auxarg;
 #endif
 #ifdef STATISTICS
     size_t size;
 #endif
 } delay_free_t;
-static delay_free_t *delay_free_list;
+
+/* We need a separate free queue per malloc routine (PR 476805) */
+typedef struct _delay_free_info_t {
+    delay_free_t *delay_free_list;
+    /* Head of FIFO array */
+    int delay_free_head;
+    /* If FIFO is full, equals options.delay_frees; else, equals
+     * one past the furthest index that has been filled.
+     */
+    int delay_free_fill;
+} delay_free_info_t;
+
 /* We could do per-thread free lists but could strand frees in idle threads;
  * plus, already impacting performance plenty so global synch ok.
+ * We could do per-malloc-routine lock as well: but we stick w/ global
+ * for simplicity so we can use for delay_free_tree as well.
  */
 static void *delay_free_lock;
-/* Head of FIFO array */
-static int delay_free_head;
-/* If FIFO is full, equals options.delay_frees; else, equals
- * one past the furthest index that has been filled.
- */
-static int delay_free_fill;
 
-/* Interval tree for looking up whether an address is on the list (PR 535568) */
+/* Interval tree for looking up whether an address is on the list (PR 535568).
+ * Shared across all the queues since should be no overlap.
+ */
 static rb_tree_t *delay_free_tree;
 
-#define DELAY_FREE_FULL() (delay_free_fill == options.delay_frees)
+#define DELAY_FREE_FULL(info) (info->delay_free_fill == options.delay_frees)
 
 #ifdef STATISTICS
 uint delayed_free_bytes;
@@ -149,10 +159,6 @@ alloc_drmem_init(void)
 
     if (options.delay_frees > 0) {
         delay_free_lock = dr_mutex_create();
-        delay_free_list = (delay_free_t *)
-            global_alloc(options.delay_frees * sizeof(*delay_free_list), HEAPSTAT_MISC);
-        delay_free_head = 0;
-        delay_free_fill = 0;
         delay_free_tree = rb_tree_create(NULL);
     }
 }
@@ -170,8 +176,6 @@ alloc_drmem_exit(void)
     dr_mutex_destroy(mmap_tree_lock);
 #endif
     if (options.delay_frees > 0) {
-        global_free(delay_free_list, options.delay_frees * sizeof(*delay_free_list),
-                    HEAPSTAT_MISC);
         rb_tree_destroy(delay_free_tree);
         dr_mutex_destroy(delay_free_lock);
     }
@@ -341,11 +345,12 @@ client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end)
 }
 
 void
-client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine)
+client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+                        bool is_free)
 {
     app_loc_t loc;
     pc_to_loc(&loc, pc);
-    report_invalid_heap_arg(&loc, target, mc, routine);
+    report_invalid_heap_arg(&loc, target, mc, routine, is_free);
 }
 
 void
@@ -461,12 +466,36 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
     }
 }
 
+void *
+client_add_malloc_routine(app_pc pc)
+{
+    /* We assume no lock is needed on creation */
+    delay_free_info_t *info = (delay_free_info_t *)
+        global_alloc(sizeof(*info), HEAPSTAT_MISC);
+    info->delay_free_list = (delay_free_t *)
+        global_alloc(options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
+    info->delay_free_head = 0;
+    info->delay_free_fill = 0;
+    return (void *) info;
+}
+
+void
+client_remove_malloc_routine(void *client_data)
+{
+    /* We assume no lock is needed on destroy */
+    delay_free_info_t *info = (delay_free_info_t *) client_data;
+    ASSERT(info != NULL, "invalid param");
+    global_free(info->delay_free_list,
+                options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
+    global_free(info, sizeof(*info), HEAPSTAT_MISC);
+}
+
 /* Returns the value to pass to free().  Return "real_base" for no change.
- * The Windows heap param is INOUT so it can be changed as well.
+ * The auxarg param is INOUT so it can be changed as well.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
-                   _IF_WINDOWS(app_pc *heap INOUT))
+client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
+                   void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     report_malloc(base, base+size, "free", mc);
 
@@ -481,8 +510,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
          * We don't bother to free the FIFO entries at exit time; we
          * simply exclude from our leak report.
          */
+        delay_free_info_t *info = (delay_free_info_t *) client_data;
         app_pc pass_to_free;
         size_t real_size;
+        ASSERT(info != NULL, "invalid param");
         dr_mutex_lock(delay_free_lock);
         /* Store real base and real size: i.e., including redzones (PR 572716) */
         if (base != real_base) {
@@ -493,42 +524,51 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             real_size = size;
         }
         rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
-        if (DELAY_FREE_FULL()) {
+        if (DELAY_FREE_FULL(info)) {
 #ifdef WINDOWS
-            app_pc pass_heap = delay_free_list[delay_free_head].heap;
+            ptr_int_t pass_auxarg = info->delay_free_list[info->delay_free_head].auxarg;
 #endif
-            pass_to_free = delay_free_list[delay_free_head].addr;
-            STATS_ADD(delayed_free_bytes, -(int)delay_free_list[delay_free_head].size);
+            pass_to_free = info->delay_free_list[info->delay_free_head].addr;
+            STATS_ADD(delayed_free_bytes,
+                      -(int)info->delay_free_list[info->delay_free_head].size);
             LOG(2, "delayed free queue full: freeing "PFX
-                IF_WINDOWS(" heap="PFX) "\n", pass_to_free _IF_WINDOWS(pass_heap));
-            delay_free_list[delay_free_head].addr = real_base;
+                IF_WINDOWS(" auxarg="PFX) "\n", pass_to_free _IF_WINDOWS(pass_auxarg));
+            info->delay_free_list[info->delay_free_head].addr = real_base;
 #ifdef WINDOWS
             /* should we be doing safe_read() and safe_write()? */
-            delay_free_list[delay_free_head].heap = *heap;
-            *heap = pass_heap;
+            if (auxarg != NULL) {
+                info->delay_free_list[info->delay_free_head].auxarg = *auxarg;
+                *auxarg = pass_auxarg;
+            } else {
+                info->delay_free_list[info->delay_free_head].auxarg = 0;
+                ASSERT(pass_auxarg == 0, "whether using auxarg should be consistent");
+            }
 #endif
 #ifdef STATISTICS
-            delay_free_list[delay_free_head].size = size;
+            info->delay_free_list[info->delay_free_head].size = size;
             STATS_ADD(delayed_free_bytes, size);
 #endif
-            delay_free_head++;
-            if (delay_free_head >= options.delay_frees)
-                delay_free_head = 0;
+            info->delay_free_head++;
+            if (info->delay_free_head >= options.delay_frees)
+                info->delay_free_head = 0;
         } else {
             LOG(2, "delayed free queue not full: delaying %d-th free of "PFX
-                IF_WINDOWS(" heap="PFX) "\n",
-                delay_free_fill, real_base _IF_WINDOWS(*heap));
-            ASSERT(delay_free_fill <= options.delay_frees - 1, "internal error");
-            delay_free_list[delay_free_fill].addr = real_base;
+                IF_WINDOWS(" auxarg="PFX) "\n",
+                info->delay_free_fill, real_base _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
+            ASSERT(info->delay_free_fill <= options.delay_frees - 1, "internal error");
+            info->delay_free_list[info->delay_free_fill].addr = real_base;
 #ifdef WINDOWS
             /* should we be doing safe_read() and safe_write()? */
-            delay_free_list[delay_free_fill].heap = *heap;
+            if (auxarg != NULL)
+                info->delay_free_list[info->delay_free_fill].auxarg = *auxarg;
+            else
+                info->delay_free_list[info->delay_free_fill].auxarg = 0;
 #endif
 #ifdef STATISTICS
-            delay_free_list[delay_free_fill].size = size;
+            info->delay_free_list[info->delay_free_fill].size = size;
             STATS_ADD(delayed_free_bytes, size);
 #endif
-            delay_free_fill++;
+            info->delay_free_fill++;
             /* Rather than try to engineer a return, we continue on w/ NULL
              * which free() is guaranteed to handle
              */
@@ -551,19 +591,22 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
 #ifdef WINDOWS
 /* i#264: client needs to clean up any data related to allocs inside this heap */
 void
-client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap)
+client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
+                           void *client_data)
 {
+    delay_free_info_t *info = (delay_free_info_t *) client_data;
     int i, num_removed = 0;
+    ASSERT(info != NULL, "invalid param");
     dr_mutex_lock(delay_free_lock);
-    for (i = 0; i < delay_free_fill; i++) {
-        if (delay_free_list[i].heap == heap) {
+    for (i = 0; i < info->delay_free_fill; i++) {
+        if (info->delay_free_list[i].auxarg == (ptr_int_t)heap) {
             /* not worth shifting the array around: just invalidate */
-            rb_node_t *node = rb_find(delay_free_tree, delay_free_list[i].addr);
+            rb_node_t *node = rb_find(delay_free_tree, info->delay_free_list[i].addr);
             if (node != NULL)
                 rb_delete(delay_free_tree, node);
             else
                 ASSERT(false, "delay_free_tree inconsistent");
-            delay_free_list[i].addr = NULL;
+            info->delay_free_list[i].addr = NULL;
             num_removed++;
         }
     }
@@ -786,12 +829,11 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
-    while ((stop_esp != NULL && sp < stop_esp) ||
-           /* if not on main stack, go until non-unaddr: we could walk off
-            * into an adjacent free space is the problem though.
-            * should do mem query!
+    while ((stop_esp == NULL || sp < stop_esp) &&
+           /* if not on main stack, we could walk off into an adjacent
+            * free space: should do mem query!
             */
-           (stop_esp == NULL && shadow_get_byte(sp) == SHADOW_UNADDRESSABLE)) {
+           shadow_get_byte(sp) == SHADOW_UNADDRESSABLE) {
         shadow_set_byte(sp, SHADOW_DEFINED);
         sp++;
         if (sp - (byte *) mc->esp >= TYPICAL_STACK_MIN_SIZE) {

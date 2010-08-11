@@ -55,10 +55,6 @@ extern int sysnum_cbret;
 extern int sysnum_continue;
 extern int sysnum_setcontext;
 #endif
-extern app_pc addr_KiAPC;
-extern app_pc addr_KiCallback;
-extern app_pc addr_KiException;
-extern app_pc addr_KiRaise;
 
 #ifdef STATISTICS
 extern uint post_call_flushes;
@@ -74,6 +70,12 @@ alloc_init(bool track_allocs, bool track_heap,
 
 void
 alloc_exit(void);
+
+void
+alloc_module_load(void *drcontext, const module_data_t *info, bool loaded);
+
+void
+alloc_module_unload(void *drcontext, const module_data_t *info);
 
 void
 alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
@@ -138,22 +140,14 @@ malloc_iterate(void (*cb)(app_pc start, app_pc end, app_pc real_end,
                           bool pre_us, uint client_flags,
                           void *client_data, void *iter_data), void *iter_data);
 
-/* Returns the actual allocated size.  This can be either the
- * requested size that Dr. Memory passed to the system allocator
- * (including any redzones added) or that requested size padded to
- * some alignment.  For the exact padded size, use padded_size_out.
- * Returns -1 on error.
- */
-size_t
-get_alloc_real_size(IF_WINDOWS_(app_pc heap) app_pc real_base, size_t app_size,
-                    size_t *padded_size_out);
+typedef size_t (*alloc_size_func_t)(void *);
 
 #ifdef LINUX
 app_pc
 get_brk(void);
 
-size_t
-(*malloc_usable_size)(void *p);
+/* this is libc's version */
+extern alloc_size_func_t malloc_usable_size;
 #endif
 
 void
@@ -223,13 +217,15 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
 
 /* Returns the value to pass to free().  Return "real_base" for no change.
  * The Windows heap param is INOUT so it can be changed as well.
+ * client_data is from client_add_malloc_routine().
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
-                   _IF_WINDOWS(app_pc *heap INOUT));
+client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
+                   void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT));
 
 void
-client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine);
+client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+                        bool is_free);
 
 void
 client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon);
@@ -248,7 +244,8 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 
 #ifdef WINDOWS
 void
-client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap);
+client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
+                           void *client_data);
 
 void
 client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end);
@@ -272,5 +269,12 @@ client_entering_heap_routine(void);
 
 void
 client_exiting_heap_routine(void);
+
+/* The return value is stored as client data and passed in client_handle_free(). */
+void *
+client_add_malloc_routine(app_pc pc);
+
+void
+client_remove_malloc_routine(void *client_data);
 
 #endif /* _ALLOC_H_ */

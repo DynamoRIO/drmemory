@@ -92,11 +92,19 @@ System call and library routines we need to watch:
   I do see 0x140000 being or-ed in: so it asks for +x, and some secret flag.
 * ditto with GlobalAlloc
 
-* Barb says that STL strings use custom allocation but there is a flag to turn
-  that off at compile time
+* STL strings use custom allocation but there is a flag to turn that
+  off at compile time?
 
 * TLS slots: keep unaddressable until kernel32!TlsAlloc.
   Or, at unaddressable exception time, check the bit.
+
+* outer layers sometimes add debug features including their own redzones:
+  so we need to intercept the outermost layer (PR 476805)
+
+* cygwin malloc uses its own heap (PR 476805, PR 595798)
+
+* various additional heap routines (PR 406323: memalign, valloc, pvalloc, etc.,
+  PR 595802: _recalloc, _aligned_offset_malloc, etc.)
 
 msvcrt!malloc =>
 msvcrt!_heap_alloc+0xd1:
@@ -163,6 +171,10 @@ See ~/extsw/ReactOS-0.3.1/lib/rtl/heap.c
 #else
 # include "windefs.h"
 #endif
+#ifdef USE_DRSYMS
+# include "drsyms.h"
+#endif
+#include <string.h>
 
 #ifdef LINUX
 typedef struct {
@@ -204,13 +216,379 @@ uint num_large_mallocs;
 uint num_frees;
 #endif
 
-#ifdef WINDOWS
-GET_NTDLL(RtlSizeHeap, (IN reg_t /*really HANDLE*/ Heap,
-                        IN ULONG flags,
-                        IN PVOID ptr));
-#else
-/* malloc_usable_size exported, so declared in alloc.h */
+/* only used if op_track_heap */
+static void
+handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
+                    app_pc actual, bool inside);
+
+#ifdef LINUX
+app_pc
+get_brk(void)
+{
+    return (app_pc) raw_syscall_1arg(SYS_brk, 0);
+}
 #endif
+
+/***************************************************************************
+ * MALLOC ROUTINES
+ */
+
+#ifdef WINDOWS
+/* ntdll kernel-entry hook points */
+app_pc addr_KiAPC;
+app_pc addr_KiCallback;
+app_pc addr_KiException;
+app_pc addr_KiRaise;
+#endif /* WINDOWS */
+
+/* We need to track multiple sets of library routines and multiple layers
+ * (xref PR 476805, DRi#284) so we need a hashtable of entry points
+ */
+#define ALLOC_ROUTINE_TABLE_HASH_BITS 6
+static hashtable_t alloc_routine_table;
+static void *alloc_routine_lock; /* protects alloc_routine_table */
+
+typedef enum {
+    /* For Linux and for Cygwin, and for any other allocator connected via
+     * a to-be-implemented API (PR 406756)
+     */
+    /* Typically only one of these size routines is provided */
+    HEAP_ROUTINE_SIZE_USABLE,
+    HEAP_ROUTINE_SIZE_REQUESTED,
+    HEAP_ROUTINE_MALLOC,
+    HEAP_ROUTINE_REALLOC,
+    HEAP_ROUTINE_FREE,
+    /* BSD libc calloc simply calls malloc and then zeroes out
+     * the resulting memory: thus, nothing special for us to watch.
+     * But glibc calloc does its own allocating.
+     */
+    HEAP_ROUTINE_CALLOC,
+#ifdef LINUX
+    HEAP_ROUTINE_LAST = HEAP_ROUTINE_CALLOC,
+#else
+    /* Debug CRT routines, which take in extra params */
+    HEAP_ROUTINE_SIZE_REQUESTED_DBG,
+    HEAP_ROUTINE_MALLOC_DBG,
+    HEAP_ROUTINE_REALLOC_DBG,
+    HEAP_ROUTINE_FREE_DBG,
+    HEAP_ROUTINE_CALLOC_DBG,
+    /* FIXME PR 595798: for cygwin allocator we have to track library call */
+    HEAP_ROUTINE_SBRK,
+    HEAP_ROUTINE_LAST = HEAP_ROUTINE_SBRK,
+    /* The primary routines we hook are the Rtl*Heap routines, in addition
+     * to malloc routines in each library since some either do their own
+     * internal parceling (PR 476805) or add padding for debug purposes
+     * which we want to treat as unaddressable (DRi#284)
+     */
+    RTL_ROUTINE_MALLOC,
+    RTL_ROUTINE_REALLOC,
+    RTL_ROUTINE_FREE,
+    RTL_ROUTINE_VALIDATE,
+    RTL_ROUTINE_SIZE,
+    RTL_ROUTINE_CREATE,
+    RTL_ROUTINE_DESTROY,
+    RTL_ROUTINE_GETINFO,
+    RTL_ROUTINE_SETINFO,
+    RTL_ROUTINE_SETFLAGS,
+    RTL_ROUTINE_LOCK,
+    RTL_ROUTINE_UNLOCK,
+    RTL_ROUTINE_SHUTDOWN,
+    RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
+#endif
+    HEAP_ROUTINE_INVALID,
+} routine_type_t;
+
+static inline bool
+is_size_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_SIZE_USABLE || type == HEAP_ROUTINE_SIZE_REQUESTED
+            IF_WINDOWS(|| type == RTL_ROUTINE_SIZE
+                       || type == HEAP_ROUTINE_SIZE_REQUESTED_DBG));
+}
+
+static inline bool
+is_size_requested_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_SIZE_REQUESTED
+            IF_WINDOWS(|| type == RTL_ROUTINE_SIZE
+                       || type == HEAP_ROUTINE_SIZE_REQUESTED_DBG));
+}
+
+static inline bool
+is_free_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_FREE
+            IF_WINDOWS(|| type == RTL_ROUTINE_FREE || type == HEAP_ROUTINE_FREE_DBG));
+}
+
+static inline bool
+is_malloc_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_MALLOC 
+            IF_WINDOWS(|| type == RTL_ROUTINE_MALLOC|| type == HEAP_ROUTINE_MALLOC_DBG));
+}
+
+static inline bool
+is_realloc_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_REALLOC 
+            IF_WINDOWS(|| type == RTL_ROUTINE_REALLOC|| type == HEAP_ROUTINE_REALLOC_DBG));
+}
+
+static inline bool
+is_calloc_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_CALLOC IF_WINDOWS(|| type == HEAP_ROUTINE_CALLOC_DBG));
+}
+
+typedef struct _possible_alloc_routine_t {
+    const char *name;
+    routine_type_t type;
+} possible_alloc_routine_t;
+
+static const possible_alloc_routine_t possible_libc_routines[] = {
+    /* we rely on size entries being first, in preference order */
+    { "malloc_usable_size", HEAP_ROUTINE_SIZE_USABLE },
+#ifdef WINDOWS
+    { "_msize", HEAP_ROUTINE_SIZE_REQUESTED },
+#endif
+    { "malloc", HEAP_ROUTINE_MALLOC },
+    { "realloc", HEAP_ROUTINE_REALLOC }, 
+    { "free", HEAP_ROUTINE_FREE },
+    { "calloc", HEAP_ROUTINE_CALLOC },
+    /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
+#ifdef WINDOWS
+    { "sbrk", HEAP_ROUTINE_SBRK }, /* for cygwin */
+    /* FIXME PR 595802: _recalloc, _aligned_offset_malloc, etc. */
+#endif
+};
+#define POSSIBLE_LIBC_ROUTINE_NUM \
+    (sizeof(possible_libc_routines)/sizeof(possible_libc_routines[0]))
+
+#ifdef WINDOWS
+static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
+    /* we rely on size entries being first, in preference order */
+    { "_msize_dbg", HEAP_ROUTINE_SIZE_REQUESTED_DBG },
+    { "_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
+    { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
+    { "_free_dbg", HEAP_ROUTINE_FREE_DBG },
+    { "_calloc_dbg", HEAP_ROUTINE_CALLOC_DBG },
+    /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
+};
+#define POSSIBLE_DBGCRT_ROUTINE_NUM \
+    (sizeof(possible_dbgcrt_routines)/sizeof(possible_dbgcrt_routines[0]))
+
+static const possible_alloc_routine_t possible_rtl_routines[] = {
+    /* we rely on size entries being first, in preference order */
+    { "RtlSizeHeap", RTL_ROUTINE_SIZE },
+    { "RtlAllocateHeap", RTL_ROUTINE_MALLOC },
+    { "RtlReAllocateHeap", RTL_ROUTINE_REALLOC },
+    { "RtlFreeHeap", RTL_ROUTINE_FREE },
+    { "RtlValidateHeap", RTL_ROUTINE_VALIDATE },
+    { "RtlCreateHeap", RTL_ROUTINE_CREATE },
+    { "RtlDestroyHeap", RTL_ROUTINE_DESTROY },
+    { "RtlGetUserInfoHeap", RTL_ROUTINE_GETINFO },
+    { "RtlSetUserValueHeap", RTL_ROUTINE_SETINFO },
+    { "RtlSetUserFlagsHeap", RTL_ROUTINE_SETFLAGS },
+    /* kernel32!LocalFree calls these.  these call RtlEnterCriticalSection
+     * and ntdll!RtlpCheckHeapSignature and directly touch heap headers.
+     */
+    { "RtlLockHeap", RTL_ROUTINE_LOCK },
+    { "RtlUnlockHeap", RTL_ROUTINE_UNLOCK },
+    /* RtlpHeapIsLocked is a non-exported routine that is called directly
+     * from LdrShutdownProcess: so we treat the latter as a heap routine
+     * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
+     */
+    { "LdrShutdownProcess", RTL_ROUTINE_SHUTDOWN },
+};
+#define POSSIBLE_RTL_ROUTINE_NUM \
+    (sizeof(possible_rtl_routines)/sizeof(possible_rtl_routines[0]))
+
+static bool
+is_rtl_routine(routine_type_t type)
+{
+    return (type > HEAP_ROUTINE_LAST && type <= RTL_ROUTINE_LAST);
+}
+#endif
+
+/* Each entry in the alloc_routine_table */
+typedef struct _alloc_routine_entry_t {
+    app_pc pc;
+    routine_type_t type;
+    const char *name;
+    /* The malloc_usable_size() from the same library */
+    struct _alloc_routine_entry_t *size_func;
+    /* Let user store a field per malloc set, kept in each entry of malloc
+     * set for convenience
+     */
+    void *client;
+    /* Easiest way to clean up client field is to have ref count: we hide
+     * it from client
+     */
+    uint *client_refcnt;
+    /* Once we have an API for custom allocators (PR 406756) will we need a
+     * separate name field, or we'll just call them by their type names?
+     */
+} alloc_routine_entry_t;
+
+/* lock is held when this is called */
+static void
+alloc_routine_entry_free(void *p)
+{
+    alloc_routine_entry_t *e = (alloc_routine_entry_t *) p;
+    ASSERT(e->client_refcnt != NULL && *e->client_refcnt > 0, "invalid refcnt");
+    (*e->client_refcnt)--;
+    if ((*e->client_refcnt) == 0) {
+        client_remove_malloc_routine(e->client);
+        global_free(e->client_refcnt, sizeof(*e->client_refcnt), HEAPSTAT_HASHTABLE);
+    }
+    global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
+}
+
+static bool
+is_alloc_routine(app_pc pc)
+{
+    bool found = false;
+    dr_mutex_lock(alloc_routine_lock);
+    found = (hashtable_lookup(&alloc_routine_table, (void *)pc) != NULL);
+    dr_mutex_unlock(alloc_routine_lock);
+    return found;
+}
+
+#if defined(WINDOWS) || defined(DEBUG)
+static const char *
+get_alloc_routine_name(app_pc pc)
+{
+    alloc_routine_entry_t *e;
+    const char *name = "<not found>";
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    if (e != NULL)
+        name = e->name;
+    dr_mutex_unlock(alloc_routine_lock);
+    return name;
+}
+#endif
+
+/* Rather than requiring the caller to hold the hashtable lock, we
+ * return a copy of the data.  These entries have lifetimes equal to
+ * the app's libraries, so really no entry should become invalid while
+ * processing an app call into that library, but our call into the
+ * size routine could fail if the app library is racily unloaded.
+ */
+static bool
+get_alloc_entry(app_pc pc, alloc_routine_entry_t *entry)
+{
+    alloc_routine_entry_t *e;
+    bool found = false;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    if (e != NULL) {
+        memcpy(entry, e, sizeof(*entry));
+        found = true;
+    }
+    dr_mutex_unlock(alloc_routine_lock);
+    return found;
+}
+
+#ifdef WINDOWS
+static bool
+is_alloc_sysroutine(app_pc pc)
+{
+    /* Should switch to table if add many more syscalls */
+    return (pc == addr_KiAPC || pc == addr_KiCallback ||
+            pc == addr_KiException || pc == addr_KiRaise);
+}
+#endif
+
+static app_pc
+lookup_symbol(const module_data_t *mod, const char *name)
+{
+#ifdef USE_DRSYMS
+    if (mod->full_path != NULL) {
+        size_t modoffs;
+        /* We rely on drsym_init() having been called during init */
+        drsym_error_t symres =
+            drsym_lookup_symbol(mod->full_path, name, &modoffs);
+        LOG(2, "sym lookup of %s in %s => %d\n", name, mod->full_path, symres);
+        if (symres == DRSYM_SUCCESS)
+            return mod->start + modoffs;
+    }
+#endif
+    return (app_pc) dr_get_proc_address(mod->handle, name);
+}
+
+/* caller must hold alloc routine lock */
+static void
+find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
+                    uint num_possible, bool expect_all)
+{
+    alloc_routine_entry_t *size_func = NULL;
+    void *client = NULL;
+    uint *client_refcnt = NULL;
+    int i;
+    bool new_set = false;
+#ifdef DEBUG
+    const char *modname = dr_module_preferred_name(mod);
+#endif
+    for (i = 0; i < num_possible; i++) {
+        alloc_routine_entry_t *e;
+        app_pc pc = lookup_symbol(mod, possible[i].name);
+        ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
+        if (pc != NULL) {
+            IF_DEBUG(bool is_new;)
+            e = global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+            e->pc = pc;
+            e->type = possible[i].type;
+            e->name = possible[i].name;
+            if (!new_set) {
+                new_set = true;
+                size_func = e;
+                client = client_add_malloc_routine(pc);
+                client_refcnt = (uint *)
+                    global_alloc(sizeof(*client_refcnt), HEAPSTAT_HASHTABLE);
+                *client_refcnt = 0;
+            }
+            e->size_func = size_func;
+            e->client = client;
+            e->client_refcnt = client_refcnt;
+            (*e->client_refcnt)++;
+            IF_DEBUG(is_new = )
+                hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
+            ASSERT(is_new, "alloc entry should not already exist");
+            LOG(1, "intercepting %s @"PFX" size_func="PFX" in module %s\n",
+                possible[i].name, pc,
+                (size_func == NULL) ? NULL : size_func->pc,
+                (modname == NULL) ? "<noname>" : modname);
+        }
+        if (i == HEAP_ROUTINE_SIZE_USABLE) {
+            ASSERT(i == 0, "usable size must be first routine");
+#ifdef LINUX
+            /* libc's malloc_usable_size() is used during initial heap walk */
+            if (mod->start == get_libc_base()) {
+                ASSERT(pc != NULL, "no malloc_usable_size in libc!");
+                malloc_usable_size = (size_t(*)(void *)) pc;
+            }
+#endif
+        }
+    }
+}
+
+/***************************************************************************
+ * MALLOC SIZE
+ */
+
+#ifdef WINDOWS
+typedef size_t (*rtl_size_func_t)(IN reg_t /*really HANDLE*/ Heap,
+                                  IN ULONG flags,
+                                  IN PVOID ptr);
+typedef size_t (*dbg_size_func_t)(IN byte *pc, int blocktype);
+#else
+/* points at libc's version, used in initial heap walk */
+alloc_size_func_t malloc_usable_size;
+#endif
+
+/* malloc_usable_size exported, so declared in alloc.h */
 
 /* Returns the size of an allocation as known to the underlying system
  * allocator (libc's malloc(), etc. for Linux, ntdll's Rtl*Heap for
@@ -224,15 +602,34 @@ GET_NTDLL(RtlSizeHeap, (IN reg_t /*really HANDLE*/ Heap,
  * Returns -1 on failure.
  */
 static ssize_t
-get_alloc_size(IF_WINDOWS_(reg_t heap) app_pc real_base)
+get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
 {
-#ifdef WINDOWS
-    ASSERT(heap != (reg_t)INVALID_HANDLE_VALUE && real_base != NULL, "invalid params");
-    return RtlSizeHeap(heap, 0, real_base);
-#else
     ssize_t sz;
-    if (malloc_usable_size != NULL) {
-        sz = malloc_usable_size(real_base);
+#ifdef WINDOWS
+    if (is_rtl_routine(routine->type)) {
+        /* auxarg is heap */
+        reg_t heap = auxarg;
+        ASSERT(heap != (reg_t)INVALID_HANDLE_VALUE && real_base != NULL, "invalid params");
+        /* I used to use GET_NTDLL(RtlSizeHeap...)
+         * but DR's private loader turned it into redirect_RtlSizeHeap
+         * so going w/ what we stored from lookup
+         */
+        ASSERT(routine->size_func != NULL, "invalid size func");
+        /* 0 is an invalid value for a heap handle */
+        if (heap == 0)
+            return -1;
+        else
+            return (*(rtl_size_func_t)(routine->size_func->pc))(heap, 0, real_base);
+    }
+#endif
+    if (routine->size_func != NULL) {
+#ifdef WINDOWS
+        if (routine->size_func->type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
+            /* auxarg is blocktype */
+            sz = (*(dbg_size_func_t)(routine->size_func->pc))(real_base, auxarg);
+        } else
+#endif
+            sz = (*(alloc_size_func_t)(routine->size_func->pc))(real_base);
         /* Note that malloc(0) has usable size > 0 */
         if (sz == 0)
             return -1;
@@ -246,30 +643,49 @@ get_alloc_size(IF_WINDOWS_(reg_t heap) app_pc real_base)
             sz += 2*op_redzone_size;
         return sz;
     }
-#endif
 }
 
 /* Returns the full usable footprint of the allocation at real_base.
  * Returns -1 on error.
  */
 static ssize_t
-get_padded_size(IF_WINDOWS_(reg_t heap) app_pc real_base)
+get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
 {
 #ifdef LINUX
     /* malloc_usable_size() includes padding */
-    return get_alloc_size(real_base);
+    ASSERT(routine->size_func != NULL &&
+           routine->size_func->type == HEAP_ROUTINE_SIZE_USABLE,
+           "assuming linux has usable size avail");
+    return get_alloc_size(real_base, routine);
 #else
     /* FIXME: this is all fragile: any better way, besides using our
      * own malloc() instead of intercepting system's?
      */
 # define HEAP_MAGIC_OFFS 0x50
+    reg_t heap = auxarg;
     ssize_t result;
     ushort pad_size;
 # ifdef DEBUG
-    ssize_t req_size = get_alloc_size(heap, real_base);
+    ssize_t req_size;
 # endif
 # ifdef X64
 #  error NYI
+# endif
+    if (!is_rtl_routine(routine->type) || auxarg == 0/*invalid heap for Rtl*/) {
+        if (routine->size_func == NULL ||
+            is_size_requested_routine(routine->size_func->type)) {
+            /* FIXME PR 595800: should look at headers and try to
+             * figure out padded size.  For now we just guess by aligning.
+             */
+            size_t sz = get_alloc_size(auxarg, real_base, routine);
+            return ALIGN_FORWARD(sz, MALLOC_CHUNK_ALIGNMENT);
+        } else {
+            /* malloc_usable_size() includes padding */
+            return get_alloc_size(auxarg, real_base, routine);
+        }
+    }
+# ifdef DEBUG
+    req_size = get_alloc_size(heap, real_base, routine);
 # endif
     if (running_on_Vista_or_later()) {
         /* Some obfuscation is used to make exploits harder:
@@ -306,123 +722,6 @@ get_padded_size(IF_WINDOWS_(reg_t heap) app_pc real_base)
     }
     return result;
 #endif /* LINUX -> WINDOWS */
-}
-
-/* only used if op_track_heap */
-static void
-handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
-                    app_pc actual, bool inside);
-
-#ifdef LINUX
-app_pc
-get_brk(void)
-{
-    return (app_pc) raw_syscall_1arg(SYS_brk, 0);
-}
-#endif
-
-/***************************************************************************
- * MALLOC ROUTINES
- */
-
-enum {
-#ifdef WINDOWS
-    HEAP_MALLOC,
-    HEAP_REALLOC,
-    HEAP_FREE,
-    HEAP_VALIDATE,
-    HEAP_SIZE,
-    HEAP_CREATE,
-    HEAP_DESTROY,
-    HEAP_GETINFO,
-    HEAP_SETINFO,
-    HEAP_SETFLAGS,
-    HEAP_LOCK,
-    HEAP_UNLOCK,
-    HEAP_SHUTDOWN,
-#else
-    HEAP_MALLOC,
-    HEAP_REALLOC,
-    HEAP_FREE,
-    /* BSD libc calloc simply calls malloc and then zeroes out
-     * the resulting memory: thus, nothing special for us to watch.
-     * But glibc calloc does its own allocating.
-     */
-    HEAP_CALLOC,
-    HEAP_SIZE,
-#endif
-};
-
-/* ntdll hook points */
-app_pc addr_KiAPC;
-app_pc addr_KiCallback;
-app_pc addr_KiException;
-app_pc addr_KiRaise;
-
-/* we also hook Rtl*Heap routines */
-static const char *alloc_routine_name[] = {
-#ifdef WINDOWS
-    "RtlAllocateHeap",
-    "RtlReAllocateHeap",
-    "RtlFreeHeap",
-    "RtlValidateHeap",
-    "RtlSizeHeap",
-    "RtlCreateHeap",
-    "RtlDestroyHeap",
-    "RtlGetUserInfoHeap",
-    "RtlSetUserValueHeap",
-    "RtlSetUserFlagsHeap",
-    /* kernel32!LocalFree calls these.  these call RtlEnterCriticalSection
-     * and ntdll!RtlpCheckHeapSignature and directly touch heap headers.
-     */
-    "RtlLockHeap",
-    "RtlUnlockHeap",
-    /* RtlpHeapIsLocked is a non-exported routine that is called directly
-     * from LdrShutdownProcess: so we treat the latter as a heap routine
-     */
-    "LdrShutdownProcess",
-#else
-    "malloc",
-    "realloc",
-    "free",
-    "calloc",
-    /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
-    /* specific to glibc: FIXME: make optional */
-    "malloc_usable_size",
-#endif
-};
-#define ALLOC_ROUTINE_NUM (sizeof(alloc_routine_name)/sizeof(alloc_routine_name[0]))
-static int alloc_routine_num = ALLOC_ROUTINE_NUM;
-static app_pc alloc_routine_addr[ALLOC_ROUTINE_NUM];
-
-static bool
-is_alloc_routine(app_pc pc)
-{
-    int i;
-    for (i=0; i<alloc_routine_num; i++) {
-        if (pc == alloc_routine_addr[i])
-            return true;
-    }
-    return false;
-}
-
-const char *
-get_alloc_routine_name(app_pc pc)
-{
-    int i;
-    for (i=0; i<alloc_routine_num; i++) {
-        if (pc == alloc_routine_addr[i])
-            return alloc_routine_name[i];
-    }
-    return "<not found>";
-}
-
-static bool
-is_alloc_sysroutine(app_pc pc)
-{
-    /* Should switch to table if add many more syscalls */
-    return (pc == addr_KiAPC || pc == addr_KiCallback ||
-            pc == addr_KiException || pc == addr_KiRaise);
 }
 
 /***************************************************************************
@@ -552,8 +851,8 @@ alloc_init(bool track_allocs, bool track_heap,
 {
 #ifdef WINDOWS
     void *drcontext = dr_get_current_drcontext();
+    app_pc ntdll_lib;
 #endif
-    app_pc alloc_lib;
     op_track_allocs = track_allocs;
     ASSERT(track_allocs || !track_heap, "track_heap requires track_allocs");
     op_track_heap = track_allocs && track_heap;
@@ -562,52 +861,54 @@ alloc_init(bool track_allocs, bool track_heap,
     op_record_allocs = record_allocs;
     op_get_padded_size = get_padded_size;
 
+    if (op_track_allocs) {
+        hashtable_init_ex(&alloc_routine_table, ALLOC_ROUTINE_TABLE_HASH_BITS,
+                          HASH_INTPTR, false/*!str_dup*/, false/*!synch*/,
+                          alloc_routine_entry_free, NULL, NULL);
+        alloc_routine_lock = dr_mutex_create();
+    }
+
 #ifdef WINDOWS
-    alloc_lib = get_ntdll_base();
-    addr_KiCallback = (app_pc) dr_get_proc_address(alloc_lib,
+    ntdll_lib = get_ntdll_base();
+    addr_KiCallback = (app_pc) dr_get_proc_address(ntdll_lib,
                                                    "KiUserCallbackDispatcher");
     if (op_track_allocs) {
-        addr_KiAPC = (app_pc) dr_get_proc_address(alloc_lib,
+        addr_KiAPC = (app_pc) dr_get_proc_address(ntdll_lib,
                                                   "KiUserApcDispatcher");
-        addr_KiException = (app_pc) dr_get_proc_address(alloc_lib,
+        addr_KiException = (app_pc) dr_get_proc_address(ntdll_lib,
                                                         "KiUserExceptionDispatcher");
-        addr_KiRaise = (app_pc) dr_get_proc_address(alloc_lib,
+        addr_KiRaise = (app_pc) dr_get_proc_address(ntdll_lib,
                                                     "KiRaiseUserExceptionDispatcher");
         /* Assuming that KiUserCallbackExceptionHandler,
          * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
          * entered from the kernel.
          */
 
-        sysnum_mmap = sysnum_from_name(drcontext, alloc_lib, "NtMapViewOfSection");
+        sysnum_mmap = sysnum_from_name(drcontext, ntdll_lib, "NtMapViewOfSection");
         ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
-        sysnum_munmap = sysnum_from_name(drcontext, alloc_lib, "NtUnmapViewOfSection");
+        sysnum_munmap = sysnum_from_name(drcontext, ntdll_lib, "NtUnmapViewOfSection");
         ASSERT(sysnum_munmap != -1, "error finding alloc syscall #");
-        sysnum_valloc = sysnum_from_name(drcontext, alloc_lib, "NtAllocateVirtualMemory");
+        sysnum_valloc = sysnum_from_name(drcontext, ntdll_lib, "NtAllocateVirtualMemory");
         ASSERT(sysnum_valloc != -1, "error finding alloc syscall #");
-        sysnum_vfree = sysnum_from_name(drcontext, alloc_lib, "NtFreeVirtualMemory");
+        sysnum_vfree = sysnum_from_name(drcontext, ntdll_lib, "NtFreeVirtualMemory");
         ASSERT(sysnum_vfree != -1, "error finding alloc syscall #");
-        sysnum_continue = sysnum_from_name(drcontext, alloc_lib, "NtContinue");
+        sysnum_continue = sysnum_from_name(drcontext, ntdll_lib, "NtContinue");
         ASSERT(sysnum_continue != -1, "error finding alloc syscall #");
-        sysnum_cbret = sysnum_from_name(drcontext, alloc_lib, "NtCallbackReturn");
+        sysnum_cbret = sysnum_from_name(drcontext, ntdll_lib, "NtCallbackReturn");
         ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
-        sysnum_setcontext = sysnum_from_name(drcontext, alloc_lib, "NtSetContextThread");
+        sysnum_setcontext = sysnum_from_name(drcontext, ntdll_lib, "NtSetContextThread");
         ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
-    }
-#else
-    alloc_lib = get_libc_base();
-#endif
 
-    if (op_track_heap) {
-        int i;
-        for (i=0; i<alloc_routine_num; i++) {
-            alloc_routine_addr[i] = (app_pc)
-                dr_get_proc_address(alloc_lib, alloc_routine_name[i]);
-            ASSERT(alloc_routine_addr[i] != NULL, "can't find alloc routine");
+        if (op_track_heap) {
+            module_data_t mod = {0,};
+            mod.handle = ntdll_lib;
+            dr_mutex_lock(alloc_routine_lock);
+            find_alloc_routines(&mod, possible_rtl_routines,
+                                POSSIBLE_RTL_ROUTINE_NUM, true);
+            dr_mutex_unlock(alloc_routine_lock);
         }
-#ifdef LINUX
-        malloc_usable_size = (size_t(*)(void *)) alloc_routine_addr[HEAP_SIZE];
-#endif
     }
+#endif
 
     if (op_track_allocs) {
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
@@ -632,6 +933,12 @@ alloc_exit(void)
     uint i;
     if (!op_track_allocs)
         return;
+
+    LOG(1, "final alloc routine table size: %u bits, %u entries\n",
+        alloc_routine_table.table_bits, alloc_routine_table.entries);
+    hashtable_delete(&alloc_routine_table);
+    dr_mutex_destroy(alloc_routine_lock);
+
     LOG(1, "final malloc table size: %u bits, %u entries\n",
         malloc_table.table_bits, malloc_table.entries);
     /* we can't hold malloc_table.lock b/c report_leak() acquires it
@@ -652,6 +959,54 @@ alloc_exit(void)
     rb_tree_destroy(large_malloc_tree);
     hashtable_delete(&post_call_table);
     hashtable_delete(&call_site_table);
+}
+
+void
+alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    if (op_track_heap) {
+        const char *modname = dr_module_preferred_name(info);
+        if (modname != NULL && 
+            (strcmp(modname, "drmemorylib.dll") == 0 ||
+             strcmp(modname, "dynamorio.dll") == 0))
+            return;
+        dr_mutex_lock(alloc_routine_lock);
+        find_alloc_routines(info, possible_libc_routines,
+                            POSSIBLE_LIBC_ROUTINE_NUM, false);
+#ifdef WINDOWS
+        find_alloc_routines(info, possible_dbgcrt_routines,
+                            POSSIBLE_DBGCRT_ROUTINE_NUM, false);
+#endif
+        dr_mutex_unlock(alloc_routine_lock);
+    }
+}
+
+void
+alloc_module_unload(void *drcontext, const module_data_t *info)
+{
+    if (op_track_heap) {
+        int i;
+        dr_mutex_lock(alloc_routine_lock);
+        for (i = 0; i < POSSIBLE_LIBC_ROUTINE_NUM; i++) {
+            app_pc pc = lookup_symbol(info, possible_libc_routines[i].name);
+            if (pc != NULL) {
+                IF_DEBUG(bool found = )
+                    hashtable_remove(&alloc_routine_table, (void *)pc);
+                ASSERT(found, "alloc entry should be in table");
+            }
+        }
+#ifdef WINDOWS
+        for (i = 0; i < POSSIBLE_DBGCRT_ROUTINE_NUM; i++) {
+            app_pc pc = lookup_symbol(info, possible_dbgcrt_routines[i].name);
+            if (pc != NULL) {
+                IF_DEBUG(bool found = )
+                    hashtable_remove(&alloc_routine_table, (void *)pc);
+                ASSERT(found, "alloc entry should be in table");
+            }
+        }
+#endif
+        dr_mutex_unlock(alloc_routine_lock);
+    }
 }
 
 /* We need to support our malloc routines being called either on their
@@ -703,7 +1058,7 @@ malloc_unlock_if_locked_by_me(bool by_me)
 }
 
 /* If a client needs the real (usable) end, for pre_us mallocs the client can't
- * use get_alloc_real_size() via pt->alloc_heap as there is no pt and would need
+ * use get_alloc_real_size() via pt->auxarg as there is no pt and would need
  * the Heap handle passed in: instead we just pass in the real_end.  We don't
  * need real_base; we do pass real_base to client_handle_malloc() but we don't
  * need to store it, only real_end, driven by Dr. Heapstat's usage.
@@ -1210,7 +1565,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                      * for handling failed frees
                      */
                     client_invalid_heap_arg((app_pc)sysnum/*use sysnum as pc*/,
-                                            base, mc, "HeapFree");
+                                            base, mc, "HeapFree", true);
                 } else {
                     pt->expect_sys_to_fail = false;
                 }
@@ -1247,7 +1602,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
     }
 # ifdef DEBUG
     else if (sysnum == SYS_brk) {
-        pt->alloc_heap = (app_pc) dr_syscall_get_param(drcontext, 0);
+        pt->sbrk = (app_pc) dr_syscall_get_param(drcontext, 0);
     }
 # endif
 #endif /* WINDOWS */
@@ -1487,7 +1842,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
          * until sub-allocated, though we do want the bounds for suppressing
          * header accesses by malloc code.
          */
-        LOG(2, "SYS_brk "PFX" => "PFX"\n", pt->alloc_heap, result);
+        LOG(2, "SYS_brk "PFX" => "PFX"\n", pt->sbrk, result);
         heap_region_adjust(get_heap_start(), (app_pc) result);
     }
 #endif /* WINDOWS */
@@ -1509,27 +1864,19 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
 #define APP_ARG(mc, num, retaddr_yet) \
     (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
 
-#ifdef WINDOWS
 /* RtlAllocateHeap(HANDLE heap, ULONG flags, ULONG size) */
-# define ARGNUM_MALLOC_SIZE 3
-/* RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size) */
-# define ARGNUM_REALLOC_PTR 3
-# define ARGNUM_REALLOC_SIZE 4
-/* RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr) */
-# define ARGNUM_FREE_PTR 3
-/* ULONG NTAPI RtlSizeHeap(HANDLE Heap, ULONG Flags, PVOID Block) */
-# define ARGNUM_SIZE_PTR 3
-#else
 /* void *malloc(size_t size) */
-# define ARGNUM_MALLOC_SIZE 1
+#define ARGNUM_MALLOC_SIZE(type) (IF_WINDOWS((type == RTL_ROUTINE_MALLOC) ? 3 :) 1)
+/* RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size) */
 /* void *realloc(void *ptr, size_t size) */
-# define ARGNUM_REALLOC_PTR 1
-# define ARGNUM_REALLOC_SIZE 2
+#define ARGNUM_REALLOC_PTR(type) (IF_WINDOWS((type == RTL_ROUTINE_REALLOC) ? 3 :) 1)
+#define ARGNUM_REALLOC_SIZE(type) (IF_WINDOWS((type == RTL_ROUTINE_REALLOC) ? 4 :) 2)
+/* RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr) */
 /* void free(void *ptr) */
-# define ARGNUM_FREE_PTR 1
+#define ARGNUM_FREE_PTR(type) (IF_WINDOWS((type == RTL_ROUTINE_FREE) ? 3 :) 1)
+/* ULONG NTAPI RtlSizeHeap(HANDLE Heap, ULONG Flags, PVOID Block) */
 /* void malloc_usable_size(void *ptr) */
-# define ARGNUM_SIZE_PTR 1
-#endif
+#define ARGNUM_SIZE_PTR(type) (IF_WINDOWS((type == RTL_ROUTINE_SIZE) ? 3 :) 1)
 
 /* As part of PR 578892 we must report invalid heap block args to all routines,
  * since we ignore unaddr inside the routines.
@@ -1537,12 +1884,13 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
  */
 static bool
 check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_site,
-                       const char *routine)
+                       const char *routine, bool is_free)
 {
     if (malloc_end(block) == NULL) {
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
+        wait_for_user("invalid heap arg");//NOCHECKIN
         client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
-                                block, mc, routine);
+                                block, mc, routine, is_free);
         return false;
     }
     return true;
@@ -1553,14 +1901,18 @@ check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_
  */
 
 static void
-handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site)
+handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site,
+                alloc_routine_entry_t *routine)
 {
+#if defined(WINDOWS) || defined(DEBUG)
+    routine_type_t type = routine->type;
+#endif
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     /* FIXME: safe_read */
-    app_pc base = (app_pc) APP_ARG(mc, ARGNUM_FREE_PTR, inside);
+    app_pc base = (app_pc) APP_ARG(mc, ARGNUM_FREE_PTR(type), inside);
     app_pc real_base = base;
 #ifdef WINDOWS
-    HANDLE heap = (HANDLE) APP_ARG(mc, 1, inside);
+    HANDLE heap = (type == RTL_ROUTINE_FREE) ? ((HANDLE) APP_ARG(mc, 1, inside)) : NULL;
 #endif
     bool size_in_zone = op_size_in_redzone;
     size_t size = 0;
@@ -1570,7 +1922,8 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
          * all adjustments and shadow updates */
         LOGPT(2, pt, "free of "PFX" recursive: not adjusting\n", base);
         /* try to catch errors like PR 406714 */
-        ASSERT(get_alloc_size(IF_WINDOWS_((reg_t)heap) base) != -1,
+        ASSERT(malloc_end(base) == NULL || /* don't crash calling size routine */
+               get_alloc_size(IF_WINDOWS_((reg_t)heap) base, routine) != -1,
                "free recursion count incorrect");
         return;
     }
@@ -1594,7 +1947,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
          * it will not fail if flags are invalid.
          * instead of tracking the heap handle we could call RtlValidateHeap here?
          */
-        IF_WINDOWS(|| heap_region_get_heap(base) != heap)) {
+        IF_WINDOWS(|| (type == RTL_ROUTINE_FREE && heap_region_get_heap(base) != heap))) {
         if (pt->in_realloc) {
             /* when realloc calls free we've already invalidated the heap */
             ASSERT(pt->in_heap_routine > 1, "realloc calling free inconsistent");
@@ -1602,7 +1955,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
             pt->expect_lib_to_fail = true;
             /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
             client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
-                                    base, mc, IF_WINDOWS_ELSE("HeapFree", "free"));
+                                    base, mc, routine->name, true);
         }
     } else {
         app_pc change_base;
@@ -1615,7 +1968,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
                 size_in_zone = false;
                 LOGPT(2, pt, "free of pre-control "PFX"-"PFX"\n", base, base+size);
             } else {
-                *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR, inside))) = real_base;
+                *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR(type), inside))) = real_base;
             }
         }
         /* We don't know how to read the Rtl headers, so we must
@@ -1629,19 +1982,22 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
         if (size_in_zone)
             size = *((size_t *)(base - op_redzone_size));
         else {
-            size = get_alloc_size(IF_WINDOWS_((reg_t)heap) real_base);
+            size = get_alloc_size(IF_WINDOWS_((reg_t)heap) real_base, routine);
         }
         ASSERT((ssize_t)size != -1, "error determining heap block size");
         LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX" size="PIFX" => "PFX"\n",
             IF_WINDOWS_(heap) base, size, real_base);
 
-        change_base = client_handle_free(base, size, real_base, mc
-                                         _IF_WINDOWS((app_pc *)
-                                                     APP_ARG_ADDR(mc, 1, inside)));
+        change_base = client_handle_free
+            (base, size, real_base, mc, routine->client
+             _IF_WINDOWS((type == RTL_ROUTINE_FREE) ?
+                         ((ptr_int_t *) APP_ARG_ADDR(mc, 1, inside)) : 
+                         ((type == HEAP_ROUTINE_FREE_DBG) ?
+                          ((ptr_int_t *) APP_ARG_ADDR(mc, 2, inside)) : NULL)));
         if (change_base != real_base) {
-            LOG(2, "free-pre client changing base from "PFX" to "PFX"\n",
-                real_base, change_base);
-            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR, inside))) = change_base;
+            LOG(2, "free-pre client %d changing base from "PFX" to "PFX"\n",
+                type, real_base, change_base);
+            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR(type), inside))) = change_base;
         }
 
         malloc_entry_remove(entry);
@@ -1654,27 +2010,28 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 }
 
 static void
-handle_free_post(void *drcontext, dr_mcontext_t *mc)
+handle_free_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
 #ifdef WINDOWS
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    if (mc->eax == 0/*FALSE==failure*/) {
-        /* If our prediction is wrong, we can't undo the shadow memory
-         * changes since we've lost which were defined vs undefined,
-         * along with whether this malloc was pre-us or not.  We
-         * also can't undo any report of an invalid free.  See notes for a
-         * solution other than holding a lock in the code cache: it requires
-         * being able to restore shadow memory values and malloc
-         * struct, using a nonce to know which malloc it went with.
-         */
-        ASSERT(pt->expect_lib_to_fail, "free() failure unexpected");
-    } else {
-        ASSERT(!pt->expect_lib_to_fail || pt->alloc_base == NULL,
-               "free() success unexpected");
+    if (routine->type == RTL_ROUTINE_FREE) {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        if (mc->eax == 0/*FALSE==failure*/) {
+            /* If our prediction is wrong, we can't undo the shadow memory
+             * changes since we've lost which were defined vs undefined,
+             * along with whether this malloc was pre-us or not.  We
+             * also can't undo any report of an invalid free.  See notes for a
+             * solution other than holding a lock in the code cache: it requires
+             * being able to restore shadow memory values and malloc
+             * struct, using a nonce to know which malloc it went with.
+             */
+            ASSERT(pt->expect_lib_to_fail, "free() failure unexpected");
+        } else {
+            ASSERT(!pt->expect_lib_to_fail || pt->alloc_base == NULL,
+                   "free() success unexpected");
+        }
     }
-#else
-    /* free has no return value */
 #endif
+    /* free() has no return value */
 }
 
 /**************************************************
@@ -1682,38 +2039,41 @@ handle_free_post(void *drcontext, dr_mcontext_t *mc)
  */
 
 static void
-handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site)
+handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site,
+                alloc_routine_entry_t *routine)
 {
+    routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     pt->in_heap_adjusted = pt->in_heap_routine;
-    if (op_redzone_size > 0) {
+    if (op_redzone_size > 0 &&
+        /* non-recursive: else we assume base already adjusted */
+        pt->in_heap_routine == 1) {
         /* store the block being asked about, in case routine changes the param */
-        pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR, inside);
+        pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR(type), inside);
         /* ensure wasn't allocated before we took control (so no redzone) */
         if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
                                    /* FIXME: should have caller invoke and use
                                     * alloc_routine_name?  kernel32 names better
                                     * than Rtl though
                                     */
-                                   IF_WINDOWS_ELSE("HeapSize", "malloc_usable_size")) &&
+                                   routine->name, is_free_routine(type)) &&
             pt->alloc_base != NULL &&
-            !malloc_is_pre_us(pt->alloc_base) &&
-            /* non-recursive: else we assume base already adjusted */
-            pt->in_heap_routine == 1) {
+            !malloc_is_pre_us(pt->alloc_base)) {
             LOG(2, "size query: changing "PFX" to "PFX"\n",
-                pt->alloc_base, pt->alloc_base - op_redzone_size*2);
+                pt->alloc_base, pt->alloc_base - op_redzone_size);
             /* FIXME: safe_write? */
-            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_SIZE_PTR, inside))) -=
+            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_SIZE_PTR(type), inside))) -=
                 op_redzone_size;
         }
     }
 }
 
 static void
-handle_size_post(void *drcontext, dr_mcontext_t *mc)
+handle_size_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    if (mc->eax != IF_WINDOWS_ELSE(~0UL, 0)/*failure code*/) {
+    uint failure = IF_WINDOWS_ELSE((routine->type == RTL_ROUTINE_SIZE) ? ~0UL : 0, 0);
+    if (mc->eax != failure) {
         /* we want to return the size without the redzone */
         if (op_redzone_size > 0 &&
             !malloc_is_pre_us(pt->alloc_base) &&
@@ -1731,7 +2091,8 @@ handle_size_post(void *drcontext, dr_mcontext_t *mc)
                 /* RtlSizeHeap returns exactly what was asked for, while
                  * malloc_usable_size includes padding which is hard to predict
                  */
-                ASSERT(!op_size_in_redzone ||
+                ASSERT(routine->type == HEAP_ROUTINE_SIZE_USABLE ||
+                       !op_size_in_redzone ||
                        mc->eax == *((size_t *)(pt->alloc_base - op_redzone_size)),
                        "size mismatch");
 #endif
@@ -1755,10 +2116,13 @@ size_plus_redzone_overflow(size_t asked_for)
 
 /* If realloc is true, this is realloc(NULL, size) */
 static void
-handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, bool realloc)
+handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
+                  alloc_routine_entry_t *routine)
 {
+    routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    uint argnum = realloc ? ARGNUM_REALLOC_SIZE : ARGNUM_MALLOC_SIZE;
+    bool realloc = is_realloc_routine(type);
+    uint argnum = realloc ? ARGNUM_REALLOC_SIZE(type) : ARGNUM_MALLOC_SIZE(type);
     pt->alloc_size = (size_t) APP_ARG(mc, argnum, inside);
     if (op_redzone_size > 0) {
         /* FIXME: if app asks for 0 bytes should we not add our redzone in
@@ -1792,24 +2156,26 @@ handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, bool realloc)
  * (including any redzones added) or that requested size padded to
  * some alignment.  For the exact padded size, use padded_size_out.
  * Returns -1 on error.
+ * In order to export this we'd need to have either the malloc
+ * hashtable or the heap regions store info to get the
+ * alloc_routine_entry_t.
  */
-size_t
-get_alloc_real_size(IF_WINDOWS_(app_pc heap) app_pc real_base, size_t app_size,
-                    size_t *padded_size_out)
+static size_t
+get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
+                    size_t *padded_size_out, alloc_routine_entry_t *routine)
 {
     size_t real_size;
-    if (IF_WINDOWS_ELSE(true, malloc_usable_size != NULL)) {
-        real_size = get_alloc_size(IF_WINDOWS_((reg_t)heap) real_base);
+    if (routine->size_func != NULL) {
+        real_size = get_alloc_size(IF_WINDOWS_(auxarg) real_base, routine);
         if (op_get_padded_size && padded_size_out != NULL) {
-            *padded_size_out = get_padded_size(IF_WINDOWS_((reg_t)heap) real_base);
+            *padded_size_out = get_padded_size(IF_WINDOWS_(auxarg)
+                                               real_base, routine);
             if (*padded_size_out == -1)
                 *padded_size_out = ALIGN_FORWARD(real_size, 8);
         } else if (padded_size_out != NULL) {
             *padded_size_out = ALIGN_FORWARD(real_size, 8);
         }
-    }
-#ifdef LINUX
-    else {
+    } else {
         /* FIXME: if no malloc_usable_size() (and can't call malloc_size()
          * as this malloc is not yet in the hashtable), then for now we
          * ignore any extra padding.  We may have to figure out which malloc
@@ -1822,20 +2188,20 @@ get_alloc_real_size(IF_WINDOWS_(app_pc heap) app_pc real_base, size_t app_size,
         if (padded_size_out != NULL)
             *padded_size_out = ALIGN_FORWARD(real_size, 8);
     }
-#endif
     return real_size;
 }
 
 static app_pc
 adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *pad_size_out,
-                    bool used_redzone _IF_DEBUG(const char *name))
+                    bool used_redzone, alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     if (mc->eax != 0) {
         app_pc app_base = (app_pc) mc->eax;
         size_t pad_size;
-        size_t real_size = get_alloc_real_size(IF_WINDOWS_(pt->alloc_heap)
-                                               app_base, pt->alloc_size, &pad_size);
+        size_t real_size =
+            get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
+                                pt->alloc_size, &pad_size, routine);
         ASSERT(real_size != -1, "error getting real size");
         if (pad_size_out != NULL)
             *pad_size_out = pad_size;
@@ -1852,7 +2218,8 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *pad_size_out,
             pt->alloc_size = real_size - op_redzone_size*2;
         }
         LOGPT(2, pt, "%s-post "PFX"-"PFX" = "PIFX" (really "PFX"-"PFX" "PIFX")\n",
-              name, app_base, app_base+pt->alloc_size, pt->alloc_size,
+              routine->name,
+              app_base, app_base+pt->alloc_size, pt->alloc_size,
               app_base - (used_redzone ? op_redzone_size : 0),
               app_base - (used_redzone ? op_redzone_size : 0) + real_size, real_size);
         if (used_redzone && op_redzone_size > 0) {
@@ -1866,7 +2233,7 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *pad_size_out,
              * Should we preserve any obvious alignment we see?
              */
             LOGPT(2, pt, "%s-post changing from "PFX" to "PFX"\n",
-                  name, mc->eax, app_base);
+                  routine->name, mc->eax, app_base);
             mc->eax = (reg_t) app_base;
             dr_set_mcontext(drcontext, mc, NULL);
         }
@@ -1874,7 +2241,8 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *pad_size_out,
         /* it's simplest to do Heap tracking here instead of correlating
          * syscalls w/ RtlCreateHeap vs large heap chunks
          */
-        heap_region_set_heap(app_base, pt->alloc_heap);
+        if (is_rtl_routine(routine->type) && pt->auxarg != 0)
+            heap_region_set_heap(app_base, (app_pc)pt->auxarg);
 #endif
         return app_base;
     } else {
@@ -1890,38 +2258,35 @@ handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
 }
 
 static void
-handle_malloc_post(void *drcontext, dr_mcontext_t *mc, bool realloc, app_pc post_call)
+handle_malloc_post(void *drcontext, dr_mcontext_t *mc, bool realloc, app_pc post_call,
+                   alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc real_base = (app_pc) mc->eax;
     size_t pad_size;
-    app_pc app_base = adjust_alloc_result(drcontext, mc, &pad_size,
-                                          true _IF_DEBUG("malloc"));
-#ifdef LINUX
+    app_pc app_base = adjust_alloc_result(drcontext, mc, &pad_size, true, routine);
+    bool zeroed = IF_WINDOWS_ELSE(is_rtl_routine(routine->type) ?
+                                  TEST(HEAP_ZERO_MEMORY, pt->alloc_flags) :
+                                  pt->in_calloc, pt->in_calloc);
     if (pt->in_calloc) {
         /* calloc called malloc, so instruct post-calloc to NOT do anything */
         pt->malloc_from_calloc = true;
     }
-#else
+#ifdef WINDOWS
     if (pt->in_realloc) {
         /* realloc called malloc, so instruct post-realloc to NOT do anything */
         pt->malloc_from_realloc = true;
     }
 #endif
     if (app_base == NULL) {
-        handle_alloc_failure(pt->alloc_size,
-                             IF_WINDOWS_ELSE(TEST(HEAP_ZERO_MEMORY, pt->alloc_flags),
-                                             pt->in_calloc),
-                             realloc, post_call, mc);
+        handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
     } else {
         if (op_record_allocs) {
             malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
                        0, mc, post_call);
         }
         client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
-                             IF_WINDOWS_ELSE(TEST(HEAP_ZERO_MEMORY, pt->alloc_flags),
-                                             pt->in_calloc), 
-                             realloc, mc);
+                             zeroed, realloc, mc);
     }
 }
 
@@ -1930,25 +2295,27 @@ handle_malloc_post(void *drcontext, dr_mcontext_t *mc, bool realloc, app_pc post
  */
 
 static void
-handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site)
+handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site,
+                   alloc_routine_entry_t *routine)
 {
+    routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc real_base;
     bool size_in_zone = op_size_in_redzone;
     bool invalidated = false;
-    pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_REALLOC_PTR, inside);
+    pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_REALLOC_PTR(type), inside);
     if (pt->alloc_base == NULL) {
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_handle_realloc_null(inside ? get_retaddr_at_entry(mc) : call_site, mc);
-        handle_malloc_pre(drcontext, mc, inside, true/*realloc*/);
+        handle_malloc_pre(drcontext, mc, inside, routine);
         return;
     }
     pt->in_realloc = true;
-    pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE, inside);
+    pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE(type), inside);
     real_base = pt->alloc_base;
     if (!check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
-                                IF_WINDOWS_ELSE("HeapReAlloc", "realloc"))) {
+                                routine->name, is_free_routine(type))) {
         pt->expect_lib_to_fail = true;
         return;
     }
@@ -1957,7 +2324,8 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
         if (malloc_is_pre_us(pt->alloc_base)) {
             /* was allocated before we took control, so no redzone */
             pt->realloc_old_size =
-                get_alloc_size(IF_WINDOWS_(APP_ARG(mc, 1, inside)) pt->alloc_base);
+                get_alloc_size(IF_WINDOWS_(APP_ARG(mc, 1, inside))
+                               pt->alloc_base, routine);
             ASSERT(pt->realloc_old_size != -1,
                    "error getting pre-us size");
             /* if we wait until post-free to check failure, we'll have
@@ -1969,7 +2337,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
                    pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
         } else {
             real_base -= op_redzone_size;
-            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_REALLOC_PTR, inside))) =
+            *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_REALLOC_PTR(type), inside))) =
                 real_base;
         }
         /* realloc(non-NULL, 0) == free(non-NULL) (PR 493870, PR 493880) 
@@ -1992,7 +2360,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
                 LOG(1, "WARNING: asked-for size "PIFX" too big to fit redzone\n",
                     pt->alloc_size);
             } else {
-                *((size_t *)(APP_ARG_ADDR(mc, ARGNUM_REALLOC_SIZE, inside))) =
+                *((size_t *)(APP_ARG_ADDR(mc, ARGNUM_REALLOC_SIZE(type), inside))) =
                     pt->alloc_size + op_redzone_size*2;
             }
         }
@@ -2004,7 +2372,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
         pt->realloc_old_size = *((size_t *)(pt->alloc_base - op_redzone_size));
     else {
         pt->realloc_old_size =
-            get_alloc_size(IF_WINDOWS_(APP_ARG(mc, 1, inside)) real_base);
+            get_alloc_size(IF_WINDOWS_(APP_ARG(mc, 1, inside)) real_base, routine);
     }
     ASSERT((ssize_t)pt->realloc_old_size != -1,
            "error determining heap block size");
@@ -2017,12 +2385,13 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
 }
 
 static void
-handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
+handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
+                    alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     if (pt->alloc_base == NULL) {
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
-        handle_malloc_post(drcontext, mc, true/*realloc*/, post_call);
+        handle_malloc_post(drcontext, mc, true/*realloc*/, post_call, routine);
         return;
     }
     pt->in_realloc = false;
@@ -2038,8 +2407,7 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
         size_t pad_size;
         app_pc app_base = adjust_alloc_result(drcontext, mc, &pad_size,
                                               /* no redzone for sz==0 */
-                                              pt->alloc_size != 0
-                                              _IF_DEBUG("realloc"));
+                                              pt->alloc_size != 0, routine);
         app_pc old_end = pt->alloc_base + pt->realloc_old_size;
         /* realloc sometimes calls free, but shouldn't be any conflicts */
         if (op_record_allocs) {
@@ -2072,7 +2440,6 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
     }
 }
 
-#ifdef LINUX
 /**************************************************
  * CALLOC
  */
@@ -2134,7 +2501,8 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
 }
 
 static void
-handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
+handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
+                   alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc real_base = (app_pc) mc->eax;
@@ -2147,7 +2515,7 @@ handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
         pt->malloc_from_calloc = false;
         return;
     }
-    app_base = adjust_alloc_result(drcontext, mc, &pad_size, true _IF_DEBUG("calloc"));
+    app_base = adjust_alloc_result(drcontext, mc, &pad_size, true, routine);
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
@@ -2159,7 +2527,6 @@ handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call)
                              true/*zeroed*/, false/*!realloc*/, mc);
     }
 }
-#endif /* LINUX */
 
 #ifdef WINDOWS
 /**************************************************
@@ -2231,7 +2598,8 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
 }
 
 static void
-handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
+                   alloc_routine_entry_t *routine)
 {
     /* RtlDestroyHeap(PVOID HeapHandle)
      *
@@ -2259,7 +2627,7 @@ handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
      */
     malloc_iterate(heap_destroy_iter_cb, (void *) &info);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
-    client_handle_heap_destroy(drcontext, pt, heap);
+    client_handle_heap_destroy(drcontext, pt, heap, routine->client);
 }
 
 static void
@@ -2305,11 +2673,15 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      *       IN ULONG UserFlags);
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
+        LOGPT(2, pt, "%s recursive call: no adjustments\n", routine);
+        return;
+    }
     pt->in_heap_adjusted = pt->in_heap_routine;
     LOG(2, "Rtl*User*Heap "PFX", "PFX", "PFX"\n",
         APP_ARG(mc, 1, inside), APP_ARG(mc, 2, inside), APP_ARG(mc, 3, inside));
     pt->alloc_base = (app_pc) APP_ARG(mc, 3, inside);
-    if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site, routine) &&
+    if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site, routine, false) &&
         op_redzone_size > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
         if (pt->alloc_base != NULL &&
@@ -2342,6 +2714,11 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      * (otherwise the validate code calls ntdll!DbgPrint, DR complains
      * about int3, and the process exits)
      */
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
+        LOGPT(2, pt, "RtlValidateHeap recursive call: no adjustments\n");
+        return;
+    }
     if (op_redzone_size > 0) {
         /* BOOLEAN NTAPI RtlValidateHeap(HANDLE Heap, ULONG Flags, PVOID Block)
          * Block is optional
@@ -2349,7 +2726,8 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
         app_pc block = (app_pc) APP_ARG(mc, 3, inside);
         if (block == NULL) {
             ASSERT(false, "RtlValidateHeap on entire heap not supported");
-        } else if (check_valid_heap_block(block, mc, inside, call_site, "HeapValidate")) {
+        } else if (check_valid_heap_block(block, mc, inside, call_site, "HeapValidate",
+                                          false)) {
             if (!malloc_is_pre_us(block)) {
                 LOG(2, "RtlValidateHeap: changing "PFX" to "PFX"\n",
                     block, block - op_redzone_size);
@@ -2487,6 +2865,15 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc;
+    /* get a copy of the routine so don't need lock */
+    alloc_routine_entry_t routine;
+    routine_type_t type;
+    if (!get_alloc_entry(expect, &routine)) {
+        ASSERT(false, "fatal: can't find alloc entry");
+        return; /* maybe release build will limp along */
+    }
+    type = routine.type;
+
     ASSERT(expect != NULL, "handle_alloc_pre: expect is NULL!");
     if (indirect) {
         if (expect != actual) {
@@ -2511,26 +2898,44 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             get_alloc_routine_name(expect), pt->in_heap_routine, MAX_HEAP_NESTING);
     }
     dr_get_mcontext(drcontext, &mc, NULL);
-    if (expect == alloc_routine_addr[HEAP_FREE]) {
+    if (is_free_routine(type)) {
 #ifdef WINDOWS
-        /* FIXME: safe_read */
-        /* Note that these do not reflect what's really being freed if -delay_frees > 0 */
-        pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-        pt->alloc_heap = (app_pc) APP_ARG(&mc, 1, inside);
+        if (type == RTL_ROUTINE_FREE) {
+            /* FIXME: safe_read */
+            /* Note that these do not reflect what's really being freed if
+             * -delay_frees > 0 
+             */
+            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
+            pt->auxarg = APP_ARG(&mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_FREE_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(&mc, 2, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
+        }
 #endif
-        handle_free_pre(drcontext, &mc, inside, call_site);
+        handle_free_pre(drcontext, &mc, inside, call_site, &routine);
     }
-    else if (expect == alloc_routine_addr[HEAP_SIZE]) {
+    else if (is_size_routine(type)) {
 #ifdef WINDOWS
-        /* FIXME: safe_read */
-        pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-        pt->alloc_heap = (app_pc) APP_ARG(&mc, 1, inside);
+        if (type == RTL_ROUTINE_SIZE) {
+            /* FIXME: safe_read */
+            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
+            pt->auxarg = APP_ARG(&mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(&mc, 2, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
+        }
 #endif
-        handle_size_pre(drcontext, &mc, inside, call_site);
+        handle_size_pre(drcontext, &mc, inside, call_site, &routine);
     }
-    else if (expect == alloc_routine_addr[HEAP_MALLOC] ||
-             expect == alloc_routine_addr[HEAP_REALLOC]
-             IF_LINUX(|| expect == alloc_routine_addr[HEAP_CALLOC])) {
+    else if (is_malloc_routine(type) ||
+             is_realloc_routine(type) ||
+             is_calloc_routine(type)) {
 #ifdef WINDOWS
         /* RtlAllocateHeap(HANDLE heap, ULONG flags, ULONG size)
          * RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
@@ -2547,34 +2952,42 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         }
         pt->in_heap_adjusted = pt->in_heap_routine;
 #ifdef WINDOWS
-        /* FIXME: safe_read */
-        pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-        pt->alloc_heap = (app_pc) APP_ARG(&mc, 1, inside);
-#endif
-        if (expect == alloc_routine_addr[HEAP_MALLOC]) {
-            handle_malloc_pre(drcontext, &mc, inside, false/*!realloc*/);
-        } else if (expect == alloc_routine_addr[HEAP_REALLOC]) {
-            handle_realloc_pre(drcontext, &mc, inside, call_site);
-        } 
-#ifdef LINUX
-        else {
-            handle_calloc_pre(drcontext, &mc, inside);
+        if (is_rtl_routine(type)) {
+            /* FIXME: safe_read */
+            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
+            pt->auxarg = APP_ARG(&mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_MALLOC_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(&mc, 2, inside);
+        } else if (type == HEAP_ROUTINE_REALLOC_DBG || type == HEAP_ROUTINE_CALLOC_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(&mc, 3, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
         }
 #endif
+        if (is_malloc_routine(type)) {
+            handle_malloc_pre(drcontext, &mc, inside, &routine);
+        } else if (is_realloc_routine(type)) {
+            handle_realloc_pre(drcontext, &mc, inside, call_site, &routine);
+        } else {
+            handle_calloc_pre(drcontext, &mc, inside);
+        }
     }
 #ifdef WINDOWS
-    else if (expect == alloc_routine_addr[HEAP_CREATE]) {
+    else if (type == RTL_ROUTINE_CREATE) {
         handle_create_pre(drcontext, &mc, inside);
     }
-    else if (expect == alloc_routine_addr[HEAP_DESTROY]) {
-        handle_destroy_pre(drcontext, &mc, inside);
+    else if (type == RTL_ROUTINE_DESTROY) {
+        handle_destroy_pre(drcontext, &mc, inside, &routine);
     }
-    else if (expect == alloc_routine_addr[HEAP_VALIDATE]) {
+    else if (type == RTL_ROUTINE_VALIDATE) {
         handle_validate_pre(drcontext, &mc, inside, call_site);
     }
-    else if (expect == alloc_routine_addr[HEAP_GETINFO] ||
-             expect == alloc_routine_addr[HEAP_SETINFO] ||
-             expect == alloc_routine_addr[HEAP_SETFLAGS]) {
+    else if (type == RTL_ROUTINE_GETINFO ||
+             type == RTL_ROUTINE_SETINFO ||
+             type == RTL_ROUTINE_SETFLAGS) {
         handle_userinfo_pre(drcontext, &mc, inside, call_site,
                             get_alloc_routine_name(expect));
     }
@@ -2597,6 +3010,14 @@ handle_alloc_post(app_pc func, app_pc post_call)
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc;
+    /* get a copy of the routine so don't need lock */
+    alloc_routine_entry_t routine;
+    routine_type_t type;
+    if (!get_alloc_entry(func, &routine)) {
+        ASSERT(false, "fatal: can't find alloc entry");
+        return; /* maybe release build will limp along */
+    }
+    type = routine.type;
     ASSERT(op_track_heap, "requires track_heap");
     ASSERT(func != NULL, "handle_alloc_post: func is NULL!");
     dr_get_mcontext(drcontext, &mc, NULL);
@@ -2651,28 +3072,26 @@ handle_alloc_post(app_pc func, app_pc post_call)
     if (pt->in_heap_routine == 0)
         client_exiting_heap_routine();
 
-    if (func == alloc_routine_addr[HEAP_FREE]) {
-        handle_free_post(drcontext, &mc);
+    if (is_free_routine(type)) {
+        handle_free_post(drcontext, &mc, &routine);
     }
-    else if (func == alloc_routine_addr[HEAP_SIZE]) {
-        handle_size_post(drcontext, &mc);
+    else if (is_size_routine(type)) {
+        handle_size_post(drcontext, &mc, &routine);
     }
-    else if (func == alloc_routine_addr[HEAP_MALLOC]) {
-        handle_malloc_post(drcontext, &mc, false/*!realloc*/, post_call);
-    } else if (func == alloc_routine_addr[HEAP_REALLOC]) {
-        handle_realloc_post(drcontext, &mc, post_call);
-#ifdef LINUX
-    } else if (func == alloc_routine_addr[HEAP_CALLOC]) {
-        handle_calloc_post(drcontext, &mc, post_call);
-#endif
+    else if (is_malloc_routine(type)) {
+        handle_malloc_post(drcontext, &mc, false/*!realloc*/, post_call, &routine);
+    } else if (is_realloc_routine(type)) {
+        handle_realloc_post(drcontext, &mc, post_call, &routine);
+    } else if (is_calloc_routine(type)) {
+        handle_calloc_post(drcontext, &mc, post_call, &routine);
 #ifdef WINDOWS
-    } else if (func == alloc_routine_addr[HEAP_GETINFO] ||
-               func == alloc_routine_addr[HEAP_SETINFO] ||
-               func == alloc_routine_addr[HEAP_SETFLAGS]) {
+    } else if (type == RTL_ROUTINE_GETINFO ||
+               type == RTL_ROUTINE_SETINFO ||
+               type == RTL_ROUTINE_SETFLAGS) {
         handle_userinfo_post(drcontext, &mc);
-    } else if (func == alloc_routine_addr[HEAP_CREATE]) {
+    } else if (type == RTL_ROUTINE_CREATE) {
         handle_create_post(drcontext, &mc);
-    } else if (func == alloc_routine_addr[HEAP_DESTROY]) {
+    } else if (type == RTL_ROUTINE_DESTROY) {
         handle_destroy_post(drcontext, &mc);
 #endif
     }
@@ -2825,7 +3244,7 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
     ASSERT(op_track_heap, "requires track_heap");
     if (opc == OP_call_ind IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) {
         /* we're post-rebind: get current dynamic target and see if
-         * alloc_routine_addr[HEAP_MALLOC] or alloc_routine_addr[HEAP_REALLOC]
+         * a malloc or realloc routine
          */
         /* FIXME: we could get the mcontext and try to emulate up to
          * the cti point: but for non-PIC should always be an
@@ -2971,9 +3390,11 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
                 *exiting_alloc = true;
         }
     }
+#ifdef WINDOWS
     if (is_alloc_sysroutine(pc)) {
         insert_hook(drcontext, bb, inst, pc);
     }
+#endif
     if (op_track_heap) {
         if (is_alloc_routine(pc)) {
             insert_hook(drcontext, bb, inst, pc);

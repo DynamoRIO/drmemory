@@ -49,7 +49,11 @@ typedef struct _per_thread_t {
     app_pc stack_lowest_frame; /* optimization for recording callstacks */
     
     /* communicating from pre to post alloc routines */
-    app_pc alloc_heap;
+#ifdef LINUX
+    app_pc sbrk;
+#else
+    ptr_int_t auxarg; /* heap or blocktype or generic additional arg */
+#endif
     uint alloc_flags;
     size_t alloc_size;
     size_t realloc_old_size;
@@ -76,10 +80,9 @@ typedef struct _per_thread_t {
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
 
-#ifdef LINUX
     bool in_calloc;
     bool malloc_from_calloc;
-#else
+#ifdef WINDOWS
     bool in_create; /* are we inside RtlCreateHeap */
     bool malloc_from_realloc;
 #endif

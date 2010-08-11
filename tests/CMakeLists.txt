@@ -215,6 +215,12 @@ function(newtest test source)
   newtest_ex(${test} ${source} "" "" "" OFF)
 endfunction(newtest)
 
+function(newtest_custbuild test source cust_flags)
+  newtest_ex(${test} ${source} "" "" "" OFF)
+  get_target_property(cur_flags ${test} COMPILE_FLAGS)
+  set_target_properties(${test} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
+endfunction(newtest_custbuild)
+
 newtest(hello hello.c)
 newtest(malloc malloc.c)
 newtest(free free.c)
@@ -283,6 +289,15 @@ if (NOT TOOL_DR_HEAPSTAT)
   else (UNIX)
     newtest_nobuild(perturb winthreads  "" "-perturb_only" "" OFF)
   endif (UNIX)
+
+  if (WIN32)
+    newtest(wincrt wincrt.cpp)
+    if (USE_DRSYMS)
+      # cygwin build can't see static malloc routines
+      newtest_custbuild(wincrtdbg wincrt.cpp "/MTd")
+    endif (USE_DRSYMS)
+    # FIXME PR 406287: add /MDd test
+  endif (WIN32)
 
 else (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF)

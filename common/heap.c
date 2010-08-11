@@ -171,6 +171,18 @@ get_libc_base(void)
  *
  */
 
+/* We support multiple sets of malloc routines (xref PR 476805).
+ * Ideally we'd have early injection and then we wouldn't need any
+ * heap walks.
+ * For now we assume that on linux only libc's heap needs initial walk,
+ * and on Windows that extra padding added by higher layers doesn't
+ * matter for initial heap so that Rtl heap walks are all that's required
+ * for layers that end up calling Rtl heap.
+ * We assume that only cygwin malloc uses its own heap.
+ * FIXME PR 595798: walk cygwin initial heap, using cygwin1!sbrk to
+ * locate and using cygwin's malloc_usable_size during the walk
+ */
+
 #ifdef WINDOWS
 GET_NTDLL(RtlLockHeap, (IN HANDLE Heap));
 GET_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
@@ -277,9 +289,10 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
 #else /* WINDOWS */
     /* Once we have early injection (PR 204554) we won't need this.
-     * For now we assume the typical glibc malloc that uses the
+     * For now we assume Lea's dlmalloc, the Linux glibc malloc that uses the
      * "boundary tag" method with the size of a chunk at offset 4
      * and the 2 lower bits of the size marking mmap and prev-in-use.
+     * FIXME: also support PHKmalloc (though mainly used in BSD libc).
      */
     app_pc cur_brk = get_brk();
     app_pc heap_start, pc;

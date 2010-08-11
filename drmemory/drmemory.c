@@ -359,6 +359,8 @@ event_thread_init(void *drcontext)
         if (!options.leaks_only) {
             /* For 1st thread we can't get mcontext so we wait for 1st bb.
              * For subsequent we can.  Xref i#117/PR 395156.
+             * FIXME: other threads injected or created early like
+             * we've seen on Windows could mess this up.
              */
             static bool first_time = true;
             if (first_time) /* 1st thread: no lock needed */
@@ -1171,6 +1173,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (!options.leaks_only && options.shadowing)
         vmkuw_syscall_module_load(drcontext, info, loaded);
 #endif
+    alloc_module_load(drcontext, info, loaded);
 }
 
 static void
@@ -1180,6 +1183,7 @@ event_module_unload(void *drcontext, const module_data_t *info)
         callstack_module_unload(drcontext, info);
     if (!options.leaks_only && options.shadowing)
         replace_module_unload(drcontext, info);
+    alloc_module_unload(drcontext, info);
 }
 
 #if defined(LINUX) && defined(DEBUG)

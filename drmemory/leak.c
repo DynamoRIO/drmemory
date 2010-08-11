@@ -278,12 +278,13 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
             node_child = rb_find(data->alloc_tree, ptr_child);
         ASSERT(node_child != NULL, "reachable object must be in rbtree");
         rb_node_fields(node_child, NULL, NULL, (void*)&unreach_child);
-        rb_node_fields(node_parent, NULL, NULL, (void *)&unreach_parent);
         /* rb client fields allocated lazily */
         if (unreach_child == NULL) {
             unreach_child = unreach_entry_alloc();
             rb_node_set_client(node_child, (void *)unreach_child);
         }
+        /* acquire after in case child==parent */
+        rb_node_fields(node_parent, NULL, NULL, (void *)&unreach_parent);
         if (unreach_parent == NULL) {
             unreach_parent = unreach_entry_alloc();
             rb_node_set_client(node_parent, (void *)unreach_parent);
@@ -667,7 +668,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
     MEMORY_BASIC_INFORMATION mbi = {0};
 #endif
     ASSERT(data != NULL, "invalid args");
-    LOG(2, "\nchecking reachability of "PFX"-"PFX"\n", start, end);
+    LOG(4, "\nchecking reachability of "PFX"-"PFX"\n", start, end);
     pc = start;
     while (pc < end) {
         /* Skip free and unreadable regions (once we have PR 406328 unreadable

@@ -85,7 +85,7 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
   # should we have a real .rc file instead?
-  set(VERSION_NUMBER "1.1.0")
+  set(VERSION_NUMBER "1.2.0")
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
 
@@ -120,20 +120,24 @@ if (WIN32)
     endif (PERL_FOUND)
   endif ()
 
-  if (EXISTS "${PERL_PATH}/pp")
-    set(PERL_PP "${PERL_PATH}/pp" CACHE FILEPATH
-      "Path to perl PAR module's perl-to-executable tool 'pp'")
-  else ()
-    find_file(PERL_PP pp HINTS "${PERL_PATH}"
-      DOC "Path to perl PAR module's perl-to-executable tool 'pp'")
-  endif ()
-  if (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
-    message(STATUS "Did not find pp: will not convert perl scripts to executables")
-    set(PERL_TO_EXE OFF)
-  else (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
-    message(STATUS "Found pp: ${PERL_PP}")
-    set(PERL_TO_EXE ON)
-  endif (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
+  # With the new drinjectlib-based front end we do not use perl or perl2exe
+  # at all on Windows (xref i#265/PR 486139)
+  if (OFF) # disabling
+    if (EXISTS "${PERL_PATH}/pp")
+      set(PERL_PP "${PERL_PATH}/pp" CACHE FILEPATH
+        "Path to perl PAR module's perl-to-executable tool 'pp'")
+    else ()
+      find_file(PERL_PP pp HINTS "${PERL_PATH}"
+        DOC "Path to perl PAR module's perl-to-executable tool 'pp'")
+    endif ()
+    if (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
+      message(STATUS "Did not find pp: will not convert perl scripts to executables")
+      set(PERL_TO_EXE OFF)
+    else (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
+      message(STATUS "Found pp: ${PERL_PP}")
+      set(PERL_TO_EXE ON)
+    endif (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
+  endif (OFF)
 endif (WIN32)
 
 # Dr. Memory only supports 32-bit today

@@ -1246,9 +1246,9 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
 
 void
 report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
-                        const char *routine)
+                        const char *routine, bool is_free)
 {
-    if (addr == NULL && strcmp(routine, IF_WINDOWS_ELSE("HeapFree", "free")) == 0) {
+    if (is_free && addr == NULL) {
         /* free(NULL) is documented as always being properly handled (nop)
          * so we separate as not really "invalid" but just a warning
          */
