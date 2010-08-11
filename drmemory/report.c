@@ -455,80 +455,97 @@ write_suppress_pattern(uint type, char *cstack, bool symbolic)
 }
 #endif
 
+static bool text_matches_pattern(const char *text, int text_length,
+                                 const char *pattern) {
+    /* Match text[0...text_length) with pattern and return the result.
+     * The pattern may contain '*' and '?' wildcards.
+     */
+    const char *cur_text = text,
+               *text_last_asterisk = NULL,
+               *pattern_last_asterisk = NULL;
+    while (*cur_text != '\0' && (cur_text < text + text_length)) {
+        if (*pattern == '*') {
+            while (*++pattern == '*') {
+                /* Skip consecutive '*'s */
+            }
+            if (*pattern == '\0') {
+                /* the pattern ends with a series of '*' */
+                return true;
+            }
+            text_last_asterisk = cur_text;
+            pattern_last_asterisk = pattern;
+        } else if ((*cur_text == *pattern) || (*pattern == '?')) {
+            ++cur_text;
+            ++pattern;
+        } else if (text_last_asterisk != NULL) {
+            /* No match. But we have seen at least one '*', so go back
+             * and try at the next position.
+             */
+            pattern = pattern_last_asterisk;
+            cur_text = text_last_asterisk++;
+        } else {
+            return false;
+        }
+    }
+    while (*pattern == '*')
+        ++pattern;
+    return *pattern == '\0';
+}
+
 static bool
 on_suppression_list(uint type, char *cstack)
 {
     bool match = false;
     suppress_spec_t *spec;
     uint i;
-    char *pframe = NULL, *pat, *nextpat, *eframe, *epos, *nexte, *tmp;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     for (spec = supp_list[type]; spec != NULL; spec = spec->next) {
+        const char *eframe = cstack; /* stores the current error stack frame */
         LOG(3, "supp: comparing to suppression pattern\n");
-        eframe = cstack;
         for (i = 0; i < spec->num_frames; i++) {
+            const char *epos, /* read position in the error stack */
+                       *end_of_line;
             ASSERT(eframe != NULL, "suppression search error");
-            if (*eframe == '\0')
-                goto supp_done; /* no match: pattern longer than error */
+            if (*eframe == '\0') {
+                /* no match: the suppression has more frames than error */
+                goto supp_done;
+            }
+            end_of_line = strstr(eframe, NL);
+            ASSERT(end_of_line != NULL, "malformed error stack");
             epos = strstr(eframe, "system call");
             if (epos != NULL) {
-                /* system call - nothing to do here */
+                if (!text_matches_pattern(epos, end_of_line - epos,
+                                          spec->frames[i])) {
+                    goto next_supp;
+                }
             } else if (spec->symbolic) {
                 epos = strchr(eframe, '>');
-                ASSERT(epos != NULL && *(epos+1) == ' ', "suppress parse error");
+                ASSERT(epos != NULL && *(epos+1) == ' ', "malformed frame");
                 epos += 2; /* skip '> ' */
+                if (!text_matches_pattern(epos, end_of_line - epos,
+                                          spec->frames[i])) {
+                    goto next_supp;
+                }
             } else {
+                const char *end_of_mod_off;
                 epos = strchr(eframe, '<');
-                ASSERT(epos != NULL, "suppress parse error");
-            }
-            /* make a copy for local modification */
-            if (pframe != NULL)
-                global_free(pframe, strlen(pframe)+1, HEAPSTAT_MISC);
-            pframe = drmem_strdup(spec->frames[i], HEAPSTAT_MISC);
-            pat = pframe;
-            LOG(3, "  supp: comparing to pattern frame \"%s\"\n", pframe);
-            while (pat != NULL) {
-                /* PR 464821: support wildcards in suppression frames.
-                 * We do strstr for each segment between the *'s.
-                 */
-                nextpat = strchr(pat, '*');
-                if (nextpat != NULL) {
-                    if (nextpat == pat) {
-                        pat = nextpat + 1;
-                        continue;
-                    }
-                    *nextpat = '\0';
-                }
-                LOG(3, "\tnext pattern segment: \"%s\"\n", pat);
-                LOG(4, "\tcmp to: \"%s\"\n", epos);
-                nexte = strstr(epos, pat);
-                /* if no wildcard then make sure to match start */
-                if (nexte == NULL || (pat == pframe && nexte != epos))
+                ASSERT(epos != NULL, "malformed frame");
+                end_of_mod_off = strchr(epos, '>');
+                ASSERT(end_of_mod_off != NULL, "malformed frame");
+                end_of_mod_off++; /* skip '>' */
+                if (!text_matches_pattern(epos, end_of_mod_off - epos,
+                                          spec->frames[i])) {
                     goto next_supp;
-                /* make sure we didn't match beyond '>' for modoffs or into next
-                 * line for either
-                 */
-                if (!spec->symbolic) {
-                    tmp = strchr(epos, '>');
-                    if (tmp != NULL && tmp < nexte)
-                        goto next_supp;
                 }
-                tmp = strchr(epos, '\n');
-                if (tmp != NULL && tmp < nexte)
-                    goto next_supp;
-                /* pattern segment matched: move to next */
-                epos = nexte + strlen(pat);
-                pat = (nextpat == NULL) ? NULL : (nextpat + 1);
             }
-            /* move to next frame */
-            eframe = strchr(epos, '\n');
-            ASSERT(eframe != NULL, "malformed suppression during compare");
+            /* move to the next frame */
+            eframe = end_of_line + strlen(NL);
 #ifdef USE_DRSYMS
-            /* skip file:line# line */
-            eframe = strchr(eframe + 1, '\n');
-            ASSERT(eframe != NULL, "malformed suppression during compare");
-#endif
+            /* skip file:line# or <syscall> line */
+            eframe = strchr(eframe, '\n');
+            ASSERT(eframe != NULL, "malformed error stack");
             eframe++;
+#endif
         }
         /* PR 460923: pattern is considered a prefix */
         LOG(3, "supp: pattern ended => prefix match\n");
@@ -538,8 +555,6 @@ on_suppression_list(uint type, char *cstack)
         continue;
     }
  supp_done:
-    if (pframe != NULL)
-        global_free(pframe, strlen(pframe)+1, HEAPSTAT_MISC);
     if (!match) {
         LOG(3, "supp: no match\n");
 #ifdef USE_DRSYMS
