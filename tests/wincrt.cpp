@@ -61,13 +61,39 @@ crtdbg_test(void)
 #endif
 }
 
+
+/* Test i#26 where debug operator delete() reads malloc headers */
+class hasdtr {
+public:
+    hasdtr() { x = new int[7]; }
+    ~hasdtr() { delete[] x; }
+    int *x;
+    int y;
+    char z;
+};
+
+static void
+deletedbg_test(void) 
+{
+    hasdtr *has = new hasdtr[4];
+    has[0].y = 0;
+    /* It's enough to just call operator delete: raises VC debug assertion
+     * if DrMem doesn't avoid redzone, and raises unaddr if DrMem doesn't
+     * ignore for operator delete
+     */
+    delete [] has;
+}
+
+
 /* TODO PR 595802: test _recalloc and _aligned_* malloc routines
  */
+
 
 int main()
 {
     oob_read_test();
     crtdbg_test();
+    deletedbg_test();
     printf("Done\n");
     return 0;
 }

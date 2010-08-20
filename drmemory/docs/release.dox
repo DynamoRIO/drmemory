@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -57,8 +57,60 @@ The Dr. Memory distribution contains the following:
 \endhtmlonly
 \section sec_changes Changes Since Prior Releases
 
-The current version is \TOOL_VERSION and contains bug fixes but no feature
-changes from the initial version 1.0.1.
+The current version is \TOOL_VERSION.
+
+The changes between version 1.2.2 and 1.2.1 include:
+ - Improved suppression support: support for vertical wildcards "..."
+
+The changes between version 1.2.1 and 1.2.0 include:
+ - Fix bug in symbol lookup causing debug build asserts
+
+The changes between version 1.2.0 and 1.1.0 include:
+ - Avoid false positives and false negatives when using debug versions of
+   msvcrt, whose own debugging facilities conflicted with Dr. Memory's
+ - Added -perturb feature that uses random delays to attempt to trigger
+   data races such as use-after-free accesses, which Dr. Memory will
+   immediately detect
+ - Separate indirect leaks from direct leaks
+ - Added -version option to front end
+ - Generalized "invalid free" to "invalid heap argument"
+ - Improved performance of many instruction types including string instructions
+ - Improved performance of heap routines accessing heap headers
+ - Improved performance of stack adjustments
+ - Improved performance of shadow table accesses
+ - Improved performance of hashtables via dynamic resizing
+ - Display messages in cmd window, where DynamoRIO has trouble printing
+ - Switch to online symbol processing on Windows, greatly simplifying the
+   Windows design and making it more robust by eliminating perl entirely
+ - Eliminate need for admin privileges to run on Windows
+ - Added wildcard support to suppressions
+ - Various bug fixes
+
+The changes between version 1.1.0 and 1.0.1 include:
+
+ - Eliminated common C++ cases of false positives in possible leaks
+ - Report additional information on unaddressable errors: list the nearest
+   malloc chunks above and below, and whether the access was to freed memory
+ - Report timestamp and thread id of reported errors
+ - Added -leaks_only feature for low-overhead leak checking
+ - Improved support for heaps used as stacks when such stacks are small
+   and are adjacent to non-stack data
+ - Improved Linux system call parameter handling to reduce false positives
+ - Added default suppression file
+ - Added -aggregate option to combine error listings and eliminate
+   duplicates among a set of processes
+ - Report the total number of leaked bytes
+ - Perform error duplication checks in the client
+ - Reduce memory usage of callstacks stored on each malloc
+ - Eliminate false positives from libc string routines by replacing them
+ - Switch to true reachability-based leak detection, trigger-able from a
+   nudge at any time during a run
+ - Split possible leaks from certain leaks
+ - Improved documentation
+ - Improve performance of consecutive similar memory references
+ - Improve performance of 64K-boundary-crossing stack adjustments
+ - Many other performance improvements
+ - Many bug fixes
 
 ***************************************************************************
 \htmlonly

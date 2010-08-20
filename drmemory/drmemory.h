@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -50,8 +50,6 @@ extern hashtable_t logfile_table;
 extern file_t f_results;
 extern file_t f_suppress;
 #endif
-
-#define MAX_HEAP_NESTING 4
 
 #ifdef WINDOWS
 extern app_pc ntdll_base;

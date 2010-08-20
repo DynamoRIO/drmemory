@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -34,7 +34,7 @@
 # define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
 #endif
 
-#define MAX_HEAP_NESTING 4
+#define MAX_HEAP_NESTING 8
 
 /* Per-thread data.
  * Fields are assumed to be callback-context-private on Windows.

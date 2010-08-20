@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -124,10 +124,11 @@ lookup_symbol(const module_data_t *mod, const char *symname)
 
     for (c = mod->full_path; *c != '\0'; c++) {
         if (*c == DIRSEP IF_WINDOWS(|| *c == '\\'))
-            fname = c;
+            fname = c + 1;
     }
-    fname++;
     ASSERT(fname != NULL, "unable to get fname for module");
+    if (fname == NULL)
+        return NULL;
     /* now get rid of extension */
     for (; c > fname && *c != '.'; c--)
         ; /* nothing */
@@ -341,7 +342,8 @@ get_TEB_from_tid(thread_id_t tid)
     res = NtOpenThread(&h, THREAD_QUERY_INFORMATION, &oa, &cid);
     if (NT_SUCCESS(res)) {
         teb = get_TEB_from_handle(h);
-        NtClose(h);
+        /* avoid DR's hook on NtClose: dr_close_file() calls the raw version */
+        dr_close_file(h);
     }
     return teb;
 }

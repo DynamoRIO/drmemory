@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -520,7 +520,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             ASSERT(base - real_base == options.redzone_size, "redzone mismatch");
             real_size = size + 2*options.redzone_size;
         } else {
-            /* A pre-us alloc w/ no redzone */
+            /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
             real_size = size;
         }
         rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
@@ -650,10 +650,10 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
              end >= real_base + options.redzone_size)) {
             res = true;
             if (free_start != NULL)
-                *free_start = real_base + options.redzone_size;
+                *free_start = real_base + (has_redzone ? options.redzone_size : 0);
             /* size is the app-asked-for-size */
             if (free_end != NULL)
-                *free_end = real_base + size - options.redzone_size;
+                *free_end = real_base + size - (has_redzone ? options.redzone_size : 0);
         }
     }
     dr_mutex_unlock(delay_free_lock);

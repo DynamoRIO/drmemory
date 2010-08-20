@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2009 VMware, Inc.  All rights reserved.
+# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -85,7 +85,7 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
   # should we have a real .rc file instead?
-  set(VERSION_NUMBER "1.2.1")
+  set(VERSION_NUMBER "1.2.2")
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
 
