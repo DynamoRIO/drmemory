@@ -358,7 +358,15 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "calloc", HEAP_ROUTINE_CALLOC },
     /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
 #ifdef WINDOWS
-    { "sbrk", HEAP_ROUTINE_SBRK }, /* for cygwin */
+    /* the _impl versions are sometimes called directly 
+     * XXX: there are also _base versions but they always call _impl?
+     */
+    { "malloc_impl", HEAP_ROUTINE_MALLOC },
+    { "realloc_impl", HEAP_ROUTINE_REALLOC }, 
+    { "free_impl", HEAP_ROUTINE_FREE },
+    { "calloc_impl", HEAP_ROUTINE_CALLOC },
+    /* for cygwin */
+    { "sbrk", HEAP_ROUTINE_SBRK },
     /* FIXME PR 595802: _recalloc, _aligned_offset_malloc, etc. */
 #endif
 };
@@ -373,6 +381,13 @@ static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
     { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
     { "_free_dbg", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg", HEAP_ROUTINE_CALLOC_DBG },
+    /* the _impl versions are sometimes called directly 
+     * XXX: there are also _base versions but they always call _impl?
+     */
+    { "_malloc_dbg_impl", HEAP_ROUTINE_MALLOC_DBG },
+    { "_realloc_dbg_impl", HEAP_ROUTINE_REALLOC_DBG }, 
+    { "_free_dbg_impl", HEAP_ROUTINE_FREE_DBG },
+    { "_calloc_dbg_impl", HEAP_ROUTINE_CALLOC_DBG },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
 #define POSSIBLE_DBGCRT_ROUTINE_NUM \
@@ -612,19 +627,9 @@ alloc_size_func_t malloc_usable_size;
 
 /* malloc_usable_size exported, so declared in alloc.h */
 
-/* Returns the size of an allocation as known to the underlying system
- * allocator (libc's malloc(), etc. for Linux, ntdll's Rtl*Heap for
- * Windows).  Unfortunately the interface exposed by the two return
- * different notions of size: for Linux we can only get the padded size,
- * while for Windows we can only get the requested size.
- * We'd prefer the requested size for all uses, but users of this routine
- * simply need an upper bound on the requested size and a lower bound on the
- * padded size.
- * We can get the padded size for Windows via get_alloc_real_size().
- * Returns -1 on failure.
- */
 static ssize_t
-get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
+get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
+                          alloc_routine_entry_t *routine)
 {
     ssize_t sz;
 #ifdef WINDOWS
@@ -668,14 +673,39 @@ get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t
             return -1;
         else
             return sz;
-    } else {
-        /* This will fail at post-malloc point before we've added to hashtable */
-        sz = malloc_size(real_base);
-        ASSERT(sz != -1, "get_alloc_size() failed");
-        if (sz != -1)
-            sz += 2*redzone_size(routine);
-        return sz;
     }
+    return -1;
+}
+
+/* Returns the size of an allocation as known to the underlying system
+ * allocator (libc's malloc(), etc. for Linux, ntdll's Rtl*Heap for
+ * Windows).  Unfortunately the interface exposed by the two return
+ * different notions of size: for Linux we can only get the padded size,
+ * while for Windows we can only get the requested size.
+ * We'd prefer the requested size for all uses, and we use our hashtable
+ * (which we now use for all mallocs by default) if possible.
+ * Only if the hashtable lookup fails (e.g., during malloc prior to adding
+ * to table) do we call the app size routine: and even then, users of this routine
+ * simply need an upper bound on the requested size and a lower bound on the
+ * padded size.
+ * We can get the padded size for Windows via get_alloc_real_size().
+ * Returns -1 on failure.
+ */
+static ssize_t
+get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
+{
+    ssize_t sz;
+    /* i#30: if op_record_allocs, prefer hashtable to avoid app lock
+     * which can lead to deadlock
+     */
+    /* This will fail at post-malloc point before we've added to hashtable:
+     * though currently it's debug msvcrt operator delete that's the only
+     * problem, so we're ok w/ alloc calling app routine
+     */
+    sz = malloc_size(real_base);
+    if (sz != -1)
+        return sz + 2*redzone_size(routine);
+    return get_size_from_app_routine(IF_WINDOWS_(auxarg) real_base, routine);
 }
 
 /* Returns the full usable footprint of the allocation at real_base.
@@ -689,7 +719,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
     ASSERT(routine->size_func != NULL &&
            routine->size_func->type == HEAP_ROUTINE_SIZE_USABLE,
            "assuming linux has usable size avail");
-    return get_alloc_size(real_base, routine);
+    return get_size_from_app_routine(real_base, routine);
 #else
     /* FIXME: this is all fragile: any better way, besides using our
      * own malloc() instead of intercepting system's?
@@ -714,7 +744,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
             return ALIGN_FORWARD(sz, MALLOC_CHUNK_ALIGNMENT);
         } else {
             /* malloc_usable_size() includes padding */
-            return get_alloc_size(auxarg, real_base, routine);
+            return get_size_from_app_routine(auxarg, real_base, routine);
         }
     }
 # ifdef DEBUG
@@ -1978,7 +2008,6 @@ check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_
 {
     if (malloc_end(block) == NULL) {
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
-        wait_for_user("invalid heap arg");//NOCHECKIN
         client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
                                 block, mc, routine, is_free);
         return false;

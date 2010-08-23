@@ -599,7 +599,8 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
     ASSERT(info != NULL, "invalid param");
     dr_mutex_lock(delay_free_lock);
     for (i = 0; i < info->delay_free_fill; i++) {
-        if (info->delay_free_list[i].auxarg == (ptr_int_t)heap) {
+        if (info->delay_free_list[i].addr != NULL &&
+            info->delay_free_list[i].auxarg == (ptr_int_t)heap) {
             /* not worth shifting the array around: just invalidate */
             rb_node_t *node = rb_find(delay_free_tree, info->delay_free_list[i].addr);
             if (node != NULL)
