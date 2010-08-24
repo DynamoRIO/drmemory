@@ -89,7 +89,7 @@ $appid = "";
 $drmem_dir = "debug";
 %logs = {};
 %error = {};
-%supp_syms_list = {};   # list of symbol based call stacks to be suppressed
+%supp_syms_list = {};   # list of suppression regexps
 $supp_syms_file = "";   # file containing
 %addr_pipes = ();   # pipes to addr2line processes for each module; PR 454803.
 $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
@@ -938,7 +938,15 @@ sub generate_error_info()
             if ($error{"addr"}[$a] =~ /^system\s+call/) {
                 push @err_cstack, $error{"addr"}[$a];
             } else {
-                push @err_cstack, $symlines[$a*2]; 
+                $modoffs = $error{"modoffs"}[$a];
+                $modoffs =~ s/<(.*)>/$1/;
+                $func = $symlines[$a*2];
+                $func =~ s/.*!(.*)\+0x\w+$/$1/;
+
+                # turn modoffs and function name into
+                # "mod+off!func" form to simplify suppression matching.
+                $mod_off_func = "$modoffs!$func";
+                push @err_cstack, $mod_off_func;
             }
             $err_str .= $prefix."    $symlines[$a*2+1]\n";
         }
@@ -1347,17 +1355,9 @@ sub read_suppression_info($file_in)
 {
     my ($file) = @_;
     my $valid_frame = 0;    # to track valid frames followed by invalid ones
-    my $malformed = 0;      # to track invalid frames followed by valid ones
     my $callstack = "";
     my $type = "";
     my $new_type = "";
-    my $warning = "\tSuppression based on this call stack won't work\n".
-                  "\tThe full callstack should be either of the form\n".
-                  "\t    module-name!function-name\n".
-                  "\tor\n".
-                  "\t    <module-name+hex-offset>\n".
-                  "\twith no leading white space.  A combination of both".
-                  "\twill not work\n";
  
     # If suppression file can't be opened for reading, just ignore
     if (!open(SUPP_IN,$file)) {
@@ -1373,33 +1373,28 @@ sub read_suppression_info($file_in)
         # for other purposes so we add REPORTED in for the match (and then
         # remove when storing the suppression type)
         s/^WARNING/REPORTED WARNING/;
-        if (/^.+!.+$/ || /<not in a module>/ || /^system call/ || /^\*/) {
+        if ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
+            (/^<.+\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
+            /<not in a module>/ || /^system call / || /\.\.\./) {
             $valid_frame = 1;
             $callstack .= $_;
-            if ($malformed && !/<not in a module/) {
-                # Malformed call stacks won't match, so don't have to worry
-                # about not adding it to the suppression list (more work to do
-                # that).
-                print "WARNING: malformed suppression call stack: \n".
-                      $callstack.$warning;
-            }
         } elsif (($new_type = is_line_start_of_error($_)) ||
                  ($new_type = is_line_start_of_suppression($_))) {
             $valid_frame = 0;
-            $malformed = 0;
             add_suppress_callstack($type, $callstack) if ($callstack ne '');
             $callstack = "";
             $type = $new_type;
-        } elsif (/^<.*\+.+>$/) {
-            $malformed = 1;
+        } else {
             $callstack .= $_;   # need the malformed frame to print it out
-            if ($valid_frame) {
-                # Malformed call stacks won't match, so don't have to worry
-                # about not adding it to the suppression list (more work to do
-                # that).
-                print "WARNING: malformed suppression call stack: \n".
-                      $callstack.$warning;
-            }
+            die "ERROR: malformed suppression:\n".
+                "$type\n$callstack\n".
+                "The last frame is incorrect!\n\n".
+                "Frames should be one of the following:\n".
+                "\t module!function\n".
+                "\t <module+offset>\n".
+                "\t <not in a module>\n".
+                "\t system call Name\n".
+                "\t ...\n";
         }
     }
 
@@ -1411,20 +1406,35 @@ sub read_suppression_info($file_in)
 }
 
 #-------------------------------------------------------------------------------
-# Adds a callstack to the suppression tables.
+# Adds a callstack to the suppression regexp table.
 #
 sub add_suppress_callstack($type, $callstack)
 {
     my ($type, $callstack) = @_;
     return if ($type eq '' || $callstack eq '');
-    # Turn into a regex for wildcard matching.  The only wildcard
-    # character we support is "*", so turn that into the perl equivalent
-    # ".*" and escape anything else that perl considers non-literal.
-    # Since we don't specify /s when matching, . will not
-    # match newline, and since perl uses minimal expansion,
-    # .* will stop at the ! so we don't need [^!]
+    # Turn into a regex for wildcard matching.
+    # We support two wildcards:
+    # "?" matches any character, "*" matches zero or more characters
+    #   in one frame. The matching characters don't include "!" in "mod!func"
+    #   lines and "+" in "mod+off" lines.
+    #   We turn these wildcards into the perl equivalent "." and ".*"
+    #   respectively and escape anything else that perl considers non-literal.
+    # "..." matches zero or more frames. Turn it into "(.*\n)*".
+    # NB since we don't specify /s when matching, "." will not match newline.
     $callstack =~ s/\./\\./g;
+    $callstack =~ s/\?/./g;
     $callstack =~ s/\*/.*/g;
+    $callstack =~ s/\\\.\\\.\\\.\n/(.*\n)*/g;
+
+    # generate_error_info formats stack frames as mod+off!func
+    # so we need to modify the suppression frames as follows:
+    #  a) mod!func  -> mod\+0x\w+!func
+    #  b) <mod+off> -> mod\+off![^+]+
+    # Suppression frames should not be mod+off!func
+    # ensured by (read_suppression_info())
+    $callstack =~ s/^(.+)!(.+)$/$1\\+0x\\w+!$2/gm;
+    $callstack =~ s/^<(.+)\+(.+)>$/$1\\+$2![^+]+/gm;
+
     # We want prefix matching but using /m so need \A not ^
     $callstack = "\\A" . $callstack;
     push @{ $supp_syms_list{$type} }, $callstack;
@@ -1447,8 +1457,6 @@ sub suppress($errname_in, $callstack_ref_in)
         } elsif ($frame =~ /^system call/) {
             $callstk_str .= "$frame\n";
         } else {
-            # On Windows, strip symbol offset for suppression.  PR 477345.
-            $frame =~ s/\+0x\w+$// if (!$is_unix);
             $frame =~ s/<nosyms>//;     # strip <nosym>
             $frame =~ /(.+)!/;          # get module name
             # die is to handle potential problems - they always blow up here.
@@ -1456,17 +1464,17 @@ sub suppress($errname_in, $callstack_ref_in)
             my $sym = $';   # save $' as fileparse() can do a regex
             $callstk_str .= fileparse($1)."!$sym\n";
         }
+    }
 
-        # PR 460923: match any prefix of callstack
-        foreach $supp (@{ $supp_syms_list{$errname} }) {
-            # Match using /m for multi-line but not /s to not have . match \n
-            # FIXME: performance: check the #frames and skip this check if the
-            # suppression has more frames than we've seen so far
-            if ($callstk_str =~ /$supp/m) {
-                print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
-                    if ($verbose);
-                return 1;
-            }
+    # PR 460923: match any prefix of callstack
+    foreach $supp (@{ $supp_syms_list{$errname} }) {
+        # Match using /m for multi-line but not /s to not have . match \n
+        # FIXME: performance: check the #frames and skip this check if the
+        # suppression has more frames than we've seen so far
+        if ($callstk_str =~ /$supp/m) {
+            print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
+                if ($verbose);
+            return 1;
         }
     }
 

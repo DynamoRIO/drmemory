@@ -45,36 +45,55 @@
 static int *int_p;
 static int forcond;
 
-static void uninit_test1(int *val_p)
+static void do_uninit_read(int *val_p)
 {
     int x = 1;
     printf("testing uninitialized access\n");
     if (*val_p & x)
         forcond = 1;
+}
+
+static void uninit_test1(int *val_p)
+{
+    do_uninit_read(val_p);
 }
 
 static void uninit_test2(int *val_p)
 {
-    int x = 1;
-    printf("testing uninitialized access\n");
-    if (*val_p & x)
-        forcond = 1;
+    do_uninit_read(val_p);
 }
 
 static void uninit_test3(int *val_p)
 {
-    int x = 1;
-    printf("testing uninitialized access\n");
-    if (*val_p & x)
-        forcond = 1;
+    do_uninit_read(val_p);
 }
 
 static void uninit_test4(int *val_p)
 {
-    int x = 1;
-    printf("testing uninitialized access\n");
-    if (*val_p & x)
-        forcond = 1;
+    do_uninit_read(val_p);
+}
+
+static void uninit_test5(int *val_p)
+{
+    do_uninit_read(val_p);
+}
+
+static void do_uninit_read_with_intermediate_frames(int depth, int *val_p)
+{
+    if (depth > 1)
+        do_uninit_read_with_intermediate_frames(depth - 1, val_p);
+    else
+        do_uninit_read(val_p);
+}
+
+static void uninit_test6(int *val_p)
+{
+    do_uninit_read_with_intermediate_frames(5, val_p);
+}
+
+static void uninit_test7(int *val_p)
+{
+    do_uninit_read_with_intermediate_frames(5, val_p);
 }
 
 static int unaddr_test1(int *val_p)
@@ -168,14 +187,15 @@ static void invalid_free_test1(void)
 static void test(void)
 {
     /* Must have different function names otherwise one mod!func suppression 
-     * will suppress all tests without room for testing other types.  Also, can't
-     * abstract out the contents because top-frame will the same for all, thus
-     * one top-frame suppression will match for all.
+     * will suppress all tests without room for testing other types.
      */
-    uninit_test1(int_p+0);      /* full callstack based mod+offs suppression */
-    uninit_test2(int_p+1);      /* top frame based mod+offs suppression */
-    uninit_test3(int_p+2);      /* full callstack based mod!offs suppression */
-    uninit_test4(int_p+3);      /* top frame based mod!offs suppression */
+    uninit_test1(int_p+0);      /* 3 top frames based mod+offs suppression */
+    uninit_test2(int_p+1);      /* 3 top frames based mod!func suppression */
+    uninit_test3(int_p+2);      /* 4 top frames based mixed suppression + '?' */
+    uninit_test4(int_p+3);      /* mixed suppression with ... (...=0 frames) */
+    uninit_test5(int_p+4);      /* ... + mod!func suppression (...=1 frame) */
+    uninit_test6(int_p+5);      /* ... + mod!func suppression (...=5 frames) */
+    uninit_test7(int_p+6);      /* ... + ? + mod+offs suppression*/
 
     FREE(int_p);
 
@@ -199,7 +219,7 @@ static void test(void)
 
 int main()
 {
-    int_p = (int *) ALLOC(4*sizeof(int));
+    int_p = (int *) ALLOC(7*sizeof(int));
     test();
     int_p = NULL;   /* to make the last leak to be truly unreachable */
     return 0;

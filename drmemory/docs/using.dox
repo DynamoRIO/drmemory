@@ -269,21 +269,22 @@ one showing \p <module+offset> type frames and the other \p module!function
 \p types frames.  Either type of call stack can be used and it is enough if one
 of those two is specified.   The \p module!function are more general and
 more robust across different versions of a module.  Also, the \p
-module!function callstacks support wildcards in either the module or
+module!function callstacks support "*" and "?" wildcards in either the module or
 function name, and they support prefix matching.  Prefix matching means
 that the callstack in the suppression file is considered a match if it
 matches the top of any actual callstack during a run.  This allows
 specifying only the first few frames of a callstack and have it match any
 callstack whose first frames match those frames, regardless of subsequent
-frames.  Currently the \p <module+offset> frames do not support either
+frames. Also, you can use "..." lines in suppressions. Such lines match
+zero or more frames in the callstack.
+Currently the \p <module+offset> frames do not support either
 wildcards or prefix matching on Linux or Cygwin: on Windows they do support
 both just like \p module!function callstacks do.
 
-Note: Don't mix the two types of frames in one call stack.  If you do so,
-suppression won't work.
-
 Suppression files can have empty lines and comment lines (begining with #).
 There should be no leading white space for the actual suppression information.
+Suppressions should not end with "...", which is unnecessary due to the implicit
+prefix matching.
 
 Another method is to filter the reported errors to focus on particular
 source files.  Use the \p -srcfilter option to do this:

@@ -49,7 +49,7 @@ static const char * (*op_get_syscall_name)(uint);
 static void *page_buf_lock;
 static char page_buf[PAGE_SIZE];
 
-static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end\n");
+static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
 
 #ifdef WINDOWS
 # define FP_PREFIX ""

@@ -273,7 +273,7 @@ if (NOT TOOL_DR_HEAPSTAT)
     set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.win.suppress")
   endif (UNIX)
   newtest_ex(suppress suppress.c ""
-    "-suppress;${supp_file};-callstack_max_frames;3;-check_leaks" "" OFF)
+    "-suppress;${supp_file};-check_leaks" "" OFF)
 
   set(nudge_test_args "-check_leaks;-possible_leaks;")
 

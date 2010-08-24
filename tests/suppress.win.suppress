@@ -17,42 +17,63 @@
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-#
-# uninitialized read: full callstack based mod+offs suppression */
-#
-UNINITIALIZED READ
-<suppress.exe+0x1177>
-<suppress.exe+0x1070>
-<suppress.exe+0x1042>
 
-# uninitialized read: top frame based mod+offs suppression */
-#
+# uninitialized read: 3 top frames based mod+offs suppression
 UNINITIALIZED READ
 <suppress.exe+0x11c7>
+<suppress.exe+0x118c>
+<suppress.exe+0x1070>
 
-# uninitialized read: full callstack based mod!func suppression */
+# uninitialized read: 3 top frames based mod!func suppression
 UNINITIALIZED READ
-suppress.exe!uninit_test3
+suppress.exe!do_uninit_read
+suppress.exe!uninit_test2
 suppress.exe!test
+
+# uninitialized read: 4 top frames based mixed suppression + '?'
+UNINITIALIZED READ
+<suppress.exe+0x11??>
+suppress.exe!uninit_test3
+<suppress.exe+0x1094>
 suppress.exe!main
 
-# uninitialized read: top frame based mod!func suppression */
+# uninitialized read: mixed suppression with ... (...=0 frames)
 UNINITIALIZED READ
+<suppress.exe+0x11c7>
+...
 suppress.exe!uninit_test4
+
+# uninitialized read: ... + mod!func suppression
+# "..." should match one frame 
+UNINITIALIZED READ
+...
+suppress.exe!uninit_test5
+
+# uninitialized read: ... + mod!func suppression */
+# "..." should match five frames 
+UNINITIALIZED READ
+suppress.exe!do_uninit_read
+...
+suppress.exe!uninit_test6
+
+# uninitialized read: ... + ? + mod!off suppression */
+UNINITIALIZED READ
+...
+<su?pr?ss.exe+0x12de>
 
 #-------------------------------------------------------------------------------
 
 # unaddressable access: full callstack based mod+offs suppression */
 #
 UNADDRESSABLE ACCESS
-<suppress.exe+0x12b2>
-<suppress.exe+0x10dc>
+<suppress.exe+0x1312>
+<suppress.exe+0x1111>
 <suppress.exe+0x1042>
 
 # unaddressable access: top frame based mod+offs suppression */
 #
 UNADDRESSABLE ACCESS
-<suppress.exe+0x12f2>
+<suppress.exe+0x1352>
 
 # unaddressable access: full callstack based mod!func suppression */
 UNADDRESSABLE ACCESS
@@ -68,14 +89,14 @@ suppress.exe!unaddr_test4
 # leak: full callstack based mod+offs suppression */
 #
 LEAK
-<suppress.exe+0x13be>
-<suppress.exe+0x1119>
+<suppress.exe+0x141e>
+<suppress.exe+0x114e>
 <suppress.exe+0x1042>
 
 # leak: top frame based mod+offs suppression */
 #
 LEAK
-<suppress.exe+0x140e>
+<suppress.exe+0x146e>
 
 # leak: full callstack based mod!func suppression */
 LEAK

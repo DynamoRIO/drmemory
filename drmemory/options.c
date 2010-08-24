@@ -145,7 +145,7 @@ bool stack_swap_threshold_fixed;
 void
 usage_error(const char *msg, const char *submsg)
 {
-    NOTIFY_ERROR("Usage error: %s%s.  Aborting.\n", msg, submsg);
+    NOTIFY_ERROR("Usage error: %s%s.  Aborting."NL, msg, submsg);
     dr_abort();
 }
 
