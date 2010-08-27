@@ -490,6 +490,17 @@ client_remove_malloc_routine(void *client_data)
     global_free(info, sizeof(*info), HEAPSTAT_MISC);
 }
 
+#ifdef DEBUG
+static void
+print_free_tree(rb_node_t *node, void *data)
+{
+    app_pc start;
+    size_t size;
+    rb_node_fields(node, &start, &size, NULL);
+    LOG(1, "\tfree tree entry: "PFX"-"PFX"\n", start, start+size);
+}
+#endif
+
 /* Returns the value to pass to free().  Return "real_base" for no change.
  * The auxarg param is INOUT so it can be changed as well.
  */
@@ -524,6 +535,8 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             real_size = size;
         }
         rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
+        LOG(2, "inserted into delay_free_tree: "PFX"-"PFX" %d\n",
+            real_base, real_base + real_size, base == real_base);
         if (DELAY_FREE_FULL(info)) {
 #ifdef WINDOWS
             ptr_int_t pass_auxarg = info->delay_free_list[info->delay_free_head].auxarg;
@@ -531,8 +544,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             pass_to_free = info->delay_free_list[info->delay_free_head].addr;
             STATS_ADD(delayed_free_bytes,
                       -(int)info->delay_free_list[info->delay_free_head].size);
-            LOG(2, "delayed free queue full: freeing "PFX
-                IF_WINDOWS(" auxarg="PFX) "\n", pass_to_free _IF_WINDOWS(pass_auxarg));
+            LOG(2, "delayed free queue full: freeing "PFX"-"PFX
+                IF_WINDOWS(" auxarg="PFX) "\n", pass_to_free,
+                pass_to_free + info->delay_free_list[info->delay_free_head].size
+                _IF_WINDOWS(pass_auxarg));
             info->delay_free_list[info->delay_free_head].addr = real_base;
 #ifdef WINDOWS
             /* should we be doing safe_read() and safe_write()? */
@@ -552,9 +567,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             if (info->delay_free_head >= options.delay_frees)
                 info->delay_free_head = 0;
         } else {
-            LOG(2, "delayed free queue not full: delaying %d-th free of "PFX
+            LOG(2, "delayed free queue not full: delaying %d-th free of "PFX"-"PFX
                 IF_WINDOWS(" auxarg="PFX) "\n",
-                info->delay_free_fill, real_base _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
+                info->delay_free_fill, real_base, real_base + real_size
+                _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
             ASSERT(info->delay_free_fill <= options.delay_frees - 1, "internal error");
             info->delay_free_list[info->delay_free_fill].addr = real_base;
 #ifdef WINDOWS
@@ -577,10 +593,19 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
         }
         if (pass_to_free != NULL) {
             rb_node_t *node = rb_find(delay_free_tree, pass_to_free);
-            if (node != NULL)
+            if (node != NULL) {
+                DOLOG(2, {
+                    byte *start;
+                    size_t size;
+                    rb_node_fields(node, &start, &size, NULL);
+                    LOG(2, "deleting from delay_free_tree "PFX": "PFX"-"PFX"\n",
+                        pass_to_free, start, start + size);
+                });
                 rb_delete(delay_free_tree, node);
-            else
+            } else {
+                DOLOG(1, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
                 ASSERT(false, "delay_free_tree inconsistent");
+            }
         }
         dr_mutex_unlock(delay_free_lock);
         return pass_to_free;
@@ -614,17 +639,6 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
     dr_mutex_unlock(delay_free_lock);
     LOG(2, "removed %d delayed frees from destroyed heap "PFX"\n",
         num_removed, heap);
-}
-#endif
-
-#ifdef DEBUG
-void
-print_free_tree(rb_node_t *node, void *data)
-{
-    app_pc start;
-    size_t size;
-    rb_node_fields(node, &start, &size, NULL);
-    LOG(3, "\tfree tree entry: "PFX"-"PFX"\n", start, start+size);
 }
 #endif
 

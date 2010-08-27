@@ -22,67 +22,86 @@
 # don't need this file anymore - suppress.lin.suppress will work for both linux
 # and visor.
 #
-# uninitialized read: full callstack based mod+offs suppression */
+# uninitialized read: full callstack based mod+offs suppression 
 UNINITIALIZED READ
 <+0x575>
-<+0x7ef>
-<+0x8bc>
+<+0x596>
+<+0x81f>
 
-# uninitialized read: top frame based mod+offs suppression */
+# uninitialized read: top frames based mod+offs suppression 
 UNINITIALIZED READ
-<+0x5a6>
+<+0x575>
+<+0x5a9>
 
-# uninitialized read: full callstack based mod!func suppression */
+# uninitialized read: full callstack based mod!func suppression 
 UNINITIALIZED READ
+suppress!do_uninit_read
 suppress!uninit_test3
 suppress!test
 suppress!main
 
-# uninitialized read: top frame based mod!func suppression */
+# uninitialized read: top frames based mod!func suppression 
 UNINITIALIZED READ
+suppress!do_uninit_read
 suppress!uninit_test4
 
+# uninitialized read: vertical wildcard
+UNINITIALIZED READ
+...
+suppress!uninit_test5
+
+# uninitialized read: vertical wildcard
+UNINITIALIZED READ
+...
+suppress!uninit_test6
+
+# uninitialized read: vertical wildcard
+UNINITIALIZED READ
+...
+suppress!uninit_test7
+
 #-------------------------------------------------------------------------------
 
-# unaddressable access: full callstack based mod+offs suppression */
+# unaddressable access: full callstack based mod+offs suppression 
 UNADDRESSABLE ACCESS
-<+0x634>
-<+0x839>
-<+0x8bc>
+<+0x664>
+<+0x899>
+<+0x91c>
 
-# unaddressable access: top frame based mod+offs suppression */
+# unaddressable access: top frame based mod+offs suppression 
 UNADDRESSABLE ACCESS
-<+0x65f>
+<+0x68f>
 
-# unaddressable access: full callstack based mod!func suppression */
+# unaddressable access: full callstack based mod!func suppression 
+# also tests wildcard
 UNADDRESSABLE ACCESS
-suppress!unaddr_test3
-suppress!test
-suppress!main
+suppress!unaddr_*3
+supp*!test
 
-# unaddressable access: top frame based mod!func suppression */
+# unaddressable access: top 2 frames based mod!func suppression 
 UNADDRESSABLE ACCESS
 suppress!unaddr_test4
+suppress!test
 
 #-------------------------------------------------------------------------------
 
-# leak: full callstack based mod+offs suppression */
+# leak: full callstack based mod+offs suppression 
 LEAK
-<+0x6e2>
-<+0x86e>
-<+0x8bc>
+<+0x712>
+<+0x8ce>
+<+0x91c>
 
-# leak: top frame based mod+offs suppression */
+# leak: top frame based mod+offs suppression 
 LEAK
-<+0x707>
+<+0x737>
 
-# leak: full callstack based mod!func suppression */
+# leak: full callstack based mod!func suppression 
 LEAK
 suppress!leak_test3
 suppress!test
 suppress!main
 
-# leak: top frame based mod!func suppression */
+# leak: top frame based mod!func suppression 
 LEAK
 suppress!leak_test4
 

@@ -61,6 +61,7 @@ set(arg_vmk_only  OFF) # for testing on ESXi: run only vmk builds
 set(arg_include "")   # cmake file to include up front
 set(arg_preload "")   # cmake file to include prior to each 32-bit build
 set(arg_preload64 "") # cmake file to include prior to each 64-bit build
+set(arg_exclude "")   # regex of tests to exclude
 set(arg_site "")      # site name when reporting results
 set(arg_drmemory_only OFF)   # only run Dr. Memory tests
 set(arg_drheapstat_only OFF) # only run Dr. Heapstat tests
@@ -104,6 +105,10 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^preload64=")
     string(REGEX REPLACE "^preload64=" "" arg_preload64 "${arg}")
   endif (${arg} MATCHES "^preload64=")
+  if (${arg} MATCHES "^exclude=")
+    # not parallel to include=.  this excludes individual tests.
+    string(REGEX REPLACE "^exclude=" "" arg_exclude "${arg}")
+  endif (${arg} MATCHES "^exclude=")
   if (${arg} MATCHES "^site=")
     string(REGEX REPLACE "^site=" "" arg_site "${arg}")
   endif (${arg} MATCHES "^site=")
@@ -310,20 +315,26 @@ function(testbuild name is64 initial_cache test_only_in_long)
   if (NOT test_only_in_long OR ${TEST_LONG})
     # to run a subset of tests add an INCLUDE regexp to ctest_test.  e.g.:
     #   INCLUDE broadfun
+    if (NOT "${arg_exclude}" STREQUAL "")
+      if ("${cmake_ver_string}" STRLESS "2.6.3")
+        # EXCLUDE arg to ctest_test() is not available so we edit the list of tests
+        file(READ "${CTEST_BINARY_DIRECTORY}/tests/CTestTestfile.cmake" testlist)
+        string(REGEX REPLACE "ADD_TEST\\((${arg_exclude}) [^\\)]*\\)\n" ""
+          testlist "${testlist}")
+        file(WRITE "${CTEST_BINARY_DIRECTORY}/tests/CTestTestfile.cmake" "${testlist}")
+      else ("${cmake_ver_string}" STRLESS "2.6.3")
+        set(ctest_test_args ${ctest_test_args} EXCLUDE ${arg_exclude})
+      endif ("${cmake_ver_string}" STRLESS "2.6.3")
+    endif (NOT "${arg_exclude}" STREQUAL "")
     if ("${cmake_ver_string}" STRLESS "2.8.")
       # Parallel tests not supported
-      set(RUN_PARALLEL OFF)
     else ()
-      set(RUN_PARALLEL ON)
-    endif ()
-    if (RUN_PARALLEL)
       # i#111: run tests in parallel, supported on CTest 2.8.0+
       # Note that adding -j to CMAKE_COMMAND does not work, though invoking
       # this script with -j does work, but we want parallel by default.
-      ctest_test(BUILD "${CTEST_BINARY_DIRECTORY}" PARALLEL_LEVEL 5)
-    else (RUN_PARALLEL)
-      ctest_test(BUILD "${CTEST_BINARY_DIRECTORY}")
-    endif (RUN_PARALLEL)
+      set(ctest_test_args ${ctest_test_args} PARALLEL_LEVEL 5)
+    endif ()
+    ctest_test(BUILD "${CTEST_BINARY_DIRECTORY}" ${ctest_test_args})
   endif ()
   if (DO_SUBMIT)
     # include any notes via set(CTEST_NOTES_FILES )?

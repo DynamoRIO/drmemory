@@ -247,6 +247,7 @@ if ($aggregate) {
         ($#ARGV == 0 && -d $ARGV[0]);
 } else {
     $apppath = &canonicalize_path($ARGV[0]);
+    $apppath = &find_on_path($apppath) if (! -e $apppath);
     $app = fileparse($apppath);
     shift;
 
@@ -261,6 +262,8 @@ if ($aggregate) {
     # in the app args: seems reasonable to require user to pass us a
     # real executable, so must prefix scripts with shell or perl.
     die "application $apppath not found\n$usage\n" unless (-e $apppath);
+    # warn if 64-bit (i#33)
+    die "64-bit applications not yet supported\n" if (`file $apppath` =~ /64-bit/);
     push @appcmdline, &vmk_app_pre_args(\@ARGV) if ($is_vmk);
     push @appcmdline, @ARGV;
 }
@@ -649,5 +652,15 @@ sub logdir_ok($l) {
         return 1;
     }
     return 0;
+}
+
+# XXX: share w/ frontend_vmk.pm: but we want on both plaforms
+sub find_on_path($exe)
+{
+    my ($exe) = @_;
+    # File::Which isn't standard enough
+    my @PATH = split(":", $ENV{"PATH"});
+    my @which = grep -x "$_/$exe", @PATH;
+    return "$which[0]/$exe";
 }
 

@@ -941,7 +941,13 @@ sub generate_error_info()
                 $modoffs = $error{"modoffs"}[$a];
                 $modoffs =~ s/<(.*)>/$1/;
                 $func = $symlines[$a*2];
+                # for vmk mod+offs may not have mod but mod!func will (PR 363063)
+                if ($modoffs =~ /^\+/ && $func =~ /^(.+)!/) {
+                    $modoffs = $1.$modoffs;
+                }
                 $func =~ s/.*!(.*)\+0x\w+$/$1/;
+                # linux doesn't have the trailing offs
+                $func =~ s/.*!(.*)$/$1/;
 
                 # turn modoffs and function name into
                 # "mod+off!func" form to simplify suppression matching.
@@ -1374,7 +1380,8 @@ sub read_suppression_info($file_in)
         # remove when storing the suppression type)
         s/^WARNING/REPORTED WARNING/;
         if ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
-            (/^<.+\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
+            # support missing module for vmk (PR 363063)
+            (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
             /<not in a module>/ || /^system call / || /\.\.\./) {
             $valid_frame = 1;
             $callstack .= $_;
@@ -1412,6 +1419,11 @@ sub add_suppress_callstack($type, $callstack)
 {
     my ($type, $callstack) = @_;
     return if ($type eq '' || $callstack eq '');
+
+    # support missing module name on vmk
+    # we can't require suppress file to have the * b/c client doesn't support it
+    $callstack =~ s/^<\+/<*+/gm;
+
     # Turn into a regex for wildcard matching.
     # We support two wildcards:
     # "?" matches any character, "*" matches zero or more characters
@@ -1471,6 +1483,8 @@ sub suppress($errname_in, $callstack_ref_in)
         # Match using /m for multi-line but not /s to not have . match \n
         # FIXME: performance: check the #frames and skip this check if the
         # suppression has more frames than we've seen so far
+        print "comparing: \"$callstk_str\" vs \"$supp\"\n"
+            if ($verbose);#NOCHECKIN
         if ($callstk_str =~ /$supp/m) {
             print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
                 if ($verbose);

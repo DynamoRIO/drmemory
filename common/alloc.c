@@ -574,6 +574,33 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         alloc_routine_entry_t *e;
         app_pc pc = lookup_symbol_or_export(mod, possible[i].name);
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
+#ifdef LINUX
+        /* PR 604274: sometimes undefined symbol has a value pointing at PLT:
+         * we do not want to try and intercept that.
+         * Ideally DR should exclude these weird symbols: that's i#341.
+         * XXX: at least check whether in PLT: but would want i#76 (elf
+         * section iterator) for that.
+         * For now using a hack by decoding and looking for jmp*.
+         * Someone hooking one of our targets would presumably use direct jmp.
+         */
+        if (pc != NULL) {
+            char buf[16];
+            if (safe_read(pc, sizeof(buf), buf)) {
+                instr_t inst;
+                void *drcontext = dr_get_current_drcontext();
+                instr_init(drcontext, &inst);
+                decode(drcontext, pc, &inst);
+                if (!instr_valid(&inst) || instr_get_opcode(&inst) == OP_jmp_ind)
+                    pc = NULL;
+                instr_free(drcontext, &inst);
+            } else
+                pc = NULL;
+            if (pc == NULL) {
+                LOG(1, "NOT intercepting PLT or invalid %s in module %s\n",
+                    possible[i].name, (modname == NULL) ? "<noname>" : modname);
+            }
+        }
+#endif
         if (pc != NULL) {
             if (!new_set) {
                 client = client_add_malloc_routine(pc);
@@ -2108,8 +2135,9 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
             size = *((size_t *)(base - redzone_size(routine)));
         else {
             size = get_alloc_size(IF_WINDOWS_((reg_t)heap) real_base, routine);
+            ASSERT((ssize_t)size != -1, "error determining heap block size");
+            size -= redzone_size(routine)*2;
         }
-        ASSERT((ssize_t)size != -1, "error determining heap block size");
         LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX" size="PIFX" => "PFX"\n",
             IF_WINDOWS_(heap) base, size, real_base);
 
@@ -2500,6 +2528,8 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     else {
         pt->realloc_old_size =
             get_alloc_size(IF_WINDOWS_(APP_ARG(mc, 1, inside)) real_base, routine);
+        ASSERT((ssize_t)pt->realloc_old_size != -1, "error determining heap block size");
+        pt->realloc_old_size -= redzone_size(routine)*2;
     }
     ASSERT((ssize_t)pt->realloc_old_size != -1,
            "error determining heap block size");

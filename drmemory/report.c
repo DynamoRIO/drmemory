@@ -259,7 +259,7 @@ add_suppress_spec(int type, uint num_frames, char **frames)
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "internal error type error");
     ASSERT(num_frames > 0, "");
     if (strcmp(frames[num_frames-1], "...") == 0) {
-        report_malformed_suppression(type, num_frames, frames,
+        report_malformed_suppression(type, num_frames, (const char **) frames,
                                      "The given suppression ends with '...'");
         ASSERT(false, "should not reach here");
     }
@@ -393,7 +393,8 @@ read_suppression_file(file_t f)
                 /* Found a malformed suppression frame.
                  * Add it to the frames[] and report error. */
                 frames[num_frames++] = line;
-                report_malformed_suppression(curtype, num_frames, frames,
+                report_malformed_suppression(curtype, num_frames,
+                                             (const char **) frames,
                             "The last frame is incorrect!"NL NL
                             "Frames should be one of the following:"NL
                             " module!function"NL
@@ -630,7 +631,6 @@ stack_matches_suppression(const char *error_stack, const suppress_spec_t *supp)
 static bool
 on_suppression_list(uint type, const char *error_stack)
 {
-    bool match = false;
     suppress_spec_t *supp;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     for (supp = supp_list[type]; supp != NULL; supp = supp->next) {
