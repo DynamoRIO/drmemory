@@ -81,7 +81,7 @@ int sysnum_CreateThread;
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
 syscall_info_t syscall_info[] = {
-    {0,"NtAcceptConnectPort", 24, 0,sizeof(HANDLE),W, 2,sizeof(PORT_MESSAGE),R, 3,0,IB, 4,sizeof(PORT_VIEW),W, 5,sizeof(REMOTE_PORT_VIEW),W, },
+    {0,"NtAcceptConnectPort", 24, 0,sizeof(HANDLE),W, 2,sizeof(PORT_MESSAGE),RP, 3,0,IB, 4,sizeof(PORT_VIEW),W, 5,sizeof(REMOTE_PORT_VIEW),W, },
     {0,"NtAccessCheck", 32, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 3,sizeof(GENERIC_MAPPING),R, 4,sizeof(PRIVILEGE_SET),W, 5,sizeof(ULONG),R, 6,sizeof(ACCESS_MASK),W, 7,sizeof(BOOLEAN),W, },
     {0,"NtAccessCheckAndAuditAlarm", 44, 0,sizeof(UNICODE_STRING),R, 2,sizeof(UNICODE_STRING),R, 3,sizeof(UNICODE_STRING),R, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 6,sizeof(GENERIC_MAPPING),R, 7,0,IB, 8,sizeof(ACCESS_MASK),W, 9,sizeof(BOOLEAN),W, 10,sizeof(BOOLEAN),W, },
     {0,"NtAccessCheckByType", 44, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 1,sizeof(SID),R, 4,sizeof(OBJECT_TYPE_LIST),R, 6,sizeof(GENERIC_MAPPING),R, 7,sizeof(PRIVILEGE_SET),R, 8,sizeof(ULONG),R, 9,sizeof(ACCESS_MASK),W, 10,sizeof(ULONG),W, },
@@ -158,9 +158,9 @@ syscall_info_t syscall_info[] = {
     {0,"NtDuplicateToken", 24, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,0,IB, 5,sizeof(HANDLE),W, },
     {0,"NtEnumerateBootEntries", 8, },
     {0,"NtEnumerateDriverEntries", 8, },
-    {0,"NtEnumerateKey", 24, 3,-4,W, 3,-5,W, 5,sizeof(ULONG),W, },
+    {0,"NtEnumerateKey", 24, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
     {0,"NtEnumerateSystemEnvironmentValuesEx", 12, },
-    {0,"NtEnumerateValueKey", 24, 3,-4,W, 3,-5,W, 5,sizeof(ULONG),W, },
+    {0,"NtEnumerateValueKey", 24, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
     {0,"NtExtendSection", 8, 1,sizeof(LARGE_INTEGER),R, },
     {0,"NtFilterToken", 24, 2,sizeof(TOKEN_GROUPS),R, 3,sizeof(TOKEN_PRIVILEGES),R, 4,sizeof(TOKEN_GROUPS),R, 5,sizeof(HANDLE),W, },
     {0,"NtFindAtom", 12, 0,-1,R, 2,sizeof(USHORT),W, },
@@ -179,7 +179,7 @@ syscall_info_t syscall_info[] = {
     /* FIXME: Buffer and BufferEntries: */
     {0,"NtGetWriteWatch", 28, 4,sizeof(ULONG),W, 5,sizeof(ULONG),W, 6,sizeof(ULONG),W, },
     {0,"NtImpersonateAnonymousToken", 4, },
-    {0,"NtImpersonateClientOfPort", 8, 1,sizeof(PORT_MESSAGE),R, },
+    {0,"NtImpersonateClientOfPort", 8, 1,sizeof(PORT_MESSAGE),RP, },
     {0,"NtImpersonateThread", 12, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS, },
     {0,"NtInitializeRegistry", 4, 0,0,IB, },
     {0,"NtInitiatePowerAction", 16, 3,0,IB, },
@@ -296,13 +296,13 @@ syscall_info_t syscall_info[] = {
     {0,"NtRemoveProcessDebug", 8, },
     {0,"NtRenameKey", 8, 1,sizeof(UNICODE_STRING),R, },
     {0,"NtReplaceKey", 12, 0,sizeof(OBJECT_ATTRIBUTES),R, 2,sizeof(OBJECT_ATTRIBUTES),R, },
-    {0,"NtReplyPort", 8, 1,sizeof(PORT_MESSAGE),R, },
-    {0,"NtReplyWaitReceivePort", 16, 1,sizeof(ULONG),W, 2,sizeof(PORT_MESSAGE),R, 3,sizeof(PORT_MESSAGE),WP, },
-    {0,"NtReplyWaitReceivePortEx", 20, 1,sizeof(PVOID),W, 2,sizeof(PORT_MESSAGE),R, 3,sizeof(PORT_MESSAGE),WP, 4,sizeof(LARGE_INTEGER),R, },
+    {0,"NtReplyPort", 8, 1,sizeof(PORT_MESSAGE),RP, },
+    {0,"NtReplyWaitReceivePort", 16, 1,sizeof(ULONG),W, 2,sizeof(PORT_MESSAGE),RP, 3,sizeof(PORT_MESSAGE),WP, },
+    {0,"NtReplyWaitReceivePortEx", 20, 1,sizeof(PVOID),W, 2,sizeof(PORT_MESSAGE),RP, 3,sizeof(PORT_MESSAGE),WP, 4,sizeof(LARGE_INTEGER),R, },
     {0,"NtReplyWaitReplyPort", 8, 1,sizeof(PORT_MESSAGE),WP, },
     {0,"NtReplyWaitSendChannel", 12, 2,sizeof(CHANNEL_MESSAGE),W, },
     {0,"NtRequestDeviceWakeup", 4, },
-    {0,"NtRequestPort", 8, 1,sizeof(PORT_MESSAGE),R, },
+    {0,"NtRequestPort", 8, 1,sizeof(PORT_MESSAGE),RP, },
 #if 1
     /* FIXME PR 406356: suppressing undefined read I see on every app at process
      * termination on w2k3 vm (though not on wow64 laptop) where the last 16
@@ -311,7 +311,7 @@ syscall_info_t syscall_info[] = {
      */
     {0,"NtRequestWaitReplyPort", 12, 1,8,R, 2,sizeof(PORT_MESSAGE),WP, },
 #else
-    {0,"NtRequestWaitReplyPort", 12, 1,sizeof(PORT_MESSAGE),R, 2,sizeof(PORT_MESSAGE),WP, },
+    {0,"NtRequestWaitReplyPort", 12, 1,sizeof(PORT_MESSAGE),RP, 2,sizeof(PORT_MESSAGE),WP, },
 #endif
     {0,"NtRequestWakeupLatency", 4, },
     {0,"NtResetEvent", 8, 1,sizeof(ULONG),W, },
@@ -395,7 +395,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtWaitLowEventPair", 4, },
     {0,"NtWriteFile", 36, 4,sizeof(IO_STATUS_BLOCK),W, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
     {0,"NtWriteFileGather", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,sizeof(FILE_SEGMENT_ELEMENT),R, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
-    {0,"NtWriteRequestData", 24, 1,sizeof(PORT_MESSAGE),R, 5,sizeof(ULONG),W, },
+    {0,"NtWriteRequestData", 24, 1,sizeof(PORT_MESSAGE),RP, 5,sizeof(ULONG),W, },
     {0,"NtWriteVirtualMemory", 20, 4,sizeof(ULONG),W, },
     {0,"NtYieldExecution", 0, },
 
@@ -565,36 +565,50 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
     }
 }
 
-static bool handle_port_message_access(int sysnum, dr_mcontext_t *mc,
+static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                        uint arg_num,
                                        const syscall_arg_t *arg_info,
-                                       app_pc start, uint size) {
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+                                       app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* variable-length */
     PORT_MESSAGE pm;
-    if (safe_read(start, sizeof(pm), &pm)) {
-        /* guess which side of union is used */
-        if (pm.u1.s1.DataLength != 0)
+    if (TEST(SYSARG_WRITE, arg_info->flags) && pre) {
+        /* Struct is passed in uninit w/ max-len buffer after it.
+         * There is some ambiguity over the max:
+         * - NtCreatePort's MaxMessageSize: can that be any size?
+         *   do we need to query the port?
+         * - some sources claim the max is 0x130, instead of the 0x118 I have here
+         * - rpcrt4!LRPC_ADDRESS::ReceiveLotsaCalls seems to allocate 0x100
+         */
+        size = sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH;
+    } else if (safe_read(start, sizeof(pm), &pm)) {
+        if (pm.u1.s1.DataLength > 0)
             size = pm.u1.s1.TotalLength;
         else
             size = pm.u1.Length;
-        if (size < sizeof(pm))
+        ASSERT((ssize_t)size >= sizeof(pm) &&
+               size <= sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH,
+               "PORT_MESSAGE size invalid");
+        if ((ssize_t)size < sizeof(pm))
             size = sizeof(pm);
         LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
+    } else {
+        /* can't read real size, so report presumed-unaddr w/ struct size */
+        ASSERT(size == sizeof(PORT_MESSAGE), "invalid PORT_MESSAGE sysarg size");
     }
     check_sysmem(check_type, sysnum, start, size, mc, NULL);
     return true;
 }
 
-static bool handle_context_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+static bool handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
                                   const syscall_arg_t *arg_info,
-                                  app_pc start, uint size) {
+                                  app_pc start, uint size)
+{
 #if !defined(_X86_) || defined(X64)
 # error CONTEXT read handler is not yet implemented on non-x86
 #else /* defined(_X86_) */
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* The 'cxt' pointer will only be used for retrieving pointers
      * for the CONTEXT fields, hence we can do without safe_read.
      */
@@ -628,14 +642,12 @@ static bool handle_context_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
      */
 
     if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
-        ASSERT_NOT_TESTED("CONTEXT_DEBUG_REGISTERS flag is set");
 #define CONTEXT_NUM_DEBUG_REGS 6
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
                      mc, NULL);
     }
     if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
-        ASSERT_NOT_TESTED("CONTEXT_FLOATING_POINT flag is set");
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
                      mc, NULL);
@@ -685,7 +697,6 @@ static bool handle_context_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                      (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, mc, NULL);
     }
     if (TESTALL(CONTEXT_EXTENDED_REGISTERS, context_flags)) {
-        ASSERT_NOT_TESTED("CONTEXT_EXTENDED_REGISTERS flag is set");
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->ExtendedRegisters,
                      sizeof(cxt->ExtendedRegisters), mc, NULL);
@@ -694,12 +705,12 @@ static bool handle_context_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
 #endif
 }
 
-static bool handle_exception_record_access(int sysnum, dr_mcontext_t *mc,
+static bool handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                            uint arg_num,
                                            const syscall_arg_t *arg_info,
-                                           app_pc start, uint size) {
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+                                           app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const EXCEPTION_RECORD *er = (EXCEPTION_RECORD *)start;
     DWORD num_params;
     /* According to MSDN, NumberParameters stores the number of defined
@@ -721,12 +732,12 @@ static bool handle_exception_record_access(int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
-static bool handle_security_qos_access(int sysnum, dr_mcontext_t *mc,
+static bool handle_security_qos_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                        uint arg_num,
                                        const syscall_arg_t *arg_info,
-                                       app_pc start, uint size) {
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+                                       app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_QUALITY_OF_SERVICE *s = (SECURITY_QUALITY_OF_SERVICE *)start;
     /* The SECURITY_QUALITY_OF_SERVICE structure is
      * DWORD + DWORD + unsigned char + BOOLEAN
@@ -740,12 +751,12 @@ static bool handle_security_qos_access(int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
-static bool handle_security_descriptor_access(int sysnum, dr_mcontext_t *mc,
+static bool handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                               uint arg_num,
                                               const syscall_arg_t *arg_info,
-                                              app_pc start, uint size) {
-    uint check_type = (TEST(SYSARG_WRITE, arg_info->flags) ?
-                       MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS);
+                                              app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
     SECURITY_DESCRIPTOR_CONTROL flags;
     /* The SECURITY_DESCRIPTOR structure has two fields at the end (Sacl, Dacl)
@@ -769,28 +780,58 @@ static bool handle_security_descriptor_access(int sysnum, dr_mcontext_t *mc,
 }
 
 bool
-os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
-                             const syscall_arg_t *arg_info,
-                             app_pc start, uint size) {
+os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                 const syscall_arg_t *arg_info,
+                                 app_pc start, uint size)
+{
     if (TEST(SYSARG_PORT_MESSAGE, arg_info->flags)) {
-        return handle_port_message_access(sysnum, mc, arg_num, arg_info,
-                                          start, size);
+        return handle_port_message_access(true/*pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
     }
     if (TEST(SYSARG_CONTEXT, arg_info->flags)) {
-        return handle_context_access(sysnum, mc, arg_num, arg_info,
-                                     start, size);
+        return handle_context_access(true/*pre*/, sysnum, mc, arg_num,
+                                     arg_info, start, size);
     }
     if (TEST(SYSARG_EXCEPTION_RECORD, arg_info->flags)) {
-        return handle_exception_record_access(sysnum, mc, arg_num, arg_info,
-                                              start, size);
+        return handle_exception_record_access(true/*pre*/, sysnum, mc, arg_num,
+                                              arg_info, start, size);
     }
     if (TEST(SYSARG_SECURITY_QOS, arg_info->flags)) {
-        return handle_security_qos_access(sysnum, mc, arg_num, arg_info,
-                                          start, size);
+        return handle_security_qos_access(true/*pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
     }
     if (TEST(SYSARG_SECURITY_DESCRIPTOR, arg_info->flags)) {
-        return handle_security_descriptor_access(sysnum, mc, arg_num, arg_info,
-                                                 start, size);
+        return handle_security_descriptor_access(true/*pre*/, sysnum, mc, arg_num,
+                                                 arg_info, start, size);
     }
     return false;
 }
+
+bool
+os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                  const syscall_arg_t *arg_info,
+                                  app_pc start, uint size)
+{
+    if (TEST(SYSARG_PORT_MESSAGE, arg_info->flags)) {
+        return handle_port_message_access(false/*!pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
+    }
+    if (TEST(SYSARG_CONTEXT, arg_info->flags)) {
+        return handle_context_access(false/*!pre*/, sysnum, mc, arg_num,
+                                     arg_info, start, size);
+    }
+    if (TEST(SYSARG_EXCEPTION_RECORD, arg_info->flags)) {
+        return handle_exception_record_access(false/*!pre*/, sysnum, mc, arg_num,
+                                              arg_info, start, size);
+    }
+    if (TEST(SYSARG_SECURITY_QOS, arg_info->flags)) {
+        return handle_security_qos_access(false/*!pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
+    }
+    if (TEST(SYSARG_SECURITY_DESCRIPTOR, arg_info->flags)) {
+        return handle_security_descriptor_access(false/*!pre*/, sysnum, mc, arg_num,
+                                                 arg_info, start, size);
+    }
+    return false;
+}
+

@@ -2600,9 +2600,24 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
 }
 
 bool
-os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
-                             const syscall_arg_t *arg_info,
-                             app_pc start, uint size) {
+os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                 const syscall_arg_t *arg_info,
+                                 app_pc start, uint size)
+{
+    /* we use specific sysnum handlers in os_shadow_{pre,post}_syscall rather than
+     * flags on the general syscall entry tables, so nothing to do here
+     */
+    return false;
+}
+
+bool
+os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                  const syscall_arg_t *arg_info,
+                                  app_pc start, uint size)
+{
+    /* we use specific sysnum handlers in os_shadow_{pre,post}_syscall rather than
+     * flags on the general syscall entry tables, so nothing to do here
+     */
     return false;
 }
 

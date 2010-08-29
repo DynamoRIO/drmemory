@@ -26,6 +26,7 @@
 # * nudge = command to run perl script that takes -nudge for nudge
 # * toolbindir = location of DynamoRIO tools dir
 # * VMKERNEL = whether running on vmkernel
+# * USE_DRSYMS = whether running a DRSYMS build
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
 #
@@ -248,11 +249,20 @@ foreach (str ${patterns})
   # evaluate conditionals
   # cmake's regex matcher is maximal unfortunately: for now we disallow !
   # inside conditional
-  if (WIN32)
+  if (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN") # cygwin
+    # if !CYGWIN is NOT present then counts as Windows
     string(REGEX REPLACE "(^|\n)!if UNIX[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-  elseif (UNIX)
     string(REGEX REPLACE "(^|\n)!if WINDOWS[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-  endif (WIN32)
+  else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN")
+    if (WIN32)
+      string(REGEX REPLACE "(^|\n)!if UNIX[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)!if CYGWIN[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+    elseif (UNIX)
+      string(REGEX REPLACE "(^|\n)!if WINDOWS[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)!if CYGWIN[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+    endif (WIN32)
+  endif (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN")
+
   string(REGEX REPLACE "(^|\n)!(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
 endforeach (str)
 

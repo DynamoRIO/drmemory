@@ -728,6 +728,12 @@ VOID
     IN ULONG Reserved
     );
 
+#ifdef X64
+# define PORT_MAXIMUM_MESSAGE_LENGTH 512
+#else
+# define PORT_MAXIMUM_MESSAGE_LENGTH 256
+#endif
+
 /***************************************************************************
  * from ntifs.h
  */

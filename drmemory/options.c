@@ -43,6 +43,7 @@ drmemory_options_t options = {
     true,      /* stderr */
     false,     /* pause_at_assert */
     false,     /* pause_via_loop */
+    false,     /* ignore_asserts */
     0x9000,    /* stack_swap_threshold: better too small than too big */
 #ifdef TOOL_DR_MEMORY
     20,        /* callstack_max_frames */
@@ -58,19 +59,9 @@ drmemory_options_t options = {
     false,     /* leaks_only */
     true,      /* shadowing */
     true,      /* track_allocs */
-#ifdef TOOL_DR_MEMORY
-    false,     /* check_leaks: uses too much space by default
-                * turn on once have binary callstacks (PR 424179)?
-                */
-#else
     true,      /* check_leaks */
-#endif
     true,      /* ignore_early_leaks */
-#ifdef TOOL_DR_MEMORY
-    false,     /* possible_leaks */
-#else
     true,      /* possible_leaks */
-#endif
     true,      /* check_leaks_on_destroy */
     true,      /* midchunk_size_ok */
     true,      /* midchunk_new_ok */
@@ -341,6 +332,8 @@ options_init(const char *opstr)
             options.pause_at_assert = true;
         } else if (stri_eq(word, "-pause_via_loop")) {
             options.pause_via_loop = true;
+        } else if (stri_eq(word, "-ignore_asserts")) {
+            options.ignore_asserts = true;
         } else if (stri_eq(word, "-delay_frees")) {
             s = get_option_word(s, word);
             if (s == NULL || sscanf(word, "%d", &options.delay_frees) <= 0)

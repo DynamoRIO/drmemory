@@ -86,6 +86,10 @@ typedef struct _syscall_info_t {
 
 extern syscall_info_t syscall_info[];
 
+#define SYSARG_CHECK_TYPE(flags, pre) \
+    (TEST(SYSARG_WRITE, (flags)) ? \
+    ((pre) ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE) : MEMREF_CHECK_DEFINEDNESS)
+
 void
 syscall_os_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base));
 
@@ -136,8 +140,15 @@ vmkuw_shadow_post_syscall(void *drcontext, int sysnum);
  * (e.g. OS-specific structures) and we should skip the standard check
  */
 bool
-os_handle_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
-                             const syscall_arg_t *arg_info,
-                             app_pc start, uint size);
+os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                 const syscall_arg_t *arg_info,
+                                 app_pc start, uint size);
 
+/* returns true if the given argument was processed in a non-standard way
+ * (e.g. OS-specific structures) and we should skip the standard check
+ */
+bool
+os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+                                  const syscall_arg_t *arg_info,
+                                  app_pc start, uint size);
 #endif /* _SYSCALL_OS_H_ */

@@ -25,8 +25,5 @@ Exiting
 :::Dr.Memory:::       0 unique,     0 total uninitialized access(es)
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
-# FIXME PR 575445: these are suppressed but only if have callstack to match
-# so they show up w/o -check_leaks!
-# They also seem nondet whether real or possible leaks
-:::Dr.Memory:::       0 total,      0 byte(s) of leak(s)
-:::Dr.Memory:::       3 total,     72 byte(s) of possible leak(s)
+:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of leak(s)
+:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)

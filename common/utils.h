@@ -118,6 +118,7 @@ extern bool op_print_stderr;
 extern uint op_verbose_level;
 extern bool op_pause_at_assert;
 extern bool op_pause_via_loop;
+extern bool op_ignore_asserts;
 extern file_t f_global;
 #ifdef USE_DRSYMS
 extern file_t f_results;
@@ -227,7 +228,7 @@ extern file_t f_results;
         NOTIFY_ERROR("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
                      dr_get_thread_id(dr_get_current_drcontext()), \
                      __FILE__,  __LINE__, #x, msg); \
-        drmemory_abort(); \
+        if (!op_ignore_asserts) drmemory_abort(); \
     } \
 } while (0)
 # define ASSERT_NOT_TESTED(msg) do { \

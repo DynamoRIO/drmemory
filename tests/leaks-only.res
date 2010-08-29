@@ -37,7 +37,9 @@ Error #4: LEAK 16 direct bytes + 48 indirect bytes
 malloc.c:228
 Error #5: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
-Error #6: LEAK 16 direct bytes + 16 indirect bytes
+Error #6: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:233
+Error #7: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:234
 !endif
 !if UNIX
@@ -45,6 +47,8 @@ Error #2: LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:196
 Error #3: LEAK 16 direct bytes + 48 indirect bytes
 malloc.c:228
-Error #4: LEAK 16 direct bytes + 16 indirect bytes
+Error #4: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:233
+Error #5: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:234
 !endif

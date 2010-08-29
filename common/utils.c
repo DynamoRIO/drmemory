@@ -41,6 +41,7 @@ bool op_print_stderr = true;
 uint op_verbose_level;
 bool op_pause_at_assert;
 bool op_pause_via_loop;
+bool op_ignore_asserts;
 file_t f_global = INVALID_FILE;
 
 /***************************************************************************

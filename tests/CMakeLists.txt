@@ -198,6 +198,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
     -D respat:STRING=${src_param_pattern}/${test}.res
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
+    -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D toolbindir:STRING=${DR_param_pattern}/../bin32
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
@@ -228,7 +229,7 @@ newtest(registers registers.c)
 # linux glibc backtrace on hashtable curiosities causing problems:
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason
-newtest_ex(cs2bug cs2bug.cpp "" "-check_leaks" "" OFF)
+newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -259,8 +260,7 @@ if (NOT TOOL_DR_HEAPSTAT)
   # PR 464804: test runtime options
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
-  newtest_nobuild(leaks-malloc malloc "" "-check_leaks" "" OFF)
-  newtest_nobuild(leaks-only malloc "" "-leaks_only;-check_leaks" "" OFF)
+  newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF)
 
   # FIXME: PR 477111 - test suppression file generation via multiple runs
   if (UNIX)
@@ -275,11 +275,11 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(suppress suppress.c ""
     "-suppress;${supp_file};-check_leaks" "" OFF)
 
-  set(nudge_test_args "-check_leaks;-possible_leaks;")
+  set(nudge_test_args "")
 
   if (UNIX)
     # test -skip_results + -results (PR 575481)
-    newtest_nobuild(skip-results malloc "" "-skip_results;-check_leaks" "" ON)
+    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON)
   endif (UNIX)
 
   # For -perturb_only we do not have a .res file so that runtest.cmake

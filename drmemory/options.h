@@ -56,6 +56,9 @@ typedef struct _drmemory_options_t {
     /* PR 406725: on Linux, infinite loop rather than waiting for stdin */
     bool pause_via_loop;
 
+    /* Do not abort on asserts */
+    bool ignore_asserts;
+
     /* This is signed so we don't have to cast on all uses */
     int stack_swap_threshold;
 

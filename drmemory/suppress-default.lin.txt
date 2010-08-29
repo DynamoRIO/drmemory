@@ -79,6 +79,10 @@ libc.so.*!_Unwind_IteratePhdrCallback
 POSSIBLE LEAK
 ld-linux.so.2!allocate_dtv
 
+# with no debug symbols this shows up as:
+POSSIBLE LEAK
+ld-linux.so.2!_dl_allocate_tls
+
 ##################################################
 # PR 564660: libz optimized code
 # Xref http://www.zlib.net/zlib_faq.html#faq36

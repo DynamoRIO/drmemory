@@ -848,7 +848,7 @@ report_summary_to_file(file_t f, bool stderr_too)
                 }
                 if (i == ERROR_POSSIBLE_LEAK && !options.possible_leaks) {
                     NOTIFY_COND(notify, f,
-                                "         (re-run with \"-check_leaks -possible_leaks\""
+                                "         (re-run with \"-possible_leaks\""
                                 " for details)"NL);
                 }
             }
@@ -867,8 +867,7 @@ report_summary_to_file(file_t f, bool stderr_too)
     NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
                 num_reachable_leaks);
     if (!options.show_reachable) {
-        NOTIFY_COND(notify, f, "         (re-run with \"-check_leaks "
-                    "-show_reachable\" for details)"NL);
+        NOTIFY_COND(notify, f, "         (re-run with \"-show_reachable\" for details)"NL);
     }
     NOTIFY_COND(notify, f, "  %5d error(s) beyond -report_max"NL,
                 num_throttled_errors);

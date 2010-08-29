@@ -68,16 +68,10 @@ may consider it correct behavior, with the \p -no_check_leaks_on_destroy
 option.
 
 Dr. Memory reports the number of leaks, possible leaks, and still-reachable
-allocations. \if drmemory By default, only the count of leaks is reported.
-To ask Dr. Memory to record the callstack at which each leaked allocation
-was created, use the option \p -check_leaks.  To further do so for possible
-leaks, additionally add the \p -possible_leaks option.  \endif
-\if drheapstat The callstack for the allocation of each leak and possible leak
-is gathered by default.  \endif
-To also show callstacks for reachable
-allocations, add the \p -show_reachable option in addition to \p
--check_leaks.  Now, leaks will show up as full error reports in the results
-file.  Reachable allocations will be in the \p global.pid.log file inside
+allocations.  The callstack for the allocation of each leak and possible leak
+is gathered by default and listed with other errors in the results file.
+To also see all of the reachable allocations, use the \p -show_reachable 
+runtime option.  Reachable allocations will be in the \p global.pid.log file inside
 the log directory, labeled as <tt>REACHABLE LEAK</tt>.
 
 Here are example lines from Dr. Memory's output summary:
@@ -86,7 +80,7 @@ Here are example lines from Dr. Memory's output summary:
 :::Dr.Memory:::       9 unique,   282 total,   5860 byte(s) of leak(s)
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
 :::Dr.Memory:::     125 still-reachable allocation(s)
-:::Dr.Memory:::          (re-run with "-check_leaks -show_reachable" for details)
+:::Dr.Memory:::          (re-run with "-show_reachable" for details)
 \endcode
 
 There are known sources of false positives where a memory allocation may

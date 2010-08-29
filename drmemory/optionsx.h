@@ -53,13 +53,13 @@ OPTION("-v", "", "Display verbose information in the Dr. Memory front end",
        "Display verbose information in the Dr. Memory front end")
 
 /* Client options */
-OPTION("-check_leaks", "false", "Whether to store leak callstacks",
-       "Whether to store callstacks for each allocation in order to report them when leaks are detected.")
+OPTION("-[no_]check_leaks", "true", "Whether to store leak callstacks",
+       "Whether to store callstacks for each allocation in order to report them when leaks are detected.  If this option is disabled, the count of leaks will be shown, but leaks will not be listed individually in the results file.")
 OPTION("-[no_]ignore_early_leaks", "true", "Whether to ignore pre-app leaks",
        "Whether to ignore leaks from system code prior to Dr. Memory taking over.")
 OPTION("-[no_]check_leaks_on_destroy", "true", "Whether to report leaks on heap destruction",
        "If enabled, when a heap is destroyed (HeapDestroy on Windows), report any live allocations inside it as possible leaks.")
-OPTION("-possible_leaks", "false", "Show possible-leak callstacks?",
+OPTION("-[no_]possible_leaks", "true", "Show possible-leak callstacks?",
        "Whether to list possibly-reachable allocations when leak checking.  Requires -check_leaks.")
 OPTION("-[no_]midchunk_size_ok", "true", "Consider mid-chunk post-size pointers legitimate",
        "Consider allocations reached by a mid-allocation pointer that points past a size field at the head of the allocation to be reachable instead of possibly leaked.  Currently this option looks for a very specific pattern.  If your application's header is slightly different please contact the authors about generalizing this check.")
@@ -98,6 +98,8 @@ OPTION("-verbose <N>", "1", "Verbosity level in log files",
        "Verbosity level in log files.  Primarily for debugging of Dr. Memory itself.")
 OPTION("-quiet", "false", "Suppress stderr messages",
        "Suppress stderr messages and, on Windows, popup messages.")
+OPTION("-ignore_asserts", "false", "Do not abort on debug-build asserts",
+       "Display, but do not abort, on asserts in debug build (in release build asserts as automatically disabled).")
 #ifdef USE_DRSYMS
 OPTION("-batch", "false", "Do not invoke notepad at the end",
        "Do not launch notepad with the results file at application exit.")

@@ -59,8 +59,11 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 
-The changes between version 1.2.2 and 1.2.1 include:
+The changes between version 1.3.0 and 1.2.1 include:
+ - Enabled -check_leaks and -possible_leaks by default (Issue 8)
  - Improved suppression support: support for vertical wildcards "..."
+ - Locate target app on path on Linux (Issue 33)
+ - Various bug fixes
 
 The changes between version 1.2.1 and 1.2.0 include:
  - Fix bug in symbol lookup causing debug build asserts

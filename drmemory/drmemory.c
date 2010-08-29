@@ -104,6 +104,7 @@ drmem_options_init(const char *opstr)
     op_verbose_level = options.verbose;
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;
+    op_ignore_asserts = options.ignore_asserts;
 }
 
 /***************************************************************************

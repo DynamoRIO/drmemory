@@ -29,3 +29,9 @@ LEAK
 ntdll.dll!RtlAllocateActivationContextStack
 KERNEL32.dll!CreateRemoteThread
 KERNEL32.dll!CreateThread
+
+# sometimes it shows up as a possible leak
+POSSIBLE LEAK
+ntdll.dll!RtlAllocateActivationContextStack
+KERNEL32.dll!CreateRemoteThread
+KERNEL32.dll!CreateThread

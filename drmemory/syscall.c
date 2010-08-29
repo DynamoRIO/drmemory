@@ -257,14 +257,21 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
     }
 }
 
+static inline bool
+sysarg_invalid(syscall_arg_t *arg)
+{
+    return (arg->param == 0 && arg->size == 0 && arg->flags == 0);
+}
+
 static void
-process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                                 syscall_info_t *sysinfo)
+process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
+                                     syscall_info_t *sysinfo)
 {
     app_pc start;
-    uint size, num_args;
+    ptr_uint_t size;
+    uint num_args, write_check;
     int i, last_param = -1;
-    LOG(2, "processing system call #%d %s\n", sysnum, sysinfo->name);
+    LOG(2, "processing pre system call #%d %s\n", sysnum, sysinfo->name);
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
     /* Treat all parameters as IN.
@@ -280,25 +287,25 @@ process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
         check_sysparam_defined(sysnum, i, mc, argsz);
     }
     for (i=0; i<num_args; i++) {
-        if (sysinfo->arg[i].param == 0 &&
-            sysinfo->arg[i].size == 0 &&
-            sysinfo->arg[i].flags == 0)
+        write_check = MEMREF_WRITE;
+        if (sysarg_invalid(&sysinfo->arg[i]))
             break;
+
+        /* The length written may not match that requested, so we check whether
+         * addressable at pre-syscall point but only mark as defined (i.e.,
+         * commit the write) at post-syscall when know true length.  This also
+         * waits to determine syscall success before committing, but it opens up
+         * more possibilities for races (PR 408540).  When the pre and post
+         * sizes differ, we indicate what the post-syscall write size is via a
+         * second entry w/ the same param#.
+         * Xref PR 408536.
+         */
         if (sysinfo->arg[i].param == last_param) {
-            /* FIXME PR 408536: the length written may not match that
-             * requested: we should check whether addressable at
-             * pre-syscall point but only mark
-             * as defined (i.e., commit the write) at post-syscall when know
-             * true length.  We would handle all writes this way, as it would
-             * wait to determine syscall success before committing,
-             * but it opens up more possibilities for races so we
-             * instead plan to only do so for user-set sizes.  We
-             * indicate what the post-syscall write size is via a
-             * second entry w/ the same param#.
-             */
+            /* Only used in post-syscall */
             continue;
         }
         last_param = sysinfo->arg[i].param;
+
         if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags))
             continue;
         start = (app_pc) dr_syscall_get_param(drcontext, sysinfo->arg[i].param);
@@ -314,6 +321,9 @@ process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
                 ((uint) dr_syscall_get_param(drcontext, -sysinfo->arg[i].size));
             if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
                 safe_read((void *)size, sizeof(size), &size);
+            } else {
+                ASSERT(!TEST(SYSARG_POST_SIZE_IO_STATUS, sysinfo->arg[i].flags),
+                       "post-io flag should be on dup entry only");
             }
         }
         /* FIXME PR 406355: we don't record which params are optional 
@@ -321,22 +331,81 @@ process_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
          * we should check here since harder to undo post-syscall on failure.
          */
         if (start != NULL && size > 0) {
-            bool skip = os_handle_syscall_arg_access(sysnum, mc, i,
-                                                     &sysinfo->arg[i],
-                                                     start, size);
+            bool skip = os_handle_pre_syscall_arg_access(sysnum, mc, i,
+                                                         &sysinfo->arg[i],
+                                                         start, size);
 
             /* pass syscall # as pc for reporting purposes */
             /* we treat in-out read-and-write as simply read, since if
              * not defined we'll report and then mark as defined anyway.
              */
-            /* FIXME PR 408536: for write, check addressability here and do not
-             * commit the write until post-syscall
-             */
             if (!skip) {
                 check_sysmem((TEST(SYSARG_WRITE, sysinfo->arg[i].flags) ?
-                             MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS),
+                             MEMREF_CHECK_ADDRESSABLE : MEMREF_CHECK_DEFINEDNESS),
                              sysnum, start, size, mc, NULL);
             }
+        }
+    }
+}
+
+static void
+process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
+                                      syscall_info_t *sysinfo)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    app_pc start;
+    ptr_uint_t size;
+    uint num_args;
+    int i, last_param = -1;
+    LOG(2, "processing post system call #%d %s\n", sysnum, sysinfo->name);
+    num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
+                               sysinfo->args_size);
+    for (i=0; i<num_args; i++) {
+        if (sysarg_invalid(&sysinfo->arg[i]))
+            break;
+        ASSERT(i < SYSCALL_NUM_ARG_STORE, "not storing enough args");
+        if (!TEST(SYSARG_WRITE, sysinfo->arg[i].flags))
+            continue;
+        ASSERT(!TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags),
+               "inlined bool should always be read, not write");
+        start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
+        if (sysinfo->arg[i].size == SYSARG_SIZE_CSTRING) {
+            /* FIXME PR 408539: see pre notes */
+            size = 0; /* for now */
+        } else if (sysinfo->arg[i].size == SYSARG_POST_SIZE_RETVAL) {
+            size = dr_syscall_get_result(drcontext);
+        } else {
+            size = (sysinfo->arg[i].size > 0) ? sysinfo->arg[i].size :
+                ((uint) pt->sysarg[-sysinfo->arg[i].size]);
+            if (TEST(SYSARG_POST_SIZE_IO_STATUS, sysinfo->arg[i].flags)) {
+#ifdef WINDOWS
+                IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) size;
+                ULONG sz;
+                ASSERT(sizeof(status->Information) == sizeof(sz), "");
+                safe_read((void *)(&status->Information), sizeof(sz), &sz);
+                size = sz;
+#else
+                ASSERT(false, "linux should not have io_status flag set");
+#endif
+            } else if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
+                safe_read((void *)size, sizeof(size), &size);
+            }
+        }
+        if (sysinfo->arg[i].param == last_param) {
+            /* For a double entry, the 2nd indicates the actual written size.
+             * If has double entry, we assume no os-specific handling.
+             */
+            if (start != NULL && size > 0)
+                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
+            continue;
+        }
+        last_param = sysinfo->arg[i].param;
+        if (start != NULL && size > 0) {
+            bool skip = os_handle_post_syscall_arg_access(sysnum, mc, i,
+                                                          &sysinfo->arg[i],
+                                                          start, size);
+            if (!skip)
+                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
         }
     }
 }
@@ -370,7 +439,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     sysinfo = syscall_lookup(sysnum);
     if (sysinfo != NULL) {
         if (!options.leaks_only && options.shadowing)
-            process_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
+            process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
         /* now do the syscall-specific handling we need */
         handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
     } else {
@@ -400,22 +469,17 @@ event_post_syscall(void *drcontext, int sysnum)
         dr_mcontext_t mc;
         dr_get_mcontext(drcontext, &mc, NULL);
         handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
+        /* XXX: SYS_mmap, SYS_mmap2, and SYS_mremap success does not
+         * fit this <0 check: fortunately they don't have OUT args.
+         */
         if (dr_syscall_get_result(drcontext) < 0) {
-            /* FIXME PR 408540: the shadow writes we enacted in
-             * event_pre_syscall() should be considered to have NOT happened.
-             * We can detect some with checks
-             * on known IN args that will cause failure (NULL, etc.).
-             * How handle races though?  Xref all the discussion over malloc/free
-             * failure races, possibility of locking, and whether better to
-             * undo or delay.
-             */
             LOG(1, "WARNING: system call %i %s failed\n", sysnum,
                 (sysinfo != NULL) ? sysinfo->name : "<unknown>");
+        } else {
+            /* commit the writes via MEMREF_WRITE */
+            if (!options.leaks_only && options.shadowing)
+                process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
         }
-        /* FIXME PR 408536: even when successful, the # of bytes written may not
-         * match that requested by the IN args (e.g., when reading from a file).
-         * See notes in pre-syscall.
-         */
     } else if (!options.leaks_only && options.shadowing) {
         handle_post_unknown_syscall(drcontext, sysnum, pt);
     }
