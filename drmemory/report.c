@@ -449,6 +449,7 @@ open_and_read_suppression_file(const char *fname, bool is_default)
         ELOGF(0, f_results, "Recorded %d suppression(s) from %s %s"NL,
               num_suppressions - prev_suppressions, label, fname);
 #endif
+        dr_close_file(f);
     }
 }
 
