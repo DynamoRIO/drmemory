@@ -130,6 +130,84 @@ drmemory_options_t options = {
 #endif /* TOOL_DR_HEAPSTAT */
 };
 
+/* XXX PR 487993: add max value to OPTION_UINT macro, and min+max to OPTION_INT,
+ * and use optionsx.h to construct option parsing
+ */
+static const drmemory_options_t max_option_val = {
+    {'\0'},    /* logdir */
+    false,     /* resfile_out */
+    32,        /* verbose */
+    false,     /* stderr */
+    false,     /* pause_at_assert */
+    false,     /* pause_via_loop */
+    false,     /* ignore_asserts */
+    UINT_MAX,  /* stack_swap_threshold: better too small than too big */
+    4096,      /* callstack_max_frames */
+    false,     /* leaks_only */
+    false,     /* shadowing */
+    false,     /* track_allocs */
+    false,     /* check_leaks */
+    false,     /* ignore_early_leaks */
+    false,     /* possible_leaks */
+    false,     /* check_leaks_on_destroy */
+    false,     /* midchunk_size_ok */
+    false,     /* midchunk_new_ok */
+    false,     /* midchunk_inheritance_ok */
+    false,     /* midchunk_string_ok */
+    false,     /* show_reachable */
+    false,     /* perturb */
+    false,     /* perturb_only */
+    UINT_MAX,  /* perturb_max */
+    UINT_MAX,  /* perturb_seed */
+    false,     /* check_invalid_frees */
+    false,     /* count_leaks */
+    false,     /* warn_null_ptr */
+    false,     /* track_heap */
+    32*1024,   /* redzone_size */
+    false,     /* size_in_redzone */
+    false,     /* check_non_moves */
+    false,     /* check_cmps */
+    false,     /* pause_at_unaddressable */
+    false,     /* pause_at_uninitialized */
+    false,     /* fastpath */
+    false,     /* esp_fastpath */
+    false,     /* shared_slowpath */
+    false,     /* loads_use_table */
+    false,     /* stores_use_table */
+    16,        /* num_spill_slots */
+    false,     /* check_ignore_unaddr, using dynamic checks from PR 578892 */
+    false,     /* thread_logs */
+    false,     /* summary */
+    false,     /* statistics */
+    UINT_MAX,  /* stats_dump_interval */
+    INT_MAX,   /* report_max */
+    INT_MAX,   /* report_leak_max */
+    {'\0'},    /* suppress_file */
+    false,     /* use_default_suppress */
+    UINT_MAX,  /* delay_frees */
+    false,     /* define_unknown_regions */
+    false,     /* replace_libc */
+    {'\0'},    /* libc_addrs */
+    false,     /* check_push */
+    false,     /* single_arg_slowpath */
+    {'\0'},    /* prctl_whitelist */
+    false,     /* repstr_to_loop */
+#ifdef TOOL_DR_HEAPSTAT
+    false,     /* time_instrs */
+    false,     /* time_allocs */
+    false,     /* time_bytes */
+    false,     /* time_clock */
+    false,     /* dump */
+    UINT_MAX,  /* dump_freq */
+    UINT_MAX,  /* snapshots: must be power of 2 */
+    99,        /* peak_threshold */
+    false,     /* staleness */
+    UINT_MAX,  /* stale_granularity */
+    false,     /* stale_blind_store */
+    false,     /* stale_ignore_sp */
+#endif /* TOOL_DR_HEAPSTAT */
+};
+
 /* If the user sets a value, we disable our dynamic adjustments */
 bool stack_swap_threshold_fixed;
 
@@ -141,16 +219,56 @@ usage_error(const char *msg, const char *submsg)
 }
 
 static void
-option_error(const char *whichop)
+option_error(const char *whichop, const char *msg)
 {
-    NOTIFY_ERROR("Usage error on option \"%s\": aborting\n", whichop);
+    NOTIFY_ERROR("Usage error on option \"%s\"%s%s: aborting\n",
+                 whichop, (msg[0] == '\0') ? "" : ": ", msg);
     NOTIFY_NO_PREFIX("Dr. Memory options:\n");
 #define OPTION(nm, def, short, long) \
     NOTIFY_NO_PREFIX("  %-30s [%8s]  %s\n", nm, def, short);
-#include "optionsx.h"
+    /* we use <> so other tools can override the optionsx.h in "." */
+#include <optionsx.h>
 #undef OPTION
     /* FIXME: have an option that asks for all messages to messageboxes */
     dr_abort();
+    ASSERT(false, "should not get here");
+}
+
+static inline const char *
+option_read_uint(const char *s, char *word,
+                 uint *var, const char *opname, uint maxval)
+{
+    ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
+    s = get_option_word(s, word);
+    if (s == NULL)
+        option_error(opname, "missing value");
+    /* %u allows negative so we explicitly check */
+    if (word[0] == '-')
+        option_error(opname, "negative value not allowed");
+    /* allow hex: must read it first, else 0 in 0x will be taken */
+    if (sscanf(word, "0x%x", var) != 1 &&
+        sscanf(word, "%u", var) != 1)
+        option_error(opname, "");
+    if (*var > maxval)
+        option_error(opname, "value is too large");
+    return s;
+}
+
+static inline const char *
+option_read_int(const char *s, char *word,
+                int *var, const char *opname, int minval, int maxval)
+{
+    ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
+    s = get_option_word(s, word);
+    if (s == NULL)
+        option_error(opname, "missing value");
+    /* allow hex: must read it first, else 0 in 0x will be taken */
+    if (sscanf(word, "0x%x", var) != 1 &&
+        sscanf(word, "%d", var) != 1)
+        option_error(opname, "");
+    if (*var < minval || *var > maxval)
+        option_error(opname, "value is outside allowed range");
+    return s;
 }
 
 void
@@ -161,61 +279,57 @@ options_init(const char *opstr)
 #ifdef TOOL_DR_HEAPSTAT
     uint time_args = 0;
 #endif
-    /* FIXME PR 487993: use optionsx.h to construct option parsing */
+    /* FIXME PR 487993: use optionsx.h to construct option parsing.
+     * Could also add an option parsing library as a DR Extension.
+     */
     for (s = get_option_word(opstr, word); s != NULL; s = get_option_word(s, word)) {
         if (stri_eq(word, "-verbose")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.verbose) <= 0)
-                option_error("-verbose");
+            s = option_read_uint(s, word, &options.verbose, "-verbose",
+                                 max_option_val.verbose);
         } else if (stri_eq(word, "-resfile_out")) {
             options.resfile_out = true;
         } else if (stri_eq(word, "-report_max")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.report_max) <= 0)
-                option_error("-report_max");
+            s = option_read_int(s, word, &options.report_max, "-report_max",
+                                -1, max_option_val.report_max);
         } else if (stri_eq(word, "-report_leak_max")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.report_leak_max) == -1)
-                option_error("-report_leak_max");
+            s = option_read_int(s, word, &options.report_max, "-report_leak_max",
+                                -1, max_option_val.report_leak_max);
         } else if (stri_eq(word, "-suppress")) {
             s = get_option_word(s, word);
             if (s == NULL)
-                option_error("-suppress");
+                option_error("-suppress", "missing filename");
             dr_snprintf(options.suppress_file, BUFFER_SIZE_ELEMENTS(options.suppress_file),
                         "%s", word);
             NULL_TERMINATE_BUFFER(options.suppress_file);
         } else if (stri_eq(word, "-logdir")) {
             s = get_option_word(s, word);
             if (s == NULL)
-                option_error("-logdir");
+                option_error("-logdir", "missing directory");
             dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "%s", word);
             NULL_TERMINATE_BUFFER(options.logdir);
         } else if (stri_eq(word, "-libc_addrs")) {
             s = get_option_word(s, word);
             if (s == NULL)
-                option_error("-libc_addrs");
+                option_error("-libc_addrs", "missing value");
             dr_snprintf(options.libc_addrs, BUFFER_SIZE_ELEMENTS(options.libc_addrs),
                         "%s", word);
             NULL_TERMINATE_BUFFER(options.libc_addrs);
         } else if (stri_eq(word, "-callstack_max_frames")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.callstack_max_frames) <= 0)
-                option_error("-callstack_max_frames");
+            s = option_read_uint(s, word, &options.callstack_max_frames,
+                                 "-callstack_max_frames",
+                                 max_option_val.callstack_max_frames);
         } else if (stri_eq(word, "-stack_swap_threshold")) {
-            s = get_option_word(s, word);
-            if (s == NULL ||
-                ((sscanf(word, ""PIFX"", &options.stack_swap_threshold) <= 0 ) &&
-                 (sscanf(word, "%d", &options.stack_swap_threshold) <= 0)))
-                option_error("-stack_swap_threshold");
+            s = option_read_int(s, word, &options.stack_swap_threshold,
+                                "-stack_swap_threshold",
+                                256, max_option_val.stack_swap_threshold);
             stack_swap_threshold_fixed = true;
         } else if (stri_eq(word, "-redzone_size")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.redzone_size) <= 0)
-                option_error("-redzone_size");
+            s = option_read_uint(s, word, &options.redzone_size, "-redzone_size",
+                                 max_option_val.redzone_size);
         } else if (stri_eq(word, "-stats_dump_interval")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.stats_dump_interval) <= 0)
-                option_error("-stats_dump_interval");
+            s = option_read_uint(s, word, &options.stats_dump_interval,
+                                 "-stats_dump_interval",
+                                 max_option_val.stats_dump_interval);
         } else if (stri_eq(word, "-size_in_redzone")) {
             options.size_in_redzone = true;
         } else if (stri_eq(word, "-no_size_in_redzone")) {
@@ -313,9 +427,8 @@ options_init(const char *opstr)
         } else if (stri_eq(word, "-no_stores_use_table")) {
             options.stores_use_table = false;
         } else if (stri_eq(word, "-num_spill_slots")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.num_spill_slots) <= 0)
-                option_error("-num_spill_slots");
+            s = option_read_uint(s, word, &options.num_spill_slots, "-num_spill_slots",
+                                 max_option_val.num_spill_slots);
         } else if (stri_eq(word, "-statistics")) {
             options.statistics = true;
         } else if (stri_eq(word, "-no_statistics")) {
@@ -335,9 +448,8 @@ options_init(const char *opstr)
         } else if (stri_eq(word, "-ignore_asserts")) {
             options.ignore_asserts = true;
         } else if (stri_eq(word, "-delay_frees")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.delay_frees) <= 0)
-                option_error("-delay_frees");
+            s = option_read_uint(s, word, &options.delay_frees, "-delay_frees",
+                                 max_option_val.delay_frees);
         } else if (stri_eq(word, "-define_unknown_regions")) {
             options.define_unknown_regions = true;
         } else if (stri_eq(word, "-no_define_unknown_regions")) {
@@ -374,13 +486,11 @@ options_init(const char *opstr)
         } else if (stri_eq(word, "-no_perturb_only")) {
             options.perturb_only = false;
         } else if (stri_eq(word, "-perturb_max")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.perturb_max) <= 0)
-                option_error("-perturb_max");
+            s = option_read_uint(s, word,  &options.perturb_max, "-perturb_max",
+                                 max_option_val.perturb_max);
         } else if (stri_eq(word, "-perturb_seed")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.perturb_seed) <= 0)
-                option_error("-perturb_seed");
+            s = option_read_uint(s, word,  &options.perturb_seed, "-perturb_seed",
+                                 max_option_val.perturb_seed);
 #endif
         } else if (stri_eq(word, "-check_push")) {
             options.check_push = true;
@@ -397,7 +507,7 @@ options_init(const char *opstr)
         } else if (stri_eq(word, "-prctl_whitelist")) {
             s = get_option_word(s, word);
             if (s == NULL)
-                option_error("-prctl_whitelist");
+                option_error("-prctl_whitelist", "missing argument");
             dr_snprintf(options.prctl_whitelist,
                         BUFFER_SIZE_ELEMENTS(options.prctl_whitelist),
                         "%s", word);
@@ -432,33 +542,27 @@ options_init(const char *opstr)
         } else if (stri_eq(word, "-no_dump")) {
             options.dump = false;
         } else if (stri_eq(word, "-dump_freq")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.dump_freq) == -1)
-                usage_error("-dump_freq", "");
+            s = option_read_uint(s, word,  &options.dump_freq, "-dump_freq",
+                                 max_option_val.dump_freq);
             if (options.dump_freq == 0)
                 options.dump = false;
             else
                 options.dump = true;
         } else if (stri_eq(word, "-snapshots")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.snapshots) == -1)
-                usage_error("-snapshots", "");
+            s = option_read_uint(s, word,  &options.snapshots, "-snapshots",
+                                 max_option_val.snapshots);
             if ((options.snapshots & (~(options.snapshots-1))) != options.snapshots)
                 usage_error("-snapshots must be power of 2", "");
         } else if (stri_eq(word, "-peak_threshold")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.peak_threshold) == -1)
-                usage_error("-peak_threshold", "");
+            s = option_read_uint(s, word,  &options.peak_threshold, "-peak_threshold",
+                                 max_option_val.peak_threshold);
         } else if (stri_eq(word, "-staleness")) {
             options.staleness = true;
         } else if (stri_eq(word, "-no_staleness")) {
             options.staleness = false;
         } else if (stri_eq(word, "-stale_granularity")) {
-            s = get_option_word(s, word);
-            if (s == NULL || sscanf(word, "%d", &options.stale_granularity) == -1)
-                usage_error("-stale_granularity", "");
-            if (options.stale_granularity <= 0)
-                usage_error("-stale_granularity must be > 0", "");
+            s = option_read_uint(s, word,  &options.stale_granularity,
+                                 "-stale_granularity", max_option_val.stale_granularity);
         } else if (stri_eq(word, "-stale_blind_store")) {
             options.stale_blind_store = true;
         } else if (stri_eq(word, "-no_stale_blind_store")) {
@@ -469,7 +573,7 @@ options_init(const char *opstr)
             options.stale_ignore_sp = false;
 #endif
         } else
-            option_error(word);
+            option_error(word, "unknown option");
     }
 
     if (options.logdir[0] == '\0') {

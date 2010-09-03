@@ -295,7 +295,7 @@ typedef struct _drmemory_options_t {
     /* Whether to track staleness of heap allocations */
     bool staleness;
     /* Granularity of staleness, in milliseconds */
-    bool stale_granularity;
+    uint stale_granularity;
     /* Undocumented performance-tweaking option */
     bool stale_blind_store;
     /* Ignore stack pointer-based references for performance */

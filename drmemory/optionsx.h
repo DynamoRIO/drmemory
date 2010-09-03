@@ -59,7 +59,7 @@ OPTION("-[no_]ignore_early_leaks", "true", "Whether to ignore pre-app leaks",
        "Whether to ignore leaks from system code prior to Dr. Memory taking over.")
 OPTION("-[no_]check_leaks_on_destroy", "true", "Whether to report leaks on heap destruction",
        "If enabled, when a heap is destroyed (HeapDestroy on Windows), report any live allocations inside it as possible leaks.")
-OPTION("-[no_]possible_leaks", "true", "Show possible-leak callstacks?",
+OPTION("-[no_]possible_leaks", "true", "Whether to show possible-leak callstacks",
        "Whether to list possibly-reachable allocations when leak checking.  Requires -check_leaks.")
 OPTION("-[no_]midchunk_size_ok", "true", "Consider mid-chunk post-size pointers legitimate",
        "Consider allocations reached by a mid-allocation pointer that points past a size field at the head of the allocation to be reachable instead of possibly leaked.  Currently this option looks for a very specific pattern.  If your application's header is slightly different please contact the authors about generalizing this check.")
