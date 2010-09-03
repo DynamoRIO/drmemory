@@ -4021,18 +4021,18 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
     bb_saved_info_t *save;
     if (!whole_bb_spills_enabled())
         return;
-    if (!added_instru)
-        return;
-    ASSERT(instrlist_first(bb) != NULL, "can't add instru w/o instrs");
+    ASSERT(!added_instru || instrlist_first(bb) != NULL, "can't add instru w/o instrs");
 
     /* the .used field controls whether we actually saved, and thus restore */
     LOG(3, "whole-bb scratch: r1=%s, r2=%s, efl=%s\n",
         bi->reg1.used ? "used" : "unused",
         bi->reg2.used ? "used" : "unused",
         bi->eflags_used ? "used" : "unused");
-    restore_aflags_if_live(drcontext, bb, last, NULL, bi);
-    insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
-    insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
+    if (added_instru) {
+        restore_aflags_if_live(drcontext, bb, last, NULL, bi);
+        insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
+        insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
+    }
 
     if (!translating) {
         bb_saved_info_t *old;

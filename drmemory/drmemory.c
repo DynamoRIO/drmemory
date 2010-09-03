@@ -848,7 +848,9 @@ set_thread_initial_structures(void *drcontext)
     LOG(1, "thread initial stack: "PFX"-"PFX"-"PFX", TOS="PFX"\n",
         stack_reserve, teb->StackLimit, teb->StackBase, mc.xsp);
     ASSERT(stack_reserve <= (byte *)teb->StackLimit, "invalid stack reserve");
-    ASSERT(stack_reserve + stack_reserve_sz == teb->StackBase,
+    ASSERT(stack_reserve + stack_reserve_sz == teb->StackBase ||
+           stack_reserve + stack_reserve_sz ==
+           ((byte *)teb->StackBase) + PAGE_SIZE/*guard page*/,
            "abnormal initial thread stack");
     shadow_set_range(stack_reserve, (byte *)mc.xsp, SHADOW_UNADDRESSABLE);
     set_initial_range((byte *)mc.xsp, (byte *)teb->StackBase);

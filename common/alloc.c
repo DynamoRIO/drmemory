@@ -696,7 +696,7 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
 #endif
             sz = (*(alloc_size_func_t)(routine->size_func->pc))(real_base);
         /* Note that malloc(0) has usable size > 0 */
-        if (sz == 0)
+        if (routine->size_func->type == HEAP_ROUTINE_SIZE_USABLE && sz == 0)
             return -1;
         else
             return sz;
@@ -2999,6 +2999,19 @@ alloc_hook(app_pc pc)
 #ifdef WINDOWS
     else if (pc == addr_KiAPC || pc == addr_KiCallback ||
              pc == addr_KiException || pc == addr_KiRaise) {
+        /* our per-thread data is private per callback so we're already handling
+         * cbs (though we don't expect callbacks to interrupt heap routines).
+         * we handle exceptions interrupting heap routines here.
+         */
+        if (pc == addr_KiException) {
+            /* XXX PR 408545: preserve pre-fault values and watch NtContinue and
+             * longjmp (unless longjmp from top handler still invokes
+             * NtContinue) and determine whether returning to heap routine.  For
+             * now assuming heap routines do not handle faults.
+             */
+            pt->in_heap_routine = 0;
+            pt->in_heap_adjusted = 0;
+        }
         client_handle_Ki(drcontext, pc, &mc);
         if (pc == addr_KiCallback) {
             handle_callback(drcontext, pt);

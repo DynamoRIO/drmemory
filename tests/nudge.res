@@ -19,12 +19,17 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 !if WINDOWS
-# extra leak due to encoded pointer: PR 482555
-Error #1: LEAK 128 direct bytes + 0 indirect bytes
-crtheap.c:61
-Error #2: LEAK 160 direct bytes + 0 indirect bytes
+# XXX: extra leak due to encoded pointer (PR 482555) is no longer happening on
+# my machine!  not sure what's going on
+#Error #1: LEAK 128 direct bytes + 0 indirect bytes
+#crtheap.c:61
+#Error #2: LEAK 160 direct bytes + 0 indirect bytes
+#infloop.c:91
+#Error #3: LEAK 42 direct bytes + 17 indirect bytes
+#infloop.c:80
+Error #1: LEAK 160 direct bytes + 0 indirect bytes
 infloop.c:91
-Error #3: LEAK 42 direct bytes + 17 indirect bytes
+Error #2: LEAK 42 direct bytes + 17 indirect bytes
 infloop.c:80
 !endif
 !if UNIX

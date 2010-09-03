@@ -295,6 +295,7 @@ if (NOT TOOL_DR_HEAPSTAT)
     if (USE_DRSYMS)
       # cygwin build can't see static malloc routines
       newtest_custbuild(wincrtdbg wincrt.cpp "/MTd")
+      newtest_custbuild(malloccrt malloc.c "/MTd")
     endif (USE_DRSYMS)
     # FIXME PR 406287: add /MDd test
   endif (WIN32)

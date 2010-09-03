@@ -155,6 +155,8 @@ main()
      */
 #ifdef LINUX
     intercept_signal(SIGSEGV, signal_handler);
+#else
+    SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
     if (setjmp(mark) == 0)
         free((void *)0x1234);

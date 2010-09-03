@@ -97,6 +97,8 @@ main()
 {
 #ifdef LINUX
     intercept_signal(SIGTERM, signal_handler);
+#else
+    SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
 
     /* PR 428709: test leak detection via nudge */

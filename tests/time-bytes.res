@@ -21,30 +21,30 @@
 Error #1: INVALID HEAP ARGUMENT
 !if WINDOWS
 # addr2line and winsyms report slightly different results here
-malloc.c:160
+malloc.c:162
 !endif
 !if UNIX
-malloc.c:161
+malloc.c:163
 !endif
 !if WINDOWS
 Error #2: WARNING: heap allocation failed
-malloc.c:172
+malloc.c:174
 Error #3: INVALID HEAP ARGUMENT
-malloc.c:179
+malloc.c:181
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:196
+malloc.c:198
 Error #5: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:228
+malloc.c:230
 Error #6: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:234
+malloc.c:236
 !endif
 !if UNIX
 Error #2: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:196
+malloc.c:198
 Error #3: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:228
+malloc.c:230
 Error #4: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:234
+malloc.c:236
 !endif

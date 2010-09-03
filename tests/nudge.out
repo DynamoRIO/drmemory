@@ -25,9 +25,11 @@ starting
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 !if WINDOWS
-# extra leak due to encoded pointer: PR 482555
-:::Dr.Memory:::       3 unique,    22 total,   3387 byte(s) of leak(s)
-# FIXME PR 485354: sometimes some or all of the 4 are "possible": why?
+# XXX: extra leak due to encoded pointer (PR 482555) is no longer
+# happening on my machine!  not sure what's going on
+#:::Dr.Memory:::       3 unique,    22 total,   3387 byte(s) of leak(s)
+:::Dr.Memory:::       2 unique,    21 total,   3259 byte(s) of leak(s)
+# FIXME PR 485354: sometimes some or all of the leaks are "possible": why?
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
 !endif
 !if UNIX
