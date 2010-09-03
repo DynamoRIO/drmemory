@@ -480,7 +480,7 @@ sub process_all_errors()
             } else {
                 push @lines, $_;
             }
-            if (/\s+error end$/) {
+            if (/\s+error end\r?$/) {
                 process_one_error(\@lines);
                 @lines = ();
                 $found_error_start = 0;
@@ -1483,8 +1483,6 @@ sub suppress($errname_in, $callstack_ref_in)
         # Match using /m for multi-line but not /s to not have . match \n
         # FIXME: performance: check the #frames and skip this check if the
         # suppression has more frames than we've seen so far
-        print "comparing: \"$callstk_str\" vs \"$supp\"\n"
-            if ($verbose);#NOCHECKIN
         if ($callstk_str =~ /$supp/m) {
             print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
                 if ($verbose);
