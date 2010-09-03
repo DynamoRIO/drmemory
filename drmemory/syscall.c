@@ -472,7 +472,7 @@ event_post_syscall(void *drcontext, int sysnum)
         /* XXX: SYS_mmap, SYS_mmap2, and SYS_mremap success does not
          * fit this <0 check: fortunately they don't have OUT args.
          */
-        if (dr_syscall_get_result(drcontext) < 0) {
+        if ((ptr_int_t)dr_syscall_get_result(drcontext) < 0) {
             LOG(1, "WARNING: system call %i %s failed\n", sysnum,
                 (sysinfo != NULL) ? sysinfo->name : "<unknown>");
         } else {

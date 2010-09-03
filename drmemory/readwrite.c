@@ -2647,7 +2647,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                              * reporting 1st UNADDR.
                              */
                             app_pc base;
-                            size_t sz = allocation_size(addr, &base);
+                            size_t sz = allocation_size(addr+i, &base);
                             if (sz > 0 && base != NULL) {
                                 LOG(1, "WARNING: unknown region "PFX"-"PFX
                                     " marking as defined\n", base, base+sz);
