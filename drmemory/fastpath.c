@@ -732,8 +732,12 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     } else
         mi->src_opsz = mi->opsz;
     if (!mi->need_offs) { /* if not set above */
-        mi->need_offs = (mi->store || mi->dst_reg != REG_NULL) &&
-            mi->opsz < 4 && !opnd_is_immed_int(mi->offs);
+        mi->need_offs = 
+            ( (mi->store || mi->dst_reg != REG_NULL) ||
+              /* need offs if propagating eflags (esp for -no_check_cmps) */
+              (mi->load && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
+               !instr_check_definedness(inst)) ) &&
+             (mi->opsz < 4 && !opnd_is_immed_int(mi->offs));
     }
     return true;
 }
@@ -2065,7 +2069,6 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             wrote_shadow_eflags = true;
         }
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
-        mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
         mark_eflags_used(drcontext, bb, mi->bb);
         if (opnd_is_immed_int(offs)) {
             int ofnum = opnd_get_immed_int(offs);
@@ -2633,7 +2636,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 need_nonoffs_reg3 = true;
         }
     }
-    if (!mi->need_offs && mi->opsz < 4 && (mi->store || mi->dst_reg != REG_NULL))
+    if (!mi->need_offs && mi->opsz < 4 &&
+        (mi->store || mi->dst_reg != REG_NULL ||
+         /* if writes eflags we'll need a 3rd reg for write_shadow_eflags */
+         (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
         need_nonoffs_reg3 = true;
 
     /* set up regs and spill info */
@@ -3484,7 +3490,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
             add_dstX2_shadow_write(drcontext, bb, inst, shadow_dst, shadow_dst2,
                                    opnd_create_reg(scratch8), mi->src_opsz,
-                                   mi->opsz, mi->offs, reg3_8, &mi->reg2, mi,
+                                   mi->opsz, mi->offs, reg3_8, &mi->reg3, mi,
                                    fastpath_restore, true);
             ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
         }
