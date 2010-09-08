@@ -203,7 +203,7 @@ if ($aggregate) {
     # PR 426484: if app is killed, exit instead of spinning forever
     $pid = bsd_glob("$logdir/global.*.log"); # bsd_glob to not split on whitespace
     $pid =~ s|^.*/global.(\d+).log|$1|;
-    print "Dr. Memory results for pid $pid: \"$appid\"\n\n";
+    print "Dr. Memory results for pid $pid, exe $exename, cmdline: \"$appid\"\n\n";
     if ($is_unix) {
         $is_vmk = (`uname -s` =~ /VMkernel/) ? 1 : 0;
         $ps_cmd = "ps -p $pid | grep $pid" if (!$is_vmk);
@@ -278,7 +278,7 @@ if ($aggregate) {
             die "Aggregation error: $dir not already processed individually\n"
                 unless (-e "$dir/results.txt");
             $topline = `head -1 $dir/results.txt`;
-            if ($topline =~ /for pid \d+: "(\S+)/) {
+            if ($topline =~ /for pid \d+, exe ([^,]+)/) {
                 $exename = $1;
             } else {
                 die "Cannot determine app path for $dir\n";
@@ -294,6 +294,7 @@ if ($aggregate) {
         foreach $logfile (@logfiles) {
             next if ($logfile =~ /snapshot.log/ || $logfile =~ /callstack.log/);
             chomp $logfile;
+            print stderr "  Processing $logfile\n" if ($verbose);
             process_all_errors($logfile);
         }
     }
