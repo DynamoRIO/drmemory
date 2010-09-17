@@ -1696,7 +1696,9 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             add_jcc_slowpath(drcontext, bb, inst, 
                              /* short doesn't quite reach for mem2mem's 1st check
                               * FIXME: use short for 2nd though! */
-                             (mi->mem2mem || mi->load2x) ? OP_jne : OP_jne_short, mi);
+                             (mi->mem2mem || mi->load2x ||
+                              (mi->memsz < 4 && !opnd_is_null(mi->src[1]))) ?
+                             OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(base) - REG_EAX] = true;
         } else
             STATS_INC(addressable_checks_elided);
@@ -1710,7 +1712,10 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  opnd_create_shadow_reg_slot(index),
                                  OPND_CREATE_INT8((char)SHADOW_DWORD_DEFINED)));
             mark_eflags_used(drcontext, bb, mi->bb);
-            add_jcc_slowpath(drcontext, bb, inst, OP_jne_short, mi);
+            add_jcc_slowpath(drcontext, bb, inst,
+                             (mi->mem2mem || mi->load2x ||
+                              (mi->memsz < 4 && !opnd_is_null(mi->src[1]))) ?
+                             OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(index) - REG_EAX] = true;
         } else
             STATS_INC(addressable_checks_elided);
@@ -3253,7 +3258,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
                 add_jcc_slowpath(drcontext, bb, inst,
-                                 check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                                 (check_ignore_unaddr || mi->memsz < 4) ?
+                                 OP_jne : OP_jne_short, mi);
             }
         } else {
             if (options.stores_use_table && mi->memsz <= 4) {
@@ -3309,7 +3315,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     heap_unaddr_shadow = opnd_create_reg(reg_32_to_8(scratch));
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
-                                     check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                                     (check_ignore_unaddr || mi->memsz < 4) ?
+                                     OP_jne : OP_jne_short, mi);
                 } 
            } else {
                 /* check for unaddressability by checking for definedness.
