@@ -156,7 +156,13 @@ if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
   set(DEFINES ${DEFINES} -DDEBUG -DSTATISTICS)
   set(DEBUG ON)
 else ()
-  set(CMAKE_BUILD_TYPE "Release")
+  if (UNIX)
+    # has enough debug info
+    set(CMAKE_BUILD_TYPE "Release")
+  else (UNIX)
+    # we want pdb for release build
+    set(CMAKE_BUILD_TYPE "RelWithDebInfo")
+  endif (UNIX)
   set(DEBUG OFF)
 endif ()
 
