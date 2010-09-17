@@ -99,6 +99,12 @@ ACTUAL_PRAGMA( code_seg(".replace") )
 # define IN_REPLACE_SECTION /* nothing */
 #endif
 
+#ifdef WINDOWS
+/* prevent cl from replacing our loop with a call to ntdll!memset,
+ * which we replace with this routine, which results an infinite loop!
+ */
+# pragma optimize("g", off)
+#endif
 IN_REPLACE_SECTION void *
 replace_memset(void *dst, int val, size_t size)
 {
@@ -107,6 +113,9 @@ replace_memset(void *dst, int val, size_t size)
         *ptr++ = (unsigned char) val;
     return dst;
 }
+#ifdef WINDOWS
+# pragma optimize("g", on)
+#endif
 
 IN_REPLACE_SECTION void *
 replace_memcpy(void *dst, const void *src, size_t size)
