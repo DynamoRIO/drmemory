@@ -77,7 +77,12 @@ GENERATE_TESTLIST      = YES
 GENERATE_BUGLIST       = YES
 GENERATE_DEPRECATEDLIST= YES
 # choices: VMX86_SERVER, WINDOWS
-ENABLED_SECTIONS       = 
+# we use a bunch here for our option docs
+ENABLED_SECTIONS       = SCOPE_IS_PUBLIC_front SCOPE_IS_PUBLIC_side \
+                         SCOPE_IS_PUBLIC_post SCOPE_IS_PUBLIC_script \
+                         SCOPE_IS_PUBLIC_client TYPE_IS_BOOL_bool \
+                         TYPE_IS_STRING_opstring_t TYPE_HAS_RANGE_uint \
+                         TYPE_HAS_RANGE_int \
 MAX_INITIALIZER_LINES  = 30
 SHOW_USED_FILES        = YES
 SHOW_DIRECTORIES       = NO

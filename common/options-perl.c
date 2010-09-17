@@ -21,7 +21,23 @@
 
 /* Options list for perl */
 
-#define OPTION(nm, def, short, long) \
-    $options_usage .= sprintf("  %-30s [%8s]  %s\n", nm, def, short);
+%typenm = ( 'bool' => '',
+            'uint' => ' <int>', /* we have range so simplify as "int" */
+            'int'  => ' <int>',
+            'opstring_t' => ' <string>' );
+
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long)  \
+    if (#scope ne 'internal') {                                          \
+        $options_usage .= sprintf("  -%-28s [%6s]  %s\n",                \
+                                  #name . $typenm{#type}, defval, short);\
+    }
+#define OPTION_FRONT OPTION_CLIENT
+/* There's no adjacent-string-literal concatenation in Perl */
+#ifdef TOOL_DR_MEMORY
+# define TOOLNAME ."Dr. Memory".
+#else
+# define TOOLNAME ."Dr. Heapstat".
+#endif
 #include "optionsx.h"
-#undef OPTION
+#undef OPTION_CLIENT
+#undef OPTION_FRONT

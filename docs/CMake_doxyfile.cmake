@@ -105,10 +105,9 @@ endif (is_cygwin)
 # Insert optionsx.h expansion
 file(READ "${options_for_docs}" ops)
 string(REGEX REPLACE "\"" "" ops "${ops}")
-string(REGEX REPLACE "<" "\\\\\\\\<" ops "${ops}")
-string(REGEX REPLACE ">" "\\\\\\\\>" ops "${ops}")
 string(REGEX REPLACE "@!" "<" ops "${ops}")
 string(REGEX REPLACE "@%" ">" ops "${ops}")
+string(REGEX REPLACE "@&" "\"" ops "${ops}")
 string(REGEX REPLACE "@@" "\n" ops "${ops}")
 # Now insert into file that contains doxygen comment, etc., which is
 # hard to include via cpp.

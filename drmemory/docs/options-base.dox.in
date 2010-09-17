@@ -33,8 +33,9 @@
 \endhtmlonly
 
 Dr. Memory's behavior can be controlled through options passed to
-\FRONT_END prior to the "--" delimiter.  Here is a list of options along
-with their default values and descriptions:
+\FRONT_END prior to the "--" delimiter.  Boolean options can be disabled
+using a "-no_" prefix.  Here is a list of options along with their default
+values and descriptions:
 
 REPLACEME
 

@@ -92,14 +92,54 @@ static bool no_resfile; /* no results file expected */
     } \
 } while (0)
 
+/* XXX: share w/ options.c */
+enum {
+    SCOPE_IS_PUBLIC_front    = true,
+    SCOPE_IS_PUBLIC_side     = true,
+    SCOPE_IS_PUBLIC_post     = true,
+    SCOPE_IS_PUBLIC_script   = true,
+    SCOPE_IS_PUBLIC_client   = true,
+    SCOPE_IS_PUBLIC_internal = false,
+};
+
+enum {
+    TYPE_IS_BOOL_bool       = true,
+    TYPE_IS_BOOL_opstring_t = false,
+    TYPE_IS_BOOL_uint       = false,
+    TYPE_IS_BOOL_int        = false,
+    TYPE_IS_STRING_bool       = false,
+    TYPE_IS_STRING_opstring_t = true,
+    TYPE_IS_STRING_uint       = false,
+    TYPE_IS_STRING_int        = false,
+    TYPE_HAS_RANGE_bool       = false,
+    TYPE_HAS_RANGE_opstring_t = false,
+    TYPE_HAS_RANGE_uint       = true,
+    TYPE_HAS_RANGE_int        = true,
+};
+
+static const char * const bool_string[2] = {
+    "false",
+    "true",
+};
+
 static void
 print_usage(void)
 {
     fprintf(stderr, "usage: Dr. Memory [options] -- <app and args to run>\n");
-#define OPTION(nm, def, short, long) \
-    fprintf(stderr, "  %-30s [%8s]  %s\n", nm, def, short);
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+    if (SCOPE_IS_PUBLIC_##scope) {                                      \
+        if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
+            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name,              \
+                    bool_string[(int)defval], short);                   \
+        } else if (TYPE_HAS_RANGE_##type)                               \
+            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <int>", #defval, short); \
+        else                                                            \
+            fprintf(stderr, "  -%-28s [%6s]  %s\n", #name" <string>", #defval, short); \
+    }
+#define OPTION_FRONT OPTION_CLIENT
 #include "optionsx.h"
-#undef OPTION
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
 }
 
 #define usage(msg, ...) do {                                    \

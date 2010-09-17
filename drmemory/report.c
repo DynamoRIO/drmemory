@@ -726,7 +726,7 @@ report_init(void)
          dr_get_process_id(), dr_get_application_name());
 #endif
 
-    if (options.use_default_suppress) {
+    if (options.default_suppress) {
         /* the default suppression file must be located at
          *   dr_get_client_path()/../suppress-default.txt
          */
@@ -753,7 +753,7 @@ report_init(void)
         }
     }
 
-    open_and_read_suppression_file(options.suppress_file, false);
+    open_and_read_suppression_file(options.suppress, false);
 }
 
 #ifdef LINUX

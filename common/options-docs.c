@@ -24,12 +24,29 @@
  * - Escape < and >
  * - Replace @! with <
  * - Replace @% with >
+ * - Replace @& with "
  * - Replace @@ with a newline
  */
 
-#define OPTION(nm, def, short, long) \
- - @!b@% nm @!/b@% @@\
-   @!br@%@!i@%default: def@!/i@% @@\
-   @!br@%long @@
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+\\if SCOPE_IS_PUBLIC_##scope \
+\\if TYPE_IS_BOOL_##type \
+ - @!b@% -name @!/b@% @@\
+   @!br@%@!i@%default: defval@!/i@% @@\
+   @!br@%long @@\
+\\endif \
+\\if TYPE_IS_STRING_##type \
+ - @!b@% -name @!/b@% \\<string\\> @@\
+   @!br@%@!i@%default: @&defval@&@!/i@% @@\
+   @!br@%long @@\
+\\endif \
+\\if TYPE_HAS_RANGE_##type \
+ - @!b@% -name @!/b@% \\<int\\> @@\
+   @!br@%@!i@%default: defval (minimum: min, maximum: max)@!/i@% @@\
+   @!br@%long @@\
+\\endif \
+\\endif
+#define OPTION_FRONT OPTION_CLIENT
 #include "optionsx.h"
-#undef OPTION
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
