@@ -643,9 +643,9 @@ redzone_size(alloc_routine_entry_t *routine)
  */
 
 #ifdef WINDOWS
-typedef size_t (*rtl_size_func_t)(IN reg_t /*really HANDLE*/ Heap,
-                                  IN ULONG flags,
-                                  IN PVOID ptr);
+typedef size_t (__stdcall *rtl_size_func_t)(IN reg_t /*really HANDLE*/ Heap,
+                                            IN ULONG flags,
+                                            IN PVOID ptr);
 typedef size_t (*dbg_size_func_t)(IN byte *pc, int blocktype);
 #else
 /* points at libc's version, used in initial heap walk */
@@ -2346,19 +2346,16 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
 }
 
 static app_pc
-adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *pad_size_out,
+adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *padded_size_out,
                     bool used_redzone, alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     if (mc->eax != 0) {
         app_pc app_base = (app_pc) mc->eax;
-        size_t pad_size;
         size_t real_size =
             get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
-                                pt->alloc_size, &pad_size, routine);
+                                pt->alloc_size, padded_size_out, routine);
         ASSERT(real_size != -1, "error getting real size");
-        if (pad_size_out != NULL)
-            *pad_size_out = pad_size;
         /* If recursive we assume called by RtlReAllocateHeap where we
          * already adjusted the size */
         if (used_redzone && redzone_size(routine) > 0)
