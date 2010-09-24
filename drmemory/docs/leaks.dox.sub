@@ -31,8 +31,8 @@ its leak scan into 3 categories:
       identification of such mid-allocation pointers, causing them to show
       up as possible leaks, with the \p -no_midchunk_inheritance_ok runtime
       option.
-    - The std::string class stores a \p char[] array in the middle of an
-      allocation but points to the start of the allocation.  You can
+    - The std::string class places a \p char[] array in the middle of an
+      allocation and points directly at it.  You can
       suppress Dr. Memory's identification of such mid-allocation pointers,
       causing them to show up as possible leaks, with the
       \p -no_midchunk_string_ok runtime option.
