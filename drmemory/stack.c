@@ -124,6 +124,8 @@ check_stack_swap(byte *cur_xsp, byte *new_xsp)
     size_t stack_size;
     STATS_INC(stack_swap_triggers);
     if (get_stack_region_bounds(cur_xsp, &stack_start, &stack_size)) {
+        LOG(3, "stack bounds "PFX" "PFX"-"PFX"\n", cur_xsp,
+            stack_start, stack_start + stack_size);
         if (new_xsp >= stack_start && new_xsp < stack_start + stack_size) {
             static int num_non_swaps;
             LOG(1, "stack adjust "PFX" to "PFX" is really intra-stack adjust\n",
