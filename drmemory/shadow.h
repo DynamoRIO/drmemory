@@ -76,6 +76,7 @@
 
 extern uint val_to_dword[];
 extern uint val_to_qword[];
+extern uint val_to_dqword[];
 
 /* To check 4 bytes for addressability we need to determine whether any
  * one 2-bit sequence in a byte is SHADOW_UNADDRESSABLE.

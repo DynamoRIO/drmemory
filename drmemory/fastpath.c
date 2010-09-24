@@ -290,14 +290,15 @@ reg_ok_for_fastpath(opnd_t reg)
             (reg_is_32bit(r) || reg_is_16bit(r) || reg_is_8bit(r)));
 }
 
-/* Up to caller to check rest of reqts for 8-byte */
+/* Up to caller to check rest of reqts for 8+-byte */
 static bool
-memop_ok_for_fastpath(opnd_t memop, bool allow8)
+memop_ok_for_fastpath(opnd_t memop, bool allow8plus)
 {
     return ((opnd_get_size(memop) == OPSZ_4 ||
              opnd_get_size(memop) == OPSZ_2 ||
              opnd_get_size(memop) == OPSZ_1 ||
-             (opnd_get_size(memop) == OPSZ_8 && allow8) ||
+             ((opnd_get_size(memop) == OPSZ_8 || 
+               opnd_get_size(memop) == OPSZ_16) && allow8plus) ||
              opnd_get_size(memop) == OPSZ_lea) &&
             (!opnd_is_base_disp(memop) ||
              (addr_reg_ok_for_fastpath(opnd_get_base(memop)) &&
@@ -613,11 +614,15 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
 
-        /* We only allow 8-byte memop for floats w/ no other opnds (=> no prop) */
-        if (mi->load && opnd_get_size(mi->src[0]) == OPSZ_8 &&
+        /* We only allow 8-byte memop for floats or 16-byte memop for xmm
+         * w/ no other opnds (=> no prop)
+         */
+        if (mi->load && (opnd_get_size(mi->src[0]) == OPSZ_8 ||
+                         opnd_get_size(mi->src[0]) == OPSZ_16) &&
             (!opnd_is_null(mi->src[1]) || !opnd_is_null(mi->dst[0])))
             return false;
-        if (mi->store && opnd_get_size(mi->dst[0]) == OPSZ_8 &&
+        if (mi->store && (opnd_get_size(mi->dst[0]) == OPSZ_8 ||
+                          opnd_get_size(mi->dst[0]) == OPSZ_16) &&
             (!opnd_is_null(mi->dst[1]) || !opnd_is_null(mi->src[0])))
             return false;
 
@@ -672,8 +677,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             ASSERT(mem2sz == mi->memsz, "load2x 2nd mem must be same size as 1st");
         }
         /* stack ops are the ones that vary and might reach 8+ */
-        if (!((mi->opsz == 8 && !mi->pushpop) || mi->opsz == 4 ||
-              mi->opsz == 2 || mi->opsz == 1)) {
+        if (!(((mi->opsz == 8 || mi->opsz == 16) && !mi->pushpop) ||
+              mi->opsz == 4 || mi->opsz == 2 || mi->opsz == 1)) {
             return false; /* needs slowpath */
         }
         if (mi->store)
@@ -1757,6 +1762,85 @@ mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
         si_local->used = si->used;
 }
 
+/* When we can't or won't use table lookup to find unaddressable, we check
+ * some common partial-undefined patterns and if they match we jmp to
+ * ok_to_write
+ */
+void
+add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
+                            fastpath_info_t *mi, instr_t *ok_to_write)
+{
+    if (mi->opsz < 4) {
+        /* rather than a full table lookup we put in just the common cases
+         * where upper bytes are undefined and lower are defined */
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                             OPND_CREATE_INT8((char)0xf0)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                             OPND_CREATE_INT8((char)0xfc)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
+                             OPND_CREATE_INT8((char)0xc0)));
+    } else if (mi->opsz == 8) {
+        /* check for half-undef to avoid slowpath (PR 504162) */
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
+                             OPND_CREATE_INT16((short)0xff00)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
+                             OPND_CREATE_INT16((short)0x00ff)));
+    } else {
+        ASSERT(mi->opsz == 16, "unknown memsz");
+        /* check for partial-undef to avoid slowpath */
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0xffffffff)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0xffff0000)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0x0000ffff)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0xff000000)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0x00ffffff)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0x000000ff)));
+        PRE(bb, inst,
+            INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM32(mi->reg1.reg, 0),
+                             OPND_CREATE_INT32(0xffffff00)));
+    }
+}
+
 /* Assumes that the address is in reg1.
  * Uses the passed-in need_offs rather than mi->need_offs.
  * If mi->memsz > 1, bails to mi->slowpath if unaligned.
@@ -1819,10 +1903,14 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* PR 504162: keep 4-byte-aligned 8-byte fp ops on fastpath, so we only
          * require 4-byte alignment for 8-byte memops and check bounds below
          */
+        /* PR 614275: for xmm regs we require 16-byte align: has to be for movdqa
+         * anyway else will fault.
+         */
         PRE(bb, inst,
             INSTR_CREATE_test(drcontext, opnd_create_reg(reg_32_to_8(reg2)),
                               OPND_CREATE_INT8(mi->memsz == 4 ? 0x3 :
-                                               (mi->memsz == 8 ? 0x3 : 0x1))));
+                                               (mi->memsz == 8 ? 0x3 :
+                                                (mi->memsz == 16 ? 0xf : 0x1)))));
         /* With PR 448701 a short jcc reaches */
         add_jcc_slowpath(drcontext, bb, inst,
                          jcc_short_slowpath ? OP_jnz_short : OP_jnz, mi);
@@ -1889,11 +1977,19 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     if (get_value) {
         /* load value from shadow table to reg1 */
-        PRE(bb, inst,
-            INSTR_CREATE_movzx(drcontext,
-                               opnd_create_reg(value_in_reg2 ? reg2 : reg1),
-                               opnd_create_base_disp
-                               (reg1, REG_NULL, 0, 0, mi->memsz == 8 ? OPSZ_2 : OPSZ_1)));
+        if (mi->memsz == 16) {
+            PRE(bb, inst,
+                INSTR_CREATE_mov_ld(drcontext,
+                                    opnd_create_reg(value_in_reg2 ? reg2 : reg1),
+                                    opnd_create_base_disp(reg1, REG_NULL, 0, 0, OPSZ_4)));
+        } else {
+            PRE(bb, inst,
+                INSTR_CREATE_movzx(drcontext,
+                                   opnd_create_reg(value_in_reg2 ? reg2 : reg1),
+                                   opnd_create_base_disp
+                                   (reg1, REG_NULL, 0, 0,
+                                    mi->memsz == 8 ? OPSZ_2 : OPSZ_1)));
+        }
     } else {
         /* addr is already in reg1 */
     }
@@ -1951,8 +2047,12 @@ shadow_immed(uint memsz, uint shadow_val)
 {
     if (memsz <= 4)
         return OPND_CREATE_INT8((char)val_to_dword[shadow_val]);
-    else
+    else if (memsz == 8)
         return OPND_CREATE_INT16((short)val_to_qword[shadow_val]);
+    else {
+        ASSERT(memsz == 16, "invalid memsz");
+        return OPND_CREATE_INT32(val_to_dqword[shadow_val]);
+    }
 }
 
 /* PR 448701: we fault if we write to a special block, and we want to keep
@@ -2012,7 +2112,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
     app_pc xl8 = instr_get_app_pc(inst);
     ASSERT(src_opsz <= dst_opsz, "invalid opsz");
-    ASSERT(dst_opsz <= 4 || dst_opsz == 8, "invalid opsz");
+    ASSERT(dst_opsz <= 4 || dst_opsz == 8 || dst_opsz == 16, "invalid opsz");
     ASSERT(src_opsz == dst_opsz ||
            ((src_opsz == 1 || src_opsz == 2) && dst_opsz == 4),
            "mismatched sizes only supported for src==1 or 2 dst==4");
@@ -2033,9 +2133,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, src), xl8));
         }
-    } else if (src_opsz == 8) {
-        /* copy entire 2 bytes shadowing the qword */
-        /* FIXME: do none of the 8-byte srcs write eflags?  no handling for that! */
+    } else if (src_opsz == 8 || src_opsz == 16) {
+        /* copy entire 2 or 4 bytes shadowing the qword */
+        /* FIXME: do none of the 8/16-byte srcs write eflags?  no handling for that! */
         if (process_eflags)
             write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
         if (!opnd_is_null(dst)) {
@@ -2669,8 +2769,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (opnd_is_memory_reference(mi->dst[0])) {
         if (mi->memsz <= 4)
             shadow_dst = OPND_CREATE_MEM8(mi->reg1.reg, 0);
-        else
+        else if (mi->memsz == 8)
             shadow_dst = OPND_CREATE_MEM16(mi->reg1.reg, 0);
+        else {
+            ASSERT(mi->memsz == 16, "invalid memsz");
+            shadow_dst = OPND_CREATE_MEM32(mi->reg1.reg, 0);
+        }
     } else if (mi->dst_reg != REG_NULL)
         shadow_dst = opnd_create_shadow_reg_slot(mi->dst_reg);
     else
@@ -2692,8 +2796,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(mi->load || mi->store, "mem must be load or store");
             if (mi->memsz <= 4)
                 shadow_src = opnd_create_reg(reg2_8);
-            else
+            else if (mi->memsz == 8)
                 shadow_src = opnd_create_reg(reg2_16);
+            else {
+                ASSERT(mi->memsz == 16, "invalid memsz");
+                shadow_src = opnd_create_reg(mi->reg2.reg);
+            }
         }
         num_to_propagate++;
     } else if (!opnd_is_null(mi->src[0])) {
@@ -3223,10 +3331,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2_8),
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_DEFINED)));
-            } else {
+            } else if (mi->memsz == 8) {
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2_16),
                                      OPND_CREATE_INT16((short)SHADOW_QWORD_DEFINED)));
+            } else {
+                ASSERT(mi->memsz == 16, "invalid memsz");
+                PRE(bb, inst,
+                    INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2.reg),
+                                     OPND_CREATE_INT32(SHADOW_DQWORD_DEFINED)));
             }
         }
         mark_eflags_used(drcontext, bb, mi->bb);
@@ -3236,7 +3349,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_jcc(drcontext, OP_jne, opnd_create_instr(heap_unaddr)));
             mi->need_slowpath = true;
-            heap_unaddr_shadow = opnd_create_reg(mi->memsz <= 4 ? reg2_8 : reg2_16);
+            heap_unaddr_shadow = opnd_create_reg(mi->memsz <= 4 ? reg2_8 :
+                                                 (mi->memsz == 8 ? reg2_16 :
+                                                  mi->reg2.reg));
         } else {
             add_jcc_slowpath(drcontext, bb, inst,
                              check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
@@ -3326,7 +3441,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 ASSERT(mi->reg1.used, "internal reg spill error");
                 PRE(bb, inst, INSTR_CREATE_cmp
                     (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1.reg, 0) :
-                     OPND_CREATE_MEM16(mi->reg1.reg, 0),
+                     (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1.reg, 0) :
+                      OPND_CREATE_MEM32(mi->reg1.reg, 0)),
                      shadow_immed(mi->memsz, SHADOW_DEFINED)));
                 /* for slow_path we do not propagate src shadow vals to dst when
                  * check_definedness, but here we always bail to slow path if
@@ -3344,46 +3460,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                      */
                     PRE(bb, inst, INSTR_CREATE_cmp
                         (drcontext, mi->memsz <= 4 ? OPND_CREATE_MEM8(mi->reg1.reg, 0) :
-                         OPND_CREATE_MEM16(mi->reg1.reg, 0),
+                         (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1.reg, 0) :
+                          OPND_CREATE_MEM32(mi->reg1.reg, 0)),
                          shadow_immed(mi->memsz, SHADOW_UNDEFINED)));
-                    if (mi->opsz < 4) {
-                        /* rather than a full table lookup we put in just the common cases
-                         * where upper bytes are undefined and lower are defined */
-                        PRE(bb, inst,
-                            INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                             opnd_create_instr(ok_to_write)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
-                                             OPND_CREATE_INT8((char)0xf0)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                             opnd_create_instr(ok_to_write)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
-                                             OPND_CREATE_INT8((char)0xfc)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                             opnd_create_instr(ok_to_write)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
-                                             OPND_CREATE_INT8((char)0xc0)));
-                    } else if (mi->opsz == 8) {
-                        /* check for half-undef to avoid slowpath (PR 504162) */
-                        PRE(bb, inst,
-                            INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                             opnd_create_instr(ok_to_write)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_cmp(drcontext,
-                                             OPND_CREATE_MEM16(mi->reg1.reg, 0),
-                                             OPND_CREATE_INT16((short)0xff00)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                             opnd_create_instr(ok_to_write)));
-                        PRE(bb, inst,
-                            INSTR_CREATE_cmp(drcontext,
-                                             OPND_CREATE_MEM16(mi->reg1.reg, 0),
-                                             OPND_CREATE_INT16((short)0x00ff)));
-                    }
+                    add_check_partial_undefined(drcontext, bb, inst, mi, ok_to_write);
                 }
                 add_jcc_slowpath(drcontext, bb, inst, OP_jne_short, mi);
                 PRE(bb, inst, ok_to_write);

@@ -180,14 +180,12 @@ uint val_to_qword[] = {
     SHADOW_QWORD_UNDEFINED,
 };
 
-#if 0 /* unused right now */
-static uint val_to_dqword[] = {
+uint val_to_dqword[] = {
     SHADOW_DQWORD_DEFINED,
     SHADOW_DQWORD_UNADDRESSABLE,
     SHADOW_DQWORD_BITLEVEL,
     SHADOW_DQWORD_UNDEFINED,
 };
-#endif
 
 const char * const shadow_name[] = {
     "defined",
