@@ -716,6 +716,7 @@ report_init(void)
                     * can be the bottleneck) and good callstacks
                     */
                    PAGE_SIZE,
+                   IF_DRSYMS_ELSE(options.symbol_offsets, false),
                    get_syscall_name);
 
 #ifdef USE_DRSYMS
@@ -822,7 +823,7 @@ report_summary_to_file(file_t f, bool stderr_too)
              */
             (err->errtype != ERROR_POSSIBLE_LEAK || options.possible_leaks)) {
             ASSERT(err->id > 0, "error id wrong");
-            dr_fprintf(f, "\tError #%d: %6d"NL, err->id, err->count);
+            dr_fprintf(f, "\tError #%4d: %6d"NL, err->id, err->count);
         }
     }
 

@@ -153,6 +153,12 @@ OPTION_CLIENT_BOOL(client, check_leaks, true,
                    "Whether to store callstacks for each allocation in order to report them when leaks are detected.  If this option is disabled, the count of leaks will be shown, but leaks will not be listed individually in the results file.")
 #endif /* TOOL_DR_MEMORY */
 
+#ifdef USE_DRSYMS
+OPTION_CLIENT_BOOL(client, symbol_offsets, false,
+                   "Show offsets from symbol start in callstacks",
+                   "Display offsets for symbols in callstacks: library!symbol+offs.")
+#endif
+
 OPTION_CLIENT_BOOL(client, ignore_early_leaks, true,
                    "Ignore pre-app leaks",
                    "Whether to ignore leaks from memory allocated by system code prior to "TOOLNAME" taking over.")

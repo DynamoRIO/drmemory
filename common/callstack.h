@@ -129,7 +129,8 @@ enum {
 
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
-               size_t fp_scan_sz, const char *(*get_syscall_name)(uint));
+               size_t fp_scan_sz, bool symbol_offsets,
+               const char *(*get_syscall_name)(uint));
 
 void
 callstack_exit(void);

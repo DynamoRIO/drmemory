@@ -37,11 +37,12 @@
 #endif
 #include <limits.h>
 
-/* global options */
+/* global options: xref PR 612970 on using generalized per-file options */
 static uint op_max_frames;
 static uint op_stack_swap_threshold;
 static uint op_fp_flags; /* set of flags */
 static size_t op_fp_scan_sz;
+static bool op_symbol_offsets;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
 static const char * (*op_get_syscall_name)(uint);
 
@@ -143,12 +144,14 @@ max_callstack_size(void)
 
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
-               size_t fp_scan_sz, const char *(*get_syscall_name)(uint))
+               size_t fp_scan_sz, bool symbol_offsets,
+               const char *(*get_syscall_name)(uint))
 {
     op_max_frames = callstack_max_frames;
     op_stack_swap_threshold = stack_swap_threshold;
     op_fp_flags = flags;
     op_fp_scan_sz = fp_scan_sz;
+    op_symbol_offsets = symbol_offsets;
     op_get_syscall_name = get_syscall_name;
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
@@ -243,7 +246,10 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
     symres = drsym_lookup_address(modpath, modoffs, sym);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         /* I like have +0x%x to show offs within func but we'll match addr2line */
-        BUFPRINT(buf, bufsz, *sofar, len, " %s!%s"NL, modname, sym->name);
+        BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
+        if (op_symbol_offsets)
+            BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX, modoffs - sym->start_offs);
+        BUFPRINT(buf, bufsz, *sofar, len, NL);
         LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX")\n",
             modpath, modoffs, sym->name, modoffs - sym->start_offs,
             sym->start_offs, sym->end_offs);
