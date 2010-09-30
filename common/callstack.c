@@ -263,6 +263,7 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
                      sym->file, sym->line);
         }
     } else {
+        /* XXX: want a DO_ONCE[modpath] */
         LOG(1, "WARNING: unable to load symbols for %s\n", modpath);
         BUFPRINT(buf, bufsz, *sofar, len, " %s!?"NL LINE_PREFIX"??:0"NL, modname);
     }

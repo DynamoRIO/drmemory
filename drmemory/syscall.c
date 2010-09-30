@@ -118,6 +118,8 @@ get_syscall_name(uint num)
         return "<unknown>";
 }
 
+static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
+
 /* For syscall we do not have specific parameter info for, we do a
  * memory comparison to find what has been written.
  * We will not catch passing undefined values in that are read, of course.
@@ -140,27 +142,23 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
         cpt->sysarg_ptr[i] = NULL;
         if (get_sysparam_shadow_val(i, mc) == SHADOW_DEFINED) {
             start = (app_pc) dr_syscall_get_param(drcontext, i);
-            LOG(3, "pre-unknown-syscall #"PIFX": param %d == "PFX"\n", sysnum, i, start);
+            LOG(2, "pre-unknown-syscall #"PIFX": param %d == "PFX"\n", sysnum, i, start);
             if (ALIGNED(start, 4) && shadow_get_byte(start) != SHADOW_UNADDRESSABLE) {
-                /* FIXME: not all OUT params have starting bytes undefined; some
-                 * are IN/OUT w/ flags fields, etc.  For now though we try to
-                 * limit false writes by only looking at the 1st N undefined bytes.
+                /* This looks like a memory parameter.  It might contain OUT
+                 * values mixed with IN, so we do not stop at the first undefined
+                 * byte: instead we stop at an unaddr or at the max size.
+                 * We need two passes to know how far was can safely read,
+                 * so we go ahead and use dynamically sized memory as well.
                  */
+                byte *s_at = NULL;
                 for (j=0; j<SYSCALL_ARG_TRACK_MAX_SZ; j++) {
-                    if (shadow_get_byte(start + j) != SHADOW_UNDEFINED)
+                    if (shadow_get_byte(start + j) == SHADOW_UNADDRESSABLE)
                         break;
                 }
-                /* We examine in dword units, which could result in false
-                 * negatives w/ string operands, but removes many false
-                 * positives w/ struct operands
-                 */
-                j = ALIGN_BACKWARD(j, 4);
                 if (j > 0) {
                     LOG(2, "pre-unknown-syscall #"PIFX": param %d == "PFX" %d bytes\n",
                         sysnum, i, start, j);
-                    /* Dynamically allocated since some params are large
-                     * (NtGdiGetWidthTable() param 4 is 616 bytes in gui-inject.exe)
-                     */
+                    /* Make a copy of the arg values */
                     if (j > cpt->sysarg_val_bytes[i]) {
                         if (cpt->sysarg_val_bytes[i] > 0) {
                             thread_free(drcontext, cpt->sysarg_val[i],
@@ -175,7 +173,39 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                     if (safe_read(start, j, cpt->sysarg_val[i])) {
                         cpt->sysarg_ptr[i] = start;
                         cpt->sysarg_sz[i] = j;
+                    } else {
+                        LOG(1, "WARNING: unable to read syscall arg "PFX"-"PFX"!\n",
+                            start, start + j);
+                        j = 0;
                     }
+                }
+                for (j=0; j<SYSCALL_ARG_TRACK_MAX_SZ; j++) {
+                    if (shadow_get_byte(start + j) == SHADOW_UNDEFINED) {
+                        size_t written;
+                        /* Detect writes to data that happened to have the same
+                         * value beforehand (happens often with 0) by writing
+                         * a sentinel.
+                         * XXX: want more-performant safe write on Windows:
+                         * xref PR 605237
+                         */
+                        if (s_at == NULL)
+                            s_at = start + j;
+                        if (!dr_safe_write(start + j, 1,
+                                           &UNKNOWN_SYSVAL_SENTINEL, &written) ||
+                            written != 1) {
+                            /* if page is read-only then assume rest is not OUT */
+                            LOG(1, "WARNING: unable to write sentinel value @"PFX"\n",
+                                start + j);
+                            break;
+                        }
+                    } else if (s_at != NULL) {
+                        LOG(2, "writing sentinel value to "PFX"-"PFX" %d %d "PFX"\n", s_at, start + j, i, j, cpt->sysarg_ptr[i]);
+                        s_at = NULL;
+                    }
+                }
+                if (s_at != NULL) {
+                    LOG(2, "writing sentinel value to "PFX"-"PFX"\n", s_at, start + j);
+                    s_at = NULL;
                 }
             }
         }
@@ -187,56 +217,61 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 {
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     int i, j;
-    app_pc w_at = NULL;
-    uint post_val[SYSCALL_ARG_TRACK_MAX_SZ/sizeof(uint)];
+    byte *w_at = NULL;
+    byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
     for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
         if (cpt->sysarg_ptr[i] != NULL) {
             if (safe_read(cpt->sysarg_ptr[i], cpt->sysarg_sz[i], post_val)) {
-                for (j=0; j<cpt->sysarg_sz[i]/sizeof(uint); j++) {
-                    /* We check for changes on a dword basis since individual
-                     * bytes often appear unchanged and nearly everything is aligned
-                     * to dword (strings are the exception and there it's possible
-                     * we'll mark beyond their length as defined...)
-                     */
-                    if (cpt->sysarg_val[i][j] != post_val[j]
-                        /* Mark a 0 dword as defined.  Yes, I am worried about
-                         * false negatives from this.  I put it in b/c
-                         * gui-inject.exe has a 0 dword in the middle of the
-                         * output from 0x10ce=GDI32!NtGdiGetTextMetricsW that (a
-                         * few rep movs copies later) shows up as an
-                         * uninitialized read if we don't mark it defined.  I
-                         * don't want to limit to having changes after the 0
-                         * dword b/c there could be structs with tails that are
-                         * 0 that happened to be 0 uninitialized?
-                         */
-                        || post_val[j] == 0) {
-                        app_pc pc = cpt->sysarg_ptr[i] + j*sizeof(uint);
-                        if (w_at == NULL)
-                            w_at = pc;
-                        /* I would assert that this is still marked undefined, to
-                         * see if we hit any races, but we have overlapping syscall
-                         * args and I don't want to check for them
-                         */
-                        ASSERT(shadow_get_byte(pc + 0) != SHADOW_UNADDRESSABLE, "");
-                        ASSERT(shadow_get_byte(pc + 1) != SHADOW_UNADDRESSABLE, "");
-                        ASSERT(shadow_get_byte(pc + 2) != SHADOW_UNADDRESSABLE, "");
-                        ASSERT(shadow_get_byte(pc + 3) != SHADOW_UNADDRESSABLE, "");
-                        shadow_set_byte(pc + 0, SHADOW_DEFINED);
-                        shadow_set_byte(pc + 1, SHADOW_DEFINED);
-                        shadow_set_byte(pc + 2, SHADOW_DEFINED);
-                        shadow_set_byte(pc + 3, SHADOW_DEFINED);
-                    } else if (w_at != NULL) {
-                        LOG(2, "unknown-syscall #"PIFX": param %d written "PFX" %d bytes\n",
-                            sysnum, i, w_at,
-                            (cpt->sysarg_ptr[i] + j*sizeof(uint)) - w_at);
+                for (j = 0; j < cpt->sysarg_sz[i]; j++) {
+                    byte *pc = cpt->sysarg_ptr[i] + j;
+                    if (shadow_get_byte(pc) == SHADOW_UNDEFINED) {
+                        if (post_val[j] != UNKNOWN_SYSVAL_SENTINEL ||
+                            /* kernel could have written sentinel.
+                             * XXX: we won't mark as defined if pre-syscall value
+                             * matched sentinel and kernel wrote sentinel!
+                             */
+                            post_val[j] != cpt->sysarg_val[i][j]) {
+                            if (w_at == NULL)
+                                w_at = pc;
+                            /* I would assert that this is still marked undefined, to
+                             * see if we hit any races, but we have overlapping syscall
+                             * args and I don't want to check for them
+                             */
+                            ASSERT(shadow_get_byte(pc) != SHADOW_UNADDRESSABLE, "");
+                            shadow_set_byte(pc, SHADOW_DEFINED);
+                        } else {
+                            if (post_val[j] == UNKNOWN_SYSVAL_SENTINEL &&
+                                cpt->sysarg_val[i][j] != UNKNOWN_SYSVAL_SENTINEL) {
+                                /* kernel didn't write so restore app value that
+                                 * we clobbered w/ our sentinel.
+                                 */
+                                size_t written;
+                                if (!dr_safe_write(pc, 1, &cpt->sysarg_val[i][j],
+                                                   &written) || written != 1) {
+                                    LOG(1, "WARNING: unable to restore app sysval @"PFX"\n",
+                                        pc);
+                                }
+                            }
+                            if (w_at != NULL) {
+                                LOG(2, "unknown-syscall #"PIFX": param %d written "PFX
+                                    " %d bytes\n",
+                                    sysnum, i, w_at, pc - w_at);
+                                w_at = NULL;
+                            }
+                        }
+                    }
+                    if (w_at != NULL) {
+                        LOG(2, "unknown-syscall #"PIFX": param %d written "
+                            PFX" %d bytes\n",
+                            sysnum, i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
                         w_at = NULL;
                     }
                 }
-                if (w_at != NULL) {
-                    LOG(2, "unknown-syscall #"PIFX": param %d written "PFX" %d bytes\n",
-                        sysnum, i, w_at, (cpt->sysarg_ptr[i] + j*sizeof(uint)) - w_at);
-                    w_at = NULL;
-                }
+            } else {
+                /* If we can't read I assume we are also unable to write to undo
+                 * sentinel writes: though should try since param could span pages
+                 */
+                LOG(1, "WARNING: unable to read app sysarg @"PFX"\n", cpt->sysarg_ptr[i]);
             }
         }
     }

@@ -25,7 +25,7 @@
 #include "dr_api.h"
 #include "utils.h"
 
-#define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(12, 6)
+#define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
 
 /* Additonal per-thread data.
  * Fields are assumed to be callback-context-private on Windows.
@@ -55,7 +55,7 @@ typedef struct _client_per_thread_t {
     size_t sysarg_sz[SYSCALL_NUM_ARG_TRACK];
     /* dynamically allocated */
     size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
-    uint *sysarg_val[SYSCALL_NUM_ARG_TRACK];
+    byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
 #endif /* TOOL_DR_MEMORY */
 
     /* pointer for finding shadow regs for other threads */
