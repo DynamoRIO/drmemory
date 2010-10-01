@@ -686,7 +686,7 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
     ASSERT(end < start, "invalid end pc");
     while (pc > end) {
         shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        LOG(5, "shadow_next_dword: checking "PFX"\n", pc);
+        LOG(5, "shadow_prev_dword: checking "PFX"\n", pc);
         if (block_is_special(block)) {
             uint blockval = shadow_get_byte(pc);
             uint dwordval = val_to_dword[blockval];
@@ -707,9 +707,10 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
                     return NULL;
             }
         }
-        incr = (pc - (app_pc)ALIGN_BACKWARD(pc, ALLOC_UNIT));
+        incr = (pc - (app_pc)ALIGN_BACKWARD(pc-1, ALLOC_UNIT));
         if (pc - incr > pc) /* overflow */
             break;
+        ASSERT(incr > 0, "infinite loop");
         pc -= incr;
     }
     return NULL;
