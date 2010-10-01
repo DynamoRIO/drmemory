@@ -290,6 +290,7 @@ typedef enum {
     RTL_ROUTINE_GETINFO,
     RTL_ROUTINE_SETINFO,
     RTL_ROUTINE_SETFLAGS,
+    RTL_ROUTINE_HEAPINFO,
     RTL_ROUTINE_LOCK,
     RTL_ROUTINE_UNLOCK,
     RTL_ROUTINE_SHUTDOWN,
@@ -405,6 +406,7 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlGetUserInfoHeap", RTL_ROUTINE_GETINFO },
     { "RtlSetUserValueHeap", RTL_ROUTINE_SETINFO },
     { "RtlSetUserFlagsHeap", RTL_ROUTINE_SETFLAGS },
+    { "RtlSetHeapInformation", RTL_ROUTINE_HEAPINFO },
     /* kernel32!LocalFree calls these.  these call RtlEnterCriticalSection
      * and ntdll!RtlpCheckHeapSignature and directly touch heap headers.
      */
@@ -3160,6 +3162,16 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
              type == RTL_ROUTINE_SETINFO ||
              type == RTL_ROUTINE_SETFLAGS) {
         handle_userinfo_pre(drcontext, &mc, inside, call_site, &routine);
+    }
+    else if (type == RTL_ROUTINE_HEAPINFO) {
+        /* i#280: turn both HeapEnableTerminationOnCorruption and
+         * HeapCompatibilityInformation (xref i#63)
+         * into no-ops.  We have the routine fail: seems better to
+         * have app know than to pretend it worked?
+         * I fail via invalid param rather than replacing routine
+         * and making up some errno.
+         */
+        *((int *)APP_ARG_ADDR(&mc, 2, inside)) = -1;
     }
 #endif
 }
