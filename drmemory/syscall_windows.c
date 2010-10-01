@@ -578,8 +578,10 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
          * There is some ambiguity over the max:
          * - NtCreatePort's MaxMessageSize: can that be any size?
          *   do we need to query the port?
-         * - some sources claim the max is 0x130, instead of the 0x118 I have here
          * - rpcrt4!LRPC_ADDRESS::ReceiveLotsaCalls seems to allocate 0x100
+         * - some sources claim the max is 0x130, instead of the 0x118 I have here.
+         * - I have seem 0x15c in rpcrt4!I_RpcSendReceive: leaving my smaller
+         *   max for the writes though
          */
         size = sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH;
     } else if (safe_read(start, sizeof(pm), &pm)) {
@@ -587,11 +589,19 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
             size = pm.u1.s1.TotalLength;
         else
             size = pm.u1.Length;
-        ASSERT((ssize_t)size >= sizeof(pm) &&
-               size <= sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH,
-               "PORT_MESSAGE size invalid");
-        if ((ssize_t)size < sizeof(pm))
-            size = sizeof(pm);
+        if (size > sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH) {
+            DO_ONCE({ LOG(1, "WARNING: PORT_MESSAGE size larger than known max"); });
+        }
+        /* See above: I've seen 0x15c and 0x130.  Anything too large, though,
+         * may indicate an error in our syscall param types, so we want a
+         * full stop assert.
+         */
+        ASSERT(size <= 2*(sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH),
+               "PORT_MESSAGE size much larger than expected");
+        /* For optional PORT_MESSAGE args I've seen valid pointers to structs
+         * filled with 0's
+         */
+        ASSERT(size == 0 || (ssize_t)size >= sizeof(pm), "PORT_MESSAGE size too small");
         LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
     } else {
         /* can't read real size, so report presumed-unaddr w/ struct size */
