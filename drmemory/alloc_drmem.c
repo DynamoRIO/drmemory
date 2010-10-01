@@ -439,7 +439,7 @@ client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
     pc_to_loc(&loc, pc);
 #ifdef LINUX
     LOG(1, "heap allocation failed on sz="PIFX"!  heap="PFX"-"PFX"\n",
-        sz, heap_start, get_brk());
+        sz, get_heap_start(), get_brk());
 # ifdef STATISTICS
     LOG(1, "\tdelayed=%u\n",  delayed_free_bytes);
     /* FIXME: if delayed frees really are a problem, should we free

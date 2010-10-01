@@ -120,7 +120,6 @@ app_pc libc_end;
 static app_pc libdr_base, libdr_end;
 static app_pc libdr2_base, libdr2_end;
 static app_pc libdrmem_base, libdrmem_end;
-app_pc heap_start;
 #endif
 app_pc app_base;
 app_pc app_end;
@@ -693,7 +692,6 @@ memory_walk(void)
             if (end == cur_brk) {
                 /* this is the heap */
                 LOG(2, "  => heap\n");
-                heap_start = info.base_pc;
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
             } else if (hashtable_lookup(&known_table, (void*)PAGE_START(pc)) != NULL) {
                 /* we assume there's only one entry in the known_table:
@@ -714,6 +712,14 @@ memory_walk(void)
         } else if (info.type == DR_MEMTYPE_IMAGE) {
             pc_to_add = pc;
             type = SHADOW_DEFINED;
+            /* workaround for PR 618178 where /proc/maps is wrong on suse
+             * and lists last 2 pages of executable as heap!
+             */
+            if (pc == app_base && end < app_end) {
+                LOG(1, "WARNING: workaround for invalid executable end "PFX" => "PFX"\n",
+                    end, app_end);
+                end = app_end;
+            }
         }
 
         if (pc_to_add != NULL && !options.leaks_only && options.shadowing) {

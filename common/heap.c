@@ -96,6 +96,7 @@ get_heap_start(void)
     if (heap_start == NULL) {
         app_pc cur_brk = get_brk();
         dr_mem_info_t info;
+        const char *appnm = dr_get_application_name();
         /* Locate the heap */
         if (!dr_query_memory_ex(cur_brk - 1, &info)) {
             ASSERT(false, "cannot find heap region");
@@ -105,6 +106,21 @@ get_heap_start(void)
         ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
         ASSERT(info.base_pc + info.size == cur_brk, "heap location error");
         heap_start = info.base_pc;
+
+        /* workaround for PR 618178 where /proc/maps is wrong on suse
+         * and lists last 2 pages of executable as heap!
+         */
+        if (appnm != NULL) {
+            module_data_t *data = dr_lookup_module_by_name(appnm);
+            if (data != NULL) {
+                if (data->start < heap_start && data->end > heap_start) {
+                    heap_start = (byte *) ALIGN_FORWARD(data->end, PAGE_SIZE);
+                    LOG(1, "WARNING: workaround for invalid heap_start "PFX" => "PFX"\n",
+                        info.base_pc, heap_start);
+                }
+                dr_free_module_data(data);
+            }
+        }
     }
     return heap_start;
 }
@@ -307,6 +323,9 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     while (pc < cur_brk) {
         app_pc user_start = pc + sizeof(sz)*2;
         sz = *(size_t *)(pc + sizeof(sz));
+        ASSERT(sz > 0, "invalid pre-existing heap block");
+        if (sz == 0)
+            break; /* better than infinite loop */
         /* mmapped heap chunks should be found by memory_walk().
          * shouldn't show up in the heap here.  FIXME: we won't add to
          * the malloc table though: but for now we'll wait until

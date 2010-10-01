@@ -57,7 +57,6 @@ extern app_pc ntdll_end;
 #else
 extern app_pc libc_base;
 extern app_pc libc_end;
-extern app_pc heap_start;
 #endif
 extern app_pc app_base;
 extern app_pc app_end;

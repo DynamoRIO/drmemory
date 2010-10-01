@@ -508,7 +508,7 @@ event_post_syscall(void *drcontext, int sysnum)
          * fit this <0 check: fortunately they don't have OUT args.
          */
         if ((ptr_int_t)dr_syscall_get_result(drcontext) < 0) {
-            LOG(1, "WARNING: system call %i %s failed\n", sysnum,
+            LOG(2, "WARNING: system call %i %s failed\n", sysnum,
                 (sysinfo != NULL) ? sysinfo->name : "<unknown>");
         } else {
             /* commit the writes via MEMREF_WRITE */
