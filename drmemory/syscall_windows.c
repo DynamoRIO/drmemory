@@ -557,6 +557,7 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
          * the thread exiting
          */
         if (pt->sysarg[7]/*bool suspended*/ &&
+            is_current_process((HANDLE)pt->sysarg[3]) &&
             safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
             TEB *teb = get_TEB_from_handle(thread_handle);
             LOG(1, "TEB for new thread: "PFX"\n", teb);
