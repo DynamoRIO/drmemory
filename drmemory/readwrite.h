@@ -111,6 +111,7 @@ extern uint num_faults;
 extern uint xl8_shared;
 extern uint xl8_not_shared_reg_conflict;
 extern uint xl8_not_shared_disp_too_big;
+extern uint xl8_not_shared_unaligned;
 extern uint xl8_not_shared_mem2mem;
 extern uint xl8_not_shared_offs;
 extern uint xl8_not_shared_slowpaths;

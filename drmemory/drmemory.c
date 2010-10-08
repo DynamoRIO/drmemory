@@ -190,8 +190,10 @@ dump_statistics(void)
     dr_fprintf(f_global, "aflags saved at top: %8u\n", aflags_saved_at_top);
     dr_fprintf(f_global, "xl8 sharing: %8u shared, %6u not:conflict, %6u not:disp-sz\n",
                xl8_shared, xl8_not_shared_reg_conflict, xl8_not_shared_disp_too_big);
-    dr_fprintf(f_global, "\t%6u not:slowpaths, %6u not:mem2mem, %6u not:offs\n",
-               xl8_not_shared_slowpaths, xl8_not_shared_mem2mem, xl8_not_shared_offs);
+    dr_fprintf(f_global,
+               "\t%6u not:slowpaths, %6u not:unalign, %6u not:mem2mem, %6u not:offs\n",
+               xl8_not_shared_slowpaths, xl8_not_shared_unaligned,
+               xl8_not_shared_mem2mem, xl8_not_shared_offs);
     dr_fprintf(f_global,
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,

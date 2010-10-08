@@ -956,9 +956,14 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
             cur_disp += (cur->load ? -(int)cur->memsz : cur->memsz);
         cur_disp += cur->bb->shared_disp_implicit;
         nxt_disp = opnd_get_disp(memop);
-        /* ok for disp to not be aligned to 4 so long as combined w/ base+index
-         * it is I suppose
+        /* We do a static check for aligned disp, and so will only share
+         * when base+index is aligned as well, but should be rare to have
+         * unaligned base+index and unaligned disp that add to become aligned
          */
+        if (!ALIGNED(cur_disp, mi.memsz) || !ALIGNED(nxt_disp, mi.memsz)) {
+            STATS_INC(xl8_not_shared_unaligned);
+            return false;
+        }
         shadow_diff = (nxt_disp - cur_disp) / 4; /* 2 shadow bits per byte */
         if (shadow_diff > SHADOW_REDZONE_SIZE || shadow_diff < -SHADOW_REDZONE_SIZE) {
             STATS_INC(xl8_not_shared_disp_too_big);
@@ -3159,7 +3164,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             int diff;
             STATS_INC(xl8_shared);
             hashtable_add(&xl8_sharing_table, instr_get_app_pc(inst), (void *)1);
-            /* FIXME: best to remove these entires when containing fragment
+            /* FIXME: best to remove these entries when containing fragment
              * gets flushed: but would have to walk whole table.  Never
              * deleting for now.  If address is re-used we simply won't share
              * so nothing that bad will happen.
@@ -3170,6 +3175,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             LOG(3, "  sharing shadow addr: disp = %d - (%d + %d) => %d /4 - %d\n",
                 opnd_get_disp(mi->memop), opnd_get_disp(mi->bb->shared_memop),
                 mi->bb->shared_disp_implicit, diff, mi->bb->shared_disp_reg1);
+            /* See alignment comments in should_share_addr() */
+            ASSERT(ALIGNED(diff, mi->memsz), "can only share aligned references");
             diff /= 4; /* 2 shadow bits per byte */
             /* Subtract what's already been incorporated into the reg */
             diff -= mi->bb->shared_disp_reg1;

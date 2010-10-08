@@ -107,6 +107,7 @@ uint aflags_saved_at_top;
 uint xl8_shared;
 uint xl8_not_shared_reg_conflict;
 uint xl8_not_shared_disp_too_big;
+uint xl8_not_shared_unaligned;
 uint xl8_not_shared_mem2mem;
 uint xl8_not_shared_offs;
 uint xl8_not_shared_slowpaths;
