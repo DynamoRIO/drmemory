@@ -160,8 +160,6 @@ extern file_t f_results;
 
 /* for notifying user 
  * FIXME: should add messagebox, controlled by option
- * FIXME: postprocess.pl should propagate asserts and errors
- *        to results file on Linux (see i#7)
  */
 #ifdef TOOL_DR_MEMORY
 # define PREFIX ":::Dr.Memory::: "

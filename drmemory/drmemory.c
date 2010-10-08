@@ -77,9 +77,9 @@ file_t f_suppress;
 static uint num_threads;
 
 #if defined(__DATE__) && defined(__TIME__)
-static const char const build_date[] = __DATE__ " " __TIME__;
+static const char * const build_date = __DATE__ " " __TIME__;
 #else
-static const char const build_date[] = "unknown";
+static const char * const build_date = "unknown";
 #endif
 
 /* store pages that contain known structures so we don't blanket-define them at init */
