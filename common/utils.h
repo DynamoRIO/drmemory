@@ -66,9 +66,11 @@
 
 #ifdef USE_DRSYMS
 # define IF_DRSYMS(x) x
+# define IF_NOT_DRSYMS(x)
 # define IF_DRSYMS_ELSE(x, y) x
 #else
 # define IF_DRSYMS(x) 
+# define IF_NOT_DRSYMS(x) x
 # define IF_DRSYMS_ELSE(x, y) y
 #endif
 
@@ -174,6 +176,7 @@ extern file_t f_results;
     }                                         \
 } while (0)
 #define NOTIFY_ERROR(...) do { \
+    IF_NOT_DRSYMS(ELOG(0, "FATAL ERROR: ")); \
     NOTIFY(__VA_ARGS__); \
     IF_DRSYMS(ELOGF(0, f_results, __VA_ARGS__)); \
     if (USE_MSGBOX) \

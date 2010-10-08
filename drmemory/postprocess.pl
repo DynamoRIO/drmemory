@@ -469,6 +469,12 @@ sub process_all_errors()
             $logs{$logfile}{"bytes read"} = tell $fh;   # tell shouldn't fail
             next;
         }
+        elsif (/^Dr. Memory version/ || /ASSERT FAILURE/ || /FATAL ERROR/) {
+           # propagate version string or errors into results file
+           print "$_\n"; # extra \n is deliberate
+            $logs{$logfile}{"bytes read"} = tell $fh;   # tell shouldn't fail
+           next;
+        }
         # PR 425858: skip non-error-related lines in logfile
         if (!$found_error_start && is_line_start_of_error($_)) {
             $found_error_start = 1;

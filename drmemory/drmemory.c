@@ -76,6 +76,12 @@ file_t f_suppress;
 #endif
 static uint num_threads;
 
+#if defined(__DATE__) && defined(__TIME__)
+static const char const build_date[] = __DATE__ " " __TIME__;
+#else
+static const char const build_date[] = "unknown";
+#endif
+
 /* store pages that contain known structures so we don't blanket-define them at init */
 #define KNOWN_TABLE_HASH_BITS 8
 static hashtable_t known_table;
@@ -1024,6 +1030,13 @@ set_initial_layout(void)
 #endif
 }
 
+static void
+print_version(file_t f)
+{
+    dr_fprintf(f, "Dr. Memory version %s build %d built on %s\n",
+               VERSION_STRING, BUILD_NUMBER, build_date);
+}
+
 /* also initializes logsubdir */
 static void
 create_global_logfile(void)
@@ -1059,13 +1072,14 @@ create_global_logfile(void)
                dr_get_process_id(), dr_get_parent_id());
 #endif
     /* make sure "Dr. Memory" is 1st (or 2nd on linux) in file (for PR 453867) */
-    dr_fprintf(f_global, "Dr. Memory version %s\n", VERSION_STRING);
+    print_version(f_global);
     NOTIFY("log dir is %s\n", logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
 #ifdef USE_DRSYMS
     if (!options.perturb_only) {
         f_results = open_logfile("results.txt", false, -1);
+        print_version(f_results);
         if (options.resfile_out) {
             /* notify front-end of results path */
             file_t outf;
