@@ -604,8 +604,13 @@ syscall_lookup(int num)
 }
 
 static inline reg_id_t
-sysparam_reg(uint argnum)
+sysparam_reg(uint sysnum, uint argnum)
 {
+#ifdef VMX86_SERVER
+    reg_id_t reg = vmkuw_sysparam_reg(sysnum, argnum);
+    if (reg != REG_NULL)
+        return reg;
+#endif
 #ifdef X64
     switch (argnum) {
     case 0: return REG_RDI;
@@ -632,10 +637,10 @@ sysparam_reg(uint argnum)
 }
 
 uint
-get_sysparam_shadow_val(uint argnum, dr_mcontext_t *mc)
+get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
-    reg_id_t reg = sysparam_reg(argnum);
+    reg_id_t reg = sysparam_reg(sysnum, argnum);
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
@@ -654,11 +659,12 @@ void
 check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
 {
     void *drcontext = dr_get_current_drcontext();
-    reg_id_t reg = sysparam_reg(argnum);
+    reg_id_t reg = sysparam_reg(sysnum, argnum);
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
      */
+#ifndef VMX86_SERVER
     if (reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
         ASSERT(reg == REG_EBP, "sysarg mismatch");
         /* must be vsyscall */
@@ -666,10 +672,13 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                      (app_pc)mc->xsp, argsz, mc, NULL);
     } else {
+#endif
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, NULL);
         check_register_defined(drcontext, reg, &loc, argsz, mc);
+#ifndef VMX86_SERVER
     }
+#endif
 }
 
 static void

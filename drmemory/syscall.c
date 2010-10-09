@@ -114,10 +114,17 @@ get_syscall_name(uint num)
     syscall_info_t *sysinfo = syscall_lookup(num);
     if (sysinfo != NULL)
         return sysinfo->name;
-    else
+    else {
+#ifdef VMX86_SERVER
+        const char *name = vmkuw_syscall_name(num);
+        if (name != NULL)
+            return name;
+#endif
         return "<unknown>";
+    }
 }
 
+#ifndef VMX86_SERVER
 static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
 
 /* For syscall we do not have specific parameter info for, we do a
@@ -140,7 +147,7 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     }
     for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
         cpt->sysarg_ptr[i] = NULL;
-        if (get_sysparam_shadow_val(i, mc) == SHADOW_DEFINED) {
+        if (get_sysparam_shadow_val(sysnum, i, mc) == SHADOW_DEFINED) {
             start = (app_pc) dr_syscall_get_param(drcontext, i);
             LOG(2, "pre-unknown-syscall #"PIFX": param %d == "PFX"\n", sysnum, i, start);
             if (ALIGNED(start, 4) && shadow_get_byte(start) != SHADOW_UNADDRESSABLE) {
@@ -276,6 +283,7 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         }
     }
 }
+#endif /* !VMX86_SERVER */
 
 void
 check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
@@ -478,8 +486,10 @@ event_pre_syscall(void *drcontext, int sysnum)
         /* now do the syscall-specific handling we need */
         handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
     } else {
+#ifndef VMX86_SERVER /* has custom syscall info handling */
         if (!options.leaks_only && options.shadowing)
             handle_pre_unknown_syscall(drcontext, sysnum, &mc, pt);
+#endif
     }
     /* give os-specific-code chance to do further processing */
     res = os_shared_pre_syscall(drcontext, sysnum);
@@ -516,7 +526,9 @@ event_post_syscall(void *drcontext, int sysnum)
                 process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
         }
     } else if (!options.leaks_only && options.shadowing) {
+#ifndef VMX86_SERVER /* has custom syscall info handling */
         handle_post_unknown_syscall(drcontext, sysnum, pt);
+#endif
     }
     os_shared_post_syscall(drcontext, sysnum);
     if (!options.leaks_only && options.shadowing)

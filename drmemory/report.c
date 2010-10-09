@@ -580,8 +580,14 @@ top_frame_matches_suppression_frame(const char *error_stack,
         end_of_mod_off++; /* skip '>' */
         return text_matches_pattern(epos, end_of_mod_off - epos, supp_frame);
     } else {
-        /* "mod!fun" suppression frame*/
+        /* "mod!fun" suppression frame */
         epos = strchr(error_stack, '!');
+#ifndef USE_DRSYMS
+        if (epos == NULL) {
+            /* in-client frames don't have mod!fun */
+            return false;
+        }
+#endif
         ASSERT(epos != NULL && epos < eol, "malformed frame");
         epos = strchr(error_stack, '>');
         ASSERT(epos != NULL && *(epos+1) == ' ' && epos < eol,

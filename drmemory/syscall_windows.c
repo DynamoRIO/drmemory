@@ -497,7 +497,7 @@ get_sysparam_addr(uint ord, dr_mcontext_t *mc)
 }
 
 uint
-get_sysparam_shadow_val(uint argnum, dr_mcontext_t *mc)
+get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
 {
     return shadow_get_byte(get_sysparam_addr(argnum, mc));
 }

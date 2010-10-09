@@ -69,6 +69,10 @@ typedef struct _client_per_thread_t {
     int64 filepos; /* f_callstack file position */
 # endif
 #endif /* TOOL_DR_HEAPSTAT */
+
+#ifdef VMX86_SERVER
+    void *vmkuw_regs;
+#endif
 } client_per_thread_t;
 
 #endif /* _CLIENT_PER_THREAD_ */

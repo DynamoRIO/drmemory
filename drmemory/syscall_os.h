@@ -100,7 +100,7 @@ syscall_info_t *
 syscall_lookup(int num);
 
 uint
-get_sysparam_shadow_val(uint argnum, dr_mcontext_t *mc);
+get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc);
 
 void
 check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz);
@@ -122,6 +122,12 @@ os_shadow_post_syscall(void *drcontext, int sysnum);
 #ifdef VMX86_SERVER
 void
 vmkuw_syscall_init(void *drcontext);
+
+reg_id_t
+vmkuw_sysparam_reg(uint sysnum, uint argnum);
+
+const char *
+vmkuw_syscall_name(int sysnum);
 
 bool
 vmkuw_shared_pre_syscall(void *drcontext, int sysnum);
