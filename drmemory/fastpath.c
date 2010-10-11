@@ -909,6 +909,11 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
     if (opnd_is_reg(cur->dst[1]) && !opc_is_pop(opc) &&
         opnd_uses_reg(cur_memop, opnd_get_reg(cur->dst[1])))
         return false;
+    /* Do not share from a stringop since they modify their base reg and
+     * we don't model that in our sharing displacement calculations
+     */
+    if (opc_is_stringop(opc))
+        return false;
     opc = instr_get_opcode(nxt);
     /* Do not share w/ cmovcc since it nondet skips its mem access operand (PR 530902) */
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc))
