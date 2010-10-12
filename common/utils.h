@@ -413,6 +413,10 @@ drmemory_abort(void);
 bool
 safe_read(void *base, size_t size, void *out_buf);
 
+/* if returns false, calls instr_free() on inst first */
+bool
+safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONAL OUT*/);
+
 #ifdef USE_DRSYMS
 app_pc
 lookup_symbol(const module_data_t *mod, const char *symname);

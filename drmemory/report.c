@@ -967,14 +967,16 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc)
      * split from the error report.  Since drsyms writes directly to
      * results file excluding there until we have as part of buffer.
      */
-    /* safe_read doesn't help since still have a race w/ disassemble_with_info:
-     * we want a client try/except (i#51/PR 198875)
-     */
     if (loc != NULL && loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(loc);
-        if (cur_pc != NULL && dr_memory_is_readable(cur_pc, MAX_INSTR_SIZE)) {
-            disassemble_with_info(dr_get_current_drcontext(), cur_pc, f,
-                                  true/*show pc*/, true/*show bytes*/);
+        if (cur_pc != NULL) {
+            void *drcontext = dr_get_current_drcontext();
+            DR_TRY_EXCEPT(drcontext, {
+                disassemble_with_info(drcontext, cur_pc, f,
+                                      true/*show pc*/, true/*show bytes*/);
+            }, { /* EXCEPT */
+                /* nothing: just skip it */
+            });
         }
     }
 #endif

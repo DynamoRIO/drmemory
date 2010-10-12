@@ -107,6 +107,23 @@ safe_read(void *base, size_t size, void *out_buf)
             bytes_read == size);
 }
 
+/* if returns false, calls instr_free() on inst first */
+bool
+safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONAL OUT*/)
+{
+    app_pc nxt;
+    DR_TRY_EXCEPT(drcontext, {
+        nxt = decode(drcontext, pc, inst);
+    }, { /* EXCEPT */
+        /* in case decode filled something in before crashing */
+        instr_free(drcontext, inst);
+        return false;
+    });
+    if (next_pc != NULL)
+        *next_pc = nxt;
+    return true;
+}
+
 #ifdef USE_DRSYMS
 app_pc
 lookup_symbol(const module_data_t *mod, const char *symname)

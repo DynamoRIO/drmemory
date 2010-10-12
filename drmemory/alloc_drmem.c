@@ -1173,10 +1173,9 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_t next;
     app_pc dpc = next_pc;
     bool match = false;
-    if (!dr_memory_is_readable(dpc, MAX_INSTR_SIZE)) /* shouldn't go off page */
-        return false;
     instr_init(drcontext, &next);
-    dpc = decode(drcontext, dpc, &next);
+    if (!safe_decode(drcontext, dpc, &next, &dpc))
+        return false;
     /* We want to only allow the end of the search to be suppressed, to
      * avoid suppressing a real positive, so only unaligned addresses.
      */
@@ -1190,10 +1189,9 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
             opnd_is_reg(instr_get_dst(&next, 0)) &&
             opnd_get_size(instr_get_dst(&next, 0)) == OPSZ_PTR) {
             /* Skip the strchr/strchnul xor */
-            if (!dr_memory_is_readable(dpc, MAX_INSTR_SIZE)) /* shouldn't go off page */
-                goto is_rawmemchr_pattern_done;
             instr_reset(drcontext, &next);
-            dpc = decode(drcontext, dpc, &next);
+            if (!safe_decode(drcontext, dpc, &next, &dpc))
+                goto is_rawmemchr_pattern_done;
         }
         if (instr_valid(&next) &&
             instr_get_opcode(&next) == OP_mov_imm &&
@@ -1295,9 +1293,7 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_t next;
     app_pc dpc = next_pc;
     bool match = false;
-    /* we deref pc-1 below. all these are mid-routine so should be no page boundaries. */
-    if (!dr_memory_is_readable(pc-1, (dpc-(pc-1))+ MAX_INSTR_SIZE))
-        return false;
+    byte prev_byte;
     instr_init(drcontext, &next);
 
     if (instr_get_opcode(inst) == OP_test &&
@@ -1310,7 +1306,8 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
         opnd_is_reg(instr_get_src(inst, 1)) &&
         opnd_get_reg(instr_get_src(inst, 1)) == REG_EAX) {
         instr_reset(drcontext, &next);
-        dpc = decode(drcontext, dpc, &next);
+        if (!safe_decode(drcontext, dpc, &next, &dpc))
+            return match;
         if (instr_valid(&next) &&
             ((instr_get_opcode(&next) == OP_cmp &&
               opnd_is_reg(instr_get_src(&next, 0)) &&
@@ -1344,7 +1341,8 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
              opnd_is_reg(instr_get_dst(inst, 0)) &&
              opnd_get_reg(instr_get_dst(inst, 0)) == REG_EAX &&
              /* prev instr is "xchg esp, eax" */
-             *(pc-1) == 0x94) {
+             safe_read(pc-1, sizeof(prev_byte), &prev_byte) &&
+             prev_byte == 0x94) {
             match = true;
             /* do NOT mark addressable as the next instr, a push, will do so */
             *now_addressable = false;
@@ -1409,9 +1407,6 @@ is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_t next;
     app_pc dpc = next_pc;
     bool match = false;
-    /* we deref pc-4 below. all these are mid-routine so should be no page boundaries. */
-    if (!dr_memory_is_readable(pc-4, (dpc-(pc-4))+ MAX_INSTR_SIZE))
-        return false;
     instr_init(drcontext, &next);
     /* FIXME PR 406718: for this, and exceptions below, we should ensure that only
      * the final byte(s) are unaddressable, and not allow middle bytes or
@@ -1429,7 +1424,8 @@ is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
         opnd_get_reg(instr_get_dst(inst, 0)) == REG_EAX) {
         int raw = *(int *)dpc;
         instr_reset(drcontext, &next);
-        dpc = decode(drcontext, dpc, &next);
+        if (!safe_decode(drcontext, dpc, &next, &dpc))
+            return match;
         if (instr_valid(&next) &&
             (raw == 0x3274c084 /*84c0 7432*/ ||
              (instr_get_opcode(&next) == OP_mov_imm &&
@@ -1463,8 +1459,9 @@ is_strlen_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
              opnd_is_reg(instr_get_dst(inst, 0)) &&
              (opnd_get_reg(instr_get_dst(inst, 0)) == REG_EAX ||
               opnd_get_reg(instr_get_dst(inst, 0)) == REG_EDX)) {
-        int raw = *(int *)(pc-4);
-        if (raw == 0x7efefeff || raw == 0xc233fff0 /*f0ff 33c2*/) {
+        int raw;
+        if (safe_read(pc - 4, sizeof(int), &raw) &&
+            (raw == 0x7efefeff || raw == 0xc233fff0 /*f0ff 33c2*/)) {
             match = true;
             STATS_INC(strlen_exception);
             *now_addressable = false;
@@ -1481,9 +1478,6 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     instr_t next;
     app_pc dpc = next_pc;
     bool match = false;
-    /* all these are mid-routine so should be no page boundaries */
-    if (!dr_memory_is_readable(dpc, MAX_INSTR_SIZE))
-        return false;
     instr_init(drcontext, &next);
    
     /* Check for cygwin1!strcpy case where it reads 4 bytes for efficiency:
@@ -1526,10 +1520,12 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
         opnd_is_reg(instr_get_dst(inst, 0)) &&
         opnd_get_reg(instr_get_dst(inst, 0)) == REG_ECX) {
         instr_reset(drcontext, &next);
-        dpc = decode(drcontext, dpc, &next);
+        if (!safe_decode(drcontext, dpc, &next, &dpc))
+            return match;
         if (instr_valid(&next)) {
             instr_reset(drcontext, &next);
-            dpc = decode(drcontext, dpc, &next);
+            if (!safe_decode(drcontext, dpc, &next, &dpc))
+                return match;
             if (instr_valid(&next) &&
                 instr_get_opcode(&next) == OP_lea &&
                 opnd_get_base(instr_get_src(&next, 0)) == REG_ECX &&
@@ -1558,17 +1554,10 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     bool match = false, now_addressable = false;
     if (loc->type != APP_LOC_PC) /* ignore syscalls (PR 488793) */
         return false;
-    /* PR 503779: be sure to not do this readability check before
-     * the heap header/tls checks, else we have big perf hits!
-     * Needs to be on a rare path.
-     */
-    if (!dr_memory_is_readable(addr, 1))
-        return false;
     pc = loc_to_pc(loc);
-    if (!dr_memory_is_readable(pc, 1))
-        return false;
     instr_init(drcontext, &inst);
-    dpc = decode(drcontext, pc, &inst);
+    if (!safe_decode(drcontext, pc, &inst, &dpc))
+        return false;
     ASSERT(instr_valid(&inst), "unknown suspect instr");
 
     if (!match) {
@@ -1586,6 +1575,16 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     if (!match) {
         match = is_rawmemchr_pattern(drcontext, write, pc, dpc, addr, sz,
                                      &inst, &now_addressable);
+    }
+    if (match) {
+        /* PR 503779: be sure to not do this readability check before
+         * the heap header/tls checks, else we have big perf hits!
+         * Needs to be on a rare path.
+         */
+        if (!dr_memory_is_readable(addr, 1)) {
+            /* matched pattern, but target is actually unreadable! */
+            return false;
+        }
     }
 
     if (now_addressable)

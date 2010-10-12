@@ -858,16 +858,15 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
                                dr_mcontext_t *mc)
 {
     bool res = false;
-    byte *pc, *dpc;
+    byte *pc;
     instr_t inst;
+    char buf[16]; /* for safe_read */
     if (loc->type != APP_LOC_PC)
         return false; /* syscall */
     pc = loc_to_pc(loc);
-    dpc = pc;
-    if (!dr_memory_is_readable(dpc, 5))
-        return false;
     instr_init(drcontext, &inst);
-    dpc = decode(drcontext, dpc, &inst);
+    if (!safe_decode(drcontext, pc, &inst, NULL))
+        return false;
     ASSERT(instr_valid(&inst), "unknown suspect instr");
 
 #ifdef LINUX
@@ -885,12 +884,13 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
      */
     if (options.check_non_moves) {
         static const byte RAWMEMCHR_PATTERN_NONMOVES[5] = {0xbf, 0xff, 0xfe, 0xfe, 0xfe};
+        ASSERT(sizeof(RAWMEMCHR_PATTERN_NONMOVES) <= BUFFER_SIZE_BYTES(buf),
+               "buf too small");
         if (reg == REG_ECX &&
             instr_get_opcode(&inst) == OP_xor &&
-            /* FIXME: use safe_read into a buffer instead */
-            dr_memory_is_readable(pc - sizeof(RAWMEMCHR_PATTERN_NONMOVES),
-                                  sizeof(RAWMEMCHR_PATTERN_NONMOVES)) &&
-            memcmp(pc - sizeof(RAWMEMCHR_PATTERN_NONMOVES), RAWMEMCHR_PATTERN_NONMOVES,
+            safe_read(pc - sizeof(RAWMEMCHR_PATTERN_NONMOVES),
+                      sizeof(RAWMEMCHR_PATTERN_NONMOVES), buf) &&
+            memcmp(buf, RAWMEMCHR_PATTERN_NONMOVES,
                    sizeof(RAWMEMCHR_PATTERN_NONMOVES)) == 0) {
             LOG(3, "suppressing positive from glibc rawmemchr pattern\n");
             register_shadow_set_dword(REG_ECX, SHADOW_DWORD_DEFINED);
@@ -901,14 +901,12 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
         /* FIXME PR 406535: verify there's no chance of a true positive */
         static const byte RAWMEMCHR_PATTERN[9] =
             {0xbf, 0xff, 0xfe, 0xfe, 0xfe, 0x31, 0xd1, 0x01, 0xcf};
+        ASSERT(sizeof(RAWMEMCHR_PATTERN) <= BUFFER_SIZE_BYTES(buf), "buf too small");
         if (reg == REG_EFLAGS &&
             (instr_get_opcode(&inst) == OP_jnb ||
              instr_get_opcode(&inst) == OP_jnb_short) &&
-            /* FIXME: use safe_read into a buffer instead */
-            dr_memory_is_readable(pc - sizeof(RAWMEMCHR_PATTERN),
-                                  sizeof(RAWMEMCHR_PATTERN)) &&
-            memcmp(pc - sizeof(RAWMEMCHR_PATTERN), RAWMEMCHR_PATTERN,
-                   sizeof(RAWMEMCHR_PATTERN)) == 0) {
+            safe_read(pc - sizeof(RAWMEMCHR_PATTERN), sizeof(RAWMEMCHR_PATTERN), buf) &&
+            memcmp(buf, RAWMEMCHR_PATTERN, sizeof(RAWMEMCHR_PATTERN)) == 0) {
             uint val = get_shadow_register(REG_ECX);
             /* We want to only allow the end of the search to be suppressed,
              * to avoid suppressing a real positive.  We assume going in
@@ -944,21 +942,21 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     /* we stop prior to the mov-imm opcode since it varies */
     static const byte STR_ROUTINE_PATTERN[5] =
         {0xff, 0xfe, 0xfe, 0xfe, 0x01};
+    ASSERT(sizeof(STR_ROUTINE_PATTERN) <= BUFFER_SIZE_BYTES(buf), "buf too small");
     if (reg == REG_EFLAGS &&
         (instr_get_opcode(&inst) == OP_jnb ||
          instr_get_opcode(&inst) == OP_jnb_short) &&
-        dr_memory_is_readable(pc - skip - sizeof(STR_ROUTINE_PATTERN),
-                              sizeof(STR_ROUTINE_PATTERN)) &&
-        memcmp(pc - skip - sizeof(STR_ROUTINE_PATTERN), STR_ROUTINE_PATTERN,
-               sizeof(STR_ROUTINE_PATTERN)) == 0) {
+        safe_read(pc - skip - sizeof(STR_ROUTINE_PATTERN),
+                  sizeof(STR_ROUTINE_PATTERN), buf) &&
+        memcmp(buf, STR_ROUTINE_PATTERN, sizeof(STR_ROUTINE_PATTERN)) == 0) {
         uint val;
         /* See above notes on only end of search.  For these patterns,
          * the load is into the 1st source of the add.
          */
         instr_t add;
         instr_init(drcontext, &add);
-        decode(drcontext, pc - 2, &add);
-        if (instr_valid(&add) && opnd_is_reg(instr_get_src(&add, 0))) {
+        if (safe_decode(drcontext, pc - 2, &add, NULL) &&
+            instr_valid(&add) && opnd_is_reg(instr_get_src(&add, 0))) {
             val = get_shadow_register(opnd_get_reg(instr_get_src(&add, 0)));
             if ((val & 0x3) == 0) {
                 LOG(3, "suppressing positive from glibc strrchr/strlen pattern\n");
@@ -989,18 +987,15 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     static const byte STRRCHR_PATTERN_2[7] =
         {0x81, 0xca, 0xff, 0xfe, 0xfe, 0xfe, 0x42};
     ASSERT(sizeof(STRRCHR_PATTERN_1) == sizeof(STRRCHR_PATTERN_2), "size changed");
+    ASSERT(sizeof(STRRCHR_PATTERN_1) <= BUFFER_SIZE_BYTES(buf), "buf too small");
     if (reg == REG_EFLAGS &&
         /* I've seen OP_je_short as well (in esxi glibc) => allowing any jcc */
         instr_is_cbr(&inst) &&
-        dr_memory_is_readable(pc - sizeof(STRRCHR_PATTERN_1),
-                              sizeof(STRRCHR_PATTERN_1)) &&
-        (memcmp(pc - sizeof(STRRCHR_PATTERN_1), STRRCHR_PATTERN_1,
-                sizeof(STRRCHR_PATTERN_1)) == 0 ||
-         memcmp(pc - sizeof(STRRCHR_PATTERN_2), STRRCHR_PATTERN_2,
-                sizeof(STRRCHR_PATTERN_2)) == 0)) {
+        safe_read(pc - sizeof(STRRCHR_PATTERN_1), sizeof(STRRCHR_PATTERN_1), buf) &&
+        (memcmp(buf, STRRCHR_PATTERN_1, sizeof(STRRCHR_PATTERN_1)) == 0 ||
+         memcmp(buf, STRRCHR_PATTERN_2, sizeof(STRRCHR_PATTERN_2)) == 0)) {
         uint val;
-        if (memcmp(pc - sizeof(STRRCHR_PATTERN_2), STRRCHR_PATTERN_2,
-                   sizeof(STRRCHR_PATTERN_2)) == 0)
+        if (memcmp(buf, STRRCHR_PATTERN_2, sizeof(STRRCHR_PATTERN_2)) == 0)
             val = get_shadow_register(REG_EDX);
         else
             val = get_shadow_register(REG_EDI);
@@ -1026,15 +1021,12 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
      * FIXME: identify some of these statically.
      */
     void *drcontext = dr_get_current_drcontext();
-    byte *pc, *dpc;
+    byte *pc;
     instr_t inst;
     bool match = false;
     if (loc->type != APP_LOC_PC)
         return false; /* syscall */
     pc = loc_to_pc(loc);
-    dpc = pc;
-    if (!dr_memory_is_readable(dpc, 1))
-        return false;
 #ifdef WINDOWS
     /* FIXME: not sure what was happening here: why weren't the heap headers
      * unaddressable?  And why was I marking as defined along with suppressing?
@@ -1064,7 +1056,8 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
     }
 #endif
     instr_init(drcontext, &inst);
-    dpc = decode(drcontext, dpc, &inst);
+    if (!safe_decode(drcontext, pc, &inst, NULL))
+        return false;
     ASSERT(instr_valid(&inst), "unknown suspect instr");
     if (result_is_always_defined(&inst)) {
         LOG(2, "marking and/or/xor with 0/~0/self as defined @"PFX"\n", pc);
