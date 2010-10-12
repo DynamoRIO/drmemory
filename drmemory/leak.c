@@ -322,16 +322,22 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
 
 /***************************************************************************/
 
-/* PR 570839: this is a perf hit so we avoid dr_safe_read(), on
- * Windows at least.  No races since world is suspended, but we
- * should do a cached query in case app made part of heap
- * unreadable: or better use try/except for windows and linux.
+/* PR 570839: this is a perf hit so we avoid dr_safe_read() on
+ * Windows, which makes a syscall.  No races since world is suspended,
+ * but we should do a cached query in case app made part of heap
+ * unreadable: or better use try/except for windows and linux which is
+ * what we do.
  */
 static inline bool
 leak_safe_read_heap(void *base, void **var)
 {
-    /* FIXME: use try/except: for now blindly reading and always returning true */
-    *var = *((void **)base);
+    /* XXX perf: move to callers and pass in drcontext */
+    void *drcontext = dr_get_current_drcontext();
+    DR_TRY_EXCEPT(drcontext, {
+        *var = *((void **)base);
+    }, { /* EXCEPT */
+        return false;
+    });
     return true;
 }
 
@@ -765,21 +771,13 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 }
             }
             /* Now pc points to an aligned and defined (non-heap) 4 bytes */
-            /* FIXME: to handle races should we do a safe_read?  but
-             * don't want to pay cost on Windows: really want try/except.
-             */
             /* FIXME PR 475518: improve performance of all these reads and table
              * lookups: this scan is where the noticeable pause at exit comes
              * from, not the identification of defined regions.
              */
-            if (!op_have_defined_info) {
-                /* we don't have lists of defined regions so we can easily crash */
-                if (safe_read(pc, sizeof(pointer), &pointer))
-                    check_reachability_pointer(pointer, pc, data);
-            } else  {
-                pointer = *((app_pc*)pc);
-                check_reachability_pointer(pointer, pc, data);
-            }
+            /* Threads are suspended and we checked readability above so safe to deref */
+            pointer = *((app_pc*)pc);
+            check_reachability_pointer(pointer, pc, data);
         }
         pc = (byte *) ALIGN_FORWARD(defined_end, 4);
     }
