@@ -309,10 +309,18 @@ replace_strcat(char *dst, const char *src)
 IN_REPLACE_SECTION char *
 replace_strncat(char *dst, const char *src, size_t size)
 {
+    /* we can't easily use replace_strncpy b/c we don't want
+     * to fill to size, and we want to null-terminate
+     */
+    register const char *s = (char *) src;
     register char *d = (char *) dst;
     while (*d != '\0')
         d++;
-    replace_strncpy(d, src, size);
+    while (size > 0 && *s != '\0') {
+        *d++ = *s++;
+        size--;
+    }
+    *d = '\0';
     return dst;
 }
 
