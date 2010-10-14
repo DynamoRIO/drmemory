@@ -396,6 +396,93 @@ cast_to_func(void *p)
 }
 
 static void
+replace_routine(bool add, const module_data_t *mod,
+                app_pc addr, int index)
+{
+    IF_DEBUG(const char *modname = dr_module_preferred_name(mod);)
+    LOG(2, "%s %s @"PFX" in %s (base "PFX")\n",
+        add ? "replacing" : "removing replacement",
+        replace_routine_name[index], addr,
+        modname == NULL ? "<noname>" : modname, mod->start);
+    /* We can't store 0 in the table (==miss) so we store index + 1 */
+    if (add)
+        hashtable_add(&replace_table, (void*)addr, (void*)(index+1));
+    else
+        hashtable_remove(&replace_table, (void*)addr);
+}
+
+/* Modern glibc uses an ELF indirect code object to enable strlen to
+ * dynamically resolve to an arch-specific optimized version.
+ * However, some internal glibc routines like fputs have
+ * hardcoded calls to strlen that sometimes target the version
+ * that is not the one resolved at runtime, and these versions
+ * are not exported.  If we had full debug information we could
+ * find them as they are named __strlen_ia32 and __strlen_sse2.
+ * This routine tries to identify all such routines and replace
+ * them all.  It assumes the strlen() resolution routine first
+ * does the typical "call thunk to get retaddr in ebx, add immed to ebx"
+ * to find the GOT, and then has "lea <offs of func>+GOT into eax"
+ * for each return possibility.  Xref PR 623449.
+ */
+static void
+replace_all_strlen(bool add, const module_data_t *mod,
+                   int index, app_pc indir, app_pc resolved)
+{
+    void *drcontext = dr_get_current_drcontext();
+    instr_t inst;
+    app_pc pc = indir, prev_pc;
+    bool last_was_call = false, first_call = false;
+    app_pc addr_got = NULL;
+    instr_init(drcontext, &inst);
+    do {
+        instr_reset(drcontext, &inst);
+        prev_pc = pc;
+        pc = decode(drcontext, pc, &inst);
+        if (pc == NULL || !instr_valid(&inst)) {
+            LOG(1, "WARNING: invalid instr at indir func %s "PFX"\n",
+                replace_routine_name[index], prev_pc);
+            break;
+        }
+        if (last_was_call) {
+            /* At instr after call to thunk: should be add of immed to ebx */
+            first_call = true;
+            if (instr_get_opcode(&inst) == OP_add &&
+                opnd_is_immed_int(instr_get_src(&inst, 0)) &&
+                opnd_is_reg(instr_get_dst(&inst, 0)) &&
+                opnd_get_reg(instr_get_dst(&inst, 0)) == REG_XBX) {
+                addr_got = opnd_get_immed_int(instr_get_src(&inst, 0)) + prev_pc;
+                LOG(2, "\tfound GOT "PFX" for indir func %s\n",
+                    addr_got, replace_routine_name[index]);
+                if (addr_got < mod->start || addr_got > mod->end)
+                    addr_got = NULL;
+            }
+        }
+        if (addr_got != NULL &&
+            instr_get_opcode(&inst) == OP_lea &&
+            opnd_get_reg(instr_get_dst(&inst, 0)) == REG_XAX &&
+            opnd_is_base_disp(instr_get_src(&inst, 0)) &&
+            opnd_get_base(instr_get_src(&inst, 0)) == REG_XBX &&
+            opnd_get_index(instr_get_src(&inst, 0)) == REG_NULL &&
+            opnd_get_scale(instr_get_src(&inst, 0)) == 0) {
+            app_pc addr = addr_got + opnd_get_disp(instr_get_src(&inst, 0));
+            LOG(2, "\tfound return value "PFX" for indir func %s @"PFX"\n",
+                addr, replace_routine_name[index], prev_pc);
+            if (addr < mod->start || addr > mod->end) {
+                LOG(1, "WARNING: unknown code in indir func %s @"PFX"\n",
+                    replace_routine_name[index], prev_pc);
+                break;
+            }
+            if (addr != resolved)
+                replace_routine(add, mod, addr, index);
+        }
+        if (!first_call && instr_is_call_direct(&inst))
+            last_was_call = true;
+    } while (!instr_is_return(&inst));
+    instr_reset(drcontext, &inst);
+
+}
+
+static void
 replace_in_module(const module_data_t *mod, bool add)
 {
     /* We want to replace str/mem in libc, and in the executable if
@@ -409,8 +496,8 @@ replace_in_module(const module_data_t *mod, bool add)
      * since there's no global namespace.
      */
     int i;
-    IF_DEBUG(app_pc libc = get_libc_base();)
-    IF_DEBUG(const char *modname = dr_module_preferred_name(mod);)
+    app_pc libc = get_libc_base();
+    void *drcontext = dr_get_current_drcontext();
     ASSERT(options.replace_libc, "should not be called if op not on");
     for (i=0; i<REPLACE_NUM; i++) {
         dr_export_info_t info;
@@ -426,9 +513,16 @@ replace_in_module(const module_data_t *mod, bool add)
                  * assuming it's not trying to intentionally subvert us.
                  */
                 app_pc (*indir)(void) = (app_pc (*)(void)) cast_to_func(addr);
-                addr = (*indir)();
+                app_pc orig_addr = addr;
+                DR_TRY_EXCEPT(drcontext, {
+                    addr = (*indir)();
+                }, { /* EXCEPT */
+                    addr = NULL;
+                });
                 LOG(2, "export %s indirected from "PFX" to "PFX"\n",
                     replace_routine_name[i], info.address, addr);
+                if (mod->start == libc)
+                    replace_all_strlen(add, mod, i, orig_addr, addr);
             }
         }
 #ifdef USE_DRSYMS
@@ -440,15 +534,7 @@ replace_in_module(const module_data_t *mod, bool add)
         }
 #endif
         if (addr != NULL) {
-            LOG(2, "%s %s @"PFX" in %s (base "PFX")\n",
-                add ? "replacing" : "removing replacement",
-                replace_routine_name[i], addr,
-                modname == NULL ? "<noname>" : modname, mod->start);
-            /* We can't store 0 in the table (==miss) so we store index + 1 */
-            if (add)
-                hashtable_add(&replace_table, (void*)addr, (void*)(i+1));
-            else
-                hashtable_remove(&replace_table, (void*)addr);
+            replace_routine(add, mod, addr, i);
         } else {
             /* We should find every single routine in libc */
             ASSERT(mod->start != libc, "can't find libc routine to replace");
