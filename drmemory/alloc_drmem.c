@@ -1619,6 +1619,14 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
                 res = true;
                 LOG(2, "ignoring unaddr for loader accessing DR/DrMem lib\n");
             }
+            else if (strncmp(modname, "libgcc_s.so", 11) == 0) {
+                /* C++ exception unwind using dl_iterate_phdr examines our libs
+                 * (PR 623701).  Will go away once we have our own private loader.
+                 */
+                STATS_INC(cppexcept_DRlib_exception);
+                res = true;
+                LOG(2, "ignoring unaddr for C++ exception accessing DR/DrMem lib\n");
+            }
             dr_free_module_data(data);
         }
     }

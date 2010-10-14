@@ -98,6 +98,7 @@ extern uint strmem_unaddr_exception;
 extern uint strrchr_exception;
 extern uint andor_exception;
 extern uint loader_DRlib_exception;
+extern uint cppexcept_DRlib_exception;
 extern uint reg_dead;
 extern uint reg_xchg;
 extern uint reg_spill;

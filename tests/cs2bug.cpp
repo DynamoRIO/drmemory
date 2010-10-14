@@ -21,6 +21,23 @@
 
 #include <iostream>
 
+static void
+test_basic()
+{
+    /* uninit error */
+    int *p = new int;
+    if (*p != 10)
+        std::cout << "hi" << std::endl;
+
+    /* unaddr error */
+    int *a = new int[3];
+    /* on xp64x2cpu vm, w/ VS2005 SP1, heap assert fires: detects
+     * the overflow if do a[3], so doing a[4], which is not detected.
+     */
+    a[4] = 12;
+    delete a;
+}
+
 class hasdtr {
 public:
     hasdtr() { x = new int[7]; }
@@ -55,7 +72,8 @@ public:
     const char *ab;
 };
 
-int main() 
+static void
+test_leaks()
 {
     /* test mid-chunk std::string leak (PR 535344) */
     static std::string *str = new std::string("leak");
@@ -75,26 +93,33 @@ int main()
     std::cout << "getval: " << multi->getval() << std::endl;
     std::cout << "myfunc: " << multi->myfunc() << std::endl;
 
-    /* uninit error */
-    int *p = new int;
-    if (*p != 10)
-        std::cout << "hi" << std::endl;
-
-    /* unaddr error */
-    int *a = new int[3];
-    /* on xp64x2cpu vm, w/ VS2005 SP1, heap assert fires: detects
-     * the overflow if do a[3], so doing a[4], which is not detected.
-     */
-    a[4] = 12;
-    delete a;
-
-    /* test PR 576032: std::string shouldn't show up */
+    /* test PR 576032 (dependent leaks): std::string shouldn't show up */
 #ifndef WINDOWS
     /* FIXME PR 587093: disabling on Windows until figure out why callstack messed up */
     std::string onstack = "leakme";
     static std::string *outer = new std::string(onstack);
     outer = NULL;
 #endif
+}
+
+static void
+test_exception()
+{
+   try {
+       std::cout << "throwing exception" << std::endl;
+       throw std::exception();
+   } catch (std::exception&) {
+       std::cout << "caught exception" << std::endl;
+   }
+}
+
+int main() 
+{
+    test_leaks();
+
+    test_basic();
+
+    test_exception();
 
     std::cout << "bye" << std::endl;
 }

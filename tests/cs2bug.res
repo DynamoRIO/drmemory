@@ -19,16 +19,17 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNINITIALIZED READ
-cs2bug.cpp:80
+cs2bug.cpp:29
 Error #2: UNADDRESSABLE ACCESS: writing 4 byte(s)
-cs2bug.cpp:88
+cs2bug.cpp:37
 !if UNIX
-Error #3: LEAK 4 direct bytes + 0 indirect bytes
-cs2bug.cpp:79
-Error #4: LEAK 4 direct bytes + 19 indirect bytes
-cs2bug.cpp:95
+Error #3: LEAK 4 direct bytes + 19 indirect bytes
+cs2bug.cpp:100
+Error #4: LEAK 4 direct bytes + 0 indirect bytes
+cs2bug.cpp:28
 !endif
 !if WINDOWS
 # FIXME PR 587093: string code disabled for now
 Error #3: LEAK 4 direct bytes + 0 indirect bytes
+cs2bug.cpp:28
 !endif

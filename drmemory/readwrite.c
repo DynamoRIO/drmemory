@@ -94,6 +94,7 @@ uint strmem_unaddr_exception;
 uint strrchr_exception;
 uint andor_exception;
 uint loader_DRlib_exception;
+uint cppexcept_DRlib_exception;
 uint heap_func_ref_ignored;
 uint reg_dead;
 uint reg_xchg;
