@@ -143,7 +143,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
 
 bool
 check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
-                       dr_mcontext_t *mc);
+                       dr_mcontext_t *mc, instr_t *inst);
 
 bool
 is_in_gencode(byte *pc);
@@ -165,6 +165,8 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
  */
 
 #define MAX_INSTR_SIZE 17
+
+#define MOVS_4_OPCODE 0xa5
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

@@ -804,6 +804,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
             hashtable_add_replace(&xl8_sharing_table, pc, (void *) xl8_sharing_cnt);
         }
     } else if (!translated && !opnd_is_null(memop)) {
+        LOG(3, "slow_path_xl8_sharing: adding entry "PFX"\n", pc);
         hashtable_add(&xl8_sharing_table, pc, (void *)1);
     }
 

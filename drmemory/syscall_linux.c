@@ -675,7 +675,7 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 #endif
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, NULL);
-        check_register_defined(drcontext, reg, &loc, argsz, mc);
+        check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
 #ifndef VMX86_SERVER
     }
 #endif

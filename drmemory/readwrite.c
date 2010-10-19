@@ -740,11 +740,11 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
     bool pushpop = false; /* is mem ref on stack for push/pop */
     if (opnd_uses_reg(opnd, REG_ESP) || opc == OP_leave/*(ebp) not (esp)*/) {
         /* We do reads before writes, so pop is correct, but push is off */
-        if (write && opnd_is_base_disp(opnd) && push) {
+        if (write && push && opnd_is_base_disp(opnd)) {
             pushpop = true;
             sz = adjust_memop_push_offs(inst);
             opnd_set_disp(&opnd, opnd_get_disp(opnd) - sz);
-        } else if (!write && opnd_is_base_disp(opnd) && pop) {
+        } else if (!write && pop && opnd_is_base_disp(opnd)) {
             pushpop = true;
             if (opc == OP_popa)
                 sz *= 8;
@@ -854,21 +854,21 @@ result_is_always_defined(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
+/* All current non-syscall uses already have inst decoded so we require it
+ * for efficiency
+ */
 static bool
 check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
-                               dr_mcontext_t *mc)
+                               dr_mcontext_t *mc, instr_t *inst)
 {
     bool res = false;
     byte *pc;
-    instr_t inst;
     char buf[16]; /* for safe_read */
     if (loc->type != APP_LOC_PC)
         return false; /* syscall */
+    ASSERT(inst != NULL, "must pass in inst if non-syscall");
     pc = loc_to_pc(loc);
-    instr_init(drcontext, &inst);
-    if (!safe_decode(drcontext, pc, &inst, NULL))
-        return false;
-    ASSERT(instr_valid(&inst), "unknown suspect instr");
+    ASSERT(instr_valid(inst), "unknown suspect instr");
 
 #ifdef LINUX
     /* PR 406535: glibc's rawmemchr does some bit tricks that can end up using
@@ -888,7 +888,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
         ASSERT(sizeof(RAWMEMCHR_PATTERN_NONMOVES) <= BUFFER_SIZE_BYTES(buf),
                "buf too small");
         if (reg == REG_ECX &&
-            instr_get_opcode(&inst) == OP_xor &&
+            instr_get_opcode(inst) == OP_xor &&
             safe_read(pc - sizeof(RAWMEMCHR_PATTERN_NONMOVES),
                       sizeof(RAWMEMCHR_PATTERN_NONMOVES), buf) &&
             memcmp(buf, RAWMEMCHR_PATTERN_NONMOVES,
@@ -904,8 +904,8 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
             {0xbf, 0xff, 0xfe, 0xfe, 0xfe, 0x31, 0xd1, 0x01, 0xcf};
         ASSERT(sizeof(RAWMEMCHR_PATTERN) <= BUFFER_SIZE_BYTES(buf), "buf too small");
         if (reg == REG_EFLAGS &&
-            (instr_get_opcode(&inst) == OP_jnb ||
-             instr_get_opcode(&inst) == OP_jnb_short) &&
+            (instr_get_opcode(inst) == OP_jnb ||
+             instr_get_opcode(inst) == OP_jnb_short) &&
             safe_read(pc - sizeof(RAWMEMCHR_PATTERN), sizeof(RAWMEMCHR_PATTERN), buf) &&
             memcmp(buf, RAWMEMCHR_PATTERN, sizeof(RAWMEMCHR_PATTERN)) == 0) {
             uint val = get_shadow_register(REG_ECX);
@@ -945,8 +945,8 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
         {0xff, 0xfe, 0xfe, 0xfe, 0x01};
     ASSERT(sizeof(STR_ROUTINE_PATTERN) <= BUFFER_SIZE_BYTES(buf), "buf too small");
     if (reg == REG_EFLAGS &&
-        (instr_get_opcode(&inst) == OP_jnb ||
-         instr_get_opcode(&inst) == OP_jnb_short) &&
+        (instr_get_opcode(inst) == OP_jnb ||
+         instr_get_opcode(inst) == OP_jnb_short) &&
         safe_read(pc - skip - sizeof(STR_ROUTINE_PATTERN),
                   sizeof(STR_ROUTINE_PATTERN), buf) &&
         memcmp(buf, STR_ROUTINE_PATTERN, sizeof(STR_ROUTINE_PATTERN)) == 0) {
@@ -991,7 +991,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     ASSERT(sizeof(STRRCHR_PATTERN_1) <= BUFFER_SIZE_BYTES(buf), "buf too small");
     if (reg == REG_EFLAGS &&
         /* I've seen OP_je_short as well (in esxi glibc) => allowing any jcc */
-        instr_is_cbr(&inst) &&
+        instr_is_cbr(inst) &&
         safe_read(pc - sizeof(STRRCHR_PATTERN_1), sizeof(STRRCHR_PATTERN_1), buf) &&
         (memcmp(buf, STRRCHR_PATTERN_1, sizeof(STRRCHR_PATTERN_1)) == 0 ||
          memcmp(buf, STRRCHR_PATTERN_2, sizeof(STRRCHR_PATTERN_2)) == 0)) {
@@ -1010,7 +1010,6 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     }
 #endif
 
-    instr_free(drcontext, &inst);
     return res;
 }
 
@@ -1018,17 +1017,12 @@ static bool
 check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr,
                            uint sz, uint *shadow)
 {
-    /* Allow certain reads, like "and with 0" or "or with ~0".
-     * FIXME: identify some of these statically.
-     */
-    void *drcontext = dr_get_current_drcontext();
-    byte *pc;
-    instr_t inst;
     bool match = false;
+#ifdef WINDOWS
+    byte *pc;
     if (loc->type != APP_LOC_PC)
         return false; /* syscall */
     pc = loc_to_pc(loc);
-#ifdef WINDOWS
     /* FIXME: not sure what was happening here: why weren't the heap headers
      * unaddressable?  And why was I marking as defined along with suppressing?
      * I'm not enabling this code on Linux until re-verify it's legit.
@@ -1037,6 +1031,7 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
      * so better to not have any heap definedness exceptions.
      */
     if (options.track_heap) {
+        void *drcontext = dr_get_current_drcontext();
         per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         if (pt->in_heap_routine > 0
             /* For RtlpHeapIsLocked, which is not exported, we allow reads from ntdll
@@ -1056,16 +1051,10 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
         }
     }
 #endif
-    instr_init(drcontext, &inst);
-    if (!safe_decode(drcontext, pc, &inst, NULL))
-        return false;
-    ASSERT(instr_valid(&inst), "unknown suspect instr");
-    if (result_is_always_defined(&inst)) {
-        LOG(2, "marking and/or/xor with 0/~0/self as defined @"PFX"\n", pc);
-        *shadow = SHADOW_DEFINED;
-        match = true;
-    }
-    instr_free(drcontext, &inst);
+    /* We now check for result_is_always_defined() up front in the
+     * slow path to avoid the redundant decode here, which can be a
+     * noticeable performance hit (PR 622253)
+     */
     return match;
 }
 
@@ -1299,6 +1288,9 @@ integrate_register_shadow(instr_t *inst, int opnum,
                           reg_id_t reg, uint shadow, bool pushpop)
 {
     uint shift = 0;
+    /* XXX: shouldn't eflags shadow affect all of the bytes, not just 1st?
+     * I.e., pretend eflags is same size as other opnds?
+     */
     uint regsz = (reg == REG_EFLAGS) ? 1 : opnd_size_in_bytes(reg_get_size(reg));
     int opc = instr_get_opcode(inst);
     /* PR 426162: ignore stack register source if instr also has memref
@@ -1455,6 +1447,34 @@ num_true_dsts(instr_t *inst, dr_mcontext_t *mc)
     return instr_num_dsts(inst);
 }
 
+#ifdef TOOL_DR_MEMORY
+/* It turns out that it's not the clean call that's the bottleneck: it's
+ * the decode and all the IR processing in the slow path proper.  So for a
+ * common slowpath case, 4-byte OP_movs, we have an easy-to-write
+ * "medium-speed-path".  Because it's mem2mem, we do not have fastpath
+ * support for it yet when check_definedness fails, and maybe we never will
+ * need it since this medium-path works fairly well.
+ */
+void
+medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
+{
+    /* since esi and edi are used as base regs, we are checking
+     * definedness, so we ignore the reg operands
+     */
+    uint shadow_vals[4];
+    int i;
+    LOG(3, "medium_path movs4 "PFX"\n", loc_to_pc(loc));
+    check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
+                   opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
+                   4, mc, shadow_vals);
+    for (i = 0; i < 4; i++)
+        shadow_vals[i] = combine_shadows(shadow_vals[i], get_shadow_eflags());
+    check_mem_opnd(OP_movs, MEMREF_WRITE | MEMREF_USE_VALUES, loc,
+                   opnd_create_far_base_disp(SEG_ES, REG_EDI, REG_NULL, 0, 0, OPSZ_4),
+                   4, mc, shadow_vals);
+}
+#endif /* TOOL_DR_MEMORY */
+
 /* Does everything in C code, except for handling non-push/pop writes to esp 
  */
 bool
@@ -1479,6 +1499,7 @@ slow_path(app_pc pc, app_pc decode_pc)
     uint shadow_vals[OPND_SHADOW_ARRAY_LEN];
     bool check_definedness, pushpop, pushpop_stackop, src_undef = false;
     bool check_srcs_after;
+    bool always_defined;
     opnd_t memop = opnd_create_null();
 #endif
     size_t instr_sz;
@@ -1544,6 +1565,17 @@ slow_path(app_pc pc, app_pc decode_pc)
     } else
         ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
     
+#ifdef TOOL_DR_MEMORY
+    if (decode_pc != NULL && *decode_pc == MOVS_4_OPCODE) {
+        /* see comments for this routine: common enough it's worth optimizing */
+        medium_path_movs4(&loc, &mc);
+        /* no sharing with string instrs so no need to call
+         * slow_path_xl8_sharing
+         */
+        return true;
+    }
+#endif /* TOOL_DR_MEMORY */
+
     instr_init(drcontext, &inst);
     instr_sz = decode(drcontext, decode_pc, &inst) - decode_pc;
     ASSERT(instr_valid(&inst), "invalid instr");
@@ -1613,6 +1645,7 @@ slow_path(app_pc pc, app_pc decode_pc)
      * side in our 8-dword-capacity shadow_vals array.
      */
     check_definedness = instr_check_definedness(&inst);
+    always_defined = result_is_always_defined(&inst);
     pushpop = opc_is_push(opc) || opc_is_pop(opc);
     check_srcs_after = instr_needs_all_srcs_and_vals(&inst);
     if (check_srcs_after) {
@@ -1672,10 +1705,10 @@ slow_path(app_pc pc, app_pc decode_pc)
              */
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            /* handle_mem_ref calls result_is_always_defined() from
-             * check_undefined_exceptions() so we don't call it here
-             */
-            if (check_definedness) {
+            if (always_defined) {
+                LOG(2, "marking and/or/xor with 0/~0/self as defined @"PFX"\n", pc);
+                /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
+            } else if (check_definedness) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
             } else {
                 /* If we're checking, to avoid further errors we do not
@@ -1697,11 +1730,11 @@ slow_path(app_pc pc, app_pc decode_pc)
             if (reg_is_gpr(reg)) {
                 uint shadow = get_shadow_register(reg);
                 sz = opnd_size_in_bytes(reg_get_size(reg));
-                if (result_is_always_defined(&inst)) {
+                if (always_defined) {
                     /* if result defined regardless, don't propagate (is
                      * equivalent to propagating SHADOW_DEFINED) or check */
                 } else if (check_definedness || always_check_definedness(&inst, i)) {
-                    check_register_defined(drcontext, reg, &loc, sz, &mc);
+                    check_register_defined(drcontext, reg, &loc, sz, &mc, &inst);
                 } else {
                     /* See above: we only propagate when not checking */
                     integrate_register_shadow
@@ -1729,11 +1762,11 @@ slow_path(app_pc pc, app_pc decode_pc)
     /* eflags source */
     if (TESTANY(EFLAGS_READ_6, instr_get_eflags(&inst))) {
         uint shadow = get_shadow_eflags();
-        if (result_is_always_defined(&inst)) {
+        if (always_defined) {
             /* if result defined regardless, don't propagate (is
              * equivalent to propagating SHADOW_DEFINED) or check */
         } else if (check_definedness) {
-            check_register_defined(drcontext, REG_EFLAGS, &loc, 1, &mc);
+            check_register_defined(drcontext, REG_EFLAGS, &loc, 1, &mc, &inst);
         } else {
             /* See above: we only propagate when not checking */
             integrate_register_shadow
@@ -1776,7 +1809,9 @@ slow_path(app_pc pc, app_pc decode_pc)
             opnd = adjust_memop(&inst, opnd, true, &sz, &pushpop_stackop);
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            if (check_definedness) {
+            if (always_defined) {
+                /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
+            } else if (check_definedness) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
                 /* since checking, we mark as SHADOW_DEFINED (see above) */
             } else {
@@ -2770,12 +2805,12 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
 
 bool
 check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
-                       dr_mcontext_t *mc)
+                       dr_mcontext_t *mc, instr_t *inst)
 {
 #ifdef TOOL_DR_MEMORY
     uint shadow = (reg == REG_EFLAGS) ? get_shadow_eflags() : get_shadow_register(reg);
     if (!is_shadow_register_defined(shadow)) {
-        if (!check_undefined_reg_exceptions(drcontext, loc, reg, mc)) {
+        if (!check_undefined_reg_exceptions(drcontext, loc, reg, mc, inst)) {
             /* FIXME: report which bytes within reg via container params? */
             report_undefined_read(loc, (app_pc)(ptr_int_t)reg, sz, NULL, NULL, mc);
             if (reg == REG_EFLAGS) {
