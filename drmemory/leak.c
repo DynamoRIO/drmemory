@@ -775,9 +775,21 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
              * lookups: this scan is where the noticeable pause at exit comes
              * from, not the identification of defined regions.
              */
-            /* Threads are suspended and we checked readability above so safe to deref */
-            pointer = *((app_pc*)pc);
-            check_reachability_pointer(pointer, pc, data);
+#ifdef VMX86_SERVER /* really should be !HAVE_PROC_MAPS */
+            if (!op_have_defined_info) {
+                /* memory query is unreliable, and we don't have definedness
+                 * info, so we can and have crashed here
+                 */
+                if (safe_read(pc, sizeof(pointer), &pointer))
+                    check_reachability_pointer(pointer, pc, data);
+            } else  {
+#endif
+                /* Threads are suspended and we checked readability so safe to deref */
+                pointer = *((app_pc*)pc);
+                check_reachability_pointer(pointer, pc, data);
+#ifdef VMX86_SERVER /* really should be !HAVE_PROC_MAPS */
+            }
+#endif
         }
         pc = (byte *) ALIGN_FORWARD(defined_end, 4);
     }
