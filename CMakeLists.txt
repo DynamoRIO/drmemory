@@ -43,7 +43,7 @@ endif (CHECK_WITH_MD5)
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
   set(toolname drheapstat)
-  set(tooldir ${INTERNAL_DIR}/${toolname})
+  set(tooldir ${toolname})
   set(toolname_cap DrHeapstat)
   set(toolname_cap_spc "Dr. Heapstat")
   set(DEFINES ${DEFINES} -DTOOL_DR_HEAPSTAT)
@@ -383,8 +383,8 @@ endif(NOT DynamoRIO_FOUND)
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
   set(srcs
-    ${INTERNAL_DIR}/drheapstat/drheapstat.c
-    ${INTERNAL_DIR}/drheapstat/staleness.c
+    drheapstat/drheapstat.c
+    drheapstat/staleness.c
     common/alloc.c
     common/heap.c
     common/callstack.c

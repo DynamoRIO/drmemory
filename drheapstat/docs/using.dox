@@ -1,0 +1,400 @@
+/* **********************************************************
+ * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_using Using Dr. Heapstat
+
+This section gives an overview of how to use Dr. Heapstat, divided into the
+following sub-sections:
+
+ - \ref sec_overview
+ - \ref sec_linux
+ - \ref sec_windows
+ - \ref sec_running
+ - \ref sec_advanced
+
+See also the full reference of Dr. Heapstat's runtime options:
+ - \ref page_options
+
+\if VMX86_SERVER
+When running on ESXi, see the additional instructions for setup and running
+of Dr. Heapstat:
+ - \ref page_ESXi
+\endif
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_overview Overview of Dr. Heapstat
+
+Dr. Heapstat monitors all heap allocations made by a target application.
+It keeps a set of snapshots spaced evenly over the duration of the
+application's execution, adjusting the spacing as the application runs in
+order to maintain an even set of snapshots.  Each snapshot records the
+total heap used and the heap used by each allocation site.  An allocation
+site is a callstack at the point of a call to malloc or realloc.  In
+addition to the evenly-spaced snapshots, an additional snapshot is recorded
+at the time of peak memory usage during the run.
+
+Heap usage is split into three components:
+ - space requested: the size passed to the malloc or realloc call
+ - space allocated: the size allocated, which is usually equal to the
+   space requested rounded up to the allocation granularity
+ - space used: the space allocated plus the space used for malloc headers
+
+Dr. Heapstat takes a two-part approach, dividing data gathering from data
+visualization.  A target application is run under Dr. Heapstat, producing
+files containing profiling data.  Then Dr. Heapstat's visualization tool is
+run on that data.  It is possible to visualize data gathered on one
+platform on a different platform.
+
+Dr. Heapstat also scans for and reports memory leaks.
+See \ref sec_leaks for a full description of the types of leaks it
+detects.
+
+In addition to memory usage data and memory leaks, Dr. Heapstat also
+gathers memory "staleness" data.  This involves tracking the time at which
+each allocation was last accessed (read or written).  Such data can be
+invaluable in locating memory that has not actually been leaked but that is
+no longer needed (a "logical leak").  See \ref sec_staleness for more
+information.
+
+********************
+\subsection sec_time Time Units
+
+Dr. Heapstat's heap usage snapshots can be taken according to several
+different notions of time:
+
+ - Allocation calls made
+ - Bytes allocated
+ - Instructions executed (not supported in this Alpha)
+ - Wall-clock time (the default setting)
+
+Different time units present different views of the application's usage.
+For a view that focuses on allocations, use allocations calls made or bytes
+allocated as the unit.  For a view that focuses instead on the
+application's execution, use wall-clock time or instructions executed.
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_linux Setup on Linux
+
+This section describes requirements, setup instructions, and other concerns
+prior to running Dr. Heapstat on Linux.
+
+********************
+\subsection sec_linux_utils Utilities
+
+To gather data, ensure your Linux machine has the following utilities
+installed:
+
+ - perl
+
+To visualize the data, you will need:
+
+ - objdump
+ - addr2line
+ - a web browser with a Flash plugin installed, or a standalone Flash player
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_windows Setup on Windows
+
+This section describes requirements, setup instructions, and other concerns
+prior to running Dr. Heapstat on Windows.
+
+********************
+\subsection sec_windows_utils Utilities
+
+To gather data you should not need any special utilities.
+
+To visualize the data, you will need:
+
+ - a web browser with a Flash plugin installed, or a standalone Flash player
+
+********************
+\subsection sec_windows_cygwin Dr. Heapstat and Cygwin
+
+If you are using Cygwin, make sure you have the following Cygwin utilities
+installed in order to visualize the data:
+
+ - objdump (binutils package)
+ - addr2line (binutils package)
+
+For this Alpha release, on Windows it is recommended to use cl.exe (i.e.,
+Visual Studio) rather than g++ to build your application, as Dr. Heapstat
+does not track the Cygwin malloc.
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_running Running Dr. Heapstat
+
+The first step is to unzip or untar the Dr. Heapstat package.
+
+********************
+\subsection sec_app_prep Prepare Your Application
+
+In order to obtain line number information, compile your target
+application with debugging information enabled (e.g., "/Zi" for cl.exe
+or "-g" for gcc or g++).
+
+If you want to run your application with stripped libraries or binaries and
+have the unstripped versions in separate locations, you can point at those
+locations using the \p DRHEAPSTAT_LIB_PATH environment variable, which is a
+colon-separated list of directories.
+
+********************
+\subsection sec_invocation Invoking Dr. Heapstat
+
+Run your application as you normally would from a command prompt (on
+Windows, either the \p cmd shell or a Cygwin prompt), with \p \FRONT_END
+and "--" prefixed to the command line (the "--" separates any arguments to
+Dr. Heapstat from the application being run).
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -- \if WINDOWS c:/path/to/my/app \else /path/to/my/app \endif args to my app
+</tt>
+
+\if WINDOWS
+On Windows, if you used the installer and checked the box to add \p
+\FRONT_END to your PATH, you can simply type into your shell:
+
+\par
+<tt>\FRONT_END -- c:/path/to/my/app args to my app
+</tt>
+
+You can also drag-and-drop your application onto \p \FRONT_END in 
+Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
+installation.
+
+On Windows Vista, the DynamoRIO engine that Dr. Heapstat uses requires
+administrative privileges in order to write to the registry.  If UAC is
+enabled, Dr. Heapstat must be executed by an elevated (runas admin) process.
+Be sure that the shell being used to invoke \p \FRONT_END was started with
+elevated permissions (right-click on the icon used to start the shell and
+select "Run as administrator").  Drag-and-drop will not work on Vista with
+this Alpha release of Dr. Heapstat when UAC is enabled.
+\endif
+
+********************
+\subsection sec_results Visualizing the Results
+
+Dr. Heapstat's results are written to files inside a subdirectory created
+for each invocation of Dr. Heapstat, inside Dr. Heapstat's log directory.
+The log directory by default is the \p logs subdirectory of the unpacked
+installation.  It can be changed with the \p -logdir option:
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -logdir \if WINDOWS c:/logs \else /tmp/drmem \endif -- myapp
+</tt>
+
+When an application is executed under Dr. Heapstat's control, it creates a
+subdirectory in the base log directory named
+"DrHeapstat-<appname>.<pid>.NNN", where NNN is a counter that is incremented
+to ensure unique names.
+
+Set up the environment variable FLASH_PLAYER to point to a Flash 
+player or browser with Flash plugin installed.  Next, ensure that a
+<tt>$HOME/.macromedia/Flash_Player/\#Security/FlashPlayerTrust</tt> directory 
+exists (for Linux only).  Now launch the visualization tool:
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -visualize -x path-to-app-exe -profdir path-to-logdir
+</tt>
+
+********************
+\subsection sec_peak Peak Usage
+
+Dr. Heapstat creates a special snapshot at the point of peak heap usage
+during an application's execution.  Because recording a snapshot is
+expensive, Dr. Heapstat uses an algorithm that attempts to maintain
+accuracy of the peak snapshot with low overhead.  It only checks for the
+peak when memory is deallocated, to avoid repeatedly taking a snapshot as
+usage grows, or when a regular snapshot point is reached.
+Additionally, Dr. Heapstat attempts to avoid repeated new peak snapshots by
+not recording a new snapshot if it is within a threshold of the current
+snapshot in each of three categories:
+- total memory usage
+- number of allocations and frees (i.e., the constituent allocations making
+  up the existing peak have not changed much)
+- timestamp (i.e., the new peak is not substantially later in the
+  program's execution).
+The threshold used is a percentage and is controlled by the \p
+-peak_threshold option.
+
+********************
+\subsection sec_staleness Heap Staleness
+
+Dr. Heapstat supports recording the time at which each allocation was last
+accessed (read or written).  This information can be used to identify
+"logical memory leaks", where memory is still reachable but is no longer
+needed.  The \p -staleness runtime option, on by default, controls whether
+staleness data is gathered.  When the resulting data is displayed, the
+desired threshold for last access can be set in order to view the
+application's memory at various levels of "staleness".
+
+Collecting staleness data does incur additional performance and memory
+overhead.  It can be disabled with the \p -no_staleness runtime option.
+
+********************
+\subsection sec_leaks Memory Leaks
+
+Dr. Heapstat also scans for and reports memory leaks.  The \p -check_leaks
+option, on by default, controls this feature.  Dr. Heapstat scans at
+application exit and on each nudge (see \ref sec_nudge).
+
+INCLUDEFILE ../../drmemory/docs/leaks.dox.sub
+
+To view detected leaks, after the data is collected run the front-end
+script with these options:
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -view_leaks -x path-to-app-exe -profdir path-to-logdir
+</tt>
+
+********************
+\subsection sec_suppress Suppressing Errors
+
+Dr. Heapstat generates a file named \p suppress.txt alongside the \p
+results.txt file.  To suppress leaks from being reported in future runs,
+edit this file to contain just the leaks you wish to suppress.  Then pass
+the file to \p \FRONT_END with the \p -suppress option when invoking it
+with the \p -view_leaks option:
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -suppress \if WINDOWS c:/suppress-custom.txt \else /tmp/suppress-custom.txt \endif -view_leaks -x path-to-app-exe -profdir path-to-logdir -- myapp
+</tt>
+
+The suppress.txt generated by Dr. Heapstat will contain suppression
+information only for those errors that weren't suppressed using the
+-suppress option.  When editing your own suppress file, each callstack line
+supports \p * wildcards in either the module or function name.  Prefix
+matching is also supported.  Prefix matching means that the callstack in the
+suppression file is considered a match if it matches the top of any actual
+callstack during a run.  This allows specifying only the first few frames
+of a callstack and have it match any callstack whose first frames match
+those frames, regardless of subsequent frames.
+
+Suppression files can have empty lines and comment lines (begining with #).
+There should be no leading white space for the actual suppression information.
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+\section sec_advanced Advanced Options
+
+This section discusses additional data collection options provided by
+Dr. Heapstat.
+
+********************
+\subsection sec_dump Continuous Data
+
+Dr. Heapstat supports a continuous data dump, as an alternative to a fixed
+number of snapshots that are spread uniformly over the application's
+execution.  To enable this mode, specify the \p -dump runtime option along
+with a frequency at which to write data to the log file via the \p
+-dump_freq runtime option.  Be aware that for a long-running application,
+if the frequency is high then there will be a lot of data and your disk
+partition may fill up.  An excessive number of snapshots may also exceed
+the limits of the visualization tool.
+
+********************
+\subsection sec_nudge Multiple Data Sets
+
+When running with the default options, Dr. Heapstat writes out the profiling
+data (which is a constant number of snapshots) only when the application
+exits.  Dr. Heapstat provides a method of requesting data dump at arbitrary
+times during application execution.  This method can also be used to gather
+several sets of data in the middle of an application run.  Each data dump
+can be viewed separately in the visualization tool.
+
+While the application is running, invoke \p \FRONT_END with the \p -nudge
+option and the process identifier of the application in order to request a
+data dump:
+
+\par
+<tt>~/DrHeapstat-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -nudge processid
+</tt>
+
+Upon receiving a nudge, Dr. Heapstat does not reset its profiling data, i.e.,
+the data shown is always absolute, from the start of the process to the
+point where the nudge was issued.  Thus visualization can be done only from
+process start up to a nudge or to the end, not between two nudges (see below
+for how to do that).
+
+In order to visualize the memory profiling up to a given nudge, the \p
+-view_nudge option should be used with the \p -visualize option to specify which
+reference point to use for visualizing.  All available reference points will be
+displayed by the visualization tool for the user to choose from.  Reference
+points include all nudge points and the end point.
+
+When \p -nudge is used with \p -dump (\ref sec_dump), the meaning of nudge is
+different.  To visualize nudges created with \p -dump, the user
+specifies the range of snapshots to display by indicating which
+reference points should serve as starting and ending points.  Reference
+points here include start, all nudge points and the end point.  Use \p
+-from_nudge and \p -to_nudge with \p -visualize to identify the start and end
+points.  This model of nudge is useful if one wants to identify how much memory
+was used for a certain action.  Unlike the \p -view_nudge model for a constant
+number of snapshots, here the user can visualize all snapshots between any two
+reference points, i.e., more than one reference point can be viewed as they are
+just markers.  Note: the data shown between two nudge points is absolute, not
+the delta.
+
+********************
+\subsection sec_daemon Applications That Do Not Exit
+
+For applications that do not have a normal exit, such as daemons,
+Dr. Heapstat's default data output will never occur because it happens at
+application exit.  The \p nudge option described in \ref sec_nudge can be
+used to obtain data from daemon applications.
+
+****************************************************************************
+****************************************************************************
+*/
+/* It's good to split up large C comments: we've hit some sort of doxygen
+ * internal buffering error before if one comment gets too long.
+ */

@@ -67,7 +67,7 @@ set(arg_outdir ".")    # directory in which to place deliverables
 set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
 set(arg_cacheappend "")# string to append to every build's cache
-set(arg_external OFF)  # building an external (open-source) release?
+set(arg_drmem_only OFF) # do not include Dr. Heapstat
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
@@ -94,8 +94,8 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^cacheappend=")
     string(REGEX REPLACE "^cacheappend=" "" arg_cacheappend "${arg}")
   endif ()
-  if (${arg} MATCHES "^external")
-    set(arg_external ON)
+  if (${arg} MATCHES "^drmem_only")
+    set(arg_drmem_only ON)
   endif ()
 endforeach (arg)
 
@@ -229,7 +229,7 @@ else ()
   set(name_sfx "")
 endif ()
 
-if (NOT arg_external)
+if (NOT arg_drmem_only)
   dobuild("drheapstat-${name_sfx}release-32" OFF "
     TOOL_DR_HEAPSTAT:BOOL=ON
     CMAKE_BUILD_TYPE:STRING=Release
@@ -238,7 +238,7 @@ if (NOT arg_external)
     TOOL_DR_HEAPSTAT:BOOL=ON
     CMAKE_BUILD_TYPE:STRING=Debug
     ")
-endif (NOT arg_external)
+endif (NOT arg_drmem_only)
 dobuild("drmemory-${name_sfx}release-32" OFF "
   CMAKE_BUILD_TYPE:STRING=Release
   ")

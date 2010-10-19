@@ -1,0 +1,123 @@
+/* **********************************************************
+ * Copyright (c) 2009 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\mainpage Dr. Heapstat
+
+Dr. Heapstat is a memory profiling tool that displays heap usage
+information via a graphical visualization tool.  Dr. Heapstat operates on
+unmodified application binaries running on Windows or Linux \if VMX86_SERVER
+or ESXi \endif on commodity IA-32 and AMD64 hardware.
+Dr. Heapstat currently targets 32-bit applications only.
+
+This document describes how to use Dr. Heapstat.  It is divided into the
+following sections:
+
+- \subpage page_using
+  <br>How to set up and use Dr. Heapstat.
+\if VMX86_SERVER
+- \subpage page_ESXi
+  <br>Additional instructions when running on ESXi.
+\endif
+- \subpage page_options
+  <br>Reference for Dr. Heapstat's runtime options.
+
+- \subpage page_help
+
+- \subpage page_release_notes
+  <br>Release notes for this release, including current limitations and
+  changes since prior releases.
+
+- \subpage page_license
+
+Here is a screenshot of Dr. Heapstat's visualization of an application's
+memory usage:
+
+\image html vistool.png
+
+\image html favicon.ico
+
+****************************************************************************
+****************************************************************************
+*/
+
+/* It's good to split up large C comments: we've hit some sort of doxygen
+ * internal buffering error before if one comment gets too long.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\ifnot VMX86_SERVER
+\page page_help Obtaining Help and Reporting Bugs
+
+For questions, bug reports, and discussion, join the <a
+href="http://groups.google.com/group/drmemory-users/">Dr. Memory Users
+group</a>.  Dr. Heapstat is part of the Dr. Memory tool suite.
+
+\endif
+****************************************************************************
+****************************************************************************
+*/
+
+/* It's good to split up large C comments: we've hit some sort of doxygen
+ * internal buffering error before if one comment gets too long.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_license License for Dr. Heapstat
+
+\verbinclude license.txt
+
+***************************************************************************
+\htmlonly
+<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
+  <tr><td></td></tr></table></td></tr></table></td></tr></table>
+\endhtmlonly
+
+On Windows, the auxiliary scripts are packaged into executables using a
+standard, unmodified version of perl.  The sources for perl can be obtained
+from
+\code
+  http://www.perl.com/download.csp
+\endcode
+
+The Windows NSIS installer was created using a standard, unmodified version
+of NSIS.  The sources for NSIS can be obtained from:
+\code
+  http://nsis.sourceforge.net/
+\endcode
+
+The version of DynamoRIO packaged with Dr. Heapstat is a standard, unmodified
+version.  The sources for DynamoRIO can be obtained from:
+\code
+  http://dynamorio.org/
+\endcode
+
+****************************************************************************
+****************************************************************************
+*/
