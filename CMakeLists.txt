@@ -370,16 +370,35 @@ endif ()
 enable_testing()
 add_subdirectory(tests)
 
-if (NOT DEFINED DynamoRIO_DIR)
-  set(DynamoRIO_DIR "${PROJECT_SOURCE_DIR}/../cmake" CACHE PATH
+if (DEFINED DynamoRIO_DIR)
+  # i#67: relative dirs are not really supported in find_package: they're
+  # relative to source dir not build dir, so we change that here.
+  # we can't do get_filename_component(... ABSOLUTE) b/c it's relative to
+  # source dir as well.
+  if ("${DynamoRIO_DIR}" MATCHES "^\\.\\.")
+    get_filename_component(DynamoRIO_DIR "${PROJECT_BINARY_DIR}/${DynamoRIO_DIR}" ABSOLUTE)
+  endif ()
+  # exit if it doesn't exist since very misleading if find_package() goes
+  # and finds some other version from what was requested
+  if (NOT EXISTS "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
+    message(FATAL_ERROR "${DynamoRIO_DIR}/DynamoRIOConfig.cmake does not exist: invalid DynamoRIO_DIR")
+  endif ()
+else (DEFINED DynamoRIO_DIR)
+  # default value
+  set(DynamoRIO_DIR "${PROJECT_BINARY_DIR}/../exports/cmake" CACHE PATH
     "DynamoRIO installation's cmake directory")
-endif (NOT DEFINED DynamoRIO_DIR)
+endif (DEFINED DynamoRIO_DIR)
 
 set(DynamoRIO_REG_COMPATIBILITY ON)
 find_package(DynamoRIO 2.1)
 if (NOT DynamoRIO_FOUND)
   message(FATAL_ERROR "DynamoRIO package required to build")
 endif(NOT DynamoRIO_FOUND)
+# from here on use what was found, not what was passed in
+get_filename_component(DynamoRIO_DIR "${DynamoRIO_CONFIG}" PATH)
+# preserve it in the cache so it's easy to tell
+set(DynamoRIO_DIR "${DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
+message(STATUS "Found DynamoRIO: ${DynamoRIO_DIR}")
 
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
