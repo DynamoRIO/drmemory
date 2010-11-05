@@ -1442,15 +1442,15 @@ malloc_size(app_pc start)
     return sz;
 }
 
-/* Returns -1 on failure.  Will return invalid malloc regions. */
+/* Returns -1 on failure.  Only looks at invalid malloc regions. */
 ssize_t
-malloc_size_include_invalid(app_pc start)
+malloc_size_invalid_only(app_pc start)
 {
     ssize_t sz = -1;
     malloc_entry_t *e;
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL) /* deliberately include invalid */
+    if (e != NULL && !TEST(MALLOC_VALID, e->flags))
         sz = (e->end - start);
     malloc_unlock_if_locked_by_me(locked_by_me);
     return sz;

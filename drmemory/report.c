@@ -1071,14 +1071,21 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
                  * have marked as addr so try align-8 forward as our
                  * loop will miss that if all addr in between
                  */
-                size = malloc_size((byte*)ALIGN_FORWARD(start+1, MALLOC_CHUNK_ALIGNMENT));
+                start = (byte*) ALIGN_FORWARD(start+1, MALLOC_CHUNK_ALIGNMENT);
+                size = malloc_size(start);
             }
             if (size > -1) {
                 found = true;
                 next_start = start;
-                BUFPRINT(buf, bufsz, *sofar, len,
-                         "%snext higher malloc: "PFX"-"PFX""NL,
-                         INFO_PFX, start, start+size);
+                /* we don't have the malloc lock so races could result in
+                 * inaccurate adjacent malloc info: only print if accurate
+                 */
+                if (next_start >= addr+sz) {
+                    BUFPRINT(buf, bufsz, *sofar, len,
+                             "%snext higher malloc: "PFX"-"PFX""NL,
+                             INFO_PFX, start, start+size);
+                } else
+                    next_start = NULL;
                 break;
             } /* else probably an earlier unaddr error, for which we marked
                * the memory as addressable!
@@ -1106,15 +1113,21 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
                      * have marked as addr so try align-8 back as our
                      * loop will miss that if all addr in between
                      */
-                    size = malloc_size((byte*)ALIGN_BACKWARD(start-1,
-                                                             MALLOC_CHUNK_ALIGNMENT));
+                    start = (byte*) ALIGN_BACKWARD(start-1, MALLOC_CHUNK_ALIGNMENT);
+                    size = malloc_size(start);
                 }
                 if (size > -1) {
                     found = true;
                     prev_end = start + size;
-                    BUFPRINT(buf, bufsz, *sofar, len,
-                             "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX, start,
-                             prev_end);
+                    /* we don't have the malloc lock so races could result in
+                     * inaccurate adjacent malloc info: only print if accurate
+                     */
+                    if (prev_end <= addr) {
+                        BUFPRINT(buf, bufsz, *sofar, len,
+                                 "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX, start,
+                                 prev_end);
+                    } else
+                        prev_end = NULL;
                     break;
                 } /* else probably an earlier unaddr error, for which we marked
                    * the memory as addressable!
@@ -1131,8 +1144,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
     if (!found && next_start != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_FORWARD(addr+sz, MALLOC_CHUNK_ALIGNMENT);
-             start < next_start; start += MALLOC_CHUNK_ALIGNMENT) {
-            size = malloc_size_include_invalid(start);
+             start < addr+sz && start < next_start; start += MALLOC_CHUNK_ALIGNMENT) {
+            size = malloc_size_invalid_only(start);
             if (size > -1) {
                 found = true;
                 end = start + size;
@@ -1144,15 +1157,17 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_BACKWARD(addr, MALLOC_CHUNK_ALIGNMENT);
              start > prev_end; start -= MALLOC_CHUNK_ALIGNMENT) {
-            size = malloc_size_include_invalid(start);
+            size = malloc_size_invalid_only(start);
             if (size > -1) {
-                found = true;
                 end = start + size;
+                if (end > addr)
+                    found = true;
                 break;
             }
         }
     }
     if (found) {
+        ASSERT(addr < end && addr+sz > start, "bug in delay free overlap calc");
         /* Note that due to the finite size of the delayed
          * free list (and realloc not on it: PR 493888) and
          * new malloc entries replacing invalid we can't

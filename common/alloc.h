@@ -119,9 +119,9 @@ malloc_end(app_pc start);
 ssize_t
 malloc_size(app_pc start);
 
-/* Returns -1 on failure.  Will return invalid malloc regions. */
+/* Returns -1 on failure.  Only looks at invalid malloc regions. */
 ssize_t
-malloc_size_include_invalid(app_pc start);
+malloc_size_invalid_only(app_pc start);
 
 void *
 malloc_get_client_data(app_pc start);
