@@ -32,6 +32,9 @@
 #ifdef LINUX
 # include "sysnum_linux.h"
 # include <signal.h>
+# include <ucontext.h>
+/* 32-bit plain=736, rt=892; 64-bit plain=800, rt=440 */
+# define MAX_SIGNAL_FRAME_SIZE 1024
 #else
 # include "stack.h"
 #endif
@@ -968,16 +971,51 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
     }
     else if (sysnum == SYS_rt_sigreturn IF_X86_32(|| sysnum == SYS_sigreturn)) {
         /* PR 406333: linux signal delivery.
-         * Should also watch for sigreturn: whether altstack or not, invalidate
+         * On sigreturn, whether altstack or not, invalidate
          * where frame was.  Either need to record at handler entry the base of
-         * the frame, or at sigreturn determine target esp.
+         * the frame, or at sigreturn determine target esp: the former is
+         * complicated by nested signals and signals that use longjmp, so
+         * we do the latter.
          *
-         * Will longjmp be handled naturally?  should be.
+         * Longjmp exiting a signal requires no special handling when it
+         * goes up the stack (or down) since we see the xsp assignment.
          */
-        ASSERT(cpt->sigframe_top != NULL, "sigreturn with no prior signal");
-        LOG(2, "at sigreturn: marking frame "PFX"-"PFX" unaddressable\n",
-            mc.xsp, cpt->sigframe_top);
-        shadow_set_range((app_pc)mc.xsp, cpt->sigframe_top, SHADOW_UNADDRESSABLE);
+        byte *sp = (byte *)mc.xsp;
+        byte *new_sp;
+        struct sigcontext *sc;
+        if (sysnum == SYS_rt_sigreturn) {
+            /* first, skip signum and siginfo ptr to get ucontext ptr */
+            struct ucontext *ucxt;
+            if (safe_read(sp + sizeof(int) + sizeof(struct siginfo*),
+                          sizeof(ucxt), &ucxt)) {
+                sc = (struct sigcontext *) &ucxt->uc_mcontext;
+            } else {
+                LOG(1, "WARNING: can't read sc pointer at sigreturn\n");
+                sc = NULL;
+            }
+        } else {
+            sc = (struct sigcontext *) sp;
+        }
+        if (sc != NULL &&
+            safe_read(&IF_X64_ELSE(sc->rsp, sc->esp), sizeof(new_sp), &new_sp)) {
+            byte *unaddr_top = NULL;
+            if (new_sp > sp && (size_t)(new_sp - sp) < MAX_SIGNAL_FRAME_SIZE) {
+                unaddr_top = new_sp;
+            } else if (cpt->sigaltstack != NULL && cpt->sigaltstack > sp &&
+                       (size_t)(cpt->sigaltstack - sp) < cpt->sigaltsize) {
+                /* transitioning from sigaltstack to regular stack */
+                unaddr_top = cpt->sigaltstack;
+            } else {
+                LOG(2, "at sigreturn but new sp "PFX" irregular vs "PFX"\n", new_sp, sp);
+            }
+            if (unaddr_top != NULL) {
+                LOG(2, "at sigreturn: marking frame "PFX"-"PFX" unaddressable\n",
+                    sp, unaddr_top);
+                shadow_set_range(sp, unaddr_top, SHADOW_UNADDRESSABLE);
+            }
+        } else {
+            LOG(1, "WARNING: can't read sc->xsp at sigreturn\n");
+        }
     }
     else if (sysnum == SYS_sigaltstack) {
         /* PR 406333: linux signal delivery */
@@ -1052,11 +1090,10 @@ dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info)
 {
     if (options.shadowing) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-        ASSERT(pt != NULL, "pt shouldn't be null");
-        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-        cpt->signal_xsp = (app_pc) info->mcontext.xsp;
-        LOG(2, "signal interrupted app at xsp="PFX"\n", cpt->signal_xsp);
+        /* no longer trying to store the interrupted xsp b/c it
+         * gets too complicated (xref PR 620746)
+         */
+        LOG(2, "signal interrupted app at xsp="PFX"\n", info->mcontext.xsp);
     }
     return DR_SIGNAL_DELIVER;
 }
@@ -1065,59 +1102,45 @@ static void
 at_signal_handler(void)
 {
     /* PR 406333: linux signal delivery.
-     * Need to know extent of frame: could record both esp in signal event
+     * Need to know extent of frame: could record xsp in signal event,
      * and record SYS_sigaltstack.
-     * In handler, mark from cur esp upward as defined, until hit:
-     * - Base of sigaltstack
-     * - Esp at which signal happened
-     * An alternative to recording esp where signal happened is to walk
-     * until hit addressable memory.
+     * However, we can't tie together the signal event and handler
+     * invocation, b/c of ignored and default actions, nested signals,
+     * pseudo-nested signals (new signals coming in after the frame
+     * copy but before executing the handler), etc. (xref PR 620746).
+     * The most robust solution would be to have DR provide an event
+     * "adjust_app_stack_for_signal" and call it whenever copying a
+     * frame to the app stack or processing a sigreturn, providing us
+     * w/ the old and new xsp: but that doesn't fit w/ the rest of the
+     * DR API, so we're walking unaddr until we hit either addr,
+     * the max frame size, or the top of the alt stack.
+     * There is a pathological case where the app gets a signal while
+     * at the very base of a stack and we could walk off onto
+     * adjacent memory: we ignore that.
      */
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     dr_mcontext_t mc;
-    byte *frame_top;
+    byte *sp, *stop;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     dr_get_mcontext(drcontext, &mc, NULL);
-
-    /* Even if multiple signals to this thread we should get proper
-     * (event,handler) pairs 
-     */
-    if (cpt->signal_xsp == NULL) {
-        /* Could downgrade to a LOG */
-        ASSERT(false, "in signal handler but not for signal?");
-        return;
-    }
-    LOG(3, "in signal handler: alt="PFX", cur="PFX", interrupt="PFX"\n",
-        cpt->sigaltstack, mc.esp, cpt->signal_xsp);
+    sp = (byte *)mc.xsp;
+    stop = sp + MAX_SIGNAL_FRAME_SIZE;
     if (cpt->sigaltstack != NULL &&
         cpt->sigaltstack > (app_pc) mc.xsp &&
-        (size_t)(cpt->sigaltstack - (app_pc) mc.xsp) < cpt->sigaltsize) {
-        if (cpt->sigaltstack > cpt->signal_xsp && cpt->signal_xsp < (app_pc) mc.xsp) {
-            /* nested signal on alt stack */
-            frame_top = cpt->signal_xsp;
-        } else
-            frame_top = cpt->sigaltstack;
-    } else {
-        ASSERT(cpt->signal_xsp > (app_pc) mc.xsp &&
-               (size_t)(cpt->signal_xsp - (app_pc) mc.xsp) <
-               /* nested signals could take up some space */
-               10*options.stack_swap_threshold,
-               "on unknown signal stack");
-        frame_top = cpt->signal_xsp;
+        (size_t)(cpt->sigaltstack - (app_pc) mc.xsp) < cpt->sigaltsize &&
+        stop > cpt->sigaltstack)
+        stop = cpt->sigaltstack;
+    /* XXX: we could probably assume stack alignment at start of handler */
+    while (sp < stop && shadow_get_byte(sp) == SHADOW_UNADDRESSABLE) {
+        /* Assume whole frame is defined (else would need DR to identify
+         * which parts are padding).
+         */
+        shadow_set_byte(sp, SHADOW_DEFINED);
+        sp++;
     }
-    /* Assume whole frame is defined (else would need DR to identify
-     * which parts are padding).
-     */
-    LOG(2, "in signal handler: marking frame "PFX"-"PFX" defined\n", mc.esp, frame_top);
-    ASSERT((size_t)(frame_top - (app_pc) mc.xsp) < PAGE_SIZE,
-           "signal frame way too big");
-    shadow_set_range((app_pc) mc.xsp, frame_top, SHADOW_DEFINED);
-    /* Record for sigreturn */
-    cpt->sigframe_top = frame_top;
-    /* Reset */
-    cpt->signal_xsp = NULL;
+    LOG(2, "signal handler: marked new frame defined "PFX"-"PFX"\n", mc.xsp, sp);
 }
 
 void

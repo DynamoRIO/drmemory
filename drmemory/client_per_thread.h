@@ -40,8 +40,6 @@ typedef struct _client_per_thread_t {
 #ifdef TOOL_DR_MEMORY
 # ifdef LINUX
     /* PR 406333: linux signal delivery */
-    app_pc signal_xsp;
-    app_pc sigframe_top;
     app_pc sigaltstack;
     size_t sigaltsize;
     app_pc prev_sigaltstack; /* used on syscall failure */
