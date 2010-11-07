@@ -1678,7 +1678,7 @@ event_filter_syscall(void *drcontext, int sysnum)
     case SYS_close:
     case SYS_fork:
     case SYS_clone:
-    IF_VMX86(case 1025:) /* VMKSYS_ForkExec */
+    IF_VMX86(case 1025:)
         return true;
 #endif
     default:
@@ -1722,7 +1722,7 @@ event_pre_syscall(void *drcontext, int sysnum)
                /* FIXME: if open-sourced we should split this.
                 * Presumably we'll have the bora shlib split before then.
                 */
-               IF_VMX86(|| sysnum == 1025 /* VMKSYS_ForkExec */)) {
+               IF_VMX86(|| sysnum == 1025)) {
         /* Store the file offset in the client_data field, shared across callbacks */
         client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
         cpt->filepos = dr_file_tell(f_callstack);

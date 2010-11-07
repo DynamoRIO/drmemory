@@ -76,13 +76,14 @@ get_syscall_name(uint num);
 extern int syscall_invoked[MAX_SYSNUM];
 #endif
 
-#ifdef VMX86_SERVER
-void
-vmkuw_syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
-#endif
-
 void
 check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
              const char *id);
+
+byte *
+syscall_auxlib_start(void);
+
+byte *
+syscall_auxlib_end(void);
 
 #endif /* _SYSCALL_H_ */

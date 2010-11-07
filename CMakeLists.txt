@@ -444,9 +444,6 @@ else (TOOL_DR_HEAPSTAT)
     common/crypto.c)
   if (UNIX)
     set(srcs ${srcs} drmemory/syscall_linux.c)
-    if (VMKERNEL)
-      set(srcs ${srcs} ${INTERNAL_DIR}/drmemory/syscall_vmkuw.c)
-    endif (VMKERNEL)
   else (UNIX)
     set(srcs ${srcs} drmemory/syscall_windows.c)
   endif (UNIX)
@@ -478,6 +475,17 @@ use_DynamoRIO_extension(${client_target} drcontainers)
 if (WIN32 AND USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (WIN32 AND USE_DRSYMS)
+
+if (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
+  set(client_auxlib "drmemory_esxi")
+  add_library(${client_auxlib} SHARED ${INTERNAL_DIR}/drmemory/syscall_vmkuw.c)
+  configure_DynamoRIO_client(${client_auxlib})
+  set_property(TARGET ${client_auxlib} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  set_target_properties(${client_auxlib} PROPERTIES
+    VERSION ${VERSION_NUMBER})
+else (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
+  set(client_auxlib "")
+endif (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
 
 # Though the swf file isn't an executable it is in bin32 because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
@@ -622,7 +630,7 @@ if ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
 endif ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
 set(INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
-install(TARGETS ${client_target}
+install(TARGETS ${client_target} ${client_auxlib}
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
   PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE

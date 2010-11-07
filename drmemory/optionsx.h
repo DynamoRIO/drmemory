@@ -241,6 +241,9 @@ OPTION_CLIENT_BOOL(drmemscope, leaks_only, false,
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",
                      "If this list is non-empty, when "TOOLNAME" sees prctl(PR_SET_NAME) and the name is not on the list, then "TOOLNAME" will disable its instrumentation for the rest of the process and for all of its child processes.  The list is ,-separated.")
+OPTION_CLIENT_STRING(drmemscope, auxlib, "",
+                     "Load auxiliary system call handling library",
+                     "This option should specify the basename of an auxiliary system call handling library found in the same directory as the Dr. Memory client library.")
 
 /* not supporting perturb with heapstat: can add easily later */
 /* XXX: some of the other options here shouldn't be allowed for heapstat either */

@@ -68,9 +68,8 @@ typedef struct _client_per_thread_t {
 # endif
 #endif /* TOOL_DR_HEAPSTAT */
 
-#ifdef VMX86_SERVER
-    void *vmkuw_regs;
-#endif
+    /* Saves syscall params across syscall */
+    void *sysaux_params;
 } client_per_thread_t;
 
 #endif /* _CLIENT_PER_THREAD_ */

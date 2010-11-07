@@ -585,9 +585,6 @@ syscall_info_t syscall_info[] = {
 void
 syscall_os_init(void *drcontext)
 {
-#ifdef VMX86_SERVER
-    vmkuw_syscall_init(drcontext);
-#endif /* VMX86_SERVER */
 }
 
 void
@@ -606,11 +603,6 @@ syscall_lookup(int num)
 static inline reg_id_t
 sysparam_reg(uint sysnum, uint argnum)
 {
-#ifdef VMX86_SERVER
-    reg_id_t reg = vmkuw_sysparam_reg(sysnum, argnum);
-    if (reg != REG_NULL)
-        return reg;
-#endif
 #ifdef X64
     switch (argnum) {
     case 0: return REG_RDI;
@@ -645,8 +637,8 @@ get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
      */
-    if (reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
-        ASSERT(reg == REG_EBP, "sysarg mismatch");
+    if (reg == REG_EBP &&
+        reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
         return shadow_get_byte((app_pc)mc->xsp);
@@ -664,21 +656,17 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
      */
-#ifndef VMX86_SERVER
-    if (reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
-        ASSERT(reg == REG_EBP, "sysarg mismatch");
+    if (reg == REG_EBP &&
+        reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                      (app_pc)mc->xsp, argsz, mc, NULL);
     } else {
-#endif
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, NULL);
         check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
-#ifndef VMX86_SERVER
     }
-#endif
 }
 
 static void
@@ -2389,9 +2377,6 @@ os_shared_pre_syscall(void *drcontext, int sysnum)
         handle_pre_execve(drcontext);
         break;
     }
-#ifdef VMX86_SERVER
-    res = vmkuw_shared_pre_syscall(drcontext, sysnum) && res;
-#endif /* VMX86_SERVER */
     return res;
 }
 
@@ -2417,9 +2402,6 @@ os_shared_post_syscall(void *drcontext, int sysnum)
         break;
     }
     }
-#ifdef VMX86_SERVER
-    vmkuw_shared_post_syscall(drcontext, sysnum);
-#endif /* VMX86_SERVER */
 }
 
 bool
@@ -2562,9 +2544,6 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         break;
     }
     }
-#ifdef VMX86_SERVER
-    res = vmkuw_shadow_pre_syscall(drcontext, sysnum) && res;
-#endif /* VMX86_SERVER */
     return res; /* execute syscall */
 }
 
@@ -2602,10 +2581,6 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_prctl(drcontext, &mc);
         break;
     };
-
-#ifdef VMX86_SERVER
-    vmkuw_shadow_post_syscall(drcontext, sysnum);
-#endif /* VMX86_SERVER */
 }
 
 bool

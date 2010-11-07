@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -108,6 +108,261 @@ check_syscall_gateway(instr_t *inst)
         ASSERT(false, "unknown system call gateway");
 }
 
+/***************************************************************************
+ * AUXILIARY LIBRARY
+ */
+
+static dr_auxlib_handle_t auxlib;
+static byte *auxlib_start, *auxlib_end;
+
+/* We want function pointers, not static functions */
+/* These function pointers are all in .data so will be read-only after init */
+#define DYNAMIC_INTERFACE 1
+#include "syscall_aux.h"
+
+/* local should be a char * and is meant to record which bind failed */
+#define BINDFUNC(lib, local, name) \
+    (local = #name, name = (void *) dr_lookup_aux_library_routine(lib, #name))
+
+#define SYSAUXLIB_MIN_VERSION_USED 1
+
+static bool
+syscall_load_auxlib(const char *name)
+{
+    char auxpath[MAXIMUM_PATH];
+    char *buf = auxpath;
+    size_t bufsz = BUFFER_SIZE_ELEMENTS(auxpath);
+    ssize_t len = 0;
+    size_t sofar = 0;
+    const char *path = dr_get_client_path(client_id);
+    const char *sep = path;
+    char *func;
+    int *drauxlib_ver_compat, *drauxlib_ver_cur;
+
+    /* basename is passed in: use client path */
+    while (*sep != '\0')
+        sep++;
+    while (sep > path && *sep != '/' IF_WINDOWS(&& *sep != '\\'))
+        sep--;
+    BUFPRINT(buf, bufsz, sofar, len, "%.*s", (sep - path), path);
+    BUFPRINT(buf, bufsz, sofar, len, "/%s", name);
+    auxlib = dr_load_aux_library(auxpath, &auxlib_start, &auxlib_end);
+    if (auxlib == NULL) {
+        NOTIFY_ERROR("Error loading auxiliary library %s\n", auxpath);
+        goto auxlib_load_error;
+    }
+
+    /* version check */
+    drauxlib_ver_compat = (int *)
+        dr_lookup_aux_library_routine(auxlib, SYSAUXLIB_VERSION_COMPAT_NAME);
+    drauxlib_ver_cur = (int *)
+        dr_lookup_aux_library_routine(auxlib, SYSAUXLIB_VERSION_CUR_NAME);
+    if (drauxlib_ver_compat == NULL || drauxlib_ver_cur == NULL ||
+        *drauxlib_ver_compat > SYSAUXLIB_MIN_VERSION_USED ||
+        *drauxlib_ver_cur < SYSAUXLIB_MIN_VERSION_USED) {
+        NOTIFY_ERROR("Version %d mismatch with aux library %s version %d-%d",
+                     SYSAUXLIB_MIN_VERSION_USED, auxpath,
+                     (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur,
+                     (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur);
+        goto auxlib_load_error;
+    }
+    LOG(1, "loaded aux lib %s at "PFX"-"PFX" ver=%d-%d\n",
+        auxpath, auxlib_start, auxlib_end, *drauxlib_ver_compat, *drauxlib_ver_cur);
+
+    /* required import binding */
+    if (BINDFUNC(auxlib, func, sysauxlib_init) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_syscall_name) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_save_params) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_free_params) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_syscall_successful) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_num_reg_params) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_reg_param_info) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_num_mem_params) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_mem_param_info) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_is_fork) == NULL ||
+        BINDFUNC(auxlib, func, sysauxlib_is_exec) == NULL) {
+        NOTIFY_ERROR("Required export %s missing from aux library %s",
+                     func, auxpath);
+        goto auxlib_load_error;
+    }
+    if (!sysauxlib_init()) {
+        NOTIFY_ERROR("aux library init failed: do you have the latest version?\n");
+        goto auxlib_load_error;
+    }
+    return true;
+
+ auxlib_load_error:
+    dr_abort();
+    ASSERT(false, "shouldn't get here");
+    if (auxlib != NULL)
+        dr_unload_aux_library(auxlib);
+    auxlib = NULL;
+    return false;
+}
+
+byte *
+syscall_auxlib_start(void)
+{
+    return auxlib_start;
+}
+
+byte *
+syscall_auxlib_end(void)
+{
+    return auxlib_end;
+}
+
+static const char *
+auxlib_syscall_name(int sysnum)
+{
+    if (auxlib == NULL || sysauxlib_syscall_name == NULL)
+        return NULL;
+    return sysauxlib_syscall_name(sysnum);
+}
+
+static bool
+auxlib_known_syscall(int sysnum)
+{
+    return (auxlib_syscall_name(sysnum) != NULL);
+}
+
+static void
+auxlib_check_sysparam_defined(void *drcontext, uint sysnum, uint argnum,
+                              dr_mcontext_t *mc, size_t argsz)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    app_loc_t loc;
+    reg_id_t reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
+    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    syscall_to_loc(&loc, sysnum, NULL);
+    check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
+}
+
+static bool
+auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    char path[MAXIMUM_PATH];
+    cpt->sysaux_params = sysauxlib_save_params(drcontext);
+#ifdef LINUX
+    if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, NULL)) {
+        if (options.perturb)
+            perturb_pre_fork();
+    } else if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
+                                 path, BUFFER_SIZE_BYTES(path)))
+        ELOGF(0, f_fork, "EXEC path=%s\n", path);
+#endif
+    return true;
+}
+
+static void
+auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    char path[MAXIMUM_PATH];
+    process_id_t child;
+    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
+#ifdef LINUX
+    if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, &child)) {
+       /* PR 453867: tell postprocess.pl to watch for child logdir and
+         * then fork a new copy.
+         */
+        if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
+                              path, BUFFER_SIZE_BYTES(path))) {
+            ELOGF(0, f_fork, "FORKEXEC child=%d path=%s\n", child, path);
+        } else {
+            ELOGF(0, f_fork, "FORK child=%d\n", child);
+        }
+    } 
+#endif
+}
+
+static bool
+auxlib_shadow_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    int i;
+    if (auxlib == NULL || !auxlib_known_syscall(sysnum))
+        return true;
+    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
+    for (i=0; i<sysauxlib_num_reg_params(drcontext, cpt->sysaux_params); i++)
+        auxlib_check_sysparam_defined(drcontext, sysnum, i, mc, sizeof(reg_t));
+    for (i=0; i<sysauxlib_num_mem_params(drcontext, cpt->sysaux_params); i++) {
+        byte *start;
+        size_t len_in, len_out;
+        sysauxlib_param_t type;
+        const char *name;
+        if (sysauxlib_mem_param_info(drcontext, cpt->sysaux_params, i, &name,
+                                     &start, &len_in, &len_out, &type)) {
+            LOG(3, "sysauxlib syscall %d mem param %d %s: "PFX" "PIFX" "PIFX" %d\n",
+                sysnum, i, name, start, len_in, len_out, type);
+            if (type == SYSAUXLIB_PARAM_STRING ||
+                type == SYSAUXLIB_PARAM_STRARRAY) {
+                /* FIXME PR 408539: check addressability and definedness
+                 * of each byte prior to deref and find end.
+                 */
+            }
+            if (len_in > 0) {
+                check_sysmem((type == SYSAUXLIB_PARAM_STRING) ?
+                             /* capacity should be addr, until NULL defined */
+                             MEMREF_CHECK_ADDRESSABLE :
+                             MEMREF_CHECK_DEFINEDNESS,
+                             sysnum, start, len_in, mc, name);
+            }
+            if (len_out > 0) {
+                check_sysmem(MEMREF_CHECK_ADDRESSABLE,
+                             sysnum, start, len_out, mc, name);
+            }
+        } else {
+            LOG(1, "WARNING: unable to retrieve sysauxlib syscall %d param %d\n",
+                sysnum, i);
+        }
+    }
+    return true;
+}
+
+static void
+auxlib_shadow_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    if (auxlib == NULL || !auxlib_known_syscall(sysnum))
+        return;
+    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
+    if (sysauxlib_syscall_successful(drcontext, cpt->sysaux_params)) {
+        int i;
+        for (i=0; i<sysauxlib_num_mem_params(drcontext, cpt->sysaux_params); i++) {
+            byte *start;
+            size_t len_in, len_out;
+            sysauxlib_param_t type;
+            const char *name;
+            if (sysauxlib_mem_param_info(drcontext, cpt->sysaux_params, i,
+                                         &name, &start, &len_in, &len_out, &type)) {
+                if (len_out > 0) {
+                    if (type == SYSAUXLIB_PARAM_STRING ||
+                        type == SYSAUXLIB_PARAM_STRARRAY) {
+                        /* FIXME PR 408539: mark defined until end */
+                    }
+                    check_sysmem(MEMREF_WRITE, sysnum, start, len_out, mc, name);
+                }
+            } else {
+                LOG(1, "WARNING: unable to retrieve sysauxlib syscall %d param %s\n",
+                    sysnum, name);
+            }
+        }
+    }
+    sysauxlib_free_params(drcontext, cpt->sysaux_params);
+    cpt->sysaux_params = NULL;
+}
+
+/***************************************************************************
+ * SYSCALL HANDLING
+ */
+
 const char *
 get_syscall_name(uint num)
 {
@@ -115,16 +370,13 @@ get_syscall_name(uint num)
     if (sysinfo != NULL)
         return sysinfo->name;
     else {
-#ifdef VMX86_SERVER
-        const char *name = vmkuw_syscall_name(num);
+        const char *name = auxlib_syscall_name(num);
         if (name != NULL)
             return name;
-#endif
         return "<unknown>";
     }
 }
 
-#ifndef VMX86_SERVER
 static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
 
 /* For syscall we do not have specific parameter info for, we do a
@@ -283,7 +535,6 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         }
     }
 }
-#endif /* !VMX86_SERVER */
 
 void
 check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
@@ -479,22 +730,33 @@ event_pre_syscall(void *drcontext, int sysnum)
     for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++)
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
 
-    sysinfo = syscall_lookup(sysnum);
-    if (sysinfo != NULL) {
-        if (!options.leaks_only && options.shadowing)
-            process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
-        /* now do the syscall-specific handling we need */
-        handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
-    } else {
-#ifndef VMX86_SERVER /* has custom syscall info handling */
-        if (!options.leaks_only && options.shadowing)
-            handle_pre_unknown_syscall(drcontext, sysnum, &mc, pt);
-#endif
-    }
-    /* give os-specific-code chance to do further processing */
+    /* give os-specific-code chance to do non-shadow processing */
     res = os_shared_pre_syscall(drcontext, sysnum);
-    if (!options.leaks_only && options.shadowing)
-        res = os_shadow_pre_syscall(drcontext, sysnum) && res;
+    if (auxlib_known_syscall(sysnum))
+        res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
+
+    if (!options.leaks_only && options.shadowing) {
+        bool known = false;
+        sysinfo = syscall_lookup(sysnum);
+        if (sysinfo != NULL) {
+            known = true;
+            process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
+            res = os_shadow_pre_syscall(drcontext, sysnum) && res;
+        }
+        /* there may be overlap between our table and auxlib: e.g., SYS_ioctl */
+        if (auxlib_known_syscall(sysnum)) {
+            known = true;
+            res = auxlib_shadow_pre_syscall(drcontext, sysnum, &mc) && res;
+        }
+        if (!known)
+            handle_pre_unknown_syscall(drcontext, sysnum, &mc, pt);
+    }
+
+    /* syscall-specific handling we ourselves need, which must come after
+     * shadow handling for proper NtContinue handling
+     */
+    handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
+
     if (options.perturb)
         res = perturb_pre_syscall(drcontext, sysnum) && res;
     return res;
@@ -504,35 +766,42 @@ static void
 event_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    dr_mcontext_t mc;
+    dr_get_mcontext(drcontext, &mc, NULL);
 
-    /* post-syscall, eax is defined */
-    if (!options.leaks_only && options.shadowing)
+    handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
+    os_shared_post_syscall(drcontext, sysnum);
+    if (auxlib_known_syscall(sysnum))
+        auxlib_shared_post_syscall(drcontext, sysnum, &mc);
+
+    if (!options.leaks_only && options.shadowing) {
+        bool known = false;
+        syscall_info_t *sysinfo = syscall_lookup(sysnum);
+
+        /* post-syscall, eax is defined */
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
-    if (sysinfo != NULL) {
-        dr_mcontext_t mc;
-        dr_get_mcontext(drcontext, &mc, NULL);
-        handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
-        /* XXX: SYS_mmap, SYS_mmap2, and SYS_mremap success does not
-         * fit this <0 check: fortunately they don't have OUT args.
-         */
-        if ((ptr_int_t)dr_syscall_get_result(drcontext) < 0) {
-            LOG(2, "WARNING: system call %i %s failed\n", sysnum,
-                (sysinfo != NULL) ? sysinfo->name : "<unknown>");
-        } else {
-            /* commit the writes via MEMREF_WRITE */
-            if (!options.leaks_only && options.shadowing)
+        if (sysinfo != NULL) {
+            known = true;
+            /* XXX: SYS_mmap, SYS_mmap2, and SYS_mremap success does not
+             * fit this <0 check: fortunately they don't have OUT args.
+             */
+            if ((ptr_int_t)dr_syscall_get_result(drcontext) < 0) {
+                LOG(2, "WARNING: system call %i %s failed\n", sysnum,
+                    (sysinfo != NULL) ? sysinfo->name : "<unknown>");
+            } else {
+                /* commit the writes via MEMREF_WRITE */
                 process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
+            }
+            os_shadow_post_syscall(drcontext, sysnum);
         }
-    } else if (!options.leaks_only && options.shadowing) {
-#ifndef VMX86_SERVER /* has custom syscall info handling */
-        handle_post_unknown_syscall(drcontext, sysnum, pt);
-#endif
+        if (auxlib_known_syscall(sysnum)) {
+            known = true;
+            auxlib_shadow_post_syscall(drcontext, sysnum, &mc);
+        }
+        if (!known)
+            handle_post_unknown_syscall(drcontext, sysnum, pt);
     }
-    os_shared_post_syscall(drcontext, sysnum);
-    if (!options.leaks_only && options.shadowing)
-        os_shadow_post_syscall(drcontext, sysnum);
 }
 
 static bool
@@ -600,11 +869,18 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
     dr_register_filter_syscall_event(event_filter_syscall);
     dr_register_pre_syscall_event(event_pre_syscall);
     dr_register_post_syscall_event(event_post_syscall);
+
+    /* We support additional system call handling via a separate shared library */
+    if (options.auxlib[0] != '\0')
+        syscall_load_auxlib(options.auxlib);
 }
 
 void
 syscall_exit(void)
 {
+    if (auxlib != NULL && !dr_unload_aux_library(auxlib))
+        LOG(1, "WARNING: unable to unload auxlib\n");
+ 
     syscall_os_exit();
 }
 

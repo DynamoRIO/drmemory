@@ -914,13 +914,7 @@ add_new_module(void *drcontext, const module_data_t *info)
     if (name == NULL) {
         name = "";
         /* if multiple w/o names, we lose data */
-#ifdef VMX86_SERVER
-        /* PR 467199: we hit this and know we need to fix it => just warning */
-        if (has_noname)
-            LOG(0, "ERROR: multiple modules w/o name: may lose data\n");
-#else
         ASSERT(!has_noname, "multiple modules w/o name: may lose data");
-#endif
         has_noname = true;
     }
     LOG(1, "module load event: \"%s\" "PFX"-"PFX"\n", name, info->start, info->end);

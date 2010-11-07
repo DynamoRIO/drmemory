@@ -448,7 +448,8 @@ is_in_client_or_DR_lib(app_pc pc)
 {
     return ((pc >= libdr_base && pc < libdr_end) ||
             (pc >= libdr2_base && pc < libdr2_end) ||
-            (pc >= libdrmem_base && pc < libdrmem_end));
+            (pc >= libdrmem_base && pc < libdrmem_end) ||
+            (pc >= syscall_auxlib_start() && pc < syscall_auxlib_end()));
 }
 #endif
 
@@ -661,11 +662,6 @@ memory_walk(void)
              * This can be done by using a linker defined variable to find a
              * section address and then computing the client library base from
              * that.
-             * FIXME: dr_lookup_module() returns info about a client library
-             * and this fix assumes that will always be true.  In future the
-             * client library might be hidden and module lookup won't find it.
-             * In that case we have to identify the library ourselves using the
-             * linker defined variable mentioned above.
              * FIXME: If there are multiple client libraries, Derek, was
              * concerned about marking a whole library as shadowable region
              * because pc was in the first library.  I don't that will happen
@@ -673,17 +669,19 @@ memory_walk(void)
              * mmap regions of two different client libraries won't get merged.
              * Still check when doing multiple clients.
              */
-            module_data_t *drmem = dr_lookup_module(info.base_pc);
-            /* drmem can't be null as dr_memory_is_in_client() passed. */
-            ASSERT(drmem != NULL, "can't get client library bounds");
-
             /* PR 483720: app memory merged to the end of drmem's bss. */
-            if (drmem != NULL && drmem->end < end) {
-                LOG(2, "  Dr. Memory library memory ends @ "PFX", "
-                    "merged by kernel\n", drmem->end);
-                pc_to_add = drmem->end;
+            if (info.base_pc >= libdrmem_base && info.base_pc < libdrmem_end &&
+                end > libdrmem_end) {
+                LOG(2, "  Dr. Memory library memory ends @ "PFX", merged by kernel\n",
+                    libdrmem_end);
+                pc_to_add = libdrmem_end;
+            } else if (info.base_pc >= syscall_auxlib_start() &&
+                       info.base_pc < syscall_auxlib_end() &&
+                       end > syscall_auxlib_end()) {
+                LOG(2, "  Dr. Memory aux library memory ends @ "PFX", merged by kernel\n",
+                    syscall_auxlib_end());
+                pc_to_add = syscall_auxlib_end();
             }
-            dr_free_module_data(drmem);
         } else if (dr_memory_is_dr_internal(info.base_pc)) {
             /* ignore DR memory: leave unaddressable */
             LOG(2, "  => DR memory\n");
@@ -1195,10 +1193,6 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
         callstack_module_load(drcontext, info, loaded);
     if (!options.leaks_only && options.shadowing)
         replace_module_load(drcontext, info, loaded);
-#ifdef VMX86_SERVER
-    if (!options.leaks_only && options.shadowing)
-        vmkuw_syscall_module_load(drcontext, info, loaded);
-#endif
     alloc_module_load(drcontext, info, loaded);
 }
 

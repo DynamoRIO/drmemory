@@ -119,29 +119,6 @@ os_shadow_pre_syscall(void *drcontext, int sysnum);
 void
 os_shadow_post_syscall(void *drcontext, int sysnum);
 
-#ifdef VMX86_SERVER
-void
-vmkuw_syscall_init(void *drcontext);
-
-reg_id_t
-vmkuw_sysparam_reg(uint sysnum, uint argnum);
-
-const char *
-vmkuw_syscall_name(int sysnum);
-
-bool
-vmkuw_shared_pre_syscall(void *drcontext, int sysnum);
-
-void
-vmkuw_shared_post_syscall(void *drcontext, int sysnum);
-
-bool
-vmkuw_shadow_pre_syscall(void *drcontext, int sysnum);
-
-void
-vmkuw_shadow_post_syscall(void *drcontext, int sysnum);
-#endif
-
 /* returns true if the given argument was processed in a non-standard way
  * (e.g. OS-specific structures) and we should skip the standard check
  */
