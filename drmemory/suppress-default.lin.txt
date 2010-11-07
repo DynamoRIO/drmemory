@@ -79,6 +79,10 @@ libc.so.*!_Unwind_IteratePhdrCallback
 POSSIBLE LEAK
 ld-linux.so.2!allocate_dtv
 
+# some versions have this
+POSSIBLE LEAK
+ld-linux.so.2!allocate_and_init
+
 # with no debug symbols this shows up as:
 POSSIBLE LEAK
 ld-linux.so.2!_dl_allocate_tls
