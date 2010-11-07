@@ -23,21 +23,21 @@
 # Different order based on hashtable iterator order
 !if UNIX
 Error #1: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:198
+malloc.c:212
 Error #2: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:230
+malloc.c:244
 Error #3: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:235
+malloc.c:249
 Error #4: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:236
+malloc.c:250
 !endif
 !if WINDOWS
 Error #1: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:198
+malloc.c:212
 Error #2: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:235
+malloc.c:249
 Error #3: LEAK 16 direct bytes + 64 indirect bytes
-malloc.c:236
+malloc.c:250
 Error #4: LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:230
+malloc.c:244
 !endif

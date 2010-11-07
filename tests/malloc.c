@@ -192,6 +192,20 @@ main()
 
     /* test leaks */
 
+    /* avoid non-determinism due to the order of drmem's hashtable walk:
+     * for this test drmem's malloc table has 12 bits, so be sure to get
+     * the following allocs all in order in the table by not
+     * wrapping around in the bottom 12 bits.  We assume all the
+     * allocs below take < 512 bytes.
+     */
+    {
+        static char *p;
+        p = malloc(8); /* static so no leak */
+        free(p);
+        if (0xfff - ((int)p & 0xfff) < 512) /* truncation ok in cast */
+            p = malloc(0xfff - ((int)p & 0xfff));
+    }
+
     /* error: both leaked, though one points to other neither is reachable
      * once p1 goes out of scope, so one direct and one indirect leak
      */
@@ -242,6 +256,8 @@ main()
         *((char **)(pC + 2*sizeof(pC))) = pF + sizeof(pF);
         *((char **)pX) = pB;
         *((char **)(pX + sizeof(pX))) = pD;
+        printf("1=%p, 2=%p, 3=%p, A=%p, B=%p, C=%p, D=%p, E=%p, F=%p, X=%p\n",
+               p1, p2, p3, pA, pB, pC, pD, pE, pF, pX);//NOCHECKIN
     }    
 
     printf("all done\n");
