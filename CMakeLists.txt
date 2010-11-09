@@ -29,8 +29,6 @@ if (VMKERNEL)
   set(DEFINES ${DEFINES} -DVMX86_SERVER)
 endif (VMKERNEL)
 
-set(INTERNAL_DIR "../../internal/clients/drmemory")
-
 option(TOOL_DR_HEAPSTAT "build Dr. Heapstat instead of Dr. Memory")
 option(USE_MD5 "use md5 instead of crc32 for callstack hashes for Dr. Heapstat")
 if (USE_MD5)
@@ -476,17 +474,6 @@ if (WIN32 AND USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (WIN32 AND USE_DRSYMS)
 
-if (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
-  set(client_auxlib "drmemory_esxi")
-  add_library(${client_auxlib} SHARED ${INTERNAL_DIR}/drmemory/syscall_vmkuw.c)
-  configure_DynamoRIO_client(${client_auxlib})
-  set_property(TARGET ${client_auxlib} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-  set_target_properties(${client_auxlib} PROPERTIES
-    VERSION ${VERSION_NUMBER})
-else (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
-  set(client_auxlib "")
-endif (VMKERNEL AND NOT TOOL_DR_HEAPSTAT)
-
 # Though the swf file isn't an executable it is in bin32 because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
 if (TOOL_DR_HEAPSTAT)
@@ -553,12 +540,6 @@ file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
-  if (VMKERNEL)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/common/frontend_vmk.pm"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/frontend_vmk.pm" COPYONLY)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/${toolname}/${toolname}_vmk.pm"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}_vmk.pm" COPYONLY)
-  endif (VMKERNEL)
   if (NOT USE_DRSYMS)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
@@ -597,11 +578,6 @@ else (TOOL_DR_HEAPSTAT)
     set(defsupp_in "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/suppress-default.lin.txt")
     file(READ "${defsupp_in}" txt)
     file(WRITE "${defsupp_out}" "${txt}")
-    if (VMKERNEL)
-      set(defsupp_vmk "${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/${tooldir}/suppress-default.vmk.txt")
-      file(READ "${defsupp_vmk}" txt)
-      file(APPEND "${defsupp_out}" "${txt}")
-    endif (VMKERNEL)
   endif (WIN32)
 endif (TOOL_DR_HEAPSTAT)
 
@@ -630,7 +606,7 @@ if ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
 endif ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
 set(INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
-install(TARGETS ${client_target} ${client_auxlib}
+install(TARGETS ${client_target}
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
   PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -677,23 +653,6 @@ else (USE_DRSYMS)
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 endif (USE_DRSYMS)
-if (VMKERNEL AND NOT PERL_TO_EXE)
-  install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/common/frontend_vmk.pm
-    ${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/${toolname}/${toolname}_vmk.pm
-    DESTINATION "${INSTALL_BIN_PREFIX}"
-    PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE)
-endif (VMKERNEL AND NOT PERL_TO_EXE)
-if (VMKERNEL)
-  install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/tools/setup_sfcbd.pl
-    ${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/tools/setup_hostd.pl
-    ${CMAKE_CURRENT_SOURCE_DIR}/${INTERNAL_DIR}/tools/setup_aam.pl
-    DESTINATION "bin"
-    PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE)
-endif (VMKERNEL)
 # We put "helper" files inside bin32/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install(FILES
@@ -929,5 +888,11 @@ set(CPACK_NSIS_MENU_LINKS
 set(CPACK_NSIS_MUI_ICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
 set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
 # FIXME: CPACK_PACKAGE_ICON: need a .bmp
+
+# Let external build file override all settings, but before CPack reads them
+set(AUX_MAKEFILE "" CACHE FILEPATH "Path to an auxiliary CMakeLists.txt file.")
+if (AUX_MAKEFILE)
+  include("${AUX_MAKEFILE}")
+endif (AUX_MAKEFILE)
 
 include(CPack)
