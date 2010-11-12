@@ -256,8 +256,6 @@ main()
         *((char **)(pC + 2*sizeof(pC))) = pF + sizeof(pF);
         *((char **)pX) = pB;
         *((char **)(pX + sizeof(pX))) = pD;
-        printf("1=%p, 2=%p, 3=%p, A=%p, B=%p, C=%p, D=%p, E=%p, F=%p, X=%p\n",
-               p1, p2, p3, pA, pB, pC, pD, pE, pF, pX);//NOCHECKIN
     }    
 
     printf("all done\n");

@@ -3773,12 +3773,14 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     int i, uses_least = INT_MAX, uses_second = INT_MAX;
 
     while (inst != NULL) {
-        if (instr_is_cti(inst))
-            break;
-        for (i = 0; i < instr_num_dsts(inst); i++)
-            pick_bb_scratch_regs_helper(instr_get_dst(inst, i), uses);
-        for (i = 0; i < instr_num_srcs(inst); i++)
-            pick_bb_scratch_regs_helper(instr_get_src(inst, i), uses);
+        if (instr_ok_to_mangle(inst)) {
+            for (i = 0; i < instr_num_dsts(inst); i++)
+                pick_bb_scratch_regs_helper(instr_get_dst(inst, i), uses);
+            for (i = 0; i < instr_num_srcs(inst); i++)
+                pick_bb_scratch_regs_helper(instr_get_src(inst, i), uses);
+            if (instr_is_cti(inst))
+                break;
+        }
         inst = instr_get_next(inst);
     }
     /* Too risky to use esp: if no alt sig stk (ESXi) or on Windows can't

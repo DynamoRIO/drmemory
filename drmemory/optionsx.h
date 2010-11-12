@@ -352,3 +352,6 @@ OPTION_CLIENT_BOOL(internal, single_arg_slowpath, false,
 OPTION_CLIENT_BOOL(internal, repstr_to_loop, true,
                    "Add fastpath for rep string instrs by converting to normal loop",
                    "Add fastpath for rep string instrs by converting to normal loop")
+OPTION_CLIENT_BOOL(internal, replace_realloc, true,
+                   "Replace realloc to avoid races and non-delayed frees",
+                   "Replace realloc to avoid races and non-delayed frees")

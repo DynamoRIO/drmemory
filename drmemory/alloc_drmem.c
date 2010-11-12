@@ -137,6 +137,8 @@ alloc_drmem_init(void)
     alloc_ops.size_in_redzone = options.size_in_redzone;
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
     alloc_ops.get_padded_size = false; /* don't need padding size */
+    alloc_ops.replace_realloc = options.replace_realloc &&
+        !options.leaks_only && options.shadowing;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
@@ -385,14 +387,15 @@ client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
                       app_pc new_base, size_t new_size, app_pc new_real_base,
                       dr_mcontext_t *mc)
 {
-    /* FIXME: racy: old region could have been malloc'd again by now! 
-     * We should synchronize all malloc/free calls w/ our own locks.
-     * The real routines have locks already, so shouldn't be any
-     * perf impact.
+    /* XXX i#69: wrapping the app's realloc is racy: old region could
+     * have been malloc'd again by now!  We could synchronize all
+     * malloc/free calls w/ our own locks.  The real routines have
+     * locks already, so shouldn't be any perf impact.  Instead, we
+     * replace the app's realloc w/ a sequence of equivalent calls.
+     * This also solves PR 493888: realloc-freed memory not delayed
+     * with rest of delayed free queue.
      */
-    /* FIXME PR 493888: realloc-freed memory not delayed with rest of
-     * delayed free queue!
-     */
+    ASSERT(!options.replace_realloc || options.leaks_only, "shouldn't come here");
     /* Copy over old allocation's shadow values.  If new region is bigger, mark
      * the extra space at the end as undefined.  PR 486049.
      */ 

@@ -1202,6 +1202,7 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
     memset(&bi, 0, sizeof(bi));
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
 
+    alloc_replace_instrument(drcontext, bb);
     if (options.staleness)
         fastpath_top_of_bb(drcontext, tag, bb, &bi);
 

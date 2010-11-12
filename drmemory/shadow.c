@@ -149,6 +149,8 @@ ptr_int_t shadow_table[TABLE_ENTRIES];
 #define TABLE_IDX(addr) (((ptr_uint_t)(addr) & 0xffff0000) >> (SHADOW_SPLIT_BITS))
 #define ADDR_OF_BASE(table_idx) ((ptr_uint_t)(table_idx) << (SHADOW_SPLIT_BITS))
 
+static void *shadow_lock;
+
 /* PR 448701: special blocks for all-identical 64K chunks */
 static shadow_block_t *special_unaddressable;
 static shadow_block_t *special_undefined;
@@ -214,10 +216,11 @@ is_in_special_shadow_block_helper(app_pc pc, shadow_block_t *block)
 bool
 is_in_special_shadow_block(app_pc pc)
 {
-    return (is_in_special_shadow_block_helper(pc, special_unaddressable) ||
-            is_in_special_shadow_block_helper(pc, special_undefined) ||
-            is_in_special_shadow_block_helper(pc, special_defined) ||
-            is_in_special_shadow_block_helper(pc, special_bitlevel));
+    return (special_unaddressable != NULL &&
+            (is_in_special_shadow_block_helper(pc, special_unaddressable) ||
+             is_in_special_shadow_block_helper(pc, special_undefined) ||
+             is_in_special_shadow_block_helper(pc, special_defined) ||
+             is_in_special_shadow_block_helper(pc, special_bitlevel)));
 }
 
 static shadow_block_t *
@@ -257,6 +260,7 @@ create_special_block(uint dwordval)
 }
 
 /* FIXME: share w/ staleness.c */
+/* if past init, caller must hold shadow_lock */
 static void
 set_shadow_table(uint idx, shadow_block_t *block)
 {
@@ -284,6 +288,7 @@ shadow_table_init(void)
     special_bitlevel = create_special_block(SHADOW_DWORD_BITLEVEL);
     for (i = 0; i < TABLE_ENTRIES; i++)
         set_shadow_table(i, special_unaddressable);
+    shadow_lock = dr_mutex_create();
 }
 
 static void
@@ -306,6 +311,7 @@ shadow_table_exit(void)
                  SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
     nonheap_free(((byte*)special_bitlevel) - SHADOW_REDZONE_SIZE,
                  SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
+    dr_mutex_destroy(shadow_lock);
 }
 
 size_t
@@ -323,7 +329,8 @@ shadow_get_special(app_pc addr, uint *val)
     return block_is_special(block);
 }
 
-static void
+/* Returns false already non-special (can't go back: see below) */
+static bool
 shadow_set_special(app_pc addr, uint val)
 {
     /* PR 580017: We cannot replace a non-special with a special: more
@@ -338,19 +345,26 @@ shadow_set_special(app_pc addr, uint val)
      * allocs/deallocs to use specials anyway as the subsequent faults are perf
      * hits (observed in gcc).
      */
-#ifdef DEBUG
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    ASSERT(block_is_special(block), "cannot replace non-special with special");
-#endif
-    set_shadow_table(TABLE_IDX(addr), val_to_special(val));
+    shadow_block_t *block;
+    bool res = false;
+    /* grab lock to synch w/ special-to-non-special transition */
+    dr_mutex_lock(shadow_lock);
+    block = get_shadow_table(TABLE_IDX(addr));
+    if (block_is_special(block)) {
+        set_shadow_table(TABLE_IDX(addr), val_to_special(val));
+        res = true;
 #ifdef STATISTICS
-    if (val == SHADOW_UNADDRESSABLE)
-        STATS_INC(num_special_unaddressable);
-    if (val == SHADOW_UNDEFINED)
-        STATS_INC(num_special_undefined);
-    if (val == SHADOW_DEFINED)
-        STATS_INC(num_special_defined);
+        if (val == SHADOW_UNADDRESSABLE)
+            STATS_INC(num_special_unaddressable);
+        if (val == SHADOW_UNDEFINED)
+            STATS_INC(num_special_undefined);
+        if (val == SHADOW_DEFINED)
+            STATS_INC(num_special_defined);
 #endif
+    }
+    /* else, leave non-special */
+    dr_mutex_unlock(shadow_lock);
+    return res;
 }
 
 /* Returns the two bits for the byte at the passed-in address */
@@ -385,26 +399,33 @@ shadow_set_byte(app_pc addr, uint val)
             LOG(5, "writing "PFX" => nop (already special %d)\n", addr, val);
             return;
         }
-        ASSERT(val_to_special(blockval) == block, "internal error");
-        LOG(2, "replacing shadow special "PFX" block for write @"PFX" %d\n",
-            block, addr, val);
-        block = (shadow_block_t *) global_alloc(SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-        ASSERT(block != NULL, "internal error");
-        /* Set the redzone to bitlevel so we always exit (if unaddr we won't
-         * exit on a push)
+        /* check again with lock.  we only need synch on the special-to-non-special
+         * transition (we never go the other way).
+         *  can still have races between app access and shadow update,
+         * but if race between thread shadow updates there's a race in the app.
          */
-        memset(block, SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-        memset(((byte*)block) + SHADOW_BLOCK_ALLOC_SZ - SHADOW_REDZONE_SIZE,
-               SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-        block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
-        ASSERT(ALIGNED(block, 4), "esp fastpath assumes block aligned to 4");
-        STATS_INC(shadow_block_alloc);
-        memset(block, dwordval, sizeof(*block));
-        /* FIXME: thread safety: add mutex in all shadow routines:
-         * though still have race between app access and shadow update,
-         * but if race between thread shadow updates there's a race in the app
-         */
-        set_shadow_table(TABLE_IDX(addr), block);
+        dr_mutex_lock(shadow_lock);
+        block = get_shadow_table(TABLE_IDX(addr));
+        if (block_is_special(block)) {
+            ASSERT(val_to_special(blockval) == block, "internal error");
+            LOG(2, "replacing shadow special "PFX" block for write @"PFX" %d\n",
+                block, addr, val);
+            block = (shadow_block_t *) global_alloc(SHADOW_BLOCK_ALLOC_SZ,
+                                                    HEAPSTAT_SHADOW);
+            ASSERT(block != NULL, "internal error");
+            /* Set the redzone to bitlevel so we always exit (if unaddr we won't
+             * exit on a push)
+             */
+            memset(block, SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
+            memset(((byte*)block) + SHADOW_BLOCK_ALLOC_SZ - SHADOW_REDZONE_SIZE,
+                   SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
+            block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
+            ASSERT(ALIGNED(block, 4), "esp fastpath assumes block aligned to 4");
+            STATS_INC(shadow_block_alloc);
+            memset(block, dwordval, sizeof(*block));
+            set_shadow_table(TABLE_IDX(addr), block);
+        }
+        dr_mutex_unlock(shadow_lock);
     }
     LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
     bitmapx2_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
@@ -463,8 +484,12 @@ shadow_set_range(app_pc start, app_pc end, uint val)
     while (pc < end && pc >= start/*overflow*/) {
         if (shadow_get_special(pc, NULL) &&
             ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
-            shadow_set_special(pc, val);
-            pc += ALLOC_UNIT;
+            if (shadow_set_special(pc, val))
+                pc += ALLOC_UNIT;
+            else {
+                /* a race and special was replaced w/ non-special: so re-do */
+                ASSERT(!shadow_get_special(pc, NULL), "non-special never reverts");
+            }
         } else {
             if (ALIGNED(pc, SHADOW_GRANULARITY)) {
                 app_pc block_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
@@ -507,9 +532,14 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
         new_pc = (pc - old_start) + new_start;
         if (ALIGNED(pc, ALLOC_UNIT) && ALIGNED(new_pc, ALLOC_UNIT) &&
             (old_start + size - pc) >= ALLOC_UNIT &&
-            shadow_get_special(pc, &val)) {
-            shadow_set_special(new_pc, val);
-            pc += ALLOC_UNIT;
+            shadow_get_special(pc, &val) &&
+            shadow_get_special(new_pc, &val)) {
+            if (shadow_set_special(new_pc, val))
+                pc += ALLOC_UNIT;
+            else {
+                /* a race and special was replaced w/ non-special: so re-do */
+                ASSERT(!shadow_get_special(new_pc, NULL), "non-special never reverts");
+            }
         } else {
             /* FIXME optimize: set 4 aligned bytes at a time */
             shadow_set_byte(new_pc, shadow_get_byte(pc));

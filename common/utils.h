@@ -115,6 +115,8 @@
 # define NL "\r\n"
 #endif
 
+#define MAX_INSTR_SIZE 17
+
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;
 extern uint op_verbose_level;

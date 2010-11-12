@@ -3021,15 +3021,21 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         }
     }
 
-    if (!options.leaks_only && options.shadowing) {
+    /* First, do replacements; then, app-to-app; finally, instrument. */
+    alloc_replace_instrument(drcontext, bb);
 #ifdef TOOL_DR_MEMORY
+    if (!options.leaks_only && options.shadowing) {
         /* String routine replacement */
         replace_instrument(drcontext, bb);
-#endif
+        /* XXX: this should be AFTER app_to_app_transformations, but something's
+         * not working right: the rep-movs transformation is marking something
+         * as meta that shouldn't be?!?
+         */
         fastpath_top_of_bb(drcontext, tag, bb, &bi);
     }
-
+#endif
     app_to_app_transformations(drcontext, bb, &bi);
+
     first = instrlist_first(bb);
 
     for (inst = instrlist_first(bb);

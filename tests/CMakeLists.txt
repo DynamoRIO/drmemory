@@ -300,6 +300,11 @@ if (NOT TOOL_DR_HEAPSTAT)
     # FIXME PR 406287: add /MDd test
   endif (WIN32)
 
+  newtest(realloc realloc.c)
+  if (UNIX)
+    target_link_libraries(realloc pthread)
+  endif (UNIX)
+
 else (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF)
 

@@ -219,6 +219,12 @@ get_brk(void)
 }
 #endif
 
+/* These take 1-based arg numbers */
+#define APP_ARG_ADDR(mc, num, retaddr_yet) \
+    ((mc)->esp + ((num)-1+((retaddr_yet)?1:0))*sizeof(reg_t))
+#define APP_ARG(mc, num, retaddr_yet) \
+    (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
+
 /***************************************************************************
  * MALLOC ROUTINES
  */
@@ -237,6 +243,14 @@ app_pc addr_KiRaise;
 #define ALLOC_ROUTINE_TABLE_HASH_BITS 6
 static hashtable_t alloc_routine_table;
 static void *alloc_routine_lock; /* protects alloc_routine_table */
+
+typedef enum {
+    HEAPSET_LIBC,
+#ifdef WINDOWS
+    HEAPSET_LIBC_DBG,
+    HEAPSET_RTL,
+#endif
+} heapset_type_t;
 
 typedef enum {
     /* For Linux and for Cygwin, and for any other allocator connected via
@@ -433,6 +447,7 @@ typedef struct _alloc_routine_entry_t {
 
 /* Set of malloc routines */
 struct _alloc_routine_set_t {
+    heapset_type_t type;
     /* Array of entries for all routines in the set.  We could save space by
      * union-ing Rtl and libc but it's not worth it.
      */
@@ -443,6 +458,8 @@ struct _alloc_routine_set_t {
     void *client;
     /* For easy cleanup */
     uint refcnt;
+    /* For options.replace_realloc */
+    byte *realloc_replacement;
 };
 
 /* lock is held when this is called */
@@ -469,6 +486,19 @@ is_alloc_routine(app_pc pc)
     found = (hashtable_lookup(&alloc_routine_table, (void *)pc) != NULL);
     dr_mutex_unlock(alloc_routine_lock);
     return found;
+}
+
+static byte *
+replace_alloc_routine(app_pc pc)
+{
+    alloc_routine_entry_t *e;
+    byte *res = NULL;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    if (e != NULL && is_realloc_routine(e->type) && e->set != NULL)
+        res = e->set->realloc_replacement;
+    dr_mutex_unlock(alloc_routine_lock);
+    return res;
 }
 
 #if defined(WINDOWS) || defined(DEBUG)
@@ -517,6 +547,288 @@ is_alloc_sysroutine(app_pc pc)
 }
 #endif
 
+static alloc_routine_entry_t *
+size_func_in_set(alloc_routine_set_t *set)
+{
+    if (set == NULL)
+        return NULL;
+#ifdef WINDOWS
+    if (set->type == HEAPSET_RTL)
+        return set->func[RTL_ROUTINE_SIZE];
+#endif
+    /* prefer usable to requested */
+    if (set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
+        return set->func[HEAP_ROUTINE_SIZE_USABLE];
+    else if (set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
+        return set->func[HEAP_ROUTINE_SIZE_REQUESTED];
+#ifdef WINDOWS
+    else if (set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG] != NULL)
+        return set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG];
+#endif
+    return NULL;
+}
+
+static alloc_routine_entry_t *
+malloc_func_in_set(alloc_routine_set_t *set)
+{
+    if (set == NULL)
+        return NULL;
+#ifdef WINDOWS
+    if (set->type == HEAPSET_RTL)
+        return set->func[RTL_ROUTINE_MALLOC];
+    else if (set->type == HEAPSET_LIBC_DBG)
+        return set->func[HEAP_ROUTINE_MALLOC_DBG];
+#endif
+    return set->func[HEAP_ROUTINE_MALLOC];
+}
+
+static alloc_routine_entry_t *
+realloc_func_in_set(alloc_routine_set_t *set)
+{
+    if (set == NULL)
+        return NULL;
+#ifdef WINDOWS
+    if (set->type == HEAPSET_RTL)
+        return set->func[RTL_ROUTINE_REALLOC];
+    else if (set->type == HEAPSET_LIBC_DBG)
+        return set->func[HEAP_ROUTINE_REALLOC_DBG];
+#endif
+    return set->func[HEAP_ROUTINE_REALLOC];
+}
+
+static alloc_routine_entry_t *
+free_func_in_set(alloc_routine_set_t *set)
+{
+    if (set == NULL)
+        return NULL;
+#ifdef WINDOWS
+    if (set->type == HEAPSET_RTL)
+        return set->func[RTL_ROUTINE_FREE];
+    else if (set->type == HEAPSET_LIBC_DBG)
+        return set->func[HEAP_ROUTINE_FREE_DBG];
+#endif
+    return set->func[HEAP_ROUTINE_FREE];
+}
+
+/***************************************************************************
+ * REALLOC REPLACEMENT
+ */
+
+/* Our wrap strategy does not handle realloc well as by the time we see
+ * the results, another malloc can use the freed memory, leading to races.
+ * Rather than serialize all alloc routines, we replace realloc with
+ * an equivalent series of malloc and free calls, which also solves
+ * the problem of delaying any free that realloc performs.
+ */
+static byte *gencode_start, *gencode_cur;
+static void *gencode_lock;
+#define GENCODE_SIZE PAGE_SIZE
+
+static void * marker_malloc(size_t size) { return NULL; }
+static size_t marker_size(void *ptr) { return 0; }
+static void marker_free(void *ptr) {}
+
+/* Some malloc sets do not have a requested-size query, or don't
+ * have any size query (e.g., ld-linux.so.2), so we retrieve the
+ * size ourselves
+ */
+static size_t
+replace_realloc_size_app(void *p)
+{
+    return 0;
+}
+
+static bool
+is_replace_routine(app_pc pc)
+{
+    return (pc == (byte *) replace_realloc_size_app);
+}
+
+static void
+replace_realloc_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    pt->alloc_base = (byte *) APP_ARG(mc, 1, inside);
+}
+
+static void
+replace_realloc_size_post(void *drcontext, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    ASSERT(mc->xax == 0, "replace_realloc_size_app always returns 0");
+    /* should never fail for our uses */
+    mc->eax = malloc_size(pt->alloc_base);
+    LOG(2, "replace_realloc_size_post "PFX" => "PIFX"\n", pt->alloc_base, mc->eax);
+    dr_set_mcontext(drcontext, mc, NULL);
+}
+
+/* Our fastpath can't handle OP_movs of uninit, which is common
+ * w/ realloc, so we use a regular OP_mov loop.
+ * XXX: share w/ drmem's replace_memcpy
+ */
+static void *
+memcpy_no_movs(void *dst, const void *src, size_t size)
+{
+    register unsigned char *d = (unsigned char *) dst;
+    register unsigned char *s = (unsigned char *) src;
+    while (size-- > 0) /* loop will terminate before underflow */
+        *d++ = *s++;
+    return dst;
+}
+
+static void *
+replace_realloc_template(void *p, size_t newsz)
+{
+    void *q = NULL;
+    size_t oldsz = 0;
+    if (p != NULL) {
+        oldsz = marker_size(p);
+        if (oldsz == (size_t)-1 /* 0 is not failure: not calling usable_ */) {
+            return NULL; /* on failure, do not free */
+        }
+    }
+    if (newsz > 0 || p == NULL) {
+        q = marker_malloc(newsz);
+        if (q == NULL)
+            return NULL; /* on failure, do not free */
+        if (p != NULL) {
+            size_t copysz = (newsz <= oldsz) ? newsz : oldsz;
+            memcpy_no_movs(q, p, copysz);
+        }
+    }
+    marker_free(p);
+    return q;
+}
+
+#ifdef WINDOWS
+static PVOID NTAPI
+marker_RtlAllocateHeap(HANDLE heap, DWORD flags, SIZE_T size) { return NULL; }
+static ULONG NTAPI
+marker_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID block) { return 0; }
+static bool NTAPI
+marker_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID block) { return false; }
+
+static void * NTAPI
+replace_realloc_template_Rtl(HANDLE heap, ULONG flags, PVOID p, SIZE_T newsz)
+{
+    void *q = NULL;
+    size_t oldsz = 0;
+    if (TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags)) {
+        /* XXX i#71: want to call regular RtlReAllocateHeap and not
+         * replace: need to set that up.  For now we fail and we'll
+         * see if any apps don't handle such failure.
+         */
+        LOG(1, "WARNING: RtlReAllocateHeap HEAP_REALLOC_IN_PLACE_ONLY NYI\n");
+        return NULL;
+    }
+    /* Unlike libc realloc, NULL is not valid */
+    if (p == NULL)
+        return NULL;
+    if (p != NULL) {
+        oldsz = marker_RtlSizeHeap(heap, 0, p);
+        if (oldsz == (size_t)-1 /* 0 is not failure */) {
+            return NULL; /* on failure, do not free */
+        }
+    }
+    /* HeapReAlloc has different behavior: (,0) does allocate a 0-sized chunk */
+    q = marker_RtlAllocateHeap(heap, flags, newsz);
+    if (q == NULL)
+        return NULL; /* on failure, do not free */
+    if (p != NULL) {
+        size_t copysz = (newsz <= oldsz) ? newsz : oldsz;
+        memcpy_no_movs(q, p, copysz);
+    }
+    marker_RtlFreeHeap(heap, 0, p);
+    return q;
+}
+#endif
+
+static void
+generate_realloc_replacement(alloc_routine_set_t *set)
+{
+    void *drcontext = dr_get_current_drcontext();
+    byte *epc_start, *dpc, *epc;
+    bool success = true;
+    instr_t inst;
+    alloc_routine_entry_t *set_malloc = malloc_func_in_set(set);
+    alloc_routine_entry_t *set_size = size_func_in_set(set);
+    alloc_routine_entry_t *set_free = free_func_in_set(set);
+    IF_DEBUG(alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);)
+    byte *size_func;
+    ASSERT(options.replace_realloc, "should not get here");
+    ASSERT(set != NULL, "invalid param");
+    /* if no set_size (e.g., ld-linux.so.2) or only usable size (which
+     * would lead to unaddrs on memcpy) we arrange to query our
+     * hashtable
+     */
+    if (set_size == NULL || set_size->type == HEAP_ROUTINE_SIZE_USABLE)
+        size_func = (byte *) replace_realloc_size_app;
+    else
+        size_func = set_size->pc;
+    ASSERT(set_realloc != NULL && set_malloc != NULL &&
+           size_func != NULL && set_free != NULL, "set incomplete");
+
+    /* copy by decoding template, replacing mark_ call targets along the way. */
+    dr_mutex_lock(gencode_lock);
+    dpc = IF_WINDOWS((set->type == HEAPSET_RTL) ?
+                     ((byte *) replace_realloc_template_Rtl) : )
+        ((byte *) replace_realloc_template);
+    epc_start = gencode_cur;
+    epc = gencode_cur;
+    instr_init(drcontext, &inst);
+    do {
+        instr_reset(drcontext, &inst);
+        dpc = decode(drcontext, dpc, &inst);
+        ASSERT(dpc != NULL, "invalid instr in realloc template");
+        /* XXX: for x64 we will have to consider reachability */
+        if (instr_get_opcode(&inst) == OP_call) {
+            opnd_t tgt = instr_get_target(&inst);
+            app_pc pc;
+            ASSERT(opnd_is_pc(tgt), "invalid call");
+            pc = opnd_get_pc(tgt);
+            if (pc == (app_pc) marker_malloc
+                IF_WINDOWS(|| pc == (app_pc) marker_RtlAllocateHeap))
+                instr_set_target(&inst, opnd_create_pc(set_malloc->pc));
+            else if (pc == (app_pc) marker_size
+                     IF_WINDOWS(|| pc == (app_pc) marker_RtlSizeHeap))
+                instr_set_target(&inst, opnd_create_pc(size_func));
+            else if (pc == (app_pc) marker_free
+                     IF_WINDOWS(|| pc == (app_pc) marker_RtlFreeHeap))
+                instr_set_target(&inst, opnd_create_pc(set_free->pc));
+            else /* force re-encode */
+                instr_set_target(&inst, tgt);
+        }
+        epc = instr_encode(drcontext, &inst, epc);
+        ASSERT(epc != NULL, "failed to encode realloc template");
+        if (epc + MAX_INSTR_SIZE >= gencode_start + GENCODE_SIZE) {
+            ASSERT(false, "alloc gencode too small");
+            success = false;
+            break;
+        }
+        if (dpc == NULL || epc == NULL) { /* be defensive */
+            success = false;
+            break;
+        }
+        /* I assume there's only one ret */
+    } while (!instr_is_return(&inst));
+    instr_reset(drcontext, &inst);
+    gencode_cur = epc;
+    dr_mutex_unlock(gencode_lock);
+
+    if (success) {
+        set->realloc_replacement = epc_start;
+        LOG(1, "replacement realloc @"PFX"\n", epc_start);
+    } else {
+        /* if we fail consequences are races and non-delayed-frees: not fatal */
+        LOG(1, "WARNING: replacement realloc failed\n");
+    }
+    return;
+}
+
+/***************************************************************************
+ * MALLOC WRAPPING
+ */
+
 static app_pc
 lookup_symbol_or_export(const module_data_t *mod, const char *name)
 {
@@ -556,7 +868,8 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
 /* caller must hold alloc routine lock */
 static void
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
-                    uint num_possible, bool use_redzone, bool expect_all)
+                    uint num_possible, bool use_redzone, bool expect_all,
+                    heapset_type_t type)
 {
     alloc_routine_set_t *set = NULL;
     int i;
@@ -603,6 +916,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 memset(set, 0, sizeof(*set));
                 set->use_redzone = (use_redzone && options.redzone_size > 0);
                 set->client = client_add_malloc_routine(pc);
+                set->type = type;
             }
             e = add_alloc_routine(pc, possible[i].type, possible[i].name, set);
             LOG(1, "intercepting %s @"PFX" in module %s\n",
@@ -610,12 +924,15 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         }
 #ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
-        if (i == HEAP_ROUTINE_SIZE_USABLE && mod->start == get_libc_base()) {
+        if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
+            mod->start == get_libc_base()) {
             ASSERT(pc != NULL, "no malloc_usable_size in libc!");
             malloc_usable_size = (size_t(*)(void *)) pc;
         }
 #endif
     }
+    if (options.replace_realloc && realloc_func_in_set(set) != NULL)
+        generate_realloc_replacement(set);
 }
 
 static size_t
@@ -641,25 +958,12 @@ alloc_size_func_t malloc_usable_size;
 
 /* malloc_usable_size exported, so declared in alloc.h */
 
-alloc_routine_entry_t *
+static alloc_routine_entry_t *
 get_size_func(alloc_routine_entry_t *routine)
 {
     if (routine->set == NULL)
         return NULL;
-#ifdef WINDOWS
-    if (is_rtl_routine(routine->type))
-        return routine->set->func[RTL_ROUTINE_SIZE];
-#endif
-    /* prefer usable to requested */
-    if (routine->set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
-        return routine->set->func[HEAP_ROUTINE_SIZE_USABLE];
-    else if (routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
-        return routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED];
-#ifdef WINDOWS
-    else if (routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG] != NULL)
-        return routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG];
-#endif
-    return NULL;
+    return size_func_in_set(routine->set);
 }
 
 static ssize_t
@@ -965,6 +1269,17 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         alloc_routine_lock = dr_mutex_create();
     }
 
+    if (options.replace_realloc) {
+        /* we need generated code for our realloc replacements */
+        gencode_start = (byte *)
+            nonheap_alloc(GENCODE_SIZE,
+                          DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC,
+                          HEAPSTAT_GENCODE);
+        gencode_cur = gencode_start;
+        gencode_lock = dr_mutex_create();
+    }
+
+
 #ifdef WINDOWS
     ntdll_lib = get_ntdll_base();
     addr_KiCallback = (app_pc) dr_get_proc_address(ntdll_lib,
@@ -1001,7 +1316,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
             mod.handle = ntdll_lib;
             dr_mutex_lock(alloc_routine_lock);
             find_alloc_routines(&mod, possible_rtl_routines,
-                                POSSIBLE_RTL_ROUTINE_NUM, true, true);
+                                POSSIBLE_RTL_ROUTINE_NUM, true, true, HEAPSET_RTL);
             dr_mutex_unlock(alloc_routine_lock);
         }
     }
@@ -1056,6 +1371,11 @@ alloc_exit(void)
     rb_tree_destroy(large_malloc_tree);
     hashtable_delete(&post_call_table);
     hashtable_delete(&call_site_table);
+
+    if (options.replace_realloc) {
+        nonheap_free(gencode_start, GENCODE_SIZE, HEAPSTAT_GENCODE);
+        dr_mutex_destroy(gencode_lock);
+    }
 }
 
 #ifdef WINDOWS
@@ -1113,10 +1433,11 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         }
 #endif
         find_alloc_routines(info, possible_libc_routines,
-                            POSSIBLE_LIBC_ROUTINE_NUM, use_redzone, false);
+                            POSSIBLE_LIBC_ROUTINE_NUM, use_redzone, false, HEAPSET_LIBC);
 #ifdef WINDOWS
         find_alloc_routines(info, possible_dbgcrt_routines,
-                            POSSIBLE_DBGCRT_ROUTINE_NUM, use_redzone, false);
+                            POSSIBLE_DBGCRT_ROUTINE_NUM, use_redzone, false,
+                            HEAPSET_LIBC_DBG);
 #endif
         dr_mutex_unlock(alloc_routine_lock);
     }
@@ -2011,12 +2332,6 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
     return retaddr;
 }
 
-/* These take 1-based arg numbers */
-#define APP_ARG_ADDR(mc, num, retaddr_yet) \
-    ((mc)->esp + ((num)-1+((retaddr_yet)?1:0))*sizeof(reg_t))
-#define APP_ARG(mc, num, retaddr_yet) \
-    (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
-
 /* RtlAllocateHeap(HANDLE heap, ULONG flags, ULONG size) */
 /* void *malloc(size_t size) */
 #define ARGNUM_MALLOC_SIZE(type) (IF_WINDOWS((type == RTL_ROUTINE_MALLOC) ? 3 :) 1)
@@ -2204,10 +2519,13 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 {
     routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    /* non-recursive: else we assume base already adjusted */
+    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
+        LOGPT(2, pt, "%s recursive call: no adjustments\n", routine->name);
+        return;
+    }
     pt->in_heap_adjusted = pt->in_heap_routine;
-    if (redzone_size(routine) > 0 &&
-        /* non-recursive: else we assume base already adjusted */
-        pt->in_heap_routine == 1) {
+    if (redzone_size(routine) > 0) {
         /* store the block being asked about, in case routine changes the param */
         pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR(type), inside);
         /* ensure wasn't allocated before we took control (so no redzone) */
@@ -2241,7 +2559,7 @@ handle_size_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *rout
              * and we should use the real size anyway (e.g., RtlReAllocateHeap
              * calls RtlSizeHeap: xref i#259
              */
-            pt->in_heap_routine == 0/*already decremented*/) {
+            pt->in_heap_adjusted == 0/*already decremented*/) {
             if (pt->alloc_base != NULL) {
                 LOG(2, "size query: changing "PFX" to "PFX"\n",
                     mc->eax, mc->eax - redzone_size(routine)*2);
@@ -2468,11 +2786,18 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_handle_realloc_null(inside ? get_retaddr_at_entry(mc) : call_site, mc);
-        handle_malloc_pre(drcontext, mc, inside, routine);
+        if (!options.replace_realloc) {
+            handle_malloc_pre(drcontext, mc, inside, routine);
+            return;
+        }
+    }
+    pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE(type), inside);
+    if (options.replace_realloc) {
+        /* subsequent malloc will clobber alloc_size */
+        pt->realloc_replace_size = pt->alloc_size;
         return;
     }
     pt->in_realloc = true;
-    pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE(type), inside);
     real_base = pt->alloc_base;
     if (!check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
                                 routine->name, is_free_routine(type))) {
@@ -2551,6 +2876,12 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
                     alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    if (options.replace_realloc) {
+        /* for sz==0 normal to return NULL */
+        if (mc->eax == 0 && pt->realloc_replace_size != 0)
+            handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
+        return;
+    }
     if (pt->alloc_base == NULL) {
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
         handle_malloc_post(drcontext, mc, true/*realloc*/, post_call, routine);
@@ -2921,7 +3252,7 @@ alloc_hook(app_pc pc)
     int app_errno;
     dr_get_mcontext(drcontext, &mc, &app_errno);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    if (options.track_heap && is_alloc_routine(pc)) {
+    if (options.track_heap && (is_alloc_routine(pc) || is_replace_routine(pc))) {
         /* if the entry was a jmp* and we didn't see the call prior to it,
          * we did not know the retaddr, so add it now 
          */
@@ -3000,7 +3331,6 @@ alloc_hook(app_pc pc)
             handle_alloc_pre_ex(retaddr, pc, true/*indirect*/, pc, true/*inside callee*/);
         } else
             ASSERT(pt->in_heap_routine > 0, "in call_site_table but missed pre");
-
     } 
 #ifdef WINDOWS
     else if (pc == addr_KiAPC || pc == addr_KiCallback ||
@@ -3048,6 +3378,11 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
+    dr_get_mcontext(drcontext, &mc, NULL);
+    if (is_replace_routine(expect)) {
+        replace_realloc_size_pre(drcontext, &mc, inside);
+        return;
+    }
     if (!get_alloc_entry(expect, &routine)) {
         ASSERT(false, "fatal: can't find alloc entry");
         return; /* maybe release build will limp along */
@@ -3077,7 +3412,6 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
             get_alloc_routine_name(expect), pt->in_heap_routine, MAX_HEAP_NESTING);
     }
-    dr_get_mcontext(drcontext, &mc, NULL);
     if (is_free_routine(type)) {
 #ifdef WINDOWS
         if (type == RTL_ROUTINE_FREE) {
@@ -3130,7 +3464,8 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
                   get_alloc_routine_name(expect));
             return;
         }
-        pt->in_heap_adjusted = pt->in_heap_routine;
+        if (!options.replace_realloc || !is_realloc_routine(type))
+            pt->in_heap_adjusted = pt->in_heap_routine;
 #ifdef WINDOWS
         if (is_rtl_routine(type)) {
             /* FIXME: safe_read */
@@ -3202,6 +3537,11 @@ handle_alloc_post(app_pc func, app_pc post_call)
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
+    dr_get_mcontext(drcontext, &mc, NULL);
+    if (is_replace_routine(func)) {
+        replace_realloc_size_post(drcontext, &mc);
+        return;
+    }
     if (!get_alloc_entry(func, &routine)) {
         ASSERT(false, "fatal: can't find alloc entry");
         return; /* maybe release build will limp along */
@@ -3209,7 +3549,6 @@ handle_alloc_post(app_pc func, app_pc post_call)
     type = routine.type;
     ASSERT(options.track_heap, "requires track_heap");
     ASSERT(func != NULL, "handle_alloc_post: func is NULL!");
-    dr_get_mcontext(drcontext, &mc, NULL);
     if (pt->in_heap_routine == 0) {
         /* jump or other method of targeting post-call site w/o executing
          * call; or, did an indirect call that no longer matches */
@@ -3562,6 +3901,24 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
 }
 
 void
+alloc_replace_instrument(void *drcontext, instrlist_t *bb)
+{
+    byte *pc, *replacement;
+    instr_t *inst = instrlist_first(bb);
+    if (!options.replace_realloc || inst == NULL)
+        return;
+    pc = instr_get_app_pc(inst);
+    ASSERT(pc != NULL, "can't get app pc for instr");
+    replacement = replace_alloc_routine(pc);
+    if (replacement != NULL) {
+        LOG(2, "replacing realloc "PFX" => "PFX"\n", pc, replacement);
+        instrlist_clear(drcontext, bb);
+        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
+                                       (drcontext, opnd_create_pc(replacement)), pc));
+    }
+}
+
+void
 alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc)
 {
@@ -3585,7 +3942,9 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 #endif
     if (options.track_heap) {
-        if (is_alloc_routine(pc)) {
+        if (is_replace_routine(pc))
+            insert_hook(drcontext, bb, inst, pc);
+        else if (is_alloc_routine(pc)) {
             insert_hook(drcontext, bb, inst, pc);
             if (entering_alloc != NULL)
                 *entering_alloc = true;

@@ -57,6 +57,7 @@ typedef struct _per_thread_t {
     uint alloc_flags;
     size_t alloc_size;
     size_t realloc_old_size;
+    size_t realloc_replace_size;
     app_pc alloc_base;
     bool syscall_this_process;
     /* we need to split these to handle cases like exception inside RtlFreeHeap */

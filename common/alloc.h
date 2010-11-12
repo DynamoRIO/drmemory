@@ -43,6 +43,8 @@ typedef struct _alloc_options_t {
      * It's not easy on Windows.
      */
     bool get_padded_size;
+    /* Replace realloc with equivalent malloc+memcpy+free? */
+    bool replace_realloc;
     /* Add new options here */
 } alloc_options_t;
 
@@ -91,6 +93,9 @@ alloc_module_unload(void *drcontext, const module_data_t *info);
 void
 alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc);
+
+void
+alloc_replace_instrument(void *drcontext, instrlist_t *bb);
 
 bool
 alloc_syscall_filter(void *drcontext, int sysnum);
