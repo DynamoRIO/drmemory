@@ -288,7 +288,7 @@ typedef enum {
     RTL_ROUTINE_SHUTDOWN,
     RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
 #endif
-    HEAP_ROUTINE_INVALID,
+    HEAP_ROUTINE_COUNT,
 } routine_type_t;
 
 static inline bool
@@ -340,7 +340,6 @@ typedef struct _possible_alloc_routine_t {
 } possible_alloc_routine_t;
 
 static const possible_alloc_routine_t possible_libc_routines[] = {
-    /* we rely on size entries being first, in preference order */
     { "malloc_usable_size", HEAP_ROUTINE_SIZE_USABLE },
 #ifdef WINDOWS
     { "_msize", HEAP_ROUTINE_SIZE_REQUESTED },
@@ -368,7 +367,6 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 
 #ifdef WINDOWS
 static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
-    /* we rely on size entries being first, in preference order */
     { "_msize_dbg", HEAP_ROUTINE_SIZE_REQUESTED_DBG },
     { "_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
     { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
@@ -387,7 +385,6 @@ static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
     (sizeof(possible_dbgcrt_routines)/sizeof(possible_dbgcrt_routines[0]))
 
 static const possible_alloc_routine_t possible_rtl_routines[] = {
-    /* we rely on size entries being first, in preference order */
     { "RtlSizeHeap", RTL_ROUTINE_SIZE },
     { "RtlAllocateHeap", RTL_ROUTINE_MALLOC },
     { "RtlReAllocateHeap", RTL_ROUTINE_REALLOC },
@@ -420,39 +417,45 @@ is_rtl_routine(routine_type_t type)
 }
 #endif
 
+struct _alloc_routine_set_t;
+typedef struct _alloc_routine_set_t alloc_routine_set_t;
+
 /* Each entry in the alloc_routine_table */
 typedef struct _alloc_routine_entry_t {
     app_pc pc;
     routine_type_t type;
     const char *name;
-    /* The malloc_usable_size() from the same library */
-    struct _alloc_routine_entry_t *size_func;
-    /* Whether redzones are used: we don't for msvcrtdbg (i#26) */
-    bool use_redzone;
-    /* Let user store a field per malloc set, kept in each entry of malloc
-     * set for convenience
-     */
-    void *client;
-    /* Easiest way to clean up client field is to have ref count: we hide
-     * it from client
-     */
-    uint *client_refcnt;
+    alloc_routine_set_t *set;
     /* Once we have an API for custom allocators (PR 406756) will we need a
      * separate name field, or we'll just call them by their type names?
      */
 } alloc_routine_entry_t;
+
+/* Set of malloc routines */
+struct _alloc_routine_set_t {
+    /* Array of entries for all routines in the set.  We could save space by
+     * union-ing Rtl and libc but it's not worth it.
+     */
+    alloc_routine_entry_t *func[HEAP_ROUTINE_COUNT];
+    /* Whether redzones are used: we don't for msvcrtdbg (i#26) */
+    bool use_redzone;
+    /* Let user store a field per malloc set */
+    void *client;
+    /* For easy cleanup */
+    uint refcnt;
+};
 
 /* lock is held when this is called */
 static void
 alloc_routine_entry_free(void *p)
 {
     alloc_routine_entry_t *e = (alloc_routine_entry_t *) p;
-    if (e->client_refcnt != NULL) {
-        ASSERT(e->client_refcnt != NULL && *e->client_refcnt > 0, "invalid refcnt");
-        (*e->client_refcnt)--;
-        if ((*e->client_refcnt) == 0) {
-            client_remove_malloc_routine(e->client);
-            global_free(e->client_refcnt, sizeof(*e->client_refcnt), HEAPSTAT_HASHTABLE);
+    if (e->set != NULL) {
+        ASSERT(e->set->refcnt > 0, "invalid refcnt");
+        e->set->refcnt--;
+        if (e->set->refcnt == 0) {
+            client_remove_malloc_routine(e->set->client);
+            global_free(e->set, sizeof(*e->set), HEAPSTAT_HASHTABLE);
         }
     }
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
@@ -529,22 +532,21 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name)
 
 /* caller must hold alloc routine lock */
 static alloc_routine_entry_t *
-add_alloc_routine(app_pc pc, routine_type_t type, const char *name, bool use_redzone,
-                  alloc_routine_entry_t *size_func, bool size_func_self,
-                  void *client, uint *client_refcnt)
+add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
+                  alloc_routine_set_t *set)
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
     e = global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     e->pc = pc;
     e->type = type;
+    ASSERT(e->type < HEAP_ROUTINE_COUNT, "invalid type");
     e->name = name;
-    e->use_redzone = (use_redzone && options.redzone_size > 0);
-    e->size_func = (size_func_self ? e : size_func);
-    e->client = client;
-    e->client_refcnt = client_refcnt;
-    if (e->client_refcnt != NULL)
-        (*e->client_refcnt)++;
+    e->set = set;
+    if (e->set != NULL) {
+        e->set->refcnt++;
+        e->set->func[e->type] = e;
+    }
     IF_DEBUG(is_new = )
         hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
     ASSERT(is_new, "alloc entry should not already exist");
@@ -556,9 +558,7 @@ static void
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
                     uint num_possible, bool use_redzone, bool expect_all)
 {
-    alloc_routine_entry_t *size_func = NULL;
-    void *client = NULL;
-    uint *client_refcnt = NULL;
+    alloc_routine_set_t *set = NULL;
     int i;
     bool new_set = false;
 #ifdef DEBUG
@@ -597,39 +597,32 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
         if (pc != NULL) {
             if (!new_set) {
-                client = client_add_malloc_routine(pc);
-                client_refcnt = (uint *)
-                    global_alloc(sizeof(*client_refcnt), HEAPSTAT_HASHTABLE);
-                *client_refcnt = 0;
-            }
-            e = add_alloc_routine(pc, possible[i].type, possible[i].name, use_redzone,
-                                  size_func, !new_set, client, client_refcnt);
-            LOG(1, "intercepting %s @"PFX" size_func="PFX" in module %s\n",
-                possible[i].name, pc, (size_func == NULL) ? NULL : size_func->pc,
-                (modname == NULL) ? "<noname>" : modname);
-            if (!new_set) {
                 new_set = true;
-                size_func = e;
-                ASSERT(e->size_func == size_func, "add_alloc_routine changed?");
+                set = (alloc_routine_set_t *)
+                    global_alloc(sizeof(*set), HEAPSTAT_HASHTABLE);
+                memset(set, 0, sizeof(*set));
+                set->use_redzone = (use_redzone && options.redzone_size > 0);
+                set->client = client_add_malloc_routine(pc);
             }
+            e = add_alloc_routine(pc, possible[i].type, possible[i].name, set);
+            LOG(1, "intercepting %s @"PFX" in module %s\n",
+                possible[i].name, pc, (modname == NULL) ? "<noname>" : modname);
         }
-        if (i == HEAP_ROUTINE_SIZE_USABLE) {
-            ASSERT(i == 0, "usable size must be first routine");
 #ifdef LINUX
-            /* libc's malloc_usable_size() is used during initial heap walk */
-            if (mod->start == get_libc_base()) {
-                ASSERT(pc != NULL, "no malloc_usable_size in libc!");
-                malloc_usable_size = (size_t(*)(void *)) pc;
-            }
-#endif
+        /* libc's malloc_usable_size() is used during initial heap walk */
+        if (i == HEAP_ROUTINE_SIZE_USABLE && mod->start == get_libc_base()) {
+            ASSERT(pc != NULL, "no malloc_usable_size in libc!");
+            malloc_usable_size = (size_t(*)(void *)) pc;
         }
+#endif
     }
 }
 
 static size_t
 redzone_size(alloc_routine_entry_t *routine)
 {
-    return (routine->use_redzone ? options.redzone_size : 0);
+    return ((routine->set != NULL && routine->set->use_redzone) ? 
+            options.redzone_size : 0);
 }
 
 /***************************************************************************
@@ -648,11 +641,33 @@ alloc_size_func_t malloc_usable_size;
 
 /* malloc_usable_size exported, so declared in alloc.h */
 
+alloc_routine_entry_t *
+get_size_func(alloc_routine_entry_t *routine)
+{
+    if (routine->set == NULL)
+        return NULL;
+#ifdef WINDOWS
+    if (is_rtl_routine(routine->type))
+        return routine->set->func[RTL_ROUTINE_SIZE];
+#endif
+    /* prefer usable to requested */
+    if (routine->set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
+        return routine->set->func[HEAP_ROUTINE_SIZE_USABLE];
+    else if (routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
+        return routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED];
+#ifdef WINDOWS
+    else if (routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG] != NULL)
+        return routine->set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG];
+#endif
+    return NULL;
+}
+
 static ssize_t
 get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
                           alloc_routine_entry_t *routine)
 {
     ssize_t sz;
+    alloc_routine_entry_t *size_func = get_size_func(routine);
 #ifdef WINDOWS
     if (is_rtl_routine(routine->type)) {
         /* auxarg is heap */
@@ -662,15 +677,15 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
          * but DR's private loader turned it into redirect_RtlSizeHeap
          * so going w/ what we stored from lookup
          */
-        ASSERT(routine->size_func != NULL, "invalid size func");
+        ASSERT(size_func != NULL, "invalid size func");
         /* 0 is an invalid value for a heap handle */
         if (heap == 0)
             return -1;
         else
-            return (*(rtl_size_func_t)(routine->size_func->pc))(heap, 0, real_base);
+            return (*(rtl_size_func_t)(size_func->pc))(heap, 0, real_base);
     }
 #endif
-    if (routine->size_func != NULL) {
+    if (size_func != NULL) {
         /* WARNING: this is dangerous and a transparency violation since we're
          * calling an app library routine here, which can acquire an app lock.
          * We try to only do real handling in pre- and post- of outermost malloc
@@ -683,14 +698,14 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
          * lock at _free_dbg() and wants app lock while calling _size_dbg()).
          */
 #ifdef WINDOWS
-        if (routine->size_func->type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
+        if (size_func->type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
             /* auxarg is blocktype */
-            sz = (*(dbg_size_func_t)(routine->size_func->pc))(real_base, auxarg);
+            sz = (*(dbg_size_func_t)(size_func->pc))(real_base, auxarg);
         } else
 #endif
-            sz = (*(alloc_size_func_t)(routine->size_func->pc))(real_base);
+            sz = (*(alloc_size_func_t)(size_func->pc))(real_base);
         /* Note that malloc(0) has usable size > 0 */
-        if (routine->size_func->type == HEAP_ROUTINE_SIZE_USABLE && sz == 0)
+        if (size_func->type == HEAP_ROUTINE_SIZE_USABLE && sz == 0)
             return -1;
         else
             return sz;
@@ -737,14 +752,15 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 {
 #ifdef LINUX
     /* malloc_usable_size() includes padding */
-    ASSERT(routine->size_func != NULL &&
-           routine->size_func->type == HEAP_ROUTINE_SIZE_USABLE,
+    ASSERT(routine->set != NULL &&
+           routine->set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL,
            "assuming linux has usable size avail");
     return get_size_from_app_routine(real_base, routine);
 #else
     /* FIXME: this is all fragile: any better way, besides using our
      * own malloc() instead of intercepting system's?
      */
+    alloc_routine_entry_t *size_func = get_size_func(routine);
 # define HEAP_MAGIC_OFFS 0x50
     reg_t heap = auxarg;
     ssize_t result;
@@ -756,8 +772,8 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 #  error NYI
 # endif
     if (!is_rtl_routine(routine->type) || auxarg == 0/*invalid heap for Rtl*/) {
-        if (routine->size_func == NULL ||
-            is_size_requested_routine(routine->size_func->type)) {
+        if (size_func == NULL ||
+            is_size_requested_routine(size_func->type)) {
             /* FIXME PR 595800: should look at headers and try to
              * figure out padded size.  For now we just guess by aligning.
              */
@@ -1054,9 +1070,8 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
         dr_module_preferred_name(mod),
         modoffs, name);
     if (strcmp(name, opdel) == 0) {
-        /* not part of any mallc routine set */
-        add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE,
-                          opdel, false, NULL, false, NULL, NULL);
+        /* not part of any malloc routine set */
+        add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE, opdel, NULL);
         LOG(1, "intercepting operator delete @"PFX" in module %s\n",
             mod->start + modoffs,
             (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
@@ -2051,7 +2066,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 #ifdef WINDOWS
     HANDLE heap = (type == RTL_ROUTINE_FREE) ? ((HANDLE) APP_ARG(mc, 1, inside)) : NULL;
 #endif
-    bool size_in_zone = (routine->use_redzone && options.size_in_redzone);
+    bool size_in_zone = (redzone_size(routine) > 0 && options.size_in_redzone);
     size_t size = 0;
     malloc_entry_t *entry;
     if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
@@ -2132,8 +2147,9 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
         LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX" size="PIFX" => "PFX"\n",
             IF_WINDOWS_(heap) base, size, real_base);
 
+        ASSERT(routine->set != NULL, "free must be part of set");
         change_base = client_handle_free
-            (base, size, real_base, mc, routine->client
+            (base, size, real_base, mc, routine->set->client
              _IF_WINDOWS((type == RTL_ROUTINE_FREE) ?
                          ((ptr_int_t *) APP_ARG_ADDR(mc, 1, inside)) : 
                          ((type == HEAP_ROUTINE_FREE_DBG) ?
@@ -2309,7 +2325,8 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
                     size_t *padded_size_out, alloc_routine_entry_t *routine)
 {
     size_t real_size;
-    if (routine->size_func != NULL) {
+    alloc_routine_entry_t *size_func = get_size_func(routine);
+    if (size_func != NULL) {
         real_size = get_alloc_size(IF_WINDOWS_(auxarg) real_base, routine);
         if (options.get_padded_size && padded_size_out != NULL) {
             *padded_size_out = get_padded_size(IF_WINDOWS_(auxarg)
@@ -2773,7 +2790,8 @@ handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
      */
     malloc_iterate(heap_destroy_iter_cb, (void *) &info);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
-    client_handle_heap_destroy(drcontext, pt, heap, routine->client);
+    ASSERT(routine->set != NULL, "destroy must be part of set");
+    client_handle_heap_destroy(drcontext, pt, heap, routine->set->client);
 }
 
 static void
