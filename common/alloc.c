@@ -185,16 +185,8 @@ typedef struct {
 } mmap_arg_struct_t;
 #endif
 
-/* Options */
-static bool op_track_allocs;
-static bool op_track_heap;
-static size_t op_redzone_size;
-static bool op_size_in_redzone;
-static bool op_record_allocs;
-/* Should we try to figure out the padded size of allocs?
- * It's not easy on Windows.
- */
-static bool op_get_padded_size;
+/* Options currently all have 0 as default value */
+static alloc_options_t options;
 
 #ifdef WINDOWS
 /* system calls we want to intercept */
@@ -214,7 +206,7 @@ uint num_large_mallocs;
 uint num_frees;
 #endif
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
                     app_pc actual, bool inside);
@@ -547,7 +539,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name, bool use_red
     e->pc = pc;
     e->type = type;
     e->name = name;
-    e->use_redzone = (use_redzone && op_redzone_size > 0);
+    e->use_redzone = (use_redzone && options.redzone_size > 0);
     e->size_func = (size_func_self ? e : size_func);
     e->client = client;
     e->client_refcnt = client_refcnt;
@@ -637,7 +629,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 static size_t
 redzone_size(alloc_routine_entry_t *routine)
 {
-    return (routine->use_redzone ? op_redzone_size : 0);
+    return (routine->use_redzone ? options.redzone_size : 0);
 }
 
 /***************************************************************************
@@ -724,7 +716,7 @@ static ssize_t
 get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
 {
     ssize_t sz;
-    /* i#30: if op_record_allocs, prefer hashtable to avoid app lock
+    /* i#30: if options.record_allocs, prefer hashtable to avoid app lock
      * which can lead to deadlock
      */
     /* This will fail at post-malloc point before we've added to hashtable:
@@ -937,23 +929,20 @@ malloc_entry_free(void *v)
  *       else, syscall allocs and mallocs are tracked.
  */
 void
-alloc_init(bool track_allocs, bool track_heap,
-           size_t redzone_size, bool size_in_redzone,
-           bool record_allocs, bool get_padded_size)
+alloc_init(alloc_options_t *ops, size_t ops_size)
 {
 #ifdef WINDOWS
     void *drcontext = dr_get_current_drcontext();
     app_pc ntdll_lib;
 #endif
-    op_track_allocs = track_allocs;
-    ASSERT(track_allocs || !track_heap, "track_heap requires track_allocs");
-    op_track_heap = track_allocs && track_heap;
-    op_redzone_size = redzone_size;
-    op_size_in_redzone = size_in_redzone;
-    op_record_allocs = record_allocs;
-    op_get_padded_size = get_padded_size;
+    ASSERT(ops_size <= sizeof(options), "option struct too large");
+    memcpy(&options, ops, ops_size);
+    ASSERT(options.track_allocs || !options.track_heap,
+           "track_heap requires track_allocs");
+    if (!options.track_allocs)
+        options.track_heap = false;
 
-    if (op_track_allocs) {
+    if (options.track_allocs) {
         hashtable_init_ex(&alloc_routine_table, ALLOC_ROUTINE_TABLE_HASH_BITS,
                           HASH_INTPTR, false/*!str_dup*/, false/*!synch*/,
                           alloc_routine_entry_free, NULL, NULL);
@@ -964,7 +953,7 @@ alloc_init(bool track_allocs, bool track_heap,
     ntdll_lib = get_ntdll_base();
     addr_KiCallback = (app_pc) dr_get_proc_address(ntdll_lib,
                                                    "KiUserCallbackDispatcher");
-    if (op_track_allocs) {
+    if (options.track_allocs) {
         addr_KiAPC = (app_pc) dr_get_proc_address(ntdll_lib,
                                                   "KiUserApcDispatcher");
         addr_KiException = (app_pc) dr_get_proc_address(ntdll_lib,
@@ -991,7 +980,7 @@ alloc_init(bool track_allocs, bool track_heap,
         sysnum_setcontext = sysnum_from_name(drcontext, ntdll_lib, "NtSetContextThread");
         ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
 
-        if (op_track_heap) {
+        if (options.track_heap) {
             module_data_t mod = {0,};
             mod.handle = ntdll_lib;
             dr_mutex_lock(alloc_routine_lock);
@@ -1002,7 +991,7 @@ alloc_init(bool track_allocs, bool track_heap,
     }
 #endif
 
-    if (op_track_allocs) {
+    if (options.track_allocs) {
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
                           NULL, NULL);
@@ -1023,7 +1012,7 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
-    if (!op_track_allocs)
+    if (!options.track_allocs)
         return;
 
     LOG(1, "final alloc routine table size: %u bits, %u entries\n",
@@ -1080,7 +1069,7 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-    if (op_track_heap) {
+    if (options.track_heap) {
         const char *modname = dr_module_preferred_name(info);
         bool use_redzone = true;
         if (modname != NULL && 
@@ -1121,7 +1110,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
 {
-    if (op_track_heap) {
+    if (options.track_heap) {
         int i;
         dr_mutex_lock(alloc_routine_lock);
         for (i = 0; i < POSSIBLE_LIBC_ROUTINE_NUM; i++) {
@@ -1207,7 +1196,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     malloc_entry_t *old_e;
     bool locked_by_me;
-    ASSERT((op_redzone_size > 0 && pre_us) || op_record_allocs, 
+    ASSERT((options.redzone_size > 0 && pre_us) || options.record_allocs, 
            "internal inconsistency on when doing detailed malloc tracking");
     e->start = start;
     e->end = end;
@@ -1668,7 +1657,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             uint type = (uint) dr_syscall_get_param(drcontext, 4);
             pt->valloc_type = type;
             pt->valloc_commit = false;
-            if (op_track_heap) {
+            if (options.track_heap) {
                 if (pt->syscall_this_process && TEST(MEM_COMMIT, type)) {
                     app_pc *base_ptr = (app_pc *) dr_syscall_get_param(drcontext, 1);
                     /* FIXME: safe_read */
@@ -1746,7 +1735,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
         LOGPT(2, pt, "SYS_munmap "PFX"-"PFX"\n", base, base+size);
         client_handle_munmap(base, size, false/*up to caller to determine*/);
         /* if part of heap remove it from list */
-        if (op_track_heap)
+        if (options.track_heap)
             heap_region_remove(base, base+size, mc);
     }
 # ifdef DEBUG
@@ -1798,7 +1787,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                   TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
                   TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
                   pt->in_heap_routine > 0 ? "in-heap " : "");
-            if (op_track_heap) {
+            if (options.track_heap) {
                 /* if !valloc_commit, we assume it's part of a heap */
                 if (pt->valloc_commit) {
                     /* FIXME: really want to test overlap of two regions! */
@@ -1849,7 +1838,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                   TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
                   pt->in_heap_routine > 0 ? "in-heap " : "");
             ASSERT(!pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to succeed");
-            if (op_track_heap) {
+            if (options.track_heap) {
                 /* Are we freeing an entire region? */
                 if (((pt->valloc_type == MEM_DECOMMIT && size == 0) ||
                      pt->valloc_type == MEM_RELEASE) &&
@@ -1881,7 +1870,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                      */
                     ASSERT(pt->valloc_type == MEM_DECOMMIT ||
                            !is_in_heap_region(base), "heap region tracking bug");
-                    if (op_record_allocs) {
+                    if (options.record_allocs) {
                         malloc_remove(base);
                     }
                 }
@@ -1931,7 +1920,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                      * malloc: doesn't matter too much since we don't
                      * really distinguish inside our heap list anyway.
                      */
-                    if (op_track_heap)
+                    if (options.track_heap)
                         heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
                 }
             }
@@ -1950,7 +1939,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
             if (!dr_query_memory_ex(base, &info))
                 ASSERT(false, "mem query failed");
             client_handle_munmap_fail(base, size, info.type != DR_MEMTYPE_IMAGE);
-            if (op_track_heap && pt->in_heap_routine > 0)
+            if (options.track_heap && pt->in_heap_routine > 0)
                 heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
         }
     } 
@@ -1976,7 +1965,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
             client_handle_mremap(old_base, old_size, new_base, new_size,
                                  info.type == DR_MEMTYPE_IMAGE);
             /* Large realloc may call mremap (PR 488643) */
-            if (op_track_heap && pt->in_heap_routine > 0 &&
+            if (options.track_heap && pt->in_heap_routine > 0 &&
                 is_in_heap_region(old_base)) {
                 ASSERT(is_entirely_in_heap_region(old_base, old_base + old_size),
                        "error in large malloc tracking");
@@ -2062,7 +2051,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 #ifdef WINDOWS
     HANDLE heap = (type == RTL_ROUTINE_FREE) ? ((HANDLE) APP_ARG(mc, 1, inside)) : NULL;
 #endif
-    bool size_in_zone = (routine->use_redzone && op_size_in_redzone);
+    bool size_in_zone = (routine->use_redzone && options.size_in_redzone);
     size_t size = 0;
     malloc_entry_t *entry;
     if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
@@ -2247,7 +2236,7 @@ handle_size_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *rout
                  * malloc_usable_size includes padding which is hard to predict
                  */
                 ASSERT(routine->type == HEAP_ROUTINE_SIZE_USABLE ||
-                       !op_size_in_redzone ||
+                       !options.size_in_redzone ||
                        mc->eax == *((size_t *)(pt->alloc_base - redzone_size(routine))),
                        "size mismatch");
 #endif
@@ -2322,7 +2311,7 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
     size_t real_size;
     if (routine->size_func != NULL) {
         real_size = get_alloc_size(IF_WINDOWS_(auxarg) real_base, routine);
-        if (op_get_padded_size && padded_size_out != NULL) {
+        if (options.get_padded_size && padded_size_out != NULL) {
             *padded_size_out = get_padded_size(IF_WINDOWS_(auxarg)
                                                real_base, routine);
             if (*padded_size_out == -1)
@@ -2365,7 +2354,7 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *padded_size_out,
         /* We have to be consistent: if we don't store the requested size for use
          * on free() we have to use the real size here
          */
-        if (used_redzone && !op_size_in_redzone && redzone_size(routine) > 0) {
+        if (used_redzone && !options.size_in_redzone && redzone_size(routine) > 0) {
             LOGPT(2, pt, "adjusting alloc size "PIFX" to match real size "PIFX"\n",
                   pt->alloc_size, real_size - redzone_size(routine)*2);
             pt->alloc_size = real_size - redzone_size(routine)*2;
@@ -2377,7 +2366,7 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *padded_size_out,
               app_base - (used_redzone ? redzone_size(routine) : 0) + real_size,
               real_size);
         if (used_redzone && redzone_size(routine) > 0) {
-            if (op_size_in_redzone) {
+            if (options.size_in_redzone) {
                 ASSERT(redzone_size(routine) >= sizeof(size_t), "redzone size too small");
                 /* store the size for our own use */
                 *((size_t *)mc->eax) = pt->alloc_size;
@@ -2435,7 +2424,7 @@ handle_malloc_post(void *drcontext, dr_mcontext_t *mc, bool realloc, app_pc post
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
     } else {
-        if (op_record_allocs) {
+        if (options.record_allocs) {
             malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
                        0, mc, post_call);
         }
@@ -2455,7 +2444,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc real_base;
-    bool size_in_zone = redzone_size(routine) > 0 && op_size_in_redzone;
+    bool size_in_zone = redzone_size(routine) > 0 && options.size_in_redzone;
     bool invalidated = false;
     pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_REALLOC_PTR(type), inside);
     if (pt->alloc_base == NULL) {
@@ -2536,7 +2525,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
           " base="PFX" oldsz="PIFX" newsz="PIFX"\n",
           IF_WINDOWS_(APP_ARG(mc, 1, inside))
           pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
-    if (op_record_allocs && !invalidated)
+    if (options.record_allocs && !invalidated)
         malloc_set_valid(pt->alloc_base, false);
 }
 
@@ -2566,7 +2555,7 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
                                               pt->alloc_size != 0, routine);
         app_pc old_end = pt->alloc_base + pt->realloc_old_size;
         /* realloc sometimes calls free, but shouldn't be any conflicts */
-        if (op_record_allocs) {
+        if (options.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
@@ -2586,7 +2575,7 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
         if (malloc_is_pre_us_ex(pt->alloc_base, true/*check invalid too*/) ||
-            op_record_allocs) {
+            options.record_allocs) {
             /* still there, and still pre-us if it was before */
             malloc_set_valid(pt->alloc_base, true);
             LOGPT(2, pt, "re-instating failed realloc as pre-control "PFX"-"PFX"\n",
@@ -2676,7 +2665,7 @@ handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
-        if (op_record_allocs) {
+        if (options.record_allocs) {
             malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
                        0, mc, post_call);
         }
@@ -2914,7 +2903,7 @@ alloc_hook(app_pc pc)
     int app_errno;
     dr_get_mcontext(drcontext, &mc, &app_errno);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    if (op_track_heap && is_alloc_routine(pc)) {
+    if (options.track_heap && is_alloc_routine(pc)) {
         /* if the entry was a jmp* and we didn't see the call prior to it,
          * we did not know the retaddr, so add it now 
          */
@@ -3030,7 +3019,7 @@ insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
     dr_cleanup_after_call(drcontext, bb, inst, sizeof(reg_t));
 }
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
                     app_pc actual, bool inside)
@@ -3176,16 +3165,16 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
 #endif
 }
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 handle_alloc_pre(app_pc call_site, app_pc expect, bool indirect, app_pc actual)
 {
-    ASSERT(op_track_heap, "requires track_heap");
+    ASSERT(options.track_heap, "requires track_heap");
     handle_alloc_pre_ex(call_site, expect, indirect, actual,
                         false/*not inside callee yet*/);
 }
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 handle_alloc_post(app_pc func, app_pc post_call)
 {
@@ -3200,7 +3189,7 @@ handle_alloc_post(app_pc func, app_pc post_call)
         return; /* maybe release build will limp along */
     }
     type = routine.type;
-    ASSERT(op_track_heap, "requires track_heap");
+    ASSERT(options.track_heap, "requires track_heap");
     ASSERT(func != NULL, "handle_alloc_post: func is NULL!");
     dr_get_mcontext(drcontext, &mc, NULL);
     if (pt->in_heap_routine == 0) {
@@ -3323,7 +3312,7 @@ handle_tailcall(app_pc callee, app_pc post_call)
     }
 }
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
                       bool indirect, app_pc target, app_pc post_call)
@@ -3337,7 +3326,7 @@ instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
     app_pc handler = (app_pc)handle_alloc_pre;
     uint num_args = 4;
-    ASSERT(op_track_heap, "requires track_heap");
+    ASSERT(options.track_heap, "requires track_heap");
     LOG(3, "instrumenting alloc site "PFX" targeting "PFX" %s\n",
         instr_get_app_pc(inst), target, get_alloc_routine_name(target));
     hashtable_add(&call_site_table, (void*)post_call, (void*)1);
@@ -3367,19 +3356,19 @@ instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
     dr_cleanup_after_call(drcontext, bb, inst, num_args*sizeof(reg_t));
 }
 
-/* only used if op_track_heap */
+/* only used if options.track_heap */
 static void
 instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
                            app_pc target, app_pc post_call)
 {
-    ASSERT(op_track_heap, "requires track_heap");
+    ASSERT(options.track_heap, "requires track_heap");
     dr_insert_clean_call(drcontext, bb, inst, (void *) handle_alloc_post,
                          false/*no fpstate*/, 2,
                          OPND_CREATE_INTPTR((ptr_int_t)target),
                          OPND_CREATE_INTPTR((ptr_int_t)post_call));
 }
 
-/* Used for op_track_heap.  Our strategy is to identify call sites,
+/* Used for options.track_heap.  Our strategy is to identify call sites,
  * where we can insert both pre and post instrumentation more easily
  * than only dealing with the callee.
  * We can speculatively insert post instrumentation and detect at
@@ -3423,7 +3412,7 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
      * Since no registers are present, mc can just be empty.
      */
     memset(&mc, 0, sizeof(mc));
-    ASSERT(op_track_heap, "requires track_heap");
+    ASSERT(options.track_heap, "requires track_heap");
     if (opc == OP_call_ind IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) {
         /* we're post-rebind: get current dynamic target and see if
          * a malloc or realloc routine
@@ -3564,7 +3553,7 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
         *entering_alloc = false;
     if (exiting_alloc != NULL)
         *exiting_alloc = false;
-    if (op_track_heap) {
+    if (options.track_heap) {
         app_pc callee = post_call_lookup(pc);
         if (callee != NULL) {
             instrument_post_alloc_site(drcontext, bb, inst, callee, pc);
@@ -3577,7 +3566,7 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
         insert_hook(drcontext, bb, inst, pc);
     }
 #endif
-    if (op_track_heap) {
+    if (options.track_heap) {
         if (is_alloc_routine(pc)) {
             insert_hook(drcontext, bb, inst, pc);
             if (entering_alloc != NULL)

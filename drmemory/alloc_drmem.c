@@ -130,12 +130,14 @@ is_register_defined(void *drcontext, reg_id_t reg);
 void
 alloc_drmem_init(void)
 {
-    alloc_init(options.track_allocs,
-               options.track_heap,
-               options.redzone_size,
-               options.size_in_redzone,
-               true, /* record allocs: used to only need for -count_leaks */
-               false/*don't need padding size*/);
+    alloc_options_t alloc_ops;
+    alloc_ops.track_allocs = options.track_allocs;
+    alloc_ops.track_heap = options.track_heap;
+    alloc_ops.redzone_size = options.redzone_size;
+    alloc_ops.size_in_redzone = options.size_in_redzone;
+    alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
+    alloc_ops.get_padded_size = false; /* don't need padding size */
+    alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
                       false/*!str_dup*/, true/* synch (higher-level synch covered

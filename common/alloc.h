@@ -33,6 +33,19 @@
 /* All mallocs we've seen align to 8 */
 #define MALLOC_CHUNK_ALIGNMENT 8
 
+typedef struct _alloc_options_t {
+    bool track_allocs;
+    bool track_heap;
+    size_t redzone_size;
+    bool size_in_redzone;
+    bool record_allocs;
+    /* Should we try to figure out the padded size of allocs?
+     * It's not easy on Windows.
+     */
+    bool get_padded_size;
+    /* Add new options here */
+} alloc_options_t;
+
 /* Flags stored with each malloc entry */
 enum {
     MALLOC_RESERVED_1 = 0x01,
@@ -64,9 +77,7 @@ extern uint num_frees;
 #endif
 
 void
-alloc_init(bool track_allocs, bool track_heap,
-           size_t redzone_size, bool size_in_redzone,
-           bool record_allocs, bool get_padded_size);
+alloc_init(alloc_options_t *ops, size_t ops_size);
 
 void
 alloc_exit(void);

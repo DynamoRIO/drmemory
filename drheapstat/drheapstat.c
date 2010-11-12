@@ -1944,6 +1944,7 @@ DR_EXPORT void
 dr_init(client_id_t client_id)
 {
     const char *opstr = dr_get_options(client_id);
+    alloc_options_t alloc_ops;
 
     ASSERT(opstr != NULL, "error obtaining option string");
     drheap_options_init(opstr);
@@ -1996,9 +1997,14 @@ dr_init(client_id_t client_id)
     /* We keep callstacks around forever and only free when we delete
      * the alloc_stack_table, so no refcounts
      */
-    alloc_init(true/*track allocs*/, true/*track heap*/,
-               0/*no redzone*/, false/*no redzone*/,
-               true/*record allocs*/, true/*need padding size*/);
+
+    alloc_ops.track_allocs = true;
+    alloc_ops.track_heap = true;
+    alloc_ops.redzone_size = 0; /* no redzone */
+    alloc_ops.size_in_redzone = false;
+    alloc_ops.record_allocs = true;
+    alloc_ops.get_padded_size = true;
+    alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
                       false/*!str_dup*/, false/* !synch; + higher-level synch covered
