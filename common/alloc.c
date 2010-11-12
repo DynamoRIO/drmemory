@@ -267,8 +267,18 @@ typedef enum {
      * But glibc calloc does its own allocating.
      */
     HEAP_ROUTINE_CALLOC,
+    HEAP_ROUTINE_POSIX_MEMALIGN,
+    HEAP_ROUTINE_MEMALIGN,
+    HEAP_ROUTINE_VALLOC,
+    HEAP_ROUTINE_PVALLOC,
+    /* Group label for routines that might read heap headers but
+     * need no explicit argument modification
+     */
+    HEAP_ROUTINE_STATS,
+    /* Group label for un-handled routine */
+    HEAP_ROUTINE_NOT_HANDLED,
 #ifdef LINUX
-    HEAP_ROUTINE_LAST = HEAP_ROUTINE_CALLOC,
+    HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED,
 #else
     /* Debug CRT routines, which take in extra params */
     HEAP_ROUTINE_SIZE_REQUESTED_DBG,
@@ -362,6 +372,26 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "realloc", HEAP_ROUTINE_REALLOC }, 
     { "free", HEAP_ROUTINE_FREE },
     { "calloc", HEAP_ROUTINE_CALLOC },
+    /* for cfree we ignore 2 extra args if there are any, as glibc itself does */
+    { "cfree", HEAP_ROUTINE_FREE },
+    /* XXX PR 406323: not supported yet */
+    { "posix_memalign", HEAP_ROUTINE_NOT_HANDLED },
+    { "memalign", HEAP_ROUTINE_NOT_HANDLED },
+    { "valloc", HEAP_ROUTINE_NOT_HANDLED },
+    { "pvalloc", HEAP_ROUTINE_NOT_HANDLED },
+    /* we do not change args or return val for these: we simply allow
+     * them to access heap headers.  returned stats will be inflated
+     * by redzones: oh well.
+     */
+    { "mallopt",              HEAP_ROUTINE_STATS },
+    { "mallinfo",             HEAP_ROUTINE_STATS },
+    { "malloc_stats",         HEAP_ROUTINE_STATS },
+    { "malloc_trim",          HEAP_ROUTINE_STATS },
+    { "malloc_get_state",     HEAP_ROUTINE_STATS },
+    /* XXX PR 406323: not supported yet */
+    { "malloc_set_state",     HEAP_ROUTINE_NOT_HANDLED },
+    { "independent_calloc",   HEAP_ROUTINE_NOT_HANDLED },
+    { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
     /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
 #ifdef WINDOWS
     /* the _impl versions are sometimes called directly 
@@ -849,6 +879,12 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    if (e != NULL) {
+        /* this happens w/ things like cfree which maps to free in libc */
+        LOG(1, "alloc routine %s "PFX" is already intercepted\n", name, pc);
+        return e;
+    }
     e = global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     e->pc = pc;
     e->type = type;
@@ -3516,6 +3552,12 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         *((int *)APP_ARG_ADDR(&mc, 2, inside)) = -1;
     }
 #endif
+    else if (type == HEAP_ROUTINE_NOT_HANDLED) {
+        /* XXX: once we have the aligned-malloc routines turn this
+         * into a NOTIFY_ERROR and dr_abort
+         */
+        LOG(1, "WARNING: unhandled heap routine %s\n", routine.name);
+    }
 }
 
 /* only used if options.track_heap */

@@ -305,6 +305,10 @@ if (NOT TOOL_DR_HEAPSTAT)
     target_link_libraries(realloc pthread)
   endif (UNIX)
 
+  if (UNIX)
+    newtest(memalign memalign.c)
+  endif (UNIX)
+
 else (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF)
 
