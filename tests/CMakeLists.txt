@@ -114,7 +114,7 @@ else (DEBUG)
 endif (DEBUG)
 if (WIN32)
   # we need the nudge notification msgs
-  set(default_dr_ops "-dumpcore_mask 0 -stderr_mask 15")
+  set(default_dr_ops "-dumpcore_mask 0 -stderr_mask 15 -msgbox_mask 0")
 else (WIN32)
   # stderr_mask 15 is the default for debug build, and we don't want to go
   # over option buffer limit on esxi
