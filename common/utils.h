@@ -98,12 +98,26 @@
 #define TESTALL(mask, var) (((mask) & (var)) == (mask))
 
 #ifdef WINDOWS
-#  define inline __inline
-#  define INLINE_FORCED __forceinline
+# define inline __inline
+# define INLINE_FORCED __forceinline
+/* Use special C99 operator _Pragma to generate a pragma from a macro */
+# if _MSC_VER <= 1200 /* FIXME: __pragma may work w/ vc6: then don't need #if */
+#  define ACTUAL_PRAGMA(p) _Pragma ( #p )
 # else
-#  define inline __inline__
-#  define INLINE_FORCED inline
+#   define ACTUAL_PRAGMA(p) __pragma ( p )
 # endif
+# define DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", off) )
+# define END_DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", on) )
+#else /* LINUX */
+# define inline __inline__
+# define INLINE_FORCED inline
+# if 0 /* only available in gcc 4.4+ so not using: XXX: add HAVE_OPTIMIZE_ATTRIBUTE */
+#   define DO_NOT_OPTIMIZE __attribute__((optimize("O0")))
+# else
+#   define DO_NOT_OPTIMIZE /* nothing */
+# endif
+# define END_DO_NOT_OPTIMIZE /* nothing */
+#endif
 #define INLINE_ONCE inline
 
 #ifdef LINUX

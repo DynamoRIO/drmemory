@@ -404,6 +404,7 @@ if (TOOL_DR_HEAPSTAT)
     drheapstat/drheapstat.c
     drheapstat/staleness.c
     common/alloc.c
+    common/alloc_unopt.c
     common/heap.c
     common/callstack.c
     common/utils.c
@@ -429,6 +430,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/shadow.c
     drmemory/options.c
     common/alloc.c
+    common/alloc_unopt.c
     common/heap.c
     common/callstack.c
     drmemory/alloc_drmem.c
@@ -473,6 +475,13 @@ use_DynamoRIO_extension(${client_target} drcontainers)
 if (WIN32 AND USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (WIN32 AND USE_DRSYMS)
+
+if (UNIX)
+  set(DISABLE_OPTS "-O0")
+else (UNIX)
+  set(DISABLE_OPTS "/Od")
+endif (UNIX)
+set_property(SOURCE common/alloc_unopt.c APPEND PROPERTY COMPILE_FLAGS "${DISABLE_OPTS}")
 
 # Though the swf file isn't an executable it is in bin32 because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.

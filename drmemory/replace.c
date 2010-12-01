@@ -89,22 +89,14 @@ asm(".section .replace, \"ax\", @progbits");
 asm(".align 0x1000");
 # define IN_REPLACE_SECTION __attribute__ ((section (".replace")))
 #else
-/* Use special C99 operator _Pragma to generate a pragma from a macro */
-# if _MSC_VER <= 1200 /* FIXME: __pragma may work w/ vc6: then don't need #if */
-#  define ACTUAL_PRAGMA(p) _Pragma ( #p )
-# else
-#  define ACTUAL_PRAGMA(p) __pragma ( p )
-# endif
 ACTUAL_PRAGMA( code_seg(".replace") )
 # define IN_REPLACE_SECTION /* nothing */
 #endif
 
-#ifdef WINDOWS
 /* prevent cl from replacing our loop with a call to ntdll!memset,
  * which we replace with this routine, which results an infinite loop!
  */
-# pragma optimize("g", off)
-#endif
+DO_NOT_OPTIMIZE
 IN_REPLACE_SECTION void *
 replace_memset(void *dst, int val, size_t size)
 {
@@ -113,9 +105,7 @@ replace_memset(void *dst, int val, size_t size)
         *ptr++ = (unsigned char) val;
     return dst;
 }
-#ifdef WINDOWS
-# pragma optimize("g", on)
-#endif
+END_DO_NOT_OPTIMIZE
 
 IN_REPLACE_SECTION void *
 replace_memcpy(void *dst, const void *src, size_t size)

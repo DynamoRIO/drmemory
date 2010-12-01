@@ -654,9 +654,21 @@ static byte *gencode_start, *gencode_cur;
 static void *gencode_lock;
 #define GENCODE_SIZE PAGE_SIZE
 
-static void * marker_malloc(size_t size) { return NULL; }
-static size_t marker_size(void *ptr) { return 0; }
-static void marker_free(void *ptr) {}
+/* In alloc_unopt.c b/c we do not want these optimized, and for
+ * gcc < 4.4 we have no control (volatile is not good enough).
+ */
+extern void * marker_malloc(size_t size);
+extern size_t marker_size(void *ptr);
+extern void marker_free(void *ptr);
+extern void *replace_realloc_template(void *p, size_t newsz);
+
+#ifdef WINDOWS
+extern PVOID NTAPI marker_RtlAllocateHeap(HANDLE heap, DWORD flags, SIZE_T size);
+extern ULONG NTAPI marker_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID block);
+extern bool NTAPI marker_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID block);
+extern void * NTAPI
+replace_realloc_template_Rtl(HANDLE heap, ULONG flags, PVOID p, SIZE_T newsz);
+#endif
 
 /* Some malloc sets do not have a requested-size query, or don't
  * have any size query (e.g., ld-linux.so.2), so we retrieve the
@@ -692,87 +704,6 @@ replace_realloc_size_post(void *drcontext, dr_mcontext_t *mc)
     dr_set_mcontext(drcontext, mc, NULL);
 }
 
-/* Our fastpath can't handle OP_movs of uninit, which is common
- * w/ realloc, so we use a regular OP_mov loop.
- * XXX: share w/ drmem's replace_memcpy
- */
-static void *
-memcpy_no_movs(void *dst, const void *src, size_t size)
-{
-    register unsigned char *d = (unsigned char *) dst;
-    register unsigned char *s = (unsigned char *) src;
-    while (size-- > 0) /* loop will terminate before underflow */
-        *d++ = *s++;
-    return dst;
-}
-
-static void *
-replace_realloc_template(void *p, size_t newsz)
-{
-    void *q = NULL;
-    size_t oldsz = 0;
-    if (p != NULL) {
-        oldsz = marker_size(p);
-        if (oldsz == (size_t)-1 /* 0 is not failure: not calling usable_ */) {
-            return NULL; /* on failure, do not free */
-        }
-    }
-    if (newsz > 0 || p == NULL) {
-        q = marker_malloc(newsz);
-        if (q == NULL)
-            return NULL; /* on failure, do not free */
-        if (p != NULL) {
-            size_t copysz = (newsz <= oldsz) ? newsz : oldsz;
-            memcpy_no_movs(q, p, copysz);
-        }
-    }
-    marker_free(p);
-    return q;
-}
-
-#ifdef WINDOWS
-static PVOID NTAPI
-marker_RtlAllocateHeap(HANDLE heap, DWORD flags, SIZE_T size) { return NULL; }
-static ULONG NTAPI
-marker_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID block) { return 0; }
-static bool NTAPI
-marker_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID block) { return false; }
-
-static void * NTAPI
-replace_realloc_template_Rtl(HANDLE heap, ULONG flags, PVOID p, SIZE_T newsz)
-{
-    void *q = NULL;
-    size_t oldsz = 0;
-    if (TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags)) {
-        /* XXX i#71: want to call regular RtlReAllocateHeap and not
-         * replace: need to set that up.  For now we fail and we'll
-         * see if any apps don't handle such failure.
-         */
-        LOG(1, "WARNING: RtlReAllocateHeap HEAP_REALLOC_IN_PLACE_ONLY NYI\n");
-        return NULL;
-    }
-    /* Unlike libc realloc, NULL is not valid */
-    if (p == NULL)
-        return NULL;
-    if (p != NULL) {
-        oldsz = marker_RtlSizeHeap(heap, 0, p);
-        if (oldsz == (size_t)-1 /* 0 is not failure */) {
-            return NULL; /* on failure, do not free */
-        }
-    }
-    /* HeapReAlloc has different behavior: (,0) does allocate a 0-sized chunk */
-    q = marker_RtlAllocateHeap(heap, flags, newsz);
-    if (q == NULL)
-        return NULL; /* on failure, do not free */
-    if (p != NULL) {
-        size_t copysz = (newsz <= oldsz) ? newsz : oldsz;
-        memcpy_no_movs(q, p, copysz);
-    }
-    marker_RtlFreeHeap(heap, 0, p);
-    return q;
-}
-#endif
-
 static void
 generate_realloc_replacement(alloc_routine_set_t *set)
 {
@@ -785,6 +716,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     alloc_routine_entry_t *set_free = free_func_in_set(set);
     IF_DEBUG(alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);)
     byte *size_func;
+    uint found_calls = 0;
     ASSERT(options.replace_realloc, "should not get here");
     ASSERT(set != NULL, "invalid param");
     /* if no set_size (e.g., ld-linux.so.2) or only usable size (which
@@ -810,10 +742,17 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         instr_reset(drcontext, &inst);
         dpc = decode(drcontext, dpc, &inst);
         ASSERT(dpc != NULL, "invalid instr in realloc template");
+        if (epc == epc_start && instr_get_opcode(&inst) == OP_jmp) {
+            /* skip jmp in ILT */
+            ASSERT(opnd_is_pc(instr_get_target(&inst)), "decoded jmp should have pc tgt");
+            dpc = opnd_get_pc(instr_get_target(&inst));
+            continue;
+        }
         /* XXX: for x64 we will have to consider reachability */
         if (instr_get_opcode(&inst) == OP_call) {
             opnd_t tgt = instr_get_target(&inst);
             app_pc pc;
+            found_calls++;
             ASSERT(opnd_is_pc(tgt), "invalid call");
             pc = opnd_get_pc(tgt);
             if (pc == (app_pc) marker_malloc
@@ -841,6 +780,10 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         }
         /* I assume there's only one ret */
     } while (!instr_is_return(&inst));
+    if (found_calls != 4) {
+        NOTIFY_ERROR("Dr. Memory compiled incorrectly: realloc template optimized?");
+        dr_abort();
+    }
     instr_reset(drcontext, &inst);
     gencode_cur = epc;
     dr_mutex_unlock(gencode_lock);
@@ -2831,6 +2774,8 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     if (options.replace_realloc) {
         /* subsequent malloc will clobber alloc_size */
         pt->realloc_replace_size = pt->alloc_size;
+        LOGPT(2, pt, "realloc-pre "PFX" new size %d\n",
+               pt->alloc_base, pt->realloc_replace_size);
         return;
     }
     pt->in_realloc = true;
@@ -2914,8 +2859,11 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     if (options.replace_realloc) {
         /* for sz==0 normal to return NULL */
-        if (mc->eax == 0 && pt->realloc_replace_size != 0)
+        if (mc->eax == 0 && pt->realloc_replace_size != 0) {
+            LOGPT(2, pt, "realloc-post failure %d %d\n",
+                   pt->alloc_size, pt->realloc_replace_size);
             handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
+        }
         return;
     }
     if (pt->alloc_base == NULL) {
