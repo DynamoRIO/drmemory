@@ -298,6 +298,7 @@ memop_ok_for_fastpath(opnd_t memop, bool allow8plus)
              opnd_get_size(memop) == OPSZ_2 ||
              opnd_get_size(memop) == OPSZ_1 ||
              ((opnd_get_size(memop) == OPSZ_8 || 
+               opnd_get_size(memop) == OPSZ_10 ||
                opnd_get_size(memop) == OPSZ_16) && allow8plus) ||
              opnd_get_size(memop) == OPSZ_lea) &&
             (!opnd_is_base_disp(memop) ||
@@ -614,14 +615,16 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
 
-        /* We only allow 8-byte memop for floats or 16-byte memop for xmm
+        /* We only allow 8-byte or 10-byte memop for floats or 16-byte memop for xmm
          * w/ no other opnds (=> no prop)
          */
         if (mi->load && (opnd_get_size(mi->src[0]) == OPSZ_8 ||
+                         opnd_get_size(mi->src[0]) == OPSZ_10 ||
                          opnd_get_size(mi->src[0]) == OPSZ_16) &&
             (!opnd_is_null(mi->src[1]) || !opnd_is_null(mi->dst[0])))
             return false;
         if (mi->store && (opnd_get_size(mi->dst[0]) == OPSZ_8 ||
+                          opnd_get_size(mi->dst[0]) == OPSZ_10 ||
                           opnd_get_size(mi->dst[0]) == OPSZ_16) &&
             (!opnd_is_null(mi->dst[1]) || !opnd_is_null(mi->src[0])))
             return false;
@@ -677,7 +680,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             ASSERT(mem2sz == mi->memsz, "load2x 2nd mem must be same size as 1st");
         }
         /* stack ops are the ones that vary and might reach 8+ */
-        if (!(((mi->opsz == 8 || mi->opsz == 16) && !mi->pushpop) ||
+        if (!(((mi->opsz == 8 || mi->opsz == 16 || mi->opsz == 10) && !mi->pushpop) ||
               mi->opsz == 4 || mi->opsz == 2 || mi->opsz == 1)) {
             return false; /* needs slowpath */
         }
@@ -1916,12 +1919,14 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         /* PR 614275: for xmm regs we require 16-byte align: has to be for movdqa
          * anyway else will fault.
+         * PR 624474: we handle OPSZ_10 fld on fastpath if 16-byte aligned
          */
         PRE(bb, inst,
             INSTR_CREATE_test(drcontext, opnd_create_reg(reg_32_to_8(reg2)),
                               OPND_CREATE_INT8(mi->memsz == 4 ? 0x3 :
                                                (mi->memsz == 8 ? 0x3 :
-                                                (mi->memsz == 16 ? 0xf : 0x1)))));
+                                                ((mi->memsz == 16 || mi->memsz == 10) ?
+                                                 0xf : 0x1)))));
         /* With PR 448701 a short jcc reaches */
         add_jcc_slowpath(drcontext, bb, inst,
                          jcc_short_slowpath ? OP_jnz_short : OP_jnz, mi);
@@ -1988,7 +1993,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     if (get_value) {
         /* load value from shadow table to reg1 */
-        if (mi->memsz == 16) {
+        if (mi->memsz == 16 || mi->memsz == 10) {
             PRE(bb, inst,
                 INSTR_CREATE_mov_ld(drcontext,
                                     opnd_create_reg(value_in_reg2 ? reg2 : reg1),
@@ -2061,7 +2066,7 @@ shadow_immed(uint memsz, uint shadow_val)
     else if (memsz == 8)
         return OPND_CREATE_INT16((short)val_to_qword[shadow_val]);
     else {
-        ASSERT(memsz == 16, "invalid memsz");
+        ASSERT(memsz == 16 || memsz == 10, "invalid memsz");
         return OPND_CREATE_INT32(val_to_dqword[shadow_val]);
     }
 }
@@ -2783,7 +2788,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         else if (mi->memsz == 8)
             shadow_dst = OPND_CREATE_MEM16(mi->reg1.reg, 0);
         else {
-            ASSERT(mi->memsz == 16, "invalid memsz");
+            ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
             shadow_dst = OPND_CREATE_MEM32(mi->reg1.reg, 0);
         }
     } else if (mi->dst_reg != REG_NULL)
@@ -2810,7 +2815,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             else if (mi->memsz == 8)
                 shadow_src = opnd_create_reg(reg2_16);
             else {
-                ASSERT(mi->memsz == 16, "invalid memsz");
+                ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
                 shadow_src = opnd_create_reg(mi->reg2.reg);
             }
         }
@@ -3349,7 +3354,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2_16),
                                      OPND_CREATE_INT16((short)SHADOW_QWORD_DEFINED)));
             } else {
-                ASSERT(mi->memsz == 16, "invalid memsz");
+                ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg2.reg),
                                      OPND_CREATE_INT32(SHADOW_DQWORD_DEFINED)));
