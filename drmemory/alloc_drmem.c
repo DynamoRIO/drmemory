@@ -488,24 +488,31 @@ void *
 client_add_malloc_routine(app_pc pc)
 {
     /* We assume no lock is needed on creation */
-    delay_free_info_t *info = (delay_free_info_t *)
-        global_alloc(sizeof(*info), HEAPSTAT_MISC);
-    info->delay_free_list = (delay_free_t *)
-        global_alloc(options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
-    info->delay_free_head = 0;
-    info->delay_free_fill = 0;
-    return (void *) info;
+    if (options.delay_frees > 0) {
+        delay_free_info_t *info = (delay_free_info_t *)
+            global_alloc(sizeof(*info), HEAPSTAT_MISC);
+        info->delay_free_list = (delay_free_t *)
+            global_alloc(options.delay_frees * sizeof(*info->delay_free_list),
+                         HEAPSTAT_MISC);
+        info->delay_free_head = 0;
+        info->delay_free_fill = 0;
+        return (void *) info;
+    } else {
+        return NULL;
+    }
 }
 
 void
 client_remove_malloc_routine(void *client_data)
 {
     /* We assume no lock is needed on destroy */
-    delay_free_info_t *info = (delay_free_info_t *) client_data;
-    ASSERT(info != NULL, "invalid param");
-    global_free(info->delay_free_list,
-                options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
-    global_free(info, sizeof(*info), HEAPSTAT_MISC);
+    if (options.delay_frees > 0) {
+        delay_free_info_t *info = (delay_free_info_t *) client_data;
+        ASSERT(info != NULL, "invalid param");
+        global_free(info->delay_free_list,
+                    options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
+        global_free(info, sizeof(*info), HEAPSTAT_MISC);
+    }
 }
 
 #ifdef DEBUG
@@ -639,6 +646,8 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
 {
     delay_free_info_t *info = (delay_free_info_t *) client_data;
     int i, num_removed = 0;
+    if (options.delay_frees == 0)
+        return;
     ASSERT(info != NULL, "invalid param");
     dr_mutex_lock(delay_free_lock);
     for (i = 0; i < info->delay_free_fill; i++) {
@@ -665,6 +674,8 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
 {
     bool res = false;
     rb_node_t *node;
+    if (options.delay_frees == 0)
+        return false;
     dr_mutex_lock(delay_free_lock);
     LOG(3, "overlaps_delayed_free "PFX"-"PFX"\n", start, end);
     DOLOG(3, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
