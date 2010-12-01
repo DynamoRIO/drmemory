@@ -71,6 +71,7 @@ uint num_faults;
 
 #ifdef STATISTICS
 uint slowpath_executions;
+uint medpath_executions;
 uint read_slowpath;
 uint write_slowpath;
 uint push_slowpath;
@@ -1464,6 +1465,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     uint shadow_vals[4];
     int i;
     LOG(3, "medium_path movs4 "PFX"\n", loc_to_pc(loc));
+    STATS_INC(medpath_executions);
     check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
                    opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);

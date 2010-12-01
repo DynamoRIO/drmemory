@@ -121,6 +121,13 @@ static void *modtree_lock;
  */
 static app_pc modtree_min_start;
 static app_pc modtree_max_end;
+/* cached values for module_lookup */
+static app_pc modtree_last_start;
+static size_t modtree_last_size;
+static int modtree_last_name_idx;
+/* cached values for is_in_module() */
+static app_pc modtree_last_hit;
+static app_pc modtree_last_miss;
 
 static bool
 module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT);
@@ -288,20 +295,20 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
            "print_callstack: can't pass buf and pcs");
     
     if (module_lookup(pc, &mod_start, NULL, &idx)) {
-        const char *modname = (idx >= 0) ? modname_array[idx].name : NULL;
         ASSERT(pc >= mod_start, "internal pc-not-in-module error");
         ASSERT(idx >= 0, "module should have index");
         ASSERT(mod_in == NULL || mod_in->start == mod_start, "module mismatch");
         if (pcs != NULL) {
             size_t sz = (pc - mod_start);
-            pcs->frames[pcs->num_frames].loc.addr = pc;
+            uint pcs_idx = pcs->num_frames;
+            pcs->frames[pcs_idx].loc.addr = pc;
             if (idx < 0) { /* handling missing module in release build */
                 /* We already asserted above */
                 if (sz > MAX_MODOFFS_STORED) /* We lose data here */
-                    pcs->frames[pcs->num_frames].modoffs = MAX_MODOFFS_STORED;
+                    pcs->frames[pcs_idx].modoffs = MAX_MODOFFS_STORED;
                 else
-                    pcs->frames[pcs->num_frames].modoffs = sz;
-                pcs->frames[pcs->num_frames].modname_idx = MAX_MODNAMES_STORED;
+                    pcs->frames[pcs_idx].modoffs = sz;
+                pcs->frames[pcs_idx].modname_idx = MAX_MODNAMES_STORED;
             } else {
                 while (sz > MAX_MODOFFS_STORED) {
                     sz -= MAX_MODOFFS_STORED;
@@ -312,11 +319,12 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
                     ASSERT(strcmp(modname_array[idx-1].name, modname_array[idx].name) == 0,
                            "not enough large-modname entries");
                 }
-                pcs->frames[pcs->num_frames].modoffs = sz;
-                pcs->frames[pcs->num_frames].modname_idx = idx;
+                pcs->frames[pcs_idx].modoffs = sz;
+                pcs->frames[pcs_idx].modname_idx = idx;
             }
             pcs->num_frames++;
         } else if (modoffs_only) {
+            const char *modname = (idx >= 0) ? modname_array[idx].name : NULL;
             BUFPRINT(buf, bufsz, *sofar, len,
                     "<%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">"NL,
                     modname == NULL ? "" : modname, pc - mod_start);
@@ -324,6 +332,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
             IF_WINDOWS(BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);)
 #endif
         } else {
+            const char *modname = (idx >= 0) ? modname_array[idx].name : NULL;
             BUFPRINT(buf, bufsz, *sofar, len,
                      PFX" <%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">",
                      pc, modname == NULL ? "" : modname, pc - mod_start);
@@ -1017,6 +1026,9 @@ callstack_module_load(void *drcontext, const module_data_t *info, bool loaded)
         callstack_module_add_region(seg_base, info->segments[i - 1].end, idx);
     }
 #endif
+    /* update cached values */
+    modtree_last_hit = NULL;
+    modtree_last_miss = NULL;
     dr_mutex_unlock(modtree_lock);
 }
 
@@ -1070,6 +1082,9 @@ callstack_module_unload(void *drcontext, const module_data_t *info)
         modtree_min_start = node_start;
     } else
         modtree_min_start = NULL;
+    modtree_last_start = NULL;
+    modtree_last_hit = NULL;
+    modtree_last_miss = NULL;
 
     dr_mutex_unlock(modtree_lock);
 }
@@ -1080,10 +1095,26 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
     rb_node_t *node;
     bool res = false;
     dr_mutex_lock(modtree_lock);
-    node = rb_in_node(module_tree, pc);
-    if (node != NULL) {
+    /* We cache to avoid the rb_in_node cost */
+    if (modtree_last_start != NULL &&
+        pc >= modtree_last_start && pc < modtree_last_start + modtree_last_size) {
+        /* use cached values */
         res = true;
-        rb_node_fields(node, start, size, (void **)name_idx);
+    } else {
+        node = rb_in_node(module_tree, pc);
+        if (node != NULL) {
+            res = true;
+            rb_node_fields(node, &modtree_last_start, &modtree_last_size,
+                           (void **) &modtree_last_name_idx);
+        }
+    }
+    if (res) {
+        if (start != NULL)
+            *start = modtree_last_start;
+        if (size != NULL)
+            *size = modtree_last_size;
+        if (name_idx != NULL)
+            *name_idx = modtree_last_name_idx;
     }
     dr_mutex_unlock(modtree_lock);
     return res;
@@ -1094,8 +1125,6 @@ bool
 is_in_module(byte *pc)
 {
     /* We cache the last page queried for performance */
-    static app_pc modtree_last_hit;
-    static app_pc modtree_last_miss;
     bool res = false;
     /* This is a perf bottleneck so we use caching.
      * We read these values w/o a lock, assuming they are written

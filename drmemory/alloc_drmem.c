@@ -298,6 +298,16 @@ void *
 client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
                       void *existing_data, dr_mcontext_t *mc, app_pc post_call)
 {
+    /* XXX i#75: when the app has a ton of mallocs that are quickly freed,
+     * we spend a lot of time building and tearing down callstacks
+     * (xref my original setup of not showing leak callstacks by default
+     * which was for this reason and to save space: but for usability
+     * it's better to have leak callstacks by default).
+     * We could just record addresses and not modules, and only on
+     * module unload or app exit walk the malloc table and fill
+     * in the module info (and if too many unloads, switch to the
+     * every-alloc scheme).
+     */
     packed_callstack_t *pcs;
     if (existing_data != NULL)
         pcs = (packed_callstack_t *) existing_data;

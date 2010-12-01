@@ -446,6 +446,9 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                          * a sentinel.
                          * XXX: want more-performant safe write on Windows:
                          * xref PR 605237
+                         * XXX: another thread could read the data (after
+                         * all we're not sure it's really syscall data) and
+                         * unexpectedly read the sentinel value
                          */
                         if (s_at == NULL)
                             s_at = start + j;

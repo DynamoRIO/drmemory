@@ -78,14 +78,21 @@ bitmapx2_get(bitmap_t bm, uint i)
 }
 
 /* SHADOW_DWORD2BYTE() == "get_2bits" */
-uint
-set_2bits(uint orig, uint val, uint shift)
+static inline uint
+set_2bits_inline(uint orig, uint val, uint shift)
 {
     ASSERT(val <= 3, "set_2bits usage error");
     ASSERT(shift % 2 == 0, "set_2bits usage error");
     orig &= (((0xfffffffc | val) << shift) | (~(0xffffffff << shift)));
     orig |= (val << shift);
     return orig;
+}
+
+/* SHADOW_DWORD2BYTE() == "get_2bits" */
+uint
+set_2bits(uint orig, uint val, uint shift)
+{
+    return set_2bits_inline(orig, val, shift);
 }
 
 static inline void
@@ -98,7 +105,7 @@ bitmapx2_set(bitmap_t bm, uint i, uint val)
      */
     LOG(6, "bitmapx2_set 0x%04x [%d] to %d: from "PFX" ", i, BITMAPx2_IDX(i),
           val, bm[BITMAPx2_IDX(i)]);
-    bm[BITMAPx2_IDX(i)] = set_2bits(bm[BITMAPx2_IDX(i)], val, shift);
+    bm[BITMAPx2_IDX(i)] = set_2bits_inline(bm[BITMAPx2_IDX(i)], val, shift);
     LOG(6, "to "PFX"\n", bm[BITMAPx2_IDX(i)]);
 }
 
@@ -198,7 +205,7 @@ const char * const shadow_name[] = {
     "unknown", /* SHADOW_UNKNOWN */
 };
 
-static bool
+static inline bool
 block_is_special(shadow_block_t *block)
 {
     return (block == special_unaddressable ||
@@ -479,11 +486,14 @@ shadow_set_range(app_pc start, app_pc end, uint val)
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     ASSERT(val <= 4, "invalid shadow value");
     LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
-    if (end - start > 0x10000000)
-        LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n", start, end);
+    DOLOG(2, {
+        if (end - start > 0x10000000)
+            LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n", start, end);
+    });
     while (pc < end && pc >= start/*overflow*/) {
-        if (shadow_get_special(pc, NULL) &&
-            ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
+        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
+        bool is_special = block_is_special(block);
+        if (is_special && ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
             if (shadow_set_special(pc, val))
                 pc += ALLOC_UNIT;
             else {
@@ -491,24 +501,26 @@ shadow_set_range(app_pc start, app_pc end, uint val)
                 ASSERT(!shadow_get_special(pc, NULL), "non-special never reverts");
             }
         } else {
-            if (ALIGNED(pc, SHADOW_GRANULARITY)) {
+            if (!is_special && ALIGNED(pc, SHADOW_GRANULARITY)) {
                 app_pc block_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
-                if (block_end <= end && block_end > start/*overflow*/) {
-                    shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-                    if (!block_is_special(block)) {
+                if (block_end > start/*overflow*/) {
+                    app_pc set_end = (block_end < end ? block_end : end);
+                    set_end = (app_pc) ALIGN_BACKWARD(set_end, SHADOW_GRANULARITY);
+                    if (set_end > pc) {
                         uint *array_start =
                             &(*block)[BITMAPx2_IDX(((ptr_uint_t)pc) % ALLOC_UNIT)];
                         byte *memset_start = ((byte *)array_start) +
                             (((ptr_uint_t)pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
                         memset(memset_start, val_to_dword[val],
-                               (block_end - pc) / SHADOW_GRANULARITY);
-                        pc = block_end;
+                               (set_end - pc) / SHADOW_GRANULARITY);
+                        LOG(3, "\tmemset "PFX"-"PFX"\n", pc, set_end);
+                        pc = set_end;
                         continue;
                     }
                 }
             }
-            /* FIXME optimize: set 4 aligned bytes at a time */
             shadow_set_byte(pc, val);
+            LOG(3, "\tset byte "PFX"\n", pc);
             pc++;
         }
     }
@@ -1507,7 +1519,7 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
     ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     addr = ((byte*)sr) + reg_shadow_offs(reg);
-    *addr = set_2bits(*addr, val, shift);
+    *addr = set_2bits_inline(*addr, val, shift);
 }
 
 void
