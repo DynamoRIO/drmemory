@@ -83,7 +83,7 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
   # should we have a real .rc file instead?
-  set(VERSION_NUMBER "1.3.0")
+  set(VERSION_NUMBER "1.3.1")
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
 
