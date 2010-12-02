@@ -164,9 +164,6 @@ else ()
   set(DEBUG OFF)
 endif ()
 
-# new set_property() doesn't want -D but our cpp invocation above does
-string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
-
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
 
 if (UNIX)
@@ -199,6 +196,13 @@ set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_T
 string(STRIP "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}"
   CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
 string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
+
+include(CheckIncludeFiles)
+check_include_files("asm-i386/stat.h" HAVE_ASM_I386)
+if (HAVE_ASM_I386)
+  # see comments abouve about adding configure.h
+  set(DEFINES ${DEFINES} -DHAVE_ASM_I386)
+endif (HAVE_ASM_I386)
 
 if (UNIX)
   # We don't want our instrument_init() pre-empted by debug-internal DynamoRIO
@@ -451,6 +455,9 @@ endif (TOOL_DR_HEAPSTAT)
 set(scripts ${toolname}.pl postprocess.pl)
 
 include_directories(common ${tooldir})
+
+# new set_property() doesn't want -D but our cpp invocation above does
+string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 
 if (WIN32 AND USE_DRSYMS)
   # front-end needs to be name drmemory.exe and thus has drmemory.pdb, so

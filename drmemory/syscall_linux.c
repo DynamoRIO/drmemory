@@ -33,21 +33,23 @@
 #ifdef DEBUG
 # include "report.h"    /* To report callstacks on unknown ioctl syscalls. */
 #endif /* DEBUG */
+#include <stddef.h> /* for offsetof */
 
 /* for linux-specific types/defines for fcntl and ipc */
 #define __USE_GNU 1
 
+#ifdef HAVE_ASM_I386
+/* tying them all to this one header for now */
+# define GLIBC_2_2_5 1
+#endif
+
 #include <sys/types.h>
-#if 0
-/* FIXME PR 413981: need portable inclusion of these types:
- * For Ubuntu 9.04 x64 this works:
- */
+#ifdef GLIBC_2_2_5
+# include <asm-i386/stat.h>
+#else
 # include <asm/stat.h>
 # include <sys/ustat.h>
 # include <sys/statfs.h>
-#else
-/* What's needed on FC10 x64 */
-# include <asm-i386/stat.h> /* struct __old_kernel_stat */
 #endif
 #include <utime.h> /* struct utimbuf */
 #include <sys/times.h> /* struct tms */
@@ -74,11 +76,18 @@
 #include <linux/mman.h> /* MREMAP_FIXED */
 
 /* ipc */
-#include <sys/ipc.h>
-#include <asm/ipc.h>
-#include <sys/sem.h>
-#include <sys/shm.h>
-#include <sys/msg.h>
+#ifdef GLIBC_2_2_5
+# include <sys/ipc.h>
+# include <asm/ipc.h>
+# include <sys/sem.h>
+# include <sys/shm.h>
+# include <sys/msg.h>
+#else
+# include <linux/ipc.h>
+# include <linux/sem.h>
+# include <linux/shm.h>
+# include <linux/msg.h>
+#endif
 
 /* socket */
 #include <sys/socket.h>
@@ -95,9 +104,9 @@
 #include <linux/cdk.h>
 #include <linux/cdrom.h>
 #include <linux/cyclades.h>
+#include <linux/fs.h>
 #include <linux/ext2_fs.h>
 #include <linux/fd.h>
-#include <linux/fs.h>
 #include <linux/hdreg.h>
 #include <linux/if.h>
 #include <linux/if_plip.h>
@@ -105,7 +114,11 @@
 #include <linux/kd.h>
 #include <linux/lp.h>
 #include <linux/mroute.h>
-#include <linux/mtio.h>
+#ifdef GLIBC_2_2_5
+# include <linux/mtio.h>
+#else
+# include <sys/mtio.h>
+#endif
 #include <linux/netrom.h>
 #include <linux/scc.h>
 #include <linux/smb_fs.h>
@@ -113,9 +126,14 @@
 #include <linux/route.h>
 #include <linux/if_arp.h>
 #include <linux/soundcard.h>
-#include <linux/umsdos_fs.h>
+#if 0 /* XXX: header not avail: ioctl code below disabled as well */
+# include <linux/umsdos_fs.h>
+#endif
 #include <linux/vt.h>
 #include <linux/ipmi.h> /* PR 531644 */
+#ifndef GLIBC_2_2_5
+# include <linux/net.h>
+#endif
 
 /* prctl */
 #include <sys/prctl.h>
@@ -180,6 +198,7 @@ typedef struct _kernel_sigaction_t {
 /* not in main defines */
 #define SA_RESTORER 0x04000000
 
+#ifdef GLIBC_2_2_5
 union semun {
     int val; /* value for SETVAL */
     struct semid_ds *buf; /* buffer for IPC_STAT, IPC_SET */
@@ -187,8 +206,9 @@ union semun {
     struct seminfo *__buf; /* buffer for IPC_INFO */
 };
 
-/* not in toolchain defines: version flag or-ed in for semctl, msgctl, shmctl */
-#define IPC_64  0x0100  
+/* not in older defines: version flag or-ed in for semctl, msgctl, shmctl */
+# define IPC_64  0x0100  
+#endif
 
 /* used to read entire ioctl arg at once */
 union ioctl_data {
