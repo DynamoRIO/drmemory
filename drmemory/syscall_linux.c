@@ -40,11 +40,11 @@
 
 #ifdef HAVE_ASM_I386
 /* tying them all to this one header for now */
-# define GLIBC_2_2_5 1
+# define GLIBC_2_3_2 1
 #endif
 
 #include <sys/types.h>
-#ifdef GLIBC_2_2_5
+#ifdef GLIBC_2_3_2
 # include <asm-i386/stat.h>
 #else
 # include <asm/stat.h>
@@ -76,7 +76,7 @@
 #include <linux/mman.h> /* MREMAP_FIXED */
 
 /* ipc */
-#ifdef GLIBC_2_2_5
+#ifdef GLIBC_2_3_2
 # include <sys/ipc.h>
 # include <asm/ipc.h>
 # include <sys/sem.h>
@@ -114,7 +114,7 @@
 #include <linux/kd.h>
 #include <linux/lp.h>
 #include <linux/mroute.h>
-#ifdef GLIBC_2_2_5
+#ifdef GLIBC_2_3_2
 # include <linux/mtio.h>
 #else
 # include <sys/mtio.h>
@@ -131,7 +131,7 @@
 #endif
 #include <linux/vt.h>
 #include <linux/ipmi.h> /* PR 531644 */
-#ifndef GLIBC_2_2_5
+#ifndef GLIBC_2_3_2
 # include <linux/net.h>
 #endif
 
@@ -198,7 +198,7 @@ typedef struct _kernel_sigaction_t {
 /* not in main defines */
 #define SA_RESTORER 0x04000000
 
-#ifdef GLIBC_2_2_5
+#ifdef GLIBC_2_3_2
 union semun {
     int val; /* value for SETVAL */
     struct semid_ds *buf; /* buffer for IPC_STAT, IPC_SET */

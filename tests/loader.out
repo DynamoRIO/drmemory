@@ -20,9 +20,9 @@
 #
 dlopen <NULL> success
 dlsym my_export success
-dlopen /lib/libm.so.6 success
+dlopen libm.so.6 success
 dlsym cos success
-dlopen /lib/libgcc_s.so.1 success
+dlopen libgcc_s.so.1 success
 dlsym __gcc_personality_v0 success
 # only matching suffix of "dlopen <path>/libloaderlib.so failure"
 libloaderlib.so failure

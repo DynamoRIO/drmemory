@@ -58,10 +58,10 @@ main(int argc, char *argv[])
     load_and_sym(NULL, "my_export", RTLD_LAZY);
 
     /* load a simple library */
-    load_and_sym("/lib/libm.so.6", "cos", RTLD_NOW);
+    load_and_sym("libm.so.6", "cos", RTLD_NOW);
 
     /* load a library w/o in-file .bss to test PR 528744 */
-    load_and_sym("/lib/libgcc_s.so.1", "__gcc_personality_v0", RTLD_LAZY);
+    load_and_sym("libgcc_s.so.1", "__gcc_personality_v0", RTLD_LAZY);
 
     /* load a library w/ a missing symbol for loader longjmp path (xref PR 530902) */
     load_and_sym(argv[1], NULL, RTLD_NOW);

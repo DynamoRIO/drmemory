@@ -66,6 +66,23 @@ ld-linux.so.2!_dl_open
 libdl.so.2!dlopen_doit
 ld-linux.so.2!_dl_catch_error
 
+##########
+# i#79: with more recent versions of the loader we see both uninit and
+# unaddr with stacks like these.  XXX: track down and verify whether real
+# bugs.
+
+UNADDRESSABLE ACCESS
+...
+ld-linux.so.2!_dl_make_stack_executable
+...
+ld-linux.so.2!_dl_rtld_di_serinfo
+
+UNINITIALIZED READ
+...
+ld-linux.so.2!_dl_make_stack_executable
+...
+ld-linux.so.2!_dl_rtld_di_serinfo
+
 ##################################################
 # glibc out-of-bounds memory access (PR 532762):
 # this is a real bug in glibc
