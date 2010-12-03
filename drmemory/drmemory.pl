@@ -125,6 +125,8 @@ $external_pid_file = 0;
 my $prefix = ":::Dr.Memory:::";
 my $aggregate = 0;
 my $use_default_suppress = 1;
+my $gen_suppress_offs = 1;
+my $gen_suppress_syms = 1;
 my $skip_postprocess = 0;
 my $just_postprocess = 0;
 my $postprocess_apppath = "";
@@ -167,6 +169,8 @@ if (!GetOptions("dr=s" => \$dr_home,
                 # client options that we process first here:
                 "suppress=s" => \$suppfile,
                 "default_suppress!" => \$use_default_suppress,
+                "gen_suppress_offs!" => \$gen_suppress_offs,
+                "gen_suppress_syms!" => \$gen_suppress_syms,
                 "logdir=s" => \$logdir,
                 "perturb_only" => \$perturb_only,
                 # required so perl option parser won't interpret as -perturb_only
@@ -298,6 +302,8 @@ my $win32_a2l = "$drmemory_home/$bindir/winsyms.exe";
 # it's difficult to get " or ' past drrun so we use `
 $ops = "-logdir `$logdir` $suppress_drmem $user_ops";
 $ops .= " -no_default_suppress" unless ($use_default_suppress);
+$ops .= " -no_gen_suppress_offs" unless ($gen_suppress_offs);
+$ops .= " -no_gen_suppress_syms" unless ($gen_suppress_syms);
 $ops .= " -perturb_only" if ($perturb_only);
 $ops .= " -perturb" if ($perturb);
 
@@ -530,6 +536,8 @@ sub post_process()
     # Don't use suppress_drmem as perl option parsing doesn't like ``
     push @postcmd, ("-suppress", "$suppfile") if ($suppress_drmem ne '');
     push @postcmd, ("-nodefault_suppress") unless ($use_default_suppress);
+    push @postcmd, ("-nogen_suppress_offs") unless ($gen_suppress_offs);
+    push @postcmd, ("-nogen_suppress_syms") unless ($gen_suppress_syms);
     # Include app cmdline in results file (PR 470920)
     push @postcmd, ("-appid", join(' ', @orig_argv));
     push @postcmd, "-batch" if ($batch);

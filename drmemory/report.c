@@ -246,7 +246,7 @@ report_malformed_suppression(int type, uint num_frames, const char **frames,
     for (i = 0; i < num_frames; i++)
         BUFPRINT(supp, supp_size, sofar, len, "%s"NL, frames[i]);
     ASSERT(sofar + 1 == supp_size, "");
-    NOTIFY("Malfored suppression:\n%s\n%s\n", supp, message);
+    NOTIFY("Malformed suppression:\n%s\n%s\n", supp, message);
     global_free(supp, supp_size, HEAPSTAT_MISC);
     usage_error("Malformed suppression. See the log file for the details", "");
 }
@@ -336,8 +336,12 @@ read_suppression_file(file_t f)
         /* buffer is big enough to hold at least one line */
         ASSERT(newline != NULL, "internal error: suppression file malformed?");
         *newline = '\0';
-        if (newline > line && *(newline-1) == '\r')
-            *(newline-1) = '\0';
+        /* strip one or more carriage returns */
+        len = 1;
+        while (newline-len >= line && *(newline-len) == '\r') {
+            *(newline-len) = '\0';
+            len++;
+        }
         LOG(3, "suppression file line: \"%s\"\n", line);
         /* Lines look like this:
          * UNINITIALIZED READ
@@ -649,9 +653,17 @@ on_suppression_list(uint type, const char *error_stack)
 #ifdef USE_DRSYMS
     /* write supp patterns to f_suppress */
     dr_mutex_lock(suppress_file_lock);
-    write_suppress_pattern(type, error_stack, true/*mod!func*/);
-    dr_fprintf(f_suppress, "\n# the mod+offs form of the above callstack:"NL);
-    write_suppress_pattern(type, error_stack, false/*mod+offs*/);
+    /* XXX: if both -no_gen_suppress_offs and -no_gen_suppress_syms we
+     * could not create any file at all: for now we create an empty
+     * file for simplicity
+     */
+    if (options.gen_suppress_syms)
+        write_suppress_pattern(type, error_stack, true/*mod!func*/);
+    if (options.gen_suppress_offs) {
+        if (options.gen_suppress_syms)
+            dr_fprintf(f_suppress, "\n# the mod+offs form of the above callstack:"NL);
+        write_suppress_pattern(type, error_stack, false/*mod+offs*/);
+    }
     dr_fprintf(f_suppress, ""NL);
     dr_mutex_unlock(suppress_file_lock);
 #endif

@@ -139,7 +139,7 @@ set(cmd_script -P "./runtest.cmake")
 # should be used instead of each space.  Otherwise, the whole of
 # drmem_ops is passed in as a single argument, which results in
 # options parsing errors in drmemory.pl and drmem client.
-# The postprocess arg is a bool that applies on for Dr. Memory:
+# The postprocess arg is a bool that applies only for Dr. Memory:
 # whether to run the front-end with -results after the app is run.
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   get_relative_location(${exe} exepath)
@@ -262,7 +262,10 @@ if (NOT TOOL_DR_HEAPSTAT)
   # a few to run w/ options.
   newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF)
 
-  # FIXME: PR 477111 - test suppression file generation via multiple runs
+  # shared by all suppress tests
+  tobuild(suppress suppress.c)
+
+  # test suppress wildcards
   if (UNIX)
     if (VMKERNEL)
       set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.vmk.suppress")
@@ -272,8 +275,15 @@ if (NOT TOOL_DR_HEAPSTAT)
   else (UNIX)
     set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.win.suppress")
   endif (UNIX)
-  newtest_ex(suppress suppress.c ""
-    "-suppress;${supp_file};-check_leaks" "" OFF)
+  newtest_nobuild(suppress suppress "" "-suppress;${supp_file}" "" OFF)
+
+  # i#80: test suppression file generation and use via multiple runs
+  # since we need the name of the suppress file, runtest.cmake must do
+  # the second run.  it looks for "suppress" with no "-suppress" option,
+  # rather than taking explicit params, and for the 2nd run uses the
+  # suppress output files
+  newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF)
+  newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF)
 
   set(nudge_test_args "")
 

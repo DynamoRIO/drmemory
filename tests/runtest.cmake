@@ -85,7 +85,12 @@ endif (NOT PERL)
 # use perl since /bin/sleep not on all platforms
 set(SLEEP_SHORT ${PERL} -e "sleep(0.2)")
 set(SLEEP_LONG ${PERL} -e "sleep(2)")
-set(TIMEOUT_SHORT "50")
+if (WIN32)
+  set(TIMEOUT_SHORT "100")
+else (WIN32)
+  # somehow sleep is much much shorter
+  set(TIMEOUT_SHORT "500")
+endif (WIN32)
 
 # intra-arg space=@@ and inter-arg space=@
 set(cmd_with_at ${cmd})
@@ -189,9 +194,14 @@ if ("${cmd}" MATCHES "run_in_bg")
     set(lookfor "report_leak_max\n.*Details: ")
   endif ()
   file(READ "${out}" output)
+  set(iters 0)
   while (NOT "${output}" MATCHES "${lookfor}")
     execute_process(COMMAND ${SLEEP_SHORT})
     file(READ "${out}" output)
+    math(EXPR iters "${iters} + 1")
+    if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
+      message(FATAL_ERROR "Timed out waiting for summary output")
+    endif ()
   endwhile()
 
   string(REGEX MATCHALL "/[^/]+$" exename "${cmd}")
@@ -240,6 +250,8 @@ if ("${cmd}" MATCHES "run_in_bg")
   file(READ "${out}" cmd_err)
 
 else ()
+  # XXX: if wrong option passed, this hangs and I never figured out why:
+  # the option error msg is there, and perl should exit, so what's up?
   execute_process(COMMAND ${cmd}
     RESULT_VARIABLE cmd_result
     ERROR_VARIABLE cmd_err
@@ -320,8 +332,13 @@ if (resmatch)
     endif ()
   endif (TOOL_DR_HEAPSTAT)
   # it may not be created yet
+  set(iters 0)
   while (NOT "${cmd_err}" MATCHES "${data_prefix}")
     execute_process(COMMAND ${SLEEP_SHORT})
+    math(EXPR iters "${iters} + 1")
+    if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
+      message(FATAL_ERROR "Timed out waiting for Dr. Memory to finish")
+    endif ()
   endwhile ()
   string(REGEX MATCHALL "${data_prefix}([^\n]+)[\n]" resfiles "${cmd_err}")
   
@@ -362,6 +379,8 @@ if (resmatch)
   
   # remove absolute addresses (from PR 535568)
   string(REGEX REPLACE " 0x[0-9a-f]+-0x[0-9a-f]+" "" results "${results}")
+  # canonicalize by removing ".exe" (XXX: maybe should have regex in .res instead?)
+  string(REGEX REPLACE "\\.exe!" "!" results "${results}")
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   foreach (line ${lines})
@@ -371,5 +390,45 @@ if (resmatch)
       message(FATAL_ERROR "${resfile_using} failed to match: \"${line}\"")
     endif ()
   endforeach (line)
-  # FIXME: should also ensure there aren't superfluous errors reported
+  # XXX: should also ensure there aren't superfluous errors reported though
+  # our stdout check for error counts should be sufficient
+
+  if ("${cmd}" MATCHES "suppress" AND NOT "${cmd}" MATCHES "-suppress")
+    # do a 2nd run passing in the generated suppress file
+    # this is the cleanest way I can find: re-invoke ourselves, since
+    # we're the only ones who have the suppress.txt path.
+    # not using REGEX since path has \ on windows
+    string(REPLACE "results.txt" "suppress.txt" suppfile "${resfile_using}")
+    # hack: use dr_debug marker to know where to insert
+    string(REPLACE "-dr_debug@" "-suppress@${suppfile}@-dr_debug@"
+      cmd_with_at "${cmd_with_at}")
+    # remove ops to fit under limit on cygwin w/ -libc_addrs
+    string(REPLACE "@-no_gen_suppress_syms" "" cmd_with_at "${cmd_with_at}")
+    string(REPLACE "@-no_gen_suppress_offs" "" cmd_with_at "${cmd_with_at}")
+    # use output compare files from plain suppress test
+    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress" outpat "${outpat}")
+    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress" respat "${respat}")
+    message("running 2nd command ${cmd_with_at} vs ${outpat} and ${respat}")
+    execute_process(COMMAND ${CMAKE_COMMAND}
+      -D cmd:STRING=${cmd_with_at}
+      -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
+      -D outpat:STRING=${outpat}
+      -D respat:STRING=${respat}
+      -D nudge:STRING=${nudge}
+      -D VMKERNEL:BOOL=${VMKERNEL}
+      -D USE_DRSYMS:BOOL=${USE_DRSYMS}
+      -D toolbindir:STRING=${toolbindir}
+      -D DRMEMORY_CTEST_SRC_DIR:STRING=${DRMEMORY_CTEST_SRC_DIR}
+      -D DRMEMORY_CTEST_DR_DIR:STRING=${DRMEMORY_CTEST_DR_DIR}
+      # runtest.cmake will add the -profdir arg
+      -D postcmd:STRING=${postcmd}
+      -P "./runtest.cmake" # CTEST_SCRIPT_NAME is not set: only for -S?
+      RESULT_VARIABLE cmd2_result
+      ERROR_VARIABLE cmd2_err)
+    if (cmd2_result)
+      message(FATAL_ERROR
+        "*** 2nd run failed (${cmd2_result}): ${cmd2_err}***\n")
+    endif (cmd2_result)
+  endif ("${cmd}" MATCHES "suppress" AND NOT "${cmd}" MATCHES "-suppress")
+
 endif (resmatch)

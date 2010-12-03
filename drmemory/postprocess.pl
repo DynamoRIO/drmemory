@@ -100,6 +100,8 @@ $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
 $no_sys_paths = 0; # look in /lib, etc. for symbol files?
 $aggregate = 0;
 my $use_default_suppress = 1;
+my $gen_suppress_offs = 1;
+my $gen_suppress_syms = 1;
 my $default_suppress_file = "$bindir/suppress-default.txt";
 my $drmem_disabled = 0;
 
@@ -166,6 +168,8 @@ if (!GetOptions("p=s" => \$prefix,
                 "appid=s" => \$appid,
                 "suppress=s" => \$supp_syms_file,
                 "default_suppress!" => \$use_default_suppress,
+                "gen_suppress_offs!" => \$gen_suppress_offs,
+                "gen_suppress_syms!" => \$gen_suppress_syms,
                 "dr_home=s" => \$dr_home,
                 "drmemdir=s" => \$drmem_dir,
                 "no_sys_paths" => \$no_sys_paths,
@@ -806,7 +810,8 @@ sub parse_error($arr_ref, $err_str)
             $supp .= "$2\n";
         }
     }
-    print SUPP_OUT $supp;
+    $supp =~ s/REPORTED WARNING/WARNING/;
+    print SUPP_OUT $supp if ($gen_suppress_offs);
 }
 
 #-------------------------------------------------------------------------------
@@ -1502,8 +1507,12 @@ sub suppress($errname_in, $callstack_ref_in)
     # this is another type of call stack, i.e., one with symbols.
     #
     print SUPP_OUT "\n# This call stack is the symbol based version of the ".
-                   "one above\n".
-                   "$errname\n$callstk_str\n";
+                   "one above" if ($gen_suppress_offs);
+    if (options.gen_suppress_syms) {
+        # remove the offsets
+        $callstk_str =~ s/\+0x[^!]+!/!/g;
+        print SUPP_OUT "\n$errname\n$callstk_str\n";
+    }
     return 0;
 }
 

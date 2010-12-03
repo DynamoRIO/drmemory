@@ -18,16 +18,23 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# uninitialized read: full callstack based mod+offs suppression 
-UNINITIALIZED READ
-<suppress+0x575>
-<suppress+0x596>
-<suppress+0x81f>
 
-# uninitialized read: top frames based mod+offs suppression 
+# we rely on suppress-gen* tests to test mod+offs suppressions:
+# that's too flaky on different builds for this test
+
+# uninitialized read: plain
 UNINITIALIZED READ
-<suppress+0x575>
-<suppress+0x5a9>
+suppress!do_uninit_read
+suppress!uninit_test1
+suppress!test
+suppress!main
+
+# uninitialized read: middle-of-symbol wildcard
+UNINITIALIZED READ
+suppress!do_u*t_read
+suppress!uninit_test2
+suppress!test
+suppress!main
 
 # uninitialized read: full callstack based mod!func suppression 
 UNINITIALIZED READ
@@ -58,15 +65,17 @@ suppress!uninit_test7
 
 #-------------------------------------------------------------------------------
 
-# unaddressable access: full callstack based mod+offs suppression 
+# unaddressable access: plain
 UNADDRESSABLE ACCESS
-<suppress+0x664>
-<suppress+0x899>
-<suppress+0x91c>
+suppress!unaddr_test1
+suppress!test
+suppress!main
 
-# unaddressable access: top frame based mod+offs suppression 
+# unaddressable access: wildcard in module
 UNADDRESSABLE ACCESS
-<suppress+0x68f>
+s*s!unaddr_test2
+suppress!test
+suppress!main
 
 # unaddressable access: full callstack based mod!func suppression 
 # also tests wildcard
@@ -81,15 +90,17 @@ suppress!test
 
 #-------------------------------------------------------------------------------
 
-# leak: full callstack based mod+offs suppression 
+# leak: plain
 LEAK
-<suppress+0x712>
-<suppress+0x8ce>
-<suppress+0x91c>
+suppress!leak_test1
+suppress!test
+suppress!main
 
-# leak: top frame based mod+offs suppression 
+# leak: wildcards
 LEAK
-<suppress+0x737>
+suppress!l*2
+*!test
+suppress!m*
 
 # leak: full callstack based mod!func suppression 
 LEAK

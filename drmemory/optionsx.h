@@ -189,6 +189,12 @@ OPTION_CLIENT_STRING(client, suppress, "",
 OPTION_CLIENT_BOOL(client, default_suppress, true,
                    "Use the set of default suppressions",
                    "Use the set of default suppressions that come with "TOOLNAME".  See \\ref sec_suppress.")
+OPTION_CLIENT_BOOL(client, gen_suppress_offs, true,
+                   "Generate mod+offs suppressions in the output suppress file",
+                   "Generate mod+offs suppressions in addition to mod!sym suppressions in the output suppress file")
+OPTION_CLIENT_BOOL(client, gen_suppress_syms, true,
+                   "Generate mod!syms suppressions in the output suppress file",
+                   "Generate mod!syms suppressions in addition to mod+offs suppressions in the output suppress file")
 
 
 /* Exposed for Dr. Memory only */
