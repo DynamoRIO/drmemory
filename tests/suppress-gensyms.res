@@ -188,7 +188,8 @@ suppress.c:215
 suppress!main
 suppress.c:223
 
-Error #16: LEAK 4 direct bytes + 0 indirect bytes
+# these are sometimes out of order
+: LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test1
 suppress.c:130
 suppress!test
@@ -196,7 +197,7 @@ suppress.c:207
 suppress!main
 suppress.c:223
 
-Error #17: LEAK 4 direct bytes + 0 indirect bytes
+: LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test2
 suppress.c:136
 suppress!test
@@ -204,7 +205,6 @@ suppress.c:208
 suppress!main
 suppress.c:223
 
-# these are sometimes out of order
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test3
 suppress.c:142
