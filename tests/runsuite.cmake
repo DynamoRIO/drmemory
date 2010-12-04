@@ -375,12 +375,12 @@ foreach (tool ${tools})
   endif ("${tool}" MATCHES "HEAPSTAT")
 
   if (NOT arg_vmk_only)
-    testbuild("${name}-debug-32" OFF "
+    testbuild("${name}-dbg-32" OFF "
       ${tool}
       DynamoRIO_DIR:PATH=${DR_path}
       CMAKE_BUILD_TYPE:STRING=Debug
       " OFF)
-    testbuild("${name}-release-32" OFF "
+    testbuild("${name}-rel-32" OFF "
       ${tool}
       DynamoRIO_DIR:PATH=${DR_path}
       CMAKE_BUILD_TYPE:STRING=Release
@@ -388,13 +388,13 @@ foreach (tool ${tools})
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)
-      testbuild("${name}-vmk-debug-32" OFF "
+      testbuild("${name}-vmk-dbg-32" OFF "
         ${tool}
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Debug
         VMKERNEL:BOOL=ON
         " OFF)
-      testbuild("${name}-vmk-release-32" OFF "
+      testbuild("${name}-vmk-rel-32" OFF "
         ${tool}
         DynamoRIO_DIR:PATH=${DRvmk_path}
         CMAKE_BUILD_TYPE:STRING=Release
@@ -405,13 +405,13 @@ foreach (tool ${tools})
     if ("${tool}" MATCHES "MEMORY")
       # No online symbol support for cygwin yet so using separate build
       # with postprocess model (PR 561181)
-      testbuild("${name}-cygwin-debug-32" OFF "
+      testbuild("${name}-cygwin-dbg-32" OFF "
         ${tool}
         DynamoRIO_DIR:PATH=${DR_path}
         CMAKE_BUILD_TYPE:STRING=Debug
         USE_DRSYMS:BOOL=OFF
         " OFF)
-      testbuild("${name}-cygwin-release-32" OFF "
+      testbuild("${name}-cygwin-rel-32" OFF "
         ${tool}
         DynamoRIO_DIR:PATH=${DR_path}
         CMAKE_BUILD_TYPE:STRING=Release
