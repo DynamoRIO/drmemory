@@ -65,13 +65,11 @@ set(arg_exclude "")   # regex of tests to exclude
 set(arg_site "")      # site name when reporting results
 set(arg_drmemory_only OFF)   # only run Dr. Memory tests
 set(arg_drheapstat_only OFF) # only run Dr. Heapstat tests
-set(DR_path "")       # path to DynamoRIO cmake dir; env var DYNAMORIO_HOME/cmake
-                      # will be used if ../exports/cmake doesn't exist and this
-                      # arg is not set or doesn't exist
+set(DR_path "")       # path to DynamoRIO cmake dir; if this arg is not set or
+                      # doesn't exist, will build DynamoRIO from local copy
 set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
                       # ../exports_vmk/cmake will be used as a default
 
-set(DR_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports/cmake") # default
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
 
 foreach (arg ${CTEST_SCRIPT_ARG})
@@ -126,14 +124,18 @@ if (arg_test_vmk AND arg_vmk_only)
   message(FATAL_ERROR "you can't specify both test_vmk and vmk_only")
 endif (arg_test_vmk AND arg_vmk_only)
 
+set(DR_entry "")
 if (NOT arg_vmk_only)
-  if (NOT EXISTS "${DR_path}")
-    # env var DYNAMORIO_HOME is fallback
-    set(DR_path "$ENV{DYNAMORIO_HOME}/cmake")
-  endif (NOT EXISTS "${DR_path}")
-  if (NOT EXISTS "${DR_path}")
-    message(FATAL_ERROR "cannot find DynamoRIO build at ${DR_path}")
-  endif (NOT EXISTS "${DR_path}")
+  if (NOT "${DR_path}" STREQUAL "")
+    if (NOT EXISTS "${DR_path}")
+      message(FATAL_ERROR "cannot find DynamoRIO build at ${DR_path}")
+    endif (NOT EXISTS "${DR_path}")
+    set(DR_entry "DynamoRIO_DIR:PATH=${DR_path}")
+    # else will build from local sources
+    # XXX: we could share the first DR local build w/ later drmem builds:
+    # for now, if user wants faster suite, must build DR separately first
+    # and point at it
+  endif (NOT "${DR_path}" STREQUAL "")
 endif (NOT arg_vmk_only)
 
 if (arg_vmk_only OR arg_test_vmk)
@@ -377,12 +379,12 @@ foreach (tool ${tools})
   if (NOT arg_vmk_only)
     testbuild("${name}-dbg-32" OFF "
       ${tool}
-      DynamoRIO_DIR:PATH=${DR_path}
+      ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Debug
       " OFF)
     testbuild("${name}-rel-32" OFF "
       ${tool}
-      DynamoRIO_DIR:PATH=${DR_path}
+      ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
       " ON) # only run release tests for long suite
   endif (NOT arg_vmk_only)
@@ -407,13 +409,13 @@ foreach (tool ${tools})
       # with postprocess model (PR 561181)
       testbuild("${name}-cygwin-dbg-32" OFF "
         ${tool}
-        DynamoRIO_DIR:PATH=${DR_path}
+        ${DR_entry}
         CMAKE_BUILD_TYPE:STRING=Debug
         USE_DRSYMS:BOOL=OFF
         " OFF)
       testbuild("${name}-cygwin-rel-32" OFF "
         ${tool}
-        DynamoRIO_DIR:PATH=${DR_path}
+        ${DR_entry}
         CMAKE_BUILD_TYPE:STRING=Release
         USE_DRSYMS:BOOL=OFF
         " ON) # only run release tests for long suite

@@ -170,7 +170,9 @@ See ~/extsw/ReactOS-0.3.1/lib/rtl/heap.c
 # include <sys/mman.h>
 #else
 # include "windefs.h"
-# include "drsyms.h"
+# ifdef USE_DRSYMS
+#  include "drsyms.h"
+# endif
 #endif
 #include <string.h>
 
@@ -780,7 +782,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         }
         /* I assume there's only one ret */
     } while (!instr_is_return(&inst));
-    if (found_calls != 4) {
+    if (found_calls < 4) { /* PIC base call makes 5 on linux */
         NOTIFY_ERROR("Dr. Memory compiled incorrectly: realloc template optimized?");
         dr_abort();
     }

@@ -532,8 +532,18 @@ int main(int argc, char *argv[])
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
     if (_access(buf, 0) == -1) {
-        fatal("cannot find DynamoRIO library %s", buf);
-        goto error; /* actually won't get here */
+        /* support debug build w/ integrated debug DR build and so no release */
+        if (!use_dr_debug) {
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+                      "%s/lib32/%s/dynamorio.dll", dr_root, "debug");
+            NULL_TERMINATE_BUFFER(buf);
+            if (_access(buf, 0) == -1) {
+                fatal("cannot find DynamoRIO library %s", buf);
+                goto error; /* actually won't get here */
+            }
+            warn("using debug DynamoRIO since release not found");
+            use_dr_debug = true;
+        }
     }
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */

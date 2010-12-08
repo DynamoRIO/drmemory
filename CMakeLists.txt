@@ -47,7 +47,8 @@ if (TOOL_DR_HEAPSTAT)
   set(DEFINES ${DEFINES} -DTOOL_DR_HEAPSTAT)
   # Note that for our combined multi-tool package (PR 470927) we use the DrMem
   # version number so this is essentially unused
-  set(VERSION_NUMBER "1.0.0")
+  # Avoid "VERSION_NUMBER" name since conflics w/ DR's var
+  set(TOOL_VERSION_NUMBER "1.0.0")
 
   # Flex building is done only for Dr. HeapStat visualization tool.  So Java
   # is needed only for that too.
@@ -83,16 +84,18 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
   # should we have a real .rc file instead?
-  set(VERSION_NUMBER "1.3.1")
+  # XXX: i#83: add timestamp or svn revision to version number
+  set(TOOL_VERSION_NUMBER "1.3.1")
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
 
-set(BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
+# Avoid "BUILD_NUMBER" name since conflics w/ DR's var
+set(TOOL_BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
 
 set(DEFINES ${DEFINES}
-  -DBUILD_NUMBER=${BUILD_NUMBER}
-  -DVERSION_NUMBER=${VERSION_NUMBER}
-  -DVERSION_STRING="${VERSION_NUMBER}")
+  -DBUILD_NUMBER=${TOOL_BUILD_NUMBER}
+  -DVERSION_NUMBER=${TOOL_VERSION_NUMBER}
+  -DVERSION_STRING="${TOOL_VERSION_NUMBER}")
 
 if (WIN32)
   # i#44/PR 243532: online symbol access
@@ -152,7 +155,7 @@ endif ()
 if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
   # FIXME: use a configure.h
   set(DEFINES ${DEFINES} -DDEBUG -DSTATISTICS)
-  set(DEBUG ON)
+  set(DEBUG_BUILD ON) # "DEBUG" conflicts w/ DR
 else ()
   if (UNIX)
     # has enough debug info
@@ -161,7 +164,7 @@ else ()
     # we want pdb for release build
     set(CMAKE_BUILD_TYPE "RelWithDebInfo")
   endif (UNIX)
-  set(DEBUG OFF)
+  set(DEBUG_BUILD OFF)
 endif ()
 
 string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
@@ -182,12 +185,11 @@ else (UNIX)
   # FIXME: fix warnings and up to /W4
   set(WARN "/W2 /WX")
   # default from cmake has /W3 so remove to avoid warning about overriding
-  string(REGEX REPLACE "/W[0-9]" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
-  string(REGEX REPLACE "/W[0-9]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
-  string(REGEX REPLACE "/W[0-9]" "" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-    "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-  string(REGEX REPLACE "/W[0-9]" "" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+  foreach (var CMAKE_C_FLAGS;CMAKE_CXX_FLAGS;
+      CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
+    string(REGEX REPLACE "/W[0-9]" "" ${var} "${${var}}")
+  endforeach ()
   # disable stack protection: "unresolved external symbol ___security_cookie"
   set(CL_CFLAGS "/GS-")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${WARN} ${CL_CFLAGS}")
@@ -313,13 +315,13 @@ else (USE_DRSYMS)
     set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin32")
   endif (X64)
 endif (USE_DRSYMS)
-if (DEBUG)
+if (DEBUG_BUILD)
   set(INSTALL_LIB "${INSTALL_BIN}/debug")
   set(BUILD_LIB "${BUILD_BIN}/debug")
-else (DEBUG)
+else (DEBUG_BUILD)
   set(INSTALL_LIB "${INSTALL_BIN}/release")
   set(BUILD_LIB "${BUILD_BIN}/release")
-endif (DEBUG)
+endif (DEBUG_BUILD)
 set(LIBRARY_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${BUILD_LIB}")
 set(EXECUTABLE_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
 
@@ -368,11 +370,22 @@ else ()
   add_subdirectory(docs)
 endif ()
 
-# configure tests before configure_DynamoRIO_client clears global cflags
-enable_testing()
-add_subdirectory(tests)
+##################################################
+# find DynamoRIO so tests has its path, but don't include it or run
+# its configure commands to avoid changing cflags:
 
-if (DEFINED DynamoRIO_DIR)
+# we write DynamoRIO_DIR to the cache, so on re-interpreting the file later
+# we can't tell whether the user set a value or not. we could
+# use a differently-named var for the user but instead we check vs
+# the local build path to avoid breaking existing scripts.
+set(LOCAL_DynamoRIO_DIR "${PROJECT_BINARY_DIR}/dynamorio/cmake")
+if (DEFINED DynamoRIO_DIR AND NOT "${DynamoRIO_DIR}" STREQUAL "${LOCAL_DynamoRIO_DIR}")
+  set(USER_SPECIFIED_DynamoRIO_DIR ON)
+else ()
+  set(USER_SPECIFIED_DynamoRIO_DIR OFF)
+endif ()
+
+if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
   # relative to source dir not build dir, so we change that here.
   # we can't do get_filename_component(... ABSOLUTE) b/c it's relative to
@@ -385,22 +398,28 @@ if (DEFINED DynamoRIO_DIR)
   if (NOT EXISTS "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
     message(FATAL_ERROR "${DynamoRIO_DIR}/DynamoRIOConfig.cmake does not exist: invalid DynamoRIO_DIR")
   endif ()
-else (DEFINED DynamoRIO_DIR)
-  # default value
-  set(DynamoRIO_DIR "${PROJECT_BINARY_DIR}/../exports/cmake" CACHE PATH
-    "DynamoRIO installation's cmake directory")
-endif (DEFINED DynamoRIO_DIR)
+  message(STATUS "Attempting to use pre-built DynamoRIO: ${DynamoRIO_DIR}")
+  find_package(DynamoRIO 2.1)
+  if (NOT DynamoRIO_FOUND)
+    message(FATAL_ERROR "DynamoRIO package required to build")
+  endif(NOT DynamoRIO_FOUND)
+  # from here on use what was found, not what was passed in
+  get_filename_component(DynamoRIO_DIR "${DynamoRIO_CONFIG}" PATH)
+  # preserve real value in the cache so it's easy to tell
+  set(DynamoRIO_DIR "${DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
+  message(STATUS "DynamoRIO version that matches: ${DynamoRIO_DIR}")
+else (USER_SPECIFIED_DynamoRIO_DIR)
+  # Build from our local copy of the sources, coming from an svn external: i#74.
+  set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
+  message(STATUS "Building DynamoRIO from local sources ${DynamoRIO_DIR}")
+endif (USER_SPECIFIED_DynamoRIO_DIR)
 
-set(DynamoRIO_REG_COMPATIBILITY ON)
-find_package(DynamoRIO 2.1)
-if (NOT DynamoRIO_FOUND)
-  message(FATAL_ERROR "DynamoRIO package required to build")
-endif(NOT DynamoRIO_FOUND)
-# from here on use what was found, not what was passed in
-get_filename_component(DynamoRIO_DIR "${DynamoRIO_CONFIG}" PATH)
-# preserve it in the cache so it's easy to tell
-set(DynamoRIO_DIR "${DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
-message(STATUS "Found DynamoRIO: ${DynamoRIO_DIR}")
+##################################################
+
+# configure tests before configure_DynamoRIO_client or
+# add_subdirectory(dynamorio) clears global cflags
+enable_testing()
+add_subdirectory(tests)
 
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
@@ -454,8 +473,6 @@ else (TOOL_DR_HEAPSTAT)
 endif (TOOL_DR_HEAPSTAT)
 set(scripts ${toolname}.pl postprocess.pl)
 
-include_directories(common ${tooldir})
-
 # new set_property() doesn't want -D but our cpp invocation above does
 string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 
@@ -463,25 +480,100 @@ if (WIN32 AND USE_DRSYMS)
   # front-end needs to be name drmemory.exe and thus has drmemory.pdb, so
   # we rename client lib (plus cmake best w/o same-name targets)
   set(client_target "${toolname}lib")
-
   # assuming only DrMem for now
   add_executable(${toolname} drmemory/frontend.c)
-  configure_DynamoRIO_standalone(${toolname})
-  target_link_libraries(${toolname} drinjectlib drconfiglib)
-  set_target_properties(${toolname} PROPERTIES
-    VERSION ${VERSION_NUMBER})
-  set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 else (WIN32 AND USE_DRSYMS)
   set(client_target ${toolname})
 endif (WIN32 AND USE_DRSYMS)
 
 add_library(${client_target} SHARED ${srcs})
+set_target_properties(${client_target} PROPERTIES
+  VERSION ${TOOL_VERSION_NUMBER})
+set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+
+if (WIN32)
+  # we statically link with msvcrt.lib for vc /O2's use of __aulldvrm
+  # this does NOT add any dynamic dependence on libc
+  target_link_libraries(${client_target} ntdll msvcrt)
+
+  # our addr2line for Windows
+  add_executable(winsyms tools/winsyms.c)
+  target_link_libraries(winsyms dbghelp)
+  # configure_DynamoRIO_client clears global flags so add as additional
+  # request static libc to avoid manifest files and libc portability issues
+  string(REGEX REPLACE "/MD" "/MT" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+    "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+  set_source_files_properties(tools/winsyms.c PROPERTIES
+    COMPILE_FLAGS "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+endif (WIN32)
+
+##################################################
+# below here the cflags, etc. may be clobbered by DR, so be sure
+# to add any other subdirs above here
+
+if (NOT USER_SPECIFIED_DynamoRIO_DIR)
+  # Build from our local copy of the sources, coming from an svn external: i#74.
+  # We include DynamoRIO as a subdir here to make it easy to use the
+  # DynamoRIOConfig.cmake at configure time: however, that also means we have
+  # potential conflicts in CMake's global option and target space.
+  # Ideally, DynamoRIO would prefix all its options and targets with "DR_"
+  # or something.  For now we live w/ the ugliness.
+  # (An alternative would be to use the ExternalProject feature: but
+  # then we don't have DynamoRIOConfig.cmake at config time and we'd
+  # either need a parent build project or to hack our find_package().)
+
+  # it seems that we must set these in the cache for the subproj to see them:
+  set(BUILD_DOCS OFF CACHE BOOL "DynamoRIO option: build client samples")
+  set(BUILD_SAMPLES OFF CACHE BOOL "DynamoRIO option: build documentation")
+  # our local DR build matches our own build type
+  if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+    set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
+    set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
+  endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+
+  # we do not want DR install
+  set(DO_DR_INSTALL OFF)
+
+  add_subdirectory(dynamorio)
+
+  # don't show DR options in drmem cmake list
+  # to really hide we should mark as INTERNAL but not worth it since would
+  # have to do for all of DR's many options.
+  # see comment above about DR prefixing its options.
+  mark_as_advanced(BUILD_CORE BUILD_DOCS BUILD_SAMPLES BUILD_EXT BUILD_TESTS
+      BUILD_TOOLS DEBUG INTERNAL)
+
+  # do not import dynamorio lib target: we'd end up w/ duplicate
+  # dynamorio targets
+  set(DynamoRIO_INTERNAL ON)
+  # our included DynamoRIO project will set DynamoRIO_SOURCE_DIR in cache
+  # for us so we'll get proper include dirs for extensions.
+
+  find_package(DynamoRIO 2.1)
+  if (NOT DynamoRIO_FOUND)
+    message(FATAL_ERROR "Local DynamoRIO mis-configured")
+  endif(NOT DynamoRIO_FOUND)
+endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
+
+set(DynamoRIO_REG_COMPATIBILITY ON)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
 if (WIN32 AND USE_DRSYMS)
+  configure_DynamoRIO_standalone(${toolname})
+  target_link_libraries(${toolname} drinjectlib drconfiglib)
+  set_target_properties(${toolname} PROPERTIES
+    VERSION ${TOOL_VERSION_NUMBER})
+  set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (WIN32 AND USE_DRSYMS)
+
+#
+##################################################
+
+# must be AFTER DR local build since affects subdirs
+include_directories(common ${tooldir})
 
 if (UNIX)
   set(DISABLE_OPTS "-O0")
@@ -503,27 +595,6 @@ if (TOOL_DR_HEAPSTAT)
       -o ${EXECUTABLE_OUTPUT_PATH}/${toolname}.swf
     VERBATIM)
 endif (TOOL_DR_HEAPSTAT)
-
-if (WIN32)
-  # we statically link with msvcrt.lib for vc /O2's use of __aulldvrm
-  # this does NOT add any dynamic dependence on libc
-  target_link_libraries(${client_target} ntdll msvcrt)
-
-  # our addr2line for Windows
-  add_executable(winsyms tools/winsyms.c)
-  target_link_libraries(winsyms dbghelp)
-  # configure_DynamoRIO_client clear global flags so use the saved version
-  #   (putting the add_executable earlier doesn't help)
-  # request static libc to avoid manifest files and libc portability issues
-  string(REGEX REPLACE "/MD" "/MT" ORIG_CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-    "${ORIG_CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-  set_source_files_properties(tools/winsyms.c PROPERTIES
-    COMPILE_FLAGS "${ORIG_CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-endif (WIN32)
-
-set_target_properties(${client_target} PROPERTIES
-  VERSION ${VERSION_NUMBER})
-set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 # should go into a configure.h if we get enough of these
 set(script_aux "")
@@ -568,10 +639,28 @@ if (WIN32)
   configure_file("${DBGHELP_DLL}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll" COPYONLY)
   if (USE_DRSYMS)
-    configure_file("${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
-    configure_file("${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
+    if (USER_SPECIFIED_DynamoRIO_DIR)
+      # already built so we can copy at config time
+      configure_file("${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
+      configure_file("${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
+    else (USER_SPECIFIED_DynamoRIO_DIR)
+      # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
+      # the target is in a subdir?
+      set(drconfiglib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll")
+      add_custom_target(drconfiglib_copy_tgt ALL DEPENDS "${drconfiglib_copy}")
+      add_custom_command(OUTPUT "${drconfiglib_copy}" DEPENDS drconfiglib
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy "${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" VERBATIM)
+      set(drinjectlib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll")
+      add_custom_target(drinjectlib_copy_tgt ALL DEPENDS "${drinjectlib_copy}")
+      add_custom_command(OUTPUT "${drinjectlib_copy}" DEPENDS drinjectlib
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy "${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" VERBATIM)
+    endif (USER_SPECIFIED_DynamoRIO_DIR)
     # above copy is for winsyms.exe, this is for drmemorylib
     configure_file("${DBGHELP_DLL}"
       "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
@@ -765,30 +854,35 @@ if (UNIX)
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/logs\")")
   # CPack seems to ignore empty dirs so add a README file
   install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/logs/README\" \"Default destination for DynamoRIO log files.\n\")")
-  
-  install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release\")")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
-  # Include both .debug files.  These have version #s so we glob.
-  # Note that addr2line/gdb will still find the 1.x.debug since the name is
-  # stored in the library.
-  install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)\nendforeach()")
-  if (DEBUG)
+  if (DEBUG_BUILD)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug\")")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)")
     # Include both .debug files.  These have version #s so we glob.
     install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)\nendforeach()")
-  endif (DEBUG)
+  else (DEBUG_BUILD)
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release\")")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
+    # Include both .debug files.  These have version #s so we glob.
+    # Note that addr2line/gdb will still find the 1.x.debug since the name is
+    # stored in the library.
+    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)\nendforeach()")
+  endif (DEBUG_BUILD)
 endif (UNIX)
 
 # can't find way to package external individual files (can do whole dir)
 # and we don't need entire DR docs/, include/, etc. so we do these
 # files individually
-install(CODE "configure_file(\"${DynamoRIO_DIR}/../License.txt\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/License.txt\" COPYONLY)")
+if (EXISTS "${DynamoRIO_SOURCE_DIR}/License.txt")
+  set(DR_LICENSE_DIR "${DynamoRIO_SOURCE_DIR}")
+else ()
+  set(DR_LICENSE_DIR "${DynamoRIO_DIR}/..")
+endif ()
+install(CODE "configure_file(\"${DR_LICENSE_DIR}/License.txt\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/License.txt\" COPYONLY)")
+install(CODE "configure_file(\"${DR_LICENSE_DIR}/ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
 # rather whan whole README, which talks about running samples, etc.:
 install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
-install(CODE "configure_file(\"${DynamoRIO_DIR}/../ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
 # on Windows we don't need all the bin32/ tools, and they take up space
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32\")")
 if (UNIX)
@@ -843,13 +937,13 @@ set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README")
 
 set(CPACK_SOURCE_IGNORE_FILES "~$")
 
-set(CPACK_PACKAGE_VERSION "${VERSION_NUMBER}")
+set(CPACK_PACKAGE_VERSION "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE 
-  "^([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MAJOR "${VERSION_NUMBER}")
+  "^([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MAJOR "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE 
-  "^[0-9]+\\.([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MINOR "${VERSION_NUMBER}")
+  "^[0-9]+\\.([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MINOR "${TOOL_VERSION_NUMBER}")
 string(REGEX REPLACE 
-  "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" CPACK_PACKAGE_VERSION_PATCH "${VERSION_NUMBER}")
+  "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" CPACK_PACKAGE_VERSION_PATCH "${TOOL_VERSION_NUMBER}")
 
 if (WIN32)
   # Include DR so user doesn't have to download separately (PR 457417).
@@ -860,16 +954,16 @@ if (WIN32)
   # We do include 32-bit debug lib (and default DR log dir) for
   # debugging in the field: it does take space but we'd probably regret
   # not supplying it.
-  if (DEBUG)
+  if (DEBUG_BUILD)
     set(CPACK_INSTALLED_DIRECTORIES 
       "${DynamoRIO_DIR}/../lib32;${DR_install_dir}/lib32"
       "${DynamoRIO_DIR}/../ext/lib32;${DR_install_dir}/ext/lib32"
       "${DynamoRIO_DIR}/../logs;${DR_install_dir}/logs")
-  else (DEBUG)
+  else (DEBUG_BUILD)
     set(CPACK_INSTALLED_DIRECTORIES 
       "${DynamoRIO_DIR}/../lib32/release;${DR_install_dir}/lib32/release"
       "${DynamoRIO_DIR}/../ext/lib32/release;${DR_install_dir}/ext/lib32/release")
-  endif (DEBUG)
+  endif (DEBUG_BUILD)
 endif (WIN32)
 
 # CPack tarballs do not allow setting a different name for the base
@@ -880,9 +974,9 @@ endif (WIN32)
 # having the full version in the base dir is a good thing, though I'm not
 # sure about the caps.
 set(CPACK_PACKAGE_FILE_NAME
-  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${BUILD_NUMBER}")
+  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME
-  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${BUILD_NUMBER}-Source")
+  "${toolname_cap}-${CPACK_SYSTEM_NAME}-${CPACK_PACKAGE_VERSION}-${TOOL_BUILD_NUMBER}-Source")
 
 # NSIS settings
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "${toolname_cap_spc}")
@@ -901,8 +995,13 @@ set(CPACK_NSIS_MENU_LINKS
   "${toolname}/bin32/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"
   "${toolname}/docs/html/index.html" "${toolname_cap_spc} documentation"
   "http://dynamorio.org/${toolname}.html" "${toolname_cap_spc} web page")
-set(CPACK_NSIS_MUI_ICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
-set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
+if (USER_SPECIFIED_DynamoRIO_DIR)
+  set(CPACK_NSIS_MUI_ICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
+  set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_DIR}/../docs/html/favicon.ico")
+else (USER_SPECIFIED_DynamoRIO_DIR)
+  set(CPACK_NSIS_MUI_ICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
+  set(CPACK_NSIS_MUI_UNIICON "${DynamoRIO_SOURCE_DIR}/api/docs/images/favicon.ico")
+endif (USER_SPECIFIED_DynamoRIO_DIR)
 # FIXME: CPACK_PACKAGE_ICON: need a .bmp
 
 # Let external build file override all settings, but before CPack reads them

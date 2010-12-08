@@ -59,7 +59,7 @@ cmake_minimum_required (VERSION 2.2)
 
 # arguments are a ;-separated list (must escape as \; from ctest_run_script())
 set(arg_build "")      # build #
-set(arg_DR_dir "")     # DynamoRIO dir
+set(arg_DR_dir "")     # DynamoRIO dir: else builds from local sources
 # optional args:
 set(arg_ubuild "")     # unique build #
 set(arg_version "")    # version #
@@ -105,8 +105,13 @@ endif()
 if ("${arg_ubuild}" STREQUAL "")
   set(arg_ubuild "${arg_build}")
 endif()
-if ("${arg_DR_dir}" STREQUAL "")
-  message(FATAL_ERROR "path to DynamoRIO not set: pass as dr= arg")
+if (NOT "${arg_DR_dir}" STREQUAL "")
+  if (NOT EXISTS "${arg_DR_dir}")
+    message(FATAL_ERROR "invalid DynamoRIO dr= arg")
+  endif ()
+  set(DR_entry "DynamoRIO_DIR:PATH=${arg_DR_dir}")
+else ()
+  set(DR_entry "")
 endif()
 
 get_filename_component(BINARY_BASE "." ABSOLUTE)
@@ -147,9 +152,9 @@ function(dobuild name is64 initial_cache)
 
   set(CTEST_BINARY_DIRECTORY "${BINARY_BASE}/build_${CTEST_BUILD_NAME}")
   set(CTEST_INITIAL_CACHE "${initial_cache}
-    DynamoRIO_DIR:PATH=${arg_DR_dir}
-    BUILD_NUMBER:STRING=${arg_build}
-    UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
+    ${DR_entry}
+    TOOL_BUILD_NUMBER:STRING=${arg_build}
+    TOOL_UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
     ${arg_cacheappend}
     ${base_cache}
     ")

@@ -50,9 +50,11 @@ function(tobuild_lib name source)
 endfunction(tobuild_lib)
 
 # tools for nudge tests
-tobuild(run_in_bg run_in_bg.c)
+# to avoid conflict w/ DR's run_in_bg target we use a different target name
+tobuild(run_in_bg_tgt run_in_bg.c)
+set_target_properties(run_in_bg_tgt PROPERTIES OUTPUT_NAME run_in_bg)
 if (WIN32)
-  target_link_libraries(run_in_bg ntdll)
+  target_link_libraries(run_in_bg_tgt ntdll)
 endif (WIN32)
 
 # For more portable testing (PR 544430):
@@ -106,12 +108,12 @@ else (UNIX)
   string(REGEX REPLACE "/D_DEBUG" "" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
 endif (UNIX)
-if (DEBUG)
+if (DEBUG_BUILD)
   # use debug DR as well to catch asserts there
   set(dbg_args "-dr_debug")
-else (DEBUG)
+else (DEBUG_BUILD)
   set(dbg_args "-release")
-endif (DEBUG)
+endif (DEBUG_BUILD)
 if (WIN32)
   # we need the nudge notification msgs
   # we want core dumps on asserts, etc.
@@ -336,6 +338,6 @@ tobuild(infloop infloop.c)
 get_relative_location(infloop infloop_path)
 # we have special support to put run_in_bg and its args first, so we put
 # the test to run as a final drmem arg
-newtest_nobuild(nudge run_in_bg 
+newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
   "${nudge_test_args}--;${infloop_path}" "" OFF)

@@ -208,6 +208,11 @@ $logdir = &canonicalize_path($logdir);
 # tests/CMakeLists.sh to pass -debug and not -release.
 $libdir = ($use_release) ? "release" : "debug";
 
+if (!$use_dr_debug && ! -e "$dr_home/lib32/release/$drlibname") {
+    $use_dr_debug = 1;
+    print "$prefix WARNING: using debug DynamoRIO since release not found\n"
+        unless ($user_ops =~ /-quiet/);
+}
 $dr_debug = ($use_dr_debug) ? "-debug" : "";
 $dr_libdir = ($use_dr_debug) ? "debug" : "release";
 
