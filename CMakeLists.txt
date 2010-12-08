@@ -45,10 +45,6 @@ if (TOOL_DR_HEAPSTAT)
   set(toolname_cap DrHeapstat)
   set(toolname_cap_spc "Dr. Heapstat")
   set(DEFINES ${DEFINES} -DTOOL_DR_HEAPSTAT)
-  # Note that for our combined multi-tool package (PR 470927) we use the DrMem
-  # version number so this is essentially unused
-  # Avoid "VERSION_NUMBER" name since conflics w/ DR's var
-  set(TOOL_VERSION_NUMBER "1.0.0")
 
   # Flex building is done only for Dr. HeapStat visualization tool.  So Java
   # is needed only for that too.
@@ -83,11 +79,62 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap DrMemory)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
-  # should we have a real .rc file instead?
-  # XXX: i#83: add timestamp or svn revision to version number
-  set(TOOL_VERSION_NUMBER "1.3.1")
   set(DRSYMS_DEFAULT ON)
 endif (TOOL_DR_HEAPSTAT)
+
+# i#83: use svn revision of last commit as patchlevel ver# to distinguish
+# mid-release builds.
+# XXX: if we later switch to a non-linear version control system we'll
+# want to switch to a date or something, but be aware of timezone issues
+# so we may want a cron job that updates an official date in the sources.
+set(VERSION_NUMBER_PATCHLEVEL 0)
+# for now using a hack of running svn or git to get the ver#,
+# rather than having it stored in the sources and auto-updated
+if (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
+  find_program(SVN svn DOC "subversion client")
+  if (SVN)
+    execute_process(COMMAND ${SVN} info
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+      RESULT_VARIABLE svn_result
+      ERROR_VARIABLE svn_err
+      OUTPUT_VARIABLE svn_out)
+    if (svn_result OR svn_err)
+      message(FATAL_ERROR "*** ${SVN} info failed: ***\n${svn_err}")
+    endif (svn_result OR svn_err)
+    string(REGEX MATCH "Revision: [0-9]+" svn_out "${svn_out}")
+    string(REGEX REPLACE "Revision: " "" svn_out "${svn_out}")
+    set(VERSION_NUMBER_PATCHLEVEL "${svn_out}")
+  endif (SVN)
+else (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
+  if (EXISTS "${PROJECT_SOURCE_DIR}/.git")
+    find_program(GIT git DOC "subversion client")
+    if (GIT)
+      execute_process(COMMAND ${GIT} log
+        WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        RESULT_VARIABLE git_result
+        ERROR_VARIABLE git_err
+        OUTPUT_VARIABLE git_out)
+      if (git_result OR git_err)
+        message(FATAL_ERROR "*** ${GIT} show failed: ***\n${git_err}")
+      endif (git_result OR git_err)
+      # look for first commit with git-svn-id
+      string(REGEX MATCH "git-svn-id: http[^@]*@[0-9]+" git_out "${git_out}")
+      string(REGEX REPLACE "git-svn-id: http[^@]*@" "" git_out "${git_out}")
+      set(VERSION_NUMBER_PATCHLEVEL "${git_out}")
+    endif (GIT)
+  endif (EXISTS "${PROJECT_SOURCE_DIR}/.git")
+endif (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
+
+# XXX: for windows should we have a real .rc file?
+set(VERSION_NUMBER_DEFAULT "1.3.${VERSION_NUMBER_PATCHLEVEL}")
+# do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
+# from preventing future version updates in a pre-existing build dir.
+# avoid "VERSION_NUMBER" name since conflics w/ DR's var
+set(TOOL_VERSION_NUMBER "" CACHE STRING "Version number: leave empty for default")
+if ("${TOOL_VERSION_NUMBER}" STREQUAL "")
+  set(TOOL_VERSION_NUMBER ${VERSION_NUMBER_DEFAULT})
+endif()
+message(STATUS "Dr. Memory version number: ${TOOL_VERSION_NUMBER}")
 
 # Avoid "BUILD_NUMBER" name since conflics w/ DR's var
 set(TOOL_BUILD_NUMBER "1" CACHE STRING "Build number (must be <64K)")
@@ -385,6 +432,9 @@ else ()
   set(USER_SPECIFIED_DynamoRIO_DIR OFF)
 endif ()
 
+# when updating this, also update the svn:externals prop on trunk/
+set(DynamoRIO_VERSION_REQUIRED "2.0.508")
+
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
   # relative to source dir not build dir, so we change that here.
@@ -399,7 +449,7 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
     message(FATAL_ERROR "${DynamoRIO_DIR}/DynamoRIOConfig.cmake does not exist: invalid DynamoRIO_DIR")
   endif ()
   message(STATUS "Attempting to use pre-built DynamoRIO: ${DynamoRIO_DIR}")
-  find_package(DynamoRIO 2.1)
+  find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
   if (NOT DynamoRIO_FOUND)
     message(FATAL_ERROR "DynamoRIO package required to build")
   endif(NOT DynamoRIO_FOUND)
@@ -549,10 +599,13 @@ if (NOT USER_SPECIFIED_DynamoRIO_DIR)
   # our included DynamoRIO project will set DynamoRIO_SOURCE_DIR in cache
   # for us so we'll get proper include dirs for extensions.
 
-  find_package(DynamoRIO 2.1)
-  if (NOT DynamoRIO_FOUND)
+  find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
+  if (NOT DynamoRIO_FOUND OR
+      # make sure it didn't go find some other pre-built version after
+      # seeing that the local one is somehow not suitable
+      NOT "${DynamoRIO_CONFIG}" STREQUAL "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
     message(FATAL_ERROR "Local DynamoRIO mis-configured")
-  endif(NOT DynamoRIO_FOUND)
+  endif ()
 endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 
 set(DynamoRIO_REG_COMPATIBILITY ON)
