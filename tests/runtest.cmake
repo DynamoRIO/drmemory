@@ -53,8 +53,15 @@ endif ()
 foreach (var cmd outpat respat nudge toolbindir)
   string(REGEX REPLACE "{DRMEMORY_CTEST_SRC_DIR}"
     "${DRMEMORY_CTEST_SRC_DIR}" ${var} "${${var}}")
+
+  # NtCreateFile returns 0xc0000033 "Object Name invalid" for ".." in a path,
+  # so we expand here (main culprit is DR path "<path>/exports/cmake/..")
+  string(REGEX MATCH "{DRMEMORY_CTEST_DR_DIR}[^@]*" ${var}_raw "${${var}}")
   string(REGEX REPLACE "{DRMEMORY_CTEST_DR_DIR}"
-    "${DRMEMORY_CTEST_DR_DIR}" ${var} "${${var}}")
+    "${DRMEMORY_CTEST_DR_DIR}" ${var}_raw "${${var}_raw}")
+  get_filename_component(${var}_abs "${${var}_raw}" ABSOLUTE)
+  string(REGEX REPLACE "{DRMEMORY_CTEST_DR_DIR}[^@]*"
+    "${${var}_abs}" ${var} "${${var}}")
 endforeach ()
 
 ##################################################
@@ -91,6 +98,7 @@ else (WIN32)
   # somehow sleep is much much shorter
   set(TIMEOUT_SHORT "500")
 endif (WIN32)
+set(TIMEOUT_APP "120")
 
 # intra-arg space=@@ and inter-arg space=@
 set(cmd_with_at ${cmd})
@@ -255,7 +263,8 @@ else ()
   execute_process(COMMAND ${cmd}
     RESULT_VARIABLE cmd_result
     ERROR_VARIABLE cmd_err
-    OUTPUT_VARIABLE cmd_out)
+    OUTPUT_VARIABLE cmd_out
+    TIMEOUT ${TIMEOUT_APP})
   # combine out and err
   set(cmd_err "${cmd_out}${cmd_err}")
   if (cmd_result)

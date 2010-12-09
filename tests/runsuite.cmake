@@ -144,6 +144,16 @@ if (arg_vmk_only OR arg_test_vmk)
   endif (NOT EXISTS "${DRvmk_path}")
 endif (arg_vmk_only OR arg_test_vmk)
 
+# build and run cygwin only if cygwin is installed
+find_program(CYGPATH cygpath)
+if (cygpath)
+  set(have_cygwin ON)
+  set(test_cygwin ON)
+else (cygpath)
+  set(have_cygwin OFF)
+  set(test_cygwin OFF)
+endif (cygpath)
+
 # allow setting the base cache variables via an include file
 set(base_cache "")
 if (arg_include)
@@ -217,13 +227,18 @@ set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}/..")
 #   "CMake Error: Some required settings in the configuration file were missing:"
 # but we don't want to do another build so we just ignore the error.
 set(CTEST_CMAKE_COMMAND "${CMAKE_EXECUTABLE_NAME}")
-# FIXME: add support for NMake on Windows if devs want to use that
-# Doesn't support -j though
-set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
 set(CTEST_PROJECT_NAME "Dr. Memory")
-find_program(MAKE_COMMAND make DOC "make command")
-set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j5")
 set(CTEST_COMMAND "${CTEST_EXECUTABLE_NAME}")
+if (UNIX OR have_cygwin)
+  set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
+  find_program(MAKE_COMMAND make DOC "make command")
+  set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j5")
+else (UNIX OR have_cygwin)
+  set(CTEST_CMAKE_GENERATOR "NMake Makefiles")
+  find_program(MAKE_COMMAND nmake DOC "nmake command")
+  # no -j support
+  set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND}")
+endif (UNIX OR have_cygwin)
 
 # returns the build dir in "last_build_dir"
 function(testbuild name is64 initial_cache test_only_in_long)
@@ -404,7 +419,7 @@ foreach (tool ${tools})
         " ON) # only run release tests for long suite
     endif (arg_vmk_only OR arg_test_vmk)
   else (UNIX)
-    if ("${tool}" MATCHES "MEMORY")
+    if ("${tool}" MATCHES "MEMORY" AND test_cygwin)
       # No online symbol support for cygwin yet so using separate build
       # with postprocess model (PR 561181)
       testbuild("${name}-cygwin-dbg-32" OFF "
@@ -419,7 +434,7 @@ foreach (tool ${tools})
         CMAKE_BUILD_TYPE:STRING=Release
         USE_DRSYMS:BOOL=OFF
         " ON) # only run release tests for long suite
-    endif ("${tool}" MATCHES "MEMORY")
+    endif ("${tool}" MATCHES "MEMORY" AND test_cygwin)
   endif (UNIX)
 endforeach (tool)
 

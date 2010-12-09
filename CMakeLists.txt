@@ -58,8 +58,8 @@ if (TOOL_DR_HEAPSTAT)
   endif (NOT DEFINED JAVA)
 
   # There is no standard install path so the user must tell us where they
-  # installed the Flex SDK.
-  set(FLEX_SDK "" CACHE PATH "Path to Flex SDK.")
+  # installed the Flex SDK, either via env var FLEXROOT or FLEX_SDK CMake var.
+  set(FLEX_SDK "$ENV{FLEXROOT}" CACHE PATH "Path to Flex SDK.")
   set(FLEX_MXMLC "${FLEX_SDK}/lib/mxmlc.jar"
       CACHE FILEPATH "Path to Flex MXML compiler.")
   if (NOT EXISTS "${FLEX_MXMLC}")
@@ -457,7 +457,7 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
   get_filename_component(DynamoRIO_DIR "${DynamoRIO_CONFIG}" PATH)
   # preserve real value in the cache so it's easy to tell
   set(DynamoRIO_DIR "${DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
-  message(STATUS "DynamoRIO version that matches: ${DynamoRIO_DIR}")
+  message(STATUS "DynamoRIO that matches: ${DynamoRIO_VERSION} in ${DynamoRIO_DIR}")
 else (USER_SPECIFIED_DynamoRIO_DIR)
   # Build from our local copy of the sources, coming from an svn external: i#74.
   set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
