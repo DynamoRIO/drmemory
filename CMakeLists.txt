@@ -20,7 +20,17 @@
 
 cmake_minimum_required(VERSION 2.6)
 
-project(DrMemory)
+project(DrMemory NONE)
+if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
+  # support building over cygwin ssh where we cannot build pdbs.
+  # using the same solution as DynamoRIO i#310.
+  # To prevent cmake's try-compile for its working compiler test and
+  # its ABI determination test we request a Release build config
+  # via a custom Plaform/Windows-cl.cmake in our make/ dir.
+  set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/make")
+endif ()
+enable_language(C)
+enable_language(CXX)
 
 option(VMKERNEL "target vmkernel")
 if (VMKERNEL)
@@ -49,12 +59,14 @@ if (TOOL_DR_HEAPSTAT)
   # Flex building is done only for Dr. HeapStat visualization tool.  So Java
   # is needed only for that too.
   if (NOT DEFINED JAVA)     # Not using toolchain then
+    set(Java_FIND_QUIETLY ON) # avoid errors about missing javac
     include(FindJava)
-    if (DEFINED JAVA_RUNTIME)
+    if (JAVA_RUNTIME)
       set(JAVA "${JAVA_RUNTIME}")
-    else (DEFINED JAVA_RUNTIME)
-      message(FATAL_ERROR "Can't find Java VM.")
-    endif (DEFINED JAVA_RUNTIME)
+      message(STATUS "Found Java interpreter ${JAVA}")
+    else (JAVA_RUNTIME)
+      message(FATAL_ERROR "Can't find Java interpreter: please set JAVA var")
+    endif (JAVA_RUNTIME)
   endif (NOT DEFINED JAVA)
 
   # There is no standard install path so the user must tell us where they
@@ -63,8 +75,9 @@ if (TOOL_DR_HEAPSTAT)
   set(FLEX_MXMLC "${FLEX_SDK}/lib/mxmlc.jar"
       CACHE FILEPATH "Path to Flex MXML compiler.")
   if (NOT EXISTS "${FLEX_MXMLC}")
-      message(FATAL_ERROR "Flex compiler ${FLEX_MXMLC} not found.")
+      message(FATAL_ERROR "Flex compiler ${FLEX_MXMLC} not found: set FLEX_SDK var or FLEXROOT env var")
   endif ()
+  message(STATUS "Found Flex MXML compiler ${FLEX_MXMLC}")
 
   set(FLEX_FRAMEWORKS "${FLEX_SDK}/frameworks"
       CACHE PATH "Path to Flex frameworks, i.e., standard libraries.")
@@ -463,6 +476,33 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
   message(STATUS "Building DynamoRIO from local sources ${DynamoRIO_DIR}")
 endif (USER_SPECIFIED_DynamoRIO_DIR)
+
+if (USER_SPECIFIED_DynamoRIO_DIR)
+  # if we're building from our own DR, DR adds this option for us
+  option(GENERATE_PDBS "generate Windows debug information" ON)
+  mark_as_advanced(GENERATE_PDBS)
+endif (USER_SPECIFIED_DynamoRIO_DIR)
+
+# This must be before any add_library() or add_executable()
+if (NOT GENERATE_PDBS)
+  # Default from cmake in DEBUG and RELWITHDEBINFO has /debug
+  foreach (var CMAKE_C_FLAGS;CMAKE_CXX_FLAGS;
+      CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      # tests are always built as Debug
+      CMAKE_C_FLAGS_DEBUG;CMAKE_CXX_FLAGS_DEBUG)
+    string(REGEX REPLACE "/Zi" "" ${var} "${${var}}")
+  endforeach ()
+  foreach (var CMAKE_EXE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_MODULE_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      CMAKE_SHARED_LINKER_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
+      # tests are always built as Debug
+      CMAKE_EXE_LINKER_FLAGS_DEBUG;
+      CMAKE_MODULE_LINKER_FLAGS_DEBUG;
+      CMAKE_SHARED_LINKER_FLAGS_DEBUG)
+    string(REGEX REPLACE "/debug" "" ${var} "${${var}}")
+  endforeach ()
+endif (NOT GENERATE_PDBS)
 
 ##################################################
 
@@ -971,7 +1011,15 @@ if (UNIX)
     set(CPACK_SYSTEM_NAME "Linux")
   endif (VMKERNEL)
 else (UNIX)
-  set(CPACK_GENERATOR "ZIP;NSIS")
+  # do not require NSIS, since we do "make package" as part of test suite
+  find_program(NSIS nsis HINT "$ENV{PROGRAMFILES}/NSIS" DOC "NSIS for creating installer")
+  if (NSIS)
+    message(STATUS "NSIS found: will build installer")
+    set(CPACK_GENERATOR "ZIP;NSIS")
+  else (NSIS)
+    message(STATUS "NSIS not found: will not build installer")
+    set(CPACK_GENERATOR "ZIP")
+  endif (NSIS)
   set(CPACK_SOURCE_GENERATOR "ZIP")
   set(CPACK_SYSTEM_NAME "Windows")
   if (USE_DRSYMS)

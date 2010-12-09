@@ -65,6 +65,7 @@ set(arg_exclude "")   # regex of tests to exclude
 set(arg_site "")      # site name when reporting results
 set(arg_drmemory_only OFF)   # only run Dr. Memory tests
 set(arg_drheapstat_only OFF) # only run Dr. Heapstat tests
+set(arg_ssh OFF)      # running over cygwin ssh: disable pdbs
 set(DR_path "")       # path to DynamoRIO cmake dir; if this arg is not set or
                       # doesn't exist, will build DynamoRIO from local copy
 set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
@@ -118,6 +119,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
       string(REGEX REPLACE "^DRvmk=" "" DRvmk_path "${arg}")
     endif (${arg} MATCHES "^DRvmk=")
   endif (UNIX)
+  if (${arg} STREQUAL "ssh")
+    set(arg_ssh ON)
+  endif (${arg} STREQUAL "ssh")
 endforeach (arg)
 
 if (arg_test_vmk AND arg_vmk_only)
@@ -160,6 +164,12 @@ if (arg_include)
   message("including ${arg_include}")
   include(${arg_include})
 endif (arg_include)
+set(aux_cache "")
+if (arg_ssh)
+  # avoid problems creating pdbs as cygwin ssh user (DR i#310)
+  set(aux_cache "${aux_cache}
+    GENERATE_PDBS:BOOL=OFF")
+endif (arg_ssh)
 
 if (arg_long)
   set(TEST_LONG ON)
@@ -264,6 +274,7 @@ function(testbuild name is64 initial_cache test_only_in_long)
     endif (preload_file)
     set(CTEST_INITIAL_CACHE "${initial_cache}
       ${base_cache}
+      ${aux_cache}
       ")
     ctest_empty_binary_directory(${CTEST_BINARY_DIRECTORY})
     file(WRITE "${CTEST_BINARY_DIRECTORY}/CMakeCache.txt" "${CTEST_INITIAL_CACHE}")
