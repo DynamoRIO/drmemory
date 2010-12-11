@@ -79,9 +79,7 @@ typedef struct _delay_free_t {
      */
     ptr_int_t auxarg;
 #endif
-#ifdef STATISTICS
-    size_t size;
-#endif
+    size_t real_size; /* includes redzones */
 } delay_free_t;
 
 /* We need a separate free queue per malloc routine (PR 476805) */
@@ -93,6 +91,10 @@ typedef struct _delay_free_info_t {
      * one past the furthest index that has been filled.
      */
     int delay_free_fill;
+    /* We have a max delayed free bytes to avoid running out of memory by
+     * delaying one or two giant frees
+     */
+    size_t delay_free_bytes;
 } delay_free_info_t;
 
 /* We could do per-thread free lists but could strand frees in idle threads;
@@ -110,7 +112,7 @@ static rb_tree_t *delay_free_tree;
 #define DELAY_FREE_FULL(info) (info->delay_free_fill == options.delay_frees)
 
 #ifdef STATISTICS
-uint delayed_free_bytes;
+uint delayed_free_bytes; /* includes redzones */
 #endif
 
 /***************************************************************************/
@@ -496,6 +498,7 @@ client_add_malloc_routine(app_pc pc)
                          HEAPSTAT_MISC);
         info->delay_free_head = 0;
         info->delay_free_fill = 0;
+        info->delay_free_bytes = 0;
         return (void *) info;
     } else {
         return NULL;
@@ -526,6 +529,47 @@ print_free_tree(rb_node_t *node, void *data)
 }
 #endif
 
+/* Retrieves the fields for the free queue entry at idx (base and
+ * auxarg), adjusts the delay_free_bytes count, and removes the
+ * next-to-free entry from the rbtree.  Does not change the head
+ * pointer.  Caller must hold lock.
+ */
+static app_pc
+next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT),
+             const char *reason)
+{
+    app_pc pass_to_free = NULL;
+    pass_to_free = info->delay_free_list[idx].addr;
+    if (pass_to_free != NULL) {
+        rb_node_t *node = rb_find(delay_free_tree, pass_to_free);
+        if (node != NULL) {
+            DOLOG(2, {
+                byte *start;
+                size_t size;
+                rb_node_fields(node, &start, &size, NULL);
+                LOG(2, "deleting from delay_free_tree "PFX": "PFX"-"PFX"\n",
+                    pass_to_free, start, start + size);
+            });
+            rb_delete(delay_free_tree, node);
+        } else {
+            DOLOG(1, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
+            ASSERT(false, "delay_free_tree inconsistent");
+        }
+#ifdef WINDOWS
+        if (auxarg != NULL)
+            *auxarg = info->delay_free_list[idx].auxarg;
+#endif
+        info->delay_free_bytes -= info->delay_free_list[idx].real_size;
+        STATS_ADD(delayed_free_bytes,
+                  -(int)info->delay_free_list[idx].real_size);
+        LOG(2, "%s: freeing "PFX"-"PFX
+            IF_WINDOWS(" auxarg="PFX) "\n", reason, pass_to_free,
+            pass_to_free + info->delay_free_list[idx].real_size
+            _IF_WINDOWS(auxarg == NULL ? 0 : *auxarg));
+    }
+    return pass_to_free;
+}
+
 /* Returns the value to pass to free().  Return "real_base" for no change.
  * The auxarg param is INOUT so it can be changed as well.
  */
@@ -547,7 +591,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
          * simply exclude from our leak report.
          */
         delay_free_info_t *info = (delay_free_info_t *) client_data;
-        app_pc pass_to_free;
+        app_pc pass_to_free = NULL;
+#ifdef WINDOWS
+        ptr_int_t pass_auxarg;
+#endif
         size_t real_size;
         ASSERT(info != NULL, "invalid param");
         dr_mutex_lock(delay_free_lock);
@@ -559,20 +606,74 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
             real_size = size;
         }
+
+        if (real_size > options.delay_frees_maxsz) {
+            /* we have to free this one, it's too big */
+            LOG(2, "malloc size %d is larger than max delay %d so freeing immediately\n",
+                real_size, options.delay_frees_maxsz);
+            dr_mutex_unlock(delay_free_lock);
+            return real_base;
+        }
+
+        info->delay_free_bytes += real_size;
+        if (info->delay_free_bytes > options.delay_frees_maxsz) {
+            int head_start = info->delay_free_head;
+            int idx = info->delay_free_head;
+            LOG(2, "total delayed %d larger than max delay %d\n",
+                info->delay_free_bytes, options.delay_frees_maxsz);
+            /* we can't invoke the app's free() routine safely
+             * so we look for a single free that's bigger than this one:
+             * if none, we have to free this one.
+             * XXX: either need call-app-routine support in DR (though
+             * still have potential deadlock problems since holding lock here)
+             * or switch to replacing malloc&co.
+             */
+            do {
+                /* XXX: we could end up doing a linear walk on every free.
+                 * we can also end up always freeing immediately once the
+                 * queue gets full of small objects and the app is freeing large
+                 * objects.  not ideal!
+                 */
+                if (info->delay_free_list[idx].addr != NULL &&
+                    info->delay_free_list[idx].real_size >= real_size) {
+                    LOG(2, "freeing delayed idx=%d "PFX" w/ size=%d (head=%d, fill=%d)\n", 
+                        idx, info->delay_free_list[idx].addr,
+                        info->delay_free_list[idx].real_size,
+                        info->delay_free_head, info->delay_free_fill);
+                    pass_to_free = next_to_free(info, idx _IF_WINDOWS(&pass_auxarg),
+                                                "exceeded delay_frees_maxsz");
+                    ASSERT(info->delay_free_bytes < options.delay_frees_maxsz,
+                           "cannot happen");
+                    info->delay_free_list[idx].addr = NULL;
+                    break;
+                }
+                idx++;
+                if (idx >= info->delay_free_fill)
+                    break;
+                if (idx >= options.delay_frees)
+                    idx = 0;
+            } while (idx != head_start);
+            if (pass_to_free == NULL) {
+                LOG(2, "malloc size %d larger than any entry + over size limit\n",
+                    real_size);
+                info->delay_free_bytes -= real_size;
+                dr_mutex_unlock(delay_free_lock);
+                return real_base;
+            }
+        }
+
         rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
-        LOG(2, "inserted into delay_free_tree: "PFX"-"PFX" %d\n",
-            real_base, real_base + real_size, base == real_base);
+        LOG(2, "inserted into delay_free_tree (queue idx=%d): "PFX
+            "-"PFX" %d bytes no-redzone=%d\n",
+            DELAY_FREE_FULL(info) ? info->delay_free_head : info->delay_free_fill,
+            real_base, real_base + real_size, real_size, base == real_base);
+
         if (DELAY_FREE_FULL(info)) {
-#ifdef WINDOWS
-            ptr_int_t pass_auxarg = info->delay_free_list[info->delay_free_head].auxarg;
-#endif
-            pass_to_free = info->delay_free_list[info->delay_free_head].addr;
-            STATS_ADD(delayed_free_bytes,
-                      -(int)info->delay_free_list[info->delay_free_head].size);
-            LOG(2, "delayed free queue full: freeing "PFX"-"PFX
-                IF_WINDOWS(" auxarg="PFX) "\n", pass_to_free,
-                pass_to_free + info->delay_free_list[info->delay_free_head].size
-                _IF_WINDOWS(pass_auxarg));
+            if (pass_to_free == NULL) {
+                pass_to_free = next_to_free(info, info->delay_free_head
+                                            _IF_WINDOWS(&pass_auxarg),
+                                            "delayed free queue full");
+            }
             info->delay_free_list[info->delay_free_head].addr = real_base;
 #ifdef WINDOWS
             /* should we be doing safe_read() and safe_write()? */
@@ -584,10 +685,8 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                 ASSERT(pass_auxarg == 0, "whether using auxarg should be consistent");
             }
 #endif
-#ifdef STATISTICS
-            info->delay_free_list[info->delay_free_head].size = size;
-            STATS_ADD(delayed_free_bytes, size);
-#endif
+            info->delay_free_list[info->delay_free_head].real_size = real_size;
+            STATS_ADD(delayed_free_bytes, real_size);
             info->delay_free_head++;
             if (info->delay_free_head >= options.delay_frees)
                 info->delay_free_head = 0;
@@ -605,32 +704,13 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             else
                 info->delay_free_list[info->delay_free_fill].auxarg = 0;
 #endif
-#ifdef STATISTICS
-            info->delay_free_list[info->delay_free_fill].size = size;
+            info->delay_free_list[info->delay_free_fill].real_size = real_size;
             STATS_ADD(delayed_free_bytes, size);
-#endif
             info->delay_free_fill++;
-            /* Rather than try to engineer a return, we continue on w/ NULL
-             * which free() is guaranteed to handle
+            /* Rather than try to engineer a return, we continue on w/
+             * pass_to_free as NULL which free() is guaranteed to handle
              */
-            pass_to_free = NULL;
-            STATS_ADD(delayed_free_bytes, (uint)size);
-        }
-        if (pass_to_free != NULL) {
-            rb_node_t *node = rb_find(delay_free_tree, pass_to_free);
-            if (node != NULL) {
-                DOLOG(2, {
-                    byte *start;
-                    size_t size;
-                    rb_node_fields(node, &start, &size, NULL);
-                    LOG(2, "deleting from delay_free_tree "PFX": "PFX"-"PFX"\n",
-                        pass_to_free, start, start + size);
-                });
-                rb_delete(delay_free_tree, node);
-            } else {
-                DOLOG(1, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
-                ASSERT(false, "delay_free_tree inconsistent");
-            }
+            STATS_ADD(delayed_free_bytes, (uint)real_size);
         }
         dr_mutex_unlock(delay_free_lock);
         return pass_to_free;
