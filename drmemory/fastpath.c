@@ -1815,7 +1815,7 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
                              OPND_CREATE_INT16((short)0x00ff)));
     } else {
-        ASSERT(mi->opsz == 16, "unknown memsz");
+        ASSERT(mi->opsz == 16 || mi->opsz == 10, "unknown memsz");
         /* check for partial-undef to avoid slowpath */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
@@ -2128,7 +2128,8 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
     app_pc xl8 = instr_get_app_pc(inst);
     ASSERT(src_opsz <= dst_opsz, "invalid opsz");
-    ASSERT(dst_opsz <= 4 || dst_opsz == 8 || dst_opsz == 16, "invalid opsz");
+    ASSERT(dst_opsz <= 4 || dst_opsz == 8 || dst_opsz == 10 || dst_opsz == 16,
+           "invalid opsz");
     ASSERT(src_opsz == dst_opsz ||
            ((src_opsz == 1 || src_opsz == 2) && dst_opsz == 4),
            "mismatched sizes only supported for src==1 or 2 dst==4");
@@ -2149,7 +2150,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, src), xl8));
         }
-    } else if (src_opsz == 8 || src_opsz == 16) {
+    } else if (src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
         /* copy entire 2 or 4 bytes shadowing the qword */
         /* FIXME: do none of the 8/16-byte srcs write eflags?  no handling for that! */
         if (process_eflags)
@@ -2157,6 +2158,30 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (!opnd_is_null(dst)) {
             add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, src), xl8));
+        }
+    } else if (src_opsz == 10) {
+        /* We only get here if aligned to 16 bytes and mark_defined.
+         * First write 8 bytes; then write 2 bytes.
+         */
+        ASSERT(opnd_is_immed_int(src) && opnd_get_size(src) == OPSZ_16,
+               "10-byte should be treated as 16");
+        if (process_eflags) {
+            write_shadow_eflags(drcontext, bb, inst, REG_NULL,
+                                shadow_immed(1, SHADOW_DEFINED));
+        }
+        if (!opnd_is_null(dst)) {
+            opnd_t imm8 = shadow_immed(8, SHADOW_DEFINED);
+            /* check whole 16 bytes */
+            add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
+            opnd_set_size(&dst, OPSZ_8);
+            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, imm8), xl8));
+            PREXL8M(bb, inst,
+                    INSTR_XL8(INSTR_CREATE_and
+                              (drcontext, dst,
+                               /* 2 = dst_opsz, 0 = ofnum */
+                               opnd_create_immed_int(~(((1 << 2*2)-1) << 0*2),
+                                                     OPSZ_1)), xl8));
+            mark_eflags_used(drcontext, bb, mi->bb);
         }
     } else if (opnd_is_immed_int(src) && opnd_get_immed_int(src) == 0 &&
                opnd_is_immed_int(offs)) {
@@ -3202,9 +3227,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 insert_add_to_reg(drcontext, bb, inst, mi->reg1.reg, diff);
             }
         }
-        if (!share_addr)
+        if (!share_addr) {
             mi->bb->shared_memop = opnd_create_null();
-        else if (mi->pushpop_stackop)
+            mi->bb->shared_disp_implicit = 0;
+        } else if (mi->pushpop_stackop)
             mi->bb->shared_disp_implicit += (mi->load ? -(int)mi->memsz : mi->memsz);
     } else if ((mi->load || mi->store) && mi->need_offs) {
         ASSERT(false, "not supported"); /* not updated for PR 425240, etc. */
