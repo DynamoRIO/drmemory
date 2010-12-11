@@ -148,15 +148,17 @@ if (arg_vmk_only OR arg_test_vmk)
   endif (NOT EXISTS "${DRvmk_path}")
 endif (arg_vmk_only OR arg_test_vmk)
 
-# build and run cygwin only if cygwin is installed
-find_program(CYGPATH cygpath)
-if (cygpath)
-  set(have_cygwin ON)
-  set(test_cygwin ON)
-else (cygpath)
-  set(have_cygwin OFF)
-  set(test_cygwin OFF)
-endif (cygpath)
+if (WIN32)
+  # build and run cygwin only if cygwin is installed
+  find_program(CYGPATH cygpath)
+  if (CYGPATH)
+    set(have_cygwin ON)
+    set(test_cygwin ON)
+  else (CYGPATH)
+    set(have_cygwin OFF)
+    set(test_cygwin OFF)
+  endif (CYGPATH)
+endif (WIN32)
 
 # allow setting the base cache variables via an include file
 set(base_cache "")
