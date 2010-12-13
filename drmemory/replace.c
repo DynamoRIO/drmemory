@@ -570,7 +570,7 @@ in_replace_routine(app_pc pc)
  * our lib, for which DR will abort.
  */
 void
-replace_instrument(void *drcontext, instrlist_t *bb)
+replace_instrument(void *drcontext, instrlist_t *bb, bool *is_memset OUT)
 {
     app_pc pc, replacement;
     int idx;
@@ -586,6 +586,8 @@ replace_instrument(void *drcontext, instrlist_t *bb)
         idx--; /* index + 1 is stored in the table */
         replacement = (app_pc) replace_routine_addr[idx];
         LOG(2, "replacing %s at "PFX"\n", replace_routine_name[idx], pc);
+        if (is_memset != NULL)
+            *is_memset = (strcmp(replace_routine_name[idx], "memset") == 0);
         instrlist_clear(drcontext, bb);
         instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
                                        (drcontext, opnd_create_pc(replacement)), pc));

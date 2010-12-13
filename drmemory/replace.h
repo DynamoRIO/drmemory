@@ -42,6 +42,6 @@ bool
 in_replace_routine(app_pc pc);
 
 void
-replace_instrument(void *drcontext, instrlist_t *bb);
+replace_instrument(void *drcontext, instrlist_t *bb, bool *is_memset OUT);
 
 #endif /* _REPLACE_H_ */

@@ -3027,8 +3027,16 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     alloc_replace_instrument(drcontext, bb);
 #ifdef TOOL_DR_MEMORY
     if (!options.leaks_only && options.shadowing) {
+        bool is_memset;
         /* String routine replacement */
-        replace_instrument(drcontext, bb);
+        replace_instrument(drcontext, bb, &is_memset);
+        if (options.shadowing && !translating &&
+            options.check_memset_unaddr && is_memset) {
+            /* since memset is later called by heap routines, add in-heap checks
+             * now (i#234)
+             */
+            check_ignore_unaddr = true;
+        }
         /* XXX: this should be AFTER app_to_app_transformations, but something's
          * not working right: the rep-movs transformation is marking something
          * as meta that shouldn't be?!?

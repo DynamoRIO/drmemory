@@ -1784,8 +1784,14 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz)
          * For glibc we do know the header size, but on an alloc the block
          * is not yet in our malloc table (it is on a free).
          */
-        LOG(3, "ignoring unaddressable %s by heap routine "PFX" to "PFX"\n",
-            write ? "write" : "read", loc_to_print(loc), addr);
+        LOG(3, "ignoring unaddr %s by heap routine "PFX" to "PFX" tls=%d shadow=0x%x\n",
+            write ? "write" : "read", loc_to_print(loc), addr,
+            get_shadow_inheap(), shadow_get_byte(addr));
+        /* with options.check_ignore_unaddr, we should only come here if:
+         * 1) !get_shadow_inheap() -- but should be on for all alloc routines
+         * 2) part of unaligned word access -- but unlikely for alloc routine
+         * 3) access used shared xl8 and went off end of shadow block
+         */
         STATS_INC(heap_header_exception);
         /* leave as unaddressable */
         return true;

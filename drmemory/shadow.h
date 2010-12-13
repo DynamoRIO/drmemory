@@ -237,6 +237,9 @@ get_shadow_eflags(void);
 void
 set_shadow_eflags(uint val);
 
+byte
+get_shadow_inheap(void);
+
 void
 set_shadow_inheap(uint val);
 

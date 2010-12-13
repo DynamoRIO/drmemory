@@ -1549,6 +1549,15 @@ set_shadow_eflags(uint val)
     sr->eflags = (byte) val;
 }
 
+byte
+get_shadow_inheap(void)
+{
+    shadow_registers_t *sr;
+    ASSERT(options.shadowing, "incorrectly called");
+    sr = get_shadow_registers();
+    return sr->in_heap_routine;
+}
+
 void
 set_shadow_inheap(uint val)
 {
