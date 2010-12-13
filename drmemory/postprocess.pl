@@ -29,8 +29,10 @@ use Getopt::Long;
 use File::Basename;
 use File::Glob ':glob';
 use FileHandle;
-use IPC::Open2;
+use IPC::Open3;
 use Cwd qw(abs_path);
+use Symbol; # for gensym
+use IO::Select;
 
 # $^O is either "linux", "cygwin", or "MSWin32"
 $is_unix = ($^O eq "linux") ? 1 : 0;
@@ -363,6 +365,27 @@ if (!$is_unix && !$is_cygwin && !$batch) {
 }
 
 foreach $apipe (keys %addr_pipes) {        # reap all the addr2line processes
+    # Append addr2line stderr.  While it might be nice printed
+    # at the point of the error, I'm afraid it won't always have 2 lines
+    # and so would mess up our bidirectional pipe, and it can look
+    # ugly to have multi-line errors where a symbol should go in the
+    # callstack, so I'm appending them all at the end.  Xref i#235.
+    my $error = $addr_pipes{$apipe}{"error"};
+    my $sel = IO::Select->new(); 
+    $sel->add($error);
+    while (my @ready = $sel->can_read(0.1)) {
+        foreach my $handle (@ready) { 
+            my ($count, $data, $per_read);
+            $per_read = 4096;
+            $count = sysread($handle, $data, $per_read); 
+            if (defined($count) && $count > 0) {
+                print "WARNING: error(s) processing symbols for $apipe: $data";
+            } else {
+                $sel->remove($handle);
+            }
+        }
+    }
+
     if ($apipe eq $winsyms_key) {
         # winsyms.exe's fgets doesn't see an eof from our close so send
         # a special exit code
@@ -371,6 +394,7 @@ foreach $apipe (keys %addr_pipes) {        # reap all the addr2line processes
     }
     close $addr_pipes{$apipe}{"read"};
     close $addr_pipes{$apipe}{"write"};
+    close $addr_pipes{$apipe}{"error"};
     # on windows closing our end doesn't send eof to addr2line
     # and perl's kill command doesn't seem to do the job
     kill 9, $addr_pipes{$apipe}{"pid"} if (!$is_unix && $apipe ne $winsyms_key);
@@ -1245,7 +1269,7 @@ sub mod_has_dbg_info($module, @dbg_info_type)
 #
 sub lookup_symbol($modpath_in, $addr_in)
 {
-    my ($modpath, $addr, $pid, $read, $write);
+    my ($modpath, $addr, $pid, $read, $write, $error);
     ($modpath, $addr) = @_;
     return '' if ($modpath eq '');
     my $using_addr2line = 0;
@@ -1280,12 +1304,15 @@ sub lookup_symbol($modpath_in, $addr_in)
     if (!defined($addr_pipes{$pipekey}{"write"})) {
         if (-e $modpath) {
             my $pid;
-            # open2 throws exception on failure so use eval to catch it
+            $error = gensym(); # initialize
+            # open3 throws exception on failure so use eval to catch it
             eval { # try
-                $pid = open2($read, $write, @cmdline);
+                # capture stderr to avoid addr2line stderr messages from
+                # polluting app's stderr (i#235)
+                $pid = open3($write, $read, $error, @cmdline);
                 1;
             } or do { # catch
-                die "$@ running @cmdline: $!\n" if ($@ and $@ =~ /^open2:/);
+                die "$@ running @cmdline: $!\n" if ($@ and $@ =~ /^open3:/);
             };
             print stderr "Running $pid = \"".join(' ', @cmdline)."\"\n" if ($verbose);
             print "INFO: Running $pid = \"".join(' ', @cmdline)."\"\n" if ($verbose);
@@ -1294,6 +1321,7 @@ sub lookup_symbol($modpath_in, $addr_in)
             $addr_pipes{$pipekey}{"pid"} = $pid;
             $addr_pipes{$pipekey}{"read"} = $read;
             $addr_pipes{$pipekey}{"write"} = $write;
+            $addr_pipes{$pipekey}{"error"} = $error;
         } else {
             print "WARNING: can't find $modpath to do symbol lookup\n";
             return "?\n??:0";
@@ -1301,6 +1329,7 @@ sub lookup_symbol($modpath_in, $addr_in)
     } else {
         $read = $addr_pipes{$pipekey}{"read"};
         $write = $addr_pipes{$pipekey}{"write"};
+        $error = $addr_pipes{$pipekey}{"error"};
     }
     if ($pipekey eq $winsyms_key) {
         print $write "$modpath;$addr\n";     # write modpath;addr to pipe
@@ -1319,6 +1348,7 @@ sub lookup_symbol($modpath_in, $addr_in)
             print "WARNING: SIGPIPE for $pipekey $addr => re-running cmd\n";
             close $addr_pipes{$pipekey}{"read"};
             close $addr_pipes{$pipekey}{"write"};
+            close $addr_pipes{$pipekey}{"error"};
             undef $addr_pipes{$pipekey};
             goto reopen_pipe;
         }
@@ -1326,6 +1356,8 @@ sub lookup_symbol($modpath_in, $addr_in)
         # today we shouldn't get here since using addr2line if not winsyms
         print $write "$addr\n";     # write addr to pipe
     }
+    # we do not need select() here b/c we know we'll get stdout.  we read stderr
+    # only at the end when we reap the addr2line processes.
     my $out = <$read>;          # read symbol from pipe
     return $out .= <$read>;     # read file from pipe
 }
