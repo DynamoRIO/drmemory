@@ -890,6 +890,8 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
      */
     return false;
 #endif
+    if (!options.share_xl8)
+        return false;
     if (!whole_bb_spills_enabled())
         return false;
     if (nxt == NULL)

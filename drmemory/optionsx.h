@@ -364,6 +364,9 @@ OPTION_CLIENT_BOOL(internal, repstr_to_loop, true,
 OPTION_CLIENT_BOOL(internal, replace_realloc, true,
                    "Replace realloc to avoid races and non-delayed frees",
                    "Replace realloc to avoid races and non-delayed frees")
+OPTION_CLIENT_BOOL(internal, share_xl8, true,
+                   "Share translations among adjacent similar references",
+                   "Share translations among adjacent similar references")
 OPTION_CLIENT_BOOL(internal, check_memset_unaddr, true,
                    "Check for in-heap unaddr in memset",
                    "Check for in-heap unaddr in memset")
