@@ -115,6 +115,11 @@ enum {
 #define MAX_LINENO_DIGITS 6
 #define MAX_FILE_LINE_LEN (MAX_FILENAME_LEN + 1/*:*/ + MAX_LINENO_DIGITS)
 
+/* if a zero or bad fp is within this threshold of the lowest frame,
+ * do not scan further.  i#246.
+ * XXX: could turn into an option if becomes important
+ */
+#define FP_NO_SCAN_NEAR_LOW_THRESH 64
 
 /* Max length of error report lines prior to callstack.
  * Since disass is separate, this is title + timestamp + info
@@ -126,6 +131,10 @@ enum {
  *   Note: 0x0835b39b-0x0835b39c overlaps freed memory 0x0835b398-0x0835b3ac
  */
 #define MAX_ERROR_INITIAL_LINES 512
+
+#ifdef STATISTICS
+extern uint find_next_fp_scans;
+#endif
 
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,

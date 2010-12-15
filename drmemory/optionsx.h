@@ -144,7 +144,7 @@ OPTION_CLIENT_BOOL(client, pause_via_loop, false,
                    "Used in conjunction with -pause_at_uninitialized and -pause_at_uninitialized on Linux, this option causes "TOOLNAME" to pause via an infinite loop instead of waiting for stdin.  "TOOLNAME" will not continue beyond the first such error found.")
 
 #ifdef TOOL_DR_MEMORY
-OPTION_CLIENT(client, callstack_max_frames, uint, 15, 0, 4096,
+OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
               "How many call stack frames to record",
               "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
 #endif

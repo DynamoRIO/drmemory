@@ -311,6 +311,7 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
      * every-alloc scheme).
      */
     packed_callstack_t *pcs;
+    packed_callstack_t *existing;
     if (existing_data != NULL)
         pcs = (packed_callstack_t *) existing_data;
     else {
@@ -318,8 +319,17 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
         pc_to_loc(&loc, post_call);
         packed_callstack_record(&pcs, mc, &loc);
     }
-    /* add returns false if already there */
-    if (hashtable_add(&alloc_stack_table, (void *)pcs, (void *)pcs)) {
+    /* XXX i#246: store last malloc callstack outside of hashtable,
+     * and only add to hashtable on next malloc, so that if freed
+     * right away we avoid the hashtable lookup+cmp+insert+remove
+     * costs
+     */ 
+    existing = hashtable_lookup(&alloc_stack_table, (void *)pcs);
+    if (existing == NULL) {
+        /* avoid calling lookup twice by not calling hashtable_add() */
+        IF_DEBUG(void *prior =)
+            hashtable_add_replace(&alloc_stack_table, (void *)pcs, (void *)pcs);
+        ASSERT(prior == NULL, "just did lookup: cannot happen");
         DOLOG(2, {
             LOG(2, "@@@ unique callstack #%d\n", alloc_stack_count);
             packed_callstack_log(pcs, INVALID_FILE);
@@ -327,8 +337,6 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
         STATS_INC(alloc_stack_count);
     } else {
         uint count;
-        packed_callstack_t *existing = hashtable_lookup(&alloc_stack_table, (void *)pcs);
-        ASSERT(existing != NULL, "callstack must exist");
         if (existing_data == NULL) {    /* PR 533755 */
             count = packed_callstack_free(pcs);
             ASSERT(count == 0, "refcount should be 0");

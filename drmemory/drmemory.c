@@ -191,6 +191,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "app mallocs: %8u, frees: %8u, large mallocs: %6u\n",
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
+    dr_fprintf(f_global, "callstack fp scans: %8u\n", find_next_fp_scans);
     dr_fprintf(f_global, "stack swaps: %8u, triggers: %8u\n",
                stack_swaps, stack_swap_triggers);
     dr_fprintf(f_global, "push addr tot: %8u heap: %6u mmap: %6u\n",

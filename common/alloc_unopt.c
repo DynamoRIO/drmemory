@@ -36,8 +36,24 @@ memcpy_no_movs(void *dst, const void *src, size_t size)
 {
     register unsigned char *d = (unsigned char *) dst;
     register unsigned char *s = (unsigned char *) src;
-    while (size-- > 0) /* loop will terminate before underflow */
-        *d++ = *s++;
+    if (((ptr_uint_t)dst & 4) == ((ptr_uint_t)src & 4)) {
+        /* same alignment, so we can do 4 aligned bytes at a time and stay
+         * on fastpath
+         */
+        while (!ALIGNED(d, 4) && size-- > 0) /* loop will terminate before underflow */
+            *d++ = *s++;
+        while (size > 3) { /* loop will terminate before underflow */
+            *((unsigned int *)d) = *((unsigned int *)s);
+            s += 4;
+            d += 4;
+            size -= 4;
+        }
+        while (size-- > 0) /* loop will terminate before underflow */
+            *d++ = *s++;
+    } else {
+        while (size-- > 0) /* loop will terminate before underflow */
+            *d++ = *s++;
+    }
     return dst;
 }
 END_DO_NOT_OPTIMIZE

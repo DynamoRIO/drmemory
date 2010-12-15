@@ -59,6 +59,10 @@ static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
 # define FP_PREFIX "\t"
 #endif
 
+#ifdef STATISTICS
+uint find_next_fp_scans;
+#endif
+
 /****************************************************************************
  * Binary callstacks for storing callstacks of allocation sites.
  * Print-format callstacks take up too much room (PR 424179).
@@ -381,8 +385,14 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
      * Perhaps we should replace this w/ the actual stack bounds?
      */
     if (pt != NULL && pt->stack_lowest_frame != NULL &&
-        fp >= pt->stack_lowest_frame &&
-        (fp - pt->stack_lowest_frame) < op_stack_swap_threshold) {
+        ((fp >= pt->stack_lowest_frame &&
+          (fp - pt->stack_lowest_frame) < op_stack_swap_threshold) ||
+         /* if hit a zero or bad fp near the lowest frame, don't scan.
+          * some apps like perlbmk have some weird loader callstacks
+          * and then a solid bottom frame so try not to scan every time.
+          * xref i#246.
+          */
+         (!top_frame && (pt->stack_lowest_frame - fp) < FP_NO_SCAN_NEAR_LOW_THRESH))) {
         LOG(4, "find_next_fp: aborting b/c beyond stack_lowest_frame\n");
         return NULL;
     }
@@ -399,6 +409,7 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
         app_pc slot0, slot1;
         bool match, match_next_frame;
         /* Scan one page worth and look for potential fp,retaddr pair */
+        STATS_INC(find_next_fp_scans);
         for (sp = tos; sp - tos < op_fp_scan_sz; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
@@ -1100,7 +1111,10 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
         pc >= modtree_last_start && pc < modtree_last_start + modtree_last_size) {
         /* use cached values */
         res = true;
+        LOG(5, "module_lookup: using cached "PFX"\n", modtree_last_start);
     } else {
+        LOG(5, "module_lookup: "PFX" doesn't match cached "PFX"\n",
+            pc, modtree_last_start);
         node = rb_in_node(module_tree, pc);
         if (node != NULL) {
             res = true;
@@ -1138,7 +1152,13 @@ is_in_module(byte *pc)
         res = true;
     else {
         dr_mutex_lock(modtree_lock);
+        LOG(5, "is_in_module: "PFX" missed cached "PFX"-"PFX", miss="PFX", hit="PFX"\n",
+            pc, modtree_min_start, modtree_max_end, modtree_last_miss, modtree_last_hit);
         res = (rb_in_node(module_tree, pc) != NULL);
+        /* XXX: we could cache the range on a hit, and the range from prev lower
+         * to next higher on a miss: but going to wait for this to show up
+         * in pclookup.
+         */
         if (res)
             modtree_last_hit = (app_pc) ALIGN_BACKWARD(pc, PAGE_SIZE);
         else
