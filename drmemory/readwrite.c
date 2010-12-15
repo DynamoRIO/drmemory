@@ -814,7 +814,13 @@ instr_check_definedness(instr_t *inst)
          * Note that we don't shadow the floating-point status word, so
          * most float ops should hit this. */
         (!instr_mem_or_gpr_dsts(inst) &&
-         !TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)));
+         !TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
+         /* though prefetch has nowhere to propagate uninit shadow vals to, we
+          * do not want to raise errors.  so we ignore, under the assumption
+          * that a real move will happen soon enough to propagate: if not,
+          * little harm done.  i#244.
+          */
+         !instr_is_prefetch(inst));
 }
 
 /***************************************************************************

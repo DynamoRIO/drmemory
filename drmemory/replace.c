@@ -57,7 +57,8 @@
     REPLACE_DEF(strcpy)    \
     REPLACE_DEF(strncpy)   \
     REPLACE_DEF(strcat)    \
-    REPLACE_DEF(strncat)
+    REPLACE_DEF(strncat)   \
+    REPLACE_DEF(memmove)
 
 static const char *replace_routine_name[] = {
 #define REPLACE_DEF(nm) STRINGIFY(nm),
@@ -311,6 +312,29 @@ replace_strncat(char *dst, const char *src, size_t size)
         size--;
     }
     *d = '\0';
+    return dst;
+}
+
+IN_REPLACE_SECTION void *
+replace_memmove(void *dst, const void *src, size_t size)
+{
+    if (((ptr_uint_t)dst) - ((ptr_uint_t)src) >= size) {
+        /* forward walk won't clobber even if overlaps */
+        register const char *s = (const char *) src;
+        register char *d = (char *) dst;
+        while (size > 0) {
+            *d++ = *s++;
+            size--;
+        }
+    } else {
+        /* walk backward to avoid clobbering since may overlap */
+        register const char *s = ((const char *) src) + size;
+        register char *d = ((char *) dst) + size;
+        while (size > 0) {
+            *(--d) = *(--s);
+            size--;
+        }
+    }
     return dst;
 }
 
