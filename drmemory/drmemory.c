@@ -148,7 +148,10 @@ dump_statistics(void)
     dr_fprintf(f_global, "adjust_esp:%10u slow; %10u fast\n", adjust_esp_executions,
                adjust_esp_fastpath);
     dr_fprintf(f_global, "slow_path invocations: %10u\n", slowpath_executions);
-    dr_fprintf(f_global, "med_path invocations: %10u\n", medpath_executions);
+    dr_fprintf(f_global, "med_path invocations: %10u, fast: %10u\n",
+               medpath_executions, movs4_med_fast);
+    dr_fprintf(f_global, "movs4: src unalign: %10u, dst unalign: %10u, src undef: %10u\n",
+               movs4_src_unaligned, movs4_dst_unaligned, movs4_src_undef);
     dr_fprintf(f_global, "reads:  slow: %8u, fast: %8u, fast4: %8u, total: %8u\n",
                read_slowpath, read_fastpath, read4_fastpath,
                read_slowpath+read_fastpath+read4_fastpath);

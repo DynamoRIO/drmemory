@@ -2899,6 +2899,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         mi->check_definedness = true;
     /* We support push-mem and call_ind but we bail to slowpath if push-mem src is
      * not fully defined, since we don't support fastpath propagation for mem2mem
+     *
+     * XXX i#236: should be able to propagate for word-sized (and aligned) mem2mem
+     * since don't need 3rd reg for dst shadow table lookup
      */
     if (mi->mem2mem) {
         ASSERT(mi->store && opnd_same(mi->memop, mi->dst[0]), "mem2mem error");

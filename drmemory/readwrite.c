@@ -117,6 +117,10 @@ uint slowpath_unaligned;
 uint app_instrs_fastpath;
 uint app_instrs_no_dup;
 uint xl8_app_for_slowpath;
+uint movs4_src_unaligned;
+uint movs4_dst_unaligned;
+uint movs4_src_undef;
+uint movs4_med_fast;
 #endif
 
 /***************************************************************************
@@ -1470,8 +1474,57 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
      */
     uint shadow_vals[4];
     int i;
-    LOG(3, "medium_path movs4 "PFX"\n", loc_to_pc(loc));
+    LOG(3, "medium_path movs4 "PFX" src="PFX" %d%d%d%d dst="PFX" %d%d%d%d\n",
+        loc_to_pc(loc), mc->esi,
+        shadow_get_byte((app_pc)mc->esi), shadow_get_byte((app_pc)mc->esi+1),
+        shadow_get_byte((app_pc)mc->esi+2), shadow_get_byte((app_pc)mc->esi+3),
+        mc->edi, shadow_get_byte((app_pc)mc->edi), shadow_get_byte((app_pc)mc->edi+1),
+        shadow_get_byte((app_pc)mc->edi+2), shadow_get_byte((app_pc)mc->edi+3));
+#ifdef STATISTICS
+    if (!ALIGNED(mc->esi, 4))
+        STATS_INC(movs4_src_unaligned);
+    if (!ALIGNED(mc->edi, 4))
+        STATS_INC(movs4_dst_unaligned);
+    if (shadow_get_byte((app_pc)mc->esi) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->esi+1) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->esi+2) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->esi+3) != SHADOW_DEFINED)
+        STATS_INC(movs4_src_undef);
+#endif
     STATS_INC(medpath_executions);
+
+    /* The generalized routines below are just a little too slow.  The
+     * common case is an unaligned movs4 whose source is fully
+     * defined, or aligned or unaligned but with source undefined, and
+     * with eflags defined, so we have a fastpath here.  This has been
+     * good enough so no need for a real fastpath in gencode.
+     * i#i#237.
+     */
+    /* XXX: assuming SEG_DS and SEG_ES are flat+full */
+    if (is_shadow_register_defined(get_shadow_register(REG_ESI)) &&
+        is_shadow_register_defined(get_shadow_register(REG_EDI)) &&
+        get_shadow_eflags() == SHADOW_DEFINED) {
+        uint src0 = shadow_get_byte((app_pc)mc->esi+0);
+        uint src1 = shadow_get_byte((app_pc)mc->esi+1);
+        uint src2 = shadow_get_byte((app_pc)mc->esi+2);
+        uint src3 = shadow_get_byte((app_pc)mc->esi+3);
+        if ((src0 == SHADOW_DEFINED || src0 == SHADOW_UNDEFINED) &&
+            (src1 == SHADOW_DEFINED || src1 == SHADOW_UNDEFINED) &&
+            (src2 == SHADOW_DEFINED || src2 == SHADOW_UNDEFINED) &&
+            (src3 == SHADOW_DEFINED || src3 == SHADOW_UNDEFINED) &&
+            shadow_get_byte((app_pc)mc->edi+0) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->edi+1) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->edi+2) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->edi+3) != SHADOW_UNADDRESSABLE) {
+            shadow_set_byte((app_pc)mc->edi+0, src0);
+            shadow_set_byte((app_pc)mc->edi+1, src1);
+            shadow_set_byte((app_pc)mc->edi+2, src2);
+            shadow_set_byte((app_pc)mc->edi+3, src3);
+            STATS_INC(movs4_med_fast);
+            return;
+        }
+    }
+
     check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
                    opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);

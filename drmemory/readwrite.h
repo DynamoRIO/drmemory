@@ -123,6 +123,10 @@ extern uint delayed_free_bytes;
 extern uint app_instrs_fastpath;
 extern uint app_instrs_no_dup;
 extern uint xl8_app_for_slowpath;
+extern uint movs4_src_unaligned;
+extern uint movs4_dst_unaligned;
+extern uint movs4_src_undef;
+extern uint movs4_med_fast;
 #endif
 
 extern hashtable_t bb_table;
