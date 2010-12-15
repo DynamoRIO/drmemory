@@ -117,16 +117,20 @@ replace_memcpy(void *dst, const void *src, size_t size)
         /* same alignment, so we can do 4 aligned bytes at a time and stay
          * on fastpath
          */
-        while (!ALIGNED(d, 4) && size-- > 0) /* loop will terminate before underflow */
+        while (!ALIGNED(d, 4) && size > 0) {
             *d++ = *s++;
-        while (size > 3) { /* loop will terminate before underflow */
+            size--;
+        }
+        while (size > 3) {
             *((unsigned int *)d) = *((unsigned int *)s);
             s += 4;
             d += 4;
             size -= 4;
         }
-        while (size-- > 0) /* loop will terminate before underflow */
+        while (size > 0) {
             *d++ = *s++;
+            size--;
+        }
     } else {
         while (size-- > 0) /* loop will terminate before underflow */
             *d++ = *s++;
