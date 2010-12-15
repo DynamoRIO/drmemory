@@ -147,6 +147,16 @@ OPTION_CLIENT_BOOL(client, pause_via_loop, false,
 OPTION_CLIENT(client, callstack_max_frames, uint, 15, 0, 4096,
               "How many call stack frames to record",
               "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
+#endif
+
+/* by default scan forward a fraction of a page: good compromise bet perf (scanning
+ * can be the bottleneck) and good callstacks
+ */
+OPTION_CLIENT(client, callstack_max_scan, uint, 2048, 0, 16384,
+              "How far to scan to locate the first or next stack frame",
+              "How far to scan to locate the first stack frame when starting in a frameless function, or to locate the next stack frame when crossing loader or glue stub thunks or a signal or exception frame.  Increasing this can produce better callstacks but may incur noticeable overhead for applications that make many allocation calls.")
+
+#ifdef TOOL_DR_MEMORY
 OPTION_CLIENT_BOOL(client, check_leaks, true,
                    /* Requires -count_leaks and -track_heap */
                    "Store leak callstacks",

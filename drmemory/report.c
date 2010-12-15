@@ -730,10 +730,7 @@ report_init(void)
                    /* default flags: but if we have apps w/ DGC we may
                     * want to expose some flags as options */
                    0,
-                   /* scan forward 1 page: good compromise bet perf (scanning
-                    * can be the bottleneck) and good callstacks
-                    */
-                   PAGE_SIZE,
+                   options.callstack_max_scan,
                    IF_DRSYMS_ELSE(options.symbol_offsets, false),
                    get_syscall_name);
 
