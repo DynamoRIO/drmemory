@@ -99,11 +99,24 @@ ACTUAL_PRAGMA( code_seg(".replace") )
  */
 DO_NOT_OPTIMIZE
 IN_REPLACE_SECTION void *
-replace_memset(void *dst, int val, size_t size)
+replace_memset(void *dst, int val_in, size_t size)
 {
     register unsigned char *ptr = (unsigned char *) dst;
-    while (size-- > 0) /* loop will terminate before underflow */
-        *ptr++ = (unsigned char) val;
+    unsigned char val = (unsigned char) val_in;
+    unsigned int val4 = (val << 24) | (val << 16) | (val << 8) | val;
+    while (!ALIGNED(ptr, 4) && size > 0) {
+        *ptr++ = val;
+        size--;
+    }
+    while (size > 3) {
+        *((unsigned int *)ptr) = val4;
+        ptr += 4;
+        size -= 4;
+    }
+    while (size > 0) {
+        *ptr++ = val;
+        size--;
+    }
     return dst;
 }
 END_DO_NOT_OPTIMIZE
