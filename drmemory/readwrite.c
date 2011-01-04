@@ -804,11 +804,13 @@ instr_check_definedness(instr_t *inst)
         instr_is_cbr(inst) ||
         (options.check_non_moves && !opc_is_move(opc)) ||
         (options.check_cmps &&
-         /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc */
+         /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc,
+          * or a cmpxchg* */
          ((instr_num_dsts(inst) == 0 &&
            TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) ||
           opc_is_loop(opc) || opc_is_cmovcc(opc) || opc_is_fcmovcc(opc) ||
-          opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps)) ||
+          opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps ||
+          opc == OP_cmpxchg || opc == OP_cmpxchg8b)) ||
         /* if eip is a destination we have to check the corresponding
          * source.  for ret or call, the other dsts/srcs are just esp, which
          * has to be checked as an addressing register anyway. */

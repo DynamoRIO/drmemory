@@ -336,7 +336,7 @@ eflags_test(void)
 static void
 mem2mem_test(void)
 {
-    int * array_uninit = malloc(8);
+    int *array_uninit = malloc(8);
     /* test push-mem propagation (i#236) */
 #ifdef WINDOWS
     __asm {
@@ -364,6 +364,30 @@ mem2mem_test(void)
 }
 
 
+static void
+cmpxchg8b_test(void)
+{
+    int *array_uninit = malloc(8);
+    int *array_init = calloc(8, 1);
+    /* test push-mem propagation (i#236) */
+#ifdef WINDOWS
+    __asm {
+        mov   ecx, dword ptr [array_init]
+        cmpxchg8b  qword ptr [ecx]
+        mov   ecx, dword ptr [array_uninit]
+        cmpxchg8b  qword ptr [ecx]
+    }
+#else
+    asm("mov   %0, %%ecx" : : "g"(array_init) : "ecx");
+    asm("cmpxchg8b  (%ecx)");
+    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
+    asm("cmpxchg8b  (%ecx)");
+#endif
+    free(array_uninit);
+    free(array_init);
+}
+
+
 int
 main()
 {
@@ -384,6 +408,8 @@ main()
     eflags_test();
 
     mem2mem_test();
+
+    cmpxchg8b_test();
 
     return 0;
 }

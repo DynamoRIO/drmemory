@@ -260,7 +260,6 @@ instr_needs_slowpath(instr_t *inst)
     switch (opc) {
     case OP_sysenter:
     case OP_popa:
-    case OP_cmpxchg8b:
     case OP_bswap:
         return true;
     default:
@@ -533,6 +532,20 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         if (!opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
             return false;
+        mi->check_definedness = true;
+        return true;
+    } else if (opc == OP_cmpxchg8b) {
+        /* We keep in fastpath by treating as a 5-source 0-dest instr
+         * and using check_definedness, bailing to slowpath if any operand
+         * is other than fully defined.
+         */
+        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi) ||
+            !opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi) ||
+            !opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
+            return false;
+        /* Rather than extending the general fastpath arrays we hardcode the final 2 */
+        ASSERT(opnd_is_reg(instr_get_src(inst, 3)), "cmpxchg8b srcs changed in DR?");
+        ASSERT(opnd_is_reg(instr_get_src(inst, 4)), "cmpxchg8b srcs changed in DR?");
         mi->check_definedness = true;
         return true;
     } else if (opc == OP_xadd || opc == OP_xchg) {
@@ -3396,6 +3409,21 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         shadow_src = shadow_src2;
         shadow_src2 = shadow_src3;
         shadow_src3 = opnd_create_null();
+    }
+    marker1 = instr_get_next(marker2); /* may as well check first */
+    if (opc == OP_cmpxchg8b) {
+        /* we keep on fastpath by hardcoding the 4th & 5th sources */
+        opnd_t op4 = instr_get_src(inst, 3);
+        opnd_t op5 = instr_get_src(inst, 4);
+        insert_check_defined(drcontext, bb, marker1, mi, op4,
+                             opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
+        mark_eflags_used(drcontext, bb, mi->bb);
+        add_jcc_slowpath(drcontext, bb, marker1,
+                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        insert_check_defined(drcontext, bb, marker1, mi, op5,
+                             opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
+        add_jcc_slowpath(drcontext, bb, marker1,
+                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
     }
     ASSERT(mi->memsz <= 4 || num_to_propagate == 0,
            "propagation not suported for 8-byte memops");
