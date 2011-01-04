@@ -50,5 +50,9 @@ registers.c:325
 Error #7: UNINITIALIZED READ: reading register cl
 registers.c:330
 !endif
+Error #8: UNINITIALIZED READ: reading register ecx
+registers.c:359
+Error #9: UNINITIALIZED READ: reading 8 byte(s)
+registers.c:384
 Error #8: LEAK 15 direct bytes + 0 indirect bytes
 Error #9: LEAK 15 direct bytes + 0 indirect bytes

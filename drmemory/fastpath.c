@@ -440,17 +440,24 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (opnd_get_reg(instr_get_dst(inst, 1)) != REG_ESP ||
             opnd_get_size(instr_get_src(inst, 1)) != OPSZ_4)
             return false;
-        if (opnd_is_reg(instr_get_dst(inst, 0))) {
-            if (reg_ok_for_fastpath(instr_get_dst(inst, 0))) {
+        mi->dst[0] = instr_get_dst(inst, 0);
+        if (opnd_is_reg(mi->dst[0])) {
+            if (reg_ok_for_fastpath(mi->dst[0])) {
                 mi->src[0] = instr_get_src(inst, 1);
                 if (!memop_ok_for_fastpath(mi->src[0], false/*no 8-byte*/))
                     return false;
-                if (!reg_ignore_for_fastpath(instr_get_dst(inst, 0)))
-                    mi->dst[0] = instr_get_dst(inst, 0);
+                if (!reg_ignore_for_fastpath(mi->dst[0]))
+                    mi->dst[0] = mi->dst[0];
                 mi->load = true;
                 mi->pushpop = true;
                 return true;
             }
+        } else if (opnd_is_memory_reference(mi->dst[0])) {
+            /* XXX: to support mem2mem here we need to update instrument_fastpath
+             * to treat the load as the primary for pushpop-ness (normally mem2mem
+             * treats the load as secondary and the store as primary)
+             */
+            return false;
         }
     } else if (opc == OP_popf) {
         if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
@@ -539,7 +546,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     } else if (opc == OP_movs || opc == OP_stos || opc == OP_lods) {
         /* the edi/esi reg opnds are also base regs so we're already checking
          * for definedness: thus we can ignore and get on the fastpath,
-         * though w/ check_definedness like all mem2mem
+         * though w/ check_definedness unless word-sized, like all mem2mem
          */
         if (!opnd_ok_for_fastpath(instr_get_dst(inst, 0), 0, true, mi))
             return false;
@@ -662,7 +669,9 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     if (mi->load || mi->store) {
         mi->memop = adjust_memop(inst, mi->load ? mi->src[0] : mi->dst[0],
                                  mi->store, &mi->memsz, &mi->pushpop_stackop);
-        /* Since we don't allow push mem or pop mem these should be equal: */
+        /* Since we don't allow pop mem, and push mem has stack op as primary mem
+         * ref, these should be equal:
+         */
 #ifdef TOOL_DR_MEMORY
         ASSERT((!mi->pushpop && !mi->pushpop_stackop) ||
                (mi->pushpop && mi->pushpop_stackop), "internal error");
@@ -2055,6 +2064,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(!opnd_uses_reg(mi->memop, reg1) &&
                !opnd_uses_reg(mi->memop, reg2), "cannot re-lea");
         /* only used by non-mem2mem loads, so val is in reg2 and reg1 is now scratch */
+        ASSERT(!mi->mem2mem, "mem2mem zero-offs NYI");
         ASSERT(value_in_reg2, "clobbering reg1");
         ASSERT(!SHARING_XL8_ADDR(mi), "when sharing reg1 is in use");
         insert_lea(drcontext, bb, inst, mi->memop, reg1);
@@ -2844,6 +2854,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* need to reference by address not value so copy dst shadow */
             shadow_src = shadow_dst;
         } else {
+            /* for mem2mem we'll adjust below */
             ASSERT(mi->load || mi->store, "mem must be load or store");
             if (mi->memsz <= 4)
                 shadow_src = opnd_create_reg(reg2_8);
@@ -2905,16 +2916,21 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         opnd_size_in_bytes(opnd_get_size(mi->src[0])) < mi->opsz &&
         opc != OP_movzx && opc != OP_movsx)
         mi->check_definedness = true;
-    /* We support push-mem and call_ind but we bail to slowpath if push-mem src is
-     * not fully defined, since we don't support fastpath propagation for mem2mem
-     *
-     * XXX i#236: should be able to propagate for word-sized (and aligned) mem2mem
-     * since don't need 3rd reg for dst shadow table lookup
+    /* We support push-mem and call_ind and other mem2mem, but we can
+     * only propagate if we don't need the 3rd scratch reg: i.e., if
+     * they're word-sized
      */
     if (mi->mem2mem) {
         ASSERT(mi->store && opnd_same(mi->memop, mi->dst[0]), "mem2mem error");
         ASSERT(opnd_is_memory_reference(mi->src[0]), "mem2mem error");
-        mi->check_definedness = true;
+        if (mi->memsz == 4 &&
+            !mi->need_offs && !need_nonoffs_reg3 && !mi->zero_rest_of_offs &&
+            /* not much point in propagating w/o good addr check */
+            options.loads_use_table) {
+            /* propagate */
+        } else {
+            mi->check_definedness = true;
+        }
     }
     /* Propagation not supported: no support for multi-src
      * propagation, and not enough reg for sub-dword
@@ -2982,8 +2998,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
            opnd_size_in_bytes(opnd_get_size(mi->src[0])) == mi->opsz,
            "dst/src size mismatch");
 #ifdef TOOL_DR_MEMORY
-    ASSERT((!mi->mem2mem && !mi->load2x) || mi->check_definedness, 
-           "mem2mem and load2x only supported if not propagating");
+    ASSERT(!mi->load2x || mi->check_definedness, 
+           "load2x only supported if not propagating");
 #endif
 
     /* PR 578892: fastpath heap routine unaddr accesses */
@@ -3133,27 +3149,41 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                 mi->reg1.reg/*won't be touched!*/, true/*jcc short*/);
         ASSERT(reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
 #ifdef TOOL_DR_MEMORY
-        PRE(bb, inst,
-            INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3_8),
-                             OPND_CREATE_INT8((char)SHADOW_DWORD_DEFINED)));
-        mark_eflags_used(drcontext, bb, mi->bb);
-        add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
-        /* now we're done with the src mem op so we proceed to the dst.
-         * if we want to use shadow_dword_is_addr_not_bit table we'll have
-         * to add propagation of this mem src.
-         */
-        if (mi->mem2mem) {
-            shadow_src = opnd_create_null();
+        if (mi->mem2mem && !mi->check_definedness) {
+            /* if we don't need the 3rd reg for the main mem lookup (i.e., word-sized
+             * (and word-aligned) mem2mem), go ahead and propagate.
+             * XXX i#164: add a reg "claimed" field to enforce us owning reg3
+             */
+            ASSERT(mi->memsz == 4, "only word-sized mem2mem prop supported");
+            /* Check for unaddressability via table lookup */
+            PRE(bb, inst,
+                INSTR_CREATE_cmp(drcontext,
+                                 OPND_CREATE_MEM8(mi->reg3.reg,
+                                                  (int)shadow_dword_is_addr_not_bit),
+                                 OPND_CREATE_INT8(1)));
+            shadow_src = opnd_create_reg(reg3_8);
             /* shouldn't be other srcs */
             ASSERT(opnd_is_null(shadow_src2), "mem2mem error");
         } else {
-            shadow_src2 = opnd_create_null();
-            /* shouldn't be other srcs */
-            ASSERT(opnd_is_null(shadow_src3), "mem2mem error");
-            checked_src2 = true;
+            PRE(bb, inst,
+                INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg3_8),
+                                 OPND_CREATE_INT8((char)SHADOW_DWORD_DEFINED)));
+            /* now we're done with the src mem op so we proceed to the dst */
+            if (mi->mem2mem) {
+                shadow_src = opnd_create_null();
+                /* shouldn't be other srcs */
+                ASSERT(opnd_is_null(shadow_src2), "mem2mem error");
+            } else {
+                shadow_src2 = opnd_create_null();
+                /* shouldn't be other srcs */
+                ASSERT(opnd_is_null(shadow_src3), "mem2mem error");
+                checked_src2 = true;
+            }
+            if (num_to_propagate > 0)
+                num_to_propagate--;
         }
-        if (num_to_propagate > 0)
-            num_to_propagate--;
+        mark_eflags_used(drcontext, bb, mi->bb);
+        add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
 #else
         /* shadow lookup left reg3 holding address */
         if (!options.stale_blind_store) {

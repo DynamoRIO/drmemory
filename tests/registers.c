@@ -333,6 +333,37 @@ eflags_test(void)
     free(undef);
 }
 
+static void
+mem2mem_test(void)
+{
+    int * array_uninit = malloc(8);
+    /* test push-mem propagation (i#236) */
+#ifdef WINDOWS
+    __asm {
+        mov   ecx, dword ptr [array_uninit]
+        push  dword ptr [ecx]
+        push  dword ptr [ecx+4]
+        pop   dword ptr [ecx+4]
+        pop   ecx
+        cmp   ecx,0
+        je    equals
+      equals:
+        nop
+    }
+#else
+    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
+    asm("pushl  (%ecx)");
+    asm("pushl  4(%ecx)");
+    asm("popl   4(%ecx)");
+    asm("popl   %ecx");
+    asm("cmp    $0,%ecx");
+    asm("je     equals");
+    asm("equals: nop");
+#endif
+    free(array_uninit);
+}
+
+
 int
 main()
 {
@@ -351,6 +382,8 @@ main()
     repstr_test();
 
     eflags_test();
+
+    mem2mem_test();
 
     return 0;
 }
