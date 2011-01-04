@@ -2859,8 +2859,19 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     }
 #ifdef STATISTICS
     /* check whether should have hit fast path */
-    if (sz > 1 && !ALIGNED(addr, sz))
+    if (sz > 1 && !ALIGNED(addr, sz) && loc->type != APP_LOC_SYSCALL) {
         STATS_INC(slowpath_unaligned);
+        DOLOG(3, {
+            LOG(1, "unaligned slow_path @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x)%s ",
+                loc_to_print(loc),
+                TEST(MEMREF_WRITE, flags) ?
+                (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
+                (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"),
+                addr, sz, shadow_get_dword(addr), was_special ? " (was special)" : "");
+            disassemble_with_info(dr_get_current_drcontext(), loc_to_pc(loc), f_global,
+                                  false/*!show pc*/, true/*show bytes*/);
+        });
+    }
     if (allgood && !was_special && (sz == 1 || ALIGNED(addr, 4)) && !exception &&
         loc->type != APP_LOC_SYSCALL /* not a system call */) {
         LOG(3, "\tin slow path for unknown reason @"PFX" "PFX"\n", loc_to_pc(loc), addr);
