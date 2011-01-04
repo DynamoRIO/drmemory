@@ -131,9 +131,9 @@ typedef struct _bb_saved_info_t {
     /* This is used to handle non-precise flushing */
     byte ignore_next_delete;
     bool eflags_saved:1;
-    app_pc last_instr;
     /* For PR 578892, to avoid DR having to store translations */
-    bool check_ignore_unaddr;
+    bool check_ignore_unaddr:1;
+    app_pc last_instr;
 } bb_saved_info_t;
 
 bool

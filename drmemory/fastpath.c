@@ -2818,6 +2818,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     instr_t *check_ignore_resume = NULL;
 #endif
     bool check_appval, need_reg3_for_appval;
+    bool check_ignore_tls = true;
 
     /* mi is memset to 0 so bools and pointers are false/NULL */
     mi->slowpath = INSTR_CREATE_label(drcontext);
@@ -3082,6 +3083,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     });
 #endif
 
+    if (hashtable_lookup(&ignore_unaddr_table, instr_get_app_pc(inst)) != NULL) {
+        check_ignore_unaddr = true;
+        check_ignore_tls = false; /* do not check in-heap tls slot */
+    }
     /* PR 578892: fastpath heap routine unaddr accesses */
     if (check_ignore_unaddr && (mi->load || mi->store)) {
         LOG(4, "in heap routine: adding nop-if-mem-unaddr checks\n");
@@ -3905,10 +3910,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* PR 578892: fastpath heap routine unaddr accesses */
         PRE(bb, inst, heap_unaddr);
         if (check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow)) {
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
-                                 OPND_CREATE_INT8(0)));
-            add_jcc_slowpath(drcontext, bb, inst, OP_je_short, mi);
+            if (check_ignore_tls) {
+                PRE(bb, inst,
+                    INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
+                                     OPND_CREATE_INT8(0)));
+                add_jcc_slowpath(drcontext, bb, inst, OP_je_short, mi);
+            }
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
                                  shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)));

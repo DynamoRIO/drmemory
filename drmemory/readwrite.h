@@ -134,6 +134,9 @@ extern hashtable_t bb_table;
 /* PR 493257: share shadow translation across multiple instrs */
 extern hashtable_t xl8_sharing_table;
 
+/* alloca handling in fastpath (i#91) */
+extern hashtable_t ignore_unaddr_table;
+
 dr_emit_flags_t
 instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
               bool for_trace, bool translating);

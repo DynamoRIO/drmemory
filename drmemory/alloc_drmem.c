@@ -1505,6 +1505,25 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
         STATS_INC(alloca_exception);
 #endif
     instr_free(drcontext, &next);
+
+    if (match) {
+        /* i#91: for some apps there are so many alloca probes that it's a perf
+         * hit to come to the slowpath, so we note the address, flush the
+         * fragment, and ignore unaddrs there in the future.
+         */
+        bool exists = hashtable_add(&ignore_unaddr_table, pc, (void *)1);
+        if (exists) {
+            /* this can happen on concurrent execution prior to the flush */
+            ELOG(0, "WARNING: ignore_unaddr_table entry came to slowpath\n");
+        } else {
+            bool success = dr_delay_flush_region(pc, 1, 0, NULL);
+            if (!success) {
+                ASSERT(false, "ignore_unaddr_table flush failed");
+                ELOG(0, "WARNING: ignore_unaddr_table flush failed!\n");
+            }
+        }
+    }
+
     return match;
 }
 

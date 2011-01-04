@@ -53,6 +53,10 @@ hashtable_t bb_table;
 #define XL8_SHARING_HASH_BITS 10
 hashtable_t xl8_sharing_table;
 
+/* alloca handling in fastpath (i#91) */
+#define IGNORE_UNADDR_HASH_BITS 6
+hashtable_t ignore_unaddr_table;
+
 #ifdef STATISTICS
 /* per-opcode counts */
 uint64 slowpath_count[OP_LAST+1];
@@ -438,15 +442,20 @@ event_fragment_delete(void *drcontext, void *tag)
     }
     hashtable_unlock(&bb_table);
 
-    /* FIXME: ideally would also remove xl8_sharing_table entries but would need
-     * to decode forward (not always safe) and query every app pc, or store bb
-     * size and then walk entire xl8_sharing_table or switch it to an rbtree.
+    /* XXX i#260: ideally would also remove xl8_sharing_table entries
+     * but would need to decode forward (not always safe) and query
+     * every app pc, or store bb size and then walk entire
+     * xl8_sharing_table or switch it to an rbtree, or also store a
+     * pointer in the bb hashtable.
      * Without removing, new code that replaces old code at the same address
      * can fail to be optimized b/c it will use the old code's history: so
      * a perf failure, not a correctness failure.
      * -single_arg_slowpath adds a second entry with cache pc for each app
      * pc entry, which is harder to delete but we're not deleting anything
      * now anyway.
+     */
+    /* FIXME i#260: ditto for ignore_unaddr_table, though there we
+     * could have false negatives!
      */
 }
 
@@ -2344,6 +2353,8 @@ instrument_init(void)
                           false/*!synch*/, bb_table_free_entry, NULL, NULL);
         hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
+        hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
 
 #ifdef STATISTICS
         next_stats_dump = options.stats_dump_interval;
@@ -2369,6 +2380,7 @@ instrument_exit(void)
             bb_table.table_bits, bb_table.entries);
         hashtable_delete(&bb_table);
         hashtable_delete(&xl8_sharing_table);
+        hashtable_delete(&ignore_unaddr_table);
 #ifdef TOOL_DR_MEMORY
         replace_exit();
 #endif
