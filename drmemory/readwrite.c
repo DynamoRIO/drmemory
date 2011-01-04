@@ -1076,6 +1076,8 @@ combine_shadows(uint shadow1, uint shadow2)
      * more-significant bytes.
      * This routine only looks at two one-byte values in any case.
      * We ignore BITLEVEL for now.
+     * We assume UNADDR will be reported, and we want to propagate
+     * defined afterward in any case to avoid chained errors.
      */
     return (shadow1 == SHADOW_UNDEFINED || shadow2 == SHADOW_UNDEFINED) ?
         SHADOW_UNDEFINED : SHADOW_DEFINED;

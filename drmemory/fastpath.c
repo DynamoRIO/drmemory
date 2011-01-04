@@ -2754,6 +2754,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef DEBUG
     instr_t *instru_start = instr_get_prev(inst);
 #endif
+#ifdef TOOL_DR_MEMORY
+    instr_t *check_ignore_resume = NULL;
+#endif
 
     /* mi is memset to 0 so bools and pointers are false/NULL */
     mi->slowpath = INSTR_CREATE_label(drcontext);
@@ -3000,7 +3003,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef TOOL_DR_MEMORY
     ASSERT(!mi->load2x || mi->check_definedness, 
            "load2x only supported if not propagating");
-#endif
 
     /* PR 578892: fastpath heap routine unaddr accesses */
     if (check_ignore_unaddr && (mi->load || mi->store)) {
@@ -3183,7 +3185,37 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 num_to_propagate--;
         }
         mark_eflags_used(drcontext, bb, mi->bb);
-        add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
+        if (mi->mem2mem && check_ignore_unaddr && !opnd_is_null(shadow_src)) {
+            /* PR 578892: fastpath heap routine unaddr accesses.  Yes, there
+             * are mem2mem w/ load being heap unaddr: push of heap lock to
+             * pass to RtlTryEnterCriticalSection
+             */
+            instr_t *not_unaddr = INSTR_CREATE_label(drcontext);
+            PRE(bb, inst,
+                INSTR_CREATE_jcc(drcontext, OP_je, opnd_create_instr(not_unaddr)));
+            mi->need_slowpath = true;
+            ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
+            heap_unaddr_shadow = shadow_src;
+            /* mem2mem needs to handle the other memref, and push-mem
+             * needs to mark the stack slot as addressable so come
+             * back here after the check_ignore_unaddr
+             */
+            PRE(bb, inst, INSTR_CREATE_jmp(drcontext, opnd_create_instr(heap_unaddr)));
+            check_ignore_resume = INSTR_CREATE_label(drcontext);
+            PRE(bb, inst, check_ignore_resume);
+            /* heap_unaddr checked that we're in a heap routine and the src is unaddr.
+             * follow slowpath's lead and propagate defined, though we avoid
+             * marking orig as defined: not ideal but is there a better solution?
+             * else have to have in-heap allow touching ANY unaddr mem, not just
+             * in-heap, b/c unaddr will flow to stack, etc., and need
+             * to support propagating unaddr in combine_shadows().
+             */
+            PRE(bb, inst,
+                INSTR_CREATE_mov_imm(drcontext, shadow_src,
+                                     shadow_immed(mi->memsz, SHADOW_DEFINED)));
+            PRE(bb, inst, not_unaddr);
+        } else
+            add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
 #else
         /* shadow lookup left reg3 holding address */
         if (!options.stale_blind_store) {
@@ -3343,7 +3375,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (!checked_src2 || !opnd_same(mi->src[1], mi->src[0])) {
             insert_check_defined(drcontext, bb, marker1, mi, mi->src[0], shadow_src);
             mark_eflags_used(drcontext, bb, mi->bb);
-            if (check_ignore_unaddr) {
+            ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
+            if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
                 /* PR 578892: fastpath heap routine unaddr accesses
                  * Can't do this for src1 and src2 b/c no support for more than
                  * one shadow value type to check down below: but this is enough
@@ -3352,7 +3385,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, marker1,
                     INSTR_CREATE_jcc(drcontext, OP_jne, opnd_create_instr(heap_unaddr)));
                 mi->need_slowpath = true;
-                ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
                 heap_unaddr_shadow = shadow_src;
             } else {
                 add_jcc_slowpath(drcontext, bb, marker1, OP_jne_short, mi);
@@ -3762,9 +3794,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
                                  shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)));
-            PRE(bb, inst,
-                INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                 opnd_create_instr(fastpath_restore)));
+            if (check_ignore_resume != NULL) {
+                PRE(bb, inst,
+                    INSTR_CREATE_jcc(drcontext, OP_je,
+                                     opnd_create_instr(check_ignore_resume)));
+            } else {
+                PRE(bb, inst,
+                    INSTR_CREATE_jcc(drcontext, OP_je_short,
+                                     opnd_create_instr(fastpath_restore)));
+            }
         }
 #endif
         PRE(bb, inst, mi->slowpath);
