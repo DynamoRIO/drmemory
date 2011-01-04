@@ -548,6 +548,10 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
 {
     app_pc pass_to_free = NULL;
     pass_to_free = info->delay_free_list[idx].addr;
+#ifdef WINDOWS
+    if (auxarg != NULL)
+        *auxarg = info->delay_free_list[idx].auxarg;
+#endif
     if (pass_to_free != NULL) {
         rb_node_t *node = rb_find(delay_free_tree, pass_to_free);
         if (node != NULL) {
@@ -563,10 +567,6 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
             DOLOG(1, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
             ASSERT(false, "delay_free_tree inconsistent");
         }
-#ifdef WINDOWS
-        if (auxarg != NULL)
-            *auxarg = info->delay_free_list[idx].auxarg;
-#endif
         info->delay_free_bytes -= info->delay_free_list[idx].real_size;
         STATS_ADD(delayed_free_bytes,
                   -(int)info->delay_free_list[idx].real_size);
