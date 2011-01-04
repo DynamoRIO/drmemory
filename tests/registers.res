@@ -33,6 +33,10 @@ Error #6: UNINITIALIZED READ: reading register eflags
 registers.c:309
 Error #7: UNINITIALIZED READ: reading register cl
 registers.c:314
+Error #8: UNINITIALIZED READ: reading register ecx
+registers.c:348
+Error #9: UNINITIALIZED READ: reading 8 byte(s)
+registers.c:378
 !endif
 !if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
@@ -49,10 +53,10 @@ Error #6: UNINITIALIZED READ: reading register eflags
 registers.c:325
 Error #7: UNINITIALIZED READ: reading register cl
 registers.c:330
-!endif
 Error #8: UNINITIALIZED READ: reading register ecx
 registers.c:359
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:384
-Error #8: LEAK 15 direct bytes + 0 indirect bytes
-Error #9: LEAK 15 direct bytes + 0 indirect bytes
+!endif
+Error #10: LEAK 15 direct bytes + 0 indirect bytes
+Error #11: LEAK 15 direct bytes + 0 indirect bytes

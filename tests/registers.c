@@ -387,6 +387,30 @@ cmpxchg8b_test(void)
     free(array_init);
 }
 
+static void
+and_or_test(void)
+{
+    int *array_uninit = malloc(8);
+    static int zero;
+    /* test push-mem propagation (i#236) */
+#ifdef WINDOWS
+    __asm {
+        mov   ecx, dword ptr [array_uninit]
+        mov   ecx, dword ptr [ecx]
+        test  dword ptr [zero], ecx
+        mov   eax, dword ptr [zero]
+        test  ecx, eax
+    }
+#else
+    asm("mov   %0, %%ecx" : : "g"(array_uninit) : "ecx");
+    asm("mov   (%ecx), %ecx");
+    asm("test  %0, %%ecx" : : "g"(zero) : "ecx");
+    asm("mov   %0, %%ecx" : : "g"(zero) : "eax");
+    asm("test  %ecx, %eax");
+#endif
+    free(array_uninit);
+}
+
 
 int
 main()
@@ -410,6 +434,8 @@ main()
     mem2mem_test();
 
     cmpxchg8b_test();
+
+    and_or_test();
 
     return 0;
 }

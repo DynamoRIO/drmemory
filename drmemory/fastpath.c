@@ -1748,6 +1748,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                              /* short doesn't quite reach for mem2mem's 1st check
                               * FIXME: use short for 2nd though! */
                              (mi->mem2mem || mi->load2x ||
+                              /* new zero-src check => require long */
+                              instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1]))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(base) - REG_EAX] = true;
@@ -1765,6 +1767,8 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
             mark_eflags_used(drcontext, bb, mi->bb);
             add_jcc_slowpath(drcontext, bb, inst,
                              (mi->mem2mem || mi->load2x ||
+                              /* new zero-src check => require long */
+                              instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1]))) ?
                              OP_jne : OP_jne_short, mi);
             mi->bb->addressable[reg_to_pointer_sized(index) - REG_EAX] = true;
@@ -2712,6 +2716,33 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
 }
 #endif
 
+/* restores global regs but preserves mi->reg1.
+ * clobbers reg2 and reg3 (so requires reg3 to be set up).
+ */
+static void
+insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
+                        fastpath_info_t *mi, opnd_t memop)
+{
+    mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
+    if (mi->bb->reg1.reg != mi->reg1.reg &&
+        opnd_uses_reg(memop, mi->bb->reg1.reg))
+        insert_spill_global(drcontext, bb, inst, &mi->bb->reg1, false/*restore*/);
+    if (mi->bb->reg2.reg != mi->reg1.reg &&
+        opnd_uses_reg(memop, mi->bb->reg2.reg))
+        insert_spill_global(drcontext, bb, inst, &mi->bb->reg2, false/*restore*/);
+    /* mi->reg1 holds the first lea so we have to preserve it */
+    if (opnd_uses_reg(memop, mi->reg1.reg)) {
+        spill_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
+        if (mi->reg1.global)
+            insert_spill_global(drcontext, bb, inst, &mi->reg1, false/*restore*/);
+        else
+            restore_reg(drcontext, bb, inst, mi->reg1.reg, mi->reg1.slot);
+        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg);
+        restore_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
+    } else
+        insert_lea(drcontext, bb, inst, memop, mi->reg3.reg);
+}
+
 /* Fast path for "normal" instructions with a single memory 
  * reference using 4-byte addressing registers.
  * Handles mem-to-reg (including pop), reg-to-mem (including push),
@@ -2770,6 +2801,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef TOOL_DR_MEMORY
     instr_t *check_ignore_resume = NULL;
 #endif
+    bool check_appval, need_reg3_for_appval;
 
     /* mi is memset to 0 so bools and pointers are false/NULL */
     mi->slowpath = INSTR_CREATE_label(drcontext);
@@ -2824,6 +2856,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
         need_nonoffs_reg3 = true;
 
+    check_appval = (opc == OP_and || opc == OP_test || opc == OP_or) &&
+        /* only for word size so no conflict w/ reg3 */
+        mi->opsz == 4;
+    need_reg3_for_appval = 
+        /* to read the app value for and/test/or memop we need 3rd reg */
+        check_appval && (mi->load || mi->store);
+
     /* set up regs and spill info */
     pick_scratch_regs(inst, mi, true/*only pick a,b,c,d*/,
                       /* we need 3rd reg for temp to get offs while getting
@@ -2831,8 +2870,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                        * add_dst_shadow_write(); we also need to handle 2nd
                        * memop for mem2mem or load2x.
                        */
-                      mi->need_offs || mi->mem2mem || mi->load2x || need_nonoffs_reg3,
-                      !need_nonoffs_reg3 || opnd_is_immed_int(mi->offs), mi->memop,
+                      mi->need_offs || mi->mem2mem || mi->load2x || need_nonoffs_reg3 ||
+                      /* to read the app value for and/test/or memop we need 3rd reg */
+                      need_reg3_for_appval,
+                      !need_reg3_for_appval && (!need_nonoffs_reg3 ||
+                                                opnd_is_immed_int(mi->offs)),
+                      mi->memop,
                       mi->mem2mem ? mi->src[0] :
                       (mi->load2x ? mi->src[1] : opnd_create_null()));
     reg1_8 = reg_32_to_8(mi->reg1.reg);
@@ -3047,24 +3090,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
     if (mi->mem2mem || mi->load2x) {
         opnd_t mem2 = mi->mem2mem ? mi->src[0] : mi->src[1];
-        mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
-        if (mi->bb->reg1.reg != mi->reg1.reg &&
-            opnd_uses_reg(mem2, mi->bb->reg1.reg))
-            insert_spill_global(drcontext, bb, inst, &mi->bb->reg1, false/*restore*/);
-        if (mi->bb->reg2.reg != mi->reg1.reg &&
-            opnd_uses_reg(mem2, mi->bb->reg2.reg))
-            insert_spill_global(drcontext, bb, inst, &mi->bb->reg2, false/*restore*/);
-        /* mi->reg1 holds the first lea so we have to preserve it */
-        if (opnd_uses_reg(mem2, mi->reg1.reg)) {
-            spill_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
-            if (mi->reg1.global)
-                insert_spill_global(drcontext, bb, inst, &mi->reg1, false/*restore*/);
-            else
-                restore_reg(drcontext, bb, inst, mi->reg1.reg, mi->reg1.slot);
-            insert_lea(drcontext, bb, inst, mem2, mi->reg3.reg);
-            restore_reg(drcontext, bb, inst, mi->reg1.reg, SPILL_SLOT_5);
-        } else
-            insert_lea(drcontext, bb, inst, mem2, mi->reg3.reg);
+        insert_lea_preserve_reg(drcontext, bb, inst, mi, mem2);
     }
 
     /* don't need to save flags for things like rdtsc */
@@ -3370,8 +3396,47 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         LOG(4, "\tchecking definedness of src2 => %d to propagate\n", num_to_propagate-1);
         insert_check_defined(drcontext, bb, marker1, mi, mi->src[1], shadow_src2);
         mark_eflags_used(drcontext, bb, mi->bb);
-        add_jcc_slowpath(drcontext, bb, marker1,
-                         check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        /* relies on src1 undef going to slowpath so only for !opnd_same */
+        if (check_appval && !opnd_same(mi->src[1], mi->src[0])) {
+            /* handle common cases of undef and/test/or in fastpath: only handling
+             * 2nd src being undef when 1st src is defined and entirely 0 or 1.
+             * i#254 covers doing more.
+             */
+            instr_t *src2_defined = INSTR_CREATE_label(drcontext);
+            opnd_t app_val;
+            PRE(bb, marker1, INSTR_CREATE_jcc(drcontext, OP_je,
+                                              opnd_create_instr(src2_defined)));
+            if (mi->load || mi->store) {
+                /* re-lea */
+                ASSERT(mi->reg3.reg != REG_NULL, "need reg3");
+                ASSERT(!(mi->need_offs || mi->mem2mem || mi->load2x || need_nonoffs_reg3),
+                       "shouldn't need reg3 for any other reason");
+                insert_lea_preserve_reg(drcontext, bb, inst, mi, mi->memop);
+                app_val = opnd_create_base_disp(mi->reg3.reg, REG_NULL, 0, 0,
+                                                opnd_get_size(mi->memop));
+            } else {
+                app_val = mi->src[0];
+            }
+            if (opc == OP_and || opc == OP_test) {
+                if (mi->load || mi->store) {
+                    PRE(bb, marker1, INSTR_CREATE_cmp
+                        (drcontext, app_val, opnd_create_immed_int
+                         (0, opnd_get_size(app_val))));
+                } else
+                    PRE(bb, marker1, INSTR_CREATE_test(drcontext, app_val, app_val));
+            } else {
+                PRE(bb, marker1, INSTR_CREATE_cmp
+                    (drcontext, app_val, opnd_create_immed_int
+                     (1, opnd_get_size(app_val))));
+            }
+            add_jcc_slowpath(drcontext, bb, marker1,
+                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+            /* having num_to_propagate == 0 implies mark_defined */
+            PRE(bb, marker1, src2_defined);
+        } else {
+            add_jcc_slowpath(drcontext, bb, marker1,
+                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+        }
         num_to_propagate--;
         shadow_src2 = shadow_src3;
         shadow_src3 = opnd_create_null();
