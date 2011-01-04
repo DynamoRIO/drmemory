@@ -78,13 +78,13 @@ typedef struct _fastpath_info_t {
     reg_id_t src_reg;
     reg_id_t dst_reg;
     opnd_t memop;
-    int src_opsz; /* equals mi->opsz, except for movzx/movsx */
+    int opsz; /* destination operand size */
+    uint memsz; /* primary memory ref size */
+    int src_opsz; /* source operand size */
+    opnd_t offs; /* if sub-dword, offset within containing dword */
     bool check_definedness;
 
     /* filled in by instrument_fastpath() */
-    int opsz; /* primary operand size */
-    uint memsz; /* primary memory ref size (may be <opsz for movzx/movsx) */
-    opnd_t offs; /* if sub-dword, offset within containing dword */
     bool zero_rest_of_offs; /* when calculate mi->offs, zero rest of bits in reg */
     bool pushpop_stackop;
     bool need_offs;

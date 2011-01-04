@@ -411,6 +411,20 @@ and_or_test(void)
     free(array_uninit);
 }
 
+static void
+float_test(void)
+{
+    double val = 0.;
+    /* test cvttsd2si (i#258, i#259, DRi#371) */
+#ifdef WINDOWS
+    __asm {
+        cvttsd2si  eax, dword ptr [val]
+    }
+#else
+    asm("mov   %0, %%ecx" : : "g"(&val) : "ecx");
+    asm("cvttsd2si  (%ecx), %eax");
+#endif
+}
 
 int
 main()
@@ -436,6 +450,8 @@ main()
     cmpxchg8b_test();
 
     and_or_test();
+
+    float_test();
 
     return 0;
 }
