@@ -1661,11 +1661,19 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 
+/* val should be OPSZ_1.  this routine supports a larger val if it's
+ * an immed int, in which case it's truncated.
+ */
 static bool
 write_shadow_eflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                     reg_id_t load_through, opnd_t val)
 {
     if (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
+        if (opnd_get_size(val) != OPSZ_1) {
+            ASSERT(opnd_is_immed_int(val), "unsupported arg");
+            /* truncate: meant for shadow constant */
+            opnd_set_size(&val, OPSZ_1);
+        }
         /* rather than test if undefined, or just write 2 bits, we
          * write the whole byte (and read the whole byte as well) */
         if (load_through == REG_NULL || opnd_is_immed_int(val) || opnd_is_reg(val)) {
@@ -2154,7 +2162,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
     } else if (src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
         /* copy entire 2 or 4 bytes shadowing the qword */
-        /* FIXME: do none of the 8/16-byte srcs write eflags?  no handling for that! */
+        /* write_shadow_eflags will convert src to single-byte size */
         if (process_eflags)
             write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
         if (!opnd_is_null(dst)) {
