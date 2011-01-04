@@ -1498,7 +1498,7 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
         /* this is a probe to commit the page: does not change range of
          * stack pointer
          */
-        *now_addressable = false; /* FIXME: I used to have true here: verify ok */
+        *now_addressable = false;
     }
 #ifdef STATISTICS
     if (match)
@@ -1722,6 +1722,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
             /* matched pattern, but target is actually unreadable! */
             return false;
         }
+        LOG(3, "matched is_ok_unaddressable_pattern\n");
     }
 
     if (now_addressable)
@@ -1830,6 +1831,8 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz)
                  addr, slot);
             tls_ok = (peb->TlsExpansionBitmap->Buffer[slot/32] & (1 << (slot % 32)));
         }        
+        LOG(3, "ignoring unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
+            write ? "write" : "read", loc_to_print(loc), addr, shadow_get_byte(addr));
         STATS_INC(tls_exception);
         /* We leave as unaddressable since we're not tracking the unset so we
          * can't safely mark as addressable */

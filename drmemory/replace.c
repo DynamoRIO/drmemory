@@ -387,6 +387,25 @@ static const void *replace_routine_addr[] = {
 #undef REPLACE_DEF
 };
 
+static app_pc
+get_function_entry(app_pc C_var)
+{
+    void *drcontext = dr_get_current_drcontext();
+    byte *pc;
+    instr_t inst;
+    instr_init(drcontext, &inst);
+    pc = decode(drcontext, C_var, &inst);
+    ASSERT(pc != NULL, "invalid instr at function entry");
+    if (instr_get_opcode(&inst) == OP_jmp) {
+        /* skip jmp in ILT */
+        ASSERT(opnd_is_pc(instr_get_target(&inst)), "decoded jmp should have pc tgt");
+        pc = opnd_get_pc(instr_get_target(&inst));
+    } else
+        pc = C_var;
+    instr_free(drcontext, &inst);
+    return pc;
+}
+
 void
 replace_init(void)
 {
@@ -398,9 +417,11 @@ replace_init(void)
         hashtable_init(&replace_table, REPLACE_TABLE_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
         /* replace_module_load will be called for each module to populate the hashtable */
-        ASSERT(PAGE_START(replace_memset) == PAGE_START(replace_strncat),
+        ASSERT(PAGE_START(get_function_entry((app_pc)replace_memset)) ==
+               PAGE_START(get_function_entry((app_pc)replace_memmove)),
                "replace_ routines taking up more than one page");
-        replace_routine_start = (app_pc) PAGE_START(replace_memset);
+        replace_routine_start = (app_pc)
+            PAGE_START(get_function_entry((app_pc)replace_memset));
         
         /* PR 485412: we support passing in addresses of libc routines to
          * be replaced if statically included in the executable and if
@@ -620,6 +641,22 @@ in_replace_routine(app_pc pc)
             pc < replace_routine_start + PAGE_SIZE);
 }
 
+bool
+in_replace_memset(app_pc pc)
+{
+    /* we assume the layout for memset is all in one spot (optimizations
+     * are disabled) and that memcpy follows it.  it wouldn't be
+     * disastrous to include another routine since only used for
+     * heap-unaddr checks.
+     */
+    static app_pc memset_entry, memcpy_entry;
+    if (memset_entry == NULL) {
+        memset_entry = get_function_entry((app_pc)replace_memset);
+        memcpy_entry = get_function_entry((app_pc)replace_memcpy);
+    }
+    return (pc >= (app_pc)memset_entry && pc < (app_pc)memcpy_entry);
+}
+
 /* Replacement strategy: we assume these routines will always be entered in
  * a new bb (we're not going to request elision or indcall2direct from DR).
  * We want to interpret our own routines, so we replace the whole bb with
@@ -627,7 +664,7 @@ in_replace_routine(app_pc pc)
  * our lib, for which DR will abort.
  */
 void
-replace_instrument(void *drcontext, instrlist_t *bb, bool *is_memset OUT)
+replace_instrument(void *drcontext, instrlist_t *bb)
 {
     app_pc pc, replacement;
     int idx;
@@ -643,8 +680,6 @@ replace_instrument(void *drcontext, instrlist_t *bb, bool *is_memset OUT)
         idx--; /* index + 1 is stored in the table */
         replacement = (app_pc) replace_routine_addr[idx];
         LOG(2, "replacing %s at "PFX"\n", replace_routine_name[idx], pc);
-        if (is_memset != NULL)
-            *is_memset = (strcmp(replace_routine_name[idx], "memset") == 0);
         instrlist_clear(drcontext, bb);
         instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
                                        (drcontext, opnd_create_pc(replacement)), pc));

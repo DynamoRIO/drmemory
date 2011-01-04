@@ -41,7 +41,10 @@ replace_module_unload(void *drcontext, const module_data_t *info);
 bool
 in_replace_routine(app_pc pc);
 
+bool
+in_replace_memset(app_pc pc);
+
 void
-replace_instrument(void *drcontext, instrlist_t *bb, bool *is_memset OUT);
+replace_instrument(void *drcontext, instrlist_t *bb);
 
 #endif /* _REPLACE_H_ */

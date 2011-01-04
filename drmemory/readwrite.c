@@ -2758,8 +2758,10 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     allgood = false;
                 }
 #ifdef STATISTICS
-                else
+                else {
                     exception = true;
+                    LOG(3, "unaddr exception for "PFX"\n", addr+i);
+                }
 #endif
             }
         } else if (!TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags)) {
@@ -3083,6 +3085,18 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
                 if (check_ignore_unaddr)
                     LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
             });
+#ifdef TOOL_DR_MEMORY
+            if (options.check_memset_unaddr &&
+                in_replace_memset(dr_fragment_app_pc(tag))) {
+                /* since memset is later called by heap routines, add in-heap checks
+                 * now (i#234).  we add them to other mem and string routines as well
+                 * rather than try
+                 */
+                check_ignore_unaddr = true;
+                LOG(2, "inside memset routine @"PFX": adding nop-if-mem-unaddr checks\n",
+                    tag);
+            }
+#endif
         }
     }
 
@@ -3090,16 +3104,8 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     alloc_replace_instrument(drcontext, bb);
 #ifdef TOOL_DR_MEMORY
     if (!options.leaks_only && options.shadowing) {
-        bool is_memset;
         /* String routine replacement */
-        replace_instrument(drcontext, bb, &is_memset);
-        if (options.shadowing && !translating &&
-            options.check_memset_unaddr && is_memset) {
-            /* since memset is later called by heap routines, add in-heap checks
-             * now (i#234)
-             */
-            check_ignore_unaddr = true;
-        }
+        replace_instrument(drcontext, bb);
         /* XXX: this should be AFTER app_to_app_transformations, but something's
          * not working right: the rep-movs transformation is marking something
          * as meta that shouldn't be?!?
