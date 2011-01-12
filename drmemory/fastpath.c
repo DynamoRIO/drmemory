@@ -1834,9 +1834,10 @@ mark_matching_scratch_reg(void *drcontext, instrlist_t *bb,
  */
 void
 add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
-                            fastpath_info_t *mi, instr_t *ok_to_write)
+                            fastpath_info_t *mi, bool is_src, instr_t *ok_to_write)
 {
-    if (mi->src_opsz < 4) {
+    int sz = is_src ? mi->src_opsz : mi->opsz;
+    if (sz < 4) {
         /* rather than a full table lookup we put in just the common cases
          * where upper bytes are undefined and lower are defined */
         PRE(bb, inst,
@@ -1854,7 +1855,7 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                              OPND_CREATE_INT8((char)0xc0)));
-    } else if (mi->src_opsz == 8) {
+    } else if (sz == 8) {
         /* check for half-undef to avoid slowpath (PR 504162) */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
@@ -1867,7 +1868,7 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM16(mi->reg1.reg, 0),
                              OPND_CREATE_INT16((short)0x00ff)));
     } else {
-        ASSERT(mi->src_opsz == 16 || mi->src_opsz == 10, "unknown memsz");
+        ASSERT(sz == 16 || sz == 10, "unknown memsz");
         /* check for partial-undef to avoid slowpath */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_je_short, opnd_create_instr(ok_to_write)));
@@ -1985,13 +1986,14 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (mi->memsz == 8) {
             /* PR 504162: keep 4-byte-aligned 8-byte fp ops on fastpath.
              * We checked for 4-byte alignment, so ensure doesn't straddle 64K.
-             * Since 4-aligned, only bad if bottom 16 == 0xffffc.
+             * Since 4-aligned, only bad if bottom 16 == 0xfffc.
+             * 
+             * Update i#264: With displacements stored in shadow table, we no
+             * longer do a movzx, so we'd have to add that here to do a cmp to
+             * 0xfffc.  But, with the bitlevel-marked redzones around all shadow
+             * blocks, we will naturally go to slowpath on overflow: so we don't
+             * need to do anything!
              */
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg2),
-                                 OPND_CREATE_INT32(0xfffc)));
-            add_jcc_slowpath(drcontext, bb, inst,
-                             jcc_short_slowpath ? OP_je_short : OP_je, mi);
         }
     }
 #else
@@ -3704,7 +3706,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                          (mi->memsz == 8 ? OPND_CREATE_MEM16(mi->reg1.reg, 0) :
                           OPND_CREATE_MEM32(mi->reg1.reg, 0)),
                          shadow_immed(mi->memsz, SHADOW_UNDEFINED)));
-                    add_check_partial_undefined(drcontext, bb, inst, mi, ok_to_write);
+                    add_check_partial_undefined(drcontext, bb, inst, mi, false/*dst*/,
+                                                ok_to_write);
                 }
                 add_jcc_slowpath(drcontext, bb, inst, OP_jne_short, mi);
                 PRE(bb, inst, ok_to_write);
