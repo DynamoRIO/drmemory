@@ -117,7 +117,10 @@ uint xl8_not_shared_unaligned;
 uint xl8_not_shared_mem2mem;
 uint xl8_not_shared_offs;
 uint xl8_not_shared_slowpaths;
+uint xl8_shared_slowpath_instrs;
+uint xl8_shared_slowpath_count;
 uint slowpath_unaligned;
+uint slowpath_8_at_border;
 uint app_instrs_fastpath;
 uint app_instrs_no_dup;
 uint xl8_app_for_slowpath;
@@ -2664,10 +2667,11 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     size_t stack_size = 0;
     bool handled_push_addr = false;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
-    LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x)%s\n",
+    LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
         (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"), loc_to_print(loc), addr, sz,
-        shadow_get_dword(addr), was_special ? " (was special)" : "");
+        shadow_get_dword(addr), shadow_get_dword(addr+4),
+        was_special ? " (was special)" : "");
     ASSERT(addr + sz > addr, "address overflow"); /* no overflow */
     /* xref PR 466036: a very large size and a bogus address can take an
      * extremely long time here, as we query the stack bounds for every
@@ -2860,14 +2864,19 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
 #ifdef STATISTICS
     /* check whether should have hit fast path */
     if (sz > 1 && !ALIGNED(addr, sz) && loc->type != APP_LOC_SYSCALL) {
-        STATS_INC(slowpath_unaligned);
+        if (sz == 8 && ALIGNED(addr, 4)) {
+            /* we allow 8-aligned-to-4, but if off block end we'll come here */
+            if (((ptr_uint_t)addr & 0xffff) == 0xfffc)
+                STATS_INC(slowpath_8_at_border);
+        } else
+            STATS_INC(slowpath_unaligned);
         DOLOG(3, {
-            LOG(1, "unaligned slow_path @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x)%s ",
+            LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x 0x%02x)%s ",
                 loc_to_print(loc),
                 TEST(MEMREF_WRITE, flags) ?
                 (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
                 (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"),
-                addr, sz, shadow_get_dword(addr), was_special ? " (was special)" : "");
+                addr, sz, shadow_get_dword(addr), shadow_get_dword(addr+4), was_special ? " (was special)" : "");
             disassemble_with_info(dr_get_current_drcontext(), loc_to_pc(loc), f_global,
                                   false/*!show pc*/, true/*show bytes*/);
         });

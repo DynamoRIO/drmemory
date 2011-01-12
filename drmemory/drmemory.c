@@ -164,8 +164,8 @@ dump_statistics(void)
     dr_fprintf(f_global, "pops:   slow: %8u, fast: %8u, fast4: %8u, total: %8u\n",
                pop_slowpath, pop_fastpath, pop4_fastpath,
                pop_slowpath+pop_fastpath+pop4_fastpath);
-    dr_fprintf(f_global, "slow instead of fast: %8u, b/c unaligned: %8u\n",
-               slow_instead_of_fast, slowpath_unaligned);
+    dr_fprintf(f_global, "slow instead of fast: %8u, b/c unaligned: %8u, 8@border: %8u\n",
+               slow_instead_of_fast, slowpath_unaligned, slowpath_8_at_border);
     dr_fprintf(f_global, "app instrs: fastpath: %7u, no dup: %7u, xl8: %7u\n",
                app_instrs_fastpath, app_instrs_no_dup, xl8_app_for_slowpath);
     dr_fprintf(f_global, "addr exceptions: header: %7u, tls: %5u, alloca: %5u\n",
@@ -206,6 +206,8 @@ dump_statistics(void)
                "\t%6u not:slowpaths, %6u not:unalign, %6u not:mem2mem, %6u not:offs\n",
                xl8_not_shared_slowpaths, xl8_not_shared_unaligned,
                xl8_not_shared_mem2mem, xl8_not_shared_offs);
+    dr_fprintf(f_global, "\t%6u instrs slowpath, %6u count slowpath\n",
+               xl8_shared_slowpath_instrs, xl8_shared_slowpath_count);
     dr_fprintf(f_global,
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,

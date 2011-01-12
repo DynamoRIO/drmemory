@@ -36,12 +36,6 @@
 # include <stddef.h> /* for offsetof */
 #endif
 
-/* PR 493257: share shadow translation across multiple instrs.
- * Since we can't share across 64K boundaries we exit to slowpath.
- * If this happens too often, we abandon sharing.
- */
-#define XL8_SHARING_THRESHOLD 5000
-
 /* Shadow state for 4GB address space (hiding the real types) */
 extern uint **shadow_table[];
 #ifdef TOOL_DR_MEMORY
@@ -53,6 +47,8 @@ extern const byte shadow_word_defined[4][256];
 extern const byte shadow_byte_addr_not_bit[4][256];
 extern const byte shadow_word_addr_not_bit[4][256];
 #endif
+
+static uint share_xl8_num_flushes;
 
 /* Handles segment-based memory references.
  * Assumes that SPILL_SLOT_5 is available if necessary.
@@ -812,20 +808,49 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
     nxt_pc = pc + inst_sz;
     xl8_sharing_cnt = (uint) hashtable_lookup(&xl8_sharing_table, pc);
     if (xl8_sharing_cnt > 0) {
+        STATS_INC(xl8_shared_slowpath_count);
         ASSERT(!opnd_is_null(memop), "error in xl8 sharing");
         /* Since we can't share across 64K boundaries we exit to slowpath.
          * If this happens too often, abandon sharing.
          */
-        if (xl8_sharing_cnt > XL8_SHARING_THRESHOLD &&
+        if (xl8_sharing_cnt > options.share_xl8_max_slow &&
             /* 2* is signal to not flush again */
-            xl8_sharing_cnt < 2*XL8_SHARING_THRESHOLD) {
+            xl8_sharing_cnt < 2*options.share_xl8_max_slow) {
+            uint num_flushes;
             STATS_INC(xl8_not_shared_slowpaths);
+            /* If this instr has other reasons to go to slowpath, don't flush
+             * repeatedly: only flush if it's actually due to addr sharing
+             */
+            hashtable_add_replace(&xl8_sharing_table, pc,
+                                  (void *) (2*options.share_xl8_max_slow));
             /* We don't need a synchronous flush: go w/ most performant.
              * dr_delay_flush_region() doesn't do any unlinking, so if in
              * a loop we'll repeatedly flush => performance problem!
              * So we go w/ dr_unlink_flush_region(): should be ok since
              * we'll never want -coarse_units.
              */
+
+            /* Flushing can be expensive so we disable sharing
+             * completely if we flush too many times.
+             *
+             * XXX DRi#373: really, DR should split vm areas up to
+             * make these flushes more performant so each flush
+             * doesn't throw out entire executable's worth!
+             */
+            num_flushes = atomic_add32_return_sum((int*)&share_xl8_num_flushes, 1);
+            if (num_flushes >= options.share_xl8_max_flushes/2) {
+                /* reduce the max diff to reduce # of 64K crossings.
+                 * the flush will flush all in this module (at least
+                 * until DRi#373) so this will affect other sharings.
+                 */
+                LOG(1, "reached %d flushes: shrinking -share_xl8_max_diff\n",
+                    num_flushes);
+                options.share_xl8_max_diff /= 8;
+            } else if (num_flushes >= options.share_xl8_max_flushes) {
+                LOG(1, "reached %d flushes: disabling xl8 sharing\n", num_flushes);
+                options.share_xl8 = false;
+            }
+
             LOG(3, "slow_path_xl8_sharing: flushing "PFX"\n", pc);
             if (!translated) {
                 /* Now we have to xl8 */
@@ -836,11 +861,6 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
                  */
             }
             dr_unlink_flush_region(pc, 1);
-            /* If this instr has other reasons to go to slowpath, don't flush
-             * repeatedly: only flush if it's actually due to addr sharing
-             */
-            hashtable_add_replace(&xl8_sharing_table, pc,
-                                  (void *) (2*XL8_SHARING_THRESHOLD));
         } else {
             xl8_sharing_cnt++;
             /* We don't care about races: threshold is low enough we won't overflow */
@@ -849,6 +869,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
     } else if (!translated && !opnd_is_null(memop)) {
         LOG(3, "slow_path_xl8_sharing: adding entry "PFX"\n", pc);
         hashtable_add(&xl8_sharing_table, pc, (void *)1);
+        STATS_INC(xl8_shared_slowpath_instrs);
     }
 
     /* For -single_arg_slowpath we don't want to xl8 so we always
@@ -940,7 +961,7 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
         return false;
     /* Don't share if we had too many slowpaths in the past */
     if ((uint) hashtable_lookup(&xl8_sharing_table, instr_get_app_pc(nxt)) >
-        XL8_SHARING_THRESHOLD)
+        options.share_xl8_max_slow)
         return false;
     /* If the base+index are written to, do not share since no longer static.
      * The dst2 of push/pop write is ok.
@@ -1016,7 +1037,9 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
             return false;
         }
         shadow_diff = (nxt_disp - cur_disp) / 4; /* 2 shadow bits per byte */
-        if (shadow_diff > SHADOW_REDZONE_SIZE || shadow_diff < -SHADOW_REDZONE_SIZE) {
+        /* The option is more intuitive to have it *4 so we /4 here */
+        if (shadow_diff > options.share_xl8_max_diff/4 ||
+            shadow_diff < -(int)options.share_xl8_max_diff/4) {
             STATS_INC(xl8_not_shared_disp_too_big);
             return false;
         }

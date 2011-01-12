@@ -23,6 +23,7 @@
 #include "per_thread.h"
 #include "utils.h"
 #include "options.h"
+#include "shadow.h"
 
 /***************************************************************************
  * OPTIONS

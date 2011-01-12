@@ -377,6 +377,16 @@ OPTION_CLIENT_BOOL(internal, replace_realloc, true,
 OPTION_CLIENT_BOOL(internal, share_xl8, true,
                    "Share translations among adjacent similar references",
                    "Share translations among adjacent similar references")
+OPTION_CLIENT(internal, share_xl8_max_slow, uint, 5000, 0, UINT_MAX/2,
+              "How many slowpaths before abandoning sharing for an individual instr",
+              "Sharing does not work across 64K boundaries, and if we get this many slowpaths we flush and re-instrument the at-fault instr without sharing")
+OPTION_CLIENT(internal, share_xl8_max_diff, uint, 2048, 0, SHADOW_REDZONE_SIZE*4,
+              "Maximum displacement difference to share translations across",
+              "Maximum displacement difference to share translations across")
+OPTION_CLIENT(internal, share_xl8_max_flushes, uint, 64, 0, UINT_MAX,
+              "How many flushes before abandoning sharing altogether",
+              "How many flushes before abandoning sharing altogether")
+
 OPTION_CLIENT_BOOL(internal, check_memset_unaddr, true,
                    "Check for in-heap unaddr in memset",
                    "Check for in-heap unaddr in memset")
