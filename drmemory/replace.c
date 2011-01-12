@@ -355,9 +355,29 @@ replace_memmove(void *dst, const void *src, size_t size)
         /* forward walk won't clobber even if overlaps */
         register const char *s = (const char *) src;
         register char *d = (char *) dst;
-        while (size > 0) {
-            *d++ = *s++;
-            size--;
+        if (((ptr_uint_t)dst & 4) == ((ptr_uint_t)src & 4)) {
+            /* same alignment, so we can do 4 aligned bytes at a time and stay
+             * on fastpath
+             */
+            while (!ALIGNED(d, 4) && size > 0) {
+                *d++ = *s++;
+                size--;
+            }
+            while (size > 3) {
+                *((unsigned int *)d) = *((unsigned int *)s);
+                s += 4;
+                d += 4;
+                size -= 4;
+            }
+            while (size > 0) {
+                *d++ = *s++;
+                size--;
+            }
+        } else {
+            while (size > 0) {
+                *d++ = *s++;
+                size--;
+            }
         }
     } else {
         /* walk backward to avoid clobbering since may overlap */
