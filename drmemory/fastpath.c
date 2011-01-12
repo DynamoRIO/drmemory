@@ -3055,6 +3055,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (mark_defined) {
         num_to_propagate = 0;
     }
+
+    DOLOG(3, {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        LOG(3, "fastpath: ");
+        instr_disassemble(drcontext, inst, LOGFILE(pt));
+        LOG(3, "| prop=%d srcsz=%d dstsz=%d checkdef=%d markdef=%d checkunaddr=%d\n",
+            num_to_propagate, mi->src_opsz, mi->opsz, mi->check_definedness,
+            mark_defined, check_ignore_unaddr);
+    });
 #endif /* TOOL_DR_MEMORY */
 
     LOG(5, "aflags: %s\n", mi->aflags == EFLAGS_WRITE_6 ? "W6" :
@@ -3067,20 +3076,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
            "mi->opsz should be dst size");
     ASSERT(mi->src_reg == REG_NULL || opnd_is_immed_int(mi->src[0]) ||
            opc_is_gpr_shift(opc) /* %cl */ ||
+           /* we use src as dst for these */
+           ((opc == OP_movzx || opc == OP_movsx) && mi->opsz < 4) ||
            opnd_size_in_bytes(opnd_get_size(mi->src[0])) == mi->src_opsz,
            "mi->src_opsz should be src size");
 #ifdef TOOL_DR_MEMORY
     ASSERT(!mi->load2x || mi->check_definedness, 
            "load2x only supported if not propagating");
-
-    DOLOG(3, {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-        LOG(3, "fastpath: ");
-        instr_disassemble(drcontext, inst, LOGFILE(pt));
-        LOG(3, "| prop=%d srcsz=%d dstsz=%d checkdef=%d markdef=%d checkunaddr=%d\n",
-            num_to_propagate, mi->src_opsz, mi->opsz, mi->check_definedness,
-            mark_defined, check_ignore_unaddr);
-    });
 #endif
 
     if (hashtable_lookup(&ignore_unaddr_table, instr_get_app_pc(inst)) != NULL) {
