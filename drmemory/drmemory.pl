@@ -338,7 +338,7 @@ if ($aggregate || $just_postprocess) {
     # plus, cygwin/linux apps are less likely to have static libc.
     if ($app_is_win32) {
         # Since Windows-only we can quote the path and don't need open2
-        my $addrs = `"$win32_a2l" -e "$apppath" -s memset memcpy memchr strchr strrchr strlen strcmp strncmp strcpy strncpy strcat strncat`;
+        my $addrs = `"$win32_a2l" -e "$apppath" -s memset memcpy memchr strchr strrchr strlen strcmp strncmp strcpy strncpy strcat strncat memmove`;
         $addrs =~ s/\r?\n/,/g;
         # Only if we get all 12 should we pass it in since order matters
         if ($addrs =~ /([^,]+,){12,12}/) {
