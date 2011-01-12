@@ -650,7 +650,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                         info->delay_free_head, info->delay_free_fill);
                     pass_to_free = next_to_free(info, idx _IF_WINDOWS(&pass_auxarg),
                                                 "exceeded delay_frees_maxsz");
-                    ASSERT(info->delay_free_bytes < options.delay_frees_maxsz,
+                    ASSERT(info->delay_free_bytes <= options.delay_frees_maxsz,
                            "cannot happen");
                     info->delay_free_list[idx].addr = NULL;
                     break;
