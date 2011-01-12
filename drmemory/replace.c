@@ -126,9 +126,11 @@ replace_memcpy(void *dst, const void *src, size_t size)
 {
     register unsigned char *d = (unsigned char *) dst;
     register unsigned char *s = (unsigned char *) src;
-    if (((ptr_uint_t)dst & 4) == ((ptr_uint_t)src & 4)) {
+    if (((ptr_uint_t)dst & 3) == ((ptr_uint_t)src & 3)) {
         /* same alignment, so we can do 4 aligned bytes at a time and stay
-         * on fastpath
+         * on fastpath.  when not same alignment, I'm assuming it's faster
+         * to have all 1-byte moves on fastpath rather than half 4-byte
+         * (aligned) on fastpath and half 4-byte (unaligned) on slowpath.
          */
         while (!ALIGNED(d, 4) && size > 0) {
             *d++ = *s++;
@@ -352,12 +354,14 @@ IN_REPLACE_SECTION void *
 replace_memmove(void *dst, const void *src, size_t size)
 {
     if (((ptr_uint_t)dst) - ((ptr_uint_t)src) >= size) {
-        /* forward walk won't clobber even if overlaps */
+        /* forward walk won't clobber: either no overlap or dst < src */
         register const char *s = (const char *) src;
         register char *d = (char *) dst;
-        if (((ptr_uint_t)dst & 4) == ((ptr_uint_t)src & 4)) {
+        if (((ptr_uint_t)dst & 3) == ((ptr_uint_t)src & 3)) {
             /* same alignment, so we can do 4 aligned bytes at a time and stay
-             * on fastpath
+             * on fastpath.  when not same alignment, I'm assuming it's faster
+             * to have all 1-byte moves on fastpath rather than half 4-byte
+             * (aligned) on fastpath and half 4-byte (unaligned) on slowpath.
              */
             while (!ALIGNED(d, 4) && size > 0) {
                 *d++ = *s++;
@@ -380,12 +384,32 @@ replace_memmove(void *dst, const void *src, size_t size)
             }
         }
     } else {
-        /* walk backward to avoid clobbering since may overlap */
+        /* walk backward to avoid clobbering since overlaps and src < dst */
         register const char *s = ((const char *) src) + size;
         register char *d = ((char *) dst) + size;
-        while (size > 0) {
-            *(--d) = *(--s);
-            size--;
+        if (((ptr_uint_t)dst & 3) == ((ptr_uint_t)src & 3)) {
+            /* same alignment, so we can do 4 aligned bytes at a time and stay
+             * on fastpath.  we want to do 4 aligned on mod 3 since backward.
+             */
+            while (((ptr_uint_t)dst & 3) != 3 && size > 0) {
+                *(--d) = *(--s);
+                size--;
+            }
+            while (size > 3) {
+                *((unsigned int *)(d-3)) = *((unsigned int *)(s-3));
+                s -= 4;
+                d -= 4;
+                size -= 4;
+            }
+            while (size > 0) {
+                *(--d) = *(--s);
+                size--;
+            }
+        } else {
+            while (size > 0) {
+                *(--d) = *(--s);
+                size--;
+            }
         }
     }
     return dst;

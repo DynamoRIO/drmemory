@@ -36,7 +36,7 @@ memcpy_no_movs(void *dst, const void *src, size_t size)
 {
     register unsigned char *d = (unsigned char *) dst;
     register unsigned char *s = (unsigned char *) src;
-    if (((ptr_uint_t)dst & 4) == ((ptr_uint_t)src & 4)) {
+    if (((ptr_uint_t)dst & 3) == ((ptr_uint_t)src & 3)) {
         /* same alignment, so we can do 4 aligned bytes at a time and stay
          * on fastpath
          */
