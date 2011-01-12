@@ -73,9 +73,8 @@ ld-linux.so.2!_dl_catch_error
 
 UNADDRESSABLE ACCESS
 ...
-ld-linux.so.2!_dl_make_stack_executable
-...
 ld-linux.so.2!_dl_rtld_di_serinfo
+ld-linux.so.2!*
 
 UNINITIALIZED READ
 ...

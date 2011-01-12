@@ -96,6 +96,7 @@ $supp_syms_file = "";   # file containing
 %addr_pipes = ();   # pipes to addr2line processes for each module; PR 454803.
 $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
 @dbg_sec_types = ("debug_info", # all DWARF 2 & 3 type info will have this
+                  "debug_frame",# on Debian some libraries have only this
                   "debug ",     # for DWARF 1; the extra " " is to prevent 
                                 #   DWARF 2 matches
                   "stab");      # .stab is competing debug format to DWARF
@@ -1120,11 +1121,15 @@ sub init_libsearch_path ($use_vmtree)
 
         # System paths go last to allow user specified paths to be searched first.
         if (!$no_sys_paths) {
-            push @libsearch, ('/lib',
-                              '/usr/lib',
-                              # standard debuginfo paths for linux
+            push @libsearch, (# standard debuginfo paths for linux
+                              '/usr/lib/debug/lib32',
                               '/usr/lib/debug/lib',
-                              '/usr/lib/debug/usr/lib');
+                              '/usr/lib/debug/usr/lib32',
+                              '/usr/lib/debug/usr/lib',
+                              # system paths
+                              '/lib',
+                              '/usr/lib',
+                              );
         }
     } else {
         # FIXME: we really need i#138 so we can find dlls not in these standard
