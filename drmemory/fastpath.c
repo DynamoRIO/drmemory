@@ -1862,7 +1862,7 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
                             fastpath_info_t *mi, bool is_src, instr_t *ok_to_write)
 {
     int sz = is_src ? mi->src_opsz : mi->opsz;
-    if (sz < 4) {
+    if (sz <= 4) {
         /* rather than a full table lookup we put in just the common cases
          * where upper bytes are undefined and lower are defined */
         PRE(bb, inst,
