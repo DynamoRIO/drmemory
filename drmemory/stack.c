@@ -714,7 +714,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         INSTR_CREATE_cmp(drcontext, opnd_create_reg(reg_mod),
                          opnd_create_reg(REG_XSP)));
     PRE(bb, inst,
-        INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
+        INSTR_CREATE_jcc(drcontext, OP_jae_short, opnd_create_instr(retaddr)));
     /* now we know we're decreasing stack addresses, so start zeroing.
      * not using rep stos b/c w/ DF preservation (even using a sophisticated
      * scheme) it ended up being slower for the regular esp adjust loop so
@@ -737,7 +737,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (options.statistics) {
             instr_t *nostat = INSTR_CREATE_label(drcontext);
             PRE(bb, inst,
-                INSTR_CREATE_jcc(drcontext, OP_jl_short, opnd_create_instr(nostat)));
+                INSTR_CREATE_jcc(drcontext, OP_jb_short, opnd_create_instr(nostat)));
             PRE(bb, inst,
                 INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32
                                  (REG_NULL, (int)&zero_loop_aborts_thresh)));
@@ -747,7 +747,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         } else {
 #endif
             PRE(bb, inst,
-                INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(retaddr)));
+                INSTR_CREATE_jcc(drcontext, OP_jae_short, opnd_create_instr(retaddr)));
 #ifdef STATISTICS
         }
 #endif
@@ -765,7 +765,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
         INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg1.reg),
                          opnd_create_reg(reg_mod)));
     PRE(bb, inst,
-        INSTR_CREATE_jcc(drcontext, OP_jl_short, opnd_create_instr(retaddr)));
+        INSTR_CREATE_jcc(drcontext, OP_jb_short, opnd_create_instr(retaddr)));
     /* The exact sequence after this potentially-faulting store is assumed
      * in handle_zeroing_fault()
      */
@@ -1136,7 +1136,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg2.reg),
                           opnd_create_reg(mi.reg3.reg)));
     PRE(bb, NULL,
-        INSTR_CREATE_jcc(drcontext, OP_jge_short, opnd_create_instr(pop_one_block)));
+        INSTR_CREATE_jcc(drcontext, OP_jae_short, opnd_create_instr(pop_one_block)));
     /* reaches beyond shadow block: put remaining iters in reg2 */
     PRE(bb, NULL,
         INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
@@ -1300,7 +1300,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi.reg2.reg),
                           opnd_create_reg(mi.reg3.reg)));
     PRE(bb, NULL,
-        INSTR_CREATE_jcc(drcontext, OP_jle_short, opnd_create_instr(push_one_block)));
+        INSTR_CREATE_jcc(drcontext, OP_jbe_short, opnd_create_instr(push_one_block)));
     /* reaches beyond shadow block: put remaining iters in reg2 */
     PRE(bb, NULL,
         INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg3.reg),
