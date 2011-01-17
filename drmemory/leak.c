@@ -561,7 +561,11 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
         if (pointer == chunk_start + MALLOC_CHUNK_ALIGNMENT) {
             size_t val;
             if (leak_safe_read_heap(chunk_start, (void **) &val) &&
-                val == (chunk_end - chunk_start)) {
+                /* I've seen the total size as well as the size minus
+                 * the extra header stored (the latter in sqlite)
+                 */
+                (val == (chunk_end - chunk_start) ||
+                 val == (chunk_end - chunk_start - MALLOC_CHUNK_ALIGNMENT))) {
                 LOG(3, "\tmid-chunk "PFX" is post-size => ok\n", pointer);
                 STATS_INC(midchunk_postsize_ptrs);
                 return true;
