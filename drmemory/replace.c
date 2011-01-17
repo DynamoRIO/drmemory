@@ -474,7 +474,9 @@ replace_init(void)
         s = options.libc_addrs;
         i = 0;
         while (s != NULL) {
-            if (sscanf(s, PIFX, (ptr_uint_t *)&addr) == 1) {
+            if (sscanf(s, PIFX, (ptr_uint_t *)&addr) == 1 ||
+                /* we save option space by having no 0x prefix but assuming hex */
+                sscanf(s, PIFMT, (ptr_uint_t *)&addr) == 1) {
                 LOG(2, "replacing %s @"PFX" in executable from options\n",
                     replace_routine_name[i], addr);
                 hashtable_add(&replace_table, (void*)addr, (void*)(i+1));

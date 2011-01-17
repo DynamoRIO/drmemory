@@ -340,8 +340,11 @@ if ($aggregate || $just_postprocess) {
         # Since Windows-only we can quote the path and don't need open2
         my $addrs = `"$win32_a2l" -e "$apppath" -s memset memcpy memchr strchr strrchr strlen strcmp strncmp strcpy strncpy strcat strncat memmove`;
         $addrs =~ s/\r?\n/,/g;
-        # Only if we get all 12 should we pass it in since order matters
-        if ($addrs =~ /([^,]+,){12,12}/) {
+        # save option string space
+        $addrs =~ s/,\?\?/,?/g;
+        $addrs =~ s/0x//g;
+        # Only if we get all 13 should we pass it in since order matters
+        if ($addrs =~ /([^,]+,){13,13}/) {
             $ops .= " -libc_addrs $addrs";
         }
     }
