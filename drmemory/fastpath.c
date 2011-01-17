@@ -637,13 +637,15 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (mi->load && (opnd_get_size(mi->src[0]) == OPSZ_8 ||
                          opnd_get_size(mi->src[0]) == OPSZ_10 ||
                          opnd_get_size(mi->src[0]) == OPSZ_16) &&
-            (!opnd_is_null(mi->src[1]) || !opnd_is_null(mi->dst[0]))) {
+            (!opnd_is_null(mi->src[1]) || !opnd_is_null(mi->dst[0]) ||
+             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
             mi->check_definedness = true;
         }
         if (mi->store && (opnd_get_size(mi->dst[0]) == OPSZ_8 ||
                           opnd_get_size(mi->dst[0]) == OPSZ_10 ||
                           opnd_get_size(mi->dst[0]) == OPSZ_16) &&
-            (!opnd_is_null(mi->dst[1]) || !opnd_is_null(mi->src[0]))) {
+            (!opnd_is_null(mi->dst[1]) || !opnd_is_null(mi->src[0]) ||
+             TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
             mi->check_definedness = true;
         }
 
@@ -692,7 +694,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             mi->src_opsz = 0;
     } else
         mi->src_opsz = opnd_size_in_bytes(opnd_get_size(mi->src[0]));
-    if (mi->opsz == 0 && TESTALL(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
+    if (mi->opsz == 0 && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
         /* match src size, shadow slot holds whole dword's worth */
         if (mi->src_opsz > 0) {
             ASSERT(mi->src_opsz <= 4 || mi->check_definedness, "no prop eflags to > 4");
