@@ -37,6 +37,7 @@ static hashtable_t systable;
 
 /* Syscalls that need special processing */
 int sysnum_CreateThread;
+int sysnum_CreateThreadEx;
 
 /* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME PR 406350: IIS syscalls!
@@ -139,8 +140,10 @@ syscall_info_t syscall_info[] = {
     {0,"NtCreateSemaphore", 20, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateSymbolicLinkObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(UNICODE_STRING),R, },
     {0,"NtCreateThread", 32, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(CLIENT_ID),W, 5,sizeof(CONTEXT),R|SYSARG_CONTEXT, 6,sizeof(USER_STACK),R, 7,0,IB, },
+    {0,"NtCreateThreadEx", 44, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 6,0,IB, 10,0x24/*XXX i#98: get real struct def'n; also, this is IN + OUT: how much is IN?*/,W, },
     {0,"NtCreateTimer", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateToken", 52, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(LUID),R, 5,sizeof(LARGE_INTEGER),R, 6,sizeof(TOKEN_USER),R, 7,sizeof(TOKEN_GROUPS),R, 8,sizeof(TOKEN_PRIVILEGES),R, 9,sizeof(TOKEN_OWNER),R, 10,sizeof(TOKEN_PRIMARY_GROUP),R, 11,sizeof(TOKEN_DEFAULT_DACL),R, 12,sizeof(TOKEN_SOURCE),R, },
+    {0,"NtCreateUserProcess", 44, 0,sizeof(HANDLE),W, 1,sizeof(HANDLE),W, 4,sizeof(OBJECT_ATTRIBUTES),R, 5,sizeof(OBJECT_ATTRIBUTES),R, 7,0,IB, 8,sizeof(RTL_USER_PROCESS_PARAMETERS),R, /*XXX i#98: add two in/out structs*/ },
     {0,"NtCreateWaitablePort", 20, 0,sizeof(HANDLE),W, 1,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtDebugActiveProcess", 8, },
     {0,"NtDebugContinue", 12, 1,sizeof(CLIENT_ID),R, },
@@ -464,6 +467,8 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     }
     sysnum_CreateThread = sysnum_from_name(drcontext, ntdll_base, "NtCreateThread");
     ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
+    sysnum_CreateThreadEx = sysnum_from_name(drcontext, ntdll_base, "NtCreateThreadEx");
+    /* not there in pre-vista */
 }
 
 void
@@ -557,6 +562,17 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
          * the thread exiting
          */
         if (pt->sysarg[7]/*bool suspended*/ &&
+            is_current_process((HANDLE)pt->sysarg[3]) &&
+            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
+            TEB *teb = get_TEB_from_handle(thread_handle);
+            LOG(1, "TEB for new thread: "PFX"\n", teb);
+            set_teb_initial_shadow(teb);
+        }
+    }
+    if (sysnum == sysnum_CreateThreadEx && NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        /* See notes above */
+        HANDLE thread_handle;
+        if (pt->sysarg[6]/*bool suspended*/ &&
             is_current_process((HANDLE)pt->sysarg[3]) &&
             safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
             TEB *teb = get_TEB_from_handle(thread_handle);
