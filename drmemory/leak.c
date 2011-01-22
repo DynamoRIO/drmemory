@@ -24,6 +24,9 @@
 #include "alloc.h"
 #include "heap.h"
 #include "redblack.h"
+#ifdef TOOL_DR_MEMORY
+# include "shadow.h"
+#endif
 
 /***************************************************************************
  * REACHABILITY-BASED LEAK DETECTION
@@ -893,6 +896,42 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
     rb_insert(alloc_tree, start, (end - start), NULL);
 }
 
+static void
+prepare_thread_for_scan(void *drcontext)
+{
+    /* Restore app's PEB and TEB fields (i#248) */
+    dr_switch_to_app_state(drcontext);
+
+#if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
+    if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
+        /* We received the exit event for this thread and marked its
+         * TEB as unaddr -- but we want to scan that memory.
+         * We treat it all as defined (instead of calling set_teb_initial_shadow())
+         * b/c it is all initialized and we can be more liberal wrt leaks.
+         */
+        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        ASSERT(teb != NULL, "invalid param");
+        shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_DEFINED);
+    }
+#endif
+}
+
+static void
+restore_thread_after_scan(void *drcontext)
+{
+    /* Restore private PEB and TEB fields (i#248) */
+    dr_switch_to_dr_state(drcontext);
+
+#if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
+    if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
+        /* Re-mark as unaddr */
+        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        ASSERT(teb != NULL, "invalid param");
+        shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
+    }
+#endif
+}
+
 void
 leak_scan_for_leaks(bool at_exit)
 {
@@ -919,10 +958,13 @@ leak_scan_for_leaks(bool at_exit)
      * pointers are aligned.  For now only considering pointers to the start of
      * a heap block: we'll see how many false positives we hit with that.
      */
-    if (at_exit && op_have_defined_info) {
+    if (IF_WINDOWS_ELSE(false, true) && at_exit && op_have_defined_info) {
         /* We assume no synch is needed at exit time, and that we
          * can ignore thread registers as roots of the search.
          * if no defined info we need to walk the thread stacks.
+         * On Windows we need to restore the PEB/TEB fields so we
+         * need to get the thread list to iterate over: safest
+         * and simplest to suspend-all.
          */
     } else {
         /* PR 428709: reachability mid-run */
@@ -930,6 +972,10 @@ leak_scan_for_leaks(bool at_exit)
             LOG(0, "WARNING: not all threads suspended for reachability analysis\n");
             /* We carry on and live w/ the raciness */
         }
+        /* Restore app's PEB and TEB fields (i#248) */
+        for (i = 0; i < num_threads; i++)
+            prepare_thread_for_scan(drcontexts[i]);
+        prepare_thread_for_scan(dr_get_current_drcontext());
     }
 
     memset(&data, 0, sizeof(data));
@@ -956,8 +1002,7 @@ leak_scan_for_leaks(bool at_exit)
         LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(my_drcontext));
         dr_get_mcontext(my_drcontext, &mc, NULL);
         check_reachability_regs(my_drcontext, &mc, &data);
-    } else
-        ASSERT(drcontexts == NULL, "inconsistency in thread suspension");
+    }
 
     check_reachability_helper(NULL, (app_pc)POINTER_MAX, true/*skip heap*/, &data);
     LOG(3, "\nwalking reachable-chunk queue\n");
@@ -996,14 +1041,15 @@ leak_scan_for_leaks(bool at_exit)
     /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
     malloc_iterate(malloc_iterate_cb, &data);
 
-    if (!at_exit || !op_have_defined_info) {
+    if (drcontexts != NULL) {
         IF_DEBUG(bool ok;)
-        ASSERT(drcontexts != NULL, "dr_suspend_all_other_threads never fails");
-        if (drcontexts != NULL) {
-            IF_DEBUG(ok =)
-                dr_resume_all_other_threads(drcontexts, num_threads);
-            ASSERT(ok, "failed to resume after leak scan");
-        }
+        /* Back to private PEB and TEB fields (i#248) */
+        for (i = 0; i < num_threads; i++)
+            restore_thread_after_scan(drcontexts[i]);
+        restore_thread_after_scan(dr_get_current_drcontext());
+        IF_DEBUG(ok =)
+            dr_resume_all_other_threads(drcontexts, num_threads);
+        ASSERT(ok, "failed to resume after leak scan");
     }
 
     /* We do not maintain the tree throughout execution: we make a new one for
