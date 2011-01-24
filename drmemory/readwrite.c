@@ -727,45 +727,39 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
 uint
 adjust_memop_push_offs(instr_t *inst)
 {
-    /* A push adjusts esp prior to reading off it.
-     * Xref i#164/PR 214976 where DR should adjust for us.
-     */
-    uint opc = instr_get_opcode(inst);
-    opnd_t stackop = instr_get_dst(inst, 1); /* 2nd dst for all */
-    uint sz = opnd_size_in_bytes(opnd_get_size(stackop));
-    ASSERT(opc_is_push(opc), "non-push inst invalid");
-    if (opc == OP_pusha) {
-        sz *= 8;
-    } else if (opc == OP_enter) {
+    /* DR's IR now properly encodes push sizes (DRi#164), except for OP_enter */
+    if (instr_get_opcode(inst) == OP_enter) {
         /* OP_enter's esp adjust (1st immed) is handled in
          * instrument_esp_adjust, as it doesn't write those bytes
          */
         uint extra_pushes = opnd_get_immed_int(instr_get_src(inst, 1));
+        uint sz = opnd_size_in_bytes(opnd_get_size(instr_get_dst(inst, 1)));
         ASSERT(opnd_is_immed_int(instr_get_src(inst, 1)), "internal error");
-        sz += sz*extra_pushes;
+        return sz*extra_pushes;
     }
-    return sz;
+    return 0;
 }
 
 opnd_t
 adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_stackop)
 {
+    /* DR's IR now properly encodes push sizes (DRi#164), except for OP_enter */
     uint opc = instr_get_opcode(inst);
     uint sz = opnd_size_in_bytes(opnd_get_size(opnd));
     bool push = opc_is_push(opc);
     bool pop = opc_is_pop(opc);
     bool pushpop = false; /* is mem ref on stack for push/pop */
     if (opnd_uses_reg(opnd, REG_ESP) || opc == OP_leave/*(ebp) not (esp)*/) {
-        /* We do reads before writes, so pop is correct, but push is off */
         if (write && push && opnd_is_base_disp(opnd)) {
+            uint extra_push_sz = adjust_memop_push_offs(inst);
             pushpop = true;
-            sz = adjust_memop_push_offs(inst);
-            opnd_set_disp(&opnd, opnd_get_disp(opnd) - sz);
+            if (extra_push_sz > 0) {
+                sz += extra_push_sz;
+                opnd_set_disp(&opnd, opnd_get_disp(opnd) - sz);
+            }
         } else if (!write && pop && opnd_is_base_disp(opnd)) {
             pushpop = true;
-            if (opc == OP_popa)
-                sz *= 8;
-            else if (opc == OP_leave) {
+            if (opc == OP_leave) {
                 /* OP_leave's ebp->esp is handled in instrument_esp_adjust; here we
                  * treat it as simply a pop into ebp, though using the esp value
                  * copied from ebp, which we emulate here since we're doing it
