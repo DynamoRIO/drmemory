@@ -295,21 +295,31 @@ endif (UNIX)
 
 if (WIN32)
   # We need to link with ntdll.lib
-  # The 2003 DDK (3790.1830) or Vista WDK (6000) both have these paths:
-  if (X64)
-    set(NTDLL_LIB_SUBPATH lib/wnet/amd64)
-  else (X64)
-    set(NTDLL_LIB_SUBPATH lib/w2k/i386)
-  endif (X64)
   # Use convention of DynamoRIO sources: DDKROOT env var
   if (NOT "$ENV{DDKROOT}" STREQUAL "")
     set(DDK_ROOT "$ENV{DDKROOT}")
-    # Check default install path
+  # Check default install path
   elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
     set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
   elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
     set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
+  elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
+    set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
   endif (NOT "$ENV{DDKROOT}" STREQUAL "")
+  # Note that we want the oldest ntdll.lib for maximum compatibility.
+  # The 2003 DDK (3790.1830) or Vista WDK (6000) both have these paths:
+  if (X64)
+    set(NTDLL_LIB_SUBPATH lib/wnet/amd64)
+  else (X64)
+    # Newer WDK (7600.16385.1) does not have w2k so use wxp: if using
+    # that WDK, won't be able to run on 2K or NT.
+    if (EXISTS "${DDK_ROOT}/lib/w2k/i386")
+      set(NTDLL_LIB_SUBPATH lib/w2k/i386)
+    else (EXISTS "${DDK_ROOT}/lib/w2k/i386")
+      message(STATUS "DDK/WDK is too recent: no support for Windows 2000 or earlier")
+      set(NTDLL_LIB_SUBPATH lib/wxp/i386)
+    endif (EXISTS "${DDK_ROOT}/lib/w2k/i386")
+  endif (X64)
   # Use find_library() and not find_path() in case on LIB env var or sthg
   find_library(NTDLL_LIBPATH ntdll.lib HINTS "${DDK_ROOT}/${NTDLL_LIB_SUBPATH}"
     DOC "Path to ntdll.lib from either 2003 DDK (3790.1830) or Vista WDK (6000)")
