@@ -70,6 +70,7 @@ set(DR_path "")       # path to DynamoRIO cmake dir; if this arg is not set or
                       # doesn't exist, will build DynamoRIO from local copy
 set(DRvmk_path "")    # path to DynamoRIO VMKERNEL build cmake dir;
                       # ../exports_vmk/cmake will be used as a default
+set(arg_use_nmake OFF) # use nmake even if gnu make is present
 
 set(DRvmk_path "${CTEST_SCRIPT_DIRECTORY}/../../../exports_vmk/cmake") # default
 
@@ -114,6 +115,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^DR=")
     string(REGEX REPLACE "^DR=" "" DR_path "${arg}")
   endif (${arg} MATCHES "^DR=")
+  if (${arg} MATCHES "^dr=")
+    string(REGEX REPLACE "^dr=" "" DR_path "${arg}")
+  endif (${arg} MATCHES "^dr=")
   if (UNIX)
     if (${arg} MATCHES "^DRvmk=")
       string(REGEX REPLACE "^DRvmk=" "" DRvmk_path "${arg}")
@@ -122,6 +126,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} STREQUAL "ssh")
     set(arg_ssh ON)
   endif (${arg} STREQUAL "ssh")
+  if (${arg} MATCHES "^use_nmake")
+    set(arg_use_nmake ON)
+  endif ()
 endforeach (arg)
 
 if (arg_test_vmk AND arg_vmk_only)
@@ -159,6 +166,13 @@ if (WIN32)
     set(test_cygwin OFF)
   endif (CYGPATH)
 endif (WIN32)
+
+if (WIN32 AND NOT arg_use_nmake)
+  find_program(MAKE_COMMAND make DOC "make command")
+  if (NOT make)
+    set(arg_use_nmake ON)
+  endif (NOT make)
+endif (WIN32 AND NOT arg_use_nmake)
 
 # allow setting the base cache variables via an include file
 set(base_cache "")
@@ -241,16 +255,20 @@ set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}/..")
 set(CTEST_CMAKE_COMMAND "${CMAKE_EXECUTABLE_NAME}")
 set(CTEST_PROJECT_NAME "Dr. Memory")
 set(CTEST_COMMAND "${CTEST_EXECUTABLE_NAME}")
-if (UNIX OR have_cygwin)
+if (UNIX OR NOT arg_use_nmake)
   set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
-  find_program(MAKE_COMMAND make DOC "make command")
-  set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j5")
-else (UNIX OR have_cygwin)
+  if (have_cygwin)
+    # seeing errors building in parallel: pdb collision?
+    set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j2")
+  else (have_cygwin)
+    set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j5")
+  endif (have_cygwin)
+else (UNIX OR NOT arg_use_nmake)
   set(CTEST_CMAKE_GENERATOR "NMake Makefiles")
   find_program(MAKE_COMMAND nmake DOC "nmake command")
   # no -j support
   set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND}")
-endif (UNIX OR have_cygwin)
+endif (UNIX OR NOT arg_use_nmake)
 
 # returns the build dir in "last_build_dir"
 function(testbuild name is64 initial_cache test_only_in_long)

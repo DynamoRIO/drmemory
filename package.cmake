@@ -68,6 +68,7 @@ set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
 set(arg_cacheappend "")# string to append to every build's cache
 set(arg_drmem_only OFF) # do not include Dr. Heapstat
+set(arg_use_nmake OFF) # use nmake even if gnu make is present
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
@@ -78,6 +79,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   endif ()
   if (${arg} MATCHES "^dr=")
     string(REGEX REPLACE "^dr=" "" arg_DR_dir "${arg}")
+  endif ()
+  if (${arg} MATCHES "^DR=")
+    string(REGEX REPLACE "^DR=" "" arg_DR_dir "${arg}")
   endif ()
   if (${arg} MATCHES "^version=")
     string(REGEX REPLACE "^version=" "" arg_version "${arg}")
@@ -94,8 +98,12 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^cacheappend=")
     string(REGEX REPLACE "^cacheappend=" "" arg_cacheappend "${arg}")
   endif ()
-  if (${arg} MATCHES "^drmem_only")
+  if (${arg} MATCHES "^drmem_only" OR
+      ${arg} MATCHES "^drmemory_only")
     set(arg_drmem_only ON)
+  endif ()
+  if (${arg} MATCHES "^use_nmake")
+    set(arg_use_nmake ON)
   endif ()
 endforeach (arg)
 
@@ -118,14 +126,40 @@ get_filename_component(BINARY_BASE "." ABSOLUTE)
 set(SUITE_TYPE Experimental)
 set(DO_UPDATE OFF)
 
+if (WIN32)
+  find_program(CYGPATH cygpath)
+  if (CYGPATH)
+    set(have_cygwin ON)
+  else (CYGPATH)
+    set(have_cygwin OFF)
+  endif (CYGPATH)
+endif (WIN32)
+
+if (WIN32 AND NOT arg_use_nmake)
+  find_program(MAKE_COMMAND make DOC "make command")
+  if (NOT make)
+    set(arg_use_nmake ON)
+  endif (NOT make)
+endif (WIN32 AND NOT arg_use_nmake)
+
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}")
 set(CTEST_CMAKE_COMMAND "${CMAKE_EXECUTABLE_NAME}")
-# FIXME: for now assuming cygwin on Windows
-set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
 set(CTEST_PROJECT_NAME "DrMemory")
-find_program(MAKE_COMMAND make DOC "make command")
-set(CTEST_BUILD_COMMAND "${MAKE_COMMAND} -j5")
 set(CTEST_COMMAND "${CTEST_EXECUTABLE_NAME}")
+if (UNIX OR NOT arg_use_nmake)
+  set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
+  if (have_cygwin)
+    # seeing errors building in parallel: pdb collision?
+    set(CTEST_BUILD_COMMAND "${MAKE_COMMAND} -j2")
+  else (have_cygwin)
+    set(CTEST_BUILD_COMMAND "${MAKE_COMMAND} -j5")
+  endif (have_cygwin)
+else (UNIX OR NOT arg_use_nmake)
+  set(CTEST_CMAKE_GENERATOR "NMake Makefiles")
+  find_program(MAKE_COMMAND nmake DOC "nmake command")
+  # no -j support
+  set(CTEST_BUILD_COMMAND "${MAKE_COMMAND}")
+endif (UNIX OR NOT arg_use_nmake)
 
 function(dobuild name is64 initial_cache)
   set(CTEST_BUILD_NAME "${name}")
