@@ -257,6 +257,7 @@ set(CTEST_PROJECT_NAME "Dr. Memory")
 set(CTEST_COMMAND "${CTEST_EXECUTABLE_NAME}")
 if (UNIX OR NOT arg_use_nmake)
   set(CTEST_CMAKE_GENERATOR "Unix Makefiles")
+  find_program(MAKE_COMMAND make DOC "make command")
   if (have_cygwin)
     # seeing errors building in parallel: pdb collision?
     set(CTEST_BUILD_COMMAND_BASE "${MAKE_COMMAND} -j2")
