@@ -516,10 +516,13 @@ endif (NOT GENERATE_PDBS)
 
 ##################################################
 
-# configure tests before configure_DynamoRIO_client or
-# add_subdirectory(dynamorio) clears global cflags
-enable_testing()
-add_subdirectory(tests)
+option(BUILD_TOOL_TESTS "build Dr. Memory/Dr. Heapstat tests" ON)
+if (BUILD_TOOL_TESTS)
+  # configure tests before configure_DynamoRIO_client or
+  # add_subdirectory(dynamorio) clears global cflags
+  enable_testing()
+  add_subdirectory(tests)
+endif (BUILD_TOOL_TESTS)
 
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
