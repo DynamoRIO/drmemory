@@ -308,19 +308,42 @@ endforeach (str)
 # check stderr
 
 string(REGEX MATCHALL "([^\n]+)\n" lines "${outmatch}")
+set(cmd_tomatch "${cmd_err}")
 foreach (line ${lines})
   # we include the newline in the match
   if (WIN32)
     string(REGEX REPLACE "\n" "\r?\n" line "${line}")
   endif (WIN32)
-  if (NOT "${cmd_err}" MATCHES "${line}")
+  if (NOT "${cmd_tomatch}" MATCHES "${line}")
     # ignore Dr. Memory lines for Dr. Heapstat
     # FIXME PR 470723: add Dr. Heapstat-specific tests
     if (NOT TOOL_DR_HEAPSTAT OR
         NOT "${line}" MATCHES "^:::Dr\\\\.Memory:::")
-      message(FATAL_ERROR "stderr failed to match: \"${line}\"")
+      string(REGEX REPLACE "\r?\n$" "" line "${line}")
+      set(msg "stderr failed to match \"${line}\"")
+      # try to find what was meant to match
+      string(REGEX REPLACE "[0-9]" "." rline "${line}")
+      string(REGEX MATCH "${rline}" real_out "${cmd_tomatch}")
+      string(REGEX REPLACE "\r?\n$" "" real_out "${real_out}")
+      if (NOT "${real_out}" STREQUAL "")
+        set(msg "${msg}, found \"${real_out}\" instead")
+      endif ()
+      message(FATAL_ERROR "${msg}")
     endif ()
   endif ()
+  # remove up to and including the line matched, to enforce
+  # matching in order, and for better error message.
+  # regex matching is greedy so we can't just replace up to
+  # ${line} b/c there may be later matches, so we remove one
+  # line at a time.
+  # paranoid so have an escape from loop here w/ prev_cmd_tomatch.
+  set(prev_cmd_tomatch "")
+  while (NOT "${cmd_tomatch}" STREQUAL "${prev_cmd_tomatch}" AND
+      NOT "${cmd_tomatch}" MATCHES "^[^\n]*${line}")
+    set(prev_cmd_tomatch "${cmd_tomatch}")
+    string(REGEX REPLACE "^[^\n]+" "" cmd_tomatch "${cmd_tomatch}")
+    string(REGEX REPLACE "^\r?\n" "" cmd_tomatch "${cmd_tomatch}")
+  endwhile ()
 endforeach (line)
 
 ##################################################
@@ -392,11 +415,41 @@ if (resmatch)
   string(REGEX REPLACE "\\.exe!" "!" results "${results}")
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
+  set(require_in_order 1)
   foreach (line ${lines})
-    # we do NOT include the newline, to support matching intra-line substrings
-    string(REGEX REPLACE "\r?\n" "" line "${line}")
-    if (NOT "${results}" MATCHES "${line}")
-      message(FATAL_ERROR "${resfile_using} failed to match: \"${line}\"")
+    if ("${line}" MATCHES "^!OUT_OF_ORDER")
+      set(require_in_order 0)
+    elseif ("${line}" MATCHES "^!IN_ORDER")
+      set(require_in_order 1)
+    else ()
+      # we do NOT include the newline, to support matching intra-line substrings
+      string(REGEX REPLACE "\r?\n" "" line "${line}")
+      if (NOT "${results}" MATCHES "${line}")
+        set(msg "${resfile_using} failed to match \"${line}\"")
+        # try to find what was meant to match
+        string(REGEX REPLACE "[0-9]" "." rline "${line}")
+        string(REGEX MATCH "${rline}" real_out "${results}")
+        string(REGEX REPLACE "\r?\n$" "" real_out "${real_out}")
+        if (NOT "${real_out}" STREQUAL "")
+          set(msg "${msg}, found \"${real_out}\" instead")
+        endif ()
+        message(FATAL_ERROR "${msg}")
+      endif ()
+      if (require_in_order)
+        # remove up to and including the line matched, to enforce
+        # matching in order, and for better error message.
+        # regex matching is greedy so we can't just replace up to
+        # ${line} b/c there may be later matches, so we remove one
+        # line at a time.
+        # paranoid so have an escape from loop here w/ prev_results.
+        set(prev_results "")
+        while (NOT "${results}" STREQUAL "${prev_results}" AND
+            NOT "${results}" MATCHES "^[^\n]*${line}")
+          set(prev_results "${results}")
+          string(REGEX REPLACE "^[^\n]+" "" results "${results}")
+          string(REGEX REPLACE "^\r?\n" "" results "${results}")
+        endwhile ()
+      endif (require_in_order)
     endif ()
   endforeach (line)
   # XXX: should also ensure there aren't superfluous errors reported though

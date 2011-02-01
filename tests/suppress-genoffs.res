@@ -189,6 +189,8 @@ suppress!main
 suppress.c:223
 
 # these are sometimes out of order
+!OUT_OF_ORDER
+
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test1
 suppress.c:130
@@ -197,19 +199,20 @@ suppress.c:207
 suppress!main
 suppress.c:223
 
-: LEAK 4 direct bytes + 0 indirect bytes
-suppress!leak_test2
-suppress.c:136
-suppress!test
-suppress.c:208
-suppress!main
-suppress.c:223
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test3
 suppress.c:142
 suppress!test
 suppress.c:209
+suppress!main
+suppress.c:223
+
+: LEAK 4 direct bytes + 0 indirect bytes
+suppress!leak_test4
+suppress.c:148
+suppress!test
+suppress.c:210
 suppress!main
 suppress.c:223
 
@@ -221,10 +224,12 @@ suppress.c:215
 suppress!main
 suppress.c:223
 
+
+
 : LEAK 4 direct bytes + 0 indirect bytes
-suppress!leak_test4
-suppress.c:148
+suppress!leak_test2
+suppress.c:136
 suppress!test
-suppress.c:210
+suppress.c:208
 suppress!main
 suppress.c:223

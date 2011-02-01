@@ -78,7 +78,7 @@ if (NOT arg_vmk_only)
     # and point at it
   else (NOT "${DR_path}" STREQUAL "")
     # include from source instead of exports dir
-    set(runsuite_include_path "${CTEST_SCRIPT_DIRECTORY}/../dynamorio/cmake")
+    set(runsuite_include_path "${CTEST_SCRIPT_DIRECTORY}/../dynamorio/suite")
   endif (NOT "${DR_path}" STREQUAL "")
 endif (NOT arg_vmk_only)
 
@@ -170,19 +170,28 @@ endif ()
 # sets ${outvar} in PARENT_SCOPE
 function (error_string str outvar)
   # DrMem assert somehow gets split across 3 lines
-  string(REGEX MATCHALL "[^\n]*ASSERT[^\n]*\n[^\n]*\n[^\n\\*]*"
-    drmem_assert "${str}")
-  string(REGEX MATCHALL "[^\n]*Unrecoverable[^\n]*" crash "${str}")
-  string(REGEX MATCHALL "[^\n]*Internal DynamoRIO Error[^\n]*" 
-    assert "${str}")
-  string(REGEX MATCHALL "[^\n]*CURIOSITY[^\n]*" curiosity "${str}")
+  string(REGEX MATCHALL "[^\n]*ASSERT[^\n]*\n[^\n]*\n[^\n\\*]*" reason "${str}")
+  if (NOT reason)
+    string(REGEX MATCHALL "[^\n]*Unrecoverable[^\n]*" reason "${str}")
+    if (NOT reason)
+      string(REGEX MATCHALL "[^\n]*Internal DynamoRIO Error[^\n]*" reason "${str}")
+      if (NOT reason)
+        string(REGEX MATCHALL "[^\n]*CURIOSITY[^\n]*" reason "${str}")
+        if (NOT reason)
+          # % is what is inserted to identify the </Measurement>
+          string(REGEX MATCHALL "[^\n]*failed to match[^%]*instead" reason "${str}")
+        endif (NOT reason)
+      endif (NOT reason)
+    endif (NOT reason)
+  endif (NOT reason)
   string(REGEX REPLACE "^.*<Name>([^<]+)<.*$" "\\1" name "${str}")
-  if (drmem_assert OR crash OR assert OR curiosity)
-    string(REGEX REPLACE "[ \t]*<Value>" "" assert "${assert}")
-    set(${outvar} "=> ${drmem_assert} ${crash} ${assert} ${curiosity}" PARENT_SCOPE)
-  else (drmem_assert OR crash OR assert OR curiosity)
+  if (reason)
+    string(REGEX REPLACE "[ \t]*<Value>" "" reason "${reason}")
+    string(REGEX REPLACE "(\r?\n)" "\\1\t\t" reason "${reason}")
+    set(${outvar} "=> ${reason}" PARENT_SCOPE)
+  else (reason)
     set(${outvar} "" PARENT_SCOPE)
-  endif (drmem_assert OR crash OR assert OR curiosity)
+  endif (reason)
 endfunction (error_string)
 
 include("${runsuite_include_path}/runsuite_common_post.cmake")

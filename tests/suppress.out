@@ -27,8 +27,8 @@
 testing uninitialized access
 testing access after free
 testing leak
-testing invalid free
 testing warning
+testing invalid free
 done
 :::Dr.Memory::: ERRORS FOUND:
 :::Dr.Memory:::       0 unique,     0 total unaddressable access(es)

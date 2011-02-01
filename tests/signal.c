@@ -269,10 +269,10 @@ int main(int argc, char *argv[])
 
     res = cos(0.56);
 
-    printf("Sending SIGUSR2\n");
+    fprintf(stderr, "Sending SIGUSR2\n");
     kill(getpid(), SIGUSR2);
 
-    printf("Sending SIGUSR1\n");
+    fprintf(stderr, "Sending SIGUSR1\n");
     kill(getpid(), SIGUSR1);
 
 #if USE_SIGSTACK
@@ -285,7 +285,7 @@ int main(int argc, char *argv[])
     ASSERT_NOERR(rc);
 #endif
 
-    printf("Generating SIGSEGV\n");
+    fprintf(stderr, "Generating SIGSEGV\n");
 #if USE_LONGJMP
     res = setjmp(env);
     if (res == 0) {
@@ -304,7 +304,7 @@ int main(int argc, char *argv[])
 	j = (i << 4) / (i | 0x38);
 	a[i] += j;
     }
-    printf("%f\n", res);
+    fprintf(stderr, "%f\n", res);
 
 #if USE_TIMER
     memset(&t, 0, sizeof(t));
@@ -312,9 +312,9 @@ int main(int argc, char *argv[])
     ASSERT_NOERR(rc);
 
     if (timer_hits == 0)
-	printf("Got 0 timer hits!\n");
+	fprintf(stderr, "Got 0 timer hits!\n");
     else
-	printf("Got some timer hits!\n");
+	fprintf(stderr, "Got some timer hits!\n");
 #endif
 
 #ifdef USE_DYNAMO

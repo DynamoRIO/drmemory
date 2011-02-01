@@ -98,6 +98,7 @@ set(base_cache "
   ${DR_entry}
   BUILD_NUMBER:STRING=${arg_build}
   UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
+  BUILD_TOOL_TESTS:BOOL=OFF
   ${arg_cacheappend}
   ${base_cache}
   ")

@@ -31,6 +31,6 @@ malloc.c:212
 Error #6: LEAK 16 direct bytes + 48 indirect bytes
 malloc.c:244
 Error #7: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:244
+malloc.c:249
 Error #8: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:250
