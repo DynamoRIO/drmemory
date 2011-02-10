@@ -494,7 +494,9 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
 endif (USER_SPECIFIED_DynamoRIO_DIR)
 
 # This must be before any add_library() or add_executable()
-if (NOT GENERATE_PDBS)
+# but that means for local DR sources we haven't yet included
+# DR's option(), so we check whether defined.
+if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
   # Default from cmake in DEBUG and RELWITHDEBINFO has /debug
   foreach (var CMAKE_C_FLAGS;CMAKE_CXX_FLAGS;
       CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
@@ -512,7 +514,7 @@ if (NOT GENERATE_PDBS)
       CMAKE_SHARED_LINKER_FLAGS_DEBUG)
     string(REGEX REPLACE "/debug" "" ${var} "${${var}}")
   endforeach ()
-endif (NOT GENERATE_PDBS)
+endif (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
 
 ##################################################
 
