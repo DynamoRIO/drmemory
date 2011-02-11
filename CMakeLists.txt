@@ -187,25 +187,25 @@ if (WIN32)
     set(DEFINES ${DEFINES} -DUSE_DRSYMS)
   endif (USE_DRSYMS)
 
-  # For portability we convert our perl scripts to executables,
-  # if the 'pp' tool is available.
-  # For most portable results, use a native windows perl (e.g.,
-  # strawberry perl) rather than cygwin perl.
-  set(PERL_PATH  "" CACHE PATH "directory where perl binaries are located")
-  if (PERL_PATH AND EXISTS "${PERL_PATH}/perl.exe")
-    set(PERL_EXECUTABLE "${PERL_PATH}/perl.exe")
-  else ()
-    # we only look for perl if user doesn't specify (on windows it's common
-    # to have several perls installed)
-    include(FindPerl)
-    if (PERL_FOUND)
-      get_filename_component(PERL_PATH "${PERL_EXECUTABLE}" PATH)
-    endif (PERL_FOUND)
-  endif ()
-
   # With the new drinjectlib-based front end we do not use perl or perl2exe
   # at all on Windows (xref i#265/PR 486139)
   if (OFF) # disabling
+    # For portability we convert our perl scripts to executables,
+    # if the 'pp' tool is available.
+    # For most portable results, use a native windows perl (e.g.,
+    # strawberry perl) rather than cygwin perl.
+    set(PERL_PATH  "" CACHE PATH "directory where perl binaries are located")
+    if (PERL_PATH AND EXISTS "${PERL_PATH}/perl.exe")
+      set(PERL_EXECUTABLE "${PERL_PATH}/perl.exe")
+    else ()
+      # we only look for perl if user doesn't specify (on windows it's common
+      # to have several perls installed)
+      include(FindPerl)
+      if (PERL_FOUND)
+        get_filename_component(PERL_PATH "${PERL_EXECUTABLE}" PATH)
+      endif (PERL_FOUND)
+    endif ()
+
     if (EXISTS "${PERL_PATH}/pp")
       set(PERL_PP "${PERL_PATH}/pp" CACHE FILEPATH
         "Path to perl PAR module's perl-to-executable tool 'pp'")
@@ -220,6 +220,8 @@ if (WIN32)
       message(STATUS "Found pp: ${PERL_PP}")
       set(PERL_TO_EXE ON)
     endif (PERL_PP-NOTFOUND OR NOT EXISTS "${PERL_PP}")
+  else (OFF)
+    set(PERL_TO_EXE OFF)
   endif (OFF)
 endif (WIN32)
 

@@ -116,6 +116,7 @@ LEAK
 suppress.exe!invalid_free_test1
 
 INVALID HEAP ARGUMENT
+...
 suppress.exe!invalid_free_test1
 
 WARNING

@@ -25,9 +25,9 @@ suppress.c:52
 suppress!uninit_test1
 suppress.c:58
 suppress!test
-suppress.c:192
+suppress.c:196
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #2: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -35,9 +35,9 @@ suppress.c:52
 suppress!uninit_test2
 suppress.c:63
 suppress!test
-suppress.c:193
+suppress.c:197
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #3: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -45,9 +45,9 @@ suppress.c:52
 suppress!uninit_test3
 suppress.c:68
 suppress!test
-suppress.c:194
+suppress.c:198
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #4: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -55,9 +55,9 @@ suppress.c:52
 suppress!uninit_test4
 suppress.c:73
 suppress!test
-suppress.c:195
+suppress.c:199
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #5: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -65,9 +65,9 @@ suppress.c:52
 suppress!uninit_test5
 suppress.c:78
 suppress!test
-suppress.c:196
+suppress.c:200
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #6: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -85,9 +85,9 @@ suppress.c:84
 suppress!uninit_test6
 suppress.c:91
 suppress!test
-suppress.c:197
+suppress.c:201
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #7: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -105,9 +105,9 @@ suppress.c:84
 suppress!uninit_test7
 suppress.c:96
 suppress!test
-suppress.c:198
+suppress.c:202
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: prev lower malloc:
@@ -115,9 +115,9 @@ overlaps freed memory
 suppress!unaddr_test1
 suppress.c:103
 suppress!test
-suppress.c:202
+suppress.c:206
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #9: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: prev lower malloc:
@@ -125,9 +125,9 @@ overlaps freed memory
 suppress!unaddr_test2
 suppress.c:110
 suppress!test
-suppress.c:203
+suppress.c:207
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #10: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: prev lower malloc:
@@ -135,9 +135,9 @@ overlaps freed memory
 suppress!unaddr_test3
 suppress.c:117
 suppress!test
-suppress.c:204
+suppress.c:208
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #11: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: prev lower malloc:
@@ -145,48 +145,48 @@ overlaps freed memory
 suppress!unaddr_test4
 suppress.c:124
 suppress!test
-suppress.c:205
+suppress.c:209
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #12: WARNING: heap allocation failed
 suppress!warning_test1
 suppress.c:156
 suppress!test
-suppress.c:212
+suppress.c:216
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #13: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:175
 suppress!test
-suppress.c:215
+suppress.c:219
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #14: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:177
 suppress!test
-suppress.c:215
+suppress.c:219
 suppress!main
-suppress.c:223
+suppress.c:227
 
 Error #15: INVALID HEAP ARGUMENT: 
 suppress!invalid_free_test1
 !if WINDOWS
-suppress.c:179
+suppress.c:183
 !endif
 !if UNIX
-suppress.c:180
+suppress.c:184
 !endif
 suppress!test
-suppress.c:215
+suppress.c:219
 suppress!main
-suppress.c:223
+suppress.c:227
 
 # these are sometimes out of order
 !OUT_OF_ORDER
@@ -195,41 +195,38 @@ suppress.c:223
 suppress!leak_test1
 suppress.c:130
 suppress!test
-suppress.c:207
+suppress.c:211
 suppress!main
-suppress.c:223
-
-
-: LEAK 4 direct bytes + 0 indirect bytes
-suppress!leak_test3
-suppress.c:142
-suppress!test
-suppress.c:209
-suppress!main
-suppress.c:223
-
-: LEAK 4 direct bytes + 0 indirect bytes
-suppress!leak_test4
-suppress.c:148
-suppress!test
-suppress.c:210
-suppress!main
-suppress.c:223
-
-: LEAK 32 direct bytes + 0 indirect bytes
-suppress!invalid_free_test1
-suppress.c:165
-suppress!test
-suppress.c:215
-suppress!main
-suppress.c:223
-
-
+suppress.c:227
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test2
 suppress.c:136
 suppress!test
-suppress.c:208
+suppress.c:212
 suppress!main
-suppress.c:223
+suppress.c:227
+
+: LEAK 4 direct bytes + 0 indirect bytes
+suppress!leak_test3
+suppress.c:142
+suppress!test
+suppress.c:213
+suppress!main
+suppress.c:227
+
+: LEAK 4 direct bytes + 0 indirect bytes
+suppress!leak_test4
+suppress.c:148
+suppress!test
+suppress.c:214
+suppress!main
+suppress.c:227
+
+: LEAK 32 direct bytes + 0 indirect bytes
+suppress!invalid_free_test1
+suppress.c:165
+suppress!test
+suppress.c:219
+suppress!main
+suppress.c:227

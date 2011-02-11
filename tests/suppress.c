@@ -175,6 +175,10 @@ static void invalid_free_test1(void)
     *(p) = *(p-RZ_DIV-2);
     /* preserve bottom 2 bits of size */
     *(p+1) = ((*(p-RZ_DIV-1) & ~3) - (REDZONE_SIZE+8)) | (*(p-RZ_DIV-1) & 3);
+#ifdef WINDOWS
+    /* crashes Vista test (i#82) so we clear while preserving # unaddrs */
+    *(p+1) -= *(p+1);
+#endif
     /* this can corrupt the free list, so probably best to run this test last */
     FREE(p+2);
 }
