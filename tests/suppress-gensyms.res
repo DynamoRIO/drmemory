@@ -110,7 +110,7 @@ suppress!main
 suppress.c:223
 
 Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: prev lower malloc:
+# non-det so disabling: Note: prev lower malloc:
 overlaps freed memory
 suppress!unaddr_test1
 suppress.c:103
@@ -120,7 +120,7 @@ suppress!main
 suppress.c:223
 
 Error #9: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: prev lower malloc:
+# non-det so disabling: Note: prev lower malloc:
 overlaps freed memory
 suppress!unaddr_test2
 suppress.c:110
@@ -130,7 +130,7 @@ suppress!main
 suppress.c:223
 
 Error #10: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: prev lower malloc:
+# non-det so disabling: Note: prev lower malloc:
 overlaps freed memory
 suppress!unaddr_test3
 suppress.c:117
@@ -140,7 +140,7 @@ suppress!main
 suppress.c:223
 
 Error #11: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: prev lower malloc:
+# non-det so disabling: Note: prev lower malloc:
 overlaps freed memory
 suppress!unaddr_test4
 suppress.c:124
@@ -158,7 +158,7 @@ suppress!main
 suppress.c:223
 
 Error #13: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: next higher malloc:
+# non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:175
 suppress!test
@@ -167,7 +167,7 @@ suppress!main
 suppress.c:223
 
 Error #14: UNADDRESSABLE ACCESS: reading 4 byte(s)
-Note: next higher malloc:
+# non-det so disabling: Note: next higher malloc:
 suppress!invalid_free_test1
 suppress.c:177
 suppress!test

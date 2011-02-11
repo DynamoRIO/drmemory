@@ -49,7 +49,7 @@
 # DAMAGE.
 
 # Where to submit CTest results
-set(CTEST_PROJECT_NAME "Dr. Memory")
+set(CTEST_PROJECT_NAME "DrMemory") # must match project() name
 
 if (SUBMIT_LOCAL)
   set(CTEST_DROP_METHOD "scp")

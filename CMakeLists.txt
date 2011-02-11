@@ -18,7 +18,29 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-cmake_minimum_required(VERSION 2.6)
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  # for output dir name control
+  cmake_minimum_required(VERSION 2.8.2)
+else ()
+  cmake_minimum_required(VERSION 2.6)
+endif ()
+
+# like DR, we collapse VS generator into one config since
+# we don't have enough control over output dirs
+# in build rules (until cmake 2.8.4).
+# this must be prior to the project() command.
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+    set(CMAKE_CONFIGURATION_TYPES "Debug" CACHE STRING "" FORCE)
+  else ()
+    set(CMAKE_CONFIGURATION_TYPES "Release" CACHE STRING "" FORCE)
+  endif ()
+  # we want to use the _LOCATION_<config> property
+  string(TOUPPER "${CMAKE_CONFIGURATION_TYPES}" upper)
+  set(location_suffix "_${upper}")
+else ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  set(location_suffix "")
+endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
 
 project(DrMemory NONE)
 if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
@@ -252,6 +274,11 @@ else (UNIX)
   endforeach ()
   # disable stack protection: "unresolved external symbol ___security_cookie"
   set(CL_CFLAGS "/GS-")
+  # build in parallel, always.
+  # note that /MP is not officially supported on VS 2005 and others
+  # have seen occasional problems: we'll risk it.  we could check for
+  # "MSVC10 OR MSVC90".
+  set(CL_CFLAGS "${CL_CFLAGS} /MP")
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${WARN} ${CL_CFLAGS}")
 endif (UNIX)
 set(CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN}")
@@ -392,8 +419,22 @@ else (DEBUG_BUILD)
   set(INSTALL_LIB "${INSTALL_BIN}/release")
   set(BUILD_LIB "${BUILD_BIN}/release")
 endif (DEBUG_BUILD)
-set(LIBRARY_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${BUILD_LIB}")
-set(EXECUTABLE_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
+
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/${BUILD_LIB}")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/${BUILD_BIN}")
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  # we don't support the Debug and Release subdirs
+  foreach (config ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER "${config}" config_upper)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+  endforeach ()
+endif ()
 
 ##################################################
 # option sharing (PR 478146)
@@ -667,6 +708,9 @@ set(DynamoRIO_REG_COMPATIBILITY ON)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
+set_target_properties(${client_target} PROPERTIES
+  # dlls are put in runtime dir but we want lib dir
+  RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 if (WIN32 AND USE_DRSYMS)
   configure_DynamoRIO_standalone(${toolname})
   target_link_libraries(${toolname} drinjectlib drconfiglib)
@@ -693,14 +737,14 @@ set_property(SOURCE common/alloc_unopt.c APPEND PROPERTY COMPILE_FLAGS "${DISABL
 # Though the swf file isn't an executable it is in bin32 because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
 if (TOOL_DR_HEAPSTAT)
-  add_custom_target(vistool ALL DEPENDS "${EXECUTABLE_OUTPUT_PATH}/${toolname}.swf")
+  add_custom_target(vistool ALL DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf")
   add_custom_command(
-    OUTPUT ${EXECUTABLE_OUTPUT_PATH}/${toolname}.swf
+    OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
     DEPENDS ${PROJECT_SOURCE_DIR}/${tooldir}/${toolname}.mxml
     COMMAND ${JAVA}
     ARGS -jar ${FLEX_MXMLC} "+flexlib=${FLEX_FRAMEWORKS}"
       ${PROJECT_SOURCE_DIR}/${tooldir}/${toolname}.mxml
-      -o ${EXECUTABLE_OUTPUT_PATH}/${toolname}.swf
+      -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
     VERBATIM)
 endif (TOOL_DR_HEAPSTAT)
 
@@ -876,7 +920,7 @@ if (NOT "${script_aux}" STREQUAL "")
 endif ()
 if (TOOL_DR_HEAPSTAT)
   install(FILES
-    ${EXECUTABLE_OUTPUT_PATH}/${toolname}.swf
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
 else (TOOL_DR_HEAPSTAT)
@@ -885,7 +929,7 @@ else (TOOL_DR_HEAPSTAT)
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
 endif (TOOL_DR_HEAPSTAT)
-install(DIRECTORY ${LIBRARY_OUTPUT_PATH}/
+install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION "${INSTALL_LIB}"
   FILE_PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE

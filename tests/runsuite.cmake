@@ -89,7 +89,7 @@ if (arg_vmk_only OR arg_test_vmk)
   endif (NOT EXISTS "${DRvmk_path}")
 endif (arg_vmk_only OR arg_test_vmk)
 
-set(CTEST_PROJECT_NAME "Dr. Memory")
+set(CTEST_PROJECT_NAME "DrMemory")
 set(cpack_project_name "DrMemory")
 set(run_tests ON)
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}/..")

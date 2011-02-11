@@ -88,7 +88,7 @@ else ()
   set(runsuite_include_path "${CTEST_SCRIPT_DIRECTORY}/dynamorio/suite")
 endif()
 
-set(CTEST_PROJECT_NAME "Dr. Memory")
+set(CTEST_PROJECT_NAME "DrMemory")
 set(cpack_project_name "DrMemory")
 set(run_tests OFF)
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}")

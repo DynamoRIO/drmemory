@@ -24,8 +24,22 @@ cmake_minimum_required(VERSION 2.6)
 # regardless of DrMem library settings
 set(CMAKE_BUILD_TYPE "Debug")
 
-set(EXECUTABLE_OUTPUT_PATH "${PROJECT_BINARY_DIR}/tests")
-set(LIBRARY_OUTPUT_PATH "${PROJECT_BINARY_DIR}/tests")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  set(CMAKE_CONFIGURATION_TYPES "Debug")
+  # we don't support the Debug and Release subdirs
+  foreach (config ${CMAKE_CONFIGURATION_TYPES})
+    string(TOUPPER "${config}" config_upper)
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper}
+      "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+  endforeach ()
+endif ()
 
 function(set_props target)
   if (UNIX)
@@ -71,7 +85,7 @@ set(src_param_pattern "{DRMEMORY_CTEST_SRC_DIR}")
 set(DR_param_pattern "{DRMEMORY_CTEST_DR_DIR}")
 
 function (get_relative_location target outvar)
-  get_target_property(tgtpath ${target} LOCATION)
+  get_target_property(tgtpath ${target} LOCATION${location_suffix})
   # For more portable testing (PR 544430) use relative dirs within parent build dir
   file(RELATIVE_PATH relpath "${CMAKE_CURRENT_BINARY_DIR}" "${tgtpath}")
   if (NOT "${relpath}" MATCHES "^\\.\\.")
