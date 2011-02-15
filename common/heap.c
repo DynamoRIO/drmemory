@@ -219,7 +219,10 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
               void (*cb_chunk)(app_pc,app_pc))
 {
 #ifdef WINDOWS
-    /* We have two choices: RtlEnumProcessHeaps or RtlGetProcessHeaps */
+    /* We have two choices: RtlEnumProcessHeaps or RtlGetProcessHeaps.
+     * The results are identical: the former invokes a callback while
+     * the latter requires a passed-in array.
+     */
     uint cap_heaps = 10;
     byte **heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
     PROCESS_HEAP_ENTRY heap_info;
@@ -234,8 +237,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         ASSERT(cap_heaps >= num_heaps, "heap walk error");
     }
     for (i = 0; i < num_heaps; i++) {
-        size_t size, commit_size;
-        app_pc base;
+        size_t size, commit_size, sub_size;
+        app_pc base, sub_base;
         LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
         memset(&heap_info, 0, sizeof(heap_info));
         /* While init time is assumed to be single-threaded there are
@@ -250,12 +253,16 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
                "heap not committed followed by reserved");
         if (cb_region != NULL)
             cb_region(base, base+size, heaps[i]);
+        sub_base = base;
+        sub_size = size;
         while (NT_SUCCESS(RtlWalkHeap(heaps[i], &heap_info))) {
             /* What I see doesn't quite match my quick reading of MSDN HeapWalk
              * docs.  Not really clear where cbOverhead space is: before or after
              * lpData?  Seems to not be after.  And what's up with these wFlags=0
              * entries?  For wFlags=0, RtlSizeHeap gives a too-big # when
-             * passed lpData.
+             * passed lpData.  Also, wFlags containing PROCESS_HEAP_REGION
+             * should supposedly only happen for the first block in a region,
+             * but it's on for all legit blocks, it seems.
              */
             /* I've seen bogus lpData fields => RtlSizeHeap crashes if free mem.
              * I've also seen bogus lpData pointing into not-yet-committed
@@ -263,13 +270,32 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
              */
             size_t sz;
             bool bad_chunk = false;
-            /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista */
-            if (TEST(PROCESS_HEAP_UNCOMMITTED_RANGE, heap_info.wFlags) ||
-                /* Vista calls RtlReportCriticalFailure on wFlags==0 chunks */
-                (running_on_Vista_or_later() && heap_info.wFlags == 0) ||
-                (app_pc)heap_info.lpData < base ||
-                (app_pc)heap_info.lpData >= base+commit_size)
+            /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista.
+             * Yet a TRY/EXCEPT around RtlSizeHeap is not enough:
+             * Vista calls RtlReportCriticalFailure on wFlags==0 chunks.
+             */
+            if (!TEST(PROCESS_HEAP_REGION, heap_info.wFlags) ||
+                /* sanity check: outside of committed but within main sub-region? */
+                ((app_pc)heap_info.lpData < base+size &&
+                 (app_pc)heap_info.lpData >= base+commit_size))
                 bad_chunk = true;
+            /* some heaps have multiple regions.  not bothering to check
+             * commit vs reserve on sub-regions.
+             */
+            if ((app_pc)heap_info.lpData < sub_base ||
+                (app_pc)heap_info.lpData >= sub_base+sub_size) {
+                if (TEST(PROCESS_HEAP_REGION, heap_info.wFlags)) {
+                    /* a new region or large block inside this heap */
+                    sub_size = allocation_size((app_pc)heap_info.lpData, &sub_base);
+                    if (cb_region != NULL)
+                        cb_region(sub_base, sub_base+sub_size, heaps[i]);
+                    LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
+                        sub_base, sub_base+sub_size, heaps[i]);
+                } else {
+                    /* an entry for the remainder of the space? */
+                    bad_chunk = true;
+                }
+            }
             LOG(2, "heap %x "PFX"-"PFX"-"PFX" %d "PFX","PFX" %x %x %x\n",
                 heap_info.wFlags, heap_info.lpData,
                 (app_pc)heap_info.lpData + heap_info.cbOverhead,

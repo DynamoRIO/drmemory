@@ -311,6 +311,7 @@ typedef enum {
     RTL_ROUTINE_HEAPINFO,
     RTL_ROUTINE_LOCK,
     RTL_ROUTINE_UNLOCK,
+    RTL_ROUTINE_QUERY,
     RTL_ROUTINE_SHUTDOWN,
     RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
 #endif
@@ -447,6 +448,13 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
      */
     { "RtlLockHeap", RTL_ROUTINE_LOCK },
     { "RtlUnlockHeap", RTL_ROUTINE_UNLOCK },
+    /* called by kernel32!Heap32First and touches heap headers.
+     * XXX: kernel32!Heap32{First,Next} itself reads a header!
+     */
+    { "RtlEnumProcessHeaps", RTL_ROUTINE_QUERY },
+    { "RtlQueryHeapInformation", RTL_ROUTINE_QUERY },
+    { "RtlGetProcessHeaps", RTL_ROUTINE_QUERY },
+    { "RtlQueryProcessHeapInformation", RTL_ROUTINE_QUERY },
     /* RtlpHeapIsLocked is a non-exported routine that is called directly
      * from LdrShutdownProcess: so we treat the latter as a heap routine
      * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
