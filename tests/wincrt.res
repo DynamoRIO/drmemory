@@ -26,3 +26,5 @@ Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:41
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:42
+Error #5: UNADDRESSABLE ACCESS: writing 1 byte(s)
+wincrt.cpp:93

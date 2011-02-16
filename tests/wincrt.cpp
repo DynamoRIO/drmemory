@@ -85,6 +85,15 @@ deletedbg_test(void)
 }
 
 
+static void
+oob_write_test(void)
+{
+    /* test i#51: this should NOT raise a msgbox from dbgcrt */
+    unsigned char *foo = (unsigned char*) malloc(8);
+    *(foo-1) = 0xab;
+    free(foo);
+}
+
 /* TODO PR 595802: test _recalloc and _aligned_* malloc routines
  */
 
@@ -94,6 +103,7 @@ int main()
     oob_read_test();
     crtdbg_test();
     deletedbg_test();
+    oob_write_test();
     printf("Done\n");
     return 0;
 }

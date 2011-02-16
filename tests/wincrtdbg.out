@@ -20,7 +20,7 @@
 #
 Done
 :::Dr.Memory::: ERRORS FOUND:
-:::Dr.Memory:::       7 unique,     7 total unaddressable access(es)
+:::Dr.Memory:::       8 unique,     8 total unaddressable access(es)
 :::Dr.Memory:::       0 unique,     0 total uninitialized access(es)
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)

@@ -290,6 +290,9 @@ typedef enum {
     HEAP_ROUTINE_CALLOC_DBG,
     /* We must watch debug operator delete b/c it reads malloc's headers (i#26)! */
     HEAP_ROUTINE_DELETE,
+    /* To avoid debug CRT checks (i#51) */
+    HEAP_ROUTINE_SET_DBG,
+    HEAP_ROUTINE_DBG_NOP,
     /* FIXME PR 595798: for cygwin allocator we have to track library call */
     HEAP_ROUTINE_SBRK,
     HEAP_ROUTINE_LAST = HEAP_ROUTINE_SBRK,
@@ -413,7 +416,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     (sizeof(possible_libc_routines)/sizeof(possible_libc_routines[0]))
 
 #ifdef WINDOWS
-static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
+static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_msize_dbg", HEAP_ROUTINE_SIZE_REQUESTED_DBG },
     { "_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
     { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
@@ -426,10 +429,25 @@ static const possible_alloc_routine_t possible_dbgcrt_routines[] = {
     { "_realloc_dbg_impl", HEAP_ROUTINE_REALLOC_DBG }, 
     { "_free_dbg_impl", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg_impl", HEAP_ROUTINE_CALLOC_DBG },
+    /* to control the debug crt options (i#51) */
+    { "_CrtSetDbgFlag", HEAP_ROUTINE_SET_DBG },
+    /* the dbgflag only controls full-heap scans: to disable checks on
+     * malloc and free we disable the reporting routines.  this is a hack
+     * and may suppress other errors we might want to see: but the
+     * alternative is to completely replace _dbg (see i#51 notes below).
+     */
+    { "_CrtDbgReport", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgReportW", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgBreak", HEAP_ROUTINE_DBG_NOP },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
-#define POSSIBLE_DBGCRT_ROUTINE_NUM \
-    (sizeof(possible_dbgcrt_routines)/sizeof(possible_dbgcrt_routines[0]))
+#define POSSIBLE_CRTDBG_ROUTINE_NUM \
+    (sizeof(possible_crtdbg_routines)/sizeof(possible_crtdbg_routines[0]))
+
+/* for i#51 so we can disable crtdbg checks */
+#define CRTDBG_FLAG_NAME "_crtDbgFlag"
 
 static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlSizeHeap", RTL_ROUTINE_SIZE },
@@ -540,6 +558,23 @@ replace_alloc_routine(app_pc pc)
     dr_mutex_unlock(alloc_routine_lock);
     return res;
 }
+
+#ifdef WINDOWS
+static bool
+replace_crtdbg_routine(app_pc pc)
+{
+    alloc_routine_entry_t *e;
+    bool res = false;
+    if (!options.disable_crtdbg)
+        return false;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    if (e != NULL && e->type == HEAP_ROUTINE_DBG_NOP)
+        res = true;
+    dr_mutex_unlock(alloc_routine_lock);
+    return res;
+}
+#endif
 
 #if defined(WINDOWS) || defined(DEBUG)
 static const char *
@@ -910,6 +945,39 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             e = add_alloc_routine(pc, possible[i].type, possible[i].name, set);
             LOG(1, "intercepting %s @"PFX" in module %s\n",
                 possible[i].name, pc, (modname == NULL) ? "<noname>" : modname);
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+            if (options.disable_crtdbg) {
+                /* i#51: we do not want crtdbg checks when our tool is present
+                 * (the checks overlap, better to have our tool report it than
+                 * crt, etc.).  This dbgflag only controls full-heap scans: to
+                 * disable checks on malloc and free we also disable the
+                 * reporting routines, which is a hack and may suppress other
+                 * errors we might want to see.
+                 * 
+                 * Ideally we would also eliminate the crtdbg redzone and
+                 * replace w/ our size-controllable redzone as well: but we
+                 * would have to map the _dbg routines straight to Heap* or
+                 * something (there are no release versions of all of them;
+                 * could try to use _base for a few) and replace operator delete
+                 * (or switch to replacing all alloc routines instead of
+                 * instrumenting).  We could document that app is better off not
+                 * using debug crt.  Note that the crtdbg redzone should get
+                 * marked unaddr by us, since we'll use the size passed to the
+                 * _dbg routine (and should be in our hashtable later, so should
+                 * never call RtlSizeHeap and get the full size and get
+                 * confused).
+                 */
+                int *crtdbg_flag_ptr = (int *) lookup_symbol(mod, CRTDBG_FLAG_NAME);
+                static const int zero = 0;
+                if (crtdbg_flag_ptr != NULL &&
+                    dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
+                                  &zero, NULL)) {
+                    LOG(1, "disabled crtdbg checks\n");
+                } else {
+                    LOG(1, "WARNING: unable to disable crtdbg checks\n");
+                }
+            }
+#endif
         }
 #ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
@@ -1424,8 +1492,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         find_alloc_routines(info, possible_libc_routines,
                             POSSIBLE_LIBC_ROUTINE_NUM, use_redzone, false, HEAPSET_LIBC);
 #ifdef WINDOWS
-        find_alloc_routines(info, possible_dbgcrt_routines,
-                            POSSIBLE_DBGCRT_ROUTINE_NUM, use_redzone, false,
+        find_alloc_routines(info, possible_crtdbg_routines,
+                            POSSIBLE_CRTDBG_ROUTINE_NUM, use_redzone, false,
                             HEAPSET_LIBC_DBG);
 #endif
         dr_mutex_unlock(alloc_routine_lock);
@@ -1447,8 +1515,8 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
             }
         }
 #ifdef WINDOWS
-        for (i = 0; i < POSSIBLE_DBGCRT_ROUTINE_NUM; i++) {
-            app_pc pc = lookup_symbol_or_export(info, possible_dbgcrt_routines[i].name);
+        for (i = 0; i < POSSIBLE_CRTDBG_ROUTINE_NUM; i++) {
+            app_pc pc = lookup_symbol_or_export(info, possible_crtdbg_routines[i].name);
             if (pc != NULL) {
                 IF_DEBUG(bool found = )
                     hashtable_remove(&alloc_routine_table, (void *)pc);
@@ -3454,8 +3522,9 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
          * We do our adjustments in the outer pre and the outer post.
          */
         if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
-            LOGPT(2, pt, "%s recursive call: no adjustments\n",
-                  get_alloc_routine_name(expect));
+            LOGPT(2, pt, "%s recursive call: no adjustments; size requested="PIFX"\n",
+                  get_alloc_routine_name(expect),
+                  APP_ARG(&mc, ARGNUM_MALLOC_SIZE(type), inside));
             return;
         }
         if (!options.replace_realloc || !is_realloc_routine(type))
@@ -3507,7 +3576,22 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
          * I fail via invalid param rather than replacing routine
          * and making up some errno.
          */
+        /* RtlSetHeapInformation(HANDLE heap, HEAP_INFORMATION_CLASS class, ...) */
+        LOG(1, "disabling %s "PFX" %d\n", routine.name,
+            *((int *)APP_ARG_ADDR(&mc, 1, inside)),
+            *((int *)APP_ARG_ADDR(&mc, 2, inside)));
         *((int *)APP_ARG_ADDR(&mc, 2, inside)) = -1;
+    }
+    else if (options.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
+        /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
+        LOG(1, "disabling %s %d\n", routine.name,
+            *((int *)APP_ARG_ADDR(&mc, 1, inside)));
+        *((int *)APP_ARG_ADDR(&mc, 1, inside)) = 0;
+    }
+    else if (options.disable_crtdbg && type == HEAP_ROUTINE_DBG_NOP) {
+        /* i#51: disable crt dbg checks: disable direct reports on malloc/free */
+        LOG(2, "disabling %s\n", routine.name);
+        *((int *)APP_ARG_ADDR(&mc, 1, inside)) = 0;
     }
 #endif
     else if (type == HEAP_ROUTINE_NOT_HANDLED) {
@@ -3905,17 +3989,26 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
 {
     byte *pc, *replacement;
     instr_t *inst = instrlist_first(bb);
-    if (!options.replace_realloc || inst == NULL)
+    if (inst == NULL)
         return;
     pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
-    replacement = replace_alloc_routine(pc);
-    if (replacement != NULL) {
-        LOG(2, "replacing realloc "PFX" => "PFX"\n", pc, replacement);
-        instrlist_clear(drcontext, bb);
-        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
-                                       (drcontext, opnd_create_pc(replacement)), pc));
+    if (options.replace_realloc) {
+        replacement = replace_alloc_routine(pc);
+        if (replacement != NULL) {
+            LOG(2, "replacing realloc "PFX" => "PFX"\n", pc, replacement);
+            instrlist_clear(drcontext, bb);
+            instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
+                                           (drcontext, opnd_create_pc(replacement)), pc));
+        }
     }
+#ifdef WINDOWS
+    if (options.disable_crtdbg && replace_crtdbg_routine(pc)) {
+        instrlist_clear(drcontext, bb);
+        /* cdecl so no args to clean up */
+        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_ret(drcontext), pc));
+    }
+#endif
 }
 
 void

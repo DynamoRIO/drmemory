@@ -135,6 +135,12 @@ will not be able to identify and avoid conflicts with msvcrt's own heap
 debugging facilities, which may lead to false positives and/or false
 negatives.  Be sure to build with debugging information included.
 
+Additionally, on Windows, when using debug versions of msvcrt (e.g.,
+building with the "/MTd" or "/MDd" flag), you will not be able to control
+the redzone size.  The debug heap checks will mostly be disabled as they
+overlap and can conflict with Dr. Memory's checks.  It is recommended that
+the release version of the heap routines be used.
+
 ********************
 \subsection sec_invocation Invoking Dr. Memory
 

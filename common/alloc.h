@@ -45,6 +45,10 @@ typedef struct _alloc_options_t {
     bool get_padded_size;
     /* Replace realloc with equivalent malloc+memcpy+free? */
     bool replace_realloc;
+#ifdef WINDOWS
+    /* Disable debug CRT checks */
+    bool disable_crtdbg;
+#endif
     /* Add new options here */
 } alloc_options_t;
 

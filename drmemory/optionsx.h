@@ -386,8 +386,11 @@ OPTION_CLIENT(internal, share_xl8_max_diff, uint, 2048, 0, SHADOW_REDZONE_SIZE*4
 OPTION_CLIENT(internal, share_xl8_max_flushes, uint, 64, 0, UINT_MAX,
               "How many flushes before abandoning sharing altogether",
               "How many flushes before abandoning sharing altogether")
-
 OPTION_CLIENT_BOOL(internal, check_memset_unaddr, true,
                    "Check for in-heap unaddr in memset",
                    "Check for in-heap unaddr in memset")
-
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
+                   "Disable debug CRT checks",
+                   "Disable debug CRT checks")
+#endif
