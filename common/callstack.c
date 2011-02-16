@@ -69,53 +69,97 @@ uint find_next_fp_scans;
  * We do NOT store the frame pointers, to save space.  They are
  * rarely needed in allocation site analysis.
  */
+
+typedef union {
+    app_pc addr;
+    /* syscalls store a string identifying param (PR 525269) */
+    const char *syscall_aux;
+} frame_loc_t;
+
+/* Packed binary callstack */
 typedef struct _packed_frame_t {
-    union {
-        app_pc addr;
-        /* syscalls store a string identifying param (PR 525269) */
-        const char *syscall_aux;
-    } loc;
+    frame_loc_t loc;
     /* Modules can move around, with the same module being at two
      * different locations, so we must store both the name (which is a
      * pointer into a never-removed-from module name hashtable) and
      * the offset.  We pack further using an array of names so we can
-     * store an index here that is a single byte (not going to see >
-     * 256 libraries) that shares a dword with the module offset. That 
+     * store an index here that is a single byte (if we hit >
+     * 256 libraries we switch to full_frame_t) that shares a dword
+     * with the module offset. That
      * limits the offset to 16MB.  For modules larger than that, we have
      * extra entries that are adjacent in the modname array.  The
      * hashtable holds the index of the first such entry.
      */
     uint modoffs : 24;
-    /* For syscalls, we use index 0 and store the syscall # in modoffs */
+    /* For syscalls, we use index 0 and store syscall # in modoffs.
+     * For non-module addresses, we use index MAX_MODNAMES_STORED.
+     */
     uint modname_idx : 8;
 } packed_frame_t;
+
+/* Hashtable entry is the master entry.  modname_array and full frame field
+ * point at same entry.
+ */
+typedef struct _modname_info_t {
+    /* Both strings are strdup-ed */
+    const char *name; /* "preferred" name */
+    const char *path; /* name with full path */
+    /* Index into modname_array, if one of the first MAX_MODOFFS_STORED module
+     * names; else -1
+     */
+    int index;
+} modname_info_t;
+
+/* When the number of modules hits the max for our 8-bit index we
+ * have to switch to these frames
+ */
+typedef struct _full_frame_t {
+    frame_loc_t loc;
+    size_t modoffs;
+    /* For syscalls, we use MODNAME_INFO_SYSCALL and store the syscall # in modoffs.
+     * For non-modules addresses, we use NULL.
+     */
+    modname_info_t *modname;
+} full_frame_t;
+
+/* used to indicate syscall for full_frame_t (NULL indicates not in a module) */
+static const modname_info_t MODNAME_INFO_SYSCALL;
 
 #define MAX_MODOFFS_STORED (0x00ffffff)
 
 struct _packed_callstack_t {
     /* share callstacks to save space (PR 465174) */
     uint refcount;
-    /* Variable-length to save space */
-    uint num_frames;
-    packed_frame_t *frames;
+    /* variable-length to save space */
+    ushort num_frames;
+    /* whether frames are packed_frame_t or full_frame_t */
+    bool is_packed:1;
+    union {
+        packed_frame_t *packed;
+        full_frame_t *full;
+    } frames;
 };
 
-/* Array mapping index to name 
- * Hashtable lock synchronizes access
- */
-#define MAX_MODNAMES_STORED UCHAR_MAX
-typedef struct _modname_info_t {
-    /* Both strings are strdup-ed */
-    const char *name; /* "preferred" name */
-    const char *path; /* name with full path */
-} modname_info_t;
-static modname_info_t modname_array[MAX_MODNAMES_STORED];
-/* Index 0 is reserved to indicate a system call as the top frame of a callstack */
-static uint modname_array_end = 1;
+/* multiplexing between packed and full frames */
+#define PCS_FRAME_LOC(pcs, n) \
+    ((pcs)->is_packed ? (pcs)->frames.packed[n].loc : (pcs)->frames.full[n].loc)
+#define PCS_FRAMES(pcs) \
+    ((pcs)->is_packed ? (void*)((pcs)->frames.packed) : (void*)((pcs)->frames.full))
+#define PCS_FRAME_SZ(pcs) \
+    ((pcs)->is_packed ? sizeof(*(pcs)->frames.packed) : sizeof(*(pcs)->frames.full))
 
-/* Hashtable for mapping name to index */
+/* Hashtable that stores name info.  We never remove entries. */
 #define MODNAME_TABLE_HASH_BITS 8
 static hashtable_t modname_table;
+
+/* Array mapping index to name for use with packed_frame_t.
+ * Points at same modname_info_t as hashtable entry.
+ * Hashtable lock synchronizes writes; no synch on reads.
+ */
+#define MAX_MODNAMES_STORED UCHAR_MAX
+static modname_info_t *modname_array[MAX_MODNAMES_STORED];
+/* Index 0 is reserved to indicate a system call as the top frame of a callstack */
+static uint modname_array_end = 1;
 
 /* PR 473640: our own module region tree */
 static rb_tree_t *module_tree;
@@ -128,13 +172,16 @@ static app_pc modtree_max_end;
 /* cached values for module_lookup */
 static app_pc modtree_last_start;
 static size_t modtree_last_size;
-static int modtree_last_name_idx;
+static modname_info_t *modtree_last_name_info;
 /* cached values for is_in_module() */
 static app_pc modtree_last_hit;
 static app_pc modtree_last_miss;
 
 static bool
-module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT);
+module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name OUT);
+
+static void
+modname_info_free(void *p);
 
 /***************************************************************************/
 
@@ -166,7 +213,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
     op_get_syscall_name = get_syscall_name;
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
-                      false/*!str_dup*/, false/*!synch*/, NULL, NULL, NULL);
+                      false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
     modtree_lock = dr_mutex_create();
     module_tree = rb_tree_create(NULL);
 
@@ -180,26 +227,9 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
 void
 callstack_exit(void)
 {
-    int i;
-    const char *prev_name = NULL;
-
     dr_mutex_destroy(page_buf_lock);
 
     hashtable_delete(&modname_table);
-    for (i = 0; i < modname_array_end; i++) {
-        /* contiguous entries can share the name string if for a large module */
-        if (modname_array[i].name != prev_name) {
-            if (modname_array[i].name != NULL) {
-                global_free((void *)modname_array[i].name,
-                            strlen(modname_array[i].name) + 1, HEAPSTAT_HASHTABLE);
-            }
-            if (modname_array[i].path != NULL) {
-                global_free((void *)modname_array[i].path,
-                            strlen(modname_array[i].path) + 1, HEAPSTAT_HASHTABLE);
-            }
-            prev_name = modname_array[i].name;
-        }
-    }
 
     dr_mutex_lock(modtree_lock);
     rb_tree_destroy(module_tree);
@@ -292,43 +322,51 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
               bool sub1_sym)
 {
     ssize_t len = 0;
-    int idx;
+    modname_info_t *name_info;
     app_pc mod_start;
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
            (buf == NULL && sofar == NULL && pcs != NULL),
            "print_callstack: can't pass buf and pcs");
     
-    if (module_lookup(pc, &mod_start, NULL, &idx)) {
+    if (module_lookup(pc, &mod_start, NULL, &name_info)) {
         ASSERT(pc >= mod_start, "internal pc-not-in-module error");
-        ASSERT(idx >= 0, "module should have index");
+        ASSERT(name_info != NULL, "module should have info");
         ASSERT(mod_in == NULL || mod_in->start == mod_start, "module mismatch");
         if (pcs != NULL) {
             size_t sz = (pc - mod_start);
             uint pcs_idx = pcs->num_frames;
-            pcs->frames[pcs_idx].loc.addr = pc;
-            if (idx < 0) { /* handling missing module in release build */
-                /* We already asserted above */
-                if (sz > MAX_MODOFFS_STORED) /* We lose data here */
-                    pcs->frames[pcs_idx].modoffs = MAX_MODOFFS_STORED;
-                else
-                    pcs->frames[pcs_idx].modoffs = sz;
-                pcs->frames[pcs_idx].modname_idx = MAX_MODNAMES_STORED;
-            } else {
-                while (sz > MAX_MODOFFS_STORED) {
-                    sz -= MAX_MODOFFS_STORED;
-                    if (idx + 1 == MAX_MODNAMES_STORED)
-                        break;
-                    idx++;
-                    ASSERT(idx < modname_array_end, "large-modname entries truncated");
-                    ASSERT(strcmp(modname_array[idx-1].name, modname_array[idx].name) == 0,
-                           "not enough large-modname entries");
+            if (pcs->is_packed) {
+                pcs->frames.packed[pcs_idx].loc.addr = pc;
+                if (name_info == NULL) { /* handling missing module in release build */
+                    /* We already asserted above */
+                    if (sz > MAX_MODOFFS_STORED) /* We lose data here */
+                        pcs->frames.packed[pcs_idx].modoffs = MAX_MODOFFS_STORED;
+                    else
+                        pcs->frames.packed[pcs_idx].modoffs = sz;
+                    pcs->frames.packed[pcs_idx].modname_idx = MAX_MODNAMES_STORED;
+                } else {
+                    int idx = name_info->index;
+                    while (sz > MAX_MODOFFS_STORED) {
+                        sz -= MAX_MODOFFS_STORED;
+                        if (idx + 1 == MAX_MODNAMES_STORED)
+                            break;
+                        idx++;
+                        ASSERT(idx < modname_array_end, "large-modname entries truncated");
+                        ASSERT(strcmp(modname_array[idx-1]->name,
+                                      modname_array[idx]->name) == 0,
+                               "not enough large-modname entries");
+                    }
+                    pcs->frames.packed[pcs_idx].modoffs = sz;
+                    pcs->frames.packed[pcs_idx].modname_idx = idx;
                 }
-                pcs->frames[pcs_idx].modoffs = sz;
-                pcs->frames[pcs_idx].modname_idx = idx;
+            } else {
+                pcs->frames.full[pcs_idx].loc.addr = pc;
+                pcs->frames.full[pcs_idx].modoffs = sz;
+                pcs->frames.full[pcs_idx].modname = name_info;
             }
             pcs->num_frames++;
         } else if (modoffs_only) {
-            const char *modname = (idx >= 0) ? modname_array[idx].name : NULL;
+            const char *modname = (name_info != NULL) ? name_info->name : NULL;
             BUFPRINT(buf, bufsz, *sofar, len,
                     "<%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">"NL,
                     modname == NULL ? "" : modname, pc - mod_start);
@@ -336,14 +374,15 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
             IF_WINDOWS(BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);)
 #endif
         } else {
-            const char *modname = (idx >= 0) ? modname_array[idx].name : NULL;
+            const char *modname = (name_info != NULL) ? name_info->name : NULL;
             BUFPRINT(buf, bufsz, *sofar, len,
                      PFX" <%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">",
                      pc, modname == NULL ? "" : modname, pc - mod_start);
 #ifdef USE_DRSYMS
-            print_func_and_line(buf, bufsz, sofar, modname_array[idx].path,
-                                modname_array[idx].name,
-                                pc - mod_start - (sub1_sym ? 1 : 0));
+            if (name_info != NULL && name_info->path != NULL) {
+                print_func_and_line(buf, bufsz, sofar, name_info->path, name_info->name,
+                                    pc - mod_start - (sub1_sym ? 1 : 0));
+            }
 #else
             BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #endif
@@ -351,9 +390,15 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
         return true;
     } else if (!skip_non_module) {
         if (pcs != NULL) {
-            pcs->frames[pcs->num_frames].loc.addr = pc;
-            pcs->frames[pcs->num_frames].modoffs = MAX_MODOFFS_STORED;
-            pcs->frames[pcs->num_frames].modname_idx = MAX_MODNAMES_STORED;
+            if (pcs->is_packed) {
+                pcs->frames.packed[pcs->num_frames].loc.addr = pc;
+                pcs->frames.packed[pcs->num_frames].modoffs = MAX_MODOFFS_STORED;
+                pcs->frames.packed[pcs->num_frames].modname_idx = MAX_MODNAMES_STORED;
+            } else {
+                pcs->frames.full[pcs->num_frames].loc.addr = pc;
+                pcs->frames.full[pcs->num_frames].modoffs = 0;
+                pcs->frames.full[pcs->num_frames].modname = NULL;
+            }
             pcs->num_frames++;
         } else if (modoffs_only)
             BUFPRINT(buf, bufsz, *sofar, len, "<not in a module>"NL);
@@ -678,13 +723,18 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         global_alloc(sizeof(*pcs), HEAPSTAT_CALLSTACK);
     size_t sz_out;
     int num_frames_printed = 0;
-    packed_frame_t *frames_out;
     ASSERT(pcs_out != NULL, "invalid args");
     memset(pcs, 0, sizeof(*pcs));
     pcs->refcount = 1;
-    pcs->frames = (packed_frame_t *)
-        global_alloc(sizeof(*pcs->frames) * op_max_frames,
-                     HEAPSTAT_CALLSTACK);
+    if (modname_array_end < MAX_MODNAMES_STORED) {
+        pcs->is_packed = true;
+        pcs->frames.packed = (packed_frame_t *)
+            global_alloc(sizeof(*pcs->frames.packed) * op_max_frames, HEAPSTAT_CALLSTACK);
+    } else {
+        pcs->is_packed = false;
+        pcs->frames.full = (full_frame_t *)
+            global_alloc(sizeof(*pcs->frames.full) * op_max_frames, HEAPSTAT_CALLSTACK);
+    }
     if (loc != NULL) {
         if (loc->type == APP_LOC_SYSCALL) {
             /* For syscalls, we use index 0 and store the syscall # in modoffs */
@@ -692,9 +742,15 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
              * It's supposed to be a string literal and so we can clone it
              * and compare it by just using its address.
              */
-            pcs->frames[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
-            pcs->frames[0].modname_idx = 0;
-            pcs->frames[0].modoffs = loc->u.syscall.sysnum;
+            if (pcs->is_packed) {
+                pcs->frames.packed[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
+                pcs->frames.packed[0].modname_idx = 0;
+                pcs->frames.packed[0].modoffs = loc->u.syscall.sysnum;
+            } else {
+                pcs->frames.full[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
+                pcs->frames.full[0].modname = (modname_info_t *) &MODNAME_INFO_SYSCALL;
+                pcs->frames.full[0].modoffs = loc->u.syscall.sysnum;
+            }
             pcs->num_frames++;
         } else {
             app_pc pc = loc_to_pc(loc);
@@ -704,17 +760,72 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         num_frames_printed = 1;
     }
     print_callstack(NULL, 0, NULL, mc, false, false, pcs, num_frames_printed);
-    sz_out = sizeof(*pcs->frames) * pcs->num_frames;
-    if (sz_out == 0)
-        frames_out = NULL;
-    else {
-        frames_out = (packed_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
-        memcpy(frames_out, pcs->frames, sz_out);
+    if (pcs->is_packed) {
+        packed_frame_t *frames_out;
+        sz_out = sizeof(*pcs->frames.packed) * pcs->num_frames;
+        if (sz_out == 0)
+            frames_out = NULL;
+        else {
+            frames_out = (packed_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
+            memcpy(frames_out, pcs->frames.packed, sz_out);
+        }
+        global_free(pcs->frames.packed, sizeof(*pcs->frames.packed) * op_max_frames,
+                    HEAPSTAT_CALLSTACK);
+        pcs->frames.packed = frames_out;
+    } else {
+        full_frame_t *frames_out;
+        sz_out = sizeof(*pcs->frames.full) * pcs->num_frames;
+        if (sz_out == 0)
+            frames_out = NULL;
+        else {
+            frames_out = (full_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
+            memcpy(frames_out, pcs->frames.full, sz_out);
+        }
+        global_free(pcs->frames.full, sizeof(*pcs->frames.full) * op_max_frames,
+                    HEAPSTAT_CALLSTACK);
+        pcs->frames.full = frames_out;
     }
-    global_free(pcs->frames, sizeof(*pcs->frames) * op_max_frames,
-                HEAPSTAT_CALLSTACK);
-    pcs->frames = frames_out;
     *pcs_out = pcs;
+}
+
+/* Returns false if a syscall.  If returns true, also fills in the OUT params. */
+static bool
+packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
+                               modname_info_t **name_info OUT, size_t *modoffs OUT)
+{
+    modname_info_t *info = NULL;
+    size_t offs;
+    ASSERT(pcs != NULL, "invalid arg");
+    ASSERT(frame < pcs->num_frames, "invalid arg");
+    /* modname_idx==0 or modname==NULL is the code for a system call */
+    if (!pcs->is_packed) {
+        info = pcs->frames.full[frame].modname;
+        if (info == &MODNAME_INFO_SYSCALL)
+            return false;
+        offs = pcs->frames.packed[frame].modoffs;
+    } else {
+        if (pcs->frames.packed[frame].modname_idx == 0)
+            return false;
+        if (pcs->frames.packed[frame].modoffs < MAX_MODOFFS_STORED) {
+            /* If module is larger than 16M, we need to adjust offset.
+             * The hashtable holds the first index.
+             */
+            int start_idx;
+            int idx = pcs->frames.packed[frame].modname_idx;
+            ASSERT(idx < MAX_MODNAMES_STORED, "invalid modname idx");
+            offs = pcs->frames.packed[frame].modoffs;
+            info = modname_array[idx];
+            start_idx = info->index;
+            ASSERT(start_idx != 0, "module in array must be in table");
+            if (start_idx < idx)
+                offs += (idx - start_idx) * MAX_MODOFFS_STORED;
+        }
+    }
+    if (name_info != NULL)
+        *name_info = info;
+    if (modoffs != NULL)
+        *modoffs = offs;
+    return true;
 }
 
 /* 0 for num_frames means to print them all prefixed with tabs and
@@ -729,72 +840,58 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
     size_t len;
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
+        modname_info_t *info = NULL;
+        size_t offs;
         /* FIXME: share code w/ print_address() */
-        if (pcs->frames[i].modname_idx == 0) {
-            /* modname_idx==0 is the code for a system call */
+        if (!packed_callstack_frame_modinfo(pcs, i, &info, &offs)) {
             const char *name = "<unknown>";
+            /* sysnum is stored in modoffs field */
+            size_t modoffs = pcs->is_packed ? pcs->frames.packed[i].modoffs :
+                pcs->frames.full[i].modoffs;
             BUFPRINT(buf, bufsz, *sofar, len, "%ssystem call ",
                      (num_frames == 0) ? FP_PREFIX : "");
             if (op_get_syscall_name != NULL)
-                name = (*op_get_syscall_name)(pcs->frames[i].modoffs);
+                name = (*op_get_syscall_name)(modoffs);
             /* strip syscall # if have name, to be independent of windows ver */
             ASSERT(name != NULL, "syscall name should not be NULL");
             if (name[0] != '\0' && name[0] != '<') {
                 BUFPRINT(buf, bufsz, *sofar, len, "%s", name);
             } else {
-                BUFPRINT(buf, bufsz, *sofar, len, "%d=%s",
-                         pcs->frames[i].modoffs, name);
+                BUFPRINT(buf, bufsz, *sofar, len, "%d=%s", modoffs, name);
             }
-            if (pcs->frames[i].loc.syscall_aux != NULL) {
+            if (PCS_FRAME_LOC(pcs, i).syscall_aux != NULL) {
                 /* syscall aux identifier (PR 525269) */
                 BUFPRINT(buf, bufsz, *sofar, len, " %s",
-                         pcs->frames[i].loc.syscall_aux);
+                         PCS_FRAME_LOC(pcs, i).syscall_aux);
             }
             BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #ifdef USE_DRSYMS
             BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"<system call>"NL);
 #endif
         } else {
+            const char *reason = "<not in a module>"; /* if no module info */
             /* We assume no valid address will have offset 0 */
             if (num_frames == 0) {
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX PFX" ",
-                         pcs->frames[i].loc.addr);
+                         PCS_FRAME_LOC(pcs, i).addr);
             }
-            if (pcs->frames[i].modoffs < MAX_MODOFFS_STORED) {
-                /* If module is larger than 16M, we need to adjust offset.
-                 * The hashtable holds the first index.
-                 */
-                size_t offs = pcs->frames[i].modoffs;
-                int start_idx;
-                int idx = pcs->frames[i].modname_idx;
-                if (idx < MAX_MODNAMES_STORED) {
-                    /* If we hit the max we just don't have info for subsequent modules */
-                    hashtable_lock(&modname_table);
-                    start_idx = (int) hashtable_lookup(&modname_table,
-                                                       (void*)modname_array[idx].name);
-                    hashtable_unlock(&modname_table);
-                    ASSERT(start_idx != 0, "module in array must be in table");
-                    start_idx--; /* table stores +1 */
-                    if (start_idx < idx)
-                        offs += (idx - start_idx) * MAX_MODOFFS_STORED;
-                }
+            if (info != NULL) {
                 BUFPRINT(buf, bufsz, *sofar, len,
                          "<%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">",
-                         idx == MAX_MODNAMES_STORED ? "<unknown module>" :
-                         modname_array[idx].name, offs);
+                         info->name, offs);
 #ifdef USE_DRSYMS
                 /* PR 543863: subtract one from retaddrs in callstacks so the line#
                  * is for the call and not for the next source code line, but only
                  * for symbol lookup so we still display a valid instr addr.
                  * We assume first frame is not a retaddr.
                  */
-                print_func_and_line(buf, bufsz, sofar, modname_array[idx].path,
-                                    modname_array[idx].name, (i == 0) ? offs : offs-1);
+                print_func_and_line(buf, bufsz, sofar, info->path,
+                                    info->name, (i == 0) ? offs : offs-1);
 #else
                 BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #endif
             } else {
-                BUFPRINT(buf, bufsz, *sofar, len, "<not in a module>"NL);
+                BUFPRINT(buf, bufsz, *sofar, len, "%s"NL, reason);
 #ifdef USE_DRSYMS
                 BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);
 #endif
@@ -841,9 +938,18 @@ packed_callstack_free(packed_callstack_t *pcs)
     ASSERT(pcs != NULL, "invalid args");
     refcount = atomic_add32_return_sum((volatile int *)&pcs->refcount, - 1);
     if (refcount == 0) {
-        if (pcs->frames != NULL) {
-            global_free(pcs->frames, sizeof(*pcs->frames)*pcs->num_frames,
-                        HEAPSTAT_CALLSTACK);
+        if (pcs->is_packed) {
+            if (pcs->frames.packed != NULL) {
+                global_free(pcs->frames.packed,
+                            sizeof(*pcs->frames.packed)*pcs->num_frames,
+                            HEAPSTAT_CALLSTACK);
+            }
+        } else {
+            if (pcs->frames.full != NULL) {
+                global_free(pcs->frames.full,
+                            sizeof(*pcs->frames.full)*pcs->num_frames,
+                            HEAPSTAT_CALLSTACK);
+            }
         }
         global_free(pcs, sizeof(*pcs), HEAPSTAT_CALLSTACK);
     }
@@ -866,10 +972,20 @@ packed_callstack_clone(packed_callstack_t *src)
     memset(dst, 0, sizeof(*dst));
     dst->refcount = 1;
     dst->num_frames = src->num_frames;
-    dst->frames = (packed_frame_t *)
-        global_alloc(sizeof(*dst->frames) * src->num_frames,
-                     HEAPSTAT_CALLSTACK);
-    memcpy(dst->frames, src->frames, sizeof(*dst->frames) * src->num_frames);
+    dst->is_packed = src->is_packed;
+    if (dst->is_packed) {
+        dst->frames.packed = (packed_frame_t *)
+            global_alloc(sizeof(*dst->frames.packed) * src->num_frames,
+                         HEAPSTAT_CALLSTACK);
+        memcpy(dst->frames.packed, src->frames.packed,
+               sizeof(*dst->frames.packed) * src->num_frames);
+    } else {
+        dst->frames.full = (full_frame_t *)
+            global_alloc(sizeof(*dst->frames.full) * src->num_frames,
+                         HEAPSTAT_CALLSTACK);
+        memcpy(dst->frames.full, src->frames.full,
+               sizeof(*dst->frames.full) * src->num_frames);
+    }
     return dst;
 }
 
@@ -879,7 +995,7 @@ packed_callstack_hash(packed_callstack_t *pcs)
     uint hash = 0;
     uint i;
     for (i = 0; i < pcs->num_frames; i++) {
-        hash ^= (ptr_uint_t) pcs->frames[i].loc.addr;
+        hash ^= (ptr_uint_t) PCS_FRAME_LOC(pcs, i).addr;
     }
     return hash;
 }
@@ -887,16 +1003,39 @@ packed_callstack_hash(packed_callstack_t *pcs)
 bool
 packed_callstack_cmp(packed_callstack_t *pcs1, packed_callstack_t *pcs2)
 {
-    if (pcs1->frames == NULL) {
-        if (pcs2->frames != NULL)
+    uint i;
+    if (PCS_FRAMES(pcs1) == NULL) {
+        if (PCS_FRAMES(pcs2) != NULL)
             return false;
         return true;
     }
-    if (pcs2->frames == NULL)
+    if (PCS_FRAMES(pcs2) == NULL)
         return false;
-    return (pcs1->num_frames == pcs2->num_frames &&
-            memcmp(pcs1->frames, pcs2->frames,
-                   sizeof(*pcs1->frames)*pcs1->num_frames) == 0);
+    if (pcs1->num_frames != pcs2->num_frames)
+        return false;
+    if ((pcs1->is_packed && pcs2->is_packed) ||
+        (!pcs1->is_packed && !pcs2->is_packed)) {
+        return (memcmp(PCS_FRAMES(pcs1), PCS_FRAMES(pcs2),
+                       PCS_FRAME_SZ(pcs1)*pcs1->num_frames) == 0);
+    }
+    /* one is packed, the other is not, so we have to walk the frames */
+    for (i = 0; i < pcs1->num_frames; i++) {
+        modname_info_t *info1 = NULL, *info2 = NULL;
+        size_t offs1 = 0, offs2 = 0;
+        bool nonsys1, nonsys2;
+        if (PCS_FRAME_LOC(pcs1, i).addr != PCS_FRAME_LOC(pcs2, i).addr ||
+            PCS_FRAME_LOC(pcs1, i).syscall_aux != PCS_FRAME_LOC(pcs2, i).syscall_aux)
+            return false;
+        nonsys1 = packed_callstack_frame_modinfo(pcs1, i, &info1, &offs1);
+        nonsys2 = packed_callstack_frame_modinfo(pcs2, i, &info2, &offs2);
+        if ((nonsys1 && !nonsys2) || (!nonsys1 && nonsys2))
+            return false;
+        if (info1 != info2)
+            return false;
+        if (offs1 != offs2)
+            return false;
+    }
+    return true;
 }
 
 void
@@ -905,31 +1044,29 @@ packed_callstack_md5(packed_callstack_t *pcs, byte digest[MD5_RAW_BYTES])
     if (pcs->num_frames == 0) {
         memset(digest, 0, sizeof(digest[0])*MD5_RAW_BYTES);
     } else {
-        get_md5_for_region((const byte *)pcs->frames,
-                           sizeof(*pcs->frames)*pcs->num_frames, digest);
+        get_md5_for_region((const byte *)PCS_FRAMES(pcs),
+                           PCS_FRAME_SZ(pcs)*pcs->num_frames, digest);
     }
 }
 
 void
 packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2])
 {
-    crc32_whole_and_half((const char *)pcs->frames,
-                         sizeof(*pcs->frames)*pcs->num_frames, crc);
+    crc32_whole_and_half((const char *)PCS_FRAMES(pcs),
+                         PCS_FRAME_SZ(pcs)*pcs->num_frames, crc);
 }
 
 /* For storing binary callstacks we need to store module names in a shared
  * location to save space and handle unloaded and reloaded modules.
  * Returns the index into modname_array, or -1 on error.
  */
-static int
+static modname_info_t *
 add_new_module(void *drcontext, const module_data_t *info)
 {
+    modname_info_t *name_info;
     const char *name;
     static bool has_noname = false;
-    char *dup_name;
-    char *dup_path;
     size_t sz;
-    int res = 0;
     name = dr_module_preferred_name(info);
     if (name == NULL) {
         name = "";
@@ -939,47 +1076,58 @@ add_new_module(void *drcontext, const module_data_t *info)
     }
     LOG(1, "module load event: \"%s\" "PFX"-"PFX"\n", name, info->start, info->end);
 
-    dup_name = drmem_strdup(name, HEAPSTAT_HASHTABLE);
-    dup_path = drmem_strdup(info->full_path, HEAPSTAT_HASHTABLE);
-
     hashtable_lock(&modname_table);
-    res = (int) hashtable_lookup(&modname_table, (void*)name);
-    if (res == 0) {
+    name_info = (modname_info_t *) hashtable_lookup(&modname_table, (void*)name);
+    if (name_info == NULL) {
+        name_info = (modname_info_t *)
+            global_alloc(sizeof(*name_info), HEAPSTAT_HASHTABLE);
+        name_info->name = drmem_strdup(name, HEAPSTAT_HASHTABLE);
+        name_info->path = drmem_strdup(info->full_path, HEAPSTAT_HASHTABLE);
+        name_info->index = modname_array_end; /* store first index if multi-entry */
+        hashtable_add(&modname_table, (void*)name_info->name, (void*)name_info);
         /* We need an entry for every 16M of module size */
         sz = info->end - info->start;
         while (true) {
             if (modname_array_end >= MAX_MODNAMES_STORED) {
-                LOG(0, "ERROR: hit max module count: won't store further names\n");
-                ASSERT(false, "hit max module count");
-                /* For dup entries we'll just get offset wrong; for first entry
-                 * we'll miss in table and print out <unknown module>
+                DO_ONCE({
+                    LOG(1, "hit max # packed modules: switching to unpacked frames\n");
+                });
+                /* Alternative is to have missing names for error reports: for
+                 * dup entries we'd just get offset wrong; for first entry we'd
+                 * miss in table and print out <unknown module>: not acceptable.
                  */
-                hashtable_unlock(&modname_table);
-                return -1;
+                name_info->index = -1;
+                break;
             }
             LOG(2, "modname_array %d = %s\n", modname_array_end, name);
-            modname_array[modname_array_end].name = dup_name;
-            modname_array[modname_array_end].path = dup_path;
+            modname_array[modname_array_end] = name_info;
             modname_array_end++;
-            /* Since we have to use 0 as "not found" in hashtable we store index+1 */
-            hashtable_add(&modname_table, (void*)dup_name, (void*)(modname_array_end));
-            if (res == 0) /* Return the first index */
-                res = modname_array_end;
             if (sz <= MAX_MODOFFS_STORED)
                 break;
             sz -= MAX_MODOFFS_STORED;
         }
     }
     hashtable_unlock(&modname_table);
-    return res - 1; /* subtract the +1 used in the table */
+    return name_info;
+}
+
+static void
+modname_info_free(void *p)
+{
+    modname_info_t *info = (modname_info_t *) p;
+    if (info->name != NULL)
+        global_free((void *)info->name, strlen(info->name) + 1, HEAPSTAT_HASHTABLE);
+    if (info->path != NULL)
+        global_free((void *)info->path, strlen(info->path) + 1, HEAPSTAT_HASHTABLE);
+    global_free((void *)info, sizeof(*info), HEAPSTAT_HASHTABLE);
 }
 
 /* Caller must hold modtree_lock */
 static void
-callstack_module_add_region(app_pc start, app_pc end, int idx)
+callstack_module_add_region(app_pc start, app_pc end, modname_info_t *info)
 {
     IF_DEBUG(rb_node_t *node = )
-        rb_insert(module_tree, start, (end - start), (void *)idx);
+        rb_insert(module_tree, start, (end - start), (void *)info);
     ASSERT(node == NULL, "new module overlaps w/ existing");
     if (start < modtree_min_start || modtree_min_start == NULL)
         modtree_min_start = start;
@@ -1009,16 +1157,16 @@ callstack_module_remove_region(app_pc start, app_pc end)
 void
 callstack_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-    int idx = add_new_module(drcontext, info);
+    modname_info_t *name_info = add_new_module(drcontext, info);
     
     /* PR 473640: maintain our own module tree */
     dr_mutex_lock(modtree_lock);
     ASSERT(info->end > info->start, "invalid mod bounds");
 #ifdef WINDOWS
-    callstack_module_add_region(info->start, info->end, idx);
+    callstack_module_add_region(info->start, info->end, name_info);
 #else
     if (info->contiguous)
-        callstack_module_add_region(info->start, info->end, idx);
+        callstack_module_add_region(info->start, info->end, name_info);
     else {
         /* Add the non-contiguous segments (i#160/PR 562667) */
         app_pc seg_base;
@@ -1027,14 +1175,15 @@ callstack_module_load(void *drcontext, const module_data_t *info, bool loaded)
         seg_base = info->segments[0].start;
         for (i = 1; i < info->num_segments; i++) {
             if (info->segments[i].start > info->segments[i - 1].end) {
-                callstack_module_add_region(seg_base, info->segments[i - 1].end, idx);
+                callstack_module_add_region(seg_base, info->segments[i - 1].end,
+                                            name_info);
                 seg_base = info->segments[i].start;
             } else {
                 ASSERT(info->segments[i].start == info->segments[i - 1].end,
                        "module list should be sorted");
             }
         }
-        callstack_module_add_region(seg_base, info->segments[i - 1].end, idx);
+        callstack_module_add_region(seg_base, info->segments[i - 1].end, name_info);
     }
 #endif
     /* update cached values */
@@ -1101,7 +1250,7 @@ callstack_module_unload(void *drcontext, const module_data_t *info)
 }
 
 static bool
-module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
+module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name)
 {
     rb_node_t *node;
     bool res = false;
@@ -1119,7 +1268,7 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
         if (node != NULL) {
             res = true;
             rb_node_fields(node, &modtree_last_start, &modtree_last_size,
-                           (void **) &modtree_last_name_idx);
+                           (void **) &modtree_last_name_info);
         }
     }
     if (res) {
@@ -1127,8 +1276,8 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, int *name_idx OUT)
             *start = modtree_last_start;
         if (size != NULL)
             *size = modtree_last_size;
-        if (name_idx != NULL)
-            *name_idx = modtree_last_name_idx;
+        if (name != NULL)
+            *name = modtree_last_name_info;
     }
     dr_mutex_unlock(modtree_lock);
     return res;
