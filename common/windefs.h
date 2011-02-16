@@ -66,6 +66,30 @@ typedef struct _KSYSTEM_TIME {
     LONG High2Time;
 } KSYSTEM_TIME, *PKSYSTEM_TIME;
 
+#if _MSC_VER <= 1400
+/* in VS2008 WINNT.h */
+#define MAXIMUM_XSTATE_FEATURES             64
+
+typedef struct _XSTATE_FEATURE {
+    DWORD Offset;
+    DWORD Size;
+} XSTATE_FEATURE, *PXSTATE_FEATURE;
+
+typedef struct _XSTATE_CONFIGURATION {
+    // Mask of enabled features
+    DWORD64 EnabledFeatures;
+
+    // Total size of the save area
+    DWORD Size;
+
+    DWORD OptimizedSave : 1;
+
+    // List of features (
+    XSTATE_FEATURE Features[MAXIMUM_XSTATE_FEATURES];
+
+} XSTATE_CONFIGURATION, *PXSTATE_CONFIGURATION;
+#endif
+
 typedef struct _KUSER_SHARED_DATA {
 
     //
@@ -326,6 +350,42 @@ typedef struct _KUSER_SHARED_DATA {
     //
 
     volatile ULONG64 InterruptTimeBias;
+
+    /********************* below here is Win7-only *********************/
+    //
+    // Current 64-bit performance counter bias in processor cycles.
+    //
+
+    volatile ULONG64 TscQpcBias;
+
+    //
+    // Number of active processors and groups.
+    //
+
+    volatile ULONG ActiveProcessorCount;
+    volatile USHORT ActiveGroupCount;
+    USHORT Reserved4;
+
+    //
+    // This value controls the AIT Sampling rate.
+    //
+
+    volatile ULONG AitSamplingValue;
+    volatile ULONG AppCompatFlag;
+
+    //
+    // Relocation diff for ntdll (native and wow64).
+    //
+
+    ULONGLONG SystemDllNativeRelocation;
+    ULONG SystemDllWowRelocation;
+
+    //
+    // Extended processor state configuration
+    //
+
+    ULONG XStatePad[1];
+    XSTATE_CONFIGURATION XState;
 
 } KUSER_SHARED_DATA, *PKUSER_SHARED_DATA;
 
