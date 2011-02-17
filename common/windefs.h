@@ -66,9 +66,10 @@ typedef struct _KSYSTEM_TIME {
     LONG High2Time;
 } KSYSTEM_TIME, *PKSYSTEM_TIME;
 
-#if _MSC_VER <= 1400
-/* in VS2008 WINNT.h */
-#define MAXIMUM_XSTATE_FEATURES             64
+#ifndef _WIN32_WINNT_WIN7
+/* Win7-specific, in SDK 7.0 WINNT.h */
+
+# define MAXIMUM_XSTATE_FEATURES             64
 
 typedef struct _XSTATE_FEATURE {
     DWORD Offset;
@@ -88,7 +89,7 @@ typedef struct _XSTATE_CONFIGURATION {
     XSTATE_FEATURE Features[MAXIMUM_XSTATE_FEATURES];
 
 } XSTATE_CONFIGURATION, *PXSTATE_CONFIGURATION;
-#endif
+#endif /* _WIN32_WINNT_WIN7 */
 
 typedef struct _KUSER_SHARED_DATA {
 
