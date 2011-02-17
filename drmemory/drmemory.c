@@ -863,6 +863,8 @@ set_thread_initial_structures(void *drcontext)
     /* Even for XP+ where csrss frees the stack, the stack alloc is in-process
      * and we see it and mark defined since a non-heap alloc.
      * Thus we must mark unaddr explicitly here.
+     * For Vista+ where NtCreateThreadEx is used, the kernel creates the stack,
+     * and we set its shadow values here.
      */
     stack_reserve_sz = allocation_size((byte *)mc.xsp, &stack_reserve);
     LOG(1, "thread initial stack: "PFX"-"PFX"-"PFX", TOS="PFX"\n",

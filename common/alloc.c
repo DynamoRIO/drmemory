@@ -279,8 +279,10 @@ typedef enum {
     HEAP_ROUTINE_STATS,
     /* Group label for un-handled routine */
     HEAP_ROUTINE_NOT_HANDLED,
+    /* Should collapse these two once have aligned-malloc routine support */
+    HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
 #ifdef LINUX
-    HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED,
+    HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
 #else
     /* Debug CRT routines, which take in extra params */
     HEAP_ROUTINE_SIZE_REQUESTED_DBG,
@@ -315,6 +317,7 @@ typedef enum {
     RTL_ROUTINE_LOCK,
     RTL_ROUTINE_UNLOCK,
     RTL_ROUTINE_QUERY,
+    RTL_ROUTINE_NYI,
     RTL_ROUTINE_SHUTDOWN,
     RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
 #endif
@@ -461,6 +464,11 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlSetUserValueHeap", RTL_ROUTINE_SETINFO },
     { "RtlSetUserFlagsHeap", RTL_ROUTINE_SETFLAGS },
     { "RtlSetHeapInformation", RTL_ROUTINE_HEAPINFO },
+    /* XXX: i#297: investigate these new routines */
+    { "RtlMultipleAllocateHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
+    { "RtlMultipleFreeHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
+    { "RtlAllocateMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
+    { "RtlAllocateMemoryZone", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
     /* kernel32!LocalFree calls these.  these call RtlEnterCriticalSection
      * and ntdll!RtlpCheckHeapSignature and directly touch heap headers.
      */
@@ -946,7 +954,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             LOG(1, "intercepting %s @"PFX" in module %s\n",
                 possible[i].name, pc, (modname == NULL) ? "<noname>" : modname);
 #if defined(WINDOWS) && defined(USE_DRSYMS)
-            if (options.disable_crtdbg) {
+            if (options.disable_crtdbg && possible[i].type == HEAP_ROUTINE_SET_DBG) {
                 /* i#51: we do not want crtdbg checks when our tool is present
                  * (the checks overlap, better to have our tool report it than
                  * crt, etc.).  This dbgflag only controls full-heap scans: to
@@ -1373,7 +1381,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
             mod.handle = ntdll_lib;
             dr_mutex_lock(alloc_routine_lock);
             find_alloc_routines(&mod, possible_rtl_routines,
-                                POSSIBLE_RTL_ROUTINE_NUM, true, true, HEAPSET_RTL);
+                                POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL);
             dr_mutex_unlock(alloc_routine_lock);
         }
     }
@@ -2045,6 +2053,10 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             process = (HANDLE)
                 dr_syscall_get_param(drcontext, (sysnum == sysnum_mmap) ? 1 : 0);
             pt->syscall_this_process = is_current_process(process);
+            DOLOG(2, {
+                if (!pt->syscall_this_process)
+                    LOGPT(2, pt, "sysnum %d on other process "PIFX"\n", sysnum, process);
+            });
         }
         if (sysnum == sysnum_valloc) {
             uint type = (uint) dr_syscall_get_param(drcontext, 4);
@@ -2140,6 +2152,147 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
     client_pre_syscall(drcontext, sysnum, pt);
 }
 
+#ifdef WINDOWS
+static void
+handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+{
+    bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
+    if (success && pt->syscall_this_process) {
+        app_pc *base_ptr = (app_pc *) pt->sysarg[1];
+        size_t *size_ptr = (size_t *) pt->sysarg[3];
+        app_pc base;
+        size_t size;
+        if (!safe_read(base_ptr, sizeof(*base_ptr), &base) ||
+            !safe_read(size_ptr, sizeof(*size_ptr), &size)) {
+            LOGPT(1, pt, "WARNING: NtAllocateVirtualMemory: error reading param\n");
+            return;
+        }
+        LOGPT(2, pt, "NtAllocateVirtualMemory: "PFX"-"PFX" %s%s%s%s\n",
+              base, base+size, pt->valloc_commit ? "vcommit " : "",
+              TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
+              TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
+              pt->in_heap_routine > 0 ? "in-heap " : "");
+        if (options.track_heap) {
+            /* if !valloc_commit, we assume it's part of a heap */
+            if (pt->valloc_commit) {
+                /* FIXME: really want to test overlap of two regions! */
+                ASSERT(!is_in_heap_region(base),
+                       "HeapAlloc vs VirtualAlloc: error distinguishing");
+                if (pt->in_heap_routine == 0) {
+                    LOGPT(2, pt,
+                          "NtAllocateVirtualMemory non-heap alloc "PFX"-"PFX"\n",
+                          base, base+size);
+                    client_handle_mmap(pt, base, size, true/*anon*/);
+                } else {
+                    /* We assume this is a very large malloc, which is allocated
+                     * straight from the OS instead of the heap pool.
+                     * FIXME: our red zone here will end up wasting an entire 64KB
+                     * if the request size + headers would have been 64KB-aligned.
+                     */
+                    LOGPT(2, pt, "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
+                          base, base+size);
+                    /* there are headers on this one */
+                    heap_region_add(base, base+size, false/*!arena*/, mc);
+                }
+            } else if (TEST(MEM_RESERVE, pt->valloc_type) &&
+                       !TEST(MEM_COMMIT, pt->valloc_type) &&
+                       pt->in_heap_routine > 0) {
+                /* we assume this is a new Heap reservation */
+                heap_region_add(base, base+size, true/*arena*/, mc);
+            }
+        } else {
+            if (TEST(MEM_COMMIT, pt->valloc_type)) {
+                LOGPT(2, pt, "NtAllocateVirtualMemory commit "PFX"-"PFX"\n",
+                      base, base+size);
+                client_handle_mmap(pt, base, size, true/*anon*/);
+            }
+        }
+    } else {
+        DOLOG(2, {
+            app_pc *base_ptr = (app_pc *) pt->sysarg[1];
+            size_t *size_ptr = (size_t *) pt->sysarg[3];
+            app_pc base;
+            size_t size;
+            if (safe_read(base_ptr, sizeof(*base_ptr), &base) &&
+                safe_read(size_ptr, sizeof(*size_ptr), &size)) {
+                LOGPT(2, pt, "NtAllocateVirtualMemory res="PFX" %s: "PFX"-"PFX"\n",
+                      dr_syscall_get_result(drcontext),
+                      pt->syscall_this_process ? "" : "other-process",
+                      base, base+size);
+            } else {
+                LOGPT(1, pt, "WARNING: NtAllocateVirtualMemory: error reading param\n");
+                return;
+            }
+        });
+    }
+}
+
+static void
+handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+{
+    bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
+    app_pc *base_ptr = (app_pc *) pt->sysarg[1];
+    size_t *size_ptr = (size_t *) pt->sysarg[2];
+    app_pc base;
+    size_t size;
+    if (success &&
+        safe_read(base_ptr, sizeof(*base_ptr), &base) &&
+        safe_read(size_ptr, sizeof(*size_ptr), &size)) {
+        LOGPT(2, pt, "NtFreeVirtualMemory: "PFX"-"PFX", %s%s%s\n",
+              base, base+size,
+              TEST(MEM_DECOMMIT, pt->valloc_type) ? "decommit " : "",
+              TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
+              pt->in_heap_routine > 0 ? "in-heap " : "");
+        ASSERT(!pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to succeed");
+        if (options.track_heap) {
+            /* Are we freeing an entire region? */
+            if (((pt->valloc_type == MEM_DECOMMIT && size == 0) ||
+                 pt->valloc_type == MEM_RELEASE) &&
+                pt->in_heap_routine > 0 && is_in_heap_region(base)) {
+                /* all these separate lookups are racy */
+                app_pc heap_end = heap_region_end(base);
+                bool found;
+                if (size == 0)
+                    size = allocation_size(base, NULL);
+                found = heap_region_remove(base, base+size, mc);
+                ASSERT(found, "heap region tracking bug");
+                /* FIXME: this is racy, doing this post-syscall; should
+                 * switch to interval tree to look up base pre-syscall
+                 */
+                /* PR 469229: in some cases a large heap reservation
+                 * is made and then all but the last page is freed; that
+                 * page is then used as the heap.  Makes no sense.
+                 */
+                if (heap_end > base+size) {
+                    LOG(2, "left "PFX"-"PFX" at end of heap region\n",
+                        base+size, heap_end);
+                    /* heap_region_remove leaves the remaining piece there */
+                }
+                client_handle_munmap(base, size, true/*anon*/);
+            } else {
+                /* we ignore decommits from inside heap regions.
+                 * we shouldn't see any releases from inside heap regions
+                 * that bypass our check above, though.
+                 */
+                ASSERT(pt->valloc_type == MEM_DECOMMIT ||
+                       !is_in_heap_region(base), "heap region tracking bug");
+                if (options.record_allocs) {
+                    malloc_remove(base);
+                }
+            }
+        } else {
+            client_handle_munmap(base, size, true/*anon*/);
+        }
+    } else {
+        ASSERT(pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to fail");
+        DOLOG(1, {
+            if (success)
+                LOGPT(1, pt, "WARNING: NtFreeVirtualMemory: error reading param\n");
+        });
+    }
+}
+#endif /* WINDOWS */
+
 void
 handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thread_t *pt)
 {
@@ -2151,11 +2304,14 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (success && pt->syscall_this_process) {
             app_pc *base_ptr = (app_pc *) pt->sysarg[2];
-            /* FIXME: do a safe_read? */
-            app_pc base = *base_ptr;
-            LOGPT(2, pt, "NtMapViewOfSection: "PFX"\n", base);
-            client_handle_mmap(pt, base, allocation_size(base, NULL),
-                               false/*file-backed*/);
+            app_pc base;
+            if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
+                LOGPT(1, pt, "WARNING: NtMapViewOfSection: error reading param\n");
+            } else {
+                LOGPT(2, pt, "NtMapViewOfSection: "PFX"\n", base);
+                client_handle_mmap(pt, base, allocation_size(base, NULL),
+                                   false/*file-backed*/);
+            }
         }
     } else if (sysnum == sysnum_munmap) {
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
@@ -2168,111 +2324,9 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                                       false/*file-backed*/);
         }
     } else if (sysnum == sysnum_valloc) {
-        bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
-        if (success && pt->syscall_this_process) {
-            app_pc *base_ptr = (app_pc *) pt->sysarg[1];
-            size_t *size_ptr = (size_t *) pt->sysarg[3];
-            /* FIXME: safe_read */
-            app_pc base = *base_ptr;
-            size_t size = *size_ptr;
-            LOGPT(2, pt, "NtAllocateVirtualMemory: "PFX"-"PFX" %s%s%s%s\n",
-                  base, base+size, pt->valloc_commit ? "vcommit " : "",
-                  TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
-                  TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
-                  pt->in_heap_routine > 0 ? "in-heap " : "");
-            if (options.track_heap) {
-                /* if !valloc_commit, we assume it's part of a heap */
-                if (pt->valloc_commit) {
-                    /* FIXME: really want to test overlap of two regions! */
-                    ASSERT(!is_in_heap_region(base),
-                           "HeapAlloc vs VirtualAlloc: error distinguishing");
-                    if (pt->in_heap_routine == 0) {
-                        LOGPT(2, pt,
-                               "NtAllocateVirtualMemory non-heap alloc "PFX"-"PFX"\n",
-                               base, base+size);
-                        client_handle_mmap(pt, base, size, true/*anon*/);
-                    } else {
-                        /* We assume this is a very large malloc, which is allocated
-                         * straight from the OS instead of the heap pool.
-                         * FIXME: our red zone here will end up wasting an entire 64KB
-                         * if the request size + headers would have been 64KB-aligned.
-                         */
-                        LOGPT(2, pt,
-                               "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
-                               base, base+size);
-                        /* there are headers on this one */
-                        heap_region_add(base, base+size, false/*!arena*/, mc);
-                    }
-                } else if (TEST(MEM_RESERVE, pt->valloc_type) &&
-                           !TEST(MEM_COMMIT, pt->valloc_type) &&
-                           pt->in_heap_routine > 0) {
-                    /* we assume this is a new Heap reservation */
-                    heap_region_add(base, base+size, true/*arena*/, mc);
-                }
-            } else {
-                if (TEST(MEM_COMMIT, pt->valloc_type)) {
-                    LOGPT(2, pt, "NtAllocateVirtualMemory commit "PFX"-"PFX"\n",
-                           base, base+size);
-                    client_handle_mmap(pt, base, size, true/*anon*/);
-                }
-            }
-        }
+        handle_post_valloc(drcontext, mc, pt);
     } else if (sysnum == sysnum_vfree && pt->syscall_this_process) {
-        bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
-        app_pc *base_ptr = (app_pc *) pt->sysarg[1];
-        size_t *size_ptr = (size_t *) pt->sysarg[2];
-        /* FIXME: safe_read */
-        app_pc base = *base_ptr;
-        size_t size = *size_ptr;
-        if (success) {
-            LOGPT(2, pt, "NtFreeVirtualMemory: "PFX"-"PFX", %s%s%s\n",
-                  base, base+size,
-                  TEST(MEM_DECOMMIT, pt->valloc_type) ? "decommit " : "",
-                  TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
-                  pt->in_heap_routine > 0 ? "in-heap " : "");
-            ASSERT(!pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to succeed");
-            if (options.track_heap) {
-                /* Are we freeing an entire region? */
-                if (((pt->valloc_type == MEM_DECOMMIT && size == 0) ||
-                     pt->valloc_type == MEM_RELEASE) &&
-                    pt->in_heap_routine > 0 && is_in_heap_region(base)) {
-                    /* all these separate lookups are racy */
-                    app_pc heap_end = heap_region_end(base);
-                    bool found;
-                    if (size == 0)
-                        size = allocation_size(base, NULL);
-                    found = heap_region_remove(base, base+size, mc);
-                    ASSERT(found, "heap region tracking bug");
-                    /* FIXME: this is racy, doing this post-syscall; should
-                     * switch to interval tree to look up base pre-syscall
-                     */
-                    /* PR 469229: in some cases a large heap reservation
-                     * is made and then all but the last page is freed; that
-                     * page is then used as the heap.  Makes no sense.
-                     */
-                    if (heap_end > base+size) {
-                        LOG(2, "left "PFX"-"PFX" at end of heap region\n",
-                            base+size, heap_end);
-                        /* heap_region_remove leaves the remaining piece there */
-                    }
-                    client_handle_munmap(base, size, true/*anon*/);
-                } else {
-                    /* we ignore decommits from inside heap regions.
-                     * we shouldn't see any releases from inside heap regions
-                     * that bypass our check above, though.
-                     */
-                    ASSERT(pt->valloc_type == MEM_DECOMMIT ||
-                           !is_in_heap_region(base), "heap region tracking bug");
-                    if (options.record_allocs) {
-                        malloc_remove(base);
-                    }
-                }
-            } else {
-                client_handle_munmap(base, size, true/*anon*/);
-            }
-        } else {
-            ASSERT(pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to fail");
-        }
+        handle_post_vfree(drcontext, mc, pt);
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -3599,6 +3653,13 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
          * into a NOTIFY_ERROR and dr_abort
          */
         LOG(1, "WARNING: unhandled heap routine %s\n", routine.name);
+    }
+    else if (type == HEAP_ROUTINE_NOT_HANDLED_NOTIFY) {
+        /* XXX: once we have the aligned-malloc routines turn this
+         * into a NOTIFY_ERROR and dr_abort
+         */
+        NOTIFY_ERROR("unhandled heap routine %s\n", routine.name);
+        dr_abort();
     }
 }
 
