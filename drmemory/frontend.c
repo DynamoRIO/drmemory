@@ -331,6 +331,7 @@ int main(int argc, char *argv[])
     char *c;
     char buf[MAXIMUM_PATH];
     process_id_t pid;
+    bool have_logdir = false;
 
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
     get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
@@ -355,21 +356,50 @@ int main(int argc, char *argv[])
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
 
     /* default logdir */
-    _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/drmemory/logs", drmem_root);
-    NULL_TERMINATE_BUFFER(logdir);
-    if (_access(logdir, 0) == -1) {
-        /* try w/o the drmemory */
-        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/logs", drmem_root);
-        NULL_TERMINATE_BUFFER(logdir);
-        if (_access(logdir, 0) == -1) {
-            /* try logs in cur dir */
-            GetFullPathName("./logs", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+    if (strstr(drmem_root, "Program Files") != NULL) {
+        /* On Vista+ we can't write to Program Files; plus better to not store
+         * logs there on 2K or XP either.
+         */
+        int len = GetEnvironmentVariableA("APPDATA", buf, BUFFER_SIZE_ELEMENTS(buf));
+        bool have_env = false;
+        if (len > 0) {
+            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/Dr. Memory", buf);
             NULL_TERMINATE_BUFFER(logdir);
-            if (_access(logdir, 0) == -1) {
-                /* try cur dir */
-                GetFullPathName(".", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            have_env = true;
+        } else {
+            len = GetEnvironmentVariableA("USERPROFILE", buf, BUFFER_SIZE_ELEMENTS(buf));
+            if (len > 0) {
+                _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), 
+                          "%s/Application Data/Dr. Memory", buf);
                 NULL_TERMINATE_BUFFER(logdir);
+                have_env = true;
             }
+        }
+        if (have_env) {
+            if (CreateDirectoryA(logdir, NULL) || GetLastError() == ERROR_ALREADY_EXISTS) {
+                have_logdir = true;
+            }
+        }
+    } else {
+        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/drmemory/logs", drmem_root);
+        NULL_TERMINATE_BUFFER(logdir);
+        if (_access(logdir, 2/*write*/) == -1) {
+            /* try w/o the drmemory */
+            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/logs", drmem_root);
+            NULL_TERMINATE_BUFFER(logdir);
+            if (_access(logdir, 2/*write*/) > -1)
+                have_logdir = true;
+        } else
+            have_logdir = true;
+    }
+    if (!have_logdir) {
+        /* try logs in cur dir */
+        GetFullPathName("./logs", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+        NULL_TERMINATE_BUFFER(logdir);
+        if (_access(logdir, 2/*write*/) == -1) {
+            /* try cur dir */
+            GetFullPathName(".", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            NULL_TERMINATE_BUFFER(logdir);
         }
     }
 
@@ -475,7 +505,7 @@ int main(int argc, char *argv[])
             /* make absolute */
             GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(logdir), suppress, NULL);
             NULL_TERMINATE_BUFFER(suppress);
-            if (_access(suppress, 0) == -1) {
+            if (_access(suppress, 4/*read*/) == -1) {
                 fatal("cannot find -suppress file %s", suppress);
                 goto error; /* actually won't get here */
             }
@@ -531,7 +561,7 @@ int main(int argc, char *argv[])
     assert(c - app_cmdline < BUFFER_SIZE_ELEMENTS(app_cmdline));
     info("app cmdline: %s", app_cmdline);
 
-    if (_access(dr_root, 0) == -1) {
+    if (_access(dr_root, 4/*read*/) == -1) {
         fatal("invalid -dr_root %s", dr_root);
         goto error; /* actually won't get here */
     }
@@ -539,13 +569,13 @@ int main(int argc, char *argv[])
               "%s/lib32/%s/dynamorio.dll", dr_root,
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
-    if (_access(buf, 0) == -1) {
+    if (_access(buf, 4/*read*/) == -1) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
                       "%s/lib32/%s/dynamorio.dll", dr_root, "debug");
             NULL_TERMINATE_BUFFER(buf);
-            if (_access(buf, 0) == -1) {
+            if (_access(buf, 4/*read*/) == -1) {
                 fatal("cannot find DynamoRIO library %s", buf);
                 goto error; /* actually won't get here */
             }
@@ -559,12 +589,12 @@ int main(int argc, char *argv[])
               "%s/bin/%s/drmemorylib.dll", drmem_root,
               use_drmem_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(client_path);
-    if (_access(client_path, 0) == -1) {
+    if (_access(client_path, 4/*read*/) == -1) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
                       "%s/bin/%s/drmemorylib.dll", drmem_root, "debug");
             NULL_TERMINATE_BUFFER(client_path);
-            if (_access(client_path, 0) == -1) {
+            if (_access(client_path, 4/*read*/) == -1) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);
                 goto error; /* actually won't get here */
             }
@@ -572,13 +602,13 @@ int main(int argc, char *argv[])
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
                       "%s/CMakeCache.txt", drmem_root);
             NULL_TERMINATE_BUFFER(buf);
-            if (_access(buf, 0) == -1)
+            if (_access(buf, 4/*read*/) == -1)
                 warn("using debug Dr. Memory since release not found");
             use_drmem_debug = true;
         }
     }
 
-    if (_access(logdir, 0) == -1) {
+    if (_access(logdir, 2/*write*/) == -1) {
         fatal("invalid -logdir: cannot find %s", logdir);
         goto error; /* actually won't get here */
     }

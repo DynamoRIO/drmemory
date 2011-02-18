@@ -177,11 +177,12 @@ than invoking the script directly.  For example:
 ********************
 \subsection sec_results Examining the Results
 
-Dr. Memory's results are written to a file called \p results.txt inside
-a subdirectory created for each invocation of Dr. Memory, inside
-Dr. Memory's log directory.  The log directory by default is the \p logs
-subdirectory of the unpacked installation.  It can be changed with the \p
--logdir option:
+Dr. Memory's results are written to a file called \p results.txt inside a
+subdirectory created for each invocation of Dr. Memory, inside Dr. Memory's
+log directory.  The log directory by default is the \p logs subdirectory of
+the unpacked installation, or the Dr. Memory directory inside your profile
+directory when Dr. Memory is installed into Program Files on Windows.  It can be
+changed with the \p -logdir option:
 
 \par
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -logdir \if WINDOWS c:/logs \else /tmp/drmem \endif -- myapp
