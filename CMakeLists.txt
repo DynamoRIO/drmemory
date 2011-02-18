@@ -161,7 +161,7 @@ else (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
 endif (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
 
 # XXX: for windows should we have a real .rc file?
-set(VERSION_NUMBER_DEFAULT "1.3.${VERSION_NUMBER_PATCHLEVEL}")
+set(VERSION_NUMBER_DEFAULT "1.4.${VERSION_NUMBER_PATCHLEVEL}")
 # do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
 # from preventing future version updates in a pre-existing build dir.
 # avoid "VERSION_NUMBER" name since conflics w/ DR's var
