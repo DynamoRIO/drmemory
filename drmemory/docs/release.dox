@@ -58,6 +58,11 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.0 and 1.3.1 include:
+ - Initial Windows 7 support
+ - Performance improvements
+ - Various bug fixes
+
 The changes between version 1.3.1 and 1.3.0 include:
  - Performance improvements
  - Various bug fixes
@@ -127,26 +132,16 @@ The changes between version 1.1.0 and 1.0.1 include:
 \endhtmlonly
 \section sec_limits Limitations
 
-This is an Alpha version.  It has some missing features and undoubtedly
+This is a Beta version.  It has some missing features and undoubtedly
 some bugs.  The missing features include:
 
- - This release runs a debug build by default, which contains asserts
-   that if triggered will result in dialog boxes popping up and the death
-   of the application.  This is to aid in debugging this Alpha release.
-   Please report any such asserts encountered.
-   You can use the -release option to run the release build instead
-   and disable asserts.
- - Windows 7 is not yet supported (this is a limitation in the DynamoRIO
-   engine used by Dr. Memory:
-   http://code.google.com/p/dynamorio/issues/detail?id=218)
- - Performance optimizations: we expect to noticeably improve
-   Dr. Memory's performance in the future.
+ - Windows graphical system call parameters are not all known, which can
+   result in false positives and false negatives, especially with
+   graphical Windows applications.
  - The malloc in the Cygwin C library is not yet tracked separately from
    the Windows API malloc which can lead to false negatives.
  - Definedness is tracked at the byte level, not at the bit level,
    which when bitfields are in use can lead to false positives.
- - Windows graphical system call parameters are not all known, which can
-   result in false positives and false negatives.
  - System calls unique to Windows 2003 and Vista are missing, which
    can result in false positives and false negatives.
  - 64-bit support: we plan to add this in the future.
@@ -172,7 +167,9 @@ some bugs.  The missing features include:
    - General races between memory accesses and Dr. Memory's shadow memory
      can occur but errors will only occur with the presence of erroneous
      race conditions in the application.
-
+   - This release can produce false positives if multiple threads write
+     to adjacent bytes simultaneously.  Future releases will provide
+     options to trade off performance, memory usage, and accuracy.
 
 ****************************************************************************
 ****************************************************************************
