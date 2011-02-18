@@ -82,6 +82,9 @@ ld-linux.so.2!_dl_make_stack_executable
 ...
 ld-linux.so.2!_dl_rtld_di_serinfo
 
+UNADDRESSABLE ACCESS
+ld-linux.so.2!*
+
 ##################################################
 # glibc out-of-bounds memory access (PR 532762):
 # this is a real bug in glibc
