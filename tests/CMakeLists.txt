@@ -28,7 +28,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
 if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  set(CMAKE_CONFIGURATION_TYPES "Debug")
   # we don't support the Debug and Release subdirs
   foreach (config ${CMAKE_CONFIGURATION_TYPES})
     string(TOUPPER "${config}" config_upper)

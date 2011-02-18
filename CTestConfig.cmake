@@ -58,7 +58,13 @@ if (SUBMIT_LOCAL)
     # unix scp would) so we use cp, which is ok with drive-letter paths.
     # Note that CTEST_SCP_COMMAND must be a single executable so we can't
     # use "cmake -E copy".
-    set(CTEST_SCP_COMMAND "${CTEST_SCRIPT_DIRECTORY}/copy.bat")
+    if (EXISTS "${CTEST_SCRIPT_DIRECTORY}/tests/copy.bat")
+      set(CTEST_SCP_COMMAND "${CTEST_SCRIPT_DIRECTORY}/tests/copy.bat")
+    elseif (EXISTS "${CTEST_SCRIPT_DIRECTORY}/copy.bat")
+      set(CTEST_SCP_COMMAND "${CTEST_SCRIPT_DIRECTORY}/copy.bat")
+    else ()
+      message(FATAL_ERROR "cannot find copy.bat")
+    endif ()
   else (WIN32)
     find_program(CTEST_SCP_COMMAND scp DOC "scp command for local copy of results")
   endif (WIN32)

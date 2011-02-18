@@ -1116,16 +1116,40 @@ if (WIN32)
   # We do include 32-bit debug lib (and default DR log dir) for
   # debugging in the field: it does take space but we'd probably regret
   # not supplying it.
-  if (DEBUG_BUILD)
-    set(CPACK_INSTALLED_DIRECTORIES 
-      "${DynamoRIO_DIR}/../lib32;${DR_install_dir}/lib32"
-      "${DynamoRIO_DIR}/../ext/lib32;${DR_install_dir}/ext/lib32"
-      "${DynamoRIO_DIR}/../logs;${DR_install_dir}/logs")
-  else (DEBUG_BUILD)
-    set(CPACK_INSTALLED_DIRECTORIES 
-      "${DynamoRIO_DIR}/../lib32/release;${DR_install_dir}/lib32/release"
-      "${DynamoRIO_DIR}/../ext/lib32/release;${DR_install_dir}/ext/lib32/release")
-  endif (DEBUG_BUILD)
+  if (NOT USER_SPECIFIED_DynamoRIO_DIR)
+    # install to drmemory exports dir
+    install(DIRECTORY "${DynamoRIO_DIR}/../lib32"
+      DESTINATION "${DR_install_dir}")
+    install(DIRECTORY "${DynamoRIO_DIR}/../ext/lib32"
+      DESTINATION "${DR_install_dir}/ext")
+    install(DIRECTORY "${DynamoRIO_DIR}/../logs"
+      DESTINATION "${DR_install_dir}")
+    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      if (NOT DEBUG_BUILD)
+        # work around cmake's limiting install(TARGETS...) to only when
+        # the cpack config invocation matches the build dir config.
+        # winsyms.exe and drmemory.exe from debug build are sufficient
+        # so we only need drmemorylib.dll here.
+        get_target_property(client_loc ${client_target} LOCATION${location_suffix})
+        install(FILES "${client_loc}" DESTINATION "${INSTALL_LIB}"
+          PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+          WORLD_READ WORLD_EXECUTE)
+      endif (NOT DEBUG_BUILD)
+    endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  else (NOT USER_SPECIFIED_DynamoRIO_DIR)
+    # don't take time and space copying: user can pass same dr to frontend,
+    # so we only copy for package target
+    if (DEBUG_BUILD)
+      set(CPACK_INSTALLED_DIRECTORIES 
+        "${DynamoRIO_DIR}/../lib32;${DR_install_dir}/lib32"
+        "${DynamoRIO_DIR}/../ext/lib32;${DR_install_dir}/ext/lib32"
+        "${DynamoRIO_DIR}/../logs;${DR_install_dir}/logs")
+    else (DEBUG_BUILD)
+      set(CPACK_INSTALLED_DIRECTORIES 
+        "${DynamoRIO_DIR}/../lib32/release;${DR_install_dir}/lib32/release"
+        "${DynamoRIO_DIR}/../ext/lib32/release;${DR_install_dir}/ext/lib32/release")
+    endif (DEBUG_BUILD)
+  endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 endif (WIN32)
 
 # CPack tarballs do not allow setting a different name for the base

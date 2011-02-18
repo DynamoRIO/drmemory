@@ -96,7 +96,7 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
 set(base_cache "
   ${DR_entry}
-  BUILD_NUMBER:STRING=${arg_build}
+  TOOL_BUILD_NUMBER:STRING=${arg_build}
   UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
   BUILD_TOOL_TESTS:BOOL=OFF
   ${arg_cacheappend}
