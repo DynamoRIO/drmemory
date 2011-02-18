@@ -105,7 +105,7 @@ $drheapstat_home = $default_home;
 # normally we're packaged with a DR release laid out in "dynamorio":
 $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
     "$default_home/../dynamorio" : "$default_home/dynamorio";
-$use_release = 0;
+$use_debug = 0;
 $use_dr_debug = 0;
 $user_ops = "";
 $logdir = "";
@@ -154,7 +154,8 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "ops=s" => \$user_ops, # for backward compat only
                 "dr_ops=s" => \$dr_ops,
                 "logdir=s" => \$logdir,
-                "release" => \$use_release,
+                "debug" => \$use_debug,
+                "release" => sub { $use_debug = 0 },
                 "dr_debug" => \$use_dr_debug,
                 "visualize" => \$visualize,
                 "from_nudge=i" => \$from_nudge,
@@ -202,10 +203,13 @@ my $win32_a2l = "$drheapstat_home/$bindir/winsyms.exe";
 launch_vistool() if ($visualize);
 show_leaks() if ($view_leaks);
 
-# Until the tool is more mature, debug is the default so we can get asserts.
-# To make release default: change param -release to -debug, and update
-# tests/CMakeLists.sh to pass -debug and not -release.
-$libdir = ($use_release) ? "release" : "debug";
+if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
+    $use_debug = 1;
+    # try to avoid warning for devs running from build dir
+    print "$prefix WARNING: using debug Dr. Memory since release not found\n"
+        unless ($user_ops =~ /-quiet/ || -e "$drmemory_home/CMakeCache.txt");
+}
+$libdir = ($use_debug) ? "debug" : "release";
 
 $dr_debug = ($use_dr_debug) ? "-debug" : "";
 $dr_libdir = ($use_dr_debug) ? "debug" : "release";

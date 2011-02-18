@@ -123,9 +123,9 @@ else (UNIX)
 endif (UNIX)
 if (DEBUG_BUILD)
   # use debug DR as well to catch asserts there
-  set(dbg_args "-dr_debug")
+  set(dbg_args "-debug;-dr_debug")
 else (DEBUG_BUILD)
-  set(dbg_args "-release")
+  set(dbg_args "")
 endif (DEBUG_BUILD)
 if (WIN32)
   # we need the nudge notification msgs

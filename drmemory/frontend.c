@@ -317,7 +317,7 @@ int main(int argc, char *argv[])
     char suppress[MAXIMUM_PATH];
 
     bool use_dr_debug = false;
-    bool use_drmem_debug = true;
+    bool use_drmem_debug = false;
     char *pidfile = NULL;
     process_id_t nudge_pid = 0;
 
@@ -407,6 +407,14 @@ int main(int argc, char *argv[])
         }
         else if (strcmp(argv[i], "-dr_debug") == 0) {
             use_dr_debug = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-dr_release") == 0) {
+            use_dr_debug = false;
+            continue;
+        }
+        else if (strcmp(argv[i], "-debug") == 0) {
+            use_drmem_debug = true;
             continue;
         }
         else if (strcmp(argv[i], "-release") == 0) {
@@ -552,8 +560,22 @@ int main(int argc, char *argv[])
               use_drmem_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(client_path);
     if (_access(client_path, 0) == -1) {
-        fatal("invalid -drmem_root: cannot find %s", client_path);
-        goto error; /* actually won't get here */
+        if (!use_drmem_debug) {
+            _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+                      "%s/bin/%s/drmemorylib.dll", drmem_root, "debug");
+            NULL_TERMINATE_BUFFER(client_path);
+            if (_access(client_path, 0) == -1) {
+                fatal("invalid -drmem_root: cannot find %s", client_path);
+                goto error; /* actually won't get here */
+            }
+            /* try to avoid warning for devs running from build dir */
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
+                      "%s/CMakeCache.txt", drmem_root);
+            NULL_TERMINATE_BUFFER(buf);
+            if (_access(buf, 0) == -1)
+                warn("using debug Dr. Memory since release not found");
+            use_drmem_debug = true;
+        }
     }
 
     if (_access(logdir, 0) == -1) {

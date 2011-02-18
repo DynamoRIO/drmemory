@@ -106,7 +106,7 @@ $drmemory_home = $default_home;
 $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
     "$default_home/../dynamorio" : "$default_home/dynamorio";
 $use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
-$use_release = 0;
+$use_debug = 0;
 $use_dr_debug = 0;
 $logdir = "";
 $perturb_only = 0;
@@ -154,7 +154,8 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "srcfilter=s" => \$srcfilter,
                 "ops=s" => \$user_ops, # for backward compat only
                 "dr_ops=s" => \$dr_ops,
-                "release" => \$use_release,
+                "debug" => \$use_debug,
+                "release" => sub { $use_debug = 0 },
                 "dr_debug" => \$use_dr_debug,
                 "v" => \$verbose,
                 "version" => \$version,
@@ -203,10 +204,13 @@ $drmemory_home = &canonicalize_path($drmemory_home);
 $suppfile = &canonicalize_path($suppfile);
 $logdir = &canonicalize_path($logdir);
 
-# Until the tool is more mature, debug is the default so we can get asserts.
-# To make release default: change param -release to -debug, and update
-# tests/CMakeLists.sh to pass -debug and not -release.
-$libdir = ($use_release) ? "release" : "debug";
+if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
+    $use_debug = 1;
+    # try to avoid warning for devs running from build dir
+    print "$prefix WARNING: using debug Dr. Memory since release not found\n"
+        unless ($user_ops =~ /-quiet/ || -e "$drmemory_home/CMakeCache.txt");
+}
+$libdir = ($use_debug) ? "debug" : "release";
 
 if (!$use_dr_debug && ! -e "$dr_home/lib32/release/$drlibname") {
     $use_dr_debug = 1;
