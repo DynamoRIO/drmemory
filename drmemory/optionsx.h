@@ -263,6 +263,9 @@ OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
 OPTION_CLIENT_STRING(drmemscope, auxlib, "",
                      "Load auxiliary system call handling library",
                      "This option should specify the basename of an auxiliary system call handling library found in the same directory as the Dr. Memory client library.")
+OPTION_CLIENT_BOOL(drmemscope, syscall_sentinels, true,
+                   "Use sentinels to detect writes on unknown syscalls",
+                   "Use sentinels to detect writes on unknown syscalls.  Can potentially result in incorrect behavior if definedness information is incorrect or application threads read syscall param info simultaneously.")
 
 /* not supporting perturb with heapstat: can add easily later */
 /* XXX: some of the other options here shouldn't be allowed for heapstat either */

@@ -410,8 +410,20 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                  * so we go ahead and use dynamically sized memory as well.
                  */
                 byte *s_at = NULL;
+                int prev;
+                bool overlap = false;
                 for (j=0; j<SYSCALL_ARG_TRACK_MAX_SZ; j++) {
-                    if (shadow_get_byte(start + j) == SHADOW_UNADDRESSABLE)
+                    for (prev=0; prev<i; prev++) {
+                        if (cpt->sysarg_ptr[prev] < start + j &&
+                            cpt->sysarg_ptr[prev] + cpt->sysarg_sz[prev] > start) {
+                            /* overlap w/ prior arg.  while we could miss some
+                             * data due to the max sz we just bail for simplicity.
+                             */
+                            overlap = true;
+                            break;
+                        }
+                    }
+                    if (overlap || shadow_get_byte(start + j) == SHADOW_UNADDRESSABLE)
                         break;
                 }
                 if (j > 0) {
@@ -435,39 +447,42 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                     } else {
                         LOG(1, "WARNING: unable to read syscall arg "PFX"-"PFX"!\n",
                             start, start + j);
-                        j = 0;
+                        cpt->sysarg_sz[i] = 0;
                     }
                 }
-                for (j=0; j<SYSCALL_ARG_TRACK_MAX_SZ; j++) {
-                    if (shadow_get_byte(start + j) == SHADOW_UNDEFINED) {
-                        size_t written;
-                        /* Detect writes to data that happened to have the same
-                         * value beforehand (happens often with 0) by writing
-                         * a sentinel.
-                         * XXX: want more-performant safe write on Windows:
-                         * xref PR 605237
-                         * XXX: another thread could read the data (after
-                         * all we're not sure it's really syscall data) and
-                         * unexpectedly read the sentinel value
-                         */
-                        if (s_at == NULL)
-                            s_at = start + j;
-                        if (!dr_safe_write(start + j, 1,
-                                           &UNKNOWN_SYSVAL_SENTINEL, &written) ||
-                            written != 1) {
-                            /* if page is read-only then assume rest is not OUT */
-                            LOG(1, "WARNING: unable to write sentinel value @"PFX"\n",
-                                start + j);
-                            break;
+                if (options.syscall_sentinels) {
+                    for (j=0; j<cpt->sysarg_sz[i]; j++) {
+                        if (shadow_get_byte(start + j) == SHADOW_UNDEFINED) {
+                            size_t written;
+                            /* Detect writes to data that happened to have the same
+                             * value beforehand (happens often with 0) by writing
+                             * a sentinel.
+                             * XXX: want more-performant safe write on Windows:
+                             * xref PR 605237
+                             * XXX: another thread could read the data (after
+                             * all we're not sure it's really syscall data) and
+                             * unexpectedly read the sentinel value
+                             */
+                            if (s_at == NULL)
+                                s_at = start + j;
+                            if (!dr_safe_write(start + j, 1,
+                                               &UNKNOWN_SYSVAL_SENTINEL, &written) ||
+                                written != 1) {
+                                /* if page is read-only then assume rest is not OUT */
+                                LOG(1, "WARNING: unable to write sentinel value @"PFX"\n",
+                                    start + j);
+                                break;
+                            }
+                        } else if (s_at != NULL) {
+                            LOG(2, "writing sentinel value to "PFX"-"PFX" %d %d "PFX"\n",
+                                s_at, start + j, i, j, cpt->sysarg_ptr[i]);
+                            s_at = NULL;
                         }
-                    } else if (s_at != NULL) {
-                        LOG(2, "writing sentinel value to "PFX"-"PFX" %d %d "PFX"\n", s_at, start + j, i, j, cpt->sysarg_ptr[i]);
+                    }
+                    if (s_at != NULL) {
+                        LOG(2, "writing sentinel value to "PFX"-"PFX"\n", s_at, start + j);
                         s_at = NULL;
                     }
-                }
-                if (s_at != NULL) {
-                    LOG(2, "writing sentinel value to "PFX"-"PFX"\n", s_at, start + j);
-                    s_at = NULL;
                 }
             }
         }
@@ -487,12 +502,14 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                 for (j = 0; j < cpt->sysarg_sz[i]; j++) {
                     byte *pc = cpt->sysarg_ptr[i] + j;
                     if (shadow_get_byte(pc) == SHADOW_UNDEFINED) {
-                        if (post_val[j] != UNKNOWN_SYSVAL_SENTINEL ||
-                            /* kernel could have written sentinel.
-                             * XXX: we won't mark as defined if pre-syscall value
-                             * matched sentinel and kernel wrote sentinel!
-                             */
-                            post_val[j] != cpt->sysarg_val[i][j]) {
+                        /* kernel could have written sentinel.
+                         * XXX: we won't mark as defined if pre-syscall value
+                         * matched sentinel and kernel wrote sentinel!
+                         */
+                        if ((options.syscall_sentinels &&
+                             post_val[j] != UNKNOWN_SYSVAL_SENTINEL) ||
+                            (!options.syscall_sentinels &&
+                             post_val[j] != cpt->sysarg_val[i][j])) {
                             if (w_at == NULL)
                                 w_at = pc;
                             /* I would assert that this is still marked undefined, to
@@ -508,6 +525,7 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                                  * we clobbered w/ our sentinel.
                                  */
                                 size_t written;
+                                LOG(4, "restoring app sysval @"PFX"\n", pc);
                                 if (!dr_safe_write(pc, 1, &cpt->sysarg_val[i][j],
                                                    &written) || written != 1) {
                                     LOG(1, "WARNING: unable to restore app sysval @"PFX"\n",
@@ -522,12 +540,12 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                             }
                         }
                     }
-                    if (w_at != NULL) {
-                        LOG(2, "unknown-syscall #"PIFX": param %d written "
-                            PFX" %d bytes\n",
-                            sysnum, i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
-                        w_at = NULL;
-                    }
+                }
+                if (w_at != NULL) {
+                    LOG(2, "unknown-syscall #"PIFX": param %d written "
+                        PFX" %d bytes\n",
+                        sysnum, i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
+                    w_at = NULL;
                 }
             } else {
                 /* If we can't read I assume we are also unable to write to undo
