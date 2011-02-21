@@ -499,7 +499,7 @@ else ()
 endif ()
 
 # when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "2.0.508")
+set(DynamoRIO_VERSION_REQUIRED "2.1.602")
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
@@ -1124,18 +1124,6 @@ if (WIN32)
       DESTINATION "${DR_install_dir}/ext")
     install(DIRECTORY "${DynamoRIO_DIR}/../logs"
       DESTINATION "${DR_install_dir}")
-    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-      if (NOT DEBUG_BUILD)
-        # work around cmake's limiting install(TARGETS...) to only when
-        # the cpack config invocation matches the build dir config.
-        # winsyms.exe and drmemory.exe from debug build are sufficient
-        # so we only need drmemorylib.dll here.
-        get_target_property(client_loc ${client_target} LOCATION${location_suffix})
-        install(FILES "${client_loc}" DESTINATION "${INSTALL_LIB}"
-          PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
-          WORLD_READ WORLD_EXECUTE)
-      endif (NOT DEBUG_BUILD)
-    endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   else (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # don't take time and space copying: user can pass same dr to frontend,
     # so we only copy for package target
