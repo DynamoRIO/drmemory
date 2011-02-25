@@ -35,3 +35,11 @@ POSSIBLE LEAK
 ntdll.dll!RtlAllocateActivationContextStack
 KERNEL32.dll!CreateRemoteThread
 KERNEL32.dll!CreateThread
+
+##################################################
+# i#306: these are stored on ntdll!RtlCriticalSectionList
+# using an 8-byte-in pointer
+
+POSSIBLE LEAK
+...
+ntdll.dll!RtlInitializeCriticalSection
