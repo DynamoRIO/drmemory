@@ -440,6 +440,9 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
      * alternative is to completely replace _dbg (see i#51 notes below).
      */
     { "_CrtDbgReport", HEAP_ROUTINE_DBG_NOP },
+    /* I've seen two instances of _CrtDbgReportW but usually both end up
+     * calling _CrtDbgReportWV so ok to replace just one
+     */
     { "_CrtDbgReportW", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP },
@@ -3835,11 +3838,6 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             *((int *)APP_ARG_ADDR(&mc, 1, inside)));
         *((int *)APP_ARG_ADDR(&mc, 1, inside)) = 0;
     }
-    else if (options.disable_crtdbg && type == HEAP_ROUTINE_DBG_NOP) {
-        /* i#51: disable crt dbg checks: disable direct reports on malloc/free */
-        LOG(2, "disabling %s\n", routine.name);
-        *((int *)APP_ARG_ADDR(&mc, 1, inside)) = 0;
-    }
 #endif
     else if (type == HEAP_ROUTINE_NOT_HANDLED) {
         /* XXX: once we have the aligned-malloc routines turn this
@@ -4262,6 +4260,15 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
     }
 }
 
+#ifdef WINDOWS
+/* we replace app _CrtDbgReport* with this routine */
+static ptr_int_t
+replaced_nop_routine(void)
+{
+    return 0;
+}
+#endif
+
 void
 alloc_replace_instrument(void *drcontext, instrlist_t *bb)
 {
@@ -4282,9 +4289,15 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
     }
 #ifdef WINDOWS
     if (options.disable_crtdbg && replace_crtdbg_routine(pc)) {
+        LOG(2, "replacing crtdbg routine @"PFX"\n", pc);
         instrlist_clear(drcontext, bb);
-        /* cdecl so no args to clean up */
-        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_ret(drcontext), pc));
+        /* cdecl so no args to clean up.
+         * we can't just insert a generated ret b/c our slowpath
+         * assumes the raw bits are persistent.
+         */
+        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp(drcontext, opnd_create_pc
+                                                        ((app_pc)replaced_nop_routine)),
+                                       pc));
     }
 #endif
 }
