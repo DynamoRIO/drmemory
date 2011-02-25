@@ -34,7 +34,7 @@
 # define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
 #endif
 
-#define MAX_HEAP_NESTING 8
+#define MAX_HEAP_NESTING 12
 
 /* Per-thread data.
  * Fields are assumed to be callback-context-private on Windows.
@@ -73,8 +73,9 @@ typedef struct _per_thread_t {
      */
     int in_heap_adjusted;
     bool in_realloc;
-    app_pc tailcall_target;
-    app_pc tailcall_post_call;
+    /* handle nested tailcalls */
+    app_pc tailcall_target[MAX_HEAP_NESTING];
+    app_pc tailcall_post_call[MAX_HEAP_NESTING];
     /* record which heap routine */
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
     bool ignored_alloc;

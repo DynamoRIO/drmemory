@@ -2562,6 +2562,9 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
         /* Arg mismatch is ok across layers: e.g., crtdbg asking for extra
          * space.  Since we've only seen tangents in Rtl, instead of a general
          * is-this-same-layer, we just check whether this is Rtl->Rtl transition.
+         * If we do end up with tangents across layers we'll have to be
+         * more careful w/ the args and store which layer we used in
+         * delay free queue, etc. so the redzone adjustment matches.
          */
         if (is_rtl_routine(routine->type)) {
             app_pc pc = NULL;
@@ -2780,13 +2783,22 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
             LOG(2, "free-pre client %d changing base from "PFX" to "PFX"\n",
                 type, real_base, change_base);
             *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR(type), inside))) = change_base;
+            /* for set_handling_heap_layer for recursion check.
+             * we assume has redzone: doesn't matter, just has to match the
+             * check_recursive_same_sequence call at top of this routine.
+             * XXX: redzone size can vary across layers, so actually
+             * it does matter: but ok for now b/c across layers we
+             * always assume non-tangent.
+             */
+            base = change_base + redzone_size(routine);
+            LOG(2, "\tchanged base => pt->alloc_base="PFX"\n", base);
+            size = 0;
         }
 
         malloc_entry_remove(entry);
     }
     malloc_unlock();
 
-    /* Note that these do not reflect what's really being freed if -delay_frees > 0 */
     set_handling_heap_layer(pt, base, size);
 #ifdef WINDOWS
     set_auxarg(drcontext, mc, pt, inside, routine);
@@ -3894,16 +3906,27 @@ handle_alloc_post(app_pc func, app_pc post_call)
         return;
     }
     /* We must check tailcall_target BEORE last_alloc_routine */
-    if (pt->tailcall_target != NULL) {
+    while (pt->in_heap_routine > 0 &&
+           /* tailcall was recorded at in_heap minus one */
+           pt->tailcall_target[pt->in_heap_routine - 1] != NULL) {
         /* We've missed the return from a tailcalled alloc routine,
          * so process that now before this "outer" return.  PR 418138.
          */
-        app_pc inner_func = pt->tailcall_target;
-        app_pc inner_post = pt->tailcall_post_call;
-        pt->tailcall_target = NULL;
-        pt->tailcall_post_call = NULL;
-        ASSERT(pt->in_heap_routine > 1, "tailcall mistake");
-        handle_alloc_post(inner_func, inner_post);
+        app_pc inner_func = pt->tailcall_target[pt->in_heap_routine - 1];
+        app_pc inner_post = pt->tailcall_post_call[pt->in_heap_routine - 1];
+        /* If the tailcall was not an exit from the outer (e.g., it's
+         * an exit from a helper routine) just clear and proceed.
+         * We assume no self-recursive tailcalls.
+         */
+        pt->tailcall_target[pt->in_heap_routine - 1] = NULL;
+        pt->tailcall_post_call[pt->in_heap_routine - 1] = NULL;
+        if (inner_func != func) {
+            LOGPT(2, pt, "tailcall: bypassed inner "PFX" %s before outer "PFX" %s\n",
+                  inner_func, get_alloc_routine_name(inner_func),
+                  func, get_alloc_routine_name(func));
+            ASSERT(pt->in_heap_routine > 1, "tailcall mistake");
+            handle_alloc_post(inner_func, inner_post);
+        }
     }
     if (pt->in_heap_routine < MAX_HEAP_NESTING &&
         pt->last_alloc_routine[pt->in_heap_routine] != func) {
@@ -4014,8 +4037,12 @@ handle_tailcall(app_pc callee, app_pc post_call)
         /* Store the target so we can process both this and the "outer"
          * alloc routine at the outer's post-call point (PR 418138).
          */
-        pt->tailcall_target = callee;
-        pt->tailcall_post_call = post_call;
+        LOGPT(2, pt, "tailcall from "PFX" to "PFX" %s\n",
+              post_call, callee, get_alloc_routine_name(callee));
+        ASSERT(pt->tailcall_target[pt->in_heap_routine] == NULL,
+               "tailcall var not cleaned up");
+        pt->tailcall_target[pt->in_heap_routine] = callee;
+        pt->tailcall_post_call[pt->in_heap_routine] = post_call;
     }
     dr_get_mcontext(drcontext, &mc, NULL);
     if (safe_read((void *)mc.esp, sizeof(retaddr), &retaddr)) {
@@ -4237,9 +4264,9 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
         if (is_tail_call) {
             /* We don't know return address statically */
             app_pc post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-            LOG(2, "tail call @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
+            LOG(2, "tailcall @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
             dr_insert_clean_call(drcontext, bb, inst, (void *)handle_tailcall,
-                                 false, 1, OPND_CREATE_INT32((int)target),
+                                 false, 2, OPND_CREATE_INT32((int)target),
                                  OPND_CREATE_INT32((ptr_int_t)post_call));
         }
         return;
