@@ -573,6 +573,10 @@ top_frame_matches_suppression_frame(const char *error_stack,
     if (epos != NULL && epos < eol)
         return text_matches_pattern(epos, eol - epos, supp_frame);
 
+    epos = strstr(error_stack, "not in a module");
+    if (epos != NULL && epos < eol)
+        return text_matches_pattern(epos, eol - epos, supp_frame);
+
     if (*supp_frame == '<') {
         /* "<mod+off>" suppression frame */
         const char *end_of_mod_off;
