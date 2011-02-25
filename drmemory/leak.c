@@ -138,7 +138,10 @@ leak_handle_alloc(per_thread_t *pt, app_pc base, size_t size)
 {
 #ifdef WINDOWS
     /* Suppress the per-Heap leak of an RtlCreateHeap-allocated big chunk
-     * (used for heap lookaside lists) on Windows
+     * (used for heap lookaside lists) on Windows.
+     * Note that alloc.c now tries to ignore these allocs up front b/c
+     * some are allocated after Heap creation, so we probably won't
+     * come in here
      */
     if (pt->in_create)
         malloc_set_client_flag(base, MALLOC_IGNORE_LEAK);
@@ -888,12 +891,15 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
                              void *client_data, void *iter_data)
 {
     rb_tree_t *alloc_tree = (rb_tree_t *) iter_data;
+    IF_DEBUG(rb_node_t *node;)
     ASSERT(alloc_tree != NULL, "invalid iteration data");
     /* We use NULL for client b/c we only need unreach_entry_t for the
      * leaks, a small fraction (for most apps!) of the total and thus
      * best allocated lazily
      */
-    rb_insert(alloc_tree, start, (end - start), NULL);
+    IF_DEBUG(node = )
+        rb_insert(alloc_tree, start, (end - start), NULL);
+    ASSERT(node == NULL, "mallocs should not overlap");
 }
 
 static void

@@ -273,6 +273,9 @@ client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end);
 void
 client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child);
 
+/* should only act on the new data struct on the callback stack: may be called
+ * for other than a real Windows callback
+ */
 void
 client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
                        bool new_depth);

@@ -713,6 +713,12 @@ use_DynamoRIO_extension(${client_target} drcontainers)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
+if (DEBUG_BUILD AND WIN32)
+  # annoying to have ASLR and not on module list
+  get_target_property(cur_flags ${client_target} LINK_FLAGS)
+  set_target_properties(${client_target} PROPERTIES
+    LINK_FLAGS "${cur_flags} /dynamicbase:no")
+endif (DEBUG_BUILD AND WIN32)
 if (WIN32 AND USE_DRSYMS)
   configure_DynamoRIO_standalone(${toolname})
   target_link_libraries(${toolname} drinjectlib drconfiglib)

@@ -1274,6 +1274,12 @@ static thread_id_t malloc_lock_owner = THREAD_ID_INVALID;
 #define LARGE_MALLOC_MIN_SIZE 12*1024
 static rb_tree_t *large_malloc_tree;
 
+/* We ignore Rtl*Heap-internal allocs.  We need to avoid complaining
+ * about invalid heap args so we store them in a separate table.
+ */
+#define NATIVE_ALLOC_TABLE_HASH_BITS 6
+static hashtable_t native_alloc_table;
+
 enum {
     MALLOC_VALID  = MALLOC_RESERVED_1,
     MALLOC_PRE_US = MALLOC_RESERVED_2,
@@ -1397,6 +1403,8 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
                           NULL, NULL);
         hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
+        hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
+                       HASH_INTPTR, false/*!strdup*/);
     }
 }
 
@@ -1432,10 +1440,13 @@ alloc_exit(void)
         }
     }
 
-    hashtable_delete(&malloc_table);
-    rb_tree_destroy(large_malloc_tree);
-    hashtable_delete(&post_call_table);
-    hashtable_delete(&call_site_table);
+    if (options.track_allocs) {
+        hashtable_delete(&malloc_table);
+        rb_tree_destroy(large_malloc_tree);
+        hashtable_delete(&post_call_table);
+        hashtable_delete(&call_site_table);
+        hashtable_delete(&native_alloc_table);
+    }
 
     if (options.replace_realloc) {
         nonheap_free(gencode_start, GENCODE_SIZE, HEAPSTAT_GENCODE);
@@ -1635,7 +1646,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
         ASSERT(!TEST(MALLOC_VALID, old_e->flags), "internal error in malloc tracking");
         malloc_entry_free(old_e);
     }
-    DOLOG(2, {
+    DOLOG(3, {
         LOG(2, "MALLOC "PFX"-"PFX"\n", start, end);
         print_callstack_to_file(dr_get_current_drcontext(), mc, post_call,
                                 INVALID_FILE/*use pt->f*/);
@@ -1936,15 +1947,18 @@ malloc_iterate(void (*cb)(app_pc start, app_pc end, app_pc real_end,
 static int callback_depth;
 # endif
 
+/* we use a stack of per-thread data both for callbacks and for recursive
+ * tangential heap allocation sequences (i#301)
+ */
 static void
-handle_cbret(bool syscall)
+per_thread_stack_pop(void *drcontext, per_thread_t *pt_child, bool cbret)
 {
-    void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt_child = (per_thread_t *) dr_get_tls_field(drcontext);
     /* Our callback interception is AFTER DR's, but our cbret is BEFORE. */
     per_thread_t *pt_parent = pt_child->prev;
+    ASSERT(drcontext == dr_get_current_drcontext(), "own thread only");
+    ASSERT(pt_child == (per_thread_t *) dr_get_tls_field(drcontext), "pt mismatch");
     /* pt_parent can be NULL if we took over in the middle of a callback
-     * (one reason we don't support AppInit injection: PR 408521).
+     * (one reason we don't support AppInit injection: i#112).
      */
     ASSERT(pt_parent != NULL, "callback stack off: is AppInit on?");
 
@@ -1955,14 +1969,17 @@ handle_cbret(bool syscall)
             callback_depth, pt_parent, pt_parent->prev, pt_parent->next);
     });
 
-    client_handle_cbret(drcontext, pt_parent, pt_child);
+    /* client needs no action on pop, but does on real cbret */
+    if (cbret)
+        client_handle_cbret(drcontext, pt_parent, pt_child);
 
     /* swap in as the current structure */
     dr_set_tls_field(drcontext, (void *)pt_parent);
 }
 
-static void
-handle_callback(void *drcontext, per_thread_t *pt)
+/* Returns the new struct */
+static per_thread_t *
+per_thread_stack_push(void *drcontext, per_thread_t *pt)
 {
     /* Our syscall data needs to be preserved so we use a stack of
      * data structures.  Since the client field is indirected inside
@@ -2006,7 +2023,17 @@ handle_callback(void *drcontext, per_thread_t *pt)
         LOG(2, "after callback depth=%d pt="PFX" prev="PFX" next="PFX"\n",
             callback_depth, pt_child, pt_child->prev, pt_child->next);
     });
+    return pt_child;
 }
+
+static void
+handle_cbret(bool syscall)
+{
+    void *drcontext = dr_get_current_drcontext();
+    per_thread_t *pt_child = (per_thread_t *) dr_get_tls_field(drcontext);
+    per_thread_stack_pop(drcontext, pt_child, true/*cbret*/);
+}
+
 #endif
 
 bool
@@ -2474,6 +2501,167 @@ check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_
     return true;
 }
 
+/* Returns true if the malloc is ignored by us */
+static bool
+malloc_is_native(app_pc start)
+{
+#ifdef WINDOWS
+    return (hashtable_lookup(&native_alloc_table, (void*)start) != NULL);
+#else
+    /* optimization: currently nothing in the table */
+    return false;
+#endif
+}
+
+static void
+enter_heap_routine(per_thread_t *pt, app_pc pc)
+{
+    if (pt->in_heap_routine == 0) {
+        /* if tangent, check_recursive_same_sequence() will call this */
+        client_entering_heap_routine();
+    }
+    pt->in_heap_routine++;
+    /* Exceed array depth => just don't record: only needed on jmp-to-post-call-bb */
+    if (pt->in_heap_routine < MAX_HEAP_NESTING)
+        pt->last_alloc_routine[pt->in_heap_routine] = pc;
+    else {
+        LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
+            get_alloc_routine_name(pc), pt->in_heap_routine, MAX_HEAP_NESTING);
+    }
+}
+
+/* Returns true if this call is a recursive helper to aid in the same
+ * sequences of calls.  If it's a new tangential sequence, pushes a new
+ * data structure on the per-thread stack and returns false.
+ * In the latter case, caller should re-set per_thread_t.
+ *
+ * The args_match checks use either pt->alloc_base or pt->alloc_size.
+ * Thus, anyone setting in_heap_adjusted should set both alloc_{base,size}
+ * via set_handling_heap_layer() so we don't compare to garbage.
+ */
+static bool
+check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
+                              alloc_routine_entry_t *routine,
+                              ptr_int_t arg1, ptr_int_t arg2)
+{
+    per_thread_t *pt = *pt_caller;
+    /* We assume that a typical nested call to an alloc routine (malloc, realloc,
+     * calloc) is working on the same allocation and not a separate one.
+     * We do our adjustments in the outer pre and the outer post.
+     */
+    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
+#ifdef WINDOWS
+        /* However, there are some cases where a heap routine will go
+         * off on a tangent.  E.g., "heap maintenance".  For that
+         * we need to push our context on the data struct stack
+         * and go process the tangent.  Xref i#301.
+         */
+        /* Arg mismatch is ok across layers: e.g., crtdbg asking for extra
+         * space.  Since we've only seen tangents in Rtl, instead of a general
+         * is-this-same-layer, we just check whether this is Rtl->Rtl transition.
+         */
+        if (is_rtl_routine(routine->type)) {
+            app_pc pc = NULL;
+            alloc_routine_entry_t last_routine;
+            ASSERT(pt->in_heap_routine > 0, "invalid heap counter");
+            if (pt->in_heap_routine < MAX_HEAP_NESTING) {
+                pc = pt->last_alloc_routine[pt->in_heap_routine-1];
+            } else
+                LOGPT(1, pt, "WARNING: may misclassify recursion: exceeding nest max\n");
+            if (pc != NULL && !get_alloc_entry(pc, &last_routine)) {
+                LOGPT(1, pt, "WARNING: may misclassify recursion: bad last routine\n");
+                pc = NULL;
+            }
+            LOGPT(2, pt, "check_recursive %s: "PFX" vs "PFX"\n",
+                  routine->name, arg1, arg2);
+            if (pc != NULL && is_rtl_routine(last_routine.type) && arg1 != arg2) {
+                per_thread_t *new_pt;
+                LOGPT(2, pt, "%s recursive call: tangential => new context\n",
+                      routine->name);
+                pt->in_heap_routine--; /* undo the inc */
+                new_pt = per_thread_stack_push(drcontext, pt);
+                new_pt->heap_tangent = true;
+                enter_heap_routine(new_pt, routine->pc);
+                ASSERT(new_pt->in_heap_routine == 1, "inheap not cleared in new cxt");
+                *pt_caller = new_pt;
+                return false;
+            }
+        }
+#endif
+        LOGPT(2, pt, "%s recursive call: helper, so no adjustments\n",
+              routine->name);
+        return true;
+    }
+    /* non-recursive */
+    return false;
+}
+
+static void
+set_handling_heap_layer(per_thread_t *pt, byte *alloc_base, size_t alloc_size)
+{
+    pt->in_heap_adjusted = pt->in_heap_routine;
+    /* We want to set both of these so our args_match checks for
+     * check_recursive_same_sequence() are always accurate even when
+     * one routine type calls another unrelated type.
+     */
+    pt->alloc_base = alloc_base;
+    pt->alloc_size = alloc_size;
+}
+
+#ifdef WINDOWS
+static void
+set_auxarg(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt, bool inside,
+           alloc_routine_entry_t *routine)
+{
+    routine_type_t type = routine->type;
+    if (is_free_routine(type)) {
+        if (type == RTL_ROUTINE_FREE) {
+            /* FIXME: safe_read */
+            /* Note that these do not reflect what's really being freed if
+             * -delay_frees > 0 
+             */
+            pt->alloc_flags = (uint) APP_ARG(mc, 2, inside);
+            pt->auxarg = APP_ARG(mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_FREE_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(mc, 2, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
+        }
+    } else if (is_size_routine(type)) {
+        if (type == RTL_ROUTINE_SIZE) {
+            /* FIXME: safe_read */
+            pt->alloc_flags = (uint) APP_ARG(mc, 2, inside);
+            pt->auxarg = APP_ARG(mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(mc, 2, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
+        }
+    } else if (is_malloc_routine(type) ||
+               is_realloc_routine(type) ||
+               is_calloc_routine(type)) {
+        if (is_rtl_routine(type)) {
+            /* FIXME: safe_read */
+            pt->alloc_flags = (uint) APP_ARG(mc, 2, inside);
+            pt->auxarg = APP_ARG(mc, 1, inside);
+        } else if (type == HEAP_ROUTINE_MALLOC_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(mc, 2, inside);
+        } else if (type == HEAP_ROUTINE_REALLOC_DBG || type == HEAP_ROUTINE_CALLOC_DBG) {
+            pt->alloc_flags = 0;
+            pt->auxarg = APP_ARG(mc, 3, inside);
+        } else {
+            pt->alloc_flags = 0;
+            pt->auxarg = 0;
+        }
+    }
+}
+#endif
+
 /**************************************************
  * FREE
  */
@@ -2495,7 +2683,13 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
     bool size_in_zone = (redzone_size(routine) > 0 && options.size_in_redzone);
     size_t size = 0;
     malloc_entry_t *entry;
-    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
+    if (malloc_is_native(base)) {
+        hashtable_remove(&native_alloc_table, (void*)base);
+        return;
+    }
+    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+                                      (ptr_int_t) pt->alloc_base -
+                                      redzone_size(routine))) {
         /* we assume we're called from RtlReAllocateheap, who will handle
          * all adjustments and shadow updates */
         LOGPT(2, pt, "free of "PFX" recursive: not adjusting\n", base);
@@ -2511,7 +2705,6 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
                "free recursion count incorrect");
         return;
     }
-    pt->in_heap_adjusted = pt->in_heap_routine;
     /* We avoid worrying about races between our pre & post free instru
      * by assuming we can always predict when free will fail.  This
      * requires always tracking mallocs even when not counting leaks.
@@ -2591,8 +2784,10 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
     malloc_unlock();
 
     /* Note that these do not reflect what's really being freed if -delay_frees > 0 */
-    pt->alloc_base = base;
-    pt->alloc_size = size;
+    set_handling_heap_layer(pt, base, size);
+#ifdef WINDOWS
+    set_auxarg(drcontext, mc, pt, inside, routine);
+#endif
 }
 
 static void
@@ -2630,15 +2825,21 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 {
     routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    app_pc base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR(type), inside);
+    if (malloc_is_native(base))
+        return;
     /* non-recursive: else we assume base already adjusted */
-    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
-        LOGPT(2, pt, "%s recursive call: no adjustments\n", routine->name);
+    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+                                      (ptr_int_t) pt->alloc_base -
+                                      redzone_size(routine))) {
         return;
     }
-    pt->in_heap_adjusted = pt->in_heap_routine;
+    /* store the block being asked about, in case routine changes the param */
+    set_handling_heap_layer(pt, base, 0);
+#ifdef WINDOWS
+    set_auxarg(drcontext, mc, pt, inside, routine);
+#endif
     if (redzone_size(routine) > 0) {
-        /* store the block being asked about, in case routine changes the param */
-        pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR(type), inside);
         /* ensure wasn't allocated before we took control (so no redzone) */
         if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
                                    /* FIXME: should have caller invoke and use
@@ -2712,7 +2913,43 @@ handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     bool realloc = is_realloc_routine(type);
     uint argnum = realloc ? ARGNUM_REALLOC_SIZE(type) : ARGNUM_MALLOC_SIZE(type);
-    pt->alloc_size = (size_t) APP_ARG(mc, argnum, inside);
+    size_t size = (size_t) APP_ARG(mc, argnum, inside);
+#ifdef WINDOWS
+    /* Low-Fragmentation Heap uses RtlAllocateHeap for blocks that it parcels
+     * out via the same RtlAllocateHeap.  The flag 0x800000 indicates the
+     * alloc for the block through RtlpAllocateUserBlock.
+     */
+    /* Lookaside lists also use RtlAllocateHeap for handing out allocs
+     * w/o needing global synch on the main Heap.
+     * Seems to always pass 0xa for the flags, and nobody else does that.
+     * Not sure why it wouldn't lazily zero.
+     */
+# define RTL_LFH_BLOCK_FLAG 0x800000
+# define RTL_LOOKASIDE_BLOCK_FLAGS (HEAP_ZERO_MEMORY | HEAP_GROWABLE)
+    if (is_rtl_routine(type)) {
+        uint flags = (uint) APP_ARG(mc, 2, inside);
+        if (TEST(RTL_LFH_BLOCK_FLAG, flags)) {
+            LOGPT(2, pt, "%s is LFH block size="PIFX" alloc: ignoring\n",
+                  routine->name, size);
+            pt->ignored_alloc = true;
+            return;
+        }
+        if (TESTALL(RTL_LOOKASIDE_BLOCK_FLAGS, flags)) {
+            LOGPT(2, pt, "%s is lookaside block size="PIFX" alloc: ignoring\n",
+                  routine->name, size);
+            pt->ignored_alloc = true;
+            return;
+        }
+    }
+#endif
+    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+                                      size - redzone_size(routine)*2)) {
+        return;
+    }
+    set_handling_heap_layer(pt, NULL, size);
+#ifdef WINDOWS
+    set_auxarg(drcontext, mc, pt, inside, routine);
+#endif
     if (redzone_size(routine) > 0) {
         /* FIXME: if app asks for 0 bytes should we not add our redzone in
          * case the app never frees the memory?  We'd need a way to record
@@ -2892,8 +3129,9 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     app_pc real_base;
     bool size_in_zone = redzone_size(routine) > 0 && options.size_in_redzone;
     bool invalidated = false;
-    pt->alloc_base = (app_pc) APP_ARG(mc, ARGNUM_REALLOC_PTR(type), inside);
-    if (pt->alloc_base == NULL) {
+    size_t size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE(type), inside);
+    app_pc base = (app_pc) APP_ARG(mc, ARGNUM_REALLOC_PTR(type), inside);
+    if (base == NULL) {
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_handle_realloc_null(inside ? get_retaddr_at_entry(mc) : call_site, mc);
@@ -2902,14 +3140,25 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
             return;
         }
     }
-    pt->alloc_size = (size_t) APP_ARG(mc, ARGNUM_REALLOC_SIZE(type), inside);
     if (options.replace_realloc) {
         /* subsequent malloc will clobber alloc_size */
-        pt->realloc_replace_size = pt->alloc_size;
+        pt->realloc_replace_size = size;
         LOGPT(2, pt, "realloc-pre "PFX" new size %d\n",
-               pt->alloc_base, pt->realloc_replace_size);
+               base, pt->realloc_replace_size);
         return;
     }
+    if (malloc_is_native(base)) {
+        hashtable_remove(&native_alloc_table, (void*)base);
+        return;
+    }
+    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+                                      size - redzone_size(routine)*2)) {
+        return;
+    }
+    set_handling_heap_layer(pt, base, size);
+#ifdef WINDOWS
+    set_auxarg(drcontext, mc, pt, inside, routine);
+#endif
     pt->in_realloc = true;
     real_base = pt->alloc_base;
     if (!check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
@@ -3061,10 +3310,18 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     /* void *calloc(size_t nmemb, size_t size) */
     size_t count = APP_ARG(mc, 1, inside);
     size_t each = APP_ARG(mc, 2, inside);
+    size_t size = (size_t) (count * each);
+    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+                                      size - redzone_size(routine)*2)) {
+        return;
+    }
+    set_handling_heap_layer(pt, NULL, size);
+#ifdef WINDOWS
+    set_auxarg(drcontext, mc, pt, inside, routine);
+#endif
     /* we need to handle calloc allocating by itself, or calling malloc */
     ASSERT(!pt->in_calloc, "recursive calloc not handled");
     pt->in_calloc = true;
-    pt->alloc_size = (size_t) (count * each);
     ASSERT((count == 0 || each == 0) ||
            (count * each >= count && count * each >= each), "calloc overflow");
     if (redzone_size(routine) > 0) {
@@ -3284,14 +3541,17 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      *       IN ULONG UserFlags);
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
-        LOGPT(2, pt, "%s recursive call: no adjustments\n", routine->name);
+    app_pc base = (app_pc) APP_ARG(mc, 3, inside);
+    if (malloc_is_native(base))
+        return;
+    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+                                      (ptr_int_t) pt->alloc_base -
+                                      redzone_size(routine))) {
         return;
     }
-    pt->in_heap_adjusted = pt->in_heap_routine;
+    set_handling_heap_layer(pt, base, 0);
     LOG(2, "Rtl*User*Heap "PFX", "PFX", "PFX"\n",
         APP_ARG(mc, 1, inside), APP_ARG(mc, 2, inside), APP_ARG(mc, 3, inside));
-    pt->alloc_base = (app_pc) APP_ARG(mc, 3, inside);
     if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
                                routine->name, false) &&
         redzone_size(routine) > 0) {
@@ -3328,8 +3588,12 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      * about int3, and the process exits)
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
-        LOGPT(2, pt, "RtlValidateHeap recursive call: no adjustments\n");
+    app_pc base = (app_pc) APP_ARG(mc, 3, inside);
+    if (malloc_is_native(base))
+        return;
+    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+                                      (ptr_int_t) pt->alloc_base -
+                                      redzone_size(routine))) {
         return;
     }
     if (redzone_size(routine) > 0) {
@@ -3337,6 +3601,7 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
          * Block is optional
          */
         app_pc block = (app_pc) APP_ARG(mc, 3, inside);
+        pt->alloc_base = block; /* in case self-recurses */
         if (block == NULL) {
             ASSERT(false, "RtlValidateHeap on entire heap not supported");
         } else if (check_valid_heap_block(block, mc, inside, call_site, "HeapValidate",
@@ -3466,7 +3731,7 @@ alloc_hook(app_pc pc)
         }
         client_handle_Ki(drcontext, pc, &mc);
         if (pc == addr_KiCallback) {
-            handle_callback(drcontext, pt);
+            per_thread_stack_push(drcontext, pt);
         }
     }
 #endif
@@ -3513,99 +3778,27 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             return;
         }
     }
-    LOG(2, "entering alloc routine "PFX" %s %s%s %s\n",
+    LOG(2, "entering alloc routine "PFX" %s %s rec=%d adj=%d%s %s\n",
         expect, get_alloc_routine_name(expect),
         indirect ? "indirect" : "direct",
-        pt->in_heap_routine > 0 ? " recursive" : "",
+        pt->in_heap_routine, pt->in_heap_adjusted,
+        pt->in_heap_routine > 0 ? " (recursive)" : "",
         inside ? "post-retaddr" : "pre-retaddr");
-    if (pt->in_heap_routine == 0)
-        client_entering_heap_routine();
-    pt->in_heap_routine++;
-    /* Exceed array depth => just don't record: only needed on jmp-to-post-call-bb */
-    if (pt->in_heap_routine < MAX_HEAP_NESTING)
-        pt->last_alloc_routine[pt->in_heap_routine] = expect;
-    else {
-        LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
-            get_alloc_routine_name(expect), pt->in_heap_routine, MAX_HEAP_NESTING);
-    }
+    enter_heap_routine(pt, expect);
     if (is_free_routine(type)) {
-#ifdef WINDOWS
-        if (type == RTL_ROUTINE_FREE) {
-            /* FIXME: safe_read */
-            /* Note that these do not reflect what's really being freed if
-             * -delay_frees > 0 
-             */
-            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-            pt->auxarg = APP_ARG(&mc, 1, inside);
-        } else if (type == HEAP_ROUTINE_FREE_DBG) {
-            pt->alloc_flags = 0;
-            pt->auxarg = APP_ARG(&mc, 2, inside);
-        } else {
-            pt->alloc_flags = 0;
-            pt->auxarg = 0;
-        }
-#endif
         handle_free_pre(drcontext, &mc, inside, call_site, &routine);
     }
     else if (is_size_routine(type)) {
-#ifdef WINDOWS
-        if (type == RTL_ROUTINE_SIZE) {
-            /* FIXME: safe_read */
-            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-            pt->auxarg = APP_ARG(&mc, 1, inside);
-        } else if (type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
-            pt->alloc_flags = 0;
-            pt->auxarg = APP_ARG(&mc, 2, inside);
-        } else {
-            pt->alloc_flags = 0;
-            pt->auxarg = 0;
-        }
-#endif
         handle_size_pre(drcontext, &mc, inside, call_site, &routine);
     }
-    else if (is_malloc_routine(type) ||
-             is_realloc_routine(type) ||
-             is_calloc_routine(type)) {
-#ifdef WINDOWS
-        /* RtlAllocateHeap(HANDLE heap, ULONG flags, ULONG size)
-         * RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
-         */
-#endif
-        /* We assume that any nested call to an alloc routine (malloc, realloc,
-         * calloc) is working on the same allocation and not a separate one.
-         * We do our adjustments in the outer pre and the outer post.
-         */
-        if (pt->in_heap_routine > 1 && pt->in_heap_adjusted > 0) {
-            LOGPT(2, pt, "%s recursive call: no adjustments; size requested="PIFX"\n",
-                  get_alloc_routine_name(expect),
-                  APP_ARG(&mc, ARGNUM_MALLOC_SIZE(type), inside));
-            return;
-        }
-        if (!options.replace_realloc || !is_realloc_routine(type))
-            pt->in_heap_adjusted = pt->in_heap_routine;
-#ifdef WINDOWS
-        if (is_rtl_routine(type)) {
-            /* FIXME: safe_read */
-            pt->alloc_flags = (uint) APP_ARG(&mc, 2, inside);
-            pt->auxarg = APP_ARG(&mc, 1, inside);
-        } else if (type == HEAP_ROUTINE_MALLOC_DBG) {
-            pt->alloc_flags = 0;
-            pt->auxarg = APP_ARG(&mc, 2, inside);
-        } else if (type == HEAP_ROUTINE_REALLOC_DBG || type == HEAP_ROUTINE_CALLOC_DBG) {
-            pt->alloc_flags = 0;
-            pt->auxarg = APP_ARG(&mc, 3, inside);
-        } else {
-            pt->alloc_flags = 0;
-            pt->auxarg = 0;
-        }
-#endif
-        if (is_malloc_routine(type)) {
-            handle_malloc_pre(drcontext, &mc, inside, &routine);
-        } else if (is_realloc_routine(type)) {
-            handle_realloc_pre(drcontext, &mc, inside, call_site, &routine);
-        } else {
-            handle_calloc_pre(drcontext, &mc, inside, &routine);
-        }
+    else if (is_malloc_routine(type)) {
+        handle_malloc_pre(drcontext, &mc, inside, &routine);
+    }
+    else if (is_realloc_routine(type)) {
+        handle_realloc_pre(drcontext, &mc, inside, call_site, &routine);
+    }
+    else if (is_calloc_routine(type)) {
+        handle_calloc_pre(drcontext, &mc, inside, &routine);
     }
 #ifdef WINDOWS
     else if (type == RTL_ROUTINE_CREATE) {
@@ -3682,6 +3875,7 @@ handle_alloc_post(app_pc func, app_pc post_call)
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
+    bool adjusted = false;
     dr_get_mcontext(drcontext, &mc, NULL);
     if (is_replace_routine(func)) {
         replace_realloc_size_post(drcontext, &mc);
@@ -3732,14 +3926,30 @@ handle_alloc_post(app_pc func, app_pc post_call)
      * we can decrement when we should wait -- but no such scenario should
      * exist in regular alloc code.
      */
-    LOG(2, "leaving alloc routine "PFX" %s\n", func, get_alloc_routine_name(func));
-    if (pt->in_heap_routine == pt->in_heap_adjusted)
+    LOG(2, "leaving alloc routine "PFX" %s rec=%d adj=%d\n",
+        func, get_alloc_routine_name(func),
+        pt->in_heap_routine, pt->in_heap_adjusted);
+    if (pt->in_heap_routine == pt->in_heap_adjusted) {
         pt->in_heap_adjusted = 0;
+        adjusted = true;
+    }
     pt->in_heap_routine--;
-    if (pt->in_heap_adjusted > 0) {
-        /* some outer level did the adjustment, so nop for us */
-        LOG(2, "recursive post-alloc routine "PFX" %s: no adjustments\n",
-            func, get_alloc_routine_name(func));
+    if (pt->in_heap_adjusted > 0 ||
+        (!adjusted && pt->in_heap_adjusted < pt->in_heap_routine)) {
+        if (pt->ignored_alloc) {
+            LOG(2, "ignored post-alloc routine "PFX" %s => "PFX"\n",
+                func, get_alloc_routine_name(func), mc.eax);
+            /* remember the alloc so we can ignore on size or free */
+            ASSERT(is_malloc_routine(type) ||
+                   is_realloc_routine(type) ||
+                   is_calloc_routine(type), "ignored_alloc incorrectly set");
+            hashtable_add(&native_alloc_table, (void*)mc.eax, (void*)mc.eax);
+            pt->ignored_alloc = false;
+        } else {
+            /* some outer level did the adjustment, so nop for us */
+            LOG(2, "recursive post-alloc routine "PFX" %s: no adjustments; eax="PFX"\n",
+                func, get_alloc_routine_name(func), mc.eax);
+        }
         return;
     }
     if (pt->in_heap_routine == 0)
@@ -3768,6 +3978,13 @@ handle_alloc_post(app_pc func, app_pc post_call)
         handle_destroy_post(drcontext, &mc);
 #endif
     }
+#ifdef WINDOWS
+    if (pt->in_heap_routine == 0 && pt->heap_tangent) {
+        ASSERT(pt->in_heap_adjusted == 0, "inheap vs adjust mismatch");
+        LOG(2, "leaving heap tangent: popping per_thread_t stack\n");
+        per_thread_stack_pop(drcontext, pt, false/*!cbret*/);
+    }
+#endif
 }
 
 static void

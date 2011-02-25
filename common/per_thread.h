@@ -77,6 +77,7 @@ typedef struct _per_thread_t {
     app_pc tailcall_post_call;
     /* record which heap routine */
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
+    bool ignored_alloc;
 
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
@@ -86,6 +87,7 @@ typedef struct _per_thread_t {
 #ifdef WINDOWS
     bool in_create; /* are we inside RtlCreateHeap */
     bool malloc_from_realloc;
+    bool heap_tangent; /* not a callback but a heap tangent (i#301) */
 #endif
 
 #ifdef WINDOWS

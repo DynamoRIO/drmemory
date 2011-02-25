@@ -747,6 +747,10 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
             info->delay_free_list[i].auxarg == (ptr_int_t)heap) {
             /* not worth shifting the array around: just invalidate */
             rb_node_t *node = rb_find(delay_free_tree, info->delay_free_list[i].addr);
+            LOG(3, "removing delayed free "PFX"-"PFX" from destroyed heap "PFX"\n",
+                info->delay_free_list[i].addr,
+                info->delay_free_list[i].addr +
+                info->delay_free_list[i].real_size, heap);
             if (node != NULL)
                 rb_delete(delay_free_tree, node);
             else
