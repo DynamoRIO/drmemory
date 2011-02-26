@@ -488,6 +488,8 @@ write_suppress_pattern(uint type, const char *cstack, bool symbolic)
             end = strchr(epos, '\n');
             ASSERT(end != NULL, "suppress generation error");
             dr_fprintf(f_suppress, "%.*s"NL, end - epos, epos);
+        } else if (strstr(eframe, "not in a module") != NULL) {
+            dr_fprintf(f_suppress, "<not in a module>"NL);
         } else if (symbolic) {
             epos = strchr(eframe, '>');
             ASSERT(epos != NULL && *(epos+1) == ' ', "suppress generation error");
