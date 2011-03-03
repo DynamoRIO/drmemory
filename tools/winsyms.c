@@ -60,11 +60,13 @@
 typedef unsigned int uint;
 
 /* forward decls */
-DWORD64 load_module(HANDLE proc, const char *path);
-void unload_module(HANDLE proc, DWORD64 base);
-void query_available(HANDLE proc, DWORD64 base);
-void lookup_address(HANDLE proc, DWORD64 addr);
-void lookup_symbol(HANDLE proc, const char *sym);
+static DWORD64 load_module(HANDLE proc, const char *path);
+static void unload_module(HANDLE proc, DWORD64 base);
+static void query_available(HANDLE proc, DWORD64 base);
+static void lookup_address(HANDLE proc, DWORD64 addr);
+static void lookup_symbol(HANDLE proc, const char *sym);
+static void enumerate_symbols(HANDLE proc, DWORD64 base, const char *match,
+                              BOOL search, BOOL searchall);
 
 /* specialized hashtable: strduped string keys, and no synch (single-threaded)
  * (note that all dbghelp routines are un-synchronized as well)
@@ -90,7 +92,7 @@ void hashtable_delete(hashtable_t *table);
 /* options */
 #define USAGE "Usage:\n%s -e <PE file> [-f] [-v] <absolute addresses on stdin>\n\
 OR\n%s [-f] [-v] <pairs of [module_path;address relative to module base] on stdin>\n\
-OR\n%s -e <PE file> [-v] -s [<symbol1> <symbol2> ...]\n"
+OR\n%s -e <PE file> [-v] [--enum] [--search] [--searchall] -s [<symbol1> <symbol2> ...]\n"
 #define PRINT_USAGE(mypath) printf(USAGE, mypath, mypath, mypath)
 static BOOL single_target;
 static BOOL show_func;
@@ -119,6 +121,9 @@ main(int argc, char *argv[])
     /* options that can be local vars */
     BOOL absolute = FALSE;
     BOOL sym2addr = FALSE;
+    BOOL enumerate = FALSE;
+    BOOL search = FALSE;
+    BOOL searchall = FALSE;
 
     for (i = 1; i < argc; i++) {
         if (stricmp(argv[i], "-e") == 0) {
@@ -142,6 +147,13 @@ main(int argc, char *argv[])
             i++;
             sym2addr = TRUE;
             break;
+        } else if (stricmp(argv[i], "--enum") == 0) {
+            enumerate = TRUE;
+        } else if (stricmp(argv[i], "--search") == 0) {
+            search = TRUE;
+        } else if (stricmp(argv[i], "--searchall") == 0) {
+            search = TRUE;
+            searchall = TRUE;
         } else {
             /* FIXME: also support addresses as args */
             PRINT_USAGE(argv[0]);
@@ -174,8 +186,12 @@ main(int argc, char *argv[])
 
     if (sym2addr) {
         /* kind of a hack: assumes i hasn't changed and that -s is last option */
-        for (; i < argc; i++)
-            lookup_symbol(proc, argv[i]);
+        for (; i < argc; i++) {
+            if (enumerate || search)
+                enumerate_symbols(proc, base, argv[i], search, searchall);
+            else
+                lookup_symbol(proc, argv[i]);
+        }
     } else {
         while (!feof(stdin)) {
             DWORD64 addr;
@@ -398,6 +414,40 @@ lookup_symbol(HANDLE proc, const char *sym)
     }
 }
 
+static BOOL CALLBACK
+enum_cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID Context) 
+{
+    const char *match = (const char *) Context;
+    if (match == NULL || strcmp(pSymInfo->Name, match) == 0)
+        printf("%s 0x%I64x\n", pSymInfo->Name, pSymInfo->Address);
+    return TRUE; /* keep iterating */
+}
+
+static void
+enumerate_symbols(HANDLE proc, DWORD64 base, const char *match, BOOL search,
+                  BOOL searchall)
+{
+    if (search) {
+        /* SymSearch is only available in dbghelp 6.3+
+         * SYMSEARCH_ALLITEMS is in 6.6+ but we use it to identify
+         * whether on VS2005 where headers are for 6.1.
+         * Rather than dynamically acquiring SymSearch we just bail
+         * if built w/ VS2005.
+         */
+#ifdef SYMSEARCH_ALLITEMS
+        if (!SymSearch(proc, base, 0, 0, match, 0, enum_cb, NULL,
+                       searchall ? SYMSEARCH_ALLITEMS : 0)) {
+            printf("SymSearch error %d\n", GetLastError());
+        }
+#else
+        printf("compile with VS2008 to get SymSearch\n");
+#endif
+    } else {
+        if (!SymEnumSymbols(proc, base, NULL, enum_cb, (PVOID) match)) {
+            printf("SymEnumSymbols error %d\n", GetLastError());
+        }
+    }
+}
 
 /***************************************************************************
  * HASHTABLE
