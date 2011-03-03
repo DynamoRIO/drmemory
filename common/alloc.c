@@ -373,6 +373,9 @@ typedef struct _possible_alloc_routine_t {
 } possible_alloc_routine_t;
 
 static const possible_alloc_routine_t possible_libc_routines[] = {
+    /* when routines are added here, add to the regex list in
+     * find_alloc_routines() to reduce # symbol lookups (i#315)
+     */
     { "malloc_usable_size", HEAP_ROUTINE_SIZE_USABLE },
 #ifdef WINDOWS
     { "_msize", HEAP_ROUTINE_SIZE_REQUESTED },
@@ -900,21 +903,190 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     return e;
 }
 
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+static void
+disable_crtdbg(const module_data_t *mod)
+{
+    static const int zero = 0;
+    int *crtdbg_flag_ptr;
+    if (!options.disable_crtdbg)
+        return;
+    /* i#51: we do not want crtdbg checks when our tool is present
+     * (the checks overlap, better to have our tool report it than
+     * crt, etc.).  This dbgflag only controls full-heap scans: to
+     * disable checks on malloc and free we also disable the
+     * reporting routines, which is a hack and may suppress other
+     * errors we might want to see.
+     * 
+     * Ideally we would also eliminate the crtdbg redzone and
+     * replace w/ our size-controllable redzone as well: but we
+     * would have to map the _dbg routines straight to Heap* or
+     * something (there are no release versions of all of them;
+     * could try to use _base for a few) and replace operator delete
+     * (or switch to replacing all alloc routines instead of
+     * instrumenting).  We could document that app is better off not
+     * using debug crt.  Note that the crtdbg redzone should get
+     * marked unaddr by us, since we'll use the size passed to the
+     * _dbg routine (and should be in our hashtable later, so should
+     * never call RtlSizeHeap and get the full size and get
+     * confused).
+     */
+    crtdbg_flag_ptr = (int *) lookup_internal_symbol(mod, CRTDBG_FLAG_NAME);
+    LOG(2, "%s @"PFX"\n", CRTDBG_FLAG_NAME, crtdbg_flag_ptr);
+    if (crtdbg_flag_ptr != NULL &&
+        dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
+                      &zero, NULL)) {
+        LOG(1, "disabled crtdbg checks\n");
+    } else {
+        /* XXX: turn into something more serious and tell user
+         * we either need symbols or compilation w/ no crtdbg
+         * to operate properly?
+         */
+        LOG(1, "WARNING: unable to disable crtdbg checks\n");
+    }
+}
+#endif
+
+/* for passing data to sym callback, and simpler to use for
+ * non-USE_DRSYMS as well
+ */
+typedef struct _set_enum_data_t {
+    alloc_routine_set_t *set;
+    heapset_type_t set_type;
+    const possible_alloc_routine_t *possible;
+    uint num_possible;
+    bool *processed;
+    bool use_redzone;
+    const module_data_t *mod;
+} set_enum_data_t;
+
+static void
+add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
+{
+#ifdef DEBUG
+    const char *modname = dr_module_preferred_name(edata->mod);
+#endif
+    ASSERT(edata != NULL && pc != NULL, "invalid params");
+    if (edata->set == NULL) {
+        edata->set = (alloc_routine_set_t *)
+            global_alloc(sizeof(*edata->set), HEAPSTAT_HASHTABLE);
+        memset(edata->set, 0, sizeof(*edata->set));
+        edata->set->use_redzone = (edata->use_redzone && options.redzone_size > 0);
+        edata->set->client = client_add_malloc_routine(pc);
+        edata->set->type = edata->set_type;
+    }
+    add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
+                      edata->set);
+    if (edata->processed != NULL)
+        edata->processed[idx] = true;
+    LOG(1, "intercepting %s @"PFX" in module %s\n",
+        edata->possible[idx].name, pc, (modname == NULL) ? "<noname>" : modname);
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+    if (options.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
+        disable_crtdbg(edata->mod);
+#endif
+}
+
+#ifdef USE_DRSYMS
+/* It's faster to search for multiple symbols at once via regex
+ * and strcmp to identify precise targets (i#315).
+ */
+static bool
+enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
+{
+    uint i;
+    set_enum_data_t *edata = (set_enum_data_t *) data;
+    ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
+    LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
+    for (i = 0; i < edata->num_possible; i++) {
+        if (!edata->processed[i] && strcmp(name, edata->possible[i].name) == 0) {
+            add_to_alloc_set(edata, edata->mod->start + modoffs, i);
+            break;
+        }
+    }
+    return true; /* keep iterating */
+}
+
+/* Only supports "\w*" && prefix=="\w", "*\w" && suffix=="\w", 
+ * or "*\w**" w/ neither prefix nor suffix
+ */
+static void
+find_alloc_regex(set_enum_data_t *edata, const char *regex,
+                 const char *prefix, const char *suffix)
+{
+    uint i;
+    if (lookup_all_symbols(edata->mod, regex, enumerate_set_syms_cb, (void *)edata)) {
+        for (i = 0; i < edata->num_possible; i++) {
+            const char *name = edata->possible[i].name;
+            if (!edata->processed[i] &&
+                ((prefix != NULL && strstr(name, prefix) == name) ||
+                 (suffix != NULL && strlen(name) >= strlen(suffix) &&
+                  strcmp(name + strlen(name) - strlen(suffix), suffix) == 0) ||
+                 (suffix == NULL && prefix == NULL &&
+                  strstr(name, prefix) != NULL))) {
+                /* XXX: somehow drsym_search_symbols misses msvcrt!malloc
+                 * (dbghelp 6.11+ w/ full search does find it but full takes too
+                 * long) so we always try an export lookup
+                 */
+                app_pc pc = (app_pc) dr_get_proc_address(edata->mod->handle, name);
+                if (pc != NULL) {
+                    LOG(2, "regex didn't match %s but it's an export\n", name);
+                    add_to_alloc_set(edata, pc, i);
+                } else {
+                    LOG(2, "marking %s as processed since regex didn't match\n", name);
+                    edata->processed[i] = true;
+                }
+            }
+        }
+    } else
+        LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
+}
+#endif /* USE_DRSYMS */
+
 /* caller must hold alloc routine lock */
 static void
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
                     uint num_possible, bool use_redzone, bool expect_all,
                     heapset_type_t type)
 {
-    alloc_routine_set_t *set = NULL;
-    int i;
-    bool new_set = false;
+    set_enum_data_t edata;
+    uint i;
 #ifdef DEBUG
     const char *modname = dr_module_preferred_name(mod);
 #endif
+    edata.set = NULL;
+    edata.set_type = type;
+    edata.possible = possible;
+    edata.num_possible = num_possible;
+    edata.use_redzone = use_redzone;
+    edata.mod = mod;
+    edata.processed = NULL;
+#ifdef USE_DRSYMS
+    /* Symbol lookup is expensive for large apps so we batch some
+     * requests together using regex symbol lookup, which cuts the
+     * total lookup time in half.  i#315.
+     */
+    if (possible == possible_libc_routines ||
+        possible == possible_crtdbg_routines) {
+        edata.processed = (bool *)
+            global_alloc(sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
+        memset(edata.processed, 0, sizeof(*edata.processed)*num_possible);
+        if (possible == possible_libc_routines) {
+            find_alloc_regex(&edata, "mall*", "mall", NULL);
+            find_alloc_regex(&edata, "*alloc", NULL, "alloc");
+            find_alloc_regex(&edata, "*_impl", NULL, "_impl");
+        } else if (possible == possible_crtdbg_routines) {
+            find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
+            find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
+            find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+        }
+    }
+#endif
     for (i = 0; i < num_possible; i++) {
-        alloc_routine_entry_t *e;
-        app_pc pc = lookup_symbol_or_export(mod, possible[i].name);
+        app_pc pc;
+        if (edata.processed != NULL && edata.processed[i])
+            continue;
+        pc = lookup_symbol_or_export(mod, possible[i].name);
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
 #ifdef LINUX
         /* PR 604274: sometimes undefined symbol has a value pointing at PLT:
@@ -943,59 +1115,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             }
         }
 #endif
-        if (pc != NULL) {
-            if (!new_set) {
-                new_set = true;
-                set = (alloc_routine_set_t *)
-                    global_alloc(sizeof(*set), HEAPSTAT_HASHTABLE);
-                memset(set, 0, sizeof(*set));
-                set->use_redzone = (use_redzone && options.redzone_size > 0);
-                set->client = client_add_malloc_routine(pc);
-                set->type = type;
-            }
-            e = add_alloc_routine(pc, possible[i].type, possible[i].name, set);
-            LOG(1, "intercepting %s @"PFX" in module %s\n",
-                possible[i].name, pc, (modname == NULL) ? "<noname>" : modname);
-#if defined(WINDOWS) && defined(USE_DRSYMS)
-            if (options.disable_crtdbg && possible[i].type == HEAP_ROUTINE_SET_DBG) {
-                /* i#51: we do not want crtdbg checks when our tool is present
-                 * (the checks overlap, better to have our tool report it than
-                 * crt, etc.).  This dbgflag only controls full-heap scans: to
-                 * disable checks on malloc and free we also disable the
-                 * reporting routines, which is a hack and may suppress other
-                 * errors we might want to see.
-                 * 
-                 * Ideally we would also eliminate the crtdbg redzone and
-                 * replace w/ our size-controllable redzone as well: but we
-                 * would have to map the _dbg routines straight to Heap* or
-                 * something (there are no release versions of all of them;
-                 * could try to use _base for a few) and replace operator delete
-                 * (or switch to replacing all alloc routines instead of
-                 * instrumenting).  We could document that app is better off not
-                 * using debug crt.  Note that the crtdbg redzone should get
-                 * marked unaddr by us, since we'll use the size passed to the
-                 * _dbg routine (and should be in our hashtable later, so should
-                 * never call RtlSizeHeap and get the full size and get
-                 * confused).
-                 */
-                int *crtdbg_flag_ptr = (int *)
-                    lookup_internal_symbol(mod, CRTDBG_FLAG_NAME);
-                static const int zero = 0;
-                LOG(2, "%s @"PFX"\n", CRTDBG_FLAG_NAME, crtdbg_flag_ptr);
-                if (crtdbg_flag_ptr != NULL &&
-                    dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
-                                  &zero, NULL)) {
-                    LOG(1, "disabled crtdbg checks\n");
-                } else {
-                    /* XXX: turn into something more serious and tell user
-                     * we either need symbols or compilation w/ no crtdbg
-                     * to operate properly?
-                     */
-                    LOG(1, "WARNING: unable to disable crtdbg checks\n");
-                }
-            }
-#endif
-        }
+        if (pc != NULL)
+            add_to_alloc_set(&edata, pc, i);
 #ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
         if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
@@ -1005,8 +1126,12 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         }
 #endif
     }
-    if (options.replace_realloc && realloc_func_in_set(set) != NULL)
-        generate_realloc_replacement(set);
+    if (options.replace_realloc && realloc_func_in_set(edata.set) != NULL)
+        generate_realloc_replacement(edata.set);
+#ifdef USE_DRSYMS
+    if (edata.processed != NULL)
+        global_free(edata.processed, sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
+#endif
 }
 
 static size_t
@@ -1487,6 +1612,9 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (options.track_heap) {
         const char *modname = dr_module_preferred_name(info);
         bool use_redzone = true;
+#ifdef WINDOWS
+        bool no_dbg_routines = false;
+#endif
         if (modname != NULL && 
             (strcmp(modname, "drmemorylib.dll") == 0 ||
              strcmp(modname, "dynamorio.dll") == 0))
@@ -1510,14 +1638,18 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                 LOG(1, "error searching symbols for %s\n",
                     (modname == NULL) ? "<noname>" : modname);
             }
-        }
+        } else
+            no_dbg_routines = true;
 #endif
         find_alloc_routines(info, possible_libc_routines,
                             POSSIBLE_LIBC_ROUTINE_NUM, use_redzone, false, HEAPSET_LIBC);
 #ifdef WINDOWS
-        find_alloc_routines(info, possible_crtdbg_routines,
-                            POSSIBLE_CRTDBG_ROUTINE_NUM, use_redzone, false,
-                            HEAPSET_LIBC_DBG);
+        /* optimization: assume no other dbg routines if no _malloc_dbg */
+        if (!no_dbg_routines) {
+            find_alloc_routines(info, possible_crtdbg_routines,
+                                POSSIBLE_CRTDBG_ROUTINE_NUM, use_redzone, false,
+                                HEAPSET_LIBC_DBG);
+        }
 #endif
         dr_mutex_unlock(alloc_routine_lock);
     }
