@@ -978,13 +978,19 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                  * never call RtlSizeHeap and get the full size and get
                  * confused).
                  */
-                int *crtdbg_flag_ptr = (int *) lookup_symbol(mod, CRTDBG_FLAG_NAME);
+                int *crtdbg_flag_ptr = (int *)
+                    lookup_internal_symbol(mod, CRTDBG_FLAG_NAME);
                 static const int zero = 0;
+                LOG(2, "%s @"PFX"\n", CRTDBG_FLAG_NAME, crtdbg_flag_ptr);
                 if (crtdbg_flag_ptr != NULL &&
                     dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
                                   &zero, NULL)) {
                     LOG(1, "disabled crtdbg checks\n");
                 } else {
+                    /* XXX: turn into something more serious and tell user
+                     * we either need symbols or compilation w/ no crtdbg
+                     * to operate properly?
+                     */
                     LOG(1, "WARNING: unable to disable crtdbg checks\n");
                 }
             }
@@ -1457,25 +1463,20 @@ alloc_exit(void)
     }
 }
 
-#ifdef WINDOWS
-bool
+#ifdef USE_DRSYMS
+# define OPERATOR_DELETE_NAME "operator delete"
+static bool
 enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 {
-    const char *opdel = "operator delete";
     const module_data_t *mod = (const module_data_t *) data;
     ASSERT(mod != NULL, "invalid param");
-    LOG(5, "enum syms %s: "PFX" %s\n",
+    /* not part of any malloc routine set */
+    add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE,
+                      OPERATOR_DELETE_NAME, NULL);
+    LOG(1, "intercepting operator delete @"PFX" in module %s\n",
+        mod->start + modoffs,
         (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
-        dr_module_preferred_name(mod),
-        modoffs, name);
-    if (strcmp(name, opdel) == 0) {
-        /* not part of any malloc routine set */
-        add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE, opdel, NULL);
-        LOG(1, "intercepting operator delete @"PFX" in module %s\n",
-            mod->start + modoffs,
-            (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
-            dr_module_preferred_name(mod));
-    }
+        dr_module_preferred_name(mod));
     return true; /* keep iterating */
 }
 #endif
@@ -1504,9 +1505,9 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             LOG(1, "NOT using redzones for routines in %s "PFX"\n",
                 (modname == NULL) ? "<noname>" : modname, info->start);
             /* We watch debug operator delete b/c it reads malloc's headers (i#26)! */
-            if (drsym_enumerate_symbols(info->full_path, enumerate_syms_cb,
-                                        (void *) info) != DRSYM_SUCCESS) {
-                LOG(1, "error enumerating symbols for %s\n",
+            if (!lookup_all_symbols(info, OPERATOR_DELETE_NAME,
+                                    enumerate_syms_cb, (void *) info)) {
+                LOG(1, "error searching symbols for %s\n",
                     (modname == NULL) ? "<noname>" : modname);
             }
         }

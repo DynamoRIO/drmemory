@@ -141,8 +141,20 @@ safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONA
 }
 
 #ifdef USE_DRSYMS
-app_pc
-lookup_symbol(const module_data_t *mod, const char *symname)
+/* default cb used when we want first match */
+static bool
+search_syms_cb(const char *name, size_t modoffs, void *data)
+{
+    size_t *ans = (size_t *) data;
+    LOG(3, "sym lookup cb: %s @ offs "PIFX"\n", name, modoffs);
+    ASSERT(ans != NULL, "invalid param");
+    *ans = modoffs;
+    return false; /* stop iterating: we want first match */
+}
+
+static app_pc
+lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
+                     bool full, drsym_enumerate_cb callback, void *data)
 {
     /* We have to specify the module via "modname!symname".
      * We must use the same modname as in full_path.
@@ -172,16 +184,53 @@ lookup_symbol(const module_data_t *mod, const char *symname)
     ASSERT(modoffs > 0, "error printing modname!symname");
     modoffs = dr_snprintf(sym_with_mod + modoffs,
                           BUFFER_SIZE_ELEMENTS(sym_with_mod) - modoffs,
-                          "!%s", symname);
+                          "!%s", sym_pattern);
     ASSERT(modoffs > 0, "error printing modname!symname");
 
     /* We rely on drsym_init() having been called during init */
-    symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs);
-    LOG(2, "sym lookup of %s in %s => %d\n", sym_with_mod, mod->full_path, symres);
-    if (symres == DRSYM_SUCCESS)
-        return mod->start + modoffs;
-    else
+    if (full) {
+        /* A SymSearch full search is slower than SymFromName */
+        symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs);
+    } else {
+        /* drsym_search_symbols() is faster than either drsym_lookup_symbol() or
+         * drsym_enumerate_symbols() (i#313)
+         */
+        modoffs = 0;
+        symres = drsym_search_symbols(mod->full_path, sym_with_mod, false,
+                                      callback == NULL ? search_syms_cb : callback,
+                                      callback == NULL ? &modoffs : data);
+    }
+    LOG(2, "sym lookup of %s in %s => %d "PFX"\n", sym_with_mod, mod->full_path,
+        symres, modoffs);
+    if (symres == DRSYM_SUCCESS) {
+        if (callback == NULL) {
+            if (modoffs == 0) /* using as sentinel: assuming no sym there */
+                return NULL;
+            else
+                return mod->start + modoffs;
+        } else /* non-null to indicate success */
+            return mod->start;
+    } else
         return NULL;
+}
+
+app_pc
+lookup_symbol(const module_data_t *mod, const char *symname)
+{
+    return lookup_symbol_common(mod, symname, false, NULL, NULL);
+}
+
+app_pc
+lookup_internal_symbol(const module_data_t *mod, const char *symname)
+{
+    return lookup_symbol_common(mod, symname, true, NULL, NULL);
+}
+
+bool
+lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
+                   drsym_enumerate_cb callback, void *data)
+{
+    return (lookup_symbol_common(mod, sym_pattern, false, callback, data) != NULL);
 }
 #endif
 

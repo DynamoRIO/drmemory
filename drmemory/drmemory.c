@@ -1198,11 +1198,18 @@ event_nudge(void *drcontext, uint64 argument)
 static void
 event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
+#ifdef STATISTICS
+    /* measure module processing time: mostly symbols (xref i#313) */
+    print_timestamp_elapsed_to_file(f_global, "pre-module-load ");
+#endif
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
     if (!options.leaks_only && options.shadowing)
         replace_module_load(drcontext, info, loaded);
     alloc_module_load(drcontext, info, loaded);
+#ifdef STATISTICS
+    print_timestamp_elapsed_to_file(f_global, "post-module-load ");
+#endif
 }
 
 static void

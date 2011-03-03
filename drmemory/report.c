@@ -967,6 +967,17 @@ print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar)
              hour, min, sec, msec, dr_get_thread_id(dr_get_current_drcontext()));
 }
 
+void
+print_timestamp_elapsed_to_file(file_t f, const char *prefix)
+{
+    char buf[128];
+    size_t sofar = 0;
+    ssize_t len = 0;
+    BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len, "%s", prefix);
+    print_timestamp_and_thread(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+    print_buffer(f, buf);
+}
+
 static void
 report_error_from_buffer(file_t f, char *buf, app_loc_t *loc)
 {

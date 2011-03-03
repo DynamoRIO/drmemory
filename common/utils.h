@@ -436,6 +436,14 @@ safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONA
 #ifdef USE_DRSYMS
 app_pc
 lookup_symbol(const module_data_t *mod, const char *symname);
+
+/* iterates over symbols matching modname!sym_pattern until
+ * callback returns false
+ */
+bool
+lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
+                   bool (*callback)(const char *name, size_t modoffs, void *data),
+                   void *data);
 #endif
 
 /***************************************************************************

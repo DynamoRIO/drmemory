@@ -91,4 +91,7 @@ void
 report_callstack(void *drcontext, dr_mcontext_t *mc);
 #endif /* DEBUG */
 
+void
+print_timestamp_elapsed_to_file(file_t f, const char *prefix);
+
 #endif /* _REPORT_H_ */

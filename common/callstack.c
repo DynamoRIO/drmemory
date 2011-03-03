@@ -108,6 +108,10 @@ typedef struct _modname_info_t {
      * names; else -1
      */
     int index;
+#ifdef DEBUG
+    /* Avoid repeated warnings about symbols */
+    bool warned_no_syms;
+#endif
 } modname_info_t;
 
 /* When the number of modules hits the max for our 8-bit index we
@@ -274,11 +278,13 @@ callstack_thread_exit(void *drcontext)
 
 static void
 print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
-                    const char *modpath, const char *modname, size_t modoffs)
+                    modname_info_t *name_info, size_t modoffs)
 {
     ssize_t len = 0;
     drsym_error_t symres;
     drsym_info_t *sym;
+    const char *modpath = name_info->path;
+    const char *modname = name_info->name;
     char sbuf[sizeof(*sym) + MAX_SYM_RESULT];
     ASSERT(modname != NULL, "caller should have replaced with empty string");
     sym = (drsym_info_t *) sbuf;
@@ -304,8 +310,13 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
                      sym->file, sym->line);
         }
     } else {
-        /* XXX: want a DO_ONCE[modpath] */
-        LOG(1, "WARNING: unable to load symbols for %s\n", modpath);
+# ifdef DEBUG
+        /* only warn once (or twice w/ races) */
+        if (!name_info->warned_no_syms) {
+            name_info->warned_no_syms = true;
+            LOG(1, "WARNING: unable to load symbols for %s\n", modpath);
+        }
+# endif
         BUFPRINT(buf, bufsz, *sofar, len, " %s!?"NL LINE_PREFIX"??:0"NL, modname);
     }
 }
@@ -380,7 +391,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
                      pc, modname == NULL ? "" : modname, pc - mod_start);
 #ifdef USE_DRSYMS
             if (name_info != NULL && name_info->path != NULL) {
-                print_func_and_line(buf, bufsz, sofar, name_info->path, name_info->name,
+                print_func_and_line(buf, bufsz, sofar, name_info,
                                     pc - mod_start - (sub1_sym ? 1 : 0));
             }
 #else
@@ -885,8 +896,8 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                  * for symbol lookup so we still display a valid instr addr.
                  * We assume first frame is not a retaddr.
                  */
-                print_func_and_line(buf, bufsz, sofar, info->path,
-                                    info->name, (i == 0) ? offs : offs-1);
+                print_func_and_line(buf, bufsz, sofar, info,
+                                    (i == 0) ? offs : offs-1);
 #else
                 BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #endif
@@ -1084,6 +1095,9 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->name = drmem_strdup(name, HEAPSTAT_HASHTABLE);
         name_info->path = drmem_strdup(info->full_path, HEAPSTAT_HASHTABLE);
         name_info->index = modname_array_end; /* store first index if multi-entry */
+#ifdef DEBUG
+        name_info->warned_no_syms = false;
+#endif
         hashtable_add(&modname_table, (void*)name_info->name, (void*)name_info);
         /* We need an entry for every 16M of module size */
         sz = info->end - info->start;
