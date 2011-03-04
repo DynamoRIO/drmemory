@@ -61,6 +61,7 @@ static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
 
 #ifdef STATISTICS
 uint find_next_fp_scans;
+uint symbol_names_truncated;
 #endif
 
 /****************************************************************************
@@ -274,7 +275,6 @@ callstack_thread_exit(void *drcontext)
  * - whether to include offs within func and/or within line
  * - whether to use addr2line format "file:line#" or windbg format "file(line#)"
  */
-# define MAX_SYM_RESULT (2 * (MAX_SYMBOL_LEN + MAX_FILE_LINE_LEN))
 
 static void
 print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
@@ -285,13 +285,20 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
     drsym_info_t *sym;
     const char *modpath = name_info->path;
     const char *modname = name_info->name;
-    char sbuf[sizeof(*sym) + MAX_SYM_RESULT];
+    char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
     ASSERT(modname != NULL, "caller should have replaced with empty string");
     sym = (drsym_info_t *) sbuf;
     sym->struct_size = sizeof(*sym);
-    sym->name_size = MAX_SYM_RESULT;
+    sym->name_size = MAX_FUNC_LEN;
     symres = drsym_lookup_address(modpath, modoffs, sym);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
+        if (sym->name_available_size >= sym->name_size) {
+            DO_ONCE({ 
+                LOG(1, "WARNING: at least one function name longer than max: %s\n",
+                    sym->name);
+            });
+            STATS_INC(symbol_names_truncated);
+        }
         /* I like have +0x%x to show offs within func but we'll match addr2line */
         BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
         if (op_symbol_offsets)

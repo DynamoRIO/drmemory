@@ -134,6 +134,7 @@ enum {
 
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
+extern uint symbol_names_truncated;
 #endif
 
 void
