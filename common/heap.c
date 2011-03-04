@@ -270,6 +270,18 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
              */
             size_t sz;
             bool bad_chunk = false;
+            /* some heaps have multiple regions.  not bothering to check
+             * commit vs reserve on sub-regions.
+             */
+            if ((app_pc)heap_info.lpData < sub_base ||
+                (app_pc)heap_info.lpData >= sub_base+sub_size) {
+                /* a new region or large block inside this heap */
+                sub_size = allocation_size((app_pc)heap_info.lpData, &sub_base);
+                if (cb_region != NULL)
+                    cb_region(sub_base, sub_base+sub_size, heaps[i]);
+                LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
+                    sub_base, sub_base+sub_size, heaps[i]);
+            }
             /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista.
              * Yet a TRY/EXCEPT around RtlSizeHeap is not enough:
              * Vista calls RtlReportCriticalFailure on wFlags==0 chunks.
@@ -279,23 +291,6 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
                 ((app_pc)heap_info.lpData < base+size &&
                  (app_pc)heap_info.lpData >= base+commit_size))
                 bad_chunk = true;
-            /* some heaps have multiple regions.  not bothering to check
-             * commit vs reserve on sub-regions.
-             */
-            if ((app_pc)heap_info.lpData < sub_base ||
-                (app_pc)heap_info.lpData >= sub_base+sub_size) {
-                if (TEST(PROCESS_HEAP_REGION, heap_info.wFlags)) {
-                    /* a new region or large block inside this heap */
-                    sub_size = allocation_size((app_pc)heap_info.lpData, &sub_base);
-                    if (cb_region != NULL)
-                        cb_region(sub_base, sub_base+sub_size, heaps[i]);
-                    LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
-                        sub_base, sub_base+sub_size, heaps[i]);
-                } else {
-                    /* an entry for the remainder of the space? */
-                    bad_chunk = true;
-                }
-            }
             LOG(2, "heap %x "PFX"-"PFX"-"PFX" %d "PFX","PFX" %x %x %x\n",
                 heap_info.wFlags, heap_info.lpData,
                 (app_pc)heap_info.lpData + heap_info.cbOverhead,
