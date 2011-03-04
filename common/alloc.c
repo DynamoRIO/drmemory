@@ -793,6 +793,13 @@ generate_realloc_replacement(alloc_routine_set_t *set)
 
     /* copy by decoding template, replacing mark_ call targets along the way. */
     dr_mutex_lock(gencode_lock);
+    /* we keep read-only to work around DRi#404 */
+    if (!dr_memory_protect((byte *)PAGE_START(gencode_cur), PAGE_SIZE,
+                           DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC)) {
+        ASSERT(false, "failed to unprotect realloc gencode");
+        dr_mutex_unlock(gencode_lock);
+        return;
+    }
     dpc = IF_WINDOWS((set->type == HEAPSET_RTL) ?
                      ((byte *) replace_realloc_template_Rtl) : )
         ((byte *) replace_realloc_template);
@@ -846,6 +853,10 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         dr_abort();
     }
     instr_reset(drcontext, &inst);
+    if (!dr_memory_protect((byte *)PAGE_START(gencode_cur), PAGE_SIZE,
+                           DR_MEMPROT_READ|DR_MEMPROT_EXEC)) {
+        ASSERT(false, "failed to re-protect realloc gencode");
+    }
     gencode_cur = epc;
     dr_mutex_unlock(gencode_lock);
 
@@ -1478,14 +1489,17 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
 
     if (options.replace_realloc) {
         /* we need generated code for our realloc replacements */
+        /* b/c we may need to add to this gencode during execution if
+         * the app loads a library w/ a "realloc", we keep it read-only
+         * to work around DRi#404.
+         */
         gencode_start = (byte *)
             nonheap_alloc(GENCODE_SIZE,
-                          DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC,
+                          DR_MEMPROT_READ|DR_MEMPROT_EXEC,
                           HEAPSTAT_GENCODE);
         gencode_cur = gencode_start;
         gencode_lock = dr_mutex_create();
     }
-
 
 #ifdef WINDOWS
     ntdll_lib = get_ntdll_base();
