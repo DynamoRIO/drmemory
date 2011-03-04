@@ -1169,7 +1169,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
     found = overlaps_delayed_free(addr, addr+sz, &start, &end);
     if (!found && next_start != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
-        for (start = (byte *) ALIGN_FORWARD(addr+sz, MALLOC_CHUNK_ALIGNMENT);
+        for (start = (byte *) ALIGN_FORWARD(addr, MALLOC_CHUNK_ALIGNMENT);
              start < addr+sz && start < next_start; start += MALLOC_CHUNK_ALIGNMENT) {
             size = malloc_size_invalid_only(start);
             if (size > -1) {

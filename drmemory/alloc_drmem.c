@@ -788,7 +788,7 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
         LOG(3, "\toverlap real base: "PFX"\n", real_base);
         if (!has_redzone ||
             (start < real_base + size - options.redzone_size &&
-             end >= real_base + options.redzone_size)) {
+             end > real_base + options.redzone_size)) {
             res = true;
             if (free_start != NULL)
                 *free_start = real_base + (has_redzone ? options.redzone_size : 0);
