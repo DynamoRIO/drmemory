@@ -2398,6 +2398,8 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
     size_t *size_ptr = (size_t *) pt->sysarg[2];
     app_pc base;
     size_t size;
+    if (!pt->syscall_this_process)
+        return;
     if (success &&
         safe_read(base_ptr, sizeof(*base_ptr), &base) &&
         safe_read(size_ptr, sizeof(*size_ptr), &size)) {
@@ -2447,10 +2449,14 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
             client_handle_munmap(base, size, true/*anon*/);
         }
     } else {
-        ASSERT(pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to fail");
         DOLOG(1, {
-            if (success)
+            if (success) {
                 LOGPT(1, pt, "WARNING: NtFreeVirtualMemory: error reading param\n");
+            } else {
+                /* not serious: we didn't do anything pre-syscall */
+                if (!pt->expect_sys_to_fail)
+                    LOG(1, "WARNING: NtFreeVirtualMemory failed unexpectedly");
+            }
         });
     }
 }
