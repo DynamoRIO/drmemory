@@ -552,18 +552,22 @@ heap_region_adjust(app_pc start, app_pc new_end)
     return node != NULL;
 }
 
-app_pc
-heap_region_end(app_pc pc)
+bool
+heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/, app_pc *end_out/*OPTIONAL*/)
 {
     rb_node_t *node = NULL;
     app_pc node_start;
     size_t node_size;
-    app_pc res = NULL;
+    bool res = false;
     dr_mutex_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
+        res = true;
         rb_node_fields(node, &node_start, &node_size, NULL);
-        res = node_start + node_size;
+        if (start_out != NULL)
+            *start_out = node_start;
+        if (end_out != NULL)
+            *end_out = node_start + node_size;
     }
     dr_mutex_unlock(heap_lock);
     return res;

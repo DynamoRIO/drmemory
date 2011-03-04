@@ -2347,15 +2347,25 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                           base, base+size);
                     client_handle_mmap(pt, base, size, true/*anon*/);
                 } else {
-                    /* We assume this is a very large malloc, which is allocated
-                     * straight from the OS instead of the heap pool.
-                     * FIXME: our red zone here will end up wasting an entire 64KB
-                     * if the request size + headers would have been 64KB-aligned.
-                     */
-                    LOGPT(2, pt, "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
-                          base, base+size);
-                    /* there are headers on this one */
-                    heap_region_add(base, base+size, false/*!arena*/, mc);
+                    byte *heap_base, *heap_end;
+                    if (heap_region_bounds(base - 1, &heap_base, &heap_end)) {
+                        /* Some allocators (tcmalloc, e.g.) extend
+                         * their heap even w/o an up-front reservation
+                         */
+                        ASSERT(heap_end == base, "query error");
+                        heap_region_adjust(heap_base, base+size);
+                    } else {
+                        /* We assume this is a very large malloc, which is allocated
+                         * straight from the OS instead of the heap pool.
+                         * FIXME: our red zone here will end up wasting an entire 64KB
+                         * if the request size + headers would have been 64KB-aligned.
+                         */
+                        LOGPT(2, pt,
+                              "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
+                              base, base+size);
+                        /* there are headers on this one */
+                        heap_region_add(base, base+size, false/*!arena*/, mc);
+                    }
                 }
             } else if (TEST(MEM_RESERVE, pt->valloc_type) &&
                        !TEST(MEM_COMMIT, pt->valloc_type) &&
@@ -2415,8 +2425,9 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                  pt->valloc_type == MEM_RELEASE) &&
                 pt->in_heap_routine > 0 && is_in_heap_region(base)) {
                 /* all these separate lookups are racy */
-                app_pc heap_end = heap_region_end(base);
+                app_pc heap_end = NULL;
                 bool found;
+                heap_region_bounds(base, NULL, &heap_end);
                 if (size == 0)
                     size = allocation_size(base, NULL);
                 found = heap_region_remove(base, base+size, mc);
@@ -3635,8 +3646,10 @@ handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     heap_destroy_info_t info;
     info.heap = heap;
     info.start = (byte *) heap;
-    info.end = heap_region_end(info.start);
-    ASSERT(info.end != NULL, "cannot find heap being destroyed");
+    if (!heap_region_bounds(info.start, NULL, &info.end)) {
+        ASSERT(false, "cannot find heap being destroyed");
+        info.end = info.start + 64*1024; /* guess, for release build to not die */
+    }
     LOG(2, "RtlDestroyHeap handle="PFX"\n", heap);
     /* FIXME: a heap interval tree would be much more efficient but
      * it slows down the common case too much (xref PR 535568) and we

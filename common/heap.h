@@ -77,8 +77,8 @@ heap_region_remove(app_pc start, app_pc end, dr_mcontext_t *mc);
 bool
 heap_region_adjust(app_pc base, app_pc new_end);
 
-app_pc
-heap_region_end(app_pc pc);
+bool
+heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/, app_pc *end_out/*OPTIONAL*/);
 
 bool
 is_in_heap_region(app_pc pc);
