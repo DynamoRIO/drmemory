@@ -145,6 +145,7 @@ alloc_drmem_init(void)
     alloc_ops.disable_crtdbg = options.disable_crtdbg &&
         !options.leaks_only && options.shadowing;
 #endif
+    alloc_ops.prefer_msize = options.prefer_msize;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,

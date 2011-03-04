@@ -49,6 +49,10 @@ typedef struct _alloc_options_t {
     /* Disable debug CRT checks */
     bool disable_crtdbg;
 #endif
+    /* prefer _msize to malloc_usable_size.
+     * really something of a hack for chromium: i#314, i#320
+     */
+    bool prefer_msize;
     /* Add new options here */
 } alloc_options_t;
 

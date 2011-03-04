@@ -645,13 +645,15 @@ size_func_in_set(alloc_routine_set_t *set)
     if (set->type == HEAPSET_RTL)
         return set->func[RTL_ROUTINE_SIZE];
 #endif
-    /* prefer usable to requested */
-    if (set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
+    /* prefer usable to requested unless -prefer_msize */
+    if (options.prefer_msize && set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
+        return set->func[HEAP_ROUTINE_SIZE_REQUESTED];
+    else if (set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
         return set->func[HEAP_ROUTINE_SIZE_USABLE];
     else if (set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
         return set->func[HEAP_ROUTINE_SIZE_REQUESTED];
 #ifdef WINDOWS
-    else if (set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG] != NULL)
+    if (set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG] != NULL)
         return set->func[HEAP_ROUTINE_SIZE_REQUESTED_DBG];
 #endif
     return NULL;

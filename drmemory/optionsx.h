@@ -65,6 +65,14 @@
 #define OPTION_CLIENT_SCOPE(scope, name, type, defval, min, max, short, long) \
     OPTION_CLIENT(scope, name, type, defval, min, max, short, long)
 
+#ifndef IF_WINDOWS_ELSE
+# ifdef WINDOWS
+#  define IF_WINDOWS_ELSE(x,y) x
+# else
+#  define IF_WINDOWS_ELSE(x,y) y
+# endif
+#endif
+
 /****************************************************************************
  * Front-end-script options.  We present a unified list of options to users.
  */
@@ -266,6 +274,12 @@ OPTION_CLIENT_STRING(drmemscope, auxlib, "",
 OPTION_CLIENT_BOOL(drmemscope, syscall_sentinels, true,
                    "Use sentinels to detect writes on unknown syscalls",
                    "Use sentinels to detect writes on unknown syscalls.  Can potentially result in incorrect behavior if definedness information is incorrect or application threads read syscall param info simultaneously.")
+/* for chromium we need to ignore malloc_usable_size, and for most windows
+ * uses it doesn't exist, so we have this on by default (xref i#314, i#320)
+ */
+OPTION_CLIENT_BOOL(drmemscope, prefer_msize, IF_WINDOWS_ELSE(true, false),
+                   "Prefer _msize to malloc_usable_size when both are present",
+                   "Prefer _msize to malloc_usable_size when both are present")
 
 /* not supporting perturb with heapstat: can add easily later */
 /* XXX: some of the other options here shouldn't be allowed for heapstat either */
