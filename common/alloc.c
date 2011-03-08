@@ -1551,8 +1551,8 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
                           NULL, NULL);
-        hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
+        hashtable_init_ex(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
+                          false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
         hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!strdup*/);
     }
@@ -1671,6 +1671,27 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 }
 
+/* removes all entries with key in [start..end)
+ * hashtable must use caller-synch
+ */
+static void
+hashtable_remove_range(hashtable_t *table, byte *start, byte *end)
+{
+    uint i;
+    hashtable_lock(table);
+    for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
+        hash_entry_t *he, *nxt;
+        for (he = table->table[i]; he != NULL; he = nxt) {
+            /* support hashtable_remove() while iterating */
+            nxt = he->next;
+            if ((byte *)he->key >= start && (byte *)he->key < end) {
+                hashtable_remove(table, he->key);
+            }
+        }
+    }
+    hashtable_unlock(table);
+}
+
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
 {
@@ -1707,6 +1728,13 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
 #endif
         dr_mutex_unlock(alloc_routine_lock);
     }
+
+    /* XXX i#114: should also remove from post_call_table and call_site_table
+     * on other code modifications: for now we assume no such
+     * changes to app code.
+     */
+    hashtable_remove_range(&post_call_table, info->start, info->end);
+    hashtable_remove_range(&call_site_table, info->start, info->end);
 }
 
 /* We need to support our malloc routines being called either on their
@@ -3873,6 +3901,7 @@ alloc_hook(app_pc pc)
          */
         app_pc retaddr = get_retaddr_at_entry(&mc);
         post_call_entry_t *e;
+        bool have_site_instru;
         IF_DEBUG(bool has_entry;)
         /* We will come here again after the flush-redirect.
          * FIXME: should we try to flush the call instr itself: don't
@@ -3938,7 +3967,10 @@ alloc_hook(app_pc pc)
          * retaddr.  An example of a recursive call is glibc's
          * double-free check calling strdup and calloc.
          */
-        if (hashtable_lookup(&call_site_table, (void*)retaddr) == NULL) {
+        hashtable_lock(&call_site_table);
+        have_site_instru = (hashtable_lookup(&call_site_table, (void*)retaddr) != NULL);
+        hashtable_unlock(&call_site_table);
+        if (!have_site_instru) {
             LOG(2, "in callee "PFX" %s w/o call-site pre-instru since %s from "PFX"\n",
                 pc, get_alloc_routine_name(pc),
                 has_entry ? "indirect caller" : "missed call site",
@@ -4292,7 +4324,9 @@ instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(options.track_heap, "requires track_heap");
     LOG(3, "instrumenting alloc site "PFX" targeting "PFX" %s\n",
         instr_get_app_pc(inst), target, get_alloc_routine_name(target));
+    hashtable_lock(&call_site_table);
     hashtable_add(&call_site_table, (void*)post_call, (void*)1);
+    hashtable_unlock(&call_site_table);
     dr_prepare_for_call(drcontext, bb, inst);
     if (!instr_is_call(inst)) {
         /* we assume we've already done the call and this is jmp*, so we
@@ -4355,10 +4389,6 @@ instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
  * FIXME: for PR 406714 I turned add_post_call_address() into a nop:
  * if we're sure we want that long-term we can remove a lot of the
  * code here that is only trying to find retaddr ahead of time
- *
- * FIXME PR 408529: we should remove from post_call_table and call_site_table
- * on library unload or selfmod changes: for now we assume no such
- * changes to app code.
  *
  * FIXME: would be nice for DR to support post-cti instrumentation!
  * Even if we had to do custom exit stubs here, still simpler than
