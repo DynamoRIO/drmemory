@@ -1682,7 +1682,17 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
             if (pc != NULL) {
                 IF_DEBUG(bool found = )
                     hashtable_remove(&alloc_routine_table, (void *)pc);
-                ASSERT(found, "alloc entry should be in table");
+                DOLOG(1, {
+                    if (!found) {
+                        /* some dlls have malloc_usable_size and _msize
+                         * pointing at the same place, which will trigger this
+                         */
+                        LOG(1, "WARNING: did not find %s @"PFX" for %s\n",
+                            possible_libc_routines[i].name, pc,
+                            dr_module_preferred_name(info) == NULL ? "<null>" :
+                            dr_module_preferred_name(info));
+                    }
+                });
             }
         }
 #ifdef WINDOWS
