@@ -3646,6 +3646,26 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
 }
 
 static void
+heap_destroy_segment_iter_cb(byte *start, byte *end, void *data)
+{
+    HANDLE heap = (HANDLE) data;
+    heap_destroy_info_t info;
+    info.heap = heap;
+    info.start = start;
+    info.end = end;
+    LOG(2, "RtlDestroyHeap handle="PFX" segment="PFX"-"PFX"\n", heap, start, end);
+    /* FIXME: a heap interval tree would be much more efficient but
+     * it slows down the common case too much (xref PR 535568) and we
+     * assume RtlDestroyHeap is pretty rare.
+     * If there are many mallocs and the heap is small we could instead
+     * walk the heap like we used to using either shadow info (though
+     * xref PR 539402 on accuracy issues) or just every 8 bytes (like
+     * -leaks_only used to do).
+     */
+    malloc_iterate(heap_destroy_iter_cb, (void *) &info);
+}
+
+static void
 handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
                    alloc_routine_entry_t *routine)
 {
@@ -3659,23 +3679,9 @@ handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     HANDLE heap = (HANDLE) APP_ARG(mc, 1, inside);
-    heap_destroy_info_t info;
-    info.heap = heap;
-    info.start = (byte *) heap;
-    if (!heap_region_bounds(info.start, NULL, &info.end)) {
-        ASSERT(false, "cannot find heap being destroyed");
-        info.end = info.start + 64*1024; /* guess, for release build to not die */
-    }
     LOG(2, "RtlDestroyHeap handle="PFX"\n", heap);
-    /* FIXME: a heap interval tree would be much more efficient but
-     * it slows down the common case too much (xref PR 535568) and we
-     * assume RtlDestroyHeap is pretty rare.
-     * If there are many mallocs and the heap is small we could instead
-     * walk the heap like we used to using either shadow info (though
-     * xref PR 539402 on accuracy issues) or just every 8 bytes (like
-     * -leaks_only used to do).
-     */
-    malloc_iterate(heap_destroy_iter_cb, (void *) &info);
+    /* There can be multiple segments so we must iterate */
+    heap_region_iterate_heap(heap, heap_destroy_segment_iter_cb, (void *) heap);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
     ASSERT(routine->set != NULL, "destroy must be part of set");
     client_handle_heap_destroy(drcontext, pt, heap, routine->set->client);

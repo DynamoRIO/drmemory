@@ -415,6 +415,15 @@ typedef struct _heap_info_t {
 #endif
 } heap_info_t;
 
+#ifdef WINDOWS
+/* for iterating over all regions of one Heap */
+typedef struct _heap_iter_t {
+    HANDLE heap;
+    void (*iter_cb)(byte *start, byte *end, void *data);
+    void *cb_data;
+} heap_iter_t;
+#endif
+
 #ifdef STATISTICS
 uint heap_regions;
 #endif
@@ -652,4 +661,29 @@ heap_region_get_heap(app_pc pc)
     dr_mutex_unlock(heap_lock);
     return res;
 }
+
+static void
+rb_iter_cb(rb_node_t *node, void *data)
+{
+    heap_iter_t *iter = (heap_iter_t *) data;
+    heap_info_t *info;
+    byte *node_start;
+    size_t node_size;
+    ASSERT(iter != NULL, "invalid iter param");
+    rb_node_fields(node, &node_start, &node_size, (void **)&info);
+    if (info->heap == iter->heap)
+        (*iter->iter_cb)(node_start, node_start + node_size, iter->cb_data);
+}
+
+void
+heap_region_iterate_heap(HANDLE heap, void (*iter_cb)(byte *start, byte *end, void *data),
+                         void *data)
+{
+    heap_iter_t iter;
+    iter.heap = heap;
+    iter.iter_cb = iter_cb;
+    iter.cb_data = data;
+    rb_iterate(heap_tree, rb_iter_cb, (void *) &iter);
+}
+
 #endif /* WINDOWS */

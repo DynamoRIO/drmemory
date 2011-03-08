@@ -95,6 +95,10 @@ heap_region_set_heap(app_pc pc, HANDLE heap);
 
 HANDLE
 heap_region_get_heap(app_pc pc);
+
+void
+heap_region_iterate_heap(HANDLE heap, void (*iter_cb)(byte *start, byte *end, void *data),
+                         void *data);
 #endif /* WINDOWS */
 
 
