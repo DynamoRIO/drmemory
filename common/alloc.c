@@ -2381,6 +2381,9 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                               base, base+size);
                         /* there are headers on this one */
                         heap_region_add(base, base+size, false/*!arena*/, mc);
+                        /* set Heap if from RtlAllocateHeap */
+                        if (pt->in_heap_adjusted > 0 && pt->heap_handle != 0)
+                            heap_region_set_heap(base, (HANDLE) pt->heap_handle);
                     }
                 }
             } else if (TEST(MEM_RESERVE, pt->valloc_type) &&
@@ -2388,6 +2391,9 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                        pt->in_heap_routine > 0) {
                 /* we assume this is a new Heap reservation */
                 heap_region_add(base, base+size, true/*arena*/, mc);
+                /* set Heap if from RtlAllocateHeap */
+                if (pt->in_heap_adjusted > 0 && pt->heap_handle != 0)
+                    heap_region_set_heap(base, (HANDLE) pt->heap_handle);
             }
         } else {
             if (TEST(MEM_COMMIT, pt->valloc_type)) {
@@ -3096,6 +3102,9 @@ handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     uint argnum = realloc ? ARGNUM_REALLOC_SIZE(type) : ARGNUM_MALLOC_SIZE(type);
     size_t size = (size_t) APP_ARG(mc, argnum, inside);
 #ifdef WINDOWS
+    /* Tell NtAllocateVirtualMemory which Heap to use for any new segment (i#296) */
+    if (is_rtl_routine(type))
+        pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
     /* Low-Fragmentation Heap uses RtlAllocateHeap for blocks that it parcels
      * out via the same RtlAllocateHeap.  The flag 0x800000 indicates the
      * alloc for the block through RtlpAllocateUserBlock.
@@ -3249,7 +3258,7 @@ adjust_alloc_result(void *drcontext, dr_mcontext_t *mc, size_t *padded_size_out,
          * syscalls w/ RtlCreateHeap vs large heap chunks
          */
         if (is_rtl_routine(routine->type) && pt->auxarg != 0)
-            heap_region_set_heap(app_base, (app_pc)pt->auxarg);
+            heap_region_set_heap(app_base, (HANDLE)pt->auxarg);
 #endif
         return app_base;
     } else {
@@ -3332,6 +3341,11 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
         hashtable_remove(&native_alloc_table, (void*)base);
         return;
     }
+#ifdef WINDOWS
+    /* Tell NtAllocateVirtualMemory which Heap to use for any new segment (i#296) */
+    if (is_rtl_routine(type))
+        pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
+#endif
     if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
         return;
@@ -3492,6 +3506,11 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     size_t count = APP_ARG(mc, 1, inside);
     size_t each = APP_ARG(mc, 2, inside);
     size_t size = (size_t) (count * each);
+#ifdef WINDOWS
+    /* Tell NtAllocateVirtualMemory which Heap to use for any new segment (i#296) */
+    if (is_rtl_routine(routine->type))
+        pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
+#endif
     if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
         return;
@@ -3596,6 +3615,8 @@ handle_create_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
         APP_ARG(mc, 1, inside), APP_ARG(mc, 2, inside),
         APP_ARG(mc, 3, inside), APP_ARG(mc, 4, inside));
     pt->in_create = true;
+    /* don't use stale values for setting Heap (i#296) */
+    pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
 }
 
 static void
@@ -3609,6 +3630,10 @@ handle_create_post(void *drcontext, dr_mcontext_t *mc)
      *               PRTL_HEAP_PARAMETERS Parameters OPTIONAL);
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    if (mc->xax != 0) {
+        HANDLE heap = (HANDLE) mc->xax;
+        heap_region_set_heap((byte *)heap, heap);
+    }
     pt->in_create = false;
 }
 
@@ -3680,7 +3705,17 @@ handle_destroy_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     HANDLE heap = (HANDLE) APP_ARG(mc, 1, inside);
     LOG(2, "RtlDestroyHeap handle="PFX"\n", heap);
-    /* There can be multiple segments so we must iterate */
+    /* There can be multiple segments so we must iterate.  This relies
+     * on having labeled each heap region/segment with its Heap ahead
+     * of time.  To do that we set pt->heap_handle so we have the
+     * value regardless of whether coming from an outer layer (i#296).
+     * pt->auxarg is also used by _dbg and is only set when Rtl is the
+     * outer routine, so we use a dedicated field.
+     *
+     * An alternative would be to wait for NtFreeVirtualMemory called
+     * from RtlDestroyHeap to find all heap segments: but what if
+     * RtlDestroyHeap re-uses the memory instead of freeing?
+     */
     heap_region_iterate_heap(heap, heap_destroy_segment_iter_cb, (void *) heap);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
     ASSERT(routine->set != NULL, "destroy must be part of set");

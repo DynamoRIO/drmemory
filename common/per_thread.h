@@ -89,6 +89,7 @@ typedef struct _per_thread_t {
     bool in_create; /* are we inside RtlCreateHeap */
     bool malloc_from_realloc;
     bool heap_tangent; /* not a callback but a heap tangent (i#301) */
+    HANDLE heap_handle; /* used to identify the Heap of new allocations */
 #endif
 
 #ifdef WINDOWS

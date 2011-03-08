@@ -1671,7 +1671,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 void
 report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
 {
-    DOLOG(2, {
+    DOLOG(3, {
         per_thread_t *pt = (per_thread_t *)
             dr_get_tls_field(dr_get_current_drcontext());
         ssize_t len = 0;
@@ -1687,7 +1687,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
 void
 report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
 {
-    DOLOG(2, {
+    DOLOG(3, {
         ssize_t len = 0;
         size_t sofar = 0;
         char *buf;

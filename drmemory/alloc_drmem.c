@@ -335,8 +335,8 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
         IF_DEBUG(void *prior =)
             hashtable_add_replace(&alloc_stack_table, (void *)pcs, (void *)pcs);
         ASSERT(prior == NULL, "just did lookup: cannot happen");
-        DOLOG(2, {
-            LOG(2, "@@@ unique callstack #%d\n", alloc_stack_count);
+        DOLOG(3, {
+            LOG(3, "@@@ unique callstack #%d\n", alloc_stack_count);
             packed_callstack_log(pcs, INVALID_FILE);
         });
         STATS_INC(alloc_stack_count);
