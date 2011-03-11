@@ -616,10 +616,6 @@ int main(int argc, char *argv[])
     BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
              cliops_sofar, len, "-logdir `%s` ", logdir);
 
-    /* we need to locate the results file */
-    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-             cliops_sofar, len, "-resfile_out ");
-
     errcode = dr_inject_process_create(app_name, app_cmdline, &inject_data);
     if (errcode != 0) {
         int sofar = _snprintf(app_cmdline, BUFFER_SIZE_ELEMENTS(app_cmdline), 
@@ -638,6 +634,10 @@ int main(int argc, char *argv[])
     pid = dr_inject_get_process_id(inject_data);
     if (pidfile != NULL)
         write_pid_to_file(pidfile, pid);
+
+    /* we need to locate the results file, but only for top-level process (i#328) */
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-resfile %d ", pid);
 
     process = dr_inject_get_image_name(inject_data);
     /* we don't care if this app is already registered for DR b/c our

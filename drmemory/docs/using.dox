@@ -193,6 +193,12 @@ subdirectory in the base log directory named
 "DrMemory-<appname>.<pid>.NNN", where NNN is a counter that is incremented
 to ensure unique names.
 
+On Windows, the results files is automatically opened in \p notepad when
+the application exits.  This only occurs for the top-level process; if it
+created child processes, they will be followed by Dr. Memory and have their
+own result directories and files, but they will not be automatically
+displayed.
+
 For full details on the errors reported by Dr. Memory, see \ref sec_errors.
 
 If you would like to attach a debugger at the point an error is first

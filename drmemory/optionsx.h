@@ -301,9 +301,9 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
  * Un-documented client options, for developer use only
  */
 
-OPTION_CLIENT_BOOL(internal, resfile_out, false, 
-                   "Write the result file path to <logdir>/resfile.<pid>",
-                   "Whether to write the result file path to <logdir>/resfile.<pid>")
+OPTION_CLIENT_SCOPE(internal, resfile, uint, 0, 0, UINT_MAX, 
+                   "For the given pid, write the result file path to <logdir>/resfile.<pid>",
+                   "Write the result file path to <logdir>/resfile.<pid> if the process id equals the passed-in option value")
 OPTION_CLIENT_BOOL(internal, stderr, true,
                    "Print summary messages on stderr",
                    "Print summary messages on stderr")

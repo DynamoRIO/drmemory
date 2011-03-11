@@ -1089,7 +1089,7 @@ create_global_logfile(void)
     if (!options.perturb_only) {
         f_results = open_logfile("results.txt", false, -1);
         print_version(f_results);
-        if (options.resfile_out) {
+        if (options.resfile == dr_get_process_id()) {
             /* notify front-end of results path */
             file_t outf;
             char fname[MAXIMUM_PATH];
