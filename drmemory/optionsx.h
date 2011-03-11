@@ -274,9 +274,9 @@ OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
 OPTION_CLIENT_STRING(drmemscope, auxlib, "",
                      "Load auxiliary system call handling library",
                      "This option should specify the basename of an auxiliary system call handling library found in the same directory as the Dr. Memory client library.")
-OPTION_CLIENT_BOOL(drmemscope, syscall_sentinels, true,
+OPTION_CLIENT_BOOL(drmemscope, syscall_sentinels, false,
                    "Use sentinels to detect writes on unknown syscalls",
-                   "Use sentinels to detect writes on unknown syscalls.  Can potentially result in incorrect behavior if definedness information is incorrect or application threads read syscall param info simultaneously.")
+                   "Use sentinels to detect writes on unknown syscalls and reduce false positives, in particular for uninitialized reads.  Can potentially result in incorrect behavior if definedness information is incorrect or application threads read syscall parameter info simultaneously.")
 /* for chromium we need to ignore malloc_usable_size, and for most windows
  * uses it doesn't exist, so we have this on by default (xref i#314, i#320)
  */
