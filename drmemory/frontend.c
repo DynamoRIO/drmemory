@@ -474,6 +474,11 @@ int main(int argc, char *argv[])
                 usage("invalid arguments");
             drmem_root = argv[++i];
         }
+        else if (strcmp(argv[i], "-follow_children") == 0 ||
+                 strcmp(argv[i], "-no_follow_children") == 0) {
+            BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                     drops_sofar, len, "%s ", argv[i]);
+        }
         else if (strcmp(argv[i], "-nudge") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");

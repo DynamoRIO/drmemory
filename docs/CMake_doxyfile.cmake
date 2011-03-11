@@ -181,6 +181,9 @@ if (PERL_TO_EXE OR USE_DRSYMS)
   string(REGEX REPLACE
     "FRONT_END_PATH=[^ ]*.pl"
     "FRONT_END_PATH=bin/${toolname}.exe" string "${string}")
+  string(REGEX REPLACE
+    "DRCONFIG_PATH=drconfig"
+    "DRCONFIG_PATH=bin/drconfig.exe" string "${string}")
 else (PERL_TO_EXE OR USE_DRSYMS)
   string(REGEX REPLACE
     "FRONT_END=[^ ]*.pl"
@@ -188,6 +191,9 @@ else (PERL_TO_EXE OR USE_DRSYMS)
   string(REGEX REPLACE
     "FRONT_END_PATH=[^ ]*.pl"
     "FRONT_END_PATH=bin/${toolname}.pl" string "${string}")
+  string(REGEX REPLACE
+    "DRCONFIG_PATH=drconfig"
+    "DRCONFIG_PATH=bin/drconfig" string "${string}")
 endif (PERL_TO_EXE OR USE_DRSYMS)
 if (WIN32)
   string(REGEX REPLACE "PLATFORM=Linux" "PLATFORM=Windows" string "${string}")

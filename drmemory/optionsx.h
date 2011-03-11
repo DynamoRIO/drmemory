@@ -92,6 +92,9 @@ OPTION_FRONT_STRING(front, srcfilter, "",
                     "Only show errors referencing named file",
                     "Do not show errors that do not reference the named source file somewhere in their callstacks.")
 #endif /* TOOL_DR_MEMORY */
+OPTION_FRONT_BOOL(front, follow_children, true,
+                  "Monitor child processes",
+                  "Monitor child processes by following across execve on Linux or CreateProcess on Windows.  On Linux, monitoring always continues across a fork.")
 
 OPTION_FRONT(side, nudge, uint, 0, 0, UINT_MAX,
              "Process id to nudge",

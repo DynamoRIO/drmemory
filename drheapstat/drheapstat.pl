@@ -128,13 +128,14 @@ $view_nudge = -1;   # only for -visualize
 $stale_since = -1;  # only for -visualize
 $stale_for = -1;    # only for -visualize
 $suppfile = "";
-
+my $follow_children = 1;
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
 for ($i = 0; $i <= $#ARGV; $i++) {
     # not using map() b/c want to stop at --
     last if ($ARGV[$i] =~ /^--$/);
+    next if ($i > 0 && $ARGV[$i - 1] =~ /^-dr_ops$/);
     # record whether we changed it, since when restoring we don't want to change
     # an option like -node or sthg
     if ($ARGV[$i] =~ s/^-no_/-no/) {
@@ -157,6 +158,7 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "debug" => \$use_debug,
                 "release" => sub { $use_debug = 0 },
                 "dr_debug" => \$use_dr_debug,
+                "follow_children!" => \$follow_children,
                 "visualize" => \$visualize,
                 "from_nudge=i" => \$from_nudge,
                 "to_nudge=i" => \$to_nudge,
@@ -258,6 +260,8 @@ $app_is_win32 = &is_app_win32($apppath);
 
 # it's difficult to get " or ' past drrun so we use `
 $ops = "-logdir `$logdir` $user_ops";
+
+$dr_ops .= ' -no_follow_children' unless ($follow_children);
 
 if ($is_unix) {
     my $drrun = "$dr_home/bin32/drrun";

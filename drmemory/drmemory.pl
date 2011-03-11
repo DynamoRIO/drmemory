@@ -130,12 +130,14 @@ my $gen_suppress_syms = 1;
 my $skip_postprocess = 0;
 my $just_postprocess = 0;
 my $postprocess_apppath = "";
+my $follow_children = 1;
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
 for ($i = 0; $i <= $#ARGV; $i++) {
     # not using map() b/c want to stop at --
     last if ($ARGV[$i] =~ /^--$/);
+    next if ($i > 0 && $ARGV[$i - 1] =~ /^-dr_ops$/);
     # record whether we changed it, since when restoring we don't want to change
     # an option like -node or sthg
     if ($ARGV[$i] =~ s/^-no_/-no/) {
@@ -157,6 +159,7 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "debug" => \$use_debug,
                 "release" => sub { $use_debug = 0 },
                 "dr_debug" => \$use_dr_debug,
+                "follow_children!" => \$follow_children,
                 "v" => \$verbose,
                 "version" => \$version,
                 "batch" => \$batch,
@@ -315,6 +318,8 @@ $ops .= " -no_gen_suppress_offs" unless ($gen_suppress_offs);
 $ops .= " -no_gen_suppress_syms" unless ($gen_suppress_syms);
 $ops .= " -perturb_only" if ($perturb_only);
 $ops .= " -perturb" if ($perturb);
+
+$dr_ops .= ' -no_follow_children' unless ($follow_children);
 
 if ($aggregate || $just_postprocess) {
     # nothing to deploy

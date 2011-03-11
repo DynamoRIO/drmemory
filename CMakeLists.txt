@@ -798,33 +798,58 @@ endif (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
 if (WIN32)
   configure_file("${DBGHELP_DLL}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll" COPYONLY)
+  if (USER_SPECIFIED_DynamoRIO_DIR)
+    # already built so we can copy at config time
+    configure_file("${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
+    configure_file("${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
+    if (USE_DRSYMS)
+      configure_file("${DynamoRIO_DIR}/../bin32/drconfig.exe"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
+    endif (USE_DRSYMS)
+  else (USER_SPECIFIED_DynamoRIO_DIR)
+    # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
+    # the target is in a subdir?
+    set(drconfiglib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll")
+    add_custom_target(drconfiglib_copy_tgt ALL DEPENDS "${drconfiglib_copy}")
+    add_custom_command(OUTPUT "${drconfiglib_copy}" DEPENDS drconfiglib
+      COMMAND ${CMAKE_COMMAND}
+      ARGS -E copy "${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+      "${drconfiglib_copy}" VERBATIM)
+    set(drinjectlib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll")
+    add_custom_target(drinjectlib_copy_tgt ALL DEPENDS "${drinjectlib_copy}")
+    add_custom_command(OUTPUT "${drinjectlib_copy}" DEPENDS drinjectlib
+      COMMAND ${CMAKE_COMMAND}
+      ARGS -E copy "${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+      "${drinjectlib_copy}" VERBATIM)
+    if (USE_DRSYMS)
+      set(drconfigexe_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe")
+      add_custom_target(drconfigexe_copy_tgt ALL DEPENDS "${drconfigexe_copy}")
+      add_custom_command(OUTPUT "${drconfigexe_copy}" DEPENDS drconfig
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig.exe"
+        "${drconfigexe_copy}" VERBATIM)
+    endif (USE_DRSYMS)
+  endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (USE_DRSYMS)
-    if (USER_SPECIFIED_DynamoRIO_DIR)
-      # already built so we can copy at config time
-      configure_file("${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
-      configure_file("${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
-    else (USER_SPECIFIED_DynamoRIO_DIR)
-      # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
-      # the target is in a subdir?
-      set(drconfiglib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll")
-      add_custom_target(drconfiglib_copy_tgt ALL DEPENDS "${drconfiglib_copy}")
-      add_custom_command(OUTPUT "${drconfiglib_copy}" DEPENDS drconfiglib
-        COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" VERBATIM)
-      set(drinjectlib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll")
-      add_custom_target(drinjectlib_copy_tgt ALL DEPENDS "${drinjectlib_copy}")
-      add_custom_command(OUTPUT "${drinjectlib_copy}" DEPENDS drinjectlib
-        COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" VERBATIM)
-    endif (USER_SPECIFIED_DynamoRIO_DIR)
     # above copy is for winsyms.exe, this is for drmemorylib
     configure_file("${DBGHELP_DLL}"
       "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
   endif (USE_DRSYMS)
+else (WIN32)
+  if (USER_SPECIFIED_DynamoRIO_DIR)
+    # already built so we can copy at config time
+    configure_file("${DynamoRIO_DIR}/../bin32/drconfig"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig" COPYONLY)
+  else (USER_SPECIFIED_DynamoRIO_DIR)
+    set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig")
+    add_custom_target(drconfig_copy_tgt ALL DEPENDS "${drconfig_copy}")
+    add_custom_command(OUTPUT "${drconfig_copy}" 
+      COMMAND ${CMAKE_COMMAND}
+      ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig"
+      "${drconfig_copy}" VERBATIM)
+  endif (USER_SPECIFIED_DynamoRIO_DIR)
 endif (WIN32)
 if (TOOL_DR_HEAPSTAT)
   # we need a copy of Dr. Memory's postprocess for leaks (PR 536878)

@@ -54,6 +54,13 @@ file(GLOB sub_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.sub")
 file(GLOB in_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.in")
 file(GLOB imgs "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.png")
 
+# some defines are set by DR config files so we must add here
+if (WIN32)
+  set(DEFINES ${DEFINES} -DWINDOWS)
+else (WIN32)
+  set(DEFINES ${DEFINES} -DLINUX)
+endif (WIN32)
+
 set(options_for_docs "${PROJECT_BINARY_DIR}/docs/options-docs.dox.in")
 add_custom_command(
   OUTPUT "${options_for_docs}"
@@ -79,7 +86,7 @@ add_custom_command(
        -D srcdir2=${PROJECT_SOURCE_DIR}/${INTERNAL_DIR}/${toolname}/docs
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
        -Doutfile=${doxyfile}
-       -Dversion_number=${VERSION_NUMBER} 
+       -Dversion_number=${TOOL_VERSION_NUMBER} 
        -DDOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
        -DVMKERNEL=${VMKERNEL}
        -DPERL_TO_EXE=${PERL_TO_EXE}
@@ -99,7 +106,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND}
   # Be sure to put a space after -D for 1st arg at least
   ARGS -D srcdir=${CMAKE_CURRENT_SOURCE_DIR} -Doutfile=${footer}
-       -Dversion_number=${VERSION_NUMBER}
+       -Dversion_number=${TOOL_VERSION_NUMBER}
        -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_footer.cmake
   VERBATIM # recommended: p260
   )

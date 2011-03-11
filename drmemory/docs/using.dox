@@ -196,7 +196,7 @@ to ensure unique names.
 On Windows, the results files is automatically opened in \p notepad when
 the application exits.  This only occurs for the top-level process; if it
 created child processes, they will be followed by Dr. Memory and have their
-own result directories and files, but they will not be automatically
+own result directories and files, but these will not be automatically
 displayed.
 
 For full details on the errors reported by Dr. Memory, see \ref sec_errors.
@@ -204,6 +204,32 @@ For full details on the errors reported by Dr. Memory, see \ref sec_errors.
 If you would like to attach a debugger at the point an error is first
 detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
 options (see \ref page_options).
+
+********************
+\subsection sec_children Controlling Child Processes
+
+By default, Dr. Memory monitors all child processes.  To disable this
+behavior and not monitor any children, use this option:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -no_follow_children
+</tt>
+
+To follow all children except certain applications, run this command with
+the executable name of each application you do not wish to monitor, prior
+to running Dr. Memory with default options:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\DRCONFIG_PATH -quiet -reg myapp -norun
+</tt>
+
+This \p -norun request is permanent and affects all subsequent Dr. Memory
+executions by the user that issued the \p -norun request.  To undo it, use
+this command:
+
+\par
+<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\DRCONFIG_PATH -quiet -unreg myapp
+</tt>
 
 ********************
 \subsection sec_aggregate Aggregating Results From Multiple Processes
