@@ -44,6 +44,10 @@ bool op_pause_via_loop;
 bool op_ignore_asserts;
 file_t f_global = INVALID_FILE;
 
+#if defined(DEBUG) && defined(WINDOWS)
+static PEB *orig_peb;
+#endif
+
 /***************************************************************************
  * UTILITIES
  */
@@ -186,6 +190,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
                           BUFFER_SIZE_ELEMENTS(sym_with_mod) - modoffs,
                           "!%s", sym_pattern);
     ASSERT(modoffs > 0, "error printing modname!symname");
+    IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
     /* We rely on drsym_init() having been called during init */
     if (full) {
@@ -453,6 +458,16 @@ get_app_PEB(void)
      */
     return (PEB *) dr_get_app_PEB();
 }
+
+#if defined(DEBUG) && defined(WINDOWS)
+/* check that peb isolation is consistently applied (xref i#324) */
+bool
+using_private_peb(void)
+{
+    TEB *teb = get_TEB();
+    return (teb != NULL && teb->ProcessEnvironmentBlock == orig_peb);
+}
+#endif
 
 bool
 is_current_process(HANDLE h)
@@ -782,6 +797,12 @@ hashwrap_assert_fail(const char *msg)
 void
 utils_init(void)
 {
+#if defined(DEBUG) && defined(WINDOWS)
+    /* store private peb and check later that it's the same (xref i#324) */
+    ASSERT(get_TEB() != NULL, "can't get TEB");
+    orig_peb = get_TEB()->ProcessEnvironmentBlock;
+#endif
+
     hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);
 }
 

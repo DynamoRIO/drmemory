@@ -446,6 +446,13 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
                    void *data);
 #endif
 
+#ifdef DEBUG
+/* check that peb isolation is consistently applied (xref i#324) */
+bool
+using_private_peb(void);
+#endif
+
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

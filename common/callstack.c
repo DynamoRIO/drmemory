@@ -223,6 +223,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
     module_tree = rb_tree_create(NULL);
 
 #ifdef USE_DRSYMS
+    IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     if (drsym_init(NULL) != DRSYM_SUCCESS) {
         LOG(1, "WARNING: unable to initialize symbol translation\n");
     }
@@ -242,6 +243,7 @@ callstack_exit(void)
     dr_mutex_destroy(modtree_lock);
 
 #ifdef USE_DRSYMS
+    IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     if (drsym_exit() != DRSYM_SUCCESS) {
         LOG(1, "WARNING: error cleaning up symbol library\n");
     }
@@ -290,6 +292,7 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
     sym = (drsym_info_t *) sbuf;
     sym->struct_size = sizeof(*sym);
     sym->name_size = MAX_FUNC_LEN;
+    IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     symres = drsym_lookup_address(modpath, modoffs, sym);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (sym->name_available_size >= sym->name_size) {

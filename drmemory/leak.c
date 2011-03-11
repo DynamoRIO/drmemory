@@ -1044,16 +1044,19 @@ leak_scan_for_leaks(bool at_exit)
         global_free(e, sizeof(*e), HEAPSTAT_MISC);
     }
 
-    /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
-    malloc_iterate(malloc_iterate_cb, &data);
-
+    /* we must restore prior to any symbol lookup (i#324) */
     if (drcontexts != NULL) {
-        IF_DEBUG(bool ok;)
         /* Back to private PEB and TEB fields (i#248) */
         for (i = 0; i < num_threads; i++)
             restore_thread_after_scan(drcontexts[i]);
         restore_thread_after_scan(dr_get_current_drcontext());
-        IF_DEBUG(ok =)
+    }
+
+    /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
+    malloc_iterate(malloc_iterate_cb, &data);
+
+    if (drcontexts != NULL) {
+        IF_DEBUG(bool ok =)
             dr_resume_all_other_threads(drcontexts, num_threads);
         ASSERT(ok, "failed to resume after leak scan");
     }
