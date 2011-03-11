@@ -44,8 +44,9 @@ bool op_pause_via_loop;
 bool op_ignore_asserts;
 file_t f_global = INVALID_FILE;
 
-#if defined(DEBUG) && defined(WINDOWS)
-static PEB *orig_peb;
+#if defined(WINDOWS) && defined (USE_DRSYMS)
+/* for ensuring library isolation */
+static PEB *priv_peb;
 #endif
 
 /***************************************************************************
@@ -459,15 +460,23 @@ get_app_PEB(void)
     return (PEB *) dr_get_app_PEB();
 }
 
-#if defined(DEBUG) && defined(WINDOWS)
+#ifdef USE_DRSYMS
+# ifdef DEBUG
 /* check that peb isolation is consistently applied (xref i#324) */
 bool
 using_private_peb(void)
 {
     TEB *teb = get_TEB();
-    return (teb != NULL && teb->ProcessEnvironmentBlock == orig_peb);
+    return (teb != NULL && teb->ProcessEnvironmentBlock == priv_peb);
 }
-#endif
+# endif
+
+HANDLE
+get_private_heap_handle(void)
+{
+    return (HANDLE) priv_peb->ProcessHeap;
+}
+#endif /* DEBUG */
 
 bool
 is_current_process(HANDLE h)
@@ -797,10 +806,10 @@ hashwrap_assert_fail(const char *msg)
 void
 utils_init(void)
 {
-#if defined(DEBUG) && defined(WINDOWS)
+#if defined(WINDOWS) && defined (USE_DRSYMS)
     /* store private peb and check later that it's the same (xref i#324) */
     ASSERT(get_TEB() != NULL, "can't get TEB");
-    orig_peb = get_TEB()->ProcessEnvironmentBlock;
+    priv_peb = get_TEB()->ProcessEnvironmentBlock;
 #endif
 
     hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);

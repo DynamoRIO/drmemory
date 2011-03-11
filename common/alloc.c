@@ -1800,6 +1800,10 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     bool locked_by_me;
     ASSERT((options.redzone_size > 0 && pre_us) || options.record_allocs, 
            "internal inconsistency on when doing detailed malloc tracking");
+#ifdef USE_DRSYMS
+    IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t) 
+                      get_private_heap_handle(), "app using priv heap"));
+#endif
     e->start = start;
     e->end = end;
     ASSERT(real_end != NULL && real_end - end <= USHRT_MAX, "real_end suspicously big");
@@ -4050,6 +4054,17 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         pt->in_heap_routine, pt->in_heap_adjusted,
         pt->in_heap_routine > 0 ? " (recursive)" : "",
         inside ? "post-retaddr" : "pre-retaddr");
+#if defined(WINDOWS) && defined (USE_DRSYMS)
+    DODEBUG({
+        if (is_rtl_routine(type) &&
+            (is_free_routine(type) || is_size_routine(type) ||
+             is_malloc_routine(type) || is_realloc_routine(type) ||
+             is_calloc_routine(type))) {
+            HANDLE heap = (HANDLE) APP_ARG(&mc, 1, inside);
+            ASSERT(heap != get_private_heap_handle(), "app is using priv heap");
+        }
+    });
+#endif
     enter_heap_routine(pt, expect);
     if (is_free_routine(type)) {
         handle_free_pre(drcontext, &mc, inside, call_site, &routine);

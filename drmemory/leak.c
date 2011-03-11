@@ -729,6 +729,10 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                 (TEST(DR_MEMPROT_READ, info.prot) &&
                  !TEST(DR_MEMPROT_WRITE, info.prot) &&
                  info.type == DR_MEMTYPE_IMAGE) ||
+# ifdef USE_DRSYMS
+                /* skip private heap: here we assume it's a single segment */
+                (pc == (byte *) get_private_heap_handle()) ||
+# endif
 #endif
                 /* don't count references in DR data */
                 dr_memory_is_dr_internal(pc) ||

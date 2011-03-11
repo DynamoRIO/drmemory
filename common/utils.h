@@ -275,6 +275,9 @@ extern file_t f_results;
     if (op_verbose_level >= (level)) \
         stmt                        \
 } while (0)
+# define DODEBUG(stmt)  do {   \
+    stmt                       \
+} while (0)
 #else
 # define LOGF(level, pt, fmt, ...) /* nothing */
 # define LOGPT(level, pt, fmt, ...) /* nothing */
@@ -283,6 +286,7 @@ extern file_t f_results;
 # define LOG_LARGE_PT(level, pt, fmt, ...) /* nothing */
 # define LOG_LARGE(level, fmt, ...) /* nothing */
 # define DOLOG(level, stmt) /* nothing */
+# define DODEBUG(stmt) /* nothing */
 #endif
 
 /* For printing to a buffer.
@@ -446,12 +450,16 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
                    void *data);
 #endif
 
-#ifdef DEBUG
+#if defined(WINDOWS) && defined (USE_DRSYMS)
+# ifdef DEBUG
 /* check that peb isolation is consistently applied (xref i#324) */
 bool
 using_private_peb(void);
-#endif
+# endif
 
+HANDLE
+get_private_heap_handle(void);
+#endif /* WINDOWS && USE_DRSYMS */
 
 /***************************************************************************
  * WINDOWS SYSCALLS

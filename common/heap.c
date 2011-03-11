@@ -240,6 +240,12 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         size_t size, commit_size, sub_size;
         app_pc base, sub_base;
         LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
+# ifdef USE_DRSYMS
+        if (heaps[i] == (byte *) get_private_heap_handle()) {
+            LOG(2, "skipping private heap "PFX"\n", heaps[i]);
+            continue;
+        }
+# endif
         memset(&heap_info, 0, sizeof(heap_info));
         /* While init time is assumed to be single-threaded there are
          * enough exceptions to that that we grab the lock: */
@@ -628,6 +634,9 @@ bool
 heap_region_set_heap(app_pc pc, HANDLE heap)
 {
     rb_node_t *node = NULL;
+# ifdef USE_DRSYMS
+    ASSERT(heap != get_private_heap_handle(), "app using priv heap");
+# endif
     dr_mutex_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
