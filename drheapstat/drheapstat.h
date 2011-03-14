@@ -34,11 +34,6 @@ extern file_t f_callstack;
 extern file_t f_snapshot;
 extern file_t f_staleness;
 
-#ifdef LINUX
-/* PR 424847: prevent app from closing our logfiles */
-extern hashtable_t logfile_table;
-#endif
-
 #ifdef STATISTICS
 extern uint num_mallocs;
 extern uint num_frees;

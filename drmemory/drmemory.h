@@ -41,11 +41,6 @@ extern char logsubdir[MAXIMUM_PATH];
 
 extern file_t f_fork;
 
-#ifdef LINUX
-/* PR 424847: prevent app from closing our logfiles */
-extern hashtable_t logfile_table;
-#endif
-
 #ifdef USE_DRSYMS
 extern file_t f_results;
 extern file_t f_suppress;

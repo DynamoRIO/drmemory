@@ -90,12 +90,6 @@ static byte *shared_code_region;
 #define SHARED_CODE_SIZE \
     (PAGE_SIZE + (options.staleness ? (SHARED_SLOWPATH_SIZE) : 0))
 
-#ifdef LINUX
-/* PR 424847: prevent app from closing our logfiles */
-# define LOGFILE_HASH_BITS 6
-hashtable_t logfile_table;
-#endif
-
 /* We serialize snapshots since rare so not costly perf-wise, and this avoids
  * needing potentially very large buffers to try and get atomic writes
  */
@@ -1376,6 +1370,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     file_t f;
     char logname[MAXIMUM_PATH];
     int len;
+    uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
@@ -1384,18 +1379,16 @@ open_logfile(const char *name, bool pid_log, int which_thread)
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
                           "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
                           which_thread, dr_get_thread_id(dr_get_current_drcontext()));
+        /* have DR close on fork so we don't have to track and iterate */
+        extra_flags |= DR_FILE_CLOSE_ON_FORK;
     } else {
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
                           "%s%c%s", logsubdir, DIRSEP, name);
     }
     ASSERT(len > 0, "logfile name buffer max reached");
     NULL_TERMINATE_BUFFER(logname);
-    f = dr_open_file(logname, DR_FILE_WRITE_OVERWRITE
-                            IF_LINUX(|DR_FILE_ALLOW_LARGE));
+    f = dr_open_file(logname, DR_FILE_WRITE_OVERWRITE | extra_flags);
     ASSERT(f != INVALID_FILE, "unable to open log file");
-#ifdef LINUX
-    hashtable_add(&logfile_table, (void*)f, (void*)1);
-#endif
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
         dr_log(drcontext, LOG_ALL, 1, 
@@ -1467,9 +1460,7 @@ create_global_logfile(void)
 static void
 close_file(file_t f)
 {
-#ifdef LINUX
-    hashtable_remove(&logfile_table, (void*)f);
-#endif
+    /* with DRi#357, DR now isolates log files so little to do here */
     dr_close_file(f);
 }
 
@@ -1707,23 +1698,13 @@ event_pre_syscall(void *drcontext, int sysnum)
     handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
 
 #ifdef LINUX
-    /* FIXME: share this code w/ drmemory/syscall_linux.c */
-    if (sysnum == SYS_close) {
-        /* we assume that file_t is the same type+namespace as kernel fd */
-        uint fd = dr_syscall_get_param(drcontext, 0);
-        if (hashtable_lookup(&logfile_table, (void*)fd) != NULL) {
-            /* don't let app close our files */
-            LOG(0, "WARNING: app trying to close our file %d\n", fd);
-            dr_syscall_set_result(drcontext, -EBADF);
-            return false; /* do NOT execute syscall */
-        }
-    } else if (sysnum == SYS_fork ||
-               (sysnum == SYS_clone &&
-                !TEST(CLONE_VM, (uint) dr_syscall_get_param(drcontext, 0)))
-               /* FIXME: if open-sourced we should split this.
-                * Presumably we'll have the bora shlib split before then.
-                */
-               IF_VMX86(|| sysnum == 1025)) {
+    if (sysnum == SYS_fork ||
+        (sysnum == SYS_clone &&
+         !TEST(CLONE_VM, (uint) dr_syscall_get_param(drcontext, 0)))
+        /* FIXME: if open-sourced we should split this.
+         * Presumably we'll have the bora shlib split before then.
+         */
+        IF_VMX86(|| sysnum == 1025)) {
         /* Store the file offset in the client_data field, shared across callbacks */
         client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
         cpt->filepos = dr_file_tell(f_callstack);
@@ -1936,9 +1917,6 @@ event_exit(void)
         close_file(f_staleness);
     }
     close_file(f_nudge);
-#ifdef LINUX
-    hashtable_delete(&logfile_table);
-#endif
 }
 
 DR_EXPORT void 
@@ -1955,9 +1933,6 @@ dr_init(client_id_t client_id)
     NOTIFY("Dr. Heapstat version %s\n", VERSION_STRING);
     NOTIFY("options are \"%s\"\n", opstr);
 
-#ifdef LINUX
-    hashtable_init(&logfile_table, LOGFILE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
-#endif
     create_global_logfile();
     LOG(0, "options are \"%s\"\n", opstr);
 

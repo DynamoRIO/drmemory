@@ -86,12 +86,6 @@ static const char * const build_date = "unknown";
 #define KNOWN_TABLE_HASH_BITS 8
 static hashtable_t known_table;
 
-#ifdef LINUX
-/* PR 424847: prevent app from closing our logfiles */
-# define LOGFILE_HASH_BITS 6
-hashtable_t logfile_table;
-#endif
-
 static void
 set_thread_initial_structures(void *drcontext);
 
@@ -249,9 +243,7 @@ dump_statistics(void)
 static void
 close_file(file_t f)
 {
-#ifdef LINUX
-    hashtable_remove(&logfile_table, (void*)f);
-#endif
+    /* with DRi#357, DR now isolates log files so little to do here */
     dr_close_file(f);
 }
 
@@ -303,9 +295,6 @@ event_exit(void)
 #endif
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
-#ifdef LINUX
-    hashtable_delete(&logfile_table);
-#endif
 }
 
 static file_t
@@ -314,6 +303,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     file_t f;
     char logname[MAXIMUM_PATH];
     int len;
+    uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
@@ -322,17 +312,16 @@ open_logfile(const char *name, bool pid_log, int which_thread)
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
                           "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
                           which_thread, dr_get_thread_id(dr_get_current_drcontext()));
+        /* have DR close on fork so we don't have to track and iterate */
+        extra_flags |= DR_FILE_CLOSE_ON_FORK;
     } else {
         len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
                           "%s%c%s", logsubdir, DIRSEP, name);
     }
     ASSERT(len > 0, "logfile name buffer max reached");
     NULL_TERMINATE_BUFFER(logname);
-    f = dr_open_file(logname, DR_FILE_WRITE_OVERWRITE IF_LINUX(|DR_FILE_ALLOW_LARGE));
+    f = dr_open_file(logname, DR_FILE_WRITE_OVERWRITE | extra_flags);
     ASSERT(f != INVALID_FILE, "unable to open log file");
-#ifdef LINUX
-    hashtable_add(&logfile_table, (void*)f, (void*)1);
-#endif
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
         dr_log(drcontext, LOG_ALL, 1, 
@@ -404,9 +393,6 @@ event_thread_exit(void *drcontext)
     if (options.thread_logs) {
         dr_fprintf(pt->f, "LOG END\n");
         close_file(pt->f);
-#ifdef LINUX
-        hashtable_remove(&logfile_table, (void*)pt->f);
-#endif
     }
 #ifdef WINDOWS
     if (!options.leaks_only && options.shadowing) {
@@ -1122,7 +1108,9 @@ static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
+# ifdef DEBUG
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+# endif
 # ifndef USE_DRSYMS
     file_t f_parent_fork = f_fork;
 # endif
@@ -1138,8 +1126,9 @@ event_fork(void *drcontext)
     close_file(f_parent_fork);
 # endif
 
-    if (options.thread_logs)
-        close_file(pt->f);
+    /* note that we mark all thread logs as close-on-fork so DR will iterate
+     * over them and close them all
+     */
     create_thread_logfile(drcontext);
     LOGF(0, f_global, "new logfile after fork\n");
     LOG(0, "new logfile after fork fd=%d\n", pt->f);
@@ -1275,9 +1264,6 @@ dr_init(client_id_t id)
     ASSERT(!options.size_in_redzone || options.redzone_size >= sizeof(size_t),
            "redzone size not large enough to store size");
 
-#ifdef LINUX
-    hashtable_init(&logfile_table, LOGFILE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
-#endif
     create_global_logfile();
     LOG(0, "options are \"%s\"\n", opstr);
 

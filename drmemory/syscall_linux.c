@@ -2383,14 +2383,7 @@ os_shared_pre_syscall(void *drcontext, int sysnum)
     dr_get_mcontext(drcontext, &mc, NULL);
     switch (sysnum) {
     case SYS_close: {
-        /* we assume that file_t is the same type+namespace as kernel fd */
-        uint fd = dr_syscall_get_param(drcontext, 0);
-        if (hashtable_lookup(&logfile_table, (void*)fd) != NULL) {
-            /* don't let app close our files */
-            LOG(0, "WARNING: app trying to close our file %d\n", fd);
-            dr_syscall_set_result(drcontext, -EBADF);
-            res = false; /* do NOT execute syscall */
-        }
+        /* DRi#357 has DR isolating our files for us, so nothing to do here anymore */
         break;
     }
     case SYS_execve:
