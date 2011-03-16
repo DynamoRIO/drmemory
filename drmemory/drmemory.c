@@ -282,6 +282,7 @@ event_exit(void)
 
     if (!options.perturb_only)
         report_exit();
+    utils_exit();
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.

@@ -104,6 +104,12 @@ static byte *(*cb_next_defined_dword)(byte *, byte *);
 static byte *(*cb_end_of_defined_region)(byte *, byte *);
 static bool (*cb_is_register_defined)(void *, reg_id_t);
 
+#ifdef WINDOWS
+/* RtlHeap stores failed alloc info which can hide leaks (i#292) */
+static app_pc rtl_fail_info;
+/* heap chunk pointer stored at offset 0x10, data struct is 0x20 */
+#define RTL_FAIL_INFO_SIZE 0x20
+#endif
 
 void
 leak_init(bool have_defined_info, 
@@ -116,6 +122,10 @@ leak_init(bool have_defined_info,
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t))
 {
+#ifdef WINDOWS
+    module_data_t *mod;
+#endif
+
     op_have_defined_info = have_defined_info; 
     op_check_leaks_on_destroy = check_leaks_on_destroy;
     op_midchunk_new_ok = midchunk_new_ok;
@@ -130,6 +140,16 @@ leak_init(bool have_defined_info,
         cb_end_of_defined_region = end_of_defined_region;
         cb_is_register_defined = is_register_defined;
     }
+
+#if defined(WINDOWS) && defined (USE_DRSYMS)
+    mod = dr_lookup_module_by_name("ntdll.dll");
+    if (mod != NULL) {
+        rtl_fail_info = lookup_internal_symbol(mod, "RtlpHeapFailureInfo");
+        LOG(1, "RtlpHeapFailureInfo is "PFX"\n", rtl_fail_info);
+        dr_free_module_data(mod);
+    } else
+        ASSERT(false, "can't find ntdll");
+#endif
 }
 
 /* User must call from client_handle_malloc() and client_handle_realloc() */
@@ -591,6 +611,7 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
     uint flags = 0;
     bool reachable = false;
     rb_node_t *node = NULL;
+
     if (chunk_end != NULL) {
         if (ptr_addr >= pointer && ptr_addr < chunk_end) {
             LOG(3, "\t("PFX" points to start of its own chunk "PFX"-"PFX")\n",
@@ -651,6 +672,16 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
 #endif
         }
     }
+#ifdef WINDOWS
+    if (reachable && rtl_fail_info != NULL &&
+        ptr_addr >= rtl_fail_info && ptr_addr < rtl_fail_info + RTL_FAIL_INFO_SIZE) {
+        /* RtlHeap stores failed alloc info which can hide leaks (i#292) */
+        LOG(1, "WARNING: "PFX" is inside RtlpHeapFailureInfo data struct: ignoring!\n",
+            ptr_addr);
+        reachable = false;
+    }
+#endif
+
     if (reachable) {
         if (data->primary_scan) {
             if (!TEST(MALLOC_REACHABLE, flags))

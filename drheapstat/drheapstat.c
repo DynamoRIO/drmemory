@@ -1901,6 +1901,7 @@ event_exit(void)
     if (options.check_leaks || options.staleness)
         shadow_exit();
     free_shared_code();
+    utils_exit();
 
 #ifdef STATISTICS
     dump_statistics();

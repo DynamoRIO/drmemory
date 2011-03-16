@@ -443,6 +443,9 @@ safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONA
 app_pc
 lookup_symbol(const module_data_t *mod, const char *symname);
 
+app_pc
+lookup_internal_symbol(const module_data_t *mod, const char *symname);
+
 /* iterates over symbols matching modname!sym_pattern until
  * callback returns false
  */
@@ -584,5 +587,8 @@ get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
 
 void
 utils_init(void);
+
+void
+utils_exit(void);
 
 #endif /* _UTILS_H_ */

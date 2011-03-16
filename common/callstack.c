@@ -224,9 +224,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
 
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
-    if (drsym_init(NULL) != DRSYM_SUCCESS) {
-        LOG(1, "WARNING: unable to initialize symbol translation\n");
-    }
+    /* we rely on drsym_init() being called in utils_init() */
 #endif
 }
 
@@ -244,9 +242,6 @@ callstack_exit(void)
 
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
-    if (drsym_exit() != DRSYM_SUCCESS) {
-        LOG(1, "WARNING: error cleaning up symbol library\n");
-    }
 #endif
 }
 

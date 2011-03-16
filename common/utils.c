@@ -806,6 +806,12 @@ hashwrap_assert_fail(const char *msg)
 void
 utils_init(void)
 {
+#ifdef USE_DRSYMS
+    if (drsym_init(NULL) != DRSYM_SUCCESS) {
+        LOG(1, "WARNING: unable to initialize symbol translation\n");
+    }
+#endif
+
 #if defined(WINDOWS) && defined (USE_DRSYMS)
     /* store private peb and check later that it's the same (xref i#324) */
     ASSERT(get_TEB() != NULL, "can't get TEB");
@@ -813,5 +819,15 @@ utils_init(void)
 #endif
 
     hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);
+}
+
+void
+utils_exit(void)
+{
+#ifdef USE_DRSYMS
+    if (drsym_exit() != DRSYM_SUCCESS) {
+        LOG(1, "WARNING: error cleaning up symbol library\n");
+    }
+#endif
 }
 
