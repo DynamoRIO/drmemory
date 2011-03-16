@@ -592,10 +592,15 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
     bool reachable = false;
     rb_node_t *node = NULL;
     if (chunk_end != NULL) {
-        flags = malloc_get_client_flags(pointer);
-        LOG(3, "\t"PFX" points to chunk "PFX"-"PFX"\n", ptr_addr, pointer, chunk_end);
-        chunk_start = pointer;
-        reachable = true;
+        if (ptr_addr >= pointer && ptr_addr < chunk_end) {
+            LOG(3, "\t("PFX" points to start of its own chunk "PFX"-"PFX")\n",
+                ptr_addr, pointer, chunk_end);
+        } else {
+            flags = malloc_get_client_flags(pointer);
+            LOG(3, "\t"PFX" points to chunk "PFX"-"PFX"\n", ptr_addr, pointer, chunk_end);
+            chunk_start = pointer;
+            reachable = true;
+        }
     } else {
         size_t chunk_size;
         node = rb_in_node(data->alloc_tree, pointer);
@@ -603,26 +608,31 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
             rb_node_fields(node, &chunk_start, &chunk_size, NULL);
             chunk_end = chunk_start + chunk_size;
             ASSERT(is_in_heap_region(pointer), "heap data struct inconsistency");
-            /* PR 476482: we have a separate category of "possible leaks" that
-             * are not reached by chunk-head pointers but are reached by
-             * mid-chunk pointers.  
-             */
-            LOG(3, "\t("PFX" points to mid-chunk "PFX" in "PFX"-"PFX")\n",
-                ptr_addr, pointer, chunk_start, chunk_end);
-            flags = malloc_get_client_flags(chunk_start);
-            if (is_midchunk_pointer_legitimate(pointer, chunk_start, chunk_end)) {
-                /* We could split these out as "probably reachable" but that would
-                 * require a new chunk queue and flags and extra logic for
-                 * whether reached initially by which: not worth it since the
-                 * heuristics are unlikely to mask real leaks.
+            if (ptr_addr >= chunk_start && ptr_addr < chunk_end) {
+                LOG(3, "\t("PFX" points to middle "PFX" of its own chunk "PFX"-"PFX")\n",
+                    ptr_addr, pointer, chunk_start, chunk_end);
+            } else {
+                /* PR 476482: we have a separate category of "possible leaks" that
+                 * are not reached by chunk-head pointers but are reached by
+                 * mid-chunk pointers.  
                  */
-                reachable = true;
-                LOG(3, "\t  mid-chunk "PFX" in "PFX"-"PFX" is reachable\n",
-                    pointer, chunk_start, chunk_end);
-            } else if (!TESTANY(MALLOC_MAYBE_REACHABLE | MALLOC_REACHABLE |
-                                /* indirect trumps maybe */
-                                MALLOC_INDIRECTLY_REACHABLE, flags)) {
-                add_maybe_reachable = true;
+                LOG(3, "\t("PFX" points to mid-chunk "PFX" in "PFX"-"PFX")\n",
+                    ptr_addr, pointer, chunk_start, chunk_end);
+                flags = malloc_get_client_flags(chunk_start);
+                if (is_midchunk_pointer_legitimate(pointer, chunk_start, chunk_end)) {
+                    /* We could split these out as "probably reachable" but that would
+                     * require a new chunk queue and flags and extra logic for
+                     * whether reached initially by which: not worth it since the
+                     * heuristics are unlikely to mask real leaks.
+                     */
+                    reachable = true;
+                    LOG(3, "\t  mid-chunk "PFX" in "PFX"-"PFX" is reachable\n",
+                        pointer, chunk_start, chunk_end);
+                } else if (!TESTANY(MALLOC_MAYBE_REACHABLE | MALLOC_REACHABLE |
+                                    /* indirect trumps maybe */
+                                    MALLOC_INDIRECTLY_REACHABLE, flags)) {
+                    add_maybe_reachable = true;
+                }
             }
         } else {
 #if 0
