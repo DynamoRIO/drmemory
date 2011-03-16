@@ -21,10 +21,20 @@
 ###########################################################################
 # Dr. Memory default suppression file
 
+##################################################
+# i#357: real leak in VS2008 STL std::numpunct<char>::_Init
+
+LEAK
+*!operator new
+*!std::_Maklocstr<char>
+*!std::numpunct<char>::_Init
+
+##################################################
 # When I use _beginthreadex() I see this leak even when explicitly calling
 # _endthread().  Not sure whether csrss frees it when it frees the stack
 # but suppressing under the assumption it's a false positive.
 # I don't see this when using CreateThread.
+
 LEAK
 ntdll.dll!RtlAllocateActivationContextStack
 KERNEL*.dll!CreateRemoteThread*
