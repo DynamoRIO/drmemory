@@ -913,6 +913,8 @@ prepare_thread_for_scan(void *drcontext)
     dr_switch_to_app_state(drcontext);
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
+    LOG(3, "prepare_thread_for_scan: thread %d has TLS "PFX"\n",
+        dr_get_thread_id(drcontext), dr_get_tls_field(drcontext));
     if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
         /* We received the exit event for this thread and marked its
          * TEB as unaddr -- but we want to scan that memory.

@@ -38,6 +38,7 @@ static hashtable_t systable;
 /* Syscalls that need special processing */
 int sysnum_CreateThread;
 int sysnum_CreateThreadEx;
+int sysnum_CreateUserProcess;
 
 /* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME PR 406350: IIS syscalls!
@@ -140,10 +141,10 @@ syscall_info_t syscall_info[] = {
     {0,"NtCreateSemaphore", 20, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateSymbolicLinkObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(UNICODE_STRING),R, },
     {0,"NtCreateThread", 32, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(CLIENT_ID),W, 5,sizeof(CONTEXT),R|SYSARG_CONTEXT, 6,sizeof(USER_STACK),R, 7,0,IB, },
-    {0,"NtCreateThreadEx", 44, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 6,0,IB, 10,0x24/*XXX i#98: get real struct def'n; also, this is IN + OUT: how much is IN?*/,W, },
+    {0,"NtCreateThreadEx", 44, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 6,0,IB, 10,sizeof(create_thread_info_t),R/*rest handled manually*/, },
     {0,"NtCreateTimer", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateToken", 52, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(LUID),R, 5,sizeof(LARGE_INTEGER),R, 6,sizeof(TOKEN_USER),R, 7,sizeof(TOKEN_GROUPS),R, 8,sizeof(TOKEN_PRIVILEGES),R, 9,sizeof(TOKEN_OWNER),R, 10,sizeof(TOKEN_PRIMARY_GROUP),R, 11,sizeof(TOKEN_DEFAULT_DACL),R, 12,sizeof(TOKEN_SOURCE),R, },
-    {0,"NtCreateUserProcess", 44, 0,sizeof(HANDLE),W, 1,sizeof(HANDLE),W, 4,sizeof(OBJECT_ATTRIBUTES),R, 5,sizeof(OBJECT_ATTRIBUTES),R, 7,0,IB, 8,sizeof(RTL_USER_PROCESS_PARAMETERS),R, /*XXX i#98: add two in/out structs*/ },
+    {0,"NtCreateUserProcess", 44, 0,sizeof(HANDLE),W, 1,sizeof(HANDLE),W, 4,sizeof(OBJECT_ATTRIBUTES),R, 5,sizeof(OBJECT_ATTRIBUTES),R, 7,0,IB, 8,sizeof(RTL_USER_PROCESS_PARAMETERS),R, /*XXX i#98: arg 9 is an in/out*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, },
     {0,"NtCreateWaitablePort", 20, 0,sizeof(HANDLE),W, 1,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtDebugActiveProcess", 8, },
     {0,"NtDebugContinue", 12, 1,sizeof(CLIENT_ID),R, },
@@ -469,6 +470,9 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
     sysnum_CreateThreadEx = sysnum_from_name(drcontext, ntdll_base, "NtCreateThreadEx");
     /* not there in pre-vista */
+    sysnum_CreateUserProcess = sysnum_from_name(drcontext, ntdll_base,
+                                                "NtCreateUserProcess");
+    /* not there in pre-vista */
 }
 
 void
@@ -530,57 +534,9 @@ os_shared_post_syscall(void *drcontext, int sysnum)
      */
 }
 
-bool
-os_shadow_pre_syscall(void *drcontext, int sysnum)
-{
-    return true; /* execute syscall */
-}
-
-void
-os_shadow_post_syscall(void *drcontext, int sysnum)
-{
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
-     * client_post_syscall() where common/alloc.c identifies the sysnum: but
-     * for things that don't have anything to do w/ mem alloc I think it's
-     * cleaner to have it all in here rather than having to edit both files.
-     * Perhaps NtContinue and NtSetContextThread should also be here?  OTOH,
-     * the teb is an alloc.
-     */
-    if (sysnum == sysnum_CreateThread && NT_SUCCESS(dr_syscall_get_result(drcontext))) {
-        /* Even on XP+ where csrss frees the stack, the stack alloc happens
-         * in-process and we see it.  The TEB alloc, however, is done by
-         * the kernel, and kernel32!CreateRemoteThread writes to the TEB
-         * prior to the thread resuming, so we handle it here.
-         * We also process the TEB in set_thread_initial_structures() in
-         * case someone creates a thread remotely, or in-process but custom
-         * so it's not suspended at this point.
-         */
-        HANDLE thread_handle;
-        /* If not suspended, let set_thread_initial_structures() handle it to
-         * avoid races: though since setting as defined the only race would be
-         * the thread exiting
-         */
-        if (pt->sysarg[7]/*bool suspended*/ &&
-            is_current_process((HANDLE)pt->sysarg[3]) &&
-            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
-            TEB *teb = get_TEB_from_handle(thread_handle);
-            LOG(1, "TEB for new thread: "PFX"\n", teb);
-            set_teb_initial_shadow(teb);
-        }
-    }
-    if (sysnum == sysnum_CreateThreadEx && NT_SUCCESS(dr_syscall_get_result(drcontext))) {
-        /* See notes above */
-        HANDLE thread_handle;
-        if (pt->sysarg[6]/*bool suspended*/ &&
-            is_current_process((HANDLE)pt->sysarg[3]) &&
-            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
-            TEB *teb = get_TEB_from_handle(thread_handle);
-            LOG(1, "TEB for new thread: "PFX"\n", teb);
-            set_teb_initial_shadow(teb);
-        }
-    }
-}
+/***************************************************************************
+ * SHADOW PER-ARG-TYPE HANDLING
+ */
 
 static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                        uint arg_num,
@@ -860,5 +816,141 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                                                  arg_info, start, size);
     }
     return false;
+}
+
+/***************************************************************************
+ * SHADOW PER-SYSCALL HANDLING
+ */
+
+static void
+handle_post_CreateThread(void *drcontext, int sysnum, per_thread_t *pt,
+                         dr_mcontext_t *mc)
+{
+    if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        /* Even on XP+ where csrss frees the stack, the stack alloc happens
+         * in-process and we see it.  The TEB alloc, however, is done by
+         * the kernel, and kernel32!CreateRemoteThread writes to the TEB
+         * prior to the thread resuming, so we handle it here.
+         * We also process the TEB in set_thread_initial_structures() in
+         * case someone creates a thread remotely, or in-process but custom
+         * so it's not suspended at this point.
+         */
+        HANDLE thread_handle;
+        /* If not suspended, let set_thread_initial_structures() handle it to
+         * avoid races: though since setting as defined the only race would be
+         * the thread exiting
+         */
+        if (pt->sysarg[7]/*bool suspended*/ &&
+            is_current_process((HANDLE)pt->sysarg[3]) &&
+            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
+            TEB *teb = get_TEB_from_handle(thread_handle);
+            LOG(1, "TEB for new thread: "PFX"\n", teb);
+            set_teb_initial_shadow(teb);
+        }
+    }
+}
+
+static bool
+handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
+                          dr_mcontext_t *mc)
+{
+    if (is_current_process((HANDLE)pt->sysarg[3])) {
+        create_thread_info_t info;
+        if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
+            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
+                         info.client_id.buffer_size, mc, "PCLIENT_ID");
+            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
+                         info.teb.buffer_size, mc, "PTEB");
+        }
+    }
+    return true;
+}
+
+static void
+handle_post_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
+                           dr_mcontext_t *mc)
+{
+    if (is_current_process((HANDLE)pt->sysarg[3]) &&
+        NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        HANDLE thread_handle;
+        create_thread_info_t info;
+        /* See notes in handle_post_CreateThread() */
+        if (pt->sysarg[6]/*bool suspended*/ &&
+            safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
+            TEB *teb = get_TEB_from_handle(thread_handle);
+            LOG(1, "TEB for new thread: "PFX"\n", teb);
+            set_teb_initial_shadow(teb);
+        }
+        if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
+            check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
+                         info.client_id.buffer_size, mc, "PCLIENT_ID");
+            check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
+                         info.teb.buffer_size, mc, "PTEB");
+        }
+    }
+}
+
+static bool
+handle_pre_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
+                             dr_mcontext_t *mc)
+{
+    create_proc_thread_info_t info;
+    if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, info.nt_path_to_exe.buffer,
+                     info.nt_path_to_exe.buffer_size, mc, "path to exe");
+        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
+                     info.client_id.buffer_size, mc, "PCLIENT_ID");
+        /* XXX i#98: there are other IN/OUT params but exact form not clear */
+    }
+    return true;
+}
+
+static void
+handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
+                              dr_mcontext_t *mc)
+{
+    if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        create_proc_thread_info_t info;
+        if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
+            check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
+                         info.client_id.buffer_size, mc, "PCLIENT_ID");
+            /* XXX i#98: there are other IN/OUT params but exact form not clear */
+        }
+    }
+}
+
+bool
+os_shadow_pre_syscall(void *drcontext, int sysnum)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    dr_mcontext_t mc;
+    dr_get_mcontext(drcontext, &mc, NULL); /* move up once have more cases */
+    if (sysnum == sysnum_CreateThreadEx)
+        return handle_pre_CreateThreadEx(drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_CreateUserProcess)
+        return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
+    else
+        return true; /* execute syscall */
+}
+
+void
+os_shadow_post_syscall(void *drcontext, int sysnum)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    dr_mcontext_t mc;
+    dr_get_mcontext(drcontext, &mc, NULL); /* move up once have more cases */
+    /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
+     * client_post_syscall() where common/alloc.c identifies the sysnum: but
+     * for things that don't have anything to do w/ mem alloc I think it's
+     * cleaner to have it all in here rather than having to edit both files.
+     * Perhaps NtContinue and NtSetContextThread should also be here?  OTOH,
+     * the teb is an alloc.
+     */
+    if (sysnum == sysnum_CreateThread)
+        handle_post_CreateThread(drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_CreateThreadEx)
+        handle_post_CreateThreadEx(drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_CreateUserProcess)
+        handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
 }
 

@@ -1048,4 +1048,94 @@ typedef struct _CHANNEL_MESSAGE {
     ULONG unknown;
 } CHANNEL_MESSAGE, *PCHANNEL_MESSAGE;
 
+/***************************************************************************
+ * from DynamoRIO core/win32/ntdll.h
+ */
+
+/* Speculated arg 10 to NtCreateUserProcess.
+ * Note the similarities to CreateThreadEx arg 11 below.  Struct starts with size then
+ * after that looks kind of like an array of 16 byte (32 on 64-bit) elements corresponding
+ * to the IN and OUT informational ptrs.  Each array elment consists of a ?flags? then
+ * the sizeof of the IN/OUT ptr buffer then the ptr itself then 0.
+ */
+
+typedef enum { /* NOTE - these are speculative */
+    THREAD_INFO_ELEMENT_BUFFER_IS_INOUT = 0x00000, /* buffer is ??IN/OUT?? */
+    THREAD_INFO_ELEMENT_BUFFER_IS_OUT   = 0x10000, /* buffer is IN (?) */
+    THREAD_INFO_ELEMENT_BUFFER_IS_IN    = 0x20000, /* buffer is OUT (?) */
+} thread_info_elm_buf_access_t;
+
+typedef enum { /* NOTE - these are speculative */
+    THREAD_INFO_ELEMENT_CLIENT_ID       = 0x3, /* buffer is CLIENT_ID - OUT */
+    THREAD_INFO_ELEMENT_TEB             = 0x4, /* buffer is TEB * - OUT */
+    THREAD_INFO_ELEMENT_NT_PATH_TO_EXE  = 0x5, /* buffer is wchar * path to exe
+                                                * [ i.e. L"\??\c:\foo.exe" ] - IN */
+    THREAD_INFO_ELEMENT_EXE_STUFF       = 0x6, /* buffer is exe_stuff_t (see above) 
+                                                * - INOUT */
+    THREAD_INFO_ELEMENT_UNKNOWN_1       = 0x9, /* Unknown - ptr_uint_t sized
+                                                * [ observed 1 ] - IN */
+} thread_info_elm_buf_type_t;
+
+typedef struct _thread_info_element_t { /* NOTE - this is speculative */
+    ptr_uint_t flags;   /* thread_info_elm_buf_access_t | thread_info_elm_buf_type_t */
+    size_t buffer_size; /* sizeof of buffer, in bytes */
+    void *buffer;       /* flags determine disposition, could be IN or OUT or both */
+    ptr_uint_t unknown;  /* [ observed always 0 ] */
+} thread_info_elm_t;
+
+typedef struct _exe_stuff_t { /* NOTE - this is speculative */
+    OUT void *exe_entrypoint_addr; /* Entry point to the exe being started. */
+    // ratio of uint32 to ptr_uint_t assumes no larger changes between 32 and 64-bit
+    ptr_uint_t unknown1[3]; // possibly intermixed with uint32s below IN? OUT?
+    uint unknown2[8];       // possible intermixed with ptr_uint_ts above IN? OUT?
+} exe_stuff_t;
+
+typedef struct _create_proc_thread_info_t { /* NOTE - this is speculative */
+    size_t struct_size; /* observed 0x34 or 0x44 (0x68 on 64-bit) = sizeof(this struct) */
+    /* Observed - first thread_info_elm_t always 
+     * flags = 0x20005
+     * buffer_size = varies (sizeof buffer string in bytes)
+     * buffer = wchar * : nt path to executable i.e. "\??\c:\foo.exe" - IN */
+    thread_info_elm_t nt_path_to_exe;
+    /* Observed - second thread_info_elm_t always
+     * flags = 0x10003
+     * buffer_size = sizeof(CLIENT_ID)
+     * buffer = PCLIENT_ID : OUT */
+    thread_info_elm_t client_id;
+    /* Observed - third thread_info_elm_t always
+     * flags = 0x6
+     * buffer_size = 0x30 (or 0x40 on 64-bit) == sizeof(exe_stuff_t)
+     * buffer = exe_stuff_t * : IN/OUT */
+    thread_info_elm_t exe_stuff;
+    /* While the first three thread_info_elm_t have been present in every call I've seen
+     * (and attempts to remove or re-arrange them caused the system call to fail,
+     * assuming I managed to do it right), there's more variation in the later fields
+     * (sometimes present, sometimes not) - most commonly there'll be nothing or just the
+     * TEB * info field (flags = 0x10003) which I've seen here a lot on 32bit. */
+#if 0 /* 0 sized array is non-standard extension */
+    thread_info_elm_t info[];
+#endif
+}  create_proc_thread_info_t;
+
+/* Speculated arg 11 to NtCreateThreadEx.  See the similar arg 10 of
+ * NtCreateUserProcess above. */
+typedef struct _create_thread_info_t { /* NOTE - this is speculative */
+    size_t struct_size; /* observed 0x24 (0x48 on 64-bit) == sizeof(this struct) */
+    /* Note kernel32!CreateThread hardcodes all the values in this structure and
+     * I've never seen any variation elsewhere. Trying to swap the order caused the
+     * system call to fail when I tried it (assuming I did it right). */
+    /* Observed - always
+     * flags = 0x10003
+     * buffer_size = sizeof(CLIENT_ID)
+     * buffer = PCLIENT_ID : OUT */
+    thread_info_elm_t client_id;
+    /* Observed - always
+     * flags = 0x10004
+     * buffer_size = sizeof(CLIENT_ID)
+     * buffer = TEB ** : OUT */
+    thread_info_elm_t teb;
+} create_thread_info_t;
+
+
+
 #endif /* _WINDEFS_H_ */

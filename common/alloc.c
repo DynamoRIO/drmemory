@@ -233,10 +233,11 @@ get_brk(void)
 
 #ifdef WINDOWS
 /* ntdll kernel-entry hook points */
-app_pc addr_KiAPC;
-app_pc addr_KiCallback;
-app_pc addr_KiException;
-app_pc addr_KiRaise;
+static app_pc addr_KiAPC;
+static app_pc addr_KiLdrThunk;
+static app_pc addr_KiCallback;
+static app_pc addr_KiException;
+static app_pc addr_KiRaise;
 #endif /* WINDOWS */
 
 /* We need to track multiple sets of library routines and multiple layers
@@ -631,7 +632,7 @@ static bool
 is_alloc_sysroutine(app_pc pc)
 {
     /* Should switch to table if add many more syscalls */
-    return (pc == addr_KiAPC || pc == addr_KiCallback ||
+    return (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
             pc == addr_KiException || pc == addr_KiRaise);
 }
 #endif
@@ -1508,6 +1509,8 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     if (options.track_allocs) {
         addr_KiAPC = (app_pc) dr_get_proc_address(ntdll_lib,
                                                   "KiUserApcDispatcher");
+        addr_KiLdrThunk = (app_pc) dr_get_proc_address(ntdll_lib,
+                                                       "LdrInitializeThunk");
         addr_KiException = (app_pc) dr_get_proc_address(ntdll_lib,
                                                         "KiUserExceptionDispatcher");
         addr_KiRaise = (app_pc) dr_get_proc_address(ntdll_lib,
@@ -3984,7 +3987,7 @@ alloc_hook(app_pc pc)
             ASSERT(pt->in_heap_routine > 0, "in call_site_table but missed pre");
     } 
 #ifdef WINDOWS
-    else if (pc == addr_KiAPC || pc == addr_KiCallback ||
+    else if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
              pc == addr_KiException || pc == addr_KiRaise) {
         /* our per-thread data is private per callback so we're already handling
          * cbs (though we don't expect callbacks to interrupt heap routines).
@@ -3999,7 +4002,11 @@ alloc_hook(app_pc pc)
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
         }
-        client_handle_Ki(drcontext, pc, &mc);
+        /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
+         * there via APC: only on Vista+ is it a "Ki" routine
+         */
+        if (pc != addr_KiLdrThunk || running_on_Vista_or_later())
+            client_handle_Ki(drcontext, pc, &mc);
         if (pc == addr_KiCallback) {
             per_thread_stack_push(drcontext, pt);
         }
