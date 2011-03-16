@@ -26,6 +26,16 @@
 #define NUM_THREADS 3
 
 int WINAPI
+run_and_exit_func(void *arg)
+{
+    MEMORY_BASIC_INFORMATION mbi;
+    VirtualQuery(&mbi, &mbi, sizeof(mbi));
+    Sleep(100);
+    _endthread(); /* closes the thread handle for us */
+    return 0;
+}
+
+int WINAPI
 run_func(void *arg)
 {
     MEMORY_BASIC_INFORMATION mbi;
@@ -46,7 +56,11 @@ main()
     int i, tid;
     HANDLE hThread;
     printf("Starting\n");
-    /* make some threads and then just exit while they're still
+    /* make some threads that exit to test leaks, etc. */
+    for (i = 0; i < NUM_THREADS; i++) {
+        hThread = (HANDLE) _beginthreadex(NULL, 0, run_and_exit_func, NULL, 0, &tid);
+    }
+    /* make some threads and then just exit the process while they're still
      * running to test exit races (PR 470957)
      */
     for (i = 0; i < NUM_THREADS; i++) {
