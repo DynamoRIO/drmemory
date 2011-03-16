@@ -256,6 +256,9 @@ event_exit(void)
 
     check_reachability(true/*at exit*/);
 
+    if (options.pause_at_exit)
+        wait_for_user("pausing at exit");
+
     instrument_exit();
 
     if (options.perturb)

@@ -147,6 +147,9 @@ OPTION_CLIENT_BOOL(drmemscope, pause_at_unaddressable, false,
 OPTION_CLIENT_BOOL(drmemscope, pause_at_uninitialized, false,
                    "Pause at each uninitialized read",
                    "Identical to -pause_at_unaddressable, but applies to uninitialized access errors.")
+OPTION_CLIENT_BOOL(drmemscope, pause_at_exit, false,
+                   "Pause at exit",
+                   "Pauses at exit, using the same mechanism described in -pause_at_unaddressable.  Meant for examining leaks in the debugger.")
 OPTION_CLIENT_BOOL(client, pause_at_assert, false,
                    "Pause at each debug-build assert",
                    ""TOOLNAME" pauses at the point of each debug-build assert.  On Windows, this pause is a popup window.  On Linux, the pause involves waiting for a keystroke, which may not work well if the application reads from stdin.  In that case consider -pause_via_loop as an additional option.")
