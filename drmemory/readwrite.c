@@ -781,7 +781,7 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
     return opnd;
 }
 
-/* Some source registers we always check.  Note that we don't need to explicitly
+/* Some source operands we always check.  Note that we don't need to explicitly
  * list stack pointers or stringop bases as our basedisp checks already
  * look at those registers.
  */
@@ -793,6 +793,9 @@ always_check_definedness(instr_t *inst, int opnum)
             /* count of loop is important: check it */
             (opc_is_stringop_loop(opc) && opnd_is_reg(instr_get_src(inst, opnum)) &&
              reg_overlap(opnd_get_reg(instr_get_src(inst, opnum)), REG_ECX)) ||
+            /* the comparison operands only: the others are moves */
+            (opc == OP_cmpxchg && opnum > 0/*dst, eax*/) ||
+            (opc == OP_cmpxchg8b && opnum <= 2/*memop, eax, edx*/) ||
             /* always check %cl.  FIXME PR 408549: Valgrind propagates it (if undefined,
              * dest is always undefined), but for us to propagate we need
              * special checks to avoid calling adjust_source_shadow()
@@ -801,6 +804,7 @@ always_check_definedness(instr_t *inst, int opnum)
              (opc_is_gpr_shift_src1(opc) && opnum == 1)));
 }
 
+/* For some instructions we check all source operands for definedness. */
 bool
 instr_check_definedness(instr_t *inst)
 {
@@ -810,13 +814,13 @@ instr_check_definedness(instr_t *inst)
         instr_is_cbr(inst) ||
         (options.check_non_moves && !opc_is_move(opc)) ||
         (options.check_cmps &&
-         /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc,
-          * or a cmpxchg* */
+         /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc.
+          * for cmpxchg* only some operands are compared: see always_check_definedness.
+          */
          ((instr_num_dsts(inst) == 0 &&
            TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) ||
           opc_is_loop(opc) || opc_is_cmovcc(opc) || opc_is_fcmovcc(opc) ||
-          opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps ||
-          opc == OP_cmpxchg || opc == OP_cmpxchg8b)) ||
+          opc == OP_cmps || opc == OP_rep_cmps || opc == OP_repne_cmps)) ||
         /* if eip is a destination we have to check the corresponding
          * source.  for ret or call, the other dsts/srcs are just esp, which
          * has to be checked as an addressing register anyway. */
@@ -1779,7 +1783,7 @@ slow_path(app_pc pc, app_pc decode_pc)
             if (always_defined) {
                 LOG(2, "marking and/or/xor with 0/~0/self as defined @"PFX"\n", pc);
                 /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
-            } else if (check_definedness) {
+            } else if (check_definedness || always_check_definedness(&inst, i)) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
             } else {
                 /* If we're checking, to avoid further errors we do not
