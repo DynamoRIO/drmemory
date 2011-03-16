@@ -33,16 +33,6 @@ malloc.c:162
 !if UNIX
 malloc.c:163
 !endif
-!if UNIX
-Error #5: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
-Error #6: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:244
-Error #7: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:249
-Error #8: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:250
-!endif
 !if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:174
@@ -50,15 +40,18 @@ Error #6: INVALID HEAP ARGUMENT
 malloc.c:181
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
-Error #7: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
-Error #8: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:244
-Error #9: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:249
-Error #10: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:250
+# for now just removing error#
 !endif
+# must be outside of if..endif
+!OUT_OF_ORDER
+: LEAK 42 direct bytes + 17 indirect bytes
+malloc.c:212
+: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:244
+: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
+malloc.c:249
+: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:250
 # summary isn't in stdout when we check it so we check summary in results.txt
 ERRORS FOUND:
       1 unique,    20 total unaddressable access(es)

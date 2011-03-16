@@ -32,14 +32,6 @@ malloc.c:162
 !endif
 !if UNIX
 malloc.c:163
-Error #5: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
-Error #6: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:244
-Error #7: POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:249
-Error #8: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:250
 !endif
 !if WINDOWS
 Error #5: WARNING: heap allocation failed
@@ -52,7 +44,6 @@ malloc.c:181
 !endif
 # must be outside of if..endif
 !OUT_OF_ORDER
-!if WINDOWS
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:212
 : LEAK 16 direct bytes + 48 indirect bytes
@@ -61,4 +52,3 @@ malloc.c:244
 malloc.c:249
 : LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:250
-!endif

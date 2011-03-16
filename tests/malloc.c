@@ -192,11 +192,11 @@ main()
 
     /* test leaks */
 
-    /* avoid non-determinism due to the order of drmem's hashtable walk:
-     * for this test drmem's malloc table has 12 bits, so be sure to get
-     * the following allocs all in order in the table by not
-     * wrapping around in the bottom 12 bits.  We assume all the
-     * allocs below take < 512 bytes.
+    /* avoid non-determinism due to the order of drmem's hashtable walk: for
+       this test drmem's malloc table has 12 bits, so be sure to get the
+       following allocs all in order in the table by not wrapping around in the
+       bottom 12 bits.  We assume all the allocs below take < 512 bytes.  Note:
+       this isn't always sufficient, but .res matches out-of-order now
      */
     {
         static char *p;
@@ -225,8 +225,8 @@ main()
      * = is head pointer, - is mid-chunk pointer:
      *
      *       X===========
-     *       ||         ||
-     *       v           V
+     *                  ||
+     *                   V
      * A ==> B ==> C --> D
      *       |      \\=> E
      *       |       \-> F
@@ -236,8 +236,8 @@ main()
      * 1) Leak pA + pB + pC + pE
      * 2) Possible leak pF
      * 3) Leak pX + pD
-     * Alternatively if pX is scanned first we could have pA by itself
-     * and pX with pB, pC, pD, and pE.
+     * Note: I used to have pX=>pB to further test dup dependents, but
+     * it's too difficult to control the ordering on all platforms.
      */
     {
         char *pA, *pB, *pC, *pD, *pE, *pF, *pX;
@@ -254,9 +254,8 @@ main()
         *((char **)pC) = pD + sizeof(pD);
         *((char **)(pC + sizeof(pC))) = pE;
         *((char **)(pC + 2*sizeof(pC))) = pF + sizeof(pF);
-        *((char **)pX) = pB;
         *((char **)(pX + sizeof(pX))) = pD;
-    }    
+    }
 
     printf("all done\n");
     return 0;
