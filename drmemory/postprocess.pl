@@ -152,10 +152,14 @@ $no_leak_info = 0;
 $no_possible_leak_info = 0;
 $client_ignored = "";
 # these are totals: unique not tracked separately
-$client_suppressed_errors = 0;
-$client_suppressed_leaks = 0;
-$post_suppressed_errors = 0;
-$post_suppressed_leaks = 0;
+$client_suppressed_errors_default = 0;
+$client_suppressed_errors_user = 0;
+$client_suppressed_leaks_default = 0;
+$client_suppressed_leaks_user = 0;
+$post_suppressed_errors_default = 0;
+$post_suppressed_errors_user = 0;
+$post_suppressed_leaks_default = 0;
+$post_suppressed_leaks_user = 0;
 $leaks_only = 0; # right now this also means Dr. Heapstat
 
 if (!GetOptions("p=s" => \$prefix,
@@ -241,7 +245,7 @@ print "INFO: postprocess pid = $$\n" if ($verbose);
 if ($use_default_suppress) {
     die "Error: cannot find $default_suppress_file\n"
         unless (-f $default_suppress_file);
-    read_suppression_info($default_suppress_file);
+    read_suppression_info($default_suppress_file, 1);
 }
 
 # Both <mod+offs> style and mod!func style callstacks are written to the same
@@ -249,7 +253,7 @@ if ($use_default_suppress) {
 #
 open(SUPP_OUT, "> $logdir/suppress.txt") ||
     die "Error creating $logdir/suppress.txt\n";
-read_suppression_info($supp_syms_file) if (-f $supp_syms_file);
+read_suppression_info($supp_syms_file, 0) if (-f $supp_syms_file);
 
 $SIG{PIPE} = \&sigpipe_handler;
 sub sigpipe_handler {
@@ -584,12 +588,12 @@ sub process_all_errors()
             $client_ignored = ""; # reset so we don't accumulate
         } elsif ($found_ignored_start) {
             if (/^\s*(\d+) (.+)$/) {
-                my $count = $1;
-                my $what = $2;
-                if ($what =~ /suppressed error/) {
-                    $client_suppressed_errors = $count;
-                } elsif ($what =~ /suppressed leak/) {
-                    $client_suppressed_leaks = $count;
+                if (/(\d+) user-suppressed, *(\d+) default-suppressed error/) {
+                    $client_suppressed_errors_default = $2;
+                    $client_suppressed_errors_user = $1;
+                } elsif (/(\d+) user-suppressed, *(\d+) default-suppressed leak/) {
+                    $client_suppressed_leaks_default = $2;
+                    $client_suppressed_leaks_user = $1;
                 } else {
                     $client_ignored .= $_;
                 }
@@ -658,16 +662,26 @@ sub process_one_error($raw_error_lines_array_ref)
         } else {
             # If doesn't pass the source filter we count toward suppression stats
             # since not worth having separate set of counts.
+            my $is_default = $supp_is_default{${$err_str_ref}};
             if ($error{"type"} =~ /LEAK/) {
-                $post_suppressed_leaks++;
+                if ($is_default) {
+                    $post_suppressed_leaks_default++;
+                } else {
+                    $post_suppressed_leaks_user++;
+                }
             } else {
-                $post_suppressed_errors++;
+                if ($is_default) {
+                    $post_suppressed_errors_default++;
+                } else {
+                    $post_suppressed_errors_user++;
+                }
             }
             # If the error was suppressed then reclaim the error number,
             # otherwise error numbers won't be sequential in results.txt.
             $errnum--;
             $error_cache{$err_str}{"errno"} = 0;
             $error_cache{$err_str}{"suppressed"} = 1;
+            $error_cache{$err_str}{"supp_is_default"} = $is_default;
         }
     } elsif ($first_line !~ /LEAK/) {
         # For leaks we do NOT increase dup or suppress counts b/c we assume dups
@@ -676,9 +690,17 @@ sub process_one_error($raw_error_lines_array_ref)
         $error_cache{$err_str}{"dup_count"}++;
         if ($error_cache{$err_str}{"suppressed"}) {
             if ($error_cache{$err_str}{"type"} =~ /LEAK/) {
-                $post_suppressed_leaks++;
+                if ($error_cache{$err_str}{"supp_is_default"}) {
+                    $post_suppressed_leaks_default++;
+                } else {
+                    $post_suppressed_leaks_user++;
+                }
             } else {
-                $post_suppressed_errors++;
+                if ($error_cache{$err_str}{"supp_is_default"}) {
+                    $post_suppressed_errors_default++;
+                } else {
+                    $post_suppressed_errors_user++;
+                }
             }
         } else {
             $error_summary{$error_cache{$err_str}{"type"}}{"total"}++;
@@ -1062,11 +1084,13 @@ sub print_summary($fh, $reset, $summary_only)
     }
     print $fh $pfx."ERRORS IGNORED:\n";
     if (!$leaks_only) {
-        printf $fh "%s  %5d suppressed error(s)\n",
-               $pfx, $client_suppressed_errors + $post_suppressed_errors;
+        printf $fh "%s  %5d user-suppressed, %5d default-suppressed error(s)\n",
+               $pfx, $client_suppressed_errors_user + $post_suppressed_errors_user;
+               $client_suppressed_errors_default + $post_suppressed_errors_default;
     }
-    printf $fh "%s  %5d suppressed leak(s)\n",
-               $pfx, $client_suppressed_leaks + $post_suppressed_leaks;
+    printf $fh "%s  %5d user-suppressed, %5d default-suppressed leak(s)\n",
+               $pfx, $client_suppressed_leaks_user + $post_suppressed_leaks_user;
+               $client_suppressed_leaks_default + $post_suppressed_leaks_default;
     if ($client_ignored ne '') {
         $tmp_lines = $client_ignored;
         $tmp_lines =~ s/^/$default_prefix/msg if ($fh == \*STDERR);
@@ -1406,9 +1430,9 @@ sub lookup_symbol($modpath_in, $addr_in)
 # WARNING in function foo doesn't suppress all real errors in that
 # function as well!
 #
-sub read_suppression_info($file_in)
+sub read_suppression_info($file_in, $default_in)
 {
-    my ($file) = @_;
+    my ($file, $default) = @_;
     my $valid_frame = 0;    # to track valid frames followed by invalid ones
     my $callstack = "";
     my $type = "";
@@ -1501,6 +1525,7 @@ sub add_suppress_callstack($type, $callstack)
     # We want prefix matching but using /m so need \A not ^
     $callstack = "\\A" . $callstack;
     push @{ $supp_syms_list{$type} }, $callstack;
+    $supp_is_default{$callstack} = $default;
 }
 
 #-------------------------------------------------------------------------------

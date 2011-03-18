@@ -47,14 +47,17 @@ static uint num_leaks_ignored;
 static size_t num_bytes_leaked;
 static size_t num_bytes_possible_leaked;
 static uint num_suppressions;
-static uint num_suppressions_matched;
-static uint num_suppressed_leaks;
+static uint num_suppressions_matched_user;
+static uint num_suppressed_leaks_user;
+static uint num_suppressions_matched_default;
+static uint num_suppressed_leaks_default;
 static uint num_reachable_leaks;
 
 static uint saved_throttled_leaks;
 static uint saved_total_leaks;
 static uint saved_leaks_ignored;
-static uint saved_suppressed_leaks;
+static uint saved_suppressed_leaks_user;
+static uint saved_suppressed_leaks_default;
 static uint saved_possible_leaks_total;
 static uint saved_possible_leaks_unique;
 static uint saved_reachable_leaks;
@@ -113,6 +116,7 @@ typedef struct _stored_error_t {
     uint errtype; /* from ERROR_ enum */
     uint count;
     bool suppressed;
+    bool suppressed_by_default;
     packed_callstack_t *pcs;
     /* We also keep a linked list so we can iterate in id order */
     struct _stored_error_t *next;
@@ -192,6 +196,7 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
 typedef struct _suppress_spec_t {
     uint num_frames;
     char **frames; /* variable-sized array of strings */
+    bool is_default; /* from default file, or user-specified? */
     /* During initial reading it's easier to build a linked list rather than
      * add resizable array support.  We could convert to an array after
      * reading both suppress files, but we have pointers scattered all
@@ -252,7 +257,7 @@ report_malformed_suppression(int type, uint num_frames, const char **frames,
 }
 
 static suppress_spec_t *
-add_suppress_spec(int type, uint num_frames, char **frames)
+add_suppress_spec(int type, uint num_frames, char **frames, bool is_default)
 {
     suppress_spec_t *spec;
     uint i;
@@ -274,6 +279,7 @@ add_suppress_spec(int type, uint num_frames, char **frames)
         spec->frames[i] = frames[i];
         frames[i] = NULL;
     }
+    spec->is_default = is_default;
     /* insert into list */
     spec->next = supp_list[type];
     supp_list[type] = spec;
@@ -283,7 +289,7 @@ add_suppress_spec(int type, uint num_frames, char **frames)
 }
 
 static void
-read_suppression_file(file_t f)
+read_suppression_file(file_t f, bool is_default)
 {
     char *line, *newline = NULL;
     int bufread = 0, bufwant;
@@ -369,7 +375,7 @@ read_suppression_file(file_t f)
             if (curtype > -1) {
                 /* the prior callstack completed successfully */
                 if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
-                    add_suppress_spec(curtype, num_frames, frames);
+                    add_suppress_spec(curtype, num_frames, frames, is_default);
             }
             /* starting a new callstack */
             curtype = type;
@@ -422,7 +428,7 @@ read_suppression_file(file_t f)
     if (curtype > -1) {
         /* the last callstack completed successfully */
         if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
-            add_suppress_spec(curtype, num_frames, frames);
+            add_suppress_spec(curtype, num_frames, frames, is_default);
     }
     for (i = 0; i < options.callstack_max_frames; i++) {
         if (frames[i] != NULL)
@@ -445,7 +451,7 @@ open_and_read_suppression_file(const char *fname, bool is_default)
             dr_abort();
             return;
         }
-        read_suppression_file(f);
+        read_suppression_file(f, is_default);
         /* Don't print to stderr about default suppression file */
         NOTIFY_COND(!is_default, f_global, "Recorded %d suppression(s) from %s %s\n",
                     num_suppressions - prev_suppressions, label, fname);
@@ -646,14 +652,17 @@ stack_matches_suppression(const char *error_stack, const suppress_spec_t *supp)
 }
 
 static bool
-on_suppression_list(uint type, const char *error_stack)
+on_suppression_list(uint type, const char *error_stack, bool *on_default_list OUT)
 {
     suppress_spec_t *supp;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     for (supp = supp_list[type]; supp != NULL; supp = supp->next) {
         LOG(3, "supp: comparing to suppression pattern\n");
-        if (stack_matches_suppression(error_stack, supp))
+        if (stack_matches_suppression(error_stack, supp)) {
+            if (on_default_list != NULL)
+                *on_default_list = supp->is_default;
             return true;
+        }
     }
     LOG(3, "supp: no match\n");
 #ifdef USE_DRSYMS
@@ -805,8 +814,10 @@ report_fork_init(void)
     num_bytes_leaked = 0;
     num_bytes_possible_leaked = 0;
     num_suppressions = 0;
-    num_suppressions_matched = 0;
-    num_suppressed_leaks = 0;
+    num_suppressions_matched_user = 0;
+    num_suppressed_leaks_user = 0;
+    num_suppressions_matched_default = 0;
+    num_suppressed_leaks_default = 0;
     num_reachable_leaks = 0;
     /* FIXME: provide hashtable_clear() */
     hashtable_delete(&error_table);
@@ -881,10 +892,10 @@ report_summary_to_file(file_t f, bool stderr_too)
         }
     }
     NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
-    NOTIFY_COND(notify, f, "  %5d suppressed error(s)"NL,
-                num_suppressions_matched);
-    NOTIFY_COND(notify, f, "  %5d suppressed leak(s)"NL,
-                num_suppressed_leaks);
+    NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
+                num_suppressions_matched_user, num_suppressions_matched_default);
+    NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
+                num_suppressed_leaks_user, num_suppressed_leaks_default);
     NOTIFY_COND(notify, f, "  %5d ignored assumed-innocuous system leak(s)"NL,
                 num_leaks_ignored);
     NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
@@ -1220,6 +1231,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     bool reporting = false;
     ssize_t len = 0;
     size_t sofar = 0;
+    bool default_suppress = false;
 
     /* Our report_max throttling is post-dup-checking, to make the option
      * useful (else if 1st error has 20K instances, won't see any others).
@@ -1237,7 +1249,10 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     err = record_error(type, NULL, loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {
-            num_suppressions_matched++;
+            if (err->suppressed_by_default)
+                num_suppressions_matched_default++;
+            else
+                num_suppressions_matched_user++;
         } else {
             ASSERT(err->id != 0, "duplicate should have id");
             /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
@@ -1260,11 +1275,15 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     if (!options.thread_logs)
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
 
-    reporting = !on_suppression_list(type, cstack_start);
+    reporting = !on_suppression_list(type, cstack_start, &default_suppress);
     if (!reporting) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
         err->suppressed = true;
-        num_suppressions_matched++;
+        err->suppressed_by_default = default_suppress;
+        if (err->suppressed_by_default)
+            num_suppressions_matched_default++;
+        else
+            num_suppressions_matched_user++;
         num_total[type]--;
     } else {
         acquire_error_number(err);
@@ -1404,7 +1423,8 @@ report_leak_stats_checkpoint(void)
     saved_throttled_leaks = num_throttled_leaks;
     saved_total_leaks = num_total_leaks;
     saved_leaks_ignored = num_leaks_ignored;
-    saved_suppressed_leaks = num_suppressed_leaks;
+    saved_suppressed_leaks_user = num_suppressed_leaks_user;
+    saved_suppressed_leaks_default = num_suppressed_leaks_default;
     saved_possible_leaks_unique = num_unique[ERROR_POSSIBLE_LEAK];
     saved_possible_leaks_total = num_total[ERROR_POSSIBLE_LEAK];
     saved_reachable_leaks = num_reachable_leaks;
@@ -1426,7 +1446,8 @@ report_leak_stats_revert(void)
     num_throttled_leaks = saved_throttled_leaks;
     num_total_leaks = saved_total_leaks;
     num_leaks_ignored = saved_leaks_ignored;
-    num_suppressed_leaks = saved_suppressed_leaks;
+    num_suppressed_leaks_user = saved_suppressed_leaks_user;
+    num_suppressed_leaks_default = saved_suppressed_leaks_default;
     num_unique[ERROR_POSSIBLE_LEAK] = saved_possible_leaks_unique;
     num_total[ERROR_POSSIBLE_LEAK] = saved_possible_leaks_total;
     num_reachable_leaks = saved_reachable_leaks;
@@ -1474,6 +1495,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     /* only real and possible leaks go to results.txt */
     file_t tofile = f_global;
 #endif
+    bool default_suppress = false;
 
     /* Only consider report_leak_max for check_leaks, and don't count
      * reachable toward the max
@@ -1548,9 +1570,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             err = record_error(type, pcs, NULL, NULL, true/*hold lock*/);
             if (err->count > 1) {
                 /* Duplicate */
-                if (err->suppressed)
-                    num_suppressed_leaks++;
-                else {
+                if (err->suppressed) {
+                    if (err->suppressed_by_default)
+                        num_suppressed_leaks_default++;
+                    else
+                        num_suppressed_leaks_user++;
+                } else {
                     /* We only count bytes for non-suppressed leaks */
                     /* Total size does not distinguish direct from indirect (PR 576032) */
                     if (maybe_reachable)
@@ -1580,7 +1605,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 
         /* only real and possible leaks can be suppressed */
         if (type < ERROR_MAX_VAL)
-            suppressed = on_suppression_list(type, cstack_start);
+            suppressed = on_suppression_list(type, cstack_start, &default_suppress);
 
         sofar = 0; /* now we print to start */
         if (!suppressed && type < ERROR_MAX_VAL) {
@@ -1626,7 +1651,11 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         BUFPRINT(buf, bufsz, sofar, len, label);
 
     if (suppressed) {
-        num_suppressed_leaks++;
+        err->suppressed_by_default = default_suppress;
+        if (err->suppressed_by_default)
+            num_suppressed_leaks_default++;
+        else
+            num_suppressed_leaks_user++;
         if (err != NULL) {
             err->suppressed = true;
             num_total[type]--;

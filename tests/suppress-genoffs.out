@@ -37,5 +37,5 @@ done
 :::Dr.Memory:::       1 unique,     1 total warning(s)
 :::Dr.Memory:::       5 unique,     5 total,     48 byte(s) of leak(s)
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
-:::Dr.Memory:::       0 suppressed error(s)
-:::Dr.Memory:::       0 suppressed leak(s)
+:::Dr.Memory:::       0 user-suppressed error(s)
+:::Dr.Memory:::       0 user-suppressed leak(s)

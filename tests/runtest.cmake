@@ -309,6 +309,10 @@ endforeach (str)
 
 string(REGEX MATCHALL "([^\n]+)\n" lines "${outmatch}")
 set(cmd_tomatch "${cmd_err}")
+
+# remove default-suppressed errors (varies by platform: i#339)
+string(REGEX REPLACE ", *[0-9]+ default-suppressed" "" cmd_tomatch "${cmd_tomatch}")
+
 foreach (line ${lines})
   # we include the newline in the match
   if (WIN32)
