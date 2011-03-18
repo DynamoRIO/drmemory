@@ -1482,6 +1482,8 @@ sub add_suppress_callstack($type, $callstack)
     #   respectively and escape anything else that perl considers non-literal.
     # "..." matches zero or more frames. Turn it into "(.*\n)*".
     # NB since we don't specify /s when matching, "." will not match newline.
+    $callstack =~ s/\[/\\[/g;
+    $callstack =~ s/\]/\\]/g;
     $callstack =~ s/\./\\./g;
     $callstack =~ s/\?/./g;
     $callstack =~ s/\*/.*/g;

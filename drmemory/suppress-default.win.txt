@@ -22,10 +22,16 @@
 # Dr. Memory default suppression file
 
 ##################################################
-# i#357: real leak in VS2008 STL std::numpunct<char>::_Init
+# i#257: real leak in VS2008 STL std::numpunct<char>::_Init
 
 LEAK
 *!operator new
+*!std::_Maklocstr<char>
+*!std::numpunct<char>::_Init
+
+LEAK
+*!operator new
+*!operator new[]
 *!std::_Maklocstr<char>
 *!std::numpunct<char>::_Init
 
