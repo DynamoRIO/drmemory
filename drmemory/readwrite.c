@@ -1041,39 +1041,12 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
                            uint sz, uint *shadow)
 {
     bool match = false;
-#ifdef WINDOWS
-    byte *pc;
-    if (loc->type != APP_LOC_PC)
-        return false; /* syscall */
-    pc = loc_to_pc(loc);
-    /* FIXME: not sure what was happening here: why weren't the heap headers
-     * unaddressable?  And why was I marking as defined along with suppressing?
-     * I'm not enabling this code on Linux until re-verify it's legit.
-     * Also, if using -loads_use_table, we'll propagate undefined heap
-     * headers bits and when they bubble up we won't recognize as exceptions,
-     * so better to not have any heap definedness exceptions.
+    /* I used to have an exception for uninits in heap headers, but w/
+     * proper operation headers should be unaddr.  Plus, the exception here,
+     * which marked as defined, was only in slowpath: in fastpath the uninit
+     * bits are propagated and won't be recognized as heap headers when
+     * they bubble up.  Thus it was removed since no longer necessary.
      */
-    if (options.track_heap) {
-        void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-        if (pt->in_heap_routine > 0
-            /* For RtlpHeapIsLocked, which is not exported, we allow reads from ntdll
-             * to heap headers. */
-            IF_WINDOWS(|| (pc > ntdll_base && pc < ntdll_end && !write))) {
-            /* FIXME: ideally we would know exactly which fields were header
-             * fields and which ones were ok to write to, to avoid heap corruption
-             * by bugs in heap routines (and avoid allowing bad reads by other
-             * ntdll routines like memcpy).
-             */
-            LOG(2, "ignoring uninitialized %s by heap routine "PFX" to "PFX"\n",
-                 write ? "write" : "read", pc, addr);
-            STATS_INC(heap_header_exception);
-            shadow_set_byte(addr, SHADOW_DEFINED);
-            *shadow = SHADOW_DEFINED;
-            return true;
-        }
-    }
-#endif
     /* We now check for result_is_always_defined() up front in the
      * slow path to avoid the redundant decode here, which can be a
      * noticeable performance hit (PR 622253)
@@ -1296,7 +1269,18 @@ shadow_val_source_shift(instr_t *inst, int opc, int opnum, uint opsz)
             shift = 1 - opnum;
             break;
         case OP_cmpxchg8b:
-            shift = opnum % 2;
+            /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
+             * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
+             * we just combine all 3 sources and write the result to both dests.
+             */
+            switch (opnum) {
+                case 0: shift = 0; break;
+                case 1: shift = 0; break;
+                case 2: shift = 1; break;
+                case 3: shift = 1; break;
+                case 4: shift = 0; break;
+                default: ASSERT(false, "invalid opnum");
+            }
             break;
         default: /* no shift: leave as 0 */
             break;
@@ -1391,7 +1375,16 @@ assign_register_shadow(instr_t *inst, int opnum,
                 shift = opnum;
                 break;
             case OP_cmpxchg8b:
-                shift = opnum % 2;
+                /* opnds: cmpxchg8b mem8 %eax %edx %ecx %ebx -> mem8 %eax %edx
+                 * operation: if (edx:eax == mem8) mem8 = ecx:ebx; else edx:eax = mem8
+                 * we just combine all 3 sources and write the result to both dests.
+                 */
+                switch (opnum) {
+                    case 0: shift = 0; break;
+                    case 1: shift = 0; break;
+                    case 2: shift = 1; break;
+                    default: ASSERT(false, "invalid opnum");
+                }
                 break;
             case OP_bswap:
                 ASSERT(regsz == 4, "invalid bswap opsz");

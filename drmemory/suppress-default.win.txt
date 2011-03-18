@@ -46,3 +46,12 @@ KERNEL*.dll!CreateRemoteThread*
 POSSIBLE LEAK
 ...
 ntdll.dll!RtlInitializeCriticalSection
+
+##################################################
+# i#337: real bug (I think) in RtlpLowFragHeapAllocFromContext.
+# w/o symbols RtlpLowFragHeapAllocFromContext shows up
+# as LdrUnlockLoaderLock so we match all.
+
+UNINITIALIZED READ
+ntdll.dll!*
+ntdll.dll!RtlAllocateHeap
