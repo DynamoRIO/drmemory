@@ -34,7 +34,7 @@ malloc.c:181
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 bytes
-malloc.c:212
+malloc.c:214
 Error #5: LEAK 17 bytes
 malloc.c:197
 !endif
@@ -42,5 +42,5 @@ malloc.c:197
 Error #2: LEAK 17 bytes
 malloc.c:197
 Error #3: LEAK 42 bytes
-malloc.c:212
+malloc.c:214
 !endif

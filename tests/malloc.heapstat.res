@@ -23,10 +23,10 @@
 # Different order based on hashtable iterator order
 !OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
+malloc.c:214
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:249
+malloc.c:251
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:250
+malloc.c:252
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:244
+malloc.c:246

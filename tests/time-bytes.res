@@ -34,17 +34,17 @@ malloc.c:181
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
+malloc.c:214
 Error #5: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:244
+malloc.c:246
 Error #6: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:250
+malloc.c:252
 !endif
 !if UNIX
 Error #2: LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:212
+malloc.c:214
 Error #3: LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:244
+malloc.c:246
 Error #4: LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:250
+malloc.c:252
 !endif

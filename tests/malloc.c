@@ -204,6 +204,8 @@ main()
         free(p);
         if (0xfff - ((int)p & 0xfff) < 512) /* truncation ok in cast */
             p = malloc(0xfff - ((int)p & 0xfff));
+        else
+            p = NULL; /* prevent from pointing where p1 will be (i#340) */
     }
 
     /* error: both leaked, though one points to other neither is reachable
