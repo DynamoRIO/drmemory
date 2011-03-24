@@ -1804,6 +1804,7 @@ event_nudge(void *drcontext, uint64 argument)
     malloc_unlock();
     check_for_leaks(false/*!at_exit*/);
     print_nudge_header(f_global);
+    NOTIFY("Received nudge\n", logsubdir);
 }
 
 static void

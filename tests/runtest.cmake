@@ -196,8 +196,7 @@ if ("${cmd}" MATCHES "run_in_bg")
   # wait for summary output: last line has "report_leak_max" on it
   # we also need to wait for Details line
   if (TOOL_DR_HEAPSTAT)
-    # there is no tool output so just wait for both nudges
-    set(lookfor "received nudge.*received nudge")
+    set(lookfor "Received nudge.*Received nudge")
   else ()
     set(lookfor "report_leak_max\n.*Details: ")
   endif ()
@@ -465,8 +464,8 @@ if (resmatch)
     # we're the only ones who have the suppress.txt path.
     # not using REGEX since path has \ on windows
     string(REPLACE "results.txt" "suppress.txt" suppfile "${resfile_using}")
-    # hack: use dr_debug marker to know where to insert
-    string(REPLACE "-dr_debug@" "-suppress@${suppfile}@-dr_debug@"
+    # hack: use -dr marker to know where to insert
+    string(REPLACE "-dr@" "-suppress@${suppfile}@-dr@"
       cmd_with_at "${cmd_with_at}")
     # remove ops to fit under limit on cygwin w/ -libc_addrs
     string(REPLACE "@-no_gen_suppress_syms" "" cmd_with_at "${cmd_with_at}")

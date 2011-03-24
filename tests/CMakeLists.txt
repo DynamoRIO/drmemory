@@ -120,6 +120,16 @@ else (UNIX)
   # With /MT, cs2bug.cpp gets link errors with libcpmtd.lib so we remove _DEBUG:
   string(REGEX REPLACE "/D_DEBUG" "" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+  string(REGEX REPLACE "/O2" "/Od" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+    "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+  if (NOT DEBUG_BUILD)
+    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      foreach (var C;CXX;EXE_LINKER;MODULE_LINKER;SHARED_LINKER)
+        set(CMAKE_${var}_FLAGS_RELEASE ${CMAKE_${var}_FLAGS_DEBUG})
+        set(CMAKE_${var}_FLAGS_RELWITHDEBINFO ${CMAKE_${var}_FLAGS_DEBUG})
+      endforeach ()
+    endif ()
+  endif (NOT DEBUG_BUILD)
 endif (UNIX)
 if (DEBUG_BUILD)
   # use debug DR as well to catch asserts there

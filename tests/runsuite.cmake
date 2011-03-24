@@ -124,7 +124,7 @@ foreach (tool ${tools})
       ${tool}
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
-      " ON ON "") # only run release tests for long suite
+      " OFF ON "") # we do run some release tests in short suite
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)

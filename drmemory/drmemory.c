@@ -1189,7 +1189,7 @@ event_nudge(void *drcontext, uint64 argument)
     check_reachability(false/*!at exit*/);
     report_summary();
     report_leak_stats_revert();
-    LOGF(0, f_global, "NUDGE\n");
+    ELOGF(0, f_global, "NUDGE\n");
 }
 
 static void

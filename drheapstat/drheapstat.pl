@@ -205,10 +205,10 @@ my $win32_a2l = "$drheapstat_home/$bindir/winsyms.exe";
 launch_vistool() if ($visualize);
 show_leaks() if ($view_leaks);
 
-if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
+if (!$use_debug && ! -e "$drheapstat_home/$bindir/release/$drmemlibname") {
     $use_debug = 1;
     # try to avoid warning for devs running from build dir
-    print "$prefix WARNING: using debug Dr. Memory since release not found\n"
+    print "$prefix WARNING: using debug Dr. Heapstat since release not found\n"
         unless ($user_ops =~ /-quiet/ || -e "$drmemory_home/CMakeCache.txt");
 }
 $libdir = ($use_debug) ? "debug" : "release";
