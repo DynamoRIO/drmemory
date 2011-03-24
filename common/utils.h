@@ -360,6 +360,12 @@ extern file_t f_results;
 # define POINTER_MAX UINT_MAX
 #endif
 
+/* C standard has pointer overflow as undefined so cast to unsigned (i#302) */
+#define POINTER_OVERFLOW_ON_ADD(ptr, add) \
+    (((ptr_uint_t)(ptr)) + (add) < ((ptr_uint_t)(ptr)))
+#define POINTER_UNDERFLOW_ON_SUB(ptr, sub) \
+    (((ptr_uint_t)(ptr)) - (sub) > ((ptr_uint_t)(ptr)))
+
 #ifdef LINUX
 # ifdef X64
 #  define ASM_XAX "rax"

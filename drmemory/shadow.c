@@ -707,7 +707,7 @@ shadow_next_dword(app_pc start, app_pc end, uint expect)
             }
         }
         incr = ALLOC_UNIT - (pc - (app_pc)ALIGN_BACKWARD(pc, ALLOC_UNIT));
-        if (pc + incr < pc) /* overflow */
+        if (POINTER_OVERFLOW_ON_ADD(pc, incr))
             break;
         pc += incr;
     }
@@ -750,7 +750,8 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
             }
         }
         incr = (pc - (app_pc)ALIGN_BACKWARD(pc-1, ALLOC_UNIT));
-        if (pc - incr > pc) /* overflow */
+        if (POINTER_UNDERFLOW_ON_SUB(pc, incr))
+            if (pc - incr < pc)
             break;
         ASSERT(incr > 0, "infinite loop");
         pc -= incr;

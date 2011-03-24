@@ -71,7 +71,7 @@ allocation_size(app_pc start, app_pc *base)
             break;
         ASSERT(mbi.RegionSize > 0, "error querying memory");
         size += mbi.RegionSize;
-        if (pc + mbi.RegionSize < pc) /* wraparound */
+        if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
             break;
         pc += mbi.RegionSize;
     } while (true);

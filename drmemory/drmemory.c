@@ -482,7 +482,7 @@ mmap_walk(app_pc start, size_t size,
          start, start_base);
     if (mbi.State == MEM_RESERVE)
         map_end = map_base;
-    if (pc + mbi.RegionSize < pc)
+    if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
         return NULL;
     pc += mbi.RegionSize;
     while (dr_virtual_query(pc, &mbi, sizeof(mbi)) == sizeof(mbi) &&
@@ -502,7 +502,7 @@ mmap_walk(app_pc start, size_t size,
             /* best to batch adjacent committed image/data regions together */
             map_end += mbi.RegionSize;
         }
-        if (pc + mbi.RegionSize < pc)
+        if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
             return NULL;
         pc += mbi.RegionSize;
     }
@@ -624,7 +624,7 @@ memory_walk(void)
                 }
             }
         }
-        if (pc + mbi.RegionSize < pc)
+        if (POINTER_OVERFLOW_ON_ADD(pc, mbi.RegionSize))
             break;
         pc += mbi.RegionSize;
     }
@@ -736,9 +736,12 @@ memory_walk(void)
              */
             shadow_set_range(pc_to_add, end, type);
         }
-        
-        if (pc + info.size < pc) /* overflow */
+
+        if (POINTER_OVERFLOW_ON_ADD(pc, info.size)) {
+            LOG(2, "bailing on loop: "PFX" + "PFX" => "PFX"\n",
+                pc, info.size, pc + info.size);
             break;
+        }
         pc += info.size;
     }
 #endif /* WINDOWS */
@@ -1237,6 +1240,8 @@ check_contiguous(module_data_t *data)
             return false;
         if (info.type == DR_MEMTYPE_FREE)
             return false;
+        if (POINTER_OVERFLOW_ON_ADD(info.base_pc, info.size))
+            break;
         pc = info.base_pc+info.size;
     }
     return true;

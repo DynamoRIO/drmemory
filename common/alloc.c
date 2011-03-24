@@ -3586,7 +3586,7 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
              * smaller number
              */
             size_t extra_each = (redzone_size(routine)*2 + count -1) / count;
-            if (each + extra_each < each) {
+            if (each + extra_each < each) { /* overflow */
                 /* We assume calloc() will fail on this so we don't handle this
                  * scenario in free(), etc. (PR 531262)
                  * count*each could overflow: we assert above but don't handle.
@@ -3598,7 +3598,7 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
         } else {
             /* More efficient to increase the count */
             size_t extra_count = (redzone_size(routine)*2 + each - 1) / each;
-            if (count + extra_count < count) {
+            if (count + extra_count < count) { /* overflow */
                 /* We assume calloc() will fail on this so we don't handle this
                  * scenario in free(), etc. (PR 531262).
                  * count*each could overflow: we assert above but don't handle.
