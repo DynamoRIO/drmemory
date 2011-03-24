@@ -545,7 +545,8 @@ syscall_num(void *drcontext, byte *entry)
             break;
         }
         /* stop at call to vsyscall or at int itself */
-    } while (opc != OP_call_ind && opc != OP_int);
+    } while (opc != OP_call_ind && opc != OP_int &&
+             opc != OP_sysenter && opc != OP_syscall);
     instr_free(drcontext, &instr);
     ASSERT(num > -1, "unknown system call number");
     return num;

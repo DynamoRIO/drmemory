@@ -774,7 +774,8 @@ event_pre_syscall(void *drcontext, int sysnum)
     }
 
     /* syscall-specific handling we ourselves need, which must come after
-     * shadow handling for proper NtContinue handling
+     * shadow handling for proper NtContinue handling and proper
+     * NtCallbackReturn handling
      */
     handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
 

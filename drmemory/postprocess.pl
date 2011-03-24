@@ -540,12 +540,21 @@ sub process_all_errors()
                 $dup_count -= $error_cache{$name}{"dup_count_seen"};
                 $error_cache{$name}{"dup_count_seen"} = $dup_count;
                 if ($error_cache{$name}{"suppressed"}) {
+                    my $is_default = $error_cache{$name}{"supp_is_default"};
                     # if we suppressed then DR's dup count should be added to
                     # suppression count not error count
                     if ($error_cache{$name}{"type"} =~ /LEAK/) {
-                        $post_suppressed_leaks += $dup_count;
+                        if ($is_default) {
+                            $post_suppressed_leaks_default += $dup_count;
+                        } else {
+                            $post_suppressed_leaks_user += $dup_count;
+                        }
                     } else {
-                        $post_suppressed_errors += $dup_count;
+                        if ($is_default) {
+                            $post_suppressed_errors_default += $dup_count;
+                        } else {
+                            $post_suppressed_errors_user += $dup_count;
+                        }
                     }
                 } else {
                     $error_cache{$name}{"dup_count_client"} += $dup_count;
@@ -639,11 +648,12 @@ sub process_one_error($raw_error_lines_array_ref)
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
         lookup_addr();
         my ($err_str_ref, $err_cstack_ref) = generate_error_info();
+        my $is_default;
 
         # If the error passes the source filter and doesn't match
         # call stack suppression specified then print it.
         if (($srcfilter eq "" || ${$err_str_ref} =~ /$srcfilter/) && 
-            !suppress($error{"type"}, $err_cstack_ref)) {
+            !suppress($error{"type"}, $err_cstack_ref, \$is_default)) {
             print ${$err_str_ref};
 
             # If the first line excluding the read/write info was the same even
@@ -662,7 +672,6 @@ sub process_one_error($raw_error_lines_array_ref)
         } else {
             # If doesn't pass the source filter we count toward suppression stats
             # since not worth having separate set of counts.
-            my $is_default = $supp_is_default{${$err_str_ref}};
             if ($error{"type"} =~ /LEAK/) {
                 if ($is_default) {
                     $post_suppressed_leaks_default++;
@@ -1085,11 +1094,11 @@ sub print_summary($fh, $reset, $summary_only)
     print $fh $pfx."ERRORS IGNORED:\n";
     if (!$leaks_only) {
         printf $fh "%s  %5d user-suppressed, %5d default-suppressed error(s)\n",
-               $pfx, $client_suppressed_errors_user + $post_suppressed_errors_user;
+               $pfx, $client_suppressed_errors_user + $post_suppressed_errors_user,
                $client_suppressed_errors_default + $post_suppressed_errors_default;
     }
     printf $fh "%s  %5d user-suppressed, %5d default-suppressed leak(s)\n",
-               $pfx, $client_suppressed_leaks_user + $post_suppressed_leaks_user;
+               $pfx, $client_suppressed_leaks_user + $post_suppressed_leaks_user,
                $client_suppressed_leaks_default + $post_suppressed_leaks_default;
     if ($client_ignored ne '') {
         $tmp_lines = $client_ignored;
@@ -1437,6 +1446,7 @@ sub read_suppression_info($file_in, $default_in)
     my $callstack = "";
     my $type = "";
     my $new_type = "";
+    my $num_supp = 0;
  
     # If suppression file can't be opened for reading, just ignore
     if (!open(SUPP_IN,$file)) {
@@ -1461,7 +1471,8 @@ sub read_suppression_info($file_in, $default_in)
         } elsif (($new_type = is_line_start_of_error($_)) ||
                  ($new_type = is_line_start_of_suppression($_))) {
             $valid_frame = 0;
-            add_suppress_callstack($type, $callstack) if ($callstack ne '');
+            $num_supp++;
+            add_suppress_callstack($type, $callstack, $default) if ($callstack ne '');
             $callstack = "";
             $type = $new_type;
         } else {
@@ -1479,18 +1490,19 @@ sub read_suppression_info($file_in, $default_in)
     }
 
     # The last one won't be recorded, so record it.
-    add_suppress_callstack($type, $callstack) if ($callstack ne '');
+    add_suppress_callstack($type, $callstack, $default) if ($callstack ne '');
+    $num_supp++ if ($callstack ne '');
         
     close SUPP_IN;
-    print $prefix."Loaded suppressions from $file\n";
+    print $prefix."Loaded $num_supp suppressions from $file\n";
 }
 
 #-------------------------------------------------------------------------------
 # Adds a callstack to the suppression regexp table.
 #
-sub add_suppress_callstack($type, $callstack)
+sub add_suppress_callstack($type, $callstack, $default)
 {
-    my ($type, $callstack) = @_;
+    my ($type, $callstack, $default) = @_;
     return if ($type eq '' || $callstack eq '');
 
     # support missing module name on vmk
@@ -1533,9 +1545,9 @@ sub add_suppress_callstack($type, $callstack)
 # list; 0 otherwise and prints the call stack to the symbol-based suppression
 # file.
 #
-sub suppress($errname_in, $callstack_ref_in)
+sub suppress($errname_in, $callstack_ref_in, $default_ref_in)
 {
-    my ($errname, $callstack_ref) = @_;
+    my ($errname, $callstack_ref, $default_ref) = @_;
     my $callstk_str = "";
 
     # Strip <nosym> and path from module name.
@@ -1562,6 +1574,7 @@ sub suppress($errname_in, $callstack_ref_in)
         if ($callstk_str =~ /$supp/m) {
             print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
                 if ($verbose);
+            ${$default_ref} = $supp_is_default{$supp};
             return 1;
         }
     }
