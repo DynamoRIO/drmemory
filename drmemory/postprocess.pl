@@ -1221,7 +1221,26 @@ sub get_mod_path($module_name, $modpath_ref)
         foreach $path (@libsearch) {
             if (-f "$path/$modname") {
                 $fullpath = "$path/$modname";
-
+            } elsif ($path =~ "^/usr/lib/debug") {
+                # Really we should read the debuglink section but for now we
+                # just do this kind of mapping via glob:
+                #   "libc.so.6" => "libc-2.11.1.so",
+                #   "libm.so.6" => "libm-2.11.1.so",
+                #   "ld-linux.so.2" => "ld-2.11.1.so",
+                #   "libdl.so.2" => "libdl-2.11.1.so"
+                if ($modname =~ /^ld-linux\.so\.\d+$/) {
+                    $modnamebase = "ld";
+                } else {
+                    $modnamebase = $modname;
+                    $modnamebase =~ s/\.so\.\d+$//;
+                }
+                $fullpath = bsd_glob("$path/$modnamebase-*");
+                # "libstdc++.so.6" => "libstdc++.so.6.0.13"
+                $fullpath = bsd_glob("$path/$modnamebase.so*") if ($fullpath eq '');
+            } else {
+                $fullpath = '';
+            }
+            if ($fullpath ne '') {
                 # We are all set if the module was found and it had debug info.
                 if (mod_has_dbg_info($fullpath, @dbg_sec_types)) {
                     $found = 1;
