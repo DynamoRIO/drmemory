@@ -94,6 +94,7 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <linux/un.h>
+#include <linux/netlink.h>
 
 /* ioctl */
 #include <sys/ioctl.h>
@@ -1563,6 +1564,16 @@ check_sockaddr(byte *ptr, socklen_t socklen, uint memcheck_flags, dr_mcontext_t 
                      (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id), mc, id);
         break;
     }
+    case AF_NETLINK: {
+        struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
+        check_sysmem(memcheck_flags, SYS_socketcall,
+                     (app_pc) &snl->nl_pad, sizeof(snl->nl_pad), mc, id);
+        check_sysmem(memcheck_flags, SYS_socketcall,
+                     (app_pc) &snl->nl_pid, sizeof(snl->nl_pid), mc, id);
+        check_sysmem(memcheck_flags, SYS_socketcall,
+                     (app_pc) &snl->nl_groups, sizeof(snl->nl_groups), mc, id);
+        break;
+    }
     default:
         ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family); 
         IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
@@ -1776,9 +1787,13 @@ handle_pre_socketcall(void *drcontext, dr_mcontext_t *mc)
             if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
                 safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
                 ptr2 != NULL) {
-                check_sockaddr(ptr2, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
-                               (request == SYS_SENDMSG) ? "sendmsg addr" :
-                               "recvmsg addr");
+                if (request == SYS_SENDMSG) {
+                    check_sockaddr(ptr2, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
+                                   "sendmsg addr");
+                } else {
+                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
+                                 ptr2, val_socklen, mc, "recvmsg addr");
+                }
             }
             if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &ptr1) &&
                 safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
@@ -1893,6 +1908,12 @@ handle_post_socketcall(void *drcontext, dr_mcontext_t *mc)
                 iov != NULL) {
                 check_iov(iov, len, result, MEMREF_WRITE, SYS_socketcall, mc,
                           "recvmsg iov");
+            }
+            if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
+                safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
+                ptr2 != NULL) {
+                check_sockaddr((app_pc)ptr2, val_socklen, MEMREF_WRITE, mc,
+                               "recvfrom addr");
             }
             /* re-read to see size returned by kernel */
             if (safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen),
