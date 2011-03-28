@@ -24,6 +24,7 @@
 #include "syscall.h"
 #include "syscall_os.h"
 #include "readwrite.h"
+#include <stddef.h> /* offsetof */
 
 /***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
@@ -857,10 +858,15 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
     if (is_current_process((HANDLE)pt->sysarg[3])) {
         create_thread_info_t info;
         if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
-                         info.client_id.buffer_size, mc, "PCLIENT_ID");
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
-                         info.teb.buffer_size, mc, "PTEB");
+            if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
+                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
+                             info.client_id.buffer_size, mc, "PCLIENT_ID");
+            }
+            if (info.struct_size > offsetof(create_thread_info_t, teb)) {
+                /* This is optional, and omitted in i#342 */
+                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
+                             info.teb.buffer_size, mc, "PTEB");
+            }
         }
     }
     return true;
@@ -882,10 +888,14 @@ handle_post_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
             set_teb_initial_shadow(teb);
         }
         if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-            check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
-                         info.client_id.buffer_size, mc, "PCLIENT_ID");
-            check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
-                         info.teb.buffer_size, mc, "PTEB");
+            if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
+                check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
+                             info.client_id.buffer_size, mc, "PCLIENT_ID");
+            }
+            if (info.struct_size > offsetof(create_thread_info_t, teb)) {
+                check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
+                             info.teb.buffer_size, mc, "PTEB");
+            }
         }
     }
 }
