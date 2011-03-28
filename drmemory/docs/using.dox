@@ -79,6 +79,10 @@ Ensure your Linux machine has the following utilities installed:
 This section describes requirements, setup instructions, and other concerns
 prior to running Dr. Memory on Windows.
 
+Please note that Dr. Memory does not yet have full support for the Windows
+graphical system calls, leading to extra false positives.  Future releases
+will eliminate these; for now, suppression files can be used.
+
 ********************
 \subsection sec_windows_utils Utilities
 
@@ -99,7 +103,7 @@ Cygwin utilities installed:
  - objdump (binutils package)
  - addr2line (binutils package)
 
-For this Alpha release, on Windows it is recommended to use native Windows
+For this Beta release, on Windows it is recommended to use native Windows
 applications (i.e., built via cl.exe or Visual Studio rather than g++) as
 there are many false positives in the Cygwin libraries.
 
