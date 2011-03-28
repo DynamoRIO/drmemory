@@ -390,6 +390,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     app_pc start;
     int i, j;
+    if (!options.analyze_unknown_syscalls)
+        return;
     LOG(2, "ignoring system call #"PIFX"\n", sysnum);
     if (options.verbose >= 2) {
         ELOGF(0, f_global, "WARNING: unhandled system call #"PIFX"\n", sysnum);
@@ -496,6 +498,8 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
     int i, j;
     byte *w_at = NULL;
     byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
+    if (!options.analyze_unknown_syscalls)
+        return;
     for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
         if (cpt->sysarg_ptr[i] != NULL) {
             if (safe_read(cpt->sysarg_ptr[i], cpt->sysarg_sz[i], post_val)) {
