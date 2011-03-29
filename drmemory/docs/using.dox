@@ -81,8 +81,9 @@ This section describes requirements, setup instructions, and other concerns
 prior to running Dr. Memory on Windows.
 
 Please note that Dr. Memory does not yet have full support for the Windows
-graphical system calls, leading to extra false positives.  Future releases
-will eliminate these; for now, suppression files can be used.
+graphical system calls, leading to extra false positives, particularly on
+Windows Vista and Windows 7.  Future releases will eliminate these; for
+now, suppression files can be used.
 
 ********************
 \subsection sec_windows_utils Utilities

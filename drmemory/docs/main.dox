@@ -55,6 +55,9 @@ following sections:
 
 - \subpage page_license
 
+See the Dr. Memory project homepage at http://code.google.com/p/drmemory/
+for source code and the latest release.
+
 \image html favicon.ico
 
 ****************************************************************************
@@ -75,6 +78,9 @@ For questions, bug reports, and discussion, join the <a
 href="http://groups.google.com/group/drmemory-users/">Dr. Memory Users
 group</a>.
 
+The Dr. Memory issue tracker is located at:
+http://code.google.com/p/drmemory/issues/list
+
 To supply data for analyzing and fixing a bug, reproduce the problem using
 these options to Dr. Memory:
 
@@ -90,9 +96,6 @@ compress nicely.
 Additionally, if the run is pretty short, run with the "-verbose 2" option
 and attach the resulting <tt>global.&lt;pid&gt;.log</tt> file from the same
 directory as the results.txt file (compress it if large).
-
-The DynamoRIO issue tracker can be also used to file Dr. Memory bugs:
-http://code.google.com/p/dynamorio/issues/list
 
 \endif
 ****************************************************************************
@@ -117,13 +120,6 @@ http://code.google.com/p/dynamorio/issues/list
   <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
   <tr><td></td></tr></table></td></tr></table></td></tr></table>
 \endhtmlonly
-
-On Windows, the auxiliary scripts are packaged into executables using a
-standard, unmodified version of perl.  The sources for perl can be obtained
-from
-\code
-  http://www.perl.com/download.csp
-\endcode
 
 The Windows NSIS installer was created using a standard, unmodified version
 of NSIS.  The sources for NSIS can be obtained from:
