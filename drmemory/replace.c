@@ -30,6 +30,14 @@
  * Xref PR 485412.
  */
 
+#ifdef LINUX
+/* avoid depending on __isoc99_sscanf */
+# undef sscanf
+# define _GNU_SOURCE 1
+# include <stdio.h>
+# undef _GNU_SOURCE
+#endif
+
 #include "dr_api.h"
 #include "per_thread.h"
 #include "utils.h"
@@ -41,6 +49,8 @@
 #ifdef USE_DRSYMS
 # include "drsyms.h"
 #endif
+
+#undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
 /* On Windows, keep this updated with drmemory.pl which queries these pre-run */
 #define REPLACE_DEFS()     \

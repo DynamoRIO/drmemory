@@ -20,11 +20,20 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifdef LINUX
+/* avoid depending on __isoc99_sscanf */
+# define _GNU_SOURCE 1
+# include <stdio.h>
+# undef _GNU_SOURCE
+#endif
+
 #include "dr_api.h"
 #include "per_thread.h"
 #include "utils.h"
 #include "options.h"
 #include "shadow.h"
+
+#undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
 /***************************************************************************
  * OPTIONS

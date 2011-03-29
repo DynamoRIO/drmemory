@@ -134,6 +134,8 @@
 
 #define MAX_INSTR_SIZE 17
 
+#define sscanf  DO_NOT_USE_sscanf_directly_see_issue_344
+
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;
 extern uint op_verbose_level;
