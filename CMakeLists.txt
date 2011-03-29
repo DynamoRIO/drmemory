@@ -1199,7 +1199,7 @@ endif (PERL_TO_EXE OR USE_DRSYMS)
 set(CPACK_NSIS_MENU_LINKS 
   # We automatically get an entry for ${toolname}.exe since it's in the
   # CPACK_PACKAGE_EXECUTABLES list, even though we don't want one.
-  "${toolname}/bin32/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"
+  "bin/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"
   "${toolname}/docs/html/index.html" "${toolname_cap_spc} documentation"
   "http://dynamorio.org/${toolname}.html" "${toolname_cap_spc} web page")
 if (USER_SPECIFIED_DynamoRIO_DIR)
