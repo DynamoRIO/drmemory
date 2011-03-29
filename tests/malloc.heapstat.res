@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -23,10 +24,10 @@
 # Different order based on hashtable iterator order
 !OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:214
+malloc.c:215
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:251
-: LEAK 16 direct bytes + 48 indirect bytes
 malloc.c:252
+: LEAK 16 direct bytes + 48 indirect bytes
+malloc.c:253
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:246
+malloc.c:247

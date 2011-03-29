@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger

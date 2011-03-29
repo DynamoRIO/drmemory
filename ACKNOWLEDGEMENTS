@@ -4,6 +4,7 @@ ACKNOWLEDGEMENTS / AUTHORS OF DR. MEMORY
 Dr. Memory was originally developed by Derek Bruening for Windows.  Derek later
 ported Dr. Memory to Linux.
 
+Timur Iskhodzhanov contributed to error suppression and testing.
 Bharath Chandramohan contributed to an ESXi port of Dr. Memory.
 
 Dr. Memory leverages the dynamic instrumentation tool platform DynamoRIO.

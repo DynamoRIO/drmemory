@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -19,18 +20,18 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:39
+wincrt.c:40
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:40
+wincrt.c:41
 Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:41
+wincrt.c:42
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:42
+wincrt.c:43
 Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:43
+wincrt.c:44
 Error #6: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:44
+wincrt.c:45
 Error #7: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:45
+wincrt.c:46
 Error #8: UNADDRESSABLE ACCESS: writing 1 byte(s)
-wincrt.cpp:93
+wincrt.c:94

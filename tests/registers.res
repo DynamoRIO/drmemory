@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -20,43 +21,43 @@
 #
 !if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:194
+registers.c:195
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:201
+registers.c:202
 Error #3: UNINITIALIZED READ: reading 1 byte
-registers.c:221
+registers.c:222
 Error #4: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:259
+registers.c:260
 Error #5: UNINITIALIZED READ: reading register eflags
-registers.c:305
+registers.c:306
 Error #6: UNINITIALIZED READ: reading register eflags
-registers.c:309
+registers.c:310
 Error #7: UNINITIALIZED READ: reading register cl
-registers.c:314
+registers.c:315
 Error #8: UNINITIALIZED READ: reading register ecx
-registers.c:348
+registers.c:349
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:378
+registers.c:379
 !endif
 !if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:211
+registers.c:212
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:218
+registers.c:219
 Error #3: UNINITIALIZED READ: reading register eax
-registers.c:221
+registers.c:222
 Error #4: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:283
+registers.c:284
 Error #5: UNINITIALIZED READ: reading register eflags
-registers.c:321
+registers.c:322
 Error #6: UNINITIALIZED READ: reading register eflags
-registers.c:325
+registers.c:326
 Error #7: UNINITIALIZED READ: reading register cl
-registers.c:330
+registers.c:331
 Error #8: UNINITIALIZED READ: reading register ecx
-registers.c:359
+registers.c:360
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:384
+registers.c:385
 !endif
 Error #10: LEAK 15 direct bytes + 0 indirect bytes
 Error #11: LEAK 15 direct bytes + 0 indirect bytes
