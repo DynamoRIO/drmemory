@@ -149,6 +149,22 @@ static void leak_test4(void)
     int_p = ALLOC(sizeof(int));    /* leak */
 }
 
+static char * pointer_in_the_middle1 = 0;
+
+static void possible_leak_test1(void)
+{
+    printf("testing possible leak\n");
+    pointer_in_the_middle1 = (char*)(ALLOC(16)) + 8;    /* possible leak */
+}
+
+static char * pointer_in_the_middle2 = 0;
+
+static void possible_leak_test2(void)
+{
+    printf("testing possible leak\n");
+    pointer_in_the_middle2 = (char*)(ALLOC(16)) + 8;    /* possible leak */
+}
+
 static void warning_test1(void)
 {
     size_t *p;
@@ -213,6 +229,9 @@ static void test(void)
     leak_test2();               /* top frame based mod+func suppression */
     leak_test3();               /* full callstack based mod!func suppression */
     leak_test4();               /* top frame based mod!func suppression */
+
+    possible_leak_test1();      /* suppressed by 'POSSIBLE LEAK' suppression */
+    possible_leak_test2();      /* suppressed by 'LEAK' suppression */
 
     warning_test1();
 

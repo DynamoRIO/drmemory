@@ -1557,6 +1557,10 @@ sub add_suppress_callstack($type, $callstack, $default)
     # We want prefix matching but using /m so need \A not ^
     $callstack = "\\A" . $callstack;
     push @{ $supp_syms_list{$type} }, $callstack;
+    if ($type eq "LEAK") {
+        # POSSIBLE LEAK reports should also be checked against LEAK suppressions
+        push @{ $supp_syms_list{"POSSIBLE LEAK"} }, $callstack;
+    }
     $supp_is_default{$callstack} = $default;
 }
 

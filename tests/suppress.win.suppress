@@ -108,6 +108,14 @@ suppress.exe!main
 LEAK
 suppress.exe!leak_test4
 
+# possible leak: top frame based mod!func suppression 
+POSSIBLE LEAK
+suppress.exe!possible_leak_test1
+
+# possible leak: top frame based mod!func suppression 
+LEAK
+suppress.exe!possible_leak_test2
+
 #-------------------------------------------------------------------------------
 
 UNADDRESSABLE ACCESS

@@ -277,8 +277,7 @@ add_suppress_spec(int type, uint num_frames, char **frames, bool is_default)
         suppress_name[type]);
     for (i = 0; i < num_frames; i++) {
         LOG(2, "  frame %d: \"%s\"\n", i, frames[i]);
-        spec->frames[i] = frames[i];
-        frames[i] = NULL;
+        spec->frames[i] = drmem_strdup(frames[i], HEAPSTAT_MISC);
     }
     spec->is_default = is_default;
     /* insert into list */
@@ -375,8 +374,13 @@ read_suppression_file(file_t f, bool is_default)
         if (type > -1) {
             if (curtype > -1) {
                 /* the prior callstack completed successfully */
-                if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+                if (IF_DRSYMS_ELSE(true, !has_symbolic_frames)) {
                     add_suppress_spec(curtype, num_frames, frames, is_default);
+                    if (curtype == ERROR_LEAK) {
+                        /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
+                        add_suppress_spec(ERROR_POSSIBLE_LEAK, num_frames, frames, is_default);
+                    }
+                }
             }
             /* starting a new callstack */
             curtype = type;
@@ -428,8 +432,13 @@ read_suppression_file(file_t f, bool is_default)
     }
     if (curtype > -1) {
         /* the last callstack completed successfully */
-        if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+        if (IF_DRSYMS_ELSE(true, !has_symbolic_frames)) {
             add_suppress_spec(curtype, num_frames, frames, is_default);
+            if (curtype == ERROR_LEAK) {
+                /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
+                add_suppress_spec(ERROR_POSSIBLE_LEAK, num_frames, frames, is_default);
+            }
+        }
     }
     for (i = 0; i < options.callstack_max_frames; i++) {
         if (frames[i] != NULL)
