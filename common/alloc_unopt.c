@@ -89,6 +89,43 @@ replace_realloc_template(void *p, size_t newsz)
 END_DO_NOT_OPTIMIZE
 
 #ifdef WINDOWS
+/* _dbg version */
+void * marker_malloc_dbg(size_t size, int type, const char *file, int line)
+    { return NULL; }
+size_t marker_size_dbg(void *ptr, int type) { return 0; }
+void marker_free_dbg(void *ptr, int type) { }
+
+#ifndef _NORMAL_BLOCK
+# define _NORMAL_BLOCK 1
+#endif
+
+DO_NOT_OPTIMIZE
+void *
+replace_realloc_template_dbg(void *p, size_t newsz, int type)
+{
+    volatile void *q = NULL;
+    volatile size_t oldsz = 0;
+    if (p != NULL) {
+        oldsz = marker_size_dbg(p, type);
+        if (oldsz == (size_t)-1 /* 0 is not failure: not calling usable_ */) {
+            return NULL; /* on failure, do not free */
+        }
+    }
+    if (newsz > 0 || p == NULL) {
+        q = marker_malloc_dbg(newsz, type, "<drmem internal>", 42);
+        if (q == NULL)
+            return NULL; /* on failure, do not free */
+        if (p != NULL) {
+            size_t copysz = (newsz <= oldsz) ? newsz : oldsz;
+            memcpy_no_movs((void *)q, p, copysz);
+        }
+    }
+    marker_free_dbg(p, type);
+    return (void *)q;
+}
+END_DO_NOT_OPTIMIZE
+
+/* Rtl version */
 PVOID NTAPI
 marker_RtlAllocateHeap(HANDLE heap, DWORD flags, SIZE_T size) { return NULL; }
 ULONG NTAPI

@@ -726,6 +726,10 @@ extern void marker_free(void *ptr);
 extern void *replace_realloc_template(void *p, size_t newsz);
 
 #ifdef WINDOWS
+extern void * marker_malloc_dbg(size_t size, int type, const char *file, int line);
+extern size_t marker_size_dbg(void *ptr, int type);
+extern void marker_free_dbg(void *ptr, int type);
+extern void *replace_realloc_template_dbg(void *p, size_t newsz, int type);
 extern PVOID NTAPI marker_RtlAllocateHeap(HANDLE heap, DWORD flags, SIZE_T size);
 extern ULONG NTAPI marker_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID block);
 extern bool NTAPI marker_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID block);
@@ -802,9 +806,14 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         dr_mutex_unlock(gencode_lock);
         return;
     }
-    dpc = IF_WINDOWS((set->type == HEAPSET_RTL) ?
-                     ((byte *) replace_realloc_template_Rtl) : )
-        ((byte *) replace_realloc_template);
+#ifdef WINDOWS
+    dpc = (set->type == HEAPSET_RTL) ?
+        ((byte *) replace_realloc_template_Rtl) : 
+        ((set->type == HEAPSET_LIBC_DBG) ?
+         ((byte *) replace_realloc_template_dbg) : ((byte *) replace_realloc_template));
+#else
+    dpc = ((byte *) replace_realloc_template);
+#endif
     epc_start = gencode_cur;
     epc = gencode_cur;
     instr_init(drcontext, &inst);
@@ -826,13 +835,16 @@ generate_realloc_replacement(alloc_routine_set_t *set)
             ASSERT(opnd_is_pc(tgt), "invalid call");
             pc = opnd_get_pc(tgt);
             if (pc == (app_pc) marker_malloc
-                IF_WINDOWS(|| pc == (app_pc) marker_RtlAllocateHeap))
+                IF_WINDOWS(|| pc == (app_pc) marker_malloc_dbg
+                           || pc == (app_pc) marker_RtlAllocateHeap))
                 instr_set_target(&inst, opnd_create_pc(set_malloc->pc));
             else if (pc == (app_pc) marker_size
-                     IF_WINDOWS(|| pc == (app_pc) marker_RtlSizeHeap))
+                     IF_WINDOWS(|| pc == (app_pc) marker_size_dbg
+                                || pc == (app_pc) marker_RtlSizeHeap))
                 instr_set_target(&inst, opnd_create_pc(size_func));
             else if (pc == (app_pc) marker_free
-                     IF_WINDOWS(|| pc == (app_pc) marker_RtlFreeHeap))
+                     IF_WINDOWS(|| pc == (app_pc) marker_free_dbg
+                                || pc == (app_pc) marker_RtlFreeHeap))
                 instr_set_target(&inst, opnd_create_pc(set_free->pc));
             else /* force re-encode */
                 instr_set_target(&inst, tgt);
