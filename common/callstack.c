@@ -311,8 +311,13 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
         } else {
             /* windbg format is file(line#) but we use addr2line format file:line# */
             /* I like +0x%x sym->line_offs but we'll match addr2line */
+            /* XXX: printf won't truncate ints.  we could use dr_snprintf
+             * to limit line# to MAX_LINENO_DIGITS, but would be hacky w/
+             * BUFPRINT.  for now we live w/ potentially truncating callstacks later
+             * if have giant line#s.
+             */
             BUFPRINT(buf, bufsz, *sofar, len,
-                     LINE_PREFIX"%s:%-"STRINGIFY(MAX_LINENO_DIGITS) UINT64_FORMAT_CODE""NL,
+                     LINE_PREFIX"%."STRINGIFY(MAX_FILENAME_LEN)"s:%"UINT64_FORMAT_CODE""NL,
                      sym->file, sym->line);
         }
     } else {
@@ -696,7 +701,8 @@ print_buffer(file_t f, char *buf)
 #endif
             ASSERT(false, "dr_write_file failed");
         }
-        ASSERT(res == sz, "dr_write_file partial write");
+        /* getting weird failures on stderr: aborting silently on those */
+        ASSERT(IF_WINDOWS(f == STDERR ||) res == sz, "dr_write_file partial write");
         break;
     }
 }

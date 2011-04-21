@@ -1000,12 +1000,48 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix)
 }
 
 static void
-report_error_from_buffer(file_t f, char *buf, app_loc_t *loc)
+report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
 {
-    print_buffer(f, buf);
+    if (add_prefix) {
+        /* we want atomic prints to stderr and for now we pay the cost of
+         * allocations on each one since we assume -results_to_stderr will
+         * be rare.  opt: have a second pt->buf.
+         */
+        size_t nlsz = strlen(NL);
+        size_t max = strlen(buf);
+        char *p = buf;
+        char *nl;
+        char swap;
+        size_t newsz = strlen(buf) * 2;
+        char *newbuf = (char *) global_alloc(newsz, HEAPSTAT_CALLSTACK);
+        size_t sofar= 0;
+        int len;
+        while (p < buf + max) {
+            nl = strstr(p, NL);
+            if (nl == NULL) {
+                /* shouldn't really happen but fail gracefully */
+                break;
+            } else {
+                swap = *(nl + nlsz);
+                *(nl + nlsz) = '\0';
+                BUFPRINT(newbuf, newsz, sofar, len, "%s%s", PREFIX, p);
+                *(nl + nlsz) = swap;
+                p = nl + nlsz;
+            }
+        }
+#ifdef USE_DRSYMS
+        /* XXX DRi#440: console output not showing up on win7! */
+        if (f == STDERR && IN_CMD)
+            PRINT_CONSOLE("%s", newbuf);
+        else
+#endif
+            print_buffer(f, newbuf);
+        global_free(newbuf, newsz, HEAPSTAT_CALLSTACK);
+    } else
+        print_buffer(f, buf);
 
 #ifdef USE_DRSYMS
-    if (f != f_global)
+    if (f != f_global && f != STDERR)
         print_buffer(f_global, buf);
 #else
     /* FIXME: for PR 456181 we need atomic reports for -no_thread_logs,
@@ -1377,7 +1413,13 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     memmove(pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, pt->errbuf, sofar);
 
     report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results : pt->f, pt->f),
-                             pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, loc);
+                             pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, loc, false);
+#ifdef USE_DRSYMS
+    if (reporting && options.results_to_stderr) {
+        report_error_from_buffer(STDERR,
+                                 pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, loc, true);
+    }
+#endif
     
  report_error_done:
     if (type == ERROR_UNADDRESSABLE && reporting && options.pause_at_unaddressable)
@@ -1699,7 +1741,11 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     }
     dr_mutex_unlock(error_lock);
     report_error_from_buffer(IF_DRSYMS_ELSE(suppressed ? f_global : tofile,
-                                            f_global), buf_print, NULL);
+                                            f_global), buf_print, NULL, false);
+#ifdef USE_DRSYMS
+    if (!suppressed && tofile == f_results && options.results_to_stderr)
+        report_error_from_buffer(STDERR, buf_print, NULL, true);
+#endif
 
  report_leak_done:
     if (drcontext == NULL || dr_get_tls_field(drcontext) == NULL)
@@ -1719,7 +1765,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
                  "%s "PFX"-"PFX"\n", routine, start, end);
         print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false /*print addr*/,
                         false/*no fps*/, NULL, 0);
-        report_error_from_buffer(pt->f, pt->errbuf, NULL);
+        report_error_from_buffer(pt->f, pt->errbuf, NULL, false);
     });
 }
 
@@ -1747,7 +1793,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
                  add ? "adding" : "removing", start, end);
         print_callstack(buf, bufsz, &sofar, mc, false /*print addr*/,
                         false/*no fps*/, NULL, 0);
-        report_error_from_buffer(f_global, buf, NULL);
+        report_error_from_buffer(f_global, buf, NULL, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
     });

@@ -139,6 +139,11 @@ OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
 OPTION_CLIENT_BOOL(client, quiet, false,
                    "Suppress stderr messages",
                    "Suppress stderr messages and, on Windows, popup messages.")
+#ifdef USE_DRSYMS
+OPTION_CLIENT_BOOL(client, results_to_stderr, false,
+                   "Print error reports to stderr in addition to results.txt",
+                   "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  This can make it easier to see which part of an application run raised an error.  However, on Windows 7, this option is only supported from a cygwin shell (either cmd or rxvt window).  In a Windows 7 cmd shell there will be no output (other than the final summary).")
+#endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",
                    "Display, but do not abort, on asserts in debug build (in release build asserts as automatically disabled).")
