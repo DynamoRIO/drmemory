@@ -21,24 +21,24 @@
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
 Note: prev lower malloc
-malloc.c:95
+malloc.c:96
 Error #2: UNINITIALIZED READ
-malloc.c:105
+malloc.c:106
 Error #3: UNINITIALIZED READ
-malloc.c:118
+malloc.c:119
 Error #4: INVALID HEAP ARGUMENT
 !if WINDOWS
 # addr2line and winsyms report slightly different results here
-malloc.c:162
+malloc.c:163
 !endif
 !if UNIX
-malloc.c:163
+malloc.c:164
 !endif
 !if WINDOWS
 Error #5: WARNING: heap allocation failed
-malloc.c:174
+malloc.c:175
 Error #6: INVALID HEAP ARGUMENT
-malloc.c:181
+malloc.c:182
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 # for now just removing error#
@@ -46,10 +46,10 @@ malloc.c:181
 # must be outside of if..endif
 !OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:214
+malloc.c:215
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:246
+malloc.c:247
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:251
-: LEAK 16 direct bytes + 16 indirect bytes
 malloc.c:252
+: LEAK 16 direct bytes + 16 indirect bytes
+malloc.c:253
