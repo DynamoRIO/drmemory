@@ -69,7 +69,8 @@
     REPLACE_DEF(strncpy)   \
     REPLACE_DEF(strcat)    \
     REPLACE_DEF(strncat)   \
-    REPLACE_DEF(memmove)
+    REPLACE_DEF(memmove)   \
+    REPLACE_DEF(memcmp)
 
 static const char *replace_routine_name[] = {
 #define REPLACE_DEF(nm) STRINGIFY(nm),
@@ -262,8 +263,8 @@ replace_strlen(const char *str)
 IN_REPLACE_SECTION int
 replace_strncmp(const char *str1, const char *str2, size_t size)
 {
-    register const char *s1 = (char *) str1;
-    register const char *s2 = (char *) str2;
+    register const unsigned char *s1 = (const unsigned char *) str1;
+    register const unsigned char *s2 = (const unsigned char *) str2;
     while (size-- > 0) { /* loop will terminate before underflow */
         if (*s1 == '\0') {
             if (*s2 == '\0')
@@ -285,8 +286,8 @@ replace_strncmp(const char *str1, const char *str2, size_t size)
 IN_REPLACE_SECTION int
 replace_strcmp(const char *str1, const char *str2)
 {
-    register const char *s1 = (char *) str1;
-    register const char *s2 = (char *) str2;
+    register const unsigned char *s1 = (const unsigned char *) str1;
+    register const unsigned char *s2 = (const unsigned char *) str2;
     while (1) {
         if (*s1 == '\0') {
             if (*s2 == '\0')
@@ -424,6 +425,22 @@ replace_memmove(void *dst, const void *src, size_t size)
         }
     }
     return dst;
+}
+
+IN_REPLACE_SECTION int
+replace_memcmp(const void *p1, const void *p2, size_t size)
+{
+    register const unsigned char *s1 = (unsigned char *) p1;
+    register const unsigned char *s2 = (unsigned char *) p2;
+    ssize_t diff;
+    while (size-- > 0) { /* loop will terminate before underflow */
+        diff = (*s1 - *s2);
+        if (diff != 0)
+            return diff;
+        s1++;
+        s2++;
+    }
+    return 0;
 }
 
 #ifdef LINUX
