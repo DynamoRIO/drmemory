@@ -1299,9 +1299,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
     reg_t heap = auxarg;
     ssize_t result;
     ushort pad_size;
-# ifdef DEBUG
     ssize_t req_size;
-# endif
 # ifdef X64
 #  error NYI
 # endif
@@ -1318,9 +1316,6 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
             return get_size_from_app_routine(auxarg, real_base, routine);
         }
     }
-# ifdef DEBUG
-    req_size = get_alloc_size(heap, real_base, routine);
-# endif
     if (running_on_Vista_or_later()) {
         /* Some obfuscation is used to make exploits harder:
          * The first header dword must be xor-ed with a cookie
@@ -1348,11 +1343,20 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
          * record the NtAllocateVirtualMemory but this routine
          * could be called at other times.
          */
+# ifdef DEBUG
+        req_size = get_alloc_size(heap, real_base, routine);
+# endif
         ASSERT(result - pad_size == req_size, "Rtl large heap invalid assumption");
     } else {
         result = pad_size << 3;
-        ASSERT(result >= req_size && result - req_size < 64*1024,
-               "padded size has suspicious value: probably wrong!");
+        req_size = get_alloc_size(heap, real_base, routine);
+        if (result < req_size || result - req_size > 64*1024) {
+            /* FIXME i#363: some heap case we don't know how to read headers for.
+             * e.g., win7 LFH has a complex formula for some blocks.
+             * for now we bail.
+             */
+            result = ALIGN_FORWARD(req_size, MALLOC_CHUNK_ALIGNMENT);
+        }            
     }
     return result;
 #endif /* LINUX -> WINDOWS */
