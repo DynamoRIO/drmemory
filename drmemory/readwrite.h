@@ -176,6 +176,8 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
  * ISA UTILITY ROUTINES
  */
 
+#define REP_PREFIX    0xf3
+#define REPNE_PREFIX  0xf2
 #define MOVS_4_OPCODE 0xa5
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).

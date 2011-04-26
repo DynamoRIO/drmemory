@@ -1635,7 +1635,13 @@ slow_path(app_pc pc, app_pc decode_pc)
         ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
     
 #ifdef TOOL_DR_MEMORY
-    if (decode_pc != NULL && *decode_pc == MOVS_4_OPCODE) {
+    if (decode_pc != NULL &&
+        (*decode_pc == MOVS_4_OPCODE ||
+         /* we now pass original pc from -repstr_to_loop including rep.
+          * ignore other prefixes here: data16 most likely and then not movs4.
+          */
+         ((*decode_pc == REP_PREFIX || *decode_pc == REPNE_PREFIX) &&
+          *(decode_pc + 1) == MOVS_4_OPCODE))) {
         /* see comments for this routine: common enough it's worth optimizing */
         medium_path_movs4(&loc, &mc);
         /* no sharing with string instrs so no need to call
@@ -1930,7 +1936,9 @@ slow_path(app_pc pc, app_pc decode_pc)
             ASSERT(xl8 == pc || 
                    /* for repstr_to_loop we pass one byte in */
                    (options.repstr_to_loop && opc_is_stringop(opc) &&
-                    (*xl8 == 0xf2 || *xl8 == 0xf3)),
+                    (*xl8 == 0xf2 || *xl8 == 0xf3 ||
+                     /* data prefix (i#353) */
+                     (*xl8 == 0x66 && (*(xl8+1) == 0xf2 || *(xl8+1) == 0xf3)))),
                    "xl8 doesn't match");
         }
     });
@@ -2530,7 +2538,9 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
     }
 #endif
 
-    if (opc_is_stringop_loop(opc)) {
+    if (opc_is_stringop_loop(opc) &&
+        /* with -repstr_to_loop, a decoded repstr is really a non-rep str */
+        (!options.repstr_to_loop || !options.fastpath)) {
         /* We assume flat segments for es and ds */
         /* FIXME: support addr16!  we're assuming 32-bit edi, esi! */
         ASSERT(reg_get_size(opnd_get_base(opnd)) == OPSZ_4,
@@ -3009,8 +3019,19 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
         PRE(bb, inst, iter);
 
         PREXL8(bb, inst, INSTR_XL8(create_nonloop_stringop(drcontext, inst), xl8));
-        /* tell instr_can_use_shared_slowpath() to use past the rep prefix */
-        instr_set_note(instr_get_prev(inst), (void *)(xl8 + 1));
+        /* We could point instr_can_use_shared_slowpath() at the final byte of the
+         * instr (i.e., past the rep prefix) and have shared_slowpath fix up the pc
+         * if it reports an error, and perhaps assume the string instr is immediately
+         * after the return from slowpath (should be true since shouldn't pick edi or
+         * esi as scratch regs, and none of the string instrs read aflags) so it can
+         * look for data16 prefix.  But it's simpler to handle data16 prefix by
+         * pointing at the start of the instr and having shared_slowpath assume there
+         * are no repstrs doing loops so no loop emulation is needed.  This means the
+         * slowpath will consider xcx an operand here in addition to at the loop
+         * instr below but that shouldn't be a problem: if xcx is uninit it will get
+         * reported once and w/ the right pc.  Xref i#353.
+         */
+        instr_set_note(instr_get_prev(inst), (void *)xl8);
 
         PRE(bb, inst, pre_loop);
         if (opc == OP_rep_cmps || opc == OP_rep_scas) {

@@ -1041,14 +1041,17 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
         print_buffer(f, buf);
 
 #ifdef USE_DRSYMS
-    if (f != f_global && f != STDERR)
+    if (f != f_global && f != STDERR) {
         print_buffer(f_global, buf);
-#else
+        /* disassemble to f_global only since racy */
+        f = f_global;
+    }
+#endif
+
     /* FIXME: for PR 456181 we need atomic reports for -no_thread_logs,
      * but we need PR 457375 to disassemble to a buffer.
      * For now we do a racy write after the callstack that may get
-     * split from the error report.  Since drsyms writes directly to
-     * results file excluding there until we have as part of buffer.
+     * split from the error report.
      */
     if (loc != NULL && loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(loc);
@@ -1062,7 +1065,6 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
             });
         }
     }
-#endif
 }
 
 /* caller should hold error_lock */
