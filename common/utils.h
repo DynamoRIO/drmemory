@@ -510,6 +510,9 @@ int
 sysnum_from_name(void *drcontext, app_pc ntdll_base, const char *name);
 
 bool
+running_on_Win7_or_later(void);
+
+bool
 running_on_Vista_or_later(void);
 #endif /* WINDOWS */
 

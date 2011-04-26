@@ -194,6 +194,7 @@ static alloc_options_t options;
 #ifdef WINDOWS
 /* system calls we want to intercept */
 int sysnum_mmap;
+int sysnum_mapcmf;
 int sysnum_munmap;
 int sysnum_valloc;
 int sysnum_vfree;
@@ -1547,6 +1548,9 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
         sysnum_setcontext = sysnum_from_name(drcontext, ntdll_lib, "NtSetContextThread");
         ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
+        sysnum_mapcmf = sysnum_from_name(drcontext, ntdll_lib, "NtMapCMFModule");
+        ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
+               "error finding alloc syscall #");
 
         if (options.track_heap) {
             module_data_t mod = {0,};
@@ -2256,7 +2260,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
-        sysnum == sysnum_setcontext) {
+        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf) {
         return true;
     } else
         return false;
@@ -2282,14 +2286,23 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
-        sysnum == sysnum_setcontext) {
+        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf) {
         HANDLE process;
         pt->expect_sys_to_fail = false;
         if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
-            sysnum == sysnum_valloc || sysnum == sysnum_vfree) {
+            sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
+            sysnum == sysnum_mapcmf) {
             process = (HANDLE)
-                dr_syscall_get_param(drcontext, (sysnum == sysnum_mmap) ? 1 : 0);
-            pt->syscall_this_process = is_current_process(process);
+                dr_syscall_get_param(drcontext,
+                                     (sysnum == sysnum_mmap ||
+                                      sysnum == sysnum_mapcmf) ? 1 : 0);
+            if (sysnum == sysnum_mapcmf && process == NULL) {
+                /* XXX xref DRi#415: the 2nd param is often -1 (NT_CURRENT_PROCESS)
+                 * but is sometimes NULL: so is it really a process handle?
+                 */
+                pt->syscall_this_process = true;
+            } else
+                pt->syscall_this_process = is_current_process(process);
             DOLOG(2, {
                 if (!pt->syscall_this_process)
                     LOGPT(2, pt, "sysnum %d on other process "PIFX"\n", sysnum, process);
@@ -2557,8 +2570,8 @@ void
 handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thread_t *pt)
 {
 #ifdef WINDOWS
-    /* we access up to param#3 */
-    ASSERT(SYSCALL_NUM_ARG_STORE >= 4, "need to up #sysargs stored");
+    /* we access up to param#4 */
+    ASSERT(SYSCALL_NUM_ARG_STORE >= 6, "need to up #sysargs stored");
     if (sysnum == sysnum_mmap) {
         /* FIXME: provide a memory tracking interface? */
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
@@ -2585,8 +2598,23 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
         }
     } else if (sysnum == sysnum_valloc) {
         handle_post_valloc(drcontext, mc, pt);
-    } else if (sysnum == sysnum_vfree && pt->syscall_this_process) {
-        handle_post_vfree(drcontext, mc, pt);
+    } else if (sysnum == sysnum_vfree) {
+        if (pt->syscall_this_process)
+            handle_post_vfree(drcontext, mc, pt);
+    } else if (sysnum == sysnum_mapcmf) {
+        bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
+        if (success && pt->syscall_this_process) {
+            app_pc *base_ptr = (app_pc *) pt->sysarg[5];
+            app_pc base;
+            if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
+                LOGPT(1, pt, "WARNING: NtMapCMFModule: error reading param\n");
+            } else {
+                LOGPT(2, pt, "NtMapCMFModule: "PFX"\n", base);
+                client_handle_mmap(pt, base, allocation_size(base, NULL),
+                                   /* I believe it's file-backed: xref DRi#415 */
+                                   false/*file-backed*/);
+            }
+        }
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);

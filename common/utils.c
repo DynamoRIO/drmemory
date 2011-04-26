@@ -487,6 +487,8 @@ is_current_process(HANDLE h)
     NTSTATUS res;
     if (h == NT_CURRENT_PROCESS)
         return true;
+    if (h == NULL)
+        return false;
     memset(&info, 0, sizeof(PROCESS_BASIC_INFORMATION));
     res = NtQueryInformationProcess(h, ProcessBasicInformation,
                                     &info, sizeof(PROCESS_BASIC_INFORMATION), &got);
@@ -572,6 +574,18 @@ sysnum_from_name(void *drcontext, app_pc ntdll_base, const char *name)
     ASSERT(stri_eq(get_syscall_name(num), name), "sysnum mismatch");
 # endif
     return num;
+}
+
+/* We want DR to provide a get_windows_version() routine: PR 367157 */
+bool
+running_on_Win7_or_later(void)
+{
+    TEB *teb = get_TEB();
+    PEB *peb = get_app_PEB();
+    if (peb->OSPlatformId == VER_PLATFORM_WIN32_NT && peb->OSMajorVersion >= 7) {
+        return true;
+    }
+    return false;
 }
 
 /* We want DR to provide a get_windows_version() routine: PR 367157 */
