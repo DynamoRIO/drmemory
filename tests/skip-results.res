@@ -27,14 +27,14 @@ malloc.c:106
 Error #3: UNINITIALIZED READ
 malloc.c:119
 Error #4: INVALID HEAP ARGUMENT
-!if WINDOWS
+%if WINDOWS
 # addr2line and winsyms report slightly different results here
 malloc.c:163
-!endif
-!if UNIX
+%endif
+%if UNIX
 malloc.c:164
-!endif
-!if WINDOWS
+%endif
+%if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:175
 Error #6: INVALID HEAP ARGUMENT
@@ -42,9 +42,9 @@ malloc.c:182
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 # for now just removing error#
-!endif
+%endif
 # must be outside of if..endif
-!OUT_OF_ORDER
+%OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:215
 : LEAK 16 direct bytes + 48 indirect bytes
@@ -57,15 +57,15 @@ malloc.c:253
 ERRORS FOUND:
       1 unique,    20 total unaddressable access(es)
       2 unique,     2 total uninitialized access(es)
-!if WINDOWS
+%if WINDOWS
 # we have an extra test for invalid heap params
       2 unique,     2 total invalid heap argument(s)
 # we get a warning about heap alloc failing from HeapReAlloc(,NULL,)
       1 unique,     1 total warning(s)
-!endif
-!if UNIX
+%endif
+%if UNIX
       1 unique,     1 total invalid heap argument(s)
       0 unique,     0 total warning(s)
-!endif
+%endif
       3 unique,     3 total,    155 byte(s) of leak(s)
       1 unique,     1 total,     16 byte(s) of possible leak(s)

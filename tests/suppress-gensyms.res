@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -177,19 +177,19 @@ suppress.c:247
 
 Error #15: INVALID HEAP ARGUMENT: 
 suppress!invalid_free_test1
-!if WINDOWS
+%if WINDOWS
 suppress.c:200
-!endif
-!if UNIX
+%endif
+%if UNIX
 suppress.c:201
-!endif
+%endif
 suppress!test
 suppress.c:239
 suppress!main
 suppress.c:247
 
 # these are sometimes out of order
-!OUT_OF_ORDER
+%OUT_OF_ORDER
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test1
@@ -239,6 +239,9 @@ suppress.c:234
 suppress!main
 suppress.c:247
 
+%if DRSYMS
+# w/o drsyms we can't get RtlpHeapFailureInfo (i#292)
+# this will also happen on machines w/o private syms for ntdll
 : LEAK 32 direct bytes + 0 indirect bytes
 suppress!invalid_free_test1
 suppress.c:182
@@ -246,3 +249,24 @@ suppress!test
 suppress.c:239
 suppress!main
 suppress.c:247
+%endif
+
+%if CYGWIN_PREVISTA
+: LEAK 32 direct bytes + 0 indirect bytes
+suppress!invalid_free_test1
+suppress.c:182
+suppress!test
+suppress.c:239
+suppress!main
+suppress.c:247
+%endif
+
+%if UNIX
+: LEAK 32 direct bytes + 0 indirect bytes
+suppress!invalid_free_test1
+suppress.c:182
+suppress!test
+suppress.c:239
+suppress!main
+suppress.c:247
+%endif

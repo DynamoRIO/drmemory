@@ -145,13 +145,13 @@ foreach (tool ${tools})
     if ("${tool}" MATCHES "MEMORY" AND test_cygwin)
       # No online symbol support for cygwin yet so using separate build
       # with postprocess model (PR 561181)
-      testbuild("${name}-cygwin-dbg-32" OFF "
+      testbuild("${name}-cyg-dbg-32" OFF "
         ${tool}
         ${DR_entry}
         CMAKE_BUILD_TYPE:STRING=Debug
         USE_DRSYMS:BOOL=OFF
         ")
-      testbuild_ex("${name}-cygwin-rel-32" OFF "
+      testbuild_ex("${name}-cyg-rel-32" OFF "
         ${tool}
         ${DR_entry}
         CMAKE_BUILD_TYPE:STRING=Release

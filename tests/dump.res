@@ -20,14 +20,14 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: INVALID HEAP ARGUMENT 
-!if WINDOWS
+%if WINDOWS
 # addr2line and winsyms report slightly different results here
 malloc.c:162
-!endif
-!if UNIX
+%endif
+%if UNIX
 malloc.c:163
-!endif
-!if WINDOWS
+%endif
+%if WINDOWS
 Error #2: WARNING: heap allocation failed
 malloc.c:174
 Error #3: INVALID HEAP ARGUMENT 
@@ -38,10 +38,10 @@ Error #4: LEAK 42 bytes
 malloc.c:214
 Error #5: LEAK 17 bytes
 malloc.c:197
-!endif
-!if UNIX
+%endif
+%if UNIX
 Error #2: LEAK 17 bytes
 malloc.c:197
 Error #3: LEAK 42 bytes
 malloc.c:214
-!endif
+%endif

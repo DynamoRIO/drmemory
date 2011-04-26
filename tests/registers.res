@@ -19,7 +19,7 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-!if WINDOWS
+%if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
 registers.c:195
 Error #2: UNINITIALIZED READ: reading register eflags
@@ -38,8 +38,8 @@ Error #8: UNINITIALIZED READ: reading register ecx
 registers.c:349
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:379
-!endif
-!if UNIX
+%endif
+%if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
 registers.c:212
 Error #2: UNINITIALIZED READ: reading register eflags
@@ -58,6 +58,6 @@ Error #8: UNINITIALIZED READ: reading register ecx
 registers.c:360
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:385
-!endif
+%endif
 Error #10: LEAK 15 direct bytes + 0 indirect bytes
 Error #11: LEAK 15 direct bytes + 0 indirect bytes

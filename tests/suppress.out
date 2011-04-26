@@ -39,4 +39,16 @@ done
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of leak(s)
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
 :::Dr.Memory:::      15 user-suppressed error(s)
+%if DRSYMS
 :::Dr.Memory:::       7 user-suppressed leak(s)
+%endif
+# really need better conditionals to avoid all this duplication
+%if CYGWIN_VISTAPLUS
+:::Dr.Memory:::       6 user-suppressed leak(s)
+%endif
+%if CYGWIN_PREVISTA
+:::Dr.Memory:::       7 user-suppressed leak(s)
+%endif
+%if UNIX
+:::Dr.Memory:::       7 user-suppressed leak(s)
+%endif

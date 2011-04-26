@@ -229,6 +229,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
     -D toolbindir:STRING=${DR_param_pattern}/../bin32
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
+    -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
     # runtest.cmake will add the -profdir arg
     -D postcmd:STRING=${postcmd}
     ${cmd_script})

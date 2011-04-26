@@ -27,7 +27,7 @@ Error #3: UNINITIALIZED READ
 malloc.c:119
 Error #4: INVALID HEAP ARGUMENT
 malloc.c:164
-!OUT_OF_ORDER
+%OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:215
 : LEAK 16 direct bytes + 48 indirect bytes

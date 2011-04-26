@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -22,14 +23,14 @@ Error #1: UNINITIALIZED READ
 cs2bug.cpp:29
 Error #2: UNADDRESSABLE ACCESS: writing 4 byte(s)
 cs2bug.cpp:37
-!if UNIX
+%if UNIX
 Error #3: LEAK 4 direct bytes + 19 indirect bytes
 cs2bug.cpp:100
 Error #4: LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:28
-!endif
-!if WINDOWS
+%endif
+%if WINDOWS
 # FIXME PR 587093: string code disabled for now
 Error #3: LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:28
-!endif
+%endif

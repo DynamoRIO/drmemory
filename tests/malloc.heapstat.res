@@ -22,7 +22,7 @@
 :::Dr.Heapstat:::       3 unique,     3 total,    155 byte(s) of leak(s)
 :::Dr.Heapstat:::       1 unique,     1 total,     16 byte(s) of possible leak(s)
 # Different order based on hashtable iterator order
-!OUT_OF_ORDER
+%OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
 malloc.c:215
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes

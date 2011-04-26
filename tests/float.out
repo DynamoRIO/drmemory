@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -23,13 +24,13 @@ testing floats on stack
 all done
 :::Dr.Memory::: ERRORS FOUND:
 :::Dr.Memory:::       0 unique,     0 total unaddressable access(es)
-!if WINDOWS
+%if WINDOWS
 # PR 473614: cl's /RTC1 fills all locals w/ 0xcccccccc
 :::Dr.Memory:::       5 unique,     5 total uninitialized access(es)
-!endif
-!if UNIX
+%endif
+%if UNIX
 :::Dr.Memory:::       6 unique,     6 total uninitialized access(es)
-!endif
+%endif
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 :::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of leak(s)

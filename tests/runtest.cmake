@@ -30,6 +30,7 @@
 # * USE_DRSYMS = whether running a DRSYMS build
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
+# * CMAKE_SYSTEM_VERSION
 #
 # these allow for parameterization for more portable tests (PR 544430)
 # env vars will override; else passed-in default settings will be used:
@@ -38,8 +39,8 @@
 #
 # any regex chars in the patterns will be escaped.
 # a line beginning with # is a comment and is ignored.
-# basic conditionals are "!if WINDOWS" and "!if UNIX" ending with
-# "!endif".
+# basic conditionals are "%if WINDOWS" and "%if UNIX" ending with
+# "%endif".
 
 ##################################################
 # let env vars override build-dir defaults passed in as cmake defines
@@ -285,23 +286,36 @@ foreach (str ${patterns})
   string(REGEX REPLACE "(^|\n)#[^\n]*\n" "\\1\n" ${str} "${${str}}")
 
   # evaluate conditionals
-  # cmake's regex matcher is maximal unfortunately: for now we disallow !
+  # cmake's regex matcher is maximal unfortunately: for now we disallow %
   # inside conditional
-  if (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN") # cygwin
-    # if !CYGWIN is NOT present then counts as Windows
-    string(REGEX REPLACE "(^|\n)!if UNIX[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-    string(REGEX REPLACE "(^|\n)!if WINDOWS[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-  else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN")
+  if (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN") # cygwin
+    # if %CYGWIN is NOT present then counts as Windows
+    string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+    string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+    # distinguish pre-vista from post-vista
+    if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+      string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1" 
+        ${str} "${${str}}")
+    else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+      string(REGEX REPLACE "(^|\n)%if CYGWIN_PREVISTA[^%]+\n%endif\n" "\\1" 
+        ${str} "${${str}}")
+    endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
+  else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
     if (WIN32)
-      string(REGEX REPLACE "(^|\n)!if UNIX[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-      string(REGEX REPLACE "(^|\n)!if CYGWIN[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     elseif (UNIX)
-      string(REGEX REPLACE "(^|\n)!if WINDOWS[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
-      string(REGEX REPLACE "(^|\n)!if CYGWIN[^!]+\n!endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+      string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     endif (WIN32)
-  endif (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "!if CYGWIN")
+  endif (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
+  if (USE_DRSYMS)
+    string(REGEX REPLACE "(^|\n)%if NOSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  else (USE_DRSYMS)
+    string(REGEX REPLACE "(^|\n)%if DRSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  endif (USE_DRSYMS)
 
-  string(REGEX REPLACE "(^|\n)!(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
+  string(REGEX REPLACE "(^|\n)%(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
 endforeach (str)
 
 ##################################################
@@ -421,9 +435,9 @@ if (resmatch)
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   set(require_in_order 1)
   foreach (line ${lines})
-    if ("${line}" MATCHES "^!OUT_OF_ORDER")
+    if ("${line}" MATCHES "^%OUT_OF_ORDER")
       set(require_in_order 0)
-    elseif ("${line}" MATCHES "^!IN_ORDER")
+    elseif ("${line}" MATCHES "^%IN_ORDER")
       set(require_in_order 1)
     else ()
       # we do NOT include the newline, to support matching intra-line substrings
@@ -486,6 +500,7 @@ if (resmatch)
       -D toolbindir:STRING=${toolbindir}
       -D DRMEMORY_CTEST_SRC_DIR:STRING=${DRMEMORY_CTEST_SRC_DIR}
       -D DRMEMORY_CTEST_DR_DIR:STRING=${DRMEMORY_CTEST_DR_DIR}
+      -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
       # runtest.cmake will add the -profdir arg
       -D postcmd:STRING=${postcmd}
       -P "./runtest.cmake" # CTEST_SCRIPT_NAME is not set: only for -S?
