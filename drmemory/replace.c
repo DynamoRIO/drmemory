@@ -55,28 +55,29 @@
 /* On Windows, keep this updated with drmemory.pl which queries these pre-run */
 #define REPLACE_DEFS()     \
     REPLACE_DEF(memset)    \
-    REPLACE_DEF(wmemset)    \
     REPLACE_DEF(memcpy)    \
-    REPLACE_DEF(wmemcpy)    \
     REPLACE_DEF(memchr)    \
-    REPLACE_DEF(wmemchr)    \
     IF_LINUX(REPLACE_DEF(memrchr)) \
     IF_LINUX(REPLACE_DEF(rawmemchr)) \
     REPLACE_DEF(strchr)    \
     REPLACE_DEF(strrchr)   \
     IF_LINUX(REPLACE_DEF(strchrnul)) \
     REPLACE_DEF(strlen)    \
-    REPLACE_DEF(wcslen)    \
     REPLACE_DEF(strcmp)    \
-    REPLACE_DEF(wcscmp)    \
     REPLACE_DEF(strncmp)   \
-    REPLACE_DEF(wcsncmp)   \
     REPLACE_DEF(strcpy)    \
     REPLACE_DEF(strncpy)   \
     REPLACE_DEF(strcat)    \
     REPLACE_DEF(strncat)   \
     REPLACE_DEF(memmove)   \
+    /* DO NOT ADD ABOVE HERE w/o updating drmemory.pl -libc_addrs */ \
     REPLACE_DEF(memcmp)    \
+    REPLACE_DEF(wmemset)   \
+    REPLACE_DEF(wmemcpy)   \
+    REPLACE_DEF(wmemchr)   \
+    REPLACE_DEF(wcslen)    \
+    REPLACE_DEF(wcscmp)    \
+    REPLACE_DEF(wcsncmp)   \
     REPLACE_DEF(wmemcmp)
 
 /* TODO(timurrrr): add wrappers for wcschr, wcsrchr, wcscpy, wcsncpy, wcscat,
