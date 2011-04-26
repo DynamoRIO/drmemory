@@ -220,6 +220,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtOpenIoCompletion", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenJobObject", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenKey", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
+    {0,"NtOpenKeyEx", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenKeyedEvent", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenMutant", 12, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtOpenObjectAuditAlarm", 48, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,sizeof(PVOID),R, 2,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 3,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 8,sizeof(PRIVILEGE_SET),R, 9,0,IB, 10,0,IB, 11,sizeof(BOOLEAN),W, },
@@ -382,7 +383,11 @@ syscall_info_t syscall_info[] = {
     {0,"NtTerminateProcess", 8, },
     {0,"NtTerminateThread", 8, },
     {0,"NtTestAlert", 0, },
-    {0,"NtTraceEvent", 16, 3,sizeof(EVENT_TRACE_HEADER),R, },
+    /* unlike TraceEvent API routine, syscall takes size+flags as
+     * separate params, and struct observed to be all uninit, so we
+     * assume struct is all OUT
+     */
+    {0,"NtTraceEvent", 16, 3,sizeof(EVENT_TRACE_HEADER),W, },
     {0,"NtTranslateFilePath", 16, 0,sizeof(FILE_PATH),R, 2,sizeof(FILE_PATH),W, },
     {0,"NtUnloadDriver", 4, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
     {0,"NtUnloadKey2", 8, 0,sizeof(OBJECT_ATTRIBUTES),R, 1,0,IB, },
