@@ -960,6 +960,8 @@ handle_pre_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
                      info.nt_path_to_exe.buffer_size, mc, "path to exe");
         check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
                      info.client_id.buffer_size, mc, "PCLIENT_ID");
+        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.exe_stuff.buffer,
+                     info.exe_stuff.buffer_size, mc, "path to exe");
         /* XXX i#98: there are other IN/OUT params but exact form not clear */
     }
     return true;
@@ -974,6 +976,8 @@ handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
         if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
             check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
                          info.client_id.buffer_size, mc, "PCLIENT_ID");
+            check_sysmem(MEMREF_WRITE, sysnum, info.exe_stuff.buffer,
+                         info.exe_stuff.buffer_size, mc, "exe_stuff");
             /* XXX i#98: there are other IN/OUT params but exact form not clear */
         }
     }
