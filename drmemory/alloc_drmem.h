@@ -37,7 +37,8 @@ void
 alloc_drmem_exit(void);
 
 bool
-check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz);
+check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
+                               bool addr_on_stack);
 
 #ifdef LINUX
 dr_signal_action_t

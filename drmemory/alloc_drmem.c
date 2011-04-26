@@ -1802,7 +1802,8 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
 #endif /* LINUX */
 
 bool
-check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz)
+check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
+                               bool addr_on_stack)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -1811,10 +1812,11 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz)
     /* We can't use teb->ProcessEnvironmentBlock b/c i#249 points it at private PEB */
     PEB *peb = get_app_PEB();
 #endif
+    bool addr_in_heap = is_in_heap_region(addr);
     /* It's important to handle the very-common heap-header w/o translating
      * loc's pc field which is a perf hit
      */
-    if (is_in_heap_region(addr) && pt->in_heap_routine > 0) {
+    if (addr_in_heap && pt->in_heap_routine > 0) {
         /* FIXME: ideally we would know exactly which fields were header
          * fields and which ones were ok to write to, to avoid heap corruption
          * by bugs in heap routines (and avoid allowing bad reads by other
@@ -1866,6 +1868,30 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz)
         /* We leave as unaddressable since we're not tracking the unset so we
          * can't safely mark as addressable */
         return tls_ok;
+    }
+    if (options.define_unknown_regions && !addr_in_heap && !addr_on_stack) {
+        /* i#352 (and old PR 464106): handle memory allocated by other
+         * processes by treating as fully defined, without any UNADDR.
+         * This is Windows and there are cases where csrss allocates
+         * things like activation contexts.
+         *
+         * XXX: limit this to MEM_MAPPED/MEM_IMAGE and for MEM_PRIVATE mark as
+         * uninit, or maybe just a louder warning, or old idea of reporting
+         * initial unaddr (though that seems silly), since could be a heap alloc
+         * we missed or some other allocation (PR 464106 mentions gdi32 bitmaps)
+         * that should start out uninit?
+         */
+        app_pc base;
+        size_t sz = allocation_size(addr, &base);
+        if (sz > 0 && base != NULL) {
+            LOG(1, "WARNING: unknown region "PFX"-"PFX": marking as defined\n",
+                base, base+sz);
+            ASSERT(!dr_memory_is_dr_internal(addr) &&
+                   !dr_memory_is_in_client(addr),
+                   "app is using tool's memory: please report this!");
+            shadow_set_range(base, base+sz, SHADOW_DEFINED);
+            return true;
+        }
     }
 #else
     if (is_loader_exception(loc, addr, sz)) {

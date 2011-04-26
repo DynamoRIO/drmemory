@@ -2714,8 +2714,22 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 shadow_set_byte(addr + i, TEST(MEMREF_USE_VALUES, flags) ?
                                 shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED);
             } else {
-                if (!check_unaddressable_exceptions(TEST(MEMREF_WRITE, flags),
-                                                    loc, addr + i, sz)) {
+                /* We check stack bounds here and cache to avoid
+                 * check_undefined_exceptions having to do it over and over (did
+                 * show up on pc sampling at one point).  We assume that
+                 * mcontext contains the app's esp for all callers (including
+                 * our custom clean calls).
+                 */
+                bool addr_on_stack = false;
+                if (stack_base == NULL)
+                    stack_size = allocation_size((app_pc)mc->esp, &stack_base);
+                LOG(4, "comparing %08x %08x %08x %08x\n",
+                    addr+i, stack_base, stack_base+stack_size, mc->esp);
+                if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
+                    addr+i < (app_pc)mc->esp)
+                    addr_on_stack = true;
+                if (!check_unaddressable_exceptions(TEST(MEMREF_WRITE, flags), loc,
+                                                    addr + i, sz, addr_on_stack)) {
                     bool new_bad = true;
                     if (bad_addr != NULL) {
                         if (bad_type != SHADOW_UNADDRESSABLE) {
@@ -2739,38 +2753,11 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     /* We follow Memcheck's lead and set to defined to avoid too
                      * many subsequent errors.  However, if it's on the stack but
                      * beyond TOS, we leave it as undefined to avoid our own
-                     * asserts.  We assume that mcontext contains the app's
-                     * esp for all callers (including our custom clean calls).
+                     * asserts.
                      */
-                    if (stack_base == NULL) {
-                        stack_size = allocation_size((app_pc)mc->esp, &stack_base);
-                    }
-                    LOG(3, "comparing %08x %08x %08x %08x\n",
-                          addr+i, stack_base, stack_base+stack_size, mc->esp);
-                    if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
-                        addr+i < (app_pc)mc->esp) {
+                    if (addr_on_stack) {
                         LOG(2, "unaddressable beyond TOS: leaving unaddressable\n");
                     } else {
-#ifdef WIN32
-                        if (options.define_unknown_regions && 
-                            !is_in_heap_region(addr) &&
-                            (addr+i < stack_base || addr+i >= stack_base+stack_size)) {
-                            /* PR 464106: handle memory allocated by other
-                             * processes by treating as fully defined, after
-                             * reporting 1st UNADDR.
-                             */
-                            app_pc base;
-                            size_t sz = allocation_size(addr+i, &base);
-                            if (sz > 0 && base != NULL) {
-                                LOG(1, "WARNING: unknown region "PFX"-"PFX
-                                    " marking as defined\n", base, base+sz);
-                                ASSERT(!dr_memory_is_dr_internal(addr) &&
-                                       !dr_memory_is_in_client(addr),
-                                       "app is using tool's memory: please report this!");
-                                shadow_set_range(base, base+sz, SHADOW_DEFINED);
-                            }
-                        }
-#endif
                         shadow_set_byte(addr+i, SHADOW_DEFINED);
                     }
                     allgood = false;

@@ -317,6 +317,7 @@ typedef enum {
     RTL_ROUTINE_SETINFO,
     RTL_ROUTINE_SETFLAGS,
     RTL_ROUTINE_HEAPINFO,
+    RTL_ROUTINE_CREATE_ACTCXT, /* for csrss-allocated memory: i#352 */
     RTL_ROUTINE_LOCK,
     RTL_ROUTINE_UNLOCK,
     RTL_ROUTINE_QUERY,
@@ -473,6 +474,7 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlSetUserValueHeap", RTL_ROUTINE_SETINFO },
     { "RtlSetUserFlagsHeap", RTL_ROUTINE_SETFLAGS },
     { "RtlSetHeapInformation", RTL_ROUTINE_HEAPINFO },
+    { "RtlCreateActivationContext", RTL_ROUTINE_CREATE_ACTCXT},
     /* XXX: i#297: investigate these new routines */
     { "RtlMultipleAllocateHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
     { "RtlMultipleFreeHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
@@ -634,8 +636,9 @@ static bool
 is_alloc_sysroutine(app_pc pc)
 {
     /* Should switch to table if add many more syscalls */
-    return (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
-            pc == addr_KiException || pc == addr_KiRaise);
+    return (pc != NULL &&
+            (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
+             pc == addr_KiException || pc == addr_KiRaise));
 }
 #endif
 
@@ -3926,6 +3929,38 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
     } 
 }
 
+
+/**************************************************
+ * RtlCreateActivationContext
+ */
+
+static void
+handle_create_actcxt_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    /* i#352: kernel32!CreateActCtxW invokes csrss via
+     * kernel32!NtWow64CsrBaseCheckRunApp to map in a data file.  The
+     * data structure offsets there vary by platform, and
+     * NtWow64CsrBaseCheckRunApp is not exported, but the mapped file
+     * is not touched until RtlCreateActivationContext is called: so
+     * we wait for that.  The base of the mapped file is passed as the
+     * 2nd param to RtlCreateActivationContext.
+     *
+     * Note that the dealloc is not done via csrss but via regular
+     * NtUnmapViewOfSection by ntdll!RtlpFreeActivationContext
+     * calling kernel32!BasepSxsActivationContextNotification
+     */
+    byte *base = (byte *) APP_ARG(mc, 2, inside);
+    size_t size = allocation_size(base, NULL);
+    if (size != 0) {
+        LOGPT(2, pt, "RtlCreateActivationContext (via csrss): "PFX"-"PFX"\n",
+              base, base + size);
+        client_handle_mmap(pt, base, size, false/*file-backed*/);
+    } else {
+        LOG(1, "WARNING: RtlCreateActivationContext invalid base "PFX"\n", base);
+    }
+}
+
 #endif /* WINDOWS */
 
 /**************************************************
@@ -4157,6 +4192,9 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             *((int *)APP_ARG_ADDR(&mc, 1, inside)),
             *((int *)APP_ARG_ADDR(&mc, 2, inside)));
         *((int *)APP_ARG_ADDR(&mc, 2, inside)) = -1;
+    }
+    else if (type == RTL_ROUTINE_CREATE_ACTCXT) {
+        handle_create_actcxt_pre(drcontext, &mc, inside);
     }
     else if (options.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
         /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
