@@ -55,22 +55,33 @@
 /* On Windows, keep this updated with drmemory.pl which queries these pre-run */
 #define REPLACE_DEFS()     \
     REPLACE_DEF(memset)    \
+    REPLACE_DEF(wmemset)    \
     REPLACE_DEF(memcpy)    \
+    REPLACE_DEF(wmemcpy)    \
     REPLACE_DEF(memchr)    \
+    REPLACE_DEF(wmemchr)    \
     IF_LINUX(REPLACE_DEF(memrchr)) \
     IF_LINUX(REPLACE_DEF(rawmemchr)) \
     REPLACE_DEF(strchr)    \
     REPLACE_DEF(strrchr)   \
     IF_LINUX(REPLACE_DEF(strchrnul)) \
     REPLACE_DEF(strlen)    \
+    REPLACE_DEF(wcslen)    \
     REPLACE_DEF(strcmp)    \
+    REPLACE_DEF(wcscmp)    \
     REPLACE_DEF(strncmp)   \
+    REPLACE_DEF(wcsncmp)   \
     REPLACE_DEF(strcpy)    \
     REPLACE_DEF(strncpy)   \
     REPLACE_DEF(strcat)    \
     REPLACE_DEF(strncat)   \
     REPLACE_DEF(memmove)   \
-    REPLACE_DEF(memcmp)
+    REPLACE_DEF(memcmp)    \
+    REPLACE_DEF(wmemcmp)
+
+/* TODO(timurrrr): add wrappers for wcschr, wcsrchr, wcscpy, wcsncpy, wcscat,
+ * wcsncat, wmemmove.
+ */
 
 static const char *replace_routine_name[] = {
 #define REPLACE_DEF(nm) STRINGIFY(nm),
@@ -131,6 +142,15 @@ replace_memset(void *dst, int val_in, size_t size)
     }
     return dst;
 }
+
+IN_REPLACE_SECTION wchar_t *
+replace_wmemset(wchar_t *dst, wchar_t val_in, size_t size)
+{
+    wchar_t *ret = dst;
+    while (size-- > 0)
+        *dst++ = val_in;
+    return ret;
+}
 END_DO_NOT_OPTIMIZE
 
 IN_REPLACE_SECTION void *
@@ -165,6 +185,12 @@ replace_memcpy(void *dst, const void *src, size_t size)
     return dst;
 }
 
+IN_REPLACE_SECTION wchar_t *
+replace_wmemcpy(wchar_t *dst, const wchar_t *src, size_t size)
+{
+    return (wchar_t*)replace_memcpy(dst, src, size * sizeof(wchar_t));
+}
+
 IN_REPLACE_SECTION void *
 replace_memchr(const void *mem, int find, size_t size)
 {
@@ -173,6 +199,17 @@ replace_memchr(const void *mem, int find, size_t size)
     while (size-- > 0) { /* loop will terminate before underflow */
         if (*s == c)
             return (void *) s;
+        s++;
+    }
+    return NULL;
+}
+
+IN_REPLACE_SECTION wchar_t *
+replace_wmemchr(wchar_t *s, wchar_t c, size_t size)
+{
+    while (size-- > 0) { /* loop will terminate before underflow */
+        if (*s == c)
+            return s;
         s++;
     }
     return NULL;
@@ -254,8 +291,17 @@ replace_strchrnul(const char *str, int find)
 IN_REPLACE_SECTION size_t
 replace_strlen(const char *str)
 {
-    register char *s = (char *) str;
+    register const char *s = str;
     while (*s != '\0')
+        s++;
+    return (s - str);
+}
+
+IN_REPLACE_SECTION size_t
+replace_wcslen(const wchar_t *str)
+{
+    register const wchar_t *s = str;
+    while (*s != L'\0')
         s++;
     return (s - str);
 }
@@ -284,6 +330,27 @@ replace_strncmp(const char *str1, const char *str2, size_t size)
 }
 
 IN_REPLACE_SECTION int
+replace_wcsncmp(const wchar_t *s1, const wchar_t *s2, size_t size)
+{
+    while (size-- > 0) { /* loop will terminate before underflow */
+        if (*s1 == L'\0') {
+            if (*s2 == L'\0')
+                return 0;
+            return -1;
+        }
+        if (*s2 == L'\0')
+            return 1;
+        if ((unsigned int)*s1 < (unsigned int)*s2)
+            return -1;
+        if ((unsigned int)*s1 > (unsigned int)*s2)
+            return 1;
+        s1++;
+        s2++;
+    }
+    return 0;
+}
+
+IN_REPLACE_SECTION int
 replace_strcmp(const char *str1, const char *str2)
 {
     register const unsigned char *s1 = (const unsigned char *) str1;
@@ -299,6 +366,27 @@ replace_strcmp(const char *str1, const char *str2)
         if (*s1 < *s2)
             return -1;
         if (*s1 > *s2)
+            return 1;
+        s1++;
+        s2++;
+    }
+    return 0;
+}
+
+IN_REPLACE_SECTION int
+replace_wcscmp(const wchar_t *s1, const wchar_t *s2)
+{
+    while (1) {
+        if (*s1 == L'\0') {
+            if (*s2 == L'\0')
+                return 0;
+            return -1;
+        }
+        if (*s2 == L'\0')
+            return 1;
+        if ((unsigned int)*s1 < (unsigned int)*s2)
+            return -1;
+        if ((unsigned int)*s1 > (unsigned int)*s2)
             return 1;
         s1++;
         s2++;
@@ -443,6 +531,20 @@ replace_memcmp(const void *p1, const void *p2, size_t size)
     return 0;
 }
 
+IN_REPLACE_SECTION int
+replace_wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t count)
+{
+    ssize_t diff;
+    while (count-- > 0) { /* loop will terminate before underflow */
+        diff = (*s1 - *s2);
+        if (diff != 0)
+            return diff;
+        s1++;
+        s2++;
+    }
+    return 0;
+}
+
 #ifdef LINUX
 asm(".section .text, \"ax\", @progbits");
 asm(".align 0x1000");
@@ -492,6 +594,8 @@ replace_init(void)
         ASSERT(PAGE_START(get_function_entry((app_pc)replace_memset)) ==
                PAGE_START(get_function_entry((app_pc)replace_memmove)),
                "replace_ routines taking up more than one page");
+        ASSERT(sizeof(int) >= sizeof(wchar_t),
+               "wchar_t replacement functions assume wchar_t is not larger than int");
         replace_routine_start = (app_pc)
             PAGE_START(get_function_entry((app_pc)replace_memset));
         
