@@ -1138,5 +1138,8 @@ typedef struct _create_thread_info_t { /* NOTE - this is speculative */
 } create_thread_info_t;
 
 
+/* "The data was too large to fit into the specified buffer." */
+#define STATUS_BUFFER_OVERFLOW           ((NTSTATUS)0x80000005L)
+
 
 #endif /* _WINDEFS_H_ */

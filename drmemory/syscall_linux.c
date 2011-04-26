@@ -2640,3 +2640,11 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
     return false;
 }
 
+bool
+os_syscall_succeeded(int sysnum, ptr_int_t res)
+{
+    if (sysnum == SYS_mmap || sysnum == SYS_mmap2 || sysnum == SYS_mremap)
+        return (res >= 0 || res < -PAGE_SIZE);
+    else
+        return (res >= 0);
+}

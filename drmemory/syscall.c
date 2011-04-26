@@ -810,12 +810,11 @@ event_post_syscall(void *drcontext, int sysnum)
 
         if (sysinfo != NULL) {
             known = true;
-            /* XXX: SYS_mmap, SYS_mmap2, and SYS_mremap success does not
-             * fit this <0 check: fortunately they don't have OUT args.
-             */
-            if ((ptr_int_t)dr_syscall_get_result(drcontext) < 0) {
-                LOG(2, "WARNING: system call %i %s failed\n", sysnum,
-                    (sysinfo != NULL) ? sysinfo->name : "<unknown>");
+            if (!os_syscall_succeeded(sysnum,
+                                      (ptr_int_t)dr_syscall_get_result(drcontext))) {
+                LOG(2, "WARNING: system call %i %s failed with "PFX"\n",
+                    sysnum, (sysinfo != NULL) ? sysinfo->name : "<unknown>",
+                    dr_syscall_get_result(drcontext));
             } else {
                 /* commit the writes via MEMREF_WRITE */
                 process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);

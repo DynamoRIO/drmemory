@@ -538,6 +538,16 @@ os_shared_post_syscall(void *drcontext, int sysnum)
      */
 }
 
+bool
+os_syscall_succeeded(int sysnum, ptr_int_t res)
+{
+    if (res == STATUS_BUFFER_OVERFLOW) {
+        /* Data is filled in so consider success */
+        return true;
+    }
+    return (res >= 0);
+}
+
 /***************************************************************************
  * SHADOW PER-ARG-TYPE HANDLING
  */

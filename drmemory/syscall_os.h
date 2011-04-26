@@ -135,4 +135,8 @@ bool
 os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size);
+
+bool
+os_syscall_succeeded(int sysnum, ptr_int_t res);
+
 #endif /* _SYSCALL_OS_H_ */
