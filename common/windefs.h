@@ -1138,6 +1138,32 @@ typedef struct _create_thread_info_t { /* NOTE - this is speculative */
 } create_thread_info_t;
 
 
+typedef enum _KEY_VALUE_INFORMATION_CLASS {
+    KeyValueBasicInformation,
+    KeyValueFullInformation,
+    KeyValuePartialInformation,
+    KeyValueFullInformationAlign64,
+    KeyValuePartialInformationAlign64
+} KEY_VALUE_INFORMATION_CLASS;
+
+typedef struct _KEY_VALUE_FULL_INFORMATION {
+    ULONG   TitleIndex;
+    ULONG   Type;
+    ULONG   DataOffset;
+    ULONG   DataLength;
+    ULONG   NameLength;
+    WCHAR   Name[1];            // Variable size
+//          Data[1]             // Variable size data not declared
+} KEY_VALUE_FULL_INFORMATION, *PKEY_VALUE_FULL_INFORMATION;
+
+typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
+    ULONG   TitleIndex;
+    ULONG   Type;
+    ULONG   DataLength;
+    UCHAR   Data[1];            // Variable size
+} KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
+
+
 /* "The data was too large to fit into the specified buffer." */
 #define STATUS_BUFFER_OVERFLOW           ((NTSTATUS)0x80000005L)
 

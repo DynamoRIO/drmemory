@@ -27,6 +27,11 @@
 # define KUSER_SHARED_DATA_START 0x7ffe0000
 #endif
 
+/* for diagnostics: eventually provide some runtime option,
+ * -logmask or something: for now have to modify this constant
+ */
+#define SYSCALL_VERBOSE 2
+
 void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base));
 

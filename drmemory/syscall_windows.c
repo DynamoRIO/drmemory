@@ -50,7 +50,9 @@ int sysnum_CreateUserProcess;
  *     e.g., PORT_MESSAGE which I do handle today w/ hardcoded support
  *   - some structs have optional fields that don't need to be defined
  *   - need to add post-syscall write size entries: I put in a handful.
- *     should look at all OUT params whose (requested) size comes from an IN param
+ *     should look at all OUT params whose (requested) size comes from an IN param.
+ *     e.g., NtQueryValueKey: should use IN param to check addressability, but
+ *     OUT ResultLength for what was actually written to.
  */
 /* Sources:
  *   /work/dr/tot/internal/win32lore/syscalls/nebbett/ntdll.h
@@ -997,6 +999,52 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         return true; /* execute syscall */
 }
 
+#ifdef DEBUG
+/* info to help analyze syscall false positives.
+ * maybe could eventually spin some of this off as an strace tool.
+ */
+void
+syscall_diagnostics(void *drcontext, int sysnum)
+{
+    /* XXX: even though only at -verbose 2, should use safe_read for all derefs */
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (sysinfo == NULL)
+        return;
+    if (!NT_SUCCESS(dr_syscall_get_result(drcontext)))
+        return;
+    if (strcmp(sysinfo->name, "NtQueryValueKey") == 0) {
+        UNICODE_STRING *us = (UNICODE_STRING *) pt->sysarg[1];
+        LOG(2, "NtQueryValueKey %S => ", us->Buffer);
+        if (pt->sysarg[2] == KeyValuePartialInformation) {
+            KEY_VALUE_PARTIAL_INFORMATION *info = (KEY_VALUE_PARTIAL_INFORMATION *)
+                pt->sysarg[3];
+            if (info->Type == REG_SZ || info->Type == REG_EXPAND_SZ ||
+                info->Type == REG_MULTI_SZ/*just showing first*/)
+                LOG(2, "%.*S", info->DataLength, (wchar_t *)info->Data);
+            else
+                LOG(2, PFX, *(ptr_int_t *)info->Data);
+        } else if (pt->sysarg[2] == KeyValueFullInformation) {
+            KEY_VALUE_FULL_INFORMATION *info = (KEY_VALUE_FULL_INFORMATION *)
+                pt->sysarg[3];
+            LOG(2, "%.*S = ", info->NameLength, info->Name);
+            if (info->Type == REG_SZ || info->Type == REG_EXPAND_SZ ||
+                info->Type == REG_MULTI_SZ/*just showing first*/) {
+                LOG(2, "%.*S",
+                    info->DataLength, (wchar_t *)(((byte*)info)+info->DataOffset));
+            } else
+                LOG(2, PFX, *(ptr_int_t *)(((byte*)info)+info->DataOffset));
+        }
+        LOG(2, "\n");
+    } else if (strcmp(sysinfo->name, "NtOpenFile") == 0 ||
+               strcmp(sysinfo->name, "NtCreateFile") == 0) {
+        OBJECT_ATTRIBUTES *obj = (OBJECT_ATTRIBUTES *) pt->sysarg[2];
+        if (obj != NULL && obj->ObjectName != NULL)
+            LOG(2, "%s %S\n", sysinfo->name, obj->ObjectName->Buffer);
+    }
+}
+#endif
+
 void
 os_shadow_post_syscall(void *drcontext, int sysnum)
 {
@@ -1016,5 +1064,7 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_CreateThreadEx(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_CreateUserProcess)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
+
+    DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

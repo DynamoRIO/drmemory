@@ -521,7 +521,7 @@ shadow_set_range(app_pc start, app_pc end, uint val)
                 }
             }
             shadow_set_byte(pc, val);
-            LOG(3, "\tset byte "PFX"\n", pc);
+            LOG(4, "\tset byte "PFX"\n", pc);
             pc++;
         }
     }

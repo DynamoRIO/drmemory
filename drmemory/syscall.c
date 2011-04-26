@@ -393,7 +393,7 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     int i, j;
     if (!options.analyze_unknown_syscalls)
         return;
-    LOG(2, "ignoring system call #"PIFX"\n", sysnum);
+    LOG(SYSCALL_VERBOSE, "unknown system call #"PIFX"\n", sysnum);
     if (options.verbose >= 2) {
         ELOGF(0, f_global, "WARNING: unhandled system call #"PIFX"\n", sysnum);
     } else {
@@ -573,6 +573,10 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
     if (ptr != NULL && sz > 0) {
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, id);
+        DOLOG(SYSCALL_VERBOSE, {
+            if (flags == MEMREF_WRITE)
+                LOG(SYSCALL_VERBOSE, "\t  marking "PIFX"-"PIFX" written\n", ptr, ptr + sz);
+        });
         handle_mem_ref(flags, &loc, ptr, sz, mc, NULL);
     }
 }
@@ -589,7 +593,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
 {
     app_pc start;
     ptr_uint_t size;
-    uint num_args, write_check;
+    uint num_args;
     int i, last_param = -1;
     LOG(2, "processing pre system call #%d %s\n", sysnum, sysinfo->name);
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
@@ -607,7 +611,8 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
         check_sysparam_defined(sysnum, i, mc, argsz);
     }
     for (i=0; i<num_args; i++) {
-        write_check = MEMREF_WRITE;
+        LOG(SYSCALL_VERBOSE, "\t  pre considering arg %d %d %x\n", sysinfo->arg[i].param,
+            sysinfo->arg[i].size, sysinfo->arg[i].flags);
         if (sysarg_invalid(&sysinfo->arg[i]))
             break;
 
@@ -677,10 +682,13 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     ptr_uint_t size;
     uint num_args;
     int i, last_param = -1;
-    LOG(2, "processing post system call #%d %s\n", sysnum, sysinfo->name);
+    LOG(SYSCALL_VERBOSE, "processing post system call #%d %s res="PIFX"\n",
+        sysnum, sysinfo->name, dr_syscall_get_result(drcontext));
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
     for (i=0; i<num_args; i++) {
+        LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x\n",
+            sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags);
         if (sysarg_invalid(&sysinfo->arg[i]))
             break;
         ASSERT(i < SYSCALL_NUM_ARG_STORE, "not storing enough args");
@@ -720,6 +728,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
             continue;
         }
         last_param = sysinfo->arg[i].param;
+        LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
         if (start != NULL && size > 0) {
             bool skip = os_handle_post_syscall_arg_access(sysnum, mc, i,
                                                           &sysinfo->arg[i],
@@ -748,13 +757,18 @@ event_pre_syscall(void *drcontext, int sysnum)
     }
 #endif
 
+    LOG(SYSCALL_VERBOSE, "system call #"PIFX" %s\n", sysnum,
+        (syscall_lookup(sysnum) != NULL) ? syscall_lookup(sysnum)->name : "<unknown>");
+
     /* save params for post-syscall access 
      * FIXME: it's possible for a pathological app to crash us here
      * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
      * params will hit unreadable page.
      */
-    for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++)
+    for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
+        LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
+    }
 
     /* give os-specific-code chance to do non-shadow processing */
     res = os_shared_pre_syscall(drcontext, sysnum);
@@ -812,7 +826,7 @@ event_post_syscall(void *drcontext, int sysnum)
             known = true;
             if (!os_syscall_succeeded(sysnum,
                                       (ptr_int_t)dr_syscall_get_result(drcontext))) {
-                LOG(2, "WARNING: system call %i %s failed with "PFX"\n",
+                LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
                     sysnum, (sysinfo != NULL) ? sysinfo->name : "<unknown>",
                     dr_syscall_get_result(drcontext));
             } else {
