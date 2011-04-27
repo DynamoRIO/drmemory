@@ -145,7 +145,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtCreateSemaphore", 20, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateSymbolicLinkObject", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
     {0,"NtCreateThread", 32, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(CLIENT_ID),W, 5,sizeof(CONTEXT),R|SYSARG_CONTEXT, 6,sizeof(USER_STACK),R, 7,0,IB, },
-    {0,"NtCreateThreadEx", 44, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 6,0,IB, 10,sizeof(create_thread_info_t),R/*rest handled manually*/, },
+    {0,"NtCreateThreadEx", 44, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 6,0,IB /*rest handled manually*/, },
     {0,"NtCreateTimer", 16, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, },
     {0,"NtCreateToken", 52, 0,sizeof(HANDLE),W, 2,sizeof(OBJECT_ATTRIBUTES),R, 4,sizeof(LUID),R, 5,sizeof(LARGE_INTEGER),R, 6,sizeof(TOKEN_USER),R, 7,sizeof(TOKEN_GROUPS),R, 8,sizeof(TOKEN_PRIVILEGES),R, 9,sizeof(TOKEN_OWNER),R, 10,sizeof(TOKEN_PRIMARY_GROUP),R, 11,sizeof(TOKEN_DEFAULT_DACL),R, 12,sizeof(TOKEN_SOURCE),R, },
     {0,"NtCreateUserProcess", 44, 0,sizeof(HANDLE),W, 1,sizeof(HANDLE),W, 4,sizeof(OBJECT_ATTRIBUTES),R, 5,sizeof(OBJECT_ATTRIBUTES),R, 7,0,IB, 8,sizeof(RTL_USER_PROCESS_PARAMETERS),R, /*XXX i#98: arg 9 is an in/out*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, },
@@ -909,15 +909,24 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
 {
     if (is_current_process((HANDLE)pt->sysarg[3])) {
         create_thread_info_t info;
-        if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-            if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
-                             info.client_id.buffer_size, mc, "PCLIENT_ID");
+        if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
+                      sizeof(info.struct_size), &info.struct_size)) {
+            if (info.struct_size > sizeof(info)) {
+                DO_ONCE({ LOG(1, "WARNING: create_thread_info_t size too large"); });
+                info.struct_size = sizeof(info);  /* avoid overflowing the struct */
             }
-            if (info.struct_size > offsetof(create_thread_info_t, teb)) {
-                /* This is optional, and omitted in i#342 */
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
-                             info.teb.buffer_size, mc, "PTEB");
+            if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
+                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[10],
+                             info.struct_size, mc, "create_thread_info_t");
+                if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
+                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
+                                 info.client_id.buffer_size, mc, "PCLIENT_ID");
+                }
+                if (info.struct_size > offsetof(create_thread_info_t, teb)) {
+                    /* This is optional, and omitted in i#342 */
+                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
+                                 info.teb.buffer_size, mc, "PTEB");
+                }
             }
         }
     }
@@ -939,14 +948,20 @@ handle_post_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
             LOG(1, "TEB for new thread: "PFX"\n", teb);
             set_teb_initial_shadow(teb);
         }
-        if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-            if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
-                check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
-                             info.client_id.buffer_size, mc, "PCLIENT_ID");
+        if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
+                      sizeof(info.struct_size), &info.struct_size)) {
+            if (info.struct_size > sizeof(info)) {
+                info.struct_size = sizeof(info);  /* avoid overflowing the struct */
             }
-            if (info.struct_size > offsetof(create_thread_info_t, teb)) {
-                check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
-                             info.teb.buffer_size, mc, "PTEB");
+            if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
+                if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
+                    check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
+                                 info.client_id.buffer_size, mc, "PCLIENT_ID");
+                }
+                if (info.struct_size > offsetof(create_thread_info_t, teb)) {
+                    check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
+                                 info.teb.buffer_size, mc, "PTEB");
+                }
             }
         }
     }
