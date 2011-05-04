@@ -2401,8 +2401,8 @@ bool
 os_shared_pre_syscall(void *drcontext, int sysnum)
 {
     bool res = true;
-    dr_mcontext_t mc;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
     switch (sysnum) {
     case SYS_close: {
         /* DRi#357 has DR isolating our files for us, so nothing to do here anymore */
@@ -2443,8 +2443,8 @@ bool
 os_shadow_pre_syscall(void *drcontext, int sysnum)
 {
     bool res = true;
-    dr_mcontext_t mc;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
     switch (sysnum) {
     case SYS_clone: 
         handle_clone(drcontext, &mc); 
@@ -2586,12 +2586,12 @@ void
 os_shadow_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     switch (sysnum) {
     case SYS__sysctl: {
         struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
         size_t len;
-        dr_get_mcontext(drcontext, &mc, NULL); /* move up once have more cases */
+        dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
         if (dr_syscall_get_result(drcontext) == 0 && args != NULL) {
             /* xref PR 408540: here we wait until post so we can use the
              * actual written size.  There could be races but they're

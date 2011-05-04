@@ -920,12 +920,12 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 void
 client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
 {
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     byte *sp;
     client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
     if (options.leaks_only || !options.shadowing)
         return;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.esp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
         sp, cpt_parent->pre_callback_esp);
@@ -1002,10 +1002,10 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
 void
 client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 {
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     if (options.leaks_only || !options.shadowing)
         return;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
 #ifdef WINDOWS
     if (sysnum == sysnum_continue) {
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
@@ -1217,7 +1217,7 @@ event_signal_alloc(void *drcontext, dr_siginfo_t *info)
         /* no longer trying to store the interrupted xsp b/c it
          * gets too complicated (xref PR 620746)
          */
-        LOG(2, "signal interrupted app at xsp="PFX"\n", info->mcontext.xsp);
+        LOG(2, "signal interrupted app at xsp="PFX"\n", info->mcontext->xsp);
     }
     return DR_SIGNAL_DELIVER;
 }
@@ -1245,10 +1245,10 @@ at_signal_handler(void)
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     byte *sp, *stop;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     sp = (byte *)mc.xsp;
     stop = sp + MAX_SIGNAL_FRAME_SIZE;
     if (cpt->sigaltstack != NULL &&

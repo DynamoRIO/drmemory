@@ -374,7 +374,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
         return true;
     }
     instr_init(drcontext, &inst);
-    decode(drcontext, info->raw_mcontext.pc, &inst);
+    decode(drcontext, info->raw_mcontext->pc, &inst);
     ASSERT(instr_valid(&inst), "unknown translation instr");
     DOLOG(3, {
         per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -383,7 +383,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
         LOG(3, "\n");
     });
     for (memopidx = 0;
-         instr_compute_address_ex(&inst, &info->raw_mcontext, memopidx, &addr, &write);
+         instr_compute_address_ex(&inst, info->raw_mcontext, memopidx, &addr, &write);
          memopidx++) {
         if (write && dr_memory_is_dr_internal(addr)) {
             shadow_write = true;
@@ -703,11 +703,11 @@ instr_mem_or_gpr_dsts(instr_t *inst)
 static bool
 get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
 {
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     opnd_t src = instr_get_src(inst, i);
     if (val == NULL)
         return false;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     if (opnd_is_memory_reference(src)) {
         app_pc addr = opnd_compute_address(src, &mc);
         size_t sz = opnd_size_in_bytes(opnd_get_size(src));
@@ -1553,7 +1553,7 @@ slow_path(app_pc pc, app_pc decode_pc)
 #ifdef DEBUG
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #endif
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     instr_t inst;
     int opc;
 #ifdef TOOL_DR_MEMORY
@@ -1590,7 +1590,7 @@ slow_path(app_pc pc, app_pc decode_pc)
 
     pc_to_loc(&loc, pc);
 
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     /* Locally-spilled and whole-bb-spilled (PR 489221) registers have
      * already been restored in shared_slowpath, so we can properly
      * emulate addresses referenced.  We can't restore whole-bb-spilled

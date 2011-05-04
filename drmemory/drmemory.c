@@ -803,7 +803,7 @@ static void
 set_thread_initial_structures(void *drcontext)
 {
 #ifdef WINDOWS
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     byte *stack_reserve;
     size_t stack_reserve_sz;
     IF_DEBUG(bool ok;)
@@ -851,7 +851,7 @@ set_thread_initial_structures(void *drcontext)
      * client_handle_Ki.
      */
     IF_DEBUG(ok = )
-        dr_get_mcontext(drcontext, &mc, NULL);
+        dr_get_mcontext(drcontext, &mc);
     ASSERT(ok, "unable to get mcontext for thread");
     ASSERT(mc.xsp <= (reg_t)teb->StackBase && mc.xsp > (reg_t)teb->StackLimit,
            "initial xsp for thread invalid");
@@ -951,10 +951,10 @@ set_initial_structures(void *drcontext)
     /* We can't get app xsp at init time (i#117) so we call this on 1st bb 
      * For subsequent threads we do this when handling the clone syscall
      */
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     app_pc stack_base;
     size_t stack_size;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
         LOG(1, "initial stack is "PFX"-"PFX", sp="PFX"\n",
             stack_base, stack_base + stack_size, mc.xsp);

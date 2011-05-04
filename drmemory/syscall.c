@@ -744,10 +744,10 @@ event_pre_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     syscall_info_t *sysinfo;
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     int i;
     bool res = true;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
 
 #ifdef STATISTICS
     if (sysnum >= MAX_SYSNUM-1) {
@@ -807,8 +807,8 @@ static void
 event_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
 
     handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
     os_shared_post_syscall(drcontext, sysnum);

@@ -992,7 +992,7 @@ leak_scan_for_leaks(bool at_exit)
     pc_entry_t *e, *next_e;
     void **drcontexts = NULL;
     uint num_threads, i;
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     reachability_data_t data;
 #ifdef DEBUG
     static bool called_at_exit;
@@ -1050,11 +1050,11 @@ leak_scan_for_leaks(bool at_exit)
         void *my_drcontext = dr_get_current_drcontext();
         for (i = 0; i < num_threads; i++) {
             LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(drcontexts[i]));
-            dr_get_mcontext(drcontexts[i], &mc, NULL);
+            dr_get_mcontext(drcontexts[i], &mc);
             check_reachability_regs(drcontexts[i], &mc, &data);
         }
         LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(my_drcontext));
-        dr_get_mcontext(my_drcontext, &mc, NULL);
+        dr_get_mcontext(my_drcontext, &mc);
         check_reachability_regs(my_drcontext, &mc, &data);
     }
 

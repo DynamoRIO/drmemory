@@ -1684,8 +1684,8 @@ event_pre_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     int i;
-    dr_mcontext_t mc;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
 
     /* FIXME: share this code w/ drmemory/syscall.c */
     /* save params for post-syscall access 
@@ -1719,8 +1719,8 @@ static void
 event_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc;
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
     handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
 }
 

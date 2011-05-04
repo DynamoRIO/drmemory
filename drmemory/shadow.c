@@ -1378,7 +1378,7 @@ shadow_registers_thread_init(void *drcontext)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
 #ifdef LINUX
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
 #endif
     shadow_registers_t *sr;
 #ifdef LINUX

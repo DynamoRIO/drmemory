@@ -2713,15 +2713,15 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
          * shouldn't matter enough to be worth our determining
          */
         LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
-            info->raw_mcontext.xip, info->mcontext.xip, target);
+            info->raw_mcontext->xip, info->mcontext->xip, target);
         if (options.leaks_only) {
-            if (handle_zeroing_fault(drcontext, target, &info->raw_mcontext,
-                                     &info->mcontext))
+            if (handle_zeroing_fault(drcontext, target, info->raw_mcontext,
+                                     info->mcontext))
                 return DR_SIGNAL_SUPPRESS;
         } else if (is_in_special_shadow_block(target)) {
             ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
-            handle_special_shadow_fault(drcontext, target, &info->raw_mcontext,
-                                        &info->mcontext, info->fault_fragment_info.tag);
+            handle_special_shadow_fault(drcontext, target, info->raw_mcontext,
+                                        info->mcontext, info->fault_fragment_info.tag);
             /* Re-execute the faulting cache instr.  If we ever change to redirect
              * to a new bb at the app instr we must change our two-part shadow
              * write for sub-dword.
@@ -2741,13 +2741,13 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
         if (options.leaks_only &&
             excpt->record->ExceptionInformation[0] == 1 /* write */) {
-            if (handle_zeroing_fault(drcontext, target, &excpt->raw_mcontext,
-                                     &excpt->mcontext))
+            if (handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                     excpt->mcontext))
                 return false;
         } else if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
                    is_in_special_shadow_block(target)) {
-            handle_special_shadow_fault(drcontext, target, &excpt->raw_mcontext,
-                                        &excpt->mcontext, excpt->fault_fragment_info.tag);
+            handle_special_shadow_fault(drcontext, target, excpt->raw_mcontext,
+                                        excpt->mcontext, excpt->fault_fragment_info.tag);
             /* Re-execute the faulting cache instr.  If we ever change to redirect
              * to a new bb at the app instr we must change our two-part shadow
              * write for sub-dword.

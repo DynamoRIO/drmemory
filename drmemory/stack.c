@@ -303,9 +303,9 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
 {
     ptr_int_t delta = (ptr_int_t) val;
     void *drcontext = dr_get_current_drcontext();
-    dr_mcontext_t mc;
+    dr_mcontext_t mc = {sizeof(mc),};
     STATS_INC(adjust_esp_executions);
-    dr_get_mcontext(drcontext, &mc, NULL);
+    dr_get_mcontext(drcontext, &mc);
     if (type == ESP_ADJUST_ABSOLUTE) {
         LOG(3, "esp adjust absolute esp="PFX" => "PFX"\n", mc.esp, val);
         delta = val - mc.esp;
