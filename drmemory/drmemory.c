@@ -435,7 +435,7 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
 {
     IF_DEBUG(per_thread_t *pt = (per_thread_t *)
              dr_get_tls_field(dr_get_current_drcontext()));
-    LOGPT(2, pt, "in event_basic_block(tag="PFX")%s%s\n", tag,
+    LOGPT(SYSCALL_VERBOSE, pt, "in event_basic_block(tag="PFX")%s%s\n", tag,
           for_trace ? " for trace" : "",
           translating ? " translating" : "");
     return instrument_bb(drcontext, tag, bb, for_trace, translating);

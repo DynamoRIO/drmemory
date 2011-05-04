@@ -325,7 +325,7 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
         /* only warn once (or twice w/ races) */
         if (!name_info->warned_no_syms) {
             name_info->warned_no_syms = true;
-            LOG(1, "WARNING: unable to load symbols for %s\n", modpath);
+            WARN("WARNING: unable to load symbols for %s\n", modpath);
         }
 # endif
         BUFPRINT(buf, bufsz, *sofar, len, " %s!?"NL LINE_PREFIX"??:0"NL, modname);

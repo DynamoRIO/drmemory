@@ -27,6 +27,12 @@
 #include "readwrite.h"
 #include <stddef.h> /* offsetof */
 
+#include "../wininc/ndk_dbgktypes.h"
+#include "../wininc/ndk_iotypes.h"
+#include "../wininc/afd_shared.h"
+#include "../wininc/msafdlib.h"
+#include "../wininc/winioctl.h"
+
 /***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
  */
@@ -41,6 +47,7 @@ static hashtable_t systable;
 int sysnum_CreateThread;
 int sysnum_CreateThreadEx;
 int sysnum_CreateUserProcess;
+int sysnum_DeviceIoControlFile;
 
 /* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME PR 406350: IIS syscalls!
@@ -54,12 +61,7 @@ int sysnum_CreateUserProcess;
  *     e.g., NtQueryValueKey: should use IN param to check addressability, but
  *     OUT ResultLength for what was actually written to.
  */
-/* Sources:
- *   /work/dr/tot/internal/win32lore/syscalls/nebbett/ntdll.h
- *   /extsw/pkgs/ReactOS-0.3.1/include/ddk/winddk.h
- *   /extsw/pkgs/ReactOS-0.3.1/include/psdk/winternl.h
- *   Metasploit syscall table
- * Originally generated via:
+/* Originally generated via:
  *  ./mksystable.pl < ../../win32lore/syscalls/nebbett/ntdll-fix.h | sort
  * (ntdll-fix.h has NTAPI, etc. added to NtNotifyChangeDirectoryFile)
  * Don't forget to re-add the #if 1 below after re-generating
@@ -160,7 +162,7 @@ syscall_info_t syscall_info[] = {
     {0,"NtDeleteKey", 4, },
     {0,"NtDeleteObjectAuditAlarm", 12, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 2,0,IB, },
     {0,"NtDeleteValueKey", 8, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
-    {0,"NtDeviceIoControlFile", 40, 4,sizeof(IO_STATUS_BLOCK),W, 8,-9,W, },
+    {0,"NtDeviceIoControlFile", 40, 4,sizeof(IO_STATUS_BLOCK),W, /*param6 handled manually*/ 8,-9,W, },
     {0,"NtDisplayString", 4, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
     {0,"NtDuplicateObject", 28, 3,sizeof(HANDLE),W, },
     {0,"NtDuplicateToken", 24, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,0,IB, 5,sizeof(HANDLE),W, },
@@ -483,6 +485,9 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     sysnum_CreateUserProcess = sysnum_from_name(drcontext, ntdll_base,
                                                 "NtCreateUserProcess");
     /* not there in pre-vista */
+    sysnum_DeviceIoControlFile = sysnum_from_name(drcontext, ntdll_base,
+                                                  "NtDeviceIoControlFile");
+    ASSERT(sysnum_DeviceIoControlFile >= 0, "cannot find NtDeviceIoControlFile sysnum");
 }
 
 void
@@ -583,7 +588,7 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
         else
             size = pm.u1.Length;
         if (size > sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH) {
-            DO_ONCE({ LOG(1, "WARNING: PORT_MESSAGE size larger than known max"); });
+            DO_ONCE({ WARN("WARNING: PORT_MESSAGE size larger than known max"); });
         }
         /* See above: I've seen 0x15c and 0x130.  Anything too large, though,
          * may indicate an error in our syscall param types, so we want a
@@ -912,7 +917,7 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
         if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
                       sizeof(info.struct_size), &info.struct_size)) {
             if (info.struct_size > sizeof(info)) {
-                DO_ONCE({ LOG(1, "WARNING: create_thread_info_t size too large"); });
+                DO_ONCE({ WARN("WARNING: create_thread_info_t size too large"); });
                 info.struct_size = sizeof(info);  /* avoid overflowing the struct */
             }
             if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
@@ -1000,6 +1005,322 @@ handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
     }
 }
 
+/***************************************************************************
+ * IOCTLS
+ */
+
+/*
+NTSYSAPI NTSTATUS NTAPI
+ZwDeviceIoControlFile(
+    IN HANDLE FileHandle,
+    IN HANDLE Event OPTIONAL,
+    IN PIO_APC_ROUTINE ApcRoutine OPTIONAL,
+    IN PVOID ApcContext OPTIONAL,
+    OUT PIO_STATUS_BLOCK IoStatusBlock,
+    IN ULONG IoControlCode,
+    IN PVOID InputBuffer OPTIONAL,
+    IN ULONG InputBufferLength,
+    OUT PVOID OutputBuffer OPTIONAL,
+    IN ULONG OutputBufferLength
+    );
+*/
+
+/* Note that the AFD (Ancillary Function Driver, afd.sys, for winsock)
+ * ioctls don't follow the regular CTL_CODE where the device is <<16.
+ * Instead they have the device (FILE_DEVICE_NETWORK == 0x12) << 12,
+ * and the function << 2, with access bits always set to 0.
+ * NtDeviceIoControlFile only looks at the access and method bits
+ * though.
+ */
+
+/* XXX: very similar to Linux layouts, though exact constants are different.
+ * Still, should be able to share some code.
+ */
+static void
+check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
+               int sysnum, const char *id)
+{
+    struct sockaddr *sa = (struct sockaddr *) ptr;
+    ADDRESS_FAMILY family;
+    if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sa->sa_family, sizeof(sa->sa_family), mc, id);
+    }
+    if (!safe_read(&sa->sa_family, sizeof(family), &family))
+        return;
+    /* FIXME: do not check beyond len */
+    switch (family) {
+    case AF_INET: {
+        struct sockaddr_in *sin = (struct sockaddr_in *) sa;
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin->sin_port, sizeof(sin->sin_port), mc, id);
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), mc, id);
+        break;
+    }
+    case AF_INET6: {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), mc, id);
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo), mc, id);
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), mc, id);
+        /* FIXME: when is sin6_scope_struct used? */
+        check_sysmem(memcheck_flags, sysnum,
+                     (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id), mc, id);
+        break;
+    }
+    default:
+        WARN("WARNING: unknown sockaddr type %d\n", family); 
+        IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
+        break;
+    }
+}
+
+static bool
+handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
+                               dr_mcontext_t *mc)
+{
+    uint code = (uint) pt->sysarg[5];
+    byte *inbuf = (byte *) pt->sysarg[6];
+    uint insz = (uint) pt->sysarg[7];
+    if (inbuf == NULL)
+        return true;
+    /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
+     * the input buffer needs to be defined.
+     */
+    /* XXX i#378: should break down the output buffer as well since it
+     * may not all be written to.
+     */
+
+    /* shorter, easier-to-read code */
+#define CHECK_DEF(ptr, sz, id) \
+    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte*)ptr, sz, mc, id)
+#define CHECK_ADDR(ptr, sz, id) \
+    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, (byte*)ptr, sz, mc, id)
+
+    /* This is redundant for those where entire buffer must be defined but
+     * most need subset defined.
+     */
+    CHECK_ADDR(inbuf, insz, "InputBuffer");
+
+    /* FIXME: put max of insz on all the sizes below */
+    switch (code) {
+    case IOCTL_AFD_GET_INFO: { /* 0x1207b */
+        /* InputBuffer == AFD_INFO.  Only InformationClass need be defined. */
+        CHECK_DEF(inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
+                  "AFD_INFO.InformationClass");
+        /* XXX i#378: post-syscall we should only define the particular info
+         * fields written.  e.g., only AFD_INFO_GROUP_ID_TYPE uses the
+         * LargeInteger field and the rest will leave the extra dword there
+         * undefined.  Punting on that for now.
+         */
+        break;
+    }
+    case IOCTL_AFD_SET_INFO: { /* 0x1203b */
+        /* InputBuffer == AFD_INFO.  If not LARGE_INTEGER, 2nd word can be undef.
+         * Padding also need not be defined.
+         */
+        AFD_INFO info;
+        CHECK_DEF(inbuf, sizeof(info.InformationClass), "AFD_INFO.InformationClass");
+        if (safe_read(inbuf, sizeof(info), &info)) {
+            switch (info.InformationClass) {
+            case AFD_INFO_BLOCKING_MODE:
+                /* uses BOOLEAN in union */
+                CHECK_DEF(inbuf + offsetof(AFD_INFO, Information.Boolean),
+                          sizeof(info.Information.Boolean), "AFD_INFO.Information");
+                break;
+            default:
+                /* the other codes are only valid with IOCTL_AFD_GET_INFO */
+                WARN("WARNING: IOCTL_AFD_SET_INFO: unknown info code\n");
+                break;
+            }
+        } else
+            WARN("WARNING: IOCTL_AFD_SET_INFO: cannot read info code\n");
+        break;
+    }
+    case IOCTL_AFD_SET_CONTEXT: { /* 0x12047 */
+        /* InputBuffer == SOCKET_CONTEXT.  SOCKET_CONTEXT.Padding need not be defined,
+         * and the addresses are var-len.
+         */
+        SOCKET_CONTEXT sc;
+        CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT, Padding), "SOCKET_CONTEXT pre-Padding");
+        if (safe_read(inbuf, sizeof(sc), &sc)) {
+            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, LocalAddress),
+                           sc.SharedData.SizeOfLocalAddress, MEMREF_CHECK_DEFINEDNESS,
+                           mc, sysnum, "SOCKET_CONTEXT.LocalAddress");
+            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, RemoteAddress),
+                           sc.SharedData.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
+                           mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
+        } else {
+            /* FIXME i#375: data structure doesn't seem to match observations! */
+            WARN("WARNING: IOCTL_AFD_SET_CONTEXT: can't read param");
+        }
+        /* XXX i#375: more data: but SizeOfHelperData looks wrong.
+         * And what about sockaddrs that are longer than 16 bytes?
+         */
+        break;
+    }
+    case IOCTL_AFD_BIND: { /* 0x12003 */
+        /* InputBuffer == AFD_BIND_DATA.  Address.Address is var-len and mswsock.dll
+         * seems to pass an over-estimate of the real size.
+         */
+        AFD_BIND_DATA bind;
+        if (safe_read(inbuf, sizeof(bind), &bind) &&
+            /* XXX: support more than one addr */
+            bind.Address.TAAddressCount == 1) {
+            CHECK_DEF(inbuf, sizeof(bind) + bind.Address.Address[0].AddressLength,
+                      "AFD_BIND_DATA");
+        } else {
+            /* FIXME i#376: data structure doesn't seem to match observations! */
+            WARN("WARNING: IOCTL_AFD_BIND: not checking unusual input\n");
+        }
+        break;
+    }
+    case IOCTL_AFD_CONNECT: { /* 0x12007 */
+        /* InputBuffer == AFD_CONNECT_INFO.  RemoteAddress.Address is var-len. */
+        AFD_CONNECT_INFO info;
+        if (safe_read(inbuf, sizeof(info), &info) &&
+            /* XXX: support more than one addr */
+            info.RemoteAddress.TAAddressCount == 1) {
+            CHECK_DEF(inbuf, sizeof(info.UseSAN), "AFD_CONNECT_INFO.UseSAN");
+            CHECK_DEF(inbuf + offsetof(AFD_CONNECT_INFO, Root),
+                      sizeof(info) + info.RemoteAddress.Address[0].AddressLength -
+                      offsetof(AFD_CONNECT_INFO, Root), "AFD_CONNECT_INFO");
+        } else {
+            /* FIXME i#376: data structure doesn't seem to match observations! */
+            LOG(1, "WARNING: IOCTL_AFD_CONNECT: not checking unusual input\n");
+        }
+        break;
+    }
+    case IOCTL_AFD_DISCONNECT: { /* 0x1202b */
+        /* InputBuffer == AFD_DISCONNECT_INFO.  Padding between fields need not be def. */
+        AFD_DISCONNECT_INFO *info = (AFD_DISCONNECT_INFO *) inbuf;
+        CHECK_DEF(inbuf, sizeof(info->DisconnectType),
+                  "AFD_DISCONNECT_INFO.DisconnectType");
+        CHECK_DEF(inbuf + offsetof(AFD_DISCONNECT_INFO, Timeout),
+                  sizeof(info->Timeout), "AFD_DISCONNECT_INFO.Timeout");
+        break;
+    }
+    case IOCTL_AFD_DEFER_ACCEPT: { /* 0x120bf */
+        /* InputBuffer == AFD_DEFER_ACCEPT_DATA */
+        AFD_DEFER_ACCEPT_DATA *info = (AFD_DEFER_ACCEPT_DATA *) inbuf;
+        CHECK_DEF(inbuf, sizeof(info->SequenceNumber),
+                  "AFD_DEFER_ACCEPT_DATA.SequenceNumber");
+        CHECK_DEF(inbuf + offsetof(AFD_DEFER_ACCEPT_DATA, RejectConnection),
+                  sizeof(info->RejectConnection),
+                  "AFD_DEFER_ACCEPT_DATA.RejectConnection");
+        break;
+    }
+    case IOCTL_AFD_RECV: { /* 0x12017 */
+        /* InputBuffer == AFD_RECV_INFO */
+        AFD_RECV_INFO info;
+        CHECK_DEF(inbuf, insz, "AFD_RECV_INFO");
+        if (safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_RECV_INFO.BufferArray");
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
+                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                else
+                    WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+            }
+        } else
+            WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+        break;
+    }
+    case IOCTL_AFD_SEND: { /* 0x1201f */
+        /* InputBuffer == AFD_SEND_INFO */
+        AFD_SEND_INFO info;
+        CHECK_DEF(inbuf, insz, "AFD_SEND_INFO"); /* no padding */
+        if (safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_SEND_INFO.BufferArray");
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
+                    CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO.BufferArray[i].buf");
+                else
+                    WARN("WARNING: IOCTL_AFD_SEND: can't read param");
+            }
+        } else
+            WARN("WARNING: IOCTL_AFD_SEND: can't read param");
+        break;
+    }
+    case IOCTL_AFD_EVENT_SELECT: { /* 0x12087 */
+        CHECK_DEF(inbuf, insz, "InputBuffer"); /* InputBuffer == AFD_EVENT_SELECT_INFO */
+        break;
+    }
+    default: {
+        /* FIXME i#377: add more ioctl codes.
+         * I've seen 0x120bf == operation # 47 called by
+         * WS2_32.dll!setsockopt.  no uninits.  not sure what it is.
+         */
+        WARN("WARNING: unknown ioctl "PIFX" => op %d\n", code, (code & 0xfff) >> 2);
+        /* XXX: should perhaps dump a callstack too at higher verbosity */
+        /* assume full thing must be defined */ 
+        CHECK_DEF(inbuf, insz, "InputBuffer");
+        break;
+    }
+    }
+    return true;
+#undef CHECK_DEF
+#undef CHECK_ADDR
+}
+
+static void
+handle_post_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
+                                dr_mcontext_t *mc)
+{
+    uint code = (uint) pt->sysarg[5];
+    byte *inbuf = (byte *) pt->sysarg[6];
+    uint insz = (uint) pt->sysarg[7];
+    byte *outbuf = (byte *) pt->sysarg[8];
+    uint outsz = (uint) pt->sysarg[9];
+    if (!os_syscall_succeeded(sysnum, dr_syscall_get_result(drcontext)))
+        return;
+    /* shorter, easier-to-read code */
+#define MARK_WRITE(ptr, sz, id) \
+    check_sysmem(MEMREF_WRITE, sysnum, ptr, sz, mc, id)
+    /* We have "8,-9,W" in the table so we only need to handle additional pointers
+     * here or cases where subsets of the full output buffer are written.
+     *
+     * XXX: We treat asynch i/o as happening now rather than trying to
+     * watch NtWait* and tracking event objects, though we'll
+     * over-estimate the amount written in some cases.
+     */
+    switch (code) {
+    case IOCTL_AFD_RECV: {
+        /* InputBuffer == AFD_RECV_INFO */
+        AFD_RECV_INFO info;
+        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
+                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO buf %d: "PFX"-"PFX"\n",
+                        i, buf.buf, buf.len);
+                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                } else
+                    WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+            }
+        } else
+            WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+        break;
+    }
+    }
+#undef MARK_WRITE
+}
+
+/***************************************************************************
+ * SHADOW TOP-LEVEL ROUTINES
+ */
+
+
 bool
 os_shadow_pre_syscall(void *drcontext, int sysnum)
 {
@@ -1010,6 +1331,8 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         return handle_pre_CreateThreadEx(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_CreateUserProcess)
         return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_DeviceIoControlFile)
+        return handle_pre_DeviceIoControlFile(drcontext, sysnum, pt, &mc);
     else
         return true; /* execute syscall */
 }
@@ -1079,6 +1402,8 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_CreateThreadEx(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_CreateUserProcess)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_DeviceIoControlFile)
+        handle_post_DeviceIoControlFile(drcontext, sysnum, pt, &mc);
 
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }

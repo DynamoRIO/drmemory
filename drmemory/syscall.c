@@ -32,6 +32,7 @@
 #ifdef LINUX
 # include "sysnum_linux.h"
 #endif
+#include "report.h"
 
 /***************************************************************************
  * SYSTEM CALLS
@@ -757,13 +758,13 @@ event_pre_syscall(void *drcontext, int sysnum)
     }
 #endif
 
-    LOG(SYSCALL_VERBOSE, "system call #"PIFX" %s\n", sysnum,
-        (syscall_lookup(sysnum) != NULL) ? syscall_lookup(sysnum)->name : "<unknown>");
+    LOG(SYSCALL_VERBOSE, "system call #"PIFX" %s\n", sysnum, get_syscall_name(sysnum));
+    DOLOG(SYSCALL_VERBOSE, { report_callstack(drcontext, &mc); });
 
     /* save params for post-syscall access 
      * FIXME: it's possible for a pathological app to crash us here
      * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
-     * params will hit unreadable page.
+     * params will hit unreadable page: should use TRY/EXCEPT
      */
     for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
@@ -827,8 +828,7 @@ event_post_syscall(void *drcontext, int sysnum)
             if (!os_syscall_succeeded(sysnum,
                                       (ptr_int_t)dr_syscall_get_result(drcontext))) {
                 LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
-                    sysnum, (sysinfo != NULL) ? sysinfo->name : "<unknown>",
-                    dr_syscall_get_result(drcontext));
+                    sysnum, get_syscall_name(sysnum), dr_syscall_get_result(drcontext));
             } else {
                 /* commit the writes via MEMREF_WRITE */
                 process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);

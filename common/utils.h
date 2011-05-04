@@ -239,6 +239,8 @@ extern file_t f_results;
     ELOG_LARGE_PT(level, (dr_get_current_drcontext() == NULL) ? NULL : \
                   (per_thread_t *)dr_get_tls_field(dr_get_current_drcontext()), s)
 
+#define WARN(fmt, ...) ELOGF(0, f_global, fmt, __VA_ARGS__)
+
 /* PR 427074: asserts should go to the log and not just stderr.
  * Since we don't have a vsnprintf() (i#168) we can't make this an
  * expression (w/o duplicating NOTIFY as an expression) but we only

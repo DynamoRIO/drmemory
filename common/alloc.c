@@ -122,9 +122,6 @@ RtlAllocateHeap is presumably identical since we have forwarders:
   );
 flag to pay attention to is HEAP_ZERO_MEMORY = 0x00000008
 If the function succeeds, the return value is a pointer to the allocated memory block.
-
-See ~/extsw/wine-0.9.44/dlls/ntdll/heap.c
-See ~/extsw/ReactOS-0.3.1/lib/rtl/heap.c
  */
 
 /* Interception strategy for routines where we want to change the
