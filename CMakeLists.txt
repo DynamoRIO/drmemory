@@ -43,6 +43,18 @@ else ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   set(location_suffix "")
 endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
 
+# I want to override the default CMAKE_INSTALL_PREFIX, but allow it to
+# be set (as the same var name, so CPack and other standard tools
+# work) externally.  The best solution is to check whether defined BEFORE
+# the project() command.
+# If we didn't use standard tools we could set CMAKE_INSTALL_PREFIX
+# to be CACHE INTERNAL FORCE to INSTALL_PREFIX.
+if (NOT DEFINED CMAKE_INSTALL_PREFIX)
+  set(install_override ON)
+else (NOT DEFINED CMAKE_INSTALL_PREFIX)
+  set(install_override OFF)
+endif (NOT DEFINED CMAKE_INSTALL_PREFIX)
+
 project(DrMemory NONE)
 if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
   # support building over cygwin ssh where we cannot build pdbs.
@@ -875,18 +887,7 @@ endif (TOOL_DR_HEAPSTAT)
 ###########################################################################
 # installation
 
-# I want to override the default CMAKE_INSTALL_PREFIX, but keep
-# the name of the var so CPack and other standard tools work.
-# The best I can come up with is to disallow installing to the
-# default location, which seems reasonable.
-# If we didn't use standard tools we could set CMAKE_INSTALL_PREFIX
-# to be CACHE INTERNAL FORCE to INSTALL_PREFIX.
-if (UNIX)
-  set(default_install "/usr/local")
-else (UNIX)
-  set(default_install "$ENV{SYSTEMDRIVE}/Program Files")
-endif (UNIX)
-if ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
+if (install_override)
   if (X64)
     set(EXP_DIR exports64)
   else (X64)
@@ -894,7 +895,7 @@ if ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
   endif (X64)
   set(CMAKE_INSTALL_PREFIX "${PROJECT_BINARY_DIR}/../${EXP_DIR}" 
     CACHE PATH "install path" FORCE)
-endif ("${CMAKE_INSTALL_PREFIX}" MATCHES "^${default_install}")
+endif (install_override)
 set(INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
 install(TARGETS ${client_target}
