@@ -1,0 +1,74 @@
+# **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; 
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+# We use these suppressions to silence the known reports, especially false
+# positive reports. This way we can achieve a 'clean' run of tests that have
+# no errors in the code and make sure no new reports appear over time.
+#
+# Each suppression should have a link to the corresponding Dr. Memory issue.
+# Before marking an issue as Fixed, please take time to remove the
+# corresponding suppressions from this file.
+
+# http://code.google.com/p/drmemory/issues/detail?id=275
+LEAK
+*!_getptd_noexit
+*!_getptd
+
+# http://code.google.com/p/drmemory/issues/detail?id=369
+LEAK
+...
+ntdll.dll!RtlAllocateActivationContextStack
+
+# http://code.google.com/p/drmemory/issues/detail?id=380
+UNINITIALIZED READ
+...
+KERNEL32.dll!FormatMessageA
+KERNEL32.dll!FormatMessageA
+KERNEL32.dll!WerpNotifyLoadStringResource
+KERNEL32.dll!SetConsoleNlsMode
+KERNEL32.dll!GetNumberFormatW
+KERNEL32.dll!LoadStringBaseExW
+
+# http://code.google.com/p/drmemory/issues/detail?id=382
+LEAK
+...
+ntdll.dll!CsrNewThread
+ntdll.dll!RtlUnicodeStringToInteger
+ntdll.dll!KiUserApcDispatcher
+
+# http://code.google.com/p/drmemory/issues/detail?id=383
+UNADDRESSABLE ACCESS
+...
+msvcrt.dll!memcpy_s
+msvcrt.dll!memcpy_s
+msvcrt.dll!lock
+msvcrt.dll!lock
+
+# http://code.google.com/p/drmemory/issues/detail?id=383
+INVALID HEAP ARGUMENT
+msvcrt.dll!memcpy_s
+
+# http://code.google.com/p/drmemory/issues/detail?id=385
+LEAK
+ntdll.dll!RtlInitOutOfProcessMemoryStream
+ntdll.dll!RtlInitializeCriticalSection
+
+# Don't remove the above empty line at EOF - this is a workaround for
+# http://code.google.com/p/drmemory/issues/detail?id=41
