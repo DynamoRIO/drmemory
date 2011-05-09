@@ -58,6 +58,25 @@ hashtable_t xl8_sharing_table;
 #define IGNORE_UNADDR_HASH_BITS 6
 hashtable_t ignore_unaddr_table;
 
+/* Handle slowpath for OP_loop in repstr_to_loop properly (i#391).
+ * We map the address of an allocated OP_loop to the app_pc of the original
+ * app rep-stringop instr.  We also map the reverse so we can delete it
+ * (we don't want to pay the cost of storing this in bb_saved_info_t for
+ * every single bb).  We're helped there b/c repstr_to_loop always
+ * has single-instr bbs so the tag is the rep-stringop instr pc.
+ */
+#define STRINGOP_HASH_BITS 6
+static hashtable_t stringop_us2app_table;
+static hashtable_t stringop_app2us_table;
+static void *stringop_lock; /* protects both tables */
+/* Entry in stringop_app2us_table */
+typedef struct _stringop_entry_t {
+    /* an OP_loop encoding, decoded by slow_path */
+    byte loop_instr[LOOP_INSTR_LENGTH];
+    /* This is used to handle non-precise flushing */
+    byte ignore_next_delete;
+} stringop_entry_t;
+
 #ifdef STATISTICS
 /* per-opcode counts */
 uint64 slowpath_count[OP_LAST+1];
@@ -422,10 +441,19 @@ bb_table_free_entry(void *entry)
     global_free(save, sizeof(*save), HEAPSTAT_PERBB);
 }
 
+static void
+stringop_free_entry(void *entry)
+{
+    stringop_entry_t *e = (stringop_entry_t *) entry;
+    ASSERT(e->loop_instr[0] == LOOP_INSTR_OPCODE, "invalid entry");
+    global_free(e, sizeof(*e), HEAPSTAT_PERBB);
+}
+
 void
 event_fragment_delete(void *drcontext, void *tag)
 {
     bb_saved_info_t *save;
+    stringop_entry_t *stringop;
 #ifdef TOOL_DR_MEMORY
     if (options.leaks_only || !options.shadowing)
         return;
@@ -445,6 +473,23 @@ event_fragment_delete(void *drcontext, void *tag)
             save->ignore_next_delete--;
     }
     hashtable_unlock(&bb_table);
+
+    dr_mutex_lock(stringop_lock);
+    /* We rely on repstr_to_loop arranging the repstr to be the only
+     * instr and thus the tag (i#391)
+     */
+    stringop = (stringop_entry_t *) hashtable_lookup(&stringop_app2us_table, tag);
+    if (stringop != NULL) {
+        if (stringop->ignore_next_delete == 0) {
+            IF_DEBUG(bool found;)
+            hashtable_remove(&stringop_app2us_table, tag);
+            IF_DEBUG(found =)
+                hashtable_remove(&stringop_us2app_table, (void *)stringop);
+            ASSERT(found, "entry should be in both tables");
+        } else
+            stringop->ignore_next_delete--;
+    }
+    dr_mutex_unlock(stringop_lock);
 
     /* XXX i#260: ideally would also remove xl8_sharing_table entries
      * but would need to decode forward (not always safe) and query
@@ -1657,6 +1702,19 @@ slow_path(app_pc pc, app_pc decode_pc)
     ASSERT(instr_valid(&inst), "invalid instr");
     opc = instr_get_opcode(&inst);
 
+    if (options.repstr_to_loop && opc == OP_loop) {
+        /* to point at an OP_loop but use app's repstr pc we use this table (i#391) */
+        byte *rep_pc;
+        dr_mutex_lock(stringop_lock);
+        rep_pc = (byte *) hashtable_lookup(&stringop_us2app_table, decode_pc);
+        dr_mutex_unlock(stringop_lock);
+        if (rep_pc != NULL) {
+            ASSERT(dr_memory_is_dr_internal(decode_pc), "must be drmem heap");
+            /* use this as app pc if we report an error */
+            pc_to_loc(&loc, pc);
+        }
+    }            
+
 #ifdef STATISTICS
     STATS_INC(slowpath_count[opc]);
     {
@@ -2359,6 +2417,12 @@ instrument_init(void)
                        false/*!strdup*/);
         hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
+        stringop_lock = dr_mutex_create();
+        hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
+                          false/*!strdup*/, false/*!synch*/,
+                          stringop_free_entry, NULL, NULL);
+        hashtable_init_ex(&stringop_us2app_table, STRINGOP_HASH_BITS, HASH_INTPTR,
+                          false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
 
 #ifdef STATISTICS
         next_stats_dump = options.stats_dump_interval;
@@ -2385,6 +2449,9 @@ instrument_exit(void)
         hashtable_delete(&bb_table);
         hashtable_delete(&xl8_sharing_table);
         hashtable_delete(&ignore_unaddr_table);
+        dr_mutex_destroy(stringop_lock);
+        hashtable_delete(&stringop_app2us_table);
+        hashtable_delete(&stringop_us2app_table);
 #ifdef TOOL_DR_MEMORY
         replace_exit();
 #endif
@@ -2541,7 +2608,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
 
     if (opc_is_stringop_loop(opc) &&
         /* with -repstr_to_loop, a decoded repstr is really a non-rep str */
-        (!options.repstr_to_loop || !options.fastpath)) {
+        !options.repstr_to_loop) {
         /* We assume flat segments for es and ds */
         /* FIXME: support addr16!  we're assuming 32-bit edi, esi! */
         ASSERT(reg_get_size(opnd_get_base(opnd)) == OPSZ_4,
@@ -2956,6 +3023,8 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
         app_pc xl8 = instr_get_app_pc(inst);
         opnd_t xcx = instr_get_dst(inst, instr_num_dsts(inst) - 1);
         instr_t *loop, *pre_loop, *jecxz, *zero, *iter;
+        stringop_entry_t *old, *entry;
+        IF_DEBUG(bool ok;)
         ASSERT(opnd_uses_reg(xcx, REG_XCX), "rep string opnd order mismatch");
         ASSERT(inst == instrlist_last(bb), "repstr not alone in bb");
         LOG(3, "converting rep string into regular loop\n");
@@ -3032,13 +3101,35 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
         /* be sure to match the same counter reg width */
         instr_set_src(loop, 1, xcx);
         instr_set_dst(loop, 0, xcx);
-        /* tell instr_can_use_shared_slowpath() to use the rep prefix: should
-         * bail b4 loop emulation since will go to slowpath only if ecx is uninit.
-         * If run with -no_fastpath then DR will emulate the whole loop on
-         * each iteration through it: so we don't do this transformation then.
+
+        /* We need to tell instr_can_use_shared_slowpath() what app pc to use
+         * while pointing it at an OP_loop instr.
+         * For -fastpath, we should go to slowpath only if ecx is uninit, but
+         * even then we can't afford to treat as a string op: will read wrong
+         * mem addr b/c the just-executed string op adjusted edi/esi (i#391).
+         * Solution is to allocate some memory and create a fake OP_loop there.
+         * We use a hashtable to map from that to the app_pc.
          */
-        ASSERT(options.fastpath, "-no_fastpath not supported");
-        instr_set_note(loop, (void *)xl8);
+        entry = (stringop_entry_t *) global_alloc(sizeof(*entry), HEAPSTAT_PERBB);
+        entry->loop_instr[0] = LOOP_INSTR_OPCODE;
+        entry->loop_instr[1] = 0;
+        entry->ignore_next_delete = 0;
+        dr_mutex_lock(stringop_lock);
+        old = (stringop_entry_t *)
+            hashtable_add_replace(&stringop_app2us_table, xl8, (void *)entry);
+        if (old != NULL) {
+            ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
+            entry->ignore_next_delete = old->ignore_next_delete + 1;
+            global_free(old, sizeof(*old), HEAPSTAT_PERBB);
+            LOG(2, "stringop "PFX" duplicated: assuming non-precise flushing\n", xl8);
+        }
+        IF_DEBUG(ok = )
+            hashtable_add(&stringop_us2app_table, (void *)entry, xl8);
+        /* only freed for heap reuse on hashtable removal */
+        ASSERT(ok, "not possible to have existing from-heap entry");
+        dr_mutex_unlock(stringop_lock);
+
+        instr_set_note(loop, (void *)entry);
         PREXL8(bb, inst, INSTR_XL8(loop, xl8));
 
         /* now throw out the orig instr */
@@ -3051,7 +3142,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 static void
 app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 {
-    if (options.repstr_to_loop && options.fastpath && options.shadowing)
+    if (options.repstr_to_loop && options.shadowing)
         convert_repstr_to_loop(drcontext, bb, bi);
 }
 

@@ -179,6 +179,8 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
 #define REP_PREFIX    0xf3
 #define REPNE_PREFIX  0xf2
 #define MOVS_4_OPCODE 0xa5
+#define LOOP_INSTR_OPCODE 0xe2
+#define LOOP_INSTR_LENGTH 2
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

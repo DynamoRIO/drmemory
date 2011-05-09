@@ -54,7 +54,7 @@ regtest()
     /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
         pushfd
-        pop   eax
+        pop   eax   /* note: reg_eax = 0 and eax gets zero from array[*] */
         /* values we can recognize, but stay under array[128] */
         mov   ecx, 37
         mov   edx, 7
