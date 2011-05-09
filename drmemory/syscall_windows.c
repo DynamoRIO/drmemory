@@ -1182,32 +1182,23 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
         /* InputBuffer == AFD_BIND_DATA.  Address.Address is var-len and mswsock.dll
          * seems to pass an over-estimate of the real size.
          */
-        AFD_BIND_DATA bind;
-        if (safe_read(inbuf, sizeof(bind), &bind) &&
-            /* XXX: support more than one addr */
-            bind.Address.TAAddressCount == 1) {
-            CHECK_DEF(inbuf, sizeof(bind) + bind.Address.Address[0].AddressLength,
-                      "AFD_BIND_DATA");
-        } else {
-            /* FIXME i#376: data structure doesn't seem to match observations! */
-            WARN("WARNING: IOCTL_AFD_BIND: not checking unusual input\n");
-        }
+        CHECK_DEF(inbuf, offsetof(AFD_BIND_DATA, Address), "AFD_BIND_DATA pre-Address");
+        check_sockaddr(inbuf + offsetof(AFD_BIND_DATA, Address),
+                       insz - offsetof(AFD_BIND_DATA, Address), MEMREF_CHECK_DEFINEDNESS,
+                       mc, sysnum, "AFD_BIND_DATA.Address");
         break;
     }
     case IOCTL_AFD_CONNECT: { /* 0x12007 */
         /* InputBuffer == AFD_CONNECT_INFO.  RemoteAddress.Address is var-len. */
-        AFD_CONNECT_INFO info;
-        if (safe_read(inbuf, sizeof(info), &info) &&
-            /* XXX: support more than one addr */
-            info.RemoteAddress.TAAddressCount == 1) {
-            CHECK_DEF(inbuf, sizeof(info.UseSAN), "AFD_CONNECT_INFO.UseSAN");
-            CHECK_DEF(inbuf + offsetof(AFD_CONNECT_INFO, Root),
-                      sizeof(info) + info.RemoteAddress.Address[0].AddressLength -
-                      offsetof(AFD_CONNECT_INFO, Root), "AFD_CONNECT_INFO");
-        } else {
-            /* FIXME i#376: data structure doesn't seem to match observations! */
-            LOG(1, "WARNING: IOCTL_AFD_CONNECT: not checking unusual input\n");
-        }
+        AFD_CONNECT_INFO *info = (AFD_CONNECT_INFO *) inbuf;
+        /* Have to separate the Boolean since padding after it */
+        CHECK_DEF(inbuf, sizeof(info->UseSAN), "AFD_CONNECT_INFO.UseSAN");
+        CHECK_DEF(&info->Root, (byte*)&info->RemoteAddress - (byte*)&info->Root,
+                  "AFD_CONNECT_INFO pre-RemoteAddress");
+        check_sockaddr((byte*)&info->RemoteAddress,
+                       insz - offsetof(AFD_CONNECT_INFO, RemoteAddress),
+                       MEMREF_CHECK_DEFINEDNESS, mc, sysnum,
+                       "AFD_CONNECT_INFO.RemoteAddress");
         break;
     }
     case IOCTL_AFD_DISCONNECT: { /* 0x1202b */

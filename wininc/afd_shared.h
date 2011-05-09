@@ -48,7 +48,11 @@ typedef struct _AFD_INFO {
 
 typedef struct _AFD_BIND_DATA {
     ULONG				ShareType;
-    TRANSPORT_ADDRESS	Address;
+#if 1 /* bruening: based on win7 observation: i#376 */
+    SOCKADDR    	                Address;
+#else
+    TRANSPORT_ADDRESS	                Address;
+#endif
 } AFD_BIND_DATA, *PAFD_BIND_DATA;
 
 typedef struct _AFD_LISTEN_DATA {
@@ -127,7 +131,11 @@ typedef struct  _AFD_CONNECT_INFO {
     BOOLEAN				UseSAN;
     ULONG				Root;
     ULONG				Unknown;
+#if 1 /* bruening: based on win7 observation: i#376 */
+    SOCKADDR    	                RemoteAddress;
+#else
     TRANSPORT_ADDRESS			RemoteAddress;
+#endif
 } AFD_CONNECT_INFO , *PAFD_CONNECT_INFO ;
 
 typedef struct _AFD_EVENT_SELECT_INFO {
