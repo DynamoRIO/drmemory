@@ -1050,6 +1050,15 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
         return;
     /* FIXME: do not check beyond len */
     switch (family) {
+    case AF_UNSPEC: {
+        /* FIXME i#386: I'm seeing 0 (AF_UNSPEC) a lot, e.g., with
+         * IOCTL_AFD_SET_CONTEXT where the entire sockaddrs are just zero.  Not sure
+         * whether to require that anything beyond sa_family be defined.  Sometimes
+         * there is further data and the family is set later.  For now ignoring
+         * beyond sa_family.
+         */
+        break;
+    }
     case AF_INET: {
         struct sockaddr_in *sin = (struct sockaddr_in *) sa;
         check_sysmem(memcheck_flags, sysnum,
@@ -1072,10 +1081,6 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
         break;
     }
     default:
-        /* XXX: I'm seeing 0 (AF_UNSPEC) a lot, e.g., with IOCTL_AFD_SET_CONTEXT
-         * where the entire sockaddrs are just zero.  Not sure whether to require
-         * AF_UNSPEC has fully-defined base sockaddr size?  Leaving warning for now.
-         */
         WARN("WARNING: unknown sockaddr type %d\n", family); 
         IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
         break;
@@ -1110,8 +1115,11 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
     CHECK_ADDR(inbuf, insz, "InputBuffer");
 
     /* FIXME: put max of insz on all the sizes below */
+
+    /* extract operation from 0x12xxx and bottom 2 method bits */
+    code = (code & 0xfff) >> 2;
     switch (code) {
-    case IOCTL_AFD_GET_INFO: { /* 0x1207b */
+    case AFD_GET_INFO: { /* 30 == 0x1207b */
         /* InputBuffer == AFD_INFO.  Only InformationClass need be defined. */
         CHECK_DEF(inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
                   "AFD_INFO.InformationClass");
@@ -1122,7 +1130,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
          */
         break;
     }
-    case IOCTL_AFD_SET_INFO: { /* 0x1203b */
+    case AFD_SET_INFO: { /* 14 == 0x1203b */
         /* InputBuffer == AFD_INFO.  If not LARGE_INTEGER, 2nd word can be undef.
          * Padding also need not be defined.
          */
@@ -1136,15 +1144,15 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                           sizeof(info.Information.Boolean), "AFD_INFO.Information");
                 break;
             default:
-                /* the other codes are only valid with IOCTL_AFD_GET_INFO */
-                WARN("WARNING: IOCTL_AFD_SET_INFO: unknown info code\n");
+                /* the other codes are only valid with AFD_GET_INFO */
+                WARN("WARNING: AFD_SET_INFO: unknown info code\n");
                 break;
             }
         } else
-            WARN("WARNING: IOCTL_AFD_SET_INFO: cannot read info code\n");
+            WARN("WARNING: AFD_SET_INFO: cannot read info code\n");
         break;
     }
-    case IOCTL_AFD_SET_CONTEXT: { /* 0x12047 */
+    case AFD_SET_CONTEXT: { /* 17 == 0x12047 */
         /* InputBuffer == SOCKET_CONTEXT.  SOCKET_CONTEXT.Padding need not be defined,
          * and the helper data is var-len.
          */
@@ -1161,13 +1169,13 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                            sc.SharedData.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
                            mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
         } else {
-            WARN("WARNING: IOCTL_AFD_SET_CONTEXT: can't read param");
+            WARN("WARNING: AFD_SET_CONTEXT: can't read param");
         }
         helper_offs = offsetof(SOCKET_CONTEXT, LocalAddress) +
             sc.SharedData.SizeOfLocalAddress + sc.SharedData.SizeOfRemoteAddress;
         if (helper_offs + sc.SizeOfHelperData > insz) {
             /* Sanity check */
-            WARN("WARNING: IOCTL_AFD_SET_CONTEXT: param fields messed up");
+            WARN("WARNING: AFD_SET_CONTEXT: param fields messed up");
         } else {
             /* XXX: helper data could be a struct w/ padding.  I have seen pieces of
              * it be uninit on XP.  If see many false positives here should just
@@ -1178,7 +1186,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
         }
         break;
     }
-    case IOCTL_AFD_BIND: { /* 0x12003 */
+    case AFD_BIND: { /* 0 == 0x12003 */
         /* InputBuffer == AFD_BIND_DATA.  Address.Address is var-len and mswsock.dll
          * seems to pass an over-estimate of the real size.
          */
@@ -1188,7 +1196,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                        mc, sysnum, "AFD_BIND_DATA.Address");
         break;
     }
-    case IOCTL_AFD_CONNECT: { /* 0x12007 */
+    case AFD_CONNECT: { /* 1 == 0x12007 */
         /* InputBuffer == AFD_CONNECT_INFO.  RemoteAddress.Address is var-len. */
         AFD_CONNECT_INFO *info = (AFD_CONNECT_INFO *) inbuf;
         /* Have to separate the Boolean since padding after it */
@@ -1201,7 +1209,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                        "AFD_CONNECT_INFO.RemoteAddress");
         break;
     }
-    case IOCTL_AFD_DISCONNECT: { /* 0x1202b */
+    case AFD_DISCONNECT: { /* 10 == 0x1202b */
         /* InputBuffer == AFD_DISCONNECT_INFO.  Padding between fields need not be def. */
         AFD_DISCONNECT_INFO *info = (AFD_DISCONNECT_INFO *) inbuf;
         CHECK_DEF(inbuf, sizeof(info->DisconnectType),
@@ -1210,7 +1218,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                   sizeof(info->Timeout), "AFD_DISCONNECT_INFO.Timeout");
         break;
     }
-    case IOCTL_AFD_DEFER_ACCEPT: { /* 0x120bf */
+    case AFD_DEFER_ACCEPT: { /* 35 == 0x120bf */
         /* InputBuffer == AFD_DEFER_ACCEPT_DATA */
         AFD_DEFER_ACCEPT_DATA *info = (AFD_DEFER_ACCEPT_DATA *) inbuf;
         CHECK_DEF(inbuf, sizeof(info->SequenceNumber),
@@ -1220,7 +1228,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                   "AFD_DEFER_ACCEPT_DATA.RejectConnection");
         break;
     }
-    case IOCTL_AFD_RECV: { /* 0x12017 */
+    case AFD_RECV: { /* 5 ==  0x12017 */
         /* InputBuffer == AFD_RECV_INFO */
         AFD_RECV_INFO info;
         CHECK_DEF(inbuf, insz, "AFD_RECV_INFO");
@@ -1233,13 +1241,36 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
                     CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
                 else
-                    WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+                    WARN("WARNING: AFD_RECV: can't read param");
             }
         } else
-            WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+            WARN("WARNING: AFD_RECV: can't read param");
         break;
     }
-    case IOCTL_AFD_SEND: { /* 0x1201f */
+    case AFD_RECV_DATAGRAM: { /* 6 ==  0x1201b */
+        /* InputBuffer == AFD_RECV_INFO_UDP */
+        AFD_RECV_INFO_UDP info;
+        CHECK_DEF(inbuf, insz, "AFD_RECV_INFO_UDP");
+        if (safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            if (safe_read(info.AddressLength, sizeof(i), &i))
+                CHECK_ADDR((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
+            else
+                WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength");
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_RECV_INFO_UDP.BufferArray");
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
+                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                else
+                    WARN("WARNING: AFD_RECV_DATAGRAM: can't read BufferArray");
+            }
+        } else
+            WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
+        break;
+    }
+    case AFD_SEND: { /* 7 == 0x1201f */
         /* InputBuffer == AFD_SEND_INFO */
         AFD_SEND_INFO info;
         CHECK_DEF(inbuf, insz, "AFD_SEND_INFO"); /* no padding */
@@ -1252,14 +1283,77 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
                     CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO.BufferArray[i].buf");
                 else
-                    WARN("WARNING: IOCTL_AFD_SEND: can't read param");
+                    WARN("WARNING: AFD_SEND: can't read param");
             }
         } else
-            WARN("WARNING: IOCTL_AFD_SEND: can't read param");
+            WARN("WARNING: AFD_SEND: can't read param");
         break;
     }
-    case IOCTL_AFD_EVENT_SELECT: { /* 0x12087 */
-        CHECK_DEF(inbuf, insz, "InputBuffer"); /* InputBuffer == AFD_EVENT_SELECT_INFO */
+    case AFD_SEND_DATAGRAM: { /* 8 == 0x12023 */
+        /* InputBuffer == AFD_SEND_INFO */
+        AFD_SEND_INFO_UDP info;
+        /* XXX: info->TdiRequest.SendDatagramInformation can point elsewhere? */
+        /* XXX: not all info->TdiConnection fields need be initialized? */
+        CHECK_DEF(inbuf, insz, "AFD_SEND_INFO_UDP"); /* no padding */
+        if (safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_SEND_INFO_UDP.BufferArray");
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
+                    CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO_UDP.BufferArray[i].buf");
+                else
+                    WARN("WARNING: AFD_SEND_DATAGRAM: can't read param");
+            }
+        } else
+            WARN("WARNING: AFD_SEND_DATAGRAM: can't read param");
+        break;
+    }
+    case AFD_EVENT_SELECT: { /* 33 == 0x12087 */
+        CHECK_DEF(inbuf, insz, "AFD_EVENT_SELECT_INFO");
+        break;
+    }
+    case AFD_ENUM_NETWORK_EVENTS: { /* 34 == 0x1208b */
+        CHECK_DEF(inbuf, insz, "AFD_ENUM_NETWORK_EVENTS_INFO"); /*  */
+        break;
+    }
+    case AFD_START_LISTEN: { /* 2 == 0x1200b */
+        AFD_LISTEN_DATA *info = (AFD_LISTEN_DATA *) inbuf;
+        if (insz != sizeof(AFD_LISTEN_DATA))
+            WARN("WARNING: invalid size for AFD_LISTEN_DATA");
+        /* Have to separate the Booleans since padding after */
+        CHECK_DEF(inbuf, sizeof(info->UseSAN), "AFD_LISTEN_DATA.UseSAN");
+        CHECK_DEF(&info->Backlog, sizeof(info->Backlog), "AFD_LISTEN_DATA.Backlog");
+        CHECK_DEF(&info->UseDelayedAcceptance, sizeof(info->UseDelayedAcceptance),
+                  "AFD_LISTEN_DATA.UseDelayedAcceptance");
+        break;
+    }
+    case AFD_ACCEPT: { /* 4 == 0x12010 */
+        CHECK_DEF(inbuf, insz, "AFD_ACCEPT_DATA");
+        break;
+    }
+    case AFD_SELECT: { /* 9 == 0x12024 */
+        AFD_POLL_INFO info;
+        CHECK_DEF(inbuf, offsetof(AFD_POLL_INFO, Handles), "AFD_POLL_INFO pre-Handles");
+        if (safe_read(inbuf, sizeof(info), &info) &&
+            insz == offsetof(AFD_POLL_INFO, Handles) +
+            info.HandleCount * sizeof(AFD_HANDLE)) {
+            uint i;
+            AFD_POLL_INFO *ptr = (AFD_POLL_INFO *) inbuf;
+            for (i = 0; i < info.HandleCount; i++) {
+                /* I'm assuming Status is an output field */
+                CHECK_DEF(&ptr->Handles[i], offsetof(AFD_HANDLE, Status),
+                          "AFD_POLL_INFO.Handles[i]");
+            }
+        } else
+            WARN("WARNING: unreadable or invalid AFD_POLL_INFO");
+        break;
+    }
+    case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
+        /* I believe input is a uint of AFD_*_HANDLE flags */
+        CHECK_DEF(inbuf, insz, "AFD_GET_TDI_HANDLES flags");
+        /* as usual the write param will be auto-checked for addressabilty */
         break;
     }
     default: {
@@ -1267,7 +1361,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
          * I've seen 0x120bf == operation # 47 called by
          * WS2_32.dll!setsockopt.  no uninits.  not sure what it is.
          */
-        WARN("WARNING: unknown ioctl "PIFX" => op %d\n", code, (code & 0xfff) >> 2);
+        WARN("WARNING: unknown ioctl "PIFX" => op %d\n", pt->sysarg[5], code);
         /* XXX: should perhaps dump a callstack too at higher verbosity */
         /* assume full thing must be defined */ 
         CHECK_DEF(inbuf, insz, "InputBuffer");
@@ -1300,8 +1394,11 @@ handle_post_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
      * watch NtWait* and tracking event objects, though we'll
      * over-estimate the amount written in some cases.
      */
+
+    /* extract operation from 0x12xxx and bottom 2 method bits */
+    code = (code & 0xfff) >> 2;
     switch (code) {
-    case IOCTL_AFD_RECV: {
+    case AFD_RECV: { /* 5 == 0x12017 */
         /* InputBuffer == AFD_RECV_INFO */
         AFD_RECV_INFO info;
         if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info)) {
@@ -1313,10 +1410,67 @@ handle_post_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                         i, buf.buf, buf.len);
                     MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
                 } else
-                    WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+                    WARN("WARNING: AFD_RECV: can't read param");
             }
         } else
-            WARN("WARNING: IOCTL_AFD_RECV: can't read param");
+            WARN("WARNING: AFD_RECV: can't read param");
+        break;
+    }
+    case AFD_RECV_DATAGRAM: { /* 6 ==  0x1201b */
+        /* InputBuffer == AFD_RECV_INFO_UDP */
+        AFD_RECV_INFO_UDP info;
+        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info)) {
+            uint i;
+            if (safe_read(info.AddressLength, sizeof(i), &i)) {
+                check_sockaddr((byte*)info.Address, i, MEMREF_WRITE, mc, sysnum,
+                               "AFD_RECV_INFO_UDP.Address");
+            } else
+                WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength");
+            for (i = 0; i < info.BufferCount; i++) {
+                AFD_WSABUF buf;
+                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
+                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO_UDP buf %d: "PFX"-"PFX"\n",
+                        i, buf.buf, buf.len);
+                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                } else
+                    WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
+            }
+        } else
+            WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
+        break;
+    }
+    case AFD_SELECT: { /* 9 == 0x12024 */
+        AFD_POLL_INFO info;
+        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info) &&
+            insz == offsetof(AFD_POLL_INFO, Handles) +
+            info.HandleCount * sizeof(AFD_HANDLE)) {
+            uint i;
+            AFD_POLL_INFO *ptr = (AFD_POLL_INFO *) inbuf;
+            for (i = 0; i < info.HandleCount; i++) {
+                /* I'm assuming Status is an output field */
+                MARK_WRITE((byte*)&ptr->Handles[i].Status, sizeof(ptr->Handles[i].Status),
+                          "AFD_POLL_INFO.Handles[i].Status");
+            }
+        } else
+            WARN("WARNING: unreadable or invalid AFD_POLL_INFO");
+        break;
+    }
+    case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
+        AFD_TDI_HANDLE_DATA *info = (AFD_TDI_HANDLE_DATA *) outbuf;
+        uint flags;
+        if (safe_read(inbuf, sizeof(flags), &flags) &&
+            outsz == sizeof(*info)) {
+            if (TEST(AFD_ADDRESS_HANDLE, flags)) {
+                MARK_WRITE((byte*)&info->TdiAddressHandle, sizeof(info->TdiAddressHandle),
+                           "AFD_TDI_HANDLE_DATA.TdiAddressHandle");
+            }
+            if (TEST(AFD_CONNECTION_HANDLE, flags)) {
+                MARK_WRITE((byte*)&info->TdiConnectionHandle,
+                           sizeof(info->TdiConnectionHandle),
+                           "AFD_TDI_HANDLE_DATA.TdiConnectionHandle");
+            }
+        } else
+            WARN("WARNING: unreadable AFD_GET_TDI_HANDLES flags or invalid outsz");
         break;
     }
     }
