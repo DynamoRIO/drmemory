@@ -151,55 +151,61 @@ is_synch_routine(app_pc pc)
 void
 perturb_init(void)
 {
-#ifdef WINDOWS
-    void *drcontext = dr_get_current_drcontext(); /* won't work on 0.9.4! */
-    app_pc ntdll_base = get_ntdll_base();
-#endif
-
     ASSERT(options.perturb, "should not be called");
     if (options.perturb_seed != 0)
         dr_set_random_seed(options.perturb_seed);
     LOG(1, "initial random seed: %d\n", dr_get_random_seed());
+}
 
+void
+perturb_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
 #ifdef WINDOWS
-# define INIT_SYSNUM(name, dc, ntdll, ok_to_fail) do {                      \
-    sysnum_##name = sysnum_from_name(dc, ntdll, "Nt"#name);                 \
+    const char *modname = dr_module_preferred_name(info);
+    if (modname == NULL)
+        return;
+
+# define INIT_SYSNUM(name, dc, mod, ok_to_fail) do {                        \
+    sysnum_##name = sysnum_from_name(dc, mod, "Nt"#name);                   \
     ASSERT(ok_to_fail || sysnum_##name >= 0, "cannot find "#name" sysnum"); \
 } while (0);
-    INIT_SYSNUM(CreateThread, drcontext, ntdll_base, false);
-    INIT_SYSNUM(CreateThreadEx, drcontext, ntdll_base, true); /*Vista+ only*/
-    INIT_SYSNUM(CreateProcess, drcontext, ntdll_base, false);
-    INIT_SYSNUM(CreateProcessEx, drcontext, ntdll_base, true); /*Vista+ only*/
-    INIT_SYSNUM(CreateUserProcess, drcontext, ntdll_base, true); /*Vista+ only*/
-    INIT_SYSNUM(SuspendThread, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ResumeThread, drcontext, ntdll_base, false);
-    INIT_SYSNUM(AlertResumeThread, drcontext, ntdll_base, false);
-    INIT_SYSNUM(AlertThread, drcontext, ntdll_base, false);
-    INIT_SYSNUM(DelayExecution, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ReplyWaitReceivePort, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ReplyWaitReceivePortEx, drcontext, ntdll_base, true); /*2K+ only*/
-    INIT_SYSNUM(ReplyWaitReplyPort, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ReplyWaitSendChannel, drcontext, ntdll_base, true); /*2K- only*/
-    INIT_SYSNUM(RequestWaitReplyPort, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SendWaitReplyChannel, drcontext, ntdll_base, true); /*2K- only*/
-    INIT_SYSNUM(SetHighWaitLowEventPair, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SetLowWaitHighEventPair, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SignalAndWaitForSingleObject, drcontext, ntdll_base, false);
-    INIT_SYSNUM(WaitForDebugEvent, drcontext, ntdll_base, true); /*XP+ only*/
-    INIT_SYSNUM(WaitForKeyedEvent, drcontext, ntdll_base, true); /*XP+ only*/
-    INIT_SYSNUM(WaitForMultipleObjects, drcontext, ntdll_base, false);
-    INIT_SYSNUM(WaitForSingleObject, drcontext, ntdll_base, false);
-    INIT_SYSNUM(WaitHighEventPair, drcontext, ntdll_base, false);
-    INIT_SYSNUM(WaitLowEventPair, drcontext, ntdll_base, false);
-    INIT_SYSNUM(CreateMutant, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ReleaseMutant, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ReleaseSemaphore, drcontext, ntdll_base, false);
-    INIT_SYSNUM(PulseEvent, drcontext, ntdll_base, false);
-    INIT_SYSNUM(ResetEvent, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SetEvent, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SetEventBoostPriority, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SetHighEventPair, drcontext, ntdll_base, false);
-    INIT_SYSNUM(SetLowEventPair, drcontext, ntdll_base, false);
+
+    if (stri_eq(modname, "ntdll.dll")) {
+        INIT_SYSNUM(CreateThread, drcontext, info, false);
+        INIT_SYSNUM(CreateThreadEx, drcontext, info, true); /*Vista+ only*/
+        INIT_SYSNUM(CreateProcess, drcontext, info, false);
+        INIT_SYSNUM(CreateProcessEx, drcontext, info, true); /*Vista+ only*/
+        INIT_SYSNUM(CreateUserProcess, drcontext, info, true); /*Vista+ only*/
+        INIT_SYSNUM(SuspendThread, drcontext, info, false);
+        INIT_SYSNUM(ResumeThread, drcontext, info, false);
+        INIT_SYSNUM(AlertResumeThread, drcontext, info, false);
+        INIT_SYSNUM(AlertThread, drcontext, info, false);
+        INIT_SYSNUM(DelayExecution, drcontext, info, false);
+        INIT_SYSNUM(ReplyWaitReceivePort, drcontext, info, false);
+        INIT_SYSNUM(ReplyWaitReceivePortEx, drcontext, info, true); /*2K+ only*/
+        INIT_SYSNUM(ReplyWaitReplyPort, drcontext, info, false);
+        INIT_SYSNUM(ReplyWaitSendChannel, drcontext, info, true); /*2K- only*/
+        INIT_SYSNUM(RequestWaitReplyPort, drcontext, info, false);
+        INIT_SYSNUM(SendWaitReplyChannel, drcontext, info, true); /*2K- only*/
+        INIT_SYSNUM(SetHighWaitLowEventPair, drcontext, info, false);
+        INIT_SYSNUM(SetLowWaitHighEventPair, drcontext, info, false);
+        INIT_SYSNUM(SignalAndWaitForSingleObject, drcontext, info, false);
+        INIT_SYSNUM(WaitForDebugEvent, drcontext, info, true); /*XP+ only*/
+        INIT_SYSNUM(WaitForKeyedEvent, drcontext, info, true); /*XP+ only*/
+        INIT_SYSNUM(WaitForMultipleObjects, drcontext, info, false);
+        INIT_SYSNUM(WaitForSingleObject, drcontext, info, false);
+        INIT_SYSNUM(WaitHighEventPair, drcontext, info, false);
+        INIT_SYSNUM(WaitLowEventPair, drcontext, info, false);
+        INIT_SYSNUM(CreateMutant, drcontext, info, false);
+        INIT_SYSNUM(ReleaseMutant, drcontext, info, false);
+        INIT_SYSNUM(ReleaseSemaphore, drcontext, info, false);
+        INIT_SYSNUM(PulseEvent, drcontext, info, false);
+        INIT_SYSNUM(ResetEvent, drcontext, info, false);
+        INIT_SYSNUM(SetEvent, drcontext, info, false);
+        INIT_SYSNUM(SetEventBoostPriority, drcontext, info, false);
+        INIT_SYSNUM(SetHighEventPair, drcontext, info, false);
+        INIT_SYSNUM(SetLowEventPair, drcontext, info, false);
+    }
 #endif
 }
 

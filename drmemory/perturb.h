@@ -50,6 +50,9 @@ void
 perturb_thread_exit(void);
 
 void
+perturb_module_load(void *drcontext, const module_data_t *info, bool loaded);
+
+void
 perturb_pre_fork(void);
 
 bool

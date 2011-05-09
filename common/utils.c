@@ -561,10 +561,20 @@ extern const char *get_syscall_name(int sysnum);
 
 /* Returns -1 on failure */
 int
-sysnum_from_name(void *drcontext, app_pc ntdll_base, const char *name)
+sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
 {
     int num;
-    app_pc entry = (app_pc) dr_get_proc_address(ntdll_base, name);
+    app_pc entry = (app_pc) dr_get_proc_address(info->start, name);
+#  ifdef USE_DRSYMS
+    if (entry == NULL) {
+        /* Some kernel32 and user32 syscall wrappers are not exported.
+         * FIXME i#388: for those that aren't exported we either need the
+         * front-end to download symbols (xref i#143), which relies on network
+         * access, or we need a table by OS version.
+         */
+        entry = lookup_internal_symbol(info, name);
+    }
+#  endif
     if (entry == NULL)
         return -1;
     num = syscall_num(drcontext, entry);

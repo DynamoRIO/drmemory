@@ -509,7 +509,7 @@ int
 syscall_num(void *drcontext, byte *entry);
 
 int
-sysnum_from_name(void *drcontext, app_pc ntdll_base, const char *name);
+sysnum_from_name(void *drcontext, const module_data_t *info, const char *name);
 
 bool
 running_on_Win7_or_later(void);

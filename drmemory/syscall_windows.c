@@ -44,10 +44,10 @@
 static hashtable_t systable;
 
 /* Syscalls that need special processing */
-int sysnum_CreateThread;
-int sysnum_CreateThreadEx;
-int sysnum_CreateUserProcess;
-int sysnum_DeviceIoControlFile;
+int sysnum_CreateThread = -1;
+int sysnum_CreateThreadEx = -1;
+int sysnum_CreateUserProcess = -1;
+int sysnum_DeviceIoControlFile = -1;
 
 /* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME PR 406350: IIS syscalls!
@@ -88,7 +88,7 @@ int sysnum_DeviceIoControlFile;
 #define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
-syscall_info_t syscall_info[] = {
+syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAcceptConnectPort", 24, 0,sizeof(HANDLE),W, 2,sizeof(PORT_MESSAGE),RP, 3,0,IB, 4,sizeof(PORT_VIEW),W, 5,sizeof(REMOTE_PORT_VIEW),W, },
     {0,"NtAccessCheck", 32, 0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 3,sizeof(GENERIC_MAPPING),R, 4,sizeof(PRIVILEGE_SET),W, 5,sizeof(ULONG),R, 6,sizeof(ACCESS_MASK),W, 7,sizeof(BOOLEAN),W, },
     {0,"NtAccessCheckAndAuditAlarm", 44, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 2,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 3,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR, 6,sizeof(GENERIC_MAPPING),R, 7,0,IB, 8,sizeof(ACCESS_MASK),W, 9,sizeof(BOOLEAN),W, 10,sizeof(BOOLEAN),W, },
@@ -415,7 +415,42 @@ syscall_info_t syscall_info[] = {
     {0,"NtWriteVirtualMemory", 20, 4,sizeof(ULONG),W, },
     {0,"NtYieldExecution", 0, },
 
+    /* args seem to be identical to NtQuerySystemInformation */
+    {0,"NtWow64GetNativeSystemInformation", 16, 1,-2,W, 3,sizeof(ULONG),W, },
+
 };
+#define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
+
+/* System calls with wrappers in kernel32.dll (on win7 these are duplicated
+ * in kernelbase.dll as well but w/ the same syscall number)
+ * Not all wrappers are exported: xref i#388.
+ */
+syscall_info_t syscall_kernel32_info[] = {
+    /* wchar_t *locale OUT, size_t locale_sz */
+    {0,"NtWow64CsrBasepNlsGetUserInfo", 8, 0,-1,W|SYSARG_CSTRING_WIDE, },
+
+    /* Takes a single param that's a pointer to a struct that has a PHANDLE at offset
+     * 0x7c where the base of a new mmap is stored by the kernel.  We handle that by
+     * waiting for RtlCreateActivationContext (i#352).  We don't know of any written
+     * values in the rest of the struct or its total size so we ignore it for now and
+     * use this entry to avoid "unknown syscall" warnings.
+     *
+     * XXX: there are 4+ wchar_t* input strings in the struct: should check them.
+     */
+    {0,"NtWow64CsrBasepCreateActCtx", 4, },
+};
+#define NUM_KERNEL32_SYSCALLS \
+    (sizeof(syscall_kernel32_info)/sizeof(syscall_kernel32_info[0]))
+
+/* System calls with wrappers in user32.dll.
+ * Not all wrappers are exported: xref i#388.
+ */
+syscall_info_t syscall_user32_info[] = {
+    {0,"UserConnectToServer", 12, 0,0,R|SYSARG_CSTRING_WIDE, 1,-2,WI },
+};
+#define NUM_USER32_SYSCALLS \
+    (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))
+
 #undef W
 #undef R
 #undef WP
@@ -423,8 +458,6 @@ syscall_info_t syscall_info[] = {
 #undef WI
 #undef IB
 #undef IO
-
-#define NUM_SYSCALLS (sizeof(syscall_info)/sizeof(syscall_info[0]))
 
 
 /* takes in any Nt syscall wrapper entry point */
@@ -462,38 +495,82 @@ vsyscall_pc(void *drcontext, byte *entry)
     return vpc;
 }
 
+static app_pc
+add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist)
+{
+    app_pc entry = (app_pc)
+        dr_get_proc_address(info->start, syslist->name);
+#ifdef USE_DRSYMS
+    if (entry == NULL) {
+        /* FIXME i#388: for those that aren't exported we either need the
+         * front-end to download symbols (xref i#143), which relies on network
+         * access, or we need a table by OS version
+         */
+        /* drsym_init() was called already in utils_init() */
+        entry = lookup_internal_symbol(info, syslist->name);
+    }
+#endif
+    if (entry != NULL) {
+        syslist->num = syscall_num(drcontext, entry);
+        hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
+        LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
+            "system call %s = %d (%x)\n", syslist->name, syslist->num, syslist->num);
+    } else {
+        LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
+    }
+    return entry;
+}
+
 void
 syscall_os_init(void *drcontext, app_pc ntdll_base)
 {
     uint i;
+    module_data_t *info;
+
     hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
-    for (i = 0; i < NUM_SYSCALLS; i++) {
-        app_pc entry = (app_pc) dr_get_proc_address(ntdll_base, syscall_info[i].name);
-        if (entry != NULL) {
-            syscall_info[i].num = syscall_num(drcontext, entry);
-            hashtable_add(&systable, (void *) syscall_info[i].num,
-                          (void *) &syscall_info[i]);
-            LOG(2, "system call %s = %d\n", syscall_info[i].name, syscall_info[i].num);
-        } else {
-            LOG(2, "WARNING: could not find system call %s\n", syscall_info[i].name);
-        }
-    }
-    sysnum_CreateThread = sysnum_from_name(drcontext, ntdll_base, "NtCreateThread");
-    ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
-    sysnum_CreateThreadEx = sysnum_from_name(drcontext, ntdll_base, "NtCreateThreadEx");
-    /* not there in pre-vista */
-    sysnum_CreateUserProcess = sysnum_from_name(drcontext, ntdll_base,
-                                                "NtCreateUserProcess");
-    /* not there in pre-vista */
-    sysnum_DeviceIoControlFile = sysnum_from_name(drcontext, ntdll_base,
-                                                  "NtDeviceIoControlFile");
-    ASSERT(sysnum_DeviceIoControlFile >= 0, "cannot find NtDeviceIoControlFile sysnum");
 }
 
 void
 syscall_os_exit(void)
 {
     hashtable_delete(&systable);
+}
+
+void
+syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    uint i;
+    const char *modname = dr_module_preferred_name(info);
+    if (modname == NULL)
+        return;
+
+    /* systable synch: if really get two threads adding at same time 2nd should
+     * just fail in the hashtable_add so no harm done
+     */
+    if (stri_eq(modname, "ntdll.dll")) {
+        ASSERT(info->start == ntdll_base, "duplicate ntdll?");
+        for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
+            add_syscall_entry(drcontext, info, &syscall_ntdll_info[i]);
+
+        sysnum_CreateThread = sysnum_from_name(drcontext, info, "NtCreateThread");
+        ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
+        sysnum_CreateThreadEx = sysnum_from_name(drcontext, info, "NtCreateThreadEx");
+        /* not there in pre-vista */
+        sysnum_CreateUserProcess = sysnum_from_name(drcontext, info,
+                                                    "NtCreateUserProcess");
+        /* not there in pre-vista */
+        sysnum_DeviceIoControlFile = sysnum_from_name(drcontext, info,
+                                                      "NtDeviceIoControlFile");
+        ASSERT(sysnum_DeviceIoControlFile >= 0,
+               "cannot find NtDeviceIoControlFile sysnum");
+
+    } else if (stri_eq(modname, "kernel32.dll")) {
+        for (i = 0; i < NUM_KERNEL32_SYSCALLS; i++)
+            add_syscall_entry(drcontext, info, &syscall_kernel32_info[i]);
+    } else if (stri_eq(modname, "user32.dll")) {
+        for (i = 0; i < NUM_USER32_SYSCALLS; i++)
+            add_syscall_entry(drcontext, info, &syscall_user32_info[i]);
+    }
 }
 
 syscall_info_t *
@@ -796,7 +873,8 @@ static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc
     UNICODE_STRING us;
     ASSERT(size == sizeof(UNICODE_STRING), "invalid size");
     /* we assume OUT fields just have their Buffer as OUT */
-    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, NULL);
+    if (pre)
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, NULL);
     if (safe_read((void*)start, sizeof(us), &us)) {
         if (pre) {
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
@@ -809,6 +887,34 @@ static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc
             check_sysmem(MEMREF_WRITE, sysnum, (byte *)us.Buffer, us.Length, mc, NULL);
         }
     }
+    return true;
+}
+
+static bool handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                                       uint arg_num,
+                                       const syscall_arg_t *arg_info,
+                                       app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    /* the kernel wrote a wide string to the buffer: only up to the terminating
+     * null should be marked as defined
+     */
+    uint i;
+    wchar_t c;
+    /* input params have size 0: for safety stopping at MAX_PATH */
+    size_t maxsz = (size == 0) ? MAX_PATH : size;
+    if (pre && TEST(SYSARG_WRITE, arg_info->flags))
+        return false; /* let normal check ensure full size is addressable */
+    if (!pre && !TEST(SYSARG_WRITE, arg_info->flags))
+        return false; /*nothing to do */
+    for (i = 0; i < maxsz; i += sizeof(wchar_t)) {
+        if (!safe_read(start + i, sizeof(c), &c)) {
+            WARN("WARNING: unable to read syscall param string");
+            break;
+        } else if (c == L'\0')
+            break;
+    }
+    check_sysmem(check_type, sysnum, start, i + sizeof(wchar_t), mc, NULL);
     return true;
 }
 
@@ -841,6 +947,10 @@ os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
         return handle_unicode_string_access(true/*pre*/, sysnum, mc, arg_num,
                                             arg_info, start, size);
     }
+    if (TEST(SYSARG_CSTRING_WIDE, arg_info->flags)) {
+        return handle_cstring_wide_access(true/*pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
+    }
     return false;
 }
 
@@ -872,6 +982,10 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
     if (TEST(SYSARG_UNICODE_STRING, arg_info->flags)) {
         return handle_unicode_string_access(false/*!pre*/, sysnum, mc, arg_num,
                                             arg_info, start, size);
+    }
+    if (TEST(SYSARG_CSTRING_WIDE, arg_info->flags)) {
+        return handle_cstring_wide_access(false/*!pre*/, sysnum, mc, arg_num,
+                                          arg_info, start, size);
     }
     return false;
 }
@@ -1565,7 +1679,6 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
         handle_post_DeviceIoControlFile(drcontext, sysnum, pt, &mc);
-
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

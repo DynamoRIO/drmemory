@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -45,6 +45,7 @@ enum {
     SYSARG_SECURITY_QOS     = 0x00000100,
     SYSARG_SECURITY_DESCRIPTOR = 0x00000200,
     SYSARG_UNICODE_STRING      = 0x00000400,
+    SYSARG_CSTRING_WIDE        = 0x00000800,
 
     /* The following flags are used on Linux. */
     /* syscall_arg_t.size, using values that cannot be mistaken for
@@ -100,6 +101,9 @@ syscall_os_exit(void);
 
 syscall_info_t *
 syscall_lookup(int num);
+
+void
+syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
 uint
 get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc);

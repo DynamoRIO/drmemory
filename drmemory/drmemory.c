@@ -1204,7 +1204,10 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
         callstack_module_load(drcontext, info, loaded);
     if (!options.leaks_only && options.shadowing)
         replace_module_load(drcontext, info, loaded);
+    syscall_module_load(drcontext, info, loaded); /* must precede alloc_module_load */
     alloc_module_load(drcontext, info, loaded);
+    if (options.perturb_only)
+        perturb_module_load(drcontext, info, loaded);
 #ifdef STATISTICS
     print_timestamp_elapsed_to_file(f_global, "post-module-load ");
 #endif

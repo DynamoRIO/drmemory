@@ -431,7 +431,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                         break;
                 }
                 if (j > 0) {
-                    LOG(2, "pre-unknown-syscall #"PIFX": param %d == "PFX" %d bytes\n",
+                    LOG(SYSCALL_VERBOSE,
+                        "pre-unknown-syscall #"PIFX": param %d == "PFX" %d bytes\n",
                         sysnum, i, start, j);
                     /* Make a copy of the arg values */
                     if (j > cpt->sysarg_val_bytes[i]) {
@@ -512,6 +513,9 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                          * XXX: we won't mark as defined if pre-syscall value
                          * matched sentinel and kernel wrote sentinel!
                          */
+                        LOG(4, "\targ %d "PFX" %d comparing %x to %x\n", i,
+                            cpt->sysarg_ptr[i], j,
+                            post_val[j], cpt->sysarg_val[i][j]);
                         if ((options.syscall_sentinels &&
                              post_val[j] != UNKNOWN_SYSVAL_SENTINEL) ||
                             (!options.syscall_sentinels &&
@@ -539,16 +543,19 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                                 }
                             }
                             if (w_at != NULL) {
-                                LOG(2, "unknown-syscall #"PIFX": param %d written "PFX
-                                    " %d bytes\n",
+                                LOG(SYSCALL_VERBOSE, "unknown-syscall #"PIFX
+                                    ": param %d written "PFX" %d bytes\n",
                                     sysnum, i, w_at, pc - w_at);
                                 w_at = NULL;
                             }
                         }
+                    } else {
+                        LOG(4, "\targ %d "PFX" byte %d defined\n", i,
+                            cpt->sysarg_ptr[i], j);
                     }
                 }
                 if (w_at != NULL) {
-                    LOG(2, "unknown-syscall #"PIFX": param %d written "
+                    LOG(SYSCALL_VERBOSE, "unknown-syscall #"PIFX": param %d written "
                         PFX" %d bytes\n",
                         sysnum, i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
                     w_at = NULL;
@@ -922,5 +929,11 @@ syscall_exit(void)
         LOG(1, "WARNING: unable to unload auxlib\n");
  
     syscall_os_exit();
+}
+
+void
+syscall_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    syscall_os_module_load(drcontext, info, loaded);
 }
 

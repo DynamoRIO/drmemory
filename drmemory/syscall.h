@@ -45,7 +45,13 @@ void
 syscall_thread_exit(void *drcontext, per_thread_t *pt);
 
 void
+syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
+
+void
 syscall_reset_per_thread(void *drcontext, per_thread_t *pt);
+
+void
+syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
 bool
 is_using_sysenter(void);

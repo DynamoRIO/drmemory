@@ -190,14 +190,15 @@ static alloc_options_t options;
 
 #ifdef WINDOWS
 /* system calls we want to intercept */
-int sysnum_mmap;
-int sysnum_mapcmf;
-int sysnum_munmap;
-int sysnum_valloc;
-int sysnum_vfree;
-int sysnum_cbret;
-int sysnum_continue;
-int sysnum_setcontext;
+int sysnum_mmap = -1;
+int sysnum_mapcmf = -1;
+int sysnum_munmap = -1;
+int sysnum_valloc = -1;
+int sysnum_vfree = -1;
+int sysnum_cbret = -1;
+int sysnum_continue = -1;
+int sysnum_setcontext = -1;
+int sysnum_UserConnectToServer = -1;
 #endif
 
 #ifdef STATISTICS
@@ -1488,10 +1489,6 @@ malloc_entry_free(void *v)
 void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
-#ifdef WINDOWS
-    void *drcontext = dr_get_current_drcontext();
-    app_pc ntdll_lib;
-#endif
     ASSERT(ops_size <= sizeof(options), "option struct too large");
     memcpy(&options, ops, ops_size);
     ASSERT(options.track_allocs || !options.track_heap,
@@ -1519,53 +1516,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         gencode_cur = gencode_start;
         gencode_lock = dr_mutex_create();
     }
-
-#ifdef WINDOWS
-    ntdll_lib = get_ntdll_base();
-    addr_KiCallback = (app_pc) dr_get_proc_address(ntdll_lib,
-                                                   "KiUserCallbackDispatcher");
-    if (options.track_allocs) {
-        addr_KiAPC = (app_pc) dr_get_proc_address(ntdll_lib,
-                                                  "KiUserApcDispatcher");
-        addr_KiLdrThunk = (app_pc) dr_get_proc_address(ntdll_lib,
-                                                       "LdrInitializeThunk");
-        addr_KiException = (app_pc) dr_get_proc_address(ntdll_lib,
-                                                        "KiUserExceptionDispatcher");
-        addr_KiRaise = (app_pc) dr_get_proc_address(ntdll_lib,
-                                                    "KiRaiseUserExceptionDispatcher");
-        /* Assuming that KiUserCallbackExceptionHandler,
-         * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
-         * entered from the kernel.
-         */
-
-        sysnum_mmap = sysnum_from_name(drcontext, ntdll_lib, "NtMapViewOfSection");
-        ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
-        sysnum_munmap = sysnum_from_name(drcontext, ntdll_lib, "NtUnmapViewOfSection");
-        ASSERT(sysnum_munmap != -1, "error finding alloc syscall #");
-        sysnum_valloc = sysnum_from_name(drcontext, ntdll_lib, "NtAllocateVirtualMemory");
-        ASSERT(sysnum_valloc != -1, "error finding alloc syscall #");
-        sysnum_vfree = sysnum_from_name(drcontext, ntdll_lib, "NtFreeVirtualMemory");
-        ASSERT(sysnum_vfree != -1, "error finding alloc syscall #");
-        sysnum_continue = sysnum_from_name(drcontext, ntdll_lib, "NtContinue");
-        ASSERT(sysnum_continue != -1, "error finding alloc syscall #");
-        sysnum_cbret = sysnum_from_name(drcontext, ntdll_lib, "NtCallbackReturn");
-        ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
-        sysnum_setcontext = sysnum_from_name(drcontext, ntdll_lib, "NtSetContextThread");
-        ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
-        sysnum_mapcmf = sysnum_from_name(drcontext, ntdll_lib, "NtMapCMFModule");
-        ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
-               "error finding alloc syscall #");
-
-        if (options.track_heap) {
-            module_data_t mod = {0,};
-            mod.handle = ntdll_lib;
-            dr_mutex_lock(alloc_routine_lock);
-            find_alloc_routines(&mod, possible_rtl_routines,
-                                POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL);
-            dr_mutex_unlock(alloc_routine_lock);
-        }
-    }
-#endif
 
     if (options.track_allocs) {
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
@@ -1646,9 +1596,71 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 }
 #endif
 
+#ifdef WINDOWS
+static void
+alloc_find_syscalls(void *drcontext, const module_data_t *info)
+{
+    const char *modname = dr_module_preferred_name(info);
+    if (modname == NULL)
+        return;
+
+    if (stri_eq(modname, "ntdll.dll")) {
+        addr_KiCallback = (app_pc) dr_get_proc_address(info->start,
+                                                       "KiUserCallbackDispatcher");
+        if (options.track_allocs) {
+            addr_KiAPC = (app_pc) dr_get_proc_address(info->start,
+                                                      "KiUserApcDispatcher");
+            addr_KiLdrThunk = (app_pc) dr_get_proc_address(info->start,
+                                                           "LdrInitializeThunk");
+            addr_KiException = (app_pc) dr_get_proc_address(info->start,
+                                                            "KiUserExceptionDispatcher");
+            addr_KiRaise = (app_pc) dr_get_proc_address(info->start,
+                                                        "KiRaiseUserExceptionDispatcher");
+            /* Assuming that KiUserCallbackExceptionHandler,
+             * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
+             * entered from the kernel.
+             */
+            
+            sysnum_mmap = sysnum_from_name(drcontext, info, "NtMapViewOfSection");
+            ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
+            sysnum_munmap = sysnum_from_name(drcontext, info, "NtUnmapViewOfSection");
+            ASSERT(sysnum_munmap != -1, "error finding alloc syscall #");
+            sysnum_valloc = sysnum_from_name(drcontext, info, "NtAllocateVirtualMemory");
+            ASSERT(sysnum_valloc != -1, "error finding alloc syscall #");
+            sysnum_vfree = sysnum_from_name(drcontext, info, "NtFreeVirtualMemory");
+            ASSERT(sysnum_vfree != -1, "error finding alloc syscall #");
+            sysnum_continue = sysnum_from_name(drcontext, info, "NtContinue");
+            ASSERT(sysnum_continue != -1, "error finding alloc syscall #");
+            sysnum_cbret = sysnum_from_name(drcontext, info, "NtCallbackReturn");
+            ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
+            sysnum_setcontext = sysnum_from_name(drcontext, info, "NtSetContextThread");
+            ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
+            sysnum_mapcmf = sysnum_from_name(drcontext, info, "NtMapCMFModule");
+            ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
+                   "error finding alloc syscall #");
+            
+            if (options.track_heap) {
+                dr_mutex_lock(alloc_routine_lock);
+                find_alloc_routines(info, possible_rtl_routines,
+                                    POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL);
+                dr_mutex_unlock(alloc_routine_lock);
+            }
+        }
+    } else if (stri_eq(modname, "user32.dll")) {
+        sysnum_UserConnectToServer =
+            sysnum_from_name(drcontext, info, "UserConnectToServer");
+        ASSERT(sysnum_UserConnectToServer != -1, "error finding alloc syscall #");
+    }
+}
+#endif
+
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
+#ifdef WINDOWS
+    alloc_find_syscalls(drcontext, info);
+#endif
+
     if (options.track_heap) {
         const char *modname = dr_module_preferred_name(info);
         bool use_redzone = true;
@@ -2264,7 +2276,8 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
-        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf) {
+        sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
+        sysnum == sysnum_UserConnectToServer) {
         return true;
     } else
         return false;
@@ -2568,6 +2581,25 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
         });
     }
 }
+
+static void
+handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+{
+    if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
+        /* A data file is mmapped by csrss and its base is stored at offset 0x10 */
+# define UserConnectToServer_BASE_OFFS 0x10
+        app_pc base;
+        if (safe_read((byte *)pt->sysarg[1] + UserConnectToServer_BASE_OFFS,
+                      sizeof(base), &base)) {
+            app_pc check_base;
+            size_t sz = allocation_size(base, &check_base);
+            if (base == check_base)
+                client_handle_mmap(pt, base, sz, false/*file-backed*/);
+            else
+                WARN("WARNING: UserConnectToServer has invalid base");
+        }
+    }
+}
 #endif /* WINDOWS */
 
 void
@@ -2613,12 +2645,15 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
             if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
                 LOGPT(1, pt, "WARNING: NtMapCMFModule: error reading param\n");
             } else {
-                LOGPT(2, pt, "NtMapCMFModule: "PFX"\n", base);
+                LOGPT(2, pt, "NtMapCMFModule: "PFX"-"PFX"\n",
+                      base, base + allocation_size(base, NULL));
                 client_handle_mmap(pt, base, allocation_size(base, NULL),
                                    /* I believe it's file-backed: xref DRi#415 */
                                    false/*file-backed*/);
             }
         }
+    } else if (sysnum == sysnum_UserConnectToServer) {
+        handle_post_UserConnectToServer(drcontext, mc, pt);
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
