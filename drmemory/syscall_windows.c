@@ -1072,6 +1072,10 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
         break;
     }
     default:
+        /* XXX: I'm seeing 0 (AF_UNSPEC) a lot, e.g., with IOCTL_AFD_SET_CONTEXT
+         * where the entire sockaddrs are just zero.  Not sure whether to require
+         * AF_UNSPEC has fully-defined base sockaddr size?  Leaving warning for now.
+         */
         WARN("WARNING: unknown sockaddr type %d\n", family); 
         IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
         break;
@@ -1142,24 +1146,36 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
     }
     case IOCTL_AFD_SET_CONTEXT: { /* 0x12047 */
         /* InputBuffer == SOCKET_CONTEXT.  SOCKET_CONTEXT.Padding need not be defined,
-         * and the addresses are var-len.
+         * and the helper data is var-len.
          */
         SOCKET_CONTEXT sc;
+        size_t helper_offs;
         CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT, Padding), "SOCKET_CONTEXT pre-Padding");
         if (safe_read(inbuf, sizeof(sc), &sc)) {
             check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, LocalAddress),
                            sc.SharedData.SizeOfLocalAddress, MEMREF_CHECK_DEFINEDNESS,
                            mc, sysnum, "SOCKET_CONTEXT.LocalAddress");
-            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, RemoteAddress),
+            /* I'm treating these SOCKADDRS as var-len */
+            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, LocalAddress) +
+                           sc.SharedData.SizeOfLocalAddress,
                            sc.SharedData.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
                            mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
         } else {
-            /* FIXME i#375: data structure doesn't seem to match observations! */
             WARN("WARNING: IOCTL_AFD_SET_CONTEXT: can't read param");
         }
-        /* XXX i#375: more data: but SizeOfHelperData looks wrong.
-         * And what about sockaddrs that are longer than 16 bytes?
-         */
+        helper_offs = offsetof(SOCKET_CONTEXT, LocalAddress) +
+            sc.SharedData.SizeOfLocalAddress + sc.SharedData.SizeOfRemoteAddress;
+        if (helper_offs + sc.SizeOfHelperData > insz) {
+            /* Sanity check */
+            WARN("WARNING: IOCTL_AFD_SET_CONTEXT: param fields messed up");
+        } else {
+            /* XXX: helper data could be a struct w/ padding.  I have seen pieces of
+             * it be uninit on XP.  If see many false positives here should just
+             * disable this until understand its structure.
+             */
+            CHECK_DEF(inbuf + helper_offs, 
+                      sc.SizeOfHelperData, "SOCKET_CONTEXT.HelperData");
+        }
         break;
     }
     case IOCTL_AFD_BIND: { /* 0x12003 */

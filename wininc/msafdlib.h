@@ -75,10 +75,11 @@ typedef struct _SOCK_SHARED_INFO {
 /* The blob of data we send to Kernel-Mode for safekeeping */
 typedef struct _SOCKET_CONTEXT {
     SOCK_SHARED_INFO SharedData;
+    GUID Guid; /* bruening: observed on XP and win7 (i#375) */
     ULONG SizeOfHelperData;
     ULONG Padding;
-    SOCKADDR LocalAddress;
-    SOCKADDR RemoteAddress;
+    SOCKADDR LocalAddress; /* bruening: presumably var-len */
+    SOCKADDR RemoteAddress; /* bruening: presumably var-len */
     /* Plus Helper Data */
 } SOCKET_CONTEXT, *PSOCKET_CONTEXT;
 
