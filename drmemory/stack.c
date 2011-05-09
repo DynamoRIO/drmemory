@@ -862,6 +862,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                "shared_esp_fastpath reg error");
         mark_scratch_reg_used(drcontext, bb, bi, &mi.reg3);
         insert_spill_or_restore(drcontext, bb, inst, &mi.reg3, true/*save*/, false);
+        if (whole_bb_spills_enabled())
+            mark_eflags_used(drcontext, bb, bi);
     }
     eflags_live = (!whole_bb_spills_enabled() && mi.aflags != EFLAGS_WRITE_6);
     if (SHADOW_STACK_POINTER()) {
