@@ -1640,7 +1640,8 @@ slow_path(app_pc pc, app_pc decode_pc)
          /* we now pass original pc from -repstr_to_loop including rep.
           * ignore other prefixes here: data16 most likely and then not movs4.
           */
-         ((*decode_pc == REP_PREFIX || *decode_pc == REPNE_PREFIX) &&
+         (options.repstr_to_loop &&
+          (*decode_pc == REP_PREFIX || *decode_pc == REPNE_PREFIX) &&
           *(decode_pc + 1) == MOVS_4_OPCODE))) {
         /* see comments for this routine: common enough it's worth optimizing */
         medium_path_movs4(&loc, &mc);
