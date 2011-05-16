@@ -476,7 +476,7 @@ event_fragment_delete(void *drcontext, void *tag)
 
     dr_mutex_lock(stringop_lock);
     /* We rely on repstr_to_loop arranging the repstr to be the only
-     * instr and thus the tag (i#391)
+     * instr and thus the tag (i#391) (and we require -disable_traces)
      */
     stringop = (stringop_entry_t *) hashtable_lookup(&stringop_app2us_table, tag);
     if (stringop != NULL) {
@@ -1711,7 +1711,7 @@ slow_path(app_pc pc, app_pc decode_pc)
         if (rep_pc != NULL) {
             ASSERT(dr_memory_is_dr_internal(decode_pc), "must be drmem heap");
             /* use this as app pc if we report an error */
-            pc_to_loc(&loc, pc);
+            pc_to_loc(&loc, rep_pc);
         }
     }            
 
@@ -1993,11 +1993,15 @@ slow_path(app_pc pc, app_pc decode_pc)
             LOG(3, "translation test: cache="PFX", orig="PFX", xl8="PFX"\n",
                 ret_pc, pc, xl8);
             ASSERT(xl8 == pc || 
-                   /* for repstr_to_loop we pass one byte in */
+                   /* for repstr_to_loop we changed pc */
                    (options.repstr_to_loop && opc_is_stringop(opc) &&
-                    (*xl8 == 0xf2 || *xl8 == 0xf3 ||
-                     /* data prefix (i#353) */
-                     (*xl8 == 0x66 && (*(xl8+1) == 0xf2 || *(xl8+1) == 0xf3)))),
+                    xl8 == loc_to_pc(&loc)) ||
+                   /* for repstr_to_loop OP_loop, ret_pc is the restore
+                    * code after stringop and before OP_loop*, so we'll get
+                    * post-xl8 pc.
+                    */
+                   (options.repstr_to_loop && opc == OP_loop &&
+                    xl8 == decode_next_pc(drcontext, loc_to_pc(&loc))),
                    "xl8 doesn't match");
         }
     });
@@ -2988,7 +2992,8 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 
 /* PR 580123: add fastpath for rep string instrs by converting to normal loop */
 static void
-convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
+convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
+                       bool translating)
 {
     instr_t *inst, *next_inst;
     bool delete_rest = false;
@@ -3109,25 +3114,34 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
          * mem addr b/c the just-executed string op adjusted edi/esi (i#391).
          * Solution is to allocate some memory and create a fake OP_loop there.
          * We use a hashtable to map from that to the app_pc.
+         * We free by relying on the stringop being the first instr and thus
+         * the tag (=> no trace support).
          */
-        entry = (stringop_entry_t *) global_alloc(sizeof(*entry), HEAPSTAT_PERBB);
-        entry->loop_instr[0] = LOOP_INSTR_OPCODE;
-        entry->loop_instr[1] = 0;
-        entry->ignore_next_delete = 0;
-        dr_mutex_lock(stringop_lock);
-        old = (stringop_entry_t *)
-            hashtable_add_replace(&stringop_app2us_table, xl8, (void *)entry);
-        if (old != NULL) {
-            ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
-            entry->ignore_next_delete = old->ignore_next_delete + 1;
-            global_free(old, sizeof(*old), HEAPSTAT_PERBB);
-            LOG(2, "stringop "PFX" duplicated: assuming non-precise flushing\n", xl8);
+        if (translating) {
+            dr_mutex_lock(stringop_lock);
+            entry = (stringop_entry_t *) hashtable_lookup(&stringop_app2us_table, xl8);
+            ASSERT(entry != NULL, "stringop entry should exit on translation");
+            dr_mutex_unlock(stringop_lock);
+        } else {
+            entry = (stringop_entry_t *) global_alloc(sizeof(*entry), HEAPSTAT_PERBB);
+            entry->loop_instr[0] = LOOP_INSTR_OPCODE;
+            entry->loop_instr[1] = 0;
+            entry->ignore_next_delete = 0;
+            dr_mutex_lock(stringop_lock);
+            old = (stringop_entry_t *)
+                hashtable_add_replace(&stringop_app2us_table, xl8, (void *)entry);
+            if (old != NULL) {
+                ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
+                entry->ignore_next_delete = old->ignore_next_delete + 1;
+                global_free(old, sizeof(*old), HEAPSTAT_PERBB);
+                LOG(2, "stringop "PFX" duplicated: assuming non-precise flushing\n", xl8);
+            }
+            IF_DEBUG(ok = )
+                hashtable_add(&stringop_us2app_table, (void *)entry, xl8);
+            /* only freed for heap reuse on hashtable removal */
+            ASSERT(ok, "not possible to have existing from-heap entry");
+            dr_mutex_unlock(stringop_lock);
         }
-        IF_DEBUG(ok = )
-            hashtable_add(&stringop_us2app_table, (void *)entry, xl8);
-        /* only freed for heap reuse on hashtable removal */
-        ASSERT(ok, "not possible to have existing from-heap entry");
-        dr_mutex_unlock(stringop_lock);
 
         instr_set_note(loop, (void *)entry);
         PREXL8(bb, inst, INSTR_XL8(loop, xl8));
@@ -3140,10 +3154,11 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi)
 
 /* Conversions to app code itself that should happen before instrumentation */
 static void
-app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi)
+app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi,
+                           bool translating)
 {
     if (options.repstr_to_loop && options.shadowing)
-        convert_repstr_to_loop(drcontext, bb, bi);
+        convert_repstr_to_loop(drcontext, bb, bi, translating);
 }
 
 dr_emit_flags_t
@@ -3237,7 +3252,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         fastpath_top_of_bb(drcontext, tag, bb, &bi);
     }
 #endif
-    app_to_app_transformations(drcontext, bb, &bi);
+    app_to_app_transformations(drcontext, bb, &bi, translating);
 
     first = instrlist_first(bb);
 

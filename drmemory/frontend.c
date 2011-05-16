@@ -55,6 +55,7 @@
 #define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
 
 /* -shared_slowpath requires -disable_traces
+ * freeing stringop data also requires -disable_traces (i#391)
  * to save space we use -bb_single_restore_prefix
  * PR 415155: our code expansion causes us to exceed max bb size sometimes
  * PR 561775: drsyms (esp newer versions) uses a lot of stack, which
