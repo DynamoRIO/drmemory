@@ -242,8 +242,8 @@ repstr_test(void)
 #ifdef WINDOWS
     /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
-        mov   edi, a1
-        mov   esi, a2
+        mov   esi, a1
+        mov   edi, a2
         mov   ecx, 15
         rep   movsb
         mov   edi, a2

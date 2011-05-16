@@ -1685,8 +1685,7 @@ slow_path(app_pc pc, app_pc decode_pc)
          /* we now pass original pc from -repstr_to_loop including rep.
           * ignore other prefixes here: data16 most likely and then not movs4.
           */
-         (options.repstr_to_loop &&
-          (*decode_pc == REP_PREFIX || *decode_pc == REPNE_PREFIX) &&
+         (options.repstr_to_loop && *decode_pc == REP_PREFIX &&
           *(decode_pc + 1) == MOVS_4_OPCODE))) {
         /* see comments for this routine: common enough it's worth optimizing */
         medium_path_movs4(&loc, &mc);
@@ -2886,6 +2885,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 shadow_set_byte(addr + i, SHADOW_UNADDRESSABLE);
             }
         } else if (!TEST(MEMREF_CHECK_ADDRESSABLE, flags)) {
+            uint newval;
             if (TEST(MEMREF_PUSHPOP, flags)) {
                 if (!handled_push_addr) {
                     /* only call once: don't want to mark push target as unaddr,
@@ -2895,21 +2895,26 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                         handle_push_addressable(loc, addr + i, addr, sz, mc);
                 }
             }
-            if (shadow == SHADOW_UNDEFINED) {
-                if (TEST(MEMREF_MOVS, flags)) {
-                    ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
-                    ASSERT(memref_idx(flags, i) == i, "internal movs error");
-                    shadow_set_byte(addr + i,
-                                    shadow_get_byte(((app_pc)shadow_vals[0]) + i));
-                } else {
-                    shadow_set_byte(addr + i, TEST(MEMREF_USE_VALUES, flags) ?
-                                    shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED);
-                }
-            } else if (shadow == SHADOW_DEFINED_BITLEVEL) {
+            if (TEST(MEMREF_MOVS, flags)) {
+                ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
+                ASSERT(memref_idx(flags, i) == i, "internal movs error");
+                newval = shadow_get_byte(((app_pc)shadow_vals[0]) + i);
+            } else {
+                newval = TEST(MEMREF_USE_VALUES, flags) ?
+                    shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED;
+            }
+            if (shadow == SHADOW_DEFINED_BITLEVEL ||
+                newval == SHADOW_DEFINED_BITLEVEL) {
                 ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
-            } else if (shadow == SHADOW_DEFINED) {
-                LOG(4, "store @"PFX" to already-defined "PFX"\n",
-                    loc_to_print(loc), addr+i);
+            } else {
+                if (shadow == newval) {
+                    LOG(4, "store @"PFX" to "PFX" w/ already-same-val "PIFX"\n",
+                        loc_to_print(loc), addr+i, newval);
+                } else {
+                    LOG(3/*NOCHECKIN 4*/, "store @"PFX" to "PFX" val="PIFX"\n",
+                        loc_to_print(loc), addr + i, newval);
+                    shadow_set_byte(addr + i, newval);
+                }
             }
         }
         if (!TEST(MEMREF_WRITE, flags) && TEST(MEMREF_USE_VALUES, flags)) {
