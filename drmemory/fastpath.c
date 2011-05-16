@@ -1688,6 +1688,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(false, "fastpath of OP_shl %cl not implemented");
             break;
         }
+        break;
     }
     case OP_shr:
     case OP_sar: {
@@ -1721,6 +1722,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(false, "fastpath of OP_shl %cl not implemented");
             break;
         }
+        break;
     }
     }
 }

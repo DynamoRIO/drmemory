@@ -427,6 +427,48 @@ float_test(void)
 #endif
 }
 
+void
+subdword_test2(void)
+{
+    /* source of uninits: on Windows a stack buffer is filled w/ 0xcc
+     * in debug build (PR 473614) so we use malloc
+     */
+    char *undef = (char *) malloc(128);
+    int val1, val2;
+    printf("before subdword test2\n");
+#ifdef WINDOWS
+    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
+    __asm {
+        /* shift uninit bits away */
+        mov   eax, 0
+        mov   ecx, undef
+        add   ax, word ptr [ecx + 37]
+        shl   eax, 8
+        movzx edx, al
+        mov   val1, edx
+        shr   eax, 8
+        movzx edx, al
+        mov   val2, edx
+    }
+#else
+    asm("mov   $0, %eax");
+    asm("mov   %0, %%ecx" : : "g"(undef) : "ecx");
+    asm("add   37(%ecx), %ax");
+    asm("shl   $8,%eax");
+    asm("movzx %al,%edx");
+    asm("mov   %%edx, %0" : "=m"(val1));
+    asm("shr   $8,%eax");
+    asm("movzx %al,%edx");
+    asm("mov   %%edx, %0" : "=m"(val2));
+#endif
+    if (val1 == 0) /* NOT uninit */
+        array[0] = val1;
+    if (val2 == 0) /* uninit */
+        array[0] = val2;
+    printf("after subdword test2\n");
+    free(undef);
+}
+
 int
 main()
 {
@@ -441,6 +483,8 @@ main()
 
     /* test sub-dword w/ part of dword undef */
     subdword_test();
+
+    subdword_test2();
 
     repstr_test();
 

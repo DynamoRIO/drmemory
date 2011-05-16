@@ -59,5 +59,7 @@ registers.c:360
 Error #9: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:385
 %endif
-Error #10: LEAK 15 direct bytes + 0 indirect bytes
+Error #10: UNINITIALIZED READ: reading 1 byte(s)
+registers.c:466
 Error #11: LEAK 15 direct bytes + 0 indirect bytes
+Error #12: LEAK 15 direct bytes + 0 indirect bytes
