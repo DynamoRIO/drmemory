@@ -1372,8 +1372,10 @@ integrate_register_shadow(instr_t *inst, int opnum,
     /* Note that we don't need to un-little-endian b/c our array is
      * filled in one byte at a time in order: no words */
     shadow_vals[shift + 0] =
-        combine_shadows(shadow_vals[shift + 0], SHADOW_DWORD2BYTE(shadow, 0));
+        combine_shadows(shadow_vals[shift + 0],
+                        SHADOW_DWORD2BYTE(shadow, reg_offs_in_dword(reg)));
     if (regsz > 1) {
+        ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
         shadow_vals[shift + 1] =
             combine_shadows(shadow_vals[shift + 1], SHADOW_DWORD2BYTE(shadow, 1));
         if (regsz > 2) {
@@ -1446,8 +1448,9 @@ assign_register_shadow(instr_t *inst, int opnum,
     }
 
     shift *= regsz;
-    register_shadow_set_byte(reg, 0, shadow_vals[shift + 0]);
+    register_shadow_set_byte(reg, reg_offs_in_dword(reg), shadow_vals[shift + 0]);
     if (regsz > 1) {
+        ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
         register_shadow_set_byte(reg, 1, shadow_vals[shift + 1]);
         if (regsz > 2) {
             register_shadow_set_byte(reg, 2, shadow_vals[shift + 2]);
@@ -2911,7 +2914,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     LOG(4, "store @"PFX" to "PFX" w/ already-same-val "PIFX"\n",
                         loc_to_print(loc), addr+i, newval);
                 } else {
-                    LOG(3/*NOCHECKIN 4*/, "store @"PFX" to "PFX" val="PIFX"\n",
+                    LOG(4, "store @"PFX" to "PFX" val="PIFX"\n",
                         loc_to_print(loc), addr + i, newval);
                     shadow_set_byte(addr + i, newval);
                 }
