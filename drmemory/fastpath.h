@@ -52,6 +52,12 @@ typedef struct _scratch_reg_info_t {
 struct _bb_info_t; /* forward decl */
 typedef struct _bb_info_t bb_info_t;
 
+typedef struct _opnd_info_t {
+    opnd_t app;    /* app opnd: if null then other fields are invalid */
+    opnd_t shadow; /* either value for src or memref for dst */
+    opnd_t offs;   /* sub-dword offset */
+} opnd_info_t;
+
 #define MAX_FASTPATH_SRCS 3
 #define MAX_FASTPATH_DSTS 2
 typedef struct _fastpath_info_t {
@@ -66,8 +72,8 @@ typedef struct _fastpath_info_t {
      * opnd_is_null(src[i+1]).
      * We handle a 2nd dest that is a register by writing same result to it.
      */
-    opnd_t src[MAX_FASTPATH_SRCS];
-    opnd_t dst[MAX_FASTPATH_DSTS];
+    opnd_info_t src[MAX_FASTPATH_SRCS];
+    opnd_info_t dst[MAX_FASTPATH_DSTS];
     int opnum[MAX_FASTPATH_SRCS];
     bool store;
     bool load;
@@ -82,13 +88,15 @@ typedef struct _fastpath_info_t {
     int opsz; /* destination operand size */
     uint memsz; /* primary memory ref size */
     int src_opsz; /* source operand size */
-    opnd_t offs; /* if sub-dword, offset within containing dword */
+    opnd_t offs; /* if memref is sub-dword, offset within containing dword */
     bool check_definedness;
+    bool check_eflags_defined;
 
     /* filled in by instrument_fastpath() */
     bool zero_rest_of_offs; /* when calculate mi->offs, zero rest of bits in reg */
     bool pushpop_stackop;
     bool need_offs;
+    bool need_nonoffs_reg3;
     bool need_slowpath;
     instr_t *slowpath;
     /* scratch registers */
@@ -97,12 +105,19 @@ typedef struct _fastpath_info_t {
     scratch_reg_info_t reg1;
     scratch_reg_info_t reg2;
     scratch_reg_info_t reg3;
+    /* cached sub-scratch-regs */
+    reg_id_t reg1_8;
+    reg_id_t reg2_16;
+    reg_id_t reg2_8;
+    reg_id_t reg2_8h;
+    reg_id_t reg3_8;
     /* is this instr using shared xl8? */
     bool use_shared;
     /* for jmp-to-slowpath optimization (PR 494769) */
     instr_t *appclone;
     instr_t *slow_store_retaddr;
     instr_t *slow_jmp;
+    int num_to_propagate;
 } fastpath_info_t;
 
 /* Share inter-instruction info across whole bb */

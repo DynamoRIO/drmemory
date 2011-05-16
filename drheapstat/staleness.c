@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -397,7 +398,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     for (i=0; i<instr_num_dsts(inst); i++) {
         if (opnd_uses_memory_we_track(instr_get_dst(inst, i))) {
             mi->store = true;
-            if (!opnd_is_null(mi->dst[0])) {
+            if (!opnd_is_null(mi->dst[0].app)) {
                 /* FIXME: we could handle 2 dsts if no srcs easily,
                  * and even more dsts if we really wanted to w/o too
                  * much trouble.  also something like pusha w/
@@ -405,7 +406,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                  */
                 return false;
             }
-            mi->dst[0] = instr_get_dst(inst, i);
+            mi->dst[0].app = instr_get_dst(inst, i);
         }
     }
     for (i=0; i<instr_num_srcs(inst); i++) {
@@ -414,11 +415,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 mi->mem2mem = true;
             else
                 mi->load = true;
-            if (!opnd_is_null(mi->src[0])) {
+            if (!opnd_is_null(mi->src[0].app)) {
                 /* see notes above about handling this: in particular cmps */
                 return false;
             }
-            mi->src[0] = instr_get_src(inst, i);
+            mi->src[0].app = instr_get_src(inst, i);
         }
     }
     return true;
