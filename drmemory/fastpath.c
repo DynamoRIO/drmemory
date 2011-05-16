@@ -3759,7 +3759,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              datastore_tgt, 
                              /* for popf don't write UNADDR to eflags: we handle below */
                              false/*skip eflags*/);
-        if (opc == OP_popf) {
+        if (opc == OP_popf && !opnd_is_null(shadow_src)) {
             /* special-cased b/c eflags is not handled as a regular dest
              * so there's no propagation below
              * XXX: actually isn't there now?  writing eflags twice then?
