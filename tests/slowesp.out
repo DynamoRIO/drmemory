@@ -23,13 +23,15 @@ before regtest
 after regtest
 before subdword test
 after subdword test
+before subdword test2
+after subdword test2
 before repstr test
 after repstr test
 before eflags test
 after eflags test
 :::Dr.Memory::: ERRORS FOUND:
 :::Dr.Memory:::       0 unique,     0 total unaddressable access(es)
-:::Dr.Memory:::       9 unique,     9 total uninitialized access(es)
+:::Dr.Memory:::      12 unique,    12 total uninitialized access(es)
 :::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
 :::Dr.Memory:::       0 unique,     0 total warning(s)
 :::Dr.Memory:::       2 unique,     2 total,     30 byte(s) of leak(s)

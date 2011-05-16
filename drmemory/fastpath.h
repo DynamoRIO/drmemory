@@ -85,10 +85,11 @@ typedef struct _fastpath_info_t {
     reg_id_t src_reg;
     reg_id_t dst_reg;
     opnd_t memop;
+    /* XXX: perhaps should fold sizes into opnd_info_t */
     int opsz; /* destination operand size */
     uint memsz; /* primary memory ref size */
     int src_opsz; /* source operand size */
-    opnd_t offs; /* if memref is sub-dword, offset within containing dword */
+    opnd_t memoffs; /* if memref is sub-dword, offset within containing dword */
     bool check_definedness;
     bool check_eflags_defined;
 

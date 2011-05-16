@@ -224,6 +224,14 @@ get_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
     }
 }
 
+static void
+initialize_opnd_info(opnd_info_t *info)
+{
+    info->app = opnd_create_null();
+    info->shadow = opnd_create_null();
+    info->offs = opnd_create_null();
+}
+
 void
 initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi)
 {
@@ -231,17 +239,13 @@ initialize_fastpath_info(fastpath_info_t *mi, bb_info_t *bi)
     memset(mi, 0, sizeof(*mi));
     mi->bb = bi;
     for (i=0; i<MAX_FASTPATH_SRCS; i++) {
-        mi->src[i].app = opnd_create_null();
-        mi->src[i].shadow = opnd_create_null();
-        mi->src[i].offs = opnd_create_null();
+        initialize_opnd_info(&mi->src[i]);
         mi->opnum[i] = -1;
     }
     for (i=0; i<MAX_FASTPATH_DSTS; i++) {
-        mi->dst[i].app = opnd_create_null();
-        mi->dst[i].shadow = opnd_create_null();
-        mi->dst[i].offs = opnd_create_null();
+        initialize_opnd_info(&mi->dst[i]);
     }
-    /* mi->opsz and mi->offs are not set here */
+    /* mi->opsz and mi->memoffs are not set here */
 }
 
 #ifdef TOOL_DR_MEMORY
@@ -329,6 +333,14 @@ append_fastpath_opnd(opnd_t op, opnd_info_t *array, int len)
         }
     }
     return -1;
+}
+
+static inline bool
+is_alu(fastpath_info_t *mi)
+{
+    /* yeah identifying ALU is a pain w/ mem-must-be-first */
+    return ((mi->store && opnd_same(mi->src[0].app, mi->dst[0].app)) ||
+            (!mi->store && opnd_same(mi->src[1].app, mi->dst[0].app)));
 }
 
 /* Allows 8-byte opnds: up to caller to check other reqts */
@@ -517,8 +529,10 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (opnd_get_index(memop) != REG_NULL) {
             if (opnd_get_base(memop) == REG_NULL)
                 mi->src[0].app = opnd_create_reg(opnd_get_index(memop));
-            else
+            else {
+                /* if 16-bit we're ok in fastpath b/c will have same offs */
                 mi->src[1].app = opnd_create_reg(opnd_get_index(memop));
+            }
         }
         mi->dst[0].app = instr_get_dst(inst, 0);
         ASSERT(reg_ok_for_fastpath(mi->dst[0].app) &&
@@ -593,6 +607,16 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 return false;
             mi->load2x = true;
         }
+        return true;
+    } else if ((opc == OP_idiv || opc == OP_div) &&
+               opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
+        /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
+        if (!opnd_ok_for_fastpath(opnd_create_reg(REG_AX), 0, true, mi))
+            return false;
+        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+            return false;
+        if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+            return false;
         return true;
     } else {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
@@ -745,27 +769,21 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             mi->src_opsz = mi->memsz;
         }
         if (mi->opsz >= 4)
-            mi->offs = opnd_create_immed_int(0, OPSZ_1);
+            mi->memoffs = opnd_create_immed_int(0, OPSZ_1);
         else {
-            /* else, mi->offs is dynamically varying; properly defined later */
-            mi->offs = opnd_create_null();
+            /* else, mi->memoffs is dynamically varying; properly defined later */
+            mi->memoffs = opnd_create_null();
         }
 #else
         if (mi->store)
             mi->dst[0].app = mi->memop;
         else
             mi->src[0].app = mi->memop;
-        mi->offs = opnd_create_immed_int(0, OPSZ_1);
+        mi->memoffs = opnd_create_immed_int(0, OPSZ_1);
 #endif
-    } else {
-        if (mi->dst_reg != REG_NULL) {
-            mi->offs = opnd_create_immed_int(reg_offs_in_dword(mi->dst_reg), OPSZ_1);
-        } else if (mi->src_reg != REG_NULL) {
-            mi->offs = opnd_create_immed_int(reg_offs_in_dword(mi->src_reg), OPSZ_1);
-        } else { /* jcc or other instr w/ no reg/mem/immed args */
-            mi->offs = opnd_create_null();
-        }
-    }
+    } else
+        mi->memoffs = opnd_create_immed_int(0, OPSZ_1);
+
     /* Having only the input byte defined and the rest of the dword
      * undefined is common enough (esp on linux) that we must fastpath
      * it and thus need the offset, but only for 1-byte src (2-byte
@@ -790,7 +808,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
               /* need offs if propagating eflags (esp for -no_check_cmps) */
               (mi->load && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
                !instr_check_definedness(inst)) ) &&
-             (mi->memsz < 4 && !opnd_is_immed_int(mi->offs));
+            (mi->memsz < 4 && !opnd_is_immed_int(mi->memoffs));
     }
     return true;
 }
@@ -799,11 +817,12 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 /* Translates from sources and dests into shadow operands and offsets
  * and initializes mi->num_to_propagate.  Does not set the offsets
  * of memory operands as those are dynamic and will be set later
- * from mi->offs which will be set by add_shadow_table_lookup().
+ * from mi->memoffs which will be set by add_shadow_table_lookup().
  */
 static void
 set_shadow_opnds(fastpath_info_t *mi)
 {
+    reg_id_t reg;
     ASSERT(mi != NULL, "invalid args");
     if (opnd_is_memory_reference(mi->dst[0].app)) {
         if (mi->memsz <= 4)
@@ -814,16 +833,19 @@ set_shadow_opnds(fastpath_info_t *mi)
             ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
             mi->dst[0].shadow = OPND_CREATE_MEM32(mi->reg1.reg, 0);
         }
-    } else if (mi->dst_reg != REG_NULL)
+    } else if (mi->dst_reg != REG_NULL) {
         mi->dst[0].shadow = opnd_create_shadow_reg_slot(mi->dst_reg);
-    else
+        mi->dst[0].offs = opnd_create_immed_int(reg_offs_in_dword(mi->dst_reg), OPSZ_1);
+    } else
         mi->dst[0].shadow = opnd_create_null();
     if (opnd_is_null(mi->dst[1].app))
         mi->dst[1].shadow = opnd_create_null();
     else {
         ASSERT(opnd_is_reg(mi->dst[1].app) && reg_is_gpr(opnd_get_reg(mi->dst[1].app)),
                "reg fastpath error");
-        mi->dst[1].shadow = opnd_create_shadow_reg_slot(opnd_get_reg(mi->dst[1].app));
+        reg = opnd_get_reg(mi->dst[1].app);
+        mi->dst[1].shadow = opnd_create_shadow_reg_slot(reg);
+        mi->dst[1].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
     }
     if (opnd_is_memory_reference(mi->src[0].app)) {
         if (mi->store && !mi->mem2mem) {
@@ -831,6 +853,7 @@ set_shadow_opnds(fastpath_info_t *mi)
             ASSERT(opnd_same(mi->dst[0].app, mi->src[0].app), "dual mem ref error");
             /* need to reference by address not value so copy dst shadow */
             mi->src[0].shadow = mi->dst[0].shadow;
+            /* we copy offs later */
         } else {
             /* for mem2mem we'll adjust below */
             ASSERT(mi->load || mi->store, "mem must be load or store");
@@ -846,6 +869,7 @@ set_shadow_opnds(fastpath_info_t *mi)
         mi->num_to_propagate++;
     } else if (!opnd_is_null(mi->src[0].app)) {
         mi->src[0].shadow = opnd_create_shadow_reg_slot(mi->src_reg);
+        mi->src[0].offs = opnd_create_immed_int(reg_offs_in_dword(mi->src_reg), OPSZ_1);
         mi->num_to_propagate++;
     } else 
         mi->src[0].shadow = opnd_create_null();
@@ -859,7 +883,9 @@ set_shadow_opnds(fastpath_info_t *mi)
     else {
         ASSERT(opnd_is_reg(mi->src[1].app) && reg_is_gpr(opnd_get_reg(mi->src[1].app)),
                "reg fastpath error");
-        mi->src[1].shadow = opnd_create_shadow_reg_slot(opnd_get_reg(mi->src[1].app));
+        reg = opnd_get_reg(mi->src[1].app);
+        mi->src[1].shadow = opnd_create_shadow_reg_slot(reg);
+        mi->src[1].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
         mi->num_to_propagate++;
     }
     if (opnd_is_null(mi->src[2].app))
@@ -867,7 +893,9 @@ set_shadow_opnds(fastpath_info_t *mi)
     else {
         ASSERT(opnd_is_reg(mi->src[2].app) && reg_is_gpr(opnd_get_reg(mi->src[2].app)),
                "reg fastpath error");
-        mi->src[2].shadow = opnd_create_shadow_reg_slot(opnd_get_reg(mi->src[2].app));
+        reg = opnd_get_reg(mi->src[2].app);
+        mi->src[2].shadow = opnd_create_shadow_reg_slot(reg);
+        mi->src[2].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
         mi->num_to_propagate++;
     }
 }
@@ -930,6 +958,25 @@ set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
     if (opc == OP_leave)
         mi->check_definedness = true;
 
+
+    if (mi->opsz < 4 && mi->num_to_propagate >= 2) {
+        /* XXX i#401: some cases that we could propagate if we took multiple steps
+         * and pretended src0 was a dst when calling add_dstX2_shadow_write() the
+         * first time (and setting preserve=true) but that's NYI (i#401).
+         */
+        if (is_alu(mi)) {
+            if (!opnd_is_null(mi->src[2].shadow) &&
+                !opnd_same(mi->src[0].offs, mi->src[2].offs)) {
+                /* {div,idiv}w */
+                mi->check_definedness = true;
+            }
+        } else if (!opnd_is_null(mi->src[1].shadow) &&
+                   !opnd_same(mi->src[1].offs, mi->src[0].offs)) {
+            /* 1-byte {mul,imul} */
+            mi->check_definedness = true;
+        }
+    }
+
     DOLOG(4, {
         if (mi->check_definedness) {
             per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -941,15 +988,22 @@ set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
 
     /* Propagate eflags if we have room: else check definedness (PR 425622) */
     mi->check_eflags_defined = true;
-    if (!mi->check_definedness && TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) {
+    if (!mi->check_definedness && TESTANY(EFLAGS_READ_6, instr_get_eflags(inst)) &&
+        /* XXX i#402: since eflags shadow can have undef bits at any part of it,
+         * to propagate to sub-dword we'd need to map it down
+         */
+        mi->opsz >= 4) {
         if (opnd_is_null(mi->src[0].shadow)) {
             mi->src[0].shadow = opnd_create_shadow_eflags_slot();
+            mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
             mi->check_eflags_defined = false;
         } else if (opnd_is_null(mi->src[1].shadow)) {
             mi->src[1].shadow = opnd_create_shadow_eflags_slot();
+            mi->src[1].offs = opnd_create_immed_int(0, OPSZ_1);
             mi->check_eflags_defined = false;
         } else if (opnd_is_null(mi->src[2].shadow)) {
             mi->src[2].shadow = opnd_create_shadow_eflags_slot();
+            mi->src[2].offs = opnd_create_immed_int(0, OPSZ_1);
             mi->check_eflags_defined = false;
         }
         if (!mi->check_eflags_defined) {
@@ -1758,7 +1812,7 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(opnd_is_memory_reference(app_op), "reg shadow == mem app");
             ASSERT(mi->zero_rest_of_offs, "need zeroed offs to check mem src");
             /* mi->need_offs may not be set, if avoiding 3rd reg */
-            if (opnd_is_null(mi->offs)) {
+            if (opnd_is_null(mi->memoffs)) {
                 /* movzx 2-to-4 or 1-to-2 don't store the offs: so we bail */
                 insert_cmp_for_equality(drcontext, bb, inst, shadow_op,
                                         SHADOW_DWORD_DEFINED);
@@ -1766,7 +1820,7 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
             base = reg_to_pointer_sized(opnd_get_reg(shadow_op));
             /* offs is kept in high reg8 => offs is already multiplied by 256 for us */
-            index = reg_to_pointer_sized(opnd_get_reg(mi->offs));
+            index = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
             LOG(3, "check_defined: using table for mem op base=%d index=%d\n",
                 base, index);
         } else {
@@ -1780,8 +1834,8 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (opnd_is_reg(app_op)) {
                 disp += reg_offs_in_dword(opnd_get_reg(app_op)) * 256;
             } else {
-                ASSERT(opnd_is_reg(mi->offs), "must have offs");
-                index = reg_to_pointer_sized(opnd_get_reg(mi->offs));
+                ASSERT(opnd_is_reg(mi->memoffs), "must have offs");
+                index = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
             }
             /* load from reg shadow tls slot into reg2, which should
              * be scratch
@@ -1815,8 +1869,22 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 
+static bool
+needs_shadow_op(instr_t *inst)
+{
+    int opc = instr_get_opcode(inst);
+    switch (opc) {
+    case OP_shl:
+    case OP_shr:
+    case OP_sar:
+        return true;
+    default: return false;
+    }
+}
+
 /* Manipulates the one-byte shadow value in register reg that represents an
  * app dword, appropriately for the app instruction inst.
+ * Keep in sync w/ needs_shadow_op().
  */
 static void
 insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
@@ -2116,11 +2184,11 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
  *     if value, top bytes are zeroed out (top 3 for sz=4, top 2 for sz=8).
  *     if value_in_reg2 and get_value, then reg2 holds value.
  *   If need_offs:
- *     - mi->offs is reg2_8h (reg1_8h if value_in_reg2, reg3_8h if
+ *     - mi->memoffs is reg2_8h (reg1_8h if value_in_reg2, reg3_8h if
  *       zero_rest_of_offs and !mi->need_offs)
  *     - reg3 has been written to
  *   Else if zero_rest_of_offs (which asks for offs even if !need_offs):
- *     - mi->offs is reg1_8h
+ *     - mi->memoffs is reg1_8h
  *   Else:
  *     - reg3 has not been touched
  *     - reg2 has been clobbered (this routine no longer computes the offset
@@ -2264,14 +2332,14 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
     if (need_offs) {
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
-        mi->offs = (!mi->need_offs && zero_rest_of_offs) ?
+        mi->memoffs = (!mi->need_offs && zero_rest_of_offs) ?
             opnd_create_reg(reg3_8h) :
             ((get_value && value_in_reg2) ?
              opnd_create_reg(reg1_8h) : opnd_create_reg(reg2_8h));
         /* store offset within containing dword in high 8 bits */
         ASSERT(mi->reg3.used, "spill error");
         PRE(bb, inst,
-            INSTR_CREATE_mov_st(drcontext, mi->offs, opnd_create_reg(reg3_8)));
+            INSTR_CREATE_mov_st(drcontext, mi->memoffs, opnd_create_reg(reg3_8)));
         if (zero_rest_of_offs) {
             /* for stores the top 16 bits are zero but not for loads: but data16 and
              * may not be any faster even if 1 byte smaller.
@@ -2280,13 +2348,13 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
              * dest, but need offs for checking definedness) could avoid
              * the store above and keep offs in reg3_8h
              */
-            reg_id_t reg = reg_to_pointer_sized(opnd_get_reg(mi->offs));
+            reg_id_t reg = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
             PRE(bb, inst,
                 INSTR_CREATE_and(drcontext, opnd_create_reg(reg),
                                  OPND_CREATE_INT32(0x00000300)));
         } else {
             PRE(bb, inst,
-                INSTR_CREATE_and(drcontext, mi->offs, OPND_CREATE_INT8(0x3)));
+                INSTR_CREATE_and(drcontext, mi->memoffs, OPND_CREATE_INT8(0x3)));
         }
     } else if (zero_rest_of_offs) {
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
@@ -2302,7 +2370,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(value_in_reg2, "clobbering reg1");
         ASSERT(!SHARING_XL8_ADDR(mi), "when sharing reg1 is in use");
         insert_lea(drcontext, bb, inst, mi->memop, reg1);
-        mi->offs = opnd_create_reg(reg1_8h);
+        mi->memoffs = opnd_create_reg(reg1_8h);
         PRE(bb, inst,
             INSTR_CREATE_and(drcontext, opnd_create_reg(reg1),
                              OPND_CREATE_INT32(0x3)));
@@ -2355,24 +2423,57 @@ add_check_datastore(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 
+/* See comments in add_dst_shadow_write */
+static inline void
+subdword_get_shift_value(void *drcontext, instrlist_t *bb, instr_t *inst, 
+                         opnd_t memoffs, uint ofnum)
+{
+    /* Get dynamic offset into %cl and double it for shift/rotate */
+    PRE(bb, inst, INSTR_CREATE_mov_ld
+        (drcontext, opnd_create_reg(REG_CL), memoffs));
+    if (ofnum == 1) {
+        PRE(bb, inst, INSTR_CREATE_dec
+            (drcontext, opnd_create_reg(REG_CL)));
+        PRE(bb, inst, INSTR_CREATE_and
+            (drcontext, opnd_create_reg(REG_CL), OPND_CREATE_INT8(0x3)));
+    }
+    PRE(bb, inst, INSTR_CREATE_shl
+        (drcontext, opnd_create_reg(REG_CL), OPND_CREATE_INT8(1)));
+}
+
+/* See comments in add_dst_shadow_write */
+static inline void
+subdword_zero_rest_of_dword(void *drcontext, instrlist_t *bb, instr_t *inst, 
+                            opnd_t op, uint ofnum, size_t opsz)
+{
+    ASSERT((opsz == 1 && (ofnum == 0 || ofnum ==1)) ||
+           (opsz == 2 && ofnum == 0), "invalid offset");
+    /* Clear rest of src shadow byte */
+    PRE(bb, inst, INSTR_CREATE_and
+        (drcontext, op, OPND_CREATE_INT8
+         ((char)(opsz == 1 ? (ofnum == 1 ? 0x0c : 0x03) : 0x0f))));
+}
+
 /* Writes the shadow value in src to the eflags (if necessary) and to
  * up to two destinations.
+ * src must be a register, not a memory reference.
  * Assumes that scratch8 is the lower 8 bits of a GPR.
  * If opsz != 4 and offs is not constant neither src nor dst nor offs can use ecx.
  * May write to the upper 8 bits of scratch8's containing 16-bit register.
- * For opsz==4 this routine simply does a store from src to dst; else it
+ * For opsz>=4 this routine simply does a store from src to dst; else it
  * stores just those bits for opsz and offs from src into dst.
  * Assumes that src_opsz != dst_opsz only for movzx/movsx and only for
- * src_opsz==1 and dst_opsz==4.
+ * src_opsz=={1,2} and dst_opsz==4.
  * If it uses scratch8, it calls mark_scratch_reg_used on si8.
+ * If preserve is true, does not clobber src.offs or src.shadow.
  */
 static inline void
-add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,                    
-                     fastpath_info_t *mi, opnd_info_t dst_info,
-                     opnd_t src, int src_opsz, int dst_opsz,
+add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst, 
+                     fastpath_info_t *mi, opnd_info_t dst,
+                     opnd_info_t src, int src_opsz, int dst_opsz,
                      reg_id_t scratch8, scratch_reg_info_t *si8,
                      instr_t *nowrite_target,
-                     bool process_eflags)
+                     bool process_eflags, bool alu_uncombined, bool preserve)
 {
     /* PR 448701: we need to support writes to shadow blocks faulting.
      * Meta-instrs can't fault so we have to mark as non-meta and give
@@ -2381,7 +2482,6 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* Be sure to write to eflags before calling add_check_datastore(),
      * as the latter will skip to the end of the fastpath.
      */
-    opnd_t dst = dst_info.shadow;
     app_pc xl8 = instr_get_app_pc(inst);
     ASSERT(src_opsz <= dst_opsz, "invalid opsz");
     ASSERT(dst_opsz <= 4 || dst_opsz == 8 || dst_opsz == 10 || dst_opsz == 16,
@@ -2389,228 +2489,480 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(src_opsz == dst_opsz ||
            ((src_opsz == 1 || src_opsz == 2) && dst_opsz == 4),
            "mismatched sizes only supported for src==1 or 2 dst==4");
-    ASSERT(!opnd_is_null(dst) || process_eflags, "shouldn't be called");
-    ASSERT(src_opsz > 0 && !opnd_is_null(src), "shouldn't be called");
+    ASSERT(!opnd_is_null(dst.shadow) || process_eflags, "shouldn't be called");
+    ASSERT(src_opsz > 0 && !opnd_is_null(src.shadow), "shouldn't be called");
+    ASSERT(!reg_is_8bit_high(scratch8), "scratch8 must be low8 reg");
     /* The shadow value to propagate, resulting from combining all sources,
      * is in src.  We now perform any shifting, and then write to dest.
      */
-    if (opnd_is_reg(src)) {
-        insert_shadow_op(drcontext, bb, inst, opnd_get_reg(src), scratch8);
+    if (opnd_is_reg(src.shadow)) {
+        insert_shadow_op(drcontext, bb, inst, opnd_get_reg(src.shadow), scratch8);
     } else
-        ASSERT(opnd_is_immed_int(src), "invalid shadow src");
+        ASSERT(opnd_is_immed_int(src.shadow), "invalid shadow src");
     if (src_opsz == 4) {
         /* copy entire byte shadowing the dword */
         if (process_eflags)
-            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
-        if (!opnd_is_null(dst)) {
-            add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, src), xl8));
+            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
+        if (!opnd_is_null(dst.shadow)) {
+            add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
+                                nowrite_target);
+            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
+                                                            src.shadow), xl8));
         }
     } else if (src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
         /* copy entire 2 or 4 bytes shadowing the qword */
-        /* write_shadow_eflags will convert src to single-byte size */
+        /* write_shadow_eflags will convert src.shadow to single-byte size */
         if (process_eflags)
-            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
-        if (!opnd_is_null(dst)) {
-            add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, src), xl8));
+            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
+        if (!opnd_is_null(dst.shadow)) {
+            add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
+                                nowrite_target);
+            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
+                                                            src.shadow), xl8));
         }
     } else if (src_opsz == 10) {
         /* We only get here if aligned to 16 bytes and mark_defined.
          * First write 8 bytes; then write 2 bytes.
          */
-        ASSERT(opnd_is_immed_int(src) && opnd_get_size(src) == OPSZ_16,
+        ASSERT(opnd_is_immed_int(src.shadow) && opnd_get_size(src.shadow) == OPSZ_16,
                "10-byte should be treated as 16");
         if (process_eflags) {
             write_shadow_eflags(drcontext, bb, inst, REG_NULL,
                                 shadow_immed(1, SHADOW_DEFINED));
         }
-        if (!opnd_is_null(dst)) {
+        if (!opnd_is_null(dst.shadow)) {
             opnd_t imm8 = shadow_immed(8, SHADOW_DEFINED);
             /* check whole 16 bytes */
-            add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-            opnd_set_size(&dst, OPSZ_8);
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst, imm8), xl8));
+            add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
+                                nowrite_target);
+            opnd_set_size(&dst.shadow, OPSZ_8);
+            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow, imm8),
+                                        xl8));
             PREXL8M(bb, inst,
                     INSTR_XL8(INSTR_CREATE_and
-                              (drcontext, dst,
+                              (drcontext, dst.shadow,
                                /* 2 = dst_opsz, 0 = ofnum */
                                opnd_create_immed_int(~(((1 << 2*2)-1) << 0*2),
                                                      OPSZ_1)), xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
-    } else if (opnd_is_immed_int(src) && opnd_get_immed_int(src) == 0 &&
-               opnd_is_immed_int(mi->offs)) {
-        int ofnum = opnd_get_immed_int(mi->offs);
+    } else if (opnd_is_immed_int(src.shadow) && opnd_get_immed_int(src.shadow) == 0 &&
+               opnd_is_immed_int(dst.offs)) {
+        int ofnum = opnd_get_immed_int(dst.offs);
         ASSERT(src_opsz == dst_opsz, "expect same size for immed opnd");
         if (process_eflags)
-            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
-        if (!opnd_is_null(dst)) {
-            add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
+            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
+        if (!opnd_is_null(dst.shadow)) {
+            add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
+                                nowrite_target);
             PREXL8M(bb, inst,
                     INSTR_XL8(INSTR_CREATE_and
-                              (drcontext, dst,
+                              (drcontext, dst.shadow,
                                opnd_create_immed_int(~(((1 << dst_opsz*2)-1) << ofnum*2),
                                                      OPSZ_1)), xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
     } else {
-        reg_id_t temp = scratch8;
-        opnd_t bits_op;
+        /* dynamically-varying src.shadow or offset */
+        opnd_t opreg1, opreg2, memoffs;
+        opnd_t shiftby;
         bool wrote_shadow_eflags = false;
         ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
-        /* dynamically-varying src or offset */
-        if (opnd_is_immed_int(src) && opnd_get_immed_int(src) == 0) {
-            /* since all-0 can write as is.  do this now to avoid work if datastore
-             * matches.
-             */
-            if (process_eflags)
-                write_shadow_eflags(drcontext, bb, inst, REG_NULL, src);
-            if (!opnd_is_null(dst))
-                add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-            wrote_shadow_eflags = true;
-        }
+        ASSERT(!opnd_is_null(src.offs) && !opnd_is_null(dst.offs),
+               "must have offs set for src and dst");
+
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
         mark_eflags_used(drcontext, bb, mi->bb);
-        if (opnd_is_immed_int(mi->offs)) {
-            int ofnum = opnd_get_immed_int(mi->offs);
-            if (src_opsz == dst_opsz) {
-                bits_op = opnd_create_immed_int(~(((1 << src_opsz*2)-1) << ofnum*2),
-                                                OPSZ_1);
+
+        /* We split into cases based on which of src and dst has a constant
+         * offset.  Only one should dynamically vary.
+         */
+        if (opnd_is_immed_int(dst.offs) && opnd_is_immed_int(src.offs)) {
+            /* Reg-to-reg move, or movzx reg to aligned 4-byte memory */
+            int ofnum_src = opnd_get_immed_int(src.offs);
+            int ofnum_dst = opnd_get_immed_int(dst.offs);
+            if (src_opsz == 2) {
+                ASSERT(ofnum_src == 0 && ofnum_dst == 0, "must have 0 offs");
+                shiftby = opnd_create_null();
             } else {
-                bits_op = opnd_create_immed_int(((1 << src_opsz*2)-1) << ofnum*2, OPSZ_1);
-            }
-            if (!wrote_shadow_eflags) {
-                if (process_eflags && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
-                    /* extract the bits from src and write to eflags */
-                    PRE(bb, inst,
-                        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(temp), src));
-                    PRE(bb, inst,
-                        INSTR_CREATE_shr(drcontext, opnd_create_reg(temp), mi->offs));
-                    PRE(bb, inst,
-                        INSTR_CREATE_shr(drcontext, opnd_create_reg(temp), mi->offs));
-                    PRE(bb, inst,
-                        INSTR_CREATE_and(drcontext, opnd_create_reg(temp),
-                                         opnd_create_immed_int((1 << src_opsz*2)-1,
-                                                               OPSZ_1)));
-                    write_shadow_eflags(drcontext, bb, inst, REG_NULL,
-                                        opnd_create_reg(temp));
+                ASSERT(src_opsz == 1, "impossible register");
+                /* we're going to ror the src by this amount */
+                if (ofnum_src == ofnum_dst)
+                    shiftby = opnd_create_null();
+                else if (ofnum_src == 1) {
+                    ASSERT(ofnum_dst == 0, "impossible register/4-byte-mem");
+                    shiftby = opnd_create_immed_int(2, OPSZ_1);
+                } else {
+                    ASSERT(ofnum_src == 0 && ofnum_dst == 1, "impossible register");
+                    shiftby = opnd_create_immed_int(6, OPSZ_1); /* wraparound */
                 }
-                if (!opnd_is_null(dst))
-                    add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-                wrote_shadow_eflags = true;
-            } /* else using simple all-0 write above */
-        } else {
-            /* for shl we must use %cl */
-            opnd_t offs = mi->offs;
-            ASSERT(opnd_is_reg(mi->offs), "offs invalid opnd");
-            ASSERT(!opnd_uses_reg(dst, REG_ECX) &&
-                   !opnd_uses_reg(src, REG_ECX) &&
-                   !opnd_uses_reg(mi->offs, REG_ECX),
+            }
+            memoffs = opnd_create_null();
+            opreg1 = opnd_create_reg(scratch8);
+            opreg2 = opnd_create_reg(reg_32_to_8h(reg_to_pointer_sized(scratch8)));
+            ASSERT(!opnd_uses_reg(dst.shadow, reg_to_pointer_sized(scratch8)) &&
+                   !opnd_uses_reg(src.shadow, reg_to_pointer_sized(scratch8)),
                    "internal scratch reg error");
-            bits_op = opnd_create_reg(REG_CH);
-            temp = REG_CL;
+        } else {
+            /* For dynamic shift amount we must use %cl (implicit opnd) */
+            memoffs = mi->memoffs;
+            ASSERT(opnd_is_reg(mi->memoffs), "offs invalid opnd");
+            ASSERT(!opnd_uses_reg(dst.shadow, REG_ECX) &&
+                   !opnd_uses_reg(src.shadow, REG_ECX) &&
+                   !opnd_uses_reg(mi->memoffs, REG_ECX),
+                   "internal scratch reg error");
             if (scratch8 != REG_CL) {
                 PRE(bb, inst,
                     INSTR_CREATE_xchg(drcontext, opnd_create_reg(REG_ECX),
                                       opnd_create_reg(reg_to_pointer_sized(scratch8))));
-                if (opnd_is_reg(mi->offs) &&
-                    reg_to_pointer_sized(opnd_get_reg(mi->offs)) ==
+                if (opnd_is_reg(mi->memoffs) &&
+                    reg_to_pointer_sized(opnd_get_reg(mi->memoffs)) ==
                     reg_to_pointer_sized(scratch8)) {
-                    reg_id_t r = opnd_get_reg(mi->offs);
-                    ASSERT(reg_is_8bit(r), "non-dword error");
-                    offs = opnd_create_reg(reg_is_8bit_high(r) ? REG_CH : REG_CL);
+                    ASSERT(reg_is_8bit_high(opnd_get_reg(mi->memoffs)), "subdword error");
+                    memoffs = opnd_create_reg(REG_CH);
+                    opreg2 = opnd_create_reg(reg_32_to_8h(reg_to_pointer_sized(scratch8)));
                 }
+            } else {
+                opreg2 = opnd_create_reg(REG_CH);
             }
-            /* Shift 0b11 left by offs*2, then not, to create a mask */
-            PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(REG_CL), offs));
-            PRE(bb, inst,
-                INSTR_CREATE_mov_imm(drcontext, bits_op,
-                                     opnd_create_immed_int((1 << src_opsz*2)-1, OPSZ_1)));
-
-            /* while bits_op holds the mask we want for eflags, use it */
-            if (!wrote_shadow_eflags) {
-                if (process_eflags && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
-                    /* extract the bits from src and write to eflags */
-                    /* we need another scratch: don't need offs anymore */
-                    opnd_t temp2 = offs;
-                    PRE(bb, inst,
-                        INSTR_CREATE_mov_ld(drcontext, temp2, src));
-                    PRE(bb, inst,
-                        INSTR_CREATE_shr(drcontext, temp2, opnd_create_reg(REG_CL)));
-                    PRE(bb, inst,
-                        INSTR_CREATE_shr(drcontext, temp2, opnd_create_reg(REG_CL)));
-                    PRE(bb, inst,
-                        INSTR_CREATE_and(drcontext, temp2, bits_op));
-                    write_shadow_eflags(drcontext, bb, inst, REG_NULL, temp2);
-                }
-                if (!opnd_is_null(dst))
-                    add_check_datastore(drcontext, bb, inst, mi, src, dst, nowrite_target);
-                wrote_shadow_eflags = true;
-            } /* else using simple all-0 write above */
-
-            if (!opnd_is_null(dst)) {
-                /* Now continue calculating the mask we want for writing to dest */
-                PRE(bb, inst, INSTR_CREATE_shl(drcontext, bits_op,
-                                               opnd_create_reg(REG_CL)));
-                PRE(bb, inst, INSTR_CREATE_shl(drcontext, bits_op,
-                                               opnd_create_reg(REG_CL)));
-                if (src_opsz == dst_opsz)
-                    PRE(bb, inst, INSTR_CREATE_not(drcontext, bits_op));
-            }
+            shiftby = opnd_create_reg(REG_CL);
+            /* We're ok clobbering memoffs since we can recover from %cl */
+            opreg1 = memoffs;
         }
 
-        if (opnd_is_null(dst)) {
-            /* no more to do: already did eflags write */
-        } else if (opnd_is_immed_int(src) && opnd_get_immed_int(src) == 0) {
-            ASSERT(src_opsz == dst_opsz, "expect same size for immed opnd");
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_and(drcontext, dst, bits_op), xl8));
-        } else if (src_opsz != dst_opsz) {
-            /* Propagate 2/4-bit pattern to entire 8, for movzx/movsx 
-             * FIXME: movzx should set upper bits to 0 regardless; only movsx
-             * should have upper bits depend on lower!
+        if (opnd_is_immed_int(src.shadow) && opnd_get_immed_int(src.shadow) == 0 &&
+            !alu_uncombined) {
+            /* since all-0 can write as is.  do this now to avoid work if datastore
+             * matches.  we also avoid the or-undef steps below since no undef bits.
+             */
+            if (process_eflags)
+                write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
+            if (!opnd_is_null(dst.shadow)) {
+                add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
+                                    nowrite_target);
+            }
+            wrote_shadow_eflags = true;
+
+            ASSERT(src_opsz == dst_opsz, "expect same size for immed");
+            if (opnd_is_immed_int(dst.offs)) {
+                /* Move immed into register */
+                int ofnum = opnd_get_immed_int(dst.offs);
+                opnd_t immed = OPND_CREATE_INT8
+                    ((char)(dst_opsz == 1 ? (ofnum == 1 ? 0xf3 : 0xfc) : 0xf0));
+                /* zero out defined bits */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_and(drcontext, dst.shadow, immed), xl8));
+            } else {
+                /* Store immed into memory */
+                int ofnum = opnd_get_immed_int(src.offs);
+                ASSERT(ofnum == 0, "invalid immed");
+                subdword_get_shift_value(drcontext, bb, inst, memoffs, ofnum);
+                PRE(bb, inst, INSTR_CREATE_mov_imm
+                    (drcontext, opreg1, OPND_CREATE_INT8
+                     ((char)(dst_opsz == 1 ? 0xfc : 0xf0))));
+                PRE(bb, inst, INSTR_CREATE_rol
+                    (drcontext, opreg1, opnd_create_reg(REG_CL)));
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_and(drcontext, dst.shadow, opreg1), xl8));
+            }
+        }
+        else if (src_opsz != dst_opsz) {
+            int ofnum;
+            ASSERT(dst_opsz == 4, "movzx to 2 prop not supported");
+            ASSERT(opnd_is_immed_int(dst.offs), "movzx to 2 prop not supported");
+            ofnum = opnd_get_immed_int(dst.offs);
+            /* For movzx, shift src to 0, then set its top bits to 0, and
+             * copy directy to dst.
+             */
+            /* For movsz, shift src to 0, then use table lookup to get full
+             * shadow byte's worth.
              */
             ASSERT((src_opsz == 1 || src_opsz == 2) && dst_opsz == 4, "movzx error");
-            PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(temp), src));
-            PRE(bb, inst, INSTR_CREATE_and(drcontext, opnd_create_reg(temp), bits_op));
-            PRE(bb, inst, INSTR_CREATE_movzx(drcontext, opnd_create_reg(REG_ECX),
-                                             opnd_create_reg(temp)));
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(REG_CL),
-                                    OPND_CREATE_MEM8(REG_ECX,
-                                                     (int)((src_opsz == 1) ?
-                                                           shadow_2_to_dword :
-                                                           shadow_4_to_dword))));
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st
-                                       (drcontext, dst, opnd_create_reg(REG_CL)), xl8));
-        } else {
-            /* set_2bits():
-             *   orig &= (((0xfffffffc | val) << shift) | (~(0xffffffff << shift)));
-             *   orig |= (val << shift);
+
+            if (opnd_is_reg(shiftby)) /* else, const or no shift */
+                subdword_get_shift_value(drcontext, bb, inst, memoffs, ofnum);
+
+            if (preserve) {
+                /* Make a copy into memoffs reg (we can recover it later) */
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+            } else
+                opreg1 = src.shadow;
+
+            /* Register dst is at offs 0 so shift src memory shadow to match */
+            if (!opnd_is_null(shiftby))
+                PRE(bb, inst, INSTR_CREATE_shr (drcontext, opreg1, shiftby));
+
+            /* Zero based on src size but dst offs */
+            subdword_zero_rest_of_dword(drcontext, bb, inst, opreg1, ofnum, src_opsz);
+
+            if (instr_get_opcode(inst) == OP_movsx) {
+                reg_id_t reg32 = reg_to_pointer_sized(opnd_get_reg(opreg1));
+                PRE(bb, inst, INSTR_CREATE_movzx
+                    (drcontext, opnd_create_reg(reg32), opreg1));
+                PRE(bb, inst, INSTR_CREATE_mov_ld
+                    (drcontext, opreg1, OPND_CREATE_MEM8
+                     (reg32, (int)((src_opsz == 1) ?
+                                   shadow_2_to_dword : shadow_4_to_dword))));
+            }
+
+            /* Write result */
+            if (!wrote_shadow_eflags) {
+                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
+                                              instr_get_eflags(inst))) {
+                    write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
+                }
+                if (!opnd_is_null(dst.shadow)) {
+                    add_check_datastore(drcontext, bb, inst, mi, opreg1,
+                                        dst.shadow, nowrite_target);
+                }
+                wrote_shadow_eflags = true;
+            }
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_mov_st(drcontext, dst.shadow, opreg1), xl8));
+        }
+        else if (opnd_is_immed_int(dst.offs)) {
+            /* Load from memory into register, or register-to-register move */
+            int ofnum = opnd_get_immed_int(dst.offs);
+            ASSERT(opnd_is_null(dst.shadow) ||
+                   (opnd_is_reg(mi->dst[0].app) &&
+                    (mi->load || opnd_is_immed_int(src.offs))), "invalid assumptions");
+            ASSERT(src_opsz == dst_opsz, "movzx not supported here");
+
+            /* For 2-byte to 2-byte: fastpath requires memory to be 2-byte aligned,
+             * and register must have offs 0, so we just need to shift memory right
+             * by memoffs*2 and it will be lined up for dst reg.
              */
-            /* Add ones around the source bits and set zeroes in target bits */
-            PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(temp), src));
-            PRE(bb, inst, INSTR_CREATE_or(drcontext, opnd_create_reg(temp), bits_op));
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_and
-                                       (drcontext, dst, opnd_create_reg(temp)), xl8));
-            /* FIXME: this two-part non-atomic shadow table update is prone to
-             * races.  Also note that we now use faults for PR 448701, but there
-             * we always re-execute the cache instr.  If we ever redirect to
-             * the app instr again we'll need to change this code to an atomic
-             * single write at the end!
+            /* For 1-byte to 1-byte: identical to 2-byte to 2-byte if the dst reg has
+             * offs 0.  The only other case is dst reg having offs 1, and there we
+             * want to do the following to the memory shadow value to line it up with
+             * the dst reg:
+             *
+             *   ror src.shadow, ((memoffs-1)&3)*2
+             *
+             * So if mem has offs 0 it wraps around 6 spots, offs 1 does nothing,
+             * offs 2 or 3 rotate to the right to line up.
+             *
+             * Here's the code for 2-byte load mem to reg where
+             * %dh has load offs, %dl has load val, %ebx has reg addr:
+             *    mov %dh %cl
+             *    shl %cl 1
+             *    shr %dl %cl
+             *    mov %dl %dh
+             *    and %dh 0x0f
+             *    <if prop to eflags, can write %dh at this point>
+             *    or %dh (%ebx) -> (%ebx) 
+             *    or %dl 0xf0
+             *    and %dl (%ebx) -> (%ebx)
+             *
+             * For ALU we need to combine first to write to eflags.
+             * We can write to dest before eflags b/c as a load
+             * there is no datastore check:
+             *    mov %dh %cl
+             *    shl %cl 1
+             *    shr %dl %cl
+             *    and %dl 0x0f
+             *    mov (%ebx) %dh
+             *    or %dl %dh
+             *    or %dh (%ebx)
+             *    and %dh 0x0f
+             *    mov %dh <eflags-shadow>
+             *
+             * For 1-byte the constants differ and if ofnum==1 we use ror with the
+             * memoffs calculation as presented above.
+             * For preserve we copy for the final or+and.
              */
-            /* Place zeroes around the source bits and set ones in target bits */
-            PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(temp), src));
-            if (opnd_is_immed_int(bits_op))
-                bits_op = opnd_create_immed_int(~opnd_get_immed_int(bits_op), OPSZ_1);
-            else
-                PRE(bb, inst, INSTR_CREATE_not(drcontext, bits_op));
-            PRE(bb, inst, INSTR_CREATE_and(drcontext, opnd_create_reg(temp), bits_op));
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_or
-                                       (drcontext, dst, opnd_create_reg(temp)), xl8));
+            ASSERT((dst_opsz == 1 && (ofnum == 0 || ofnum ==1)) ||
+                   (dst_opsz == 2 && ofnum == 0), "invalid offset");
+
+            if (opnd_is_reg(shiftby)) /* else, const or no shift */
+                subdword_get_shift_value(drcontext, bb, inst, memoffs, ofnum);
+
+            if (preserve) {
+                /* Make a copy into memoffs reg (we can recover it later) */
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+            }
+
+            /* Register dst is at offs 0 so shift src memory shadow to match. 
+             * ofnum==1 needs ror and should be same perf as shr so we use
+             * ror for all.  We're zeroing out the other bits regardless.
+             */
+            if (!opnd_is_null(shiftby)) {
+                PRE(bb, inst, INSTR_CREATE_ror
+                    (drcontext, preserve ? opreg1 : src.shadow, shiftby));
+            }
+
+            if (alu_uncombined && !preserve) {
+                /* We can clobber src.shadow */
+                opreg1 = src.shadow;
+            } else if (!preserve) {
+                /* Make a copy into memoffs reg (we can recover it later) */
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+            }
+            subdword_zero_rest_of_dword(drcontext, bb, inst, opreg1, ofnum, dst_opsz);
+
+            if (alu_uncombined) {
+                /* Load from dst shadow */
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg2, dst.shadow));
+                /* Combine the two sources */
+                PRE(bb, inst, INSTR_CREATE_or(drcontext, opreg1, opreg2));
+                /* Write result to dst subdword via or */
+                ASSERT(!mi->store, "assuming no datastore check");
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                /* Clear rest of bits in result for write to eflags */
+                subdword_zero_rest_of_dword(drcontext, bb, inst, opreg1,
+                                            ofnum, dst_opsz);
+            }
+
+            /* Shadow src is now in ok state to write to eflags */
+            if (!wrote_shadow_eflags) {
+                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
+                                              instr_get_eflags(inst))) {
+                    write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
+                }
+                if (!opnd_is_null(dst.shadow)) {
+                    add_check_datastore(drcontext, bb, inst, mi, opreg1,
+                                        dst.shadow, nowrite_target);
+                }
+                wrote_shadow_eflags = true;
+            }
+
+            if (alu_uncombined || opnd_is_null(dst.shadow)) {
+                /* no more to do */
+            } else {
+                opnd_t andbits = src.shadow;
+                /* or in undefined bits */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                if (preserve) {
+                    /* Copy source again */
+                    PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+                    /* Need to rotate it again */
+                    if (!opnd_is_null(shiftby))
+                        PRE(bb, inst, INSTR_CREATE_ror(drcontext, opreg1, shiftby));
+                    andbits = opreg1;
+                }
+                PRE(bb, inst, INSTR_CREATE_or
+                    (drcontext, andbits, OPND_CREATE_INT8
+                     ((char)(dst_opsz == 1 ? (ofnum == 1 ? 0xf3 : 0xfc) : 0xf0))));
+                /* zero out defined bits */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), xl8));
+            }
+        } 
+        else if (opnd_is_immed_int(src.offs)) {
+            /* Store from register into memory */
+            int ofnum = opnd_get_immed_int(src.offs);
+            ASSERT(mi->store && opnd_is_reg(mi->src[0].app), "invalid assumptions");
+            ASSERT(src_opsz == dst_opsz, "movzx not supported here");
+
+            /* Similar to load except we shift in the other direction.
+             *
+             * Here's the code for 2-byte store reg to mem where
+             * %dh has load offs, %dl has load val, %ebx has reg addr:
+             *    mov %dh %cl
+             *    shl %cl 1
+             *    mov %dl -> %dh
+             *    and %dh 0x0f
+             *    <if prop to eflags, can write %dh at this point>
+             *    shl %cl %dh
+             *    cmp    (%ebx) %dh  # for check_datastore, cmp to rest being defined
+             *    jz     $0x244ace7d 
+             *    or %dh (%ebx) -> (%ebx) 
+             *    or %dl 0xf0
+             *    rol %dl %cl
+             *    and %dl (%ebx) -> (%ebx) 
+             *
+             * For ALU that writes eflags:
+             *    mov %dh %cl
+             *    shl %cl 1
+             *    mov (%ebx) %dh
+             *    shr %dh %cl
+             *    or  %dl %dh
+             *    and %dh 0x0f
+             *    mov %dh <eflags-shadow>
+             *    shl %dh %cl
+             *    cmp    (%ebx) %dh  # for check_datastore, cmp to rest being defined
+             *    jz     $0x244ace7d 
+             *    or %dh (%ebx) -> (%ebx)
+             */
+            ASSERT((src_opsz == 1 && (ofnum == 0 || ofnum ==1)) ||
+                   (src_opsz == 2 && ofnum == 0), "invalid offset");
+
+            subdword_get_shift_value(drcontext, bb, inst, memoffs, ofnum);
+
+            if (alu_uncombined) {
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, dst.shadow));
+                /* Shift to 0 offset */
+                PRE(bb, inst, INSTR_CREATE_shr
+                    (drcontext, opreg1, opnd_create_reg(REG_CL)));
+                /* Combine w/ src */
+                PRE(bb, inst, INSTR_CREATE_or(drcontext, opreg1, src.shadow));
+            } else {
+                /* Make a copy into memoffs reg (we can recover it later) */
+                PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+            }
+            subdword_zero_rest_of_dword(drcontext, bb, inst, opreg1, ofnum, src_opsz);
+
+            /* Register src (or combined val for alu_uncombined) is at offs 0,
+             * shift to match memory.  OK to do this before eflags write since
+             * we can write to any bits of eflags.
+             */
+            PRE(bb, inst, INSTR_CREATE_shl(drcontext, opreg1, opnd_create_reg(REG_CL)));
+
+            /* Shadow src is now in ok state to write to eflags */
+            if (!wrote_shadow_eflags) {
+                if (process_eflags && TESTANY(EFLAGS_WRITE_6,
+                                              instr_get_eflags(inst))) {
+                    write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
+                }
+                if (!opnd_is_null(dst.shadow)) {
+                    add_check_datastore(drcontext, bb, inst, mi, opreg1,
+                                        dst.shadow, nowrite_target);
+                }
+                wrote_shadow_eflags = true;
+            }
+
+            if (opnd_is_null(dst.shadow)) {
+                /* no more to do */
+            } else if (alu_uncombined) {
+                /* store to dest: rest of bits are zero so we can or */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+            } else {
+                opnd_t andbits = src.shadow;
+                /* or in undefined bits */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_or(drcontext, dst.shadow, opreg1), xl8));
+                if (preserve) {
+                    /* Copy source again */
+                    PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opreg1, src.shadow));
+                    andbits = opreg1;
+                }
+                PRE(bb, inst, INSTR_CREATE_or
+                    (drcontext, andbits, OPND_CREATE_INT8
+                     ((char)(src_opsz == 1 ? (ofnum == 1 ? 0xf3 : 0xfc) : 0xf0))));
+                PRE(bb, inst, INSTR_CREATE_rol
+                    (drcontext, andbits, opnd_create_reg(REG_CL)));
+                /* zero out defined bits */
+                PREXL8M(bb, inst, INSTR_XL8
+                        (INSTR_CREATE_and(drcontext, dst.shadow, andbits), xl8));
+            }
+        }
+        else {
+            ASSERT(false, "only one of src and dst can have non-const offs");
         }
 
-        if (!opnd_is_immed_int(mi->offs) && scratch8 != REG_CL) {
+        if (preserve) {
+            /* XXX: more efficient to combine the 2 dst writes but simpler
+             * code-wise for now to fully restore and then put back into cl
+             */
+            PRE(bb, inst, INSTR_CREATE_mov_ld
+                (drcontext, memoffs, opnd_create_reg(REG_CL)));
+            PRE(bb, inst, INSTR_CREATE_shr
+                (drcontext, memoffs, OPND_CREATE_INT8(1)));
+        }
+        if (!opnd_is_immed_int(mi->memoffs) && scratch8 != REG_CL) {
             PRE(bb, inst,
                 INSTR_CREATE_xchg(drcontext, opnd_create_reg(REG_ECX),
                                   opnd_create_reg(reg_to_pointer_sized(scratch8))));
@@ -2621,21 +2973,25 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 /* Calls add_dst_shadow_write() on both mi->dst[0] and mi->dst[1], with the same src */
 static inline void
 add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
-                       fastpath_info_t *mi, opnd_t src, int src_opsz, int dst_opsz,
+                       fastpath_info_t *mi, opnd_info_t src, int src_opsz, int dst_opsz,
                        reg_id_t scratch8, scratch_reg_info_t *si8,
-                       instr_t *nowrite_target, bool process_eflags)
+                       instr_t *nowrite_target, bool process_eflags,
+                       bool alu_uncombined)
 {
     /* even if dst1 is empty we need to write to eflags */
     if (!opnd_is_null(mi->dst[0].shadow) ||
         (process_eflags && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
-                             src, src_opsz, dst_opsz,
-                             scratch8, si8, nowrite_target, process_eflags);
+                             src, src_opsz, dst_opsz, scratch8, si8,
+                             nowrite_target, process_eflags, alu_uncombined,
+                             /* preserve src if we need to write to 2nd dst */
+                             !opnd_is_null(mi->dst[1].shadow));
     }
     if (!opnd_is_null(mi->dst[1].shadow)) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
-                             src, src_opsz, dst_opsz,
-                             scratch8, si8, nowrite_target, process_eflags);
+                             src, src_opsz, dst_opsz, scratch8, si8,
+                             nowrite_target, process_eflags, alu_uncombined,
+                             false/*we assume ok to clobber src*/);
     }
 }
 #endif /* TOOL_DR_MEMORY */
@@ -3052,7 +3408,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->bb->shared_disp_reg1 = 0;
             }
         }
-        if (!mi->need_offs && mi->memsz < 4 && !opnd_is_immed_int(mi->offs) && mi->load) {
+        if (!mi->need_offs && mi->memsz < 4 &&
+            !opnd_is_immed_int(mi->memoffs) && mi->load) {
             /* PR 425240: check just the bits involved for srcs => need a reg
              * to put offs in.  If we're not sharing we use reg1: else we need
              * a 3rd reg.
@@ -3092,7 +3449,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                       /* to read the app value for and/test/or memop we need 3rd reg */
                       need_reg3_for_appval,
                       !need_reg3_for_appval && (!mi->need_nonoffs_reg3 ||
-                                                opnd_is_immed_int(mi->offs)),
+                                                opnd_is_immed_int(mi->memoffs)),
                       mi->memop,
                       mi->mem2mem ? mi->src[0].app :
                       (mi->load2x ? mi->src[1].app : opnd_create_null()));
@@ -3133,7 +3490,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     LOG(5, "aflags: %s\n", mi->aflags == EFLAGS_WRITE_6 ? "W6" :
           (mi->aflags == EFLAGS_WRITE_OF ? "WO" :
            (mi->aflags == EFLAGS_READ_6 ? "R6" : "0")));
-    ASSERT(mi->opsz != 4 || opnd_same(mi->offs, opnd_create_immed_int(0, OPSZ_1)),
+    ASSERT(mi->opsz != 4 || (!mi->load && !mi->store) ||
+           opnd_same(mi->memoffs, opnd_create_immed_int(0, OPSZ_1)),
            "4-byte should have 0 offset");
     ASSERT(mi->dst_reg == REG_NULL || opnd_size_in_bytes(opnd_get_size(mi->dst[0].app)) ==
            mi->opsz,
@@ -3450,8 +3808,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_and(drcontext, opnd_create_reg(mi->reg2_8h),
                              OPND_CREATE_INT8(0x3)));
-        mi->offs = opnd_create_reg(mi->reg2_8h);
+        mi->memoffs = opnd_create_reg(mi->reg2_8h);
     }
+
+    /* we now have mi->memoffs so set appropriate src/dst offs */
+    if (mi->load)
+        mi->src[0].offs = mi->memoffs;
+    else if (mi->store) {
+        mi->dst[0].offs = mi->memoffs;
+        if (opnd_same(mi->dst[0].app, mi->src[0].app)) /* ALU store */
+            mi->src[0].offs = mi->memoffs;
+    }
+
     if (mi->load && (mi->pushpop || (share_addr && !mi->use_shared))) {
         /* A pop into a register or memory, or any load sharing its shadow addr.
          * We need both shadow table slot address and value.  Address is
@@ -3618,11 +3986,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* Check for unaddressability via table lookup */
             if (mi->memsz < 4 && mi->need_offs) {
                 /* PR 503782: check just the bytes referenced.  We've zeroed the
-                 * rest of mi->offs and in 8h position it's doing x256 already.
+                 * rest of mi->memoffs and in 8h position it's doing x256 already.
                  */
                 int disp = (int) ((mi->memsz == 1) ? shadow_byte_addr_not_bit :
                                   shadow_word_addr_not_bit);
-                reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->offs));
+                reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
                 ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
@@ -3716,16 +4084,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_movzx(drcontext, opnd_create_reg(scratch),
                                        OPND_CREATE_MEM8(mi->reg1.reg, 0)));
-                /* optimization: avoid redundant load below for mi->num_to_propagate==1 */
+                /* optimization: avoid redundant load below for mi->num_to_propagate>1 */
                 if (opnd_same(mi->src[0].shadow, OPND_CREATE_MEM8(mi->reg1.reg, 0)))
                     mi->src[0].shadow = opnd_create_reg(reg_32_to_8(scratch));
                 if (mi->memsz < 4 && mi->need_offs) {
                     /* PR 503782: check just the bytes referenced.  We've zeroed the
-                     * rest of mi->offs and in 8h position it's doing x256 already.
+                     * rest of mi->memoffs and in 8h position it's doing x256 already.
                      */
                     int disp = (int) ((mi->memsz == 1) ? shadow_byte_addr_not_bit :
                                       shadow_word_addr_not_bit);
-                    reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->offs));
+                    reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
                     ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                     PRE(bb, inst,
                         INSTR_CREATE_cmp(drcontext,
@@ -3799,17 +4167,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          * need reg2 for below!
          */
         instr_t *datastore_tgt = INSTR_CREATE_label(drcontext);
-        opnd_info_t info;
-        info.app = opnd_create_null();
-        info.shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+        opnd_info_t dst, src;
+        initialize_opnd_info(&dst);
+        initialize_opnd_info(&src);
+        dst.shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+        src.shadow = OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE);
         ASSERT(mi->reg2.used, "internal reg spill error");
-        add_dst_shadow_write(drcontext, bb, inst, mi, info,
-                             OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE),
-                             mi->src_opsz,
+        add_dst_shadow_write(drcontext, bb, inst, mi, dst, src, mi->src_opsz,
                              instr_is_return(inst) ? mi->src_opsz : mi->opsz,
                              mi->reg2_8, &mi->reg2, datastore_tgt, 
                              /* for popf don't write UNADDR to eflags: we handle below */
-                             false/*skip eflags*/);
+                             false/*skip eflags*/, false/*!alu_uncombined*/,
+                             false/*!preserve -- doesn't matter since src is const*/);
         if (opc == OP_popf && !opnd_is_null(mi->src[0].shadow)) {
             /* special-cased b/c eflags is not handled as a regular dest
              * so there's no propagation below
@@ -3836,16 +4205,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     ASSERT(mi->num_to_propagate >= 0, "propagation count error");
     if (mi->num_to_propagate == 0) {
-        add_dstX2_shadow_write(drcontext, bb, inst, mi,
-                               shadow_immed(mi->opsz, SHADOW_DEFINED),
+        mi->src[0].shadow = shadow_immed(mi->opsz, SHADOW_DEFINED);
+        mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
+        add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
                                /* if we're checking definedness for sub-dword
                                 * we didn't ask for a 3rd scratch reg and
                                 * we don't need it since we can write the
                                 * whole dword's shadow to eflags */
                                mi->check_definedness ? 4 : mi->opsz,/*not src*/
                                mi->check_definedness ? 4 : mi->opsz,
-                               scratch8, si8,
-                               fastpath_restore, true);
+                               scratch8, si8, fastpath_restore, true, false);
     } else if (mi->num_to_propagate == 1) {
         /* copy src shadow to eflags shadow and dst shadow */
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
@@ -3855,11 +4224,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
                                     mi->src[0].shadow));
+            mi->src[0].shadow = opnd_create_reg(scratch8);
         }
-        add_dstX2_shadow_write(drcontext, bb, inst, mi,
-                               opnd_create_reg(scratch8), mi->src_opsz,
+        if (!needs_shadow_op(inst) && opnd_same(mi->src[0].app, mi->dst[0].app)) {
+            /* only propagate eflags.  example here: "add $1, mem -> mem" */
+            mi->dst[0].shadow = opnd_create_null();
+            mi->dst[0].offs = opnd_create_immed_int(0, OPSZ_1); /* for eflags */
+        }
+        add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0], mi->src_opsz,
                                mi->opsz, mi->reg3_8, &mi->reg3,
-                               fastpath_restore, true);
+                               fastpath_restore, true, false);
         ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
     } else {
         /* combine the N sources and then write to the dest + eflags.
@@ -3868,49 +4242,79 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          * but then only propagate the bits that matter to shadow memory.
          * FIXME: for ops that promote bits we need to promote undefinedness
          */
+        /* For sub-dword ALU it is more efficient to combine inside
+         * add_dstX2_shadow_write since need to shift shadow vals.
+         */
+        bool alu_uncombined = mi->opsz < 4 && is_alu(mi);
+
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
         mark_eflags_used(drcontext, bb, mi->bb);
-        if (!opnd_is_reg(mi->src[0].shadow) ||
-            opnd_get_reg(mi->src[0].shadow) != scratch8) {
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                    mi->src[0].shadow));
-        }
-        if (mi->num_to_propagate == 2 && mi->opsz == 4 &&
-            opnd_same(mi->src[1].shadow, mi->dst[0].shadow)) {
-            /* optimization for alu ops */
-            /* FIXME: for a shift need to call insert_shadow_op: should bail out
-             * of this opt
-             */
-            /* FIXME: if we get rid of this opt and put value for dst into
-             * scratch8 we can use add_dstX2_shadow_write() here
-             */
-            /* we can skip the or if add_check_datastore() finds that the src
-             * equals the src2/dst, but we still need to write eflags
-             */
-            instr_t *no_dst_write = INSTR_CREATE_label(drcontext);
-            add_check_datastore(drcontext, bb, inst, mi, opnd_create_reg(scratch8),
-                                mi->dst[0].shadow, no_dst_write);
-            PREXL8M(bb, inst,
-                   INSTR_XL8(INSTR_CREATE_or
-                             (drcontext, mi->dst[0].shadow, opnd_create_reg(scratch8)),
-                             instr_get_app_pc(inst)));
-            PRE(bb, inst, no_dst_write);
-            write_shadow_eflags(drcontext, bb, inst, scratch8, mi->dst[0].shadow);
-        } else {
-            PRE(bb, inst,
-                INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8), mi->src[1].shadow));
+
+        if (alu_uncombined) {
+            /* src and dst are combined inside add_dstX2_shadow_write */
+            alu_uncombined = true;
+            if (mi->store) {
+                /* swap so src1 is what we ignore since == dst */
+                opnd_info_t tmp = mi->src[0];
+                mi->src[0] = mi->src[1];
+                mi->src[1] = tmp;
+            }
+            if (!opnd_is_reg(mi->src[0].shadow) ||
+                opnd_get_reg(mi->src[0].shadow) != scratch8) {
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
+                                        mi->src[0].shadow));
+                mi->src[0].shadow = opnd_create_reg(scratch8);
+            }
+            ASSERT(opnd_same(mi->src[1].app, mi->dst[0].app), "invalid ALU");
             if (!opnd_is_null(mi->src[2].shadow)) {
+                /* offs not same for {div,idiv}w but for those we do check_definedness */
+                ASSERT(opnd_same(mi->src[0].offs, mi->src[2].offs),
+                       "multi-src different offsets on fastpath NYI");
                 PRE(bb, inst,
                     INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
                                     mi->src[2].shadow));
             }
-            add_dstX2_shadow_write(drcontext, bb, inst, mi,
-                                   opnd_create_reg(scratch8), mi->src_opsz,
-                                   mi->opsz, mi->reg3_8, &mi->reg3,
-                                   fastpath_restore, true);
-            ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
-        }
+        } else {
+            /* We used to optimize for 4-byte ALU ops by or-ing src into dst instead
+             * of or-ing both into a temp and then moving that to dst.  But when we
+             * need to write the result to eflags, we have to load back into a reg
+             * anyway.  Plus, for stores, with -stores_use_table, the dst shadow
+             * value is already in a register, making the regular path shorter than
+             * the ALU path.  For loads or reg-to-reg, it is exactly the same length
+             * and has the same number of memory references.  Writing to eflags
+             * happens for all GPR ALU except cmovcc.  Thus, we no longer optimize
+             * for 4-byte ALU (not worth keeping extra code paths just for
+             * -no_stores_use_tables).
+             */
+            if (!opnd_is_reg(mi->src[0].shadow) ||
+                opnd_get_reg(mi->src[0].shadow) != scratch8) {
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
+                                        mi->src[0].shadow));
+                mi->src[0].shadow = opnd_create_reg(scratch8);
+            }
+            /* combine sources now.  must be same offs, which isn't true for
+             * 1-byte {mul,imul} but for those we do check_definedness
+             */
+            ASSERT(opnd_same(mi->src[1].offs, mi->src[0].offs),
+                   "combining srcs w/ different sub-dword offs NYI");
+            PRE(bb, inst,
+                INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
+                                mi->src[1].shadow));
+            if (!opnd_is_null(mi->src[2].shadow)) {
+                ASSERT(opnd_same(mi->src[2].offs, mi->src[0].offs),
+                       "combining srcs w/ different sub-dword offs NYI");
+                PRE(bb, inst,
+                    INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
+                                    mi->src[2].shadow));
+            }
+        } 
+        add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
+                               mi->src_opsz, mi->opsz, mi->reg3_8, &mi->reg3,
+                               fastpath_restore, true, alu_uncombined);
+        ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
+
         /* FIXME: for insert_shadow_op() for shifts, need to
          * either do the bitwise or into mi->reg1_8, then call:
          *   insert_shadow_op(drcontext, bb, inst, mi->reg1_8, reg_32_to_8h(mi->reg1.reg));
