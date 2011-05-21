@@ -278,10 +278,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQueryPortInformationProcess", 4, },
     {0,"NtQueryQuotaInformationFile", 36, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_USER_QUOTA_INFORMATION),W, 4,0,IB, 5,sizeof(FILE_QUOTA_LIST_INFORMATION),R, 7,sizeof(SID),R, 8,0,IB, },
     {0,"NtQuerySection", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    /* FIXME NtQuerySecurityObject may not initialize some fields
-     * of SECURITY_DESCRIPTOR, depends on the 2nd argument.
-     */
-    {0,"NtQuerySecurityObject", 20, 2,sizeof(SECURITY_DESCRIPTOR),W, 4,sizeof(ULONG),W, },
+    {0,"NtQuerySecurityObject", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQuerySemaphore", 20, 2,-3,W, 4,sizeof(ULONG),W, },
     {0,"NtQuerySymbolicLinkObject", 12, 1,sizeof(UNICODE_STRING),W|SYSARG_UNICODE_STRING, 2,sizeof(ULONG),W, },
     {0,"NtQuerySystemEnvironmentValue", 16, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,-2,W, 3,sizeof(ULONG),W, },
@@ -844,6 +841,12 @@ static bool handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
     SECURITY_DESCRIPTOR_CONTROL flags;
+    ASSERT(check_type == MEMREF_CHECK_DEFINEDNESS,
+           "Should only be called for reads");
+    if (!pre) {
+        /* Handling pre- is enough for reads */
+        return true;
+    }
     /* The SECURITY_DESCRIPTOR structure has two fields at the end (Sacl, Dacl)
      * which must be init only when the corresponding bits of Control are set.
      */
