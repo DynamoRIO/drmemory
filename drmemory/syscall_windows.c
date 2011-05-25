@@ -647,15 +647,13 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
     PORT_MESSAGE pm;
     if (TEST(SYSARG_WRITE, arg_info->flags) && pre) {
         /* Struct is passed in uninit w/ max-len buffer after it.
-         * There is some ambiguity over the max:
-         * - NtCreatePort's MaxMessageSize: can that be any size?
-         *   do we need to query the port?
-         * - rpcrt4!LRPC_ADDRESS::ReceiveLotsaCalls seems to allocate 0x100
-         * - some sources claim the max is 0x130, instead of the 0x118 I have here.
-         * - I have seem 0x15c in rpcrt4!I_RpcSendReceive: leaving my smaller
-         *   max for the writes though
+         * FIXME i#415: There is some ambiguity over the max, hence we choose
+         * the lower estimation to avoid false positives.
+         * (We'll still use sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH
+         *  in the ASSERTs below)
+         * We'll re-do the addressability check at the post- hook.
          */
-        size = sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH;
+        size = PORT_MAXIMUM_MESSAGE_LENGTH;
     } else if (safe_read(start, sizeof(pm), &pm)) {
         if (pm.u1.s1.DataLength > 0)
             size = pm.u1.s1.TotalLength;
@@ -679,6 +677,16 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
         /* can't read real size, so report presumed-unaddr w/ struct size */
         ASSERT(size == sizeof(PORT_MESSAGE), "invalid PORT_MESSAGE sysarg size");
     }
+
+    /* FIXME i#415: As a temp workaround, check for addressability
+     * once again in the post- hook but knowing the size precisely.
+     * This won't catch a bug where a too-small capacity is passed yet in all
+     * the actual syscalls during execution all the written data is small.
+     */
+    if (TEST(SYSARG_WRITE, arg_info->flags) && !pre) {
+        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start, size, mc, NULL);
+    }
+
     check_sysmem(check_type, sysnum, start, size, mc, NULL);
     return true;
 }
