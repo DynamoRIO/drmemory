@@ -26,6 +26,22 @@
 # Before marking an issue as Fixed, please take time to remove the
 # corresponding suppressions from this file.
 
+########################################################
+# Third-party software introducing extra reports
+
+# Sophos AV software may introduce extra uninits and leaks
+# http://code.google.com/p/drmemory/issues/detail?id=415
+LEAK
+...
+sophos*.dll!*
+
+# Sophos AV software may introduce extra uninits and leaks
+# http://code.google.com/p/drmemory/issues/detail?id=415
+UNINITIALIZED READ
+...
+sophos*.dll!*
+
+########################################################
 # http://code.google.com/p/drmemory/issues/detail?id=275
 LEAK
 *!_getptd_noexit
