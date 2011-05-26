@@ -123,8 +123,14 @@ typedef struct _AFD_SEND_INFO_UDP {
     PAFD_WSABUF				BufferArray;
     ULONG				BufferCount;
     ULONG				AfdFlags;
+#if 1 /* timurrrr: based on XP+win7 observation: i#418 */
+    ULONG				UnknownGap[9];
+    ULONG				SizeOfRemoteAddress;
+    PVOID				RemoteAddress;
+#else
     TDI_REQUEST_SEND_DATAGRAM		TdiRequest;
     TDI_CONNECTION_INFORMATION		TdiConnection;
+#endif
 } AFD_SEND_INFO_UDP, *PAFD_SEND_INFO_UDP;
 
 typedef struct  _AFD_CONNECT_INFO {

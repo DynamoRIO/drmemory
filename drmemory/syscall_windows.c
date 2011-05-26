@@ -1415,12 +1415,16 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
         break;
     }
     case AFD_SEND_DATAGRAM: { /* 8 == 0x12023 */
-        /* InputBuffer == AFD_SEND_INFO */
+        /* InputBuffer == AFD_SEND_INFO_UDP */
         AFD_SEND_INFO_UDP info;
-        /* XXX: info->TdiRequest.SendDatagramInformation can point elsewhere? */
-        /* XXX: not all info->TdiConnection fields need be initialized? */
-        CHECK_DEF(inbuf, insz, "AFD_SEND_INFO_UDP"); /* no padding */
-        if (safe_read(inbuf, sizeof(info), &info)) {
+        ULONG size_of_remote_address;
+        void *remote_address;
+        ASSERT(sizeof(size_of_remote_address) == sizeof(info.SizeOfRemoteAddress) &&
+               sizeof(remote_address) == sizeof(info.RemoteAddress), "sizes don't match");
+        /* Looks like AFD_SEND_INFO_UDP has 36 bytes of uninit gap in the middle: i#418 */
+        CHECK_DEF(inbuf, offsetof(AFD_SEND_INFO_UDP, UnknownGap),
+                  "AFD_SEND_INFO_UDP before gap");
+        if (safe_read(inbuf, offsetof(AFD_SEND_INFO_UDP, UnknownGap), &info)) {
             uint i;
             CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
                       "AFD_SEND_INFO_UDP.BufferArray");
@@ -1433,6 +1437,20 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
             }
         } else
             WARN("WARNING: AFD_SEND_DATAGRAM: can't read param");
+        CHECK_DEF(inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
+                  sizeof(info.SizeOfRemoteAddress),
+                  "AFD_SEND_INFO_UDP.SizeOfRemoteAddress");
+        CHECK_DEF(inbuf + offsetof(AFD_SEND_INFO_UDP, RemoteAddress),
+                  sizeof(info.RemoteAddress),
+                  "AFD_SEND_INFO_UDP.RemoteAddress");
+        if (safe_read(inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
+                      sizeof(size_of_remote_address), &size_of_remote_address) &&
+            safe_read(inbuf + offsetof(AFD_SEND_INFO_UDP, RemoteAddress),
+                      sizeof(remote_address), &remote_address)) {
+            CHECK_DEF(remote_address, size_of_remote_address,
+                      "AFD_SEND_INFO_UDP.RemoteAddress buffer");
+        }
+
         break;
     }
     case AFD_EVENT_SELECT: { /* 33 == 0x12087 */
