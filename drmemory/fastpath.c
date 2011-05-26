@@ -1273,13 +1273,15 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
          * unaligned base+index and unaligned disp that add to become aligned
          */
         if (!ALIGNED(cur_disp, mi.memsz) || !ALIGNED(nxt_disp, mi.memsz)) {
+            LOG(3, "  NOT sharing: %d or %d not aligned\n", cur_disp, nxt_disp);
             STATS_INC(xl8_not_shared_unaligned);
             return false;
         }
         shadow_diff = (nxt_disp - cur_disp) / 4; /* 2 shadow bits per byte */
         /* The option is more intuitive to have it *4 so we /4 here */
-        if (shadow_diff > options.share_xl8_max_diff/4 ||
-            shadow_diff < -(int)options.share_xl8_max_diff/4) {
+        if (shadow_diff > (int)options.share_xl8_max_diff/4 ||
+            shadow_diff < -(int)(options.share_xl8_max_diff/4)) {
+            LOG(3, "  NOT sharing: disp diff %d too big\n", shadow_diff);
             STATS_INC(xl8_not_shared_disp_too_big);
             return false;
         }
