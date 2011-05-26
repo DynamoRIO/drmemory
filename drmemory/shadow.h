@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -22,6 +22,9 @@
 
 #ifndef _SHADOW_H_
 #define _SHADOW_H_ 1
+
+/* are we using 4Bto1B, or the default 1Bto2b? */
+#define MAP_4B_TO_1B (!options.check_uninitialized)
 
 /***************************************************************************
  * We track both addressability and definedness for each byte of memory.
@@ -52,25 +55,25 @@
 #define SHADOW_UNKNOWN 5 /* only used for leak reporting */
 
 /* Entire-word patterns */
-#define SHADOW_WORD_UNADDRESSABLE 0x5
-#define SHADOW_WORD_UNDEFINED     0xf
-#define SHADOW_WORD_DEFINED       0x0
-#define SHADOW_WORD_BITLEVEL      0xa
+#define SHADOW_WORD_UNADDRESSABLE (MAP_4B_TO_1B ? SHADOW_UNADDRESSABLE    : 0x5)
+#define SHADOW_WORD_UNDEFINED     (MAP_4B_TO_1B ? SHADOW_UNDEFINED        : 0xf)
+#define SHADOW_WORD_DEFINED       (MAP_4B_TO_1B ? SHADOW_DEFINED          : 0x0)
+#define SHADOW_WORD_BITLEVEL      (MAP_4B_TO_1B ? SHADOW_DEFINED_BITLEVEL : 0xa)
 
-#define SHADOW_DWORD_UNADDRESSABLE 0x55
-#define SHADOW_DWORD_UNDEFINED     0xff
-#define SHADOW_DWORD_DEFINED       0x00
-#define SHADOW_DWORD_BITLEVEL      0xaa
+#define SHADOW_DWORD_UNADDRESSABLE (MAP_4B_TO_1B ? SHADOW_UNADDRESSABLE    : 0x55)
+#define SHADOW_DWORD_UNDEFINED     (MAP_4B_TO_1B ? SHADOW_UNDEFINED        : 0xff)
+#define SHADOW_DWORD_DEFINED       (MAP_4B_TO_1B ? SHADOW_DEFINED          : 0x00)
+#define SHADOW_DWORD_BITLEVEL      (MAP_4B_TO_1B ? SHADOW_DEFINED_BITLEVEL : 0xaa)
 
-#define SHADOW_QWORD_UNADDRESSABLE 0x5555
-#define SHADOW_QWORD_UNDEFINED     0xffff
-#define SHADOW_QWORD_DEFINED       0x0000
-#define SHADOW_QWORD_BITLEVEL      0xaaaa
+#define SHADOW_QWORD_UNADDRESSABLE (MAP_4B_TO_1B ? 0x0101 : 0x5555)
+#define SHADOW_QWORD_UNDEFINED     (MAP_4B_TO_1B ? 0x0303 : 0xffff)
+#define SHADOW_QWORD_DEFINED       (MAP_4B_TO_1B ? 0x0000 : 0x0000)
+#define SHADOW_QWORD_BITLEVEL      (MAP_4B_TO_1B ? 0x0202 : 0xaaaa)
 
-#define SHADOW_DQWORD_UNADDRESSABLE 0x55555555
-#define SHADOW_DQWORD_UNDEFINED     0xffffffff
-#define SHADOW_DQWORD_DEFINED       0x00000000
-#define SHADOW_DQWORD_BITLEVEL      0xaaaaaaaa
+#define SHADOW_DQWORD_UNADDRESSABLE (MAP_4B_TO_1B ? 0x01010101 : 0x55555555)
+#define SHADOW_DQWORD_UNDEFINED     (MAP_4B_TO_1B ? 0x03030303 : 0xffffffff)
+#define SHADOW_DQWORD_DEFINED       (MAP_4B_TO_1B ? 0x00000000 : 0x00000000)
+#define SHADOW_DQWORD_BITLEVEL      (MAP_4B_TO_1B ? 0x02020202 : 0xaaaaaaaa)
 
 /* extracts the 2 bits for byte#n from the dword-representing byte v */
 #define SHADOW_DWORD2BYTE(v, n) (((v) & (0x3 << 2*(n))) >> 2*(n))

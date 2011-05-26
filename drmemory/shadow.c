@@ -114,7 +114,7 @@ bitmapx2_set(bitmap_t bm, uint i, uint val)
 static inline uint
 bitmapx2_byte(bitmap_t bm, uint i)
 {
-    ASSERT(BITMAPx2_SHIFT(i) %8 == 0, "bitmapx2_dword: index not aligned");
+    ASSERT(BITMAPx2_SHIFT(i) %8 == 0, "bitmapx2_byte: index not aligned");
     return (bm[BITMAPx2_IDX(i)] >> BITMAPx2_SHIFT(i)) & 0xff;
 }
 
@@ -123,6 +123,38 @@ static inline uint
 bitmapx2_dword(bitmap_t bm, uint i)
 {
     ASSERT(BITMAPx2_SHIFT(i) == 0, "bitmapx2_dword: index not aligned");
+    return bm[BITMAPx2_IDX(i)];
+}
+
+/***************************************************************************
+ * BYTE-TO-BYTE SHADOWING SUPPORT
+ */
+
+/* It would be simpler to use a char[] for shadow_block_t but for simpler
+ * runtime parametrization we stick with uint[] and extract bytes.
+ */
+
+static inline void
+bytemap_4to1_set(bitmap_t bm, uint i, uint val)
+{
+    char *bytes = (char *) bm;
+    ASSERT(val <= UCHAR_MAX, "internal error");
+    bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)] = val;
+}
+
+/* returns the byte corresponding to offset i */
+static inline uint
+bytemap_4to1_byte(bitmap_t bm, uint i)
+{
+    char *bytes = (char *) bm;
+    return bytes[BLOCK_AS_BYTE_ARRAY_IDX(i)];
+}
+
+/* returns the uint corresponding to offset i */
+static inline uint
+bytemap_4to1_dword(bitmap_t bm, uint i)
+{
+    ASSERT(BITMAPx2_SHIFT(i) == 0, "bytemap_4to1_dword: index not aligned");
     return bm[BITMAPx2_IDX(i)];
 }
 
@@ -176,26 +208,10 @@ uint num_special_undefined;
 uint num_special_defined;
 #endif
 
-uint val_to_dword[] = {
-    SHADOW_DWORD_DEFINED,
-    SHADOW_DWORD_UNADDRESSABLE,
-    SHADOW_DWORD_BITLEVEL,
-    SHADOW_DWORD_UNDEFINED,
-};
-
-uint val_to_qword[] = {
-    SHADOW_QWORD_DEFINED,
-    SHADOW_QWORD_UNADDRESSABLE,
-    SHADOW_QWORD_BITLEVEL,
-    SHADOW_QWORD_UNDEFINED,
-};
-
-uint val_to_dqword[] = {
-    SHADOW_DQWORD_DEFINED,
-    SHADOW_DQWORD_UNADDRESSABLE,
-    SHADOW_DQWORD_BITLEVEL,
-    SHADOW_DQWORD_UNDEFINED,
-};
+/* these are filled in in shadow_table_init() b/c the consts vary dynamically */
+uint val_to_dword[4];
+uint val_to_qword[4];
+uint val_to_dqword[4];
 
 const char * const shadow_name[] = {
     "defined",
@@ -290,6 +306,22 @@ static void
 shadow_table_init(void)
 {
     uint i;
+
+    val_to_dword[0] = SHADOW_DWORD_DEFINED;
+    val_to_dword[1] = SHADOW_DWORD_UNADDRESSABLE;
+    val_to_dword[2] = SHADOW_DWORD_BITLEVEL;
+    val_to_dword[3] = SHADOW_DWORD_UNDEFINED;
+
+    val_to_qword[0] = SHADOW_QWORD_DEFINED;
+    val_to_qword[1] = SHADOW_QWORD_UNADDRESSABLE;
+    val_to_qword[2] = SHADOW_QWORD_BITLEVEL;
+    val_to_qword[3] = SHADOW_QWORD_UNDEFINED;
+
+    val_to_dqword[0] = SHADOW_DQWORD_DEFINED;
+    val_to_dqword[1] = SHADOW_DQWORD_UNADDRESSABLE;
+    val_to_dqword[2] = SHADOW_DQWORD_BITLEVEL;
+    val_to_dqword[3] = SHADOW_DQWORD_UNDEFINED;
+
     special_unaddressable = create_special_block(SHADOW_DWORD_UNADDRESSABLE);
     special_undefined = create_special_block(SHADOW_DWORD_UNDEFINED);
     special_defined = create_special_block(SHADOW_DWORD_DEFINED);
@@ -380,14 +412,22 @@ uint
 shadow_get_byte(app_pc addr)
 {
     shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    return bitmapx2_get(*block, ((ptr_uint_t)addr) % ALLOC_UNIT);
+    ptr_uint_t idx = ((ptr_uint_t)addr) % ALLOC_UNIT;
+    if (!MAP_4B_TO_1B)
+        return bitmapx2_get(*block, idx);
+    else
+        return bytemap_4to1_byte(*block, idx);
 }
 
 uint
 shadow_get_dword(app_pc addr)
 {
     shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    return bitmapx2_byte(*block, ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) % ALLOC_UNIT);
+    ptr_uint_t idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) % ALLOC_UNIT;
+    if (!MAP_4B_TO_1B)
+        return bitmapx2_byte(*block, idx);
+    else /* just return byte */
+        return bytemap_4to1_byte(*block, idx);
 }
 
 /* Sets the two bits for the byte at the passed-in address */
@@ -436,7 +476,10 @@ shadow_set_byte(app_pc addr, uint val)
         dr_mutex_unlock(shadow_lock);
     }
     LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
-    bitmapx2_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
+    if (!MAP_4B_TO_1B)
+        bitmapx2_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
+    else
+        bytemap_4to1_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
 }
 
 byte *
@@ -563,27 +606,30 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 
 static uint dqword_to_val(uint dqword)
 {
-    switch (dqword) {
-    case SHADOW_DQWORD_UNADDRESSABLE: return SHADOW_UNADDRESSABLE;
-    case SHADOW_DQWORD_UNDEFINED: return SHADOW_UNDEFINED;
-    case SHADOW_DQWORD_DEFINED: return SHADOW_DEFINED;
-    case SHADOW_DQWORD_BITLEVEL: return SHADOW_DEFINED_BITLEVEL;
-    default: return UINT_MAX;
-    }
-};
+    if (dqword == SHADOW_DQWORD_UNADDRESSABLE)
+        return SHADOW_UNADDRESSABLE;
+    if (dqword == SHADOW_DQWORD_UNDEFINED)
+        return SHADOW_UNDEFINED;
+    if (dqword == SHADOW_DQWORD_DEFINED)
+        return SHADOW_DEFINED;
+    if (dqword == SHADOW_DQWORD_BITLEVEL)
+        return SHADOW_DEFINED_BITLEVEL;
+    return UINT_MAX;
+}
 
 const char *
 shadow_dqword_name(uint dqword)
 {
-    switch (dqword) {
-    case SHADOW_DQWORD_UNADDRESSABLE: return shadow_name[SHADOW_UNADDRESSABLE];
-    case SHADOW_DQWORD_UNDEFINED: return shadow_name[SHADOW_UNDEFINED];
-    case SHADOW_DQWORD_DEFINED: return shadow_name[SHADOW_DEFINED];
-    case SHADOW_DQWORD_BITLEVEL: return shadow_name[SHADOW_DEFINED_BITLEVEL];
-    default: return "<mixed>";
-    }
-    return "<error>";
-};
+    if (dqword == SHADOW_DQWORD_UNADDRESSABLE)
+        return shadow_name[SHADOW_UNADDRESSABLE];
+    if (dqword == SHADOW_DQWORD_UNDEFINED)
+        return shadow_name[SHADOW_UNDEFINED];
+    if (dqword == SHADOW_DQWORD_DEFINED)
+        return shadow_name[SHADOW_DEFINED];
+    if (dqword == SHADOW_DQWORD_BITLEVEL)
+        return shadow_name[SHADOW_DEFINED_BITLEVEL];
+    return "<mixed>";
+}
 
 /* Compares every byte in [start, start+size) to expect.
  * Stops and returns the pc of the first non-matching value.
@@ -1435,6 +1481,7 @@ static void
 shadow_registers_init(void)
 {
     reg_id_t seg;
+    /* XXX: could save space by not allocating shadow regs for -no_check_uninitialized */
     IF_DEBUG(bool ok =)
         dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_TLS_SLOTS, 0);
     ASSERT(ok, "fatal error: unable to reserve tls slots");

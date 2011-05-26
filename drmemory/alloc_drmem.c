@@ -162,7 +162,7 @@ alloc_drmem_init(void)
     mmap_tree_lock = dr_mutex_create();
 #endif
 
-    leak_init(!options.leaks_only,
+    leak_init(!options.leaks_only && options.check_uninitialized,
               options.check_leaks_on_destroy,
               options.midchunk_new_ok,
               options.midchunk_inheritance_ok,
@@ -977,7 +977,10 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
             */
            shadow_get_byte(sp) == SHADOW_UNADDRESSABLE) {
         shadow_set_byte(sp, SHADOW_DEFINED);
-        sp++;
+        if (MAP_4B_TO_1B)
+            sp += 4; /* 4 bytes map to one so skip to next */
+        else
+            sp++;
         if (sp - (byte *) mc->esp >= TYPICAL_STACK_MIN_SIZE) {
             ASSERT(false, "kernel-placed data on stack too large: error?");
             break; /* abort */

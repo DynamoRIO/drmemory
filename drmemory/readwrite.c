@@ -1549,6 +1549,23 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
 #endif
     STATS_INC(medpath_executions);
 
+    if (!options.check_uninitialized) {
+        if ((!options.check_alignment ||
+             (ALIGNED(mc->esi, 4) && ALIGNED(mc->edi, 4))) &&
+            shadow_get_byte((app_pc)mc->esi) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->edi) != SHADOW_UNADDRESSABLE) {
+            STATS_INC(movs4_med_fast);
+            return;
+        }
+        check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc, 
+                       opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
+                       4, mc, shadow_vals);
+        check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
+                       opnd_create_far_base_disp(SEG_ES, REG_EDI, REG_NULL, 0, 0, OPSZ_4),
+                       4, mc, shadow_vals);
+        return;
+    }
+
     /* The generalized routines below are just a little too slow.  The
      * common case is an unaligned movs4 whose source is fully
      * defined, or aligned or unaligned but with source undefined, and
@@ -1589,6 +1606,66 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     check_mem_opnd(OP_movs, MEMREF_WRITE | MEMREF_USE_VALUES, loc,
                    opnd_create_far_base_disp(SEG_ES, REG_EDI, REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);
+}
+
+/* Called by slow_path() after initial decode.  Expected to free inst. */
+bool
+slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
+                                app_loc_t *loc, size_t instr_sz)
+{
+    opnd_t opnd, memop = opnd_create_null();
+    int opc, i, num_srcs, num_dsts;
+    uint sz;
+    bool pushpop_stackop;
+    uint flags;
+    ASSERT(!options.check_uninitialized, "should not be called");
+
+    opc = instr_get_opcode(inst);
+    num_srcs = (IF_WINDOWS_ELSE(opc == OP_sysenter, false)) ? 1 :
+        ((opc == OP_lea) ? 0 : num_true_srcs(inst, mc));
+    for (i = 0; i < num_srcs; i++) {
+        if (opc == OP_sysenter) {
+#ifdef WINDOWS
+            /* special case: we pretend the sysenter instr itself does the
+             * ret that is hidden by DR.
+             */
+            opnd = OPND_CREATE_MEM32(REG_ESP, 0);
+#else
+            ASSERT(false, "sysenter has no sources");
+#endif
+        } else
+            opnd = instr_get_src(inst, i);
+        if (opnd_is_memory_reference(opnd)) {
+            opnd = adjust_memop(inst, opnd, false, &sz, &pushpop_stackop);
+            if (pushpop_stackop)
+                flags = MEMREF_PUSHPOP;
+            else
+                flags = MEMREF_CHECK_ADDRESSABLE;
+            memop = opnd;
+            check_mem_opnd(opc, flags, loc, opnd, sz, mc, NULL);
+        }
+    }
+
+    num_dsts = num_true_dsts(inst, mc);
+    for (i = 0; i < num_dsts; i++) {
+        opnd = instr_get_dst(inst, i);
+        if (opnd_is_memory_reference(opnd)) {
+            opnd = adjust_memop(inst, opnd, true, &sz, &pushpop_stackop);
+            if (pushpop_stackop)
+                flags = MEMREF_PUSHPOP | MEMREF_WRITE;
+            else
+                flags = MEMREF_CHECK_ADDRESSABLE;
+            memop = opnd;
+            check_mem_opnd(opc, flags, loc, opnd, sz, mc, NULL);
+        }
+    }
+
+    instr_free(drcontext, inst);
+
+    /* call this last after freeing inst in case it does a synchronous flush */
+    slow_path_xl8_sharing(loc, instr_sz, memop, mc);
+
+    return true;
 }
 #endif /* TOOL_DR_MEMORY */
 
@@ -1759,6 +1836,9 @@ slow_path(app_pc pc, app_pc decode_pc)
     return slow_path_for_staleness(drcontext, &mc, &inst, &loc);
 
 #else
+    if (!options.check_uninitialized)
+        return slow_path_without_uninitialized(drcontext, &mc, &inst, &loc, instr_sz);
+
     LOG(4, "shadow registers prior to instr:\n");
     DOLOG(4, { print_shadow_registers(); });
 
@@ -2597,17 +2677,19 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
     ASSERT(opc != OP_lea, "lea should not get here");
 
 #ifdef TOOL_DR_MEMORY
-    /* First check definedness of base+index regs */
-    for (i = 0; i < opnd_num_regs_used(opnd); i++) {
-        reg_id_t reg = opnd_get_reg_used(opnd, i);
-        if (!reg_is_segment(reg) &&
-            !is_shadow_register_defined(get_shadow_register(reg))) {
-            /* FIXME: report which bytes within reg via container params? */
-            report_undefined_read
-                (loc, (app_pc)(ptr_int_t)reg,
-                 opnd_size_in_bytes(reg_get_size(reg)), NULL, NULL, mc);
-            /* Set to defined to avoid duplicate errors */
-            register_shadow_mark_defined(reg);
+    if (options.check_uninitialized) {
+        /* First check definedness of base+index regs */
+        for (i = 0; i < opnd_num_regs_used(opnd); i++) {
+            reg_id_t reg = opnd_get_reg_used(opnd, i);
+            if (!reg_is_segment(reg) &&
+                !is_shadow_register_defined(get_shadow_register(reg))) {
+                /* FIXME: report which bytes within reg via container params? */
+                report_undefined_read
+                    (loc, (app_pc)(ptr_int_t)reg,
+                     opnd_size_in_bytes(reg_get_size(reg)), NULL, NULL, mc);
+                /* Set to defined to avoid duplicate errors */
+                register_shadow_mark_defined(reg);
+            }
         }
     }
 #endif
@@ -2757,6 +2839,10 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     ASSERT(sz < 32*1024*1024, "suspiciously large size");
     ASSERT(!TEST(MEMREF_USE_VALUES, flags) || shadow_vals != NULL,
            "internal invalid parameters");
+    /* if no uninit, should only write to shadow mem for push/pop */
+    ASSERT(options.check_uninitialized ||
+           !TEST(MEMREF_WRITE, flags) ||
+           TEST(MEMREF_PUSHPOP, flags), "invalid flags");
 #ifdef STATISTICS
     if (TEST(MEMREF_WRITE, flags)) {
         if (TEST(MEMREF_PUSHPOP, flags))
@@ -2928,6 +3014,12 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
              */
             shadow_vals[memref_idx(flags, i)] =
                 combine_shadows(shadow_vals[memref_idx(flags, i)], shadow);
+        }
+        if (MAP_4B_TO_1B) {
+            /* only need to process each 4-byte address region once */
+            if (POINTER_OVERFLOW_ON_ADD(addr, 4))
+                break;
+            i = ((ptr_uint_t)ALIGN_FORWARD(addr + i + 1, 4) - (ptr_uint_t)addr);
         }
     }
 #ifdef STATISTICS
@@ -3349,7 +3441,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         has_mem = false;
         for (i = 0; i < instr_num_dsts(inst); i++) {
             opnd_t opnd = instr_get_dst(inst, i);
-            if (opnd_is_memory_reference(opnd))
+            if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
                 has_mem = true;
             if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) {
                 has_gpr = true;
@@ -3365,7 +3457,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         if (!has_gpr || !has_mem) {
             for (i = 0; i < instr_num_srcs(inst); i++) {
                 opnd_t opnd = instr_get_src(inst, i);
-                if (opnd_is_memory_reference(opnd))
+                if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
                     has_mem = true;
                 if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd)))
                     has_gpr = true;
@@ -3379,7 +3471,8 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         if (bi.eflags_defined && opc_is_jcc(instr_get_opcode(inst)))
             continue;
 
-        if (!options.leaks_only && options.shadowing) {
+        if (!options.leaks_only && options.shadowing &&
+            (options.check_uninitialized || has_mem)) {
             if (instr_ok_for_instrument_fastpath(inst, &mi, &bi)) {
                 instrument_fastpath(drcontext, bb, inst, &mi, check_ignore_unaddr);
                 added_instru = true;

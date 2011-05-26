@@ -1533,7 +1533,7 @@ handle_post_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
     /* We have "8,-9,W" in the table so we only need to handle additional pointers
      * here or cases where subsets of the full output buffer are written.
      *
-     * XXX: We treat asynch i/o as happening now rather than trying to
+     * XXX i#410: We treat asynch i/o as happening now rather than trying to
      * watch NtWait* and tracking event objects, though we'll
      * over-estimate the amount written in some cases.
      */

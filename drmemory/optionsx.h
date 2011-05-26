@@ -277,6 +277,9 @@ OPTION_CLIENT_SCOPE(drmemscope, delay_frees_maxsz, uint, 20000000, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, leaks_only, false,
                    "Check only for leaks and not memory access errors",
                    "Puts "TOOLNAME" into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")
+OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, true,
+                   "Check for uninitialized read errors",
+                   "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",
                      "If this list is non-empty, when "TOOLNAME" sees prctl(PR_SET_NAME) and the name is not on the list, then "TOOLNAME" will disable its instrumentation for the rest of the process and for all of its child processes.  The list is ,-separated.")

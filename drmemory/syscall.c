@@ -578,6 +578,8 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
      * or it's an optional arg
      */
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    if (!options.check_uninitialized && flags != MEMREF_CHECK_ADDRESSABLE)
+        return;
     if (ptr != NULL && sz > 0) {
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, id);

@@ -265,8 +265,9 @@ instr_needs_slowpath(instr_t *inst)
     switch (opc) {
     case OP_sysenter:
     case OP_popa:
-    case OP_bswap:
         return true;
+    case OP_bswap:
+        return options.check_uninitialized;
     default:
         return false;
     }
@@ -810,6 +811,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
                !instr_check_definedness(inst)) ) &&
             (mi->memsz < 4 && !opnd_is_immed_int(mi->memoffs));
     }
+    if (!options.check_uninitialized)
+        mi->need_offs = false;
     return true;
 }
 
@@ -848,7 +851,16 @@ set_shadow_opnds(fastpath_info_t *mi)
         mi->dst[1].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
     }
     if (opnd_is_memory_reference(mi->src[0].app)) {
-        if (mi->store && !mi->mem2mem) {
+        if (!options.check_uninitialized) {
+            if (mi->memsz <= 4)
+                mi->src[0].shadow = OPND_CREATE_MEM8(mi->reg1.reg, 0);
+            else if (mi->memsz == 8)
+                mi->src[0].shadow = OPND_CREATE_MEM16(mi->reg1.reg, 0);
+            else {
+                ASSERT(mi->memsz == 16 || mi->memsz == 10, "invalid memsz");
+                mi->src[0].shadow = OPND_CREATE_MEM32(mi->reg1.reg, 0);
+            }
+        } else if (mi->store && !mi->mem2mem) {
             /* must be alu */
             ASSERT(opnd_same(mi->dst[0].app, mi->src[0].app), "dual mem ref error");
             /* need to reference by address not value so copy dst shadow */
@@ -2217,7 +2229,6 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     reg_id_t reg1_8h = REG_NULL;
     reg_id_t reg2_8h = reg_32_to_8h(reg2);
     reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8(reg3);
-    reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8h(reg3);
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
     if (need_offs || zero_rest_of_offs)
         reg1_8h = reg_32_to_8h(reg1);
@@ -2331,6 +2342,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* addr is already in reg1 */
     }
     if (need_offs) {
+        reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8h(reg3);
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
         mi->memoffs = (!mi->need_offs && zero_rest_of_offs) ?
             opnd_create_reg(reg3_8h) :
@@ -3408,7 +3420,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->bb->shared_disp_reg1 = 0;
             }
         }
-        if (!mi->need_offs && mi->memsz < 4 &&
+        if (!mi->need_offs && mi->memsz < 4 && options.check_uninitialized &&
             !opnd_is_immed_int(mi->memoffs) && mi->load) {
             /* PR 425240: check just the bits involved for srcs => need a reg
              * to put offs in.  If we're not sharing we use reg1: else we need
@@ -3424,7 +3436,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->need_nonoffs_reg3 = true;
         }
     }
-    if (!mi->need_offs && mi->opsz < 4 &&
+    if (!mi->need_offs && mi->opsz < 4 && options.check_uninitialized &&
         (mi->store || mi->dst_reg != REG_NULL ||
          /* if writes eflags we'll need a 3rd reg for write_shadow_eflags */
          (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
@@ -3438,7 +3450,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         check_appval && (mi->load || mi->store);
 
     /* set up regs and spill info */
-    pick_scratch_regs(inst, mi, true/*only pick a,b,c,d*/,
+    pick_scratch_regs(inst, mi,
+                      /*only pick a,b,c,d: need 8-bit for uninit or mem2mem */
+                      options.check_uninitialized || mi->mem2mem || mi->load2x,
                       /* we need 3rd reg for temp to get offs while getting
                        * shadow byte address, and also temp to set dest bits in
                        * add_dst_shadow_write(); we also need to handle 2nd
@@ -3466,7 +3480,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* other cases where we check definedness rather than propagating */
     set_check_definedness(drcontext, inst, mi);
 
-    mark_defined = result_is_always_defined(inst) ||
+    mark_defined =
+        !options.check_uninitialized ||
+        result_is_always_defined(inst) ||
         /* no sources (e.g., rdtsc) */
         (opnd_is_null(mi->src[0].app) &&
          !TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) ||
@@ -3522,15 +3538,29 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* Before any of the leas, restore global spilled registers */
     /* not doing lea if sharing trans, and this restore will clobber shared addr */
     if (!mi->use_shared) {
+        if (mi->load || mi->store) {
+            /* XXX xref PR 494720: need a better system here.  The out-of-order
+             * top-of-bb aflags save uses xchg w/ a scratch reg if that reg
+             * has been used: but that varies based on when mark_eflags_used()
+             * is called vs mark_scratch_reg_used().  The restore here relies
+             * on mark_scratch_reg_used() having been called as well.  We won't
+             * have app correctness issues but we can get the wrong app value
+             * for our lea and exit to slowpath when we shouldn't, so we
+             * just mark reg1 and reg2 up front here since we know we'll need them.
+             */
+            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg1);
+            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
+        }
         if (opnd_uses_reg(mi->memop, mi->bb->reg1.reg)) {
             insert_spill_global(drcontext, bb, inst, &mi->bb->reg1, false/*restore*/);
         }
         if (opnd_uses_reg(mi->memop, mi->bb->reg2.reg)) {
             insert_spill_global(drcontext, bb, inst, &mi->bb->reg2, false/*restore*/);
         }
-    } else
+    } else {
         ASSERT(!mi->mem2mem && !mi->load2x,
                "once share for mem2mem or load2x must spill for lea");
+    }
 
     /* lea before any reg write (incl eflags eax) in case address calc uses that reg */
     if (mi->load || mi->store) {
@@ -3617,32 +3647,41 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 
 #ifdef TOOL_DR_MEMORY
-    /* check definedness of addressing registers.
-     * for pushpop this also suffices to cover the read+write of esp
-     * (and thus we don't need to propagate definedness for esp, reducing
-     *  # opnds for pushpop instrs).
-     * for lea probably better to consider addressing registers are
-     * non-memory-related operands: but then I'd need to support 2 reg
-     * sources in fastpath, so for now we treat as addressing.
-     */
-    if ((mi->load || mi->store) && opnd_is_base_disp(mi->memop)) {
-        add_addressing_register_checks(drcontext, bb, inst, mi->memop, mi);
-    }
-    if (mi->mem2mem || mi->load2x) {
-        opnd_t mem2 = mi->mem2mem ? mi->src[0].app : mi->src[1].app;
-        add_addressing_register_checks(drcontext, bb, inst, mem2, mi);
+    if (options.check_uninitialized) {
+        /* check definedness of addressing registers.
+         * for pushpop this also suffices to cover the read+write of esp
+         * (and thus we don't need to propagate definedness for esp, reducing
+         *  # opnds for pushpop instrs).
+         * for lea probably better to consider addressing registers are
+         * non-memory-related operands: but then I'd need to support 2 reg
+         * sources in fastpath, so for now we treat as addressing.
+         */
+        if ((mi->load || mi->store) && opnd_is_base_disp(mi->memop)) {
+            add_addressing_register_checks(drcontext, bb, inst, mi->memop, mi);
+        }
+        if (mi->mem2mem || mi->load2x) {
+            opnd_t mem2 = mi->mem2mem ? mi->src[0].app : mi->src[1].app;
+            add_addressing_register_checks(drcontext, bb, inst, mem2, mi);
+        }
     }
 #endif /* TOOL_DR_MEMORY */
 
     if (mi->mem2mem || mi->load2x) {
         bool need_value = IF_DRMEM_ELSE(true, false);
+        uint jcc_not_unaddr = OP_je;
         add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                 false/*val in reg1*/, false/*no offs*/, false/*no offs*/,
                                 mi->reg3.reg, mi->reg2.reg,
                                 mi->reg1.reg/*won't be touched!*/, true/*jcc short*/);
         ASSERT(mi->reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
 #ifdef TOOL_DR_MEMORY
-        if (mi->mem2mem && !mi->check_definedness) {
+        if (!options.check_uninitialized) {
+            PRE(bb, inst,
+                INSTR_CREATE_cmp(drcontext, opnd_create_reg(mi->reg3_8),
+                                 OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+            jcc_not_unaddr = OP_jne;
+            mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
+        } else if (mi->mem2mem && !mi->check_definedness) {
             /* if we don't need the 3rd reg for the main mem lookup (i.e., word-sized
              * (and word-aligned) mem2mem), go ahead and propagate.
              * XXX i#164: add a reg "claimed" field to enforce us owning reg3
@@ -3683,7 +3722,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              */
             instr_t *not_unaddr = INSTR_CREATE_label(drcontext);
             PRE(bb, inst,
-                INSTR_CREATE_jcc(drcontext, OP_je, opnd_create_instr(not_unaddr)));
+                INSTR_CREATE_jcc(drcontext, jcc_not_unaddr,
+                                 opnd_create_instr(not_unaddr)));
             mi->need_slowpath = true;
             ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
             heap_unaddr_shadow = mi->src[0].shadow;
@@ -3701,12 +3741,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * in-heap, b/c unaddr will flow to stack, etc., and need
              * to support propagating unaddr in combine_shadows().
              */
-            PRE(bb, inst,
-                INSTR_CREATE_mov_imm(drcontext, mi->src[0].shadow,
-                                     shadow_immed(mi->memsz, SHADOW_DEFINED)));
+            if (options.check_uninitialized) {
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_imm(drcontext, mi->src[0].shadow,
+                                         shadow_immed(mi->memsz, SHADOW_DEFINED)));
+            }
             PRE(bb, inst, not_unaddr);
-        } else
-            add_jcc_slowpath(drcontext, bb, inst, OP_jne, mi);
+        } else {
+            add_jcc_slowpath(drcontext, bb, inst,
+                             jcc_not_unaddr == OP_je ? OP_jne : OP_je, mi);
+        }
 #else
         /* shadow lookup left reg3 holding address */
         if (!options.stale_blind_store) {
@@ -3748,7 +3792,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* we set mi->use_shared, share_addr, and mi->bb->shared_* above */
         IF_DEBUG(if (share_addr))
             ASSERT(mi->reg1.reg == mi->bb->reg1.reg, "sharing requires reg1==bb reg1");
-        need_value = mi->load && !mi->pushpop && !share_addr;
+        need_value = options.check_uninitialized &&
+            mi->load && !mi->pushpop && !share_addr;
 
         /* PR 493257: share shadow translation across multiple instrs */
         if (!mi->use_shared) {
@@ -3782,7 +3827,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             diff /= 4; /* 2 shadow bits per byte */
             /* Subtract what's already been incorporated into the reg */
             diff -= mi->bb->shared_disp_reg1;
-            if (mi->load && !mi->pushpop) { /* want value */
+            if (mi->load && !mi->pushpop && options.check_uninitialized) { /*want value*/
                 PRE(bb, inst,
                     INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi->reg2.reg),
                                        OPND_CREATE_MEM8(mi->reg1.reg, diff)));
@@ -3820,7 +3865,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             mi->src[0].offs = mi->memoffs;
     }
 
-    if (mi->load && (mi->pushpop || (share_addr && !mi->use_shared))) {
+    if (options.check_uninitialized &&
+        mi->load && (mi->pushpop || (share_addr && !mi->use_shared))) {
         /* A pop into a register or memory, or any load sharing its shadow addr.
          * We need both shadow table slot address and value.  Address is
          * currently in reg1; we get value into reg2.
@@ -3950,7 +3996,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         mi->src[2].shadow = opnd_create_null();
     }
     marker1 = instr_get_next(marker2); /* may as well check first */
-    if (opc == OP_cmpxchg8b) {
+    if (opc == OP_cmpxchg8b && options.check_uninitialized) {
         /* we keep on fastpath by hardcoding the 4th & 5th sources */
         opnd_t op4 = instr_get_src(inst, 3);
         opnd_t op5 = instr_get_src(inst, 4);
@@ -3981,8 +4027,20 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (mi->load &&
         /* if we checked memsrc for definedness we also checked for addressability */
         !checked_memsrc) {
+        int jcc_unaddr = OP_jne;
         mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg2);
-        if (options.loads_use_table && mi->memsz <= 4) {
+
+        if (!options.check_uninitialized) {
+            jcc_unaddr = OP_je;
+            PRE(bb, inst,
+                INSTR_CREATE_cmp(drcontext, mi->src[0].shadow,
+                                 OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+            /* XXX: eliminate jmp-to-slowpath and use fault via "cmove
+             * reg1 -> (reg2)".  "(reg2)" is shorter than 0x0 abs
+             * addr.  reg2 itself had shr16 so points to bottom 64KB
+             * so guaranteed to fault.
+             */
+        } else if (options.loads_use_table && mi->memsz <= 4) {
             /* Check for unaddressability via table lookup */
             if (mi->memsz < 4 && mi->need_offs) {
                 /* PR 503782: check just the bytes referenced.  We've zeroed the
@@ -4033,14 +4091,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
             /* PR 578892: fastpath heap routine unaddr accesses */
             PRE(bb, inst,
-                INSTR_CREATE_jcc(drcontext, OP_jne, opnd_create_instr(heap_unaddr)));
+                INSTR_CREATE_jcc(drcontext, jcc_unaddr, opnd_create_instr(heap_unaddr)));
             mi->need_slowpath = true;
             heap_unaddr_shadow = opnd_create_reg(mi->memsz <= 4 ? mi->reg2_8 :
                                                  (mi->memsz == 8 ? mi->reg2_16 :
                                                   mi->reg2.reg));
         } else {
             add_jcc_slowpath(drcontext, bb, inst,
-                             check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
+                             check_ignore_unaddr ? (jcc_unaddr == OP_jne ? OP_jne : OP_je)
+                             : (jcc_unaddr == OP_jne ? OP_jne_short : OP_je_short), mi);
         }
     } else if (mi->store) {
         /* shadow table slot address is in reg1 */
@@ -4063,7 +4122,28 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                  OP_jne : OP_jne_short, mi);
             }
         } else {
-            if (options.stores_use_table && mi->memsz <= 4) {
+            if (!options.check_uninitialized) {
+                PRE(bb, inst,
+                    INSTR_CREATE_cmp(drcontext, mi->dst[0].shadow,
+                                     OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
+                /* XXX: change to fault via "cmove  reg1 -> (reg2)".  "(reg2)" is
+                 * shorter than 0x0 abs addr.  reg2 itself had shr16 so points to
+                 * bottom 64KB so guaranteed to fault.
+                 */
+                mark_eflags_used(drcontext, bb, mi->bb);
+                /* we only check for 1 unaddr shadow so only check if haven't already */
+                if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
+                    /* PR 578892: fastpath heap routine unaddr accesses */
+                    PRE(bb, inst,
+                        INSTR_CREATE_jcc(drcontext, OP_je,
+                                         opnd_create_instr(heap_unaddr)));
+                    mi->need_slowpath = true;
+                    heap_unaddr_shadow = mi->dst[0].shadow;
+                } else {
+                    add_jcc_slowpath(drcontext, bb, inst,
+                                     check_ignore_unaddr ? OP_je : OP_je_short, mi);
+                }
+            } else if (options.stores_use_table && mi->memsz <= 4) {
                 /* check for unaddressability.  we used to combine it with
                  * a definedness check but there are too many instances of
                  * not-fully-defined dwords, so we have separate checks.
@@ -4179,7 +4259,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                              /* for popf don't write UNADDR to eflags: we handle below */
                              false/*skip eflags*/, false/*!alu_uncombined*/,
                              false/*!preserve -- doesn't matter since src is const*/);
-        if (opc == OP_popf && !opnd_is_null(mi->src[0].shadow)) {
+        if (options.check_uninitialized &&
+            opc == OP_popf && !opnd_is_null(mi->src[0].shadow)) {
             /* special-cased b/c eflags is not handled as a regular dest
              * so there's no propagation below
              * XXX: actually isn't there now?  writing eflags twice then?
@@ -4204,17 +4285,21 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 
     ASSERT(mi->num_to_propagate >= 0, "propagation count error");
+    ASSERT(options.check_uninitialized || mi->num_to_propagate == 0,
+           "only prop for uninits");
     if (mi->num_to_propagate == 0) {
-        mi->src[0].shadow = shadow_immed(mi->opsz, SHADOW_DEFINED);
-        mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
-        add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
-                               /* if we're checking definedness for sub-dword
-                                * we didn't ask for a 3rd scratch reg and
-                                * we don't need it since we can write the
-                                * whole dword's shadow to eflags */
-                               mi->check_definedness ? 4 : mi->opsz,/*not src*/
-                               mi->check_definedness ? 4 : mi->opsz,
-                               scratch8, si8, fastpath_restore, true, false);
+        if (options.check_uninitialized || (mi->pushpop && mi->store)) {
+            mi->src[0].shadow = shadow_immed(mi->opsz, SHADOW_DEFINED);
+            mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
+            add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
+                                   /* if we're checking definedness for sub-dword
+                                    * we didn't ask for a 3rd scratch reg and
+                                    * we don't need it since we can write the
+                                    * whole dword's shadow to eflags */
+                                   mi->check_definedness ? 4 : mi->opsz,/*not src*/
+                                   mi->check_definedness ? 4 : mi->opsz,
+                                   scratch8, si8, fastpath_restore, true, false);
+        }
     } else if (mi->num_to_propagate == 1) {
         /* copy src shadow to eflags shadow and dst shadow */
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
@@ -4336,7 +4421,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8(mi->reg1.reg, 0),
                              OPND_CREATE_INT8(0)));
         mark_eflags_used(drcontext, bb, mi->bb);
-        /* too bad there's no cmovcc to memory! */
+        /* too bad there's no cmovcc from immed to memory! */
         PRE(bb, inst,
             INSTR_CREATE_jcc(drcontext, OP_jnz_short,
                              opnd_create_instr(fastpath_restore)));
@@ -4391,8 +4476,22 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (mi->need_slowpath) {
         bool shared = instr_can_use_shared_slowpath(inst);
         if (shared) {
-            PRE(bb, inst,
-                INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(nextinstr)));
+            instr_t *prev = instr_get_prev(inst);
+            if (prev != NULL && prev == fastpath_restore)
+                prev = instr_get_prev(prev);
+            if (prev != NULL && instr_get_opcode(prev) == OP_jz_short &&
+                opnd_is_instr(instr_get_target(prev)) &&
+                opnd_get_instr(instr_get_target(prev)) == mi->slowpath) {
+                /* instead of jz short; jmp done; short: <short>; done:"
+                 * change to "jnz done".
+                 */
+                instr_invert_cbr(prev);
+                instr_set_target(prev, opnd_create_instr(nextinstr));
+                fastpath_restore = nextinstr;
+            } else {
+                PRE(bb, inst,
+                    INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(nextinstr)));
+            }
         } else {
             /* need to reach over clean call */
             PRE(bb, inst,
@@ -4406,19 +4505,34 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
                                      OPND_CREATE_INT8(0)));
-                add_jcc_slowpath(drcontext, bb, inst, OP_je_short, mi);
+                if (options.check_uninitialized) {
+                    add_jcc_slowpath(drcontext, bb, inst, OP_je_short, mi);
+                } else {
+                    PRE(bb, inst, INSTR_CREATE_jcc
+                        (drcontext, OP_jne_short, opnd_create_instr(fastpath_restore)));
+                }
             }
-            PRE(bb, inst,
-                INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
-                                 shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)));
-            if (check_ignore_resume != NULL) {
+            if (options.check_uninitialized) {
                 PRE(bb, inst,
-                    INSTR_CREATE_jcc(drcontext, OP_je,
-                                     opnd_create_instr(check_ignore_resume)));
-            } else {
-                PRE(bb, inst,
-                    INSTR_CREATE_jcc(drcontext, OP_je_short,
-                                     opnd_create_instr(fastpath_restore)));
+                    INSTR_CREATE_cmp(drcontext, heap_unaddr_shadow,
+                                     shadow_immed(mi->memsz, SHADOW_UNADDRESSABLE)));
+                if (check_ignore_resume != NULL) {
+                    PRE(bb, inst,
+                        INSTR_CREATE_jcc(drcontext, OP_je,
+                                         opnd_create_instr(check_ignore_resume)));
+                } else {
+                    PRE(bb, inst,
+                        INSTR_CREATE_jcc(drcontext, OP_je_short,
+                                         opnd_create_instr(fastpath_restore)));
+                }
+            } else if (!check_ignore_tls) {
+                if (check_ignore_resume != NULL) {
+                    PRE(bb, inst, INSTR_CREATE_jmp
+                        (drcontext, opnd_create_instr(check_ignore_resume)));
+                } else {
+                    PRE(bb, inst, INSTR_CREATE_jmp_short
+                        (drcontext, opnd_create_instr(fastpath_restore)));
+                }
             }
         }
 #endif
