@@ -277,9 +277,20 @@ OPTION_CLIENT_SCOPE(drmemscope, delay_frees_maxsz, uint, 20000000, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, leaks_only, false,
                    "Check only for leaks and not memory access errors",
                    "Puts "TOOLNAME" into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")
+
 OPTION_CLIENT_BOOL(drmemscope, check_uninitialized, true,
                    "Check for uninitialized read errors",
                    "Check for uninitialized read errors.  When disabled, puts "TOOLNAME" into a mode that has lower overhead but does not detect definedness errors.  Furthermore, the lack of definedness information reduces accuracy of leak identification, resulting in potentially failing to identify some leaks.")
+OPTION_CLIENT_BOOL(drmemscope, check_stack_bounds, false,
+                   "For -no_check_uninitialized, whether to check for beyond-top-of-stack accesses",
+                   "Only applies for -no_check_uninitialized.  Determines whether to check for beyond-top-of-stack accesses.")
+OPTION_CLIENT_BOOL(drmemscope, check_stack_access, false,
+                   "For -no_check_uninitialized, whether to check for errors on stack or frame references",
+                   "Only applies for -no_check_uninitialized.  Determines whether to check for errors on memory references that use %esp or %ebp as a base.  These are normally local variable and function parameter references only, but for optimized or unusual code they could point elsewhere in memory.  Checking these incurs additional overhead.")
+OPTION_CLIENT_BOOL(drmemscope, check_alignment, false,
+                   "For -no_check_uninitialized, whether to consider alignment",
+                   "Only applies for -no_check_uninitialized.  Determines whether to incur additional overhead in order to handle memory accesses that are not aligned to their size.  With this option off, the tool may miss bounds overflows that involve unaligned memory references.")
+
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",
                      "If this list is non-empty, when "TOOLNAME" sees prctl(PR_SET_NAME) and the name is not on the list, then "TOOLNAME" will disable its instrumentation for the rest of the process and for all of its child processes.  The list is ,-separated.")
@@ -383,8 +394,8 @@ OPTION_CLIENT(internal, stats_dump_interval, uint, 500000, 1, UINT_MAX,
               "How often to dump statistics, in units of slowpath executions",
               "How often to dump statistics, in units of slowpath executions")
 OPTION_CLIENT_BOOL(internal, define_unknown_regions, true,
-                   "Mark unknown regions as defined after 1st UNADDR",
-                   "PR 464106: handle memory allocated by other processes by treating as fully defined, after reporting 1st UNADDR")
+                   "Mark unknown regions as defined",
+                   "Handle memory allocated by other processes (or that we miss due to unknown system calls or other problems) by treating as fully defined.  Xref PR 464106.")
 OPTION_CLIENT_BOOL(internal, replace_libc , true,
                    "Replace libc str/mem routines w/ our own versions",
                    "Replace libc str/mem routines w/ our own versions")

@@ -124,6 +124,7 @@ check_stack_swap(byte *cur_xsp, byte *new_xsp)
     byte *stack_start;
     size_t stack_size;
     STATS_INC(stack_swap_triggers);
+    ASSERT(options.check_stack_bounds, "shouldn't be called");
     if (get_stack_region_bounds(cur_xsp, &stack_start, &stack_size)) {
         LOG(3, "stack bounds "PFX" "PFX"-"PFX"\n", cur_xsp,
             stack_start, stack_start + stack_size);
@@ -173,6 +174,7 @@ handle_push_addressable(app_loc_t *loc, app_pc addr, app_pc start_addr,
      * for those cases.  Risks include false positives and negatives.
      */
     bool handled = false;
+    ASSERT(options.check_stack_bounds, "shouldn't be called");
     STATS_INC(push_addressable);
     /* We provide an option to disable if our handling isn't working
      * and we just want to get some performance and don't care about
@@ -1079,7 +1081,8 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* we don't need a 3rd scratch for the lookup, and we rely on reg3 being preserved */
     add_shadow_table_lookup(drcontext, bb, NULL, &mi, false/*need addr*/,
                             false, false/*bail if not aligned*/, false,
-                            mi.reg1.reg, mi.reg2.reg, REG_NULL, false/*jcc long*/);
+                            mi.reg1.reg, mi.reg2.reg, REG_NULL, false/*jcc long*/,
+                            true/*check alignment*/);
 
     /* now addr of shadow byte is in reg1.
      * we want offs within shadow block in reg2: but storing displacement

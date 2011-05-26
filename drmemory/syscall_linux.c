@@ -811,9 +811,11 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
                 stack_base, stack_base + stack_size, newsp);
             ASSERT(stack_base + stack_size >= newsp,
                    "new thread's stack alloc messed up");
-            /* assume that above newsp should stay defined */
-            shadow_set_range(stack_base, newsp, SHADOW_UNADDRESSABLE);
-            check_stack_size_vs_threshold(drcontext, stack_size);
+            if (options.check_stack_bounds) {
+                /* assume that above newsp should stay defined */
+                shadow_set_range(stack_base, newsp, SHADOW_UNADDRESSABLE);
+                check_stack_size_vs_threshold(drcontext, stack_size);
+            }
         } else {
             LOG(0, "ERROR: cannot find bounds of new thread's stack "PFX"\n",
                 newsp);

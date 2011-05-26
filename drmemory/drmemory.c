@@ -869,8 +869,12 @@ set_thread_initial_structures(void *drcontext)
            stack_reserve + stack_reserve_sz ==
            ((byte *)teb->StackBase) + PAGE_SIZE/*guard page*/,
            "abnormal initial thread stack");
-    shadow_set_range(stack_reserve, (byte *)mc.xsp, SHADOW_UNADDRESSABLE);
-    set_initial_range((byte *)mc.xsp, (byte *)teb->StackBase);
+    if (options.check_stack_bounds) {
+        shadow_set_range(stack_reserve, (byte *)mc.xsp, SHADOW_UNADDRESSABLE);
+        set_initial_range((byte *)mc.xsp, (byte *)teb->StackBase);
+    } else {
+        set_initial_range((byte *)stack_reserve, (byte *)teb->StackBase);
+    }
 #else /* WINDOWS */
     /* Anything to do here?  most per-thread user address space structures
      * will be written by user-space code, which we will observe.
@@ -959,7 +963,10 @@ set_initial_structures(void *drcontext)
         LOG(1, "initial stack is "PFX"-"PFX", sp="PFX"\n",
             stack_base, stack_base + stack_size, mc.xsp);
         set_known_range(stack_base, (app_pc)mc.xsp);
-        set_initial_range((app_pc)mc.xsp, stack_base + stack_size);
+        if (options.check_stack_bounds)
+            set_initial_range((app_pc)mc.xsp, stack_base + stack_size);
+        else
+            set_initial_range(stack_base, stack_base + stack_size);
         /* rest is unaddressable by default, and memory walk skips known range */
     } else {
         ASSERT(false, "can't determine initial stack region");

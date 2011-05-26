@@ -1608,6 +1608,19 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
                    4, mc, shadow_vals);
 }
 
+static bool
+opnd_uses_nonignorable_memory(opnd_t opnd)
+{
+    /* XXX: we could track ebp and try to determine when not used as frame ptr */
+    return (opnd_is_memory_reference(opnd) &&
+            (options.check_stack_access ||
+             !opnd_is_base_disp(opnd) ||
+             (reg_to_pointer_sized(opnd_get_base(opnd)) != REG_XSP &&
+              reg_to_pointer_sized(opnd_get_base(opnd)) != REG_XBP) ||
+             opnd_get_index(opnd) != REG_NULL ||
+             opnd_is_far_memory_reference(opnd)));
+}
+
 /* Called by slow_path() after initial decode.  Expected to free inst. */
 bool
 slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
@@ -1635,9 +1648,9 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
 #endif
         } else
             opnd = instr_get_src(inst, i);
-        if (opnd_is_memory_reference(opnd)) {
+        if (opnd_uses_nonignorable_memory(opnd)) {
             opnd = adjust_memop(inst, opnd, false, &sz, &pushpop_stackop);
-            if (pushpop_stackop)
+            if (pushpop_stackop && options.check_stack_bounds)
                 flags = MEMREF_PUSHPOP;
             else
                 flags = MEMREF_CHECK_ADDRESSABLE;
@@ -1649,9 +1662,9 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
     num_dsts = num_true_dsts(inst, mc);
     for (i = 0; i < num_dsts; i++) {
         opnd = instr_get_dst(inst, i);
-        if (opnd_is_memory_reference(opnd)) {
+        if (opnd_uses_nonignorable_memory(opnd)) {
             opnd = adjust_memop(inst, opnd, true, &sz, &pushpop_stackop);
-            if (pushpop_stackop)
+            if (pushpop_stackop && options.check_stack_bounds)
                 flags = MEMREF_PUSHPOP | MEMREF_WRITE;
             else
                 flags = MEMREF_CHECK_ADDRESSABLE;
@@ -3270,7 +3283,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     uint i;
     app_pc pc;
     uint opc;
-    bool has_gpr, has_mem;
+    bool has_gpr, has_mem, has_noignorable_mem;
     bool check_ignore_unaddr = false, entering_alloc, exiting_alloc;
     bb_info_t bi;
     fastpath_info_t mi;
@@ -3439,10 +3452,15 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         /* if there are no gpr or mem operands, we can ignore it */
         has_gpr = false;
         has_mem = false;
+        has_noignorable_mem = false;
         for (i = 0; i < instr_num_dsts(inst); i++) {
             opnd_t opnd = instr_get_dst(inst, i);
             if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
                 has_mem = true;
+#ifdef TOOL_DR_MEMORY
+            if (opnd_uses_nonignorable_memory(opnd))
+                has_noignorable_mem = true;
+#endif
             if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) {
                 has_gpr = true;
                 /* written to => no longer known to be addressable,
@@ -3459,6 +3477,10 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
                 opnd_t opnd = instr_get_src(inst, i);
                 if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
                     has_mem = true;
+#ifdef TOOL_DR_MEMORY
+                if (opnd_uses_nonignorable_memory(opnd))
+                    has_noignorable_mem = true;
+#endif
                 if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd)))
                     has_gpr = true;
             }
@@ -3472,7 +3494,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
             continue;
 
         if (!options.leaks_only && options.shadowing &&
-            (options.check_uninitialized || has_mem)) {
+            (options.check_uninitialized || has_noignorable_mem)) {
             if (instr_ok_for_instrument_fastpath(inst, &mi, &bi)) {
                 instrument_fastpath(drcontext, bb, inst, &mi, check_ignore_unaddr);
                 added_instru = true;
@@ -3501,6 +3523,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
          * transparent.
          */
         if ((options.leaks_only || options.shadowing) &&
+            (options.check_uninitialized || options.check_stack_bounds) &&
             instr_writes_esp(inst)) {
             /* any new spill must be after the fastpath instru */
             bi.spill_after = instr_get_prev(inst);

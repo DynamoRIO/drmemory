@@ -923,7 +923,7 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
     dr_mcontext_t mc = {sizeof(mc),};
     byte *sp;
     client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    if (options.leaks_only || !options.shadowing)
+    if (options.leaks_only || !options.shadowing || !options.check_stack_bounds)
         return;
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.esp;
@@ -966,7 +966,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
-    if (options.leaks_only || !options.shadowing)
+    if (options.leaks_only || !options.shadowing || !options.check_stack_bounds)
         return;
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
@@ -1872,7 +1872,13 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
          * can't safely mark as addressable */
         return tls_ok;
     }
-    if (options.define_unknown_regions && !addr_in_heap && !addr_on_stack) {
+#else
+    if (is_loader_exception(loc, addr, sz)) {
+        return true;
+    }
+#endif
+    if (options.define_unknown_regions && !addr_in_heap &&
+        (!options.check_stack_bounds || !addr_on_stack)) {
         /* i#352 (and old PR 464106): handle memory allocated by other
          * processes by treating as fully defined, without any UNADDR.
          * This is Windows and there are cases where csrss allocates
@@ -1896,11 +1902,6 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
             return true;
         }
     }
-#else
-    if (is_loader_exception(loc, addr, sz)) {
-        return true;
-    }
-#endif
     else if (is_ok_unaddressable_pattern(write, loc, addr, sz)) {
         return true;
     }

@@ -301,6 +301,19 @@ options_init(const char *opstr)
 
     if ((options.snapshots & (~(options.snapshots-1))) != options.snapshots)
         usage_error("-snapshots must be power of 2", "");
+#else
+    if (options.check_uninitialized) {
+        if (options.check_stack_bounds)
+            usage_error("-check_stack_bounds only valid w/ -no_check_uninitialized", "");
+        if (options.check_stack_access)
+            usage_error("-check_stack_access only valid w/ -no_check_uninitialized", "");
+        if (options.check_alignment)
+            usage_error("-check_alignment only valid w/ -no_check_uninitialized", "");
+        /* but we do want these internally */
+        options.check_stack_bounds = true;
+        options.check_stack_access = true;
+        options.check_alignment = true;
+    }
 #endif
 }
 

@@ -2216,7 +2216,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
                         bool get_value, bool value_in_reg2, bool need_offs,
                         bool zero_rest_of_offs,
                         reg_id_t reg1, reg_id_t reg2, reg_id_t reg3,
-                        bool jcc_short_slowpath)
+                        bool jcc_short_slowpath, bool check_alignment)
 {
     /* Shadow memory table lookup:
      * 1) Shift to get 64K base
@@ -2240,7 +2240,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
     ASSERT(mi->memsz <= 4 || !need_offs, "unsupported fastpath memsz");
 #ifdef TOOL_DR_MEMORY
-    if (mi->memsz > 1) {
+    if (check_alignment && mi->memsz > 1) {
         /* if not aligned so all bytes are in same shadow byte, go to slowpath */
         /* saving space trumps sub-reg slowdown (for crafty at least: 33:20 vs 32:20)
          * so we just compare the bottom 8 bits
@@ -3668,11 +3668,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     if (mi->mem2mem || mi->load2x) {
         bool need_value = IF_DRMEM_ELSE(true, false);
+#ifdef TOOL_DR_MEMORY
         uint jcc_not_unaddr = OP_je;
+#endif
+        bool check_alignment = options.check_uninitialized;
         add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                 false/*val in reg1*/, false/*no offs*/, false/*no offs*/,
                                 mi->reg3.reg, mi->reg2.reg,
-                                mi->reg1.reg/*won't be touched!*/, true/*jcc short*/);
+                                mi->reg1.reg/*won't be touched!*/, true/*jcc short*/,
+                                check_alignment);
         ASSERT(mi->reg3_8 != REG_NULL && mi->reg3.used, "reg spill error");
 #ifdef TOOL_DR_MEMORY
         if (!options.check_uninitialized) {
@@ -3797,12 +3801,15 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
         /* PR 493257: share shadow translation across multiple instrs */
         if (!mi->use_shared) {
+            bool check_alignment =
+                /* for !uninit we still need alignment for push/pop stack writes */
+                options.check_uninitialized || mi->pushpop_stackop;
             add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                     true/*val in reg2*/,
                                     mi->need_offs || mi->need_nonoffs_reg3,
                                     mi->zero_rest_of_offs,
                                     mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
-                                    true/*jcc short*/);
+                                    true/*jcc short*/, check_alignment);
             /* For mi->need_offs, we assume that all uses of reg2 below are
              * low 8 bits only! 
              */
@@ -4239,7 +4246,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
     }
 
-    if (mi->pushpop && mi->load) { /* pop into a reg */
+    if (mi->pushpop && mi->load /* pop into a reg */ &&
+        (options.check_uninitialized || options.check_stack_bounds)) {
         /* reg1 still has our address and we have the src memop value in reg2,
          * so go ahead and write to the shadow table so we can trash reg2
          * FIXME: if do 2-byte pop, wouldn't mi->reg2_8 be clobbered and
@@ -4288,7 +4296,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(options.check_uninitialized || mi->num_to_propagate == 0,
            "only prop for uninits");
     if (mi->num_to_propagate == 0) {
-        if (options.check_uninitialized || (mi->pushpop && mi->store)) {
+        if (options.check_uninitialized ||
+            (options.check_stack_bounds && mi->pushpop && mi->store)) {
             mi->src[0].shadow = shadow_immed(mi->opsz, SHADOW_DEFINED);
             mi->src[0].offs = opnd_create_immed_int(0, OPSZ_1);
             add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
@@ -4411,7 +4420,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     add_shadow_table_lookup(drcontext, bb, inst, mi, false/*addr not value*/,
                             false, false/*!need_offs*/, false/*!zero_rest*/,
                             mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
-                            true/*jcc short*/);
+                            true/*jcc short*/, true/*check_alignment*/);
     ASSERT(mi->reg1_8 != REG_NULL && mi->reg1.used, "reg spill error");
     /* shadow lookup left reg1 holding address */
     if (!options.stale_blind_store) {
