@@ -1649,7 +1649,11 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
     } else if (stri_eq(modname, "user32.dll")) {
         sysnum_UserConnectToServer =
             sysnum_from_name(drcontext, info, "UserConnectToServer");
-        ASSERT(sysnum_UserConnectToServer != -1, "error finding alloc syscall #");
+        /* UserConnectToServer requires symbols, and is not present at
+         * all on XP and earlier (i#419), so we do not assert.
+         * i#388 covers ensuring we have symbols so we don't miss allocs
+         * from this call when it is present.
+         */
     }
 }
 #endif
