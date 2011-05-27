@@ -660,7 +660,7 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
         else
             size = pm.u1.Length;
         if (size > sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH) {
-            DO_ONCE({ WARN("WARNING: PORT_MESSAGE size larger than known max"); });
+            DO_ONCE({ WARN("WARNING: PORT_MESSAGE size larger than known max\n"); });
         }
         /* See above: I've seen 0x15c and 0x130.  Anything too large, though,
          * may indicate an error in our syscall param types, so we want a
@@ -920,7 +920,7 @@ static bool handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
         return false; /*nothing to do */
     for (i = 0; i < maxsz; i += sizeof(wchar_t)) {
         if (!safe_read(start + i, sizeof(c), &c)) {
-            WARN("WARNING: unable to read syscall param string");
+            WARN("WARNING: unable to read syscall param string\n");
             break;
         } else if (c == L'\0')
             break;
@@ -1042,7 +1042,7 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
         if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
                       sizeof(info.struct_size), &info.struct_size)) {
             if (info.struct_size > sizeof(info)) {
-                DO_ONCE({ WARN("WARNING: create_thread_info_t size too large"); });
+                DO_ONCE({ WARN("WARNING: create_thread_info_t size too large\n"); });
                 info.struct_size = sizeof(info);  /* avoid overflowing the struct */
             }
             if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
@@ -1212,49 +1212,193 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
     }
 }
 
-static bool
-handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
-                               dr_mcontext_t *mc)
-{
-    uint code = (uint) pt->sysarg[5];
-    byte *inbuf = (byte *) pt->sysarg[6];
-    uint insz = (uint) pt->sysarg[7];
-    if (inbuf == NULL)
-        return true;
-    /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
-     * the input buffer needs to be defined.
-     */
-    /* XXX i#378: should break down the output buffer as well since it
-     * may not all be written to.
-     */
-
-    /* shorter, easier-to-read code */
+/* Macros for shorter, easier-to-read code */
 #define CHECK_DEF(ptr, sz, id) \
     check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte*)ptr, sz, mc, id)
 #define CHECK_ADDR(ptr, sz, id) \
     check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, (byte*)ptr, sz, mc, id)
+#define MARK_WRITE(ptr, sz, id) \
+    check_sysmem(MEMREF_WRITE, sysnum, ptr, sz, mc, id)
 
-    /* This is redundant for those where entire buffer must be defined but
-     * most need subset defined.
-     */
-    CHECK_ADDR(inbuf, insz, "InputBuffer");
-
+static void handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt,
+                             dr_mcontext_t *mc)
+{
+    uint full_code = (uint) pt->sysarg[5];
+    byte *inbuf = (byte *) pt->sysarg[6];
+    uint insz = (uint) pt->sysarg[7];
     /* FIXME: put max of insz on all the sizes below */
 
-    /* extract operation from 0x12xxx and bottom 2 method bits */
-    code = (code & 0xfff) >> 2;
-    switch (code) {
-    case AFD_GET_INFO: { /* 30 == 0x1207b */
-        /* InputBuffer == AFD_INFO.  Only InformationClass need be defined. */
-        CHECK_DEF(inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
-                  "AFD_INFO.InformationClass");
-        /* XXX i#378: post-syscall we should only define the particular info
-         * fields written.  e.g., only AFD_INFO_GROUP_ID_TYPE uses the
-         * LargeInteger field and the rest will leave the extra dword there
-         * undefined.  Punting on that for now.
-         */
+    /* Extract operation from 0x12xxx and bottom 2 method bits */
+    uint opcode = (full_code & 0xfff) >> 2;
+
+    /* We have "8,-9,W" in the table so we only need to handle additional pointers
+     * here or cases where subsets of the full output buffer are written.
+     *
+     * XXX i#410: We treat asynch i/o as happening now rather than trying to
+     * watch NtWait* and tracking event objects, though we'll
+     * over-estimate the amount written in some cases.
+     */
+
+    bool pre_post_ioctl = true;
+    /* First check if the given opcode is one of those needing both pre- and
+     * post- handling in the first switch. We'll set the pre_post_ioctl to
+     * "false" in the default block to continue to the second switch.
+     */
+    switch (opcode) {
+    case AFD_RECV: { /* 5 == 0x12017 */
+        /* InputBuffer == AFD_RECV_INFO */
+        AFD_RECV_INFO info;
+        uint i;
+        if (pre)
+            CHECK_DEF(inbuf, insz, "AFD_RECV_INFO");
+
+        if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info)) {
+            WARN("WARNING: AFD_RECV: can't read param\n");
+            break;
+        }
+
+        if (pre) {
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_RECV_INFO.BufferArray");
+        }
+
+        for (i = 0; i < info.BufferCount; i++) {
+            AFD_WSABUF buf;
+            if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
+                if (pre)
+                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                else {
+                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO buf %d: "PFX"-"PFX"\n",
+                        i, buf.buf, buf.len);
+                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                }
+            } else
+                WARN("WARNING: AFD_RECV: can't read param\n");
+        }
         break;
     }
+    case AFD_RECV_DATAGRAM: { /* 6 ==  0x1201b */
+        /* InputBuffer == AFD_RECV_INFO_UDP */
+        AFD_RECV_INFO_UDP info;
+        uint i;
+        if (pre)
+            CHECK_DEF(inbuf, insz, "AFD_RECV_INFO_UDP");
+
+        if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info)) {
+            WARN("WARNING: AFD_RECV_DATAGRAM: can't read param\n");
+            break;
+        }
+
+        if (safe_read(info.AddressLength, sizeof(i), &i)) {
+            if (pre)
+                CHECK_ADDR((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
+            else {
+                check_sockaddr((byte*)info.Address, i, MEMREF_WRITE, mc, sysnum,
+                               "AFD_RECV_INFO_UDP.Address");
+            }
+        } else
+            WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength\n");
+
+        if (pre) {
+            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+                      "AFD_RECV_INFO_UDP.BufferArray");
+        }
+        for (i = 0; i < info.BufferCount; i++) {
+            AFD_WSABUF buf;
+            if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
+                if (pre)
+                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                else {
+                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO_UDP buf %d: "PFX"-"PFX"\n",
+                        i, buf.buf, buf.len);
+                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                }
+            } else
+                WARN("WARNING: AFD_RECV_DATAGRAM: can't read BufferArray\n");
+        }
+        break;
+    }
+    case AFD_SELECT: { /* 9 == 0x12024 */
+        AFD_POLL_INFO info;
+        uint i;
+        AFD_POLL_INFO *ptr = NULL;
+        if (pre) {
+            CHECK_DEF(inbuf, offsetof(AFD_POLL_INFO, Handles),
+                      "AFD_POLL_INFO pre-Handles");
+        }
+
+        if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info) ||
+            insz != offsetof(AFD_POLL_INFO, Handles) +
+            info.HandleCount * sizeof(AFD_HANDLE)) {
+            WARN("WARNING: unreadable or invalid AFD_POLL_INFO\n");
+            break;
+        }
+
+        ptr = (AFD_POLL_INFO *) inbuf;
+        for (i = 0; i < info.HandleCount; i++) {
+            /* I'm assuming Status is an output field */
+            if (pre ) {
+                CHECK_DEF(&ptr->Handles[i], offsetof(AFD_HANDLE, Status),
+                          "AFD_POLL_INFO.Handles[i]");
+            } else {
+              MARK_WRITE((byte*)&ptr->Handles[i].Status, sizeof(ptr->Handles[i].Status),
+                          "AFD_POLL_INFO.Handles[i].Status");
+            }
+        }
+        break;
+    }
+    case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
+        if (pre) {
+            /* I believe input is a uint of AFD_*_HANDLE flags */
+            CHECK_DEF(inbuf, insz, "AFD_GET_TDI_HANDLES flags");
+            /* as usual the write param will be auto-checked for addressabilty */
+        } else {
+            uint outsz = (uint) pt->sysarg[9];
+            AFD_TDI_HANDLE_DATA *info = (AFD_TDI_HANDLE_DATA *) pt->sysarg[8];
+            uint flags;
+            if (safe_read(inbuf, sizeof(flags), &flags) &&
+                outsz == sizeof(*info)) {
+                if (TEST(AFD_ADDRESS_HANDLE, flags)) {
+                    MARK_WRITE((byte*)&info->TdiAddressHandle,
+                               sizeof(info->TdiAddressHandle),
+                               "AFD_TDI_HANDLE_DATA.TdiAddressHandle");
+                }
+                if (TEST(AFD_CONNECTION_HANDLE, flags)) {
+                    MARK_WRITE((byte*)&info->TdiConnectionHandle,
+                               sizeof(info->TdiConnectionHandle),
+                               "AFD_TDI_HANDLE_DATA.TdiConnectionHandle");
+                }
+            } else
+                WARN("WARNING: unreadable AFD_GET_TDI_HANDLES flags or invalid outsz\n");
+        }
+        break;
+    }
+    case AFD_GET_INFO: { /* 30 == 0x1207b */
+        if (pre) {
+            /* InputBuffer == AFD_INFO.  Only InformationClass need be defined. */
+            CHECK_DEF(inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
+                      "AFD_INFO.InformationClass");
+        } else {
+            /* XXX i#378: post-syscall we should only define the particular info
+             * fields written.  e.g., only AFD_INFO_GROUP_ID_TYPE uses the
+             * LargeInteger field and the rest will leave the extra dword there
+             * undefined.  Punting on that for now.
+             */
+        }
+
+        break;
+    }
+    default: {
+        pre_post_ioctl = false;
+    }
+    }
+
+    if (pre_post_ioctl || !pre) {
+        return;
+    }
+
+    /* All the ioctls below need only pre- handling */
+    switch (opcode) {
     case AFD_SET_INFO: { /* 14 == 0x1203b */
         /* InputBuffer == AFD_INFO.  If not LARGE_INTEGER, 2nd word can be undef.
          * Padding also need not be defined.
@@ -1270,11 +1414,11 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                 break;
             default:
                 /* the other codes are only valid with AFD_GET_INFO */
-                WARN("WARNING: AFD_SET_INFO: unknown info code\n");
+                WARN("WARNING: AFD_SET_INFO: unknown info opcode\n");
                 break;
             }
         } else
-            WARN("WARNING: AFD_SET_INFO: cannot read info code\n");
+            WARN("WARNING: AFD_SET_INFO: cannot read info opcode\n");
         break;
     }
     case AFD_SET_CONTEXT: { /* 17 == 0x12047 */
@@ -1294,13 +1438,13 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                            sc.SharedData.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
                            mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
         } else {
-            WARN("WARNING: AFD_SET_CONTEXT: can't read param");
+            WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
         }
         helper_offs = offsetof(SOCKET_CONTEXT, LocalAddress) +
             sc.SharedData.SizeOfLocalAddress + sc.SharedData.SizeOfRemoteAddress;
         if (helper_offs + sc.SizeOfHelperData > insz) {
             /* Sanity check */
-            WARN("WARNING: AFD_SET_CONTEXT: param fields messed up");
+            WARN("WARNING: AFD_SET_CONTEXT: param fields messed up\n");
         } else {
             /* XXX: helper data could be a struct w/ padding.  I have seen pieces of
              * it be uninit on XP.  If see many false positives here should just
@@ -1353,48 +1497,6 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                   "AFD_DEFER_ACCEPT_DATA.RejectConnection");
         break;
     }
-    case AFD_RECV: { /* 5 ==  0x12017 */
-        /* InputBuffer == AFD_RECV_INFO */
-        AFD_RECV_INFO info;
-        CHECK_DEF(inbuf, insz, "AFD_RECV_INFO");
-        if (safe_read(inbuf, sizeof(info), &info)) {
-            uint i;
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
-                      "AFD_RECV_INFO.BufferArray");
-            for (i = 0; i < info.BufferCount; i++) {
-                AFD_WSABUF buf;
-                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
-                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
-                else
-                    WARN("WARNING: AFD_RECV: can't read param");
-            }
-        } else
-            WARN("WARNING: AFD_RECV: can't read param");
-        break;
-    }
-    case AFD_RECV_DATAGRAM: { /* 6 ==  0x1201b */
-        /* InputBuffer == AFD_RECV_INFO_UDP */
-        AFD_RECV_INFO_UDP info;
-        CHECK_DEF(inbuf, insz, "AFD_RECV_INFO_UDP");
-        if (safe_read(inbuf, sizeof(info), &info)) {
-            uint i;
-            if (safe_read(info.AddressLength, sizeof(i), &i))
-                CHECK_ADDR((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
-            else
-                WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength");
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
-                      "AFD_RECV_INFO_UDP.BufferArray");
-            for (i = 0; i < info.BufferCount; i++) {
-                AFD_WSABUF buf;
-                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
-                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
-                else
-                    WARN("WARNING: AFD_RECV_DATAGRAM: can't read BufferArray");
-            }
-        } else
-            WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
-        break;
-    }
     case AFD_SEND: { /* 7 == 0x1201f */
         /* InputBuffer == AFD_SEND_INFO */
         AFD_SEND_INFO info;
@@ -1408,10 +1510,10 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
                     CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO.BufferArray[i].buf");
                 else
-                    WARN("WARNING: AFD_SEND: can't read param");
+                    WARN("WARNING: AFD_SEND: can't read param\n");
             }
         } else
-            WARN("WARNING: AFD_SEND: can't read param");
+            WARN("WARNING: AFD_SEND: can't read param\n");
         break;
     }
     case AFD_SEND_DATAGRAM: { /* 8 == 0x12023 */
@@ -1433,10 +1535,10 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
                     CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO_UDP.BufferArray[i].buf");
                 else
-                    WARN("WARNING: AFD_SEND_DATAGRAM: can't read param");
+                    WARN("WARNING: AFD_SEND_DATAGRAM: can't read param\n");
             }
         } else
-            WARN("WARNING: AFD_SEND_DATAGRAM: can't read param");
+            WARN("WARNING: AFD_SEND_DATAGRAM: can't read param\n");
         CHECK_DEF(inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
                   sizeof(info.SizeOfRemoteAddress),
                   "AFD_SEND_INFO_UDP.SizeOfRemoteAddress");
@@ -1464,7 +1566,7 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
     case AFD_START_LISTEN: { /* 2 == 0x1200b */
         AFD_LISTEN_DATA *info = (AFD_LISTEN_DATA *) inbuf;
         if (insz != sizeof(AFD_LISTEN_DATA))
-            WARN("WARNING: invalid size for AFD_LISTEN_DATA");
+            WARN("WARNING: invalid size for AFD_LISTEN_DATA\n");
         /* Have to separate the Booleans since padding after */
         CHECK_DEF(inbuf, sizeof(info->UseSAN), "AFD_LISTEN_DATA.UseSAN");
         CHECK_DEF(&info->Backlog, sizeof(info->Backlog), "AFD_LISTEN_DATA.Backlog");
@@ -1476,149 +1578,77 @@ handle_pre_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
         CHECK_DEF(inbuf, insz, "AFD_ACCEPT_DATA");
         break;
     }
-    case AFD_SELECT: { /* 9 == 0x12024 */
-        AFD_POLL_INFO info;
-        CHECK_DEF(inbuf, offsetof(AFD_POLL_INFO, Handles), "AFD_POLL_INFO pre-Handles");
-        if (safe_read(inbuf, sizeof(info), &info) &&
-            insz == offsetof(AFD_POLL_INFO, Handles) +
-            info.HandleCount * sizeof(AFD_HANDLE)) {
-            uint i;
-            AFD_POLL_INFO *ptr = (AFD_POLL_INFO *) inbuf;
-            for (i = 0; i < info.HandleCount; i++) {
-                /* I'm assuming Status is an output field */
-                CHECK_DEF(&ptr->Handles[i], offsetof(AFD_HANDLE, Status),
-                          "AFD_POLL_INFO.Handles[i]");
-            }
-        } else
-            WARN("WARNING: unreadable or invalid AFD_POLL_INFO");
-        break;
-    }
-    case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
-        /* I believe input is a uint of AFD_*_HANDLE flags */
-        CHECK_DEF(inbuf, insz, "AFD_GET_TDI_HANDLES flags");
-        /* as usual the write param will be auto-checked for addressabilty */
-        break;
-    }
     default: {
         /* FIXME i#377: add more ioctl codes.
          * I've seen 0x120bf == operation # 47 called by
          * WS2_32.dll!setsockopt.  no uninits.  not sure what it is.
          */
-        WARN("WARNING: unknown ioctl "PIFX" => op %d\n", pt->sysarg[5], code);
+        WARN("WARNING: unknown AFD ioctl "PIFX" => op %d\n", full_code, opcode);
         /* XXX: should perhaps dump a callstack too at higher verbosity */
         /* assume full thing must be defined */ 
-        CHECK_DEF(inbuf, insz, "InputBuffer");
+        CHECK_DEF(inbuf, insz, "AFD InputBuffer");
         break;
     }
     }
-    return true;
-#undef CHECK_DEF
-#undef CHECK_ADDR
+
+    ASSERT(pre, "Sanity check - we should only process pre- ioctls at this point");
 }
 
-static void
-handle_post_DeviceIoControlFile(void *drcontext, int sysnum, per_thread_t *pt,
-                                dr_mcontext_t *mc)
+static bool
+handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                           dr_mcontext_t *mc)
 {
     uint code = (uint) pt->sysarg[5];
-    byte *inbuf = (byte *) pt->sysarg[6];
-    uint insz = (uint) pt->sysarg[7];
-    byte *outbuf = (byte *) pt->sysarg[8];
-    uint outsz = (uint) pt->sysarg[9];
-    if (!os_syscall_succeeded(sysnum, dr_syscall_get_result(drcontext)))
-        return;
-    /* shorter, easier-to-read code */
-#define MARK_WRITE(ptr, sz, id) \
-    check_sysmem(MEMREF_WRITE, sysnum, ptr, sz, mc, id)
-    /* We have "8,-9,W" in the table so we only need to handle additional pointers
-     * here or cases where subsets of the full output buffer are written.
-     *
-     * XXX i#410: We treat asynch i/o as happening now rather than trying to
-     * watch NtWait* and tracking event objects, though we'll
-     * over-estimate the amount written in some cases.
-     */
+    /* FIXME this is not foolproof: could be FILE_DEVICE_BEEP */
+    bool is_afd_ioctl = ((code >> 12) == 0x12);
 
-    /* extract operation from 0x12xxx and bottom 2 method bits */
-    code = (code & 0xfff) >> 2;
-    switch (code) {
-    case AFD_RECV: { /* 5 == 0x12017 */
-        /* InputBuffer == AFD_RECV_INFO */
-        AFD_RECV_INFO info;
-        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info)) {
-            uint i;
-            for (i = 0; i < info.BufferCount; i++) {
-                AFD_WSABUF buf;
-                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
-                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO buf %d: "PFX"-"PFX"\n",
-                        i, buf.buf, buf.len);
-                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
-                } else
-                    WARN("WARNING: AFD_RECV: can't read param");
-            }
-        } else
-            WARN("WARNING: AFD_RECV: can't read param");
-        break;
+    if (pre) {
+        byte *inbuf = (byte *) pt->sysarg[6];
+        uint insz = (uint) pt->sysarg[7];
+        if (inbuf == NULL)
+            return true;
+        /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
+         * the input buffer needs to be defined.
+         */
+        /* XXX i#378: should break down the output buffer as well since it
+         * may not all be written to.
+         */
+
+        if (is_afd_ioctl) {
+            /* This is redundant for those where entire buffer must be defined but
+             * most need subset defined.
+             */
+            CHECK_ADDR(inbuf, insz, "InputBuffer");
+        } else {
+            /* FIXME i#377: add more ioctl codes. */
+            WARN("WARNING: unknown ioctl "PIFX" => op %d\n",
+                 pt->sysarg[5], (code >> 2) & 0xfff);
+            /* XXX: should perhaps dump a callstack too at higher verbosity */
+            /* assume full thing must be defined */
+            CHECK_DEF(inbuf, insz, "InputBuffer");
+        }
+    } else {
+        /* We have "8,-9,W" in the table so we only need to handle additional pointers
+         * here or cases where subsets of the full output buffer are written.
+         *
+         * XXX i#410: We treat asynch i/o as happening now rather than trying to
+         * watch NtWait* and tracking event objects, though we'll
+         * over-estimate the amount written in some cases.
+         */
+        if (!os_syscall_succeeded(sysnum, dr_syscall_get_result(drcontext)))
+            return true;
     }
-    case AFD_RECV_DATAGRAM: { /* 6 ==  0x1201b */
-        /* InputBuffer == AFD_RECV_INFO_UDP */
-        AFD_RECV_INFO_UDP info;
-        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info)) {
-            uint i;
-            if (safe_read(info.AddressLength, sizeof(i), &i)) {
-                check_sockaddr((byte*)info.Address, i, MEMREF_WRITE, mc, sysnum,
-                               "AFD_RECV_INFO_UDP.Address");
-            } else
-                WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength");
-            for (i = 0; i < info.BufferCount; i++) {
-                AFD_WSABUF buf;
-                if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
-                    LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO_UDP buf %d: "PFX"-"PFX"\n",
-                        i, buf.buf, buf.len);
-                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
-                } else
-                    WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
-            }
-        } else
-            WARN("WARNING: AFD_RECV_DATAGRAM: can't read param");
-        break;
+
+    /* FIXME i#377: add more ioctl codes. */
+    if (is_afd_ioctl) {
+        handle_AFD_ioctl(pre, sysnum, pt, mc);
     }
-    case AFD_SELECT: { /* 9 == 0x12024 */
-        AFD_POLL_INFO info;
-        if (inbuf != NULL && safe_read(inbuf, sizeof(info), &info) &&
-            insz == offsetof(AFD_POLL_INFO, Handles) +
-            info.HandleCount * sizeof(AFD_HANDLE)) {
-            uint i;
-            AFD_POLL_INFO *ptr = (AFD_POLL_INFO *) inbuf;
-            for (i = 0; i < info.HandleCount; i++) {
-                /* I'm assuming Status is an output field */
-                MARK_WRITE((byte*)&ptr->Handles[i].Status, sizeof(ptr->Handles[i].Status),
-                          "AFD_POLL_INFO.Handles[i].Status");
-            }
-        } else
-            WARN("WARNING: unreadable or invalid AFD_POLL_INFO");
-        break;
-    }
-    case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
-        AFD_TDI_HANDLE_DATA *info = (AFD_TDI_HANDLE_DATA *) outbuf;
-        uint flags;
-        if (safe_read(inbuf, sizeof(flags), &flags) &&
-            outsz == sizeof(*info)) {
-            if (TEST(AFD_ADDRESS_HANDLE, flags)) {
-                MARK_WRITE((byte*)&info->TdiAddressHandle, sizeof(info->TdiAddressHandle),
-                           "AFD_TDI_HANDLE_DATA.TdiAddressHandle");
-            }
-            if (TEST(AFD_CONNECTION_HANDLE, flags)) {
-                MARK_WRITE((byte*)&info->TdiConnectionHandle,
-                           sizeof(info->TdiConnectionHandle),
-                           "AFD_TDI_HANDLE_DATA.TdiConnectionHandle");
-            }
-        } else
-            WARN("WARNING: unreadable AFD_GET_TDI_HANDLES flags or invalid outsz");
-        break;
-    }
-    }
-#undef MARK_WRITE
+    return true;
 }
+
+#undef CHECK_DEF
+#undef CHECK_ADDR
+#undef MARK_WRITE
 
 /***************************************************************************
  * SHADOW TOP-LEVEL ROUTINES
@@ -1636,7 +1666,7 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
     else if (sysnum == sysnum_CreateUserProcess)
         return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
-        return handle_pre_DeviceIoControlFile(drcontext, sysnum, pt, &mc);
+        return handle_DeviceIoControlFile(true/*pre*/, drcontext, sysnum, pt, &mc);
     else
         return true; /* execute syscall */
 }
@@ -1707,7 +1737,7 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
     else if (sysnum == sysnum_CreateUserProcess)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
-        handle_post_DeviceIoControlFile(drcontext, sysnum, pt, &mc);
+        handle_DeviceIoControlFile(false/*!pre*/, drcontext, sysnum, pt, &mc);
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 
