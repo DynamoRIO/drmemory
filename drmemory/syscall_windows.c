@@ -1424,35 +1424,76 @@ static void handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt,
     case AFD_SET_CONTEXT: { /* 17 == 0x12047 */
         /* InputBuffer == SOCKET_CONTEXT.  SOCKET_CONTEXT.Padding need not be defined,
          * and the helper data is var-len.
+         *
+         * Depending on the Windows version, the SOCKET_CONTEXT struct layout
+         * can be different (see i#375). We start with reading the first SOCK_SHARED_INFO
+         * field cause it contains the flags needed to identify the layout.
          */
-        SOCKET_CONTEXT sc;
-        size_t helper_offs;
-        CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT, Padding), "SOCKET_CONTEXT pre-Padding");
-        if (safe_read(inbuf, sizeof(sc), &sc)) {
-            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, LocalAddress),
-                           sc.SharedData.SizeOfLocalAddress, MEMREF_CHECK_DEFINEDNESS,
-                           mc, sysnum, "SOCKET_CONTEXT.LocalAddress");
-            /* I'm treating these SOCKADDRS as var-len */
-            check_sockaddr(inbuf + offsetof(SOCKET_CONTEXT, LocalAddress) +
-                           sc.SharedData.SizeOfLocalAddress,
-                           sc.SharedData.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
-                           mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
-        } else {
+        SOCK_SHARED_INFO sd;
+        size_t helper_size, helper_offs;
+        byte *l_addr_ptr = NULL, *r_addr_ptr = NULL;
+
+        ASSERT(offsetof(SOCKET_CONTEXT, SharedData) == 0,
+               "SOCKET_CONTEXT layout changed?");
+        ASSERT(offsetof(SOCKET_CONTEXT_NOGUID, SharedData) == 0,
+               "SOCKET_CONTEXT_NOGUID layout changed?");
+
+        CHECK_DEF(inbuf, sizeof(sd), "SOCKET_CONTEXT SharedData");
+        if (!safe_read(inbuf, sizeof(sd), &sd)) {
             WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
+            break;
         }
-        helper_offs = offsetof(SOCKET_CONTEXT, LocalAddress) +
-            sc.SharedData.SizeOfLocalAddress + sc.SharedData.SizeOfRemoteAddress;
-        if (helper_offs + sc.SizeOfHelperData > insz) {
-            /* Sanity check */
-            WARN("WARNING: AFD_SET_CONTEXT: param fields messed up\n");
+
+        /* Now that we know the exact layout we can re-read the SOCKET_CONTEXT */
+        if (sd.HasGUID) {
+            SOCKET_CONTEXT sc;
+            CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT, Padding),
+                      "SOCKET_CONTEXT pre-Padding");
+            if (!safe_read(inbuf, sizeof(sc), &sc)) {
+                WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
+                break;
+            }
+
+            /* I'm treating these SOCKADDRS as var-len */
+            l_addr_ptr = inbuf + sizeof(SOCKET_CONTEXT);
+            r_addr_ptr = inbuf + sizeof(SOCKET_CONTEXT) + sd.SizeOfLocalAddress;
+            helper_size = sc.SizeOfHelperData;
+            helper_offs = sizeof(SOCKET_CONTEXT) +
+                sd.SizeOfLocalAddress + sd.SizeOfRemoteAddress;
         } else {
-            /* XXX: helper data could be a struct w/ padding.  I have seen pieces of
-             * it be uninit on XP.  If see many false positives here should just
-             * disable this until understand its structure.
-             */
-            CHECK_DEF(inbuf + helper_offs, 
-                      sc.SizeOfHelperData, "SOCKET_CONTEXT.HelperData");
+            SOCKET_CONTEXT_NOGUID sc;
+            CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT_NOGUID, Padding),
+                      "SOCKET_CONTEXT pre-Padding");
+            if (!safe_read(inbuf, sizeof(sc), &sc)) {
+                WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
+                break;
+            }
+
+            /* I'm treating these SOCKADDRS as var-len */
+            l_addr_ptr = inbuf + sizeof(SOCKET_CONTEXT_NOGUID);
+            r_addr_ptr = inbuf + sizeof(SOCKET_CONTEXT_NOGUID) + sd.SizeOfLocalAddress;
+            helper_size = sc.SizeOfHelperData;
+            helper_offs = sizeof(SOCKET_CONTEXT_NOGUID) +
+                sd.SizeOfLocalAddress + sd.SizeOfRemoteAddress;
         }
+
+        if (helper_offs + helper_size != insz) {
+            WARN("WARNING AFD_SET_CONTEXT param fields messed up");
+            break;
+        }
+
+        check_sockaddr(l_addr_ptr, sd.SizeOfLocalAddress, MEMREF_CHECK_DEFINEDNESS,
+                       mc, sysnum, "SOCKET_CONTEXT.LocalAddress");
+        /* I'm treating these SOCKADDRS as var-len */
+        check_sockaddr(r_addr_ptr, sd.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
+                       mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
+
+        /* FIXME i#424: helper data could be a struct w/ padding. I have seen pieces of
+         * it be uninit on XP. Just ignore the definedness check if helper data
+         * is not trivial
+         */
+        if (helper_size <= 4)
+            CHECK_DEF(inbuf + helper_offs, helper_size, "SOCKET_CONTEXT.HelperData");
         break;
     }
     case AFD_BIND: { /* 0 == 0x12003 */

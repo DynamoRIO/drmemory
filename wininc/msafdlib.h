@@ -55,6 +55,8 @@ typedef struct _SOCK_SHARED_INFO {
         BOOLEAN                    SendShutdown:1;
         BOOLEAN                    UseDelayedAcceptance:1;
         BOOLEAN                    UseSAN:1;
+        /* timurrrr: based on XP 32-bit vs Win7 observations: i#375 */
+        BOOLEAN                    HasGUID:1;
     }; // Flags
     DWORD                        CreateFlags;
     DWORD                        CatalogEntryId;
@@ -73,13 +75,23 @@ typedef struct _SOCK_SHARED_INFO {
 } SOCK_SHARED_INFO, *PSOCK_SHARED_INFO;
 
 /* The blob of data we send to Kernel-Mode for safekeeping */
-typedef struct _SOCKET_CONTEXT {
+/* i#375 observations: on 5.1, SOCKET_CONTEXT doesn't contain GUID in the middle */
+typedef struct _SOCKET_CONTEXT_NOGUID {
     SOCK_SHARED_INFO SharedData;
-    GUID Guid; /* bruening: observed on XP and win7 (i#375) */
     ULONG SizeOfHelperData;
     ULONG Padding;
-    SOCKADDR LocalAddress; /* bruening: presumably var-len */
-    SOCKADDR RemoteAddress; /* bruening: presumably var-len */
+    /* Plus SOCKADDR LocalAddress;  presumably var-len */
+    /* Plus SOCKADDR RemoteAddress; presumably var-len */
+    /* Plus Helper Data */
+} SOCKET_CONTEXT_NOGUID, *PSOCKET_CONTEXT_NOGUID;
+
+typedef struct _SOCKET_CONTEXT {
+    SOCK_SHARED_INFO SharedData;
+    GUID Guid; /* bruening: observed on XP 64-bit and win7 (i#375) */
+    ULONG SizeOfHelperData;
+    ULONG Padding;
+    /* Plus SOCKADDR LocalAddress;  presumably var-len */
+    /* Plus SOCKADDR RemoteAddress; presumably var-len */
     /* Plus Helper Data */
 } SOCKET_CONTEXT, *PSOCKET_CONTEXT;
 
