@@ -179,8 +179,11 @@ OPTION_CLIENT(client, callstack_max_scan, uint, 2048, 0, 16384,
 #ifdef TOOL_DR_MEMORY
 OPTION_CLIENT_BOOL(client, check_leaks, true,
                    /* Requires -count_leaks and -track_heap */
-                   "Store leak callstacks",
-                   "Whether to store callstacks for each allocation in order to report them when leaks are detected.  If this option is disabled, the count of leaks will be shown, but leaks will not be listed individually in the results file.")
+                   "List details on memory leaks detected",
+                   "Whether to list details of each individual memory leak.  If this option is disabled and -count_leaks is enabled, leaks will still be detected, but only the count of leaks will be shown.")
+OPTION_CLIENT_BOOL(client, count_leaks, true,
+                   "Look for memory leaks",
+                   "Whether to detect memory leaks.  Whether details on each leak are shown is controlled by the -check_leaks option.  Disabling this option can reduce execution overhead as less information must be kept internally, while disabling -check_leaks will not affect execution overhead.")
 #endif /* TOOL_DR_MEMORY */
 
 #ifdef USE_DRSYMS
@@ -348,9 +351,6 @@ OPTION_CLIENT_BOOL(internal, track_allocs, true,
 OPTION_CLIENT_BOOL(internal, check_invalid_frees, true,
                    "Check for invalid frees",
                    "Check for invalid frees")
-OPTION_CLIENT_BOOL(internal, count_leaks, true,
-                   "Keep malloc callstacks and perform leak scan",
-                   "Keep malloc callstacks and perform leak scan")
 OPTION_CLIENT_BOOL(internal, track_heap, true,
                    "Track malloc and other library allocations",
                    "If false, "TOOLNAME" only tracks memory allocations at the system call level and does not delve into individual malloc units.  This is required to track leaks, even for system-call-only leaks.  Nowadays we use the heap info for other things, like thread stack identification (PR 418629), and don't really support turning this off.  Requires track_allocs.")

@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -146,7 +147,7 @@ OPTION_CLIENT(client, callstack_max_frames, uint, 150, 0, 4096,
               "How many call stack frames to record",
               "How many call stack frames to record for each allocation.  Any additional frames will be truncated, and any two call stacks with identical frames up to the maximum are considered identical.  A larger maximum will ensure that no call stack is truncated and that all unique call stacks remain separate, but can use more memory if many stacks are large.")
 
-/* Different descr from Dr. Memory */
+/* Different descr from Dr. Memory.  There is no separate -count_leaks here. */
 OPTION_CLIENT_BOOL(client, check_leaks, true,
                    "Cheak for leaks at exit and each nudge",
        "In addition to profiling heap usage, check for leaks.  This is done when the application exits and on each nudge.  Leaks found can be seen afterward with the -view_leaks option.")
