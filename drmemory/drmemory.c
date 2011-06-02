@@ -676,12 +676,14 @@ memory_walk(void)
                 LOG(2, "  Dr. Memory library memory ends @ "PFX", merged by kernel\n",
                     libdrmem_end);
                 pc_to_add = libdrmem_end;
+                type = SHADOW_DEFINED;
             } else if (info.base_pc >= syscall_auxlib_start() &&
                        info.base_pc < syscall_auxlib_end() &&
                        end > syscall_auxlib_end()) {
                 LOG(2, "  Dr. Memory aux library memory ends @ "PFX", merged by kernel\n",
                     syscall_auxlib_end());
                 pc_to_add = syscall_auxlib_end();
+                type = SHADOW_DEFINED;
             }
         } else if (dr_memory_is_dr_internal(info.base_pc)) {
             /* ignore DR memory: leave unaddressable */
@@ -691,10 +693,12 @@ memory_walk(void)
                 end > libdr_end) {
                 LOG(2, "  DR memory ends @ "PFX", merged by kernel\n", libdr_end);
                 pc_to_add = libdr_end;
+                type = SHADOW_DEFINED;
             } else if (info.base_pc >= libdr2_base && info.base_pc < libdr2_end &&
                 end > libdr2_end) {
                 LOG(2, "  DR2 memory ends @ "PFX", merged by kernel\n", libdr2_end);
                 pc_to_add = libdr2_end;
+                type = SHADOW_DEFINED;
             }
         } else if (info.type == DR_MEMTYPE_DATA) {
             if (end == cur_brk) {

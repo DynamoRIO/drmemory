@@ -2025,6 +2025,104 @@ add_jcc_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, uint jcc_opcod
     mi->need_slowpath = true;
 }
 
+/* Called right after inserting fastpath_restore and any reg
+ * restores needed.  If no reg restores needed, we can eliminate
+ * the extra jmp over the slowpath.
+ * May modify mi->need_slowpath and/or fastpath_restore.
+ */
+void
+add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
+                           fastpath_info_t *mi, instr_t *nextinstr,
+                           /* is there going to be ignore_unaddr code before
+                            * the slowpath?
+                            */
+                           bool ignore_unaddr_pre_slow,
+                           instr_t **fastpath_restore /*IN/OUT*/)
+{
+    instr_t *prev;
+    ASSERT(fastpath_restore != NULL, "invalid param");
+
+    if (!instr_can_use_shared_slowpath(inst)) {
+        /* need to reach over clean call.  we don't bother w/ optimizations
+         * in this case since rare.
+         */
+        PRE(bb, inst,
+            INSTR_CREATE_jmp(drcontext, opnd_create_instr(nextinstr)));
+        return;
+    }
+
+    prev = instr_get_prev(inst);
+    if (prev != NULL && prev == *fastpath_restore)
+        prev = instr_get_prev(prev);
+    if (prev != NULL && instr_get_opcode(prev) == OP_jz_short &&
+        opnd_is_instr(instr_get_target(prev)) &&
+        opnd_get_instr(instr_get_target(prev)) == mi->slowpath) {
+        /* instead of jz slow; jmp done; slow: <slow>; done:"
+         * change to "jnz done".
+         */
+        /* even better: if only using slowpath for real unaddr, change
+         * the whole slowpath transition sequence to an instr that
+         * faults:
+         *     80 39 00             cmp    (%ecx) $0
+         *  # (%edx) is shorter than 0x0 abs addr right?  esp in x64 mode?
+         *  # %edx had shr 16 so in lower 64KB => will crash
+         *     0f 45 xx             cmovnz %edx %ebx -> %ebx 
+         *     8b 1b                mov    (%ebx) -> %ebx 
+         */
+        instr_t *in;
+        bool slowpath_for_err_only = true;
+        if (!options.fault_to_slowpath ||
+            options.check_uninitialized || 
+            ignore_unaddr_pre_slow)
+            slowpath_for_err_only = false;
+        else {
+            for (in = instrlist_first(bb); in != NULL; in = instr_get_next(in)) {
+                if (in != prev &&
+                    instr_is_cti(in) && opnd_is_instr(instr_get_target(in)) &&
+                    opnd_get_instr(instr_get_target(in)) == mi->slowpath) {
+                    slowpath_for_err_only = false;
+                    break;
+                }
+            }
+        }
+        if (slowpath_for_err_only && whole_bb_spills_enabled()) {
+            /* we're ok not executing the reg restores first:
+             * for whole_bb_spills_enabled we can restore in
+             * fault handler
+             */
+            instrlist_remove(bb, prev);
+            instr_destroy(drcontext, prev);
+            prev = NULL;
+            ASSERT((mi->store && opnd_is_base_disp(mi->dst[0].shadow) &&
+                    opnd_get_base(mi->dst[0].shadow) == mi->reg1.reg) ||
+                   (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
+                    opnd_get_base(mi->src[0].shadow) == mi->reg1.reg),
+                   "assuming shadow addr is in reg1");
+            PRE(bb, inst, INSTR_CREATE_cmovcc
+                (drcontext, OP_cmovne, opnd_create_reg(mi->reg2.reg),
+                 opnd_create_reg(mi->reg1.reg)));
+            PREXL8M(bb, inst, INSTR_XL8
+                    (INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg2.reg),
+                                         OPND_CREATE_MEM32(mi->reg2.reg, 0)),
+                     instr_get_app_pc(inst)));
+            mi->need_slowpath = false;
+        } else {
+            instr_invert_cbr(prev);
+            instr_set_target(prev, opnd_create_instr(nextinstr));
+        }
+        for (in = instrlist_first(bb); in != NULL; in = instr_get_next(in)) {
+            if (instr_is_cti(in) && opnd_is_instr(instr_get_target(in)) &&
+                opnd_get_instr(instr_get_target(in)) == *fastpath_restore) {
+                instr_set_target(in, opnd_create_instr(nextinstr));
+            }
+        }
+        *fastpath_restore = nextinstr;
+    } else {
+        PRE(bb, inst,
+            INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(nextinstr)));
+    }
+}
+
 #ifdef TOOL_DR_MEMORY
 static void
 add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
@@ -3678,6 +3776,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                "once share for mem2mem or load2x must spill for lea");
     }
 
+#ifdef TOOL_DR_MEMORY
+    if (!options.check_uninitialized && check_ignore_unaddr && check_ignore_tls) {
+        mark_eflags_used(drcontext, bb, mi->bb);
+        PRE(bb, inst,
+            INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
+                             OPND_CREATE_INT8(0)));
+        PRE(bb, inst, INSTR_CREATE_jcc
+            (drcontext, OP_jne_short, opnd_create_instr(fastpath_restore)));
+        check_ignore_unaddr = false; /* can ignore from now on */
+    }
+#endif
+
     /* lea before any reg write (incl eflags eax) in case address calc uses that reg */
     if (mi->load || mi->store) {
         if (!mi->use_shared) { /* don't need lea if sharing trans */
@@ -4158,11 +4268,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext, mi->src[0].shadow,
                                  OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
-            /* XXX: eliminate jmp-to-slowpath and use fault via "cmove
-             * reg1 -> (reg2)".  "(reg2)" is shorter than 0x0 abs
-             * addr.  reg2 itself had shr16 so points to bottom 64KB
-             * so guaranteed to fault.
-             */
         } else if (options.loads_use_table && mi->memsz <= 4) {
             /* Check for unaddressability via table lookup */
             if (mi->memsz < 4 && mi->need_offs) {
@@ -4249,10 +4354,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, mi->dst[0].shadow,
                                      OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
-                /* XXX: change to fault via "cmove  reg1 -> (reg2)".  "(reg2)" is
-                 * shorter than 0x0 abs addr.  reg2 itself had shr16 so points to
-                 * bottom 64KB so guaranteed to fault.
-                 */
                 mark_eflags_used(drcontext, bb, mi->bb);
                 /* we only check for 1 unaddr shadow so only check if haven't already */
                 if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
@@ -4600,80 +4701,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif
     if (mi->need_slowpath) {
         bool ignore_unaddr_pre_slow =
-#ifdef TOOL_DR_MEMORY
-            (check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow));
-#else
-            false;
-#endif
-        if (instr_can_use_shared_slowpath(inst)) {
-            instr_t *prev = instr_get_prev(inst);
-            if (prev != NULL && prev == fastpath_restore)
-                prev = instr_get_prev(prev);
-            if (prev != NULL && instr_get_opcode(prev) == OP_jz_short &&
-                opnd_is_instr(instr_get_target(prev)) &&
-                opnd_get_instr(instr_get_target(prev)) == mi->slowpath) {
-                /* instead of jz slow; jmp done; slow: <slow>; done:"
-                 * change to "jnz done".
-                 */
-                /* even better: if only using slowpath for real unaddr, change
-                 * the whole slowpath transition sequence to an instr that
-                 * faults:
-                 *     80 39 00             cmp    (%ecx) $0
-                 *  # (%edx) is shorter than 0x0 abs addr right?  esp in x64 mode?
-                 *  # %edx had shr 16 so in lower 64KB => will crash
-                 *     0f 42 xx xx          cmove  %ecx -> (%edx)
-                 */
-                instr_t *in;
-                bool slowpath_for_err_only = true;
-                if (!options.fault_to_slowpath ||
-                    options.check_uninitialized || 
-                    ignore_unaddr_pre_slow)
-                    slowpath_for_err_only = false;
-                else {
-                    for (in = instrlist_first(bb); in != NULL; in = instr_get_next(in)) {
-                        if (in != prev &&
-                            instr_is_cti(in) && opnd_is_instr(instr_get_target(in)) &&
-                            opnd_get_instr(instr_get_target(in)) == mi->slowpath) {
-                            slowpath_for_err_only = false;
-                            break;
-                        }
-                    }
-                }
-                if (slowpath_for_err_only && whole_bb_spills_enabled()) {
-                    /* we're ok not executing the reg restores first:
-                     * for whole_bb_spills_enabled we can restore in
-                     * fault handler
-                     */
-                    instrlist_remove(bb, prev);
-                    instr_destroy(drcontext, prev);
-                    prev = NULL;
-                    ASSERT((mi->store && opnd_is_base_disp(mi->dst[0].shadow) &&
-                            opnd_get_base(mi->dst[0].shadow) == mi->reg1.reg) ||
-                           (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
-                            opnd_get_base(mi->src[0].shadow) == mi->reg1.reg),
-                           "assuming shadow addr is in reg1");
-                    PRE(bb, inst, INSTR_CREATE_cmovcc
-                        (drcontext, OP_cmovne, opnd_create_reg(mi->reg2.reg),
-                         opnd_create_reg(mi->reg1.reg)));
-                    PREXL8M(bb, inst, INSTR_XL8
-                            (INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg2.reg),
-                                                 OPND_CREATE_MEM32(mi->reg2.reg, 0)),
-                             instr_get_app_pc(inst)));
-                    mi->need_slowpath = false;
-                } else {
-                    instr_invert_cbr(prev);
-                    instr_set_target(prev, opnd_create_instr(nextinstr));
-                    fastpath_restore = nextinstr;
-                }
-            } else {
-                PRE(bb, inst,
-                    INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(nextinstr)));
-            }
-        } else {
-            /* need to reach over clean call */
-            PRE(bb, inst,
-                INSTR_CREATE_jmp(drcontext, opnd_create_instr(nextinstr)));
-        }
+            IF_DRMEM_ELSE((check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow)),
+                          false);
+        add_jmp_done_with_fastpath(drcontext, bb, inst, mi, nextinstr,
+                                   ignore_unaddr_pre_slow, &fastpath_restore);
 #ifdef TOOL_DR_MEMORY
         /* PR 578892: fastpath heap routine unaddr accesses */
         if (mi->need_slowpath) /* may have decided we don't need slowpath */

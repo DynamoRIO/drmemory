@@ -1647,6 +1647,7 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
             opnd = OPND_CREATE_MEM32(REG_ESP, 0);
 #else
             ASSERT(false, "sysenter has no sources");
+            opnd = opnd_create_null();
 #endif
         } else
             opnd = instr_get_src(inst, i);
