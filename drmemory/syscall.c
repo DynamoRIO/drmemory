@@ -754,9 +754,10 @@ event_pre_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     syscall_info_t *sysinfo;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     int i;
     bool res = true;
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
 
 #ifdef STATISTICS
@@ -817,7 +818,8 @@ static void
 event_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
 
     handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);

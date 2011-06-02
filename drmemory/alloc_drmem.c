@@ -924,11 +924,12 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 void
 client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
 {
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
     client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
     if (options.leaks_only || !options.shadowing || !options.check_stack_bounds)
         return;
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.esp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
@@ -1009,7 +1010,8 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
 void
 client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 {
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     if (options.leaks_only || !options.shadowing)
         return;
     dr_get_mcontext(drcontext, &mc);
@@ -1252,9 +1254,10 @@ at_signal_handler(void)
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *)mc.xsp;
     stop = sp + MAX_SIGNAL_FRAME_SIZE;

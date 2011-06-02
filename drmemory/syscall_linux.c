@@ -2408,7 +2408,8 @@ bool
 os_shared_pre_syscall(void *drcontext, int sysnum)
 {
     bool res = true;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     switch (sysnum) {
     case SYS_close: {
@@ -2450,7 +2451,8 @@ bool
 os_shadow_pre_syscall(void *drcontext, int sysnum)
 {
     bool res = true;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     switch (sysnum) {
     case SYS_clone: 
@@ -2593,7 +2595,8 @@ void
 os_shadow_post_syscall(void *drcontext, int sysnum)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     switch (sysnum) {
     case SYS__sysctl: {
         struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];

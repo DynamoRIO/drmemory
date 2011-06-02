@@ -805,11 +805,12 @@ static void
 set_thread_initial_structures(void *drcontext)
 {
 #ifdef WINDOWS
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *stack_reserve;
     size_t stack_reserve_sz;
     IF_DEBUG(bool ok;)
     TEB *teb = get_TEB();
+    mc.size = sizeof(mc);
     /* FIXME: we currently assume the whole TEB except the 64 tls slots are
      * defined, b/c we're not in early enough to watch the others.
      */
@@ -957,7 +958,8 @@ set_initial_structures(void *drcontext)
     /* We can't get app xsp at init time (i#117) so we call this on 1st bb 
      * For subsequent threads we do this when handling the clone syscall
      */
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     app_pc stack_base;
     size_t stack_size;
     dr_get_mcontext(drcontext, &mc);

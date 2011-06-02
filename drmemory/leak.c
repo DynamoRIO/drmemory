@@ -992,7 +992,7 @@ leak_scan_for_leaks(bool at_exit)
     pc_entry_t *e, *next_e;
     void **drcontexts = NULL;
     uint num_threads, i;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     reachability_data_t data;
 #ifdef DEBUG
     static bool called_at_exit;
@@ -1003,6 +1003,7 @@ leak_scan_for_leaks(bool at_exit)
     }
 #endif
     LOG(1, "checking leaks via reachability analysis\n");
+    mc.size = sizeof(mc);
 
     /* Strategy: First walk non-heap memory that is defined to find reachable
      * heap blocks.  (Ideally we would skip memory that has not been modified

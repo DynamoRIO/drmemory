@@ -4023,7 +4023,8 @@ alloc_hook(app_pc pc)
 #if defined(WINDOWS) || defined(DEBUG)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #endif
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
     if (options.track_heap && (is_alloc_routine(pc) || is_replace_routine(pc))) {
@@ -4156,10 +4157,11 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     if (is_replace_routine(expect)) {
         replace_realloc_size_pre(drcontext, &mc, inside);
@@ -4281,11 +4283,12 @@ handle_alloc_post(app_pc func, app_pc post_call)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
     bool adjusted = false;
+    mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     if (is_replace_routine(func)) {
         replace_realloc_size_post(drcontext, &mc);
@@ -4432,7 +4435,8 @@ handle_tailcall(app_pc callee, app_pc post_call)
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc retaddr = 0;
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
     if (pt->in_heap_routine > 0) {
         /* Store the target so we can process both this and the "outer"
          * alloc routine at the outer's post-call point (PR 418138).
@@ -4549,11 +4553,12 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
     app_pc post_call = NULL;
     app_pc target = NULL;
     uint opc = instr_get_opcode(inst);
-    dr_mcontext_t mc = {sizeof(mc),};
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     /* We use opnd_compute_address() to get any segment base included.
      * Since no registers are present, mc can just be empty.
      */
     memset(&mc, 0, sizeof(mc));
+    mc.size = sizeof(mc);
     ASSERT(options.track_heap, "requires track_heap");
     if (opc == OP_call_ind IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) {
         /* we're post-rebind: get current dynamic target and see if
@@ -4619,7 +4624,8 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
                 if (instr_get_opcode(in) == OP_add &&
                     opnd_is_immed_int(instr_get_src(in, 0))) {
                     int offs = opnd_get_immed_int(instr_get_src(in, 0));
-                    dr_mcontext_t mc = {sizeof(mc),};
+                    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+                    mc.size = sizeof(mc);
                     dr_get_mcontext(drcontext, &mc);
                     /* opnd_compute_address will get segment base and include the
                      * mc.ebx at bb start, and we add offs to get ebx at jmp*
