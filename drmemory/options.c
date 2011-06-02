@@ -302,6 +302,9 @@ options_init(const char *opstr)
     if ((options.snapshots & (~(options.snapshots-1))) != options.snapshots)
         usage_error("-snapshots must be power of 2", "");
 #else
+    if (!options.count_leaks) {
+        options.check_leaks_on_destroy = false;
+    }
     if (options.check_uninitialized) {
         if (options.check_stack_bounds)
             usage_error("-check_stack_bounds only valid w/ -no_check_uninitialized", "");

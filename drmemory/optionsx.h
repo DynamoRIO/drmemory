@@ -349,8 +349,8 @@ OPTION_CLIENT_BOOL(internal, check_invalid_frees, true,
                    "Check for invalid frees",
                    "Check for invalid frees")
 OPTION_CLIENT_BOOL(internal, count_leaks, true,
-                   "Perform leak scan",
-                   "Perform leak scan")
+                   "Keep malloc callstacks and perform leak scan",
+                   "Keep malloc callstacks and perform leak scan")
 OPTION_CLIENT_BOOL(internal, track_heap, true,
                    "Track malloc and other library allocations",
                    "If false, "TOOLNAME" only tracks memory allocations at the system call level and does not delve into individual malloc units.  This is required to track leaks, even for system-call-only leaks.  Nowadays we use the heap info for other things, like thread stack identification (PR 418629), and don't really support turning this off.  Requires track_allocs.")

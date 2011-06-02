@@ -290,7 +290,9 @@ client_malloc_data_free(void *data)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) data;
     uint count;
-    ASSERT(pcs != NULL, "malloc data must exist");
+    ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
+    if (pcs == NULL)
+        return;
     count = packed_callstack_free(pcs);
     ASSERT(count != 0, "refcount should not hit 0 in malloc_table");
     if (count == 1) {
@@ -318,6 +320,8 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
      */
     packed_callstack_t *pcs;
     packed_callstack_t *existing;
+    if (!options.count_leaks)
+        return NULL;
     if (existing_data != NULL)
         pcs = (packed_callstack_t *) existing_data;
     else {
@@ -1953,6 +1957,10 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool maybe_reachable, void *client_data)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) client_data;
+    if (!options.count_leaks) {
+        ASSERT(false, "shouldn't get here");
+        return;
+    }
     report_leak(true, start, end - start, indirect_bytes, pre_us, reachable,
                 maybe_reachable, SHADOW_UNKNOWN, pcs);
 }
