@@ -111,6 +111,7 @@ extern uint reg_spill_unused_in_bb;
 extern uint addressable_checks_elided;
 extern uint aflags_saved_at_top;
 extern uint num_faults;
+extern uint num_slowpath_faults;
 extern uint xl8_shared;
 extern uint xl8_not_shared_reg_conflict;
 extern uint xl8_not_shared_disp_too_big;
@@ -172,6 +173,9 @@ instr_can_use_shared_slowpath(instr_t *inst);
 void
 instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_info_t *mi);
 
+bool
+slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);
+
 /***************************************************************************
  * ISA UTILITY ROUTINES
  */
@@ -181,6 +185,8 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
 #define MOVS_4_OPCODE 0xa5
 #define LOOP_INSTR_OPCODE 0xe2
 #define LOOP_INSTR_LENGTH 2
+#define CMOVNZ_FIRST_OPCODE  0x0f
+#define CMOVNZ_SECOND_OPCODE 0x45
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

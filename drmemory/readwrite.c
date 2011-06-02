@@ -91,6 +91,7 @@ uint64 slowpath_szOther;
 uint next_stats_dump;
 
 uint num_faults;
+uint num_slowpath_faults;
 #endif
 
 #ifdef STATISTICS
@@ -1685,13 +1686,11 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
 /* Does everything in C code, except for handling non-push/pop writes to esp 
  */
 bool
-slow_path(app_pc pc, app_pc decode_pc)
+slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc)
 {
-    void *drcontext = dr_get_current_drcontext();
 #ifdef DEBUG
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #endif
-    dr_mcontext_t mc = {sizeof(mc),};
     instr_t inst;
     int opc;
 #ifdef TOOL_DR_MEMORY
@@ -1728,7 +1727,6 @@ slow_path(app_pc pc, app_pc decode_pc)
 
     pc_to_loc(&loc, pc);
 
-    dr_get_mcontext(drcontext, &mc);
     /* Locally-spilled and whole-bb-spilled (PR 489221) registers have
      * already been restored in shared_slowpath, so we can properly
      * emulate addresses referenced.  We can't restore whole-bb-spilled
@@ -1781,7 +1779,7 @@ slow_path(app_pc pc, app_pc decode_pc)
          (options.repstr_to_loop && *decode_pc == REP_PREFIX &&
           *(decode_pc + 1) == MOVS_4_OPCODE))) {
         /* see comments for this routine: common enough it's worth optimizing */
-        medium_path_movs4(&loc, &mc);
+        medium_path_movs4(&loc, mc);
         /* no sharing with string instrs so no need to call
          * slow_path_xl8_sharing
          */
@@ -1840,17 +1838,17 @@ slow_path(app_pc pc, app_pc decode_pc)
         if (instr_num_dsts(&inst) > 0 &&
             opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
             LOG(3, " | 0x%x",
-                shadow_get_byte(opnd_compute_address(instr_get_dst(&inst, 0), &mc)));
+                shadow_get_byte(opnd_compute_address(instr_get_dst(&inst, 0), mc)));
         }
         LOG(3, "\n");
     });
 
 #ifdef TOOL_DR_HEAPSTAT
-    return slow_path_for_staleness(drcontext, &mc, &inst, &loc);
+    return slow_path_for_staleness(drcontext, mc, &inst, &loc);
 
 #else
     if (!options.check_uninitialized)
-        return slow_path_without_uninitialized(drcontext, &mc, &inst, &loc, instr_sz);
+        return slow_path_without_uninitialized(drcontext, mc, &inst, &loc, instr_sz);
 
     LOG(4, "shadow registers prior to instr:\n");
     DOLOG(4, { print_shadow_registers(); });
@@ -1899,7 +1897,7 @@ slow_path(app_pc pc, app_pc decode_pc)
         shadow_vals[i] = SHADOW_DEFINED;
 
     num_srcs = (IF_WINDOWS_ELSE(opc == OP_sysenter, false)) ? 1 :
-        ((opc == OP_lea) ? 2 : num_true_srcs(&inst, &mc));
+        ((opc == OP_lea) ? 2 : num_true_srcs(&inst, mc));
  check_srcs:
     for (i = 0; i < num_srcs; i++) {
         bool regular_op = false;
@@ -1951,7 +1949,7 @@ slow_path(app_pc pc, app_pc decode_pc)
             }
             shift = shadow_val_source_shift(&inst, opc, i, sz);
             memop = opnd;
-            check_mem_opnd(opc, flags, &loc, opnd, sz, &mc,
+            check_mem_opnd(opc, flags, &loc, opnd, sz, mc,
                            /* do not combine srcs if checking after */
                            check_srcs_after ? &shadow_vals[i*sz] : &shadow_vals[shift]);
         } else if (opnd_is_reg(opnd)) {
@@ -1963,7 +1961,7 @@ slow_path(app_pc pc, app_pc decode_pc)
                     /* if result defined regardless, don't propagate (is
                      * equivalent to propagating SHADOW_DEFINED) or check */
                 } else if (check_definedness || always_check_definedness(&inst, i)) {
-                    check_register_defined(drcontext, reg, &loc, sz, &mc, &inst);
+                    check_register_defined(drcontext, reg, &loc, sz, mc, &inst);
                 } else {
                     /* See above: we only propagate when not checking */
                     integrate_register_shadow
@@ -1995,7 +1993,7 @@ slow_path(app_pc pc, app_pc decode_pc)
             /* if result defined regardless, don't propagate (is
              * equivalent to propagating SHADOW_DEFINED) or check */
         } else if (check_definedness) {
-            check_register_defined(drcontext, REG_EFLAGS, &loc, 1, &mc, &inst);
+            check_register_defined(drcontext, REG_EFLAGS, &loc, 1, mc, &inst);
         } else {
             /* See above: we only propagate when not checking */
             integrate_register_shadow
@@ -2030,7 +2028,7 @@ slow_path(app_pc pc, app_pc decode_pc)
         }
     }
 
-    num_dsts = num_true_dsts(&inst, &mc);
+    num_dsts = num_true_dsts(&inst, mc);
     for (i = 0; i < num_dsts; i++) {
         opnd = instr_get_dst(&inst, i);
         if (opnd_is_memory_reference(opnd)) {
@@ -2051,7 +2049,7 @@ slow_path(app_pc pc, app_pc decode_pc)
              * we arranged xchg/xadd to not need shifting; nothing else does either.
              */
             memop = opnd;
-            check_mem_opnd(opc, flags, &loc, opnd, sz, &mc, shadow_vals);
+            check_mem_opnd(opc, flags, &loc, opnd, sz, mc, shadow_vals);
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
             if (reg_is_gpr(reg)) {
@@ -2070,7 +2068,7 @@ slow_path(app_pc pc, app_pc decode_pc)
     instr_free(drcontext, &inst);
 
     /* call this last after freeing inst in case it does a synchronous flush */
-    slow_path_xl8_sharing(&loc, instr_sz, memop, &mc);
+    slow_path_xl8_sharing(&loc, instr_sz, memop, mc);
 
     DOLOG(4, {
         if (!options.single_arg_slowpath && pc == decode_pc/*else retpc not in tls3*/) {
@@ -2103,6 +2101,16 @@ slow_path(app_pc pc, app_pc decode_pc)
 
     return true;
 #endif /* !TOOL_DR_HEAPSTAT */
+}
+
+/* called from code cache */
+static bool
+slow_path(app_pc pc, app_pc decode_pc)
+{
+    void *drcontext = dr_get_current_drcontext();
+    dr_mcontext_t mc = {sizeof(mc),};
+    dr_get_mcontext(drcontext, &mc);
+    return slow_path_with_mc(drcontext, pc, decode_pc, &mc);
 }
 
 static app_pc

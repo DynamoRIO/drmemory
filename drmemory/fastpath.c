@@ -3011,17 +3011,18 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif /* TOOL_DR_MEMORY */
 
 #ifdef TOOL_DR_MEMORY
-/* PR 448701: handle fault on write to a special shadow block */
-static byte *
-compute_app_address_on_shadow_fault(void *drcontext, byte *target,
-                                    dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
-                                    byte *pc_post_fault, bb_saved_info_t *save)
+/* PR 448701: handle fault on write to a special shadow block.
+ * Restores mc to app values and returns a pointer to app instr,
+ * which caller must free.
+ */
+static instr_t *
+restore_mcontext_on_shadow_fault(void *drcontext, byte *target,
+                                 dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                                 byte *pc_post_fault, bb_saved_info_t *save)
 {
     app_pc pc;
-    app_pc addr;
-    instr_t inst, app_inst;
-    uint memopidx;
-    bool write;
+    instr_t inst;
+    instr_t *app_inst;
 #ifdef DEBUG
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #endif
@@ -3041,11 +3042,11 @@ compute_app_address_on_shadow_fault(void *drcontext, byte *target,
         LOG(3, "original app instr:\n");
         disassemble_with_info(drcontext, mc->pc, pt->f, true/*pc*/, true/*bytes*/);
     });
-    instr_init(drcontext, &app_inst);
+    app_inst = instr_create(drcontext);
     /* i#268: mc->pc might be in the middle of a hooked region so call
      * dr_app_pc_for_decoding()
      */
-    decode(drcontext, dr_app_pc_for_decoding(mc->pc), &app_inst);
+    decode(drcontext, dr_app_pc_for_decoding(mc->pc), app_inst);
     pc = pc_post_fault;
     instr_init(drcontext, &inst);
     while (true) {
@@ -3134,7 +3135,9 @@ compute_app_address_on_shadow_fault(void *drcontext, byte *target,
             pc = decode(drcontext, pc, &inst);
             ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
                    opnd_is_far_base_disp(instr_get_src(&inst, 0)), "unknown slow spill");
-        } else if (instr_is_cti(&inst)) {
+        } else if (instr_is_cti(&inst) ||
+                   /* for no uninits our cmovcc sequence has no cti before app instr */
+                   !options.check_uninitialized) {
             break;
         }
         instr_reset(drcontext, &inst);
@@ -3142,12 +3145,25 @@ compute_app_address_on_shadow_fault(void *drcontext, byte *target,
     instr_free(drcontext, &inst);
 
     /* Adjust (esp) => (esp-X).  Xref i#164/PR 214976 where DR should adjust for us. */
-    if (opc_is_push(instr_get_opcode(&app_inst))) {
-        mc->xsp -= adjust_memop_push_offs(&app_inst);
+    if (opc_is_push(instr_get_opcode(app_inst))) {
+        mc->xsp -= adjust_memop_push_offs(app_inst);
     }
+    return app_inst;
+}
 
+/* PR 448701: handle fault on write to a special shadow block */
+static byte *
+compute_app_address_on_shadow_fault(void *drcontext, byte *target,
+                                    dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                                    byte *pc_post_fault, bb_saved_info_t *save)
+{
+    app_pc addr;
+    uint memopidx;
+    bool write;
+    instr_t *app_inst = restore_mcontext_on_shadow_fault(drcontext, target, raw_mc,
+                                                         mc, pc_post_fault, save);
     for (memopidx = 0;
-         instr_compute_address_ex(&app_inst, mc, memopidx, &addr, &write);
+         instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
          memopidx++) {
         LOG(3, "considering emulated target %s "PFX" => shadow "PFX" vs fault "PFX"\n",
             write ? "write" : "read", addr, shadow_translation_addr(addr), target);
@@ -3156,7 +3172,7 @@ compute_app_address_on_shadow_fault(void *drcontext, byte *target,
     }
     ASSERT(shadow_translation_addr(addr) == target,
            "unable to compute original address on shadow fault");
-    instr_free(drcontext, &app_inst);
+    instr_destroy(drcontext, app_inst);
 
     return addr;
 }
@@ -3245,6 +3261,93 @@ handle_special_shadow_fault(void *drcontext, byte *target,
 
     instr_free(drcontext, &fault_inst);
 }
+
+/* For !options.check_uninitialized we use a fault instead of explicit
+ * slowpath jump.
+ */
+static bool
+handle_slowpath_fault(void *drcontext, byte *target,
+                      dr_mcontext_t *raw_mc, dr_mcontext_t *mc, void *tag)
+{
+    app_pc pc;
+    app_pc addr;
+    uint memopidx;
+    instr_t fault_inst;
+    instr_t *app_inst;
+    bool write;
+    opnd_t faultop;
+    bb_saved_info_t *save;
+    reg_id_t safe_dst;
+#ifdef DEBUG
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+#endif
+    byte buf[2];
+
+    /* quick check: must be preceded by cmovz == 0f 44 xx */
+    if (options.check_uninitialized ||
+        !options.fault_to_slowpath ||
+        !options.shadowing ||
+        !whole_bb_spills_enabled() ||
+        !safe_read(raw_mc->pc-3, BUFFER_SIZE_BYTES(buf), buf) ||
+        buf[0] != CMOVNZ_FIRST_OPCODE ||
+        buf[1] != CMOVNZ_SECOND_OPCODE)
+        return false;
+
+    LOG(2, "write fault slowpath @"PFX"\n", target);
+    STATS_INC(num_slowpath_faults);
+#ifdef TOOL_DR_HEAPSTAT
+    ASSERT(false, "should not get here");
+#endif
+
+    instr_init(drcontext, &fault_inst);
+    pc = decode(drcontext, raw_mc->pc, &fault_inst);
+    if (instr_get_opcode(&fault_inst) != OP_mov_ld) {
+        instr_free(drcontext, &fault_inst);
+        return false;
+    }
+
+    faultop = instr_get_src(&fault_inst, 0);
+    ASSERT(opnd_is_base_disp(faultop) && opnd_get_index(faultop) == REG_NULL &&
+           opnd_is_reg(instr_get_dst(&fault_inst, 0)), "emulation error");
+    ASSERT(opnd_compute_address(faultop, raw_mc) == target, "emulation error");
+
+    hashtable_lock(&bb_table);
+    save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
+    app_inst = restore_mcontext_on_shadow_fault(drcontext, target, raw_mc,
+                                                mc, pc, save);
+    for (memopidx = 0;
+         instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
+         memopidx++) {
+        LOG(3, "considering emulated target %s "PFX" vs fault "PFX"\n",
+            write ? "write" : "read", addr, target);
+        /* target should be a read of bottom bits from shadow xl8 */
+        if (!write && (((ptr_uint_t)addr) >> 16) == (ptr_uint_t)target)
+            break;
+    }
+    instr_destroy(drcontext, app_inst);
+    if (save->scratch1 == opnd_get_base(faultop))
+        safe_dst = save->scratch2;
+    else {
+        ASSERT(save->scratch2 == opnd_get_base(faultop), "invalid bb regs");
+        safe_dst = save->scratch1;
+    }
+    hashtable_unlock(&bb_table);
+
+    slow_path_with_mc(drcontext, mc->pc, dr_app_pc_for_decoding(mc->pc), mc);
+
+    /* now prepare to resume by ensuring faulting instr will not fault */
+    reg_set_value(opnd_get_base(faultop), raw_mc, reg_get_value(safe_dst, raw_mc));
+    DOLOG(3, {
+        LOG(3, "changed base reg in ");
+        opnd_disassemble(drcontext, faultop, pt->f);
+        LOG(3, " to ");
+        opnd_disassemble(drcontext, opnd_create_reg(safe_dst), pt->f);
+        LOG(3, " == "PFX"\n", reg_get_value(safe_dst, raw_mc));
+    });
+
+    instr_free(drcontext, &fault_inst);
+    return true;
+}
 #endif /* TOOL_DR_MEMORY */
 
 /* PR 448701: we fault if we write to a special block */
@@ -3274,6 +3377,9 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
              * write for sub-dword.
              */
             return DR_SIGNAL_SUPPRESS;
+        } else if (handle_slowpath_fault(drcontext, target, info->raw_mcontext,
+                                         info->mcontext, info->fault_fragment_info.tag)) {
+            return DR_SIGNAL_SUPPRESS;
         }
     }
 # endif
@@ -3299,6 +3405,10 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
              * to a new bb at the app instr we must change our two-part shadow
              * write for sub-dword.
              */
+            return false;
+        } else if (handle_slowpath_fault(drcontext, target, excpt->raw_mcontext,
+                                         excpt->mcontext,
+                                         excpt->fault_fragment_info.tag)) {
             return false;
         }
     }
@@ -4485,20 +4595,72 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 #endif
     if (mi->need_slowpath) {
-        bool shared = instr_can_use_shared_slowpath(inst);
-        if (shared) {
+        bool ignore_unaddr_pre_slow =
+#ifdef TOOL_DR_MEMORY
+            (check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow));
+#else
+            false;
+#endif
+        if (instr_can_use_shared_slowpath(inst)) {
             instr_t *prev = instr_get_prev(inst);
             if (prev != NULL && prev == fastpath_restore)
                 prev = instr_get_prev(prev);
             if (prev != NULL && instr_get_opcode(prev) == OP_jz_short &&
                 opnd_is_instr(instr_get_target(prev)) &&
                 opnd_get_instr(instr_get_target(prev)) == mi->slowpath) {
-                /* instead of jz short; jmp done; short: <short>; done:"
+                /* instead of jz slow; jmp done; slow: <slow>; done:"
                  * change to "jnz done".
                  */
-                instr_invert_cbr(prev);
-                instr_set_target(prev, opnd_create_instr(nextinstr));
-                fastpath_restore = nextinstr;
+                /* even better: if only using slowpath for real unaddr, change
+                 * the whole slowpath transition sequence to an instr that
+                 * faults:
+                 *     80 39 00             cmp    (%ecx) $0
+                 *  # (%edx) is shorter than 0x0 abs addr right?  esp in x64 mode?
+                 *  # %edx had shr 16 so in lower 64KB => will crash
+                 *     0f 42 xx xx          cmove  %ecx -> (%edx)
+                 */
+                instr_t *in;
+                bool slowpath_for_err_only = true;
+                if (!options.fault_to_slowpath ||
+                    options.check_uninitialized || 
+                    ignore_unaddr_pre_slow)
+                    slowpath_for_err_only = false;
+                else {
+                    for (in = instrlist_first(bb); in != NULL; in = instr_get_next(in)) {
+                        if (in != prev &&
+                            instr_is_cti(in) && opnd_is_instr(instr_get_target(in)) &&
+                            opnd_get_instr(instr_get_target(in)) == mi->slowpath) {
+                            slowpath_for_err_only = false;
+                            break;
+                        }
+                    }
+                }
+                if (slowpath_for_err_only && whole_bb_spills_enabled()) {
+                    /* we're ok not executing the reg restores first:
+                     * for whole_bb_spills_enabled we can restore in
+                     * fault handler
+                     */
+                    instrlist_remove(bb, prev);
+                    instr_destroy(drcontext, prev);
+                    prev = NULL;
+                    ASSERT((mi->store && opnd_is_base_disp(mi->dst[0].shadow) &&
+                            opnd_get_base(mi->dst[0].shadow) == mi->reg1.reg) ||
+                           (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
+                            opnd_get_base(mi->src[0].shadow) == mi->reg1.reg),
+                           "assuming shadow addr is in reg1");
+                    PRE(bb, inst, INSTR_CREATE_cmovcc
+                        (drcontext, OP_cmovne, opnd_create_reg(mi->reg2.reg),
+                         opnd_create_reg(mi->reg1.reg)));
+                    PREXL8M(bb, inst, INSTR_XL8
+                            (INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg2.reg),
+                                                 OPND_CREATE_MEM32(mi->reg2.reg, 0)),
+                             instr_get_app_pc(inst)));
+                    mi->need_slowpath = false;
+                } else {
+                    instr_invert_cbr(prev);
+                    instr_set_target(prev, opnd_create_instr(nextinstr));
+                    fastpath_restore = nextinstr;
+                }
             } else {
                 PRE(bb, inst,
                     INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(nextinstr)));
@@ -4510,8 +4672,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
 #ifdef TOOL_DR_MEMORY
         /* PR 578892: fastpath heap routine unaddr accesses */
-        PRE(bb, inst, heap_unaddr);
-        if (check_ignore_unaddr && !opnd_is_null(heap_unaddr_shadow)) {
+        if (mi->need_slowpath) /* may have decided we don't need slowpath */
+            PRE(bb, inst, heap_unaddr);
+        if (ignore_unaddr_pre_slow) {
             if (check_ignore_tls) {
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext, opnd_create_shadow_inheap_slot(),
@@ -4547,8 +4710,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
         }
 #endif
+    }
+    /* check again b/c no-uninits may have removed regular slowpath */
+    if (mi->need_slowpath) {
         PRE(bb, inst, mi->slowpath);
-        if (!shared) {
+        if (!instr_can_use_shared_slowpath(inst)) {
             /* must restore now */
             if (mi->aflags != EFLAGS_WRITE_6) {
                 if (mi->aflags != EFLAGS_WRITE_OF) {

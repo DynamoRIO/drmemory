@@ -183,6 +183,8 @@ dump_statistics(void)
                num_special_unaddressable, num_special_undefined, num_special_defined);
     dr_fprintf(f_global, "faults writing to special shadow blocks: %6u\n",
                num_faults);
+    dr_fprintf(f_global, "faults to transition to slowpath: %6u\n",
+               num_slowpath_faults);
     dr_fprintf(f_global, "app mallocs: %8u, frees: %8u, large mallocs: %6u\n",
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);

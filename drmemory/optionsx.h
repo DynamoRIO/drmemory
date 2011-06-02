@@ -290,6 +290,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_stack_access, false,
 OPTION_CLIENT_BOOL(drmemscope, check_alignment, false,
                    "For -no_check_uninitialized, whether to consider alignment",
                    "Only applies for -no_check_uninitialized.  Determines whether to incur additional overhead in order to handle memory accesses that are not aligned to their size.  With this option off, the tool may miss bounds overflows that involve unaligned memory references.")
+OPTION_CLIENT_BOOL(drmemscope, fault_to_slowpath, true,
+                   "For -no_check_uninitialized, use faults to exit to slowpath",
+                   "Only applies for -no_check_uninitialized.  Determines whether to use faulting instructions rather than explicit jump-and-link to exit from fastpath to slowpath.")
 
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",
