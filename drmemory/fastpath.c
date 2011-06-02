@@ -2062,12 +2062,14 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         /* even better: if only using slowpath for real unaddr, change
          * the whole slowpath transition sequence to an instr that
-         * faults:
+         * faults.  originally I tried using cmovcc, but a jne over
+         * the fault ends up being shorter and faster.
          *     80 39 00             cmp    (%ecx) $0
-         *  # (%edx) is shorter than 0x0 abs addr right?  esp in x64 mode?
+         *     75 02                jnz    skip_fault
+         *  # (%edx) is shorter than 0x0 abs addr.
          *  # %edx had shr 16 so in lower 64KB => will crash
-         *     0f 45 xx             cmovnz %edx %ebx -> %ebx 
          *     8b 1b                mov    (%ebx) -> %ebx 
+         *  skip_fault:
          */
         instr_t *in;
         bool slowpath_for_err_only = true;
@@ -2090,6 +2092,7 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * for whole_bb_spills_enabled we can restore in
              * fault handler
              */
+            instr_t *skip_fault = INSTR_CREATE_label(drcontext);
             instrlist_remove(bb, prev);
             instr_destroy(drcontext, prev);
             prev = NULL;
@@ -2098,13 +2101,14 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                    (mi->load && opnd_is_base_disp(mi->src[0].shadow) &&
                     opnd_get_base(mi->src[0].shadow) == mi->reg1.reg),
                    "assuming shadow addr is in reg1");
-            PRE(bb, inst, INSTR_CREATE_cmovcc
-                (drcontext, OP_cmovne, opnd_create_reg(mi->reg2.reg),
-                 opnd_create_reg(mi->reg1.reg)));
+            /* N.B.: handle_slowpath_fault() checks for this exact sequence */
+            PRE(bb, inst, INSTR_CREATE_jcc
+                (drcontext, OP_jne_short, opnd_create_instr(skip_fault)));
             PREXL8M(bb, inst, INSTR_XL8
                     (INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg2.reg),
                                          OPND_CREATE_MEM32(mi->reg2.reg, 0)),
                      instr_get_app_pc(inst)));
+            PRE(bb, inst, skip_fault);
             mi->need_slowpath = false;
         } else {
             instr_invert_cbr(prev);
@@ -3381,14 +3385,14 @@ handle_slowpath_fault(void *drcontext, byte *target,
 #endif
     byte buf[2];
 
-    /* quick check: must be preceded by cmovz == 0f 44 xx */
+    /* quick check: must be preceded by jnz over load == 75 02 */
     if (options.check_uninitialized ||
         !options.fault_to_slowpath ||
         !options.shadowing ||
         !whole_bb_spills_enabled() ||
-        !safe_read(raw_mc->pc-3, BUFFER_SIZE_BYTES(buf), buf) ||
-        buf[0] != CMOVNZ_FIRST_OPCODE ||
-        buf[1] != CMOVNZ_SECOND_OPCODE)
+        !safe_read(raw_mc->pc - JNZ_SHORT_LENGTH, BUFFER_SIZE_BYTES(buf), buf) ||
+        buf[0] != JNZ_SHORT_OPCODE ||
+        buf[1] != LOAD_TO_XBX_LENGTH)
         return false;
 
     LOG(2, "write fault slowpath @"PFX"\n", target);

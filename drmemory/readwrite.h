@@ -185,8 +185,9 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 #define MOVS_4_OPCODE 0xa5
 #define LOOP_INSTR_OPCODE 0xe2
 #define LOOP_INSTR_LENGTH 2
-#define CMOVNZ_FIRST_OPCODE  0x0f
-#define CMOVNZ_SECOND_OPCODE 0x45
+#define JNZ_SHORT_OPCODE    0x75
+#define JNZ_SHORT_LENGTH    2
+#define LOAD_TO_XBX_LENGTH  2
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)
