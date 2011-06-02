@@ -69,11 +69,18 @@ endforeach ()
 ##################################################
 # ensure the two files with expected results exist
 
-file(READ "${outpat}" outmatch)
 if (TOOL_DR_HEAPSTAT)
   # different file to match against
   string(REGEX REPLACE "\\.res" ".heapstat.res" respat "${respat}")
+  # different .out file is optional
+  string(REGEX REPLACE "\\.out" ".heapstat.out" newoutpat "${outpat}")
+  if (EXISTS "${newoutpat}")
+    set(outpat "${newoutpat}")
+  endif ()
 endif (TOOL_DR_HEAPSTAT)
+
+file(READ "${outpat}" outmatch)
+
 if (EXISTS "${respat}")
   file(READ "${respat}" resmatch)
   set(patterns outmatch resmatch)

@@ -896,7 +896,10 @@ report_summary_to_file(file_t f, bool stderr_too)
                                 " for details)"NL);
                 }
             }
-        } else if (i != ERROR_INVALID_HEAP_ARG || options.check_invalid_frees) {
+        } else if (((i != ERROR_UNADDRESSABLE && i != ERROR_UNDEFINED) ||
+                    !options.leaks_only) &&
+                   (i != ERROR_INVALID_HEAP_ARG || options.check_invalid_frees) &&
+                   (i != ERROR_UNDEFINED || options.check_uninitialized)) {
             NOTIFY_COND(notify, f, "  %5d unique, %5d total %s"NL,
                         num_unique[i], num_total[i], error_name[i]);
         }

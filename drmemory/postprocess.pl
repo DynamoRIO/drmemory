@@ -163,6 +163,12 @@ $post_suppressed_leaks_default = 0;
 $post_suppressed_leaks_user = 0;
 $leaks_only = 0; # right now this also means Dr. Heapstat
 
+# what error types to report
+$report_unaddr = 0;
+$report_uninit = 0;
+$report_invalid = 0;
+$report_leaks = 0;
+
 if (!GetOptions("p=s" => \$prefix,
                 "x=s" => \$exename,
                 "l=s" => \$logdir,
@@ -193,6 +199,8 @@ die $usage unless ($logdir ne "");
 die $usage unless ($exename ne "" || $aggregate);
 if ($leaks_only) {
     $default_prefix = ":::Dr.Heapstat::: ";
+    # no summary in global log so we must add
+    $report_leaks = 1;
 }
 
 ($module,$baselogdir,$suffix) = fileparse($logdir);
@@ -576,6 +584,11 @@ sub process_all_errors()
             $found_summary_start = 1;
             $client_leak_summary = ""; # reset so we don't accumulate
         } elsif ($found_summary_start) {
+            # don't summarize categories that were disabled
+            $report_unaddr = 1 if (/total unaddr/);
+            $report_uninit = 1 if (/total uninit/);
+            $report_invalid = 1 if (/total invalid/);
+            $report_leaks = 1 if (/of leak/);
             # If leaks are not separate errors we need to echo the client summary
             if (/^\s*(\d+) total.*leak/ || /^\s*\(re-run/) {
                 $client_leak_summary .= $_;
@@ -1071,15 +1084,20 @@ sub print_summary($fh, $reset, $summary_only)
     print $fh $pfx."ERRORS FOUND:\n";
     foreach $type (@err_type_keys) {
         if ($type =~ /LEAK/) {
-            if (($type ne 'LEAK' || !$no_leak_info) &&
-                ($type ne 'POSSIBLE LEAK' || !$no_possible_leak_info)) {
-                printf $fh "%s  %5d unique, %5d total, %6d byte(s) of %s\n",
-                           $pfx, $error_summary{$type}{"unique"},
-                           $error_summary{$type}{"total"} +
-                           $error_summary{$type}{"extra_client"},
-                           $error_summary{$type}{"bytes"}, $err_types{$type};
+            if ($report_leaks) {
+                if (($type ne 'LEAK' || !$no_leak_info) &&
+                    ($type ne 'POSSIBLE LEAK' || !$no_possible_leak_info)) {
+                    printf $fh "%s  %5d unique, %5d total, %6d byte(s) of %s\n",
+                               $pfx, $error_summary{$type}{"unique"},
+                               $error_summary{$type}{"total"} +
+                               $error_summary{$type}{"extra_client"},
+                               $error_summary{$type}{"bytes"}, $err_types{$type};
+                }
             }
-        } elsif (!$leaks_only) {
+        } elsif (!$leaks_only &&
+                 ($type !~ /UNADDR/ || $report_unaddr) &&
+                 ($type !~ /UNINIT/ || $report_uninit) &&
+                 ($type !~ /INVALID/ || $report_invalid)) {
             printf $fh "%s  %5d unique, %5d total %s\n",
                        $pfx, $error_summary{$type}{"unique"},
                        $error_summary{$type}{"total"} +

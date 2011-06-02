@@ -32,7 +32,9 @@ HeapFree failed 87
 all done
 :::Dr.Memory::: ERRORS FOUND:
 %if WINDOWS
+# we have an extra test for invalid heap params
 :::Dr.Memory:::       2 unique,     2 total invalid heap argument(s)
+# we get a warning about heap alloc failing from HeapReAlloc(,NULL,)
 :::Dr.Memory:::       1 unique,     1 total warning(s)
 %endif
 %if UNIX
