@@ -31,7 +31,7 @@
 #include "utils.h"
 #include "callstack.h"
 
-/* All mallocs we've seen align to 8 */
+/* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8
 
 typedef struct _alloc_options_t {

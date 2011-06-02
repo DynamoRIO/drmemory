@@ -1482,6 +1482,15 @@ malloc_entry_free(void *v)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
+/* Mallocs are aligned to 8 so drop the bottom 3 bits */
+static uint
+malloc_hash(void *v)
+{
+    uint hash = (uint)(ptr_uint_t) v;
+    ASSERT(MALLOC_CHUNK_ALIGNMENT == 8, "update hash func please");
+    return (hash >> 3);
+}
+
 /* If track_allocs is false, only callbacks and callback returns are tracked.
  * Else: if track_heap is false, only syscall allocs are tracked;
  *       else, syscall allocs and mallocs are tracked.
@@ -1520,7 +1529,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     if (options.track_allocs) {
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
-                          NULL, NULL);
+                          malloc_hash, NULL);
         large_malloc_tree = rb_tree_create(NULL);
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
