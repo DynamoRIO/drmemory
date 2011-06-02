@@ -267,7 +267,9 @@ typedef enum {
 } esp_adjust_t;
 
 /* PR 447537: adjust_esp's shared fast and slow paths */
-static byte *shared_esp_slowpath;
+static byte *shared_esp_slowpath_shadow;
+static byte *shared_esp_slowpath_zero;
+/* variable shared fastpath is only for shadow: none for zero */
 static byte *shared_esp_fastpath[2][ESP_ADJUST_FAST_LAST+1];
 
 static esp_adjust_t
@@ -301,7 +303,8 @@ get_esp_adjust_type(uint opc)
  * esp is guaranteed to hold app value, though.
  */
 static void
-handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolute*/)
+handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolute*/,
+                  bool shadow_xsp/*else, zero*/)
 {
     ptr_int_t delta = (ptr_int_t) val;
     void *drcontext = dr_get_current_drcontext();
@@ -343,7 +346,7 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
         LOG(3, "esp adjust relative esp="PFX" delta=%d\n", mc.esp, delta);
     }
     if (delta != 0) {
-        if (!SHADOW_STACK_POINTER()) {
+        if (!shadow_xsp) {
             if (delta < 0) {
                 /* zero out newly allocated stack space to avoid stale
                  * pointers from misleading our leak scan (PR 520916).
@@ -359,8 +362,20 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     }
 }
 
+static void
+handle_esp_adjust_shadow(esp_adjust_t type, reg_t val)
+{
+    handle_esp_adjust(type, val, true);
+}
+
+static void
+handle_esp_adjust_zero(esp_adjust_t type, reg_t val)
+{
+    handle_esp_adjust(type, val, false);
+}
+
 static int
-esp_spill_slot_base(void)
+esp_spill_slot_base(bool shadow_xsp/*else, zero*/)
 {
     /* for whole-bb, we can end up using 1-3 for whole-bb and 4-5 for
      * the required ecx+edx for these shared routines
@@ -371,7 +386,7 @@ esp_spill_slot_base(void)
      */
     if (whole_bb_spills_enabled())
         return SPILL_SLOT_6;
-    else if (!SHADOW_STACK_POINTER()) {
+    else if (!shadow_xsp) {
         /* we don't have shared_esp_fastpath, and instrument slowpath only
          * uses slots 1 and 2
          */
@@ -384,12 +399,13 @@ esp_spill_slot_base(void)
  * esp is guaranteed to hold app value, though.
  */
 static void
-handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*/)
+handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*/,
+                                  bool shadow_xsp/*else, zero*/)
 {
     /* Rather than force gen code to pass another arg we derive the type */
     esp_adjust_t type;
     /* Get the return address from this slowpath call */
-    app_pc pc = (app_pc) get_own_tls_value(esp_spill_slot_base());
+    app_pc pc = (app_pc) get_own_tls_value(esp_spill_slot_base(shadow_xsp));
     instr_t inst;
     void *drcontext = dr_get_current_drcontext();
 
@@ -406,9 +422,9 @@ handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*
                 type = get_esp_adjust_type(OP_ret);
             else {
                 type = get_esp_adjust_type(instr_get_opcode(&inst));
-                ASSERT(needs_esp_adjust(&inst), "found wrong esp-using instr");
+                ASSERT(needs_esp_adjust(&inst, shadow_xsp), "found wrong esp-using instr");
             }
-            handle_esp_adjust(type, val);
+            handle_esp_adjust(type, val, shadow_xsp);
             break;
         }
         if (instr_is_cti(&inst)) {
@@ -421,8 +437,21 @@ handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*
     /* paranoid: if didn't find the esp-adjust instr just skip the adjust call */
 }
 
-app_pc
-generate_shared_esp_slowpath(void *drcontext, instrlist_t *ilist, app_pc pc)
+static void
+handle_esp_adjust_shared_slowpath_shadow(reg_t val)
+{
+    handle_esp_adjust_shared_slowpath(val, true);
+}
+
+static void
+handle_esp_adjust_shared_slowpath_zero(reg_t val)
+{
+    handle_esp_adjust_shared_slowpath(val, false);
+}
+
+static app_pc
+generate_shared_esp_slowpath_helper(void *drcontext, instrlist_t *ilist, app_pc pc,
+                                    bool shadow_xsp/*else, zero*/)
 {
     /* PR 447537: adjust_esp's shared_slowpath.
      * On entry:
@@ -430,26 +459,35 @@ generate_shared_esp_slowpath(void *drcontext, instrlist_t *ilist, app_pc pc)
      *   - edx holds the return address
      * Need retaddr in persistent storage: slot5 is guaranteed free.
      */
-    PRE(ilist, NULL,
-        INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()),
+    PRE(ilist, NULL, INSTR_CREATE_mov_st
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(shadow_xsp)),
          opnd_create_reg(REG_EDX)));
     dr_insert_clean_call(drcontext, ilist, NULL,
-                         (void *) handle_esp_adjust_shared_slowpath, false, 1,
+                         (void *)
+                         (shadow_xsp ? handle_esp_adjust_shared_slowpath_shadow :
+                          handle_esp_adjust_shared_slowpath_zero), false, 1,
                          opnd_create_reg(REG_ECX));
-    PRE(ilist, NULL,
-        INSTR_CREATE_jmp_ind(drcontext,
-                             spill_slot_opnd(drcontext, esp_spill_slot_base())));
+    PRE(ilist, NULL, INSTR_CREATE_jmp_ind
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(shadow_xsp))));
 
-    shared_esp_slowpath = pc;
     pc = instrlist_encode(drcontext, ilist, pc, false);
     instrlist_clear(drcontext, ilist);
     return pc;
 }
 
+app_pc
+generate_shared_esp_slowpath(void *drcontext, instrlist_t *ilist, app_pc pc)
+{
+    shared_esp_slowpath_shadow = pc;
+    pc = generate_shared_esp_slowpath_helper(drcontext, ilist, pc, true);
+    shared_esp_slowpath_zero = pc;
+    pc = generate_shared_esp_slowpath_helper(drcontext, ilist, pc, false);
+    return pc;
+}
+
 /* assumes that inst does write to esp */
 bool
-needs_esp_adjust(instr_t *inst)
+needs_esp_adjust(instr_t *inst, bool shadow_xsp/*else, zero*/)
 {
     /* implicit esp changes (e.g., push and pop) are handled during
      * the read/write: this is for explicit esp changes.
@@ -468,7 +506,7 @@ needs_esp_adjust(instr_t *inst)
      * technically OP_leave doesn't have to shrink it: we assume it does
      * (just checking leaks: not huge risk)
      */
-    if (!SHADOW_STACK_POINTER() &&
+    if (!shadow_xsp &&
         (opc == OP_inc || opc == OP_ret || opc == OP_leave ||
          (opc == OP_add && opnd_is_immed_int(instr_get_src(inst, 0)) &&
           opnd_get_immed_int(instr_get_src(inst, 0)) >= 0) ||
@@ -495,7 +533,7 @@ needs_esp_adjust(instr_t *inst)
  */
 static bool
 instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
-                               bb_info_t *bi)
+                               bb_info_t *bi, bool shadow_xsp/*else, zero*/)
 {
     /* implicit esp changes (e.g., push and pop) are handled during
      * the read/write: this is for explicit esp changes
@@ -504,7 +542,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     opnd_t arg;
     esp_adjust_t type;
     
-    if (!needs_esp_adjust(inst))
+    if (!needs_esp_adjust(inst, shadow_xsp))
         return false;
 
     /* Call handle_esp_adjust */
@@ -628,14 +666,17 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         PRE(bb, inst,
             INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_EDX),
                                 opnd_create_instr(retaddr)));
-        PRE(bb, inst,
-            INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_esp_slowpath)));
+        PRE(bb, inst, INSTR_CREATE_jmp
+            (drcontext, opnd_create_pc(shadow_xsp ? shared_esp_slowpath_shadow :
+                                       shared_esp_slowpath_zero)));
         PRE(bb, inst, retaddr);
         insert_spill_or_restore(drcontext, bb, inst, &si2, false/*restore*/, false);
         insert_spill_or_restore(drcontext, bb, inst, &si1, false/*restore*/, false);
     } else {
-        dr_insert_clean_call(drcontext, bb, inst, (void *) handle_esp_adjust, false, 2, 
-                             OPND_CREATE_INT32(type), arg);
+        dr_insert_clean_call(drcontext, bb, inst,
+                             (void *) (shadow_xsp ? handle_esp_adjust_shadow :
+                                       handle_esp_adjust_zero),
+                             false, 2, OPND_CREATE_INT32(type), arg);
     }
     return true;
 }
@@ -655,7 +696,7 @@ handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
     byte *nxt_pc;
     instr_t inst, app_inst;
     byte *pc = raw_mc->pc;
-    ASSERT(options.leaks_only, "only used for -leaks_only");
+    ASSERT(ZERO_STACK(), "incorrectly called");
 
     instr_init(drcontext, &app_inst);
     decode(drcontext, mc->pc, &app_inst);
@@ -789,7 +830,7 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
  */
 static bool
 instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
-                               bb_info_t *bi)
+                               bb_info_t *bi, bool shadow_xsp/*else, zero*/)
 {
     /* implicit esp changes (e.g., push and pop) are handled during
      * the read/write: this is for explicit esp changes
@@ -803,7 +844,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     esp_adjust_t type = get_esp_adjust_type(opc);
     reg_id_t reg_mod;
     
-    if (!needs_esp_adjust(inst))
+    if (!needs_esp_adjust(inst, shadow_xsp))
         return false;
 
     arg = instr_get_src(inst, 0); /* 1st src for nearly all cases */
@@ -831,14 +872,14 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else if (opc == OP_and && opnd_is_immed_int(arg)) {
         absolute = true;
     } else {
-        return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi);
+        return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi, shadow_xsp);
     }
 
     memset(&mi, 0, sizeof(mi));
     mi.bb = bi;
 
     /* set up regs and spill info */
-    if (!SHADOW_STACK_POINTER()) {
+    if (!shadow_xsp) {
         pick_scratch_regs(inst, &mi, false/*anything*/, false/*2 args only*/,
                           false/*3rd must be ecx*/, arg, opnd_create_null());
         reg_mod = mi.reg2.reg;
@@ -869,7 +910,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             mark_eflags_used(drcontext, bb, bi);
     }
     eflags_live = (!whole_bb_spills_enabled() && mi.aflags != EFLAGS_WRITE_6);
-    if (SHADOW_STACK_POINTER()) {
+    if (shadow_xsp) {
         ASSERT(!eflags_live || mi.reg3.slot != SPILL_SLOT_EFLAGS_EAX,
                "shared_esp_fastpath slot error");
     }
@@ -888,7 +929,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 
     mark_scratch_reg_used(drcontext, bb, bi, &mi.reg1);
-    if (SHADOW_STACK_POINTER())
+    if (shadow_xsp)
         mark_scratch_reg_used(drcontext, bb, bi, &mi.reg2);
 
     /* get arg first in case it uses another reg we're going to clobber */
@@ -918,7 +959,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, true/*save*/, false);
-    if (!SHADOW_STACK_POINTER()) {
+    if (!shadow_xsp) {
         insert_zeroing_loop(drcontext, bb, inst, bi, &mi, reg_mod, type,
                             retaddr, eflags_live);
     } else {
@@ -1003,11 +1044,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* save the 2 args for retrieval at end */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()+1),
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1),
          opnd_create_reg(REG_ECX))); /* holds delta or abs val */
     PRE(bb, NULL,
         INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()),
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)),
          opnd_create_reg(REG_EDX))); /* holds retaddr */
 
     if (eflags_live)
@@ -1017,7 +1058,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
      * to do some local spills below anyway so same amount of mem traffic
      */
     PRE(bb, NULL, INSTR_CREATE_mov_st
-        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base()+2),
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2),
          opnd_create_reg(REG_EAX)));
     
     /* the initial address to look up in the shadow table is cur esp */
@@ -1269,7 +1310,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(mi.reg2.reg),
-             spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+             spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
         PRE(bb, NULL,
             INSTR_CREATE_sub(drcontext, opnd_create_reg(mi.reg2.reg),
                              opnd_create_reg(mi.reg1.reg)));
@@ -1280,7 +1321,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         PRE(bb, NULL,
             INSTR_CREATE_add
             (drcontext, opnd_create_reg(mi.reg1.reg),
-             spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+             spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
     }
     PRE(bb, NULL, INSTR_CREATE_shl(drcontext, opnd_create_reg(mi.reg3.reg),
                                    OPND_CREATE_INT8(2)));
@@ -1456,14 +1497,14 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(REG_ECX),
-             spill_slot_opnd(drcontext, esp_spill_slot_base()+1)));
+             spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
         /* we use tailcall to avoid two indirect jumps, at cost of extra eflags
          * restore: shared_slowpath will ret to our caller 
          */
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(REG_EDX),
-             spill_slot_opnd(drcontext, esp_spill_slot_base())));
+             spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/))));
         if (type == ESP_ADJUST_NEGATIVE) {
             /* slowpath does its own negation */
             PRE(bb, NULL, INSTR_CREATE_neg(drcontext, opnd_create_reg(REG_ECX)));
@@ -1471,26 +1512,27 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
         /* since not returning here, must restore flags */
         PRE(bb, NULL, INSTR_CREATE_mov_ld
             (drcontext, opnd_create_reg(REG_EAX),
-             spill_slot_opnd(drcontext, esp_spill_slot_base()+2)));
+             spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2)));
         if (eflags_live)
             insert_restore_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
         PRE(bb, NULL,
-            INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_esp_slowpath)));
+            INSTR_CREATE_jmp(drcontext, opnd_create_pc(shared_esp_slowpath_shadow)));
     } else {
         dr_insert_clean_call(drcontext, bb, NULL,
-                             (void *) handle_esp_adjust_shared_slowpath, false, 1,
-                             spill_slot_opnd(drcontext, esp_spill_slot_base()+1));
+                             (void *) handle_esp_adjust_shared_slowpath_shadow,
+                             false, 1,
+                             spill_slot_opnd
+                             (drcontext, esp_spill_slot_base(true/*shadow*/)+1));
     }
 
     PRE(bb, NULL, restore);
     PRE(bb, NULL, INSTR_CREATE_mov_ld
         (drcontext, opnd_create_reg(REG_EAX),
-         spill_slot_opnd(drcontext, esp_spill_slot_base()+2)));
+         spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2)));
     if (eflags_live)
         insert_restore_aflags(drcontext, bb, NULL, &mi.eax, mi.aflags);
-    PRE(bb, NULL,
-        INSTR_CREATE_jmp_ind(drcontext,
-                             spill_slot_opnd(drcontext, esp_spill_slot_base())));
+    PRE(bb, NULL, INSTR_CREATE_jmp_ind
+        (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/))));
 }
 
 app_pc
@@ -1576,11 +1618,12 @@ esp_fastpath_update_swap_threshold(void *drcontext, int new_threshold)
  * Returns whether instrumented
  */
 bool
-instrument_esp_adjust(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
+instrument_esp_adjust(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi,
+                      bool shadow_xsp/*else, zero*/)
 {
     if (options.esp_fastpath)
-        return instrument_esp_adjust_fastpath(drcontext, bb, inst, bi);
+        return instrument_esp_adjust_fastpath(drcontext, bb, inst, bi, shadow_xsp);
     else
-        return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi);
+        return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi, shadow_xsp);
 }
 

@@ -1254,10 +1254,11 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
             }
         }
 
-        if (options.check_leaks && instr_writes_esp(inst)) {
+        if (ZERO_STACK() && instr_writes_esp(inst)) {
             /* any new spill must be after the alloc instru */
             bi.spill_after = instr_get_prev(inst);
-            instrument_esp_adjust(drcontext, bb, inst, &bi);
+            /* we zero for leaks, and staleness does not care about xsp */
+            instrument_esp_adjust(drcontext, bb, inst, &bi, false/*zero not shadow*/);
             added_instru = true;
         }
 

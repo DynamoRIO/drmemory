@@ -443,3 +443,7 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
                    "Disable debug CRT checks",
                    "Disable debug CRT checks")
 #endif
+
+OPTION_CLIENT_BOOL(internal, zero_stack, true,
+                   "When detecting leaks but not keeping definedness info, zero old stack frames",
+                   "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values")

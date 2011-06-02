@@ -3364,10 +3364,12 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
          */
         LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
             info->raw_mcontext->xip, info->mcontext->xip, target);
-        if (options.leaks_only) {
-            if (handle_zeroing_fault(drcontext, target, info->raw_mcontext,
-                                     info->mcontext))
-                return DR_SIGNAL_SUPPRESS;
+        if (ZERO_STACK() &&
+            handle_zeroing_fault(drcontext, target, info->raw_mcontext,
+                                 info->mcontext)) {
+            return DR_SIGNAL_SUPPRESS;
+        } else if (options.leaks_only) {
+            return DR_SIGNAL_DELIVER;
         } else if (is_in_special_shadow_block(target)) {
             ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
             handle_special_shadow_fault(drcontext, target, info->raw_mcontext,
@@ -3392,11 +3394,13 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
 # ifdef TOOL_DR_MEMORY
     if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
-        if (options.leaks_only &&
-            excpt->record->ExceptionInformation[0] == 1 /* write */) {
-            if (handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
-                                     excpt->mcontext))
-                return false;
+        if (ZERO_STACK() &&
+            excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+            handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                 excpt->mcontext)) {
+            return false;
+        } else if (options.leaks_only) {
+            return true;
         } else if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
                    is_in_special_shadow_block(target)) {
             handle_special_shadow_fault(drcontext, target, excpt->raw_mcontext,

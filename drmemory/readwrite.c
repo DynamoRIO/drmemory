@@ -3533,13 +3533,21 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
          * transparent.
          */
         if ((options.leaks_only || options.shadowing) &&
-            (options.check_uninitialized || options.check_stack_bounds) &&
             instr_writes_esp(inst)) {
-            /* any new spill must be after the fastpath instru */
-            bi.spill_after = instr_get_prev(inst);
-            if (instrument_esp_adjust(drcontext, bb, inst, &bi)) {
-                /* instru clobbered reg1 so no sharing across it */
-                bi.shared_memop = opnd_create_null();
+            bool shadow_xsp = !options.leaks_only &&
+                (options.check_uninitialized || options.check_stack_bounds);
+            bool zero_stack = ZERO_STACK();
+            if (shadow_xsp || zero_stack) {
+                /* any new spill must be after the fastpath instru */
+                bi.spill_after = instr_get_prev(inst);
+                if (instrument_esp_adjust(drcontext, bb, inst, &bi, shadow_xsp)) {
+                    /* instru clobbered reg1 so no sharing across it */
+                    bi.shared_memop = opnd_create_null();
+                }
+                if (shadow_xsp && zero_stack) {
+                    /* w/o definedness info we need to zero as well to find leaks */
+                    instrument_esp_adjust(drcontext, bb, inst, &bi, false/*zero*/);
+                }
             }
             added_instru = true;
         }

@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -46,10 +47,11 @@ void
 usage_error(const char *msg, const char *submsg);
 
 #ifdef TOOL_DR_MEMORY
-# define SHADOW_STACK_POINTER() (!options.leaks_only)
+# define ZERO_STACK() (options.zero_stack && options.count_leaks &&\
+                       (options.leaks_only || !options.check_uninitialized))
 #else
 /* we zero for leaks, and staleness does not care about xsp */
-# define SHADOW_STACK_POINTER() (false)
+# define ZERO_STACK() (options.zero_stack && options.check_leaks)
 #endif
 
 #endif /* _OPTIONS_H_ */
