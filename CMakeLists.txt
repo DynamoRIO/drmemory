@@ -1048,6 +1048,8 @@ if (UNIX)
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)")
     # Include both .debug files.  These have version #s so we glob.
     install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)\nendforeach()")
+    # ext dir is currently empty but we need it to avoid drrun error (i#427)
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/debug\")")
   else (DEBUG_BUILD)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release\")")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
@@ -1056,6 +1058,8 @@ if (UNIX)
     # Note that addr2line/gdb will still find the 1.x.debug since the name is
     # stored in the library.
     install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)\nendforeach()")
+    # ext dir is currently empty but we need it to avoid drrun error (i#427)
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/release\")")
   endif (DEBUG_BUILD)
 endif (UNIX)
 
