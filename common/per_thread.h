@@ -80,6 +80,7 @@ typedef struct _per_thread_t {
     /* record which heap routine */
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
     bool ignored_alloc;
+    app_pc alloc_being_freed; /* handles post-pre-free actions */
 
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];

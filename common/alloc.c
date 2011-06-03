@@ -2804,10 +2804,15 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
  * Caller should check for NULL separately if it's not an invalid arg.
  */
 static bool
-check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_site,
+check_valid_heap_block(byte *block, per_thread_t *pt, dr_mcontext_t *mc,
+                       bool inside, app_pc call_site,
                        const char *routine, bool is_free)
 {
-    if (malloc_end(block) == NULL) {
+    if (malloc_end(block) == NULL &&
+        /* do not report errors when on a heap tangent: there can be LFH blocks
+         * or other meta-objects for which we never saw the alloc (i#432)
+         */
+        IF_WINDOWS_ELSE(!pt->heap_tangent, true)) {
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
                                 block, mc, routine, is_free);
@@ -2818,10 +2823,15 @@ check_valid_heap_block(byte *block, dr_mcontext_t *mc, bool inside, app_pc call_
 
 /* Returns true if the malloc is ignored by us */
 static bool
-malloc_is_native(app_pc start)
+malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
 {
 #ifdef WINDOWS
-    return (hashtable_lookup(&native_alloc_table, (void*)start) != NULL);
+    return ((hashtable_lookup(&native_alloc_table, (void*)start) != NULL) ||
+            /* the free routine might call other routines like size
+             * after we removed from native alloc table (i#432)
+             */
+            (consider_being_freed && start == pt->alloc_being_freed &&
+             start != NULL && malloc_end(start) == NULL));
 #else
     /* optimization: currently nothing in the table */
     return false;
@@ -3001,7 +3011,10 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
     bool size_in_zone = (redzone_size(routine) > 0 && options.size_in_redzone);
     size_t size = 0;
     malloc_entry_t *entry;
-    if (malloc_is_native(base)) {
+
+    pt->alloc_being_freed = base;
+
+    if (malloc_is_native(base, pt, false)) {
         hashtable_remove(&native_alloc_table, (void*)base);
         return;
     }
@@ -3120,9 +3133,10 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 static void
 handle_free_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    pt->alloc_being_freed = NULL;
 #ifdef WINDOWS
     if (routine->type == RTL_ROUTINE_FREE) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         if (mc->eax == 0/*FALSE==failure*/) {
             /* If our prediction is wrong, we can't undo the shadow memory
              * changes since we've lost which were defined vs undefined,
@@ -3153,7 +3167,7 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
     routine_type_t type = routine->type;
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc base = (app_pc) APP_ARG(mc, ARGNUM_SIZE_PTR(type), inside);
-    if (malloc_is_native(base))
+    if (malloc_is_native(base, pt, true))
         return;
     /* non-recursive: else we assume base already adjusted */
     if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
@@ -3168,7 +3182,7 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 #endif
     if (redzone_size(routine) > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
-        if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
+        if (check_valid_heap_block(pt->alloc_base, pt, mc, inside, call_site,
                                    /* FIXME: should have caller invoke and use
                                     * alloc_routine_name?  kernel32 names better
                                     * than Rtl though
@@ -3191,6 +3205,8 @@ handle_size_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *rout
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint failure = IF_WINDOWS_ELSE((routine->type == RTL_ROUTINE_SIZE) ? ~0UL : 0, 0);
     if (mc->eax != failure) {
+        if (malloc_is_native(pt->alloc_base, pt, true))
+            return;
         /* we want to return the size without the redzone */
         if (redzone_size(routine) > 0 &&
             !malloc_is_pre_us(pt->alloc_base) &&
@@ -3198,7 +3214,10 @@ handle_size_post(void *drcontext, dr_mcontext_t *mc, alloc_routine_entry_t *rout
              * and we should use the real size anyway (e.g., RtlReAllocateHeap
              * calls RtlSizeHeap: xref i#259
              */
-            pt->in_heap_adjusted == 0/*already decremented*/) {
+            pt->in_heap_adjusted == 0/*already decremented*/ &&
+            /* similarly, use real size for unknown block in heap tangent */
+            IF_WINDOWS_ELSE((!pt->heap_tangent || malloc_end(pt->alloc_base) != NULL),
+                            true)) {
             if (pt->alloc_base != NULL) {
                 LOG(2, "size query: changing "PFX" to "PFX"\n",
                     mc->eax, mc->eax - redzone_size(routine)*2);
@@ -3477,7 +3496,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
                base, pt->realloc_replace_size);
         return;
     }
-    if (malloc_is_native(base)) {
+    if (malloc_is_native(base, pt, true)) {
         hashtable_remove(&native_alloc_table, (void*)base);
         return;
     }
@@ -3496,7 +3515,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
 #endif
     pt->in_realloc = true;
     real_base = pt->alloc_base;
-    if (!check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
+    if (!check_valid_heap_block(pt->alloc_base, pt, mc, inside, call_site,
                                 routine->name, is_free_routine(type))) {
         pt->expect_lib_to_fail = true;
         return;
@@ -3906,7 +3925,7 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc base = (app_pc) APP_ARG(mc, 3, inside);
-    if (malloc_is_native(base))
+    if (malloc_is_native(base, pt, true))
         return;
     if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
@@ -3916,7 +3935,7 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
     set_handling_heap_layer(pt, base, 0);
     LOG(2, "Rtl*User*Heap "PFX", "PFX", "PFX"\n",
         APP_ARG(mc, 1, inside), APP_ARG(mc, 2, inside), APP_ARG(mc, 3, inside));
-    if (check_valid_heap_block(pt->alloc_base, mc, inside, call_site,
+    if (check_valid_heap_block(pt->alloc_base, pt, mc, inside, call_site,
                                routine->name, false) &&
         redzone_size(routine) > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
@@ -3953,7 +3972,7 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
      */
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc base = (app_pc) APP_ARG(mc, 3, inside);
-    if (malloc_is_native(base))
+    if (malloc_is_native(base, pt, true))
         return;
     if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
@@ -3968,7 +3987,7 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
         pt->alloc_base = block; /* in case self-recurses */
         if (block == NULL) {
             ASSERT(false, "RtlValidateHeap on entire heap not supported");
-        } else if (check_valid_heap_block(block, mc, inside, call_site, "HeapValidate",
+        } else if (check_valid_heap_block(block, pt, mc, inside, call_site, "HeapValidate",
                                           false)) {
             if (!malloc_is_pre_us(block)) {
                 LOG(2, "RtlValidateHeap: changing "PFX" to "PFX"\n",
