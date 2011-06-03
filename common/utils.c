@@ -97,8 +97,14 @@ wait_for_user(const char *message)
 void
 drmemory_abort(void)
 {
-    if (op_pause_at_assert)
-        wait_for_user("paused at assert");
+    if (op_pause_at_assert) {
+        char buf[64];
+        /* very useful to have the pid */
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                    "Dr. Memory is paused at an assert in pid=%d",
+                    dr_get_process_id());
+        wait_for_user(buf);
+    }
     dr_abort();
 }
 
