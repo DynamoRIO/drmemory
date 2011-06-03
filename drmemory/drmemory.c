@@ -943,7 +943,7 @@ set_initial_structures(void *drcontext)
     set_initial_range((app_pc)(pparam->Environment), pc+sizeof(uint)+1/*open-ended*/);
 
     pc = vsyscall_pc(drcontext, (byte *)
-                     dr_get_proc_address(ntdll_base, "NtMapViewOfSection"));
+                     dr_get_proc_address(ntdll_base, "NtAllocateVirtualMemory"));
     if (pc != NULL) {
         set_initial_range(pc, pc + VSYSCALL_SIZE);
         /* assumption: KUSER_SHARED_DATA is at start of vsyscall page */
