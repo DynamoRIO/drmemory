@@ -2068,6 +2068,9 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          *     75 02                jnz    skip_fault
          *  # (%edx) is shorter than 0x0 abs addr.
          *  # %edx had shr 16 so in lower 64KB => will crash
+         *  # UPDATE: actually if we're sharing and either we
+         *  # adjust edx on prior fault or app needs it restored
+         *  # there is no guaranteed fault so we just use ud2a
          *     8b 1b                mov    (%ebx) -> %ebx 
          *  skip_fault:
          */
@@ -2105,9 +2108,7 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst, INSTR_CREATE_jcc
                 (drcontext, OP_jne_short, opnd_create_instr(skip_fault)));
             PREXL8M(bb, inst, INSTR_XL8
-                    (INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg2.reg),
-                                         OPND_CREATE_MEM32(mi->reg2.reg, 0)),
-                     instr_get_app_pc(inst)));
+                    (INSTR_CREATE_ud2a(drcontext), instr_get_app_pc(inst)));
             PRE(bb, inst, skip_fault);
             mi->need_slowpath = false;
         } else {
@@ -3118,7 +3119,7 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
  * which caller must free.
  */
 static instr_t *
-restore_mcontext_on_shadow_fault(void *drcontext, byte *target,
+restore_mcontext_on_shadow_fault(void *drcontext,
                                  dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
                                  byte *pc_post_fault, bb_saved_info_t *save)
 {
@@ -3135,7 +3136,8 @@ restore_mcontext_on_shadow_fault(void *drcontext, byte *target,
      * to restoring the registers.
      */
     /* We're re-executing from raw_mc, so we change mc, which we did NOT fix up
-     * in our restore_state event.  Note that our restore_state event has
+     * in our restore_state event for non-whole-bb registers: we did restore
+     * the two whole-bb.  Note that our restore_state event has
      * restored eflags, but that doesn't hurt anything.
      */
     DOLOG(3, {
@@ -3262,7 +3264,7 @@ compute_app_address_on_shadow_fault(void *drcontext, byte *target,
     app_pc addr;
     uint memopidx;
     bool write;
-    instr_t *app_inst = restore_mcontext_on_shadow_fault(drcontext, target, raw_mc,
+    instr_t *app_inst = restore_mcontext_on_shadow_fault(drcontext, raw_mc,
                                                          mc, pc_post_fault, save);
     for (memopidx = 0;
          instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
@@ -3368,86 +3370,71 @@ handle_special_shadow_fault(void *drcontext, byte *target,
  * slowpath jump.
  */
 static bool
-handle_slowpath_fault(void *drcontext, byte *target,
-                      dr_mcontext_t *raw_mc, dr_mcontext_t *mc, void *tag)
+handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
+                      void *tag)
 {
     app_pc pc;
-    app_pc addr;
-    uint memopidx;
     instr_t fault_inst;
     instr_t *app_inst;
-    bool write;
-    opnd_t faultop;
     bb_saved_info_t *save;
-    reg_id_t safe_dst;
-#ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-#endif
-    byte buf[2];
+    byte buf[5];
+    ptr_uint_t val;
+    reg_id_t reg1;
 
-    /* quick check: must be preceded by jnz over load == 75 02 */
+    /* quick check: must be preceded by jnz over load == 75 02.
+     * since using ud2a now and not a fault (where we were checking
+     * various aspects of the address) we also check the prior cmp to
+     * try and rule out app ud2a.
+     */
     if (options.check_uninitialized ||
         !options.fault_to_slowpath ||
         !options.shadowing ||
         !whole_bb_spills_enabled() ||
-        !safe_read(raw_mc->pc - JNZ_SHORT_LENGTH, BUFFER_SIZE_BYTES(buf), buf) ||
-        buf[0] != JNZ_SHORT_OPCODE ||
-        buf[1] != LOAD_TO_XBX_LENGTH)
+        !safe_read(raw_mc->pc - JNZ_SHORT_LENGTH - CMP_BASE_IMM1_LENGTH,
+                   BUFFER_SIZE_BYTES(buf), buf) ||
+        buf[0] != CMP_OPCODE ||
+        buf[2] != SHADOW_UNADDRESSABLE ||
+        buf[3] != JNZ_SHORT_OPCODE ||
+        buf[4] != UD2A_LENGTH)
         return false;
 
-    LOG(2, "write fault slowpath @"PFX"\n", target);
-    STATS_INC(num_slowpath_faults);
+    LOG(2, "checking whether fault is to enter slowpath raw ebx="PFX" app ebx="PFX" raw ecx="PFX" app ecx="PFX"\n",
+        raw_mc->xbx, mc->xbx, raw_mc->xcx, mc->xcx);
 #ifdef TOOL_DR_HEAPSTAT
     ASSERT(false, "should not get here");
 #endif
 
     instr_init(drcontext, &fault_inst);
     pc = decode(drcontext, raw_mc->pc, &fault_inst);
-    if (instr_get_opcode(&fault_inst) != OP_mov_ld) {
+    if (instr_get_opcode(&fault_inst) != OP_ud2a) {
         instr_free(drcontext, &fault_inst);
         return false;
     }
-
-    faultop = instr_get_src(&fault_inst, 0);
-    ASSERT(opnd_is_base_disp(faultop) && opnd_get_index(faultop) == REG_NULL &&
-           opnd_is_reg(instr_get_dst(&fault_inst, 0)), "emulation error");
-    ASSERT(opnd_compute_address(faultop, raw_mc) == target, "emulation error");
+    instr_free(drcontext, &fault_inst);
+    STATS_INC(num_slowpath_faults);
 
     hashtable_lock(&bb_table);
     save = (bb_saved_info_t *) hashtable_lookup(&bb_table, tag);
-    app_inst = restore_mcontext_on_shadow_fault(drcontext, target, raw_mc,
-                                                mc, pc, save);
-    for (memopidx = 0;
-         instr_compute_address_ex(app_inst, mc, memopidx, &addr, &write);
-         memopidx++) {
-        LOG(3, "considering emulated target %s "PFX" vs fault "PFX"\n",
-            write ? "write" : "read", addr, target);
-        /* target should be a read of bottom bits from shadow xl8 */
-        if (!write && (((ptr_uint_t)addr) >> 16) == (ptr_uint_t)target)
-            break;
-    }
+    app_inst = restore_mcontext_on_shadow_fault(drcontext, raw_mc, mc, pc, save);
     instr_destroy(drcontext, app_inst);
-    if (save->scratch1 == opnd_get_base(faultop))
-        safe_dst = save->scratch2;
-    else {
-        ASSERT(save->scratch2 == opnd_get_base(faultop), "invalid bb regs");
-        safe_dst = save->scratch1;
-    }
+    reg1 = save->scratch1;
     hashtable_unlock(&bb_table);
 
     slow_path_with_mc(drcontext, mc->pc, dr_app_pc_for_decoding(mc->pc), mc);
+    /* slow_path_xl8_sharing went and wrote to spill slot under assumption
+     * return from slowpath will swap it w/ reg1
+     */
+    val = get_own_tls_value(SPILL_SLOT_1);
+    if (val != reg_get_value(reg1, mc)) {
+        set_own_tls_value(SPILL_SLOT_1, reg_get_value(reg1, mc));
+        reg_set_value(reg1, raw_mc, val);
+    }
 
-    /* now prepare to resume by ensuring faulting instr will not fault */
-    reg_set_value(opnd_get_base(faultop), raw_mc, reg_get_value(safe_dst, raw_mc));
-    DOLOG(3, {
-        LOG(3, "changed base reg in ");
-        opnd_disassemble(drcontext, faultop, pt->f);
-        LOG(3, " to ");
-        opnd_disassemble(drcontext, opnd_create_reg(safe_dst), pt->f);
-        LOG(3, " == "PFX"\n", reg_get_value(safe_dst, raw_mc));
-    });
+    /* now resume by skipping ud2a */
+    raw_mc->pc += UD2A_LENGTH;
+    LOG(3, "resuming post-ud2a at "PFX" raw ebx="PFX" app ebx="PFX" raw ecx="PFX" app ecx="PFX"\n",
+        raw_mc->pc, raw_mc->xbx, mc->xbx, raw_mc->xcx, mc->xcx);
 
-    instr_free(drcontext, &fault_inst);
     return true;
 }
 #endif /* TOOL_DR_MEMORY */
@@ -3481,10 +3468,13 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
              * write for sub-dword.
              */
             return DR_SIGNAL_SUPPRESS;
-        } else if (handle_slowpath_fault(drcontext, target, info->raw_mcontext,
-                                         info->mcontext, info->fault_fragment_info.tag)) {
-            return DR_SIGNAL_SUPPRESS;
         }
+    } if (info->sig == SIGILL) {
+        LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
+            info->raw_mcontext->xip, info->mcontext->xip);
+        if (handle_slowpath_fault(drcontext, info->raw_mcontext, info->mcontext,
+                                  info->fault_fragment_info.tag))
+            return DR_SIGNAL_SUPPRESS;
     }
 # endif
     return DR_SIGNAL_DELIVER;
@@ -3512,11 +3502,11 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
              * write for sub-dword.
              */
             return false;
-        } else if (handle_slowpath_fault(drcontext, target, excpt->raw_mcontext,
-                                         excpt->mcontext,
-                                         excpt->fault_fragment_info.tag)) {
-            return false;
         }
+    } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION &&
+               handle_slowpath_fault(drcontext, excpt->raw_mcontext, excpt->mcontext,
+                                     excpt->fault_fragment_info.tag)) {
+        return false;
     }
 # endif
     return true;
