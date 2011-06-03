@@ -717,7 +717,8 @@ free_func_in_set(alloc_routine_set_t *set)
  */
 static byte *gencode_start, *gencode_cur;
 static void *gencode_lock;
-#define GENCODE_SIZE PAGE_SIZE
+/* We need room for one routine per realloc: one per module in some cases */
+#define GENCODE_SIZE (2*PAGE_SIZE)
 
 /* In alloc_unopt.c b/c we do not want these optimized, and for
  * gcc < 4.4 we have no control (volatile is not good enough).
@@ -802,7 +803,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     /* copy by decoding template, replacing mark_ call targets along the way. */
     dr_mutex_lock(gencode_lock);
     /* we keep read-only to work around DRi#404 */
-    if (!dr_memory_protect((byte *)PAGE_START(gencode_cur), PAGE_SIZE,
+    if (!dr_memory_protect(gencode_start, GENCODE_SIZE,
                            DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC)) {
         ASSERT(false, "failed to unprotect realloc gencode");
         dr_mutex_unlock(gencode_lock);
@@ -869,7 +870,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         dr_abort();
     }
     instr_reset(drcontext, &inst);
-    if (!dr_memory_protect((byte *)PAGE_START(gencode_cur), PAGE_SIZE,
+    if (!dr_memory_protect(gencode_start, GENCODE_SIZE,
                            DR_MEMPROT_READ|DR_MEMPROT_EXEC)) {
         ASSERT(false, "failed to re-protect realloc gencode");
     }
