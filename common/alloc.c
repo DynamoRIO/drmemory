@@ -2326,9 +2326,11 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                 dr_syscall_get_param(drcontext,
                                      (sysnum == sysnum_mmap ||
                                       sysnum == sysnum_mapcmf) ? 1 : 0);
-            if (sysnum == sysnum_mapcmf && process == NULL) {
-                /* XXX xref DRi#415: the 2nd param is often -1 (NT_CURRENT_PROCESS)
-                 * but is sometimes NULL: so is it really a process handle?
+            if (sysnum == sysnum_mapcmf) {
+                /* i#423, and xref DRi#415: the 2nd param is often -1
+                 * (NT_CURRENT_PROCESS) but is sometimes NULL and also observed to be
+                 * 0x3, so we assume it is NOT a process handle as originally believed,
+                 * and that this syscall only operates on the current process.
                  */
                 pt->syscall_this_process = true;
             } else
