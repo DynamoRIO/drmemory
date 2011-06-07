@@ -1,3 +1,6 @@
 [submodule "dynamorio"]
 	path = dynamorio
 	url = https://github.com/DynamoRIO/dynamorio
+[submodule "third_party/googletest"]
+	path = third_party/googletest
+	url = https://github.com/DynamoRIO/googletest

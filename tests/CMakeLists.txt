@@ -368,3 +368,5 @@ get_relative_location(infloop infloop_path)
 newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
   "${nudge_test_args}--;${infloop_path}" "" OFF)
+
+add_subdirectory(app_suite)
