@@ -99,14 +99,10 @@ if (NOT PERL)
 endif (NOT PERL)
 
 # use perl since /bin/sleep not on all platforms
-set(SLEEP_SHORT ${PERL} -e "sleep(0.2)")
-set(SLEEP_LONG ${PERL} -e "sleep(2)")
-if (WIN32)
-  set(TIMEOUT_SHORT "100")
-else (WIN32)
-  # somehow sleep is much much shorter
-  set(TIMEOUT_SHORT "500")
-endif (WIN32)
+# select(undef, undef, undef, X) sleeps for X seconds where X can be non-int. 
+set(SLEEP_SHORT ${PERL} -e "select(undef, undef, undef, 0.1)")
+set(TIMEOUT_SHORT "100")  # *0.1 = 10 seconds
+set(SLEEP_LONG ${PERL} -e "select(undef, undef, undef, 2)")
 set(TIMEOUT_APP "120")
 
 # intra-arg space=@@ and inter-arg space=@
