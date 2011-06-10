@@ -1478,7 +1478,7 @@ static void handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt,
         }
 
         if (helper_offs + helper_size != insz) {
-            WARN("WARNING AFD_SET_CONTEXT param fields messed up");
+            WARN("WARNING AFD_SET_CONTEXT param fields messed up\n");
             break;
         }
 
