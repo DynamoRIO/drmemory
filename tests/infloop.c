@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -92,6 +93,17 @@ foo(void)
     }
 }
 
+/* number of times to overflow 32-bit counter before exiting, since we don't
+ * really want to spin forever if somehow the test wrapper fails to kill us.
+ * overflowing a 32-bit counter takes betwee 2 and 3 seconds.
+ * this value of 20 ends up taking 56 seconds on my laptop.
+ * we want well over any time the test may take to complete.
+ */
+#define MAX_ITERS_DIV_4G 20
+
+#define EXPANDSTR(x) #x
+#define STRINGIFY(x) EXPANDSTR(x)
+
 int
 main()
 {
@@ -118,7 +130,13 @@ main()
      * above as "mov p2, edx; mov edx, eax"!)
      */
     __asm("mov $0, %ebx; mov $0, %ecx; mov $0, %edx; mov $0, %esi; mov $0, %edi");
-    __asm("infloop: jmp infloop");
+    __asm("infloop:");
+    __asm("  inc %ecx");
+    __asm("  cmp $0, %ecx"); /* wraparound */
+    __asm("  jne infloop");
+    __asm("  inc %edx");
+    __asm("  cmp $"STRINGIFY(MAX_ITERS_DIV_4G)", %edx");
+    __asm("  jne infloop");
 #else
     __asm {
         mov eax, p2
@@ -129,7 +147,12 @@ main()
         mov esi, 0
         mov edi, 0
       infloop:
-        jmp infloop
+        inc ecx
+        cmp ecx, 0 /* wraparound */
+        jne infloop
+        inc edx
+        cmp edx, MAX_ITERS_DIV_4G
+        jne infloop
     };
 #endif
 
