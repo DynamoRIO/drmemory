@@ -2901,6 +2901,13 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
                 LOGPT(1, pt, "WARNING: may misclassify recursion: bad last routine\n");
                 pc = NULL;
             }
+            if (!options.replace_realloc &&
+                last_routine.type == RTL_ROUTINE_REALLOC &&
+                (routine->type == RTL_ROUTINE_MALLOC ||
+                 routine->type == RTL_ROUTINE_FREE)) {
+                /* don't do a new context for just realloc calling malloc+free (i#441) */
+                pc = NULL;
+            }
             LOGPT(2, pt, "check_recursive %s: "PFX" vs "PFX"\n",
                   routine->name, arg1, arg2);
             if (pc != NULL && is_rtl_routine(last_routine.type) && arg1 != arg2) {
