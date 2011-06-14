@@ -37,14 +37,23 @@ LEAK
 *!std::numpunct<char>::_Init
 
 ##################################################
-# When I use _beginthreadex() I see this leak even when explicitly calling
+# Activation context leaked for certain threads
+#
+# i#286: when I use _beginthreadex() I see this leak even when explicitly calling
 # _endthread().  Not sure whether csrss frees it when it frees the stack
 # but suppressing under the assumption it's a false positive.
 # I don't see this when using CreateThread.
 
 LEAK
 ntdll.dll!RtlAllocateActivationContextStack
-KERNEL*.dll!CreateRemoteThread*
+
+# i#286: 2nd frame is this for _beginthreadex:
+#   KERNEL*.dll!CreateRemoteThread*
+
+# i#445: for remote threads (e.g., nudges) next frames are:
+#   ntdll.dll!LdrpInitializeThread
+#   ntdll.dll!_LdrpInitialize
+#   ntdll.dll!LdrInitializeThunk
 
 ##################################################
 # i#306: these are stored on ntdll!RtlCriticalSectionList
