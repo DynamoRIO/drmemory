@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,6 +28,12 @@ static void *stack0;
 static void *stack1;
 static void *stack2;
 static int *data;
+
+#ifdef WINDOWS
+# define IF_WINDOWS_ELSE(x,y) x
+#else
+# define IF_WINDOWS_ELSE(x,y) y
+#endif
 
 void
 foo(void)
@@ -71,6 +78,19 @@ test_swap(size_t sz1, size_t sz2)
     free((char *)stack2 - sz2);
 }
 
+void
+test_alloca(void)
+{
+    /* test special shadow write from gencode */
+    int *x = (int *) IF_WINDOWS_ELSE(_alloca,alloca)(128*1024);
+    x[0] = 4;
+
+    /* test special shadow write from code cache code */
+    x = malloc(128*1024);
+    x[64*1024/sizeof(int)] = 1;
+    free(x);
+}
+
 int
 main()
 {
@@ -80,6 +100,8 @@ main()
      * will get unaddr on swapping to smaller higher stack
      */
     test_swap(32*1024, 24*1024);
+    /* test giant alloca (will also test fault on special shadow write) */
+    test_alloca();
     printf("all done\n");
     return 0;
 }
