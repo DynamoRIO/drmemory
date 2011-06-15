@@ -2004,6 +2004,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                  check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
                  REG_EFLAGS, shadow, pushpop);
         }
+    } else if (num_srcs == 0) {
+        /* do not propagate from shadow_vals since dst size could be large (i#458)
+         * (fxsave, etc.)
+         */
+        always_defined = true;
     }
 
     if (check_srcs_after && !check_definedness/*avoid recursing after goto below*/) {
