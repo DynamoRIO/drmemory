@@ -1370,7 +1370,7 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
                   app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
 {
     /* Check for alloca probes to trigger guard pages.
-     * So far we've seen 3 different sequences:
+     * So far we've seen just a handful of different sequences:
          UNADDRESSABLE ACCESS: pc @0x0040db67 reading 0x0012ef80
          UNADDRESSABLE ACCESS: pc @0x0040db67 reading 0x0012ef81
          UNADDRESSABLE ACCESS: pc @0x0040db67 reading 0x0012ef82
@@ -1442,6 +1442,22 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
           0:000> U 00444be4
           00444be4 3bc8             cmp     ecx,eax
           00444be6 720a             jb      gap+0x44bf2 (00444bf2)
+
+        Compaq Visual Fortran alloca (i#449) is very similar to the
+        _alloca_probe sequences above, but uses edi or sometimes esi:
+          0040108a 0507000000       add     eax,0x7
+          0040108f 25f8ffffff       and     eax,0xfffffff8
+          00401094 3d00100000       cmp     eax,0x1000
+          00401099 7e14             jle     A+0x10af (004010af)
+          0040109b 81ef00100000     sub     edi,0x1000
+          004010a1 2d00100000       sub     eax,0x1000
+          004010a6 8507             test    [edi],eax
+          004010a8 3d00100000       cmp     eax,0x1000
+          004010ad 7fec             jg      A+0x109b (0040109b)
+          004010af 2bf8             sub     edi,eax
+          004010b1 8507             test    [edi],eax
+          004010b3 8be7             mov     esp,edi
+
     */
     /* For now we do an exact pattern match but of course this
      * won't generalize well for other versions of alloca: OTOH we
@@ -1455,13 +1471,13 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 
     if (instr_get_opcode(inst) == OP_test &&
         opnd_is_base_disp(instr_get_src(inst, 0)) &&
-        (opnd_get_base(instr_get_src(inst, 0)) == REG_ECX ||
-         opnd_get_base(instr_get_src(inst, 0)) == REG_EAX) &&
+        /* base varies: I've seen eax, ecx, edi, esi */
         opnd_get_index(instr_get_src(inst, 0)) == REG_NULL &&
         opnd_get_scale(instr_get_src(inst, 0)) == 0 &&
         opnd_get_disp(instr_get_src(inst, 0)) == 0 &&
         opnd_is_reg(instr_get_src(inst, 1)) &&
         opnd_get_reg(instr_get_src(inst, 1)) == REG_EAX) {
+        reg_id_t test_base = opnd_get_base(instr_get_src(inst, 0));
         instr_reset(drcontext, &next);
         if (!safe_decode(drcontext, dpc, &next, &dpc))
             return match;
@@ -1473,7 +1489,7 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
              ((instr_get_opcode(&next) == OP_mov_ld ||
                instr_get_opcode(&next) == OP_mov_st) &&
               opnd_is_reg(instr_get_src(&next, 0)) &&
-              opnd_get_reg(instr_get_src(&next, 0)) == REG_ECX &&
+              opnd_get_reg(instr_get_src(&next, 0)) == test_base &&
               opnd_is_reg(instr_get_dst(&next, 0)) &&
               opnd_get_reg(instr_get_dst(&next, 0)) == REG_ESP) ||
              (instr_get_opcode(&next) == OP_xchg &&
