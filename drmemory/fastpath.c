@@ -3161,6 +3161,17 @@ restore_mcontext_on_shadow_fault(void *drcontext,
             LOG(3, "\n");
         });
         ASSERT(instr_valid(&inst), "unknown suspect instr");
+        if (!options.check_uninitialized && instr_same(&inst, app_inst)) {
+            /* for -no_check_uninitialized slowpath faults we do not have
+             * a cti between the faulting instr and the app instr, so we
+             * stop when we see the app instr (i#456).
+             * XXX: if the app instr looks just like our xchg or load
+             * instrs we could mess up the app state: will affect 
+             * the address considered for the unaddr error so could
+             * lead to a false negative or misleading error.
+             */
+            break;
+        }
         if (instr_get_opcode(&inst) == OP_xchg) {
             reg_t val1, val2;
             reg_id_t reg1, reg2;
