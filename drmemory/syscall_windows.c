@@ -884,18 +884,25 @@ static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc
     UNICODE_STRING us;
     ASSERT(size == sizeof(UNICODE_STRING), "invalid size");
     /* we assume OUT fields just have their Buffer as OUT */
-    if (pre)
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, NULL);
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
+                     "UNICODE_STRING fields");
+    }
     if (safe_read((void*)start, sizeof(us), &us)) {
         if (pre) {
+            LOG(SYSCALL_VERBOSE,
+                "UNICODE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
+                (byte *)us.Buffer, us.Length, us.MaximumLength);
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                         (byte *)us.Buffer, us.MaximumLength, mc, NULL);
+                         (byte *)us.Buffer, us.MaximumLength, mc,
+                         "UNICODE_STRING capacity");
             if (!TEST(SYSARG_WRITE, arg_info->flags)) {
                 check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (byte *)us.Buffer, us.Length, mc, NULL);
+                             (byte *)us.Buffer, us.Length, mc, "UNICODE_STRING content");
             }
         } else if (TEST(SYSARG_WRITE, arg_info->flags)) {
-            check_sysmem(MEMREF_WRITE, sysnum, (byte *)us.Buffer, us.Length, mc, NULL);
+            check_sysmem(MEMREF_WRITE, sysnum, (byte *)us.Buffer, us.Length, mc,
+                          "UNICODE_STRING content");
         }
     }
     return true;

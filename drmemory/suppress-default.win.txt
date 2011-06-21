@@ -64,10 +64,26 @@ POSSIBLE LEAK
 ntdll.dll!RtlInitializeCriticalSection
 
 ##################################################
-# i#337: real bug (I think) in RtlpLowFragHeapAllocFromContext.
+# i#337: real bug in RtlpLowFragHeapAllocFromContext.
 # w/o symbols RtlpLowFragHeapAllocFromContext shows up
 # as LdrUnlockLoaderLock so we match all.
 
 UNINITIALIZED READ
 ntdll.dll!*
 ntdll.dll!RtlAllocateHeap
+
+##################################################
+# i#455: real bug in kernel32!BaseDllReadWriteIniFileViaMapping
+
+UNADDRESSABLE ACCESS
+system call NtQueryValueKey UNICODE_STRING capacity
+kernel32.dll!BaseDllReadWriteIniFileViaMapping
+
+# w/o symbols shows up as various nearby exports.
+# so far we've only seen it called from GetPrivateProfileStringA so we match that.
+UNADDRESSABLE ACCESS
+system call NtQueryValueKey UNICODE_STRING capacity
+kernel32.dll!*
+kernel32.dll!*
+kernel32.dll!GetPrivateProfileStringA
+
