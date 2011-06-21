@@ -38,6 +38,7 @@
 # include <errno.h>
 #endif
 #include <limits.h>
+#include <ctype.h> /* for tolower */
 
 static uint error_id; /* errors + leaks */
 static uint num_reported_errors;
@@ -533,8 +534,11 @@ write_suppress_pattern(uint type, const char *cstack, bool symbolic)
 }
 #endif
 
+/* If case_sep != '\0', on Windows, ignores case up until case_sep is seen.
+ * We pass '+' for mod+offs and '!' for mod!func.
+ */
 static bool text_matches_pattern(const char *text, int text_length,
-                                 const char *pattern)
+                                 const char *pattern, char case_sep)
 {
     /* Match text[0...text_length) with pattern and return the result.
      * The pattern may contain '*' and '?' wildcards.
@@ -542,7 +546,22 @@ static bool text_matches_pattern(const char *text, int text_length,
     const char *cur_text = text,
                *text_last_asterisk = NULL,
                *pattern_last_asterisk = NULL;
+    bool ignore_case = false;
+    char cmp_cur, cmp_pat;
+#ifdef WINDOWS
+    /* ignore case for module name (i#461) */
+    ignore_case = (case_sep != '\0');
+#endif
     while (*cur_text != '\0' && (cur_text < text + text_length)) {
+        cmp_cur = *cur_text;
+        cmp_pat = *pattern;
+        if (ignore_case) {
+            cmp_cur = (char) tolower(cmp_cur);
+            cmp_pat = (char) tolower(cmp_pat);
+        }
+        if (ignore_case && *pattern == case_sep)
+            ignore_case = false; /* no longer on module */
+
         if (*pattern == '*') {
             while (*++pattern == '*') {
                 /* Skip consecutive '*'s */
@@ -553,7 +572,7 @@ static bool text_matches_pattern(const char *text, int text_length,
             }
             text_last_asterisk = cur_text;
             pattern_last_asterisk = pattern;
-        } else if ((*cur_text == *pattern) || (*pattern == '?')) {
+        } else if ((cmp_cur == cmp_pat) || (*pattern == '?')) {
             ++cur_text;
             ++pattern;
         } else if (text_last_asterisk != NULL) {
@@ -589,11 +608,11 @@ top_frame_matches_suppression_frame(const char *error_stack,
 
     epos = strstr(error_stack, "system call");
     if (epos != NULL && epos < eol)
-        return text_matches_pattern(epos, eol - epos, supp_frame);
+        return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
 
     epos = strstr(error_stack, "not in a module");
     if (epos != NULL && epos < eol)
-        return text_matches_pattern(epos, eol - epos, supp_frame);
+        return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
 
     if (*supp_frame == '<') {
         /* "<mod+off>" suppression frame */
@@ -604,7 +623,7 @@ top_frame_matches_suppression_frame(const char *error_stack,
         ASSERT(end_of_mod_off != NULL && end_of_mod_off < eol,
                "malformed frame");
         end_of_mod_off++; /* skip '>' */
-        return text_matches_pattern(epos, end_of_mod_off - epos, supp_frame);
+        return text_matches_pattern(epos, end_of_mod_off - epos, supp_frame, '+');
     } else {
         /* "mod!fun" suppression frame */
         epos = strchr(error_stack, '!');
@@ -619,7 +638,7 @@ top_frame_matches_suppression_frame(const char *error_stack,
         ASSERT(epos != NULL && *(epos+1) == ' ' && epos < eol,
                "malformed frame");
         epos += 2; /* skip '> ' */
-        return text_matches_pattern(epos, eol - epos, supp_frame);
+        return text_matches_pattern(epos, eol - epos, supp_frame, '!');
     }
 }
 
