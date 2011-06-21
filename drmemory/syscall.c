@@ -34,6 +34,10 @@
 #endif
 #include "report.h"
 
+#ifdef SYSCALL_DRIVER
+# include "syscall_driver.h"
+#endif
+
 /***************************************************************************
  * SYSTEM CALLS
  */
@@ -584,8 +588,10 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, id);
         DOLOG(SYSCALL_VERBOSE, {
-            if (flags == MEMREF_WRITE)
-                LOG(SYSCALL_VERBOSE, "\t  marking "PIFX"-"PIFX" written\n", ptr, ptr + sz);
+            if (flags == MEMREF_WRITE) {
+                LOG(SYSCALL_VERBOSE, "\t  marking "PIFX"-"PIFX" written %s\n",
+                    ptr, ptr + sz, (id == NULL) ? "" : id);
+            }
         });
         handle_mem_ref(flags, &loc, ptr, sz, mc, NULL);
     }
@@ -605,7 +611,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
     ptr_uint_t size;
     uint num_args;
     int i, last_param = -1;
-    LOG(2, "processing pre system call #%d %s\n", sysnum, sysinfo->name);
+    LOG(2, "processing pre system call #"PIFX" %s\n", sysnum, sysinfo->name);
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
     /* Treat all parameters as IN.
@@ -692,7 +698,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     ptr_uint_t size;
     uint num_args;
     int i, last_param = -1;
-    LOG(SYSCALL_VERBOSE, "processing post system call #%d %s res="PIFX"\n",
+    LOG(SYSCALL_VERBOSE, "processing post system call #"PIFX" %s res="PIFX"\n",
         sysnum, sysinfo->name, dr_syscall_get_result(drcontext));
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
@@ -799,8 +805,9 @@ event_pre_syscall(void *drcontext, int sysnum)
             known = true;
             res = auxlib_shadow_pre_syscall(drcontext, sysnum, &mc) && res;
         }
-        if (!known)
+        if (!known) {
             handle_pre_unknown_syscall(drcontext, sysnum, &mc, pt);
+        }
     }
 
     /* syscall-specific handling we ourselves need, which must come after
@@ -811,6 +818,17 @@ event_pre_syscall(void *drcontext, int sysnum)
 
     if (options.perturb)
         res = perturb_pre_syscall(drcontext, sysnum) && res;
+
+#ifdef SYSCALL_DRIVER
+    /* do this as late as possible to avoid our own syscalls from corrupting
+     * the list of writes.
+     * the current plan is to query the driver on all syscalls, not just unknown,
+     * as a sanity check on both sides.
+     */
+    if (options.syscall_driver)
+        driver_pre_syscall(drcontext, sysnum, pt);
+#endif
+
     return res;
 }
 
@@ -821,6 +839,18 @@ event_post_syscall(void *drcontext, int sysnum)
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
+
+#ifdef SYSCALL_DRIVER
+    /* do this as early as possible to avoid drmem's own syscalls.
+     * unfortunately the module load event runs before this: so we skip
+     * NtMapViewOfSection.
+     */
+    if (options.syscall_driver) {
+        const char *name = get_syscall_name(sysnum);
+        if (name == NULL || strcmp(name, "NtMapViewOfSection") != 0)
+            driver_process_writes(drcontext, sysnum, pt);
+    }
+#endif
 
     handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
     os_shared_post_syscall(drcontext, sysnum);
@@ -865,6 +895,11 @@ void
 syscall_thread_init(void *drcontext)
 {
     /* we lazily initialize sysarg_ arrays */
+
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_thread_init(drcontext);
+#endif
 }
 
 void
@@ -887,6 +922,11 @@ void
 syscall_thread_exit(void *drcontext, per_thread_t *pt)
 {
     syscall_reset_per_thread(drcontext, pt);
+
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_thread_exit(drcontext);
+#endif
 }
 
 void
@@ -924,11 +964,21 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
     /* We support additional system call handling via a separate shared library */
     if (options.auxlib[0] != '\0')
         syscall_load_auxlib(options.auxlib);
+
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_init();
+#endif
 }
 
 void
 syscall_exit(void)
 {
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_exit();
+#endif
+
     if (auxlib != NULL && !dr_unload_aux_library(auxlib))
         LOG(1, "WARNING: unable to unload auxlib\n");
  
@@ -941,3 +991,21 @@ syscall_module_load(void *drcontext, const module_data_t *info, bool loaded)
     syscall_os_module_load(drcontext, info, loaded);
 }
 
+void
+syscall_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
+                        bool new_depth)
+{
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_handle_callback(drcontext, pt_parent, pt_child, new_depth);
+#endif
+}
+
+void
+syscall_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
+{
+#ifdef SYSCALL_DRIVER
+    if (options.syscall_driver)
+        driver_handle_cbret(drcontext, pt_parent, pt_child);
+#endif
+}

@@ -128,6 +128,13 @@ else (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Memory")
   set(DEFINES ${DEFINES} -DTOOL_DR_MEMORY)
   set(DRSYMS_DEFAULT ON)
+
+  option(SYSCALL_DRIVER "use a kernel driver to identify system call writes")
+  option(SYSCALL_DRIVER_SRCDIR "source dir of kernel driver")
+  if (SYSCALL_DRIVER)
+    set(DEFINES ${DEFINES} -DSYSCALL_DRIVER)
+    # include dir added below
+  endif (SYSCALL_DRIVER)
 endif (TOOL_DR_HEAPSTAT)
 
 # i#83: use svn revision of last commit as patchlevel ver# to distinguish
@@ -630,6 +637,9 @@ else (TOOL_DR_HEAPSTAT)
     set(srcs ${srcs} drmemory/syscall_linux.c)
   else (UNIX)
     set(srcs ${srcs} drmemory/syscall_windows.c)
+    if (SYSCALL_DRIVER)
+      set(srcs ${srcs} drmemory/syscall_driver.c)
+    endif (SYSCALL_DRIVER)
   endif (UNIX)
 endif (TOOL_DR_HEAPSTAT)
 set(scripts ${toolname}.pl postprocess.pl)
@@ -747,6 +757,9 @@ endif (WIN32 AND USE_DRSYMS)
 
 # must be AFTER DR local build since affects subdirs
 include_directories(common ${tooldir})
+if (SYSCALL_DRIVER)
+  include_directories(${SYSCALL_DRIVER_SRCDIR})
+endif (SYSCALL_DRIVER)
 
 if (UNIX)
   set(DISABLE_OPTS "-O0")

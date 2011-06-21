@@ -48,6 +48,13 @@ void
 syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
 void
+syscall_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
+                        bool new_depth);
+
+void
+syscall_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child);
+
+void
 syscall_reset_per_thread(void *drcontext, per_thread_t *pt);
 
 void

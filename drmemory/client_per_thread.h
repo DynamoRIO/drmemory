@@ -55,6 +55,12 @@ typedef struct _client_per_thread_t {
     /* dynamically allocated */
     size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
     byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
+
+# ifdef WINDOWS
+    /* for talking with syscall-info driver */
+    void *driver_buffer;
+    int sysnum;
+# endif
 #endif /* TOOL_DR_MEMORY */
 
     /* pointer for finding shadow regs for other threads */

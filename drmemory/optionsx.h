@@ -447,3 +447,9 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
 OPTION_CLIENT_BOOL(internal, zero_stack, true,
                    "When detecting leaks but not keeping definedness info, zero old stack frames",
                    "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values")
+
+#ifdef SYSCALL_DRIVER
+OPTION_CLIENT_BOOL(internal, syscall_driver, false,
+                   "Use a syscall-info driver if available",
+                   "Use a syscall-info driver if available")
+#endif

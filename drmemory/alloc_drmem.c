@@ -927,7 +927,11 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
     client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    if (options.leaks_only || !options.shadowing || !options.check_stack_bounds)
+    if (options.leaks_only || !options.shadowing)
+        return;
+    syscall_handle_cbret(drcontext, pt_parent, pt_child);
+
+    if (!options.check_stack_bounds)
         return;
     mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
@@ -956,6 +960,7 @@ client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *p
     }
     /* shared fields */
     cpt->shadow_regs = cpt_parent->shadow_regs;
+    syscall_handle_callback(drcontext, pt_parent, pt_child, new_depth);
 }
 
 void
