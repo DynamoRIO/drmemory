@@ -775,7 +775,17 @@ event_pre_syscall(void *drcontext, int sysnum)
 #endif
 
     LOG(SYSCALL_VERBOSE, "system call #"PIFX" %s\n", sysnum, get_syscall_name(sysnum));
-    DOLOG(SYSCALL_VERBOSE, { report_callstack(drcontext, &mc); });
+    DOLOG(SYSCALL_VERBOSE, { 
+        /* for sysenter, pc is at vsyscall and there's no frame for wrapper.
+         * simplest soln: skip to wrapper now.
+         */
+        app_pc tmp = mc.pc;
+        app_pc parent;
+        if (safe_read((void *)mc.xsp, sizeof(parent), &parent))
+            mc.pc = parent;
+        report_callstack(drcontext, &mc);
+        mc.pc = tmp;
+    });
 
     /* save params for post-syscall access 
      * FIXME: it's possible for a pathological app to crash us here
