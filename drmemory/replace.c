@@ -492,12 +492,12 @@ replace_memmove(void *dst, const void *src, size_t size)
             /* same alignment, so we can do 4 aligned bytes at a time and stay
              * on fastpath.  we want to do 4 aligned on mod 3 since backward.
              */
-            while (((ptr_uint_t)dst & 3) != 3 && size > 0) {
+            while (!ALIGNED(d, 4) && size > 0) {
                 *(--d) = *(--s);
                 size--;
             }
             while (size > 3) {
-                *((unsigned int *)(d-3)) = *((unsigned int *)(s-3));
+                *((unsigned int *)(d-4)) = *((unsigned int *)(s-4));
                 s -= 4;
                 d -= 4;
                 size -= 4;
