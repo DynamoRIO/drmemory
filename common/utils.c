@@ -45,6 +45,10 @@ bool op_pause_via_loop;
 bool op_ignore_asserts;
 file_t f_global = INVALID_FILE;
 
+#ifdef WINDOWS
+static dr_os_version_t os_version;
+#endif
+
 #if defined(WINDOWS) && defined (USE_DRSYMS)
 /* for ensuring library isolation */
 static PEB *priv_peb;
@@ -592,28 +596,16 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
     return num;
 }
 
-/* We want DR to provide a get_windows_version() routine: PR 367157 */
 bool
 running_on_Win7_or_later(void)
 {
-    TEB *teb = get_TEB();
-    PEB *peb = get_app_PEB();
-    if (peb->OSPlatformId == VER_PLATFORM_WIN32_NT && peb->OSMajorVersion >= 7) {
-        return true;
-    }
-    return false;
+    return (os_version >= DR_WINDOWS_VERSION_7);
 }
 
-/* We want DR to provide a get_windows_version() routine: PR 367157 */
 bool
 running_on_Vista_or_later(void)
 {
-    TEB *teb = get_TEB();
-    PEB *peb = get_app_PEB();
-    if (peb->OSPlatformId == VER_PLATFORM_WIN32_NT && peb->OSMajorVersion >= 6) {
-        return true;
-    }
-    return false;
+    return (os_version >= DR_WINDOWS_VERSION_VISTA);
 }
 
 #endif /* WINDOWS */
@@ -838,6 +830,16 @@ hashwrap_assert_fail(const char *msg)
 void
 utils_init(void)
 {
+#ifdef WINDOWS
+    dr_os_version_info_t info = {sizeof(info),};
+    if (dr_get_os_version(&info))
+        os_version = info.version;
+    else {
+        ASSERT(false, "unable to get Windows version");
+        os_version = DR_WINDOWS_VERSION_7;
+    }
+#endif
+
 #ifdef USE_DRSYMS
     if (drsym_init(NULL) != DRSYM_SUCCESS) {
         LOG(1, "WARNING: unable to initialize symbol translation\n");
