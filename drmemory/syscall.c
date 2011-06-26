@@ -379,6 +379,11 @@ get_syscall_name(uint num)
         const char *name = auxlib_syscall_name(num);
         if (name != NULL)
             return name;
+        else {
+            name = os_syscall_get_name(num);
+            if (name != NULL)
+                return name;
+        }
         return "<unknown>";
     }
 }

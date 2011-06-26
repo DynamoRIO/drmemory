@@ -80,7 +80,7 @@ typedef struct _syscall_arg_t {
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
 typedef struct _syscall_info_t {
-    uint num; /* system call number: filled in dynamically */
+    int num; /* system call number: filled in dynamically */
     const char *name;
     int args_size; /* for Windows: total size of args; for Linux: arg count */
     /* list of args that are not inlined */
@@ -143,5 +143,9 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
 
 bool
 os_syscall_succeeded(int sysnum, ptr_int_t res);
+
+/* provides name if known when not in syscall_lookup(num) */
+const char *
+os_syscall_get_name(uint num);
 
 #endif /* _SYSCALL_OS_H_ */

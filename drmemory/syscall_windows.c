@@ -34,13 +34,98 @@
 #include "../wininc/winioctl.h"
 
 /***************************************************************************
+ * WIN32K.SYS SYSTEM CALL NUMBERS
+ */
+
+/* For non-exported syscall wrappers we have tables of numbers */
+
+#define NONE 0xffffffff
+
+#define IMM32 USER32
+#define GDI32 USER32
+#define KERNEL32 USER32
+
+const char * const sysnum_names[] = {
+#define USER32(name, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   #name,
+#include "syscall_numx.h"
+#undef USER32
+};
+#define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
+
+const int win7wow_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7wow,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int win7x86_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7x86,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int vistawow_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistawow,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int vistax86_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistax86,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int winXPwow_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpwow,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int win2003_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2003,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int winXP_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpx86,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+const int win2K_sysnums[] = {
+#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2K,
+#include "syscall_numx.h"
+#undef USER32
+};
+
+#undef IMM32
+#undef GDI32
+#undef KERNEL32
+
+/* Table that maps win32k.sys names to numbers.  We store the unchanged number
+ * under the assumption that it's never 0 (that would be an ntoskrnl syscall)
+ */
+#define SYSNUM_TABLE_HASH_BITS 11 /* nearly 1K of them */
+static hashtable_t sysnum_table;
+
+#ifdef STATISTICS
+/* Until we have everything in the tables for syscall_lookup we use this
+ * to provide names
+ */
+# define SYSNAME_TABLE_HASH_BITS 11 /* nearly 1K of them */
+static hashtable_t sysname_table;
+#endif
+
+/***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
  */
 
 /* We need a hashtable to map system call # to index in table, since syscall #s
  * vary by Windows version.
  */
-#define SYSTABLE_HASH_BITS 8
+#define SYSTABLE_HASH_BITS 12 /* has ntoskrnl and win32k.sys */
 static hashtable_t systable;
 
 /* Syscalls that need special processing */
@@ -456,7 +541,6 @@ syscall_info_t syscall_user32_info[] = {
 #undef IB
 #undef IO
 
-
 /* takes in any Nt syscall wrapper entry point */
 byte *
 vsyscall_pc(void *drcontext, byte *entry)
@@ -497,6 +581,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
 {
     app_pc entry = (app_pc)
         dr_get_proc_address(info->start, syslist->name);
+    syslist->num = -1;
 #ifdef USE_DRSYMS
     if (entry == NULL) {
         /* FIXME i#388: for those that aren't exported we either need the
@@ -507,8 +592,29 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         entry = lookup_internal_symbol(info, syslist->name);
     }
 #endif
-    if (entry != NULL) {
+    if (entry == NULL) {
+        /* Use sysnum table if the wrapper is not exported and we don't have
+         * symbol info.  Currently the table only has win32k.sys entries since
+         * all the ntdll wrappers are exported.
+         */
+        int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)syslist->name);
+        if (sysnum != 0) {
+            LOG(SYSCALL_VERBOSE, "using sysnum_table since no symbol found for %s\n",
+                syslist->name);
+            syslist->num = sysnum;
+        }
+    } else {
         syslist->num = syscall_num(drcontext, entry);
+        DOLOG(1, {
+            int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)syslist->name);
+            if (sysnum != 0 && sysnum != syslist->num) {
+                WARN("WARNING: sysnum table "PIFX" != wrapper "PIFX" for %s\n",
+                     sysnum, syslist->num, syslist->name);
+                ASSERT(false, "syscall number table error detected");
+            }
+        });
+    }
+    if (syslist->num > -1) {
         hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
         LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
             "system call %s = %d (%x)\n", syslist->name, syslist->num, syslist->num);
@@ -522,7 +628,48 @@ void
 syscall_os_init(void *drcontext, app_pc ntdll_base)
 {
     uint i;
-    module_data_t *info;
+    const int *sysnums;
+    bool wow64 = is_wow64_process();
+    dr_os_version_info_t info = {sizeof(info),};
+    if (!dr_get_os_version(&info)) {
+        ASSERT(false, "unable to get version");
+        sysnums = win7wow_sysnums;
+    }
+    switch (info.version) {
+    case DR_WINDOWS_VERSION_7:
+        sysnums = wow64 ? win7wow_sysnums : win7x86_sysnums;
+        break;
+    case DR_WINDOWS_VERSION_VISTA:
+        sysnums = wow64 ? vistawow_sysnums : vistax86_sysnums;
+        break;
+    case DR_WINDOWS_VERSION_2003:
+        sysnums = win2003_sysnums;
+        break;
+    case DR_WINDOWS_VERSION_XP:
+        sysnums = wow64 ? winXPwow_sysnums : winXP_sysnums;
+        break;
+    case DR_WINDOWS_VERSION_2000:
+        sysnums = win2K_sysnums;
+        break;
+    case DR_WINDOWS_VERSION_NT:
+    default:
+        usage_error("This version of Windows is not supported", "");
+    }
+
+    /* Set up hashtable of win32k.sys syscall numbers */
+    hashtable_init(&sysnum_table, SYSNUM_TABLE_HASH_BITS, HASH_STRING, false/*!strdup*/);
+#ifdef STATISTICS
+    hashtable_init(&sysname_table, SYSNAME_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
+#endif
+    for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
+        IF_DEBUG(bool ok =)
+            hashtable_add(&sysnum_table, (void *) sysnum_names[i], (void *) sysnums[i]);
+        ASSERT(ok, "no dup entries in sysnum_table");
+        ASSERT(sysnums[i] != 0, "no 0 sysnum: then can't tell from empty");
+#ifdef STATISTICS
+        hashtable_add(&sysname_table, (void *) sysnums[i], (void *) sysnum_names[i]);
+#endif
+    }
 
     hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 }
@@ -531,6 +678,10 @@ void
 syscall_os_exit(void)
 {
     hashtable_delete(&systable);
+    hashtable_delete(&sysnum_table);
+#ifdef STATISTICS
+    hashtable_delete(&sysname_table);
+#endif
 }
 
 void
@@ -631,6 +782,18 @@ os_syscall_succeeded(int sysnum, ptr_int_t res)
         return true;
     }
     return (res >= 0);
+}
+
+/* provides name if known when not in syscall_lookup(num) */
+const char *
+os_syscall_get_name(uint num)
+{
+#ifdef STATISTICS
+    return (const char *) hashtable_lookup(&sysname_table, (void *)num);
+#else
+    /* not bothering to keep data outside of table */
+    return NULL;
+#endif
 }
 
 /***************************************************************************

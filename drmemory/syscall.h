@@ -86,8 +86,8 @@ get_syscall_name(uint num);
 
 #ifdef STATISTICS
 # ifdef WINDOWS
-/* cover win32k.sys and ntoskrnl calls */
-#  define MAX_SYSNUM 5000
+/* cover win32k.sys (0x1xxx, 0x2xxx), wow64 (0x3xxx), and ntoskrnl calls */
+#  define MAX_SYSNUM 0x3100
 # else
 /* vmkernel has extra syscalls beyond linux */
 #  define MAX_SYSNUM 1400

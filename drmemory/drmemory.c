@@ -223,7 +223,8 @@ dump_statistics(void)
     dr_fprintf(f_global, "\nSystem calls invoked:\n");
     for (i = 0; i < MAX_SYSNUM; i++) {
         if (syscall_invoked[i] > 0) {
-            dr_fprintf(f_global, "\t%4u: %8u\n", i, syscall_invoked[i]);
+            dr_fprintf(f_global, "\t0x%04x %-40s %6u\n",
+                       i, get_syscall_name(i), syscall_invoked[i]);
         }
     }
 
@@ -240,6 +241,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "\t4-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz4);
     dr_fprintf(f_global, "\t8-byte: %12"UINT64_FORMAT_CODE"\n", slowpath_sz8);
     dr_fprintf(f_global, "\tOther:  %12"UINT64_FORMAT_CODE"\n", slowpath_szOther);
+    dr_fprintf(f_global, "\n");
 }
 #endif /* STATISTICS */
 
@@ -262,6 +264,10 @@ event_exit(void)
     if (options.pause_at_exit)
         wait_for_user("pausing at exit");
 
+#ifdef STATISTICS
+    dump_statistics();
+#endif
+
     instrument_exit();
 
     if (options.perturb)
@@ -278,10 +284,6 @@ event_exit(void)
     if (options.shadowing)
         shadow_exit();
     hashtable_delete(&known_table);
-
-#ifdef STATISTICS
-    dump_statistics();
-#endif
 
     if (!options.perturb_only)
         report_exit();

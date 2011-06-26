@@ -2658,3 +2658,12 @@ os_syscall_succeeded(int sysnum, ptr_int_t res)
     else
         return (res >= 0);
 }
+
+/* provides name if known when not in syscall_lookup(num) */
+const char *
+os_syscall_get_name(uint num)
+{
+    /* everything's in the table */
+    return NULL;
+}
+
