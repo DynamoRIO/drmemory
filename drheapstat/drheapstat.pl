@@ -115,7 +115,7 @@ $logdir = "";
 # PR 415155: our code expansion causes us to exceed max bb size sometimes
 $def_dr_ops = "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256";
 # DRi#495: private loader breaks drmem
-$def_dr_ops .= " -no_private_loader";
+$def_dr_ops .= " -no_private_loader" if ($is_unix);
 $nudge_pid = "";
 $pid_file = "";
 $external_pid_file = 0;
