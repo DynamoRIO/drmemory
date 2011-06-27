@@ -39,7 +39,7 @@
 
 /* For non-exported syscall wrappers we have tables of numbers */
 
-#define NONE 0xffffffff
+#define NONE -1
 
 #define IMM32 USER32
 #define GDI32 USER32
@@ -651,7 +651,7 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
         sysnums = wow64 ? vistawow_sysnums : vistax86_sysnums;
         break;
     case DR_WINDOWS_VERSION_2003:
-        sysnums = win2003_sysnums;
+        sysnums = wow64 ? winXPwow_sysnums : win2003_sysnums;
         break;
     case DR_WINDOWS_VERSION_XP:
         sysnums = wow64 ? winXPwow_sysnums : winXP_sysnums;
@@ -670,13 +670,17 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     hashtable_init(&sysname_table, SYSNAME_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 #endif
     for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
-        IF_DEBUG(bool ok =)
-            hashtable_add(&sysnum_table, (void *) sysnum_names[i], (void *) sysnums[i]);
-        ASSERT(ok, "no dup entries in sysnum_table");
-        ASSERT(sysnums[i] != 0, "no 0 sysnum: then can't tell from empty");
+        if (sysnums[i] != NONE) {
+            IF_DEBUG(bool ok =)
+                hashtable_add(&sysnum_table, (void *)sysnum_names[i], (void *)sysnums[i]);
+            ASSERT(ok, "no dup entries in sysnum_table");
+            ASSERT(sysnums[i] != 0, "no 0 sysnum: then can't tell from empty");
 #ifdef STATISTICS
-        hashtable_add(&sysname_table, (void *) sysnums[i], (void *) sysnum_names[i]);
+            hashtable_add(&sysname_table, (void *)sysnums[i], (void *)sysnum_names[i]);
+            LOG(2, "adding win32k.sys syscall #%d \"%s\" to table under #0x%04x\n",
+                i, sysnum_names[i], sysnums[i]);
 #endif
+        }
     }
 
     hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
