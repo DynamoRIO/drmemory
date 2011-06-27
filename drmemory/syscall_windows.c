@@ -133,11 +133,12 @@ int sysnum_CreateThread = -1;
 int sysnum_CreateThreadEx = -1;
 int sysnum_CreateUserProcess = -1;
 int sysnum_DeviceIoControlFile = -1;
+int sysnum_GetWriteWatch = -1;
 
-/* FIXME PR 406349: win32k.sys syscalls!  currently doing memcmp to see what was written
- * FIXME PR 406350: IIS syscalls!
- * FIXME PR 406351: add XP and Vista syscalls!
- * FIXME PR 406355: my windows syscall data is missing 3 types of information:
+/* FIXME i#99: win32k.sys syscalls!  currently doing memcmp to see what was written
+ * FIXME i#97: IIS syscalls!
+ * FIXME i#98: add new XP, Vista, and Win7 syscalls!
+ * FIXME i#99: my windows syscall data is missing 3 types of information:
  *   - some structs have variable-length data on the end
  *     e.g., PORT_MESSAGE which I do handle today w/ hardcoded support
  *   - some structs have optional fields that don't need to be defined
@@ -145,6 +146,10 @@ int sysnum_DeviceIoControlFile = -1;
  *     should look at all OUT params whose (requested) size comes from an IN param.
  *     e.g., NtQueryValueKey: should use IN param to check addressability, but
  *     OUT ResultLength for what was actually written to.
+ *     The strategy for these is to use a double entry with the second typically
+ *     using WI to indicate that the OUT size needs to be dereferenced (PR 408536).
+ *     E.g.:
+ *       {0,"NtQuerySecurityObject", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
  */
 /* Originally generated via:
  *  ./mksystable.pl < ../../win32lore/syscalls/nebbett/ntdll-fix.h | sort
@@ -185,8 +190,8 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAddAtom", 12, 0,-1,R, 2,sizeof(USHORT),W, },
     {0,"NtAddBootEntry", 8, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
     {0,"NtAddDriverEntry", 8, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
-    {0,"NtAdjustGroupsToken", 24, 1,0,IB, 2,sizeof(TOKEN_GROUPS),R, 4,sizeof(TOKEN_GROUPS),W, 5,sizeof(ULONG),W, },
-    {0,"NtAdjustPrivilegesToken", 24, 1,0,IB, 2,sizeof(TOKEN_PRIVILEGES),R, 4,sizeof(TOKEN_PRIVILEGES),W, 5,sizeof(ULONG),W, },
+    {0,"NtAdjustGroupsToken", 24, 1,0,IB, 2,sizeof(TOKEN_GROUPS),R, 4,-3,W, 4,-5,WI, 5,sizeof(ULONG),W, },
+    {0,"NtAdjustPrivilegesToken", 24, 1,0,IB, 2,sizeof(TOKEN_PRIVILEGES),R, 4,-3,W, 4,-5,WI, 5,sizeof(ULONG),W, },
     {0,"NtAlertResumeThread", 8, 1,sizeof(ULONG),W, },
     {0,"NtAlertThread", 4, },
     {0,"NtAllocateLocallyUniqueId", 4, 0,sizeof(LUID),W, },
@@ -271,8 +276,8 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtGetCurrentProcessorNumber", 4, },
     {0,"NtGetDevicePowerState", 8, 1,sizeof(DEVICE_POWER_STATE),W, },
     {0,"NtGetPlugPlayEvent", 16, 2,-3,W, },
-    /* FIXME: Buffer and BufferEntries: */
-    {0,"NtGetWriteWatch", 28, 4,sizeof(ULONG),W, 5,sizeof(ULONG),W, 6,sizeof(ULONG),W, },
+    /* BufferEntries is #elements, not #bytes, so Buffer is special-cased */
+    {0,"NtGetWriteWatch", 28, 5,sizeof(ULONG),R, 6,sizeof(ULONG),W, },
     {0,"NtImpersonateAnonymousToken", 4, },
     {0,"NtImpersonateClientOfPort", 8, 1,sizeof(PORT_MESSAGE),RP, },
     {0,"NtImpersonateThread", 12, 2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS, },
@@ -337,51 +342,54 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQueryDefaultLocale", 8, 0,0,IB, 1,sizeof(LCID),W, },
     {0,"NtQueryDefaultUILanguage", 4, 0,sizeof(LANGID),W, },
     {0,"NtQueryDirectoryFile", 44, 4,sizeof(IO_STATUS_BLOCK),W, 5,-6,W, 8,0,IB, 9,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 10,0,IB, },
-    {0,"NtQueryDirectoryObject", 28, 1,-2,W, 3,0,IB, 4,0,IB, 5,sizeof(ULONG),W, 6,sizeof(ULONG),W, },
+    {0,"NtQueryDirectoryObject", 28, 1,-2,W, 1,-6,WI, 3,0,IB, 4,0,IB, 5,sizeof(ULONG),W, 6,sizeof(ULONG),W, },
     {0,"NtQueryDriverEntryOrder", 8, },
     {0,"NtQueryEaFile", 36, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_FULL_EA_INFORMATION),W, 4,0,IB, 5,sizeof(FILE_GET_EA_INFORMATION),R, 7,sizeof(ULONG),R, 8,0,IB, },
-    {0,"NtQueryEvent", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryEvent", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryFullAttributesFile", 8, 0,sizeof(OBJECT_ATTRIBUTES),R, 1,sizeof(FILE_NETWORK_OPEN_INFORMATION),W, },
-    {0,"NtQueryInformationAtom", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationAtom", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryInformationFile", 20, 1,sizeof(IO_STATUS_BLOCK),W, 2,-3,W, },
-    {0,"NtQueryInformationJobObject", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryInformationPort", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryInformationProcess", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryInformationThread", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryInformationToken", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationJobObject", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationPort", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationProcess", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationThread", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryInformationToken", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryInstallUILanguage", 4, 0,sizeof(LANGID),W, },
     {0,"NtQueryIntervalProfile", 8, 1,sizeof(ULONG),W, },
-    {0,"NtQueryIoCompletion", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryKey", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryIoCompletion", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryKey", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryMultipleValueKey", 24, 1,sizeof(KEY_VALUE_ENTRY),W, 3,-4,WI, 4,sizeof(ULONG),W, 5,sizeof(ULONG),W, },
-    {0,"NtQueryMutant", 20, 2,-3,W, 4,sizeof(ULONG),W, },
-    {0,"NtQueryObject", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryMutant", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    {0,"NtQueryObject", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryOleDirectoryFile", 44, 4,sizeof(IO_STATUS_BLOCK),W, 5,-6,W, 8,0,IB, 9,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 10,0,IB, },
     {0,"NtQueryOpenSubKeys", 8, 0,sizeof(OBJECT_ATTRIBUTES),R, 1,sizeof(ULONG),W, },
     {0,"NtQueryOpenSubKeysEx", 16, 0,sizeof(OBJECT_ATTRIBUTES),R, 2,sizeof(ULONG),W, 3,sizeof(ULONG),W, },
     {0,"NtQueryPerformanceCounter", 8, 0,sizeof(LARGE_INTEGER),W, 1,sizeof(LARGE_INTEGER),W, },
     {0,"NtQueryPortInformationProcess", 4, },
     {0,"NtQueryQuotaInformationFile", 36, 1,sizeof(IO_STATUS_BLOCK),W, 2,sizeof(FILE_USER_QUOTA_INFORMATION),W, 4,0,IB, 5,sizeof(FILE_QUOTA_LIST_INFORMATION),R, 7,sizeof(SID),R, 8,0,IB, },
-    {0,"NtQuerySection", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQuerySection", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQuerySecurityObject", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
-    {0,"NtQuerySemaphore", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQuerySemaphore", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
+    /* No double entry for 3rd param needed b/c the written size is in
+     * .Length of the UNICODE_STRING as well as returned in the param:
+     */
     {0,"NtQuerySymbolicLinkObject", 12, 1,sizeof(UNICODE_STRING),W|SYSARG_UNICODE_STRING, 2,sizeof(ULONG),W, },
-    {0,"NtQuerySystemEnvironmentValue", 16, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,-2,W, 3,sizeof(ULONG),W, },
+    {0,"NtQuerySystemEnvironmentValue", 16, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 1,-2,W, 1,-3,WI, 3,sizeof(ULONG),W, },
     {0,"NtQuerySystemEnvironmentValueEx", 20, },
-    {0,"NtQuerySystemInformation", 16, 1,-2,W, 3,sizeof(ULONG),W, },
+    {0,"NtQuerySystemInformation", 16, 1,-2,W, 1,-3,WI, 3,sizeof(ULONG),W, },
     {0,"NtQuerySystemTime", 4, 0,sizeof(LARGE_INTEGER),W, },
-    {0,"NtQueryTimer", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtQueryTimer", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtQueryTimerResolution", 12, 0,sizeof(ULONG),W, 1,sizeof(ULONG),W, 2,sizeof(ULONG),W, },
-    {0,"NtQueryValueKey", 24, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 3,-4,W, 5,sizeof(ULONG),W, },
-    {0,"NtQueryVirtualMemory", 24, 3,-4,W, 5,sizeof(ULONG),W, },
+    {0,"NtQueryValueKey", 24, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
+    {0,"NtQueryVirtualMemory", 24, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
     {0,"NtQueryVolumeInformationFile", 20, 1,sizeof(IO_STATUS_BLOCK),W, 2,-3,W, },
     {0,"NtQueueApcThread", 20, },
     {0,"NtRaiseException", 12, 0,sizeof(EXCEPTION_RECORD),R|SYSARG_EXCEPTION_RECORD, 1,sizeof(CONTEXT),R|SYSARG_CONTEXT, 2,0,IB, },
     {0,"NtRaiseHardError", 24, 3,sizeof(ULONG_PTR),R, 5,sizeof(ULONG),W, },
     {0,"NtReadFile", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,-6,W, 5,-4,(W|IO), 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
     {0,"NtReadFileScatter", 36, 4,sizeof(IO_STATUS_BLOCK),W, 5,sizeof(FILE_SEGMENT_ELEMENT),R, 7,sizeof(LARGE_INTEGER),R, 8,sizeof(ULONG),R, },
-    {0,"NtReadRequestData", 24, 1,sizeof(PORT_MESSAGE),RP, 3,-4,W, 5,sizeof(ULONG),W, },
-    {0,"NtReadVirtualMemory", 20, 2,-3,W, 4,sizeof(ULONG),W, },
+    {0,"NtReadRequestData", 24, 1,sizeof(PORT_MESSAGE),RP, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
+    {0,"NtReadVirtualMemory", 20, 2,-3,W, 2,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtRegisterThreadTerminatePort", 4, },
     {0,"NtReleaseKeyedEvent", 16, 2,0,IB, 3,sizeof(LARGE_INTEGER),R, },
     {0,"NtReleaseMutant", 8, 1,sizeof(ULONG),W, },
@@ -464,7 +472,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtStopProfile", 4, },
     {0,"NtSuspendProcess", 4, },
     {0,"NtSuspendThread", 8, 1,sizeof(ULONG),W, },
-    {0,"NtSystemDebugControl", 24, 3,-4,W, 5,sizeof(ULONG),W, },
+    {0,"NtSystemDebugControl", 24, 3,-4,W, 3,-5,WI, 5,sizeof(ULONG),W, },
     {0,"NtTerminateJobObject", 8, },
     {0,"NtTerminateProcess", 8, },
     {0,"NtTerminateThread", 8, },
@@ -483,7 +491,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtUnlockVirtualMemory", 16, 1,sizeof(PVOID),W, 2,sizeof(ULONG),W, },
     {0,"NtUnmapViewOfSection", 8, },
     {0,"NtVdmControl", 8, },
-    {0,"NtW32Call", 20, 3,sizeof(PVOID),W, 4,sizeof(ULONG),W, },
+    {0,"NtW32Call", 20, 3,-4,WI, 4,sizeof(ULONG),W, },
     {0,"NtWaitForDebugEvent", 16, 1,0,IB, 2,sizeof(LARGE_INTEGER),R, 3,sizeof(DBGUI_WAIT_STATE_CHANGE),W, },
     {0,"NtWaitForKeyedEvent", 16, 2,0,IB, 3,sizeof(LARGE_INTEGER),R, },
     {0,"NtWaitForMultipleObjects", 20, 1,sizeof(HANDLE),R, 3,0,IB, 4,sizeof(LARGE_INTEGER),R, },
@@ -498,7 +506,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtYieldExecution", 0, },
 
     /* args seem to be identical to NtQuerySystemInformation */
-    {0,"NtWow64GetNativeSystemInformation", 16, 1,-2,W, 3,sizeof(ULONG),W, },
+    {0,"NtWow64GetNativeSystemInformation", 16, 1,-2,W, 1,-3,WI, 3,sizeof(ULONG),W, },
 
 };
 #define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
@@ -617,7 +625,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     if (syslist->num > -1) {
         hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
         LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
-            "system call %s = %d (%x)\n", syslist->name, syslist->num, syslist->num);
+            "system call %-35s = %3d (0x%04x)\n", syslist->name, syslist->num, syslist->num);
     } else {
         LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
     }
@@ -711,6 +719,8 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
                                                       "NtDeviceIoControlFile");
         ASSERT(sysnum_DeviceIoControlFile >= 0,
                "cannot find NtDeviceIoControlFile sysnum");
+        sysnum_GetWriteWatch = sysnum_from_name(drcontext, info, "NtGetWriteWatch");
+        ASSERT(sysnum_GetWriteWatch >= 0, "cannot find NtGetWriteWatch sysnum");
 
     } else if (stri_eq(modname, "kernel32.dll")) {
         for (i = 0; i < NUM_KERNEL32_SYSCALLS; i++)
@@ -1300,6 +1310,20 @@ handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
     }
 }
 
+static bool
+handle_GetWriteWatch(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                     dr_mcontext_t *mc)
+{
+    /* BufferEntries is #elements, not #bytes, and is INOUT */
+    size_t count;
+    if (safe_read((void *)pt->sysarg[5], sizeof(count), &count)) {
+        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE,
+                     sysnum, (void *) pt->sysarg[4],
+                     count * sizeof(void*), mc, "Buffer");
+    }
+    return true;
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -1879,6 +1903,8 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
         return handle_DeviceIoControlFile(true/*pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_GetWriteWatch)
+        return handle_GetWriteWatch(true/*pre*/, drcontext, sysnum, pt, &mc);
     else
         return true; /* execute syscall */
 }
@@ -1951,6 +1977,8 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
         handle_DeviceIoControlFile(false/*!pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_GetWriteWatch)
+        handle_GetWriteWatch(false/*!pre*/, drcontext, sysnum, pt, &mc);
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

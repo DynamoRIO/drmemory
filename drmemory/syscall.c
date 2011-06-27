@@ -666,7 +666,12 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
             size = (sysinfo->arg[i].size > 0) ? sysinfo->arg[i].size :
                 ((uint) dr_syscall_get_param(drcontext, -sysinfo->arg[i].size));
             if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
-                safe_read((void *)size, sizeof(size), &size);
+                /* for x64 can't just take cur val of size so recompute */
+                size_t *ptr;
+                ASSERT(sysinfo->arg[i].size < 0, "inout can't be immed");
+                ptr = (size_t *) dr_syscall_get_param(drcontext, -sysinfo->arg[i].size);
+                if (!safe_read((void *)ptr, sizeof(size), &size))
+                    size = 0;
             } else {
                 ASSERT(!TEST(SYSARG_POST_SIZE_IO_STATUS, sysinfo->arg[i].flags),
                        "post-io flag should be on dup entry only");
@@ -700,7 +705,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc start;
-    ptr_uint_t size;
+    ptr_uint_t size, last_size;
     uint num_args;
     int i, last_param = -1;
     LOG(SYSCALL_VERBOSE, "processing post system call #"PIFX" %s res="PIFX"\n",
@@ -737,18 +742,36 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                 ASSERT(false, "linux should not have io_status flag set");
 #endif
             } else if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
-                safe_read((void *)size, sizeof(size), &size);
+                /* for x64 can't just take cur val of size so recompute */
+                size_t *ptr;
+                ASSERT(sysinfo->arg[i].size < 0, "inout can't be immed");
+                ptr = (size_t *) pt->sysarg[-sysinfo->arg[i].size];
+                if (ptr == NULL || !safe_read((void *)ptr, sizeof(size), &size))
+                    size = 0;
             }
         }
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size.
              * If has double entry, we assume no os-specific handling.
              */
+            if (size == 0) {
+                /* we use SYSARG_LENGTH_INOUT for some optional params: in that
+                 * case use the 1st entry's max size.
+                 * XXX: we could put in our own param when the app supplies NULL
+                 */
+                size = last_size;
+            }
             if (start != NULL && size > 0)
                 check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
             continue;
         }
         last_param = sysinfo->arg[i].param;
+        last_size = size;
+        /* If the first in a double entry, give 2nd entry precedence, but
+         * keep size in last_size in case 2nd was optional OUT and is NULL
+         */
+        if (i < num_args && sysinfo->arg[i+1].param == last_param)
+            continue;
         LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
         if (start != NULL && size > 0) {
             bool skip = os_handle_post_syscall_arg_access(sysnum, mc, i,
