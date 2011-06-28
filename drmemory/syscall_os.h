@@ -47,9 +47,8 @@ enum {
     SYSARG_UNICODE_STRING      = 0x00000400,
     SYSARG_CSTRING_WIDE        = 0x00000800,
 
-    /* The following flags are used on Linux. */
     /* syscall_arg_t.size, using values that cannot be mistaken for
-     * a parameter reference
+     * a parameter reference.  Used only on Linux.
      */
     SYSARG_SIZE_CSTRING       = -100,
     /* used in repeated syscall_arg_t entry for post-syscall size */

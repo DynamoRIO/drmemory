@@ -180,6 +180,7 @@ int sysnum_GetWriteWatch = -1;
 #define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
+#define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_ntdll_info[] = {
     /* Base set from Windows NT, Windows 2000, and Windows XP */
     {0,"NtAcceptConnectPort", OK, 24, 0,sizeof(HANDLE),W, 2,sizeof(PORT_MESSAGE),RP, 3,0,IB, 4,sizeof(PORT_VIEW),W, 5,sizeof(REMOTE_PORT_VIEW),W, },
@@ -698,10 +699,28 @@ syscall_info_t syscall_kernel32_info[] = {
  * and without the prefix.
  */
 syscall_info_t syscall_user32_info[] = {
+    {0,"NtUserGetObjectInformation", OK, 20, 2,-3,W, 2,-4,WI, 4,sizeof(DWORD),W, },
+    {0,"NtUserGetProp", OK, 8, },
+    {0,"NtUserQueryWindow", OK, 8, },
     {0,"NtUserUserConnectToServer", OK, 12, 0,0,R|SYSARG_CSTRING_WIDE, 1,-2,WI },
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))
+
+/* System calls with wrappers in gdi32.dll.
+ * Not all wrappers are exported: xref i#388.
+ *
+ * When adding new entries, use the NtGdi prefix.
+ * When we try to find the wrapper via symbol lookup we try with
+ * and without the prefix.
+ */
+syscall_info_t syscall_gdi32_info[] = {
+    {0,"NtGdiExtGetObjectW", OK, 12, 2,-1,W, 2,RET,W },
+    {0,"NtGdiGetFontData", OK, 20, 3,-4,W, 3,RET,W },
+    {0,"NtGdiStretchBlt", OK, 48, },
+};
+#define NUM_GDI32_SYSCALLS \
+    (sizeof(syscall_gdi32_info)/sizeof(syscall_gdi32_info[0]))
 
 #undef OK
 #undef UNKNOWN
@@ -712,6 +731,7 @@ syscall_info_t syscall_user32_info[] = {
 #undef WI
 #undef IB
 #undef IO
+#undef RET
 
 /* takes in any Nt syscall wrapper entry point */
 byte *
@@ -938,6 +958,9 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
     } else if (stri_eq(modname, "user32.dll")) {
         for (i = 0; i < NUM_USER32_SYSCALLS; i++)
             add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+    } else if (stri_eq(modname, "gdi32.dll")) {
+        for (i = 0; i < NUM_GDI32_SYSCALLS; i++)
+            add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
     }
 }
 
