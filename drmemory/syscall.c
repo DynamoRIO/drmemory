@@ -536,7 +536,17 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                              * args and I don't want to check for them
                              */
                             ASSERT(shadow_get_byte(pc) != SHADOW_UNADDRESSABLE, "");
-                            shadow_set_byte(pc, SHADOW_DEFINED);
+                            if (options.syscall_dword_granularity) {
+                                /* w/o sentinels (which are dangerous) we often miss
+                                 * seemingly unchanged bytes (often zero) so mark
+                                 * the containing dword (i#477)
+                                 */
+                                shadow_set_range((byte *)ALIGN_BACKWARD(pc, 4),
+                                                 (byte *)ALIGN_BACKWARD(pc, 4) + 4,
+                                                 SHADOW_DEFINED);
+                            } else {
+                                shadow_set_byte(pc, SHADOW_DEFINED);
+                            }
                         } else {
                             if (post_val[j] == UNKNOWN_SYSVAL_SENTINEL &&
                                 cpt->sysarg_val[i][j] != UNKNOWN_SYSVAL_SENTINEL) {

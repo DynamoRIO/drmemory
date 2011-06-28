@@ -306,6 +306,9 @@ OPTION_CLIENT_STRING(drmemscope, auxlib, "",
 OPTION_CLIENT_BOOL(drmemscope, analyze_unknown_syscalls, true,
                    "For unknown syscalls use memory comparison to find output params",
                    "For unknown syscalls use memory comparison to find output params")
+OPTION_CLIENT_BOOL(drmemscope, syscall_dword_granularity, true,
+                   "For unknown syscall comparisons, use dword granularity",
+                   "For unknown syscall comparisons (-analyze_unknown_syscalls), when changes are detected, consider the containing dword to have changed")
 OPTION_CLIENT_BOOL(drmemscope, syscall_sentinels, false,
                    "Use sentinels to detect writes on unknown syscalls.",
                    "Use sentinels to detect writes on unknown syscalls and reduce false positives, in particular for uninitialized reads.  Can potentially result in incorrect behavior if definedness information is incorrect or application threads read syscall parameter info simultaneously.  This option requires -analyze_unknown_syscalls to be enabled.")
