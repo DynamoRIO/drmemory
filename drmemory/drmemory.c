@@ -223,8 +223,9 @@ dump_statistics(void)
     dr_fprintf(f_global, "\nSystem calls invoked:\n");
     for (i = 0; i < MAX_SYSNUM; i++) {
         if (syscall_invoked[i] > 0) {
-            dr_fprintf(f_global, "\t0x%04x %-40s %6u\n",
-                       i, get_syscall_name(i), syscall_invoked[i]);
+            dr_fprintf(f_global, "\t0x%04x %-40s %6u%s\n",
+                       i, get_syscall_name(i), syscall_invoked[i],
+                       syscall_is_known(i) ? "" : " <unknown>");
         }
     }
 

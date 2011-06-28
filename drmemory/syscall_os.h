@@ -82,6 +82,7 @@ typedef struct _syscall_arg_t {
 typedef struct _syscall_info_t {
     int num; /* system call number: filled in dynamically */
     const char *name;
+    bool known; /* if !known, param comparison is used to find writes */
     int args_size; /* for Windows: total size of args; for Linux: arg count */
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];

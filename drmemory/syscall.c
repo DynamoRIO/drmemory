@@ -388,6 +388,19 @@ get_syscall_name(uint num)
     }
 }
 
+bool
+syscall_is_known(uint num)
+{
+    bool known = false;
+    syscall_info_t *sysinfo = syscall_lookup(num);
+    if (sysinfo != NULL)
+        known = sysinfo->known;
+    else
+        known = auxlib_known_syscall(num);
+    return known;
+}
+
+
 static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
 
 /* For syscall we do not have specific parameter info for, we do a
@@ -403,7 +416,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     int i, j;
     if (!options.analyze_unknown_syscalls)
         return;
-    LOG(SYSCALL_VERBOSE, "unknown system call #"PIFX"\n", sysnum);
+    LOG(SYSCALL_VERBOSE, "unknown system call #"PIFX" %s\n",
+        sysnum, os_syscall_get_name(sysnum) == NULL ? "" : os_syscall_get_name(sysnum));
     if (options.verbose >= 2) {
         ELOGF(0, f_global, "WARNING: unhandled system call #"PIFX"\n", sysnum);
     } else {
@@ -844,7 +858,7 @@ event_pre_syscall(void *drcontext, int sysnum)
         bool known = false;
         sysinfo = syscall_lookup(sysnum);
         if (sysinfo != NULL) {
-            known = true;
+            known = sysinfo->known;
             process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
             res = os_shadow_pre_syscall(drcontext, sysnum) && res;
         }
@@ -913,7 +927,7 @@ event_post_syscall(void *drcontext, int sysnum)
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
         if (sysinfo != NULL) {
-            known = true;
+            known = sysinfo->known;
             if (!os_syscall_succeeded(sysnum,
                                       (ptr_int_t)dr_syscall_get_result(drcontext))) {
                 LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",

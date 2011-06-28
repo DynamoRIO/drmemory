@@ -84,6 +84,9 @@ vsyscall_pc(void *drcontext, byte *entry);
 const char *
 get_syscall_name(uint num);
 
+bool
+syscall_is_known(uint num);
+
 #ifdef STATISTICS
 # ifdef WINDOWS
 /* cover win32k.sys (0x1xxx, 0x2xxx), wow64 (0x3xxx), and ntoskrnl calls */
