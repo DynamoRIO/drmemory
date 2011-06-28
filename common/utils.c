@@ -528,6 +528,9 @@ opc_is_in_syscall_wrapper(uint opc)
 }
 
 /* Takes in any Nt syscall wrapper entry point.
+ * Will accept other entry points (e.g., we call it for gdi32!GetFontData)
+ * and return -1 for them: up to caller to assert if that shouldn't happen.
+ *
  * FIXME: deal with hooks
  */
 int
@@ -543,13 +546,11 @@ syscall_num(void *drcontext, byte *entry)
         pc = decode(drcontext, pc, &instr);
         ASSERT(instr_valid(&instr), "unknown system call sequence");
         opc = instr_get_opcode(&instr);
-        ASSERT(opc_is_in_syscall_wrapper(opc), "unknown system call sequence");
+        if (!opc_is_in_syscall_wrapper(opc))
+            break;
         /* safety check: should only get 11 or 12 bytes in */
-        if (pc - entry > 20) {
-            ASSERT(false, "unknown system call sequence");
-            instr_free(drcontext, &instr);
-            return -1;
-        }
+        if (pc - entry > 20)
+            break;
         /* FIXME: what if somebody has hooked the wrapper? */
         if (opc == OP_mov_imm && opnd_is_reg(instr_get_dst(&instr, 0)) &&
             opnd_get_reg(instr_get_dst(&instr, 0)) == REG_EAX) {
@@ -561,12 +562,12 @@ syscall_num(void *drcontext, byte *entry)
     } while (opc != OP_call_ind && opc != OP_int &&
              opc != OP_sysenter && opc != OP_syscall);
     instr_free(drcontext, &instr);
-    ASSERT(num > -1, "unknown system call number");
     return num;
 }
 
 # ifdef TOOL_DR_MEMORY
 extern const char *get_syscall_name(int sysnum);
+extern int get_syscall_num(void *drcontext, const module_data_t *info, const char *name);
 # endif
 
 /* Returns -1 on failure */
@@ -574,13 +575,25 @@ int
 sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
 {
     int num;
+# ifdef TOOL_DR_MEMORY
+    /* drmem has extra info via tables for when no syms are avail (i#388) */
+    num = get_syscall_num(drcontext, info, name);
+    /* good sanity check */
+    DOLOG(1, {
+        if (num != -1) {
+            const char *sysname = get_syscall_name(num);
+            ASSERT(stri_eq(sysname, name) ||
+                   /* account for NtUser*, etc. prefix differences */
+                   strstr(sysname, name) != NULL , "sysnum mismatch");
+        }
+    });
+# else
     app_pc entry = (app_pc) dr_get_proc_address(info->start, name);
 #  ifdef USE_DRSYMS
     if (entry == NULL) {
         /* Some kernel32 and user32 syscall wrappers are not exported.
-         * FIXME i#388: for those that aren't exported we either need the
-         * front-end to download symbols (xref i#143), which relies on network
-         * access, or we need a table by OS version.
+         * For Windows drmem (the only place so far where we need
+         * non-exported syscall nums) we use get_syscall_num() above.
          */
         entry = lookup_internal_symbol(info, name);
     }
@@ -589,10 +602,7 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
         return -1;
     num = syscall_num(drcontext, entry);
     ASSERT(num != -1, "error finding key syscall number");
-# ifdef TOOL_DR_MEMORY
-    /* good sanity check */
-    ASSERT(stri_eq(get_syscall_name(num), name), "sysnum mismatch");
-# endif
+# endif /* TOOL_DR_MEMORY */
     return num;
 }
 

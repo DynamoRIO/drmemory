@@ -149,4 +149,10 @@ os_syscall_succeeded(int sysnum, ptr_int_t res);
 const char *
 os_syscall_get_name(uint num);
 
+#ifdef WINDOWS
+/* uses tables and other sources not available to sysnum_from_name() */
+int
+os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name);
+#endif
+
 #endif /* _SYSCALL_OS_H_ */

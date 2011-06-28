@@ -1659,11 +1659,12 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
     } else if (stri_eq(modname, "user32.dll")) {
         sysnum_UserConnectToServer =
             sysnum_from_name(drcontext, info, "UserConnectToServer");
-        /* UserConnectToServer requires symbols, and is not present at
-         * all on XP and earlier (i#419), so we do not assert.
-         * i#388 covers ensuring we have symbols so we don't miss allocs
-         * from this call when it is present.
+        /* UserConnectToServer is not exported and so requires symbols or i#388's
+         * table.  It's not present prior to Vista or on 32-bit kernels.
          */
+        ASSERT(sysnum_UserConnectToServer != -1 ||
+               !is_wow64_process() || !running_on_Vista_or_later(),
+               "error finding alloc syscall #");
     }
 }
 #endif

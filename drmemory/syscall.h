@@ -84,6 +84,12 @@ vsyscall_pc(void *drcontext, byte *entry);
 const char *
 get_syscall_name(uint num);
 
+#ifdef WINDOWS
+/* uses tables and other sources not available to sysnum_from_name() */
+int
+get_syscall_num(void *drcontext, const module_data_t *info, const char *name);
+#endif
+
 bool
 syscall_is_known(uint num);
 

@@ -107,7 +107,7 @@ const int win2K_sysnums[] = {
 /* Table that maps win32k.sys names to numbers.  We store the unchanged number
  * under the assumption that it's never 0 (that would be an ntoskrnl syscall)
  */
-#define SYSNUM_TABLE_HASH_BITS 11 /* nearly 1K of them */
+#define SYSNUM_TABLE_HASH_BITS 12 /* nearly 1K of them, x2 for no-prefix entries */
 static hashtable_t sysnum_table;
 
 #ifdef STATISTICS
@@ -692,9 +692,13 @@ syscall_info_t syscall_kernel32_info[] = {
 
 /* System calls with wrappers in user32.dll.
  * Not all wrappers are exported: xref i#388.
+ *
+ * When adding new entries, use the NtUser prefix.
+ * When we try to find the wrapper via symbol lookup we try with
+ * and without the prefix.
  */
 syscall_info_t syscall_user32_info[] = {
-    {0,"UserConnectToServer", OK, 12, 0,0,R|SYSARG_CSTRING_WIDE, 1,-2,WI },
+    {0,"NtUserUserConnectToServer", OK, 12, 0,0,R|SYSARG_CSTRING_WIDE, 1,-2,WI },
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))
@@ -744,43 +748,64 @@ vsyscall_pc(void *drcontext, byte *entry)
     return vpc;
 }
 
-static app_pc
-add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist)
+static int
+syscall_num_from_name(void *drcontext, const module_data_t *info, const char *name,
+                  const char *optional_prefix)
 {
     app_pc entry = (app_pc)
-        dr_get_proc_address(info->start, syslist->name);
-    syslist->num = -1;
+        dr_get_proc_address(info->start, name);
+    int num = -1;
+    if (entry != NULL)
+        num = syscall_num(drcontext, entry);
 #ifdef USE_DRSYMS
     if (entry == NULL) {
         /* i#388: for those that aren't exported, if we have symbols, find the
          * sysnum that way.
          */
         /* drsym_init() was called already in utils_init() */
-        entry = lookup_internal_symbol(info, syslist->name);
+        entry = lookup_internal_symbol(info, name);
+        if (entry != NULL)
+            num = syscall_num(drcontext, entry);
+        if (num == -1 && optional_prefix != NULL) {
+            const char *skip_prefix = name + strlen(optional_prefix);
+            ASSERT(strstr(name, optional_prefix) == name,
+                   "missing syscall prefix");
+            entry = lookup_internal_symbol(info, skip_prefix);
+            if (entry != NULL)
+                num = syscall_num(drcontext, entry);
+        }
     }
 #endif
-    if (entry == NULL) {
+    if (num == -1) {
         /* i#388: use sysnum table if the wrapper is not exported and we don't have
          * symbol info.  Currently the table only has win32k.sys entries since
          * all the ntdll wrappers are exported.
          */
-        int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)syslist->name);
+        int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)name);
         if (sysnum != 0) {
-            LOG(SYSCALL_VERBOSE, "using sysnum_table since no symbol found for %s\n",
-                syslist->name);
-            syslist->num = sysnum;
+            LOG(SYSCALL_VERBOSE, "using sysnum_table since no wrapper found for %s\n",
+                name);
+            num = sysnum;
         }
     } else {
-        syslist->num = syscall_num(drcontext, entry);
         DOLOG(1, {
-            int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)syslist->name);
-            if (sysnum != 0 && sysnum != syslist->num) {
+            int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)name);
+            if (sysnum != 0 && sysnum != num) {
                 WARN("WARNING: sysnum table "PIFX" != wrapper "PIFX" for %s\n",
-                     sysnum, syslist->num, syslist->name);
+                     sysnum, num, name);
                 ASSERT(false, "syscall number table error detected");
             }
         });
     }
+    return num;
+}
+
+static void
+add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
+                  const char *optional_prefix)
+{
+    syslist->num = syscall_num_from_name(drcontext, info, syslist->name,
+                                         optional_prefix);
     if (syslist->num > -1) {
         hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
         LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
@@ -788,7 +813,13 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     } else {
         LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
     }
-    return entry;
+}
+
+/* uses tables and other sources not available to sysnum_from_name() */
+int
+os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
+{
+    return syscall_num_from_name(drcontext, info, name, NULL);
 }
 
 void
@@ -830,10 +861,26 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
 #endif
     for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
         if (sysnums[i] != NONE) {
+            const char *skip_prefix = NULL;
             IF_DEBUG(bool ok =)
                 hashtable_add(&sysnum_table, (void *)sysnum_names[i], (void *)sysnums[i]);
             ASSERT(ok, "no dup entries in sysnum_table");
             ASSERT(sysnums[i] != 0, "no 0 sysnum: then can't tell from empty");
+
+            /* we also add the version without the prefix, so e.g. alloc.c
+             * can pass in "UserConnectToServer" without having the
+             * optional_prefix param in sysnum_from_name()
+             */
+            if (strstr(sysnum_names[i], "NtUser") == sysnum_names[i])
+                skip_prefix = sysnum_names[i] + strlen("NtUser");
+            else if (strstr(sysnum_names[i], "NtGdi") == sysnum_names[i])
+                skip_prefix = sysnum_names[i] + strlen("NtGdi");
+            if (skip_prefix != NULL) {
+                IF_DEBUG(ok =)
+                    hashtable_add(&sysnum_table, (void *)skip_prefix, (void *)sysnums[i]);
+                ASSERT(ok, "no dup entries in sysnum_table");
+            }
+
 #ifdef STATISTICS
             hashtable_add(&sysname_table, (void *)sysnums[i], (void *)sysnum_names[i]);
             LOG(2, "adding win32k.sys syscall #%d \"%s\" to table under #0x%04x\n",
@@ -869,7 +916,7 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (stri_eq(modname, "ntdll.dll")) {
         ASSERT(info->start == ntdll_base, "duplicate ntdll?");
         for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
-            add_syscall_entry(drcontext, info, &syscall_ntdll_info[i]);
+            add_syscall_entry(drcontext, info, &syscall_ntdll_info[i], NULL);
 
         sysnum_CreateThread = sysnum_from_name(drcontext, info, "NtCreateThread");
         ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
@@ -887,10 +934,10 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
 
     } else if (stri_eq(modname, "kernel32.dll")) {
         for (i = 0; i < NUM_KERNEL32_SYSCALLS; i++)
-            add_syscall_entry(drcontext, info, &syscall_kernel32_info[i]);
+            add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
     } else if (stri_eq(modname, "user32.dll")) {
         for (i = 0; i < NUM_USER32_SYSCALLS; i++)
-            add_syscall_entry(drcontext, info, &syscall_user32_info[i]);
+            add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
     }
 }
 
