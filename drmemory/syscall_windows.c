@@ -34,6 +34,10 @@
 #include "../wininc/msafdlib.h"
 #include "../wininc/winioctl.h"
 
+extern bool
+wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                       dr_mcontext_t *mc);
+
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
  */
@@ -129,15 +133,15 @@ static hashtable_t sysname_table;
 #define SYSTABLE_HASH_BITS 12 /* has ntoskrnl and win32k.sys */
 static hashtable_t systable;
 
-/* Syscalls that need special processing.  If we get a lot more of
- * these should turn into automated set of enum + string + int arrays.
+/* Syscalls that need special processing.  The address of each is kept
+ * in the syscall_info_t entry so we don't need separate lookup.
  */
-int sysnum_CreateThread = -1;
-int sysnum_CreateThreadEx = -1;
-int sysnum_CreateUserProcess = -1;
-int sysnum_DeviceIoControlFile = -1;
-int sysnum_QuerySystemInformation = -1;
-int sysnum_SetSystemInformation = -1;
+static int sysnum_CreateThread = -1;
+static int sysnum_CreateThreadEx = -1;
+static int sysnum_CreateUserProcess = -1;
+static int sysnum_DeviceIoControlFile = -1;
+static int sysnum_QuerySystemInformation = -1;
+static int sysnum_SetSystemInformation = -1;
 
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
@@ -244,11 +248,11 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCreateSection", OK, 28, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {3,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtCreateSemaphore", OK, 20, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtCreateSymbolicLinkObject", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {3,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
-    {0,"NtCreateThread", OK, 32, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {4,sizeof(CLIENT_ID),W}, {5,sizeof(CONTEXT),R|SYSARG_CONTEXT}, {6,sizeof(USER_STACK),R}, {7,0,IB}, }},
-    {0,"NtCreateThreadEx", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, 6,0,IB /*rest handled manually*/, }},
+    {0,"NtCreateThread", OK, 32, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {4,sizeof(CLIENT_ID),W}, {5,sizeof(CONTEXT),R|SYSARG_CONTEXT}, {6,sizeof(USER_STACK),R}, {7,0,IB}, }, &sysnum_CreateThread},
+    {0,"NtCreateThreadEx", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, 6,0,IB /*rest handled manually*/, }, &sysnum_CreateThreadEx},
     {0,"NtCreateTimer", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtCreateToken", OK, 52, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {4,sizeof(LUID),R}, {5,sizeof(LARGE_INTEGER),R}, {6,sizeof(TOKEN_USER),R}, {7,sizeof(TOKEN_GROUPS),R}, {8,sizeof(TOKEN_PRIVILEGES),R}, {9,sizeof(TOKEN_OWNER),R}, {10,sizeof(TOKEN_PRIMARY_GROUP),R}, {11,sizeof(TOKEN_DEFAULT_DACL),R}, {12,sizeof(TOKEN_SOURCE),R}, }},
-    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is in/out but not completely known*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }},
+    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is in/out but not completely known*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }, &sysnum_CreateUserProcess},
     {0,"NtCreateWaitablePort", OK, 20, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtDebugActiveProcess", OK, 8, },
     {0,"NtDebugContinue", OK, 12, {{1,sizeof(CLIENT_ID),R}, }},
@@ -260,7 +264,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtDeleteKey", OK, 4, },
     {0,"NtDeleteObjectAuditAlarm", OK, 12, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,0,IB}, }},
     {0,"NtDeleteValueKey", OK, 8, {{1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
-    {0,"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, /*param6 handled manually*/ {8,-9,W}, }},
+    {0,"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, /*param6 handled manually*/ {8,-9,W}, }, &sysnum_DeviceIoControlFile},
     {0,"NtDisplayString", OK, 4, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtDuplicateObject", OK, 28, {{3,sizeof(HANDLE),W}, }},
     {0,"NtDuplicateToken", OK, 24, {{2,sizeof(OBJECT_ATTRIBUTES),R}, {3,0,IB}, {5,sizeof(HANDLE),W}, }},
@@ -385,7 +389,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQuerySystemEnvironmentValue", OK, 16, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
     {0,"NtQuerySystemEnvironmentValueEx", OK, 20, },
     /* One info class reads data, which is special-cased */
-    {0,"NtQuerySystemInformation", OK, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
+    {0,"NtQuerySystemInformation", OK, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }, &sysnum_QuerySystemInformation},
     {0,"NtQuerySystemTime", OK, 4, {{0,sizeof(LARGE_INTEGER),W}, }},
     {0,"NtQueryTimer", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryTimerResolution", OK, 12, {{0,sizeof(ULONG),W}, {1,sizeof(ULONG),W}, {2,sizeof(ULONG),W}, }},
@@ -468,7 +472,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSetSystemEnvironmentValue", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtSetSystemEnvironmentValueEx", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(GUID),R}, }},
     /* Some info classes write data as well, which is special-cased */
-    {0,"NtSetSystemInformation", OK, 12, {{1,-2,R}, }},
+    {0,"NtSetSystemInformation", OK, 12, {{1,-2,R}, }, &sysnum_SetSystemInformation},
     {0,"NtSetSystemPowerState", OK, 12, },
     {0,"NtSetSystemTime", OK, 8, {{0,sizeof(LARGE_INTEGER),R}, {1,sizeof(LARGE_INTEGER),W}, }},
     {0,"NtSetThreadExecutionState", OK, 8, {{1,sizeof(EXECUTION_STATE),W}, }},
@@ -791,6 +795,8 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
         LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
             "system call %-35s = %3d (0x%04x)\n", syslist->name, syslist->num, syslist->num);
+        if (syslist->num_out != NULL)
+            *syslist->num_out = syslist->num;
     } else {
         LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
     }
@@ -898,27 +904,6 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
         ASSERT(info->start == ntdll_base, "duplicate ntdll?");
         for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
             add_syscall_entry(drcontext, info, &syscall_ntdll_info[i], NULL);
-
-        sysnum_CreateThread = sysnum_from_name(drcontext, info, "NtCreateThread");
-        ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
-        sysnum_CreateThreadEx = sysnum_from_name(drcontext, info, "NtCreateThreadEx");
-        /* NtCreateThreadEx not there in pre-vista */
-        sysnum_CreateUserProcess = sysnum_from_name(drcontext, info,
-                                                    "NtCreateUserProcess");
-        /* NtCreateUserProcess not there in pre-vista */
-        sysnum_DeviceIoControlFile = sysnum_from_name(drcontext, info,
-                                                      "NtDeviceIoControlFile");
-        ASSERT(sysnum_DeviceIoControlFile >= 0,
-               "cannot find NtDeviceIoControlFile sysnum");
-        sysnum_SetSystemInformation = sysnum_from_name(drcontext, info,
-                                                      "NtSetSystemInformation");
-        ASSERT(sysnum_SetSystemInformation >= 0,
-               "cannot find NtSetSystemInformation sysnum");
-        sysnum_QuerySystemInformation = sysnum_from_name(drcontext, info,
-                                                         "NtQuerySystemInformation");
-        ASSERT(sysnum_QuerySystemInformation >= 0,
-               "cannot find NtQuerySystemInformation sysnum");
-
     } else if (stri_eq(modname, "kernel32.dll")) {
         for (i = 0; i < num_kernel32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
@@ -2142,7 +2127,7 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
     else if (sysnum == sysnum_QuerySystemInformation)
         return handle_QuerySystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
     else
-        return true; /* execute syscall */
+        return wingdi_process_syscall(true/*pre*/, drcontext, sysnum, pt, &mc);
 }
 
 #ifdef DEBUG
@@ -2217,6 +2202,8 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_SetSystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_QuerySystemInformation)
         handle_QuerySystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
+    else
+        wingdi_process_syscall(false/*!pre*/, drcontext, sysnum, pt, &mc);
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

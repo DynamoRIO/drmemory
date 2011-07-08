@@ -98,7 +98,7 @@ NtGdiGetGlyphIndicesW(
     __in HDC hdc,
     __in_ecount_opt(cwc) LPWSTR pwc,
     __in int cwc,
-    __out_opt LPWORD pgi,
+    __out_opt LPWORD pgi, // FIXME(bruening): should be __out_ecount_opt(cwc)?
     __in DWORD iMode
     );
 

@@ -105,20 +105,23 @@ num_user32_syscalls(void)
  * When we try to find the wrapper via symbol lookup we try with
  * and without the prefix.
  *
- * Initially obtained via mksystable.pl on VS2008 ntgdi.h
+ * Initially obtained via mksystable.pl on VS2008 ntgdi.h.
+ * That version was checked in separately to track manual changes.
  */
-syscall_info_t syscall_gdi32_info[] = {
-    {0,"NtGdiExtGetObjectW", OK, 12, {{2,-1,W}, {2,RET,W,}, }},
-    {0,"NtGdiGetFontData", OK, 20, {{3,-4,W,}, {3,RET,W,} }},
-    {0,"NtGdiStretchBlt", OK, 48, },
 
-#if 0 /* straight from mksystable.pl but won't compile: here to track manual changes */
+static int sysnum_GdiCreatePaletteInternal = -1;
+static int sysnum_GdiCheckBitmapBits = -1;
+static int sysnum_GdiCreateDIBSection = -1;
+static int sysnum_GdiHfontCreate = -1;
+static int sysnum_GdiDoPalette = -1;
+
+syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
     {0,"NtGdiSetDIBitsToDeviceInternal", OK, 64, {{9,-12,R,}, {10,sizeof(BITMAPINFO),R,}, }},
     {0,"NtGdiGetFontResourceInfoInternalW", OK, 28, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {4,sizeof(DWORD),W,}, {5,-3,W,}, }},
-    {0,"NtGdiGetGlyphIndicesW", OK, 20, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {3,sizeof(WORD),W,}, }},
+    {0,"NtGdiGetGlyphIndicesW", OK, 20, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {3,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(WORD)}, }},
     {0,"NtGdiGetGlyphIndicesWInternal", OK, 24, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {3,sizeof(WORD),W,}, }},
-    {0,"NtGdiCreatePaletteInternal", OK, 8, {{0,cEntries * 4  + 4,R,}, }},
+    {0,"NtGdiCreatePaletteInternal", OK, 8, {{0,},}/*too complex: special-cased*/, &sysnum_GdiCreatePaletteInternal},
     {0,"NtGdiArcInternal", OK, 40, },
     {0,"NtGdiGetOutlineTextMetricsInternalW", OK, 16, {{2,-1,W,}, {3,sizeof(TMDIFF),W,}, }},
     {0,"NtGdiGetAndSetDCDword", OK, 16, {{3,sizeof(DWORD),W,}, }},
@@ -142,7 +145,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiAddEmbFontToDC", OK, 8, {{1,sizeof(PVOID),R,}, }},
     {0,"NtGdiFontIsLinked", OK, 4, },
     {0,"NtGdiPolyPolyDraw", OK, 20, {{1,sizeof(POINT),R,}, {2,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(ULONG)}, }},
-    {0,"NtGdiDoPalette", OK, 24, {{3,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)}, }},
+    {0,"NtGdiDoPalette", OK, 24, {{0,},},/*special-cased: R or W depending*/ &sysnum_GdiDoPalette},
     {0,"NtGdiComputeXformCoefficients", OK, 4, },
     {0,"NtGdiGetWidthTable", OK, 28, {{2,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(WCHAR)}, {4,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(USHORT)}, {5,sizeof(WIDTHDATA),W,}, {6,sizeof(FLONG),W,}, }},
     {0,"NtGdiDescribePixelFormat", OK, 16, {{3,-2,W,}, }},
@@ -231,7 +234,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiSetColorSpace", OK, 8, },
     {0,"NtGdiCreateColorTransform", OK, 32, {{1,sizeof(LOGCOLORSPACEW),R,}, }},
     {0,"NtGdiDeleteColorTransform", OK, 8, },
-    {0,"NtGdiCheckBitmapBits", OK, 32, {{7,dwWidth * dwHeight,W,}, }},
+    {0,"NtGdiCheckBitmapBits", OK, 32, {{0,}/*too complex: special-cased*/, }, &sysnum_GdiCheckBitmapBits},
     {0,"NtGdiColorCorrectPalette", OK, 24, {{4,-3,R|W|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)}, }},
     {0,"NtGdiGetColorSpaceforBitmap", OK, 4, },
     {0,"NtGdiGetDeviceGammaRamp", OK, 8, {{1,256*2*3,W,}, }},
@@ -247,7 +250,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetPath", OK, 16, {{1,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINT)}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(BYTE)}, }},
     {0,"NtGdiCreateCompatibleDC", OK, 4, },
     {0,"NtGdiCreateDIBitmapInternal", OK, 44, {{4,-8,R,}, {5,-7,R,}, }},
-    {0,"NtGdiCreateDIBSection", OK, 36, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }},
+    {0,"NtGdiCreateDIBSection", OK, 36, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }, &sysnum_GdiCreateDIBSection},
     {0,"NtGdiCreateSolidBrush", OK, 8, },
     {0,"NtGdiCreateDIBBrush", OK, 24, },
     {0,"NtGdiCreatePatternBrushInternal", OK, 12, },
@@ -369,7 +372,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiEndGdiRendering", OK, 12, {{2,sizeof(BOOL),W,}, }},
     {0,"NtGdiLineTo", OK, 12, },
     {0,"NtGdiMoveTo", OK, 16, {{3,sizeof(POINT),W,}, }},
-    {0,"NtGdiExtGetObjectW", OK, 12, {{2,-1,W,}, }},
+    {0,"NtGdiExtGetObjectW", OK, 12, {{2,-1,W}, {2,RET,W,}, }},
     {0,"NtGdiGetDeviceCaps", OK, 8, },
     {0,"NtGdiGetDeviceCapsAll", OK, 8, {{1,sizeof(DEVCAPS),W,}, }},
     {0,"NtGdiStretchBlt", OK, 48, },
@@ -393,8 +396,10 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiSetSystemPaletteUse", OK, 8, },
     {0,"NtGdiGetRegionData", OK, 12, {{2,-1,W,}, {2,RET,W,}, }},
     {0,"NtGdiInvertRgn", OK, 8, },
-    {0,"NtGdiHfontCreate", OK, 20, {{0,-1,R,}, }},
+    {0,"NtGdiHfontCreate", OK, 20, {{0,}, },/*special-cased*/ &sysnum_GdiHfontCreate},
+#if 0 /* for _WIN32_WINNT < 0x0500 == NT which we ignore for now */
     {0,"NtGdiHfontCreate", OK, 20, {{0,sizeof(EXTLOGFONTW),R,}, }},
+#endif
     {0,"NtGdiSetFontEnumeration", OK, 4, },
     {0,"NtGdiEnumFonts", OK, 32, {{4,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {6,sizeof(ULONG),R|W,}, {7,-6,WI,}, }},
     {0,"NtGdiQueryFonts", OK, 12, {{0,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, {2,sizeof(LARGE_INTEGER),W,}, }},
@@ -405,7 +410,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetEudcTimeStampEx", OK, 12, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtGdiQueryFontAssocInfo", OK, 4, },
     {0,"NtGdiGetFontUnicodeRanges", OK, 8, {{1,0,W,/*FIXME pre size from prior syscall ret*//*FIXME size from retval so earlier call*/}, }},
-    {0,"NtGdiGetRealizationInfo", OK, 8, {{1,sizeof(FONT_REALIZATION_INFO),W,}, }},
+    {0,"NtGdiGetRealizationInfo", OK, 8, {{1,sizeof(REALIZATION_INFO),W,}, }},
     {0,"NtGdiAddRemoteMMInstanceToDC", OK, 12, {{1,-2,R,}, }},
     {0,"NtGdiUnloadPrinterDriver", OK, 8, {{0,-1,R,}, }},
     {0,"NtGdiEngAssociateSurface", OK, 12, },
@@ -494,7 +499,6 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiDdNotifyFullscreenSpriteUpdate", OK, 8, },
     {0,"NtGdiDdDestroyFullscreenSprite", OK, 8, },
     {0,"NtGdiDdQueryVisRgnUniqueness", OK, 0, },
-#endif
 
 };
 #define NUM_GDI32_SYSCALLS \
@@ -513,3 +517,165 @@ num_gdi32_syscalls(void)
 #undef WI
 #undef IB
 #undef RET
+
+/***************************************************************************
+ * CUSTOM SYSCALL HANDLING
+ */
+
+static bool
+handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                           dr_mcontext_t *mc)
+{
+    byte *dib;
+    if (!pre && safe_read((byte *) pt->sysarg[8], sizeof(dib), &dib)) {
+        /* XXX: move this into common/alloc.c since that's currently
+         * driving all the known allocs, heap and otherwise
+         */
+        byte *dib_base;
+        size_t dib_size;
+        if (dr_query_memory(dib, &dib_base, &dib_size, NULL)) {
+            client_handle_mmap(pt, dib_base, dib_size,
+                               /* XXX: may not be file-backed but treating as
+                                * all-defined and non-heap which is what this param
+                                * does today.  could do dr_virtual_query().
+                                */
+                               true/*file-backed*/);
+        } else
+            WARN("WARNING: unable to query DIB section "PFX"\n", dib);
+    } else if (!pre)
+        WARN("WARNING: unable to read NtGdiCreateDIBSection param\n");
+    return true;
+}
+
+static bool
+handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                      dr_mcontext_t *mc)
+{
+    ENUMLOGFONTEXDVW dvw;
+    ENUMLOGFONTEXDVW *real_dvw = (ENUMLOGFONTEXDVW *) pt->sysarg[0];
+    if (pre && safe_read((byte *) pt->sysarg[0], sizeof(dvw), &dvw)) {
+        uint i;
+        byte *start = (byte *) pt->sysarg[0];
+        ULONG total_size = (ULONG) pt->sysarg[1];
+        /* Would be: {0,-1,R,}
+         * Except not all fields need to be defined.
+         * If any other syscall turns out to have this param type should
+         * turn this into a type handler and not a syscall handler.
+         */
+        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start,
+                     total_size, mc, "ENUMLOGFONTEXDVW");
+
+        ASSERT(offsetof(ENUMLOGFONTEXDVW, elfEnumLogfontEx) == 0 &&
+               offsetof(ENUMLOGFONTEXW, elfLogFont) == 0, "logfont structs changed");
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     offsetof(LOGFONTW, lfFaceName), mc, "LOGFONTW");
+        /* Could share w/ handle_cstring_wide_access but we already safe_read
+         * as we have a max size
+         */
+        start = (byte *) &real_dvw->elfEnumLogfontEx.elfLogFont.lfFaceName;
+        for (i = 0;
+             i < sizeof(dvw.elfEnumLogfontEx.elfLogFont.lfFaceName)/sizeof(wchar_t) &&
+                 dvw.elfEnumLogfontEx.elfLogFont.lfFaceName[i] != L'\0';
+             i++)
+            ; /* nothing */
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     i * sizeof(wchar_t), mc, "LOGFONTW.lfFaceName");
+
+        start = (byte *) &real_dvw->elfEnumLogfontEx.elfFullName;
+        for (i = 0;
+             i < sizeof(dvw.elfEnumLogfontEx.elfFullName)/sizeof(wchar_t) &&
+                 dvw.elfEnumLogfontEx.elfFullName[i] != L'\0';
+             i++)
+            ; /* nothing */
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfFullName");
+
+        start = (byte *) &real_dvw->elfEnumLogfontEx.elfStyle;
+        for (i = 0;
+             i < sizeof(dvw.elfEnumLogfontEx.elfStyle)/sizeof(wchar_t) &&
+                 dvw.elfEnumLogfontEx.elfStyle[i] != L'\0';
+             i++)
+            ; /* nothing */
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfStyle");
+
+        start = (byte *) &real_dvw->elfEnumLogfontEx.elfScript;
+        for (i = 0;
+             i < sizeof(dvw.elfEnumLogfontEx.elfScript)/sizeof(wchar_t) &&
+                 dvw.elfEnumLogfontEx.elfScript[i] != L'\0';
+             i++)
+            ; /* nothing */
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfScript");
+
+        /* the dvValues of DESIGNVECTOR are optional: from 0 to 64 bytes */
+        start = (byte *) &real_dvw->elfDesignVector;
+        if (dvw.elfDesignVector.dvNumAxes > MM_MAX_NUMAXES) {
+            dvw.elfDesignVector.dvNumAxes = MM_MAX_NUMAXES;
+            WARN("WARNING: NtGdiHfontCreate design vector larger than max\n");
+        }
+        if ((start + offsetof(DESIGNVECTOR, dvValues) +
+             dvw.elfDesignVector.dvNumAxes * sizeof(LONG)) -
+            (byte*) pt->sysarg[0] != total_size) {
+            WARN("WARNING: NtGdiHfontCreate total size doesn't match\n");
+        }
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     offsetof(DESIGNVECTOR, dvValues) +
+                     dvw.elfDesignVector.dvNumAxes * sizeof(LONG),
+                     mc, "DESIGNVECTOR");
+    } else if (pre)
+        WARN("WARNING: unable to read NtGdiHfontCreate param\n");
+    return true;
+}
+
+static bool
+handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                    dr_mcontext_t *mc)
+{
+    /* Entry would read: {3,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)}
+     * But pPalEntries is an OUT param if !bInbound.
+     * It's a convenient arg: else would have to look at iFunc.
+     */
+    WORD cEntries = (WORD) pt->sysarg[2];
+    PALETTEENTRY *pPalEntries = (PALETTEENTRY *) pt->sysarg[3];
+    bool bInbound = (bool) pt->sysarg[5];
+    if (bInbound && pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pPalEntries,
+                     cEntries * sizeof(PALETTEENTRY), mc, "pPalEntries");
+    } else if (!bInbound) {
+        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
+                     (byte *) pPalEntries,
+                     cEntries * sizeof(PALETTEENTRY), mc, "pPalEntries");
+    }
+    return true;
+}
+
+bool
+wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                       dr_mcontext_t *mc)
+{
+    if (sysnum == sysnum_GdiCreatePaletteInternal) {
+        /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
+        if (pre) {
+            UINT cEntries = (UINT) pt->sysarg[1];
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[0],
+                         sizeof(LOGPALETTE) - sizeof(PALETTEENTRY) +
+                         sizeof(PALETTEENTRY) * cEntries, mc, "pLogPal");
+        }
+    } else if (sysnum == sysnum_GdiCheckBitmapBits) {
+        /* Entry would read: {7,dwWidth * dwHeight,W,} */
+        DWORD dwWidth = (DWORD) pt->sysarg[4];
+        DWORD dwHeight = (DWORD) pt->sysarg[5];
+        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
+                     (byte *)pt->sysarg[7], dwWidth * dwHeight, mc, "paResults");
+    } else if (sysnum == sysnum_GdiCreateDIBSection) {
+        return handle_GdiCreateDIBSection(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_GdiHfontCreate) {
+        return handle_GdiHfontCreate(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_GdiDoPalette) {
+        return handle_GdiDoPalette(pre, drcontext, sysnum, pt, mc);
+    }
+
+    return true; /* execute syscall */
+}
+

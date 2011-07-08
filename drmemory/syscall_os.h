@@ -91,6 +91,8 @@ typedef struct _syscall_info_t {
     int args_size; /* for Windows: total size of args; for Linux: arg count */
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];
+    /* for custom handling w/o separate number lookup */
+    int *num_out;
 } syscall_info_t;
 
 extern syscall_info_t syscall_info[];
