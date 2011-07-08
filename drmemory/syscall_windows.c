@@ -139,8 +139,7 @@ int sysnum_DeviceIoControlFile = -1;
 int sysnum_QuerySystemInformation = -1;
 int sysnum_SetSystemInformation = -1;
 
-/* FIXME i#99: win32k.sys syscalls!  currently doing memcmp to see what was written
- * FIXME i#97: IIS syscalls!
+/* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
  * FIXME i#99: my windows syscall data is missing 3 types of information:
  *   - some structs have variable-length data on the end
@@ -179,13 +178,13 @@ int sysnum_SetSystemInformation = -1;
 #define UNKNOWN false
 #define W (SYSARG_WRITE)
 #define R (SYSARG_READ)
-#define RP (SYSARG_PORT_MESSAGE)
+#define RP (SYSARG_READ | SYSARG_PORT_MESSAGE)
 #define WP (SYSARG_WRITE | SYSARG_PORT_MESSAGE)
 #define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
 #define RET (SYSARG_POST_SIZE_RETVAL)
-syscall_info_t syscall_ntdll_info[] = {
+static syscall_info_t syscall_ntdll_info[] = {
     /* Base set from Windows NT, Windows 2000, and Windows XP */
     {0,"NtAcceptConnectPort", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),RP}, {3,0,IB}, {4,sizeof(PORT_VIEW),R|W}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, }},
     {0,"NtAccessCheck", OK, 32, {{0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR}, {3,sizeof(GENERIC_MAPPING),R}, {4,sizeof(PRIVILEGE_SET),W}, {5,sizeof(ULONG),R}, {6,sizeof(ACCESS_MASK),W}, {7,sizeof(BOOLEAN),W}, }},
@@ -249,7 +248,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCreateThreadEx", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, 6,0,IB /*rest handled manually*/, }},
     {0,"NtCreateTimer", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtCreateToken", OK, 52, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {4,sizeof(LUID),R}, {5,sizeof(LARGE_INTEGER),R}, {6,sizeof(TOKEN_USER),R}, {7,sizeof(TOKEN_GROUPS),R}, {8,sizeof(TOKEN_PRIVILEGES),R}, {9,sizeof(TOKEN_OWNER),R}, {10,sizeof(TOKEN_PRIMARY_GROUP),R}, {11,sizeof(TOKEN_DEFAULT_DACL),R}, {12,sizeof(TOKEN_SOURCE),R}, }},
-    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is an in/outNOCHECKIN*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }},
+    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is in/out but not completely known*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }},
     {0,"NtCreateWaitablePort", OK, 20, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtDebugActiveProcess", OK, 8, },
     {0,"NtDebugContinue", OK, 12, {{1,sizeof(CLIENT_ID),R}, }},
@@ -674,60 +673,15 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtWow64GetCurrentProcessorNumberEx", UNKNOWN, 4, },
     {0,"NtWow64InterlockedPopEntrySList", UNKNOWN, 4, },
 };
-
 #define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
 
-/* System calls with wrappers in kernel32.dll (on win7 these are duplicated
- * in kernelbase.dll as well but w/ the same syscall number)
- * Not all wrappers are exported: xref i#388.
- */
-syscall_info_t syscall_kernel32_info[] = {
-    /* wchar_t *locale OUT, size_t locale_sz */
-    {0,"NtWow64CsrBasepNlsGetUserInfo", OK, 8, {{0,-1,W|SYSARG_CSTRING_WIDE}, }},
-
-    /* Takes a single param that's a pointer to a struct that has a PHANDLE at offset
-     * 0x7c where the base of a new mmap is stored by the kernel.  We handle that by
-     * waiting for RtlCreateActivationContext (i#352).  We don't know of any written
-     * values in the rest of the struct or its total size so we ignore it for now and
-     * use this entry to avoid "unknown syscall" warnings.
-     *
-     * XXX: there are 4+ wchar_t* input strings in the struct: should check them.
-     */
-    {0,"NtWow64CsrBasepCreateActCtx", OK, 4, },
-};
-#define NUM_KERNEL32_SYSCALLS \
-    (sizeof(syscall_kernel32_info)/sizeof(syscall_kernel32_info[0]))
-
-/* System calls with wrappers in user32.dll.
- * Not all wrappers are exported: xref i#388.
- *
- * When adding new entries, use the NtUser prefix.
- * When we try to find the wrapper via symbol lookup we try with
- * and without the prefix.
- */
-syscall_info_t syscall_user32_info[] = {
-    {0,"NtUserGetObjectInformation", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
-    {0,"NtUserGetProp", OK, 8, },
-    {0,"NtUserQueryWindow", OK, 8, },
-    {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|SYSARG_CSTRING_WIDE}, {1,-2,WI}, }},
-};
-#define NUM_USER32_SYSCALLS \
-    (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))
-
-/* System calls with wrappers in gdi32.dll.
- * Not all wrappers are exported: xref i#388.
- *
- * When adding new entries, use the NtGdi prefix.
- * When we try to find the wrapper via symbol lookup we try with
- * and without the prefix.
- */
-syscall_info_t syscall_gdi32_info[] = {
-    {0,"NtGdiExtGetObjectW", OK, 12, {{2,-1,W}, {2,RET,W}, }},
-    {0,"NtGdiGetFontData", OK, 20, {{3,-4,W}, {3,RET,W}, }},
-    {0,"NtGdiStretchBlt", OK, 48, },
-};
-#define NUM_GDI32_SYSCALLS \
-    (sizeof(syscall_gdi32_info)/sizeof(syscall_gdi32_info[0]))
+/* win32k.sys and other non-ntoskrnl syscalls are in syscall_wingdi.c */
+extern syscall_info_t syscall_kernel32_info[];
+extern size_t num_kernel32_syscalls(void);
+extern syscall_info_t syscall_user32_info[];
+extern size_t num_user32_syscalls(void);
+extern syscall_info_t syscall_gdi32_info[];
+extern size_t num_gdi32_syscalls(void);
 
 #undef OK
 #undef UNKNOWN
@@ -966,13 +920,13 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
                "cannot find NtQuerySystemInformation sysnum");
 
     } else if (stri_eq(modname, "kernel32.dll")) {
-        for (i = 0; i < NUM_KERNEL32_SYSCALLS; i++)
+        for (i = 0; i < num_kernel32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
     } else if (stri_eq(modname, "user32.dll")) {
-        for (i = 0; i < NUM_USER32_SYSCALLS; i++)
+        for (i = 0; i < num_user32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
     } else if (stri_eq(modname, "gdi32.dll")) {
-        for (i = 0; i < NUM_GDI32_SYSCALLS; i++)
+        for (i = 0; i < num_gdi32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
     }
 }

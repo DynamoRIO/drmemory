@@ -344,17 +344,18 @@ endif (UNIX)
 
 if (WIN32)
   # We need to link with ntdll.lib
-  # Use convention of DynamoRIO sources: DDKROOT env var
-  if (NOT "$ENV{DDKROOT}" STREQUAL "")
-    set(DDK_ROOT "$ENV{DDKROOT}")
-  # Check default install path
-  elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
-    set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
-  elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
-    set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
-  elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
-    set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
-  endif (NOT "$ENV{DDKROOT}" STREQUAL "")
+  # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var)
+  set(DDK_ROOT "$ENV{DDKROOT}" CACHE PATH "Path to DDK.")
+  if ("${DDK_ROOT}" STREQUAL "")
+    # Check default install path
+    if (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
+      set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
+    elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
+      set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/6000/")
+    elseif (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
+      set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
+    endif ()
+  endif ("${DDK_ROOT}" STREQUAL "")
   # Note that we want the oldest ntdll.lib for maximum compatibility.
   # The 2003 DDK (3790.1830) or Vista WDK (6000) both have these paths:
   if (X64)
@@ -378,6 +379,10 @@ if (WIN32)
   message(STATUS "Found ntdll.lib: ${NTDLL_LIBPATH}")
   get_filename_component(NTDLL_LIBPATH "${NTDLL_LIBPATH}" PATH)
   link_directories(${NTDLL_LIBPATH})
+
+  # We can't include directly from DDK b/c the DDK include dir and VS include
+  # dirs are incompatible, so we have our own copies of the headers we need.
+  include_directories(wininc/psdk wininc/dxsdk)
 
   # We need a newer version of dbghelp.dll than is in system32/ on 2K or XP.
   # It is redistributable: "you can distribute the DLL with your application".
@@ -637,6 +642,7 @@ else (TOOL_DR_HEAPSTAT)
     set(srcs ${srcs} drmemory/syscall_linux.c)
   else (UNIX)
     set(srcs ${srcs} drmemory/syscall_windows.c)
+    set(srcs ${srcs} drmemory/syscall_wingdi.c)
     if (SYSCALL_DRIVER)
       set(srcs ${srcs} drmemory/syscall_driver.c)
     endif (SYSCALL_DRIVER)

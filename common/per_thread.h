@@ -30,7 +30,7 @@
  */
 
 #ifdef WINDOWS
-# define SYSCALL_NUM_ARG_STORE 12
+# define SYSCALL_NUM_ARG_STORE 14
 #else
 # define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
 #endif
