@@ -46,6 +46,10 @@ enum {
     SYSARG_SECURITY_DESCRIPTOR = 0x00000200,
     SYSARG_UNICODE_STRING      = 0x00000400,
     SYSARG_CSTRING_WIDE        = 0x00000800,
+    /* The size is not in bytes but in elements where the size of
+     * each element is in the misc field
+     */
+    SYSARG_SIZE_IN_ELEMENTS    = 0x00001000,
 
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.  Used only on Linux.
@@ -65,6 +69,7 @@ typedef struct _syscall_arg_t {
     int param; /* ordinal of parameter */
     int size; /* >0 = abs size; <=0 = -param that holds size */
     uint flags; /* SYSARG_ flags */
+    int misc; /* meaning depends on flags */
 } syscall_arg_t;
 
 #ifdef WINDOWS

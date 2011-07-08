@@ -641,10 +641,56 @@ sysarg_invalid(syscall_arg_t *arg)
     return (arg->param == 0 && arg->size == 0 && arg->flags == 0);
 }
 
+/* assumes pt->sysarg[] has already been filled in */
+static ptr_uint_t
+sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre)
+{
+    ptr_uint_t size = 0;
+    if (arg->size == SYSARG_SIZE_CSTRING) {
+        /* FIXME PR 408539: check addressability and definedness of each
+         * byte prior to deref and find end.  (We only need this
+         * on syscall since in user code we'll see the individual
+         * refs (or rep cmps)).
+         */
+        size = 0; /* for now */
+    } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
+        ASSERT(!pre, "can't ask for retval on pre");
+        size = dr_syscall_get_result(drcontext);
+    } else {
+        ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
+               "reached max syscall args stored");
+        size = (arg->size > 0) ? arg->size : ((uint) pt->sysarg[-arg->size]);
+        if (TEST(SYSARG_LENGTH_INOUT, arg->flags)) {
+            /* for x64 can't just take cur val of size so recompute */
+            size_t *ptr;
+            ASSERT(arg->size < 0, "inout can't be immed");
+            ptr = (size_t *) pt->sysarg[-arg->size];
+            if (ptr == NULL || !safe_read((void *)ptr, sizeof(size), &size))
+                size = 0;
+        } else if (TEST(SYSARG_POST_SIZE_IO_STATUS, arg->flags)) {
+#ifdef WINDOWS
+            IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) size;
+            ULONG sz;
+            ASSERT(sizeof(status->Information) == sizeof(sz), "");
+            ASSERT(!pre, "post-io flag should be on dup entry only");
+            safe_read((void *)(&status->Information), sizeof(sz), &sz);
+            size = sz;
+#else
+            ASSERT(false, "linux should not have io_status flag set");
+#endif
+        }
+    }
+    if (TEST(SYSARG_SIZE_IN_ELEMENTS, arg->flags)) {
+        size *= arg->misc;
+    }
+    return size;
+}
+
 static void
 process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
                                      syscall_info_t *sysinfo)
 {
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc start;
     ptr_uint_t size;
     uint num_args;
@@ -687,29 +733,10 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
 
         if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags))
             continue;
+
         start = (app_pc) dr_syscall_get_param(drcontext, sysinfo->arg[i].param);
-        if (sysinfo->arg[i].size == SYSARG_SIZE_CSTRING) {
-            /* FIXME PR 408539: check addressability and definedness of each
-             * byte prior to deref and find end.  (We only need this
-             * on syscall since in user code we'll see the individual
-             * refs (or rep cmps)).
-             */
-            size = 0; /* for now */
-        } else {
-            size = (sysinfo->arg[i].size > 0) ? sysinfo->arg[i].size :
-                ((uint) dr_syscall_get_param(drcontext, -sysinfo->arg[i].size));
-            if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
-                /* for x64 can't just take cur val of size so recompute */
-                size_t *ptr;
-                ASSERT(sysinfo->arg[i].size < 0, "inout can't be immed");
-                ptr = (size_t *) dr_syscall_get_param(drcontext, -sysinfo->arg[i].size);
-                if (!safe_read((void *)ptr, sizeof(size), &size))
-                    size = 0;
-            } else {
-                ASSERT(!TEST(SYSARG_POST_SIZE_IO_STATUS, sysinfo->arg[i].flags),
-                       "post-io flag should be on dup entry only");
-            }
-        }
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], true/*pre*/);
+
         /* FIXME PR 406355: we don't record which params are optional 
          * FIXME: some OUT params may not be written if the IN is bogus:
          * we should check here since harder to undo post-syscall on failure.
@@ -755,34 +782,10 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
             continue;
         ASSERT(!TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags),
                "inlined bool should always be read, not write");
+
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        if (sysinfo->arg[i].size == SYSARG_SIZE_CSTRING) {
-            /* FIXME PR 408539: see pre notes */
-            size = 0; /* for now */
-        } else if (sysinfo->arg[i].size == SYSARG_POST_SIZE_RETVAL) {
-            size = dr_syscall_get_result(drcontext);
-        } else {
-            size = (sysinfo->arg[i].size > 0) ? sysinfo->arg[i].size :
-                ((uint) pt->sysarg[-sysinfo->arg[i].size]);
-            if (TEST(SYSARG_POST_SIZE_IO_STATUS, sysinfo->arg[i].flags)) {
-#ifdef WINDOWS
-                IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) size;
-                ULONG sz;
-                ASSERT(sizeof(status->Information) == sizeof(sz), "");
-                safe_read((void *)(&status->Information), sizeof(sz), &sz);
-                size = sz;
-#else
-                ASSERT(false, "linux should not have io_status flag set");
-#endif
-            } else if (TEST(SYSARG_LENGTH_INOUT, sysinfo->arg[i].flags)) {
-                /* for x64 can't just take cur val of size so recompute */
-                size_t *ptr;
-                ASSERT(sysinfo->arg[i].size < 0, "inout can't be immed");
-                ptr = (size_t *) pt->sysarg[-sysinfo->arg[i].size];
-                if (ptr == NULL || !safe_read((void *)ptr, sizeof(size), &size))
-                    size = 0;
-            }
-        }
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], false/*!pre*/);
+
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size.
              * If has double entry, we assume no os-specific handling.
