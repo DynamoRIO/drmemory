@@ -237,7 +237,7 @@ NtGdiGetUFIPathname(
     __in FLONG fl,
     __out_opt BOOL *pbMemFont,
     __out_opt ULONG *pcjView,
-    __out_opt PVOID pvView,
+    __out_opt PVOID* pvView, // FIXME(bruening): was PVOID; should be bcount(pcjView)?
     __out_opt BOOL *pbTTC,
     __out_opt ULONG *piTTC
     );
@@ -371,9 +371,9 @@ NtGdiDxgGenericThunk(
     __in ULONG_PTR ulIndex,
     __in ULONG_PTR ulHandle,
     __inout SIZE_T *pdwSizeOfPtr1,
-    __inout  PVOID pvPtr1,
+    __inout  PVOID *pvPtr1, // FIXME(bruening): was PVOID: should be bcount(pdwSizeOfPtr1)?
     __inout SIZE_T *pdwSizeOfPtr2,
-    __inout  PVOID pvPtr2
+    __inout  PVOID *pvPtr2  // FIXME(bruening): was PVOID: should be bcount(pdwSizeOfPtr2)?
     );
 
 __kernel_entry W32KAPI DWORD APIENTRY
@@ -654,7 +654,7 @@ NtGdiD3dContextCreate(
 
 __kernel_entry W32KAPI DWORD APIENTRY
 NtGdiD3dContextDestroy(
-    __in LPD3DNTHAL_CONTEXTDESTROYDATA
+    __in LPD3DNTHAL_CONTEXTDESTROYDATA varname
     );
 
 __kernel_entry W32KAPI DWORD APIENTRY
@@ -2729,7 +2729,7 @@ NtGdiFONTOBJ_cGetGlyphs(
     __in ULONG iMode,
     __in ULONG cGlyph,
     __in HGLYPH *phg,
-    __deref_out __typefix(PGLYPHDATA *) PVOID *ppvGlyph
+    __deref_out __typefix(GLYPHDATA **) PVOID *ppvGlyph
     );
 
 __kernel_entry W32KAPI XFORMOBJ* APIENTRY
@@ -2960,8 +2960,15 @@ NtGdiDrawStream(
 
 // Private Xfer interfaces
 
-__kernel_entry W32KAPI BOOL APIENTRY NtGdiMakeObjectXferable(IN HANDLE h, IN DWORD dwProcessId);
-__kernel_entry W32KAPI BOOL APIENTRY NtGdiMakeObjectUnXferable(IN HANDLE h);
+__kernel_entry W32KAPI BOOL APIENTRY
+NtGdiMakeObjectXferable(
+                        __in HANDLE h, 
+                        __in DWORD dwProcessId
+                        );
+__kernel_entry W32KAPI BOOL APIENTRY
+NtGdiMakeObjectUnXferable(
+                          __in HANDLE h
+                          );
 
 // Private DWM interfaces
 
@@ -2969,12 +2976,12 @@ __kernel_entry W32KAPI BOOL
 NtGdiSfmGetNotificationTokens(
     __in UINT cBytes,
     __out UINT* pNrOfTokensReturned,
-    PVOID pTokenBuffer);
+    __out_bcount(cBytes) PVOID pTokenBuffer); // FIXME(bruening): ecount_part(,*pNrOfTokensReturned)?
 
 __kernel_entry W32KAPI BOOL
 NtGdiSfmRegisterLogicalSurfaceForSignaling(
     __in HLSURF hlsurf,
-    BOOL fSignalOnDirty);
+    __in BOOL fSignalOnDirty);
 
 __kernel_entry W32KAPI BOOL
 NtGdiDwmGetHighColorMode(
