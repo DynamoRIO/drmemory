@@ -256,7 +256,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtDeleteKey", OK, 4, },
     {0,"NtDeleteObjectAuditAlarm", OK, 12, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, 2,0,IB, },
     {0,"NtDeleteValueKey", OK, 8, 1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
-    {0,"NtDeviceIoControlFile", OK, 40, 4,sizeof(IO_STATUS_BLOCK),W, /*param6 handled manually*/ 8,-9,W, },
+    {0,"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, 40, 4,sizeof(IO_STATUS_BLOCK),W, /*param6 handled manually*/ 8,-9,W, },
     {0,"NtDisplayString", OK, 4, 0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING, },
     {0,"NtDuplicateObject", OK, 28, 3,sizeof(HANDLE),W, },
     {0,"NtDuplicateToken", OK, 24, 2,sizeof(OBJECT_ATTRIBUTES),R, 3,0,IB, 5,sizeof(HANDLE),W, },
