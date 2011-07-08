@@ -249,7 +249,7 @@ safe_strnlen(const char *str, size_t max)
 #define OK true
 #define UNKNOWN false
 #define W (SYSARG_WRITE)
-#define R (0)
+#define R (SYSARG_READ)
 #define CSTRING (SYSARG_SIZE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_info[] = {

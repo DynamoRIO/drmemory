@@ -25,14 +25,10 @@
 
 enum {
     /* syscall_arg_t.flags */
-    SYSARG_WRITE           = 0x00000001,
+    SYSARG_READ            = 0x00000001,
+    SYSARG_WRITE           = 0x00000002,
 
     /* The following flags are used on Windows. */
-    /* BOOLEAN is only 1 byte so ok if only lsb is defined
-     * FIXME: are we going to need the sizes of all the params, esp.
-     * when we move to 64-bit?
-     */
-    SYSARG_INLINED_BOOLEAN = 0x00000002,
     SYSARG_PORT_MESSAGE    = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */
     SYSARG_POST_SIZE_IO_STATUS = 0x00000008,
@@ -50,6 +46,11 @@ enum {
      * each element is in the misc field
      */
     SYSARG_SIZE_IN_ELEMENTS    = 0x00001000,
+    /* BOOLEAN is only 1 byte so ok if only lsb is defined
+     * FIXME: are we going to need the sizes of all the params, esp.
+     * when we move to 64-bit?
+     */
+    SYSARG_INLINED_BOOLEAN     = 0x00002000,
 
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.  Used only on Linux.
@@ -95,8 +96,9 @@ typedef struct _syscall_info_t {
 extern syscall_info_t syscall_info[];
 
 #define SYSARG_CHECK_TYPE(flags, pre) \
-    (TEST(SYSARG_WRITE, (flags)) ? \
-    ((pre) ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE) : MEMREF_CHECK_DEFINEDNESS)
+    ((pre) ? (TEST(SYSARG_READ, (flags)) ? \
+              MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE) : \
+     (TEST(SYSARG_WRITE, (flags)) ? MEMREF_WRITE : 0))
 
 void
 syscall_os_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base));

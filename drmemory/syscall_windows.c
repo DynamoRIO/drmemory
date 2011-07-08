@@ -29,6 +29,7 @@
 
 #include "../wininc/ndk_dbgktypes.h"
 #include "../wininc/ndk_iotypes.h"
+#include "../wininc/ndk_extypes.h"
 #include "../wininc/afd_shared.h"
 #include "../wininc/msafdlib.h"
 #include "../wininc/winioctl.h"
@@ -128,11 +129,15 @@ static hashtable_t sysname_table;
 #define SYSTABLE_HASH_BITS 12 /* has ntoskrnl and win32k.sys */
 static hashtable_t systable;
 
-/* Syscalls that need special processing */
+/* Syscalls that need special processing.  If we get a lot more of
+ * these should turn into automated set of enum + string + int arrays.
+ */
 int sysnum_CreateThread = -1;
 int sysnum_CreateThreadEx = -1;
 int sysnum_CreateUserProcess = -1;
 int sysnum_DeviceIoControlFile = -1;
+int sysnum_QuerySystemInformation = -1;
+int sysnum_SetSystemInformation = -1;
 
 /* FIXME i#99: win32k.sys syscalls!  currently doing memcmp to see what was written
  * FIXME i#97: IIS syscalls!
@@ -173,7 +178,7 @@ int sysnum_DeviceIoControlFile = -1;
 #define OK true
 #define UNKNOWN false
 #define W (SYSARG_WRITE)
-#define R (0)
+#define R (SYSARG_READ)
 #define RP (SYSARG_PORT_MESSAGE)
 #define WP (SYSARG_WRITE | SYSARG_PORT_MESSAGE)
 #define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
@@ -182,7 +187,7 @@ int sysnum_DeviceIoControlFile = -1;
 #define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_ntdll_info[] = {
     /* Base set from Windows NT, Windows 2000, and Windows XP */
-    {0,"NtAcceptConnectPort", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),RP}, {3,0,IB}, {4,sizeof(PORT_VIEW),W}, {5,sizeof(REMOTE_PORT_VIEW),W}, }},
+    {0,"NtAcceptConnectPort", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),RP}, {3,0,IB}, {4,sizeof(PORT_VIEW),R|W}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, }},
     {0,"NtAccessCheck", OK, 32, {{0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR}, {3,sizeof(GENERIC_MAPPING),R}, {4,sizeof(PRIVILEGE_SET),W}, {5,sizeof(ULONG),R}, {6,sizeof(ACCESS_MASK),W}, {7,sizeof(BOOLEAN),W}, }},
     {0,"NtAccessCheckAndAuditAlarm", OK, 44, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {4,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR}, {6,sizeof(GENERIC_MAPPING),R}, {7,0,IB}, {8,sizeof(ACCESS_MASK),W}, {9,sizeof(BOOLEAN),W}, {10,sizeof(BOOLEAN),W}, }},
     {0,"NtAccessCheckByType", OK, 44, {{0,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR}, {1,sizeof(SID),R}, {4,sizeof(OBJECT_TYPE_LIST),R}, {6,sizeof(GENERIC_MAPPING),R}, {7,sizeof(PRIVILEGE_SET),R}, {8,sizeof(ULONG),R}, {9,sizeof(ACCESS_MASK),W}, {10,sizeof(ULONG),W}, }},
@@ -200,7 +205,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAllocateLocallyUniqueId", OK, 4, {{0,sizeof(LUID),W}, }},
     {0,"NtAllocateUserPhysicalPages", OK, 12, {{1,sizeof(ULONG),R}, {2,sizeof(ULONG),W}, }},
     {0,"NtAllocateUuids", OK, 16, {{0,sizeof(LARGE_INTEGER),W}, {1,sizeof(ULONG),W}, {2,sizeof(ULONG),W}, {3,sizeof(UCHAR),W}, }},
-    {0,"NtAllocateVirtualMemory", OK, 24, {{1,sizeof(PVOID),W}, {3,sizeof(ULONG),W}, }},
+    {0,"NtAllocateVirtualMemory", OK, 24, {{1,sizeof(PVOID),R|W}, {3,sizeof(ULONG),R|W}, }},
     {0,"NtApphelpCacheControl", OK, 8, {{1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtAreMappedFilesTheSame", OK, 8, },
     {0,"NtAssignProcessToJobObject", OK, 8, },
@@ -215,7 +220,8 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCompareTokens", OK, 12, {{2,sizeof(BOOLEAN),W}, }},
     {0,"NtCompleteConnectPort", OK, 4, },
     {0,"NtCompressKey", OK, 4, },
-    {0,"NtConnectPort", OK, 32, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS}, {3,sizeof(PORT_VIEW),W}, {4,sizeof(REMOTE_PORT_VIEW),W}, {5,sizeof(ULONG),W}, {6,-7,WI}, {7,sizeof(ULONG),W}, }},
+    /* Arg#4 is IN OUT for Nebbett, but not for Metasploit */
+    {0,"NtConnectPort", OK, 32, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(REMOTE_PORT_VIEW),W}, {5,sizeof(ULONG),W}, {6,-7,R|WI}, {7,sizeof(ULONG),R|W}, }},
     {0,"NtContinue", OK, 8, {{0,sizeof(CONTEXT),R|SYSARG_CONTEXT}, {1,0,IB}, }},
     {0,"NtCreateChannel", OK, 8, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtCreateDebugObject", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {3,0,IB}, }},
@@ -243,7 +249,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCreateThreadEx", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, 6,0,IB /*rest handled manually*/, }},
     {0,"NtCreateTimer", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtCreateToken", OK, 52, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R}, {4,sizeof(LUID),R}, {5,sizeof(LARGE_INTEGER),R}, {6,sizeof(TOKEN_USER),R}, {7,sizeof(TOKEN_GROUPS),R}, {8,sizeof(TOKEN_PRIVILEGES),R}, {9,sizeof(TOKEN_OWNER),R}, {10,sizeof(TOKEN_PRIMARY_GROUP),R}, {11,sizeof(TOKEN_DEFAULT_DACL),R}, {12,sizeof(TOKEN_SOURCE),R}, }},
-    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is an in/out*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }},
+    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R}, {5,sizeof(OBJECT_ATTRIBUTES),R}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is an in/outNOCHECKIN*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }},
     {0,"NtCreateWaitablePort", OK, 20, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtDebugActiveProcess", OK, 8, },
     {0,"NtDebugContinue", OK, 12, {{1,sizeof(CLIENT_ID),R}, }},
@@ -270,17 +276,17 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtFlushBuffersFile", OK, 8, {{1,sizeof(IO_STATUS_BLOCK),W}, }},
     {0,"NtFlushInstructionCache", OK, 12, },
     {0,"NtFlushKey", OK, 4, },
-    {0,"NtFlushVirtualMemory", OK, 16, {{1,sizeof(PVOID),W}, {2,sizeof(ULONG),W}, {3,sizeof(IO_STATUS_BLOCK),W}, }},
+    {0,"NtFlushVirtualMemory", OK, 16, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, {3,sizeof(IO_STATUS_BLOCK),W}, }},
     {0,"NtFlushWriteBuffer", OK, 0, },
-    {0,"NtFreeUserPhysicalPages", OK, 12, {{1,sizeof(ULONG),W}, {2,sizeof(ULONG),R}, }},
-    {0,"NtFreeVirtualMemory", OK, 16, {{1,sizeof(PVOID),W}, {2,sizeof(ULONG),W}, }},
+    {0,"NtFreeUserPhysicalPages", OK, 12, {{1,sizeof(ULONG),R|W}, {2,sizeof(ULONG),R}, }},
+    {0,"NtFreeVirtualMemory", OK, 16, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, }},
     {0,"NtFsControlFile", OK, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, {8,-9,W}, }},
     {0,"NtGetContextThread", OK, 8, {{1,sizeof(CONTEXT),W|SYSARG_CONTEXT}, }},
     {0,"NtGetCurrentProcessorNumber", OK, 4, },
     {0,"NtGetDevicePowerState", OK, 8, {{1,sizeof(DEVICE_POWER_STATE),W}, }},
     {0,"NtGetPlugPlayEvent", OK, 16, {{2,-3,W}, }},
     /* BufferEntries is #elements, not #bytes */
-    {0,"NtGetWriteWatch", OK, 28, {{4,-5,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {5,sizeof(ULONG),R}, {6,sizeof(ULONG),W}, }},
+    {0,"NtGetWriteWatch", OK, 28, {{4,-5,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {4,-5,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {5,sizeof(ULONG),R|W}, {6,sizeof(ULONG),W}, }},
     {0,"NtImpersonateAnonymousToken", OK, 4, },
     {0,"NtImpersonateClientOfPort", OK, 8, {{1,sizeof(PORT_MESSAGE),RP}, }},
     {0,"NtImpersonateThread", OK, 12, {{2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS}, }},
@@ -297,13 +303,13 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtLockFile", OK, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, {5,sizeof(ULARGE_INTEGER),R}, {6,sizeof(ULARGE_INTEGER),R}, {8,0,IB}, {9,0,IB}, }},
     {0,"NtLockProductActivationKeys", OK, 8, {{0,sizeof(ULONG),W}, {1,sizeof(ULONG),W}, }},
     {0,"NtLockRegistryKey", OK, 4, },
-    {0,"NtLockVirtualMemory", OK, 16, {{1,sizeof(PVOID),W}, {2,sizeof(ULONG),W}, }},
+    {0,"NtLockVirtualMemory", OK, 16, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, }},
     {0,"NtMakePermanentObject", OK, 4, },
     {0,"NtMakeTemporaryObject", OK, 4, },
     {0,"NtMapCMFModule", OK, 24, {/* XXX DRi#415 not all known */ {4,sizeof(PVOID),W}, {5,sizeof(ULONG),W}, }},
     {0,"NtMapUserPhysicalPages", OK, 12, {{1,sizeof(ULONG),R}, {2,sizeof(ULONG),R}, }},
     {0,"NtMapUserPhysicalPagesScatter", OK, 12, {{0,sizeof(PVOID),R}, {1,sizeof(ULONG),R}, {2,sizeof(ULONG),R}, }},
-    {0,"NtMapViewOfSection", OK, 40, {{2,sizeof(PVOID),W}, {5,sizeof(LARGE_INTEGER),W}, {6,sizeof(ULONG),W},/* XXX size is IN/OUT: how encode? */ }},
+    {0,"NtMapViewOfSection", OK, 40, {{2,sizeof(PVOID),R|W}, {5,sizeof(LARGE_INTEGER),R|W}, {6,sizeof(ULONG),R|W}, }},
     {0,"NtModifyBootEntry", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtModifyDriverEntry", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtNotifyChangeDirectoryFile", OK, 36, {{4,sizeof(IO_STATUS_BLOCK),W}, {5,sizeof(FILE_NOTIFY_INFORMATION),W}, {8,0,IB}, }},
@@ -336,7 +342,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtPrivilegeCheck", OK, 12, {{1,sizeof(PRIVILEGE_SET),R}, {2,sizeof(BOOLEAN),W}, }},
     {0,"NtPrivilegedServiceAuditAlarm", OK, 20, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {3,sizeof(PRIVILEGE_SET),R}, {4,0,IB}, }},
     {0,"NtPrivilegeObjectAuditAlarm", OK, 24, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {4,sizeof(PRIVILEGE_SET),R}, {5,0,IB}, }},
-    {0,"NtProtectVirtualMemory", OK, 20, {{1,sizeof(PVOID),W}, {2,sizeof(ULONG),W}, {4,sizeof(ULONG),W}, }},
+    {0,"NtProtectVirtualMemory", OK, 20, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, {4,sizeof(ULONG),W}, }},
     {0,"NtPulseEvent", OK, 8, {{1,sizeof(ULONG),W}, }},
     {0,"NtQueryAttributesFile", OK, 8, {{0,sizeof(OBJECT_ATTRIBUTES),R}, {1,sizeof(FILE_BASIC_INFORMATION),W}, }},
     {0,"NtQueryBootEntryOrder", OK, 8, },
@@ -345,7 +351,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQueryDefaultLocale", OK, 8, {{0,0,IB}, {1,sizeof(LCID),W}, }},
     {0,"NtQueryDefaultUILanguage", OK, 4, {{0,sizeof(LANGID),W}, }},
     {0,"NtQueryDirectoryFile", OK, 44, {{4,sizeof(IO_STATUS_BLOCK),W}, {5,-6,W}, {8,0,IB}, {9,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {10,0,IB}, }},
-    {0,"NtQueryDirectoryObject", OK, 28, {{1,-2,W}, {1,-6,WI}, {3,0,IB}, {4,0,IB}, {5,sizeof(ULONG),W}, {6,sizeof(ULONG),W}, }},
+    {0,"NtQueryDirectoryObject", OK, 28, {{1,-2,W}, {1,-6,WI}, {3,0,IB}, {4,0,IB}, {5,sizeof(ULONG),R|W}, {6,sizeof(ULONG),W}, }},
     {0,"NtQueryDriverEntryOrder", OK, 8, },
     {0,"NtQueryEaFile", OK, 36, {{1,sizeof(IO_STATUS_BLOCK),W}, {2,sizeof(FILE_FULL_EA_INFORMATION),W}, {4,0,IB}, {5,sizeof(FILE_GET_EA_INFORMATION),R}, {7,sizeof(ULONG),R}, {8,0,IB}, }},
     {0,"NtQueryEvent", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
@@ -361,7 +367,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQueryIntervalProfile", OK, 8, {{1,sizeof(ULONG),W}, }},
     {0,"NtQueryIoCompletion", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryKey", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
-    {0,"NtQueryMultipleValueKey", OK, 24, {{1,sizeof(KEY_VALUE_ENTRY),W}, {3,-4,WI}, {4,sizeof(ULONG),W}, {5,sizeof(ULONG),W}, }},
+    {0,"NtQueryMultipleValueKey", OK, 24, {{1,sizeof(KEY_VALUE_ENTRY),R|W}, {3,-4,WI}, {4,sizeof(ULONG),R|W}, {5,sizeof(ULONG),W}, }},
     {0,"NtQueryMutant", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryObject", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryOleDirectoryFile", OK, 44, {{4,sizeof(IO_STATUS_BLOCK),W}, {5,-6,W}, {8,0,IB}, {9,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {10,0,IB}, }},
@@ -379,6 +385,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQuerySymbolicLinkObject", OK, 12, {{1,sizeof(UNICODE_STRING),W|SYSARG_UNICODE_STRING}, {2,sizeof(ULONG),W}, }},
     {0,"NtQuerySystemEnvironmentValue", OK, 16, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
     {0,"NtQuerySystemEnvironmentValueEx", OK, 20, },
+    /* One info class reads data, which is special-cased */
     {0,"NtQuerySystemInformation", OK, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
     {0,"NtQuerySystemTime", OK, 4, {{0,sizeof(LARGE_INTEGER),W}, }},
     {0,"NtQueryTimer", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
@@ -404,7 +411,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtReplyPort", OK, 8, {{1,sizeof(PORT_MESSAGE),RP}, }},
     {0,"NtReplyWaitReceivePort", OK, 16, {{1,sizeof(ULONG),W}, {2,sizeof(PORT_MESSAGE),RP}, {3,sizeof(PORT_MESSAGE),WP}, }},
     {0,"NtReplyWaitReceivePortEx", OK, 20, {{1,sizeof(PVOID),W}, {2,sizeof(PORT_MESSAGE),RP}, {3,sizeof(PORT_MESSAGE),WP}, {4,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtReplyWaitReplyPort", OK, 8, {{1,sizeof(PORT_MESSAGE),WP}, }},
+    {0,"NtReplyWaitReplyPort", OK, 8, {{1,sizeof(PORT_MESSAGE),R|WP}, }},
     {0,"NtReplyWaitSendChannel", OK, 12, {{2,sizeof(CHANNEL_MESSAGE),W}, }},
     {0,"NtRequestDeviceWakeup", OK, 4, },
     {0,"NtRequestPort", OK, 8, {{1,sizeof(PORT_MESSAGE),RP}, }},
@@ -427,7 +434,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSaveKey", OK, 8, },
     {0,"NtSaveKeyEx", OK, 12, },
     {0,"NtSaveMergedKeys", OK, 12, },
-    {0,"NtSecureConnectPort", OK, 36, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS}, {3,sizeof(PORT_VIEW),W}, {4,sizeof(SID),R}, {5,sizeof(REMOTE_PORT_VIEW),W}, {6,sizeof(ULONG),W}, {7,-8,WI}, {8,sizeof(ULONG),W}, }},
+    {0,"NtSecureConnectPort", OK, 36, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|SYSARG_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(SID),R}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, {6,sizeof(ULONG),W}, {7,-8,R|WI}, {8,sizeof(ULONG),R|W}, }},
     {0,"NtSendWaitReplyChannel", OK, 16, {{3,sizeof(CHANNEL_MESSAGE),W}, }},
     {0,"NtSetBootEntryOrder", OK, 8, },
     {0,"NtSetBootOptions", OK, 8, {{0,sizeof(BOOT_OPTIONS),R}, }},
@@ -461,7 +468,8 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSetSecurityObject", OK, 12, {{2,sizeof(SECURITY_DESCRIPTOR),R|SYSARG_SECURITY_DESCRIPTOR}, }},
     {0,"NtSetSystemEnvironmentValue", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, }},
     {0,"NtSetSystemEnvironmentValueEx", OK, 8, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING}, {1,sizeof(GUID),R}, }},
-    {0,"NtSetSystemInformation", OK, 12, {{1,-2,W}, }},
+    /* Some info classes write data as well, which is special-cased */
+    {0,"NtSetSystemInformation", OK, 12, {{1,-2,R}, }},
     {0,"NtSetSystemPowerState", OK, 12, },
     {0,"NtSetSystemTime", OK, 8, {{0,sizeof(LARGE_INTEGER),R}, {1,sizeof(LARGE_INTEGER),W}, }},
     {0,"NtSetThreadExecutionState", OK, 8, {{1,sizeof(EXECUTION_STATE),W}, }},
@@ -492,7 +500,7 @@ syscall_info_t syscall_ntdll_info[] = {
     {0,"NtUnloadKey", OK, 4, {{0,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtUnloadKeyEx", OK, 8, {{0,sizeof(OBJECT_ATTRIBUTES),R}, }},
     {0,"NtUnlockFile", OK, 20, {{1,sizeof(IO_STATUS_BLOCK),W}, {2,sizeof(ULARGE_INTEGER),R}, {3,sizeof(ULARGE_INTEGER),R}, }},
-    {0,"NtUnlockVirtualMemory", OK, 16, {{1,sizeof(PVOID),W}, {2,sizeof(ULONG),W}, }},
+    {0,"NtUnlockVirtualMemory", OK, 16, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, }},
     {0,"NtUnmapViewOfSection", OK, 8, },
     {0,"NtVdmControl", OK, 8, },
     {0,"NtW32Call", OK, 20, {{3,-4,WI}, {4,sizeof(ULONG),W}, }},
@@ -940,14 +948,22 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
         sysnum_CreateThread = sysnum_from_name(drcontext, info, "NtCreateThread");
         ASSERT(sysnum_CreateThread >= 0, "cannot find NtCreateThread sysnum");
         sysnum_CreateThreadEx = sysnum_from_name(drcontext, info, "NtCreateThreadEx");
-        /* not there in pre-vista */
+        /* NtCreateThreadEx not there in pre-vista */
         sysnum_CreateUserProcess = sysnum_from_name(drcontext, info,
                                                     "NtCreateUserProcess");
-        /* not there in pre-vista */
+        /* NtCreateUserProcess not there in pre-vista */
         sysnum_DeviceIoControlFile = sysnum_from_name(drcontext, info,
                                                       "NtDeviceIoControlFile");
         ASSERT(sysnum_DeviceIoControlFile >= 0,
                "cannot find NtDeviceIoControlFile sysnum");
+        sysnum_SetSystemInformation = sysnum_from_name(drcontext, info,
+                                                      "NtSetSystemInformation");
+        ASSERT(sysnum_SetSystemInformation >= 0,
+               "cannot find NtSetSystemInformation sysnum");
+        sysnum_QuerySystemInformation = sysnum_from_name(drcontext, info,
+                                                         "NtQuerySystemInformation");
+        ASSERT(sysnum_QuerySystemInformation >= 0,
+               "cannot find NtQuerySystemInformation sysnum");
 
     } else if (stri_eq(modname, "kernel32.dll")) {
         for (i = 0; i < NUM_KERNEL32_SYSCALLS; i++)
@@ -1048,7 +1064,8 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* variable-length */
     PORT_MESSAGE pm;
-    if (TEST(SYSARG_WRITE, arg_info->flags) && pre) {
+    if (TEST(SYSARG_WRITE, arg_info->flags) && pre &&
+        !TEST(SYSARG_READ, arg_info->flags)) {
         /* Struct is passed in uninit w/ max-len buffer after it.
          * FIXME i#415: There is some ambiguity over the max, hence we choose
          * the lower estimation to avoid false positives.
@@ -1299,7 +1316,7 @@ static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
                          (byte *)us.Buffer, us.MaximumLength, mc,
                          "UNICODE_STRING capacity");
-            if (!TEST(SYSARG_WRITE, arg_info->flags)) {
+            if (TEST(SYSARG_READ, arg_info->flags)) {
                 check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                              (byte *)us.Buffer, us.Length, mc, "UNICODE_STRING content");
             }
@@ -1324,7 +1341,7 @@ static bool handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
     wchar_t c;
     /* input params have size 0: for safety stopping at MAX_PATH */
     size_t maxsz = (size == 0) ? MAX_PATH : size;
-    if (pre && TEST(SYSARG_WRITE, arg_info->flags))
+    if (pre && !TEST(SYSARG_READ, arg_info->flags))
         return false; /* let normal check ensure full size is addressable */
     if (!pre && !TEST(SYSARG_WRITE, arg_info->flags))
         return false; /*nothing to do */
@@ -1538,6 +1555,53 @@ handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
             /* XXX i#98: there are other IN/OUT params but exact form not clear */
         }
     }
+}
+
+static bool
+handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                            dr_mcontext_t *mc)
+{
+    /* Normally the buffer is just output.  For the input case here we
+     * will mark the buffer as defined b/c of the regular table processing:
+     * not a big deal as we'll report any uninit prior to that.
+     */
+    SYSTEM_INFORMATION_CLASS cls = (SYSTEM_INFORMATION_CLASS) pt->sysarg[0];
+    if (cls == SystemSessionProcessesInformation) {
+        SYSTEM_SESSION_PROCESS_INFORMATION buf;
+        if (pre) {
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[1],
+                         sizeof(buf), mc, "SYSTEM_SESSION_PROCESS_INFORMATION");
+        }
+        if (safe_read((byte *) pt->sysarg[1], sizeof(buf), &buf)) {
+            check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE,
+                         sysnum, buf.Buffer, buf.SizeOfBuf, mc, "Buffer");
+        }
+    }
+    return true;
+}
+
+static bool
+handle_SetSystemInformation(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                            dr_mcontext_t *mc)
+{
+    /* Normally the buffer is just input, but some info classes write data */
+    SYSTEM_INFORMATION_CLASS cls = (SYSTEM_INFORMATION_CLASS) pt->sysarg[0];
+    if (pre)
+        return true;
+    /* Nebbett had this as SystemLoadImage and SYSTEM_LOAD_IMAGE */
+    if (cls == SystemLoadGdiDriverInformation) {
+        SYSTEM_GDI_DRIVER_INFORMATION *buf =
+            (SYSTEM_GDI_DRIVER_INFORMATION *) pt->sysarg[1];
+        check_sysmem(MEMREF_WRITE, sysnum, (byte *) &buf->ImageAddress,
+                     sizeof(*buf) - offsetof(SYSTEM_GDI_DRIVER_INFORMATION, ImageAddress),
+                     mc, "loaded image info");
+        /* Nebbett had this as SystemCreateSession and SYSTEM_CREATE_SESSION */
+    } else if (cls == SystemSessionCreate) {
+        /* Just a ULONG, no struct */
+        check_sysmem(MEMREF_WRITE, sysnum, (byte *) pt->sysarg[1],
+                     sizeof(ULONG), mc, "session id");
+    }
+    return true;
 }
 
 /***************************************************************************
@@ -2119,6 +2183,10 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
         return handle_DeviceIoControlFile(true/*pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_SetSystemInformation)
+        return handle_SetSystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_QuerySystemInformation)
+        return handle_QuerySystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
     else
         return true; /* execute syscall */
 }
@@ -2191,6 +2259,10 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_DeviceIoControlFile)
         handle_DeviceIoControlFile(false/*!pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_SetSystemInformation)
+        handle_SetSystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
+    else if (sysnum == sysnum_QuerySystemInformation)
+        handle_QuerySystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

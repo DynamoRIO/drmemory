@@ -751,8 +751,8 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
              * not defined we'll report and then mark as defined anyway.
              */
             if (!skip) {
-                check_sysmem((TEST(SYSARG_WRITE, sysinfo->arg[i].flags) ?
-                             MEMREF_CHECK_ADDRESSABLE : MEMREF_CHECK_DEFINEDNESS),
+                check_sysmem((TEST(SYSARG_READ, sysinfo->arg[i].flags) ?
+                             MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE),
                              sysnum, start, size, mc, NULL);
             }
         }
