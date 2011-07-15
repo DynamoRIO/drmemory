@@ -90,11 +90,16 @@ num_kernel32_syscalls(void)
  * When adding new entries, use the NtUser prefix.
  * When we try to find the wrapper via symbol lookup we try with
  * and without the prefix.
+ *
+ * Unresolved issues are marked w/ FIXME in the table.
  */
 
 static int sysnum_UserSystemParametersInfo = -1;
 static int sysnum_UserMenuItemInfo = -1;
 static int sysnum_UserGetAltTabInfo = -1;
+static int sysnum_UserGetRawInputBuffer = -1;
+static int sysnum_UserGetRawInputData = -1;
+static int sysnum_UserGetRawInputDeviceInfo = -1;
 
 syscall_info_t syscall_user32_info[] = {
 #if 1 /* FIXME temporary until finished going through script-produced table */
@@ -171,7 +176,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserDrawAnimatedRects", OK, 16, {{2,sizeof(RECT),R,}, {3,sizeof(RECT),R,}, }},
     {0,"NtUserDrawCaption", OK, 16, {{2,sizeof(RECT),R,}, }},
     {0,"NtUserDrawCaptionTemp", OK, 28, {{2,sizeof(RECT),R,}, {5,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserDrawIconEx", OK, 44, /*XXX: 10th arg is pointer?*/ }},
+    {0,"NtUserDrawIconEx", OK, 44, /*XXX: 10th arg is pointer?*/ },
     {0,"NtUserDrawMenuBarTemp", OK, 20, {{2,sizeof(RECT),R,}, }},
     {0,"NtUserEmptyClipboard", OK, 0, },
     {0,"NtUserEnableMenuItem", OK, 12, },
@@ -195,69 +200,69 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetAtomName", OK, 8, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserGetCPD", OK, 12, },
     {0,"NtUserGetCaretBlinkTime", OK, 0, },
-    {0,"NtUserGetCaretPos", UNKNOWN, 4, {{0,sizeof(POINT),R,}, }},
-    {0,"NtUserGetClassInfo", UNKNOWN, 20, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(WNDCLASSEXW),R,}, {3,sizeof(PWSTR),R,}, }},
+    {0,"NtUserGetCaretPos", OK, 4, {{0,sizeof(POINT),W,}, }},
+    {0,"NtUserGetClassInfo", OK, 20, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(WNDCLASSEXW),W|CT,SYSARG_TYPE_WNDCLASSEXW}, {3,sizeof(PWSTR)/*pointer to existing string (ansi or unicode) is copied*/,W,}, }},
     {0,"NtUserGetClassLong", OK, 12, },
-    {0,"NtUserGetClassName", UNKNOWN, 12, {{2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserGetClipCursor", UNKNOWN, 4, {{0,sizeof(RECT),R,}, }},
-    {0,"NtUserGetClipboardData", UNKNOWN, 8, {{1,-2,W,}, }},
-    {0,"NtUserGetClipboardFormatName", UNKNOWN, 12, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserGetClassName", OK, 12, {{2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserGetClipCursor", OK, 4, {{0,sizeof(RECT),W,}, }},
+    {0,"NtUserGetClipboardData", OK, 8, {{1,RET,W,/*FIXME i#485: pre size from prior syscall ret*/}, }},
+    {0,"NtUserGetClipboardFormatName", OK, 12, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, /*3rd param is max count but should be able to ignore*/}},
     {0,"NtUserGetClipboardOwner", OK, 0, },
     {0,"NtUserGetClipboardSequenceNumber", OK, 0, },
     {0,"NtUserGetClipboardViewer", OK, 0, },
-    {0,"NtUserGetComboBoxInfo", UNKNOWN, 8, {{1,sizeof(COMBOBOXINFO),R,}, }},
+    {0,"NtUserGetComboBoxInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(COMBOBOXINFO,cbSize)}, }},
     {0,"NtUserGetControlBrush", OK, 12, },
     {0,"NtUserGetControlColor", OK, 16, },
     {0,"NtUserGetCursorFrameInfo", OK, 16, },
-    {0,"NtUserGetCursorInfo", UNKNOWN, 4, {{0,sizeof(CURSORINFO),R,}, }},
+    {0,"NtUserGetCursorInfo", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,W,offsetof(CURSORINFO,cbSize)}, }},
     {0,"NtUserGetDC", OK, 4, },
     {0,"NtUserGetDCEx", OK, 12, },
     {0,"NtUserGetDoubleClickTime", OK, 0, },
     {0,"NtUserGetForegroundWindow", OK, 0, },
-    {0,"NtUserGetGUIThreadInfo", UNKNOWN, 8, {{1,sizeof(GUITHREADINFO),R,}, }},
+    {0,"NtUserGetGUIThreadInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(GUITHREADINFO,cbSize)}, }},
     {0,"NtUserGetGuiResources", OK, 8, },
-    {0,"NtUserGetIconInfo", UNKNOWN, 24, {{1,sizeof(ICONINFO),R,}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(DWORD),R,}, }},
-    {0,"NtUserGetIconSize", UNKNOWN, 16, {{2,sizeof(LONG),R,}, {3,sizeof(LONG),R,}, }},
+    {0,"NtUserGetIconInfo", OK, 24, {{1,sizeof(ICONINFO),W,}, {2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(DWORD),W,}, }},
+    {0,"NtUserGetIconSize", OK, 16, {{2,sizeof(LONG),W,}, {3,sizeof(LONG),W,}, }},
     {0,"NtUserGetImeHotKey", OK, 16, },
     {0,"NtUserGetImeInfoEx", OK, 8, },
-    {0,"NtUserGetInternalWindowPos", UNKNOWN, 12, {{1,sizeof(RECT),R,}, {2,sizeof(POINT),R,}, }},
-    {0,"NtUserGetKeyNameText", UNKNOWN, 12, {{1,-2,R,}, }},
+    {0,"NtUserGetInternalWindowPos", OK, 12, {{1,sizeof(RECT),W,}, {2,sizeof(POINT),W,}, }},
+    {0,"NtUserGetKeyNameText", OK, 12, {{1,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {1,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtUserGetKeyState", OK, 4, },
     {0,"NtUserGetKeyboardLayout", OK, 4, },
-    {0,"NtUserGetKeyboardLayoutList", UNKNOWN, 8, {{1,sizeof(HKL),R,}, }},
-    {0,"NtUserGetKeyboardLayoutName", UNKNOWN, 4, {{0,-1,R,}, }},
-    {0,"NtUserGetKeyboardState", UNKNOWN, 4, {{0,sizeof(BYTE),R,}, }},
+    {0,"NtUserGetKeyboardLayoutList", OK, 8, {{1,-0,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HKL)}, {1,RET,W|SYSARG_NO_WRITE_IF_COUNT_0|SYSARG_SIZE_IN_ELEMENTS,sizeof(HKL)}, }},
+    {0,"NtUserGetKeyboardLayoutName", OK, 4, {{0,KL_NAMELENGTH*sizeof(wchar_t),W|CT,SYSARG_TYPE_CSTRING_WIDE}, }},
+    {0,"NtUserGetKeyboardState", OK, 4, {{0,sizeof(BYTE),W,}, }},
     {0,"NtUserGetKeyboardType", OK, 4, },
-    {0,"NtUserGetLastInputInfo", UNKNOWN, 4, {{0,sizeof(LASTINPUTINFO),R,}, }},
-    {0,"NtUserGetLayeredWindowAttributes", UNKNOWN, 16, {{1,sizeof(COLORREF),R,}, {2,sizeof(BYTE),R,}, {3,sizeof(DWORD),R,}, }},
+    {0,"NtUserGetLastInputInfo", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,W,offsetof(LASTINPUTINFO,cbSize)}, }},
+    {0,"NtUserGetLayeredWindowAttributes", OK, 16, {{1,sizeof(COLORREF),W,}, {2,sizeof(BYTE),W,}, {3,sizeof(DWORD),W,}, }},
     {0,"NtUserGetListBoxInfo", OK, 4, },
-    {0,"NtUserGetMenuBarInfo", UNKNOWN, 16, {{3,sizeof(MENUBARINFO),R,}, }},
+    {0,"NtUserGetMenuBarInfo", OK, 16, {{3,SYSARG_SIZE_IN_FIELD,W,offsetof(MENUBARINFO,cbSize)}, }},
     {0,"NtUserGetMenuDefaultItem", OK, 12, },
     {0,"NtUserGetMenuIndex", OK, 8, },
-    {0,"NtUserGetMenuItemRect", UNKNOWN, 16, {{3,sizeof(RECT),R,}, }},
-    {0,"NtUserGetMessage", UNKNOWN, 16, {{0,sizeof(MSG),W,}, }},
-    {0,"NtUserGetMinMaxInfo", UNKNOWN, 12, {{1,sizeof(MINMAXINFO),R,}, }},
-    {0,"NtUserGetMonitorInfo", UNKNOWN, 8, {{1,sizeof(MONITORINFO),W,}, }},
-    {0,"NtUserGetMouseMovePointsEx", UNKNOWN, 20, {{1,sizeof(MOUSEMOVEPOINT),R,}, {2,sizeof(MOUSEMOVEPOINT),R,}, }},
-    {0,"NtUserGetObjectInformation", UNKNOWN, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
+    {0,"NtUserGetMenuItemRect", OK, 16, {{3,sizeof(RECT),W,}, }},
+    {0,"NtUserGetMessage", OK, 16, {{0,sizeof(MSG),W,}, }},
+    {0,"NtUserGetMinMaxInfo", OK, 12, {{1,sizeof(MINMAXINFO),W,}, }},
+    {0,"NtUserGetMonitorInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(MONITORINFO,cbSize)}, }},
+    {0,"NtUserGetMouseMovePointsEx", OK, 20, {{1,-0,R,}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,-0}, }},
+    {0,"NtUserGetObjectInformation", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
     {0,"NtUserGetOpenClipboardWindow", OK, 0, },
-    {0,"NtUserGetPriorityClipboardFormat", UNKNOWN, 8, {{0,sizeof(UINT),R,}, }},
+    {0,"NtUserGetPriorityClipboardFormat", OK, 8, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(UINT)}, }},
     {0,"NtUserGetProcessWindowStation", OK, 0, },
-    {0,"NtUserGetRawInputBuffer", UNKNOWN, 12, {{0,sizeof(RAWINPUT),R,}, {1,sizeof(UINT),R,}, }},
-    {0,"NtUserGetRawInputData", UNKNOWN, 20, {{2,-3,W,}, {3,sizeof(UINT),R,}, }},
-    {0,"NtUserGetRawInputDeviceInfo", UNKNOWN, 16, {{2,-3,W,}, {3,sizeof(UINT),R,}, }},
-    {0,"NtUserGetRawInputDeviceList", UNKNOWN, 12, {{0,sizeof(RAWINPUTDEVICELIST),R,}, {1,sizeof(UINT),R,}, }},
-    {0,"NtUserGetRegisteredRawInputDevices", UNKNOWN, 12, {{0,sizeof(RAWINPUTDEVICE),R,}, {1,sizeof(UINT),R,}, }},
-    {0,"NtUserGetScrollBarInfo", UNKNOWN, 12, {{2,sizeof(SCROLLBARINFO),R,}, }},
+    {0,"NtUserGetRawInputBuffer", OK, 12, {{0,}}, /*special-cased; FIXME: i#485: see handler*/ &sysnum_UserGetRawInputBuffer},
+    {0,"NtUserGetRawInputData", OK, 20, {{2,-3,WI,}, {2,RET,W}, /*arg 3 is R or W => special-cased*/ }, &sysnum_UserGetRawInputData},
+    {0,"NtUserGetRawInputDeviceInfo", OK, 16, {{0,}}, &sysnum_UserGetRawInputDeviceInfo},
+    {0,"NtUserGetRawInputDeviceList", OK, 12, {{0,-1,WI|SYSARG_SIZE_IN_ELEMENTS,-2}, {1,sizeof(UINT),R|W,/*really not written when #0!=NULL but harmless; ditto below and probably elsewhere in table*/}, }},
+    {0,"NtUserGetRegisteredRawInputDevices", OK, 12, {{0,-1,WI|SYSARG_SIZE_IN_ELEMENTS,-2}, {1,sizeof(UINT),R|W,}, }},
+    {0,"NtUserGetScrollBarInfo", OK, 12, {{2,SYSARG_SIZE_IN_FIELD,W,offsetof(SCROLLBARINFO,cbSize)}, }},
     {0,"NtUserGetSystemMenu", OK, 8, },
     {0,"NtUserGetThreadDesktop", OK, 8, },
     {0,"NtUserGetThreadState", OK, 4, },
-    {0,"NtUserGetTitleBarInfo", UNKNOWN, 8, {{1,sizeof(TITLEBARINFO),R,}, }},
-    {0,"NtUserGetUpdateRect", UNKNOWN, 12, {{1,sizeof(RECT),R,}, }},
+    {0,"NtUserGetTitleBarInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(TITLEBARINFO,cbSize)}, }},
+    {0,"NtUserGetUpdateRect", OK, 12, {{1,sizeof(RECT),W,}, }},
     {0,"NtUserGetUpdateRgn", OK, 12, },
-    {0,"NtUserGetWOWClass", UNKNOWN, 8, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserGetWOWClass", OK, 8, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserGetWindowDC", OK, 4, },
-    {0,"NtUserGetWindowPlacement", UNKNOWN, 8, {{1,sizeof(WINDOWPLACEMENT),R,}, }},
+    {0,"NtUserGetWindowPlacement", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(WINDOWPLACEMENT,length)}, }},
     {0,"NtUserHardErrorControl", OK, 12, },
     {0,"NtUserHideCaret", OK, 4, },
     {0,"NtUserHiliteMenuItem", OK, 16, },
@@ -421,7 +426,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserWindowFromPoint", OK, 8, },
     {0,"NtUserYieldTask", OK, 0, },
 
-    {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|CT,SYSARG_TYPE_CSTRING_WIDE}, {1,-2,WI}, }},
+    {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|CT,SYSARG_TYPE_CSTRING_WIDE}, {1,-2,WI}, {2,sizeof(ULONG),R}, }},
     {0,"NtUserGetProp", OK, 8, },
 #endif
 
@@ -452,7 +457,8 @@ num_user32_syscalls(void)
  *   of calls (but what if app is able to compute max size some other
  *   way, maybe caching older call?), unless willing to only check for
  *   unaddr in post-syscall and thus after potential write to
- *   unaddressable memory by kernel (which is what we do today)
+ *   unaddressable memory by kernel (which is what we do today).
+ *   Update: there are some of these in NtUser table as well.
  *
  * + missing ", return" annotations: NtGdiExtGetObjectW was missing one,
  *   and I'm afraid other ones that return int or UINT may also.
@@ -815,8 +821,8 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiFONTOBJ_cGetAllGlyphHandles", OK, 8, {{0,sizeof(FONTOBJ),R,}, {1,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HGLYPH)/*FIXME i#485: pre size from prior syscall ret*/}, }},
     {0,"NtGdiFONTOBJ_pvTrueTypeFontFile", OK, 8, {{0,sizeof(FONTOBJ),R,}, {1,sizeof(ULONG),W,}, }},
     {0,"NtGdiFONTOBJ_pQueryGlyphAttrs", OK, 8, {{0,sizeof(FONTOBJ),R,}, }},
-    {0,"NtGdiSTROBJ_bEnum", OK, 12, {{0,sizeof(STROBJ),R,}, {1,sizeof(ULONG),W,}, {2,-1,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(PGLYPHPOS)}, }},
-    {0,"NtGdiSTROBJ_bEnumPositionsOnly", OK, 12, {{0,sizeof(STROBJ),R,}, {1,sizeof(ULONG),W,}, {2,-1,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(PGLYPHPOS)}, }},
+    {0,"NtGdiSTROBJ_bEnum", OK, 12, {{0,sizeof(STROBJ),R,}, {1,sizeof(ULONG),R|W,/*XXX: I'm assuming R: else how know? prior syscall (i#485)?*/}, {2,-1,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(PGLYPHPOS)}, }},
+    {0,"NtGdiSTROBJ_bEnumPositionsOnly", OK, 12, {{0,sizeof(STROBJ),R,}, {1,sizeof(ULONG),R|W,/*XXX: I'm assuming R: else how know? prior syscall (i#485)?*/}, {2,-1,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(PGLYPHPOS)}, }},
     {0,"NtGdiSTROBJ_vEnumStart", OK, 4, {{0,sizeof(STROBJ),R,}, }},
     {0,"NtGdiSTROBJ_dwGetCodePage", OK, 4, {{0,sizeof(STROBJ),R,}, }},
     {0,"NtGdiSTROBJ_bGetAdvanceWidths", OK, 16, {{0,sizeof(STROBJ),R,}, {3,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINTQF)}, }},
@@ -921,7 +927,8 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
             check_sysmem(MEMREF_WRITE, sysnum, (byte *)ls.Buffer, ls.Length, mc,
                           "LARGE_STRING content");
         }
-    }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
     return true; /* handled */
 }
 
@@ -954,7 +961,38 @@ handle_devmodew_access(bool pre, int sysnum, dr_mcontext_t *mc,
                      mc, "DEVMODEW dmFormName onward");
         check_sysmem(check_type, sysnum, start + safe->dmSize, safe->dmDriverExtra,
                      mc, "DEVMODEW driver extra info");
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true; /* handled */
+}
+
+bool
+handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                          uint arg_num,
+                          const syscall_arg_t *arg_info,
+                          app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    WNDCLASSEXW safe;
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     sizeof(safe.cbSize), mc, "WNDCLASSEX.cbSize");
     }
+    if (safe_read(start, sizeof(safe), &safe)) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     safe.cbSize, mc, "WNDCLASSEX");
+        /* lpszMenuName can be from MAKEINTRESOURCE, and
+         * lpszClassName can be an atom: in either case will
+         * look like a 1-wchar_t-long string + NULL
+         */
+        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                        (byte *) safe.lpszMenuName, 0, arg_info->flags,
+                        NULL, true);
+        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
+                        (byte *) safe.lpszMenuName, 0, arg_info->flags,
+                        NULL, true);
+    } else
+        WARN("WARNING: unable to read syscall param\n");
     return true; /* handled */
 }
 
@@ -1161,6 +1199,9 @@ wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num
                                           arg_info, start, size);
     case SYSARG_TYPE_DEVMODEW:
         return handle_devmodew_access(pre, sysnum, mc, arg_num, arg_info, start, size);
+    case SYSARG_TYPE_WNDCLASSEXW:
+        return handle_wndclassexw_access(pre, sysnum, mc, arg_num,
+                                         arg_info, start, size);
     }
     return false; /* not handled */
 }
@@ -1597,6 +1638,78 @@ handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt
 }
 
 static bool
+handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                             dr_mcontext_t *mc)
+{
+    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
+    byte *buf = (byte *) pt->sysarg[0];
+    UINT size;
+    if (buf == NULL) {
+        /* writes out total buffer size needed in bytes to param #1 */
+        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[1],
+                     sizeof(UINT), mc, "pcbSize");
+    } else {
+        if (pre) {
+            /* FIXME i#485: we don't know the number of array entries so we
+             * can't check addressability pre-syscall: comes from a prior
+             * buf==NULL call
+             */
+        } else if (safe_read((byte *) pt->sysarg[1], sizeof(size), &size)) {
+            /* param #1 holds size of each RAWINPUT array entry */
+            size = (size * dr_syscall_get_result(drcontext)) +
+                /* param #2 holds header size */
+                (UINT) pt->sysarg[2];
+            check_sysmem(check_type, sysnum, buf, size, mc, "pData");
+        } else
+            WARN("WARNING: unable to read syscall param\n");
+    }
+    return true;
+}
+
+static bool
+handle_UserGetRawInputData(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                           dr_mcontext_t *mc)
+{
+    byte *buf = (byte *) pt->sysarg[2];
+    /* arg #3 is either R or W.  when W buf must be NULL and the 2,-3,WI entry
+     * will do a safe_read but won't do a check so no false pos.
+     */
+    uint check_type = SYSARG_CHECK_TYPE((buf == NULL) ? SYSARG_WRITE : SYSARG_READ, pre);
+    check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3], sizeof(UINT), mc, "pcbSize");
+    return true;
+}
+
+static bool
+handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                                 dr_mcontext_t *mc)
+{
+    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
+    UINT uiCommand = (UINT) pt->sysarg[1];
+    UINT size;
+    if (safe_read((byte *) pt->sysarg[3], sizeof(size), &size)) {
+        /* for uiCommand == RIDI_DEVICEINFO we assume pcbSize (3rd param)
+         * will be set and we don't bother to check RID_DEVICE_INFO.cbSize
+         */
+        if (uiCommand == RIDI_DEVICENAME) {
+            /* output is a string and size is in chars
+             * XXX: I'm assuming a wide string!
+             */
+            size *= sizeof(wchar_t);
+        }
+        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[2], size, mc, "pData");
+        if (pt->sysarg[2] == 0) {
+            /* XXX i#486: if buffer is not large enough, returns -1 but still
+             * sets *pcbSize
+             */
+            check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
+                         sizeof(UINT), mc, "pData");
+        }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true;
+}
+
+static bool
 handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                            dr_mcontext_t *mc)
 {
@@ -1723,6 +1836,12 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         return handle_UserMenuItemInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserGetAltTabInfo) {
         return handle_UserGetAltTabInfo(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserGetRawInputBuffer) {
+        return handle_UserGetRawInputBuffer(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserGetRawInputData) {
+        return handle_UserGetRawInputData(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserGetRawInputDeviceInfo) {
+        return handle_UserGetRawInputDeviceInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {

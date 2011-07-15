@@ -292,7 +292,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtGetDevicePowerState", OK, 8, {{1,sizeof(DEVICE_POWER_STATE),W}, }},
     {0,"NtGetPlugPlayEvent", OK, 16, {{2,-3,W}, }},
     /* BufferEntries is #elements, not #bytes */
-    {0,"NtGetWriteWatch", OK, 28, {{4,-5,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {4,-5,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {5,sizeof(ULONG),R|W}, {6,sizeof(ULONG),W}, }},
+    {0,"NtGetWriteWatch", OK, 28, {{4,-5,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {4,-5,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(void*)}, {5,sizeof(ULONG),R|W}, {6,sizeof(ULONG),W}, }},
     {0,"NtImpersonateAnonymousToken", OK, 4, },
     {0,"NtImpersonateClientOfPort", OK, 8, {{1,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
     {0,"NtImpersonateThread", OK, 12, {{2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, }},
@@ -509,7 +509,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtUnlockVirtualMemory", OK, 16, {{1,sizeof(PVOID),R|W}, {2,sizeof(ULONG),R|W}, }},
     {0,"NtUnmapViewOfSection", OK, 8, },
     {0,"NtVdmControl", OK, 8, },
-    {0,"NtW32Call", OK, 20, {{3,-4,WI}, {4,sizeof(ULONG),W}, }},
+    {0,"NtW32Call", OK, 20, {{3,-4,WI/*FIXME: de-ref w/o corresponding R to check definedness: but not enough info to understand exactly what's going on here*/}, {4,sizeof(ULONG),W}, }},
     {0,"NtWaitForDebugEvent", OK, 16, {{1,0,IB}, {2,sizeof(LARGE_INTEGER),R}, {3,sizeof(DBGUI_WAIT_STATE_CHANGE),W}, }},
     {0,"NtWaitForKeyedEvent", OK, 16, {{2,0,IB}, {3,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtWaitForMultipleObjects", OK, 20, {{1,sizeof(HANDLE),R}, {3,0,IB}, {4,sizeof(LARGE_INTEGER),R}, }},
@@ -978,6 +978,9 @@ os_syscall_succeeded(int sysnum, ptr_int_t res)
         /* Data is filled in so consider success */
         return true;
     }
+    /* FIXME i#486: syscalls that return the capacity needed in an OUT param
+     * will still write to it when returning STATUS_BUFFER_TOO_SMALL
+     */
     return (res >= 0);
 }
 
@@ -1300,6 +1303,7 @@ handle_object_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
+/* pass 0 for size if there is no max size */
 bool
 handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
                 byte *start, size_t size/*in bytes*/, uint arg_flags, wchar_t *safe,
@@ -1315,8 +1319,15 @@ handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
     size_t maxsz = (size == 0) ? (MAX_PATH*sizeof(wchar_t)) : size;
     if (start == NULL)
         return false; /* nothing to do */
-    if (!check_addr && pre && !TEST(SYSARG_READ, arg_flags))
-        return false;
+    if (pre && !TEST(SYSARG_READ, arg_flags)) {
+        if (!check_addr)
+            return false;
+        if (size > 0) {
+            /* if max size specified, on pre-write check whole thing for addr */
+            check_sysmem(check_type, sysnum, start, size, mc, id);
+            return true;
+        }
+    }
     if (!pre && !TEST(SYSARG_WRITE, arg_flags))
         return false; /*nothing to do */
     for (i = 0; i < maxsz; i += sizeof(wchar_t)) {

@@ -643,8 +643,8 @@ sysarg_invalid(syscall_arg_t *arg)
 
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
-sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
-                byte *start, int sysnum, dr_mcontext_t *mc)
+sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg,
+                int argnum, bool pre, byte *start, int sysnum, dr_mcontext_t *mc)
 {
     ptr_uint_t size = 0;
     if (arg->size == SYSARG_SIZE_CSTRING) {
@@ -655,6 +655,13 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
          */
         size = 0; /* for now */
     } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
+        /* XXX: some syscalls (in particular NtGdi* and NtUser*) return
+         * the capacity needed when the input buffer is NULL or
+         * size of input buffer is given as 0.  For the buffer being NULL
+         * we won't erroneously mark as defined, but for size being 0
+         * if buffer is non-NULL we could: entry should use
+         * SYSARG_NO_WRITE_IF_COUNT_0 in such cases.
+         */
         if (pre) {
             /* Can't ask for retval on pre but we have a few syscalls where the
              * pre-size is only known if the app makes a prior syscall (w/ NULL
@@ -689,8 +696,12 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
         if (TEST(SYSARG_LENGTH_INOUT, arg->flags)) {
             /* for x64 can't just take cur val of size so recompute */
             size_t *ptr;
-            ASSERT(arg->size < 0, "inout can't be immed");
+            ASSERT(arg->size <= 0, "inout can't be immed");
             ptr = (size_t *) pt->sysarg[-arg->size];
+            /* XXX: in some cases, ptr isn't checked for definedness until
+             * after this de-ref (b/c the SYSARG_READ entry is after this
+             * entry in the arg array: we could re-arrange the entries?
+             */
             if (ptr == NULL || !safe_read((void *)ptr, sizeof(size), &size))
                 size = 0;
         } else if (TEST(SYSARG_POST_SIZE_IO_STATUS, arg->flags)) {
@@ -699,7 +710,7 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
             ULONG sz;
             ASSERT(sizeof(status->Information) == sizeof(sz), "");
             ASSERT(!pre, "post-io flag should be on dup entry only");
-            ASSERT(arg->size < 0, "io block can't be immed");
+            ASSERT(arg->size <= 0, "io block can't be immed");
             if (safe_read((void *)(&status->Information), sizeof(sz), &sz))
                 size = sz;
             else
@@ -710,7 +721,9 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
         }
     }
     if (TEST(SYSARG_SIZE_IN_ELEMENTS, arg->flags)) {
-        size *= arg->misc;
+        ASSERT(arg->misc > 0 || -arg->misc < SYSCALL_NUM_ARG_STORE,
+               "reached max syscall args stored");
+        size *= ((arg->misc > 0) ? arg->misc : ((int) pt->sysarg[-arg->misc]));
     }
     return size;
 }
@@ -764,7 +777,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
             continue;
 
         start = (app_pc) dr_syscall_get_param(drcontext, sysinfo->arg[i].param);
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], true/*pre*/, start,
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, true/*pre*/, start,
                                sysnum, mc);
 
         /* FIXME PR 406355: we don't record which params are optional 
@@ -815,7 +828,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                "inlined bool should always be read, not write");
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], false/*!pre*/, start,
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, false/*!pre*/, start,
                                sysnum, mc);
 
         if (sysinfo->arg[i].param == last_param) {
@@ -828,6 +841,17 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                  * XXX: we could put in our own param when the app supplies NULL
                  */
                 size = last_size;
+            }
+            if (TEST(SYSARG_NO_WRITE_IF_COUNT_0, sysinfo->arg[i].flags)) {
+                /* Currently used only for NtUserGetKeyboardLayoutList.
+                 * If the count (passed in a param indicated by the first entry's
+                 * size field) is zero, the kernel returns the capacity needed,
+                 * but doesn't write anything, regardless of the buffer value.
+                 */
+                ASSERT(i > 0, "logic error");
+                ASSERT(sysinfo->arg[i-1].size <= 0, "invalid syscall table entry");
+                if (pt->sysarg[-sysinfo->arg[i-1].size] == 0)
+                    size = 0;
             }
             if (start != NULL && size > 0)
                 check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);

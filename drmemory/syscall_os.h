@@ -40,7 +40,9 @@ enum {
     /* the param holding the size is a pointer b/c it's an IN OUT var */
     SYSARG_LENGTH_INOUT        = 0x00000020,
     /* The size is not in bytes but in elements where the size of
-     * each element is in the misc field.
+     * each element is in the misc field.  The misc field can
+     * contain <= in which case the element size is stored in that
+     * parameter number.
      * This flag trumps SYSARG_COMPLEX_TYPE, so if there is an
      * overlap then special handling must be done for the type.
      */
@@ -50,6 +52,11 @@ enum {
      * when we move to 64-bit?
      */
     SYSARG_INLINED_BOOLEAN     = 0x00000080,
+    /* for SYSARG_POST_SIZE_RETVAL on a duplicate entry, nothing is
+     * written if the count, given in the first entry, is zero,
+     * regardless of the buffer pointer value.
+     */
+    SYSARG_NO_WRITE_IF_COUNT_0 = 0x00000100,
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for
@@ -76,6 +83,7 @@ enum {
     SYSARG_TYPE_OBJECT_ATTRIBUTES   =  7,
     SYSARG_TYPE_LARGE_STRING        =  8,
     SYSARG_TYPE_DEVMODEW            =  9,
+    SYSARG_TYPE_WNDCLASSEXW         = 10,
 };
 
 /* We encode the actual size of a write, if it can differ from the
