@@ -151,3 +151,16 @@ UxTheme.dll!*
 UxTheme.dll!*
 USER32.dll!*
 
+##################################################
+# i#497: Likely will go away w/ per-bit granularity (i#113).
+# Again, single routine since doesn't depend on caller,
+# and some risk of false negative, but considered short-term
+# until have per-bit granularity.
+
+UNINITIALIZED READ
+gdiplus.dll!DpRegion::FreeData
+
+# w/o symbols
+UNINITIALIZED READ
+gdiplus.dll!GdipCreateSolidFill
+
