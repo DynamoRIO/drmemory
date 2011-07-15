@@ -52,7 +52,11 @@
 
 #undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
-/* On Windows, keep this updated with drmemory.pl which queries these pre-run */
+/* On Windows, keep this updated with drmemory.pl which queries these pre-run.
+ *
+ * When adding, make sure the regexs passed to find_syms_regex() cover
+ * the new name!
+ */
 #define REPLACE_DEFS()     \
     REPLACE_DEF(memset)    \
     REPLACE_DEF(memcpy)    \
@@ -96,6 +100,19 @@ static const char *replace_routine_name[] = {
 static hashtable_t replace_table;
 
 static app_pc replace_routine_start;
+
+#ifdef USE_DRSYMS
+/* for passing data to sym enum callback */
+typedef struct _sym_enum_data_t {
+    bool add;
+    bool processed[REPLACE_NUM];
+    const module_data_t *mod;
+} sym_enum_data_t;
+
+/* for considering wildcard symbols */
+#define REPLACE_NAME_TABLE_HASH_BITS 6
+static hashtable_t replace_name_table;
+#endif
 
 /***************************************************************************
  * The replacements themselves.
@@ -619,14 +636,27 @@ replace_init(void)
                 s++;
             i++;
         }
+
+#ifdef USE_DRSYMS
+        hashtable_init(&replace_name_table, REPLACE_NAME_TABLE_HASH_BITS, HASH_STRING,
+                       false/*!strdup*/);
+        for (i=0; i<REPLACE_NUM; i++) {
+            hashtable_add(&replace_name_table, (void *) replace_routine_name[i],
+                          (void *)(ptr_int_t)(i+1)/*since 0 is "not found"*/);
+        }
+#endif
     }
 }
 
 void
 replace_exit(void)
 {
-    if (options.replace_libc)
+    if (options.replace_libc) {
         hashtable_delete(&replace_table);
+#ifdef USE_DRSYMS
+        hashtable_delete(&replace_name_table);
+#endif
+    }
 }
 
 static inline generic_func_t
@@ -729,6 +759,42 @@ replace_all_strlen(bool add, const module_data_t *mod,
 
 }
 
+#ifdef USE_DRSYMS
+/* It's faster to search for multiple symbols at once via regex
+ * and strcmp to identify precise targets (i#315).
+ */
+static bool
+enumerate_syms_cb(const char *name, size_t modoffs, void *data)
+{
+    uint i;
+    sym_enum_data_t *edata = (sym_enum_data_t *) data;
+    ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
+    LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
+    /* Using hashtable lookup to avoid linear walk of strcmp.
+     * Linear walk isn't much slower now, but will become worse
+     * as we add more routines.
+     */
+    i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
+    /* XXX: some modules have multiple addresses for one symbol: e.g., unit_tests.exe 
+     * strlen, strchr, and strrchr
+     */
+    if (i != 0 && !edata->processed[i-1]) {
+        i--;
+        edata->processed[i] = true;
+        replace_routine(edata->add, edata->mod, edata->mod->start + modoffs, i);
+    }
+    return true; /* keep iterating */
+}
+
+static void
+find_syms_regex(sym_enum_data_t *edata, const char *regex)
+{
+    if (!lookup_all_symbols(edata->mod, regex, enumerate_syms_cb, (void *)edata))
+        LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
+}
+#endif /* USE_DRSYMS */
+
+
 static void
 replace_in_module(const module_data_t *mod, bool add)
 {
@@ -745,6 +811,10 @@ replace_in_module(const module_data_t *mod, bool add)
     int i;
     app_pc libc = get_libc_base();
     void *drcontext = dr_get_current_drcontext();
+#ifdef USE_DRSYMS
+    sym_enum_data_t edata = {add, {0,}, mod};
+    bool missing_export = false;
+#endif
     ASSERT(options.replace_libc, "should not be called if op not on");
     for (i=0; i<REPLACE_NUM; i++) {
         dr_export_info_t info;
@@ -753,6 +823,9 @@ replace_in_module(const module_data_t *mod, bool add)
                                    &info, sizeof(info))) {
             addr = (app_pc) info.address;
             ASSERT(addr != NULL, "can't succeed yet have NULL addr!");
+#ifdef USE_DRSYMS
+            edata.processed[i] = true;
+#endif
             if (info.is_indirect_code) {
                 /* i#248/PR 510905: new ELF indirect code object type.
                  * We have to call the export to get the real impl.
@@ -774,10 +847,8 @@ replace_in_module(const module_data_t *mod, bool add)
         }
 #ifdef USE_DRSYMS
         else {
-            /* PR 486382: look up these symbols online for all modules.
-             * We rely on drsym_init() having been called during init.
-             */
-            addr = lookup_symbol(mod, replace_routine_name[i]);
+            LOG(3, "did not find export %s\n", replace_routine_name[i]);
+            missing_export = true;
         }
 #endif
         if (addr != NULL) {
@@ -787,6 +858,29 @@ replace_in_module(const module_data_t *mod, bool add)
             ASSERT(mod->start != libc, "can't find libc routine to replace");
         }
     }
+
+#ifdef USE_DRSYMS
+    if (missing_export) {
+        /* PR 486382: look up these symbols online for all modules.
+         * We rely on drsym_init() having been called during init.
+         * It's faster to look up multiple via regex (xref i#315)
+         * when most modules don't have any of the replacement syms.
+         */
+        /* These regex cover all function names we replace.  Both
+         * number of syms and number of queries count.  This is a good
+         * compromise.  "*mem*" has too many matches, while
+         * "mem[scrm]*", "*wmem*", "str[crln]*", and "wcs*" is too
+         * many queries.  Note that dbghelp does not support a regex
+         * symbol for "0 or 1 chars".
+         */
+        find_syms_regex(&edata, "[msw]?????");
+        find_syms_regex(&edata, "[msw]??????");
+# ifdef LINUX
+        find_syms_regex(&edata, "strchrnul");
+        find_syms_regex(&edata, "rawmemchr");
+# endif
+    }
+#endif
 }
 
 void
