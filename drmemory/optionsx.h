@@ -456,3 +456,6 @@ OPTION_CLIENT_BOOL(internal, syscall_driver, false,
                    "Use a syscall-info driver if available",
                    "Use a syscall-info driver if available")
 #endif
+OPTION_CLIENT_BOOL(internal, verify_sysnums, false,
+                   "Check system call numbers at startup",
+                   "Check system call numbers at startup")

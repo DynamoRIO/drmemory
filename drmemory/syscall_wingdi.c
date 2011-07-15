@@ -190,7 +190,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserEndMenu", OK, 0, },
     {0,"NtUserEndPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),R,}, }},
     {0,"NtUserEnumDisplayDevices", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,SYSARG_SIZE_IN_FIELD,W,offsetof(DISPLAY_DEVICEW,cb)}, }},
-    {0,"NtUserEnumDisplayMonitors", OK, 20, {{1,sizeof(RECT),R,}, {2,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HMONITOR)}, {3,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(RECT)}, }},
+    {0,"NtUserEnumDisplayMonitors", OK, 20, {{1,sizeof(RECT),R,},/*experimentally this matches win32 API version so no more mem args*/ }},
     {0,"NtUserEnumDisplaySettings", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW)/*really var-len*/,W|CT,SYSARG_TYPE_DEVMODEW}, }},
     {0,"NtUserEvent", OK, 4, },
     {0,"NtUserExcludeUpdateRgn", OK, 8, },
@@ -229,7 +229,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetIconInfo", OK, 24, {{1,sizeof(ICONINFO),W,}, {2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/}, {3,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(DWORD),W,}, }},
     {0,"NtUserGetIconSize", OK, 16, {{2,sizeof(LONG),W,}, {3,sizeof(LONG),W,}, }},
     {0,"NtUserGetImeHotKey", OK, 16, },
-    {0,"NtUserGetImeInfoEx", OK|SYSINFO_IMM32_DLL, 8, },
+    /* FIXME i#487: 1st param is OUT but shape is unknown */
+    {0,"NtUserGetImeInfoEx", UNKNOWN|SYSINFO_IMM32_DLL, 8, },
     {0,"NtUserGetInternalWindowPos", OK, 12, {{1,sizeof(RECT),W,}, {2,sizeof(POINT),W,}, }},
     {0,"NtUserGetKeyNameText", OK, 12, {{1,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {1,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtUserGetKeyState", OK, 4, },
@@ -481,6 +482,8 @@ num_user32_syscalls(void)
  *
  * + bcount in, ecount out for NtGdiSfmGetNotificationTokens (which is
  *   missing annotations)?  but what is size of token?
+ *
+ * + the REALIZATION_INFO struct is much larger on win7
  */
 
 static int sysnum_GdiCreatePaletteInternal = -1;
@@ -785,7 +788,8 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetEudcTimeStampEx", OK, 12, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtGdiQueryFontAssocInfo", OK, 4, },
     {0,"NtGdiGetFontUnicodeRanges", OK, 8, {{1,RET,W,/*FIXME i#485: pre size from prior syscall ret*/}, }},
-    {0,"NtGdiGetRealizationInfo", OK, 8, {{1,sizeof(REALIZATION_INFO),W,}, }},
+    /* FIXME i#485: the REALIZATION_INFO struct is much larger on win7 */
+    {0,"NtGdiGetRealizationInfo", UNKNOWN, 8, {{1,sizeof(REALIZATION_INFO),W,}, }},
     {0,"NtGdiAddRemoteMMInstanceToDC", OK, 12, {{1,-2,R,}, }},
     {0,"NtGdiUnloadPrinterDriver", OK, 8, {{0,-1,R,}, }},
     {0,"NtGdiEngAssociateSurface", OK, 12, },

@@ -737,7 +737,7 @@ vsyscall_pc(void *drcontext, byte *entry)
 
 static int
 syscall_num_from_name(void *drcontext, const module_data_t *info, const char *name,
-                      const char *optional_prefix)
+                      const char *optional_prefix, bool sym_lookup)
 {
     app_pc entry = (app_pc)
         dr_get_proc_address(info->start, name);
@@ -745,7 +745,7 @@ syscall_num_from_name(void *drcontext, const module_data_t *info, const char *na
     if (entry != NULL)
         num = syscall_num(drcontext, entry);
 #ifdef USE_DRSYMS
-    if (entry == NULL) {
+    if (entry == NULL && sym_lookup) {
         /* i#388: for those that aren't exported, if we have symbols, find the
          * sysnum that way.
          */
@@ -794,7 +794,12 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
     syslist->num = syscall_num_from_name(drcontext, info, syslist->name,
-                                         optional_prefix);
+                                         optional_prefix, 
+                                         /* it's a perf hit to do one-at-a-time symbol
+                                          * lookup for hundreds of syscalls, so we rely
+                                          * on our tables unless asked
+                                          */
+                                         options.verify_sysnums);
     if (syslist->num > -1) {
         hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
         LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
@@ -810,7 +815,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
 int
 os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
 {
-    return syscall_num_from_name(drcontext, info, name, NULL);
+    return syscall_num_from_name(drcontext, info, name, NULL, true/*sym lookup*/);
 }
 
 void
@@ -1328,9 +1333,9 @@ handle_object_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
         handle_security_descriptor_access(pre, sysnum, mc, arg_num, arg_info,
                                           (byte *) oa.SecurityDescriptor,
                                           sizeof(SECURITY_DESCRIPTOR));
-        check_sysmem(check_type, sysnum, (byte *) oa.SecurityQualityOfService,
-                     sizeof(SECURITY_QUALITY_OF_SERVICE), mc,
-                     "OBJECT_ATTRIBUTES.SecurityQualityOfService");
+        handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
+                                   (byte *) oa.SecurityQualityOfService,
+                                   sizeof(SECURITY_QUALITY_OF_SERVICE));
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true;
