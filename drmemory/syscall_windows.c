@@ -797,7 +797,9 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
                                          optional_prefix, 
                                          /* it's a perf hit to do one-at-a-time symbol
                                           * lookup for hundreds of syscalls, so we rely
-                                          * on our tables unless asked
+                                          * on our tables unless asked.
+                                          * XXX: a single Nt* regex would probably
+                                          * be performant enough
                                           */
                                          options.verify_sysnums);
     if (syslist->num > -1) {
@@ -1298,7 +1300,7 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
                          (byte *)us.Buffer, us.MaximumLength, mc,
                          "UNICODE_STRING capacity");
         }
-        if (us.MaximumLength > 0) {
+        if ((!pre || TEST(SYSARG_READ, arg_info->flags)) && us.MaximumLength > 0) {
             if (ignore_len) {
                 /* i#490: wrong Length stored so as workaround we walk the string */
                 handle_cwstring(pre, sysnum, mc, "UNICODE_STRING content",
