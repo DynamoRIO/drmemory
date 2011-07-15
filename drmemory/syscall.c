@@ -641,6 +641,51 @@ sysarg_invalid(syscall_arg_t *arg)
     return (arg->param == 0 && arg->size == 0 && arg->flags == 0);
 }
 
+#ifndef MAX_PATH
+# define MAX_PATH 4096
+#endif
+
+/* pass 0 for size if there is no max size */
+bool
+handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+               byte *start, size_t size/*in bytes*/, uint arg_flags, char *safe,
+               bool check_addr)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    /* the kernel wrote a wide string to the buffer: only up to the terminating
+     * null should be marked as defined
+     */
+    uint i;
+    char c;
+    /* input params have size 0: for safety stopping at MAX_PATH */
+    size_t maxsz = (size == 0) ? (MAX_PATH*sizeof(char)) : size;
+    if (start == NULL)
+        return false; /* nothing to do */
+    if (pre && !TEST(SYSARG_READ, arg_flags)) {
+        if (!check_addr)
+            return false;
+        if (size > 0) {
+            /* if max size specified, on pre-write check whole thing for addr */
+            check_sysmem(check_type, sysnum, start, size, mc, id);
+            return true;
+        }
+    }
+    if (!pre && !TEST(SYSARG_WRITE, arg_flags))
+        return false; /*nothing to do */
+    for (i = 0; i < maxsz; i += sizeof(char)) {
+        if (safe != NULL)
+            c = safe[i/sizeof(char)];
+        else if (!safe_read(start + i, sizeof(c), &c)) {
+            WARN("WARNING: unable to read syscall param string\n");
+            break;
+        }
+        if (c == L'\0')
+            break;
+    }
+    check_sysmem(check_type, sysnum, start, i + sizeof(char), mc, id);
+    return true;
+}
+
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
 sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg,
@@ -652,6 +697,7 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg,
          * byte prior to deref and find end.  (We only need this
          * on syscall since in user code we'll see the individual
          * refs (or rep cmps)).
+         * XXX: should use handle_cstring()
          */
         size = 0; /* for now */
     } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
@@ -832,9 +878,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                                sysnum, mc);
 
         if (sysinfo->arg[i].param == last_param) {
-            /* For a double entry, the 2nd indicates the actual written size.
-             * If has double entry, we assume no os-specific handling.
-             */
+            /* For a double entry, the 2nd indicates the actual written size */
             if (size == 0) {
                 /* we use SYSARG_LENGTH_INOUT for some optional params: in that
                  * case use the 1st entry's max size.
@@ -853,8 +897,12 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                 if (pt->sysarg[-sysinfo->arg[i-1].size] == 0)
                     size = 0;
             }
-            if (start != NULL && size > 0)
-                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
+            if (start != NULL && size > 0) {
+                bool skip = os_handle_post_syscall_arg_access
+                    (sysnum, mc, i, &sysinfo->arg[i], start, size);
+                if (!skip)
+                    check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
+            }
             continue;
         }
         last_param = sysinfo->arg[i].param;

@@ -108,6 +108,11 @@ void
 check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
              const char *id);
 
+bool
+handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+               byte *start, size_t size/*in bytes*/, uint arg_flags, char *safe,
+               bool check_addr);
+
 byte *
 syscall_auxlib_start(void);
 

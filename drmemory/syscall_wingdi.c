@@ -95,11 +95,15 @@ num_kernel32_syscalls(void)
  */
 
 static int sysnum_UserSystemParametersInfo = -1;
+static int sysnum_UserMenuInfo = -1;
 static int sysnum_UserMenuItemInfo = -1;
 static int sysnum_UserGetAltTabInfo = -1;
 static int sysnum_UserGetRawInputBuffer = -1;
 static int sysnum_UserGetRawInputData = -1;
 static int sysnum_UserGetRawInputDeviceInfo = -1;
+static int sysnum_UserTrackMouseEvent = -1;
+static int sysnum_UserCreateWindowStation = -1;
+static int sysnum_UserLoadKeyboardLayoutEx = -1;
 
 syscall_info_t syscall_user32_info[] = {
 #if 1 /* FIXME temporary until finished going through script-produced table */
@@ -156,7 +160,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserCreateInputContext", OK, 4, },
     {0,"NtUserCreateLocalMemHandle", OK, 16, },
     {0,"NtUserCreateWindowEx", OK, 60, {{1,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {2,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {3,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, }},
-    {0,"NtUserCreateWindowStation", OK, 28, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtUserCreateWindowStation", OK, 28, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }, &sysnum_UserCreateWindowStation},
     {0,"NtUserCtxDisplayIOCtl", OK, 12, },
     {0,"NtUserDdeGetQualityOfService", OK, 12, {{2,sizeof(SECURITY_QUALITY_OF_SERVICE),W,}, }},
     {0,"NtUserDdeInitialize", OK, 20, },
@@ -269,42 +273,44 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserImpersonateDdeClientWindow", OK, 8, },
     {0,"NtUserInitTask", OK, 48, },
     {0,"NtUserInitialize", OK, 12, },
+    /* FIXME i#487: not sure whether these are arrays and if so how long they are */
     {0,"NtUserInitializeClientPfnArrays", UNKNOWN, 16, {{0,sizeof(PFNCLIENT),R,}, {1,sizeof(PFNCLIENT),R,}, {2,sizeof(PFNCLIENTWORKER),R,}, }},
-    {0,"NtUserInternalGetWindowText", UNKNOWN, 12, {{1,-2,R,}, }},
-    {0,"NtUserInvalidateRect", UNKNOWN, 12, {{1,sizeof(RECT),R,}, }},
+    {0,"NtUserInternalGetWindowText", OK, 12, {{1,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)},{1,0,W|CT,SYSARG_TYPE_CSTRING_WIDE}, }},
+    {0,"NtUserInvalidateRect", OK, 12, {{1,sizeof(RECT),R,}, }},
     {0,"NtUserInvalidateRgn", OK, 12, },
     {0,"NtUserIsClipboardFormatAvailable", OK, 4, },
     {0,"NtUserKillTimer", OK, 8, },
-    {0,"NtUserLoadKeyboardLayoutEx", UNKNOWN, 28, {{2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserLoadKeyboardLayoutEx", OK, 28, {{2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }, &sysnum_UserLoadKeyboardLayoutEx},
     {0,"NtUserLockWindowStation", OK, 4, },
     {0,"NtUserLockWindowUpdate", OK, 4, },
     {0,"NtUserLockWorkStation", OK, 0, },
     {0,"NtUserMNDragLeave", OK, 0, },
     {0,"NtUserMNDragOver", OK, 8, },
     {0,"NtUserMapVirtualKeyEx", OK, 16, },
-    {0,"NtUserMenuInfo", UNKNOWN, 12, {{1,sizeof(MENUINFO),R,}, }},
+    {0,"NtUserMenuInfo", OK, 12, {{0,}/*can be R or W*/}, &sysnum_UserMenuInfo },
     {0,"NtUserMenuItemFromPoint", OK, 16, },
     {0,"NtUserMenuItemInfo", OK, 20, {{0,}/*can be R or W*/}, &sysnum_UserMenuItemInfo },
     {0,"NtUserMessageCall", OK, 28, },
     {0,"NtUserMinMaximize", OK, 12, },
     {0,"NtUserModifyUserStartupInfoFlags", OK, 8, },
     {0,"NtUserMonitorFromPoint", OK, 8, },
-    {0,"NtUserMonitorFromRect", UNKNOWN, 8, {{0,sizeof(RECT),R,}, }},
+    {0,"NtUserMonitorFromRect", OK, 8, {{0,sizeof(RECT),R,}, }},
     {0,"NtUserMonitorFromWindow", OK, 8, },
     {0,"NtUserMoveWindow", OK, 24, },
     {0,"NtUserNotifyIMEStatus", OK, 12, },
     {0,"NtUserNotifyProcessCreate", OK, 16, },
     {0,"NtUserNotifyWinEvent", OK, 16, },
     {0,"NtUserOpenClipboard", OK, 8, },
-    {0,"NtUserOpenDesktop", UNKNOWN, 12, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtUserOpenDesktop", OK, 12, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtUserOpenInputDesktop", OK, 12, },
-    {0,"NtUserOpenWindowStation", UNKNOWN, 8, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtUserOpenWindowStation", OK, 8, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtUserPaintDesktop", OK, 4, },
     {0,"NtUserPaintMenuBar", OK, 24, },
-    {0,"NtUserPeekMessage", UNKNOWN, 20, {{0,sizeof(MSG),R,}, }},
+    {0,"NtUserPeekMessage", OK, 20, {{0,sizeof(MSG),W,}, }},
     {0,"NtUserPostMessage", OK, 16, },
     {0,"NtUserPostThreadMessage", OK, 16, },
     {0,"NtUserPrintWindow", OK, 12, },
+    /* FIXME i#487: lots of pointers inside USERCONNECT */
     {0,"NtUserProcessConnect", UNKNOWN, 12, {{1,sizeof(USERCONNECT),W,}, }},
     {0,"NtUserQueryInformationThread", OK, 20, },
     {0,"NtUserQueryInputContext", OK, 8, },
@@ -312,15 +318,15 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserQueryUserCounters", OK, 20, },
     {0,"NtUserQueryWindow", OK, 8, },
     {0,"NtUserRealChildWindowFromPoint", OK, 12, },
-    {0,"NtUserRealInternalGetMessage", UNKNOWN, 24, {{0,sizeof(MSG),R,}, }},
+    {0,"NtUserRealInternalGetMessage", OK, 24, {{0,sizeof(MSG),W,}, }},
     {0,"NtUserRealWaitMessageEx", OK, 8, },
-    {0,"NtUserRedrawWindow", UNKNOWN, 16, {{1,sizeof(RECT),R,}, }},
-    {0,"NtUserRegisterClassExWOW", UNKNOWN, 28, {{0,sizeof(WNDCLASSEXW),R,}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(CLSMENUNAME),R,}, {6,sizeof(DWORD),R,}, }},
+    {0,"NtUserRedrawWindow", OK, 16, {{1,sizeof(RECT),R,}, }},
+    {0,"NtUserRegisterClassExWOW", OK, 28, {{0,sizeof(WNDCLASSEXW),R|CT,SYSARG_TYPE_WNDCLASSEXW}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(CLSMENUNAME),R|CT,SYSARG_TYPE_CLSMENUNAME}, {6,sizeof(DWORD),R,}, }},
     {0,"NtUserRegisterHotKey", OK, 16, },
-    {0,"NtUserRegisterRawInputDevices", UNKNOWN, 12, {{0,sizeof(RAWINPUTDEVICE),R,}, }},
+    {0,"NtUserRegisterRawInputDevices", OK, 12, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,-2}, }},
     {0,"NtUserRegisterTasklist", OK, 4, },
-    {0,"NtUserRegisterUserApiHook", UNKNOWN, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserRegisterWindowMessage", UNKNOWN, 4, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserRegisterUserApiHook", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserRegisterWindowMessage", OK, 4, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserRemoteConnect", OK, 12, },
     {0,"NtUserRemoteRedrawRectangle", OK, 16, },
     {0,"NtUserRemoteRedrawScreen", OK, 0, },
@@ -329,11 +335,12 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserRemoveProp", OK, 8, },
     {0,"NtUserResolveDesktop", OK, 16, },
     {0,"NtUserResolveDesktopForWOW", OK, 4, },
-    {0,"NtUserSBGetParms", UNKNOWN, 16, {{2,sizeof(SBDATA),R,}, {3,sizeof(SCROLLINFO),R,}, }},
-    {0,"NtUserScrollDC", UNKNOWN, 28, {{3,sizeof(RECT),R,}, {4,sizeof(RECT),R,}, {6,sizeof(RECT),R,}, }},
-    {0,"NtUserScrollWindowEx", UNKNOWN, 32, {{3,sizeof(RECT),R,}, {4,sizeof(RECT),R,}, {6,sizeof(RECT),R,}, }},
+    /* FIXME i#487: not sure whether #2 is in or out */
+    {0,"NtUserSBGetParms", OK, 16, {{2,sizeof(SBDATA),W,}, {3,SYSARG_SIZE_IN_FIELD,W,offsetof(SCROLLINFO,cbSize)}, }},
+    {0,"NtUserScrollDC", OK, 28, {{3,sizeof(RECT),R,}, {4,sizeof(RECT),R,}, {6,sizeof(RECT),W,}, }},
+    {0,"NtUserScrollWindowEx", OK, 32, {{3,sizeof(RECT),R,}, {4,sizeof(RECT),R,}, {6,sizeof(RECT),W,}, }},
     {0,"NtUserSelectPalette", OK, 12, },
-    {0,"NtUserSendInput", UNKNOWN, 12, {{1,sizeof(INPUT),R,}, }},
+    {0,"NtUserSendInput", OK, 12, {{1,-0,R|SYSARG_SIZE_IN_ELEMENTS,-2}, }},
     {0,"NtUserSetActiveWindow", OK, 4, },
     {0,"NtUserSetAppImeLevel", OK, 8, },
     {0,"NtUserSetCapture", OK, 4, },
@@ -343,8 +350,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserSetClipboardViewer", OK, 4, },
     {0,"NtUserSetConsoleReserveKeys", OK, 8, },
     {0,"NtUserSetCursor", OK, 4, },
-    {0,"NtUserSetCursorContents", UNKNOWN, 8, {{1,sizeof(ICONINFO),R,}, }},
-    {0,"NtUserSetCursorIconData", UNKNOWN, 24, {{1,sizeof(BOOL),R,}, {2,sizeof(POINT),R,}, }},
+    {0,"NtUserSetCursorContents", OK, 8, {{1,sizeof(ICONINFO),R,}, }},
+    {0,"NtUserSetCursorIconData", OK, 24, {{1,sizeof(BOOL),R,}, {2,sizeof(POINT),R,}, }},
     {0,"NtUserSetDbgTag", OK, 8, },
     {0,"NtUserSetFocus", OK, 4, },
     {0,"NtUserSetImeHotKey", OK, 20, },
@@ -352,23 +359,23 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserSetImeOwnerWindow", OK, 8, },
     {0,"NtUserSetInformationProcess", OK, 16, },
     {0,"NtUserSetInformationThread", OK, 16, },
-    {0,"NtUserSetInternalWindowPos", UNKNOWN, 16, {{2,sizeof(RECT),R,}, {3,sizeof(POINT),R,}, }},
-    {0,"NtUserSetKeyboardState", UNKNOWN, 4, {{0,sizeof(BYTE),R,}, }},
+    {0,"NtUserSetInternalWindowPos", OK, 16, {{2,sizeof(RECT),R,}, {3,sizeof(POINT),R,}, }},
+    {0,"NtUserSetKeyboardState", OK, 4, {{0,256*sizeof(BYTE),R,}, }},
     {0,"NtUserSetLayeredWindowAttributes", OK, 16, },
     {0,"NtUserSetLogonNotifyWindow", OK, 4, },
     {0,"NtUserSetMenu", OK, 12, },
     {0,"NtUserSetMenuContextHelpId", OK, 8, },
     {0,"NtUserSetMenuDefaultItem", OK, 12, },
     {0,"NtUserSetMenuFlagRtoL", OK, 4, },
-    {0,"NtUserSetObjectInformation", UNKNOWN, 16, {{2,-3,W,}, }},
+    {0,"NtUserSetObjectInformation", OK, 16, {{2,-3,R,}, }},
     {0,"NtUserSetParent", OK, 8, },
     {0,"NtUserSetProcessWindowStation", OK, 4, },
     {0,"NtUserSetProp", OK, 12, },
     {0,"NtUserSetRipFlags", OK, 8, },
-    {0,"NtUserSetScrollBarInfo", UNKNOWN, 12, {{2,sizeof(SETSCROLLBARINFO),R,}, }},
-    {0,"NtUserSetScrollInfo", UNKNOWN, 16, {{2,sizeof(SCROLLINFO),R,}, }},
+    {0,"NtUserSetScrollBarInfo", OK, 12, {{2,sizeof(SETSCROLLBARINFO),R,}, }},
+    {0,"NtUserSetScrollInfo", OK, 16, {{2,SYSARG_SIZE_IN_FIELD,R,offsetof(SCROLLINFO,cbSize)}, }},
     {0,"NtUserSetShellWindowEx", OK, 8, },
-    {0,"NtUserSetSysColors", UNKNOWN, 16, {{1,sizeof(INT),R,}, {2,sizeof(COLORREF),R,}, }},
+    {0,"NtUserSetSysColors", OK, 16, {{1,-0,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(INT)}, {2,-0,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(COLORREF)}, }},
     {0,"NtUserSetSystemCursor", OK, 8, },
     {0,"NtUserSetSystemMenu", OK, 8, },
     {0,"NtUserSetSystemTimer", OK, 16, },
@@ -376,16 +383,16 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserSetThreadLayoutHandles", OK, 8, },
     {0,"NtUserSetThreadState", OK, 8, },
     {0,"NtUserSetTimer", OK, 16, },
-    {0,"NtUserSetWinEventHook", UNKNOWN, 32, {{3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserSetWinEventHook", OK, 32, {{3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserSetWindowFNID", OK, 8, },
     {0,"NtUserSetWindowLong", OK, 16, },
-    {0,"NtUserSetWindowPlacement", OK, 8, {{1,sizeof(WINDOWPLACEMENT),R,}, }},
+    {0,"NtUserSetWindowPlacement", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,R,offsetof(WINDOWPLACEMENT,length)}, }},
     {0,"NtUserSetWindowPos", OK, 28, },
     {0,"NtUserSetWindowRgn", OK, 12, },
     {0,"NtUserSetWindowStationUser", OK, 16, },
     {0,"NtUserSetWindowWord", OK, 12, },
     {0,"NtUserSetWindowsHookAW", OK, 12, },
-    {0,"NtUserSetWindowsHookEx", UNKNOWN, 24, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserSetWindowsHookEx", OK, 24, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserShowCaret", OK, 4, },
     {0,"NtUserShowScrollBar", OK, 12, },
     {0,"NtUserShowWindow", OK, 8, },
@@ -396,26 +403,26 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserTestForInteractiveUser", OK, 4, },
     /* there is a pointer in MENUINFO but it's user-defined */
     {0,"NtUserThunkedMenuInfo", OK, 8, {{1,sizeof(MENUINFO),R,}, }},
-    {0,"NtUserThunkedMenuItemInfo", OK, 24, {{4,sizeof(MENUITEMINFOW),R,}, {5,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserToUnicodeEx", UNKNOWN, 28, {{2,sizeof(BYTE),R,}, {3,-4,R,}, }},
-    {0,"NtUserTrackMouseEvent", UNKNOWN, 4, {{0,sizeof(TRACKMOUSEEVENT),R,}, }},
-    {0,"NtUserTrackPopupMenuEx", UNKNOWN, 24, {{5,sizeof(TPMPARAMS),R,}, }},
-    {0,"NtUserTranslateAccelerator", UNKNOWN, 12, {{2,sizeof(MSG),R,}, }},
-    {0,"NtUserTranslateMessage", UNKNOWN, 8, {{0,sizeof(MSG),R,}, }},
+    {0,"NtUserThunkedMenuItemInfo", OK, 24, {{4,0,R|CT,SYSARG_TYPE_MENUITEMINFOW}, {5,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserToUnicodeEx", OK, 28, {{2,0x100*sizeof(BYTE),R,}, {3,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
+    {0,"NtUserTrackMouseEvent", OK, 4, {{0,}}, &sysnum_UserTrackMouseEvent},
+    {0,"NtUserTrackPopupMenuEx", OK, 24, {{5,SYSARG_SIZE_IN_FIELD,R,offsetof(TPMPARAMS,cbSize)}, }},
+    {0,"NtUserTranslateAccelerator", OK, 12, {{2,sizeof(MSG),R,}, }},
+    {0,"NtUserTranslateMessage", OK, 8, {{0,sizeof(MSG),R,}, }},
     {0,"NtUserUnhookWinEvent", OK, 4, },
     {0,"NtUserUnhookWindowsHookEx", OK, 4, },
     {0,"NtUserUnloadKeyboardLayout", OK, 4, },
     {0,"NtUserUnlockWindowStation", OK, 4, },
-    {0,"NtUserUnregisterClass", UNKNOWN, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(CLSMENUNAME),W,}, }},
+    {0,"NtUserUnregisterClass", OK, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(CLSMENUNAME),W|CT,SYSARG_TYPE_CLSMENUNAME,}, }},
     {0,"NtUserUnregisterHotKey", OK, 8, },
     {0,"NtUserUnregisterUserApiHook", OK, 0, },
     {0,"NtUserUpdateInputContext", OK, 12, },
     {0,"NtUserUpdateInstance", OK, 12, },
-    {0,"NtUserUpdateLayeredWindow", UNKNOWN, 40, {{2,sizeof(POINT),R,}, {3,sizeof(SIZE),R,}, {5,sizeof(POINT),R,}, {7,sizeof(BLENDFUNCTION),R,}, {9,sizeof(RECT),R,}, }},
+    {0,"NtUserUpdateLayeredWindow", OK, 40, {{2,sizeof(POINT),R,}, {3,sizeof(SIZE),R,}, {5,sizeof(POINT),R,}, {7,sizeof(BLENDFUNCTION),R,}, {9,sizeof(RECT),R,}, }},
     {0,"NtUserUpdatePerUserSystemParameters", OK, 8, },
     {0,"NtUserUserHandleGrantAccess", OK, 12, },
     {0,"NtUserValidateHandleSecure", OK, 8, },
-    {0,"NtUserValidateRect", UNKNOWN, 8, {{1,sizeof(RECT),R,}, }},
+    {0,"NtUserValidateRect", OK, 8, {{1,sizeof(RECT),R,}, }},
     {0,"NtUserValidateTimerCallback", OK, 12, },
     {0,"NtUserVkKeyScanEx", OK, 12, },
     {0,"NtUserWaitForInputIdle", OK, 12, },
@@ -996,6 +1003,119 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
     return true; /* handled */
 }
 
+bool
+handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                          uint arg_num,
+                          const syscall_arg_t *arg_info,
+                          app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    CLSMENUNAME safe;
+    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, "CLSMENUNAME");
+    if (safe_read(start, sizeof(safe), &safe)) {
+        handle_cstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                       safe.pszClientAnsiMenuName, 0, arg_info->flags,
+                       NULL, true);
+        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                        (byte *) safe.pwszClientUnicodeMenuName, 0, arg_info->flags,
+                        NULL, true);
+        handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
+                                     (byte *) safe.pusMenuName, sizeof(UNICODE_STRING));
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true; /* handled */
+}
+
+bool
+handle_menuiteminfow_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                            uint arg_num,
+                            const syscall_arg_t *arg_info,
+                            app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    MENUITEMINFOW *real = (MENUITEMINFOW *) start;
+    MENUITEMINFOW safe;
+    bool check_dwTypeData = false;
+    /* user must set cbSize for set or get */
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     sizeof(safe.cbSize), mc, "MENUITEMINFOW.cbSize");
+    }
+    if (safe_read(start, sizeof(safe), &safe)) {
+        if (pre) {
+            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start,
+                         safe.cbSize, mc, "MENUITEMINFOW");
+        }
+        if (TEST(MIIM_BITMAP, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, hbmpItem)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->hbmpItem,
+                         sizeof(real->hbmpItem), mc, "MENUITEMINFOW.hbmpItem");
+        }
+        if (TEST(MIIM_CHECKMARKS, safe.fMask)) {
+            if (safe.cbSize > offsetof(MENUITEMINFOW, hbmpChecked)) {
+                check_sysmem(check_type, sysnum, (byte *) &real->hbmpChecked,
+                             sizeof(real->hbmpChecked), mc, "MENUITEMINFOW.hbmpChecked");
+            }
+            if (safe.cbSize > offsetof(MENUITEMINFOW, hbmpUnchecked)) {
+                check_sysmem(check_type, sysnum, (byte *) &real->hbmpUnchecked,
+                             sizeof(real->hbmpUnchecked), mc,
+                             "MENUITEMINFOW.hbmpUnchecked");
+            }
+        }
+        if (TEST(MIIM_DATA, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, dwItemData)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->dwItemData,
+                         sizeof(real->dwItemData), mc, "MENUITEMINFOW.dwItemData");
+        }
+        if (TEST(MIIM_FTYPE, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, fType)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->fType,
+                         sizeof(real->fType), mc, "MENUITEMINFOW.fType");
+        }
+        if (TEST(MIIM_ID, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, wID)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->wID,
+                         sizeof(real->wID), mc, "MENUITEMINFOW.wID");
+        }
+        if (TEST(MIIM_STATE, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, fState)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->fState,
+                         sizeof(real->fState), mc, "MENUITEMINFOW.fState");
+        }
+        if (TEST(MIIM_STRING, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, dwTypeData)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->dwTypeData,
+                         sizeof(real->dwTypeData), mc, "MENUITEMINFOW.dwTypeData");
+            check_dwTypeData = true;
+        }
+        if (TEST(MIIM_SUBMENU, safe.fMask) &&
+            safe.cbSize > offsetof(MENUITEMINFOW, hSubMenu)) {
+            check_sysmem(check_type, sysnum, (byte *) &real->hSubMenu,
+                         sizeof(real->hSubMenu), mc, "MENUITEMINFOW.hSubMenu");
+        }
+        if (TEST(MIIM_TYPE, safe.fMask) &&
+            !TESTANY(MIIM_BITMAP | MIIM_FTYPE | MIIM_STRING, safe.fMask)) {
+            if (safe.cbSize > offsetof(MENUITEMINFOW, fType)) {
+                check_sysmem(check_type, sysnum, (byte *) &real->fType,
+                             sizeof(real->fType), mc, "MENUITEMINFOW.fType");
+            }
+            if (safe.cbSize > offsetof(MENUITEMINFOW, dwTypeData)) {
+                check_sysmem(check_type, sysnum, (byte *) &real->dwTypeData,
+                             sizeof(real->dwTypeData), mc, "MENUITEMINFOW.dwTypeData");
+                check_dwTypeData = true;
+            }
+        }
+        if (check_dwTypeData) {
+            /* kernel sets safe.cch so we don't have to walk the string */
+            check_sysmem(check_type, sysnum, (byte *) safe.dwTypeData,
+                         (safe.cch + 1/*null*/) * sizeof(wchar_t),
+                         mc, "MENUITEMINFOW.dwTypeData");
+        }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true; /* handled */
+}
+
 static void
 handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
                byte *start, size_t size, uint arg_flags, LOGFONTW *safe)
@@ -1202,6 +1322,12 @@ wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num
     case SYSARG_TYPE_WNDCLASSEXW:
         return handle_wndclassexw_access(pre, sysnum, mc, arg_num,
                                          arg_info, start, size);
+    case SYSARG_TYPE_CLSMENUNAME:
+        return handle_clsmenuname_access(pre, sysnum, mc, arg_num,
+                                         arg_info, start, size);
+    case SYSARG_TYPE_MENUITEMINFOW:
+        return handle_menuiteminfow_access(pre, sysnum, mc, arg_num,
+                                           arg_info, start, size);
     }
     return false; /* not handled */
 }
@@ -1597,29 +1723,37 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_threa
 }
 
 static bool
+handle_UserMenuInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                        dr_mcontext_t *mc)
+{
+    /* 3rd param is bool saying whether it's Set or Get */
+    BOOL set = (BOOL) pt->sysarg[3];
+    uint check_type = SYSARG_CHECK_TYPE(set ? SYSARG_READ : SYSARG_WRITE, pre);
+    MENUINFO info;
+    /* user must set cbSize for set or get */
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[1],
+                     sizeof(info.cbSize), mc, "MENUINFOW.cbSize");
+    }
+    if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
+        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
+                     info.cbSize, mc, "MENUINFOW");
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true;
+}
+
+static bool
 handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                         dr_mcontext_t *mc)
 {
     /* 4th param is bool saying whether it's Set or Get */
     BOOL set = (BOOL) pt->sysarg[4];
-    uint check_type = SYSARG_CHECK_TYPE(set ? SYSARG_READ : SYSARG_WRITE, pre);
-    MENUITEMINFOW info;
-    /* user must set cbSize for set or get */
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[3],
-                     sizeof(info.cbSize), mc, "MENUITEMINFOW.cbSize");
-    }
-    if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
-        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
-                     info.cbSize, mc, "MENUITEMINFOW");
-        if (info.cbSize > offsetof(MENUITEMINFOW, dwTypeData)) {
-            /* kernel sets info.cch so we don't have to walk the string */
-            check_sysmem(check_type, sysnum, (byte *) info.dwTypeData,
-                         (info.cch + 1/*null*/) * sizeof(wchar_t),
-                         mc, "MENUITEMINFOW.dwTypeData");
-        }
-    } else
-        WARN("WARNING: unable to read syscall param\n");
+    syscall_arg_t arg = {0, 0,
+                         (set ? SYSARG_READ : SYSARG_WRITE)|SYSARG_COMPLEX_TYPE,
+                         SYSARG_TYPE_MENUITEMINFOW};
+    handle_menuiteminfow_access(pre, sysnum, mc, 0/*unused*/,
+                                &arg, (byte *) pt->sysarg[3], 0);
     return true;
 }
 
@@ -1703,6 +1837,36 @@ handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, per_thre
              */
             check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
                          sizeof(UINT), mc, "pData");
+        }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true;
+}
+
+static bool
+handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                           dr_mcontext_t *mc)
+{
+    DWORD dwFlags = (BOOL) pt->sysarg[3];
+    TRACKMOUSEEVENT *safe;
+    byte buf[offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags)];
+    /* user must set cbSize and dwFlags */
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[0],
+                     offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags),
+                     mc, "TRACKMOUSEEVENT cbSize+dwFlags");
+    }
+    if (safe_read((byte *) pt->sysarg[0], BUFFER_SIZE_BYTES(buf), buf)) {
+        uint check_type;
+        safe = (TRACKMOUSEEVENT *) buf;
+        /* XXX: for non-TME_QUERY are the other fields read? */
+        check_type = SYSARG_CHECK_TYPE(TEST(TME_QUERY, safe->dwFlags) ?
+                                       SYSARG_WRITE : SYSARG_READ, pre);
+        if (safe->cbSize > BUFFER_SIZE_BYTES(buf)) {
+            check_sysmem(check_type, sysnum,
+                         ((byte *)pt->sysarg[0]) + BUFFER_SIZE_BYTES(buf),
+                         safe->cbSize - BUFFER_SIZE_BYTES(buf), mc,
+                         "TRACKMOUSEEVENT post-dwFlags");
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -1832,6 +1996,8 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 {
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserMenuInfo) {
+        return handle_UserMenuInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserMenuItemInfo) {
         return handle_UserMenuItemInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserGetAltTabInfo) {
@@ -1842,6 +2008,16 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         return handle_UserGetRawInputData(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserGetRawInputDeviceInfo) {
         return handle_UserGetRawInputDeviceInfo(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserTrackMouseEvent) {
+        return handle_UserTrackMouseEvent(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserCreateWindowStation ||
+               sysnum == sysnum_UserLoadKeyboardLayoutEx) {
+        /* Vista SP1 added one arg (both were 7, now 8)
+         * FIXME i#487: figure out what it is and whether we need to process it
+         * for each of the two syscalls.
+         * Also check whether it's defined after first deciding whether
+         * we're on SP1: use core's method of checking for export?
+         */
     } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {
