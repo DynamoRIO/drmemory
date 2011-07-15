@@ -178,8 +178,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserEndDeferWindowPosEx", OK, 8, },
     {0,"NtUserEndMenu", OK, 0, },
     {0,"NtUserEndPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),R,}, }},
-    /* FIXME: DISPLAY_DEVICEW has first field holding size: should add new general flag */
-    {0,"NtUserEnumDisplayDevices", UNKNOWN, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DISPLAY_DEVICEW),W,}, }},
+    {0,"NtUserEnumDisplayDevices", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,SYSARG_SIZE_IN_FIELD,W,offsetof(DISPLAY_DEVICEW,cb)}, }},
     {0,"NtUserEnumDisplayMonitors", OK, 20, {{1,sizeof(RECT),R,}, {2,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HMONITOR)}, {3,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(RECT)}, }},
     /* FIXME: DEVMODEW (also in syscalls above) is var-len by windows ver plus private driver data appended */
     {0,"NtUserEnumDisplaySettings", UNKNOWN, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW),W,}, }},
@@ -188,9 +187,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserFillWindow", OK, 16, },
     {0,"NtUserFindExistingCursorIcon", OK, 16, },
     {0,"NtUserFindWindowEx", OK, 20, {{2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    /* FIXME: these two structs have field holding size */
-    {0,"NtUserFlashWindowEx", UNKNOWN, 4, {{0,sizeof(FLASHWINFO),R,}, }},
-    /* FIXME: buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
+    {0,"NtUserFlashWindowEx", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,R,offsetof(FLASHWINFO,cbSize)}, }},
+    /* FIXME: has size field; buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
     {0,"NtUserGetAltTabInfo", UNKNOWN, 24, {{2,sizeof(ALTTABINFO),W,}, {3,-4,W,}, }},
     {0,"NtUserGetAncestor", OK, 8, },
     {0,"NtUserGetAppImeLevel", OK, 4, },
@@ -1532,6 +1530,10 @@ handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
     uint check_type = SYSARG_CHECK_TYPE(set ? SYSARG_READ : SYSARG_WRITE, pre);
     MENUITEMINFOW info;
     /* user must set cbSize for set or get */
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[3],
+                     sizeof(info.cbSize), mc, "MENUITEMINFOW.cbSize");
+    }
     if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
         check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
                      info.cbSize, mc, "MENUITEMINFOW");

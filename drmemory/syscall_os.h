@@ -53,11 +53,15 @@ enum {
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for
-     * a parameter reference.  Used only on Linux.
+     * a parameter reference.
      */
     SYSARG_SIZE_CSTRING       = -100,
     /* used in repeated syscall_arg_t entry for post-syscall size */
     SYSARG_POST_SIZE_RETVAL   = -101,
+    /* size is stored as a field of size 4 bytes with an offset
+     * given by syscall_arg_t.misc
+     */
+    SYSARG_SIZE_IN_FIELD      = -102,
 
     /*****************************************/
     /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
@@ -88,6 +92,7 @@ typedef struct _syscall_arg_t {
      * Currently used for:
      * - SYSARG_COMPLEX_TYPE: holds SYSARG_TYPE_* enum value
      * - SYSARG_SIZE_IN_ELEMENTS: holds size of array entry
+     * - SYSARG_SIZE_FIELD: holds offset of 4-byte size field
      */
     int misc;
 } syscall_arg_t;

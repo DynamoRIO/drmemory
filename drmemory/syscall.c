@@ -643,7 +643,8 @@ sysarg_invalid(syscall_arg_t *arg)
 
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
-sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre)
+sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre,
+                byte *start, int sysnum, dr_mcontext_t *mc)
 {
     ptr_uint_t size = 0;
     if (arg->size == SYSARG_SIZE_CSTRING) {
@@ -664,6 +665,23 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre)
         } else {
             size = dr_syscall_get_result(drcontext);
         }
+    } else if (arg->size == SYSARG_SIZE_IN_FIELD) {
+        /* 4-byte size field in struct */
+        uint sz;
+        byte *field = start + arg->misc/*offs of size field */;
+        if (start != NULL) {
+            /* by using this flag, os-specific code gives up first access rights
+             * (i.e., to skip this check, don't use this flag)
+             */
+            if (pre) {
+                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
+                             field, sizeof(sz), mc, NULL);
+            }
+            if (safe_read(field, sizeof(sz), &sz))
+                size = sz;
+            else
+                WARN("WARNING: cannot read struct size field\n");
+        }
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
                "reached max syscall args stored");
@@ -677,12 +695,15 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre)
                 size = 0;
         } else if (TEST(SYSARG_POST_SIZE_IO_STATUS, arg->flags)) {
 #ifdef WINDOWS
-            IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) size;
+            IO_STATUS_BLOCK *status = (IO_STATUS_BLOCK *) pt->sysarg[-arg->size];
             ULONG sz;
             ASSERT(sizeof(status->Information) == sizeof(sz), "");
             ASSERT(!pre, "post-io flag should be on dup entry only");
-            safe_read((void *)(&status->Information), sizeof(sz), &sz);
-            size = sz;
+            ASSERT(arg->size < 0, "io block can't be immed");
+            if (safe_read((void *)(&status->Information), sizeof(sz), &sz))
+                size = sz;
+            else
+                WARN("WARNING: cannot read IO_STATUS_BLOCK\n");
 #else
             ASSERT(false, "linux should not have io_status flag set");
 #endif
@@ -743,7 +764,8 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
             continue;
 
         start = (app_pc) dr_syscall_get_param(drcontext, sysinfo->arg[i].param);
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], true/*pre*/);
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], true/*pre*/, start,
+                               sysnum, mc);
 
         /* FIXME PR 406355: we don't record which params are optional 
          * FIXME: some OUT params may not be written if the IN is bogus:
@@ -793,7 +815,8 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                "inlined bool should always be read, not write");
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], false/*!pre*/);
+        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], false/*!pre*/, start,
+                               sysnum, mc);
 
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size.
