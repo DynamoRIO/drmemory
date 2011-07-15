@@ -182,8 +182,8 @@ static int sysnum_SetSystemInformation = -1;
  * Also made manual additions for post-syscall write sizes
  * and to set arg size for 0-args syscalls to 0 (xref PR 534421)
  */
-#define OK true
-#define UNKNOWN false
+#define OK (SYSINFO_ALL_PARAMS_KNOWN)
+#define UNKNOWN 0
 #define W (SYSARG_WRITE)
 #define R (SYSARG_READ)
 #define CT (SYSARG_COMPLEX_TYPE)
@@ -737,7 +737,7 @@ vsyscall_pc(void *drcontext, byte *entry)
 
 static int
 syscall_num_from_name(void *drcontext, const module_data_t *info, const char *name,
-                  const char *optional_prefix)
+                      const char *optional_prefix)
 {
     app_pc entry = (app_pc)
         dr_get_proc_address(info->start, name);
@@ -791,6 +791,8 @@ static void
 add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
                   const char *optional_prefix)
 {
+    if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
+        optional_prefix = NULL;
     syslist->num = syscall_num_from_name(drcontext, info, syslist->name,
                                          optional_prefix);
     if (syslist->num > -1) {
@@ -867,7 +869,13 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
             if (skip_prefix != NULL) {
                 IF_DEBUG(ok =)
                     hashtable_add(&sysnum_table, (void *)skip_prefix, (void *)sysnums[i]);
-                ASSERT(ok, "no dup entries in sysnum_table");
+#ifdef DEBUG
+                if (!ok) {
+                    /* If we have any more of these, add a flag to syscall_numx.h */
+                    ASSERT(strcmp(sysnum_names[i], "NtUserGetThreadDesktop") ==
+                           0/*i#487*/, "no dup entries in sysnum_table");
+                }
+#endif
             }
 
 #ifdef STATISTICS

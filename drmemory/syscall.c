@@ -403,7 +403,7 @@ syscall_is_known(uint num)
     bool known = false;
     syscall_info_t *sysinfo = syscall_lookup(num);
     if (sysinfo != NULL)
-        known = sysinfo->known;
+        known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
     else
         known = auxlib_known_syscall(num);
     return known;
@@ -975,7 +975,7 @@ event_pre_syscall(void *drcontext, int sysnum)
         bool known = false;
         sysinfo = syscall_lookup(sysnum);
         if (sysinfo != NULL) {
-            known = sysinfo->known;
+            known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
             res = os_shadow_pre_syscall(drcontext, sysnum) && res;
         }
@@ -1044,7 +1044,7 @@ event_post_syscall(void *drcontext, int sysnum)
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
         if (sysinfo != NULL) {
-            known = sysinfo->known;
+            known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             if (!os_syscall_succeeded(sysnum,
                                       (ptr_int_t)dr_syscall_get_result(drcontext))) {
                 LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",

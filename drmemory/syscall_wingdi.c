@@ -45,8 +45,8 @@
 #include "../wininc/ndk_extypes.h" /* required by ntuser.h */
 #include "../wininc/ntuser.h"
 
-#define OK true
-#define UNKNOWN false
+#define OK (SYSINFO_ALL_PARAMS_KNOWN)
+#define UNKNOWN 0
 #define W (SYSARG_WRITE)
 #define R (SYSARG_READ)
 #define CT (SYSARG_COMPLEX_TYPE)
@@ -259,7 +259,11 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetRegisteredRawInputDevices", OK, 12, {{0,-1,WI|SYSARG_SIZE_IN_ELEMENTS,-2}, {1,sizeof(UINT),R|W,}, }},
     {0,"NtUserGetScrollBarInfo", OK, 12, {{2,SYSARG_SIZE_IN_FIELD,W,offsetof(SCROLLBARINFO,cbSize)}, }},
     {0,"NtUserGetSystemMenu", OK, 8, },
-    {0,"NtUserGetThreadDesktop", OK, 8, },
+    /* FIXME i#487: on WOW64 XP and Vista (but not win7) this makes a 0x2xxx syscall
+     * instead of invoking NtUserGetThreadDesktop: is it really different?
+     */
+    {0,"NtUserGetThreadDesktop", OK|SYSINFO_REQUIRES_PREFIX, 8, },
+    {0,"GetThreadDesktop", OK, 8, },
     {0,"NtUserGetThreadState", OK, 4, },
     {0,"NtUserGetTitleBarInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(TITLEBARINFO,cbSize)}, }},
     {0,"NtUserGetUpdateRect", OK, 12, {{1,sizeof(RECT),W,}, }},

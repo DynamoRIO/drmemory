@@ -108,6 +108,15 @@ typedef struct _syscall_arg_t {
     int misc;
 } syscall_arg_t;
 
+enum {
+    /* If not set, automated param comparison is used to find writes */
+    SYSINFO_ALL_PARAMS_KNOWN    = 0x00000001,
+    /* When checking the sysnum vs a wrapper function, do not consider
+     * removing the prefix
+     */
+    SYSINFO_REQUIRES_PREFIX     = 0x00000002,
+};
+
 #ifdef WINDOWS
 /* unverified but we don't expect pointers beyond 1st 11 args
  * (even w/ dup entries for diff in vs out size to writes)
@@ -122,7 +131,7 @@ typedef struct _syscall_arg_t {
 typedef struct _syscall_info_t {
     int num; /* system call number: filled in dynamically */
     const char *name;
-    bool known; /* if !known, param comparison is used to find writes */
+    uint flags; /* SYSINFO_ flags */
     int args_size; /* for Windows: total size of args; for Linux: arg count */
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];
