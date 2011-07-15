@@ -140,4 +140,9 @@ typedef struct _SYSTEM_SESSION_PROCESS_INFORMATION
     PVOID Buffer; // Same format as in SystemProcessInformation
 } SYSTEM_SESSION_PROCESS_INFORMATION, *PSYSTEM_SESSION_PROCESS_INFORMATION;
 
+//
+// Rtl Atom
+//
+typedef USHORT RTL_ATOM, *PRTL_ATOM;
+
 #endif /* _EXTYPES_H */

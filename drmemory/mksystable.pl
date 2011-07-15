@@ -34,6 +34,8 @@
 #     IN ULONG SystemInformationLength,
 #     OUT PULONG ReturnLength OPTIONAL
 #     );
+#
+# with i#96 also supports ntgdi annotated headers.
 
 use Getopt::Long;
 
@@ -61,16 +63,20 @@ if (!GetOptions("v" => \$verbose)) {
 }
 
 while (<STDIN>) {
-    # Nebbett has ^NTSYSAPI, Metasploit has .*NTSYSAPI
-    next unless (/(NTSYSAPI\s*$)|(^__kernel_entry W32KAPI)/);
+    # Nebbett has ^NTSYSAPI, Metasploit has .*NTSYSAPI, ntuser.h has NTAPI
+    next unless (/(NTSYSAPI\s*$)|(^__kernel_entry W32KAPI)|(NTAPI\s*$)|(APIENTRY)/);
     $is_w32k = /W32KAPI/;
     while (<STDIN>) {
         next if (/^NTSTATUS/ || /^NTAPI/ || /^ULONG/ || /^BOOLEAN/);
         last;
     }
     next if (/^APIENTRY\s*$/); # sometimes on next line
-    die "Parsing error $_" unless (/^((Zw)|(Nt))(\w+)\s*\(/);
+    die "Function parsing error $_" unless (/^((Zw)|(Nt))(\w+)\s*\(/);
     $name = "Nt" . $4;
+    my $noargs = 0;
+    if (/\(VOID\);/) {
+        $noargs = 1;
+    }
     # not a real system call: just reads KUSER_SHARED_DATA
     next if ($name eq "NtGetTickCount");
     print "    {0,\"$name\", OK, ";
@@ -79,9 +85,11 @@ while (<STDIN>) {
     my $toprint = "";
     my $nameline = $_;
     while (<STDIN>) {
-        last if (/^\s*\);/ || $nameline =~ /\(\s*\);/);
+        last if ($noargs || /^\s*\);/ || $nameline =~ /\(\s*\);/);
         s|//.*$||; # remove comments
-        s|\s*const(\s*)|\1|; # remove const
+        s|/\*[^\*]+\*/||; # remove comments
+        s|\s*const(\s*)|\1|i; # remove const
+        s|\s*OPTIONAL(\s*)|\1|i; # remove OPTIONAL
         if (/^\s*(VOID)\s*(,|\);|)\s*$/) {
             $inout = "";
             $arg_type[$argnum] = $1;
@@ -90,7 +98,7 @@ while (<STDIN>) {
                 # __-style param annotations in ntgdi.h
                 # hack for missing var name (rather than relaxing pattern)
                 s/SURFOBJ \*\s*$/SURFOBJ *varname/;
-                die "Parsing error $_" unless (/^\s*(__[_a-z]+(\(.+\))?(\s*__typefix\(.*\))?)\s*((struct\s+)?[_\w]+)\s*(\**\s*\w+)\s*(,|\);|)\s*$/);
+                die "Param parsing error $_" unless (/^\s*(__[_a-z]+(\(.+\))?(\s*__typefix\(.*\))?)\s*((struct\s+)?[_\w]+)\s*(\**\s*\w+)\s*(,|\);|)\s*$/);
                 print "\tann: $1, type: $3, var: $5\n" if ($verbose > 1);
                 $ann = $1;
                 $arg_type[$argnum] = $4;
@@ -156,10 +164,11 @@ while (<STDIN>) {
                 }
             } else {
                 # all-caps, separate-words param annotations
-                die "Parsing error $_" unless
-                    (/^\s*((IN\s+OUT)|(IN)|(OUT))\s*((struct\s+)?[_\w]+)\s*(\*?\s*\w+)\s*(OPTIONAL)?\s*(,|\);|)\s*$/);
+                die "Param parsing error $_" unless
+                    (/^\s*((IN\s+OUT)|(IN)|(OUT))?\s*((struct\s+)?[_\w]+)\s*(\*?\s*\w+)\s*(OPTIONAL)?\s*(,|\);|)\s*$/);
                 print "\t$1-$2-$3-$4-$5-$6-$7\n" if ($verbose);
-                $arg_inout[$argnum] = $1;
+                # if no IN/OUT annotation assume IN
+                $arg_inout[$argnum] = ($1 eq '') ? "IN" : $1;
                 $arg_type[$argnum] = $5;
                 $arg_var[$argnum] = $7;
                 $optional = $8;
@@ -181,12 +190,21 @@ while (<STDIN>) {
                 $arg_type[$argnum] =~ s/HARDERROR_RESPONSE/ULONG/;
                 $arg_type[$argnum] =~ s/SAFEBOOT_MODE/ULONG/;
                 $arg_type[$argnum] =~ s/OPEN_SUB_KEY_INFORMATION/ULONG/;
+
+                # "CMENUINFO" is "CONST MENUINFO"
+                $arg_type[$argnum] =~ s/PCMENUINFO/PMENUINFO/;
+                $arg_type[$argnum] =~ s/PCRAWINPUTDEVICE/PRAWINPUTDEVICE/;
+                $arg_type[$argnum] =~ s/PCSCROLLINFO/PSCROLLINFO/;
+                $arg_type[$argnum] =~ s/PCRECT/PRECT/;
+
+                # eliminate special ROS types
+                $arg_type[$argnum] =~ s/^PROSMENU/PMENU/;
             }
 
             # convert VOID* to PVOID
             $arg_type[$argnum] =~ s/^VOID\*/PVOID/;
 
-            $arg_type[$argnum] =~ s/^LP/P/;
+            $arg_type[$argnum] =~ s/^LP/P/ unless ($arg_type[$argnum] eq 'LPARAM');
         }
         $arg_name_to_num{$arg_var[$argnum]} = $argnum;
         $argnum++;
@@ -260,6 +278,7 @@ while (<STDIN>) {
                 die "PORT_MESSAGE with W*\n" if ($inout_string ne 'W');
                 $inout_string = 'WP';
             }
+            $inout_string .= '|SYSARG_UNICODE_STRING' if ($rtype eq 'UNICODE_STRING');
             $toprint .= sprintf("%s", $inout_string);
             if ($arg_bufsz[$i] ne '' && $arg_ecount[$i]) {
                 $toprint .= sprintf("|SYSARG_SIZE_IN_ELEMENTS,sizeof(%s)", $rtype);
@@ -291,7 +310,7 @@ while (<STDIN>) {
                 $toprint .= "}, ";
             }
         } elsif ($inout eq 'IN' && $type eq 'BOOLEAN') {
-            $toprint .= sprintf("%d,0,IB, ", $i);
+            $toprint .= sprintf("{%d,0,IB,}, ", $i);
         } else {
             die "OUT arg w/o P or * type" if ($inout =~ /OUT/);
         }
