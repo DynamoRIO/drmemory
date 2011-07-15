@@ -115,6 +115,8 @@ enum {
      * removing the prefix
      */
     SYSINFO_REQUIRES_PREFIX     = 0x00000002,
+    /* NtUser syscall wrappers are spread across user32.dll and imm32.dll */
+    SYSINFO_IMM32_DLL           = 0x00000004,
 };
 
 #ifdef WINDOWS

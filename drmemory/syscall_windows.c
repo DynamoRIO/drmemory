@@ -918,8 +918,15 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
         for (i = 0; i < num_kernel32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
     } else if (stri_eq(modname, "user32.dll")) {
-        for (i = 0; i < num_user32_syscalls(); i++)
-            add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+        for (i = 0; i < num_user32_syscalls(); i++) {
+            if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
+                add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+        }
+    } else if (stri_eq(modname, "imm32.dll")) {
+        for (i = 0; i < num_user32_syscalls(); i++) {
+            if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
+                add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+        }
     } else if (stri_eq(modname, "gdi32.dll")) {
         for (i = 0; i < num_gdi32_syscalls(); i++)
             add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
