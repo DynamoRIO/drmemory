@@ -24,49 +24,53 @@
 #define _SYSCALL_OS_H_ 1
 
 enum {
+    /*****************************************/
     /* syscall_arg_t.flags */
-    SYSARG_READ            = 0x00000001,
-    SYSARG_WRITE           = 0x00000002,
-
-    /* XXX: if we have many more data structure flags, should use the
-     * new syscall_arg_t.misc field to store an enum for the type,
-     * with a single flag used here.  This will preclude ecount w/
-     * special type but not a problem as special type handling code
-     * can do the ecount.
+    SYSARG_READ                = 0x00000001,
+    SYSARG_WRITE               = 0x00000002,
+    /* The data structure type has pointers or uninitialized fields
+     * or padding and needs special processing according to the
+     * SYSARG_TYPE_* code stored in syscall_arg_t.misc.
      */
-
-    /* The following flags are used on Windows. */
-    SYSARG_PORT_MESSAGE    = 0x00000004,
+    SYSARG_COMPLEX_TYPE        = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */
     SYSARG_POST_SIZE_IO_STATUS = 0x00000008,
     /* the size points at a poiner-to-8-byte value param */
-    SYSARG_POST_SIZE_8BYTES = 0x00000010,
+    SYSARG_POST_SIZE_8BYTES    = 0x00000010,
     /* the param holding the size is a pointer b/c it's an IN OUT var */
-    SYSARG_LENGTH_INOUT     = 0x00000020,
-    SYSARG_CONTEXT          = 0x00000040,
-    SYSARG_EXCEPTION_RECORD = 0x00000080,
-    SYSARG_SECURITY_QOS     = 0x00000100,
-    SYSARG_SECURITY_DESCRIPTOR = 0x00000200,
-    SYSARG_UNICODE_STRING      = 0x00000400,
-    SYSARG_CSTRING_WIDE        = 0x00000800,
+    SYSARG_LENGTH_INOUT        = 0x00000020,
     /* The size is not in bytes but in elements where the size of
-     * each element is in the misc field
+     * each element is in the misc field.
+     * This flag trumps SYSARG_COMPLEX_TYPE, so if there is an
+     * overlap then special handling must be done for the type.
      */
-    SYSARG_SIZE_IN_ELEMENTS    = 0x00001000,
+    SYSARG_SIZE_IN_ELEMENTS    = 0x00000040,
     /* BOOLEAN is only 1 byte so ok if only lsb is defined
      * FIXME: are we going to need the sizes of all the params, esp.
      * when we move to 64-bit?
      */
-    SYSARG_INLINED_BOOLEAN     = 0x00002000,
-    SYSARG_OBJECT_ATTRIBUTES   = 0x00004000,
-    SYSARG_LARGE_STRING        = 0x00008000,
+    SYSARG_INLINED_BOOLEAN     = 0x00000080,
 
+    /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.  Used only on Linux.
      */
     SYSARG_SIZE_CSTRING       = -100,
     /* used in repeated syscall_arg_t entry for post-syscall size */
     SYSARG_POST_SIZE_RETVAL   = -101,
+
+    /*****************************************/
+    /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
+    /* The following flags are used on Windows. */
+    SYSARG_TYPE_PORT_MESSAGE        =  0,
+    SYSARG_TYPE_CONTEXT             =  1,
+    SYSARG_TYPE_EXCEPTION_RECORD    =  2,
+    SYSARG_TYPE_SECURITY_QOS        =  3,
+    SYSARG_TYPE_SECURITY_DESCRIPTOR =  4,
+    SYSARG_TYPE_UNICODE_STRING      =  5,
+    SYSARG_TYPE_CSTRING_WIDE        =  6,
+    SYSARG_TYPE_OBJECT_ATTRIBUTES   =  7,
+    SYSARG_TYPE_LARGE_STRING        =  8,
 };
 
 /* We encode the actual size of a write, if it can differ from the
@@ -79,7 +83,13 @@ typedef struct _syscall_arg_t {
     int param; /* ordinal of parameter */
     int size; /* >0 = abs size; <=0 = -param that holds size */
     uint flags; /* SYSARG_ flags */
-    int misc; /* meaning depends on flags */
+    /* Meaning depends on flags.  I'd use a union but that would make
+     * the syscall tables ugly w/ a ton of braces.
+     * Currently used for:
+     * - SYSARG_COMPLEX_TYPE: holds SYSARG_TYPE_* enum value
+     * - SYSARG_SIZE_IN_ELEMENTS: holds size of array entry
+     */
+    int misc;
 } syscall_arg_t;
 
 #ifdef WINDOWS
