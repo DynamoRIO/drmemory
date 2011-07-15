@@ -168,7 +168,7 @@ while (<STDIN>) {
                     (/^\s*((IN\s+OUT)|(IN)|(OUT))?\s*((struct\s+)?[_\w]+)\s*(\*?\s*\w+)\s*(OPTIONAL)?\s*(,|\);|)\s*$/);
                 print "\t$1-$2-$3-$4-$5-$6-$7\n" if ($verbose);
                 # if no IN/OUT annotation assume IN
-                $arg_inout[$argnum] = ($1 eq '') ? "IN" : $1;
+                $arg_inout[$argnum] = $1;
                 $arg_type[$argnum] = $5;
                 $arg_var[$argnum] = $7;
                 $optional = $8;
@@ -205,6 +205,10 @@ while (<STDIN>) {
             $arg_type[$argnum] =~ s/^VOID\*/PVOID/;
 
             $arg_type[$argnum] =~ s/^LP/P/ unless ($arg_type[$argnum] eq 'LPARAM');
+
+            if ($arg_inout[$argnum] eq '') {
+                $arg_inout[$argnum] = ($arg_type[$argnum] eq 'PVOID') ? 'OUT' : 'IN';
+            }
         }
         $arg_name_to_num{$arg_var[$argnum]} = $argnum;
         $argnum++;
