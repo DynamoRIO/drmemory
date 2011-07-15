@@ -87,3 +87,47 @@ kernel32.dll!*
 kernel32.dll!*
 kernel32.dll!GetPrivateProfileStringA
 
+##################################################
+# i#492: false positive that needs per-bit granularity (i#113)
+# There is a chance of false negative on user-passed input to this
+# routine, but it's hard to make this suppression any more specific
+# w/o doing mod+offs. The risk is considered short-term until have
+# per-bit granularity.
+
+UNINITIALIZED READ
+usp10.dll!DoubleWideCharMappedString::DoubleWideCharMappedString
+
+# w/o symbols
+UNINITIALIZED READ
+usp10.dll!UspFreeMem
+
+##################################################
+# i#493: Not fully analyzed but look similar to i#492.
+# Likely will go away w/ per-bit granularity (i#113).
+# Again, single routine since doesn't depend on caller,
+# and some risk of false negative, but considered short-term
+# until have per-bit granularity.
+
+UNINITIALIZED READ
+usp10.dll!CStackAllocator::Free
+# w/o symbols
+UNINITIALIZED READ
+usp10.dll!UspFreeMem
+
+# the next 4 all have the same no-syms stack:
+# w/o symbols
+UNINITIALIZED READ
+usp10.dll!ScriptPositionSingleGlyph
+
+UNINITIALIZED READ
+usp10.dll!GenericEngineGetBreakingProperties
+
+UNINITIALIZED READ
+usp10.dll!GenericEngineGetGlyphs
+
+UNINITIALIZED READ
+usp10.dll!ShapingGetGlyphPositions
+
+UNINITIALIZED READ
+usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
+
