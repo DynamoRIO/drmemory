@@ -141,3 +141,13 @@ CRYPTBASE.dll!AesEncrypt
 UNADDRESSABLE ACCESS
 CRYPTBASE.dll!SystemFunction036
 
+##################################################
+# i#494: Custom data not all initialized
+
+UNINITIALIZED READ
+system call NtConnectPort
+UxTheme.dll!*
+UxTheme.dll!*
+UxTheme.dll!*
+USER32.dll!*
+

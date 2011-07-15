@@ -226,7 +226,11 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCompareTokens", OK, 12, {{2,sizeof(BOOLEAN),W}, }},
     {0,"NtCompleteConnectPort", OK, 4, },
     {0,"NtCompressKey", OK, 4, },
-    /* Arg#4 is IN OUT for Nebbett, but not for Metasploit */
+    /* Arg#4 is IN OUT for Nebbett, but not for Metasploit.
+     * Arg#6 is of a user-defined format and since IN/OUT but w/ only one
+     * capacity/size on IN can easily have capacity be larger than IN size:
+     * xref i#494.  Be on the lookout for other false positives.
+     */
     {0,"NtConnectPort", OK, 32, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(REMOTE_PORT_VIEW),W}, {5,sizeof(ULONG),W}, {6,-7,R|WI}, {7,sizeof(ULONG),R|W}, }},
     {0,"NtContinue", OK, 8, {{0,sizeof(CONTEXT),R|CT,SYSARG_TYPE_CONTEXT}, {1,0,IB}, }},
     {0,"NtCreateChannel", OK, 8, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
