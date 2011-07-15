@@ -618,6 +618,12 @@ running_on_Vista_or_later(void)
     return (os_version >= DR_WINDOWS_VERSION_VISTA);
 }
 
+dr_os_version_t
+get_windows_version(void)
+{
+    return os_version;
+}
+
 #endif /* WINDOWS */
 
 /***************************************************************************

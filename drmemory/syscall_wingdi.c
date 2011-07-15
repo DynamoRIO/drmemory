@@ -105,17 +105,9 @@ static int sysnum_UserGetRawInputDeviceInfo = -1;
 static int sysnum_UserTrackMouseEvent = -1;
 static int sysnum_UserCreateWindowStation = -1;
 static int sysnum_UserLoadKeyboardLayoutEx = -1;
+static int sysnum_UserCallTwoParam = -1;
 
 syscall_info_t syscall_user32_info[] = {
-#if 1 /* FIXME temporary until finished going through script-produced table */
-    {0,"NtUserGetMessage", OK, 16, {{0,sizeof(MSG),W}, }},
-    {0,"NtUserGetObjectInformation", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
-    {0,"NtUserGetProp", OK, 8, },
-    {0,"NtUserQueryWindow", OK, 8, },
-    {0,"NtUserSystemParametersInfo", OK, 4/*rest are optional*/, {{0,},/*special-cased*/ }, &sysnum_UserSystemParametersInfo},
-    {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|CT,SYSARG_TYPE_CSTRING_WIDE}, {1,-2,WI}, }},
-
-#else
     {0,"NtUserActivateKeyboardLayout", OK, 8, },
     {0,"NtUserAlterWindowStyle", OK, 12, },
     {0,"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, 12, },
@@ -139,7 +131,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserCallNextHookEx", UNKNOWN, 16, },
     {0,"NtUserCallNoParam", UNKNOWN, 4, },
     {0,"NtUserCallOneParam", UNKNOWN, 8, },
-    {0,"NtUserCallTwoParam", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam", UNKNOWN, 12, {{0,}}, &sysnum_UserCallTwoParam},
     {0,"NtUserChangeClipboardChain", OK, 8, },
     {0,"NtUserChangeDisplaySettings", OK, 20, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {4,-5,W,}, }},
     {0,"NtUserCheckDesktopByThreadId", OK, 4, },
@@ -419,7 +411,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserUnhookWindowsHookEx", OK, 4, },
     {0,"NtUserUnloadKeyboardLayout", OK, 4, },
     {0,"NtUserUnlockWindowStation", OK, 4, },
-    {0,"NtUserUnregisterClass", OK, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(CLSMENUNAME),W|CT,SYSARG_TYPE_CLSMENUNAME,}, }},
+    /* FIXME i#487: CLSMENUNAME format is not fully known */
+    {0,"NtUserUnregisterClass", UNKNOWN, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(CLSMENUNAME),W|CT,SYSARG_TYPE_CLSMENUNAME,}, }},
     {0,"NtUserUnregisterHotKey", OK, 8, },
     {0,"NtUserUnregisterUserApiHook", OK, 0, },
     {0,"NtUserUpdateInputContext", OK, 12, },
@@ -441,7 +434,6 @@ syscall_info_t syscall_user32_info[] = {
 
     {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|CT,SYSARG_TYPE_CSTRING_WIDE}, {1,-2,WI}, {2,sizeof(ULONG),R}, }},
     {0,"NtUserGetProp", OK, 8, },
-#endif
 
 };
 #define NUM_USER32_SYSCALLS \
@@ -1073,14 +1065,18 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
          */
         return true; /* handled */
     }
+    /* FIXME i#487: CLSMENUNAME format is not fully known and doesn't seem
+     * to match this, on win7 at least
+     */
+#if 0 /* disabled: see comment above */
     if (safe_read(start, sizeof(safe), &safe)) {
         if (!is_atom(safe.pszClientAnsiMenuName)) {
-            handle_cstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+            handle_cstring(pre, sysnum, mc, "CLSMENUNAME.lpszMenuName",
                            safe.pszClientAnsiMenuName, 0, arg_info->flags,
                            NULL, true);
         }
         if (!is_atom(safe.pwszClientUnicodeMenuName)) {
-            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+            handle_cwstring(pre, sysnum, mc, "CLSMENUNAME.lpszMenuName",
                             (byte *) safe.pwszClientUnicodeMenuName, 0, arg_info->flags,
                             NULL, true);
         }
@@ -1094,6 +1090,7 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
+#endif
     return true; /* handled */
 }
 
@@ -1945,6 +1942,23 @@ handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, per_thread_t *
 }
 
 static bool
+handle_UserCallTwoParam(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                        dr_mcontext_t *mc)
+{
+    DWORD code = (DWORD) pt->sysarg[2];
+    /* FIXME i#389: codes vary by platform so need a per-OS table, and need
+     * to handle the rest of them
+     */
+    if (get_windows_version() == DR_WINDOWS_VERSION_7 &&
+        code == 0x6a /* TWOPARAM_ROUTINE_INITANSIOEM */) {
+        /* 2nd param is an OUT wide string */
+        handle_cwstring(pre, sysnum, mc, "TWOPARAM_ROUTINE_INITANSIOEM",
+                        (byte *) pt->sysarg[1], 0, SYSARG_WRITE, NULL, true);
+    }
+    return true;
+}
+
+static bool
 handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                            dr_mcontext_t *mc)
 {
@@ -2089,6 +2103,8 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
          * Also check whether it's defined after first deciding whether
          * we're on SP1: use core's method of checking for export?
          */
+    } else if (sysnum == sysnum_UserCallTwoParam) {
+        return handle_UserCallTwoParam(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {
