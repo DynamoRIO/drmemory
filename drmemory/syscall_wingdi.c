@@ -897,6 +897,25 @@ num_gdi32_syscalls(void)
  * CUSTOM SYSCALL DATA STRUCTURE HANDLING
  */
 
+/* XXX i#488: if too many params can take atoms or strings, should perhaps
+ * query to verify really an atom to avoid false negatives with
+ * bad string pointers
+ */
+static bool
+is_atom(void *ptr)
+{
+    /* top 2 bytes are guaranteed to be 0 */
+    return ((ptr_uint_t)ptr) < 0x10000;
+}
+
+/* XXX i#488: see is_atom comment */
+static bool
+is_int_resource(void *ptr)
+{
+    /* top 2 bytes are guaranteed to be 0 */
+    return IS_INTRESOURCE(ptr);
+}
+
 extern bool
 handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
                              uint arg_num, const syscall_arg_t *arg_info,
@@ -917,6 +936,12 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     LARGE_STRING ls;
     ASSERT(size == sizeof(LARGE_STRING), "invalid size");
+    /* I've seen an atom (or int resource?) here
+     * XXX i#488: avoid false neg: not too many of these now though
+     * so we allow on all syscalls
+     */
+    if (is_atom(start))
+        return true; /* handled */
     /* we assume OUT fields jlst have their Buffer as OUT */
     if (pre) {
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
@@ -993,15 +1018,18 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
                      safe.cbSize, mc, "WNDCLASSEX");
         /* lpszMenuName can be from MAKEINTRESOURCE, and
-         * lpszClassName can be an atom: in either case will
-         * look like a 1-wchar_t-long string + NULL
+         * lpszClassName can be an atom
          */
-        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
-                        (byte *) safe.lpszMenuName, 0, arg_info->flags,
-                        NULL, true);
-        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
-                        (byte *) safe.lpszMenuName, 0, arg_info->flags,
-                        NULL, true);
+        if (!is_atom((void *)safe.lpszMenuName)) {
+            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                            (byte *) safe.lpszMenuName, 0, arg_info->flags,
+                            NULL, true);
+        }
+        if (!is_int_resource((void *)safe.lpszClassName)) {
+            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
+                            (byte *) safe.lpszClassName, 0, arg_info->flags,
+                            NULL, true);
+        }
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true; /* handled */
@@ -1017,14 +1045,24 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
     CLSMENUNAME safe;
     check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, "CLSMENUNAME");
     if (safe_read(start, sizeof(safe), &safe)) {
-        handle_cstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
-                       safe.pszClientAnsiMenuName, 0, arg_info->flags,
-                       NULL, true);
-        handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
-                        (byte *) safe.pwszClientUnicodeMenuName, 0, arg_info->flags,
-                        NULL, true);
-        handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
-                                     (byte *) safe.pusMenuName, sizeof(UNICODE_STRING));
+        if (!is_atom(safe.pszClientAnsiMenuName)) {
+            handle_cstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                           safe.pszClientAnsiMenuName, 0, arg_info->flags,
+                           NULL, true);
+        }
+        if (!is_atom(safe.pwszClientUnicodeMenuName)) {
+            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                            (byte *) safe.pwszClientUnicodeMenuName, 0, arg_info->flags,
+                            NULL, true);
+        }
+        /* XXX: I've seen the pusMenuName pointer itself be an atom, though
+         * perhaps should handle just the Buffer being an atom?
+         */
+        if (!is_atom(safe.pusMenuName)) {
+            handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
+                                         (byte *) safe.pusMenuName,
+                                         sizeof(UNICODE_STRING));
+        }
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true; /* handled */
