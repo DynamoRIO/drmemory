@@ -58,6 +58,8 @@ enum {
      * when we move to 64-bit?
      */
     SYSARG_INLINED_BOOLEAN     = 0x00002000,
+    SYSARG_OBJECT_ATTRIBUTES   = 0x00004000,
+    SYSARG_LARGE_STRING        = 0x00008000,
 
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.  Used only on Linux.
