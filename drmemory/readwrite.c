@@ -780,7 +780,7 @@ adjust_memop_push_offs(instr_t *inst)
         /* OP_enter's esp adjust (1st immed) is handled in
          * instrument_esp_adjust, as it doesn't write those bytes
          */
-        uint extra_pushes = opnd_get_immed_int(instr_get_src(inst, 1));
+        uint extra_pushes = (uint) opnd_get_immed_int(instr_get_src(inst, 1));
         uint sz = opnd_size_in_bytes(opnd_get_size(instr_get_dst(inst, 1)));
         ASSERT(opnd_is_immed_int(instr_get_src(inst, 1)), "internal error");
         return sz*extra_pushes;
@@ -3165,8 +3165,14 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
 
         pre_loop = INSTR_CREATE_label(drcontext);
         /* hack to handle loop decrementing xcx: simpler if could have 2 cbrs! */
-        zero = INSTR_CREATE_mov_imm(drcontext, xcx,
-                                    opnd_create_immed_int(1, opnd_get_size(xcx)));
+        if (opnd_get_size(xcx) == OPSZ_8) {
+            /* rely on setting upper 32 bits to zero */
+            zero = INSTR_CREATE_mov_imm(drcontext, opnd_create_reg(DR_REG_ECX),
+                                        OPND_CREATE_INT32(1));
+        } else {
+            zero = INSTR_CREATE_mov_imm(drcontext, xcx,
+                                        opnd_create_immed_int(1, opnd_get_size(xcx)));
+        }
         iter = INSTR_CREATE_label(drcontext);
 
         /* if xcx is 0 we'll skip ahead and will restore the whole-bb regs
