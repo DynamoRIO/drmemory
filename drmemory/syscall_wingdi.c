@@ -151,7 +151,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserCreateCaret", OK, 16, },
     {0,"NtUserCreateDesktop", OK, 20, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, }},
     {0,"NtUserCreateInputContext", OK|SYSINFO_IMM32_DLL, 4, },
-    {0,"NtUserCreateLocalMemHandle", OK, 16, },
+    {0,"NtUserCreateLocalMemHandle", OK, 16, {{1,-2,W}, {3,sizeof(UINT),W}, }},
     {0,"NtUserCreateWindowEx", OK, 60, {{1,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {2,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {3,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, }},
     {0,"NtUserCreateWindowStation", OK, 28, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }, &sysnum_UserCreateWindowStation},
     {0,"NtUserCtxDisplayIOCtl", OK, 12, },
@@ -202,7 +202,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetClassLong", OK, 12, },
     {0,"NtUserGetClassName", OK, 12, {{2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/}, }},
     {0,"NtUserGetClipCursor", OK, 4, {{0,sizeof(RECT),W,}, }},
-    {0,"NtUserGetClipboardData", OK, 8, {{1,RET,W,/*FIXME i#485: pre size from prior syscall ret*/}, }},
+    /* FIXME i#487: exact layout of returned struct is not known */
+    {0,"NtUserGetClipboardData", OK, 8, {{1,12,W,}, }},
     {0,"NtUserGetClipboardFormatName", OK, 12, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, /*3rd param is max count but should be able to ignore*/}},
     {0,"NtUserGetClipboardOwner", OK, 0, },
     {0,"NtUserGetClipboardSequenceNumber", OK, 0, },
