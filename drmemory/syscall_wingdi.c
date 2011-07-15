@@ -107,6 +107,25 @@ num_user32_syscalls(void)
  *
  * Initially obtained via mksystable.pl on VS2008 ntgdi.h.
  * That version was checked in separately to track manual changes.
+ *
+ * FIXME i#485: issues with table that are not yet resolved:
+ *
+ * + OUT params with no size where size comes from prior syscall
+ *   return value (see FIXMEs in table below): so have to watch pairs
+ *   of calls (but what if app is able to compute max size some other
+ *   way, maybe caching older call?), unless willing to only check for
+ *   unaddr in post-syscall and thus after potential write to
+ *   unaddressable memory by kernel (which is what we do today)
+ *
+ * + missing ", return" annotations: NtGdiExtGetObjectW was missing one,
+ *   and I'm afraid other ones that return int or UINT may also.
+ *
+ * + __out PVOID: for NtGdiGetUFIPathname and NtGdiDxgGenericThunk,
+ *   is the PVOID that's written supposed to have a bcount (or ecount)
+ *   annotation?  for now treated as PVOID*.
+ *
+ * + bcount in, ecount out for NtGdiSfmGetNotificationTokens (which is
+ *   missing annotations)?  but what is size of token?
  */
 
 static int sysnum_GdiCreatePaletteInternal = -1;
@@ -114,6 +133,7 @@ static int sysnum_GdiCheckBitmapBits = -1;
 static int sysnum_GdiCreateDIBSection = -1;
 static int sysnum_GdiHfontCreate = -1;
 static int sysnum_GdiDoPalette = -1;
+static int sysnum_GdiExtTextOutW = -1;
 
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
@@ -329,7 +349,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),W,}, }},
     {0,"NtGdiSetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),R,}, }},
     {0,"NtGdiCancelDC", OK, 4, },
-    {0,"NtGdiOpenDCW", OK, 32, {{0,sizeof(UNICODE_STRING),R,}, {1,sizeof(DEVMODEW),R,}, {2,sizeof(UNICODE_STRING),R,}, {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,}, }},
+    {0,"NtGdiOpenDCW", OK, 32, {{0,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING,}, {1,sizeof(DEVMODEW),R,}, {2,sizeof(UNICODE_STRING),R|SYSARG_UNICODE_STRING,}, {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,}, }},
     {0,"NtGdiGetDCDword", OK, 12, {{2,sizeof(DWORD),W,}, }},
     {0,"NtGdiGetDCPoint", OK, 12, {{2,sizeof(POINTL),W,}, }},
     {0,"NtGdiScaleViewportExtEx", OK, 24, {{5,sizeof(SIZE),W,}, }},
@@ -359,7 +379,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetTextMetricsW", OK, 12, {{1,-2,W,}, }},
     {0,"NtGdiGetTextFaceW", OK, 16, {{2,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {2,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtGdiGetRandomRgn", OK, 12, },
-    {0,"NtGdiExtTextOutW", OK, 36, {{4,sizeof(RECT),R,}, {5,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {7,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(INT)/*FIXME size can be larger*/}, }},
+    {0,"NtGdiExtTextOutW", OK, 36, {{4,sizeof(RECT),R,}, {5,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {7,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(INT)/*can be larger: special-cased*/}, }, &sysnum_GdiExtTextOutW},
     {0,"NtGdiIntersectClipRect", OK, 20, },
     {0,"NtGdiCreateRectRgn", OK, 16, },
     {0,"NtGdiPatBlt", OK, 24, },
@@ -409,7 +429,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetStringBitmapW", OK, 20, {{1,sizeof(wchar_t),R,}, {4,-3,W,}, }},
     {0,"NtGdiGetEudcTimeStampEx", OK, 12, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, }},
     {0,"NtGdiQueryFontAssocInfo", OK, 4, },
-    {0,"NtGdiGetFontUnicodeRanges", OK, 8, {{1,0,W,/*FIXME pre size from prior syscall ret*//*FIXME size from retval so earlier call*/}, }},
+    {0,"NtGdiGetFontUnicodeRanges", OK, 8, {{1,RET,W,/*FIXME i#485: pre size from prior syscall ret*/}, }},
     {0,"NtGdiGetRealizationInfo", OK, 8, {{1,sizeof(REALIZATION_INFO),W,}, }},
     {0,"NtGdiAddRemoteMMInstanceToDC", OK, 12, {{1,-2,R,}, }},
     {0,"NtGdiUnloadPrinterDriver", OK, 8, {{0,-1,R,}, }},
@@ -455,7 +475,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiFONTOBJ_pxoGetXform", OK, 4, {{0,sizeof(FONTOBJ),R,}, }},
     {0,"NtGdiFONTOBJ_pifi", OK, 4, {{0,sizeof(FONTOBJ),R,}, }},
     {0,"NtGdiFONTOBJ_pfdg", OK, 4, {{0,sizeof(FONTOBJ),R,}, }},
-    {0,"NtGdiFONTOBJ_cGetAllGlyphHandles", OK, 8, {{0,sizeof(FONTOBJ),R,}, {1,0,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HGLYPH)/*FIXME pre size from prior syscall ret*//*FIXME size from retval so earlier call*/}, }},
+    {0,"NtGdiFONTOBJ_cGetAllGlyphHandles", OK, 8, {{0,sizeof(FONTOBJ),R,}, {1,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HGLYPH)/*FIXME i#485: pre size from prior syscall ret*/}, }},
     {0,"NtGdiFONTOBJ_pvTrueTypeFontFile", OK, 8, {{0,sizeof(FONTOBJ),R,}, {1,sizeof(ULONG),W,}, }},
     {0,"NtGdiFONTOBJ_pQueryGlyphAttrs", OK, 8, {{0,sizeof(FONTOBJ),R,}, }},
     {0,"NtGdiSTROBJ_bEnum", OK, 12, {{0,sizeof(STROBJ),R,}, {1,sizeof(ULONG),W,}, {2,-1,WI|SYSARG_SIZE_IN_ELEMENTS,sizeof(PGLYPHPOS)}, }},
@@ -474,8 +494,8 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiPATHOBJ_bEnumClipLines", OK, 12, {{0,sizeof(PATHOBJ),R,}, {2,-1,W,}, }},
     {0,"NtGdiEngCheckAbort", OK, 4, {{0,sizeof(SURFOBJ),R,}, }},
     {0,"NtGdiGetDhpdev", OK, 4, },
-    {0,"NtGdiHT_Get8BPPFormatPalette", OK, 16, {{0,0,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)/*FIXME pre size from prior syscall ret*//*FIXME size from retval so earlier call*/}, }},
-    {0,"NtGdiHT_Get8BPPMaskPalette", OK, 24, {{0,0,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)/*FIXME pre size from prior syscall ret*//*FIXME size from retval so earlier call*/}, }},
+    {0,"NtGdiHT_Get8BPPFormatPalette", OK, 16, {{0,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)/*FIXME i#485: pre size from prior syscall ret*/}, }},
+    {0,"NtGdiHT_Get8BPPMaskPalette", OK, 24, {{0,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)/*FIXME i#485: pre size from prior syscall ret*/}, }},
     {0,"NtGdiUpdateTransform", OK, 4, },
     {0,"NtGdiSetLayout", OK, 12, },
     {0,"NtGdiMirrorWindowOrg", OK, 4, },
@@ -674,6 +694,17 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         return handle_GdiHfontCreate(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_GdiDoPalette) {
         return handle_GdiDoPalette(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_GdiExtTextOutW) {
+        UINT fuOptions = (UINT) pt->sysarg[3];
+        int cwc = (int) pt->sysarg[6];
+        INT *pdx = (INT *) pt->sysarg[7];
+        if (pre && TEST(ETO_PDY, fuOptions)) {
+            /* pdx contains pairs of INTs.  regular entry already checked
+             * size of singletons of INTs so here we check the extra size.
+             */
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ((byte *)pdx) + cwc*sizeof(INT),
+                         cwc*sizeof(INT), mc, "pdx extra size from ETO_PDY");
+        }
     }
 
     return true; /* execute syscall */

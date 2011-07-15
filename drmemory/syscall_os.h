@@ -28,6 +28,13 @@ enum {
     SYSARG_READ            = 0x00000001,
     SYSARG_WRITE           = 0x00000002,
 
+    /* XXX: if we have many more data structure flags, should use the
+     * new syscall_arg_t.misc field to store an enum for the type,
+     * with a single flag used here.  This will preclude ecount w/
+     * special type but not a problem as special type handling code
+     * can do the ecount.
+     */
+
     /* The following flags are used on Windows. */
     SYSARG_PORT_MESSAGE    = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */

@@ -654,8 +654,16 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg, bool pre)
          */
         size = 0; /* for now */
     } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
-        ASSERT(!pre, "can't ask for retval on pre");
-        size = dr_syscall_get_result(drcontext);
+        if (pre) {
+            /* Can't ask for retval on pre but we have a few syscalls where the
+             * pre-size is only known if the app makes a prior syscall (w/ NULL
+             * buffer, usually) to find it out: i#485.  Today we don't handle that
+             * and thus don't check for unaddr until after the kernel writes.
+             */
+            size = 0;
+        } else {
+            size = dr_syscall_get_result(drcontext);
+        }
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
                "reached max syscall args stored");
