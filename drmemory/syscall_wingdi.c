@@ -120,7 +120,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserAlterWindowStyle", OK, 12, },
     {0,"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, 12, },
     {0,"NtUserAttachThreadInput", OK, 12, },
-    {0,"NtUserBeginPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),W,}, }},
+    {0,"NtUserBeginPaint", OK|SYSINFO_RET_ZERO_FAIL, 8, {{1,sizeof(PAINTSTRUCT),W,}, }},
     {0,"NtUserBitBltSysBmp", OK, 32, },
     {0,"NtUserBlockInput", OK, 4, },
     {0,"NtUserBuildHimcList", OK|SYSINFO_IMM32_DLL, 16, },
@@ -202,7 +202,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetAncestor", OK, 8, },
     {0,"NtUserGetAppImeLevel", OK|SYSINFO_IMM32_DLL, 4, },
     {0,"NtUserGetAsyncKeyState", OK, 4, },
-    {0,"NtUserGetAtomName", OK, 8, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtUserGetAtomName", OK, 8, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/}, }},
     {0,"NtUserGetCPD", OK, 12, },
     {0,"NtUserGetCaretBlinkTime", OK, 0, },
     {0,"NtUserGetCaretPos", OK, 4, {{0,sizeof(POINT),W,}, }},
@@ -220,13 +220,13 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetControlColor", OK, 16, },
     {0,"NtUserGetCursorFrameInfo", OK, 16, },
     {0,"NtUserGetCursorInfo", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,W,offsetof(CURSORINFO,cbSize)}, }},
-    {0,"NtUserGetDC", OK, 4, },
-    {0,"NtUserGetDCEx", OK, 12, },
+    {0,"NtUserGetDC", OK|SYSINFO_RET_ZERO_FAIL, 4, },
+    {0,"NtUserGetDCEx", OK|SYSINFO_RET_ZERO_FAIL, 12, },
     {0,"NtUserGetDoubleClickTime", OK, 0, },
     {0,"NtUserGetForegroundWindow", OK, 0, },
     {0,"NtUserGetGUIThreadInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(GUITHREADINFO,cbSize)}, }},
     {0,"NtUserGetGuiResources", OK, 8, },
-    {0,"NtUserGetIconInfo", OK, 24, {{1,sizeof(ICONINFO),W,}, {2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(DWORD),W,}, }},
+    {0,"NtUserGetIconInfo", OK, 24, {{1,sizeof(ICONINFO),W,}, {2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/}, {3,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(DWORD),W,}, }},
     {0,"NtUserGetIconSize", OK, 16, {{2,sizeof(LONG),W,}, {3,sizeof(LONG),W,}, }},
     {0,"NtUserGetImeHotKey", OK, 16, },
     {0,"NtUserGetImeInfoEx", OK|SYSINFO_IMM32_DLL, 8, },
@@ -270,7 +270,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetUpdateRect", OK, 12, {{1,sizeof(RECT),W,}, }},
     {0,"NtUserGetUpdateRgn", OK, 12, },
     {0,"NtUserGetWOWClass", OK, 8, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserGetWindowDC", OK, 4, },
+    {0,"NtUserGetWindowDC", OK|SYSINFO_RET_ZERO_FAIL, 4, },
     {0,"NtUserGetWindowPlacement", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(WINDOWPLACEMENT,length)}, }},
     {0,"NtUserHardErrorControl", OK, 12, },
     {0,"NtUserHideCaret", OK, 4, },
@@ -920,7 +920,7 @@ is_int_resource(void *ptr)
 extern bool
 handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
                              uint arg_num, const syscall_arg_t *arg_info,
-                             app_pc start, uint size);
+                             app_pc start, uint size, bool ignore_len);
 
 extern bool
 handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
@@ -1062,7 +1062,13 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     CLSMENUNAME safe;
-    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc, "CLSMENUNAME");
+    check_sysmem(check_type, sysnum, start, size, mc, "CLSMENUNAME");
+    if (pre && !TEST(SYSARG_READ, arg_info->flags)) {
+        /* looks like even the UNICODE_STRING is not set up: contains garbage,
+         * so presumably kernel creates it and doesn't just write to Buffer
+         */
+        return true; /* handled */
+    }
     if (safe_read(start, sizeof(safe), &safe)) {
         if (!is_atom(safe.pszClientAnsiMenuName)) {
             handle_cstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
@@ -1075,12 +1081,12 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
                             NULL, true);
         }
         /* XXX: I've seen the pusMenuName pointer itself be an atom, though
-         * perhaps should handle just the Buffer being an atom?
+         * perhaps should also handle just the Buffer being an atom?
          */
         if (!is_atom(safe.pusMenuName)) {
             handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
                                          (byte *) safe.pusMenuName,
-                                         sizeof(UNICODE_STRING));
+                                         sizeof(UNICODE_STRING), false);
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -1439,7 +1445,7 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_threa
                              SYSARG_READ|SYSARG_COMPLEX_TYPE,
                              SYSARG_TYPE_UNICODE_STRING};
         handle_unicode_string_access(pre, sysnum, mc, 0/*unused*/,
-                                     &arg, pvParam, sizeof(UNICODE_STRING));
+                                     &arg, pvParam, sizeof(UNICODE_STRING), false);
         get = false;
         uses_pvParam = true;
         break;

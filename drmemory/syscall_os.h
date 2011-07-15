@@ -86,6 +86,7 @@ enum {
     SYSARG_TYPE_WNDCLASSEXW         = 10,
     SYSARG_TYPE_CLSMENUNAME         = 11,
     SYSARG_TYPE_MENUITEMINFOW       = 12,
+    SYSARG_TYPE_UNICODE_STRING_NOLEN= 13,
 };
 
 /* We encode the actual size of a write, if it can differ from the

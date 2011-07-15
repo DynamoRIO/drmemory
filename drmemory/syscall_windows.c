@@ -1265,35 +1265,49 @@ handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
 
 bool
 handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                             uint arg_num,
-                             const syscall_arg_t *arg_info,
-                             app_pc start, uint size)
+                             uint arg_num, const syscall_arg_t *arg_info,
+                             app_pc start, uint size, bool ignore_len)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     UNICODE_STRING us;
+    UNICODE_STRING *arg = (UNICODE_STRING *) start;
     ASSERT(size == sizeof(UNICODE_STRING), "invalid size");
     /* we assume OUT fields just have their Buffer as OUT */
     if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
-                     "UNICODE_STRING fields");
+        if (TEST(SYSARG_READ, arg_info->flags)) {
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
+                         "UNICODE_STRING fields");
+        } else {
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->MaximumLength,
+                         sizeof(arg->MaximumLength), mc, "UNICODE_STRING.MaximumLength");
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
+                         sizeof(arg->Buffer), mc, "UNICODE_STRING.Buffer");
+        }
     }
     if (safe_read((void*)start, sizeof(us), &us)) {
+        LOG(SYSCALL_VERBOSE,
+            "UNICODE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
+            (byte *)us.Buffer, us.Length, us.MaximumLength);
         if (pre) {
-            LOG(SYSCALL_VERBOSE,
-                "UNICODE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
-                (byte *)us.Buffer, us.Length, us.MaximumLength);
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
                          (byte *)us.Buffer, us.MaximumLength, mc,
                          "UNICODE_STRING capacity");
-            if (TEST(SYSARG_READ, arg_info->flags)) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (byte *)us.Buffer, us.Length, mc, "UNICODE_STRING content");
-            }
-        } else if (TEST(SYSARG_WRITE, arg_info->flags)) {
-            check_sysmem(MEMREF_WRITE, sysnum, (byte *)us.Buffer, us.Length, mc,
-                          "UNICODE_STRING content");
         }
-    }
+        if (us.MaximumLength > 0) {
+            if (ignore_len) {
+                /* i#490: wrong Length stored so as workaround we walk the string */
+                handle_cwstring(pre, sysnum, mc, "UNICODE_STRING content",
+                                (byte *)us.Buffer, us.MaximumLength,
+                                arg_info->flags, NULL, false);
+            } else {
+                check_sysmem(check_type, sysnum, (byte *)us.Buffer,
+                             /* Length field does not include final NULL */
+                             us.Length+sizeof(wchar_t),
+                             mc, "UNICODE_STRING content");
+            }
+        }
+    } else
+        WARN("WARNING: unable to read syscall param\n");
     return true;
 }
 
@@ -1310,7 +1324,7 @@ handle_object_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
     if (safe_read((void*)start, sizeof(oa), &oa)) {
         handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
                                      (byte *) oa.ObjectName,
-                                     sizeof(*oa.ObjectName));
+                                     sizeof(*oa.ObjectName), false);
         handle_security_descriptor_access(pre, sysnum, mc, arg_num, arg_info,
                                           (byte *) oa.SecurityDescriptor,
                                           sizeof(SECURITY_DESCRIPTOR));
@@ -1401,7 +1415,10 @@ os_handle_syscall_arg_access(bool pre,
                                                  arg_info, start, size);
     case SYSARG_TYPE_UNICODE_STRING:
         return handle_unicode_string_access(pre, sysnum, mc, arg_num,
-                                            arg_info, start, size);
+                                            arg_info, start, size, false);
+    case SYSARG_TYPE_UNICODE_STRING_NOLEN:
+        return handle_unicode_string_access(pre, sysnum, mc, arg_num,
+                                            arg_info, start, size, true);
     case SYSARG_TYPE_OBJECT_ATTRIBUTES:
         return handle_object_attributes_access(pre, sysnum, mc, arg_num,
                                                arg_info, start, size);
