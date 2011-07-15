@@ -75,6 +75,7 @@ enum {
     SYSARG_TYPE_CSTRING_WIDE        =  6,
     SYSARG_TYPE_OBJECT_ATTRIBUTES   =  7,
     SYSARG_TYPE_LARGE_STRING        =  8,
+    SYSARG_TYPE_DEVMODEW            =  9,
 };
 
 /* We encode the actual size of a write, if it can differ from the

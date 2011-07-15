@@ -94,6 +94,7 @@ num_kernel32_syscalls(void)
 
 static int sysnum_UserSystemParametersInfo = -1;
 static int sysnum_UserMenuItemInfo = -1;
+static int sysnum_UserGetAltTabInfo = -1;
 
 syscall_info_t syscall_user32_info[] = {
 #if 1 /* FIXME temporary until finished going through script-produced table */
@@ -130,7 +131,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserCallOneParam", UNKNOWN, 8, },
     {0,"NtUserCallTwoParam", UNKNOWN, 12, },
     {0,"NtUserChangeClipboardChain", OK, 8, },
-    {0,"NtUserChangeDisplaySettings", OK, 20, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(DEVMODEW),R,}, {4,-5,W,}, }},
+    {0,"NtUserChangeDisplaySettings", OK, 20, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {4,-5,W,}, }},
     {0,"NtUserCheckDesktopByThreadId", OK, 4, },
     {0,"NtUserCheckImeHotKey", OK, 8, },
     {0,"NtUserCheckMenuItem", OK, 12, },
@@ -146,7 +147,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserCountClipboardFormats", OK, 0, },
     {0,"NtUserCreateAcceleratorTable", OK, 8, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(ACCEL)}, }},
     {0,"NtUserCreateCaret", OK, 16, },
-    {0,"NtUserCreateDesktop", OK, 20, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW),R,}, }},
+    {0,"NtUserCreateDesktop", OK, 20, {{0,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, }},
     {0,"NtUserCreateInputContext", OK, 4, },
     {0,"NtUserCreateLocalMemHandle", OK, 16, },
     {0,"NtUserCreateWindowEx", OK, 60, {{1,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {2,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, {3,sizeof(LARGE_STRING),R|CT,SYSARG_TYPE_LARGE_STRING}, }},
@@ -180,16 +181,14 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserEndPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),R,}, }},
     {0,"NtUserEnumDisplayDevices", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,SYSARG_SIZE_IN_FIELD,W,offsetof(DISPLAY_DEVICEW,cb)}, }},
     {0,"NtUserEnumDisplayMonitors", OK, 20, {{1,sizeof(RECT),R,}, {2,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HMONITOR)}, {3,-4,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(RECT)}, }},
-    /* FIXME: DEVMODEW (also in syscalls above) is var-len by windows ver plus private driver data appended */
-    {0,"NtUserEnumDisplaySettings", UNKNOWN, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW),W,}, }},
+    {0,"NtUserEnumDisplaySettings", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW)/*really var-len*/,W|CT,SYSARG_TYPE_DEVMODEW}, }},
     {0,"NtUserEvent", OK, 4, },
     {0,"NtUserExcludeUpdateRgn", OK, 8, },
     {0,"NtUserFillWindow", OK, 16, },
     {0,"NtUserFindExistingCursorIcon", OK, 16, },
     {0,"NtUserFindWindowEx", OK, 20, {{2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtUserFlashWindowEx", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,R,offsetof(FLASHWINFO,cbSize)}, }},
-    /* FIXME: has size field; buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
-    {0,"NtUserGetAltTabInfo", UNKNOWN, 24, {{2,sizeof(ALTTABINFO),W,}, {3,-4,W,}, }},
+    {0,"NtUserGetAltTabInfo", OK, 24, {{2,SYSARG_SIZE_IN_FIELD,W,offsetof(ALTTABINFO,cbSize)}, /*buffer is ansi or unicode so special-cased*/}, &sysnum_UserGetAltTabInfo},
     {0,"NtUserGetAncestor", OK, 8, },
     {0,"NtUserGetAppImeLevel", OK, 4, },
     {0,"NtUserGetAsyncKeyState", OK, 4, },
@@ -682,12 +681,12 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiMonoBitmap", OK, 4, },
     {0,"NtGdiGetObjectBitmapHandle", OK, 8, {{1,sizeof(UINT),W,}, }},
     {0,"NtGdiEnumObjects", OK, 16, {{3,-2,W,}, }},
-    {0,"NtGdiResetDC", OK, 20, {{1,sizeof(DEVMODEW),R,}, {2,sizeof(BOOL),W,}, {3,sizeof(DRIVER_INFO_2W),R,}, {4,sizeof(PUMDHPDEV *),W,}, }},
+    {0,"NtGdiResetDC", OK, 20, {{1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {2,sizeof(BOOL),W,}, {3,sizeof(DRIVER_INFO_2W),R,}, {4,sizeof(PUMDHPDEV *),W,}, }},
     {0,"NtGdiSetBoundsRect", OK, 12, {{1,sizeof(RECT),R,}, }},
     {0,"NtGdiGetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),W,}, }},
     {0,"NtGdiSetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),R,}, }},
     {0,"NtGdiCancelDC", OK, 4, },
-    {0,"NtGdiOpenDCW", OK, 32, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {1,sizeof(DEVMODEW),R,}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,}, }},
+    {0,"NtGdiOpenDCW", OK, 32, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,}, }},
     {0,"NtGdiGetDCDword", OK, 12, {{2,sizeof(DWORD),W,}, }},
     {0,"NtGdiGetDCPoint", OK, 12, {{2,sizeof(POINTL),W,}, }},
     {0,"NtGdiScaleViewportExtEx", OK, 24, {{5,sizeof(SIZE),W,}, }},
@@ -926,6 +925,39 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
     return true; /* handled */
 }
 
+bool
+handle_devmodew_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                       uint arg_num,
+                       const syscall_arg_t *arg_info,
+                       app_pc start, uint size)
+{
+    /* DEVMODEW is var-len by windows ver plus optional private driver data appended */
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    /* can't use a DEVMODEW as ours may be longer than app's if on older windows */
+    char buf[offsetof(DEVMODEW,dmFields)]; /* need dmSize and dmDriverExtra */
+    DEVMODEW *safe;
+    DEVMODEW *param = (DEVMODEW *) start;
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
+                     BUFFER_SIZE_BYTES(buf), mc, "DEVMODEW through dmDriverExtra");
+    }
+    if (safe_read(start, BUFFER_SIZE_BYTES(buf), buf)) {
+        safe = (DEVMODEW *) buf;
+        ASSERT(safe->dmSize > offsetof(DEVMODEW, dmFormName), "invalid size");
+        /* there's some padding in the middle */
+        check_sysmem(check_type, sysnum, (byte *) &param->dmFields,
+                     ((byte *) &param->dmCollate) + sizeof(safe->dmCollate) -
+                     (byte *) &param->dmFields,
+                     mc, "DEVMODEW dmFields through dmCollate");
+        check_sysmem(check_type, sysnum, (byte *) &param->dmFormName,
+                     (start + safe->dmSize) - (byte *) (&param->dmFormName),
+                     mc, "DEVMODEW dmFormName onward");
+        check_sysmem(check_type, sysnum, start + safe->dmSize, safe->dmDriverExtra,
+                     mc, "DEVMODEW driver extra info");
+    }
+    return true; /* handled */
+}
+
 static void
 handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
                byte *start, size_t size, uint arg_flags, LOGFONTW *safe)
@@ -1127,6 +1159,8 @@ wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num
     case SYSARG_TYPE_LARGE_STRING:
         return handle_large_string_access(pre, sysnum, mc, arg_num,
                                           arg_info, start, size);
+    case SYSARG_TYPE_DEVMODEW:
+        return handle_devmodew_access(pre, sysnum, mc, arg_num, arg_info, start, size);
     }
     return false; /* not handled */
 }
@@ -1549,6 +1583,20 @@ handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
+handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                         dr_mcontext_t *mc)
+{
+    /* buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
+    BOOL ansi = (BOOL) pt->sysarg[5];
+    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
+    UINT count = (UINT) pt->sysarg[4];
+    check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
+                 count * (ansi ? sizeof(char) : sizeof(wchar_t)),
+                 mc, "pszItemText");
+    return true;
+}
+
+static bool
 handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                            dr_mcontext_t *mc)
 {
@@ -1673,6 +1721,8 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserMenuItemInfo) {
         return handle_UserMenuItemInfo(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_UserGetAltTabInfo) {
+        return handle_UserGetAltTabInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {
