@@ -987,11 +987,15 @@ os_shared_post_syscall(void *drcontext, int sysnum)
 }
 
 bool
-os_syscall_succeeded(int sysnum, ptr_int_t res)
+os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
 {
     if (res == STATUS_BUFFER_OVERFLOW) {
         /* Data is filled in so consider success */
         return true;
+    }
+    /* if info==NULL we assume special call and we don't need to look it up */
+    if (info != NULL && TEST(SYSINFO_RET_ZERO_FAIL, info->flags)) {
+        return (res != 0);
     }
     /* FIXME i#486: syscalls that return the capacity needed in an OUT param
      * will still write to it when returning STATUS_BUFFER_TOO_SMALL
@@ -2149,7 +2153,7 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *
          * watch NtWait* and tracking event objects, though we'll
          * over-estimate the amount written in some cases.
          */
-        if (!os_syscall_succeeded(sysnum, dr_syscall_get_result(drcontext)))
+        if (!os_syscall_succeeded(sysnum, NULL, dr_syscall_get_result(drcontext)))
             return true;
     }
 

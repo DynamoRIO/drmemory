@@ -1045,7 +1045,7 @@ event_post_syscall(void *drcontext, int sysnum)
 
         if (sysinfo != NULL) {
             known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
-            if (!os_syscall_succeeded(sysnum,
+            if (!os_syscall_succeeded(sysnum, sysinfo,
                                       (ptr_int_t)dr_syscall_get_result(drcontext))) {
                 LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
                     sysnum, get_syscall_name(sysnum), dr_syscall_get_result(drcontext));

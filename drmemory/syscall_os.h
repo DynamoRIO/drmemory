@@ -117,6 +117,8 @@ enum {
     SYSINFO_REQUIRES_PREFIX     = 0x00000002,
     /* NtUser syscall wrappers are spread across user32.dll and imm32.dll */
     SYSINFO_IMM32_DLL           = 0x00000004,
+    /* Return value indicates failure only when zero */
+    SYSINFO_RET_ZERO_FAIL       = 0x00000008,
 };
 
 #ifdef WINDOWS
@@ -197,7 +199,7 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                                   app_pc start, uint size);
 
 bool
-os_syscall_succeeded(int sysnum, ptr_int_t res);
+os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res);
 
 /* provides name if known when not in syscall_lookup(num) */
 const char *
