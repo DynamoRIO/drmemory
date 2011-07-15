@@ -28,6 +28,7 @@
 #include "syscall.h"
 #include "syscall_os.h"
 #include "readwrite.h"
+#include "shadow.h"
 #include <stddef.h> /* offsetof */
 
 /* for NtGdi* syscalls */
@@ -325,7 +326,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserRealInternalGetMessage", OK, 24, {{0,sizeof(MSG),W,}, }},
     {0,"NtUserRealWaitMessageEx", OK, 8, },
     {0,"NtUserRedrawWindow", OK, 16, {{1,sizeof(RECT),R,}, }},
-    {0,"NtUserRegisterClassExWOW", OK, 28, {{0,sizeof(WNDCLASSEXW),R|CT,SYSARG_TYPE_WNDCLASSEXW}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(CLSMENUNAME),R|CT,SYSARG_TYPE_CLSMENUNAME}, {6,sizeof(DWORD),R,}, }},
+    {0,"NtUserRegisterClassExWOW", OK|SYSINFO_RET_ZERO_FAIL, 28, {{0,sizeof(WNDCLASSEXW),R|CT,SYSARG_TYPE_WNDCLASSEXW}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(CLSMENUNAME),R|CT,SYSARG_TYPE_CLSMENUNAME}, {6,sizeof(DWORD),R,}, }},
     {0,"NtUserRegisterHotKey", OK, 16, },
     {0,"NtUserRegisterRawInputDevices", OK, 12, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,-2}, }},
     {0,"NtUserRegisterTasklist", OK, 4, },
@@ -935,6 +936,7 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     LARGE_STRING ls;
+    LARGE_STRING *arg = (LARGE_STRING *) start;
     ASSERT(size == sizeof(LARGE_STRING), "invalid size");
     /* I've seen an atom (or int resource?) here
      * XXX i#488: avoid false neg: not too many of these now though
@@ -944,14 +946,31 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
         return true; /* handled */
     /* we assume OUT fields jlst have their Buffer as OUT */
     if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
-                     "LARGE_STRING fields");
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Length,
+                     sizeof(arg->Length), mc, "LARGE_STRING.Length");
+        /* i#489: LARGE_STRING.MaximumLength and LARGE_STRING.bAnsi end
+         * up initialized by a series of bit manips that fool us
+         * so we don't check here
+         */
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
+                     sizeof(arg->Buffer), mc, "LARGE_STRING.Buffer");
     }
     if (safe_read((void*)start, sizeof(ls), &ls)) {
         if (pre) {
             LOG(SYSCALL_VERBOSE,
                 "LARGE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
                 (byte *)ls.Buffer, ls.Length, ls.MaximumLength);
+            /* See i#489 notes above: check for undef if looks "suspicious": weak,
+             * but simpler and more efficient than pattern match on every bb.
+             */
+            if (ls.MaximumLength > ls.Length &&
+                ls.MaximumLength > 1024 /* suspicious */) {
+                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start + sizeof(arg->Length),
+                             sizeof(ULONG/*+bAnsi*/), mc, "LARGE_STRING.MaximumLength");
+            } else {
+                shadow_set_range(start + sizeof(arg->Length),
+                                 (byte *)&arg->Buffer, SHADOW_DEFINED);
+            }
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
                          (byte *)ls.Buffer, ls.MaximumLength, mc,
                          "LARGE_STRING capacity");
