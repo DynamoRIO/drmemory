@@ -995,10 +995,11 @@ os_syscall_get_name(uint num)
  * SHADOW PER-ARG-TYPE HANDLING
  */
 
-static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                       uint arg_num,
-                                       const syscall_arg_t *arg_info,
-                                       app_pc start, uint size)
+static bool
+handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                           uint arg_num,
+                           const syscall_arg_t *arg_info,
+                           app_pc start, uint size)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* variable-length */
@@ -1050,9 +1051,10 @@ static bool handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
-static bool handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
-                                  const syscall_arg_t *arg_info,
-                                  app_pc start, uint size)
+static bool
+handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
+                      const syscall_arg_t *arg_info,
+                      app_pc start, uint size)
 {
 #if !defined(_X86_) || defined(X64)
 # error CONTEXT read handler is not yet implemented on non-x86
@@ -1154,10 +1156,11 @@ static bool handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint 
 #endif
 }
 
-static bool handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                           uint arg_num,
-                                           const syscall_arg_t *arg_info,
-                                           app_pc start, uint size)
+static bool
+handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                               uint arg_num,
+                               const syscall_arg_t *arg_info,
+                               app_pc start, uint size)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const EXCEPTION_RECORD *er = (EXCEPTION_RECORD *)start;
@@ -1181,10 +1184,11 @@ static bool handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *
     return true;
 }
 
-static bool handle_security_qos_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                       uint arg_num,
-                                       const syscall_arg_t *arg_info,
-                                       app_pc start, uint size)
+static bool
+handle_security_qos_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                           uint arg_num,
+                           const syscall_arg_t *arg_info,
+                           app_pc start, uint size)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_QUALITY_OF_SERVICE *s = (SECURITY_QUALITY_OF_SERVICE *)start;
@@ -1200,10 +1204,11 @@ static bool handle_security_qos_access(bool pre, int sysnum, dr_mcontext_t *mc,
     return true;
 }
 
-static bool handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                              uint arg_num,
-                                              const syscall_arg_t *arg_info,
-                                              app_pc start, uint size)
+static bool
+handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                                  uint arg_num,
+                                  const syscall_arg_t *arg_info,
+                                  app_pc start, uint size)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
@@ -1234,10 +1239,11 @@ static bool handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_
     return true;
 }
 
-static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                         uint arg_num,
-                                         const syscall_arg_t *arg_info,
-                                         app_pc start, uint size)
+bool
+handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                             uint arg_num,
+                             const syscall_arg_t *arg_info,
+                             app_pc start, uint size)
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     UNICODE_STRING us;
@@ -1267,32 +1273,48 @@ static bool handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc
     return true;
 }
 
-static bool handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                       uint arg_num,
-                                       const syscall_arg_t *arg_info,
-                                       app_pc start, uint size)
+bool
+handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+                byte *start, size_t size/*in bytes*/, uint arg_flags, wchar_t *safe,
+                bool check_addr)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     /* the kernel wrote a wide string to the buffer: only up to the terminating
      * null should be marked as defined
      */
     uint i;
     wchar_t c;
     /* input params have size 0: for safety stopping at MAX_PATH */
-    size_t maxsz = (size == 0) ? MAX_PATH : size;
-    if (pre && !TEST(SYSARG_READ, arg_info->flags))
-        return false; /* let normal check ensure full size is addressable */
-    if (!pre && !TEST(SYSARG_WRITE, arg_info->flags))
+    size_t maxsz = (size == 0) ? (MAX_PATH*sizeof(wchar_t)) : size;
+    if (start == NULL)
+        return false; /* nothing to do */
+    if (!check_addr && pre && !TEST(SYSARG_READ, arg_flags))
+        return false;
+    if (!pre && !TEST(SYSARG_WRITE, arg_flags))
         return false; /*nothing to do */
     for (i = 0; i < maxsz; i += sizeof(wchar_t)) {
-        if (!safe_read(start + i, sizeof(c), &c)) {
+        if (safe != NULL)
+            c = safe[i/sizeof(wchar_t)];
+        else if (!safe_read(start + i, sizeof(c), &c)) {
             WARN("WARNING: unable to read syscall param string\n");
             break;
-        } else if (c == L'\0')
+        }
+        if (c == L'\0')
             break;
     }
-    check_sysmem(check_type, sysnum, start, i + sizeof(wchar_t), mc, NULL);
+    check_sysmem(check_type, sysnum, start, i + sizeof(wchar_t), mc, id);
     return true;
+}
+
+static bool
+handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                           uint arg_num,
+                           const syscall_arg_t *arg_info,
+                           app_pc start, uint size/*in bytes*/)
+{
+    return handle_cwstring(pre, sysnum, mc, NULL, start, size, arg_info->flags, NULL,
+                           /* let normal check ensure full size is addressable */
+                           false);
 }
 
 bool

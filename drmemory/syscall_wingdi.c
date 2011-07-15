@@ -19,8 +19,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* If we set this to _WIN32_WINNT_NT4 we miss types like DESIGNVECTOR in wingdi.h */
-#define _WIN32_WINNT 0x0500 /* == _WIN32_WINNT_2K */
+/* Need this defined and to the latest to get the latest defines and types */
+#define _WIN32_WINNT 0x0601 /* == _WIN32_WINNT_WIN7 */
 #define WINVER _WIN32_WINNT
 
 #include "dr_api.h"
@@ -54,7 +54,7 @@
  * Not all wrappers are exported: xref i#388.
  */
 syscall_info_t syscall_kernel32_info[] = {
-    /* wchar_t *locale OUT, size_t locale_sz */
+    /* wchar_t *locale OUT, size_t locale_sz (assuming size in bytes) */
     {0,"NtWow64CsrBasepNlsGetUserInfo", OK, 8, {{0,-1,W|SYSARG_CSTRING_WIDE}, }},
 
     /* Takes a single param that's a pointer to a struct that has a PHANDLE at offset
@@ -83,10 +83,15 @@ num_kernel32_syscalls(void)
  * When we try to find the wrapper via symbol lookup we try with
  * and without the prefix.
  */
+
+static int sysnum_UserSystemParametersInfo = -1;
+
 syscall_info_t syscall_user32_info[] = {
+    {0,"NtUserGetMessage", OK, 16, {{0,sizeof(MSG),W}, }},
     {0,"NtUserGetObjectInformation", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
     {0,"NtUserGetProp", OK, 8, },
     {0,"NtUserQueryWindow", OK, 8, },
+    {0,"NtUserSystemParametersInfo", OK, 4/*rest are optional*/, {{0,},/*special-cased*/ }, &sysnum_UserSystemParametersInfo},
     {0,"NtUserUserConnectToServer", OK, 12, {{0,0,R|SYSARG_CSTRING_WIDE}, {1,-2,WI}, }},
 };
 #define NUM_USER32_SYSCALLS \
@@ -539,8 +544,600 @@ num_gdi32_syscalls(void)
 #undef RET
 
 /***************************************************************************
+ * CUSTOM SYSCALL DATA STRUCTURE HANDLING
+ */
+
+extern bool
+handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                             uint arg_num, const syscall_arg_t *arg_info,
+                             app_pc start, uint size);
+
+extern bool
+handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+                byte *start, size_t size, uint arg_flags, wchar_t *safe,
+                bool check_addr);
+
+static void
+handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
+               byte *start, size_t size, uint arg_flags, LOGFONTW *safe)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    LOGFONTW *font = (LOGFONTW *) start;
+    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
+        check_sysmem(check_type, sysnum, start, size, mc, "LOGFONTW");
+    } else {
+        size_t check_sz = MIN(size - offsetof(LOGFONTW, lfFaceName),
+                              sizeof(font->lfFaceName));
+        ASSERT(size >= offsetof(LOGFONTW, lfFaceName), "invalid size");
+        check_sysmem(check_type, sysnum, start,
+                     offsetof(LOGFONTW, lfFaceName), mc, "LOGFONTW");
+        handle_cwstring(pre, sysnum, mc, "LOGFONTW.lfFaceName",
+                        (byte *) &font->lfFaceName, check_sz, arg_flags,
+                        (safe == NULL) ? NULL : (wchar_t *)&safe->lfFaceName, true);
+    }
+}
+
+static void
+handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
+                        byte *start, uint arg_flags, NONCLIENTMETRICSW *safe)
+{
+    NONCLIENTMETRICSW *ptr_arg = (NONCLIENTMETRICSW *) start;
+    NONCLIENTMETRICSW *ptr_safe;
+    NONCLIENTMETRICSW ptr_local;
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    size_t size;
+    if (safe != NULL)
+        ptr_safe = safe;
+    else {
+        if (!safe_read(start, sizeof(ptr_local), &ptr_local)) {
+            WARN("WARNING: unable to read syscall param\n");
+            return;
+        }
+        ptr_safe = &ptr_local;
+    }
+    size = ptr_safe->cbSize;
+
+    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
+        check_sysmem(check_type, sysnum, start, size, mc, "NONCLIENTMETRICSW");
+    } else {
+        size_t offs = 0;
+        size_t check_sz = MIN(size, offsetof(NONCLIENTMETRICSW, lfCaptionFont));
+        check_sysmem(check_type, sysnum, start, check_sz, mc, "NONCLIENTMETRICSW A");
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfCaptionFont,
+                       check_sz, arg_flags, &ptr_safe->lfCaptionFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, offsetof(NONCLIENTMETRICSW, lfSmCaptionFont) -
+                       offsetof(NONCLIENTMETRICSW, iSmCaptionWidth));
+        check_sysmem(check_type, sysnum, (byte *) &ptr_arg->iSmCaptionWidth,
+                     check_sz, mc, "NONCLIENTMETRICSW B");
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfSmCaptionFont,
+                       check_sz, arg_flags, &ptr_safe->lfSmCaptionFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, offsetof(NONCLIENTMETRICSW, lfMenuFont) -
+                       offsetof(NONCLIENTMETRICSW, iMenuWidth));
+        check_sysmem(check_type, sysnum, (byte *) &ptr_arg->iMenuWidth,
+                     check_sz, mc, "NONCLIENTMETRICSW B");
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfMenuFont,
+                       check_sz, arg_flags, &ptr_safe->lfMenuFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfStatusFont,
+                       check_sz, arg_flags, &ptr_safe->lfStatusFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfMessageFont,
+                       check_sz, arg_flags, &ptr_safe->lfMessageFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        /* there is another field on Vista */
+        check_sz = size - offs;
+        check_sysmem(check_type, sysnum, ((byte *)ptr_arg) + offs,
+                     check_sz, mc, "NONCLIENTMETRICSW C");
+    }
+}
+
+static void
+handle_iconmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
+                        byte *start, uint arg_flags, ICONMETRICSW *safe)
+{
+    ICONMETRICSW *ptr_arg = (ICONMETRICSW *) start;
+    ICONMETRICSW *ptr_safe;
+    ICONMETRICSW ptr_local;
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    size_t size;
+    if (safe != NULL)
+        ptr_safe = safe;
+    else {
+        if (!safe_read(start, sizeof(ptr_local), &ptr_local)) {
+            WARN("WARNING: unable to read syscall param\n");
+            return;
+        }
+        ptr_safe = &ptr_local;
+    }
+    size = ptr_safe->cbSize;
+
+    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
+        check_sysmem(check_type, sysnum, start, size, mc, "ICONMETRICSW");
+    } else {
+        size_t offs = 0;
+        size_t check_sz = MIN(size, offsetof(ICONMETRICSW, lfFont));
+        check_sysmem(check_type, sysnum, start, check_sz, mc, "ICONMETRICSW A");
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        check_sz = MIN(size - offs, sizeof(LOGFONTW));
+        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfFont,
+                       check_sz, arg_flags, &ptr_safe->lfFont);
+        offs += check_sz;
+        if (offs >= size)
+            return;
+
+        /* currently no more args, but here for forward compat */
+        check_sz = size - offs;
+        check_sysmem(check_type, sysnum, ((byte *)ptr_arg) + offs,
+                     check_sz, mc, "ICONMETRICSW B");
+    }
+}
+
+static void
+handle_serialkeys(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
+                  byte *start, uint arg_flags, SERIALKEYSW *safe)
+{
+    SERIALKEYSW *ptr_safe;
+    SERIALKEYSW ptr_local;
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    size_t size;
+    if (safe != NULL)
+        ptr_safe = safe;
+    else {
+        if (!safe_read(start, sizeof(ptr_local), &ptr_local)) {
+            WARN("WARNING: unable to read syscall param\n");
+            return;
+        }
+        ptr_safe = &ptr_local;
+    }
+    size = ptr_safe->cbSize;
+    check_sysmem(check_type, sysnum, start, size, mc, "SERIALKEYSW");
+    handle_cwstring(pre, sysnum, mc, "SERIALKEYSW.lpszActivePort",
+                    (byte *) ptr_safe->lpszActivePort, 0, arg_flags, NULL, true);
+    handle_cwstring(pre, sysnum, mc, "SERIALKEYSW.lpszPort",
+                    (byte *) ptr_safe->lpszPort, 0, arg_flags, NULL, true);
+}
+
+static void
+handle_cwstring_field(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+                      uint arg_flags,
+                      byte *struct_start, size_t struct_size, size_t cwstring_offs)
+{
+    wchar_t *ptr;
+    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
+    if (struct_size <= cwstring_offs)
+        return;
+    if (!safe_read(struct_start + cwstring_offs, sizeof(ptr), &ptr)) {
+        WARN("WARNING: unable to read syscall param\n");
+        return;
+    }
+    handle_cwstring(pre, sysnum, mc, id, (byte *)ptr, 0, arg_flags, NULL, true);
+}
+
+/***************************************************************************
  * CUSTOM SYSCALL HANDLING
  */
+
+static bool
+handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                                dr_mcontext_t *mc)
+{
+    UINT uiAction = (UINT) pt->sysarg[0];
+    UINT uiParam = (UINT) pt->sysarg[1];
+    byte *pvParam = (byte *) pt->sysarg[2];
+    bool get = true;
+    size_t sz = 0;
+    bool uses_pvParam = false; /* also considered used if sz>0 */
+    bool uses_uiParam = false;
+
+    switch (uiAction) {
+    case SPI_GETBEEP: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETBEEP: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSE: get = true;  sz = 3 * sizeof(INT); break;
+    case SPI_SETMOUSE: get = false; sz = 3 * sizeof(INT); break;
+    case SPI_GETBORDER: get = true;  sz = sizeof(int); break;
+    case SPI_SETBORDER: get = false; uses_uiParam = true; break;
+    case SPI_GETKEYBOARDSPEED: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETKEYBOARDSPEED: get = false; uses_uiParam = true; break;
+    case SPI_GETSCREENSAVETIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_SETSCREENSAVETIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_GETSCREENSAVEACTIVE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSCREENSAVEACTIVE: get = false; uses_uiParam = true; break;
+    /* XXX: no official docs for these 2: */
+    case SPI_GETGRIDGRANULARITY: get = true;  sz = sizeof(int); break;
+    case SPI_SETGRIDGRANULARITY: get = false; uses_uiParam = true; break;
+    case SPI_GETDESKWALLPAPER: {
+        /* uiParam is size in characters */
+        handle_cwstring(pre, sysnum, mc, "pvParam", pvParam,
+                        uiParam * sizeof(wchar_t), SYSARG_WRITE, NULL, true);
+        get = true;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETDESKWALLPAPER: {
+        syscall_arg_t arg = {0, sizeof(UNICODE_STRING),
+                             SYSARG_READ|SYSARG_UNICODE_STRING};
+        handle_unicode_string_access(pre, sysnum, mc, 0/*unused*/,
+                                     &arg, pvParam, sizeof(UNICODE_STRING));
+        get = false;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETDESKPATTERN: get = false; break;
+    case SPI_GETKEYBOARDDELAY: get = true;  sz = sizeof(int); break;
+    case SPI_SETKEYBOARDDELAY: get = false; uses_uiParam = true; break;
+    case SPI_ICONHORIZONTALSPACING: {
+        if (pvParam != NULL) {
+            get = true; 
+            sz = sizeof(int);
+        } else {
+            get = false; 
+            uses_uiParam = true;
+        }
+        break;
+    }
+    case SPI_ICONVERTICALSPACING: {
+        if (pvParam != NULL) {
+            get = true; 
+            sz = sizeof(int);
+        } else {
+            get = false; 
+            uses_uiParam = true;
+        }
+        break;
+    }
+    case SPI_GETICONTITLEWRAP: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETICONTITLEWRAP: get = false; uses_uiParam = true; break;
+    case SPI_GETMENUDROPALIGNMENT: get = true;  sz = sizeof(int); break;
+    case SPI_SETMENUDROPALIGNMENT: get = false; uses_uiParam = true; break;
+    case SPI_SETDOUBLECLKWIDTH: get = false; uses_uiParam = true; break;
+    case SPI_SETDOUBLECLKHEIGHT: get = false; uses_uiParam = true; break;
+    case SPI_GETICONTITLELOGFONT: {
+        handle_logfont(pre, drcontext, sysnum, mc, pvParam,
+                       uiParam, SYSARG_WRITE, NULL);
+        get = true;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETICONTITLELOGFONT: {
+        handle_logfont(pre, drcontext, sysnum, mc, pvParam,
+                       uiParam, SYSARG_READ, NULL);
+        get = false;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETDOUBLECLICKTIME: get = false; uses_uiParam = true; break;
+    case SPI_SETMOUSEBUTTONSWAP: get = false; uses_uiParam = true; break;
+    /* XXX: no official docs: */
+    case SPI_GETFASTTASKSWITCH: get = true;  sz = sizeof(int); break;
+    case SPI_GETDRAGFULLWINDOWS: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETDRAGFULLWINDOWS: get = false; uses_uiParam = true; break;
+    case SPI_GETNONCLIENTMETRICS: {
+        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam,
+                                SYSARG_WRITE, NULL);
+        get = true;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETNONCLIENTMETRICS: {
+        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam,
+                                SYSARG_READ, NULL);
+        get = false;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_GETMINIMIZEDMETRICS: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETMINIMIZEDMETRICS: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETICONMETRICS: {
+        handle_iconmetrics(pre, drcontext, sysnum, mc, pvParam, SYSARG_WRITE, NULL);
+        get = true;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETICONMETRICS: {
+        handle_iconmetrics(pre, drcontext, sysnum, mc, pvParam, SYSARG_READ, NULL);
+        get = false;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_GETWORKAREA: get = true;  sz = sizeof(RECT); break;
+    case SPI_SETWORKAREA: get = false; sz = sizeof(RECT); break;
+    case SPI_GETFILTERKEYS: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETFILTERKEYS: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETTOGGLEKEYS: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETTOGGLEKEYS: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETMOUSEKEYS:  get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETMOUSEKEYS:  get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETSHOWSOUNDS: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSHOWSOUNDS: get = false; uses_uiParam = true; break;
+    case SPI_GETSTICKYKEYS: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETSTICKYKEYS: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETACCESSTIMEOUT: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETACCESSTIMEOUT: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETSERIALKEYS: {
+        handle_serialkeys(pre, drcontext, sysnum, mc, pvParam, SYSARG_WRITE, NULL);
+        get = true;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_SETSERIALKEYS: {
+        handle_serialkeys(pre, drcontext, sysnum, mc, pvParam, SYSARG_READ, NULL);
+        get = false;
+        uses_uiParam = true;
+        uses_pvParam = true;
+        break;
+    }
+    case SPI_GETSOUNDSENTRY: {
+        handle_cwstring_field(pre, sysnum, mc, "SOUNDSENTRYW.lpszWindowsEffectDLL",
+                              SYSARG_WRITE, pvParam, uiParam,
+                              offsetof(SOUNDSENTRYW, lpszWindowsEffectDLL));
+        /* rest of struct handled through pvParam check below */
+        get = true;
+        uses_uiParam = true;
+        sz = uiParam;
+        break;
+    }
+    case SPI_SETSOUNDSENTRY: {
+        handle_cwstring_field(pre, sysnum, mc, "SOUNDSENTRYW.lpszWindowsEffectDLL",
+                              SYSARG_READ, pvParam, uiParam,
+                              offsetof(SOUNDSENTRYW, lpszWindowsEffectDLL));
+        /* rest of struct handled through pvParam check below */
+        get = false;
+        uses_uiParam = true;
+        sz = uiParam;
+        break;
+    }
+    case SPI_GETHIGHCONTRAST: {
+        handle_cwstring_field(pre, sysnum, mc, "HIGHCONTRASTW.lpszDefaultScheme",
+                              SYSARG_WRITE, pvParam, uiParam,
+                              offsetof(HIGHCONTRASTW, lpszDefaultScheme));
+        /* rest of struct handled through pvParam check below */
+        get = true;
+        uses_uiParam = true;
+        sz = uiParam;
+        break;
+    }
+    case SPI_SETHIGHCONTRAST: {
+        handle_cwstring_field(pre, sysnum, mc, "HIGHCONTRASTW.lpszDefaultScheme",
+                              SYSARG_READ, pvParam, uiParam,
+                              offsetof(HIGHCONTRASTW, lpszDefaultScheme));
+        /* rest of struct handled through pvParam check below */
+        get = false;
+        uses_uiParam = true;
+        sz = uiParam;
+        break;
+    }
+    case SPI_GETKEYBOARDPREF: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETKEYBOARDPREF: get = false; uses_uiParam = true; break;
+    case SPI_GETSCREENREADER: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSCREENREADER: get = false; uses_uiParam = true; break;
+    case SPI_GETANIMATION: get = true;  uses_uiParam = true; sz = uiParam; break;
+    case SPI_SETANIMATION: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETFONTSMOOTHING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETFONTSMOOTHING: get = false; uses_uiParam = true; break;
+    case SPI_SETDRAGWIDTH: get = false; uses_uiParam = true; break;
+    case SPI_SETDRAGHEIGHT: get = false; uses_uiParam = true; break;
+    /* XXX: no official docs: */
+    case SPI_SETHANDHELD: get = false; uses_uiParam = true; break;
+    case SPI_GETLOWPOWERTIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_GETPOWEROFFTIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_SETLOWPOWERTIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_SETPOWEROFFTIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_GETLOWPOWERACTIVE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_GETPOWEROFFACTIVE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETLOWPOWERACTIVE: get = false; uses_uiParam = true; break;
+    case SPI_SETPOWEROFFACTIVE: get = false; uses_uiParam = true; break;
+    /* XXX: docs say to set uiParam=0 and pvParam=NULL; we don't check init */
+    case SPI_SETCURSORS: get = false; break;
+    case SPI_SETICONS: get = false; break;
+    case SPI_GETDEFAULTINPUTLANG: get = true;  sz = sizeof(HKL); break;
+    case SPI_SETDEFAULTINPUTLANG: get = false; sz = sizeof(HKL); break;
+    case SPI_SETLANGTOGGLE: get = false; break;
+    case SPI_GETMOUSETRAILS: get = true;  sz = sizeof(int); break;
+    case SPI_SETMOUSETRAILS: get = false; uses_uiParam = true; break;
+    case SPI_GETSNAPTODEFBUTTON: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSNAPTODEFBUTTON: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSEHOVERWIDTH: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETMOUSEHOVERWIDTH: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSEHOVERHEIGHT: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETMOUSEHOVERHEIGHT: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSEHOVERTIME: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETMOUSEHOVERTIME: get = false; uses_uiParam = true; break;
+    case SPI_GETWHEELSCROLLLINES: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETWHEELSCROLLLINES: get = false; uses_uiParam = true; break;
+    case SPI_GETMENUSHOWDELAY: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETMENUSHOWDELAY: get = false; uses_uiParam = true; break;
+    case SPI_GETWHEELSCROLLCHARS: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETWHEELSCROLLCHARS: get = false; uses_uiParam = true; break;
+    case SPI_GETSHOWIMEUI: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSHOWIMEUI: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSESPEED: get = true;  sz = sizeof(int); break;
+    case SPI_SETMOUSESPEED: get = false; uses_uiParam = true; break;
+    case SPI_GETSCREENSAVERRUNNING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSCREENSAVERRUNNING: get = false; uses_uiParam = true; break;
+    case SPI_GETAUDIODESCRIPTION: get = true;  uses_uiParam = true; sz = uiParam; break;
+    /* XXX: docs don't actually say to set uiParam: I'm assuming for symmetry */
+    case SPI_SETAUDIODESCRIPTION: get = false; uses_uiParam = true; sz = uiParam; break;
+    case SPI_GETSCREENSAVESECURE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSCREENSAVESECURE: get = false; uses_uiParam = true; break;
+    case SPI_GETHUNGAPPTIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_SETHUNGAPPTIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_GETWAITTOKILLTIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_SETWAITTOKILLTIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_GETWAITTOKILLSERVICETIMEOUT: get = true;  sz = sizeof(int); break;
+    case SPI_SETWAITTOKILLSERVICETIMEOUT: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSEDOCKTHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    /* Note that many of the sets below use pvParam as either an inlined BOOL
+     * or a pointer to a DWORD (why not inlined?), instead of using uiParam
+     */
+    case SPI_SETMOUSEDOCKTHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    /* XXX: docs don't say it writes to pvParam: ret val instead? */
+    case SPI_GETPENDOCKTHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETPENDOCKTHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    case SPI_GETWINARRANGING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETWINARRANGING: get = false; uses_pvParam = true; break;
+    /* XXX: docs don't say it writes to pvParam: ret val instead? */
+    case SPI_GETMOUSEDRAGOUTTHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETMOUSEDRAGOUTTHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    /* XXX: docs don't say it writes to pvParam: ret val instead? */
+    case SPI_GETPENDRAGOUTTHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETPENDRAGOUTTHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    /* XXX: docs don't say it writes to pvParam: ret val instead? */
+    case SPI_GETMOUSESIDEMOVETHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETMOUSESIDEMOVETHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    /* XXX: docs don't say it writes to pvParam: ret val instead? */
+    case SPI_GETPENSIDEMOVETHRESHOLD: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETPENSIDEMOVETHRESHOLD: get = false; sz = sizeof(DWORD); break;
+    case SPI_GETDRAGFROMMAXIMIZE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETDRAGFROMMAXIMIZE: get = false; uses_pvParam = true; break;
+    case SPI_GETSNAPSIZING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSNAPSIZING:  get = false; uses_pvParam = true; break;
+    case SPI_GETDOCKMOVING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETDOCKMOVING:  get = false; uses_pvParam = true; break;
+    case SPI_GETACTIVEWINDOWTRACKING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETACTIVEWINDOWTRACKING: get = false; uses_pvParam = true; break;
+    case SPI_GETMENUANIMATION: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETMENUANIMATION: get = false; uses_pvParam = true; break;
+    case SPI_GETCOMBOBOXANIMATION: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETCOMBOBOXANIMATION: get = false; uses_pvParam = true; break;
+    case SPI_GETLISTBOXSMOOTHSCROLLING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETLISTBOXSMOOTHSCROLLING: get = false; uses_pvParam = true; break;
+    case SPI_GETGRADIENTCAPTIONS: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETGRADIENTCAPTIONS: get = false; uses_pvParam = true; break;
+    case SPI_GETKEYBOARDCUES: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETKEYBOARDCUES: get = false; uses_pvParam = true; break;
+    case SPI_GETACTIVEWNDTRKZORDER: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETACTIVEWNDTRKZORDER: get = false; uses_pvParam = true; break;
+    case SPI_GETHOTTRACKING: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETHOTTRACKING: get = false; uses_pvParam = true; break;
+    case SPI_GETMENUFADE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETMENUFADE: get = false; uses_pvParam = true; break;
+    case SPI_GETSELECTIONFADE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSELECTIONFADE: get = false; uses_pvParam = true; break;
+    case SPI_GETTOOLTIPANIMATION: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETTOOLTIPANIMATION: get = false; uses_pvParam = true; break;
+    case SPI_GETTOOLTIPFADE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETTOOLTIPFADE: get = false; uses_pvParam = true; break;
+    case SPI_GETCURSORSHADOW: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETCURSORSHADOW: get = false; uses_pvParam = true; break;
+    case SPI_GETMOUSESONAR: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETMOUSESONAR: get = false; uses_uiParam = true; break;
+    case SPI_GETMOUSECLICKLOCK: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETMOUSECLICKLOCK: get = false; uses_pvParam = true; break;
+    case SPI_GETMOUSEVANISH: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETMOUSEVANISH: get = false; uses_uiParam = true; break;
+    case SPI_GETFLATMENU: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETFLATMENU: get = false; uses_uiParam = true; break;
+    case SPI_GETDROPSHADOW: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETDROPSHADOW: get = false; uses_uiParam = true; break;
+    case SPI_GETBLOCKSENDINPUTRESETS: get = true;  sz = sizeof(BOOL); break;
+    /* yes this is uiParam in the midst of many pvParams */
+    case SPI_SETBLOCKSENDINPUTRESETS: get = false; uses_uiParam = true; break;
+    case SPI_GETUIEFFECTS: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETUIEFFECTS: get = false; uses_pvParam = true; break;
+    case SPI_GETDISABLEOVERLAPPEDCONTENT: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETDISABLEOVERLAPPEDCONTENT: get = false; uses_uiParam = true; break;
+    case SPI_GETCLIENTAREAANIMATION: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETCLIENTAREAANIMATION: get = false; uses_uiParam = true; break;
+    case SPI_GETCLEARTYPE: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETCLEARTYPE: get = false; uses_uiParam = true; break;
+    case SPI_GETSPEECHRECOGNITION: get = true;  sz = sizeof(BOOL); break;
+    case SPI_SETSPEECHRECOGNITION: get = false; uses_uiParam = true; break;
+    case SPI_GETFOREGROUNDLOCKTIMEOUT: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETFOREGROUNDLOCKTIMEOUT: get = false; uses_pvParam = true; break;
+    case SPI_GETACTIVEWNDTRKTIMEOUT: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETACTIVEWNDTRKTIMEOUT: get = false; uses_pvParam = true; break;
+    case SPI_GETFOREGROUNDFLASHCOUNT: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETFOREGROUNDFLASHCOUNT: get = false; uses_pvParam = true; break;
+    case SPI_GETCARETWIDTH: get = true;  sz = sizeof(DWORD); break;
+    case SPI_SETCARETWIDTH: get = false; uses_pvParam = true; break;
+    case SPI_GETMOUSECLICKLOCKTIME: get = true;  sz = sizeof(DWORD); break;
+    /* yes this is uiParam in the midst of many pvParams */
+    case SPI_SETMOUSECLICKLOCKTIME: get = false; uses_uiParam = true; break;
+    case SPI_GETFONTSMOOTHINGTYPE: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETFONTSMOOTHINGTYPE: get = false; uses_pvParam = true; break;
+    case SPI_GETFONTSMOOTHINGCONTRAST: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETFONTSMOOTHINGCONTRAST: get = false; uses_pvParam = true; break;
+    case SPI_GETFOCUSBORDERWIDTH: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETFOCUSBORDERWIDTH: get = false; uses_pvParam = true; break;
+    case SPI_GETFOCUSBORDERHEIGHT: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETFOCUSBORDERHEIGHT: get = false; uses_pvParam = true; break;
+    case SPI_GETFONTSMOOTHINGORIENTATION: get = true;  sz = sizeof(UINT); break;
+    case SPI_SETFONTSMOOTHINGORIENTATION: get = false; uses_pvParam = true; break;
+    case SPI_GETMESSAGEDURATION: get = true;  sz = sizeof(ULONG); break;
+    case SPI_SETMESSAGEDURATION: get = false; uses_pvParam = true; break;
+
+    /* XXX: unknown behavior */
+    case SPI_LANGDRIVER:
+    case SPI_SETFASTTASKSWITCH:
+    case SPI_SETPENWINDOWS:
+    case SPI_GETWINDOWSEXTENSION:
+    default:
+        WARN("WARNING: unhandled UserSystemParametersInfo uiAction 0x%x\n",
+             uiAction);
+    }
+
+    /* table entry only checked uiAction for definedness */
+    if (uses_uiParam && pre)
+        check_sysparam_defined(sysnum, 1, mc, sizeof(reg_t));
+    if (sz > 0 || uses_pvParam) { /* pvParam is used */
+        if (pre)
+            check_sysparam_defined(sysnum, 2, mc, sizeof(reg_t));
+        if (get && sz > 0) {
+            check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum, 
+                         pvParam, sz, mc, "pvParam");
+        } else if (pre && sz > 0)
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, pvParam, sz, mc, "pvParam");
+    }
+    if (!get && pre) /* fWinIni used for all SET codes */
+        check_sysparam_defined(sysnum, 3, mc, sizeof(reg_t));
+
+    return true;
+}
 
 static bool
 handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
@@ -587,19 +1184,8 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 
         ASSERT(offsetof(ENUMLOGFONTEXDVW, elfEnumLogfontEx) == 0 &&
                offsetof(ENUMLOGFONTEXW, elfLogFont) == 0, "logfont structs changed");
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     offsetof(LOGFONTW, lfFaceName), mc, "LOGFONTW");
-        /* Could share w/ handle_cstring_wide_access but we already safe_read
-         * as we have a max size
-         */
-        start = (byte *) &real_dvw->elfEnumLogfontEx.elfLogFont.lfFaceName;
-        for (i = 0;
-             i < sizeof(dvw.elfEnumLogfontEx.elfLogFont.lfFaceName)/sizeof(wchar_t) &&
-                 dvw.elfEnumLogfontEx.elfLogFont.lfFaceName[i] != L'\0';
-             i++)
-            ; /* nothing */
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     i * sizeof(wchar_t), mc, "LOGFONTW.lfFaceName");
+        handle_logfont(pre, drcontext, sysnum, mc, start,
+                       sizeof(LOGFONTW), SYSARG_READ, &dvw.elfEnumLogfontEx.elfLogFont);
 
         start = (byte *) &real_dvw->elfEnumLogfontEx.elfFullName;
         for (i = 0;
@@ -674,7 +1260,9 @@ bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                        dr_mcontext_t *mc)
 {
-    if (sysnum == sysnum_GdiCreatePaletteInternal) {
+    if (sysnum == sysnum_UserSystemParametersInfo) {
+        return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
+    } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {
             UINT cEntries = (UINT) pt->sysarg[1];
