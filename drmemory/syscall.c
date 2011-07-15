@@ -781,8 +781,9 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
     for (i=0; i<num_args; i++) {
-        LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x\n",
-            sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags);
+        LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x "PFX"\n",
+            sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags,
+            pt->sysarg[sysinfo->arg[i].param]);
         if (sysarg_invalid(&sysinfo->arg[i]))
             break;
         ASSERT(i < SYSCALL_NUM_ARG_STORE, "not storing enough args");
@@ -814,7 +815,8 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         /* If the first in a double entry, give 2nd entry precedence, but
          * keep size in last_size in case 2nd was optional OUT and is NULL
          */
-        if (i < num_args && sysinfo->arg[i+1].param == last_param)
+        if (i < num_args && sysinfo->arg[i+1].param == last_param &&
+            !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;
         LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
         if (start != NULL && size > 0) {
