@@ -131,3 +131,13 @@ usp10.dll!ShapingGetGlyphPositions
 UNINITIALIZED READ
 usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
 
+##################################################
+# i#462: Deliberate write to beyond TOS
+
+UNADDRESSABLE ACCESS
+CRYPTBASE.dll!AesEncrypt
+
+# w/o symbols
+UNADDRESSABLE ACCESS
+CRYPTBASE.dll!SystemFunction036
+
