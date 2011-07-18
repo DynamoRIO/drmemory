@@ -27,6 +27,6 @@ TEST(NtUserTests, SystemParametersInfo) {
     NONCLIENTMETRICS metrics;
     ZeroMemory(&metrics, sizeof(NONCLIENTMETRICS));
     metrics.cbSize = sizeof(NONCLIENTMETRICS);
-    EXPECT_NE(0, SystemParametersInfo(SPI_GETNONCLIENTMETRICS,
-                                      sizeof(NONCLIENTMETRICS), &metrics, 0));
+    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS),
+                         &metrics, 0);
 }
