@@ -42,7 +42,7 @@ UNINITIALIZED READ
 sophos*.dll!*
 
 ########################################################
-# http://code.google.com/p/drmemory/issues/detail?id=10
+# http://code.google.com/p/drmemory/issues/detail?id=17
 POSSIBLE LEAK
 GDI32.dll!*
 GDI32.dll!CreateFontIndirectExW
