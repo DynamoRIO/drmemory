@@ -486,6 +486,7 @@ static int sysnum_GdiCreateDIBSection = -1;
 static int sysnum_GdiHfontCreate = -1;
 static int sysnum_GdiDoPalette = -1;
 static int sysnum_GdiExtTextOutW = -1;
+static int sysnum_GdiOpenDCW = -1;
 
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
@@ -701,7 +702,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),W,}, }},
     {0,"NtGdiSetColorAdjustment", OK, 8, {{1,sizeof(COLORADJUSTMENT),R,}, }},
     {0,"NtGdiCancelDC", OK, 4, },
-    {0,"NtGdiOpenDCW", OK, 32, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,}, }},
+    {0,"NtGdiOpenDCW", OK, 28/*32 on Vista+*/, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING,}, /*arg added in middle in Vista so special-cased*/}, &sysnum_GdiOpenDCW},
     {0,"NtGdiGetDCDword", OK, 12, {{2,sizeof(DWORD),W,}, }},
     {0,"NtGdiGetDCPoint", OK, 12, {{2,sizeof(POINTL),W,}, }},
     {0,"NtGdiScaleViewportExtEx", OK, 24, {{5,sizeof(SIZE),W,}, }},
@@ -2086,6 +2087,32 @@ handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
     return true;
 }
 
+static bool
+handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                  dr_mcontext_t *mc)
+{
+    /* An extra arg "BOOL bDisplay" was added as arg #4 in Vista so
+     * we have to special-case the subsequent args, which for Vista+ are:
+     *   {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,},
+     */
+    uint num_driver = 5;
+    uint num_pump = 6;
+    if (running_on_Vista_or_later()) {
+        check_sysparam_defined(sysnum, 7, mc, sizeof(reg_t));
+        num_driver = 6;
+        num_pump = 7;
+    }
+    if (pre) {
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
+                     (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
+                     mc, "DRIVER_INFO_2W");
+    }
+    check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
+                 (byte *) pt->sysarg[num_pump], sizeof(PUMDHPDEV *),
+                 mc, "PUMDHPDEV*");
+    return true;
+}
+
 bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                        dr_mcontext_t *mc)
@@ -2147,6 +2174,8 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ((byte *)pdx) + cwc*sizeof(INT),
                          cwc*sizeof(INT), mc, "pdx extra size from ETO_PDY");
         }
+    } else if (sysnum == sysnum_GdiOpenDCW) {
+        return handle_GdiOpenDCW(pre, drcontext, sysnum, pt, mc);
     }
 
     return true; /* execute syscall */
