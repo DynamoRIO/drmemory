@@ -199,6 +199,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetCaretBlinkTime", OK, 0, },
     {0,"NtUserGetCaretPos", OK, 4, {{0,sizeof(POINT),W,}, }},
     {0,"NtUserGetClassInfo", OK, 20, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(WNDCLASSEXW),W|CT,SYSARG_TYPE_WNDCLASSEXW}, {3,sizeof(PWSTR)/*pointer to existing string (ansi or unicode) is copied*/,W,}, }},
+    {0,"NtUserGetClassInfoEx", OK, 20, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(WNDCLASSEXW),W|CT,SYSARG_TYPE_WNDCLASSEXW}, {3,sizeof(PWSTR)/*pointer to existing string (ansi or unicode) is copied*/,W,}, }},
     {0,"NtUserGetClassLong", OK, 12, },
     {0,"NtUserGetClassName", OK, 12, {{2,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/}, }},
     {0,"NtUserGetClipCursor", OK, 4, {{0,sizeof(RECT),W,}, }},
@@ -1026,22 +1027,31 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
 {
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     WNDCLASSEXW safe;
-    if (pre) {
+    /* i#499: it seems that cbSize is not set for NtUserGetClassInfo when using
+     * user32!GetClassInfo so we use sizeof for writes.  I suspect that once
+     * they add any more new fields they will start using it.  We could
+     * alternatively keep the check here and treat this is a user32.dll bug and
+     * suppress it.
+     */
+    bool use_cbSize = TEST(SYSARG_READ, arg_info->flags);
+    if (pre && use_cbSize) {
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
                      sizeof(safe.cbSize), mc, "WNDCLASSEX.cbSize");
     }
     if (safe_read(start, sizeof(safe), &safe)) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     safe.cbSize, mc, "WNDCLASSEX");
+        check_sysmem(check_type, sysnum, start,
+                     use_cbSize ? safe.cbSize : sizeof(WNDCLASSEX), mc, "WNDCLASSEX");
         /* lpszMenuName can be from MAKEINTRESOURCE, and
          * lpszClassName can be an atom
          */
-        if (!is_atom((void *)safe.lpszMenuName)) {
+        if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszMenuName)) &&
+            !is_atom((void *)safe.lpszMenuName)) {
             handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
                             (byte *) safe.lpszMenuName, 0, arg_info->flags,
                             NULL, true);
         }
-        if (!is_int_resource((void *)safe.lpszClassName)) {
+        if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszClassName)) &&
+            !is_int_resource((void *)safe.lpszClassName)) {
             handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
                             (byte *) safe.lpszClassName, 0, arg_info->flags,
                             NULL, true);
