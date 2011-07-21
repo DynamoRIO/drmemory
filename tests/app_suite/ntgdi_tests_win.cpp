@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#define NOMINMAX
 #include <windows.h>
 
 #include <richedit.h>
@@ -26,8 +27,21 @@
 
 #include "gtest/gtest.h"
 
+#pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "riched20.lib")
+#pragma comment(lib, "user32.lib")
+
+TEST(NtGdiTests, GetTextMetricsW) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=395
+    HDC screen_dc = GetDC(NULL);
+    TEXTMETRICW font_metrics;
+    SetMapMode(screen_dc, MM_TEXT);
+    GetTextMetricsW(screen_dc, &font_metrics);
+    EXPECT_GT(font_metrics.tmHeight, 0);
+    EXPECT_GT(font_metrics.tmAscent, 0);
+}
 
 TEST(NtGdiTests, CreateTextServices) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=455
     CreateTextServices(NULL, NULL, NULL);  // it fails but it's OK
 }
