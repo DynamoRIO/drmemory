@@ -23,6 +23,15 @@
 # Dr. Memory default suppression file
 
 ##################################################
+# i#65: uninitialized value deliberately used to generate a random number
+
+UNINITIALIZED READ
+system call NtDeviceIoControlFile InputBuffer
+ADVAPI32.dll!*
+...
+ADVAPI32.dll!SystemFunction036
+
+##################################################
 # i#257: real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init
 
 LEAK
@@ -43,17 +52,27 @@ LEAK
 # _endthread().  Not sure whether csrss frees it when it frees the stack
 # but suppressing under the assumption it's a false positive.
 # I don't see this when using CreateThread.
+#
+# i#506: InitCommonControlsEx leaks some activation contexts too, with a bunch of
+# different frames at the top of the stack
 
 LEAK
-ntdll.dll!RtlAllocateActivationContextStack
+ntdll.dll!Rtl*ActivationContext*
 
-# i#286: 2nd frame is this for _beginthreadex:
+# i#286: the first two frames for _beginthreadex are:
+#   ntdll.dll!RtlAllocateActivationContextStack
 #   KERNEL*.dll!CreateRemoteThread*
 
-# i#445: for remote threads (e.g., nudges) next frames are:
+# i#445: for remote threads (e.g., nudges) the stacks start with:
+#   ntdll.dll!RtlAllocateActivationContextStack
 #   ntdll.dll!LdrpInitializeThread
 #   ntdll.dll!_LdrpInitialize
 #   ntdll.dll!LdrInitializeThunk
+
+# i#506: for InitCommonControlsEx the stacks start with:
+#   ntdll.dll!RtlActivateActivationContextEx/RtlpAllocateActivationContextStackFrame
+#   ntdll.dll!RtlActivateActivationContextEx
+#   ntdll.dll!RtlActivateActivationContext
 
 ##################################################
 # i#306: these are stored on ntdll!RtlCriticalSectionList
@@ -86,6 +105,23 @@ system call NtQueryValueKey UNICODE_STRING capacity
 kernel32.dll!*
 kernel32.dll!*
 kernel32.dll!GetPrivateProfileStringA
+
+##################################################
+# i#462, i#504: Deliberate write to beyond TOS
+
+# with symbols
+UNADDRESSABLE ACCESS
+CRYPTBASE.dll!AesEncrypt
+
+UNADDRESSABLE ACCESS
+RSAENH.dll!AesEncrypt
+
+# w/o symbols
+UNADDRESSABLE ACCESS
+CRYPTBASE.dll!SystemFunction036
+
+UNADDRESSABLE ACCESS
+<RSAENH.dll+0x1b46>
 
 ##################################################
 # i#492: false positive that needs per-bit granularity (i#113)
@@ -130,16 +166,6 @@ usp10.dll!ShapingGetGlyphPositions
 
 UNINITIALIZED READ
 usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
-
-##################################################
-# i#462: Deliberate write to beyond TOS
-
-UNADDRESSABLE ACCESS
-CRYPTBASE.dll!AesEncrypt
-
-# w/o symbols
-UNADDRESSABLE ACCESS
-CRYPTBASE.dll!SystemFunction036
 
 ##################################################
 # i#494: Custom data not all initialized
