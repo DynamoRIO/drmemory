@@ -1042,20 +1042,27 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
     if (safe_read(start, sizeof(safe), &safe)) {
         check_sysmem(check_type, sysnum, start,
                      use_cbSize ? safe.cbSize : sizeof(WNDCLASSEX), mc, "WNDCLASSEX");
-        /* lpszMenuName can be from MAKEINTRESOURCE, and
-         * lpszClassName can be an atom
-         */
-        if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszMenuName)) &&
-            !is_atom((void *)safe.lpszMenuName)) {
-            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
-                            (byte *) safe.lpszMenuName, 0, arg_info->flags,
-                            NULL, true);
-        }
-        if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszClassName)) &&
-            !is_int_resource((void *)safe.lpszClassName)) {
-            handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
-                            (byte *) safe.lpszClassName, 0, arg_info->flags,
-                            NULL, true);
+        /* For WRITE there is no capacity here so nothing to check (i#505) */
+        if ((pre && TEST(SYSARG_READ, arg_info->flags)) ||
+            (!pre && TEST(SYSARG_WRITE, arg_info->flags))) {
+                /* lpszMenuName can be from MAKEINTRESOURCE, and
+                 * lpszClassName can be an atom
+                 */
+                if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszMenuName)) &&
+                    !is_atom((void *)safe.lpszMenuName)) {
+                    handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
+                                    (byte *) safe.lpszMenuName, 0, arg_info->flags,
+                                    NULL, true);
+                }
+                if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszClassName)) &&
+                    !is_int_resource((void *)safe.lpszClassName)) {
+                    handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
+                                    /* docs say 256 is max length: we read until
+                                     * NULL though
+                                     */
+                                    (byte *) safe.lpszClassName, 0, arg_info->flags,
+                                    NULL, true);
+                }
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -2098,7 +2105,8 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
     uint num_driver = 5;
     uint num_pump = 6;
     if (running_on_Vista_or_later()) {
-        check_sysparam_defined(sysnum, 7, mc, sizeof(reg_t));
+        if (pre)
+            check_sysparam_defined(sysnum, 7, mc, sizeof(reg_t));
         num_driver = 6;
         num_pump = 7;
     }
