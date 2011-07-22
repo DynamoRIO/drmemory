@@ -20,11 +20,16 @@
  */
 
 #include <windows.h>
+
+#include <commctrl.h>
 #include <winuser.h>
 
 #include "gtest/gtest.h"
 
+#pragma comment(lib, "comctl32.lib")
+
 TEST(NtUserTests, SystemParametersInfo) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=10
     NONCLIENTMETRICS metrics;
     ZeroMemory(&metrics, sizeof(NONCLIENTMETRICS));
     metrics.cbSize = sizeof(NONCLIENTMETRICS);
@@ -65,9 +70,19 @@ void ReadAsciiStringFromClipboard(std::string *result) {
 }
 
 TEST(NtUserTests, ClipboardPutGet) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=45
     std::string tmp, str = "ASCII";
     WriteStringToClipboard(str);
     ReadAsciiStringFromClipboard(&tmp);
     ASSERT_STREQ("ASCII", tmp.c_str());
 }
+}
+
+TEST(NtUserTests, InitCommonControlsEx) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=362
+    INITCOMMONCONTROLSEX InitCtrlEx;
+
+    InitCtrlEx.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    InitCtrlEx.dwICC  = ICC_PROGRESS_CLASS;
+    InitCommonControlsEx(&InitCtrlEx);  // initialize common control sex
 }
