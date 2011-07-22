@@ -120,6 +120,8 @@ enum {
     SYSINFO_IMM32_DLL           = 0x00000004,
     /* Return value indicates failure only when zero */
     SYSINFO_RET_ZERO_FAIL       = 0x00000008,
+    /* Return value of STATUS_BUFFER_TOO_SMALL writes final arg but no others (i#486) */
+    SYSINFO_RET_SMALL_WRITE_LAST= 0x00000010,
 };
 
 #ifdef WINDOWS

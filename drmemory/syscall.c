@@ -535,6 +535,9 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
     byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
     if (!options.analyze_unknown_syscalls)
         return;
+    /* we analyze params even if syscall failed, since in some cases
+     * some params are still written (xref i#486, i#358)
+     */
     for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
         if (cpt->sysarg_ptr[i] != NULL) {
             if (safe_read(cpt->sysarg_ptr[i], cpt->sysarg_sz[i], post_val)) {
@@ -857,6 +860,9 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     ptr_uint_t size, last_size;
     uint num_args;
     int i, last_param = -1;
+#ifdef WINDOWS
+    ptr_int_t result = dr_syscall_get_result(drcontext);
+#endif
     LOG(SYSCALL_VERBOSE, "processing post system call #"PIFX" %s res="PIFX"\n",
         sysnum, sysinfo->name, dr_syscall_get_result(drcontext));
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
@@ -872,6 +878,14 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
             continue;
         ASSERT(!TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags),
                "inlined bool should always be read, not write");
+#ifdef WINDOWS
+        /* i#486: for too-small buffer, only last param written */
+        if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, sysinfo->flags) &&
+            result == STATUS_BUFFER_TOO_SMALL &&
+            i+1 < num_args &&
+            !sysarg_invalid(&sysinfo->arg[i+1]))
+            continue;
+#endif
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
         size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, false/*!pre*/, start,

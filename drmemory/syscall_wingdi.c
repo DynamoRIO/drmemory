@@ -244,7 +244,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetMinMaxInfo", OK, 12, {{1,sizeof(MINMAXINFO),W,}, }},
     {0,"NtUserGetMonitorInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(MONITORINFO,cbSize)}, }},
     {0,"NtUserGetMouseMovePointsEx", OK, 20, {{1,-0,R,}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,-0}, }},
-    {0,"NtUserGetObjectInformation", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
+    {0,"NtUserGetObjectInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(DWORD),W}, }},
     {0,"NtUserGetOpenClipboardWindow", OK, 0, },
     {0,"NtUserGetPriorityClipboardFormat", OK, 8, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(UINT)}, }},
     {0,"NtUserGetProcessWindowStation", OK, 0, },
@@ -2125,6 +2125,9 @@ bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                        dr_mcontext_t *mc)
 {
+    /* handlers here do not check for success so we check up front */
+    if (!pre && !os_syscall_succeeded(sysnum, NULL, dr_syscall_get_result(drcontext)))
+        return true;
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserMenuInfo) {

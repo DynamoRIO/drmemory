@@ -1038,6 +1038,10 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
 
 /* "The data was too large to fit into the specified buffer." */
 #define STATUS_BUFFER_OVERFLOW           ((NTSTATUS)0x80000005L)
+/* "The buffer is too small to contain the entry. No information has
+ * been written to the buffer."
+ */
+#define STATUS_BUFFER_TOO_SMALL          ((NTSTATUS)0xC0000023L)
 
 /***************************************************************************
  * from SDK winuser.h on later platforms

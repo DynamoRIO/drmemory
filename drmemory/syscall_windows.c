@@ -372,7 +372,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtQueryInformationPort", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryInformationProcess", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryInformationThread", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
-    {0,"NtQueryInformationToken", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
+    {0,"NtQueryInformationToken", OK|SYSINFO_RET_SMALL_WRITE_LAST, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryInstallUILanguage", OK, 4, {{0,sizeof(LANGID),W}, }},
     {0,"NtQueryIntervalProfile", OK, 8, {{1,sizeof(ULONG),W}, }},
     {0,"NtQueryIoCompletion", OK, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
@@ -1000,17 +1000,21 @@ os_shared_post_syscall(void *drcontext, int sysnum)
 bool
 os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
 {
+    /* if info==NULL we assume specially handled and we don't need to look it up */
+    if (info != NULL) {
+        if (TEST(SYSINFO_RET_ZERO_FAIL, info->flags))
+            return (res != 0);
+        /* i#486: syscalls that return the capacity needed in an OUT param
+         * will still write to it when returning STATUS_BUFFER_TOO_SMALL
+         */
+        if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, info->flags) &&
+            res == STATUS_BUFFER_TOO_SMALL)
+            return true;
+    }
     if (res == STATUS_BUFFER_OVERFLOW) {
-        /* Data is filled in so consider success */
+        /* Data is filled in so consider success (i#358) */
         return true;
     }
-    /* if info==NULL we assume special call and we don't need to look it up */
-    if (info != NULL && TEST(SYSINFO_RET_ZERO_FAIL, info->flags)) {
-        return (res != 0);
-    }
-    /* FIXME i#486: syscalls that return the capacity needed in an OUT param
-     * will still write to it when returning STATUS_BUFFER_TOO_SMALL
-     */
     return (res >= 0);
 }
 
@@ -2282,6 +2286,7 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
      * Perhaps NtContinue and NtSetContextThread should also be here?  OTOH,
      * the teb is an alloc.
      */
+    /* each handler checks result for success */
     if (sysnum == sysnum_CreateThread)
         handle_post_CreateThread(drcontext, sysnum, pt, &mc);
     else if (sysnum == sysnum_CreateThreadEx)
