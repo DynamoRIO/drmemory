@@ -51,6 +51,19 @@ UxTheme.dll!*
 ...
 ntdll.dll!KiUserCallbackDispatcher
 
+# http://code.google.com/p/drmemory/issues/detail?id=18
+LEAK
+ole32.dll!*
+...
+ole32.dll!CoInitialize
+
+UNINITIALIZED READ
+RPCRT4.dll!*
+RPCRT4.dll!UuidCreate
+ole32.dll!*
+...
+ole32.dll!CoInitialize
+
 # http://code.google.com/p/drmemory/issues/detail?id=275
 LEAK
 *!_getptd_noexit
