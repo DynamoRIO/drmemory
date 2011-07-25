@@ -108,5 +108,11 @@ LEAK
 ntdll.dll!RtlInitOutOfProcessMemoryStream
 ntdll.dll!RtlInitializeCriticalSection
 
+# http://code.google.com/p/drmemory/issues/detail?id=509
+UNADDRESSABLE ACCESS
+ADVAPI32.dll!*
+...
+ADVAPI32.dll!SystemFunction036
+
 # Don't remove the above empty line at EOF - this is a workaround for
 # http://code.google.com/p/drmemory/issues/detail?id=41
