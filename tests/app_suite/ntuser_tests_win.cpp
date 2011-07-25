@@ -78,6 +78,12 @@ TEST(NtUserTests, ClipboardPutGet) {
 }
 }
 
+TEST(NtUserTests, CoInitializeUninitialize) {
+    // Was: http://code.google.com/p/drmemory/issues/detail?id=65
+    CoInitialize(NULL);
+    CoUninitialize();
+}
+
 TEST(NtUserTests, InitCommonControlsEx) {
     // Was: http://code.google.com/p/drmemory/issues/detail?id=362
     INITCOMMONCONTROLSEX InitCtrlEx;
