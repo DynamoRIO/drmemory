@@ -57,13 +57,6 @@ ole32.dll!*
 ...
 ole32.dll!CoInitialize
 
-UNINITIALIZED READ
-RPCRT4.dll!*
-RPCRT4.dll!UuidCreate
-ole32.dll!*
-...
-ole32.dll!CoInitialize
-
 # http://code.google.com/p/drmemory/issues/detail?id=275
 LEAK
 *!_getptd_noexit
@@ -113,6 +106,12 @@ UNADDRESSABLE ACCESS
 ADVAPI32.dll!*
 ...
 ADVAPI32.dll!SystemFunction036
+
+# http://code.google.com/p/drmemory/issues/detail?id=511
+UNINITIALIZED READ
+RPCRT4.dll!*
+RPCRT4.dll!UuidCreate
+ole32.dll!*
 
 # Don't remove the above empty line at EOF - this is a workaround for
 # http://code.google.com/p/drmemory/issues/detail?id=41
