@@ -42,6 +42,12 @@ extern bool
 wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
                            const syscall_arg_t *arg_info, app_pc start, uint size);
 
+/* forward decl */
+bool
+handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
+                byte *start, size_t size, uint arg_flags, wchar_t *safe,
+                bool check_addr);
+
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
  */
