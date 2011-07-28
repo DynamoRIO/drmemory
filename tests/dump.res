@@ -31,7 +31,7 @@ malloc.c:163
 Error #2: WARNING: heap allocation failed
 malloc.c:174
 Error #3: INVALID HEAP ARGUMENT 
-malloc.c:181
+malloc.c:185
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 bytes

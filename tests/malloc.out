@@ -31,7 +31,13 @@ HeapFree failed 87
 %endif
 all done
 :::Dr.Memory::: ERRORS FOUND:
+%if UNIX
 :::Dr.Memory:::       1 unique,    20 total unaddressable access(es)
+%endif
+%if WINDOWS
+# extra unaddrs from code to avoid app crash on win7
+:::Dr.Memory:::       2 unique,    35 total unaddressable access(es)
+%endif
 :::Dr.Memory:::       2 unique,     2 total uninitialized access(es)
 %if WINDOWS
 # we have an extra test for invalid heap params
