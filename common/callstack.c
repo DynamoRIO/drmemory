@@ -559,6 +559,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     } appdata;
     app_pc custom_retaddr = NULL;
     app_pc lowest_frame = NULL;
+    bool first_iter = true;
 
     ASSERT(num == 0 || num == 1, "only 1 frame can already be printed");
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
@@ -611,10 +612,24 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         if (print_address(buf, bufsz, sofar, appdata.retaddr, NULL, modoffs_only,
                           !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags), pcs, true)) {
             num++;
-        } else if (buf != NULL && !modoffs_only) {
-            /* undo the fp= print */
-            *sofar = prev_sofar;
+        } else {
+            if (buf != NULL && !modoffs_only) {
+                /* undo the fp= print */
+                *sofar = prev_sofar;
+            }
+            if (first_iter) { /* don't trust "num == num_frames_printed" as test for 1st */
+                /* We may have started in a frameless function using ebp for
+                 * other purposes but it happens to point to higher on the stack.
+                 * Start over w/ top of stack to avoid skipping a frame (i#521).
+                 */
+                LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
+                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->esp, true/*top frame*/,
+                                                 &custom_retaddr);
+                first_iter = false; /* don't loop */
+                continue;
+            }
         }
+        first_iter = false;
         /* pcs->num_frames could be larger if frames were printed before this routine */
         if (num >= op_max_frames || (pcs != NULL && pcs->num_frames >= op_max_frames)) {
             if (buf != NULL && !modoffs_only)
