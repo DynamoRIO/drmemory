@@ -110,6 +110,7 @@ ADVAPI32.dll!SystemFunction036
 # http://code.google.com/p/drmemory/issues/detail?id=511
 UNINITIALIZED READ
 RPCRT4.dll!*
+...
 RPCRT4.dll!UuidCreate
 ole32.dll!*
 
