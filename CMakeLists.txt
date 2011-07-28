@@ -891,17 +891,18 @@ if (TOOL_DR_HEAPSTAT)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/drmemory/postprocess.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postleaks.pl" COPYONLY)
   set(script_aux ${script_aux} "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postleaks.pl")
-else (TOOL_DR_HEAPSTAT)
-  set(defsupp_out "${PROJECT_BINARY_DIR}/${BUILD_BIN}/suppress-default.txt")
-  if (WIN32)
-    set(defsupp_in "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/suppress-default.win.txt")
-    configure_file("${defsupp_in}" "${defsupp_out}" COPYONLY)
-  else (WIN32)
-    set(defsupp_in "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/suppress-default.lin.txt")
-    file(READ "${defsupp_in}" txt)
-    file(WRITE "${defsupp_out}" "${txt}")
-  endif (WIN32)
 endif (TOOL_DR_HEAPSTAT)
+
+# Dr. Memory and Dr. Heapstat use Dr. Memory's default suppressions
+set(defsupp_out "${PROJECT_BINARY_DIR}/${BUILD_BIN}/suppress-default.txt")
+if (WIN32)
+  set(defsupp_in "${CMAKE_CURRENT_SOURCE_DIR}/drmemory/suppress-default.win.txt")
+  configure_file("${defsupp_in}" "${defsupp_out}" COPYONLY)
+else (WIN32)
+  set(defsupp_in "${CMAKE_CURRENT_SOURCE_DIR}/drmemory/suppress-default.lin.txt")
+  file(READ "${defsupp_in}" txt)
+  file(WRITE "${defsupp_out}" "${txt}")
+endif (WIN32)
 
 ###########################################################################
 # installation

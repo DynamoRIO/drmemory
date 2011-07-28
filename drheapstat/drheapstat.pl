@@ -541,7 +541,7 @@ sub show_leaks() {
     # run Dr. Memory's postprocess.pl, which is copied as postleaks.pl
     # Xref PR 536878.
     my $pp = "$drheapstat_home/$bindir/postleaks.pl";
-    my @cmd = ("$^X", $pp, "-x", $exename, "-nodefault_suppress", "-leaks_only",
+    my @cmd = ("$^X", $pp, "-x", $exename, "-leaks_only",
                "-p", "", "-batch", "-l", $profdir);
     push @cmd, "-v" if ($verbose);
     push @cmd, ("-c", "$win32_a2l -f") if (&is_app_win32($exename));
