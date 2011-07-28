@@ -657,7 +657,7 @@ sub process_one_error($raw_error_lines_array_ref)
         # cache the error to catch dups.
         $error_cache{$err_str}{"dup_count"} = 0;
         $errnum++;
-        parse_error($lines, $err_str);
+        my $supp = parse_error($lines, $err_str);
         $error_cache{$err_str}{"type"} = $error{"type"};
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
         lookup_addr();
@@ -667,7 +667,7 @@ sub process_one_error($raw_error_lines_array_ref)
         # If the error passes the source filter and doesn't match
         # call stack suppression specified then print it.
         if (($srcfilter eq "" || ${$err_str_ref} =~ /$srcfilter/) && 
-            !suppress($error{"type"}, $err_cstack_ref, \$is_default)) {
+            !suppress($error{"type"}, $err_cstack_ref, \$is_default, $supp)) {
             print ${$err_str_ref};
 
             # If the first line excluding the read/write info was the same even
@@ -881,7 +881,7 @@ sub parse_error($arr_ref, $err_str)
         }
     }
     $supp =~ s/REPORTED WARNING/WARNING/;
-    print SUPP_OUT $supp if ($gen_suppress_offs);
+    return $supp;
 }
 
 #-------------------------------------------------------------------------------
@@ -1587,9 +1587,9 @@ sub add_suppress_callstack($type, $callstack, $default)
 # list; 0 otherwise and prints the call stack to the symbol-based suppression
 # file.
 #
-sub suppress($errname_in, $callstack_ref_in, $default_ref_in)
+sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
 {
-    my ($errname, $callstack_ref, $default_ref) = @_;
+    my ($errname, $callstack_ref, $default_ref, $supp_mod_offs) = @_;
     my $callstk_str = "";
 
     # Strip <nosym> and path from module name.
@@ -1620,6 +1620,10 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in)
             return 1;
         }
     }
+
+    # we need to wait until here to print this to avoid printing
+    # when suppressed (i#525)
+    print SUPP_OUT $supp_mod_offs if ($gen_suppress_offs);
 
     # Not matched.  If we reach this point then the <mod+offs> style call stack
     # has been written to the suppression info file, so let the user know that
