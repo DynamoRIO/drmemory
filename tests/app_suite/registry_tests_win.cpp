@@ -31,10 +31,11 @@ TEST(RegistryTests, CreateGetKey) {
     DWORD disposition;
     LONG result;
 
-    wchar_t subkey[] = L"Software\\DrMemory Unit Tests\\HKLM Override";
-    RegDeleteKeyW(HKEY_CURRENT_USER, subkey);  // Remove the key if it was present.
+    RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\DrMemory Tests\\HKLM Override");
+    RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\DrMemory Tests");
 
-    result = RegCreateKeyExW(HKEY_CURRENT_USER, subkey,
+    result = RegCreateKeyExW(HKEY_CURRENT_USER,
+                             L"Software\\DrMemory Tests\\HKLM Override",
                              0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
                              NULL, &hklm_key, &disposition);
     ASSERT_EQ(ERROR_SUCCESS, result);
@@ -56,4 +57,5 @@ TEST(RegistryTests, CreateGetKey) {
     result = RegGetKeySecurity(hklm_key, DACL_SECURITY_INFORMATION, original_sd,
                                &original_sd_size_needed);
     ASSERT_EQ(ERROR_SUCCESS, result);
+    RegCloseKey(hklm_key);
 }
