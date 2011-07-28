@@ -35,11 +35,13 @@ ADVAPI32.dll!SystemFunction036
 # i#257: real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init
 
 LEAK
+...
 *!operator new
 *!std::_Maklocstr<char>
 *!std::numpunct<*>::_Init
 
 LEAK
+...
 *!operator new
 *!operator new[]
 *!std::_Maklocstr<char>
