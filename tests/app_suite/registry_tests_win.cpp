@@ -31,8 +31,10 @@ TEST(RegistryTests, CreateGetKey) {
     DWORD disposition;
     LONG result;
 
-    result = RegCreateKeyExW(HKEY_CURRENT_USER,
-                             L"Software\\DrMemory Unit Tests\\HKLM Override",
+    wchar_t subkey[] = L"Software\\DrMemory Unit Tests\\HKLM Override";
+    RegDeleteKeyW(HKEY_CURRENT_USER, subkey);  // Remove the key if it was present.
+
+    result = RegCreateKeyExW(HKEY_CURRENT_USER, subkey,
                              0, NULL, REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS,
                              NULL, &hklm_key, &disposition);
     ASSERT_EQ(ERROR_SUCCESS, result);
