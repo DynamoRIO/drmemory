@@ -905,6 +905,8 @@ void
 client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
                         bool is_free)
 {
+    /* not reporting today */
+    LOG(1, "invalid heap arg\n");
 }
 
 void

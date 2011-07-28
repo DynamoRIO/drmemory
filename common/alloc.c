@@ -2469,7 +2469,12 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                     client_handle_mmap(pt, base, size, true/*anon*/);
                 } else {
                     byte *heap_base, *heap_end;
-                    if (heap_region_bounds(base - 1, &heap_base, &heap_end)) {
+                    if (heap_region_bounds(base - 1, &heap_base, &heap_end) &&
+                        /* do not extend adjacent if this is really for a different
+                         * Heap (i#520)
+                         */
+                        (pt->heap_handle == 0 ||
+                         (HANDLE) pt->heap_handle == heap_region_get_heap(base -1))) {
                         /* Some allocators (tcmalloc, e.g.) extend
                          * their heap even w/o an up-front reservation
                          */

@@ -631,6 +631,19 @@ is_in_heap_region_arena(app_pc pc)
 }
 
 #ifdef WINDOWS
+# ifdef DEBUG
+static void
+debug_walk_region(app_pc start, app_pc end _IF_WINDOWS(HANDLE heap))
+{
+    LOG(1, "heap "PFX" "PFX"-"PFX"\n", heap, start, end);
+}
+static void
+debug_walk_chunk(app_pc start, app_pc end)
+{
+    LOG(1, "\tchunk "PFX"-"PFX"\n", start, end);
+}
+# endif
+
 bool
 heap_region_set_heap(app_pc pc, HANDLE heap)
 {
@@ -646,6 +659,12 @@ heap_region_set_heap(app_pc pc, HANDLE heap)
         size_t node_size;
         rb_node_fields(node, &node_start, &node_size, (void **)&info);
         if (info->heap != heap) {
+            DOLOG(1, {
+                if (info->heap != INVALID_HANDLE_VALUE) {
+                    LOG(1, "\nHEAP WALK ON INCONSISTENCY\n");
+                    heap_iterator(debug_walk_region, debug_walk_chunk);
+                }
+            });
             ASSERT(info->heap == INVALID_HANDLE_VALUE, "conflicts in Heap for region");
             info->heap = heap;
             LOG(2, "set heap region "PFX"-"PFX" Heap to "PFX"\n",
