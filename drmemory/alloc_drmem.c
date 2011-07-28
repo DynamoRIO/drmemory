@@ -788,18 +788,22 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
          */
         app_pc real_base;
         size_t size;
-        bool has_redzone;
-        rb_node_fields(node, &real_base, &size, (void **)&has_redzone);
-        LOG(3, "\toverlap real base: "PFX"\n", real_base);
-        if (!has_redzone ||
+        union {
+            void *pad_out; /* rb_node_fields will write void*-sized bytes! (i#508) */
+            bool has_redzone;
+        } client;
+        rb_node_fields(node, &real_base, &size, (void **)&client);
+        LOG(3, "\toverlap real base: "PFX", size: %d\n", real_base, size);
+        if (!client.has_redzone ||
             (start < real_base + size - options.redzone_size &&
              end > real_base + options.redzone_size)) {
+            size_t redsz = (client.has_redzone ? options.redzone_size : 0);
             res = true;
             if (free_start != NULL)
-                *free_start = real_base + (has_redzone ? options.redzone_size : 0);
+                *free_start = real_base + redsz;
             /* size is the app-asked-for-size */
             if (free_end != NULL)
-                *free_end = real_base + size - (has_redzone ? options.redzone_size : 0);
+                *free_end = real_base + size - redsz;
         }
     }
     dr_mutex_unlock(delay_free_lock);
