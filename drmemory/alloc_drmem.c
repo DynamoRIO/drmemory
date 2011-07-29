@@ -1889,13 +1889,14 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
             uint slot = (addr - (app_pc)&teb->TlsSlots[0]) / sizeof(void*);
             LOG(3, "checking unaddressable TLS slot "PFX" => %d\n",
                  addr, slot);
-            tls_ok = (peb->TlsBitmap->Buffer[slot/32] & (1 << (slot % 32)));
+            tls_ok = ((peb->TlsBitmap->Buffer[slot/32] & (1 << (slot % 32))) != 0);
         } else {
             uint slot = (addr - (app_pc)teb->TlsExpansionSlots) / sizeof(void*);
             ASSERT(peb->TlsExpansionBitmap != NULL, "TLS mismatch");
             LOG(3, "checking unaddressable expansion TLS slot "PFX" => %d\n",
                  addr, slot);
-            tls_ok = (peb->TlsExpansionBitmap->Buffer[slot/32] & (1 << (slot % 32)));
+            tls_ok = ((peb->TlsExpansionBitmap->Buffer[slot/32] & (1 << (slot % 32)))
+                      != 0);
         }        
         LOG(3, "ignoring unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
             write ? "write" : "read", loc_to_print(loc), addr, shadow_get_byte(addr));
