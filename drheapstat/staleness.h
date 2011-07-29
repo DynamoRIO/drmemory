@@ -89,7 +89,7 @@ typedef struct _stale_snap_alloc_small_t {
      * actual values are found in the out-of-line extension array
      * at index ext_idx.
      */
-    bool uses_ext:1;
+    uint uses_ext:1; /* if "bool" won't occupy same dword as last_access */
     /* A ushort would do for <10-min run (for -time_clock) but w/ padding
      * no savings, so we use uint which is sufficient for nearly all runs.
      * We take the first bit from here to give more room for the other fields.
