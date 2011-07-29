@@ -505,7 +505,7 @@ write_suppress_pattern(uint type, const char *cstack, bool symbolic)
             end = strchr(epos, '\n');
             ASSERT(end != NULL, "suppress generation error");
             dr_fprintf(f_suppress, "%.*s"NL, end - epos, epos);
-        } else if (strstr(eframe, "not in a module") != NULL) {
+        } else if (strstr(eframe, "<not in a module>") != NULL) {
             dr_fprintf(f_suppress, "<not in a module>"NL);
         } else if (symbolic) {
             epos = strchr(eframe, '>');
@@ -610,7 +610,7 @@ top_frame_matches_suppression_frame(const char *error_stack,
     if (epos != NULL && epos < eol)
         return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
 
-    epos = strstr(error_stack, "not in a module");
+    epos = strstr(error_stack, "<not in a module>");
     if (epos != NULL && epos < eol)
         return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
 
