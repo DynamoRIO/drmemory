@@ -1293,28 +1293,44 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
     UNICODE_STRING us;
     UNICODE_STRING *arg = (UNICODE_STRING *) start;
     ASSERT(size == sizeof(UNICODE_STRING), "invalid size");
+
+    /* i#99: for optional params, we ignore if NULL. This may lead to false negatives */
+    if (arg == NULL)
+        return true;
+
     /* we assume OUT fields just have their Buffer as OUT */
     if (pre) {
         if (TEST(SYSARG_READ, arg_info->flags)) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start, size, mc,
-                         "UNICODE_STRING fields");
+            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Length,
+                         sizeof(arg->Length), mc, "UNICODE_STRING.Length");
+            /* i#519: MaximumLength may not be initialized in case of IN params. */
         } else {
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->MaximumLength,
                          sizeof(arg->MaximumLength), mc, "UNICODE_STRING.MaximumLength");
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
-                         sizeof(arg->Buffer), mc, "UNICODE_STRING.Buffer");
+            /* i#519: Length may not be initialized in case of OUT params. */
         }
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
+                     sizeof(arg->Buffer), mc, "UNICODE_STRING.Buffer");
     }
     if (safe_read((void*)start, sizeof(us), &us)) {
         LOG(SYSCALL_VERBOSE,
             "UNICODE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
             (byte *)us.Buffer, us.Length, us.MaximumLength);
         if (pre) {
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                         (byte *)us.Buffer, us.MaximumLength, mc,
-                         "UNICODE_STRING capacity");
-        }
-        if ((!pre || TEST(SYSARG_READ, arg_info->flags)) && us.MaximumLength > 0) {
+            if (TEST(SYSARG_READ, arg_info->flags)) {
+                /* For IN params, the buffer size is passed as us.Length */
+                ASSERT(!ignore_len, "Length must be defined for IN params");
+                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
+                             (byte *)us.Buffer, us.Length, mc,
+                             "UNICODE_STRING content");
+            } else {
+                /* For OUT params, MaximumLength-sized buffer should be addressable. */
+                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
+                             (byte *)us.Buffer, us.MaximumLength, mc,
+                             "UNICODE_STRING capacity");
+            }
+        } else if (us.MaximumLength > 0) {
+            /* Reminder: we don't do post-processing of IN params. */
             if (ignore_len) {
                 /* i#490: wrong Length stored so as workaround we walk the string */
                 handle_cwstring(pre, sysnum, mc, "UNICODE_STRING content",
