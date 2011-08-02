@@ -1335,6 +1335,12 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
                 /* For IN params, the buffer size is passed as us.Length */
                 ASSERT(!ignore_len, "Length must be defined for IN params");
                 check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
+                             /* XXX i#519: Length doesn't include NULL, but NULL seems
+                              * to be optional, though there is inconsistency.  While it
+                              * would be nice to clean up code by complaining if it's
+                              * not there, we'd hit false positives in
+                              * non-user-controlled code.
+                              */
                              (byte *)us.Buffer, us.Length, mc,
                              "UNICODE_STRING content");
             } else {
@@ -1352,7 +1358,10 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
                                 arg_info->flags, NULL, false);
             } else {
                 check_sysmem(check_type, sysnum, (byte *)us.Buffer,
-                             /* Length field does not include final NULL */
+                             /* Length field does not include final NULL.
+                              * We mark it defined even though it may be optional
+                              * in some situations: i#519.
+                              */
                              us.Length+sizeof(wchar_t),
                              mc, "UNICODE_STRING content");
             }
