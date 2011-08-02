@@ -178,9 +178,9 @@ main()
     { /* test failure of HeapFree due to invalid params */
         HANDLE newheap = HeapCreate(0, 0, 0);
         BOOL ok = TRUE;
-        char save[64]; /* to recover on win7 */
+        char save[8]; /* to recover on win7 */
         p1 = HeapAlloc(newheap, HEAP_ZERO_MEMORY, sizeof(int));
-        memcpy(save, (char *)p1 - 32, sizeof(save));
+        memcpy(save, (char *)p1 - sizeof(save), sizeof(save));
         if (setjmp(mark) == 0) { /* crashes on win7 (i#515) */
             ok = HeapFree(GetProcessHeap(), 0, p1);
             if (!ok) /* invalid Heap fails w/ 87 "The parameter is incorrect." */
@@ -188,7 +188,7 @@ main()
         } else
             printf("HeapFree failed 87\n"); /* match non-crash error */
         /* restore so we can try to free (else crashes again on win7) */
-        memcpy((char *)p1 - 32, save, sizeof(save));
+        memcpy((char *)p1 - sizeof(save), save, sizeof(save));
         ok = HeapFree(newheap, 0xffffffff, p1);
         if (!ok) /* invalid flags do not cause failure */
             printf("HeapFree failed %d\n", GetLastError());
