@@ -173,7 +173,7 @@ usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
 # i#494: Custom data not all initialized
 
 UNINITIALIZED READ
-system call NtConnectPort
+system call NtConnectPort parameter #6
 UxTheme.dll!*
 UxTheme.dll!*
 UxTheme.dll!*
