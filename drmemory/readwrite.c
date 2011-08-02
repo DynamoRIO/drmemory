@@ -2853,6 +2853,9 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     app_pc stack_base = NULL;
     size_t stack_size = 0;
     bool handled_push_addr = false;
+    bool is_write =
+        /* ADDR is assumed to be for writes only (i#517) */
+        TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags);
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
@@ -2917,7 +2920,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
                     addr+i < (app_pc)mc->esp)
                     addr_on_stack = true;
-                if (!check_unaddressable_exceptions(TEST(MEMREF_WRITE, flags), loc,
+                if (!check_unaddressable_exceptions(is_write, loc,
                                                     addr + i, sz, addr_on_stack)) {
                     bool new_bad = true;
                     if (bad_addr != NULL) {
@@ -2930,9 +2933,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                         } else if (bad_end < addr + i - 1) {
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
-                                 /* ADDR is assumed to be for writes only (i#517) */
-                                 TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags),
-                                 addr, addr + sz, mc);
+                                 is_write, addr, addr + sz, mc);
                         } else
                             new_bad = false;
                     }
@@ -2965,8 +2966,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 /* Must check for exceptions even if not reporting, since
                  * may alter value of shadow */
                 if (!check_undefined_exceptions(TEST(MEMREF_PUSHPOP, flags),
-                                                TEST(MEMREF_WRITE, flags),
-                                                loc, addr + i, sz, &shadow) &&
+                                                is_write, loc, addr + i, sz, &shadow) &&
                     TEST(MEMREF_CHECK_DEFINEDNESS, flags)) {
                     bool new_bad = true;
                     if (bad_addr != NULL) {
@@ -2975,7 +2975,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                                    "internal report error");
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
-                                 TEST(MEMREF_WRITE, flags), addr, addr + sz, mc);
+                                 is_write, addr, addr + sz, mc);
                         } else if (bad_end < addr + i - 1) {
                             report_undefined_read
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
@@ -3086,8 +3086,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         else {
             ASSERT(bad_type == SHADOW_UNADDRESSABLE, "internal report error");
             report_unaddressable_access
-                (loc, bad_addr, bad_end + 1 - bad_addr, TEST(MEMREF_WRITE, flags),
-                 addr, addr + sz, mc);
+                (loc, bad_addr, bad_end + 1 - bad_addr, is_write, addr, addr + sz, mc);
         }
     }
     return allgood;
