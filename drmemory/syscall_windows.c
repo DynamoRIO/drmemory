@@ -579,7 +579,14 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAlpcQueryInformationMessage", UNKNOWN, 24, },
     {0,"NtAlpcQueryInformationMessage", UNKNOWN, 24, },
     {0,"NtAlpcRevokeSecurityContext", UNKNOWN, 12, },
-    {0,"NtAlpcSendWaitReceivePort", UNKNOWN, 32, },
+    /* FIXME i#98:
+     * + #2 should be {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}
+     *   but it seems to have custom data that is not all IN
+     * + #3 and #6 are void* buffers but where is their size stored?
+     * + #4 could be {4,sizeof(PORT_MESSAGE),W|CT,SYSARG_TYPE_PORT_MESSAGE}
+     *   but I'm assuming #5 points at size of OUT PORT_MESSAGE
+     */
+    {0,"NtAlpcSendWaitReceivePort", UNKNOWN, 32, {{4,-5,WI}, {5,sizeof(ULONG),W}, {7,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtAlpcSetInformation", UNKNOWN, 16, },
     {0,"NtCancelIoFileEx", UNKNOWN, 12, },
     {0,"NtCancelSynchronousIoFile", UNKNOWN, 12, },
