@@ -40,10 +40,12 @@ TEST(RegistryTests, CreateGetKey) {
                              NULL, &hklm_key, &disposition);
     ASSERT_EQ(ERROR_SUCCESS, result);
 
+#if _MSC_VER >= 1500 /* broken on VS2005 (i#528) */
     // Create a SID that represents ALL USERS.
     DWORD users_sid_size = SECURITY_MAX_SID_SIZE;
     SID users_sid[SECURITY_MAX_SID_SIZE];
     ::CreateWellKnownSid(WinBuiltinUsersSid, NULL, users_sid, &users_sid_size);
+#endif
 
     // Get the security descriptor for the registry key.
     DWORD original_sd_size_needed = 0;
