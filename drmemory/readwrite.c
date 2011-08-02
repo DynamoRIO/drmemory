@@ -2930,7 +2930,9 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                         } else if (bad_end < addr + i - 1) {
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
-                                 TEST(MEMREF_WRITE, flags), addr, addr + sz, mc);
+                                 /* ADDR is assumed to be for writes only (i#517) */
+                                 TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags),
+                                 addr, addr + sz, mc);
                         } else
                             new_bad = false;
                     }
