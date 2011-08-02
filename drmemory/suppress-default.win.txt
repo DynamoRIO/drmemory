@@ -193,6 +193,24 @@ UNINITIALIZED READ
 gdiplus.dll!GdipCreateSolidFill
 
 ##################################################
+# i#511: bit manip uninit
+# Either will be handled by per-bit granularity,
+# is too complex (like i#529), or perhaps is a real
+# uninit but deliberate for random number gen:
+# regardless we want to suppress.
+
+UNINITIALIZED READ
+RPCRT4.dll!rc4_key
+
+# w/o symbols.
+# this func takes a single OUT pointer so low likelihood
+# of false neg since undef pointer will likely be unaddr
+# though could be a nearby internal func that maps to this
+# w/o syms: we'll live w/ the false negative risk.
+UNINITIALIZED READ
+RPCRT4.dll!UuidCreate
+
+##################################################
 # i#529: multi-instr partial xor-with-self
 # XXX: A better suppression can be made w/ per-instr
 # info via i#498.
