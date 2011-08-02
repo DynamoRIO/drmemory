@@ -683,6 +683,15 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 {
     void *drcontext = dr_get_current_drcontext();
     reg_id_t reg = sysparam_reg(sysnum, argnum);
+
+    /* indicate which syscall arg (i#510) */
+    char idmsg[32];
+    IF_DEBUG(int res = )
+        dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg),
+                    "parameter value #%d", argnum);
+    ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
+    NULL_TERMINATE_BUFFER(idmsg);
+
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
@@ -692,10 +701,10 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                     (app_pc)mc->xsp, argsz, mc, NULL);
+                     (app_pc)mc->xsp, argsz, mc, idmsg);
     } else {
         app_loc_t loc;
-        syscall_to_loc(&loc, sysnum, NULL);
+        syscall_to_loc(&loc, sysnum, idmsg);
         check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
     }
 }

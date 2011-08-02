@@ -983,8 +983,15 @@ get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
 void
 check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
 {
+    /* indicate which syscall arg (i#510) */
+    char idmsg[32];
+    int res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg),
+                          "parameter value #%d", argnum);
+    ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
+    NULL_TERMINATE_BUFFER(idmsg);
+
     check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                 get_sysparam_addr(argnum, mc), argsz, mc, NULL);
+                 get_sysparam_addr(argnum, mc), argsz, mc, idmsg);
 }
 
 bool

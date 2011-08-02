@@ -785,7 +785,9 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
     app_pc start;
     ptr_uint_t size;
     uint num_args;
-    int i, last_param = -1;
+    int i, last_param = -1, res;
+    char idmsg[32];
+
     LOG(2, "processing pre system call #"PIFX" %s\n", sysnum, sysinfo->name);
     num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
                                sysinfo->args_size);
@@ -843,9 +845,16 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
              * not defined we'll report and then mark as defined anyway.
              */
             if (!skip) {
+                /* indicate which syscall arg (i#510) */
+                res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
+                                  sysinfo->arg[i].param);
+                ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg),
+                       "message buffer too small");
+                NULL_TERMINATE_BUFFER(idmsg);
+
                 check_sysmem((TEST(SYSARG_READ, sysinfo->arg[i].flags) ?
                              MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE),
-                             sysnum, start, size, mc, NULL);
+                             sysnum, start, size, mc, idmsg);
             }
         }
     }
@@ -859,7 +868,8 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     app_pc start;
     ptr_uint_t size, last_size;
     uint num_args;
-    int i, last_param = -1;
+    int i, last_param = -1, res;
+    char idmsg[32];
 #ifdef WINDOWS
     ptr_int_t result = dr_syscall_get_result(drcontext);
 #endif
@@ -890,6 +900,11 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
         size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, false/*!pre*/, start,
                                sysnum, mc);
+        /* indicate which syscall arg (i#510) */
+        res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
+                          sysinfo->arg[i].param);
+        ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
+        NULL_TERMINATE_BUFFER(idmsg);
 
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size */
@@ -915,7 +930,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                 bool skip = os_handle_post_syscall_arg_access
                     (sysnum, mc, i, &sysinfo->arg[i], start, size);
                 if (!skip)
-                    check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
+                    check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, idmsg);
             }
             continue;
         }
@@ -933,7 +948,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
                                                           &sysinfo->arg[i],
                                                           start, size);
             if (!skip)
-                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, NULL);
+                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, idmsg);
         }
     }
 }
