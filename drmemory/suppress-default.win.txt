@@ -192,3 +192,12 @@ gdiplus.dll!DpRegion::FreeData
 UNINITIALIZED READ
 gdiplus.dll!GdipCreateSolidFill
 
+##################################################
+# i#529: multi-instr partial xor-with-self
+# XXX: A better suppression can be made w/ per-instr
+# info via i#498.
+
+UNINITIALIZED READ
+RPCRT4.dll!Ndr*
+RPCRT4.dll!Ndr*
+RPCRT4.dll!*
