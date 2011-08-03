@@ -3409,8 +3409,12 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
         buf[4] != UD2A_LENGTH)
         return false;
 
-    LOG(2, "checking whether fault is to enter slowpath raw ebx="PFX" app ebx="PFX" raw ecx="PFX" app ecx="PFX"\n",
-        raw_mc->xbx, mc->xbx, raw_mc->xcx, mc->xcx);
+    DOLOG(3, {
+        LOG(3, "checking whether fault is to enter slowpath: raw mc:\n");
+        print_mcontext(LOGFILE_LOOKUP(), mc);
+        LOG(3, "app mc:\n");
+        print_mcontext(LOGFILE_LOOKUP(), mc);
+    });
 #ifdef TOOL_DR_HEAPSTAT
     ASSERT(false, "should not get here");
 #endif
@@ -3443,8 +3447,12 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
 
     /* now resume by skipping ud2a */
     raw_mc->pc += UD2A_LENGTH;
-    LOG(3, "resuming post-ud2a at "PFX" raw ebx="PFX" app ebx="PFX" raw ecx="PFX" app ecx="PFX"\n",
-        raw_mc->pc, raw_mc->xbx, mc->xbx, raw_mc->xcx, mc->xcx);
+    DOLOG(3, {
+        LOG(3, "resuming post-ud2a at "PFX" raw mc:\n", raw_mc->pc);
+        print_mcontext(LOGFILE_LOOKUP(), mc);
+        LOG(3, "app mc:\n");
+        print_mcontext(LOGFILE_LOOKUP(), mc);
+    });
 
     return true;
 }
@@ -5222,9 +5230,13 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         save->eflags_saved = bi->eflags_used;
         /* We store the pc of the last instr, since everything is restored
          * already (and NOT present in our tls slots) if have a fault in that
-         * instr.
+         * instr: unless it's a transformed repstr, in which case the final
+         * OP_loop won't fault, so a fault will be before the restores (i#532).
          */
-        save->last_instr = instr_get_app_pc(last);
+        if (bi->is_repstr_to_loop)
+            save->last_instr = NULL;
+        else
+            save->last_instr = instr_get_app_pc(last);
         save->check_ignore_unaddr = check_ignore_unaddr;
         /* PR 495787: Due to non-precise flushing we can have a flushed bb
          * removed from the htables and then a new bb created before we received

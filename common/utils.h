@@ -217,6 +217,9 @@ extern file_t f_results;
 
 /* for warning/error reporting to logfile */
 #define LOGFILE(pt) ((pt) == NULL ? f_global : (pt)->f)
+#define LOGFILE_LOOKUP() \
+    LOGFILE((dr_get_current_drcontext() == NULL) ? NULL : \
+            (per_thread_t *)dr_get_tls_field(dr_get_current_drcontext()))
 /* we require a ,fmt arg but C99 requires one+ argument which we just strip */
 #define ELOGF(level, f, ...) do {   \
     if (op_verbose_level >= (level) && (f) != INVALID_FILE) \
@@ -466,6 +469,11 @@ bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
                    bool (*callback)(const char *name, size_t modoffs, void *data),
                    void *data);
+#endif
+
+#ifdef DEBUG
+void
+print_mcontext(file_t f, dr_mcontext_t *mc);
 #endif
 
 #if defined(WINDOWS) && defined (USE_DRSYMS)

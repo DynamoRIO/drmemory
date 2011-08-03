@@ -1025,6 +1025,8 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         return;
     dr_get_mcontext(drcontext, &mc);
 #ifdef WINDOWS
+    if (!options.check_stack_bounds)
+        return;
     if (sysnum == sysnum_continue) {
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
         if (cxt != NULL) {
@@ -1111,7 +1113,8 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
             LOGPT(2, pt, "SYS_rt_sigaction/etc.: bad handler\n");
         }
     }
-    else if (sysnum == SYS_rt_sigreturn IF_X86_32(|| sysnum == SYS_sigreturn)) {
+    else if ((sysnum == SYS_rt_sigreturn IF_X86_32(|| sysnum == SYS_sigreturn)) &&
+             options.check_stack_bounds) {
         /* PR 406333: linux signal delivery.
          * On sigreturn, whether altstack or not, invalidate
          * where frame was.  Either need to record at handler entry the base of
@@ -1184,6 +1187,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
                 LOG(2, "marking sigaltstack "PFX"-"PFX" unaddressable\n",
                     stk.ss_sp, cpt->sigaltstack);
                 shadow_set_range((app_pc)stk.ss_sp, cpt->sigaltstack,
+                                 options.check_stack_bounds ? SHADOW_DEFINED :
                                  SHADOW_UNADDRESSABLE);
             }
             LOG(2, "new sigaltstack "PFX"\n", cpt->sigaltstack);

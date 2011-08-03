@@ -251,6 +251,17 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
 }
 #endif
 
+#ifdef DEBUG
+void
+print_mcontext(file_t f, dr_mcontext_t *mc)
+{
+    dr_fprintf(f, "\teax="PFX", ebx="PFX", ecx="PFX", edx="PFX"\n"
+               "\tesi="PFX", edi="PFX", ebp="PFX", esp="PFX"\n",
+               mc->eax, mc->ebx, mc->ecx, mc->edx,
+               mc->esi, mc->edi, mc->ebp, mc->esp);
+}
+#endif
+
 /***************************************************************************
  * OPTION PARSING
  *

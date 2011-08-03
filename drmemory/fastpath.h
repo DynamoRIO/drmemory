@@ -127,6 +127,7 @@ struct _bb_info_t {
     int aflags;
     bool eax_dead;
     bool eflags_used;
+    bool is_repstr_to_loop;
     scratch_reg_info_t reg1;
     scratch_reg_info_t reg2;
     /* the instr after which we should spill global regs */

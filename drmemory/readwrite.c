@@ -3285,6 +3285,8 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
         /* now throw out the orig instr */
         instrlist_remove(bb, inst);
         instr_destroy(drcontext, inst);
+
+        bi->is_repstr_to_loop = true;
     }
 }
 
