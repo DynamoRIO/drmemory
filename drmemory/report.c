@@ -511,7 +511,11 @@ write_suppress_pattern(uint type, const char *cstack, bool symbolic)
             epos = strchr(eframe, '>');
             ASSERT(epos != NULL && *(epos+1) == ' ', "suppress generation error");
             epos += 2; /* skip '> ' */
+            /* if mod!func+offs, remove +offs */
             end = strchr(epos, '\n');
+            ques = strchr(epos, '+');
+            if (ques != NULL && ques < end)
+                end = ques;
             ASSERT(end != NULL, "suppress generation error");
             /* i#285: replace ? with * */
             ques = strchr(epos, '?');
@@ -587,6 +591,8 @@ static bool text_matches_pattern(const char *text, int text_length,
     }
     while (*pattern == '*')
         ++pattern;
+    LOG(4, "text_matches_pattern \"%.*s\": end at \"%.5s\"\n",
+        text_length, text, pattern);
     return *pattern == '\0';
 }
 
@@ -626,6 +632,7 @@ top_frame_matches_suppression_frame(const char *error_stack,
         return text_matches_pattern(epos, end_of_mod_off - epos, supp_frame, '+');
     } else {
         /* "mod!fun" suppression frame */
+        const char *stop;
         epos = strchr(error_stack, '!');
 #ifndef USE_DRSYMS
         if (epos == NULL) {
@@ -638,7 +645,11 @@ top_frame_matches_suppression_frame(const char *error_stack,
         ASSERT(epos != NULL && *(epos+1) == ' ' && epos < eol,
                "malformed frame");
         epos += 2; /* skip '> ' */
-        return text_matches_pattern(epos, eol - epos, supp_frame, '!');
+        /* if has "mod!fun+offs", ignore the "+offs" */
+        stop = strchr(epos, '+');
+        if (stop == NULL || stop > eol)
+            stop = eol;
+        return text_matches_pattern(epos, stop - epos, supp_frame, '!');
     }
 }
 
@@ -686,7 +697,8 @@ on_suppression_list(uint type, const char *error_stack, bool *on_default_list OU
     suppress_spec_t *supp;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     for (supp = supp_list[type]; supp != NULL; supp = supp->next) {
-        LOG(3, "supp: comparing to suppression pattern\n");
+        LOG(3, "supp: comparing error to suppression pattern starting \"%s\"\n",
+            supp->frames[0]);
         if (stack_matches_suppression(error_stack, supp)) {
             if (on_default_list != NULL)
                 *on_default_list = supp->is_default;
