@@ -623,7 +623,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetPath", OK, 16, {{1,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINT)}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(BYTE)}, }},
     {0,"NtGdiCreateCompatibleDC", OK, 4, },
     {0,"NtGdiCreateDIBitmapInternal", OK, 44, {{4,-8,R,}, {5,-7,R,}, }},
-    {0,"NtGdiCreateDIBSection", OK, 36, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }, &sysnum_GdiCreateDIBSection},
+    {0,"NtGdiCreateDIBSection", OK|SYSINFO_RET_ZERO_FAIL, 36, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }, &sysnum_GdiCreateDIBSection},
     {0,"NtGdiCreateSolidBrush", OK, 8, },
     {0,"NtGdiCreateDIBBrush", OK, 24, },
     {0,"NtGdiCreatePatternBrushInternal", OK, 12, },
@@ -1982,13 +1982,17 @@ handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *
                            dr_mcontext_t *mc)
 {
     byte *dib;
-    if (!pre && safe_read((byte *) pt->sysarg[8], sizeof(dib), &dib)) {
+    if (pre)
+        return true;
+    if (safe_read((byte *) pt->sysarg[8], sizeof(dib), &dib)) {
         /* XXX: move this into common/alloc.c since that's currently
          * driving all the known allocs, heap and otherwise
          */
         byte *dib_base;
         size_t dib_size;
         if (dr_query_memory(dib, &dib_base, &dib_size, NULL)) {
+            LOG(SYSCALL_VERBOSE, "NtGdiCreateDIBSection created "PFX"-"PFX"\n",
+                dib_base, dib_base+dib_size);
             client_handle_mmap(pt, dib_base, dib_size,
                                /* XXX: may not be file-backed but treating as
                                 * all-defined and non-heap which is what this param
@@ -1997,8 +2001,14 @@ handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *
                                true/*file-backed*/);
         } else
             WARN("WARNING: unable to query DIB section "PFX"\n", dib);
-    } else if (!pre)
+    } else
         WARN("WARNING: unable to read NtGdiCreateDIBSection param\n");
+    /* When passed-in section pointer is NULL, the return value is
+     * HBITMAP but doesn't seem to be a real memory address, which is
+     * odd, b/c presumably when a section is used it would be a real
+     * memory address, right?  The value is typically large so clearly
+     * not just a table index.  Xref i#539.
+     */
     return true;
 }
 
@@ -2126,8 +2136,11 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                        dr_mcontext_t *mc)
 {
     /* handlers here do not check for success so we check up front */
-    if (!pre && !os_syscall_succeeded(sysnum, NULL, dr_syscall_get_result(drcontext)))
-        return true;
+    if (!pre) {
+        syscall_info_t *sysinfo = syscall_lookup(sysnum);
+        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
+            return true;
+    }
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_UserMenuInfo) {
