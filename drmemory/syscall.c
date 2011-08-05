@@ -910,7 +910,10 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size */
-            if (size == 0) {
+            if (size == 0
+                IF_WINDOWS(/* i#: don't use OUT size on partial write */
+                           || result == STATUS_BUFFER_TOO_SMALL
+                           || result == STATUS_BUFFER_OVERFLOW)) {
                 /* we use SYSARG_LENGTH_INOUT for some optional params: in that
                  * case use the 1st entry's max size.
                  * XXX: we could put in our own param when the app supplies NULL
