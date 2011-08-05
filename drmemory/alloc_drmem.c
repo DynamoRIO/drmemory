@@ -964,6 +964,9 @@ client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *p
     }
     /* shared fields */
     cpt->shadow_regs = cpt_parent->shadow_regs;
+#ifdef WINDOWS
+    cpt->teb = cpt_parent->teb;
+#endif
     syscall_handle_callback(drcontext, pt_parent, pt_child, new_depth);
 }
 

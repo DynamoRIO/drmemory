@@ -60,6 +60,8 @@ typedef struct _client_per_thread_t {
     /* for talking with syscall-info driver */
     void *driver_buffer;
     int sysnum;
+    /* since we can't get TEB via syscall for some threads (i#442) */
+    TEB *teb;
 # endif
 #endif /* TOOL_DR_MEMORY */
 

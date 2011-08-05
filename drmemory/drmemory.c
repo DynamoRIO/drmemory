@@ -407,8 +407,10 @@ event_thread_exit(void *drcontext)
 #ifdef WINDOWS
     if (!options.leaks_only && options.shadowing) {
         /* the kernel de-allocs teb so we need to explicitly handle it */
-        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
-        ASSERT(teb != NULL, "invalid param");
+        /* use cached teb since can't query for some threads (i#442) */
+        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+        TEB *teb = cpt->teb;
+        ASSERT(teb != NULL, "cannot determine TEB for exiting thread");
         shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
     }
 
@@ -831,6 +833,12 @@ set_thread_initial_structures(void *drcontext)
     size_t stack_reserve_sz;
     IF_DEBUG(bool ok;)
     TEB *teb = get_TEB();
+
+    /* cache TEB since can't get it from syscall for some threads (i#442) */
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cpt->teb = teb;
+
     mc.size = sizeof(mc);
     /* FIXME: we currently assume the whole TEB except the 64 tls slots are
      * defined, b/c we're not in early enough to watch the others.

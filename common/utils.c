@@ -455,6 +455,8 @@ get_TEB_from_tid(thread_id_t tid)
         teb = get_TEB_from_handle(h);
         /* avoid DR's hook on NtClose: dr_close_file() calls the raw version */
         dr_close_file(h);
+    } else {
+        WARN("WARNING: get_TEB_from_tid tid=%d failed "PFX"\n", tid, res);
     }
     return teb;
 }

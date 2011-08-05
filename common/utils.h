@@ -252,8 +252,9 @@ extern file_t f_results;
 #ifdef DEBUG
 # define ASSERT(x, msg) do { \
     if (!(x)) { \
-        NOTIFY_ERROR("ASSERT FAILURE (thread %d): %s:%d: %s (%s)", \
-                     dr_get_thread_id(dr_get_current_drcontext()), \
+        NOTIFY_ERROR("ASSERT FAILURE (thread %d): %s:%d: %s (%s)",  \
+                     (dr_get_current_drcontext() == NULL ? 0 :      \
+                      dr_get_thread_id(dr_get_current_drcontext())),\
                      __FILE__,  __LINE__, #x, msg); \
         if (!op_ignore_asserts) drmemory_abort(); \
     } \
