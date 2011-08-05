@@ -296,6 +296,11 @@ OPTION_CLIENT_BOOL(drmemscope, check_alignment, false,
 OPTION_CLIENT_BOOL(drmemscope, fault_to_slowpath, true,
                    "For -no_check_uninitialized, use faults to exit to slowpath",
                    "Only applies for -no_check_uninitialized.  Determines whether to use faulting instructions rather than explicit jump-and-link to exit from fastpath to slowpath.")
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(internal, check_tls, true,
+                   "Check for access to un-reserved TLS slots",
+                   "Check for access to un-reserved TLS slots")
+#endif
 
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",

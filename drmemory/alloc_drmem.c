@@ -1878,7 +1878,7 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
 #ifdef WINDOWS
     /* For TLS, rather than proactively track sets and unsets, we check
      * on fault for whether set and we never mark as addressable.
-     * FIXME: for performance we should proactively track so we can mark
+     * FIXME i#537: for performance we should proactively track so we can mark
      * as addressable.  Should just watch the API and let people who
      * bypass to set the bits themselves deal w/ the false positives instead
      * of adding checks to all writes to catch tls bitmask writes.

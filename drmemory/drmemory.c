@@ -795,6 +795,20 @@ set_teb_initial_shadow(TEB *teb)
 {
     ASSERT(teb != NULL, "invalid param");
     set_initial_range((app_pc)teb, (app_pc)teb + offsetof(TEB, TlsSlots));
+
+    if (!options.check_tls || !options.check_uninitialized) {
+        /* FIXME i#537: for no-uninit, not checking TLS slots until we have proactive
+         * tracking, since an unaddr to slow path is too costly via fault
+         */
+        set_initial_range((app_pc)teb + offsetof(TEB, TlsSlots),
+                          (app_pc)teb + offsetof(TEB, TlsLinks));
+        if (teb->TlsExpansionSlots != 0) {
+            set_initial_range((app_pc)teb->TlsExpansionSlots,
+                              (app_pc)teb->TlsExpansionSlots +
+                              TLS_EXPANSION_BITMAP_SLOTS*sizeof(byte));
+        }
+    }
+
     /* FIXME: ideally we would know which fields were added in which windows
      * versions, and only define as far as the current version.
      * FIXME: each subsequent version adds new fields, so should we just say

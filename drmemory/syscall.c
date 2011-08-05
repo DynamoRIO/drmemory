@@ -482,7 +482,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                         cpt->sysarg_ptr[i] = start;
                         cpt->sysarg_sz[i] = j;
                     } else {
-                        LOG(1, "WARNING: unable to read syscall arg "PFX"-"PFX"!\n",
+                        LOG(SYSCALL_VERBOSE,
+                            "WARNING: unable to read syscall arg "PFX"-"PFX"!\n",
                             start, start + j);
                         cpt->sysarg_sz[i] = 0;
                     }
