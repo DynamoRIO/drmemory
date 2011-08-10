@@ -291,6 +291,7 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF)
   newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF)
   newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF)
+  newtest_nobuild(addronly free "" "-no_check_uninitialized" "" OFF)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

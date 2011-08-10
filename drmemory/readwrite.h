@@ -64,6 +64,10 @@ enum {
                                         * of source shadow addr, which has already
                                         * been checked for addressability */
     MEMREF_CHECK_ADDRESSABLE  = 0x100, /* for pre-write */
+    /* MEMREF_WRITE marks as defined, so for -no_check_uninitialized we
+     * use MEMREF_CHECK_ADDRESSABLE for reads and writes.  This distinguishes.
+     */
+    MEMREF_IS_READ            = 0x200,
 };
 
 #ifdef STATISTICS

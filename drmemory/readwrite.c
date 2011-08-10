@@ -1654,9 +1654,9 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
         if (opnd_uses_nonignorable_memory(opnd)) {
             opnd = adjust_memop(inst, opnd, false, &sz, &pushpop_stackop);
             if (pushpop_stackop && options.check_stack_bounds)
-                flags = MEMREF_PUSHPOP;
+                flags = MEMREF_PUSHPOP | MEMREF_IS_READ;
             else
-                flags = MEMREF_CHECK_ADDRESSABLE;
+                flags = MEMREF_CHECK_ADDRESSABLE | MEMREF_IS_READ;
             memop = opnd;
             check_mem_opnd(opc, flags, loc, opnd, sz, mc, NULL);
         }
@@ -2855,7 +2855,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     bool handled_push_addr = false;
     bool is_write =
         /* ADDR is assumed to be for writes only (i#517) */
-        TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags);
+        TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags) &&
+        !TEST(MEMREF_IS_READ, flags);
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :

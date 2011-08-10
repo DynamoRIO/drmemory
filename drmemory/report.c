@@ -1386,7 +1386,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     if (type == ERROR_UNADDRESSABLE) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "UNADDRESSABLE ACCESS: %s"PFX"-"PFX" %d byte(s)",
-                 options.check_uninitialized ? (write ? "writing " : "reading ") : "",
+                 write ? "writing " : "reading ",
                  addr, addr+sz, sz);
         /* only report for syscall params or large (string) ops: always if subset */
         if (container_start != NULL &&
