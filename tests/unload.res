@@ -1,6 +1,5 @@
 # **********************************************************
 # Copyright (c) 2011 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,23 +18,3 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNINITIALIZED READ: reading 4 byte(s)
-%if WINDOWS
-# raises on the load since uses fld instead of mov
-float.c:37
-%endif
-%if UNIX
-float.c:38
-%endif
-Error #2: UNINITIALIZED READ: reading 8 byte(s)
-float.c:43
-Error #3: UNINITIALIZED READ: reading 4 byte(s)
-float.c:45
-Error #4: UNINITIALIZED READ: reading 4 byte(s)
-float.c:47
-Error #5: UNINITIALIZED READ: reading 8 byte(s)
-float.c:49
-# PR 473614: cl's /RTC1 fills all locals w/ 0xcccccccc
-# but /RTC1 is now off (for i#545) so re-enabling
-Error #6: UNINITIALIZED READ: reading 8 byte(s)
-float.c:55

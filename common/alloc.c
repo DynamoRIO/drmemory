@@ -720,6 +720,13 @@ static void *gencode_lock;
 /* We need room for one routine per realloc: one per module in some cases */
 #define GENCODE_SIZE (2*PAGE_SIZE)
 
+/* To handle module unloads we have a free list (i#545), protected by gencode_lock */
+static byte *gencode_free;
+#ifdef WINDOWS
+static byte *gencode_free_dbg;
+static byte *gencode_free_Rtl;
+#endif
+
 /* In alloc_unopt.c b/c we do not want these optimized, and for
  * gcc < 4.4 we have no control (volatile is not good enough).
  */
@@ -787,6 +794,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     IF_DEBUG(alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);)
     byte *size_func;
     uint found_calls = 0;
+    byte **free_list = NULL;
     ASSERT(options.replace_realloc, "should not get here");
     ASSERT(set != NULL, "invalid param");
     /* if no set_size (e.g., ld-linux.so.2) or only usable size (which
@@ -810,15 +818,28 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         return;
     }
 #ifdef WINDOWS
-    dpc = (set->type == HEAPSET_RTL) ?
-        ((byte *) replace_realloc_template_Rtl) : 
-        ((set->type == HEAPSET_LIBC_DBG) ?
-         ((byte *) replace_realloc_template_dbg) : ((byte *) replace_realloc_template));
-#else
-    dpc = ((byte *) replace_realloc_template);
+    if (set->type == HEAPSET_RTL) {
+        dpc = (byte *) replace_realloc_template_Rtl;
+        free_list = &gencode_free_Rtl;
+    } else if (set->type == HEAPSET_LIBC_DBG) {
+        dpc = (byte *) replace_realloc_template_dbg;
+        free_list = &gencode_free_dbg;
+    } else {
 #endif
-    epc_start = gencode_cur;
-    epc = gencode_cur;
+        dpc = (byte *) replace_realloc_template;
+        free_list = &gencode_free;
+#ifdef WINDOWS
+    }
+#endif
+
+    /* i#545: we use a free list to re-use sequences from unloaded modules */
+    if (*free_list != NULL) {
+        epc_start = *free_list;
+        *free_list = *((byte **)free_list);
+    } else
+        epc_start = gencode_cur;
+    epc = epc_start;
+
     instr_init(drcontext, &inst);
     do {
         instr_reset(drcontext, &inst);
@@ -874,7 +895,8 @@ generate_realloc_replacement(alloc_routine_set_t *set)
                            DR_MEMPROT_READ|DR_MEMPROT_EXEC)) {
         ASSERT(false, "failed to re-protect realloc gencode");
     }
-    gencode_cur = epc;
+    if (epc_start == gencode_cur) /* else using free list */
+        gencode_cur = epc;
     dr_mutex_unlock(gencode_lock);
 
     if (success) {
@@ -1751,20 +1773,59 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         dr_mutex_lock(alloc_routine_lock);
         for (i = 0; i < POSSIBLE_LIBC_ROUTINE_NUM; i++) {
             app_pc pc = lookup_symbol_or_export(info, possible_libc_routines[i].name);
+            LOG(3, "lookup %s => "PFX"\n", possible_libc_routines[i].name, pc);
             if (pc != NULL) {
-                IF_DEBUG(bool found = )
-                    hashtable_remove(&alloc_routine_table, (void *)pc);
-                DOLOG(1, {
-                    if (!found) {
-                        /* some dlls have malloc_usable_size and _msize
-                         * pointing at the same place, which will trigger this
-                         */
-                        LOG(1, "WARNING: did not find %s @"PFX" for %s\n",
-                            possible_libc_routines[i].name, pc,
-                            dr_module_preferred_name(info) == NULL ? "<null>" :
-                            dr_module_preferred_name(info));
+                alloc_routine_entry_t *e =
+                    hashtable_lookup(&alloc_routine_table, (void *)pc);
+                if (e != NULL) {
+                    IF_DEBUG(bool found;)
+                    /* could wait for realloc but we remove on 1st hit */
+                    if (e->set->realloc_replacement != NULL) {
+                        /* put replacement routine on free list (i#545) */
+                        byte **free_list;
+                        dr_mutex_lock(gencode_lock);
+#ifdef WINDOWS
+                        free_list = (e->set->type == HEAPSET_RTL) ? &gencode_free_Rtl :
+                            ((e->set->type == HEAPSET_LIBC_DBG) ? &gencode_free_dbg :
+                             &gencode_free);
+#else
+                        free_list = &gencode_free;
+#endif
+                        LOG(3, "writing "PFX" as next free list to "PFX"\n",
+                            *free_list, e->set->realloc_replacement);
+                        /* we keep read-only to work around DRi#404 */
+                        if (!dr_memory_protect(gencode_start, GENCODE_SIZE,
+                                               DR_MEMPROT_READ|DR_MEMPROT_WRITE|
+                                               DR_MEMPROT_EXEC)) {
+                            ASSERT(false, "failed to unprotect realloc gencode");
+                        } else {
+                            *((byte **)e->set->realloc_replacement) = *free_list;
+                            if (!dr_memory_protect(gencode_start, GENCODE_SIZE,
+                                                   DR_MEMPROT_READ|DR_MEMPROT_EXEC)) {
+                                ASSERT(false, "failed to re-protect realloc gencode");
+                            }
+                        }
+                        *free_list = e->set->realloc_replacement;
+                        e->set->realloc_replacement = NULL;
+                        dr_mutex_unlock(gencode_lock);
                     }
-                });
+                    IF_DEBUG(found =)
+                        hashtable_remove(&alloc_routine_table, (void *)pc);
+
+                    LOG(3, "removing %s "PFX" from interception table: found=%d\n",
+                        possible_libc_routines[i].name, pc, found); 
+                    DOLOG(1, {
+                        if (!found) {
+                            /* some dlls have malloc_usable_size and _msize
+                             * pointing at the same place, which will trigger this
+                             */
+                            LOG(1, "WARNING: did not find %s @"PFX" for %s\n",
+                                possible_libc_routines[i].name, pc,
+                                dr_module_preferred_name(info) == NULL ? "<null>" :
+                                dr_module_preferred_name(info));
+                        }
+                    });
+                }
             }
         }
 #ifdef WINDOWS
