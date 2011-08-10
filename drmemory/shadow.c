@@ -1708,6 +1708,21 @@ get_thread_tls_value(void *drcontext, uint index)
     }
 }
 
+void
+set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
+{
+    if (index < options.num_spill_slots) {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+        shadow_registers_t *sr = (shadow_registers_t *) cpt->shadow_regs;
+        *(ptr_uint_t *)
+            (((byte *)sr) + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
+    } else {
+        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
+        dr_write_saved_reg(drcontext, DR_slot, val);
+    }
+}
+
 ptr_uint_t
 get_raw_tls_value(uint offset)
 {

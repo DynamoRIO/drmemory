@@ -964,6 +964,12 @@ prepare_thread_for_scan(void *drcontext)
          * b/c it is all initialized and we can be more liberal wrt leaks.
          */
         TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        if (teb == NULL) {
+            /* can happen due to permissions problems (i#442).
+             * we use a cached teb value placed at thread exit (i#547).
+             */
+            teb = (TEB *) get_thread_tls_value(drcontext, SPILL_SLOT_1);
+        }
         ASSERT(teb != NULL, "invalid param");
         shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_DEFINED);
     }
@@ -980,6 +986,8 @@ restore_thread_after_scan(void *drcontext)
     if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
         /* Re-mark as unaddr */
         TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        if (teb == NULL) /* see above */
+            teb = (TEB *) get_thread_tls_value(drcontext, SPILL_SLOT_1);
         ASSERT(teb != NULL, "invalid param");
         shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
     }

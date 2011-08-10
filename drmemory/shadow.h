@@ -265,6 +265,9 @@ set_own_tls_value(uint index, ptr_uint_t val);
 ptr_uint_t
 get_thread_tls_value(void *drcontext, uint index);
 
+void
+set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val);
+
 ptr_uint_t
 get_raw_tls_value(uint offset);
 

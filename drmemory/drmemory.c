@@ -412,6 +412,8 @@ event_thread_exit(void *drcontext)
         TEB *teb = cpt->teb;
         ASSERT(teb != NULL, "cannot determine TEB for exiting thread");
         shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
+        /* pass cached teb to leak scan (i#547) in place we won't free */
+        set_thread_tls_value(drcontext, SPILL_SLOT_1, (ptr_uint_t)teb);
     }
 
     while (pt->prev != NULL)
