@@ -151,6 +151,8 @@ typedef struct _bb_saved_info_t {
     bool eflags_saved:1;
     /* For PR 578892, to avoid DR having to store translations */
     bool check_ignore_unaddr:1;
+    /* we store the size and assume bbs are contiguous so we can free (i#260) */
+    ushort bb_size;
     app_pc last_instr;
 } bb_saved_info_t;
 

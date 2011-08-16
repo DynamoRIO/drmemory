@@ -1751,27 +1751,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 }
 
-/* removes all entries with key in [start..end) */
-static void
-hashtable_remove_range(hashtable_t *table, byte *start, byte *end)
-{
-    uint i;
-    if (table->synch)
-        hashtable_lock(table);
-    for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
-        hash_entry_t *he, *nxt;
-        for (he = table->table[i]; he != NULL; he = nxt) {
-            /* support hashtable_remove() while iterating */
-            nxt = he->next;
-            if ((byte *)he->key >= start && (byte *)he->key < end) {
-                hashtable_remove(table, he->key);
-            }
-        }
-    }
-    if (table->synch)
-        hashtable_unlock(table);
-}
-
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
 {

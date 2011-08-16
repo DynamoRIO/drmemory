@@ -455,6 +455,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
 {
     bb_saved_info_t *save;
     stringop_entry_t *stringop;
+    uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
     if (options.leaks_only || !options.shadowing)
         return;
@@ -468,12 +469,37 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
          */
         LOG(3, "event_fragment_delete "PFX" ignore_next_delete=%d\n",
             tag, save->ignore_next_delete);
-        if (save->ignore_next_delete == 0)
+        if (save->ignore_next_delete == 0) {
+            bb_size = save->bb_size;
             hashtable_remove(&bb_table, tag);
-        else /* hashtable lock is held so no race here */
+        } else /* hashtable lock is held so no race here */
             save->ignore_next_delete--;
     }
     hashtable_unlock(&bb_table);
+
+    if (bb_size > 0) {
+        /* i#260: remove xl8_sharing_table and ignore_unaddr_table entries.  We can't
+         * decode forward (not always safe) and query every app pc, so we store the
+         * bb size and assume bbs are contiguous (no elision) and there are no traces
+         * (already assuming that for i#114 and dr_fragment_exists_at()).  We assume
+         * walking these hashtables is faster than switching to an rbtree, and it's
+         * not worth storing pointers in bb_saved_info_t.
+         *
+         * Without removing, new code that replaces old code at the same address can
+         * fail to be optimized b/c it will use the old code's history: so a perf
+         * failure, not a correctness failure.  Failing to remove from
+         * ignore_unaddr_table can lead to false negatives.
+         */
+        /* XXX i#551: -single_arg_slowpath adds a second xl8_sharing_table entry with
+         * cache pc for each app pc entry which we are not deleting yet.  May need a
+         * table to map the two.  Xref DRi#409: while there's no good solution from
+         * the DR side for app pc flushing, perhaps some event on re-using cache pcs
+         * could work but seems too specialized.
+         */
+        app_pc start = dr_fragment_app_pc(tag);
+        hashtable_remove_range(&xl8_sharing_table, start, start + bb_size);
+        hashtable_remove_range(&ignore_unaddr_table, start, start + bb_size);
+    }
 
     dr_mutex_lock(stringop_lock);
     /* We rely on repstr_to_loop arranging the repstr to be the only
@@ -493,22 +519,6 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
             stringop->ignore_next_delete--;
     }
     dr_mutex_unlock(stringop_lock);
-
-    /* XXX i#260: ideally would also remove xl8_sharing_table entries
-     * but would need to decode forward (not always safe) and query
-     * every app pc, or store bb size and then walk entire
-     * xl8_sharing_table or switch it to an rbtree, or also store a
-     * pointer in the bb hashtable.
-     * Without removing, new code that replaces old code at the same address
-     * can fail to be optimized b/c it will use the old code's history: so
-     * a perf failure, not a correctness failure.
-     * -single_arg_slowpath adds a second entry with cache pc for each app
-     * pc entry, which is harder to delete but we're not deleting anything
-     * now anyway.
-     */
-    /* FIXME i#260: ditto for ignore_unaddr_table, though there we
-     * could have false negatives!
-     */
 }
 
 /***************************************************************************

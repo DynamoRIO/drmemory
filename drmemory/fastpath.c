@@ -5238,6 +5238,20 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         else
             save->last_instr = instr_get_app_pc(last);
         save->check_ignore_unaddr = check_ignore_unaddr;
+        {
+            /* we store the size and assume bbs are contiguous so we can free (i#260) */
+            instr_t *inst;
+            for (inst = instrlist_first(bb); /* find first app inst */
+                 inst != NULL && !instr_ok_to_mangle(inst);
+                 inst = instr_get_next(inst))
+                ;
+            ASSERT(instr_get_app_pc(last) != NULL, "last instr should have app pc");
+            ASSERT(instr_get_app_pc(inst) != NULL, "first instr should have app pc");
+            ASSERT(instr_get_app_pc(last) >= instr_get_app_pc(inst),
+                   "bb should be contiguous w/ increasing pcs");
+            save->bb_size = instr_get_app_pc(last) + instr_length(drcontext, last) -
+                instr_get_app_pc(inst);
+        }
         /* PR 495787: Due to non-precise flushing we can have a flushed bb
          * removed from the htables and then a new bb created before we received
          * the deletion event.  We can't tell this apart from duplication due to
