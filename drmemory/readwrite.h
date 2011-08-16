@@ -169,7 +169,7 @@ bool
 event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_t *info);
 
 void
-event_fragment_delete(void *drcontext, void *tag);
+instrument_fragment_delete(void *drcontext, void *tag);
 
 bool
 instr_can_use_shared_slowpath(instr_t *inst);

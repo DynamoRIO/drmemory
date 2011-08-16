@@ -262,6 +262,17 @@ print_mcontext(file_t f, dr_mcontext_t *mc)
 }
 #endif
 
+void
+hashtable_delete_with_stats(hashtable_t *table, const char *name)
+{
+    LOG(1, "final %s table size: %u bits, %u entries\n", name,
+        table->table_bits, table->entries);
+    /* XXX: add collision data: though would want those stats mid-run
+     * for tables that have entries freed during exit before here
+     */
+    hashtable_delete(table);
+}
+
 /***************************************************************************
  * OPTION PARSING
  *

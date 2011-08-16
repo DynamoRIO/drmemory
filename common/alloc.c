@@ -1431,6 +1431,10 @@ post_call_lookup(app_pc pc)
  */
 #define CALL_SITE_TABLE_HASH_BITS 10
 static hashtable_t call_site_table;
+/* To remove from call_site_table we need to map tags to sites.
+ * We assume just one call site per tag (no traces).
+ */
+static hashtable_t tag_to_call_site_table;
 
 /* we need to know which heap allocations were there before we took
  * control (so we know whether size is stored in redzone) and for leak
@@ -1557,8 +1561,10 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
                           NULL, NULL);
-        hashtable_init_ex(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
-                          false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
+        hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
+        hashtable_init(&tag_to_call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
         hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!strdup*/);
     }
@@ -1599,9 +1605,10 @@ alloc_exit(void)
     if (options.track_allocs) {
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
-        hashtable_delete(&post_call_table);
-        hashtable_delete(&call_site_table);
-        hashtable_delete(&native_alloc_table);
+        hashtable_delete_with_stats(&post_call_table, "post_call");
+        hashtable_delete_with_stats(&call_site_table, "call_site");
+        hashtable_delete_with_stats(&tag_to_call_site_table, "tag_to_call_site");
+        hashtable_delete_with_stats(&native_alloc_table, "native_alloc");
     }
 
     if (options.replace_realloc) {
@@ -1744,14 +1751,13 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 }
 
-/* removes all entries with key in [start..end)
- * hashtable must use caller-synch
- */
+/* removes all entries with key in [start..end) */
 static void
 hashtable_remove_range(hashtable_t *table, byte *start, byte *end)
 {
     uint i;
-    hashtable_lock(table);
+    if (table->synch)
+        hashtable_lock(table);
     for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
         hash_entry_t *he, *nxt;
         for (he = table->table[i]; he != NULL; he = nxt) {
@@ -1762,7 +1768,8 @@ hashtable_remove_range(hashtable_t *table, byte *start, byte *end)
             }
         }
     }
-    hashtable_unlock(table);
+    if (table->synch)
+        hashtable_unlock(table);
 }
 
 void
@@ -1841,12 +1848,61 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         dr_mutex_unlock(alloc_routine_lock);
     }
 
-    /* XXX i#114: should also remove from post_call_table and call_site_table
-     * on other code modifications: for now we assume no such
-     * changes to app code.
+    if (options.track_allocs) {
+        hashtable_lock(&post_call_table);
+        hashtable_remove_range(&post_call_table, info->start, info->end);
+        hashtable_unlock(&post_call_table);
+        
+        hashtable_remove_range(&call_site_table, info->start, info->end);
+        hashtable_remove_range(&tag_to_call_site_table, info->start, info->end);
+    }
+}
+
+void
+alloc_fragment_delete(void *dc/*may be NULL*/, void *tag)
+{
+    /* i#114: to remove from call_site_table we have another table that
+     * maps tags to sites.  Since no traces, we have at most one site per tag.
      */
-    hashtable_remove_range(&post_call_table, info->start, info->end);
-    hashtable_remove_range(&call_site_table, info->start, info->end);
+    app_pc site;
+    IF_DEBUG(bool removed;)
+    /* for shared fragments dc may be null so we get cur thread */
+    void *drcontext = (dc == NULL ? dr_get_current_drcontext() : dc);
+    /* after we exit a thread we clear tls field so pt may be null */
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    /* i#552: don't remove on our own flush or else we can get our
+     * recursion counts off b/c we flush inside an alloc routine.
+     *
+     * XXX i#553: DR-initiated flush at certain points could cause the same problem!
+     */
+    if (!options.track_allocs)
+        return;
+    LOG(4, "alloc_fragment_delete "PFX" vs flushed "PFX"\n", tag,
+        (pt == NULL ? NULL : pt->flushed_tag));
+    if (pt != NULL && pt->flushed_tag == tag)
+        return;
+    site = (app_pc) hashtable_lookup(&tag_to_call_site_table, tag);
+    if (site != NULL && (pt == NULL || site != pt->flushed_tag)) {
+        IF_DEBUG(removed =)
+            hashtable_remove(&call_site_table, (void *) site);
+        DOLOG(2, {
+            if (removed)
+                LOG(1, "removed "PFX" (tag "PFX") from call_site_table\n", site, tag);
+        });
+        IF_DEBUG(removed =) 
+            hashtable_remove(&tag_to_call_site_table, tag);
+    }
+    /* For post_call_table, just like in our use of dr_fragment_exists_at, we
+     * assume no traces and that we only care about fragments starting there
+     */
+    hashtable_lock(&post_call_table);
+    IF_DEBUG(removed =) 
+        hashtable_remove(&post_call_table, tag);
+    DOLOG(2, {
+        if (removed)
+            LOG(1, "removed "PFX" from post_call_table\n", tag);
+    });
+    hashtable_unlock(&post_call_table);
 }
 
 /* We need to support our malloc routines being called either on their
@@ -4116,9 +4172,7 @@ static void
 alloc_hook(app_pc pc)
 {
     void *drcontext = dr_get_current_drcontext();
-#if defined(WINDOWS) || defined(DEBUG)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-#endif
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
@@ -4158,14 +4212,24 @@ alloc_hook(app_pc pc)
                 e->callee = pc;
                 e->existing_instrumented = false;
                 hashtable_add(&post_call_table, (void*)retaddr, (void*)e);
+                LOG(2, "adding post-call %s "PFX" from "PFX"\n",
+                    get_alloc_routine_name(pc), pc, retaddr);
             }
             /* now that we have an entry in the synchronized post_call_table
-             * any new code coming in will be instrumented
+             * any new code coming in will be instrumented.
+             * we assume we only care about fragments starting at retaddr:
+             * we have no traces so nothing should cross it unless there's some
+             * weird mid-call-instr target in which case it's not post-call.
              */
             if (dr_fragment_exists_at(drcontext, (void *)retaddr)) {
-                /* I'd use dr_unlink_flush_region but it requires -enable_full_api */
+                /* I'd use dr_unlink_flush_region but it requires -enable_full_api.
+                 * Currently we assume a synchronous flush so we can clear
+                 * pt->flushed_tag in bb creation event and know that's after
+                 * all deletions.
+                 */
                 LOG(2, "flushing "PFX", should re-appear at "PFX"\n", retaddr, pc);
                 STATS_INC(post_call_flushes);
+                pt->flushed_tag = retaddr;
                 /* unlock for the flush */
                 hashtable_unlock(&post_call_table);
                 dr_flush_region(retaddr, 1);
@@ -4176,6 +4240,8 @@ alloc_hook(app_pc pc)
                     hashtable_lookup(&post_call_table, (void*)retaddr);
                 if (e != NULL) /* selfmod could disappear once have PR 408529 */
                     e->existing_instrumented = true;
+                else /* XXX i#553: recursion count could get off */
+                    WARN("WARNING: post-call disappeared\n");
                 hashtable_unlock(&post_call_table);
                 /* Since the flush will remove the fragment we're already in,
                  * we have to redirect execution to the callee again.
@@ -4195,9 +4261,7 @@ alloc_hook(app_pc pc)
          * retaddr.  An example of a recursive call is glibc's
          * double-free check calling strdup and calloc.
          */
-        hashtable_lock(&call_site_table);
         have_site_instru = (hashtable_lookup(&call_site_table, (void*)retaddr) != NULL);
-        hashtable_unlock(&call_site_table);
         if (!have_site_instru) {
             LOG(2, "in callee "PFX" %s w/o call-site pre-instru since %s from "PFX"\n",
                 pc, get_alloc_routine_name(pc),
@@ -4558,7 +4622,7 @@ handle_tailcall(app_pc callee, app_pc post_call)
 
 /* only used if options.track_heap */
 static void
-instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
+instrument_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                       bool indirect, app_pc target, app_pc post_call)
 {
     /* The plan:
@@ -4573,9 +4637,8 @@ instrument_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(options.track_heap, "requires track_heap");
     LOG(3, "instrumenting alloc site "PFX" targeting "PFX" %s\n",
         instr_get_app_pc(inst), target, get_alloc_routine_name(target));
-    hashtable_lock(&call_site_table);
     hashtable_add(&call_site_table, (void*)post_call, (void*)1);
-    hashtable_unlock(&call_site_table);
+    hashtable_add(&tag_to_call_site_table, tag, (void*)post_call);
     dr_prepare_for_call(drcontext, bb, inst);
     if (!instr_is_call(inst)) {
         /* we assume we've already done the call and this is jmp*, so we
@@ -4644,7 +4707,7 @@ instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
  * hashtables.
  */
 static void
-check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
+check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst)
 {
     app_pc post_call = NULL;
     app_pc target = NULL;
@@ -4783,7 +4846,7 @@ check_potential_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst)
             opc == OP_jmp_ind ? "jmp" : "call",
             get_alloc_routine_name(target), instr_get_app_pc(inst), target);
         ASSERT(post_call != NULL, "need post_call for alloc site");
-        instrument_alloc_site(drcontext, bb, inst, opc != OP_call, target, post_call);
+        instrument_alloc_site(drcontext, tag, bb, inst, opc != OP_call, target, post_call);
     }
 }
 
@@ -4830,15 +4893,25 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
 }
 
 void
-alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
+alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc)
 {
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     app_pc pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
     if (entering_alloc != NULL)
         *entering_alloc = false;
     if (exiting_alloc != NULL)
         *exiting_alloc = false;
+
+    if (pt->flushed_tag != NULL) {
+        /* We assume a synchronous flush so we can clear
+         * pt->flushed_tag in bb creation event and know that's after
+         * all deletions.
+         */
+        pt->flushed_tag = NULL;
+    }
+
     if (options.track_heap) {
         app_pc callee = post_call_lookup(pc);
         if (callee != NULL) {
@@ -4864,7 +4937,7 @@ alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
              IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) ||
             instr_get_opcode(inst) == OP_jmp_ind ||
             instr_get_opcode(inst) == OP_jmp) {
-            check_potential_alloc_site(drcontext, bb, inst);
+            check_potential_alloc_site(drcontext, tag, bb, inst);
         }
     }
 #ifdef WINDOWS

@@ -488,6 +488,9 @@ HANDLE
 get_private_heap_handle(void);
 #endif /* WINDOWS && USE_DRSYMS */
 
+void
+hashtable_delete_with_stats(hashtable_t *table, const char *name);
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

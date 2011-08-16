@@ -1224,7 +1224,7 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
         }
 
         /* Memory allocation tracking */
-        alloc_instrument(drcontext, bb, inst, NULL, NULL);
+        alloc_instrument(drcontext, tag, bb, inst, NULL, NULL);
 
         if (options.staleness) {
             /* We want to spill AFTER any clean call in case it changes mcontext */
@@ -1826,6 +1826,14 @@ event_module_unload(void *drcontext, const module_data_t *info)
     callstack_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
 }
+
+static void
+event_fragment_delete(void *drcontext, void *tag)
+{
+    instrument_fragment_delete(drcontext, tag);
+    alloc_fragment_delete(drcontext, tag);
+}
+
 static void 
 event_thread_init(void *drcontext)
 {

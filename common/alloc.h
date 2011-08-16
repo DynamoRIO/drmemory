@@ -100,7 +100,10 @@ void
 alloc_module_unload(void *drcontext, const module_data_t *info);
 
 void
-alloc_instrument(void *drcontext, instrlist_t *bb, instr_t *inst,
+alloc_fragment_delete(void *drcontext, void *tag);
+
+void
+alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc);
 
 void

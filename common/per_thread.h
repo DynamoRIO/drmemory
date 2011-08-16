@@ -82,6 +82,9 @@ typedef struct _per_thread_t {
     bool ignored_alloc;
     app_pc alloc_being_freed; /* handles post-pre-free actions */
 
+    /* to avoid removing on our own flush (i#552) */
+    app_pc flushed_tag;
+
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
 

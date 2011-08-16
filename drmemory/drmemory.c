@@ -1265,6 +1265,13 @@ event_module_unload(void *drcontext, const module_data_t *info)
     alloc_module_unload(drcontext, info);
 }
 
+static void
+event_fragment_delete(void *drcontext, void *tag)
+{
+    instrument_fragment_delete(drcontext, tag);
+    alloc_fragment_delete(drcontext, tag);
+}
+
 #if defined(LINUX) && defined(DEBUG)
 /* Checks whether the module can be treated as a single contiguous addr range,
  * which is the case if either it really is contiguous (DR's module_data_t.contiguous)

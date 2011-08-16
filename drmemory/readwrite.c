@@ -451,7 +451,7 @@ stringop_free_entry(void *entry)
 }
 
 void
-event_fragment_delete(void *drcontext, void *tag)
+instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
 {
     bb_saved_info_t *save;
     stringop_entry_t *stringop;
@@ -486,6 +486,8 @@ event_fragment_delete(void *drcontext, void *tag)
             hashtable_remove(&stringop_app2us_table, tag);
             IF_DEBUG(found =)
                 hashtable_remove(&stringop_us2app_table, (void *)stringop);
+            LOG(2, "removing tag "PFX" and stringop entry "PFX"\n",
+                tag, stringop);
             ASSERT(found, "entry should be in both tables");
         } else
             stringop->ignore_next_delete--;
@@ -2559,11 +2561,9 @@ instrument_exit(void)
 #endif
     if (!options.leaks_only) {
         dr_mutex_destroy(gencode_lock);
-        LOG(1, "final bb table size: %u bits, %u entries\n",
-            bb_table.table_bits, bb_table.entries);
-        hashtable_delete(&bb_table);
-        hashtable_delete(&xl8_sharing_table);
-        hashtable_delete(&ignore_unaddr_table);
+        hashtable_delete_with_stats(&bb_table, "bb_table");
+        hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
+        hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
         dr_mutex_destroy(stringop_lock);
         hashtable_delete(&stringop_app2us_table);
         hashtable_delete(&stringop_us2app_table);
@@ -3411,7 +3411,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         }
 
         /* Memory allocation tracking */
-        alloc_instrument(drcontext, bb, inst, &entering_alloc, &exiting_alloc);
+        alloc_instrument(drcontext, tag, bb, inst, &entering_alloc, &exiting_alloc);
         /* We can't change check_ignore_unaddr in the middle b/c of recreation
          * so only set if entering/exiting on first
          */
