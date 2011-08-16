@@ -447,6 +447,8 @@ stringop_free_entry(void *entry)
 {
     stringop_entry_t *e = (stringop_entry_t *) entry;
     ASSERT(e->loop_instr[0] == LOOP_INSTR_OPCODE, "invalid entry");
+    LOG(3, "freeing stringop entry "PFX" ignore_next_delete %d\n",
+        e, e->ignore_next_delete);
     global_free(e, sizeof(*e), HEAPSTAT_PERBB);
 }
 
@@ -515,8 +517,11 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
             LOG(2, "removing tag "PFX" and stringop entry "PFX"\n",
                 tag, stringop);
             ASSERT(found, "entry should be in both tables");
-        } else
+        } else {
+            LOG(2, "stringop entry "PFX" for tag "PFX" nextdel=%d\n",
+                stringop, tag, stringop->ignore_next_delete);
             stringop->ignore_next_delete--;
+        }
     }
     dr_mutex_unlock(stringop_lock);
 }
@@ -3278,13 +3283,20 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
             old = (stringop_entry_t *)
                 hashtable_add_replace(&stringop_app2us_table, xl8, (void *)entry);
             if (old != NULL) {
+                IF_DEBUG(bool found;)
+                LOG(2, "stringop xl8 "PFX" duplicated at "PFX
+                    ": assuming non-precise flushing\n", xl8, old);
                 ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
                 entry->ignore_next_delete = old->ignore_next_delete + 1;
                 global_free(old, sizeof(*old), HEAPSTAT_PERBB);
-                LOG(2, "stringop "PFX" duplicated: assuming non-precise flushing\n", xl8);
+                IF_DEBUG(found =)
+                    hashtable_remove(&stringop_us2app_table, (void *)old);
+                ASSERT(found, "entry should be in both tables");
             }
             IF_DEBUG(ok = )
                 hashtable_add(&stringop_us2app_table, (void *)entry, xl8);
+            LOG(2, "adding stringop entry "PFX" for xl8 "PFX"\n",
+                entry, xl8);
             /* only freed for heap reuse on hashtable removal */
             ASSERT(ok, "not possible to have existing from-heap entry");
             dr_mutex_unlock(stringop_lock);
