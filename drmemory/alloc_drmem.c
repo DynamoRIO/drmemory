@@ -1760,6 +1760,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     app_pc pc, dpc;
     instr_t inst;
     bool match = false, now_addressable = false;
+    bool unreadable_ok = false;
     if (loc->type != APP_LOC_PC) /* ignore syscalls (PR 488793) */
         return false;
     pc = loc_to_pc(loc);
@@ -1771,6 +1772,9 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     if (!match) {
         match = is_alloca_pattern(drcontext, write, pc, dpc, addr, sz,
                                   &inst, &now_addressable);
+        /* it's ok for the target addr to be unreadable if stack guard page (i#*/
+        if (match)
+            unreadable_ok = true;
     }
     if (!match) {
         match = is_strlen_pattern(drcontext, write, pc, dpc, addr, sz,
@@ -1789,7 +1793,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
          * the heap header/tls checks, else we have big perf hits!
          * Needs to be on a rare path.
          */
-        if (!dr_memory_is_readable(addr, 1)) {
+        if (!unreadable_ok && !dr_memory_is_readable(addr, 1)) {
             /* matched pattern, but target is actually unreadable! */
             return false;
         }

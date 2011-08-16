@@ -46,6 +46,9 @@ uint zero_loop_aborts_fault;
 uint zero_loop_aborts_thresh;
 #endif
 
+static int
+esp_spill_slot_base(bool shadow_xsp/*else, zero*/);
+
 /***************************************************************************
  * STACK SWAP THRESHOLD ADJUSTMENTS
  *
@@ -130,8 +133,10 @@ check_stack_swap(byte *cur_xsp, byte *new_xsp)
             stack_start, stack_start + stack_size);
         if (new_xsp >= stack_start && new_xsp < stack_start + stack_size) {
             static int num_non_swaps;
-            LOG(1, "stack adjust "PFX" to "PFX" is really intra-stack adjust\n",
-                cur_xsp, new_xsp);
+            LOG(1, "stack adjust "PFX" to "PFX" @"PFX"is really intra-stack adjust\n",
+                cur_xsp, new_xsp,
+                /* retaddr for shared slowpath */
+                get_own_tls_value(esp_spill_slot_base(true)));
             /* Reluctantly increase the threshold linearly: better too small */
             if (num_non_swaps++ > MAX_NUMBER_NON_SWAPS) {
                 num_non_swaps = 0;

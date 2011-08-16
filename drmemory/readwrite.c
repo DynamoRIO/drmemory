@@ -3079,12 +3079,18 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         } else
             STATS_INC(slowpath_unaligned);
         DOLOG(3, {
-            LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x 0x%02x)%s ",
+            char buf[256];
+            size_t sofar = 0;
+            print_address(buf, BUFFER_SIZE_BYTES(buf), &sofar, loc_to_pc(loc),
+                          NULL, false, false, NULL, false);
+            NULL_TERMINATE_BUFFER(buf);
+            LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x 0x%02x)%s %s ",
                 loc_to_print(loc),
                 TEST(MEMREF_WRITE, flags) ?
                 (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
                 (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"),
-                addr, sz, shadow_get_dword(addr), shadow_get_dword(addr+4), was_special ? " (was special)" : "");
+                addr, sz, shadow_get_dword(addr), shadow_get_dword(addr+4),
+                was_special ? " (was special)" : "", buf);
             disassemble_with_info(dr_get_current_drcontext(), loc_to_pc(loc), f_global,
                                   false/*!show pc*/, true/*show bytes*/);
         });
