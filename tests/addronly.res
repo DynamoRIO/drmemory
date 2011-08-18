@@ -1,4 +1,5 @@
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -24,6 +25,6 @@ overlaps freed memory
 free.c:46
 
 Error #2: UNADDRESSABLE ACCESS: writing 1 byte(s)
-prev lower malloc
+# whether have "prev lower malloc" is nondet
 overlaps freed memory
 free.c:53
