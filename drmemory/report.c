@@ -812,9 +812,10 @@ report_init(void)
         ASSERT(sep != NULL, "client lib path not absolute?");
         ASSERT(sep - mypath < BUFFER_SIZE_ELEMENTS(dname), "buffer too small");
         if (sep != NULL && sep - mypath < BUFFER_SIZE_ELEMENTS(dname)) {
-            size_t len = dr_snprintf(dname, sep - mypath, "%s", mypath);
-            if (len > 0) {
-                len = dr_snprintf(dname + len, BUFFER_SIZE_ELEMENTS(dname) - len,
+            int len = dr_snprintf(dname, sep - mypath, "%s", mypath);
+            if (len == -1) {
+                len = dr_snprintf(dname + (sep - mypath),
+                                  BUFFER_SIZE_ELEMENTS(dname) - (sep - mypath),
                                   "%c%s", DIRSEP, DEFAULT_SUPPRESS_NAME);
                 if (len > 0)
                     open_and_read_suppression_file(dname, true);

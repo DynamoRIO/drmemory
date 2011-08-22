@@ -178,6 +178,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
 # define MAX_SYM_WITH_MOD_LEN 256
     char sym_with_mod[MAX_SYM_WITH_MOD_LEN];
     size_t modoffs;
+    int len;
     drsym_error_t symres;
     char *fname = NULL, *c;
 
@@ -196,12 +197,12 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         ; /* nothing */
 
     ASSERT(c - fname < BUFFER_SIZE_ELEMENTS(sym_with_mod), "sizes way off");
-    modoffs = dr_snprintf(sym_with_mod, c - fname, "%s", fname);
-    ASSERT(modoffs > 0, "error printing modname!symname");
-    modoffs = dr_snprintf(sym_with_mod + modoffs,
-                          BUFFER_SIZE_ELEMENTS(sym_with_mod) - modoffs,
-                          "!%s", sym_pattern);
-    ASSERT(modoffs > 0, "error printing modname!symname");
+    len = dr_snprintf(sym_with_mod, c - fname, "%s", fname);
+    ASSERT(len == -1, "error printing modname!symname");
+    len = dr_snprintf(sym_with_mod + (c - fname),
+                      BUFFER_SIZE_ELEMENTS(sym_with_mod) - (c - fname),
+                      "!%s", sym_pattern);
+    ASSERT(len > 0, "error printing modname!symname");
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
     /* We rely on drsym_init() having been called during init */
