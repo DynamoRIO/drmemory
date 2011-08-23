@@ -147,6 +147,13 @@ the redzone size.  The debug heap checks will mostly be disabled as they
 overlap and can conflict with Dr. Memory's checks.  It is recommended that
 the release version of the heap routines be used.
 
+You'll get better callstacks in error reports if you disable inlining.  For
+cl.exe, "/Ob0", or for gcc or g++, "-fno-inline".  Dr. Memory should be
+able to determine callstacks in the presence of frame pointer optimizations
+(FPO) in most cases, but if you see strange callstacks in an optimized
+applications consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
+"-fno-omit-frame-pointer".
+
 ********************
 \subsection sec_invocation Invoking Dr. Memory
 

@@ -761,6 +761,12 @@ up_one_dir(const char *string)
     return dir1;
 }
 
+static bool
+is_dword_defined(byte *addr)
+{
+    return (shadow_get_dword(addr) == SHADOW_DWORD_DEFINED);
+}
+
 void
 report_init(void)
 {
@@ -788,7 +794,8 @@ report_init(void)
                    0,
                    options.callstack_max_scan,
                    IF_DRSYMS_ELSE(options.symbol_offsets, false),
-                   get_syscall_name);
+                   get_syscall_name,
+                   options.shadowing ? is_dword_defined : NULL);
 
 #ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();

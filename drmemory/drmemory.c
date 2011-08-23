@@ -189,6 +189,9 @@ dump_statistics(void)
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
     dr_fprintf(f_global, "callstack fp scans: %8u\n", find_next_fp_scans);
+    dr_fprintf(f_global, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
+               cstack_is_retaddr, cstack_is_retaddr_backdecode,
+               cstack_is_retaddr_unreadable);
     dr_fprintf(f_global, "symbol names truncated: %8u\n", symbol_names_truncated);
     dr_fprintf(f_global, "stack swaps: %8u, triggers: %8u\n",
                stack_swaps, stack_swap_triggers);

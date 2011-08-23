@@ -97,7 +97,24 @@ enum {
     FP_SHOW_NON_MODULE_FRAMES         = 0x0001,
     FP_STOP_AT_BAD_NONZERO_FRAME      = 0x0002,
     FP_STOP_AT_BAD_ZERO_FRAME         = 0x0004,
-    FP_SEARCH_MATCH_SINGLE_FRAME      = 0x0008,
+    FP_SEARCH_MATCH_SINGLE_FRAME      = 0x0008, /* only valid w/ FP_SEARCH_REQUIRE_FP */
+    /* Whether to look for fp,ra pairs during scan, which doesn't work with FPO */
+    FP_SEARCH_REQUIRE_FP              = 0x0010,
+    /* For more speed but less accuracy (esp with FPO) can not check whether
+     * retaddr candidates during scan are post-OP_call
+     */
+    FP_SEARCH_DO_NOT_DISASM           = 0x0020,
+    /* For more speed, optionally can not check retaddrs during fp chain walk */
+    FP_DO_NOT_CHECK_RETADDR           = 0x0040,
+    /* By default, avoid 40% perf hit (on cfrac and roboop) by not checking
+     * retaddr during fp chain walk until have to do a scan: should be
+     * safe to assume fp's are genuine up to any scan.
+     */
+    FP_CHECK_RETADDR_PRE_SCAN         = 0x0080,
+    /* We do want to check the very first retaddr since ebp might point at
+     * some stack var that happens to look like another fp,ra pair
+     */
+    FP_DO_NOT_CHECK_FIRST_RETADDR     = 0x0100,
     FP_SEARCH_AGGRESSIVE              = (FP_SHOW_NON_MODULE_FRAMES |
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };
@@ -136,12 +153,16 @@ enum {
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
 extern uint symbol_names_truncated;
+extern uint cstack_is_retaddr;
+extern uint cstack_is_retaddr_backdecode;
+extern uint cstack_is_retaddr_unreadable;
 #endif
 
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
                size_t fp_scan_sz, bool symbol_offsets,
-               const char *(*get_syscall_name)(uint));
+               const char *(*get_syscall_name)(uint),
+               bool (*is_dword_defined)(byte *));
 
 void
 callstack_exit(void);

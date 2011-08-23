@@ -1772,7 +1772,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     if (!match) {
         match = is_alloca_pattern(drcontext, write, pc, dpc, addr, sz,
                                   &inst, &now_addressable);
-        /* it's ok for the target addr to be unreadable if stack guard page (i#*/
+        /* it's ok for the target addr to be unreadable if stack guard page (i#538) */
         if (match)
             unreadable_ok = true;
     }

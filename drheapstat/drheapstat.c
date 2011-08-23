@@ -1984,6 +1984,10 @@ dr_init(client_id_t client_id)
                     */
                    PAGE_SIZE,
                    IF_DRSYMS_ELSE(options.symbol_offsets, false),
+                   NULL,
+                   /* XXX: may need better callstack heuristics w/o shadow info
+                    * if user turns off stack zeroing from -leaks_only
+                    */
                    NULL);
     heap_region_init(client_heap_add, client_heap_remove);
     /* We keep callstacks around forever and only free when we delete

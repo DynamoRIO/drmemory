@@ -46,6 +46,7 @@ static size_t op_fp_scan_sz;
 static bool op_symbol_offsets;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
 static const char * (*op_get_syscall_name)(uint);
+static bool (*op_is_dword_defined)(byte *);
 
 /* PR 454536: to avoid races we read a page all at once */
 static void *page_buf_lock;
@@ -63,6 +64,9 @@ static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
 #ifdef STATISTICS
 uint find_next_fp_scans;
 uint symbol_names_truncated;
+uint cstack_is_retaddr;
+uint cstack_is_retaddr_backdecode;
+uint cstack_is_retaddr_unreadable;
 #endif
 
 /****************************************************************************
@@ -209,7 +213,8 @@ max_callstack_size(void)
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
                size_t fp_scan_sz, bool symbol_offsets,
-               const char *(*get_syscall_name)(uint))
+               const char *(*get_syscall_name)(uint),
+               bool (*is_dword_defined)(byte *))
 {
     op_max_frames = callstack_max_frames;
     op_stack_swap_threshold = stack_swap_threshold;
@@ -217,6 +222,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
     op_fp_scan_sz = fp_scan_sz;
     op_symbol_offsets = symbol_offsets;
     op_get_syscall_name = get_syscall_name;
+    op_is_dword_defined = is_dword_defined;
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
@@ -331,6 +337,51 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
         BUFPRINT(buf, bufsz, *sofar, len, " %s!?"NL LINE_PREFIX"??:0"NL, modname);
     }
 }
+
+static bool
+print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
+{
+    bool res;
+    ssize_t len = 0;
+    drsym_error_t symres;
+    drsym_info_t *sym;
+    char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
+    module_data_t *data;
+    const char *modname;
+    data = dr_lookup_module(addr);
+    if (data == NULL)
+        return false;
+    ASSERT(data->start <= addr && data->end > addr, "invalid module lookup");
+    modname = dr_module_preferred_name(data);
+    if (modname == NULL)
+        modname = "";
+    sym = (drsym_info_t *) sbuf;
+    sym->struct_size = sizeof(*sym);
+    sym->name_size = MAX_FUNC_LEN;
+    IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
+    symres = drsym_lookup_address(data->full_path, addr - data->start, sym);
+    if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
+        if (sym->name_available_size >= sym->name_size) {
+            DO_ONCE({ 
+                LOG(1, "WARNING: at least one symbol name longer than max: %s\n",
+                    sym->name);
+            });
+            STATS_INC(symbol_names_truncated);
+        }
+        /* I like have +0x%x to show offs within func but we'll match addr2line */
+        BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
+        if (op_symbol_offsets) {
+            BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX,
+                     addr - data->start - sym->start_offs);
+        }
+        res = true;
+    } else {
+        BUFPRINT(buf, bufsz, *sofar, len, " %s!?", modname);
+        res = false;
+    }
+    dr_free_module_data(data);
+    return res;;
+}
 #endif
 
 /* Returns whether a new frame was added (won't be if skip_non_module and pc
@@ -435,11 +486,67 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
     return false;
 }
 
+#define OP_CALL_DIR 0xe8
+#define OP_CALL_IND 0xff
+
+static bool
+is_retaddr(byte *pc)
+{
+    /* XXX: for our purposes we really want is_in_code_section().  Since
+     * is_in_module() is used for is_image(), we would need a separate rbtree.  We
+     * could do +rx segment via mem query and avoid walking sections.  We'd have to
+     * store the range since might not be there at unmap time?  So far the 3 backward
+     * derefs looking for calls haven't been slow enough or have enough false
+     * positives to make the +rx-only seem worth the effort: global var addresses on
+     * the stack don't seem any more common than things like SEH handlers that would
+     * match +rx anyway, and rare for global var to have what looks like a call prior
+     * to it.
+     */
+    STATS_INC(cstack_is_retaddr);
+    if (!is_in_module(pc))
+        return false;
+    if (!TEST(FP_SEARCH_DO_NOT_DISASM, op_fp_flags)) {
+        /* The is_in_module() check is more expensive than our 3 derefs here.
+         * We do not bother to cache frequent/recent values.
+         */
+        /* more efficient to read 3 dwords than safe_read 6 into a buffer */
+        bool match;
+        STATS_INC(cstack_is_retaddr_backdecode);
+        DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+            match = (*(pc - 5) == OP_CALL_DIR ||
+                     /* indirect through reg: 0xff /2 */
+                     (*(pc - 2) == OP_CALL_IND && ((*(pc - 1) >> 3) & 0x7) == 2) ||
+                     /* indirect through mem: 0xff /2 + disp */
+                     (*(pc - 6) == OP_CALL_IND && ((*(pc - 5) >> 3) & 0x7) == 2));
+        }, { /* EXCEPT */
+            match = false;
+            /* If we end up with a lot of these we could either cache
+             * frequent/recent or switch to +rx instead of whole module
+             */
+            LOG(3, "is_retaddr: can't read "PFX"\n", pc);
+            STATS_INC(cstack_is_retaddr_unreadable);
+        });
+#ifdef USE_DRSYMS
+        DOLOG(5, {
+            char buf[128];
+            size_t sofar = 0;
+            ssize_t len;
+            BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                     "is_retaddr %d: "PFX" == ", match, pc);
+            print_symbol(pc, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+            LOG(1, "%s\n", buf);
+        });
+#endif
+        return match;
+    } else
+        return true;
+}
+
 /* caller must hold page_buf_lock */
 static app_pc
 find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
 {
-    /* Heuristic: scan stack for fp + retaddr */
+    /* Heuristic: scan stack for retaddr, or fp + retaddr pair */
     ASSERT(fp != NULL, "internal callstack-finding error");
     /* PR 416281: word-align fp so page assumptions hold */
     fp = (app_pc) ALIGN_BACKWARD(fp, sizeof(app_pc));
@@ -473,41 +580,54 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
         app_pc buf_pg = (app_pc) ALIGN_BACKWARD(fp, PAGE_SIZE);
         app_pc tos = fp;
         app_pc sp;
-        app_pc slot0, slot1;
-        bool match, match_next_frame;
+        app_pc slot0 = 0, slot1;
+        bool match, match_next_frame, fp_defined = false;
+        size_t ret_offs = TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) ? sizeof(app_pc) : 0;
         /* Scan one page worth and look for potential fp,retaddr pair */
         STATS_INC(find_next_fp_scans);
+        /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) */
         for (sp = tos; sp - tos < op_fp_scan_sz; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
             if (retaddr != NULL)
                 *retaddr = NULL;
-            ASSERT((app_pc)ALIGN_BACKWARD(sp, PAGE_SIZE) == buf_pg, "buf error");
-            slot0 = *((app_pc*)&page_buf[sp - buf_pg]);
+            if (TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
+                ASSERT((app_pc)ALIGN_BACKWARD(sp, PAGE_SIZE) == buf_pg, "buf error");
+                if (op_is_dword_defined != NULL)
+                    fp_defined = op_is_dword_defined(sp);
+                if (fp_defined)
+                    slot0 = *((app_pc*)&page_buf[sp - buf_pg]);
+            }
             /* Retrieve next page if slot1 will touch it */
-            if ((app_pc)ALIGN_BACKWARD(sp + sizeof(app_pc), PAGE_SIZE) != buf_pg) {
-                buf_pg = (app_pc) ALIGN_BACKWARD(sp + sizeof(app_pc), PAGE_SIZE);
+            if ((app_pc)ALIGN_BACKWARD(sp + ret_offs, PAGE_SIZE) != buf_pg) {
+                buf_pg = (app_pc) ALIGN_BACKWARD(sp + ret_offs, PAGE_SIZE);
                 if (!safe_read(buf_pg, PAGE_SIZE, page_buf))
                     break;
             }
-            if (slot0 > tos && slot0 - tos < op_stack_swap_threshold) {
-                slot1 = *((app_pc*)&page_buf[(sp + sizeof(app_pc)) - buf_pg]);
+            if (TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) && !fp_defined)
+                continue;
+            if (op_is_dword_defined != NULL &&
+                !op_is_dword_defined(sp + ret_offs))
+                continue; /* retaddr not defined */
+            if (!TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) ||
+                (slot0 > tos && slot0 - tos < op_stack_swap_threshold)) {
+                slot1 = *((app_pc*)&page_buf[(sp + ret_offs) - buf_pg]);
                 /* We should only consider retaddr in code section but
                  * let's keep it simple for now.
                  * We ignore DGC: perhaps a dr_is_executable_memory() could
                  * be used instead of checking modules.
                  * OPT: keep all modules in hashtable for quicker check
                  * that doesn't require alloc+free of heap */
-                if (is_in_module(slot1))
+                if (is_retaddr(slot1))
                     match = true;
 #ifdef WINDOWS
-                else if (top_frame) {
+                else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
                     /* PR 475715: msvcr80!malloc pushes ebx and then ebp!  It then
                      * uses ebp as scratch, so we end up here for the top frame
                      * of a leak callstack.
                      */
-                    slot1 = *((app_pc*)&page_buf[(sp + 2*sizeof(app_pc)) - buf_pg]);
-                    if (is_in_module(slot1)) {
+                    slot1 = *((app_pc*)&page_buf[(sp + 2*ret_offs) - buf_pg]);
+                    if (is_retaddr(slot1)) {
                         match = true;
                         /* Do extra check for this case even if flags don't call for it */
                         match_next_frame = true;
@@ -519,9 +639,14 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
 #endif
             }
             if (match) {
-                app_pc parent_ret_ptr = slot0 + sizeof(app_pc);
+                app_pc parent_ret_ptr = slot0 + ret_offs;
                 app_pc parent_ret;
-                if (TEST(FP_SEARCH_MATCH_SINGLE_FRAME, op_fp_flags) && !match_next_frame)
+                if (!TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
+                    /* caller expects fp,ra pair */
+                    return sp - sizeof(app_pc);
+                }
+                if ((TEST(FP_SEARCH_MATCH_SINGLE_FRAME, op_fp_flags) &&
+                     !match_next_frame))
                     return sp;
                 /* Require the next retaddr to be in a module as well, to avoid
                  * continuing past the bottom frame on ESXi (xref PR 469043)
@@ -532,9 +657,10 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
                     if (!safe_read(parent_ret_ptr, sizeof(parent_ret), &parent_ret))
                         parent_ret = NULL;
                 }
-                if (parent_ret != NULL && is_in_module(parent_ret)) {
+                if (parent_ret != NULL && is_retaddr(parent_ret)) {
                     return sp;
                 }
+                match = false;
             }
         }
     }
@@ -560,6 +686,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     app_pc custom_retaddr = NULL;
     app_pc lowest_frame = NULL;
     bool first_iter = true;
+    bool have_appdata = false;
+    bool scanned = false;
 
     ASSERT(num == 0 || num == 1, "only 1 frame can already be printed");
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
@@ -572,16 +700,23 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
 
     if (mc != NULL && mc->esp != 0 &&
         (mc->ebp < mc->esp || mc->ebp - mc->esp > op_stack_swap_threshold ||
-         !safe_read((byte *)mc->ebp, sizeof(appdata), &appdata))) {
+         (!safe_read((byte *)mc->ebp, sizeof(appdata), &appdata) ||
+          /* check the very first retaddr since ebp might point at
+           * a misleading stack slot
+           */
+          (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, op_fp_flags) &&
+           !is_retaddr(appdata.retaddr))))) {
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
         LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
         pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->esp, true/*top frame*/,
                                          &custom_retaddr);
+        scanned = true;
     }
     while (pc != NULL) {
-        if (!safe_read((byte *)pc, sizeof(appdata), &appdata)) {
+        if (!have_appdata &&
+            !safe_read((byte *)pc, sizeof(appdata), &appdata)) {
             LOG(4, "truncating callstack: can't read "PFX"\n", pc);
             break;
         }
@@ -625,6 +760,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
                 pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->esp, true/*top frame*/,
                                                  &custom_retaddr);
+                scanned = true;
                 first_iter = false; /* don't loop */
                 continue;
             }
@@ -643,6 +779,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             LOG(4, "truncating callstack: recursion\n");
             break;
         }
+        have_appdata = false;
         if (appdata.next_fp == 0) {
             /* We definitely need to search for the first frame, and also in the
              * middle to cross loader/glue stubs/thunks or a signal/exception
@@ -654,22 +791,47 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
              */
             if (!TEST(FP_STOP_AT_BAD_ZERO_FRAME, op_fp_flags)) {
                 LOG(4, "find_next_fp b/c hit zero fp\n");
-                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)pc, false/*!top*/, NULL);
+                pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
+                                                 false/*!top*/, NULL);
+                scanned = true;
             } else {
                 LOG(4, "truncating callstack: zero frame ptr\n");
                 break;
             }
-        } else if (appdata.next_fp < (app_pc)pc ||
-                   (appdata.next_fp - (app_pc)pc) >= op_stack_swap_threshold) {
-            if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, op_fp_flags)) {
-                LOG(4, "find_next_fp b/c hit bad non-zero fp\n");
-                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)pc, false/*!top*/, NULL);
-            } else {
-                LOG(4, "truncating callstack: bad frame ptr "PFX"\n", appdata.next_fp);
+        } else {
+            /* appdata.next_fp is candidate */
+            bool out_of_range =
+                (appdata.next_fp < (app_pc)pc ||
+                 (appdata.next_fp - (app_pc)pc) >= op_stack_swap_threshold);
+            app_pc next_fp = appdata.next_fp;
+            if (!out_of_range &&
+                !safe_read((byte *)next_fp, sizeof(appdata), &appdata)) {
+                LOG(4, "truncating callstack: can't read "PFX"\n", pc);
                 break;
             }
-        } else
-            pc = (ptr_uint_t *) appdata.next_fp;
+            if (out_of_range ||
+                (!TEST(FP_DO_NOT_CHECK_RETADDR, op_fp_flags) &&
+                 /* checking retaddr on regular fp chain walk is a 40% perf hit
+                  * on cfrac and roboop so we avoid it if we've never had to
+                  * do a scan, trusting the fp's to be genuine (overridden by
+                  * FP_CHECK_RETADDR_PRE_SCAN)
+                  */
+                 (scanned || TEST(FP_CHECK_RETADDR_PRE_SCAN, op_fp_flags)) &&
+                 !is_retaddr(appdata.retaddr))) {
+                if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, op_fp_flags)) {
+                    LOG(4, "find_next_fp b/c hit bad non-zero fp\n");
+                    pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
+                                                     false/*!top*/, NULL);
+                    scanned = true;
+                } else {
+                    LOG(4, "truncating callstack: bad frame ptr "PFX"\n", next_fp);
+                    break;
+                }
+            } else {
+                have_appdata = true;
+                pc = (ptr_uint_t *) next_fp;
+            }
+        }
         if (pc == NULL)
             LOG(4, "truncating callstack: can't find next fp\n");
     }
