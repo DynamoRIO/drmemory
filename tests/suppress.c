@@ -174,7 +174,7 @@ static void warning_test1(void)
 }
 
 /* set this to 0 to work natively */
-#define REDZONE_SIZE 8
+#define REDZONE_SIZE 16
 #define RZ_DIV (REDZONE_SIZE/sizeof(size_t))
 
 static void invalid_free_test1(void)

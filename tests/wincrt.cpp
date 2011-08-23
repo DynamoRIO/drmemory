@@ -36,6 +36,7 @@ use(char *a)
 static void
 oob_read_test(void)
 {
+    char *pre = (char*) calloc(1,64);
     char *foo = (char*) malloc(8);
     use(foo+48);
     use(foo+25);
@@ -45,6 +46,7 @@ oob_read_test(void)
     use(foo-37);
     use(foo-41);
     free(foo);
+    free(pre);
 }
 
 static void

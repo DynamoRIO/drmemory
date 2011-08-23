@@ -247,7 +247,7 @@ OPTION_CLIENT_BOOL(drmemscope, check_non_moves, false,
 OPTION_CLIENT_SCOPE(drmemscope, stack_swap_threshold, int, 0x9000, 256, INT_MAX,
                     "Stack change amount to consider a swap",
                     "Stack change amount to consider a swap instead of an allocation or de-allocation on the same stack.  "TOOLNAME" attempts to dynamically tune this value unless it is changed from its default.")
-OPTION_CLIENT_SCOPE(drmemscope, redzone_size, uint, 8, 0, 32*1024,
+OPTION_CLIENT_SCOPE(drmemscope, redzone_size, uint, 16, 0, 32*1024,
                     "Buffer on either side of each malloc",
                     "Buffer on either side of each malloc.  This should be a multiple of 8.")
 OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
