@@ -1082,24 +1082,6 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
         f = f_global;
     }
 #endif
-
-    /* FIXME: for PR 456181 we need atomic reports for -no_thread_logs,
-     * but we need PR 457375 to disassemble to a buffer.
-     * For now we do a racy write after the callstack that may get
-     * split from the error report.
-     */
-    if (loc != NULL && loc->type == APP_LOC_PC) {
-        app_pc cur_pc = loc_to_pc(loc);
-        if (cur_pc != NULL) {
-            void *drcontext = dr_get_current_drcontext();
-            DR_TRY_EXCEPT(drcontext, {
-                disassemble_with_info(drcontext, cur_pc, f,
-                                      true/*show pc*/, true/*show bytes*/);
-            }, { /* EXCEPT */
-                /* nothing: just skip it */
-            });
-        }
-    }
 }
 
 /* caller should hold error_lock */
@@ -1444,6 +1426,32 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     if (type == ERROR_UNADDRESSABLE) {
         /* print auxiliary info about the target address (PR 535568) */
         report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz);
+    }
+
+    if (loc != NULL && loc->type == APP_LOC_PC) {
+        app_pc cur_pc = loc_to_pc(loc);
+        if (cur_pc != NULL) {
+            void *drcontext = dr_get_current_drcontext();
+            /* XXX i#498: to suppress, better in 1st frame of callstack? */
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sinstruction: ", INFO_PFX);
+            DR_TRY_EXCEPT(drcontext, {
+                int dis_len;
+                disassemble_to_buffer(drcontext, cur_pc, cur_pc, false/*!show pc*/,
+                                      false/*!show bytes*/, pt->errbuf + sofar,
+                                      pt->errbufsz - sofar, &dis_len);
+                if (dis_len > 0) {
+                    /* XXX: should DR provide control over its newline?
+                     * We're not showing bytes, so the only one will be at the
+                     * end, which we fix up.
+                     */
+                    ASSERT(pt->errbuf[sofar + dis_len -1] == '\n', "missing newline");
+                    sofar += dis_len - 1;
+                    BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
+                }
+            }, { /* EXCEPT */
+                /* nothing: just skip it */
+            });
+        }
     }
 
     /* Now shift the prefix to abut the callstack */
