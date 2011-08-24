@@ -324,14 +324,18 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
              */
             ASSERT(unreach_child->parent != NULL, "node should be already claimed");
         } else {
-            IF_DEBUG(bool found;)
             unreach_entry_t *top = unreach_parent;
             /* be sure to check for circular reference */
             while (top->parent != NULL && top->parent != top)
                 top = top->parent;
             /* claim the child */
-            top->indirect_bytes +=
-                unreach_child->indirect_bytes + (child_end - child_start);
+            LOG(4, "indirect bytes: top "PFX" %d + child "PFX" %d + "PFX"-"PFX"\n",
+                top, top->indirect_bytes, unreach_child, unreach_child->indirect_bytes,
+                child_end, child_start);
+            if (top != unreach_child) {
+                top->indirect_bytes +=
+                    unreach_child->indirect_bytes + (child_end - child_start);
+            }
             /* any future additions to the child (from scanning its children)
              * should go to top-level (i.e., direct leak) parent
              */
@@ -340,9 +344,12 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
                 " through parent "PFX","PFX"\n",
                 top, unreach_child, ptr_child, unreach_parent, ptr_parent);
 
-            IF_DEBUG(found =)
-                malloc_set_client_flag(child_start, MALLOC_INDIRECTLY_REACHABLE);
-            ASSERT(found, "malloc chunk must be in hashtable");
+            /* do not mark indirect if top of group (i#564) */
+            if (top != unreach_child) {
+                IF_DEBUG(bool found =)
+                    malloc_set_client_flag(child_start, MALLOC_INDIRECTLY_REACHABLE);
+                ASSERT(found, "malloc chunk must be in hashtable");
+            }
         }
     }
 }
