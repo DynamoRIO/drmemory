@@ -499,8 +499,16 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
          * could work but seems too specialized.
          */
         app_pc start = dr_fragment_app_pc(tag);
-        hashtable_remove_range(&xl8_sharing_table, start, start + bb_size);
-        hashtable_remove_range(&ignore_unaddr_table, start, start + bb_size);
+        /* It turns out that hashtable_remove_range() is really slow: xl8_sharing_table
+         * gets quite large (12 bits on chrome ui_tests single test) and walking
+         * it on every single fragment delete is quite slow.
+         * This is faster:
+         */
+        int i;
+        for (i = 0; i < bb_size; i++) {
+            hashtable_remove(&xl8_sharing_table, (void *)(start + i));
+            hashtable_remove(&ignore_unaddr_table, (void *)(start + i));
+        }
     }
 
     dr_mutex_lock(stringop_lock);
