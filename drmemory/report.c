@@ -801,6 +801,19 @@ report_init(void)
     suppress_file_lock = dr_mutex_create();
     LOGF(0, f_results, "Dr. Memory results for pid %d: \"%s\""NL,
          dr_get_process_id(), dr_get_application_name());
+# ifdef WINDOWS
+    {
+        PEB *peb = get_app_PEB();
+        if (peb != NULL) {
+            RTL_USER_PROCESS_PARAMETERS *param = (RTL_USER_PROCESS_PARAMETERS *)
+                peb->ProcessParameters;
+            if (param != NULL) {
+                ELOGF(0, f_results, "Application cmdline: \"%S\""NL,
+                     param->CommandLine.Buffer);
+            }
+        }
+    }
+# endif
     LOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
          dr_get_process_id(), dr_get_application_name());
 #endif
