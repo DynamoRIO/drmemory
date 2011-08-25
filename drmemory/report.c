@@ -1341,6 +1341,11 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
      */
     sofar = MAX_ERROR_INITIAL_LINES;
     cstack_start = pt->errbuf + sofar;
+    /* for invalid heap arg, now that we always do our alloc pre-hook in the
+     * callee, the first frame is a retaddr and its line should thus be -1
+     */
+    if (type == ERROR_INVALID_HEAP_ARG)
+        packed_callstack_first_frame_retaddr(err->pcs);
     packed_callstack_print(err->pcs, 0/*all frames*/, pt->errbuf, pt->errbufsz, &sofar);
     sofar = 0; /* now we print to start */
     /* ensure starts at beginning of line (can be in middle of another log) */

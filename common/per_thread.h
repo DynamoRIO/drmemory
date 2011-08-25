@@ -81,9 +81,9 @@ typedef struct _per_thread_t {
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
     bool ignored_alloc;
     app_pc alloc_being_freed; /* handles post-pre-free actions */
-
-    /* to avoid removing on our own flush (i#552) */
-    app_pc flushed_tag;
+    /* record post-call in case flushed (i#559) */
+    app_pc cur_post_call;
+    app_pc post_call[MAX_HEAP_NESTING];
 
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];

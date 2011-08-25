@@ -188,6 +188,9 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
                         app_loc_t *loc);
 
 void
+packed_callstack_first_frame_retaddr(packed_callstack_t *pcs);
+
+void
 packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                        char *buf, size_t bufsz, size_t *sofar);
 

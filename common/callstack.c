@@ -144,6 +144,8 @@ struct _packed_callstack_t {
     ushort num_frames;
     /* whether frames are packed_frame_t or full_frame_t */
     bool is_packed:1;
+    /* whether first frame is a retaddr (in which case we subtract 1 when printing line) */
+    bool first_is_retaddr:1;
     union {
         packed_frame_t *packed;
         full_frame_t *full;
@@ -988,6 +990,12 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
     *pcs_out = pcs;
 }
 
+void
+packed_callstack_first_frame_retaddr(packed_callstack_t *pcs)
+{
+    pcs->first_is_retaddr = true;
+}
+
 /* Returns false if a syscall.  If returns true, also fills in the OUT params. */
 static bool
 packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
@@ -1086,7 +1094,7 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                  * We assume first frame is not a retaddr.
                  */
                 print_func_and_line(buf, bufsz, sofar, info,
-                                    (i == 0) ? offs : offs-1);
+                                    (i == 0 && !pcs->first_is_retaddr) ? offs : offs-1);
 #else
                 BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #endif

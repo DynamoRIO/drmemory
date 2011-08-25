@@ -1413,28 +1413,41 @@ post_call_entry_free(void *v)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
+/* caller must hold lock */
+static post_call_entry_t *
+post_call_entry_add(app_pc postcall, app_pc callee, bool instrumented)
+{
+    post_call_entry_t *e = (post_call_entry_t *)
+        global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+    e->callee = callee;
+    e->existing_instrumented = false;
+    hashtable_add(&post_call_table, (void*)postcall, (void*)e);
+    LOG(2, "adding post-call %s "PFX" from "PFX"\n",
+        get_alloc_routine_name(callee), callee, postcall);
+    return e;
+}
+
 static app_pc
-post_call_lookup(app_pc pc)
+post_call_lookup(per_thread_t *pt, app_pc pc)
 {
     post_call_entry_t *e;
     app_pc res = NULL;
     hashtable_lock(&post_call_table);
     e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)pc);
+    if (e == NULL && pt->in_heap_routine > 0) {
+        /* i#559: if our post-call point was flushed while we were in the
+         * callee, ensure we reinstate it
+         */
+        if (pc == pt->post_call[pt->in_heap_routine]) {
+            e = post_call_entry_add(pc, pt->last_alloc_routine[pt->in_heap_routine],
+                                    false);
+        }
+    }
     if (e != NULL)
         res = e->callee;
     hashtable_unlock(&post_call_table);
     return res;
 }
-
-/* We need to know whether we've inserted instrumentation at the call site .
- * The post_call_table tells us whether we've set up the return site for instrumentation.
- */
-#define CALL_SITE_TABLE_HASH_BITS 10
-static hashtable_t call_site_table;
-/* To remove from call_site_table we need to map tags to sites.
- * We assume just one call site per tag (no traces).
- */
-static hashtable_t tag_to_call_site_table;
 
 /* we need to know which heap allocations were there before we took
  * control (so we know whether size is stored in redzone) and for leak
@@ -1561,10 +1574,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
                           NULL, NULL);
-        hashtable_init(&call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
-        hashtable_init(&tag_to_call_site_table, CALL_SITE_TABLE_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
         hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!strdup*/);
     }
@@ -1606,8 +1615,6 @@ alloc_exit(void)
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
         hashtable_delete_with_stats(&post_call_table, "post_call");
-        hashtable_delete_with_stats(&call_site_table, "call_site");
-        hashtable_delete_with_stats(&tag_to_call_site_table, "tag_to_call_site");
         hashtable_delete_with_stats(&native_alloc_table, "native_alloc");
     }
 
@@ -1831,48 +1838,25 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         hashtable_lock(&post_call_table);
         hashtable_remove_range(&post_call_table, info->start, info->end);
         hashtable_unlock(&post_call_table);
-        
-        hashtable_remove_range(&call_site_table, info->start, info->end);
-        hashtable_remove_range(&tag_to_call_site_table, info->start, info->end);
     }
 }
 
 void
 alloc_fragment_delete(void *dc/*may be NULL*/, void *tag)
 {
-    /* i#114: to remove from call_site_table we have another table that
-     * maps tags to sites.  Since no traces, we have at most one site per tag.
-     */
-    app_pc site;
     IF_DEBUG(bool removed;)
-    /* for shared fragments dc may be null so we get cur thread */
-    void *drcontext = (dc == NULL ? dr_get_current_drcontext() : dc);
-    /* after we exit a thread we clear tls field so pt may be null */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    /* i#552: don't remove on our own flush or else we can get our
-     * recursion counts off b/c we flush inside an alloc routine.
-     *
-     * XXX i#553: DR-initiated flush at certain points could cause the same problem!
-     */
     if (!options.track_allocs)
         return;
-    LOG(4, "alloc_fragment_delete "PFX" vs flushed "PFX"\n", tag,
-        (pt == NULL ? NULL : pt->flushed_tag));
-    if (pt != NULL && pt->flushed_tag == tag)
-        return;
-    site = (app_pc) hashtable_lookup(&tag_to_call_site_table, tag);
-    if (site != NULL && (pt == NULL || site != pt->flushed_tag)) {
-        IF_DEBUG(removed =)
-            hashtable_remove(&call_site_table, (void *) site);
-        DOLOG(2, {
-            if (removed)
-                LOG(1, "removed "PFX" (tag "PFX") from call_site_table\n", site, tag);
-        });
-        IF_DEBUG(removed =) 
-            hashtable_remove(&tag_to_call_site_table, tag);
-    }
     /* For post_call_table, just like in our use of dr_fragment_exists_at, we
-     * assume no traces and that we only care about fragments starting there
+     * assume no traces and that we only care about fragments starting there.
+     *
+     * XXX: if we had DRi#409 we could avoid doing this removal on
+     * non-cache-consistency deletion: though usually if we remove on our
+     * own flush we should re-mark as post-call w/o another flush since in
+     * most cases the post-call is reached via the call.
+     *
+     * An alternative would be to not remove here, to store the
+     * pre-call bytes, and to check on new bbs whether they changed.
      */
     hashtable_lock(&post_call_table);
     IF_DEBUG(removed =) 
@@ -2949,10 +2933,13 @@ enter_heap_routine(per_thread_t *pt, app_pc pc)
         client_entering_heap_routine();
     }
     pt->in_heap_routine++;
-    /* Exceed array depth => just don't record: only needed on jmp-to-post-call-bb */
-    if (pt->in_heap_routine < MAX_HEAP_NESTING)
+    /* Exceed array depth => just don't record: only needed on jmp-to-post-call-bb
+     * and on DGC.
+     */
+    if (pt->in_heap_routine < MAX_HEAP_NESTING) {
         pt->last_alloc_routine[pt->in_heap_routine] = pc;
-    else {
+        pt->post_call[pt->in_heap_routine] = pt->cur_post_call;
+    } else {
         LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
             get_alloc_routine_name(pc), pt->in_heap_routine, MAX_HEAP_NESTING);
     }
@@ -4162,7 +4149,6 @@ alloc_hook(app_pc pc)
          */
         app_pc retaddr = get_retaddr_at_entry(&mc);
         post_call_entry_t *e;
-        bool have_site_instru;
         IF_DEBUG(bool has_entry;)
         /* We will come here again after the flush-redirect.
          * FIXME: should we try to flush the call instr itself: don't
@@ -4186,13 +4172,7 @@ alloc_hook(app_pc pc)
             LOG(2, "found new retaddr: call to %s from "PFX"\n",
                 get_alloc_routine_name(pc), retaddr);
             if (e == NULL) {
-                e = (post_call_entry_t *)
-                    global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
-                e->callee = pc;
-                e->existing_instrumented = false;
-                hashtable_add(&post_call_table, (void*)retaddr, (void*)e);
-                LOG(2, "adding post-call %s "PFX" from "PFX"\n",
-                    get_alloc_routine_name(pc), pc, retaddr);
+                e = post_call_entry_add(retaddr, pc, false);
             }
             /* now that we have an entry in the synchronized post_call_table
              * any new code coming in will be instrumented.
@@ -4201,17 +4181,16 @@ alloc_hook(app_pc pc)
              * weird mid-call-instr target in which case it's not post-call.
              */
             if (dr_fragment_exists_at(drcontext, (void *)retaddr)) {
-                /* I'd use dr_unlink_flush_region but it requires -enable_full_api.
-                 * Currently we assume a synchronous flush so we can clear
-                 * pt->flushed_tag in bb creation event and know that's after
-                 * all deletions.
+                /* We don't support -opt_memory so we use dr_unlink_flush_region
+                 * to avoid synchall costs.  We can't use dr_delay_flush_region
+                 * b/c we need to not enter before we're done w/ callee.
+                 * We don't need a synchronous flush.
                  */
                 LOG(2, "flushing "PFX", should re-appear at "PFX"\n", retaddr, pc);
                 STATS_INC(post_call_flushes);
-                pt->flushed_tag = retaddr;
                 /* unlock for the flush */
                 hashtable_unlock(&post_call_table);
-                dr_flush_region(retaddr, 1);
+                dr_unlink_flush_region(retaddr, 1);
                 /* now we are guaranteed no thread is inside the fragment */
                 /* another thread may have done a racy competing flush: should be fine */
                 hashtable_lock(&post_call_table);
@@ -4239,16 +4218,13 @@ alloc_hook(app_pc pc)
          * invocation of a call* for which we did identify the
          * retaddr.  An example of a recursive call is glibc's
          * double-free check calling strdup and calloc.
+         * Update: we now longer do pre-call instru so we always call the
+         * pre-hook here.
          */
-        have_site_instru = (hashtable_lookup(&call_site_table, (void*)retaddr) != NULL);
-        if (!have_site_instru) {
-            LOG(2, "in callee "PFX" %s w/o call-site pre-instru since %s from "PFX"\n",
-                pc, get_alloc_routine_name(pc),
-                has_entry ? "indirect caller" : "missed call site",
-                retaddr);
-            handle_alloc_pre_ex(retaddr, pc, true/*indirect*/, pc, true/*inside callee*/);
-        } else
-            ASSERT(pt->in_heap_routine > 0, "in call_site_table but missed pre");
+        pt->cur_post_call = retaddr;
+        handle_alloc_pre_ex(retaddr, pc,
+                            true/*indirect: though now w/ i#559 direct come here too*/,
+                            pc, true/*inside callee*/);
     } 
 #ifdef WINDOWS
     else if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
@@ -4326,6 +4302,9 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         pt->in_heap_routine, pt->in_heap_adjusted,
         pt->in_heap_routine > 0 ? " (recursive)" : "",
         inside ? "post-retaddr" : "pre-retaddr");
+    DOLOG(2, {//NOCHECKIN
+        print_callstack_to_file(drcontext, &mc, call_site, INVALID_FILE/*use pt->f*/);
+    });
 #if defined(WINDOWS) && defined (USE_DRSYMS)
     DODEBUG({
         if (is_rtl_routine(type) &&
@@ -4409,15 +4388,6 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
 
 /* only used if options.track_heap */
 static void
-handle_alloc_pre(app_pc call_site, app_pc expect, bool indirect, app_pc actual)
-{
-    ASSERT(options.track_heap, "requires track_heap");
-    handle_alloc_pre_ex(call_site, expect, indirect, actual,
-                        false/*not inside callee yet*/);
-}
-
-/* only used if options.track_heap */
-static void
 handle_alloc_post(app_pc func, app_pc post_call)
 {
     void *drcontext = dr_get_current_drcontext();
@@ -4492,6 +4462,9 @@ handle_alloc_post(app_pc func, app_pc post_call)
     LOG(2, "leaving alloc routine "PFX" %s rec=%d adj=%d\n",
         func, get_alloc_routine_name(func),
         pt->in_heap_routine, pt->in_heap_adjusted);
+    DOLOG(2, {//NOCHECKIN
+        print_callstack_to_file(drcontext, &mc, post_call, INVALID_FILE/*use pt->f*/);
+    });
     if (pt->in_heap_routine == pt->in_heap_adjusted) {
         pt->in_heap_adjusted = 0;
         adjusted = true;
@@ -4601,51 +4574,6 @@ handle_tailcall(app_pc callee, app_pc post_call)
 
 /* only used if options.track_heap */
 static void
-instrument_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
-                      bool indirect, app_pc target, app_pc post_call)
-{
-    /* The plan:
-     * -- pre-cti, check ind target match & set flag;
-     * -- in callee, check flag (to catch indirect ctis that didn't match
-     *    on our first encounter)
-     *    (in-callee is inserted via insert_hook, called from bb hook);
-     * -- post-cti, process alloc & clear flag
-     */
-    app_pc handler = (app_pc)handle_alloc_pre;
-    uint num_args = 4;
-    ASSERT(options.track_heap, "requires track_heap");
-    LOG(3, "instrumenting alloc site "PFX" targeting "PFX" %s\n",
-        instr_get_app_pc(inst), target, get_alloc_routine_name(target));
-    hashtable_add(&call_site_table, (void*)post_call, (void*)1);
-    hashtable_add(&tag_to_call_site_table, tag, (void*)post_call);
-    dr_prepare_for_call(drcontext, bb, inst);
-    if (!instr_is_call(inst)) {
-        /* we assume we've already done the call and this is jmp*, so we
-         * call handle_alloc_pre_ex and pass 1 for the inside param
-         */
-        PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32(1)));
-        handler = (app_pc)handle_alloc_pre_ex;
-        num_args = 5;
-    }
-    if (indirect) {
-        /* eax is already saved */
-        PRE(bb, inst, INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(REG_EAX),
-                                          instr_get_target(inst)));
-        PRE(bb, inst, INSTR_CREATE_push(drcontext, opnd_create_reg(REG_EAX)));
-        PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32(1)));
-    } else {
-        PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32(0)));
-        PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32(0)));
-    }
-    PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32((int)target)));
-    PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32
-                                        ((ptr_int_t)instr_get_app_pc(inst))));
-    PRE(bb, inst, INSTR_CREATE_call(drcontext, opnd_create_pc(handler)));
-    dr_cleanup_after_call(drcontext, bb, inst, num_args*sizeof(reg_t));
-}
-
-/* only used if options.track_heap */
-static void
 instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
                            app_pc target, app_pc post_call)
 {
@@ -4680,6 +4608,10 @@ instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
  * FIXME: for PR 406714 I turned add_post_call_address() into a nop:
  * if we're sure we want that long-term we can remove a lot of the
  * code here that is only trying to find retaddr ahead of time
+ *
+ * Further update: we no longer insert pre-hook call at call site,
+ * only in callee (i#559), so this routine is only used to look for
+ * tailcalls.
  *
  * FIXME: would be nice for DR to support post-cti instrumentation!
  * Even if we had to do custom exit stubs here, still simpler than
@@ -4820,13 +4752,7 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
     } else {
         ASSERT(false, "unknown cti at call site");
     }
-    if (target != NULL && is_alloc_routine(target)) {
-        LOG(2, "found %s to %s @"PFX" tgt "PFX"\n",
-            opc == OP_jmp_ind ? "jmp" : "call",
-            get_alloc_routine_name(target), instr_get_app_pc(inst), target);
-        ASSERT(post_call != NULL, "need post_call for alloc site");
-        instrument_alloc_site(drcontext, tag, bb, inst, opc != OP_call, target, post_call);
-    }
+    /* we no longer insert pre-hook call at call site, only in callee (i#559) */
 }
 
 #ifdef WINDOWS
@@ -4883,16 +4809,8 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     if (exiting_alloc != NULL)
         *exiting_alloc = false;
 
-    if (pt->flushed_tag != NULL) {
-        /* We assume a synchronous flush so we can clear
-         * pt->flushed_tag in bb creation event and know that's after
-         * all deletions.
-         */
-        pt->flushed_tag = NULL;
-    }
-
     if (options.track_heap) {
-        app_pc callee = post_call_lookup(pc);
+        app_pc callee = post_call_lookup(pt, pc);
         if (callee != NULL) {
             instrument_post_alloc_site(drcontext, bb, inst, callee, pc);
             if (exiting_alloc != NULL)
