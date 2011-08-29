@@ -61,9 +61,17 @@ LEAK
 LEAK
 ntdll.dll!Rtl*ActivationContext*
 
+LEAK
+ntdll.dll!*
+ntdll.dll!RtlAllocateActivationContextStack
+
 # i#286: the first two frames for _beginthreadex are:
 #   ntdll.dll!RtlAllocateActivationContextStack
 #   KERNEL*.dll!CreateRemoteThread*
+
+# i#369
+#   ntdll.dll!<VARIOUS>
+#   ntdll.dll!RtlAllocateActivationContextStack
 
 # i#445: for remote threads (e.g., nudges) the stacks start with:
 #   ntdll.dll!RtlAllocateActivationContextStack
