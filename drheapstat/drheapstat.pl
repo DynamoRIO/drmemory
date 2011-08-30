@@ -132,6 +132,7 @@ $stale_since = -1;  # only for -visualize
 $stale_for = -1;    # only for -visualize
 $suppfile = "";
 my $follow_children = 1;
+my $callstack_style = $default_op_vals{"callstack_style"};
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
@@ -175,6 +176,7 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "pid_file=s" => \$pid_file,
                 "group_by_files" => \$group_by_files,
                 "use_vmtree" => \$use_vmtree,
+                "callstack_style=s" => \$callstack_style,
                 "v" => \$verbose,
                 "version" => \$version)) {
     die $usage;
@@ -548,6 +550,7 @@ sub show_leaks() {
     push @cmd, "-use_vmtree" if ($use_vmtree);
     push @cmd, ("-suppress", $suppfile) if ($suppfile ne '');
     push @cmd, ("-aggregate", $profdir);
+    push @cmd, ("-callstack_style", "$callstack_style");
     print stderr "running ".join(' ', @cmd)."\n" if ($verbose);
     system(@cmd);
     die "Error $? processing data\n" if ($? != 0);

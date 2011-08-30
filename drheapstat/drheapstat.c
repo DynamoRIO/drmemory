@@ -1983,7 +1983,7 @@ dr_init(client_id_t client_id)
                     * can be the bottleneck) and good callstacks
                     */
                    PAGE_SIZE,
-                   IF_DRSYMS_ELSE(options.symbol_offsets, false),
+                   IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
                    NULL,
                    /* XXX: may need better callstack heuristics w/o shadow info
                     * if user turns off stack zeroing from -leaks_only

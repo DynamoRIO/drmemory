@@ -41,9 +41,9 @@
 /* global options: xref PR 612970 on using generalized per-file options */
 static uint op_max_frames;
 static uint op_stack_swap_threshold;
-static uint op_fp_flags; /* set of flags */
+static uint op_fp_flags; /* set of FP_ flags */
+static uint op_print_flags; /* set of PRINT_ flags */
 static size_t op_fp_scan_sz;
-static bool op_symbol_offsets;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
 static const char * (*op_get_syscall_name)(uint);
 static bool (*op_is_dword_defined)(byte *);
@@ -56,10 +56,10 @@ static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
 
 #ifdef WINDOWS
 # define FP_PREFIX ""
-# define LINE_PREFIX "    "
 #else
 # define FP_PREFIX "\t"
 #endif
+#define LINE_PREFIX "    "
 
 #ifdef STATISTICS
 uint find_next_fp_scans;
@@ -127,7 +127,7 @@ typedef struct _full_frame_t {
     frame_loc_t loc;
     size_t modoffs;
     /* For syscalls, we use MODNAME_INFO_SYSCALL and store the syscall # in modoffs.
-     * For non-modules addresses, we use NULL.
+     * For non-module addresses, we use NULL.
      */
     modname_info_t *modname;
 } full_frame_t;
@@ -189,6 +189,34 @@ static modname_info_t *modtree_last_name_info;
 static app_pc modtree_last_hit;
 static app_pc modtree_last_miss;
 
+/****************************************************************************
+ * Symbolized callstacks for comparing to suppressions.
+ * We do not store these long-term except those we read from suppression file.
+ * We need to print out to a max-size buffer anyway so we use fixed
+ * arrays for the strings.
+ */
+
+struct _symbolized_frame_t {
+    uint num;
+    app_loc_t loc;
+    /* For easier suppression comparison we store "<not in a module>" and
+     * "system call ..." in func.  is_module distinguishes.
+     */
+    bool is_module;
+    char modname[MAX_MODULE_LEN+1]; /* always null-terminated */
+    /* This is a string instead of a number, again for comparison w/ wildcards
+     * in the modoffs in suppression frames
+     */
+    char modoffs[MAX_PFX_LEN+1]; /* always null-terminated */
+    char func[MAX_FUNC_LEN+1]; /* always null-terminated */
+    size_t funcoffs;
+    char fname[MAX_FILENAME_LEN+1]; /* always null-terminated */
+    uint64 line;
+    size_t lineoffs;
+};
+
+/***************************************************************************/
+
 static bool
 module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name OUT);
 
@@ -213,16 +241,16 @@ max_callstack_size(void)
 }
 
 void
-callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
-               size_t fp_scan_sz, bool symbol_offsets,
+callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
+               uint fp_flags, size_t fp_scan_sz, uint print_flags,
                const char *(*get_syscall_name)(uint),
                bool (*is_dword_defined)(byte *))
 {
     op_max_frames = callstack_max_frames;
     op_stack_swap_threshold = stack_swap_threshold;
-    op_fp_flags = flags;
+    op_fp_flags = fp_flags;
     op_fp_scan_sz = fp_scan_sz;
-    op_symbol_offsets = symbol_offsets;
+    op_print_flags = print_flags;
     op_get_syscall_name = get_syscall_name;
     op_is_dword_defined = is_dword_defined;
     page_buf_lock = dr_mutex_create();
@@ -274,59 +302,61 @@ callstack_thread_exit(void *drcontext)
 
 /***************************************************************************/
 
-#ifdef USE_DRSYMS
-/* Symbol lookup: i#44/PR 243532
- * FIXME: provide options for formatting?
- * - whether to include function name and/or line #
- * - whether to include offs within func and/or within line
- * - whether to use addr2line format "file:line#" or windbg format "file(line#)"
- */
-
 static void
-print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
-                    modname_info_t *name_info, size_t modoffs)
+init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
+{
+    frame->num = frame_num;
+    memset(&frame->loc, 0, sizeof(frame->loc));
+    frame->is_module = false;
+    frame->modname[0] = '\0';
+    frame->modoffs[0] = '\0';
+    frame->func[0] = '?';
+    frame->func[1] = '\0';
+    frame->funcoffs = 0;
+    frame->fname[0] = '\0';
+    frame->line = 0;
+    frame->lineoffs = 0;
+}
+
+#ifdef USE_DRSYMS
+/* Symbol lookup: i#44/PR 243532 */
+static void
+lookup_func_and_line(symbolized_frame_t *frame OUT,
+                     modname_info_t *name_info IN, size_t modoffs)
 {
     ssize_t len = 0;
     drsym_error_t symres;
     drsym_info_t *sym;
     const char *modpath = name_info->path;
-    const char *modname = name_info->name;
     char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
-    ASSERT(modname != NULL, "caller should have replaced with empty string");
     sym = (drsym_info_t *) sbuf;
     sym->struct_size = sizeof(*sym);
     sym->name_size = MAX_FUNC_LEN;
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     symres = drsym_lookup_address(modpath, modoffs, sym);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-        if (sym->name_available_size >= sym->name_size) {
-            DO_ONCE({ 
-                LOG(1, "WARNING: at least one function name longer than max: %s\n",
-                    sym->name);
-            });
-            STATS_INC(symbol_names_truncated);
-        }
-        /* I like have +0x%x to show offs within func but we'll match addr2line */
-        BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
-        if (op_symbol_offsets)
-            BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX, modoffs - sym->start_offs);
-        BUFPRINT(buf, bufsz, *sofar, len, NL);
         LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX")\n",
             modpath, modoffs, sym->name, modoffs - sym->start_offs,
             sym->start_offs, sym->end_offs);
+        if (sym->name_available_size >= sym->name_size) {
+            DO_ONCE({ 
+                WARN("WARNING: at least one function name longer than max: %s\n",
+                     sym->name);
+            });
+            STATS_INC(symbol_names_truncated);
+        }
+        dr_snprintf(frame->func, MAX_FUNC_LEN, sym->name);
+        NULL_TERMINATE_BUFFER(frame->func);
+        frame->funcoffs = (modoffs - sym->start_offs);
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-            BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);
+            frame->fname[0] = '\0';
+            frame->line = 0;
+            frame->lineoffs = 0;
         } else {
-            /* windbg format is file(line#) but we use addr2line format file:line# */
-            /* I like +0x%x sym->line_offs but we'll match addr2line */
-            /* XXX: printf won't truncate ints.  we could use dr_snprintf
-             * to limit line# to MAX_LINENO_DIGITS, but would be hacky w/
-             * BUFPRINT.  for now we live w/ potentially truncating callstacks later
-             * if have giant line#s.
-             */
-            BUFPRINT(buf, bufsz, *sofar, len,
-                     LINE_PREFIX"%."STRINGIFY(MAX_FILENAME_LEN)"s:%"UINT64_FORMAT_CODE""NL,
-                     sym->file, sym->line);
+            dr_snprintf(frame->fname, MAX_FILENAME_LEN, sym->file);
+            NULL_TERMINATE_BUFFER(frame->fname);
+            frame->line = sym->line;
+            frame->lineoffs = sym->line_offs;
         }
     } else {
 # ifdef DEBUG
@@ -336,7 +366,6 @@ print_func_and_line(char *buf, size_t bufsz, size_t *sofar,
             WARN("WARNING: unable to load symbols for %s\n", modpath);
         }
 # endif
-        BUFPRINT(buf, bufsz, *sofar, len, " %s!?"NL LINE_PREFIX"??:0"NL, modname);
     }
 }
 
@@ -372,7 +401,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
         }
         /* I like have +0x%x to show offs within func but we'll match addr2line */
         BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
-        if (op_symbol_offsets) {
+        if (TEST(PRINT_SYMBOL_OFFSETS, op_print_flags)) {
             BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX,
                      addr - data->start - sym->start_offs);
         }
@@ -386,23 +415,149 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
 }
 #endif
 
-/* Returns whether a new frame was added (won't be if skip_non_module and pc
+/* We provide control over many aspects of callstack formatting (i#290)
+ * encoded in op_print_flags.
+ * We put file:line in [] and absaddr <mod!offs> in ()
+ *
+ * Example:
+ *  0  suppress.exe!do_uninit_read+0x27 [e:\derek\drmemory\git\src\tests\suppress.c @ 53] (0x004011d7 <suppress.exe+0x11d7>)
+ *  1  suppress.exe!uninit_test1+0xb [e:\derek\drmemory\git\src\tests\suppress.c @ 59] (0x0040119c <suppress.exe+0x119c>)
+ *  2  suppress.exe!test+0xf [e:\derek\drmemory\git\src\tests\suppress.c @ 213] (0x00401070 <suppress.exe+0x1070>)
+ *  3  suppress.exe!main+0x31 [e:\derek\drmemory\git\src\tests\suppress.c @ 247] (0x00401042 <suppress.exe+0x1042>)
+ *  4  suppress.exe!__tmainCRTStartup+0x15e [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c @ 327] (0x00401d87 <suppress.exe+0x1d87>)
+ *  5  KERNEL32.dll!BaseProcessStart+0x27 (0x7d4e9982 <KERNEL32.dll+0x29982>)
+ */
+static void
+print_file_and_line(symbolized_frame_t *frame IN,
+                    char *buf, size_t bufsz, size_t *sofar,
+                    uint print_flags)
+{
+    ssize_t len = 0;
+    /* XXX: add option for printing "[]" if field not present? */
+    if (frame->fname[0] != '\0') {
+        if (TEST(PRINT_SRCFILE_NEWLINE, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX);
+        else
+            BUFPRINT(buf, bufsz, *sofar, len, " [");
+        BUFPRINT(buf, bufsz, *sofar, len, "%."STRINGIFY(MAX_FILENAME_LEN)"s",
+                 frame->fname);
+        if (!TEST(PRINT_SRCFILE_NO_COLON, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, ":");
+        else /* windbg format */
+            BUFPRINT(buf, bufsz, *sofar, len, " @ ");
+        /* XXX: printf won't truncate ints.  we could use dr_snprintf
+         * to limit line# to MAX_LINENO_DIGITS, but would be hacky w/
+         * BUFPRINT.  for now we live w/ potentially truncating callstacks later
+         * if have giant line#s.
+         */
+        BUFPRINT(buf, bufsz, *sofar, len, "%"UINT64_FORMAT_CODE, frame->line);
+        if (TEST(PRINT_LINE_OFFSETS, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX, frame->lineoffs);
+        if (!TEST(PRINT_SRCFILE_NEWLINE, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, "]");
+    } else {
+        if (TEST(PRINT_SRCFILE_NEWLINE, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX"??:0");
+    }
+}
+
+#ifdef X64
+# define PIFC INT64_FORMAT"x"
+#else
+# define PIFC "x"
+#endif
+
+static void
+print_frame(symbolized_frame_t *frame IN,
+            char *buf, size_t bufsz, size_t *sofar,
+            bool use_custom_flags, uint custom_flags)
+{
+    ssize_t len = 0;
+    size_t align_sym = 0, align_mod = 0, align_moffs = 0;
+    uint flags = use_custom_flags ? custom_flags : op_print_flags;
+
+    if (TEST(PRINT_ALIGN_COLUMNS, flags)) {
+        /* XXX: could expose these as options.  could also align "abs <mod+offs>". */
+        align_sym = 35;
+        align_mod = 15;
+        align_moffs = 6;
+    }
+
+    if (TEST(PRINT_FRAME_NUMBERS, flags))
+        BUFPRINT(buf, bufsz, *sofar, len, "#%2d ", frame->num);
+    
+    if (!frame->is_module) {
+        /* we already printed the syscall string or "<not in a module>" to func */
+        BUFPRINT(buf, bufsz, *sofar, len, "%-*s",
+                 align_sym, frame->func);
+        if (frame->loc.type == APP_LOC_SYSCALL) {
+            if (TEST(PRINT_SRCFILE_NEWLINE, flags))
+                BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX"<system call>");
+        } else
+            ASSERT(frame->func[0] == '<' /* "<not in a module>" */, "inconsistency");
+    } else {
+        if (!TEST(PRINT_SYMBOL_FIRST, flags)) {
+            BUFPRINT(buf, bufsz, *sofar, len, "%s!%-*s", frame->modname,
+                     align_sym, frame->func);
+        } else
+            BUFPRINT(buf, bufsz, *sofar, len, "%-*s", align_sym, frame->func);
+        if (TEST(PRINT_SYMBOL_OFFSETS, flags))
+            BUFPRINT(buf, bufsz, *sofar, len, "+0x%-*"PIFC, align_moffs, frame->funcoffs);
+        if (TEST(PRINT_SYMBOL_FIRST, flags))
+            BUFPRINT(buf, bufsz, *sofar, len, " %-*s", align_mod, frame->modname);
+
+        /* if file+line are inlined, put before abs+mod!offs */
+        if (!TEST(PRINT_SRCFILE_NEWLINE, flags))
+            print_file_and_line(frame, buf, bufsz, sofar, flags);
+    }
+
+    if ((frame->loc.type == APP_LOC_PC && TEST(PRINT_ABS_ADDRESS, flags)) ||
+        (frame->is_module && TEST(PRINT_MODULE_OFFSETS, flags))) {
+        BUFPRINT(buf, bufsz, *sofar, len, " (");
+        if (frame->loc.type == APP_LOC_PC && TEST(PRINT_ABS_ADDRESS, flags)) {
+            BUFPRINT(buf, bufsz, *sofar, len, PFX, loc_to_pc(&frame->loc));
+            if (frame->is_module && TEST(PRINT_MODULE_OFFSETS, flags))
+                BUFPRINT(buf, bufsz, *sofar, len, " ");
+        }
+        if (frame->is_module && TEST(PRINT_MODULE_OFFSETS, flags)) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "<%." STRINGIFY(MAX_MODULE_LEN) "s+%s>",
+                     frame->modname, frame->modoffs);
+        }
+        BUFPRINT(buf, bufsz, *sofar, len, ")");
+    }
+    /* if file+line are on separate line, put after abs+mod!offs */
+    if (TEST(PRINT_SRCFILE_NEWLINE, flags)) {
+        if (frame->is_module) {
+            print_file_and_line(frame, buf, bufsz, sofar, flags);
+        } else if (frame->loc.type == APP_LOC_PC) {
+            BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX"??:0");
+        }
+    }
+
+    BUFPRINT(buf, bufsz, *sofar, len, NL);
+}
+
+/* Fills in frame xor pcs.
+ * Returns whether a new frame was added (won't be if skip_non_module and pc
  * is not in a module)
  * sub1_sym is for PR 543863: subtract one from retaddrs in callstacks
  */
-bool
-print_address(char *buf, size_t bufsz, size_t *sofar,
-              app_pc pc, module_data_t *mod_in /*optional*/, bool modoffs_only,
-              bool skip_non_module, packed_callstack_t *pcs,
-              bool sub1_sym)
+static bool
+address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
+                 app_pc pc, module_data_t *mod_in /*optional*/,
+                 bool skip_non_module, bool sub1_sym, uint frame_num)
 {
-    ssize_t len = 0;
     modname_info_t *name_info;
     app_pc mod_start;
-    ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
-           (buf == NULL && sofar == NULL && pcs != NULL),
-           "print_callstack: can't pass buf and pcs");
+    ASSERT((frame != NULL && pcs == NULL) || (frame == NULL && pcs != NULL),
+           "address_to_frame: can't pass frame and pcs");
     
+    if (frame != NULL) {
+        init_symbolized_frame(frame, frame_num);
+        pc_to_loc(&frame->loc, pc);
+    }
+
     if (module_lookup(pc, &mod_start, NULL, &name_info)) {
         ASSERT(pc >= mod_start, "internal pc-not-in-module error");
         ASSERT(name_info != NULL, "module should have info");
@@ -440,26 +595,19 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
                 pcs->frames.full[pcs_idx].modname = name_info;
             }
             pcs->num_frames++;
-        } else if (modoffs_only) {
-            const char *modname = (name_info != NULL) ? name_info->name : NULL;
-            BUFPRINT(buf, bufsz, *sofar, len,
-                    "<%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">"NL,
-                    modname == NULL ? "" : modname, pc - mod_start);
-#ifdef USE_DRSYMS
-            IF_WINDOWS(BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);)
-#endif
         } else {
-            const char *modname = (name_info != NULL) ? name_info->name : NULL;
-            BUFPRINT(buf, bufsz, *sofar, len,
-                     PFX" <%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">",
-                     pc, modname == NULL ? "" : modname, pc - mod_start);
+            const char *modname = (name_info->name == NULL) ?
+                "<name unavailable>" : name_info->name;
+            frame->is_module = true;
+            dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
+            NULL_TERMINATE_BUFFER(frame->modname);
+            dr_snprintf(frame->modname, MAX_MODULE_LEN, PIFX, pc - mod_start);
+            NULL_TERMINATE_BUFFER(frame->modoffs);
 #ifdef USE_DRSYMS
-            if (name_info != NULL && name_info->path != NULL) {
-                print_func_and_line(buf, bufsz, sofar, name_info,
-                                    pc - mod_start - (sub1_sym ? 1 : 0));
+            if (name_info->path != NULL) {
+                lookup_func_and_line(frame, name_info,
+                                     pc - mod_start - (sub1_sym ? 1 : 0));
             }
-#else
-            BUFPRINT(buf, bufsz, *sofar, len, ""NL);
 #endif
         }
         return true;
@@ -475,14 +623,24 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
                 pcs->frames.full[pcs->num_frames].modname = NULL;
             }
             pcs->num_frames++;
-        } else if (modoffs_only)
-            BUFPRINT(buf, bufsz, *sofar, len, "<not in a module>"NL);
-        else {
-            BUFPRINT(buf, bufsz, *sofar, len, PFX" <not in a module>"NL, pc);
-#ifdef USE_DRSYMS
-            IF_WINDOWS(BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);)
-#endif
+        } else {
+            ASSERT(!frame->is_module, "frame not initialized");
+            dr_snprintf(frame->func, MAX_FUNC_LEN, "<not in a module>");
+            NULL_TERMINATE_BUFFER(frame->func);
         }
+        return true;
+    }
+    return false;
+}
+
+bool
+print_address(char *buf, size_t bufsz, size_t *sofar,
+              app_pc pc, module_data_t *mod_in /*optional*/,
+              bool skip_non_module, bool sub1_sym)
+{
+    symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
+    if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
+        print_frame(&frame, buf, bufsz, sofar, true, PRINT_FOR_LOG);
         return true;
     }
     return false;
@@ -518,6 +676,8 @@ is_retaddr(byte *pc)
             match = (*(pc - 5) == OP_CALL_DIR ||
                      /* indirect through reg: 0xff /2 */
                      (*(pc - 2) == OP_CALL_IND && ((*(pc - 1) >> 3) & 0x7) == 2) ||
+                     /* indirect through reg w/ 1B offs: 0xff /2 offs */
+                     (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) & 0x7) == 2) ||
                      /* indirect through mem: 0xff /2 + disp */
                      (*(pc - 6) == OP_CALL_IND && ((*(pc - 5) >> 3) & 0x7) == 2));
         }, { /* EXCEPT */
@@ -671,8 +831,7 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
 
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
-                bool modoffs_only, bool print_fps,
-                packed_callstack_t *pcs, int num_frames_printed)
+                bool print_fps, packed_callstack_t *pcs, int num_frames_printed)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *)
@@ -727,9 +886,9 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             appdata.retaddr = custom_retaddr;
             custom_retaddr = NULL;
         }
-        if (buf != NULL && !modoffs_only) {
+        if (buf != NULL) {
             prev_sofar = *sofar;
-            BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX);
+            BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"#%2d ", num);
             if (print_fps) {
                 BUFPRINT(buf, bufsz, *sofar, len, "fp="PFX" parent="PFX" ", 
                          pc, appdata.next_fp);
@@ -746,14 +905,22 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
          * for the call and not for the next source code line, but only for
          * symbol lookup so we still display a valid instr addr.
          */
-        if (print_address(buf, bufsz, sofar, appdata.retaddr, NULL, modoffs_only,
-                          !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags), pcs, true)) {
+        if (pcs != NULL && first_iter && num == 1 &&
+            PCS_FRAME_LOC(pcs, 0).addr == appdata.retaddr) {
+            /* caller already added this frame */
+            if (buf != NULL) /* undo the fp= print */
+                *sofar = prev_sofar;
+        } else if ((pcs == NULL &&
+                    print_address(buf, bufsz, sofar, appdata.retaddr, NULL,
+                                  !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags), true)) ||
+                   (pcs != NULL &&
+                    address_to_frame(NULL, pcs, appdata.retaddr, NULL,
+                                     !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
+                                     true, pcs->num_frames))) {
             num++;
         } else {
-            if (buf != NULL && !modoffs_only) {
-                /* undo the fp= print */
+            if (buf != NULL) /* undo the fp= print */
                 *sofar = prev_sofar;
-            }
             if (first_iter) { /* don't trust "num == num_frames_printed" as test for 1st */
                 /* We may have started in a frameless function using ebp for
                  * other purposes but it happens to point to higher on the stack.
@@ -770,7 +937,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         first_iter = false;
         /* pcs->num_frames could be larger if frames were printed before this routine */
         if (num >= op_max_frames || (pcs != NULL && pcs->num_frames >= op_max_frames)) {
-            if (buf != NULL && !modoffs_only)
+            if (buf != NULL)
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"..."NL);
             LOG(4, "truncating callstack: hit max frames %d %d\n", 
                 num, pcs == NULL ? -1 : pcs->num_frames);
@@ -844,7 +1011,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     if (pt != NULL && lowest_frame > pt->stack_lowest_frame)
         pt->stack_lowest_frame = lowest_frame;
 
-    if (buf != NULL && !modoffs_only)
+    if (buf != NULL)
         BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
     if (buf != NULL) {
         buf[bufsz-2] = '\n';
@@ -894,6 +1061,7 @@ void
 print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
 {
     size_t sofar = 0;
+    ssize_t len;
     per_thread_t *pt = (per_thread_t *)
         ((drcontext == NULL) ? NULL : dr_get_tls_field(drcontext));
     /* mc and pc will be NULL for startup heap iter */
@@ -902,9 +1070,10 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
         return;
     }
 
-    print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL, false/*print addrs*/,
-                  false/*print non-module addr*/, NULL, false);
-    print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*print addrs*/,
+    BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "# 0 ");
+    print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL,
+                  false/*print non-module addr*/, false);
+    print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
                     true/*incl fp*/, NULL, 1);
     print_buffer(f == INVALID_FILE ? pt->f : f, pt->errbuf);
 }
@@ -957,11 +1126,11 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         } else {
             app_pc pc = loc_to_pc(loc);
             ASSERT(loc->type == APP_LOC_PC, "unknown loc type");
-            print_address(NULL, 0, NULL, pc, NULL, false, false, pcs, false);
+            address_to_frame(NULL, pcs, pc, NULL, false, false, 0);
         }
         num_frames_printed = 1;
     }
-    print_callstack(NULL, 0, NULL, mc, false, false, pcs, num_frames_printed);
+    print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed);
     if (pcs->is_packed) {
         packed_frame_t *frames_out;
         sz_out = sizeof(*pcs->frames.packed) * pcs->num_frames;
@@ -1002,7 +1171,7 @@ packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
                                modname_info_t **name_info OUT, size_t *modoffs OUT)
 {
     modname_info_t *info = NULL;
-    size_t offs;
+    size_t offs = 0;
     ASSERT(pcs != NULL, "invalid arg");
     ASSERT(frame < pcs->num_frames, "invalid arg");
     /* modname_idx==0 or modname==NULL is the code for a system call */
@@ -1010,7 +1179,7 @@ packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
         info = pcs->frames.full[frame].modname;
         if (info == &MODNAME_INFO_SYSCALL)
             return false;
-        offs = pcs->frames.packed[frame].modoffs;
+        offs = pcs->frames.full[frame].modoffs;
     } else {
         if (pcs->frames.packed[frame].modname_idx == 0)
             return false;
@@ -1036,6 +1205,72 @@ packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
     return true;
 }
 
+static void
+packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame OUT,
+                           uint idx)
+{
+    modname_info_t *info = NULL;
+    size_t offs;
+    init_symbolized_frame(frame, idx);
+    if (!packed_callstack_frame_modinfo(pcs, idx, &info, &offs)) {
+        size_t sofar = 0;
+        ssize_t len;
+        const char *name = "<unknown>";
+        frame->loc.type = APP_LOC_SYSCALL;
+
+        /* sysnum is stored in modoffs field */
+        frame->loc.u.syscall.sysnum =
+            (pcs->is_packed ? pcs->frames.packed[idx].modoffs :
+             pcs->frames.full[idx].modoffs);
+        frame->loc.u.syscall.syscall_aux = PCS_FRAME_LOC(pcs, idx).syscall_aux;
+
+        /* we print the string now so we can compare to suppressions.
+         * we use func since modname is too short in windows.
+         */
+        BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "system call ");
+        if (op_get_syscall_name != NULL)
+            name = (*op_get_syscall_name)(frame->loc.u.syscall.sysnum);
+        /* strip syscall # if have name, to be independent of windows ver */
+        ASSERT(name != NULL, "syscall name should not be NULL");
+        if (name[0] != '\0' && name[0] != '<' /* "<unknown>" */) {
+            BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "%s", name);
+        } else {
+            BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "%d",
+                     frame->loc.u.syscall.sysnum);
+        }
+        if (frame->loc.u.syscall.syscall_aux != NULL) {
+            /* syscall aux identifier (PR 525269) */
+            BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, " %s",
+                     frame->loc.u.syscall.syscall_aux);
+        }
+        NULL_TERMINATE_BUFFER(frame->func);
+    } else {
+        pc_to_loc(&frame->loc, PCS_FRAME_LOC(pcs, idx).addr);
+        if (info != NULL) {
+            const char *modname = (info->name == NULL) ?
+                "<name unavailable>" : info->name;
+            frame->is_module = true;
+            dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
+            NULL_TERMINATE_BUFFER(frame->modname);
+            dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
+            NULL_TERMINATE_BUFFER(frame->modoffs);
+#ifdef USE_DRSYMS
+            /* PR 543863: subtract one from retaddrs in callstacks so the line#
+             * is for the call and not for the next source code line, but only
+             * for symbol lookup so we still display a valid instr addr.
+             * We assume first frame is not a retaddr.
+             */
+            lookup_func_and_line(frame, info,
+                                 (idx == 0 && !pcs->first_is_retaddr) ? offs : offs-1);
+#endif
+        } else {
+            ASSERT(!frame->is_module, "frame not initialized");
+            dr_snprintf(frame->func, MAX_FUNC_LEN, "<not in a module>");
+            NULL_TERMINATE_BUFFER(frame->func);
+        }
+    }
+}
+
 /* 0 for num_frames means to print them all prefixed with tabs and
  * absolute addresses, and to print an end marker.
  * otherwise num_frames indicates the number of frames to be printed.
@@ -1046,68 +1281,28 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
 {
     uint i;
     size_t len;
+    symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
-        modname_info_t *info = NULL;
-        size_t offs;
-        /* FIXME: share code w/ print_address() */
-        if (!packed_callstack_frame_modinfo(pcs, i, &info, &offs)) {
-            const char *name = "<unknown>";
-            /* sysnum is stored in modoffs field */
-            size_t modoffs = pcs->is_packed ? pcs->frames.packed[i].modoffs :
-                pcs->frames.full[i].modoffs;
-            BUFPRINT(buf, bufsz, *sofar, len, "%ssystem call ",
-                     (num_frames == 0) ? FP_PREFIX : "");
-            if (op_get_syscall_name != NULL)
-                name = (*op_get_syscall_name)(modoffs);
-            /* strip syscall # if have name, to be independent of windows ver */
-            ASSERT(name != NULL, "syscall name should not be NULL");
-            if (name[0] != '\0' && name[0] != '<') {
-                BUFPRINT(buf, bufsz, *sofar, len, "%s", name);
-            } else {
-                BUFPRINT(buf, bufsz, *sofar, len, "%d=%s", modoffs, name);
-            }
-            if (PCS_FRAME_LOC(pcs, i).syscall_aux != NULL) {
-                /* syscall aux identifier (PR 525269) */
-                BUFPRINT(buf, bufsz, *sofar, len, " %s",
-                         PCS_FRAME_LOC(pcs, i).syscall_aux);
-            }
-            BUFPRINT(buf, bufsz, *sofar, len, ""NL);
-#ifdef USE_DRSYMS
-            BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"<system call>"NL);
-#endif
-        } else {
-            const char *reason = "<not in a module>"; /* if no module info */
-            /* We assume no valid address will have offset 0 */
-            if (num_frames == 0) {
-                BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX PFX" ",
-                         PCS_FRAME_LOC(pcs, i).addr);
-            }
-            if (info != NULL) {
-                BUFPRINT(buf, bufsz, *sofar, len,
-                         "<%." STRINGIFY(MAX_MODULE_LEN) "s+"PIFX">",
-                         info->name, offs);
-#ifdef USE_DRSYMS
-                /* PR 543863: subtract one from retaddrs in callstacks so the line#
-                 * is for the call and not for the next source code line, but only
-                 * for symbol lookup so we still display a valid instr addr.
-                 * We assume first frame is not a retaddr.
-                 */
-                print_func_and_line(buf, bufsz, sofar, info,
-                                    (i == 0 && !pcs->first_is_retaddr) ? offs : offs-1);
-#else
-                BUFPRINT(buf, bufsz, *sofar, len, ""NL);
-#endif
-            } else {
-                BUFPRINT(buf, bufsz, *sofar, len, "%s"NL, reason);
-#ifdef USE_DRSYMS
-                BUFPRINT(buf, bufsz, *sofar, len, LINE_PREFIX"??:0"NL);
-#endif
-            }
-        }
+        packed_frame_to_symbolized(pcs, &frame, i);
+        print_frame(&frame, buf, bufsz, sofar, false, 0);
     }
     if (num_frames == 0)
         BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
+}
+
+void
+packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
+                               symbolized_callstack_t *scs OUT)
+{
+    uint i;
+    scs->num_frames = pcs->num_frames;
+    scs->frames = (symbolized_frame_t *)
+        global_alloc(sizeof(*scs->frames) * scs->num_frames, HEAPSTAT_CALLSTACK);
+    ASSERT(pcs != NULL, "invalid args");
+    for (i = 0; i < pcs->num_frames; i++) {
+        packed_frame_to_symbolized(pcs, &scs->frames[i], i);
+    }
 }
 
 #ifdef DEBUG
@@ -1263,6 +1458,74 @@ packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2])
     crc32_whole_and_half((const char *)PCS_FRAMES(pcs),
                          PCS_FRAME_SZ(pcs)*pcs->num_frames, crc);
 }
+
+
+/***************************************************************************
+ * SYMBOLIZED CALLSTACKS
+ */
+
+void
+symbolized_callstack_print(const symbolized_callstack_t *scs IN,
+                           char *buf, size_t bufsz, size_t *sofar)
+{
+    uint i;
+    ssize_t len;
+    ASSERT(scs != NULL, "invalid args");
+    for (i = 0; i < scs->num_frames; i++) {
+        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0);
+    }
+    BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
+}
+
+void
+symbolized_callstack_free(symbolized_callstack_t *scs)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->frames != NULL) {
+        global_free(scs->frames, sizeof(*scs->frames) * scs->num_frames,
+                    HEAPSTAT_CALLSTACK);
+    }
+}
+
+bool
+symbolized_callstack_frame_is_module(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return false;
+    return scs->frames[frame].is_module;
+}
+
+char *
+symbolized_callstack_frame_modname(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return NULL;
+    return scs->frames[frame].modname;
+}
+
+char *
+symbolized_callstack_frame_modoffs(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return 0;
+    return scs->frames[frame].modoffs;
+}
+
+char *
+symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return NULL;
+    return scs->frames[frame].func;
+}
+
+/***************************************************************************
+ * MODULES
+ */
 
 /* For storing binary callstacks we need to store module names in a shared
  * location to save space and handle unloaded and reloaded modules.

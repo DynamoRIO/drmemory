@@ -25,6 +25,12 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#ifdef LINUX
+# include <sys/types.h>
+# include <sys/stat.h>
+# include <fcntl.h>
+# include <unistd.h>
+#endif
 
 #ifdef WINDOWS
   /* On Windows, msvcrt!malloc() ends up calling HeapAlloc(), so there is a 
@@ -200,6 +206,46 @@ static void invalid_free_test1(void)
     FREE(p+2);
 }
 
+void
+syscall_test(void)
+{
+#ifdef LINUX
+    int fd = open("/dev/null", O_WRONLY);
+    int *uninit = (int *) malloc(sizeof(*uninit));
+    write(fd, uninit, sizeof(*uninit));
+    free(uninit);
+#else
+    MEMORY_BASIC_INFORMATION mbi;
+    void **uninit = (void **) malloc(sizeof(*uninit));
+    VirtualQuery(*uninit, &mbi, sizeof(mbi));
+    free(uninit);
+#endif
+}
+
+static void
+non_module_test(void)
+{
+    /* We put this code in our buffer:
+     *
+     *  83 f8 06             cmp    %eax $0x00000000
+     *  c2                   ret
+     */
+    char buf[4] = { 0x83, 0xf8, 0x00, 0xc3 };
+    int uninit;
+#ifdef LINUX
+    __asm("mov %0,%%ecx" : : "g"(&buf[0]) : "ecx");
+    __asm("mov %0,%%eax" : : "m"(uninit) : "eax");
+    __asm("call *%ecx");
+#else
+    char *bufptr = &buf[0];
+    __asm {
+        mov ecx, bufptr
+        mov eax, uninit
+        call ecx
+    }
+#endif
+}
+
 /* This function exists only to provide more than 2 frames in the error
  * callstack.
  * FIXME: PR 464804: suppression of invalid frees and errors at syscalls need
@@ -234,6 +280,10 @@ static void test(void)
     possible_leak_test2();      /* suppressed by 'LEAK' suppression */
 
     warning_test1();
+
+    syscall_test();
+
+    non_module_test();
 
     /* running this test last b/c it can corrupt the free list */
     invalid_free_test1();

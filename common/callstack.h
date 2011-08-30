@@ -119,13 +119,35 @@ enum {
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };
 
+/* Options for how to display callstacks.
+ * N.B.: postprocess.pl has a duplicate copy (once we have linux online syms
+ * that will go away) so keep them in sync
+ */
+enum {
+    PRINT_FRAME_NUMBERS        = 0x0001,
+    PRINT_ABS_ADDRESS          = 0x0002,
+    PRINT_MODULE_OFFSETS       = 0x0004,
+    PRINT_SYMBOL_OFFSETS       = 0x0008,
+    PRINT_LINE_OFFSETS         = 0x0010,
+    PRINT_SRCFILE_NEWLINE      = 0x0020,
+    PRINT_SRCFILE_NO_COLON     = 0x0040,
+    PRINT_SYMBOL_FIRST         = 0x0080,
+    PRINT_ALIGN_COLUMNS        = 0x0100,
+
+    PRINT_FOR_POSTPROCESS      = (PRINT_FRAME_NUMBERS | PRINT_ABS_ADDRESS |
+                                  PRINT_MODULE_OFFSETS),
+    PRINT_FOR_LOG              = (PRINT_ABS_ADDRESS | PRINT_MODULE_OFFSETS |
+                                  PRINT_SYMBOL_OFFSETS | PRINT_LINE_OFFSETS),
+};
+
 /* length of strings identifying module+offset addresses:
  * e.g., "0x7d61f78c <ntdll.dll+0x1f78c>"
  */
 #define MAX_MODULE_LEN IF_WINDOWS_ELSE(32,52)
 /* this can't be an expression since we STRINGIFY it */
 #define MAX_MODOFF_LEN IF_WINDOWS_ELSE(34,54) /* for '<' and '>' */
-#define MAX_ADDR_LEN (MAX_MODULE_LEN + 3/*'+0x'*/ + 8/*%08x*/)
+#define MAX_PFX_LEN (3/*'+0x'*/ + IF_X64_ELSE(16,8)/*%08x*/)
+#define MAX_ADDR_LEN (MAX_MODULE_LEN + MAX_PFX_LEN)
 /* max lengths for symbols */
 #define MAX_FUNC_LEN 256 /* C++ templates get pretty long */
 #define MAX_SYMBOL_LEN (MAX_MODULE_LEN + 1/*!*/ + MAX_FUNC_LEN)
@@ -159,8 +181,8 @@ extern uint cstack_is_retaddr_unreadable;
 #endif
 
 void
-callstack_init(uint callstack_max_frames, uint stack_swap_threshold, uint flags,
-               size_t fp_scan_sz, bool symbol_offsets,
+callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
+               uint fp_flags, size_t fp_scan_sz, uint print_flags,
                const char *(*get_syscall_name)(uint),
                bool (*is_dword_defined)(byte *));
 
@@ -232,6 +254,41 @@ bool
 is_in_module(byte *pc);
 
 /****************************************************************************
+ * Symbolized callstacks
+ */
+
+struct _symbolized_frame_t;
+typedef struct _symbolized_frame_t symbolized_frame_t;
+
+typedef struct _symbolized_callstack_t {
+    ushort num_frames;
+    symbolized_frame_t *frames;
+} symbolized_callstack_t;
+
+void
+packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
+                               symbolized_callstack_t *scs OUT);
+
+void
+symbolized_callstack_print(const symbolized_callstack_t *scs IN,
+                           char *buf, size_t bufsz, size_t *sofar);
+
+void
+symbolized_callstack_free(symbolized_callstack_t *scs);
+
+bool
+symbolized_callstack_frame_is_module(const symbolized_callstack_t *scs, uint frame);
+
+char *
+symbolized_callstack_frame_modname(const symbolized_callstack_t *scs, uint frame);
+
+char *
+symbolized_callstack_frame_modoffs(const symbolized_callstack_t *scs, uint frame);
+
+char *
+symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
+
+/****************************************************************************
  * Printing routines
  */
 
@@ -240,13 +297,12 @@ is_in_module(byte *pc);
  */
 bool
 print_address(char *buf, size_t bufsz, size_t *sofar,
-              app_pc pc, module_data_t *mod_in /*optional*/, bool modoffs_only,
-              bool omit_non_module, packed_callstack_t *pcs, bool sub1_sym);
+              app_pc pc, module_data_t *mod_in /*optional*/,
+              bool omit_non_module, bool sub1_sym);
 
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
-                bool modoffs_only, bool print_fps,
-                packed_callstack_t *pcs, int num_frames_printed);
+                bool print_fps, packed_callstack_t *pcs, int num_frames_printed);
 
 void
 print_buffer(file_t f, char *buf);

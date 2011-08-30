@@ -4302,7 +4302,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         pt->in_heap_routine, pt->in_heap_adjusted,
         pt->in_heap_routine > 0 ? " (recursive)" : "",
         inside ? "post-retaddr" : "pre-retaddr");
-    DOLOG(2, {//NOCHECKIN
+    DOLOG(4, {
         print_callstack_to_file(drcontext, &mc, call_site, INVALID_FILE/*use pt->f*/);
     });
 #if defined(WINDOWS) && defined (USE_DRSYMS)
@@ -4462,7 +4462,7 @@ handle_alloc_post(app_pc func, app_pc post_call)
     LOG(2, "leaving alloc routine "PFX" %s rec=%d adj=%d\n",
         func, get_alloc_routine_name(func),
         pt->in_heap_routine, pt->in_heap_adjusted);
-    DOLOG(2, {//NOCHECKIN
+    DOLOG(4, {
         print_callstack_to_file(drcontext, &mc, post_call, INVALID_FILE/*use pt->f*/);
     });
     if (pt->in_heap_routine == pt->in_heap_adjusted) {

@@ -191,6 +191,8 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
     set(cmd ${cmd} -dr_ops "${default_dr_ops}")
   endif ()
   # script ops last since using as hack for nudge test app
+  # we request callstacks w/ file:line on separate line for matching our templates
+  set(drmem_ops -callstack_style 0x21 ${drmem_ops})
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
@@ -220,7 +222,9 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   string(REGEX REPLACE " " "@@" nudge "${cmd_base}")
   string(REGEX REPLACE ";" "@" nudge "${nudge}")
   if (TOOL_DR_HEAPSTAT)
-    set(postcmd "${cmd_base};-view_leaks;-x;${exepath};-profdir")
+    # XXX: this works manually but doesn't seem to get through ctest: but
+    # the test is passing so not taking the time to figure it out
+    set(postcmd "${cmd_base};-view_leaks;-callstack_style 0x21;-x;${exepath};-profdir")
   else (TOOL_DR_HEAPSTAT)
     if (postprocess)
       # test -skip_results + -results (PR 575481)

@@ -134,6 +134,7 @@ my $skip_postprocess = 0;
 my $just_postprocess = 0;
 my $postprocess_apppath = "";
 my $follow_children = 1;
+my $callstack_style = $default_op_vals{"callstack_style"};
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
@@ -180,10 +181,12 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "gen_suppress_syms!" => \$gen_suppress_syms,
                 "logdir=s" => \$logdir,
                 "perturb_only" => \$perturb_only,
+                "callstack_style=s" => \$callstack_style,
                 # required so perl option parser won't interpret as -perturb_only
                 "perturb" => \$perturb)) {
     die $usage;
 }
+
 if ($version) {
     print "Dr. Memory version @VERSION_NUMBER@ -- build @BUILD_NUMBER@\n";
     exit 0;
@@ -321,6 +324,8 @@ $ops .= " -no_gen_suppress_offs" unless ($gen_suppress_offs);
 $ops .= " -no_gen_suppress_syms" unless ($gen_suppress_syms);
 $ops .= " -perturb_only" if ($perturb_only);
 $ops .= " -perturb" if ($perturb);
+$ops .= " -callstack_style $callstack_style"
+    if ($callstack_style ne $default_op_vals{"callstack_style"});
 
 $dr_ops .= ' -no_follow_children' unless ($follow_children);
 
@@ -562,6 +567,7 @@ sub post_process()
     push @postcmd, ("-appid", join(' ', @orig_argv));
     push @postcmd, "-batch" if ($batch);
     push @postcmd, ("-drmemdir", "$libdir");
+    push @postcmd, ("-callstack_style", "$callstack_style");
     if ($aggregate || $just_postprocess) {
         push @postcmd, ("-aggregate", @ARGV);
     }

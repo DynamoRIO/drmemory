@@ -118,6 +118,17 @@ suppress.exe!possible_leak_test2
 
 #-------------------------------------------------------------------------------
 
+UNINITIALIZED READ
+<not in a module>
+suppress.exe!test
+
+UNINITIALIZED READ
+system call NtQueryVirtualMemory parameter value #1
+kernel32.dll!VirtualQuery
+suppress.exe!syscall_test
+
+#-------------------------------------------------------------------------------
+
 UNADDRESSABLE ACCESS
 suppress.exe!invalid_free_test1
 

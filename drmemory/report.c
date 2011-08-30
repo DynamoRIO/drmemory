@@ -195,14 +195,26 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
 /* For each error type, we have a list of callstacks, with each
  * callstack a variable-sized array of frames, each frame a string.
  */
+typedef struct _suppress_frame_t {
+    bool is_ellipsis; /* "..." wildcard */
+    bool is_module;
+    char *modname;
+    char *modoffs; /* string b/c we allow wildcards in it */
+    char *func;
+    struct _suppress_frame_t *next;
+} suppress_frame_t;
+
 typedef struct _suppress_spec_t {
+    int type;
+    char *name; /* for i#50 NYI */
     uint num_frames;
-    char **frames; /* variable-sized array of strings */
+    suppress_frame_t *frames;
+    suppress_frame_t *last_frame;
     bool is_default; /* from default file, or user-specified? */
-    /* During initial reading it's easier to build a linked list rather than
-     * add resizable array support.  We could convert to an array after
-     * reading both suppress files, but we have pointers scattered all
-     * over anyway so we leave it a list.
+    /* During initial reading it's easier to build a linked list.
+     * We could convert to an array after reading both suppress files,
+     * but we have pointers scattered all over anyway so we leave it a
+     * list.
      */
     struct _suppress_spec_t *next;
 } suppress_spec_t;
@@ -210,10 +222,6 @@ typedef struct _suppress_spec_t {
 /* We suppress error type separately (PR 507837) */
 static suppress_spec_t *supp_list[ERROR_MAX_VAL];
 static uint supp_num[ERROR_MAX_VAL];
-
-/* We are single-threaded when we read the suppression file */
-#define BUFSIZE 4096
-static char buf[BUFSIZE];
 
 #ifdef USE_DRSYMS
 static void *suppress_file_lock;
@@ -234,122 +242,232 @@ get_suppress_type(char *line)
     return -1;
 }
 
+#define INCORRECT_FRAME_MSG \
+    "The last frame is incorrect!"NL NL\
+    "Frames should be one of the following:"NL\
+    " module!function"NL\
+    " <module+0xhexoffset>"NL\
+    " <not in a module>"NL\
+    " system call Name"NL\
+    " ..."
+
 static void
-report_malformed_suppression(int type, uint num_frames, const char **frames,
+report_malformed_suppression(const char *orig_start,
+                             const char *orig_end,
                              const char *message)
 {
-    char *supp = NULL;
-    const char *type_string = suppress_name[type];
-    int i, supp_size = 0, sofar = 0, len = 0;
-
-    supp_size += strlen(type_string) + strlen(NL);
-    for (i = 0; i < num_frames; i++)
-        supp_size += strlen(frames[i]) + strlen(NL);
-    supp_size++; /* +\0 */
-
-    /* we can't use pt->errbuf since it happens pre-thread-init */
-    supp = (char*)global_alloc(supp_size,  HEAPSTAT_MISC);
-    BUFPRINT(supp, supp_size, sofar, len, "%s"NL, type_string);
-    for (i = 0; i < num_frames; i++)
-        BUFPRINT(supp, supp_size, sofar, len, "%s"NL, frames[i]);
-    ASSERT(sofar + 1 == supp_size, "");
-    NOTIFY("Malformed suppression:\n%s\n%s\n", supp, message);
-    global_free(supp, supp_size, HEAPSTAT_MISC);
+    NOTIFY("Malformed suppression:\n%.*s\n%s\n",
+           orig_end - orig_start, orig_start, message);
     usage_error("Malformed suppression. See the log file for the details", "");
 }
 
 static suppress_spec_t *
-add_suppress_spec(int type, uint num_frames, char **frames, bool is_default)
+suppress_spec_create(int type, bool is_default)
 {
     suppress_spec_t *spec;
-    uint i;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "internal error type error");
-    ASSERT(num_frames > 0, "");
-    if (strcmp(frames[num_frames-1], "...") == 0) {
-        report_malformed_suppression(type, num_frames, (const char **) frames,
+    spec = (suppress_spec_t *) global_alloc(sizeof(*spec), HEAPSTAT_MISC);
+    LOG(2, "parsing suppression %d of type %s\n", num_suppressions,
+        suppress_name[type]);
+    spec->type = type;
+    spec->is_default = is_default;
+    spec->name = NULL; /* for i#50 NYI */
+    spec->num_frames = 0;
+    spec->frames = NULL;
+    spec->last_frame = NULL;
+    spec->next = NULL;
+    return spec;
+}
+
+#ifdef DEBUG
+static void
+suppress_frame_print(file_t f, const suppress_frame_t *frame, const char *prefix)
+{
+    ASSERT(frame != NULL, "invalid arg");
+    ELOGF(0, f, "%s: ", prefix);
+    if (frame->is_ellipsis)
+        ELOGF(0, f, "...\n");
+    else if (!frame->is_module)
+        ELOGF(0, f, "%s\n", frame->func);
+    else {
+        if (frame->func == NULL)
+            ELOGF(0, f, "<");
+        if (frame->modname != NULL)
+            ELOGF(0, f, "%s", frame->modname);
+        if (frame->func != NULL)
+            ELOGF(0, f, "!%s\n", frame->func);
+        else
+            ELOGF(0, f, "+%s>\n", frame->modoffs);
+    }
+}
+#endif
+
+static void
+suppress_frame_free(suppress_frame_t *frame)
+{
+    if (frame->modname != NULL)
+        global_free(frame->modname, strlen(frame->modname)+1, HEAPSTAT_MISC);
+    if (frame->modoffs != NULL)
+        global_free(frame->modoffs, strlen(frame->modoffs)+1, HEAPSTAT_MISC);
+    if (frame->func != NULL)
+        global_free(frame->func, strlen(frame->func)+1, HEAPSTAT_MISC);
+    global_free(frame, sizeof(*frame), HEAPSTAT_MISC);
+}
+
+static void
+suppress_spec_free(suppress_spec_t *spec)
+{
+    suppress_frame_t *frame, *next;
+    for (frame = spec->frames; frame != NULL; frame = next) {
+        next = frame->next;
+        suppress_frame_free(frame);
+    }
+    global_free(spec, sizeof(*spec), HEAPSTAT_MISC);
+}
+
+static suppress_spec_t *
+suppress_spec_finish(suppress_spec_t *spec,
+                     const char *orig_start,
+                     const char *orig_end)
+{
+    if (spec->frames == NULL) {
+        report_malformed_suppression(orig_start, orig_end,
                                      "The given suppression ends with '...'");
         ASSERT(false, "should not reach here");
     }
-    spec = (suppress_spec_t *) global_alloc(sizeof(*spec), HEAPSTAT_MISC);
-    spec->num_frames = num_frames;
-    spec->frames = (char **)
-        global_alloc(num_frames*sizeof(char*), HEAPSTAT_MISC);
-    LOG(2, "read suppression %d of type %s\n", num_suppressions,
-        suppress_name[type]);
-    for (i = 0; i < num_frames; i++) {
-        LOG(2, "  frame %d: \"%s\"\n", i, frames[i]);
-        spec->frames[i] = drmem_strdup(frames[i], HEAPSTAT_MISC);
+    if (spec->last_frame->is_ellipsis) {
+        report_malformed_suppression(orig_start, orig_end,
+                                     "The given suppression ends with '...'");
+        ASSERT(false, "should not reach here");
     }
-    spec->is_default = is_default;
+    LOG(3, "added suppression #%d of type %s\n", num_suppressions,
+        suppress_name[spec->type]);
     /* insert into list */
-    spec->next = supp_list[type];
-    supp_list[type] = spec;
-    supp_num[type]++;
+    spec->next = supp_list[spec->type];
+    supp_list[spec->type] = spec;
+    supp_num[spec->type]++;
     num_suppressions++;
     return spec;
+}
+
+/* Returns whether this frame has symbols in it */
+static bool
+suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
+                        const char *line_in, size_t line_len)
+{
+    suppress_frame_t *frame;
+    bool has_symbols = false;
+    const char *line;
+
+    spec->num_frames++;
+    if (spec->num_frames >= options.callstack_max_frames) {
+        /* we truncate suppression callstacks to match requested max */
+        DO_ONCE({
+            WARN("WARNING: requested max frames truncates suppression callstacks\n");
+        });
+        return false;
+    }
+
+    /* make a local copy that ends in \0 so we can use strchr, etc. */
+    line = drmem_strndup(line_in, line_len, HEAPSTAT_MISC);
+
+    frame = global_alloc(sizeof(*frame), HEAPSTAT_MISC);
+    memset(frame, 0, sizeof(*frame));
+
+    if (strchr(line, '!') != NULL && strchr(line, '+') == NULL && line[0] != '<') {
+        const char *bang = strchr(line, '!');
+        has_symbols = true;
+        frame->is_module = true;
+        frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_MISC);
+        frame->func = drmem_strndup(bang + 1, line_len - (bang + 1 - line), HEAPSTAT_MISC);
+    } else if (line[0] == '<' && strchr(line, '+') != NULL &&
+               strchr(line, '>') != NULL && strchr(line, '!') == NULL) {
+        const char *plus = strchr(line, '+');
+        frame->is_module = true;
+        frame->modname = drmem_strndup(line + 1/*skip '<'*/, plus - (line + 1),
+                                       HEAPSTAT_MISC);
+        frame->modoffs = drmem_strndup(plus + 1, strchr(line, '>') - (plus + 1),
+                                       HEAPSTAT_MISC);
+        if (strlen(frame->modoffs) < 3 ||
+            frame->modoffs[0] != '0' ||
+            frame->modoffs[1] != 'x') {
+            report_malformed_suppression(cstack_start, line_in + line_len,
+                                         INCORRECT_FRAME_MSG);
+            ASSERT(false, "should not reach here");
+        }
+    } else if (strcmp(line, "<not in a module>") == 0) {
+        ASSERT(!frame->is_module, "incorrect initialization");
+        frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_MISC);
+    } else if (strcmp(line, "...") == 0) {
+        frame->is_ellipsis = true;
+    } else if (strstr(line, "system call ") != NULL) {
+        ASSERT(!frame->is_module, "incorrect initialization");
+        frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_MISC);
+    } else {
+        report_malformed_suppression(cstack_start, line_in + line_len,
+                                     INCORRECT_FRAME_MSG);
+        ASSERT(false, "should not reach here");
+    }
+
+     DOLOG(3, {
+         suppress_frame_print(LOGFILE_LOOKUP(), frame, "added suppression frame");
+     });
+
+    /* insert */
+    if (spec->last_frame != NULL)
+        spec->last_frame->next = frame;
+    spec->last_frame = frame;
+    if (spec->frames == NULL)
+        spec->frames = frame;
+
+    global_free((byte *)line, strlen(line) + 1, HEAPSTAT_MISC);
+    return has_symbols;
 }
 
 static void
 read_suppression_file(file_t f, bool is_default)
 {
-    char *line, *newline = NULL;
-    int bufread = 0, bufwant;
-    int len;
-    /* current callstack */
-    int type, curtype = -1;
+    char *line, *newline, *next_line;
+    suppress_spec_t *spec = NULL;
+    char *cstack_start;
+    int type;
     bool has_symbolic_frames = false;
-    /* even if a suppression callstack is longer than our max, we match
-     * any prefix so we can truncate at the max.
-     * the entries of this array are dynamically allocated and become
-     * the final strings stored in supp_list.
-     */
-    char **frames = (char **)
-        global_alloc(options.callstack_max_frames*sizeof(char*), HEAPSTAT_MISC);
-    uint i, num_frames = 0;
-    memset(frames, 0, options.callstack_max_frames*sizeof(char*));
 
-    while (true) {
-        if (newline == NULL) {
-            bufwant = BUFSIZE-1;
-            bufread = dr_read_file(f, buf, bufwant);
-            ASSERT(bufread <= bufwant, "internal error reading suppression file");
-            if (bufread <= 0)
-                break;
-            buf[bufread] = '\0';
-            newline = strchr(buf, '\n');
-            line = buf;
-        } else {
-            line = newline + 1;
+    /* we avoid having to do our own buffering by just mapping the whole file */
+    uint64 map_size;
+    size_t actual_size;
+    bool ok = dr_file_size(f, &map_size);
+    void *map = NULL;
+    if (ok) {
+        actual_size = (size_t) map_size;
+        ASSERT(actual_size == map_size, "file size too large");
+        map = dr_map_file(f, &actual_size, 0, NULL, DR_MEMPROT_READ, 0);
+    }
+    if (!ok || map == NULL || actual_size < map_size) {
+        const char *label = (is_default) ? "default" : "user";
+        if (map != NULL)
+            dr_unmap_file(map, actual_size);
+        NOTIFY_ERROR("Error mapping %s suppression file\n", label);
+        return;
+    }
+
+    cstack_start = (char *) map;
+    for (line = (char *) map; line < ((char *)map) + map_size; line = next_line) {
+        newline = strchr(line, '\r');
+        if (newline == NULL)
             newline = strchr(line, '\n');
-            if (newline == NULL) {
-                /* shift 1st part of line to start of buf, then read in rest */
-                /* the memory for the processed part can be reused  */
-                bufwant = line - buf;
-                ASSERT(bufwant <= bufread, "internal error reading suppression file");
-                len = bufread - bufwant; /* what is left from last time */
-                /* since strings may overlap, should use memmove, not strncpy */
-                /* FIXME corner case: if len == 0, nothing to move */
-                memmove(buf, line, len);
-                bufread = dr_read_file(f, buf+len, bufwant);
-                ASSERT(bufread <= bufwant, "internal error reading suppression file");
-                if (bufread <= 0)
-                    break;
-                bufread += len; /* bufread is total in buf */
-                buf[bufread] = '\0';
-                newline = strchr(buf, '\n');
-                line = buf;
-            }
+        if (newline == NULL) {
+            newline = ((char *)map) + map_size;
+            next_line = newline + 1;
+        } else {
+            for (next_line = newline; *next_line == '\r' || *next_line == '\n';
+                 next_line++)
+                ; /* nothing */
+            /* trim trailing whitespace (i#381) */
+            for (; newline > line && (*(newline-1) == ' ' || *(newline-1) == '\t');
+                 newline--)
+                ; /* nothing */
         }
-        /* buffer is big enough to hold at least one line */
-        ASSERT(newline != NULL, "internal error: suppression file malformed?");
-        *newline = '\0';
-        /* strip one or more carriage returns */
-        len = 1;
-        while (newline-len >= line && *(newline-len) == '\r') {
-            *(newline-len) = '\0';
-            len++;
-        }
-        LOG(3, "suppression file line: \"%s\"\n", line);
         /* Lines look like this:
          * UNINITIALIZED READ
          * <ADVAPI32.dll+0x3c0d>
@@ -369,83 +487,36 @@ read_suppression_file(file_t f, bool is_default)
          * suppress.exe!test
          * suppress.exe!main
          */
-        if (line[0] == '\0' || line[0] == '#')
+        if (line == newline || line[0] == '#')
             continue; /* Skip blank and comment lines. */
+        LOG(4, "suppression file line: \"%.*s\"\n", newline - line, line);
         type = get_suppress_type(line);
         if (type > -1) {
-            if (curtype > -1) {
-                /* the prior callstack completed successfully */
-                if (IF_DRSYMS_ELSE(true, !has_symbolic_frames)) {
-                    add_suppress_spec(curtype, num_frames, frames, is_default);
-                    if (curtype == ERROR_LEAK) {
-                        /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
-                        add_suppress_spec(ERROR_POSSIBLE_LEAK, num_frames, frames, is_default);
-                    }
-                }
+            if (spec != NULL) {
+                if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+                    suppress_spec_finish(spec, cstack_start, line - 1);
+                else
+                    suppress_spec_free(spec);
             }
-            /* starting a new callstack */
-            curtype = type;
+            /* A new callstack */
+            cstack_start = line;
+            spec = suppress_spec_create(type, is_default);
             has_symbolic_frames = false;
-            num_frames = 0;
-        } else if (num_frames >= options.callstack_max_frames) {
-            /* we truncate suppression callstacks to match requested max */
-            LOG(1, "WARNING: requested max frames truncates suppression callstacks\n");
-            /* just continue to next line */
-            /* FIXME: should we abort? */
-        } else {
-            if (curtype == -1) {
-                usage_error("malformed suppression: no error type on line ", line);
-                ASSERT(false, "should not reach here");
-            }
-
-            if (/* Doesn't match mod!func or has '+' in the middle */
-                !(strchr(line, '!') != NULL && strchr(line, '+') == NULL) &&
-                /* Doesn't match <mod+off> or has '!' in the middle */
-                !(line[0] == '<' && strchr(line, '+') != NULL &&
-                  strchr(line, '>') != NULL && strchr(line, '!') == NULL) &&
-                strcmp(line, "<not in a module>") != 0 &&
-                strcmp(line, "...") != 0 &&
-                strstr(line, "system call ") == NULL) {
-                /* Found a malformed suppression frame.
-                 * Add it to the frames[] and report error. */
-                frames[num_frames++] = line;
-                report_malformed_suppression(curtype, num_frames,
-                                             (const char **) frames,
-                            "The last frame is incorrect!"NL NL
-                            "Frames should be one of the following:"NL
-                            " module!function"NL
-                            " <module+offset>"NL
-                            " <not in a module>"NL
-                            " system call Name"NL
-                            " ...");
-                ASSERT(false, "should not reach here");
-            }
-            if (strchr(line, '!') != NULL)
+        } else if (spec != NULL) {
+            if (suppress_spec_add_frame(spec, cstack_start, line, newline - line))
                 has_symbolic_frames = true;
-
-            if (frames[num_frames] != NULL) {
-                global_free(frames[num_frames], strlen(frames[num_frames])+1,
-                            HEAPSTAT_MISC);
-            }
-            frames[num_frames] = drmem_strdup(line, HEAPSTAT_MISC);
-            num_frames++;
+        } else {
+            report_malformed_suppression(cstack_start, newline, INCORRECT_FRAME_MSG);
+            ASSERT(false, "should not reach here");
         }
     }
-    if (curtype > -1) {
-        /* the last callstack completed successfully */
-        if (IF_DRSYMS_ELSE(true, !has_symbolic_frames)) {
-            add_suppress_spec(curtype, num_frames, frames, is_default);
-            if (curtype == ERROR_LEAK) {
-                /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
-                add_suppress_spec(ERROR_POSSIBLE_LEAK, num_frames, frames, is_default);
-            }
-        }
+    if (spec != NULL) {
+        if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+            suppress_spec_finish(spec, cstack_start, line - 1);
+        else
+            suppress_spec_free(spec);
     }
-    for (i = 0; i < options.callstack_max_frames; i++) {
-        if (frames[i] != NULL)
-            global_free(frames[i], strlen(frames[i])+1, HEAPSTAT_MISC);
-    }
-    global_free(frames, options.callstack_max_frames*sizeof(char*), HEAPSTAT_MISC);
+    dr_unmap_file(map, actual_size);
 }
 
 static void
@@ -474,104 +545,64 @@ open_and_read_suppression_file(const char *fname, bool is_default)
     }
 }
 
-static const char *
-next_error_frame(const char *error_stack)
-{
-    error_stack = strstr(error_stack, NL);
-    ASSERT(error_stack != NULL, "malformed error stack");
-    error_stack += strlen(NL);
-#ifdef USE_DRSYMS
-    /* skip file:line# or <syscall> line */
-    error_stack = strstr(error_stack, NL);
-    ASSERT(error_stack != NULL, "malformed error stack");
-    error_stack += strlen(NL);
-#endif
-    return error_stack;
-}
-
 #ifdef USE_DRSYMS
 /* up to caller to lock f_results file */
 static void
-write_suppress_pattern(uint type, const char *cstack, bool symbolic)
+write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic)
 {
-    const char *eframe, *epos, *end, *ques;
+    int i;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
-    ASSERT(cstack != NULL, "invalid param");
+    ASSERT(scs != NULL, "invalid param");
+
     dr_fprintf(f_suppress, "%s"NL, suppress_name[type]);
-    eframe = cstack;
-    while (eframe != NULL && *eframe != '\0') {
-        epos = strstr(eframe, "system call");
-        if (epos != NULL) {
-            end = strchr(epos, '\n');
-            ASSERT(end != NULL, "suppress generation error");
-            dr_fprintf(f_suppress, "%.*s"NL, end - epos, epos);
-        } else if (strstr(eframe, "<not in a module>") != NULL) {
-            dr_fprintf(f_suppress, "<not in a module>"NL);
-        } else if (symbolic) {
-            epos = strchr(eframe, '>');
-            ASSERT(epos != NULL && *(epos+1) == ' ', "suppress generation error");
-            epos += 2; /* skip '> ' */
-            /* if mod!func+offs, remove +offs */
-            end = strchr(epos, '\n');
-            ques = strchr(epos, '+');
-            if (ques != NULL && ques < end)
-                end = ques;
-            ASSERT(end != NULL, "suppress generation error");
-            /* i#285: replace ? with * */
-            ques = strchr(epos, '?');
-            if (ques != NULL && ques < end) {
-                dr_fprintf(f_suppress, "%.*s*", ques - epos, epos);
-                epos = ques + 1;
+
+    for (i = 0; i < scs->num_frames; i++) {
+        if (symbolized_callstack_frame_is_module(scs, i)) {
+            if (symbolic) {
+                char *func = symbolized_callstack_frame_func(scs, i);
+                /* i#285: replace ? with * */
+                if (strcmp(func, "?") == 0)
+                    func = "*";
+                dr_fprintf(f_suppress, "%s!%s"NL,
+                           symbolized_callstack_frame_modname(scs, i), func);
+            } else {
+                dr_fprintf(f_suppress, "<%s+%s>"NL,
+                           symbolized_callstack_frame_modname(scs, i),
+                           symbolized_callstack_frame_modoffs(scs, i));
             }
-            dr_fprintf(f_suppress, "%.*s"NL, end - epos, epos);
         } else {
-            epos = strchr(eframe, '<');
-            ASSERT(epos != NULL, "suppress generation error");
-            end = strchr(epos, '>');
-            ASSERT(end != NULL, "suppress generation error");
-            dr_fprintf(f_suppress, "%.*s>"NL, end - epos, epos);
-            end = strchr(epos, '\n');
-            ASSERT(end != NULL, "suppress generation error");
+            dr_fprintf(f_suppress, "%s"NL,
+                       symbolized_callstack_frame_func(scs, i));
         }
-        eframe = next_error_frame(eframe);
     }
 }
 #endif
 
-/* If case_sep != '\0', on Windows, ignores case up until case_sep is seen.
- * We pass '+' for mod+offs and '!' for mod!func.
- */
-static bool text_matches_pattern(const char *text, int text_length,
-                                 const char *pattern, char case_sep)
+static bool
+text_matches_pattern(const char *text, const char *pattern,
+                     bool ignore_case)
 {
-    /* Match text[0...text_length) with pattern and return the result.
+    /* Match text with pattern and return the result.
      * The pattern may contain '*' and '?' wildcards.
      */
     const char *cur_text = text,
                *text_last_asterisk = NULL,
                *pattern_last_asterisk = NULL;
-    bool ignore_case = false;
     char cmp_cur, cmp_pat;
-#ifdef WINDOWS
-    /* ignore case for module name (i#461) */
-    ignore_case = (case_sep != '\0');
-#endif
-    while (*cur_text != '\0' && (cur_text < text + text_length)) {
+    while (*cur_text != '\0') {
         cmp_cur = *cur_text;
         cmp_pat = *pattern;
         if (ignore_case) {
             cmp_cur = (char) tolower(cmp_cur);
             cmp_pat = (char) tolower(cmp_pat);
         }
-        if (ignore_case && *pattern == case_sep)
-            ignore_case = false; /* no longer on module */
-
         if (*pattern == '*') {
             while (*++pattern == '*') {
                 /* Skip consecutive '*'s */
             }
             if (*pattern == '\0') {
                 /* the pattern ends with a series of '*' */
+                LOG(5, "    text_matches_pattern \"%s\" == \"%s\"\n", text, pattern);
                 return true;
             }
             text_last_asterisk = cur_text;
@@ -586,124 +617,132 @@ static bool text_matches_pattern(const char *text, int text_length,
             pattern = pattern_last_asterisk;
             cur_text = text_last_asterisk++;
         } else {
+            LOG(5, "    text_matches_pattern \"%s\" != \"%s\"\n", text, pattern);
             return false;
         }
     }
     while (*pattern == '*')
         ++pattern;
-    LOG(4, "text_matches_pattern \"%.*s\": end at \"%.5s\"\n",
-        text_length, text, pattern);
+    LOG(4, "    text_matches_pattern \"%s\": end at \"%.5s\"\n", text, pattern);
     return *pattern == '\0';
 }
 
 static bool
-top_frame_matches_suppression_frame(const char *error_stack,
-                                    const char *supp_frame)
+top_frame_matches_suppression_frame(const symbolized_callstack_t *scs,
+                                    uint idx,
+                                    const suppress_frame_t *supp)
 {
-    /* error_stack looks like
-     * "0x00123456 <some.dll+0xabcd> some.dll!some_function"NL
-     * <other frames>
-     */
-    const char *epos,
-               *eol = strstr(error_stack, NL);
-    ASSERT(eol != NULL, "malformed error stack - newline missing");
-
-    epos = strstr(error_stack, "error end");
-    if (epos != NULL && epos < eol)
+    DOLOG(4, {
+        LOG(4, "  comparing error frame %d ", idx);
+        suppress_frame_print(LOGFILE_LOOKUP(), supp, "to suppression frame");
+    });
+    if (idx >= scs->num_frames)
         return false;
 
-    epos = strstr(error_stack, "system call");
-    if (epos != NULL && epos < eol)
-        return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
+    if (!supp->is_module) {
+        return (!symbolized_callstack_frame_is_module(scs, idx) &&
+                text_matches_pattern(symbolized_callstack_frame_func(scs, idx),
+                                     supp->func, false/*consider case*/));
+    }
 
-    epos = strstr(error_stack, "<not in a module>");
-    if (epos != NULL && epos < eol)
-        return text_matches_pattern(epos, eol - epos, supp_frame, '\0');
-
-    if (*supp_frame == '<') {
-        /* "<mod+off>" suppression frame */
-        const char *end_of_mod_off;
-        epos = strchr(error_stack, '<');
-        ASSERT(epos != NULL && epos < eol, "malformed frame");
-        end_of_mod_off = strchr(epos, '>');
-        ASSERT(end_of_mod_off != NULL && end_of_mod_off < eol,
-               "malformed frame");
-        end_of_mod_off++; /* skip '>' */
-        return text_matches_pattern(epos, end_of_mod_off - epos, supp_frame, '+');
+    if (supp->func == NULL) {
+        /* "<mod+offs>" suppression frame */
+        if (!symbolized_callstack_frame_is_module(scs, idx))
+            return false;
+        return (text_matches_pattern(symbolized_callstack_frame_modname(scs, idx),
+                                     supp->modname,
+                                     IF_WINDOWS_ELSE(true,false)/*case*/) &&
+                text_matches_pattern(symbolized_callstack_frame_modoffs(scs, idx),
+                                     supp->modoffs, true/*ignore case*/));
     } else {
         /* "mod!fun" suppression frame */
-        const char *stop;
-        epos = strchr(error_stack, '!');
+        const char *func = symbolized_callstack_frame_func(scs, idx);
+        if (!symbolized_callstack_frame_is_module(scs, idx) || func == NULL)
+            return false;
 #ifndef USE_DRSYMS
-        if (epos == NULL) {
+        if ((func[0] == '?' && func[1] == '\0')) {
             /* in-client frames don't have mod!fun */
             return false;
         }
 #endif
-        ASSERT(epos != NULL && epos < eol, "malformed frame");
-        epos = strchr(error_stack, '>');
-        ASSERT(epos != NULL && *(epos+1) == ' ' && epos < eol,
-               "malformed frame");
-        epos += 2; /* skip '> ' */
-        /* if has "mod!fun+offs", ignore the "+offs" */
-        stop = strchr(epos, '+');
-        if (stop == NULL || stop > eol)
-            stop = eol;
-        return text_matches_pattern(epos, stop - epos, supp_frame, '!');
+        return (text_matches_pattern(symbolized_callstack_frame_modname(scs, idx),
+                                     supp->modname,
+                                     IF_WINDOWS_ELSE(true,false)/*case*/) &&
+                text_matches_pattern(func, supp->func, false/*consider case*/));
     }
 }
 
 static bool
-stack_matches_suppression(const char *error_stack, const suppress_spec_t *supp)
+stack_matches_suppression(const symbolized_callstack_t *scs, const suppress_spec_t *spec)
 {
-    /* PR 460923: pattern is considered a prefix */
-    const char *epos = error_stack, /* read position in the error stack */
-               *stack_last_ellipsis = NULL;
-    uint i = 0, supp_last_ellipsis = 0;
-    while (*epos != 0) {
-        if (i == supp->num_frames) {
-            /* suppression has matched the top of the stack */
+    uint i;
+    int scs_last_ellipsis = -1;
+    suppress_frame_t *supp_last_ellipsis = NULL;
+    suppress_frame_t *supp = spec->frames;
+    for (i = 0; i < scs->num_frames; i++) {
+        if (supp == NULL) {
+            /* PR 460923: pattern is considered a prefix.
+             * suppression has matched the top of the stack.
+             */
             return true;
-        } else if (strcmp(supp->frames[i], "...") == 0) {
-            while (++i < supp->num_frames &&
-                   strcmp(supp->frames[i], "...") == 0) {
+        } else if (supp->is_ellipsis) {
+            for (supp = supp->next;
+                 supp != NULL && supp->is_ellipsis;
+                 supp = supp->next) {
                 /* skip consecutive '...' */
-                NOTIFY("supp->frames[%d] = '%s'\n", i, supp->frames[i]);
             }
             /* we should have aborted when parsing */
-            ASSERT(i < supp->num_frames, "Suppression ends with '...'");
-            stack_last_ellipsis = epos;
-            supp_last_ellipsis = i;
-        } else if (top_frame_matches_suppression_frame(epos, supp->frames[i])) {
-            i++;
-            epos = next_error_frame(epos);
-        } else if (stack_last_ellipsis != NULL) {
+            ASSERT(supp != NULL, "Suppression ends with '...'");
+            scs_last_ellipsis = i;
+            supp_last_ellipsis = supp;
+            i--; /* counteract for's ++ */
+        } else if (top_frame_matches_suppression_frame(scs, i, supp)) {
+            supp = supp->next;
+        } else if (scs_last_ellipsis > -1) {
             /* No match. But we have seen at least one '...', so go back
              * and try at the next position.
              */
-            i = supp_last_ellipsis;
-            epos = stack_last_ellipsis = next_error_frame(stack_last_ellipsis);
+            supp = supp_last_ellipsis;
+            scs_last_ellipsis++;
+            i = scs_last_ellipsis - 1; /* counteract for's ++ */
         } else {
             return false;
         }
     }
-    LOG(3, "supp: pattern ended => prefix match\n");
-    return (i == supp->num_frames);
+    LOG(3, "supp: callstack ended => prefix %smatch\n", supp == NULL ? "" : "mis");
+    return (supp == NULL);
 }
 
 static bool
-on_suppression_list(uint type, const char *error_stack, bool *on_default_list OUT)
+on_suppression_list_helper(uint type, symbolized_callstack_t *scs,
+                           bool *on_default_list OUT)
 {
-    suppress_spec_t *supp;
+    suppress_spec_t *spec;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
-    for (supp = supp_list[type]; supp != NULL; supp = supp->next) {
-        LOG(3, "supp: comparing error to suppression pattern starting \"%s\"\n",
-            supp->frames[0]);
-        if (stack_matches_suppression(error_stack, supp)) {
+    for (spec = supp_list[type]; spec != NULL; spec = spec->next) {
+        DOLOG(3, {
+            suppress_frame_print(LOGFILE_LOOKUP(), spec->frames,
+                                 "supp: comparing error to suppression pattern");
+        });
+        if (stack_matches_suppression(scs, spec)) {
             if (on_default_list != NULL)
-                *on_default_list = supp->is_default;
+                *on_default_list = spec->is_default;
             return true;
         }
+    }
+    return false;
+}
+
+static bool
+on_suppression_list(uint type, symbolized_callstack_t *scs, bool *on_default_list OUT)
+{
+    ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
+    if (on_suppression_list_helper(type, scs, on_default_list))
+        return true;
+    /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
+    if (type == ERROR_POSSIBLE_LEAK) {
+        if (on_suppression_list_helper(ERROR_LEAK, scs, on_default_list))
+            return true;
     }
     LOG(3, "supp: no match\n");
 #ifdef USE_DRSYMS
@@ -714,11 +753,11 @@ on_suppression_list(uint type, const char *error_stack, bool *on_default_list OU
      * file for simplicity
      */
     if (options.gen_suppress_syms)
-        write_suppress_pattern(type, error_stack, true/*mod!func*/);
+        write_suppress_pattern(type, scs, true/*mod!func*/);
     if (options.gen_suppress_offs) {
         if (options.gen_suppress_syms)
             dr_fprintf(f_suppress, "\n# the mod+offs form of the above callstack:"NL);
-        write_suppress_pattern(type, error_stack, false/*mod+offs*/);
+        write_suppress_pattern(type, scs, false/*mod+offs*/);
     }
     dr_fprintf(f_suppress, ""NL);
     dr_mutex_unlock(suppress_file_lock);
@@ -793,7 +832,7 @@ report_init(void)
                     * want to expose some flags as options */
                    0,
                    options.callstack_max_scan,
-                   IF_DRSYMS_ELSE(options.symbol_offsets, false),
+                   IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
                    get_syscall_name,
                    options.shadowing ? is_dword_defined : NULL);
 
@@ -987,7 +1026,7 @@ report_summary(void)
 void
 report_exit(void)
 {
-    uint i, j;
+    uint i;
 #ifdef USE_DRSYMS
     LOGF(0, f_results, NL"==========================================================================="NL"FINAL SUMMARY:"NL);
     dr_mutex_destroy(suppress_file_lock);
@@ -1000,15 +1039,10 @@ report_exit(void)
     callstack_exit();
 
     for (i = 0; i < ERROR_MAX_VAL; i++) {
-        suppress_spec_t *spec;
-        while (supp_list[i] != NULL) {
-            spec = supp_list[i];
-            for (j = 0; j < spec->num_frames; j++) {
-                global_free(spec->frames[j], strlen(spec->frames[j])+1, HEAPSTAT_MISC);
-            }
-            global_free(spec->frames, spec->num_frames*sizeof(char*), HEAPSTAT_MISC);
-            supp_list[i] = spec->next;
-            global_free(spec, sizeof(*spec), HEAPSTAT_MISC);
+        suppress_spec_t *spec, *next;
+        for (spec = supp_list[i]; spec != NULL; spec = next) {
+            next = spec->next;
+            suppress_spec_free(spec);
         }
     }
 }
@@ -1312,11 +1346,11 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
     stored_error_t *err;
-    char *cstack_start, *errnum_start;
     bool reporting = false;
     ssize_t len = 0;
     size_t sofar = 0;
     bool default_suppress = false;
+    symbolized_callstack_t scs = {0,NULL};
 
     /* Our report_max throttling is post-dup-checking, to make the option
      * useful (else if 1st error has 20K instances, won't see any others).
@@ -1348,24 +1382,20 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     }
     ASSERT(err->id == 0, "non-duplicate should not have id");
 
-    /* We need to know whether suppressed so we can prefix "Error" with "SUPPRESSED"
-     * and print the right error #.  So we go ahead and do that partway into
-     * the buffer, and then later we adjust the prefix to line up.
-     */
-    sofar = MAX_ERROR_INITIAL_LINES;
-    cstack_start = pt->errbuf + sofar;
     /* for invalid heap arg, now that we always do our alloc pre-hook in the
      * callee, the first frame is a retaddr and its line should thus be -1
      */
     if (type == ERROR_INVALID_HEAP_ARG)
         packed_callstack_first_frame_retaddr(err->pcs);
-    packed_callstack_print(err->pcs, 0/*all frames*/, pt->errbuf, pt->errbufsz, &sofar);
-    sofar = 0; /* now we print to start */
+
+    /* Convert to symbolized so we can compare to suppressions */
+    packed_callstack_to_symbolized(err->pcs, &scs);
+
     /* ensure starts at beginning of line (can be in middle of another log) */
     if (!options.thread_logs)
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
 
-    reporting = !on_suppression_list(type, cstack_start, &default_suppress);
+    reporting = !on_suppression_list(type, &scs, &default_suppress);
     if (!reporting) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
         err->suppressed = true;
@@ -1389,7 +1419,6 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
      * On Windows for USE_DRSYMS these are the official error numbers.
      */
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "Error #%d: ", err->id);
-    errnum_start = pt->errbuf + sofar - 7/*"%5d: "*/;
     
     if (type == ERROR_UNADDRESSABLE) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
@@ -1453,7 +1482,8 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz);
     }
 
-    if (loc != NULL && loc->type == APP_LOC_PC) {
+    if ((type == ERROR_UNADDRESSABLE || type == ERROR_UNDEFINED) &&
+        loc != NULL && loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(loc);
         if (cur_pc != NULL) {
             void *drcontext = dr_get_current_drcontext();
@@ -1479,16 +1509,14 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         }
     }
 
-    /* Now shift the prefix to abut the callstack */
-    ASSERT(sofar < MAX_ERROR_INITIAL_LINES, "buffer too small");
-    memmove(pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, pt->errbuf, sofar);
+    symbolized_callstack_print(&scs, pt->errbuf, pt->errbufsz, &sofar);
 
     report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results : pt->f, pt->f),
-                             pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, loc, false);
+                             pt->errbuf, loc, false);
 #ifdef USE_DRSYMS
     if (reporting && options.results_to_stderr) {
         report_error_from_buffer(STDERR,
-                                 pt->errbuf + MAX_ERROR_INITIAL_LINES - sofar, loc, true);
+                                 pt->errbuf, loc, true);
     }
 #endif
     
@@ -1497,6 +1525,8 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         wait_for_user("pausing at unaddressable access error");
     else if (type == ERROR_UNDEFINED && reporting && options.pause_at_uninitialized)
         wait_for_user("pausing at uninitialized read error");
+
+    symbolized_callstack_free(&scs);
 }
 
 void
@@ -1613,12 +1643,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     bool printed_leading_newline = false;
     stored_error_t *err = NULL;
     uint type;
-    char *cstack_start;
 #ifdef USE_DRSYMS
     /* only real and possible leaks go to results.txt */
     file_t tofile = f_global;
 #endif
     bool default_suppress = false;
+    symbolized_callstack_t scs = {0,NULL};
 
     /* Only consider report_leak_max for check_leaks, and don't count
      * reachable toward the max
@@ -1716,21 +1746,15 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             }
         }
 
-        /* We need to know whether suppressed so we can prefix "Error" with "SUPPRESSED"
-         * and print the right error #.  So we go ahead and do that partway into
-         * the buffer, and then later we adjust the prefix to line up.
-         */
-        sofar = MAX_ERROR_INITIAL_LINES;
-        cstack_start = buf + sofar;
-        packed_callstack_print(pcs, 0/*all frames*/, buf, bufsz, &sofar);
+        /* Convert to symbolized so we can compare to suppressions */
+        packed_callstack_to_symbolized(pcs, &scs);
         if (locked_malloc)
             malloc_unlock();
 
         /* only real and possible leaks can be suppressed */
         if (type < ERROR_MAX_VAL)
-            suppressed = on_suppression_list(type, cstack_start, &default_suppress);
+            suppressed = on_suppression_list(type, &scs, &default_suppress);
 
-        sofar = 0; /* now we print to start */
         if (!suppressed && type < ERROR_MAX_VAL) {
             /* We can have identical leaks across nudges: keep same error #.
              * Multiple nudges are kind of messy wrt leaks: we try to not
@@ -1801,10 +1825,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     if ((type == ERROR_LEAK && options.check_leaks) ||
         (type == ERROR_POSSIBLE_LEAK && options.possible_leaks)) {
         ASSERT(pcs != NULL, "malloc must have callstack");
-        /* Now shift the prefix to abut the callstack */
-        ASSERT(sofar < MAX_ERROR_INITIAL_LINES, "buffer too small");
-        buf_print = buf + MAX_ERROR_INITIAL_LINES - sofar;
-        memmove(buf_print, buf, sofar);
+        symbolized_callstack_print(&scs, buf, bufsz, &sofar);
     } else if (type == ERROR_LEAK || type == ERROR_POSSIBLE_LEAK) {
         BUFPRINT(buf, bufsz, sofar, len,
                  "   (run with -check_%sleaks to obtain a callstack)"NL,
@@ -1821,6 +1842,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
  report_leak_done:
     if (drcontext == NULL || dr_get_tls_field(drcontext) == NULL)
         global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
+    symbolized_callstack_free(&scs);
 }
 
 /* FIXME: have some report detail threshold or max log file size */
@@ -1834,8 +1856,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
         size_t sofar = 0;
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%s "PFX"-"PFX"\n", routine, start, end);
-        print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false /*print addr*/,
-                        false/*no fps*/, NULL, 0);
+        print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/, NULL, 0);
         report_error_from_buffer(pt->f, pt->errbuf, NULL, false);
     });
 }
@@ -1862,8 +1883,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
         BUFPRINT(buf, bufsz, sofar, len,
                  "%s heap region "PFX"-"PFX"\n",
                  add ? "adding" : "removing", start, end);
-        print_callstack(buf, bufsz, &sofar, mc, false /*print addr*/,
-                        false/*no fps*/, NULL, 0);
+        print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0);
         report_error_from_buffer(f_global, buf, NULL, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);

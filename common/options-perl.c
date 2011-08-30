@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -21,6 +22,21 @@
 
 /* Options list for perl */
 
+#define OPTION_FRONT OPTION_CLIENT
+/* There's no adjacent-string-literal concatenation in Perl */
+#ifdef TOOL_DR_MEMORY
+# define TOOLNAME ."Dr. Memory".
+#else
+# define TOOLNAME ."Dr. Heapstat".
+#endif
+
+%default_op_vals = (
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long)  \
+                 #name => defval,
+#include "optionsx.h"
+                 );
+#undef OPTION_CLIENT
+
 %typenm = ( 'bool' => '',
             'uint' => ' <int>', /* we have range so simplify as "int" */
             'int'  => ' <int>',
@@ -29,15 +45,9 @@
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long)  \
     if (#scope ne 'internal') {                                          \
         $options_usage .= sprintf("  -%-28s [%6s]  %s\n",                \
-                                  #name . $typenm{#type}, defval, short);\
+                                  #name . $typenm{#type}, #defval, short);\
     }
-#define OPTION_FRONT OPTION_CLIENT
-/* There's no adjacent-string-literal concatenation in Perl */
-#ifdef TOOL_DR_MEMORY
-# define TOOLNAME ."Dr. Memory".
-#else
-# define TOOLNAME ."Dr. Heapstat".
-#endif
 #include "optionsx.h"
 #undef OPTION_CLIENT
+
 #undef OPTION_FRONT

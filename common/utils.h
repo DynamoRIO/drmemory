@@ -601,6 +601,9 @@ heap_dump_stats(file_t f);
 char *
 drmem_strdup(const char *src, heapstat_t type);
 
+char *
+drmem_strndup(const char *src, size_t max, heapstat_t type);
+
 /***************************************************************************
  * OPTIONS
  */

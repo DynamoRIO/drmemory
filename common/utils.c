@@ -840,6 +840,24 @@ drmem_strdup(const char *src, heapstat_t type)
     return dup;
 }
 
+char *
+drmem_strndup(const char *src, size_t max, heapstat_t type)
+{
+    char *dup = NULL;
+    /* deliberately not calling strlen on src since may be quite long */
+    const char *c;
+    size_t sz;
+    for (c = src; c != '\0' && (c - src < max); c++)
+        ; /* nothing */
+    sz = (c - src < max) ? c -src : max;
+    if (src != NULL) {
+        dup = global_alloc(sz + 1, type);
+        strncpy(dup, src, sz);
+        dup[sz] = '\0';
+    }
+    return dup;
+}
+
 /***************************************************************************
  * HASHTABLE
  */

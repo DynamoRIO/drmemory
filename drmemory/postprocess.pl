@@ -108,6 +108,7 @@ my $gen_suppress_offs = 1;
 my $gen_suppress_syms = 1;
 my $default_suppress_file = "$bindir/suppress-default.txt";
 my $drmem_disabled = 0;
+my $callstack_style = "0x101"; # should keep in sync, but normally passed even if default
 
 # Use an error cache to prevent processing duplicates; indexed by error info
 # excluding read/write message in the first line.  PR 420942.
@@ -188,6 +189,7 @@ if (!GetOptions("p=s" => \$prefix,
                 "drmemdir=s" => \$drmem_dir,
                 "no_sys_paths" => \$no_sys_paths,
                 "aggregate" => \$aggregate,
+                "callstack_style=s" => \$callstack_style,
                 "leaks_only" => \$leaks_only)) {
     die $usage;
 }
@@ -201,6 +203,10 @@ if ($leaks_only) {
     $default_prefix = ":::Dr.Heapstat::: ";
     # no summary in global log so we must add
     $report_leaks = 1;
+}
+if ($callstack_style =~ /^0x(.*)/) {
+    # GetOptions doesn't support hex so we parse a string
+    $callstack_style = hex($1);
 }
 
 ($module,$baselogdir,$suffix) = fileparse($logdir);
@@ -839,6 +845,7 @@ sub parse_error($arr_ref, $err_str)
             $error{"details"} = $3;
             $error{"addr"} = [];
             $error{"modoffs"} = [];
+            $error{"is_module"} = [];
             $supp .= "$2\n";
             if ($line =~ /^Error #\s*\d+: UN\w+\s+\w+:/ ||
                 $line =~ /^Error #\s*\d+: INVALID HEAP ARGUMENT:/ ||
@@ -864,17 +871,23 @@ sub parse_error($arr_ref, $err_str)
         } elsif ($line =~ /^  info: (.*)$/) {
             # additional info (PR 535568)
             $error{"aux_info"} .= "Note: $1\n";
-        } elsif (# system call doesn't have fp or parent
-                 $line =~ /^\s+(system\s+call\s+.+)$/) {
-            push @{$error{"addr"}}, $1;
+        } elsif ($line =~ /^#\s*\d+\s+(system\s+call\s+.+)$/) {
+            my $txt = $1;
+            $txt =~ s/\s+$//; # remove trailing whitespace including \r
+            push @{$error{"addr"}}, $txt;
             push @{$error{"modoffs"}}, "";
+            push @{$error{"is_module"}}, 0;
+            $supp .= "$txt\n";
+        } elsif ($line =~ /^#\s*\d+\s+(<not in a module>)\s*\((\w+)\)/) {
+            push @{$error{"addr"}}, $2;
+            push @{$error{"modoffs"}}, $1;
+            push @{$error{"is_module"}}, 0;
             $supp .= "$1\n";
-        } elsif ($line =~ /^\s*fp=\w+\s+parent=\w+\s+(\w+)\s+(<[^>]+>)/ ||
-                 # leaks do not have fp or parent
-                 $line =~ /^\s*(\w+)\s+(<[^>]+>)/) {
+        } elsif ($line =~ /^#\s*\d+\s+\S+!\?\s*\((\w+)\s+(<[^>]+>)\)/) {
             if ($1 ne "0x00000000") {
                 push @{$error{"addr"}}, $1;
                 push @{$error{"modoffs"}}, $2;
+                push @{$error{"is_module"}}, 1;
             }
             # PR 464809: must include 0 address to match generated callstack 
             $supp .= "$2\n";
@@ -915,12 +928,16 @@ sub lookup_addr()
             $module = $1;
             $offs = hex($2);
         } elsif ($error{"addr"}[$a] =~ /^system\s+call/) {
-            push @symlines, "";
+            push @symlines, $error{"addr"}[$a];
             push @symlines, "<system call>";
             next;
         } else {
-            print "Invalid modoffs $modoffs\n" if ($modoffs ne '<not in a module>');
-            push @symlines, "<unknown symbol>";
+            if ($modoffs eq '<not in a module>') {
+                push @symlines, $modoffs;
+            } else {
+                print "Invalid modoffs $modoffs\n";
+                push @symlines, "<unknown symbol>";
+            }
             push @symlines, "??:0";
             next;
         }
@@ -1002,6 +1019,27 @@ sub generate_error_info()
 {
     my $err_str = "";
     my @err_cstack = ();
+
+    # callstack style options.  this is duplicated from callstack.h.
+    my $PRINT_FRAME_NUMBERS        = 0x0001;
+    my $PRINT_ABS_ADDRESS          = 0x0002;
+    my $PRINT_MODULE_OFFSETS       = 0x0004;
+    my $PRINT_SYMBOL_OFFSETS       = 0x0008; # not supported since addrline doesn't have
+    my $PRINT_LINE_OFFSETS         = 0x0010; # not supported since addrline doesn't have
+    my $PRINT_SRCFILE_NEWLINE      = 0x0020;
+    my $PRINT_SRCFILE_NO_COLON     = 0x0040;
+    my $PRINT_SYMBOL_FIRST         = 0x0080;
+    my $PRINT_ALIGN_COLUMNS        = 0x0100;
+
+    my $align_sym = 0;
+    my $align_mod = 0;
+    if ($callstack_style & $PRINT_ALIGN_COLUMNS) {
+        $align_sym = 35;
+        $align_mod = 15;
+        # unlike drmem client we have module integrated
+        $align_modsym = 47;
+    }
+
     $num_frames = scalar @{$error{"addr"}};
     $err_str = "$prefix\n";
     # numbytes and aux_info are currently only for the 1st unique (PR 423750
@@ -1015,8 +1053,53 @@ sub generate_error_info()
         $err_str .= $prefix."<no callstack available>\n";
     } else {
         for ($a=0; $a<$num_frames; $a++) {
-            $err_str .= $prefix."".$error{"addr"}[$a]." ".$error{"modoffs"}[$a];
-            $err_str .= " $symlines[$a*2]\n";
+            $err_str .= $prefix;
+            if ($callstack_style & $PRINT_FRAME_NUMBERS) {
+                $err_str .= sprintf("#%2d ", $a);
+            }
+            my $modfunc = "$symlines[$a*2]";
+            my $fileline = $symlines[$a*2+1];
+            if (!$error{"is_module"}[$a]) {
+                my $label = ($error{"addr"}[$a] =~ /^system\s+call/) ?
+                    $error{"addr"}[$a] : "<not in a module>";
+                $err_str .= sprintf("%-*s", $align_modsym, $label);
+                # $fileline already either "<system call>" or "?:0"
+            } else {
+                if ($callstack_style & $PRINT_SYMBOL_FIRST) {
+                    my @mod_or_func = split('!', $modfunc);
+                    $err_str .= sprintf("%-*s %-*s", $align_sym, $mod_or_func[1],
+                                        $align_mod, $mod_or_func[0]);
+                } else {
+                    $err_str .= sprintf("%-*s", $align_modsym, $modfunc);
+                }
+                if ($callstack_style & $PRINT_SRCFILE_NO_COLON) {
+                    $fileline =~ s/:/ @ /;
+                }
+                if (!($callstack_style & $PRINT_SRCFILE_NEWLINE)) {
+                    if ($symlines[$a*2+1] ne '??:0') {
+                        $err_str .= " ["."$fileline"."]";
+                    }
+                }
+            }
+            if (($error{"addr"}[$a] !~ /^system\s+call/ &&
+                 ($callstack_style & $PRINT_ABS_ADDRESS)) ||
+                ($error{"is_module"}[$a] &&
+                 ($callstack_style & $PRINT_MODULE_OFFSETS))) {
+                $err_str .= " (";
+                if ($error{"addr"}[$a] !~ /^system\s+call/ &&
+                    ($callstack_style & $PRINT_ABS_ADDRESS)) {
+                    $err_str .= $error{"addr"}[$a];
+                    if ($error{"is_module"}[$a] &&
+                        ($callstack_style & $PRINT_MODULE_OFFSETS)) {
+                        $err_str .= " ";
+                    }
+                }
+                if ($error{"is_module"}[$a] &&
+                    ($callstack_style & $PRINT_MODULE_OFFSETS)) {
+                    $err_str .= $error{"modoffs"}[$a];
+                }
+                $err_str .= ")";
+            }
             if ($error{"addr"}[$a] =~ /^system\s+call/) {
                 push @err_cstack, $error{"addr"}[$a];
             } else {
@@ -1036,7 +1119,10 @@ sub generate_error_info()
                 $mod_off_func = "$modoffs!$func";
                 push @err_cstack, $mod_off_func;
             }
-            $err_str .= $prefix."    $symlines[$a*2+1]\n";
+            if ($callstack_style & $PRINT_SRCFILE_NEWLINE) {
+                $err_str .= "\n" . $prefix . "    $fileline";
+            }
+            $err_str .= "\n";
         }
     }
     return \$err_str, \@err_cstack;
@@ -1506,6 +1592,7 @@ sub read_suppression_info($file_in, $default_in)
             /<not in a module>/ || /^system call / || /\.\.\./) {
             $valid_frame = 1;
             $callstack .= $_;
+            $callstack =~ s/[ \t]*$//; # trim trailing whitespace (i#381)
         } elsif (($new_type = is_line_start_of_error($_)) ||
                  ($new_type = is_line_start_of_suppression($_))) {
             $valid_frame = 0;
@@ -1546,6 +1633,11 @@ sub add_suppress_callstack($type, $callstack, $default)
     # support missing module name on vmk
     # we can't require suppress file to have the * b/c client doesn't support it
     $callstack =~ s/^<\+/<*+/gm;
+
+    # make module name case-insensitive on windows
+    if ($is_cygwin) {
+        $callstack =~ s/^([^!\+\n]+)([!\+])/\U\1\2/msg; 
+    }
 
     # Turn into a regex for wildcard matching.
     # We support two wildcards:
@@ -1594,7 +1686,8 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
 
     # Strip <nosym> and path from module name.
     foreach $frame (@{$callstack_ref}) {
-        if ($frame =~ /<unknown symbol>/) {
+        if ($frame =~ /<unknown symbol>/ ||
+            $frame =~ /<not in a module>/) {
             $callstk_str .= "<not in a module>\n";
         } elsif ($frame =~ /^system call/) {
             $callstk_str .= "$frame\n";
@@ -1604,7 +1697,12 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
             # die is to handle potential problems - they always blow up here.
             die "potential symbol lookup bug\n" if ($1 eq "");
             my $sym = $';   # save $' as fileparse() can do a regex
-            $callstk_str .= fileparse($1)."!$sym\n";
+            my $modname = fileparse($1);
+            # make module name case-insensitive on windows
+            if ($is_cygwin) {
+                $modname =~ s/^([^!\+]+)([!\+])/\U\1\2/;
+            }
+            $callstk_str .= $modname."!$sym\n";
         }
     }
 
@@ -1629,12 +1727,13 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
     # has been written to the suppression info file, so let the user know that
     # this is another type of call stack, i.e., one with symbols.
     #
-    print SUPP_OUT "\n# This call stack is the symbol based version of the ".
-                   "one above" if ($gen_suppress_offs);
-    if (options.gen_suppress_syms) {
+    print SUPP_OUT "\n";
+    if ($gen_suppress_syms) {
         # remove the offsets
         $callstk_str =~ s/\+0x[^!]+!/!/g;
-        print SUPP_OUT "\n$errname\n$callstk_str\n";
+        print SUPP_OUT "# This call stack is the symbol based version of the ".
+            "one above\n" if ($gen_suppress_offs);
+        print SUPP_OUT "$errname\n$callstk_str\n";
     }
     return 0;
 }
@@ -1723,7 +1822,7 @@ sub process_callstack_log($log_file_in)
         if (/^CALLSTACK\s*(\d+)/) {
             $id = $1;
             $cstack[$id] = '';
-        } elsif ($id > -1 && /^\s*0x.*/) {
+        } elsif ($id > -1 && /^\#\s*\d+/) {
             $cstack[$id] .= $_;
         } elsif (/^\s*error end/) {
             $id = -1;

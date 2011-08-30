@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -120,7 +121,7 @@ if ($is_unix) {
 }
 
 if ($is_vmk || $vs_vmk) {
-use frontend_vmk qw(:All);
+    eval "use frontend_vmk qw(:All)";
     $use_vmtree = &vmk_expect_vmtree();
 }
 
@@ -876,7 +877,7 @@ sub create_callstack_xml($cstack_str_in)
     foreach my $str (split /\n/, $cstack_str) {
         if ($str =~ /^CALLSTACK\s*(\d+)/) {
             $xml .= "<callstack id=\"$1\">\n";
-        } elsif ($str =~ /^\s+\w+\s+<(.*)>/) {
+        } elsif ($str =~ /^#\s*\d+\s+\S+!\?\s*\w+\s+<(.*)>/) {
             ($symbol, $src_file) = lookup_addr("<$1>", $addr_sym_disp);
             # Can't use < or > in xml file, but templates have them.
             $symbol =~ s/</&lt;/g;

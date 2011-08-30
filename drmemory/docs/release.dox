@@ -59,6 +59,11 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.3 and 1.4.2 include:
+ - Changed the default callstack printing style and added control
+   over the style via the -callstack_style runtime option
+ - Various bug fixes
+
 The changes between version 1.4.2 and 1.4.1 include:
  - Initial graphical system call support to reduce false positives
  - Various bug fixes
