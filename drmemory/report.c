@@ -105,6 +105,9 @@ static const char *const suppress_name[] = {
 static uint num_unique[ERROR_MAX_VAL];
 static uint num_total[ERROR_MAX_VAL];
 
+struct _suppress_spec_t;
+typedef struct _suppress_spec_t suppress_spec_t;
+
 /* Though any one instance of an address can have only one error
  * type, the same address could have multiple via different
  * executions.  Thus we must use a key combining the callstack and
@@ -119,6 +122,7 @@ typedef struct _stored_error_t {
     uint count;
     bool suppressed;
     bool suppressed_by_default;
+    suppress_spec_t *suppress_spec;
     packed_callstack_t *pcs;
     /* We also keep a linked list so we can iterate in id order */
     struct _stored_error_t *next;
@@ -204,7 +208,7 @@ typedef struct _suppress_frame_t {
     struct _suppress_frame_t *next;
 } suppress_frame_t;
 
-typedef struct _suppress_spec_t {
+struct _suppress_spec_t {
     int type;
     /* these 3 fields are for reporting which suppressions were used (i#50) */
     uint num;
@@ -215,13 +219,14 @@ typedef struct _suppress_spec_t {
     suppress_frame_t *frames;
     suppress_frame_t *last_frame;
     bool is_default; /* from default file, or user-specified? */
+    size_t bytes_leaked;
     /* During initial reading it's easier to build a linked list.
      * We could convert to an array after reading both suppress files,
      * but we have pointers scattered all over anyway so we leave it a
      * list.
      */
     struct _suppress_spec_t *next;
-} suppress_spec_t;
+};
 
 /* We suppress error type separately (PR 507837) */
 static suppress_spec_t *supp_list[ERROR_MAX_VAL];
@@ -236,6 +241,7 @@ static void *suppress_file_lock;
 typedef struct _error_callstack_t {
     symbolized_callstack_t scs;
     char instruction[MAX_INSTR_DISASM];
+    size_t bytes_leaked;
 } error_callstack_t;
 
 static void
@@ -244,6 +250,7 @@ error_callstack_init(error_callstack_t *ecs)
     ecs->scs.num_frames = 0;
     ecs->scs.frames = NULL;
     ecs->instruction[0] = '\0';
+    ecs->bytes_leaked = 0;
 }
 
 static int
@@ -291,6 +298,7 @@ suppress_spec_create(int type, bool is_default)
     spec->type = type;
     spec->count_used = 0;
     spec->is_default = is_default;
+    spec->bytes_leaked = 0;
     spec->name = NULL; /* for i#50 NYI */
     spec->num = num_suppressions;
     spec->instruction = NULL;
@@ -778,7 +786,7 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
 
 static bool
 on_suppression_list_helper(uint type, error_callstack_t *ecs,
-                           bool *on_default_list OUT)
+                           suppress_spec_t **matched OUT)
 {
     suppress_spec_t *spec;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
@@ -788,9 +796,11 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
                                  "supp: comparing error to suppression pattern");
         });
         if (stack_matches_suppression(ecs, spec)) {
-            if (on_default_list != NULL)
-                *on_default_list = spec->is_default;
+            if (matched != NULL)
+                *matched = spec;
             spec->count_used++;
+            if (type == ERROR_LEAK || type == ERROR_POSSIBLE_LEAK)
+                spec->bytes_leaked += ecs->bytes_leaked;
             return true;
         }
     }
@@ -798,14 +808,14 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
 }
 
 static bool
-on_suppression_list(uint type, error_callstack_t *ecs, bool *on_default_list OUT)
+on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched OUT)
 {
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
-    if (on_suppression_list_helper(type, ecs, on_default_list))
+    if (on_suppression_list_helper(type, ecs, matched))
         return true;
     /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
     if (type == ERROR_POSSIBLE_LEAK) {
-        if (on_suppression_list_helper(ERROR_LEAK, ecs, on_default_list))
+        if (on_suppression_list_helper(ERROR_LEAK, ecs, matched))
             return true;
     }
     LOG(3, "supp: no match\n");
@@ -1029,11 +1039,15 @@ report_summary_to_file(file_t f, bool stderr_too)
         suppress_spec_t *spec;
         for (spec = supp_list[i]; spec != NULL; spec = spec->next) {
             if (spec->count_used > 0) {
-                if (spec->name == NULL) {
-                    dr_fprintf(f, "\t%6dx: <no name %d>"NL, spec->count_used, spec->num);
-                } else {
-                    dr_fprintf(f, "\t%6dx: %s"NL, spec->count_used, spec->name);
-                }
+                dr_fprintf(f, "\t%6dx", spec->count_used);
+                if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK)
+                    dr_fprintf(f, " (leaked %7d bytes): ", spec->bytes_leaked);
+                else
+                    dr_fprintf(f, ": ");
+                if (spec->name == NULL)
+                    dr_fprintf(f, "<no name %d>"NL, spec->num);
+                else
+                    dr_fprintf(f, "%s"NL, spec->name);
             }
         }
     }
@@ -1427,7 +1441,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     bool reporting = false;
     ssize_t len = 0;
     size_t sofar = 0;
-    bool default_suppress = false;
+    suppress_spec_t *spec;
     error_callstack_t ecs;
     error_callstack_init(&ecs);
 
@@ -1505,12 +1519,13 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     if (!options.thread_logs)
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
 
-    reporting = !on_suppression_list(type, &ecs, &default_suppress);
+    reporting = !on_suppression_list(type, &ecs, &spec);
     if (!reporting) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
         err->suppressed = true;
-        err->suppressed_by_default = default_suppress;
-        if (err->suppressed_by_default)
+        err->suppressed_by_default = spec->is_default;
+        err->suppress_spec = spec;
+        if (err->suppress_spec->is_default)
             num_suppressions_matched_default++;
         else
             num_suppressions_matched_user++;
@@ -1735,7 +1750,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     /* only real and possible leaks go to results.txt */
     file_t tofile = f_global;
 #endif
-    bool default_suppress = false;
+    suppress_spec_t *spec;
     error_callstack_t ecs;
     error_callstack_init(&ecs);
 
@@ -1813,10 +1828,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             if (err->count > 1) {
                 /* Duplicate */
                 if (err->suppressed) {
-                    if (err->suppressed_by_default)
+                    ASSERT(err->suppress_spec != NULL, "missing suppress spec");
+                    if (err->suppress_spec->is_default)
                         num_suppressed_leaks_default++;
                     else
                         num_suppressed_leaks_user++;
+                    err->suppress_spec->bytes_leaked += size + indirect_size;
                 } else {
                     /* We only count bytes for non-suppressed leaks */
                     /* Total size does not distinguish direct from indirect (PR 576032) */
@@ -1842,7 +1859,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 
         /* only real and possible leaks can be suppressed */
         if (type < ERROR_MAX_VAL)
-            suppressed = on_suppression_list(type, &ecs, &default_suppress);
+            suppressed = on_suppression_list(type, &ecs, &spec);
 
         if (!suppressed && type < ERROR_MAX_VAL) {
             /* We can have identical leaks across nudges: keep same error #.
@@ -1887,12 +1904,14 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         BUFPRINT(buf, bufsz, sofar, len, label);
 
     if (suppressed) {
-        err->suppressed_by_default = default_suppress;
-        if (err->suppressed_by_default)
-            num_suppressed_leaks_default++;
-        else
-            num_suppressed_leaks_user++;
         if (err != NULL) {
+            ASSERT(spec != NULL, "invalid local");
+            err->suppress_spec = spec;
+            if (err->suppress_spec->is_default)
+                num_suppressed_leaks_default++;
+            else
+                num_suppressed_leaks_user++;
+            err->suppress_spec->bytes_leaked += size + indirect_size;
             err->suppressed = true;
             num_total[type]--;
         }

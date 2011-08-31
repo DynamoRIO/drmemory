@@ -590,7 +590,10 @@ sub process_all_errors()
         if (/^SUPPRESSIONS USED:/) {
             $found_suppressions_used = 1;
         } elsif ($found_suppressions_used) {
-            if (/^\s*(\d+)x\s+(.*)$/) {
+            if (/^\s*(\d+)x:\s+\(leaked\s+(\d+)\s+bytes\):\s+(.*)$/) {
+                $supp_used_count{$3} = $1;
+                $supp_bytes_leaked{$3} = $2;
+            } elsif (/^\s*(\d+)x:\s+(.*)$/) {
                 $supp_used_count{$2} = $1;
             } else {
                 $found_suppressions_used = 0;
@@ -686,7 +689,8 @@ sub process_one_error($raw_error_lines_array_ref)
         # If the error passes the source filter and doesn't match
         # call stack suppression specified then print it.
         if (($srcfilter eq "" || ${$err_str_ref} =~ /$srcfilter/) && 
-            !suppress($error{"type"}, $err_cstack_ref, \$is_default, $supp)) {
+            !suppress($error{"type"}, $err_cstack_ref, \$is_default, $supp,
+                      $error{"numbytes"})) {
             print ${$err_str_ref};
 
             # If the first line excluding the read/write info was the same even
@@ -1159,6 +1163,19 @@ sub print_final_summary()
 }
 
 #-------------------------------------------------------------------------------
+sub sort_supp_used($a, $b)
+{
+    # sort by count, but want leaks together
+    if ($supp_bytes_leaked{$a} < $supp_bytes_leaked{$b}) {
+        return -1;
+    } elsif ($supp_bytes_leaked{$a} > $supp_bytes_leaked{$b}) {
+        return 1;
+    } else {
+        return $supp_used_count{$a} <=> $supp_used_count{$b};
+    }
+}
+
+#-------------------------------------------------------------------------------
 # Print summary about errors, i.e., how many duplicates were there, which
 # errors can be potentially related, etc.  Part of PR 420942. If $reset_in is
 # set, then the output file handle ($where_in) will be reset to print summary
@@ -1203,11 +1220,15 @@ sub print_summary($fh, $reset, $summary_only)
         }
 
         printf $fh $pfx."SUPPRESSIONS USED:\n";
-        foreach $name (sort { $supp_used_count{$a} <=> $supp_used_count{$b} }
-                       (keys %supp_used_count)) {
+        foreach $name (sort sort_supp_used (keys %supp_used_count)) {
             if ($supp_used_count{$name} > 0) {
-                printf $fh $pfx."\t%6dx: %s\n", 
-                       $supp_used_count{$name}, $name;
+                printf $fh $pfx."\t%6dx", $supp_used_count{$name};
+                if ($supp_bytes_leaked{$name} > 0) {
+                    printf $fh " (leaked %8d bytes): ", $supp_bytes_leaked{$name};
+                } else {
+                    printf $fh ": ", $supp_bytes_leaked{$name};
+                }
+                printf $fh "%s\n", $name;
             }
         }
     }
@@ -1715,9 +1736,9 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
 # list; 0 otherwise and prints the call stack to the symbol-based suppression
 # file.
 #
-sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
+sub suppress($errname, $callstack_ref, $default_ref, $supp_mod_offs, $bytes_leaked)
 {
-    my ($errname, $callstack_ref, $default_ref, $supp_mod_offs) = @_;
+    my ($errname, $callstack_ref, $default_ref, $supp_mod_offs, $bytes_leaked) = @_;
     my $callstk_str = "";
 
     # Strip <nosym> and path from module name.
@@ -1753,6 +1774,7 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
                 if ($verbose);
             ${$default_ref} = $supp_is_default{$supp,$errname};
             $supp_used_count{$name}++;
+            $supp_bytes_leaked{$name} += $bytes_leaked;
             return 1;
         }
     }
