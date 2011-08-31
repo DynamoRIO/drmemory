@@ -94,6 +94,7 @@ $drmem_dir = "debug";
 %error = {};
 %supp_syms_list = {};   # list of suppression regexps
 $supp_syms_file = "";   # file containing
+%supp_used_count = {};  # times used
 %addr_pipes = ();   # pipes to addr2line processes for each module; PR 454803.
 $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
 @dbg_sec_types = ("debug_info", # all DWARF 2 & 3 type info will have this
@@ -438,6 +439,7 @@ sub process_all_errors()
     my @lines = ();
     my $found_error_start = 0;
     my $found_duplicate_start = 0;
+    my $found_suppressions_used = 0;
     my $found_summary_start = 0;
     my $found_ignored_start = 0;
 
@@ -584,6 +586,17 @@ sub process_all_errors()
                 $found_duplicate_start = 0;
             }
         }
+
+        if (/^SUPPRESSIONS USED:/) {
+            $found_suppressions_used = 1;
+        } elsif ($found_suppressions_used) {
+            if (/^\s*(\d+)x\s+(.*)$/) {
+                $supp_used_count{$2} = $1;
+            } else {
+                $found_suppressions_used = 0;
+            }
+        }
+
         # PR 477013: provide proper summary: we need to extract info from
         # the client on what it ignored
         if (/^ERRORS FOUND:/) {
@@ -1163,6 +1176,42 @@ sub print_summary($fh, $reset, $summary_only)
 
     seek $fh, 0, SEEK_SET if ($reset);      # Append summary or overwrite?
 
+    if (!$summary_only) {
+        print $fh "$pfx\n";
+        print $fh $pfx."Grouping errors that may be the same or related:\n\n";
+
+        foreach $group (keys %similar_errors) {
+            $num_groups++;
+            print $fh $pfx."Group $num_groups: $similar_errors{$group}\n";
+        }
+
+        print $fh "$pfx\n";
+        print $fh $pfx."DUPLICATE ERROR COUNTS:\n\n";
+        # Filter out duplicate information for unsuppressed errors to report.
+        foreach $err_str (keys %error_cache) {
+            my $errno = $error_cache{$err_str}{"errno"};
+            my $suppressed = $error_cache{$err_str}{"suppressed"};
+            my $dup_count = $error_cache{$err_str}{"dup_count"} +
+                $error_cache{$err_str}{"dup_count_client"};
+            $duplicate_errors{$errno} = $dup_count if (!$suppressed && $dup_count > 1);
+        }
+        # sort numerically, not the default alpha
+        foreach $num (sort { $a <=> $b } (keys %duplicate_errors)) {
+            # didn't increment until hit 1st dup so add 1
+            printf $fh $pfx."Error \#%3d: %6d times\n",
+                   $num, $duplicate_errors{$num} + 1;
+        }
+
+        printf $fh $pfx."SUPPRESSIONS USED:\n";
+        foreach $name (sort { $supp_used_count{$a} <=> $supp_used_count{$b} }
+                       (keys %supp_used_count)) {
+            if ($supp_used_count{$name} > 0) {
+                printf $fh $pfx."\t%6dx: %s\n", 
+                       $supp_used_count{$name}, $name;
+            }
+        }
+    }
+
     # PR 477013: print a full summary
     print $fh "$pfx\n";
     print $fh $pfx."MEMORY CHECKS WERE DISABLED FOR AT LEAST PART OF THIS RUN!\n"
@@ -1209,33 +1258,6 @@ sub print_summary($fh, $reset, $summary_only)
         $tmp_lines = $client_ignored;
         $tmp_lines =~ s/^/$default_prefix/msg if ($fh == \*STDERR);
         print $fh $tmp_lines;
-    }
-
-    return 1 if ($summary_only);
-
-    print $fh "$pfx\n";
-    print $fh $pfx."Grouping errors that may be the same or related:\n\n";
-
-    foreach $group (keys %similar_errors) {
-        $num_groups++;
-        print $fh $pfx."Group $num_groups: $similar_errors{$group}\n";
-    }
-
-    print $fh "$pfx\n";
-    print $fh $pfx."Errors occurring multiple times:\n\n";
-    # Filter out duplicate information for unsuppressed errors to report.
-    foreach $err_str (keys %error_cache) {
-        my $errno = $error_cache{$err_str}{"errno"};
-        my $suppressed = $error_cache{$err_str}{"suppressed"};
-        my $dup_count = $error_cache{$err_str}{"dup_count"} +
-            $error_cache{$err_str}{"dup_count_client"};
-        $duplicate_errors{$errno} = $dup_count if (!$suppressed && $dup_count > 1);
-    }
-    # sort numerically, not the default alpha
-    foreach $num (sort { $a <=> $b } (keys %duplicate_errors)) {
-        # didn't increment until hit 1st dup so add 1
-        printf $fh $pfx."Error \#%3d: %6d times\n",
-               $num, $duplicate_errors{$num} + 1;
     }
 }
 
@@ -1563,11 +1585,13 @@ sub lookup_symbol($modpath_in, $addr_in)
 # WARNING in function foo doesn't suppress all real errors in that
 # function as well!
 #
+my $total_supp = 0;
 sub read_suppression_info($file_in, $default_in)
 {
     my ($file, $default) = @_;
     my $valid_frame = 0;    # to track valid frames followed by invalid ones
     my $callstack = "";
+    my $name = sprintf("<no name %d>", $total_supp);
     my $type = "";
     my $new_type = "";
     my $num_supp = 0;
@@ -1589,7 +1613,7 @@ sub read_suppression_info($file_in, $default_in)
         if ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
             # support missing module for vmk (PR 363063)
             (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
-            /<not in a module>/ || /^system call / || /\.\.\./) {
+            /<not in a module>/ || /^system call / || /^\.\.\./) {
             $valid_frame = 1;
             $callstack .= $_;
             $callstack =~ s/[ \t]*$//; # trim trailing whitespace (i#381)
@@ -1597,11 +1621,16 @@ sub read_suppression_info($file_in, $default_in)
                  ($new_type = is_line_start_of_suppression($_))) {
             $valid_frame = 0;
             $num_supp++;
-            add_suppress_callstack($type, $callstack, $default) if ($callstack ne '');
+            $total_supp++;
+            add_suppress_callstack($type, $callstack, $default, $name)
+                if ($callstack ne '');
             $callstack = "";
             $type = $new_type;
+            $name = sprintf("<no name %d>", $total_supp);
         } elsif (/^instruction=/) {
             # instruction suppression (i#498): we don't support here so ignore
+        } elsif (/^name=(.*)$/) {
+            $name = $1;
         } else {
             $callstack .= $_;   # need the malformed frame to print it out
             die "ERROR: malformed suppression:\n".
@@ -1617,7 +1646,8 @@ sub read_suppression_info($file_in, $default_in)
     }
 
     # The last one won't be recorded, so record it.
-    add_suppress_callstack($type, $callstack, $default) if ($callstack ne '');
+    add_suppress_callstack($type, $callstack, $default, $name)
+        if ($callstack ne '');
     $num_supp++ if ($callstack ne '');
         
     close SUPP_IN;
@@ -1627,9 +1657,9 @@ sub read_suppression_info($file_in, $default_in)
 #-------------------------------------------------------------------------------
 # Adds a callstack to the suppression regexp table.
 #
-sub add_suppress_callstack($type, $callstack, $default)
+sub add_suppress_callstack($type, $callstack, $default, $name)
 {
-    my ($type, $callstack, $default) = @_;
+    my ($type, $callstack, $default, $name) = @_;
     return if ($type eq '' || $callstack eq '');
 
     # support missing module name on vmk
@@ -1672,8 +1702,12 @@ sub add_suppress_callstack($type, $callstack, $default)
     if ($type eq "LEAK") {
         # POSSIBLE LEAK reports should also be checked against LEAK suppressions
         push @{ $supp_syms_list{"POSSIBLE LEAK"} }, $callstack;
+        $supp_is_default{$callstack,"POSSIBLE LEAK"} = $default;
+        $supp_name{$callstack,"POSSIBLE LEAK"} = $name;
     }
-    $supp_is_default{$callstack} = $default;
+    print "adding suppression $name of type $type\n";#NOCHECKIN
+    $supp_is_default{$callstack,$type} = $default;
+    $supp_name{$callstack,$type} = $name;
 }
 
 #-------------------------------------------------------------------------------
@@ -1714,9 +1748,11 @@ sub suppress($errname_in, $callstack_ref_in, $default_ref_in, $supp_mod_offs_in)
         # FIXME: performance: check the #frames and skip this check if the
         # suppression has more frames than we've seen so far
         if ($callstk_str =~ /$supp/m) {
-            print "suppression match: \"$callstk_str\" vs \"$supp\"\n"
+            my $name = $supp_name{$supp,$errname};
+            print "suppression match $name $errname: \"$callstk_str\" vs \"$supp\"\n"
                 if ($verbose);
-            ${$default_ref} = $supp_is_default{$supp};
+            ${$default_ref} = $supp_is_default{$supp,$errname};
+            $supp_used_count{$name}++;
             return 1;
         }
     }

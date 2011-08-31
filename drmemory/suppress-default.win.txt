@@ -26,6 +26,7 @@
 # i#65: uninitialized value deliberately used to generate a random number
 
 UNINITIALIZED READ
+name=default i#65 (generate random number)
 system call NtDeviceIoControlFile InputBuffer
 ADVAPI32.dll!*
 ...
@@ -35,12 +36,14 @@ ADVAPI32.dll!SystemFunction036
 # i#257: real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init
 
 LEAK
+name=default i#257 (real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init)
 ...
 *!operator new
 *!std::_Maklocstr<char>
 *!std::numpunct<*>::_Init
 
 LEAK
+name=default i#257 (real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init)
 ...
 *!operator new
 *!operator new[]
@@ -59,9 +62,11 @@ LEAK
 # different frames at the top of the stack
 
 LEAK
+name=default i#286 (activation context leak)
 ntdll.dll!Rtl*ActivationContext*
 
 LEAK
+name=default i#286 (activation context leak)
 ntdll.dll!*
 ntdll.dll!RtlAllocateActivationContextStack
 
@@ -89,6 +94,7 @@ ntdll.dll!RtlAllocateActivationContextStack
 # using an 8-byte-in pointer
 
 POSSIBLE LEAK
+name=default i#306 (critical section 8-byte-in pointer)
 ...
 ntdll.dll!RtlInitializeCriticalSection
 
@@ -98,6 +104,7 @@ ntdll.dll!RtlInitializeCriticalSection
 # as LdrUnlockLoaderLock so we match all.
 
 UNINITIALIZED READ
+name=default i#337 (real bug in RtlpLowFragHeapAllocFromContext)
 ntdll.dll!*
 ntdll.dll!RtlAllocateHeap
 
@@ -105,12 +112,14 @@ ntdll.dll!RtlAllocateHeap
 # i#455: real bug in kernel32!BaseDllReadWriteIniFileViaMapping
 
 UNADDRESSABLE ACCESS
+name=default i#455 (real bug in kernel32!BaseDllReadWriteIniFileViaMapping)
 system call NtQueryValueKey UNICODE_STRING capacity
 kernel32.dll!BaseDllReadWriteIniFileViaMapping
 
 # w/o symbols shows up as various nearby exports.
 # so far we've only seen it called from GetPrivateProfileStringA so we match that.
 UNADDRESSABLE ACCESS
+name=default i#455 (real bug in kernel32!BaseDllReadWriteIniFileViaMapping)
 system call NtQueryValueKey UNICODE_STRING capacity
 kernel32.dll!*
 kernel32.dll!*
@@ -121,19 +130,23 @@ kernel32.dll!GetPrivateProfileStringA
 
 # with symbols
 UNADDRESSABLE ACCESS
+name=default i#462 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!AesEncrypt
 
 UNADDRESSABLE ACCESS
+name=default i#504 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 RSAENH.dll!AesEncrypt
 
 # w/o symbols
 UNADDRESSABLE ACCESS
+name=default i#462 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!SystemFunction036
 
 UNADDRESSABLE ACCESS
+name=default i#504 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 RSAENH.dll!*
 
@@ -145,11 +158,13 @@ RSAENH.dll!*
 # per-bit granularity.
 
 UNINITIALIZED READ
+name=default i#492 (bit manip)
 instruction=test   * $0x??
 usp10.dll!DoubleWideCharMappedString::DoubleWideCharMappedString
 
 # w/o symbols
 UNINITIALIZED READ
+name=default i#492 (bit manip)
 instruction=test   * $0x??
 usp10.dll!UspFreeMem
 
@@ -161,32 +176,39 @@ usp10.dll!UspFreeMem
 # until have per-bit granularity.
 
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!CStackAllocator::Free
 # w/o symbols
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!UspFreeMem
 
 # the next 4 all have the same no-syms stack:
 # w/o symbols
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!ScriptPositionSingleGlyph
 
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!GenericEngineGetBreakingProperties
 
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!GenericEngineGetGlyphs
 
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!ShapingGetGlyphPositions
 
 UNINITIALIZED READ
+name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
 
@@ -194,6 +216,7 @@ usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
 # i#494: Custom data not all initialized
 
 UNINITIALIZED READ
+name=default i#494 (custom data not all initialized)
 system call NtConnectPort parameter #6
 UxTheme.dll!*
 UxTheme.dll!*
@@ -207,11 +230,13 @@ USER32.dll!*
 # until have per-bit granularity.
 
 UNINITIALIZED READ
+name=default i#497 (gdiplus bit manip)
 instruction=test   0x??(%e??) $0x??
 gdiplus.dll!DpRegion::FreeData
 
 # w/o symbols
 UNINITIALIZED READ
+name=default i#497 (gdiplus bit manip)
 instruction=test   0x??(%e??) $0x??
 gdiplus.dll!GdipCreateSolidFill
 
@@ -223,6 +248,7 @@ gdiplus.dll!GdipCreateSolidFill
 # regardless we want to suppress.
 
 UNINITIALIZED READ
+name=default i#511 (rc4_key bit manip)
 instruction=mov    (%ebx,%esi,1) -> %al 
 RPCRT4.dll!rc4_key
 
@@ -232,6 +258,7 @@ RPCRT4.dll!rc4_key
 # though could be a nearby internal func that maps to this
 # w/o syms: we'll live w/ the false negative risk.
 UNINITIALIZED READ
+name=default i#511 (rc4_key bit manip)
 instruction=mov    (%ebx,%esi,1) -> %al 
 RPCRT4.dll!UuidCreate
 
@@ -243,6 +270,7 @@ RPCRT4.dll!UuidCreate
 #  0x75030300  f7 43 70 00 01 00 00 test   0x70(%ebx) $0x00000100 
 
 UNINITIALIZED READ
+name=default i#529 (multi-instr partial xor-with-self)
 instruction=test   0x70(%e??) $0x00000?00
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*

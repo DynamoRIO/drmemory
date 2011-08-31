@@ -25,6 +25,7 @@
 
 # uninitialized read: plain
 UNINITIALIZED READ
+name=uninit_test1 plain
 suppress!do_uninit_read
 suppress!uninit_test1
 suppress!test
@@ -32,6 +33,7 @@ suppress!main
 
 # uninitialized read: middle-of-symbol wildcard
 UNINITIALIZED READ
+name=uninit_test2 *
 suppress!do_u*t_read
 suppress!uninit_test2
 suppress!test
@@ -39,6 +41,7 @@ suppress!main
 
 # uninitialized read: full callstack based mod!func suppression 
 UNINITIALIZED READ
+name=uninit_test3 plain
 suppress!do_uninit_read
 suppress!uninit_test3
 suppress!test
@@ -46,34 +49,40 @@ suppress!main
 
 # uninitialized read: top frames based mod!func suppression 
 UNINITIALIZED READ
+name=uninit_test4 top
 suppress!do_uninit_read
 suppress!uninit_test4
 
 # uninitialized read: vertical wildcard
 UNINITIALIZED READ
+name=uninit_test5 ... match 1
 ...
 suppress!uninit_test5
 
 # uninitialized read: vertical wildcard
 UNINITIALIZED READ
+name=uninit_test6 ... match 6
 ...
 suppress!uninit_test6
 
 # uninitialized read: vertical wildcard
 UNINITIALIZED READ
+name=uninit_test7 ... + ?
 ...
-suppress!uninit_test7
+su??ress!unini??test7
 
 #-------------------------------------------------------------------------------
 
 # unaddressable access: plain
 UNADDRESSABLE ACCESS
+name=unaddr_test1 plain
 suppress!unaddr_test1
 suppress!test
 suppress!main
 
 # unaddressable access: wildcard in module
 UNADDRESSABLE ACCESS
+name=unaddr_test2 *
 s*s!unaddr_test2
 suppress!test
 suppress!main
@@ -81,11 +90,14 @@ suppress!main
 # unaddressable access: full callstack based mod!func suppression 
 # also tests wildcard
 UNADDRESSABLE ACCESS
+name=unaddr_test3 instruction
+instruction=mov    (%eax) -> %eax   
 suppress!unaddr_*3
 supp*!test
 
 # unaddressable access: top 2 frames based mod!func suppression 
 UNADDRESSABLE ACCESS
+name=unaddr_test4 top
 suppress!unaddr_test4
 suppress!test
 
@@ -93,41 +105,49 @@ suppress!test
 
 # leak: plain
 LEAK
+name=leak_test1 plain
 suppress!leak_test1
 suppress!test
 suppress!main
 
 # leak: wildcards
 LEAK
+name=leak_test2 *
 suppress!l*2
 *!test
 suppress!m*
 
 # leak: full callstack based mod!func suppression 
 LEAK
+name=leak_test3 ?
 suppress!leak_test3
 suppress!test
 suppress!main
 
 # leak: top frame based mod!func suppression 
 LEAK
+name=leak_test4 top
 suppress!leak_test4
 
 # possible leak: top frame based mod!func suppression 
 POSSIBLE LEAK
+name=possible_leak_test1 top
 suppress!possible_leak_test1
 
 # possible leak: top frame based mod!func suppression 
 LEAK
+name=possible_leak_test2 w/ leak supp
 suppress!possible_leak_test2
 
 #-------------------------------------------------------------------------------
 
 UNINITIALIZED READ
+name=not in a module
 <not in a module>
 suppress!test
 
 UNINITIALIZED READ
+name=syscall
 system call write parameter #1
 ...
 suppress!syscall_test
@@ -135,13 +155,17 @@ suppress!syscall_test
 #-------------------------------------------------------------------------------
 
 UNADDRESSABLE ACCESS
+name=invalid_free_test1 unaddr
 suppress!invalid_free_test1
 
 LEAK
+name=invalid_free_test1 leak
 suppress!invalid_free_test1
 
 INVALID HEAP ARGUMENT
+name=invalid_free_test1 invalid arg
 suppress!invalid_free_test1
 
 WARNING
+name=warning_test1
 *!warning_test1

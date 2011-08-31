@@ -193,7 +193,7 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
  */
 
 /* For each error type, we have a list of callstacks, with each
- * callstack a variable-sized array of frames, each frame a string.
+ * callstack a list of frames
  */
 typedef struct _suppress_frame_t {
     bool is_ellipsis; /* "..." wildcard */
@@ -206,7 +206,10 @@ typedef struct _suppress_frame_t {
 
 typedef struct _suppress_spec_t {
     int type;
-    char *name; /* for i#50 NYI */
+    /* these 3 fields are for reporting which suppressions were used (i#50) */
+    uint num;
+    char *name;
+    uint count_used;
     char *instruction; /* i#498 */
     uint num_frames;
     suppress_frame_t *frames;
@@ -286,8 +289,10 @@ suppress_spec_create(int type, bool is_default)
     LOG(2, "parsing suppression %d of type %s\n", num_suppressions,
         suppress_name[type]);
     spec->type = type;
+    spec->count_used = 0;
     spec->is_default = is_default;
     spec->name = NULL; /* for i#50 NYI */
+    spec->num = num_suppressions;
     spec->instruction = NULL;
     spec->num_frames = 0;
     spec->frames = NULL;
@@ -361,8 +366,7 @@ suppress_spec_finish(suppress_spec_t *spec,
                                      "The given suppression ends with '...'");
         ASSERT(false, "should not reach here");
     }
-    LOG(3, "added suppression #%d of type %s\n", num_suppressions,
-        suppress_name[spec->type]);
+    LOG(3, "added suppression #%d of type %s\n", spec->num, suppress_name[spec->type]);
     /* insert into list */
     spec->next = supp_list[spec->type];
     supp_list[spec->type] = spec;
@@ -786,6 +790,7 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
         if (stack_matches_suppression(ecs, spec)) {
             if (on_default_list != NULL)
                 *on_default_list = spec->is_default;
+            spec->count_used++;
             return true;
         }
     }
@@ -1016,6 +1021,20 @@ report_summary_to_file(file_t f, bool stderr_too)
             (err->errtype != ERROR_POSSIBLE_LEAK || options.possible_leaks)) {
             ASSERT(err->id > 0, "error id wrong");
             dr_fprintf(f, "\tError #%4d: %6d"NL, err->id, err->count);
+        }
+    }
+
+    dr_fprintf(f, NL"SUPPRESSIONS USED:"NL);
+    for (i = 0; i < ERROR_MAX_VAL; i++) {
+        suppress_spec_t *spec;
+        for (spec = supp_list[i]; spec != NULL; spec = spec->next) {
+            if (spec->count_used > 0) {
+                if (spec->name == NULL) {
+                    dr_fprintf(f, "\t%6dx: <no name %d>"NL, spec->count_used, spec->num);
+                } else {
+                    dr_fprintf(f, "\t%6dx: %s"NL, spec->count_used, spec->name);
+                }
+            }
         }
     }
 

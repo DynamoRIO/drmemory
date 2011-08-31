@@ -26,6 +26,7 @@
 # known bitfield suppressions (PR 488813)
 
 UNINITIALIZED READ
+name=default (libc bitfield)
 libc.so.*!maybe_split_for_insert
 
 ##################################################
@@ -33,9 +34,11 @@ libc.so.*!maybe_split_for_insert
 # Can be in libpython* or python executable so we use "*python*"
 
 UNADDRESSABLE ACCESS
+name=default (python malloc)
 *python*!PyObject_Free
 
 UNADDRESSABLE ACCESS
+name=default (python malloc)
 *python*!PyObject_Realloc
 
 ##################################################
@@ -46,6 +49,7 @@ UNADDRESSABLE ACCESS
 # else shows up as _dl_relocate_object
 # or on FC12 I see ".L259" and ".L202"!
 UNINITIALIZED READ
+name=default (ld-linux real bug)
 ld-linux.so.2!*
 ld-linux.so.2!dl_open_worker
 ld-linux.so.2!_dl_catch_error
@@ -57,11 +61,13 @@ ld-linux.so.2!_dl_catch_error
 # crashes on strlen addresses on Fedora 12 (PR 530836).
 
 UNADDRESSABLE ACCESS
+name=default (ld-linux strlen)
 ld-linux.so.2!*
 ld-linux.so.2!_dl_map_object_from_fd
 ld-linux.so.2!_dl_map_object
 
 UNINITIALIZED READ
+name=default (ld-linux strlen)
 ld-linux.so.2!*
 ld-linux.so.2!_dl_open
 libdl.so.2!dlopen_doit
@@ -73,17 +79,20 @@ ld-linux.so.2!_dl_catch_error
 # bugs.
 
 UNADDRESSABLE ACCESS
+name=default i#79 (ld-linux)
 ...
 ld-linux.so.2!_dl_rtld_di_serinfo
 ld-linux.so.2!*
 
 UNINITIALIZED READ
+name=default i#79 (ld-linux)
 ...
 ld-linux.so.2!_dl_make_stack_executable
 ...
 ld-linux.so.2!_dl_rtld_di_serinfo
 
 UNADDRESSABLE ACCESS
+name=default i#79 (ld-linux)
 ld-linux.so.2!*
 
 ##################################################
@@ -91,20 +100,24 @@ ld-linux.so.2!*
 # this is a real bug in glibc
 
 UNADDRESSABLE ACCESS
+name=default (libc real bug)
 libc.so.*!_Unwind_IteratePhdrCallback
 
 ##################################################
 # loader deliberately stores index+1 (PR 535646):
 
 POSSIBLE LEAK
+name=default (ld-linux stores index+1)
 ld-linux.so.2!allocate_dtv
 
 # some versions have this
 POSSIBLE LEAK
+name=default (ld-linux stores index+1)
 ld-linux.so.2!allocate_and_init
 
 # with no debug symbols this shows up as:
 POSSIBLE LEAK
+name=default (ld-linux stores index+1)
 ld-linux.so.2!_dl_allocate_tls
 
 ##################################################
@@ -112,6 +125,7 @@ ld-linux.so.2!_dl_allocate_tls
 # Xref http://www.zlib.net/zlib_faq.html#faq36
 
 UNINITIALIZED READ
+name=default (libz optimized code)
 libz.so.1!*
 libz.so.1!*
 libz.so.1!deflate
@@ -120,6 +134,7 @@ libz.so.1!deflate
 # i#70: pthread_create -> __libc_thread_freeres -> arena_thread_freeres
 
 UNADDRESSABLE ACCESS
+name=default i#70 (pthread)
 libc.so.6!*
 libc.so.6!*
 libpthread.so.0!start_thread

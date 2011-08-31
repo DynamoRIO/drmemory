@@ -337,6 +337,18 @@ There should be no leading white space for the actual suppression information.
 Suppressions should not end with "...", which is unnecessary due to the implicit
 prefix matching.
 
+A suppression can be given an identifier with a \p name= line after
+the error type line.  Suppressions that were matched are printed in the
+results file with a count of how many unique callstacks were matched.
+Duplicate callstacks are not included.  Here is an example:
+
+\code
+LEAK
+name=bug #456 (deliberately leaked object)
+mylib.dll!LeakMe
+mylib.dll!*
+\endcode
+
 On Windows, for unaddressable accesses and uninitialized reads, a
 suppression can be further restricted by the actual instruction involved.
 The instruction is printed out in an error report in a \p Note: field.  For
@@ -351,9 +363,18 @@ Note: instruction: mov    (%eax) -> %eax
 ...
 \endcode
 
-A suppression can contain an \p instruction= line which will be matched
-against this note field.  It can contain wildcards.  The \p instruction=
-line is currently ignored on Linux or Cygwin.
+A suppression can contain an \p instruction= line after the error type line
+which will be matched against this note field.  It can contain wildcards.
+The \p instruction= line is currently ignored on Linux or Cygwin.  Here is
+an example:
+
+\code
+UNINITIALIZED READ
+name=bug #123 (deliberate uninitialized read to generate random number)
+instruction=test   * $0x00000?00
+myranlib.dll!GenRanHelper*
+myranlib.dll!GenRan*
+\endcode
 
 Another method is to filter the reported errors to focus on particular
 source files.  Use the \p -srcfilter option to do this:
