@@ -337,6 +337,24 @@ There should be no leading white space for the actual suppression information.
 Suppressions should not end with "...", which is unnecessary due to the implicit
 prefix matching.
 
+On Windows, for unaddressable accesses and uninitialized reads, a
+suppression can be further restricted by the actual instruction involved.
+The instruction is printed out in an error report in a \p Note: field.  For
+example:
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+@0:00:01.500 in thread 1776
+Note: next higher malloc: 0x001338e8-0x00133938
+Note: prev lower malloc:  0x001337e8-0x00133820
+Note: 0x001338a8-0x001338ac overlaps freed memory 0x00133898-0x001338d4
+Note: instruction: mov    (%eax) -> %eax 
+...
+\endcode
+
+A suppression can contain an \p instruction= line which will be matched
+against this note field.  It can contain wildcards.  The \p instruction=
+line is currently ignored on Linux or Cygwin.
+
 Another method is to filter the reported errors to focus on particular
 source files.  Use the \p -srcfilter option to do this:
 

@@ -121,17 +121,21 @@ kernel32.dll!GetPrivateProfileStringA
 
 # with symbols
 UNADDRESSABLE ACCESS
+instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!AesEncrypt
 
 UNADDRESSABLE ACCESS
+instruction=mov    %e?? -> 0xfffffffc(%esp)
 RSAENH.dll!AesEncrypt
 
 # w/o symbols
 UNADDRESSABLE ACCESS
+instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!SystemFunction036
 
 UNADDRESSABLE ACCESS
-<RSAENH.dll+0x1b46>
+instruction=mov    %e?? -> 0xfffffffc(%esp)
+RSAENH.dll!*
 
 ##################################################
 # i#492: false positive that needs per-bit granularity (i#113)
@@ -141,10 +145,12 @@ UNADDRESSABLE ACCESS
 # per-bit granularity.
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!DoubleWideCharMappedString::DoubleWideCharMappedString
 
 # w/o symbols
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!UspFreeMem
 
 ##################################################
@@ -155,26 +161,33 @@ usp10.dll!UspFreeMem
 # until have per-bit granularity.
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!CStackAllocator::Free
 # w/o symbols
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!UspFreeMem
 
 # the next 4 all have the same no-syms stack:
 # w/o symbols
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!ScriptPositionSingleGlyph
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!GenericEngineGetBreakingProperties
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!GenericEngineGetGlyphs
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!ShapingGetGlyphPositions
 
 UNINITIALIZED READ
+instruction=test   * $0x??
 usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
 
 ##################################################
@@ -194,10 +207,12 @@ USER32.dll!*
 # until have per-bit granularity.
 
 UNINITIALIZED READ
+instruction=test   0x??(%e??) $0x??
 gdiplus.dll!DpRegion::FreeData
 
 # w/o symbols
 UNINITIALIZED READ
+instruction=test   0x??(%e??) $0x??
 gdiplus.dll!GdipCreateSolidFill
 
 ##################################################
@@ -208,6 +223,7 @@ gdiplus.dll!GdipCreateSolidFill
 # regardless we want to suppress.
 
 UNINITIALIZED READ
+instruction=mov    (%ebx,%esi,1) -> %al 
 RPCRT4.dll!rc4_key
 
 # w/o symbols.
@@ -216,14 +232,17 @@ RPCRT4.dll!rc4_key
 # though could be a nearby internal func that maps to this
 # w/o syms: we'll live w/ the false negative risk.
 UNINITIALIZED READ
+instruction=mov    (%ebx,%esi,1) -> %al 
 RPCRT4.dll!UuidCreate
 
 ##################################################
 # i#529: multi-instr partial xor-with-self
-# XXX: A better suppression can be made w/ per-instr
-# info via i#498.
+# No good symbols so we match these instructions:
+#  0x7502c157  f7 46 70 00 04 00 00 test   0x70(%esi) $0x00000400 
+#  0x75027ef7  f7 46 70 00 02 00 00 test   0x70(%esi) $0x00000200 
+#  0x75030300  f7 43 70 00 01 00 00 test   0x70(%ebx) $0x00000100 
 
 UNINITIALIZED READ
-RPCRT4.dll!Ndr*
+instruction=test   0x70(%e??) $0x00000?00
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*

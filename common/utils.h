@@ -564,6 +564,7 @@ typedef enum {
     HEAPSTAT_HASHTABLE,
     HEAPSTAT_GENCODE,
     HEAPSTAT_RBTREE,
+    HEAPSTAT_REPORT,
     HEAPSTAT_MISC,
     /* when you add here, add to heapstat_names in utils.c */
     HEAPSTAT_NUMTYPES,

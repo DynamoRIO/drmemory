@@ -717,6 +717,7 @@ static const char * heapstat_names[] = {
     "hashtable",
     "gencode",
     "rbtree",
+    "suppress",
     "misc",
 };
 

@@ -1600,6 +1600,8 @@ sub read_suppression_info($file_in, $default_in)
             add_suppress_callstack($type, $callstack, $default) if ($callstack ne '');
             $callstack = "";
             $type = $new_type;
+        } elsif (/^instruction=/) {
+            # instruction suppression (i#498): we don't support here so ignore
         } else {
             $callstack .= $_;   # need the malformed frame to print it out
             die "ERROR: malformed suppression:\n".
@@ -1607,7 +1609,7 @@ sub read_suppression_info($file_in, $default_in)
                 "The last frame is incorrect!\n\n".
                 "Frames should be one of the following:\n".
                 "\t module!function\n".
-                "\t <module+offset>\n".
+                "\t <module+0xhexoffset>\n".
                 "\t <not in a module>\n".
                 "\t system call Name\n".
                 "\t ...\n";
