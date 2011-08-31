@@ -291,11 +291,10 @@ static suppress_spec_t *
 suppress_spec_create(int type, bool is_default)
 {
     suppress_spec_t *spec;
-    ASSERT(type >= 0 && type < ERROR_MAX_VAL, "internal error type error");
     spec = (suppress_spec_t *) global_alloc(sizeof(*spec), HEAPSTAT_REPORT);
     LOG(2, "parsing suppression %d of type %s\n", num_suppressions,
         suppress_name[type]);
-    spec->type = type;
+    spec->type = type; /* may be -1 initially for Valgrind format */
     spec->count_used = 0;
     spec->is_default = is_default;
     spec->bytes_leaked = 0;
@@ -364,6 +363,7 @@ suppress_spec_finish(suppress_spec_t *spec,
                      const char *orig_start,
                      const char *orig_end)
 {
+    ASSERT(spec->type >= 0 && spec->type < ERROR_MAX_VAL, "internal error type error");
     if (spec->frames == NULL) {
         report_malformed_suppression(orig_start, orig_end,
                                      "The given suppression ends with '...'");
@@ -383,42 +383,96 @@ suppress_spec_finish(suppress_spec_t *spec,
     return spec;
 }
 
-/* Returns whether this frame has symbols in it */
+/* Returns whether this line is a prefix line before the callstack frames */
 static bool
-suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
-                        const char *line_in, size_t line_len)
+suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
+                          const char *line_in, size_t line_len, int brace_line,
+                          const char *line)
 {
-    suppress_frame_t *frame;
-    bool has_symbols = false;
-    const char *line, *c;
-
-    /* make a local copy that ends in \0 so we can use strchr, etc. */
-    line = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
+    const char *c;
 
     /* look for top-level spec lines.  we could disallow once callstack starts
      * but I'm not bothering.
      */
+    if (brace_line == 1) {
+        /* Valgrind format: this is the name */
+        spec->name = drmem_strdup(line, HEAPSTAT_REPORT);
+        LOG(3, "  suppression name=\"%s\"\n", spec->name);
+        return true;
+    } else if (brace_line == 2) {
+        /* Valgrind format: this is the error type.
+         * We don't have a perfect mapping here.
+         */
+        ASSERT(spec->type == -1, "duplicate error types");
+        if (strstr(line, "Memcheck:Addr") == line ||
+            strcmp(line, "Memcheck:Jump") == 0) {
+            /* We ignore the {1,2,4,8,16} after Addr */
+            spec->type = ERROR_UNADDRESSABLE;
+            return true;
+        } else if (strstr(line, "Memcheck:Value") == line ||
+                   strcmp(line, "Memcheck:Cond") == 0 ||
+                   /* XXX: is Param used for unaddr syscall params? */
+                   strcmp(line, "Memcheck:Param") == 0) {
+            /* We ignore the {1,2,4,8,16} after Value */
+            spec->type = ERROR_UNDEFINED;
+            return true;
+        } else if (strcmp(line, "Memcheck:Leak") == 0) {
+            spec->type = ERROR_LEAK;
+            return true;
+        } else if (strcmp(line, "Memcheck:Free") == 0) {
+            spec->type = ERROR_INVALID_HEAP_ARG;
+            return true;
+        } else if (strcmp(line, "Memcheck:Overlap") == 0) {
+            /* XXX i#156: NYI: stick in warning list for now */
+            spec->type = ERROR_WARNING;
+            return true;
+        } else {
+            report_malformed_suppression(cstack_start, line_in + line_len,
+                                         "Unknown Valgrind/Memcheck error type");
+            ASSERT(false, "should not reach here");
+        }
+    }
+
+    /* Dr. Memory format, or instruction= added to Valgrind format */
     c = strchr(line, '=');
     if (c != NULL) {
-        if (strstr(line, "name=") == line) {
+        if (strstr(line, "name=") == line) { /* we allow in Valgrind format */
             spec->name = drmem_strndup(c + 1, line_len - (c + 1 - line), HEAPSTAT_REPORT);
             LOG(3, "  suppression name=\"%s\"\n", spec->name);
-            goto add_frame_done;
+            return true;
         } else if (strstr(line, "instruction=") == line) {
             if (spec->type == ERROR_UNADDRESSABLE || spec->type == ERROR_UNDEFINED) {
                 spec->instruction = drmem_strndup(c + 1, line_len - (c + 1 - line),
                                                   HEAPSTAT_REPORT);
                 LOG(3, "  instruction=\"%s\"\n", spec->instruction);
-                goto add_frame_done;
+                return true;
             } else {
                 report_malformed_suppression(cstack_start, line_in + line_len,
-                                             "only unaddressable accesses and "
+                                             "Only unaddressable accesses and "
                                              "uninitialized reads can specify an "
                                              "instruction= field");
                 ASSERT(false, "should not reach here");
             }
         }
     }
+    return false;
+}
+
+/* Returns whether this frame has symbols in it */
+static bool
+suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
+                        const char *line_in, size_t line_len, int brace_line)
+{
+    suppress_frame_t *frame;
+    bool has_symbols = false;
+    const char *line;
+
+    /* make a local copy that ends in \0 so we can use strchr, etc. */
+    line = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
+
+    if (suppress_spec_prefix_line(spec, cstack_start, line_in, line_len,
+                                  brace_line, line))
+        goto add_frame_done;
 
     spec->num_frames++;
     if (spec->num_frames >= options.callstack_max_frames) {
@@ -432,7 +486,32 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     frame = global_alloc(sizeof(*frame), HEAPSTAT_REPORT);
     memset(frame, 0, sizeof(*frame));
 
-    if (strchr(line, '!') != NULL && strchr(line, '+') == NULL && line[0] != '<') {
+    if (brace_line > -1) { /* Valgrind format */
+        if (strstr(line, "fun:") == line) {
+            /* Valgrind format fun:sym => *!sym */
+            /* FIXME i#282: Valgrind C++ symbols are mangled.  We need to note
+             * whether any suppression of a particular type has Valgrind
+             * suppressions, and if so, make both a mangled and unmangled version
+             * of the callstack.  We do not support mixed Valgrind and DrMem
+             * frames within one callstack.  If there are no wildcards in the
+             * frames, we could unmangle here (requires DRi#545).
+             */
+            has_symbols = true;
+            frame->is_module = true;
+            frame->modname = drmem_strdup("*", HEAPSTAT_REPORT);
+            frame->func = drmem_strdup(line + strlen("fun:"), HEAPSTAT_REPORT);
+        } else if (strstr(line, "obj:") == line) {
+            /* Valgrind format obj:mod => mod!* */
+            has_symbols = true;
+            frame->is_module = true;
+            frame->modname = drmem_strdup(line + strlen("obj:"), HEAPSTAT_REPORT);
+            frame->func = drmem_strdup("*", HEAPSTAT_REPORT);
+        } else {
+            report_malformed_suppression(cstack_start, line_in + line_len,
+                                         "Unknown frame in Valgrind-style callstack");
+            ASSERT(false, "should not reach here");
+        }
+    } else if (strchr(line, '!') != NULL && strchr(line, '+') == NULL && line[0] != '<') {
         const char *bang = strchr(line, '!');
         has_symbols = true;
         frame->is_module = true;
@@ -492,6 +571,8 @@ read_suppression_file(file_t f, bool is_default)
     char *cstack_start;
     int type;
     bool has_symbolic_frames = false;
+    int brace_line = -1;
+    bool new_error = false;
 
     /* we avoid having to do our own buffering by just mapping the whole file */
     uint64 map_size;
@@ -513,11 +594,12 @@ read_suppression_file(file_t f, bool is_default)
 
     cstack_start = (char *) map;
     for (line = (char *) map; line < ((char *)map) + map_size; line = next_line) {
+        /* First, set "line" to start of line and "newline" to end (pre-whitespace) */
         newline = strchr(line, '\r');
         if (newline == NULL)
             newline = strchr(line, '\n');
         if (newline == NULL) {
-            newline = ((char *)map) + map_size;
+            newline = ((char *)map) + map_size; /* handle EOF w/o trailing \n */
             next_line = newline + 1;
         } else {
             for (next_line = newline; *next_line == '\r' || *next_line == '\n';
@@ -528,30 +610,31 @@ read_suppression_file(file_t f, bool is_default)
                  newline--)
                 ; /* nothing */
         }
-        /* Lines look like this:
-         * UNINITIALIZED READ
-         * <ADVAPI32.dll+0x3c0d>
-         * # comment line; blank (newline) lines are allowed too
-         * LEAK
-         * <libc.so.6+0x2bc80>
-         * <+0x2bc80>
-         * <not in a module>
-         *
-         * Note: no leading white spaces.
-         * Note: <+0x###> is only on esxi due to PR 363063;  it will go way once
-         *       the bug is fixed
-         *
-         * For USE_DRSYMS, this client now also supports mod!func callstacks:
-         * INVALID HEAP ARGUMENT
-         * suppress.exe!invalid_free_test1
-         * suppress.exe!test
-         * suppress.exe!main
-         */
+        /* Skip leading whitespace (mainly to support Valgrind format) */
+        for (; line < newline && (*line == ' ' || *line == '\t'); line++)
+            ; /* nothing */
+        /* Skip blank and comment lines */
         if (line == newline || line[0] == '#')
-            continue; /* Skip blank and comment lines. */
+            continue;
         LOG(4, "suppression file line: \"%.*s\"\n", newline - line, line);
-        type = get_suppress_type(line);
-        if (type > -1) {
+        /* Support both Dr. Memory-style (starts w/ error type name) and
+         * brace-delimited Valgrind-style
+         */
+        new_error = false;
+        if (brace_line == -1) {
+            type = get_suppress_type(line); /* error type is start of drmem supp */
+            if (type > -1)
+                new_error = true;
+            else if (line[0] == '{') {
+                new_error = true;
+                brace_line = 0;
+            }
+        } else if (line[0] == '}') {
+            brace_line = -1;
+            continue;
+        } else
+            brace_line++;
+        if (new_error) {
             if (spec != NULL) {
                 if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
                     suppress_spec_finish(spec, cstack_start, line - 1);
@@ -563,7 +646,8 @@ read_suppression_file(file_t f, bool is_default)
             spec = suppress_spec_create(type, is_default);
             has_symbolic_frames = false;
         } else if (spec != NULL) {
-            if (suppress_spec_add_frame(spec, cstack_start, line, newline - line))
+            if (suppress_spec_add_frame(spec, cstack_start, line, newline - line,
+                                        brace_line))
                 has_symbolic_frames = true;
         } else {
             report_malformed_suppression(cstack_start, newline, INCORRECT_FRAME_MSG);

@@ -27,12 +27,14 @@ suppress.exe!uninit_test1
 suppress.exe!test
 suppress.exe!main
 
-# uninitialized read: middle-of-symbol wildcard
-UNINITIALIZED READ
-name=uninit_test2 *
-suppress.exe!do_u*t_read
-suppress.exe!uninit_test2
-suppress.exe!test
+# uninitialized read: valgrind-style
+{
+  uninit_test2 *
+  Memcheck:Value1
+  fun:do_u*t_read
+  fun:uninit_test2
+  fun:test
+}
 
 # uninitialized read: 4 top frames based mixed suppression + '?'
 UNINITIALIZED READ
@@ -68,7 +70,9 @@ suppress.exe!uninit_test6
 UNINITIALIZED READ
 name=uninit_test7 ... + ? + mod!off suppression
 ...
-<su?pr?ss.exe+0x12??>
+suppress.exe!uninit_test7
+...
+<su?pr?ss.exe+0x1???>
 
 #-------------------------------------------------------------------------------
 

@@ -1595,10 +1595,6 @@ sub lookup_symbol($modpath_in, $addr_in)
 # postprocess.pl.  Keeping just one file for suppression makes it easy for the
 # user to specify their suppression details.
 #
-# This script only reads "mod!func" style callstacks; the "<mod+offs>" style
-# ones are for the drmemory client library, so are discarded.  Any mix of those
-# is reported as a warning.
-#
 # Wildcards are also supported: a "*" can be used in a module name or
 # a function name (PR 464821).
 #
@@ -1616,6 +1612,7 @@ sub read_suppression_info($file_in, $default_in)
     my $type = "";
     my $new_type = "";
     my $num_supp = 0;
+    my $brace_line = -1;
  
     # If suppression file can't be opened for reading, just ignore
     if (!open(SUPP_IN,$file)) {
@@ -1631,15 +1628,54 @@ sub read_suppression_info($file_in, $default_in)
         # for other purposes so we add REPORTED in for the match (and then
         # remove when storing the suppression type)
         s/^WARNING/REPORTED WARNING/;
-        if ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
-            # support missing module for vmk (PR 363063)
-            (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
-            /<not in a module>/ || /^system call / || /^\.\.\./) {
+        if ($brace_line > -1) {
+            $brace_line++;
+            s/^\s*//;
+            s/\s*$//;
+            if ($brace_line == 1) {
+                $name = $_;
+            } elsif ($brace_line == 2) {
+                if (/^Memcheck:Addr\d+$/ || /^Memcheck:Jump$/) {
+                    # We ignore the {1,2,4,8,16} after Addr
+                    $type = 'UNADDRESSABLE ACCESS';
+                    return true;
+                } elsif (/^Memcheck:Value\d+$/ || /^Memcheck:Cond$/ ||
+                           # XXX: is Param used for unaddr syscall params?
+                           /^Memcheck:Param/) {
+                    # We ignore the {1,2,4,8,16} after Value
+                    $type = 'UNINITIALIZED READ';
+                } elsif (/^Memcheck:Leak$/) {
+                    $type = 'LEAK';
+                } elsif (/^Memcheck:Free$/) {
+                    $type = 'INVALID HEAP ARGUMENT';
+                } elsif (/^Memcheck:Overlap$/) {
+                    # XXX i#156: NYI: stick in warning list for now
+                    $type = 'WARNING';
+                } else {
+                    $callstack .= $_;   # need the malformed frame to print it out
+                    die "ERROR: unknown frame in Valgrind-style suppression:\n".
+                        "$type\n$callstack\n";
+                }
+            } elsif (/^fun:(.*)$/) {
+                # Valgrind format fun:sym => *!sym */
+                # FIXME i#282: Valgrind C++ symbols are mangled!  NYI
+                $callstack .= "*!$1\n";
+            } elsif (/^fun:(.*)$/) {
+                # Valgrind format obj:mod => mod!* */
+                $callstack .= "$1!*\n";
+            } elsif (/^}/) {
+                $brace_line = -1;
+            }
+        } elsif ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
+                 # support missing module for vmk (PR 363063)
+                 (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
+                 /<not in a module>/ || /^system call / || /^\.\.\./) {
             $valid_frame = 1;
             $callstack .= $_;
             $callstack =~ s/[ \t]*$//; # trim trailing whitespace (i#381)
         } elsif (($new_type = is_line_start_of_error($_)) ||
-                 ($new_type = is_line_start_of_suppression($_))) {
+                 ($new_type = is_line_start_of_suppression($_)) ||
+                 /^{/) {
             $valid_frame = 0;
             $num_supp++;
             $total_supp++;
@@ -1648,6 +1684,7 @@ sub read_suppression_info($file_in, $default_in)
             $callstack = "";
             $type = $new_type;
             $name = sprintf("<no name %d>", $total_supp);
+            $brace_line = (/^{/) ? 0: -1;
         } elsif (/^instruction=/) {
             # instruction suppression (i#498): we don't support here so ignore
         } elsif (/^name=(.*)$/) {
@@ -1706,7 +1743,6 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
     $callstack =~ s/\./\\./g;
     $callstack =~ s/\?/./g;
     $callstack =~ s/\*/.*/g;
-    $callstack =~ s/\\\.\\\.\\\.\n/(.*\n)*/g;
 
     # generate_error_info formats stack frames as mod+off!func
     # so we need to modify the suppression frames as follows:
@@ -1717,6 +1753,9 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
     $callstack =~ s/^(.+)!(.+)$/$1\\+0x\\w+!$2/gm;
     $callstack =~ s/^<(.+)\+(.+)>$/$1\\+$2![^+]+/gm;
 
+    # do this after so our ^ above match
+    $callstack =~ s/\\\.\\\.\\\.\n/(.*\n)*/g;
+
     # We want prefix matching but using /m so need \A not ^
     $callstack = "\\A" . $callstack;
     push @{ $supp_syms_list{$type} }, $callstack;
@@ -1726,7 +1765,7 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
         $supp_is_default{$callstack,"POSSIBLE LEAK"} = $default;
         $supp_name{$callstack,"POSSIBLE LEAK"} = $name;
     }
-    print "adding suppression $name of type $type\n";#NOCHECKIN
+    print "adding suppression $name of type $type\n" if ($verbose);
     $supp_is_default{$callstack,$type} = $default;
     $supp_name{$callstack,$type} = $name;
 }

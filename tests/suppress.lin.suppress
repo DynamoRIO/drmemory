@@ -39,13 +39,15 @@ suppress!uninit_test2
 suppress!test
 suppress!main
 
-# uninitialized read: full callstack based mod!func suppression 
-UNINITIALIZED READ
-name=uninit_test3 plain
-suppress!do_uninit_read
-suppress!uninit_test3
-suppress!test
-suppress!main
+# uninitialized read: valgrind-style
+{
+  uninit_test3_plain
+  Memcheck:Value1
+  fun:do_uninit_read
+  fun:unin*_test3
+  fun:test
+  obj:suppre?s
+}
 
 # uninitialized read: top frames based mod!func suppression 
 UNINITIALIZED READ

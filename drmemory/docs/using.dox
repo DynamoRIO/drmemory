@@ -376,8 +376,11 @@ myranlib.dll!GenRanHelper*
 myranlib.dll!GenRan*
 \endcode
 
-Another method is to filter the reported errors to focus on particular
-source files.  Use the \p -srcfilter option to do this:
+Valgrind-style suppressions are supported, but currently only with
+unmangled C++ symbols.
+
+Another method of ignoring errors is to filter the reported errors to focus
+on particular source files.  Use the \p -srcfilter option to do this:
 
 \par
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -srcfilter hello.c -- ./hello
