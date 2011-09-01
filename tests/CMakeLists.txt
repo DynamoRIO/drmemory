@@ -192,7 +192,8 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   endif ()
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
-  set(drmem_ops -callstack_style 0x21 ${drmem_ops})
+  # we include absaddr and mod+offs for easier debugging of problems
+  set(drmem_ops -callstack_style 0x27 ${drmem_ops})
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()

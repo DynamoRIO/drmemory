@@ -31,7 +31,7 @@ suppress.exe!test
 UNINITIALIZED READ
 name=syscall
 system call NtQueryVirtualMemory parameter value #1
-kernel32.dll!VirtualQuery
+kernel*.dll!VirtualQuery
 suppress.exe!syscall_test
 
 #-------------------------------------------------------------------------------
