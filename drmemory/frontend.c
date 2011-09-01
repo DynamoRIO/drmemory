@@ -107,14 +107,17 @@ enum {
 enum {
     TYPE_IS_BOOL_bool       = true,
     TYPE_IS_BOOL_opstring_t = false,
+    TYPE_IS_BOOL_multi_opstring_t = false,
     TYPE_IS_BOOL_uint       = false,
     TYPE_IS_BOOL_int        = false,
     TYPE_IS_STRING_bool       = false,
     TYPE_IS_STRING_opstring_t = true,
+    TYPE_IS_STRING_multi_opstring_t = false,
     TYPE_IS_STRING_uint       = false,
     TYPE_IS_STRING_int        = false,
     TYPE_HAS_RANGE_bool       = false,
     TYPE_HAS_RANGE_opstring_t = false,
+    TYPE_HAS_RANGE_multi_opstring_t = false,
     TYPE_HAS_RANGE_uint       = true,
     TYPE_HAS_RANGE_int        = true,
 };

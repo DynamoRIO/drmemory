@@ -135,6 +135,7 @@ my $just_postprocess = 0;
 my $postprocess_apppath = "";
 my $follow_children = 1;
 my $callstack_style = $default_op_vals{"callstack_style"};
+my @suppfiles = ();
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
 # We add support for -no_ so that prefix can be used for both perl and client
@@ -175,7 +176,7 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "results" => \$just_postprocess,
                 "results_app=s" => \$postprocess_apppath,
                 # client options that we process first here:
-                "suppress=s" => \$suppfile,
+                "suppress=s" => \@suppfiles,
                 "default_suppress!" => \$use_default_suppress,
                 "gen_suppress_offs!" => \$gen_suppress_offs,
                 "gen_suppress_syms!" => \$gen_suppress_syms,
@@ -210,7 +211,9 @@ die "$usage\n" if ($postprocess_apppath ne '' && !$just_postprocess);
 
 $dr_home = &canonicalize_path($dr_home);
 $drmemory_home = &canonicalize_path($drmemory_home);
-$suppfile = &canonicalize_path($suppfile);
+for ($i = 0; $i <= $#suppfiles; $i++) {
+    $suppfiles[$i] = &canonicalize_path($suppfiles[$i]);
+}
 $logdir = &canonicalize_path($logdir);
 
 if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
@@ -253,11 +256,12 @@ nudge($nudge_pid) if ($nudge_pid ne "");
 $skip_postprocess = 1 if ($perturb_only);
 
 $suppress_drmem = "";
-if ($suppfile ne "") {
-    die "suppression file $suppfile not found\n$usage\n"
-        if (! -e $suppfile);
-    $suppress_drmem = "-suppress `$suppfile`";
+for ($i = 0; $i <= $#suppfiles; $i++) {
+    die "suppression file $suppfiles[$i] not found\n$usage\n"
+        if (! -e $suppfiles[$i]);
+    $suppress_drmem .= "-suppress `$suppfiles[$i]` ";
 }
+chomp $suppress_drmem;
 
 @orig_argv = @ARGV;
 
@@ -559,7 +563,9 @@ sub post_process()
     push @postcmd, "-use_vmtree" if ($use_vmtree);
     push @postcmd, "$extraargs" if ($extraargs ne '');
     # Don't use suppress_drmem as perl option parsing doesn't like ``
-    push @postcmd, ("-suppress", "$suppfile") if ($suppress_drmem ne '');
+    for ($i = 0; $i <= $#suppfiles; $i++) {
+        push @postcmd, ("-suppress", "$suppfiles[$i]");
+    }
     push @postcmd, ("-nodefault_suppress") unless ($use_default_suppress);
     push @postcmd, ("-nogen_suppress_offs") unless ($gen_suppress_offs);
     push @postcmd, ("-nogen_suppress_syms") unless ($gen_suppress_syms);

@@ -55,6 +55,8 @@
     OPTION_CLIENT(scope, name, bool, defval, 0, 0, short, long)
 #define OPTION_CLIENT_STRING(scope, name, defval, short, long) \
     OPTION_CLIENT(scope, name, opstring_t, defval, 0, 0, short, long)
+#define OPTION_CLIENT_STRING_REPEATABLE(scope, name, defval, short, long) \
+    OPTION_CLIENT(scope, name, multi_opstring_t, defval, 0, 0, short, long)
 
 #ifndef TOOLNAME
 # define TOOLNAME "Dr. Memory"
@@ -229,9 +231,9 @@ OPTION_CLIENT_BOOL(client, midchunk_string_ok, true,
 OPTION_CLIENT_BOOL(client, show_reachable, false,
                    "List reachable allocs",
                    "Whether to list reachable allocations when leak checking.  Requires -check_leaks.")
-OPTION_CLIENT_STRING(client, suppress, "",
+OPTION_CLIENT_STRING_REPEATABLE(client, suppress, "",
                      "File containing errors to suppress",
-                     "File containing errors to suppress.  See \\ref sec_suppress.")
+                     "File containing errors to suppress.  May be repeated.  See \\ref sec_suppress.")
 OPTION_CLIENT_BOOL(client, default_suppress, true,
                    "Use the set of default suppressions",
                    "Use the set of default suppressions that come with "TOOLNAME".  See \\ref sec_suppress.")

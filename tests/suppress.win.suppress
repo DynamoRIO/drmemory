@@ -39,15 +39,15 @@ suppress.exe!main
 # uninitialized read: 4 top frames based mixed suppression + '?'
 UNINITIALIZED READ
 name=uninit_test3 mixed
-<suppress.exe+0x11??>
+<suppress.exe+0x1???>
 suppress.exe!uninit_test3
-<suppress.exe+0x10??>
+<suppress.exe+0x1???>
 suppress.exe!main
 
 # uninitialized read: mixed suppression with ... (...=0 frames)
 UNINITIALIZED READ
 name=uninit_test4 mixed and ...
-<suppress.exe+0x11??>
+<suppress.exe+0x1???>
 ...
 suppress.exe!uninit_test4
 
@@ -139,34 +139,3 @@ LEAK
 name=possible_leak_test2 w/ leak supp
 suppress.exe!possible_leak_test2
 
-#-------------------------------------------------------------------------------
-
-UNINITIALIZED READ
-name=not in a module
-<not in a module>
-suppress.exe!test
-
-UNINITIALIZED READ
-name=syscall
-system call NtQueryVirtualMemory parameter value #1
-kernel32.dll!VirtualQuery
-suppress.exe!syscall_test
-
-#-------------------------------------------------------------------------------
-
-UNADDRESSABLE ACCESS
-name=invalid_free_test1 unaddr
-suppress.exe!invalid_free_test1
-
-LEAK
-name=invalid_free_test1 leak
-suppress.exe!invalid_free_test1
-
-INVALID HEAP ARGUMENT
-name=invalid_free_test1 invalid arg
-...
-suppress.exe!invalid_free_test1
-
-WARNING
-name=warning_test1
-*!warning_test1

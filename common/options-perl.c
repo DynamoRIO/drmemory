@@ -40,7 +40,8 @@
 %typenm = ( 'bool' => '',
             'uint' => ' <int>', /* we have range so simplify as "int" */
             'int'  => ' <int>',
-            'opstring_t' => ' <string>' );
+            'opstring_t' => ' <string>',
+            'multi_opstring_t' => ' <string>' );
 
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long)  \
     if (#scope ne 'internal') {                                          \

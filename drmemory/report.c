@@ -967,6 +967,8 @@ is_dword_defined(byte *addr)
 void
 report_init(void)
 {
+    char *c;
+
     timestamp_start = dr_get_milliseconds();
     print_timestamp(f_global, timestamp_start, "start time");
 
@@ -1043,7 +1045,12 @@ report_init(void)
         }
     }
 
-    open_and_read_suppression_file(options.suppress, false);
+    /* we support multiple suppress file (i#574) */
+    c = options.suppress;
+    while (*c != '\0') {
+        open_and_read_suppression_file(c, false);
+        c += strlen(c) + 1;
+    }
 }
 
 #ifdef LINUX

@@ -141,33 +141,3 @@ LEAK
 name=possible_leak_test2 w/ leak supp
 suppress!possible_leak_test2
 
-#-------------------------------------------------------------------------------
-
-UNINITIALIZED READ
-name=not in a module
-<not in a module>
-suppress!test
-
-UNINITIALIZED READ
-name=syscall
-system call write parameter #1
-...
-suppress!syscall_test
-
-#-------------------------------------------------------------------------------
-
-UNADDRESSABLE ACCESS
-name=invalid_free_test1 unaddr
-suppress!invalid_free_test1
-
-LEAK
-name=invalid_free_test1 leak
-suppress!invalid_free_test1
-
-INVALID HEAP ARGUMENT
-name=invalid_free_test1 invalid arg
-suppress!invalid_free_test1
-
-WARNING
-name=warning_test1
-*!warning_test1

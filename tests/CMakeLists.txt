@@ -327,14 +327,19 @@ if (NOT TOOL_DR_HEAPSTAT)
   # test suppress wildcards
   if (UNIX)
     if (VMKERNEL)
-      set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.vmk.suppress")
+      set(supp_fileA "{DRMEMORY_CTEST_SRC_DIR}/suppress.vmk.suppress")
+      set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppress.vmk.suppress")
     else (VMKERNEL)
-      set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.lin.suppress")
+      set(supp_fileA "{DRMEMORY_CTEST_SRC_DIR}/suppress.lin.suppress")
+      set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.lin.suppress")
     endif (VMKERNEL)
   else (UNIX)
-    set(supp_file "{DRMEMORY_CTEST_SRC_DIR}/suppress.win.suppress")
+    set(supp_fileA "{DRMEMORY_CTEST_SRC_DIR}/suppress.win.suppress")
+    set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
-  newtest_nobuild(suppress suppress "" "-suppress;${supp_file}" "" OFF)
+  # test multiple supp files (i#574)
+  newtest_nobuild(suppress suppress ""
+    "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF)
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do

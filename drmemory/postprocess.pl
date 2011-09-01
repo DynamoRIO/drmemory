@@ -70,7 +70,7 @@ if ($is_vmk || $vs_vmk) {
 
 $usage = "Usage: $0  -x <exe> [-p <prefix>] [-cygwin] [-no_sys_paths]".
     "[-f <srcfile filter>] -c <addr2line cmd> [-use_vmtree] ".
-    "[-q] [-v] [-suppress <suppress_file>] [-appid <app identifier>] ".
+    "[-q] [-v] [-suppress <suppress_file>]* [-appid <app identifier>] ".
     "[-drmemdir <subdir>] [-l <logdir> | -aggregate <logdir list>] ".
     "[-nodefault_suppress] \n";
 $default_prefix = ":::Dr.Memory::: ";
@@ -93,7 +93,7 @@ $drmem_dir = "debug";
 %logs = {};
 %error = {};
 %supp_syms_list = {};   # list of suppression regexps
-$supp_syms_file = "";   # file containing
+@supp_syms_file = ();
 %supp_used_count = {};  # times used
 %addr_pipes = ();   # pipes to addr2line processes for each module; PR 454803.
 $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
@@ -182,7 +182,7 @@ if (!GetOptions("p=s" => \$prefix,
                 "v" => \$verbose,
                 "use_vmtree" => \$use_vmtree,
                 "appid=s" => \$appid,
-                "suppress=s" => \$supp_syms_file,
+                "suppress=s" => \@supp_syms_file,
                 "default_suppress!" => \$use_default_suppress,
                 "gen_suppress_offs!" => \$gen_suppress_offs,
                 "gen_suppress_syms!" => \$gen_suppress_syms,
@@ -269,7 +269,9 @@ if ($use_default_suppress) {
 #
 open(SUPP_OUT, "> $logdir/suppress.txt") ||
     die "Error creating $logdir/suppress.txt\n";
-read_suppression_info($supp_syms_file, 0) if (-f $supp_syms_file);
+foreach $file (@supp_syms_file) {
+    read_suppression_info($file, 0) if (-f $file);
+}
 
 $SIG{PIPE} = \&sigpipe_handler;
 sub sigpipe_handler {
@@ -1677,7 +1679,7 @@ sub read_suppression_info($file_in, $default_in)
                  ($new_type = is_line_start_of_suppression($_)) ||
                  /^{/) {
             $valid_frame = 0;
-            $num_supp++;
+            $num_supp++ if ($callstack ne '');
             $total_supp++;
             add_suppress_callstack($type, $callstack, $default, $name)
                 if ($callstack ne '');

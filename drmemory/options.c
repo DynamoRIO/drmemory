@@ -60,14 +60,17 @@ enum {
 enum {
     TYPE_IS_BOOL_bool       = true,
     TYPE_IS_BOOL_opstring_t = false,
+    TYPE_IS_BOOL_multi_opstring_t = false,
     TYPE_IS_BOOL_uint       = false,
     TYPE_IS_BOOL_int        = false,
     TYPE_IS_STRING_bool       = false,
     TYPE_IS_STRING_opstring_t = true,
+    TYPE_IS_STRING_multi_opstring_t = false,
     TYPE_IS_STRING_uint       = false,
     TYPE_IS_STRING_int        = false,
     TYPE_HAS_RANGE_bool       = false,
     TYPE_HAS_RANGE_opstring_t = false,
+    TYPE_HAS_RANGE_multi_opstring_t = false,
     TYPE_HAS_RANGE_uint       = true,
     TYPE_HAS_RANGE_int        = true,
 };
@@ -194,6 +197,27 @@ option_read_opstring_t(const char *s, char *word, void *var_in /* really opstrin
     if (s == NULL)
         option_error(opname, "missing value");
     dr_snprintf(*var, BUFFER_SIZE_ELEMENTS(*var), "%s", word);
+    NULL_TERMINATE_BUFFER(*var);
+    return s;
+}
+
+static inline const char *
+option_read_multi_opstring_t(const char *s, char *word,
+                             void *var_in /* really multi_opstring_t* */,
+                             const char *opname, /*ignored: */int minval, int maxval)
+{
+    multi_opstring_t *var = (multi_opstring_t *) var_in;
+    char *c;
+    s = get_option_word(s, word);
+    if (s == NULL)
+        option_error(opname, "missing value");
+    for (c = *var;
+         (c - *var < BUFFER_SIZE_ELEMENTS(*var) - 1) &&
+             (*c != '\0' || *(c+1) != '\0');
+         c++)
+        ; /* nothing */
+    dr_snprintf((c == *var) ? c : c + 1,
+                BUFFER_SIZE_ELEMENTS(*var) - (c + 1 - *var), "%s", word);
     NULL_TERMINATE_BUFFER(*var);
     return s;
 }
