@@ -265,12 +265,13 @@ RPCRT4.dll!UuidCreate
 ##################################################
 # i#529: multi-instr partial xor-with-self
 # No good symbols so we match these instructions:
-#  0x7502c157  f7 46 70 00 04 00 00 test   0x70(%esi) $0x00000400 
-#  0x75027ef7  f7 46 70 00 02 00 00 test   0x70(%esi) $0x00000200 
-#  0x75030300  f7 43 70 00 01 00 00 test   0x70(%ebx) $0x00000100 
+#  test   0x70(%esi) $0x00000400 
+#  test   0x70(%esi) $0x00000200 
+#  test   0x70(%ebx) $0x00000100 
+#  test   0x70(%edi) %esi
 
 UNINITIALIZED READ
 name=default i#529 (multi-instr partial xor-with-self)
-instruction=test   0x70(%e??) $0x00000?00
+instruction=test   0x70(%e??) *
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*
