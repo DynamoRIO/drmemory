@@ -1079,10 +1079,11 @@ set_initial_layout(void)
 }
 
 static void
-print_version(file_t f)
+print_version(file_t f, bool local_newline)
 {
-    dr_fprintf(f, "Dr. Memory version %s build %d built on %s\n",
-               VERSION_STRING, BUILD_NUMBER, build_date);
+    dr_fprintf(f, "Dr. Memory version %s build %d built on %s%s",
+               VERSION_STRING, BUILD_NUMBER, build_date,
+               local_newline ? NL : "\n");
 }
 
 /* also initializes logsubdir */
@@ -1120,14 +1121,14 @@ create_global_logfile(void)
                dr_get_process_id(), dr_get_parent_id());
 #endif
     /* make sure "Dr. Memory" is 1st (or 2nd on linux) in file (for PR 453867) */
-    print_version(f_global);
+    print_version(f_global, false);
     NOTIFY("log dir is %s\n", logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
 #ifdef USE_DRSYMS
     if (!options.perturb_only) {
         f_results = open_logfile("results.txt", false, -1);
-        print_version(f_results);
+        print_version(f_results, true);
         if (options.resfile == dr_get_process_id()) {
             /* notify front-end of results path */
             file_t outf;

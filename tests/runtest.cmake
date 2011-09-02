@@ -198,12 +198,12 @@ if ("${cmd}" MATCHES "run_in_bg")
     message(FATAL_ERROR "*** ${script} failed (${nudge_result}): ${nudge_err}***\n")
   endif (nudge_result)
 
-  # wait for summary output: last line has "report_leak_max" on it
+  # wait for summary output: last line has "for details)" on it
   # we also need to wait for Details line
   if (TOOL_DR_HEAPSTAT)
     set(lookfor "Received nudge.*Received nudge")
   else ()
-    set(lookfor "report_leak_max\n.*Details: ")
+    set(lookfor "for details\\)\n.*Details: ")
   endif ()
   file(READ "${out}" output)
   set(iters 0)

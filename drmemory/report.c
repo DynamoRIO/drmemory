@@ -1105,7 +1105,7 @@ report_fork_init(void)
  * exactly: try to keep the two in sync
  */
 static void
-report_summary_to_file(file_t f, bool stderr_too, bool print_default_supp)
+report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
 {
     uint i;
     stored_error_t *err;
@@ -1130,7 +1130,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_default_supp)
         suppress_spec_t *spec;
         for (spec = supp_list[i]; spec != NULL; spec = spec->next) {
             if (spec->count_used > 0 &&
-                (print_default_supp || !spec->is_default)) {
+                (print_full_stats || !spec->is_default)) {
                 dr_fprintf(f, "\t%6dx", spec->count_used);
                 if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK)
                     dr_fprintf(f, " (leaked %7d bytes): ", spec->bytes_leaked);
@@ -1182,19 +1182,30 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_default_supp)
     NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
     NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
                 num_suppressions_matched_user, num_suppressions_matched_default);
-    NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
-                num_suppressed_leaks_user, num_suppressed_leaks_default);
-    NOTIFY_COND(notify, f, "  %5d ignored assumed-innocuous system leak(s)"NL,
-                num_leaks_ignored);
-    NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
-                num_reachable_leaks);
-    if (!options.show_reachable) {
-        NOTIFY_COND(notify, f, "         (re-run with \"-show_reachable\" for details)"NL);
+    if (options.count_leaks) {
+        NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
+                    num_suppressed_leaks_user, num_suppressed_leaks_default);
+        /* We simplify the results.txt and stderr view by omitting some details */
+        if (print_full_stats) {
+            /* Not sending to stderr */
+            dr_fprintf(f, "  %5d ignored assumed-innocuous system leak(s)"NL,
+                       num_leaks_ignored);
+        }
+        NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
+                    num_reachable_leaks);
+        if (!options.show_reachable) {
+            NOTIFY_COND(notify, f,
+                        "         (re-run with \"-show_reachable\" for details)"NL);
+        }
     }
-    NOTIFY_COND(notify, f, "  %5d error(s) beyond -report_max"NL,
-                num_throttled_errors);
-    NOTIFY_COND(notify, f, "  %5d leak(s) beyond -report_leak_max"NL,
-                num_throttled_leaks);
+    if (num_throttled_errors > 0) {
+        NOTIFY_COND(notify, f, "  %5d error(s) beyond -report_max"NL,
+                    num_throttled_errors);
+    }
+    if (num_throttled_leaks > 0) {
+        NOTIFY_COND(notify, f, "  %5d leak(s) beyond -report_leak_max"NL,
+                    num_throttled_leaks);
+    }
     NOTIFY_COND(notify, f, "Details: %s/results.txt\n", logsubdir);
 }
 
