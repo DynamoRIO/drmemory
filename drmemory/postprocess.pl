@@ -761,7 +761,7 @@ sub process_one_error($raw_error_lines_array_ref)
     # We use a separate count that includes dups and suppressed to avoid
     # a very-stale summary of counts (xref PR 484191).
     $errors_processed++;
-    print_summary(\*SUMM_OUT, 1)
+    print_summary(\*SUMM_OUT, 1, 0, $verbose)
         if ($errors_processed < 100 || $errors_processed % 10 == 0);
 }
 
@@ -1155,11 +1155,11 @@ sub print_final_summary()
     # Print summary into results-summary.txt file at the end as summary may not
     # have been written to it when each error was reported due to throttling.  Both
     # summaries have to be consistent at the end, if possible.
-    print_summary(\*SUMM_OUT, 1, 0);   # to results-summary.txt
-    print_summary(\*STDOUT, 0, 0);     # to results.txt
+    print_summary(\*SUMM_OUT, 1, 0, $verbose);   # to results-summary.txt
+    print_summary(\*STDOUT, 0, 0, $verbose);     # to results.txt
     if (!$quiet) {
         # to stderr for user
-        print_summary(\*STDERR, 0, 1);
+        print_summary(\*STDERR, 0, 1, $verbose);
         print stderr $default_prefix."Details: $outfile\n";
     }
 }
@@ -1185,9 +1185,9 @@ sub sort_supp_used($a, $b)
 # Note: For we want to dump summary at the end for results.txt and at the
 # begining for results-summary.txt (i.e., overwrite old summary).
 #
-sub print_summary($fh, $reset, $summary_only)
+sub print_summary($fh, $reset, $summary_only, $print_default_supp)
 {
-    my ($fh, $reset, $summary_only) = @_;
+    my ($fh, $reset, $summary_only, $print_default_supp) = @_;
     my $num_groups;
     my $err_str;
     my %duplicate_errors = ();
@@ -1223,7 +1223,8 @@ sub print_summary($fh, $reset, $summary_only)
 
         printf $fh $pfx."SUPPRESSIONS USED:\n";
         foreach $name (sort sort_supp_used (keys %supp_used_count)) {
-            if ($supp_used_count{$name} > 0) {
+            if ($supp_used_count{$name} > 0 &&
+                ($print_default_supp || !$supp_is_default{$name})) {
                 printf $fh $pfx."\t%6dx", $supp_used_count{$name};
                 if ($supp_bytes_leaked{$name} > 0) {
                     printf $fh " (leaked %8d bytes): ", $supp_bytes_leaked{$name};
@@ -1769,6 +1770,7 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
     }
     print "adding suppression $name of type $type\n" if ($verbose);
     $supp_is_default{$callstack,$type} = $default;
+    $supp_is_default{$name} = $default;
     $supp_name{$callstack,$type} = $name;
 }
 

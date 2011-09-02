@@ -1104,8 +1104,8 @@ report_fork_init(void)
 /* N.B.: for PR 477013, postprocess.pl duplicates some of this syntax
  * exactly: try to keep the two in sync
  */
-void
-report_summary_to_file(file_t f, bool stderr_too)
+static void
+report_summary_to_file(file_t f, bool stderr_too, bool print_default_supp)
 {
     uint i;
     stored_error_t *err;
@@ -1129,7 +1129,8 @@ report_summary_to_file(file_t f, bool stderr_too)
     for (i = 0; i < ERROR_MAX_VAL; i++) {
         suppress_spec_t *spec;
         for (spec = supp_list[i]; spec != NULL; spec = spec->next) {
-            if (spec->count_used > 0) {
+            if (spec->count_used > 0 &&
+                (print_default_supp || !spec->is_default)) {
                 dr_fprintf(f, "\t%6dx", spec->count_used);
                 if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK)
                     dr_fprintf(f, " (leaked %7d bytes): ", spec->bytes_leaked);
@@ -1200,9 +1201,10 @@ report_summary_to_file(file_t f, bool stderr_too)
 void
 report_summary(void)
 {
-    report_summary_to_file(f_global, true);
+    report_summary_to_file(f_global, true, true);
 #ifdef USE_DRSYMS
-    report_summary_to_file(f_results, false);
+    /* we don't show default suppressions used in results.txt file */
+    report_summary_to_file(f_results, false, false);
 #endif
 }
 
