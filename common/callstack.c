@@ -601,7 +601,7 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
             frame->is_module = true;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
-            dr_snprintf(frame->modname, MAX_MODULE_LEN, PIFX, pc - mod_start);
+            dr_snprintf(frame->modoffs, MAX_MODULE_LEN, PIFX, pc - mod_start);
             NULL_TERMINATE_BUFFER(frame->modoffs);
 #ifdef USE_DRSYMS
             if (name_info->path != NULL) {
@@ -636,11 +636,11 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
 bool
 print_address(char *buf, size_t bufsz, size_t *sofar,
               app_pc pc, module_data_t *mod_in /*optional*/,
-              bool skip_non_module, bool sub1_sym)
+              bool skip_non_module, bool sub1_sym, bool for_log)
 {
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
-        print_frame(&frame, buf, bufsz, sofar, true, PRINT_FOR_LOG);
+        print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG);
         return true;
     }
     return false;
@@ -831,7 +831,8 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
 
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
-                bool print_fps, packed_callstack_t *pcs, int num_frames_printed)
+                bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
+                bool for_log)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *)
@@ -888,7 +889,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         }
         if (buf != NULL) {
             prev_sofar = *sofar;
-            BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"#%2d ", num);
+            if (for_log)
+                BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"#%2d ", num);
             if (print_fps) {
                 BUFPRINT(buf, bufsz, *sofar, len, "fp="PFX" parent="PFX" ", 
                          pc, appdata.next_fp);
@@ -912,7 +914,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 *sofar = prev_sofar;
         } else if ((pcs == NULL &&
                     print_address(buf, bufsz, sofar, appdata.retaddr, NULL,
-                                  !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags), true)) ||
+                                  !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
+                                  true, for_log)) ||
                    (pcs != NULL &&
                     address_to_frame(NULL, pcs, appdata.retaddr, NULL,
                                      !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
@@ -1072,9 +1075,9 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
 
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "# 0 ");
     print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL,
-                  false/*print non-module addr*/, false);
+                  false/*print non-module addr*/, false, true);
     print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
-                    true/*incl fp*/, NULL, 1);
+                    true/*incl fp*/, NULL, 1, true);
     print_buffer(f == INVALID_FILE ? pt->f : f, pt->errbuf);
 }
 #endif /* DEBUG */
@@ -1130,7 +1133,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
         }
         num_frames_printed = 1;
     }
-    print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed);
+    print_callstack(NULL, 0, NULL, mc, false, pcs, num_frames_printed, false);
     if (pcs->is_packed) {
         packed_frame_t *frames_out;
         sz_out = sizeof(*pcs->frames.packed) * pcs->num_frames;

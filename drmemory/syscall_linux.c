@@ -31,9 +31,8 @@
 #include "alloc.h"
 #include "heap.h"
 #include "stack.h"
-#ifdef DEBUG
-# include "report.h"    /* To report callstacks on unknown ioctl syscalls. */
-#endif /* DEBUG */
+#include "report.h"
+
 #include <stddef.h> /* for offsetof */
 
 /* for linux-specific types/defines for fcntl and ipc */
@@ -2444,8 +2443,11 @@ os_shared_post_syscall(void *drcontext, int sysnum)
     switch (sysnum) {
     case SYS_clone: {
         uint flags = (uint) pt->sysarg[0];
-        if (TEST(CLONE_VM, flags))
+        if (TEST(CLONE_VM, flags)) {
+            thread_id_t child = dr_syscall_get_result(drcontext);
+            report_child_thread(drcontext, child);
             break;
+        }
         /* else, fall through */
     }
     case SYS_fork: {

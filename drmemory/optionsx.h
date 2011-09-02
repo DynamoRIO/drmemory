@@ -243,7 +243,9 @@ OPTION_CLIENT_BOOL(client, gen_suppress_offs, true,
 OPTION_CLIENT_BOOL(client, gen_suppress_syms, true,
                    "Generate mod!syms suppressions in the output suppress file",
                    "Generate mod!syms suppressions in addition to mod+offs suppressions in the output suppress file")
-
+OPTION_CLIENT_BOOL(client, show_threads, true,
+                   "Print the callstack of each thread creation point",
+                   "Whether to print the callstack of each thread creation point to the global logfile, which can be useful to identify which thread was involved in an error report.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
 
 /* Exposed for Dr. Memory only */
 OPTION_CLIENT_BOOL(drmemscope, check_cmps, true,

@@ -2068,7 +2068,8 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
         size_t sofar = 0;
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%s "PFX"-"PFX"\n", routine, start, end);
-        print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/, NULL, 0);
+        print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/,
+                        NULL, 0, true);
         report_error_from_buffer(pt->f, pt->errbuf, NULL, false);
     });
 }
@@ -2095,7 +2096,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
         BUFPRINT(buf, bufsz, sofar, len,
                  "%s heap region "PFX"-"PFX"\n",
                  add ? "adding" : "removing", start, end);
-        print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0);
+        print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0, true);
         report_error_from_buffer(f_global, buf, NULL, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
@@ -2114,3 +2115,30 @@ report_callstack(void *drcontext, dr_mcontext_t *mc)
     print_callstack_to_file(drcontext, mc, mc->xip, INVALID_FILE/*use pt->f*/);
 }
 #endif /* DEBUG */
+
+void
+report_child_thread(void *drcontext, thread_id_t child)
+{
+    /* XXX: should these go to results.txt instead?  Will be mixed in
+     * w/ the errors, unless we cache their callstacks somewhere until
+     * the end.
+     */
+    if (options.show_threads && !options.perturb_only) {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        ssize_t len = 0;
+        size_t sofar = 0;
+
+        dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+        mc.size = sizeof(mc);
+        dr_get_mcontext(drcontext, &mc);
+
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
+                 "\nNEW THREAD: child thread %d created by parent thread %d\n",
+                 child, dr_get_thread_id(drcontext));
+        print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
+                        NULL, 0, false);
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
+        print_buffer(pt->f, pt->errbuf);
+    }
+}
+

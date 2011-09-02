@@ -437,7 +437,7 @@ get_TEB(void)
 TEB *
 get_TEB_from_handle(HANDLE h)
 {
-    uint pid, got;
+    uint got;
     THREAD_BASIC_INFORMATION info;
     NTSTATUS res;
     memset(&info, 0, sizeof(THREAD_BASIC_INFORMATION));
@@ -448,6 +448,22 @@ get_TEB_from_handle(HANDLE h)
         return NULL;
     }
     return (TEB *) info.TebBaseAddress;
+}
+
+thread_id_t
+get_tid_from_handle(HANDLE h)
+{
+    uint got;
+    THREAD_BASIC_INFORMATION info;
+    NTSTATUS res;
+    memset(&info, 0, sizeof(THREAD_BASIC_INFORMATION));
+    res = NtQueryInformationThread(h, ThreadBasicInformation,
+                                   &info, sizeof(THREAD_BASIC_INFORMATION), &got);
+    if (!NT_SUCCESS(res) || got != sizeof(THREAD_BASIC_INFORMATION)) {
+        ASSERT(false, "internal error");
+        return INVALID_THREAD_ID;
+    }
+    return (thread_id_t) info.ClientId.UniqueThread;
 }
 
 TEB *

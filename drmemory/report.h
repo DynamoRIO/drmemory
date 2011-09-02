@@ -95,4 +95,7 @@ report_callstack(void *drcontext, dr_mcontext_t *mc);
 void
 print_timestamp_elapsed_to_file(file_t f, const char *prefix);
 
+void
+report_child_thread(void *drcontext, thread_id_t child);
+
 #endif /* _REPORT_H_ */

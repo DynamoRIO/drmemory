@@ -136,6 +136,8 @@
 
 #define sscanf  DO_NOT_USE_sscanf_directly_see_issue_344
 
+#define INVALID_THREAD_ID 0
+
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;
 extern uint op_verbose_level;
@@ -503,6 +505,9 @@ get_TEB(void);
 
 TEB *
 get_TEB_from_handle(HANDLE h);
+
+thread_id_t
+get_tid_from_handle(HANDLE h);
 
 TEB *
 get_TEB_from_tid(thread_id_t tid);
