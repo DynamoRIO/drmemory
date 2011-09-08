@@ -68,6 +68,12 @@ enum {
      * use MEMREF_CHECK_ADDRESSABLE for reads and writes.  This distinguishes.
      */
     MEMREF_IS_READ            = 0x200,
+    /* i#556: for uninitialized random values passed as sizes to syscalls, we
+     * don't want to walk huge sections of memory, so we stop checking after
+     * the first erroneous word is found.
+     */
+    MEMREF_ABORT_AFTER_SIZE   = 4,
+    MEMREF_ABORT_AFTER_UNADDR = 0x400,
 };
 
 #ifdef STATISTICS

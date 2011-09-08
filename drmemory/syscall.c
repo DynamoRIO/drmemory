@@ -635,6 +635,15 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
                     ptr, ptr + sz, (id == NULL) ? "" : id);
             }
         });
+        /* i#556: for uninitialized random values passed as sizes to syscalls, we
+         * don't want to walk huge sections of memory, so we stop checking after
+         * the first erroneous word is found.  The reported error may not have
+         * an intuitive size, but it's not clear how else to handle it since there's
+         * no magic threshold that's bigger than any valid size, and any separate
+         * error within the same region will today be reported as a dup (i#581).
+         */
+        if (sz > 64*1024)
+            flags |= MEMREF_ABORT_AFTER_UNADDR;
         handle_mem_ref(flags, &loc, ptr, sz, mc, NULL);
     }
 }

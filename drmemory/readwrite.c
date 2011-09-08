@@ -2894,7 +2894,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
      * single byte: now we cache them but will still be slow.
      */
     /* note that gap compiled by cl has an 18MB rep stos (PR 502506) */
-    ASSERT(sz < 32*1024*1024, "suspiciously large size");
+    ASSERT(TEST(MEMREF_ABORT_AFTER_UNADDR, flags) ||
+           sz < 32*1024*1024, "suspiciously large size");
     ASSERT(!TEST(MEMREF_USE_VALUES, flags) || shadow_vals != NULL,
            "internal invalid parameters");
     /* if no uninit, should only write to shadow mem for push/pop */
@@ -2956,10 +2957,16 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                             report_undefined_read
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
                                  addr, addr + sz, mc);
-                        } else if (bad_end < addr + i - 1) {
+                        } else if (bad_end < addr + i - 1 ||
+                                   (TEST(MEMREF_ABORT_AFTER_UNADDR, flags) &&
+                                    bad_end + 1 - bad_addr >= MEMREF_ABORT_AFTER_SIZE)) {
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
                                  is_write, addr, addr + sz, mc);
+                            if (TEST(MEMREF_ABORT_AFTER_UNADDR, flags)) {
+                                found_bad_addr = false; /* avoid double-report */
+                                break;
+                            }
                         } else
                             new_bad = false;
                     }
@@ -3003,6 +3010,10 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                             report_unaddressable_access
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
                                  is_write, addr, addr + sz, mc);
+                            if (TEST(MEMREF_ABORT_AFTER_UNADDR, flags)) {
+                                found_bad_addr = false; /* avoid double-report */
+                                break;
+                            }
                         } else if (bad_end < addr + i - 1) {
                             report_undefined_read
                                 (loc, bad_addr, bad_end + 1 - bad_addr,
