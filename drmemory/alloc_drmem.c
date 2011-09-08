@@ -1922,7 +1922,9 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
     }
 #endif
     if (options.define_unknown_regions && !addr_in_heap &&
-        (!options.check_stack_bounds || !addr_on_stack)) {
+        (!options.check_stack_bounds || !addr_on_stack)
+        /* i#579: leave kernel regions as unaddr */
+        IF_WINDOWS(&& addr < get_highest_user_address())) {
         /* i#352 (and old PR 464106): handle memory allocated by other
          * processes by treating as fully defined, without any UNADDR.
          * This is Windows and there are cases where csrss allocates

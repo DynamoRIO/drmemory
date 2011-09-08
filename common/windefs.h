@@ -1043,6 +1043,23 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
  */
 #define STATUS_BUFFER_TOO_SMALL          ((NTSTATUS)0xC0000023L)
 
+typedef struct _SYSTEM_BASIC_INFORMATION {
+    ULONG   Unknown;
+    ULONG   MaximumIncrement;
+    ULONG   PhysicalPageSize;
+    ULONG   NumberOfPhysicalPages;
+    ULONG   LowestPhysicalPage;
+    ULONG   HighestPhysicalPage;
+    ULONG   AllocationGranularity;
+    PVOID   LowestUserAddress;
+    PVOID   HighestUserAddress;
+    ULONG_PTR ActiveProcessors;
+    UCHAR   NumberProcessors;
+#ifdef X64
+    ULONG   Unknown2; /* set to 0: probably just padding to 8-byte max field align */
+#endif
+} SYSTEM_BASIC_INFORMATION, *PSYSTEM_BASIC_INFORMATION;
+
 /***************************************************************************
  * from SDK winuser.h on later platforms
  */

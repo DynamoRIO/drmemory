@@ -538,6 +538,9 @@ running_on_Vista_or_later(void);
 
 dr_os_version_t
 get_windows_version(void);
+
+app_pc
+get_highest_user_address(void);
 #endif /* WINDOWS */
 
 /***************************************************************************

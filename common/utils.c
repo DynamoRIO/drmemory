@@ -32,6 +32,7 @@
 #endif
 #ifdef WINDOWS
 # include "windefs.h"
+# include "../wininc/ndk_extypes.h" /* for SYSTEM_INFORMATION_CLASS */
 #else
 # include <string.h>
 #endif
@@ -665,6 +666,27 @@ get_windows_version(void)
     return os_version;
 }
 
+GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
+                                     OUT PVOID  info, 
+                                     IN  ULONG  info_size, 
+                                     OUT PULONG bytes_received));
+   
+app_pc
+get_highest_user_address(void)
+{
+    static app_pc highest_user_address;
+    if (highest_user_address == NULL) {
+        SYSTEM_BASIC_INFORMATION info;
+        ULONG got;
+        NTSTATUS res = NtQuerySystemInformation(SystemBasicInformation, &info,
+                                                sizeof(info), &got);
+        if (NT_SUCCESS(res) && got == sizeof(info))
+            highest_user_address = (app_pc) info.HighestUserAddress;
+        else
+            highest_user_address = (app_pc) POINTER_MAX;
+    }
+    return highest_user_address;
+}
 #endif /* WINDOWS */
 
 /***************************************************************************
