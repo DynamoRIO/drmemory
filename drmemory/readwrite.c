@@ -2868,6 +2868,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     bool allgood = true;
     /* report ranges of errors instead of individual bytes */
     app_pc bad_addr = NULL, bad_end = NULL;
+    /* i#580: can't use NULL as sentinel b/c will not report as unaddr */
+    bool found_bad_addr = false;
     uint bad_type = SHADOW_DEFINED; /* i.e., no error */
 #ifdef STATISTICS
     bool was_special = shadow_get_special(addr, NULL);
@@ -2947,7 +2949,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 if (!check_unaddressable_exceptions(is_write, loc,
                                                     addr + i, sz, addr_on_stack)) {
                     bool new_bad = true;
-                    if (bad_addr != NULL) {
+                    if (found_bad_addr) {
                         if (bad_type != SHADOW_UNADDRESSABLE) {
                             ASSERT(bad_type == SHADOW_UNDEFINED,
                                    "internal report error");
@@ -2962,6 +2964,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                             new_bad = false;
                     }
                     if (new_bad) {
+                        found_bad_addr = true;
                         bad_type = SHADOW_UNADDRESSABLE;
                         bad_addr = addr + i;
                     } /* else extend current bad */
@@ -2993,7 +2996,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                                                 is_write, loc, addr + i, sz, &shadow) &&
                     TEST(MEMREF_CHECK_DEFINEDNESS, flags)) {
                     bool new_bad = true;
-                    if (bad_addr != NULL) {
+                    if (found_bad_addr) {
                         if (bad_type != SHADOW_UNDEFINED) {
                             ASSERT(bad_type == SHADOW_UNADDRESSABLE,
                                    "internal report error");
@@ -3008,6 +3011,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                             new_bad = false;
                     }
                     if (new_bad) {
+                        found_bad_addr = true;
                         bad_type = SHADOW_UNDEFINED;
                         bad_addr = addr + i;
                     } /* else extend current bad */
@@ -3109,7 +3113,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         STATS_INC(slow_instead_of_fast);
     }
 #endif
-    if (bad_addr != NULL) {
+    if (found_bad_addr) {
         if (bad_type == SHADOW_UNDEFINED)
             report_undefined_read(loc, bad_addr, bad_end + 1 - bad_addr,
                                   addr, addr + sz, mc);

@@ -530,6 +530,13 @@ sub process_all_errors()
         # PR 425858: skip non-error-related lines in logfile
         if (!$found_error_start && is_line_start_of_error($_)) {
             $found_error_start = 1;
+            # summary might be missing
+            # XXX: should DR give us an exit event on app crash?
+            # b/c we'll not report error types we didn't see examples of
+            # currently.
+            $report_unaddr = 1 if (/UNADDR/);
+            $report_uninit = 1 if (/UNINIT/);
+            $report_leaks = 1 if (/LEAK/);
         }
         if ($found_error_start) {
             if (/^\s*callstack=(\d+)/) {
@@ -1212,7 +1219,7 @@ sub print_summary($fh, $reset, $summary_only, $print_default_supp)
             my $suppressed = $error_cache{$err_str}{"suppressed"};
             my $dup_count = $error_cache{$err_str}{"dup_count"} +
                 $error_cache{$err_str}{"dup_count_client"};
-            $duplicate_errors{$errno} = $dup_count if (!$suppressed && $dup_count > 1);
+            $duplicate_errors{$errno} = $dup_count if (!$suppressed && $dup_count > 0);
         }
         # sort numerically, not the default alpha
         foreach $num (sort { $a <=> $b } (keys %duplicate_errors)) {
@@ -1220,6 +1227,7 @@ sub print_summary($fh, $reset, $summary_only, $print_default_supp)
             printf $fh $pfx."Error \#%3d: %6d times\n",
                    $num, $duplicate_errors{$num} + 1;
         }
+        print $fh "$pfx\n";
 
         printf $fh $pfx."SUPPRESSIONS USED:\n";
         foreach $name (sort sort_supp_used (keys %supp_used_count)) {
