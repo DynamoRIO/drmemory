@@ -2948,7 +2948,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     addr+i < (app_pc)mc->esp)
                     addr_on_stack = true;
                 if (!check_unaddressable_exceptions(is_write, loc,
-                                                    addr + i, sz, addr_on_stack)) {
+                                                    addr + i, sz, addr_on_stack, mc)) {
                     bool new_bad = true;
                     if (found_bad_addr) {
                         if (bad_type != SHADOW_UNADDRESSABLE) {

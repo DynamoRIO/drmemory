@@ -441,7 +441,8 @@ suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
             LOG(3, "  suppression name=\"%s\"\n", spec->name);
             return true;
         } else if (strstr(line, "instruction=") == line) {
-            if (spec->type == ERROR_UNADDRESSABLE || spec->type == ERROR_UNDEFINED) {
+            if (spec->type == ERROR_UNADDRESSABLE || spec->type == ERROR_UNDEFINED ||
+                spec->type == ERROR_WARNING/*prefetch warning*/) {
                 spec->instruction = drmem_strndup(c + 1, line_len - (c + 1 - line),
                                                   HEAPSTAT_REPORT);
                 LOG(3, "  instruction=\"%s\"\n", spec->instruction);
@@ -880,6 +881,8 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
                                  "supp: comparing error to suppression pattern");
         });
         if (stack_matches_suppression(ecs, spec)) {
+            LOG(3, "matched suppression %s\n",
+                (spec->name == NULL) ? "<no name>" : spec->name);
             if (matched != NULL)
                 *matched = spec;
             spec->count_used++;
@@ -1538,7 +1541,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
 static void
 report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
              app_pc container_start, app_pc container_end,
-             const char *msg, dr_mcontext_t *mc)
+             const char *msg, dr_mcontext_t *mc, bool report_instruction)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
     stored_error_t *err;
@@ -1588,8 +1591,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     /* Convert to symbolized so we can compare to suppressions */
     packed_callstack_to_symbolized(err->pcs, &ecs.scs);
 
-    if ((type == ERROR_UNADDRESSABLE || type == ERROR_UNDEFINED) &&
-        loc != NULL && loc->type == APP_LOC_PC) {
+    if (report_instruction && loc != NULL && loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(loc);
         if (cur_pc != NULL) {
             void *drcontext = dr_get_current_drcontext();
@@ -1706,7 +1708,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
 
     print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
 
-    if (type == ERROR_UNADDRESSABLE) {
+    if (type == ERROR_UNADDRESSABLE || (type == ERROR_WARNING && sz > 0)) {
         /* print auxiliary info about the target address (PR 535568) */
         report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz);
     }
@@ -1742,7 +1744,7 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             dr_mcontext_t *mc)
 {
     report_error(ERROR_UNADDRESSABLE, loc, addr, sz, write,
-                 container_start, container_end, NULL, mc);
+                 container_start, container_end, NULL, mc, true/*include instr*/);
 }
 
 void
@@ -1751,7 +1753,7 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
                       dr_mcontext_t *mc)
 {
     report_error(ERROR_UNDEFINED, loc, addr, sz, false,
-                 container_start, container_end, NULL, mc);
+                 container_start, container_end, NULL, mc, true/*include instr*/);
 }
 
 void
@@ -1763,16 +1765,19 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
          * so we separate as not really "invalid" but just a warning
          */
         if (options.warn_null_ptr)
-            report_warning(loc, mc, "free() called with NULL pointer");
+            report_warning(loc, mc, "free() called with NULL pointer", NULL, 0, false);
     } else {
-        report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL, routine, mc);
+        report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL,
+                     routine, mc, false);
     }
 }
 
 void
-report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg)
+report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+               app_pc addr, size_t sz, bool report_instruction)
 {
-    report_error(ERROR_WARNING, loc, NULL, 0, false, NULL, NULL, msg, mc);
+    report_error(ERROR_WARNING, loc, addr, sz, false, NULL, NULL, msg, mc,
+                 report_instruction);
 }
 
 /* saves the values of all counts that are modified in report_leak() */

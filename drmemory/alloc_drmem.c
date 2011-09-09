@@ -485,7 +485,7 @@ client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
      */
 # endif
 #endif
-    report_warning(&loc, mc, "heap allocation failed");
+    report_warning(&loc, mc, "heap allocation failed", NULL, 0, false);
 }
 
 void
@@ -500,7 +500,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
     if (options.warn_null_ptr) {
         app_loc_t loc;
         pc_to_loc(&loc, pc);
-        report_warning(&loc, mc, "realloc() called with NULL pointer");
+        report_warning(&loc, mc, "realloc() called with NULL pointer", NULL, 0, false);
     }
 }
 
@@ -1752,9 +1752,29 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     return match;
 }
 
+static bool
+is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
+            app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT,
+            app_loc_t *loc, dr_mcontext_t *mc)
+{
+    /* i#585: prefetch should not raise an unaddr error, only a warning */
+    if (instr_is_prefetch(inst)) {
+        char msg[64];
+        dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                    "prefetching unaddressable memory "PFX"-"PFX,
+                    addr, addr+sz);
+        NULL_TERMINATE_BUFFER(msg);
+        /* include instruction= line for max info and suppress flexibility */
+        report_warning(loc, mc, msg, addr, sz, true);
+        *now_addressable = false;
+        return true;
+    }
+    return false;
+}
 
 static bool
-is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
+is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
+                            dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
     app_pc pc, dpc;
@@ -1787,6 +1807,12 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz)
     if (!match) {
         match = is_rawmemchr_pattern(drcontext, write, pc, dpc, addr, sz,
                                      &inst, &now_addressable);
+    }
+    if (!match) {
+        match = is_prefetch(drcontext, write, pc, dpc, addr, sz,
+                            &inst, &now_addressable, loc, mc);
+        if (match)
+            unreadable_ok = true;
     }
     if (match) {
         /* PR 503779: be sure to not do this readability check before
@@ -1849,7 +1875,7 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
 
 bool
 check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
-                               bool addr_on_stack)
+                               bool addr_on_stack, dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -1921,10 +1947,12 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
         return true;
     }
 #endif
-    if (options.define_unknown_regions && !addr_in_heap &&
-        (!options.check_stack_bounds || !addr_on_stack)
-        /* i#579: leave kernel regions as unaddr */
-        IF_WINDOWS(&& addr < get_highest_user_address())) {
+    if (is_ok_unaddressable_pattern(write, loc, addr, sz, mc)) {
+        return true;
+    } else if (options.define_unknown_regions && !addr_in_heap &&
+               (!options.check_stack_bounds || !addr_on_stack)
+               /* i#579: leave kernel regions as unaddr */
+               IF_WINDOWS(&& addr < get_highest_user_address())) {
         /* i#352 (and old PR 464106): handle memory allocated by other
          * processes by treating as fully defined, without any UNADDR.
          * This is Windows and there are cases where csrss allocates
@@ -1947,9 +1975,6 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
             shadow_set_range(base, base+sz, SHADOW_DEFINED);
             return true;
         }
-    }
-    else if (is_ok_unaddressable_pattern(write, loc, addr, sz)) {
-        return true;
     }
     return false;
 }

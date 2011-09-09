@@ -64,7 +64,8 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
                         const char *routine, bool is_free);
 
 void
-report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg);
+report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+               app_pc addr, size_t sz, bool report_instruction);
 
 /* saves the values of all counts that are modified in report_leak() */
 void
