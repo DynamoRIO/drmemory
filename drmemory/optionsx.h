@@ -148,7 +148,7 @@ OPTION_CLIENT_BOOL(client, results_to_stderr, false,
 #endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",
-                   "Display, but do not abort, on asserts in debug build (in release build asserts as automatically disabled).")
+                   "Display, but do not abort, on asserts in debug build (in release build asserts are automatically disabled).")
 OPTION_CLIENT_BOOL(drmemscope, pause_at_unaddressable, false,
                    "Pause at each unaddressable access",
                    ""TOOLNAME" pauses at the point of each unaddressable access error that is identified.  On Windows, this pause is a popup window.  On Linux, the pause involves waiting for a keystroke, which may not work well if the application reads from stdin.  In that case consider -pause_via_loop as an additional option.")

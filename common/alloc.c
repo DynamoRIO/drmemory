@@ -1971,8 +1971,8 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
         ASSERT(!TEST(MALLOC_VALID, old_e->flags), "internal error in malloc tracking");
         malloc_entry_free(old_e);
     }
+    LOG(2, "MALLOC "PFX"-"PFX"\n", start, end);
     DOLOG(3, {
-        LOG(2, "MALLOC "PFX"-"PFX"\n", start, end);
         print_callstack_to_file(dr_get_current_drcontext(), mc, post_call,
                                 INVALID_FILE/*use pt->f*/);
     });
@@ -2429,8 +2429,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             if (options.track_heap) {
                 if (pt->syscall_this_process && TEST(MEM_COMMIT, type)) {
                     app_pc *base_ptr = (app_pc *) dr_syscall_get_param(drcontext, 1);
-                    /* FIXME: safe_read */
-                    app_pc base = *base_ptr;
+                    app_pc base;
                     MEMORY_BASIC_INFORMATION mbi;
                     /* We distinguish HeapAlloc from VirtualAlloc b/c the former
                      * reserves a big region and then commits pieces of it.
@@ -2438,7 +2437,8 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                      * as a heap where its pieces are NOT addressable at commit time,
                      * but only at sub-page parcel-out time.
                      */
-                    if (dr_virtual_query(base, &mbi, sizeof(mbi)) == sizeof(mbi)) {
+                    if (safe_read(base_ptr, sizeof(base), &base) &&
+                        dr_virtual_query(base, &mbi, sizeof(mbi)) == sizeof(mbi)) {
                         pt->valloc_commit = (base == NULL /* no prior reservation */ ||
                                              (TEST(MEM_RESERVE, type) &&
                                               mbi.State == MEM_FREE) ||
@@ -2447,6 +2447,29 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                                               * then commit pieces but is NOT heap
                                               */
                                              pt->in_heap_routine == 0);
+                        if (is_in_heap_region(base)) {
+                            /* trying to handle cygwin or other cases where we
+                             * don't yet follow all their alloc routines
+                             * (xref i#197, i#480)
+                             */
+                            pt->valloc_commit = false;
+                        } else if (pt->in_heap_routine > 0 && !pt->valloc_commit) {
+                            /* this is a heap reservation that we missed: perhaps
+                             * from cygwin (xref i#197, i#480)
+                             */
+                            /* [mbi.AllocationBase, mbi.BaseAddress + mbi.RegionSize)
+                             * would work for single large reservations: but best
+                             * to be safe
+                             */
+                            byte *alloc_base;
+                            size_t alloc_size = allocation_size(base, &alloc_base);
+                            LOGPT(2, pt, "Adding unknown heap region "PFX"-"PFX"\n",
+                                  alloc_base, alloc_base + alloc_size);
+                            heap_region_add(alloc_base, alloc_base + alloc_size,
+                                            true/*new heap*/, mc);
+                        }
+                    } else {
+                        WARN("WARNING: NtAllocateVirtualMemory: error reading param\n");
                     }
                 }
             }
