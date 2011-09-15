@@ -3087,9 +3087,12 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         }
         if (MAP_4B_TO_1B) {
             /* only need to process each 4-byte address region once */
+            bool is_bad = (bad_end == addr+i);
             if (POINTER_OVERFLOW_ON_ADD(addr, 4))
                 break;
             i = ((ptr_uint_t)ALIGN_FORWARD(addr + i + 1, 4) - (ptr_uint_t)addr);
+            if (is_bad)
+                bad_end = addr + (i > sz ? sz : i) - 1;
         }
     }
 #ifdef STATISTICS
