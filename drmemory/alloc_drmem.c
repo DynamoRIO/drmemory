@@ -790,14 +790,16 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
         size_t size;
         union {
             void *pad_out; /* rb_node_fields will write void*-sized bytes! (i#508) */
-            bool has_redzone;
+            bool no_redzone;
         } client;
+        size_t redsz;
         rb_node_fields(node, &real_base, &size, (void **)&client);
-        LOG(3, "\toverlap real base: "PFX", size: %d\n", real_base, size);
-        if (!client.has_redzone ||
+        redsz = (client.no_redzone ? 0 : options.redzone_size);
+        LOG(3, "\toverlap real base: "PFX", size: %d, redzone: %d\n",
+            real_base, size, redsz);
+        if (!client.no_redzone ||
             (start < real_base + size - options.redzone_size &&
              end > real_base + options.redzone_size)) {
-            size_t redsz = (client.has_redzone ? options.redzone_size : 0);
             res = true;
             if (free_start != NULL)
                 *free_start = real_base + redsz;

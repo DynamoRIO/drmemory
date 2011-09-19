@@ -124,6 +124,7 @@ static app_pc libdrmem_base, libdrmem_end;
 #endif
 app_pc app_base;
 app_pc app_end;
+char app_path[MAXIMUM_PATH];
 
 #ifdef STATISTICS
 /* statistics
@@ -1316,6 +1317,27 @@ dr_init(client_id_t id)
     module_data_t *data;
     const char *opstr;
 
+    /* get app_path before drmem_options_init() */
+#ifdef WINDOWS
+    data = dr_lookup_module(get_TEB()->ProcessEnvironmentBlock->ImageBaseAddress);
+#else
+    if (appnm == NULL)
+        data = NULL;
+    else
+        data = dr_lookup_module_by_name(appnm);
+#endif
+    if (data == NULL) {
+# ifndef VMX86_SERVER /* remove once have PR 363063 */
+        NOTIFY("WARNING: cannot find executable image\n");
+# endif
+    } else {
+        app_base = data->start;
+        app_end = data->end;
+        dr_snprintf(app_path, BUFFER_SIZE_ELEMENTS(app_path), data->full_path);
+        NULL_TERMINATE_BUFFER(app_path);
+        dr_free_module_data(data);
+    }
+
     client_id = id;
     opstr = dr_get_options(client_id);
     ASSERT(opstr != NULL, "error obtaining option string");
@@ -1332,6 +1354,10 @@ dr_init(client_id_t id)
 
     create_global_logfile();
     LOG(0, "options are \"%s\"\n", opstr);
+
+    /* delayed from getting app_path, etc. until have logfile and ops */
+    ASSERT(app_base != NULL, "internal error finding executable base");
+    LOG(2, "executable \"%s\" is "PFX"-"PFX"\n", app_path, app_base, app_end);
 
     dr_register_exit_event(event_exit);
     dr_register_thread_init_event(event_thread_init);
@@ -1405,26 +1431,6 @@ dr_init(client_id_t id)
     }
     dr_module_iterator_stop(iter);
 #endif
-
-#ifdef WINDOWS
-    data = dr_lookup_module(get_TEB()->ProcessEnvironmentBlock->ImageBaseAddress);
-#else
-    if (appnm == NULL)
-        data = NULL;
-    else
-        data = dr_lookup_module_by_name(appnm);
-#endif
-    if (data == NULL) {
-# ifndef VMX86_SERVER /* remove once have PR 363063 */
-        NOTIFY("WARNING: cannot find executable image\n");
-# endif
-    } else {
-        app_base = data->start;
-        app_end = data->end;
-        dr_free_module_data(data);
-        ASSERT(app_base != NULL, "internal error finding executable base");
-        LOG(2, "executable is "PFX"-"PFX"\n", app_base, app_end);
-    }
 
     heap_region_init(handle_new_heap_region, handle_removed_heap_region);
 

@@ -1212,7 +1212,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
         NOTIFY_COND(notify, f, "  %5d leak(s) beyond -report_leak_max"NL,
                     num_throttled_leaks);
     }
-    NOTIFY_COND(notify, f, "Details: %s/results.txt\n", logsubdir);
+    NOTIFY_COND(notify, f, "Details: %s/results.txt"NL, logsubdir);
 }
 
 void
@@ -1405,7 +1405,8 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
  * FIXME PR 423750: provide this info on dups not just 1st unique.
  */
 static void
-report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
+report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
+                 bool invalid_heap_arg)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
     ssize_t len = 0;
@@ -1420,7 +1421,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
      */
     /* We don't walk more than PAGE_SIZE: FIXME: make larger? */
     for (end = addr+sz; end < addr+sz + PAGE_SIZE; ) {
-        if (!shadow_check_range(end, PAGE_SIZE, SHADOW_UNADDRESSABLE,
+        if (options.shadowing &&
+            !shadow_check_range(end, PAGE_SIZE, SHADOW_UNADDRESSABLE,
                                 &start, NULL, NULL)) {
             LOG(3, "report_heap_info: next addressable="PFX"\n", start);
             size = malloc_size((byte*)ALIGN_FORWARD(start, MALLOC_CHUNK_ALIGNMENT));
@@ -1439,9 +1441,16 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
                  * inaccurate adjacent malloc info: only print if accurate
                  */
                 if (next_start >= addr+sz) {
-                    BUFPRINT(buf, bufsz, *sofar, len,
-                             "%snext higher malloc: "PFX"-"PFX""NL,
-                             INFO_PFX, start, start+size);
+                    if (next_start - addr+sz < 8) {
+                        BUFPRINT(buf, bufsz, *sofar, len,
+                                 "%srefers to %d byte(s) before next malloc"NL,
+                                 INFO_PFX, next_start - addr+sz);
+                    }
+                    if (!options.brief) {
+                        BUFPRINT(buf, bufsz, *sofar, len,
+                                 "%snext higher malloc: "PFX"-"PFX""NL,
+                                 INFO_PFX, start, start+size);
+                    }
                 } else
                     next_start = NULL;
                 break;
@@ -1457,7 +1466,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
      * using heuristics and could be wrong (if we had rbtree I'd print "no higher")
      */
     for (start = addr; start > addr - PAGE_SIZE; ) {
-        if (!shadow_check_range_backward(start-1, PAGE_SIZE,
+        if (options.shadowing &&
+            !shadow_check_range_backward(start-1, PAGE_SIZE,
                                          SHADOW_UNADDRESSABLE, &end)) {
             LOG(3, "report_heap_info: prev addressable="PFX"\n", end);
             start = (byte *) ALIGN_BACKWARD(end, 4);
@@ -1481,9 +1491,17 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
                      * inaccurate adjacent malloc info: only print if accurate
                      */
                     if (prev_end <= addr) {
-                        BUFPRINT(buf, bufsz, *sofar, len,
-                                 "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX, start,
-                                 prev_end);
+                        if (addr - prev_end < 8) {
+                            BUFPRINT(buf, bufsz, *sofar, len,
+                                     "%srefers to %d byte(s) beyond last valid byte in prior malloc"NL,
+                                     /* +1 since beyond last valid (so don't have +0) */
+                                     INFO_PFX, addr + 1 - prev_end);
+                        }
+                        if (!options.brief) {
+                            BUFPRINT(buf, bufsz, *sofar, len,
+                                     "%sprev lower malloc:  "PFX"-"PFX""NL, INFO_PFX,
+                                     start, prev_end);
+                        }
                     } else
                         prev_end = NULL;
                     break;
@@ -1496,7 +1514,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
     }
     /* Look at both delay free list and at malloc entries marked
      * invalid.  The latter will find frees beyond the limit of the
-     * delay list as well as free-by-realloc (xref PR 493888).
+     * delay list as well as free-by-realloc (xref i#69: we now
+     * replace realloc so realloc frees will be on the queue).
      */
     found = overlaps_delayed_free(addr, addr+sz, &start, &end);
     if (!found && next_start != NULL) {
@@ -1524,20 +1543,36 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz)
             }
         }
     }
-    if (found) {
-        ASSERT(addr < end && addr+sz > start, "bug in delay free overlap calc");
+    ASSERT(!found || (addr < end + options.redzone_size &&
+                      addr+sz >= start - options.redzone_size),
+           "bug in delay free overlap calc");
+    if (found &&
+        /* don't report overlap if only overlaps redzones: prev/next analysis
+         * should mention that instead
+         */
+        addr < end && addr+sz >= start) {
         /* Note that due to the finite size of the delayed
          * free list (and realloc not on it: PR 493888) and
          * new malloc entries replacing invalid we can't
          * guarantee to identify use-after-free
          */
-        BUFPRINT(buf, bufsz, *sofar, len,
-                 "%s"PFX"-"PFX" overlaps freed memory "PFX"-"PFX""NL,
-                 INFO_PFX, addr, addr+sz, start, end);
+        if (invalid_heap_arg && addr == start) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%sfree called on already freed memory"NL, INFO_PFX);
+        } else if (options.brief) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%srefers to %d byte(s) inside freed memory"NL,
+                     INFO_PFX, addr - start);
+        } else {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%s"PFX"-"PFX" overlaps freed memory "PFX"-"PFX""NL,
+                     INFO_PFX, addr, addr+sz, start, end);
+        }
     }
-    if (pt->in_heap_routine > 0) {
+    if (!invalid_heap_arg && pt->in_heap_routine > 0) {
         BUFPRINT(buf, bufsz, *sofar, len,
-                 "%s<inside heap routine: may be false positive>"NL, INFO_PFX);
+                 "%s<inside heap routine and may be false positive: please file a bug>"NL,
+                 INFO_PFX);
     }
 }
 
@@ -1660,9 +1695,10 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     
     if (type == ERROR_UNADDRESSABLE) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "UNADDRESSABLE ACCESS: %s"PFX"-"PFX" %d byte(s)",
-                 write ? "writing " : "reading ",
-                 addr, addr+sz, sz);
+                 "UNADDRESSABLE ACCESS: %s", write ? "writing " : "reading ");
+        if (!options.brief)
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, PFX"-"PFX" ", addr, addr+sz);
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%d byte(s)", sz);
         /* only report for syscall params or large (string) ops: always if subset */
         if (container_start != NULL &&
             (container_end - container_start > 8 || addr > container_start ||
@@ -1683,8 +1719,12 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
                      "reading register %s"NL, (addr == (app_pc)REG_EFLAGS) ?
                      "eflags" : get_register_name((reg_id_t)(ptr_uint_t)addr));
         } else {
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                     "reading "PFX"-"PFX" %d byte(s)", addr, addr+sz, sz);
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "reading ");
+            if (!options.brief) {
+                BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, PFX"-"PFX" ",
+                         addr, addr+sz);
+            }
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%d byte(s)", sz);
             /* only report for syscall params or large (string) ops: always if subset */
             if (container_start != NULL &&
                 (container_end - container_start > 8 || addr > container_start ||
@@ -1701,7 +1741,10 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
          */
         ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "INVALID HEAP ARGUMENT: %s "PFX""NL, msg, addr);
+                 "INVALID HEAP ARGUMENT: %s", msg);
+        if (!options.brief)
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, " "PFX, addr);
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
     } else if (type == ERROR_WARNING) {
         ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sWARNING: %s"NL,
@@ -1713,14 +1756,17 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
                  "UNKNOWN ERROR TYPE: REPORT THIS BUG"NL);
     }
 
-    print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
+    if (!options.brief)
+        print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
 
-    if (type == ERROR_UNADDRESSABLE || (type == ERROR_WARNING && sz > 0)) {
+    if (type == ERROR_UNADDRESSABLE || type == ERROR_INVALID_HEAP_ARG ||
+        (type == ERROR_WARNING && sz > 0)) {
         /* print auxiliary info about the target address (PR 535568) */
-        report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz);
+        report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz,
+                         type == ERROR_INVALID_HEAP_ARG);
     }
 
-    if (ecs.instruction[0] != '\0') {
+    if (!options.brief && ecs.instruction[0] != '\0') {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sinstruction: %s"NL,
                  INFO_PFX, ecs.instruction);
     }
@@ -2046,9 +2092,15 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     /* No longer printing out shadow info since it's not relevant for
      * reachability-based leak scanning
      */
-    BUFPRINT(buf, bufsz, sofar, len,
-             "LEAK %d direct bytes "PFX"-"PFX" + %d indirect bytes"NL,
-             size, addr, addr+size, indirect_size);
+    BUFPRINT(buf, bufsz, sofar, len, "LEAK %d ", size);
+    if (indirect_size > 0 || !options.brief)
+        BUFPRINT(buf, bufsz, sofar, len, "direct ");
+    BUFPRINT(buf, bufsz, sofar, len, "bytes ");
+    if (!options.brief)
+        BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr+size);
+    if (indirect_size > 0 || !options.brief)
+        BUFPRINT(buf, bufsz, sofar, len, "+ %d indirect bytes", indirect_size);
+    BUFPRINT(buf, bufsz, sofar, len, NL);
     buf_print = buf;
     if ((type == ERROR_LEAK && options.check_leaks) ||
         (type == ERROR_POSSIBLE_LEAK && options.possible_leaks)) {

@@ -131,6 +131,9 @@ OPTION_FRONT_BOOL(front, use_vmtree, true,
  * Public client options
  */
 
+OPTION_CLIENT_BOOL(client, brief, false,
+                   "Show simplified and easier-to-read error reports",
+                   "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps")
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
                      "Destination for log files",

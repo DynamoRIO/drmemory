@@ -151,7 +151,7 @@ You'll get better callstacks in error reports if you disable inlining.  For
 cl.exe, "/Ob0", or for gcc or g++, "-fno-inline".  Dr. Memory should be
 able to determine callstacks in the presence of frame pointer optimizations
 (FPO) in most cases, but if you see strange callstacks in an optimized
-applications consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
+application consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
 "-fno-omit-frame-pointer".
 
 ********************
@@ -210,7 +210,8 @@ On Windows, the results files is automatically opened in \p notepad when
 the application exits.  This only occurs for the top-level process; if it
 created child processes, they will be followed by Dr. Memory and have their
 own result directories and files, but these will not be automatically
-displayed.
+displayed.  The option \p -batch can be used to disable the launch of \p
+notepad at application exit.
 
 For full details on the errors reported by Dr. Memory, see \ref sec_errors.
 
@@ -417,6 +418,12 @@ error, the address and size of the memory access in question (if applicable
 to the error type), a timestamp and thread identifier indicating when and
 where the error was detected, and a callstack of the application at the
 point of the error.
+
+The \p -brief option can be used to request simpler and in some cases
+easier to read (i.e., more suited to novices) error reports that hide STL
+and CRT paths, simplify source paths for the executable by removing the
+path containing the executable itself, and omit absolute addresses,
+thread timestamps, and instruction disassembly.
 
 The following subsections describe each type of error.  Leaks are described
 in \ref sec_leaks.

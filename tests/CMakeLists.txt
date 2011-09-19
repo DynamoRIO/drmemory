@@ -352,8 +352,15 @@ if (NOT TOOL_DR_HEAPSTAT)
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF)
-  newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF)
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress ""
+      "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF)
+    newtest_nobuild(suppress-gensyms suppress ""
+      "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF)
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF)
+    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF)
+  endif (USE_DRSYMS)
 
   set(nudge_test_args "")
 

@@ -56,6 +56,7 @@ extern app_pc libc_end;
 #endif
 extern app_pc app_base;
 extern app_pc app_end;
+extern char app_path[MAXIMUM_PATH];
 
 #ifdef STATISTICS
 void 

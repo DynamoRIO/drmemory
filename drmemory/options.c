@@ -349,6 +349,31 @@ options_init(const char *opstr)
         options.check_stack_access = true;
         options.check_alignment = true;
     }
+    if (options.brief) {
+        /* i#589: simpler error reports */
+# ifdef USE_DRSYMS
+        if (!option_specified.callstack_srcfile_hide) { /* overridable */
+            /* Hide Visual Studio STL and CRT source file paths */
+            dr_snprintf(options.callstack_srcfile_hide,
+                        BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_hide),
+                        "*visual studio*,*self_x86*");
+            NULL_TERMINATE_BUFFER(options.callstack_srcfile_hide);
+        }
+        if (!option_specified.callstack_srcfile_prefix) { /* overridable */
+            /* Truncate executable path prefix */
+            extern char app_path[MAXIMUM_PATH];
+            const char *sep = app_path + strlen(app_path);
+            while (sep > app_path && *sep != '/' IF_WINDOWS(&& *sep != '\\'))
+                sep--;
+            ASSERT(sep - app_path <
+                   BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix),
+                   "impossible buffer diff");
+            dr_snprintf(options.callstack_srcfile_prefix, sep - app_path,
+                        "%s", app_path);
+            NULL_TERMINATE_BUFFER(options.callstack_srcfile_prefix);
+        }
+# endif
+    }
 #endif
 }
 

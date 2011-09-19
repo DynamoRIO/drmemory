@@ -21,10 +21,10 @@
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
 prev lower malloc
-overlaps freed memory
+that was freed
 free.c:46
 
 Error #2: UNADDRESSABLE ACCESS: writing 1 byte(s)
 # whether have "prev lower malloc" is nondet
-overlaps freed memory
+that was freed
 free.c:53
