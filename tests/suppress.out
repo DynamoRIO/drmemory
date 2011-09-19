@@ -31,24 +31,24 @@ testing leak
 testing warning
 testing invalid free
 done
-:::Dr.Memory::: ERRORS FOUND:
-:::Dr.Memory:::       0 unique,     0 total unaddressable access(es)
-:::Dr.Memory:::       0 unique,     0 total uninitialized access(es)
-:::Dr.Memory:::       0 unique,     0 total invalid heap argument(s)
-:::Dr.Memory:::       0 unique,     0 total warning(s)
-:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of leak(s)
-:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
-:::Dr.Memory:::      17 user-suppressed error(s)
+~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~       0 unique,     0 total uninitialized access(es)
+~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
+~~Dr.M~~       0 unique,     0 total warning(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+~~Dr.M~~      17 user-suppressed error(s)
 %if DRSYMS
-:::Dr.Memory:::       7 user-suppressed leak(s)
+~~Dr.M~~       7 user-suppressed leak(s)
 %endif
 # really need better conditionals to avoid all this duplication
 %if CYGWIN_VISTAPLUS
-:::Dr.Memory:::       6 user-suppressed leak(s)
+~~Dr.M~~       6 user-suppressed leak(s)
 %endif
 %if CYGWIN_PREVISTA
-:::Dr.Memory:::       7 user-suppressed leak(s)
+~~Dr.M~~       7 user-suppressed leak(s)
 %endif
 %if UNIX
-:::Dr.Memory:::       7 user-suppressed leak(s)
+~~Dr.M~~       7 user-suppressed leak(s)
 %endif

@@ -18,3 +18,9 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+%OUT_OF_ORDER
+: UNADDRESSABLE ACCESS: writing 1 byte(s)
+winthreads.c:36
+refers to 2 byte(s) beyond last valid byte in prior malloc
+: UNINITIALIZED READ
+winthreads.c:38

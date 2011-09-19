@@ -19,8 +19,8 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-:::Dr.Heapstat:::       3 unique,     3 total,    155 byte(s) of leak(s)
-:::Dr.Heapstat:::       1 unique,     1 total,     16 byte(s) of possible leak(s)
+~~Dr.H~~       3 unique,     3 total,    155 byte(s) of leak(s)
+~~Dr.H~~       1 unique,     1 total,     16 byte(s) of possible leak(s)
 # Different order based on hashtable iterator order
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes

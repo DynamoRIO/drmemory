@@ -1308,7 +1308,8 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
             } else {
                 swap = *(nl + nlsz);
                 *(nl + nlsz) = '\0';
-                BUFPRINT(newbuf, newsz, sofar, len, "%s%s", PREFIX, p);
+                print_prefix_to_buffer(newbuf, newsz, &sofar);
+                BUFPRINT(newbuf, newsz, sofar, len, "%s", p);
                 *(nl + nlsz) = swap;
                 p = nl + nlsz;
             }

@@ -56,6 +56,8 @@ static dr_os_version_t os_version;
 static PEB *priv_peb;
 #endif
 
+static thread_id_t primary_thread = INVALID_THREAD_ID;
+
 /***************************************************************************
  * UTILITIES
  */
@@ -274,6 +276,33 @@ hashtable_delete_with_stats(hashtable_t *table, const char *name)
      * for tables that have entries freed during exit before here
      */
     hashtable_delete(table);
+}
+
+void
+print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar)
+{
+    void *drcontext = dr_get_current_drcontext();
+    ssize_t len;
+    if (drcontext != NULL) {
+        thread_id_t tid = dr_get_thread_id(drcontext);
+        if (primary_thread != INVALID_THREAD_ID/*initialized?*/ &&
+            tid != primary_thread) {
+            /* no-assert since used for errors, etc. in fragile contexts */
+            BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "~~%d~~ ", tid);
+            return;
+        }
+    }
+    /* no-assert since used for errors, etc. in fragile contexts */
+    BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "%s", PREFIX_MAIN_THREAD);
+}
+
+void
+print_prefix_to_console(void)
+{
+    char buf[16];
+    size_t sofar = 0;
+    print_prefix_to_buffer(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+    PRINT_CONSOLE("%s", buf);
 }
 
 /***************************************************************************
@@ -1061,6 +1090,8 @@ utils_init(void)
 #endif
 
     hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);
+
+    primary_thread = dr_get_thread_id(dr_get_current_drcontext());
 }
 
 void

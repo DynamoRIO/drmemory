@@ -30,23 +30,23 @@ testing leak
 testing warning
 testing invalid free
 done
-:::Dr.Memory::: ERRORS FOUND:
-:::Dr.Memory:::       6 unique,     6 total unaddressable access(es)
-:::Dr.Memory:::       9 unique,     9 total uninitialized access(es)
-:::Dr.Memory:::       1 unique,     1 total invalid heap argument(s)
-:::Dr.Memory:::       1 unique,     1 total warning(s)
+~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~       6 unique,     6 total unaddressable access(es)
+~~Dr.M~~       9 unique,     9 total uninitialized access(es)
+~~Dr.M~~       1 unique,     1 total invalid heap argument(s)
+~~Dr.M~~       1 unique,     1 total warning(s)
 %if DRSYMS
 # i#292 required to find the 5th leak
-:::Dr.Memory:::       5 unique,     5 total,     48 byte(s) of leak(s)
+~~Dr.M~~       5 unique,     5 total,     48 byte(s) of leak(s)
 %endif
 # really need better conditionals to avoid all this duplication
 %if CYGWIN_VISTAPLUS
-:::Dr.Memory:::       4 unique,     4 total,     16 byte(s) of leak(s)
+~~Dr.M~~       4 unique,     4 total,     16 byte(s) of leak(s)
 %endif
 %if CYGWIN_PREVISTA
-:::Dr.Memory:::       5 unique,     5 total,     48 byte(s) of leak(s)
+~~Dr.M~~       5 unique,     5 total,     48 byte(s) of leak(s)
 %endif
 %if UNIX
-:::Dr.Memory:::       5 unique,     5 total,     48 byte(s) of leak(s)
+~~Dr.M~~       5 unique,     5 total,     48 byte(s) of leak(s)
 %endif
 ~~Dr.M~~       2 unique,     2 total,     32 byte(s) of possible leak(s)

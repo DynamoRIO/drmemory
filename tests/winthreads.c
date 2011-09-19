@@ -30,6 +30,15 @@ int WINAPI
 run_and_exit_func(void *arg)
 {
     MEMORY_BASIC_INFORMATION mbi;
+    char *p = malloc(4);
+    int i = (int) arg;
+    if (i == 0)
+        *(p+5) = 3;
+    else {
+        if (*p == 'a')
+            *p = 'b';
+    }
+    free(p);
     VirtualQuery(&mbi, &mbi, sizeof(mbi));
     Sleep(100);
     _endthread(); /* closes the thread handle for us */
@@ -59,7 +68,7 @@ main()
     printf("Starting\n");
     /* make some threads that exit to test leaks, etc. */
     for (i = 0; i < NUM_THREADS; i++) {
-        hThread = (HANDLE) _beginthreadex(NULL, 0, run_and_exit_func, NULL, 0, &tid);
+        hThread = (HANDLE) _beginthreadex(NULL, 0, run_and_exit_func, (void*)i, 0, &tid);
     }
     /* make some threads and then just exit the process while they're still
      * running to test exit races (PR 470957)

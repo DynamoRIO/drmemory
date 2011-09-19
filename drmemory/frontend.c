@@ -72,7 +72,7 @@ static bool verbose;
 static bool quiet;
 static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
-#define prefix ":::Dr.Memory::: "
+#define prefix "~~Dr.M~~ "
 
 #define fatal(msg, ...) do { \
     fprintf(stderr, "ERROR: " msg "\n", __VA_ARGS__);    \

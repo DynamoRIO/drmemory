@@ -77,10 +77,10 @@ the log directory, labeled as <tt>REACHABLE LEAK</tt>.
 Here are example lines from Dr. Memory's output summary:
 
 \code
-:::Dr.Memory:::       9 unique,   282 total,   5860 byte(s) of leak(s)
-:::Dr.Memory:::       0 unique,     0 total,      0 byte(s) of possible leak(s)
-:::Dr.Memory:::     125 still-reachable allocation(s)
-:::Dr.Memory:::          (re-run with "-show_reachable" for details)
+~~Dr.M~~       9 unique,   282 total,   5860 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+~~Dr.M~~     125 still-reachable allocation(s)
+~~Dr.M~~          (re-run with "-show_reachable" for details)
 \endcode
 
 There are known sources of false positives where a memory allocation may

@@ -147,7 +147,7 @@ OPTION_CLIENT_BOOL(client, quiet, false,
 #ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(client, results_to_stderr, false,
                    "Print error reports to stderr in addition to results.txt",
-                   "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  This can make it easier to see which part of an application run raised an error.  However, on Windows 7, this option is only supported from a cygwin shell (either cmd or rxvt window).  In a Windows 7 cmd shell there will be no output (other than the final summary).")
+                   "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.  However, on Windows 7, this option is only supported from a cygwin shell (either cmd or rxvt window).  In a Windows 7 cmd shell there will be no output (other than the final summary).")
 #endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",

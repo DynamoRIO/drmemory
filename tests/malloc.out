@@ -30,24 +30,24 @@ invalid free
 HeapFree failed 87
 %endif
 all done
-:::Dr.Memory::: ERRORS FOUND:
+~~Dr.M~~ ERRORS FOUND:
 %if UNIX
-:::Dr.Memory:::       1 unique,    20 total unaddressable access(es)
+~~Dr.M~~       1 unique,    20 total unaddressable access(es)
 %endif
 %if WINDOWS
 # extra unaddrs from code to avoid app crash on win7
-:::Dr.Memory:::       2 unique,    22 total unaddressable access(es)
+~~Dr.M~~       2 unique,    22 total unaddressable access(es)
 %endif
-:::Dr.Memory:::       2 unique,     2 total uninitialized access(es)
+~~Dr.M~~       2 unique,     2 total uninitialized access(es)
 %if WINDOWS
 # we have an extra test for invalid heap params
-:::Dr.Memory:::       2 unique,     2 total invalid heap argument(s)
+~~Dr.M~~       2 unique,     2 total invalid heap argument(s)
 # we get a warning about heap alloc failing from HeapReAlloc(,NULL,)
-:::Dr.Memory:::       1 unique,     1 total warning(s)
+~~Dr.M~~       1 unique,     1 total warning(s)
 %endif
 %if UNIX
-:::Dr.Memory:::       1 unique,     1 total invalid heap argument(s)
-:::Dr.Memory:::       0 unique,     0 total warning(s)
+~~Dr.M~~       1 unique,     1 total invalid heap argument(s)
+~~Dr.M~~       0 unique,     0 total warning(s)
 %endif
-:::Dr.Memory:::       3 unique,     3 total,    155 byte(s) of leak(s)
-:::Dr.Memory:::       1 unique,     1 total,     16 byte(s) of possible leak(s)
+~~Dr.M~~       3 unique,     3 total,    155 byte(s) of leak(s)
+~~Dr.M~~       1 unique,     1 total,     16 byte(s) of possible leak(s)

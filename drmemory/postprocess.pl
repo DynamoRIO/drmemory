@@ -73,7 +73,7 @@ $usage = "Usage: $0  -x <exe> [-p <prefix>] [-cygwin] [-no_sys_paths]".
     "[-q] [-v] [-suppress <suppress_file>]* [-appid <app identifier>] ".
     "[-drmemdir <subdir>] [-l <logdir> | -aggregate <logdir list>] ".
     "[-nodefault_suppress] \n";
-$default_prefix = ":::Dr.Memory::: ";
+$default_prefix = "~~Dr.M~~ ";
 $prefix = $default_prefix;
 $winsyms_key = ";winsyms";
 $addrcmd = "";
@@ -201,7 +201,7 @@ if ($aggregate) {
 die $usage unless ($logdir ne "");
 die $usage unless ($exename ne "" || $aggregate);
 if ($leaks_only) {
-    $default_prefix = ":::Dr.Heapstat::: ";
+    $default_prefix = "~~Dr.H~~ ";
     # no summary in global log so we must add
     $report_leaks = 1;
 }

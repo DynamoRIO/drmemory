@@ -339,7 +339,7 @@ foreach (line ${lines})
     # ignore Dr. Memory lines for Dr. Heapstat
     # FIXME PR 470723: add Dr. Heapstat-specific tests
     if (NOT TOOL_DR_HEAPSTAT OR
-        NOT "${line}" MATCHES "^:::Dr\\\\.Memory:::")
+        NOT "${line}" MATCHES "^~~Dr\\\\.M~~")
       string(REGEX REPLACE "\r?\n$" "" line "${line}")
       set(msg "stderr failed to match \"${line}\"")
       # try to find what was meant to match

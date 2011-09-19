@@ -371,7 +371,7 @@ sub post_process()
 
     print "app has pid $procid\n" if ($verbose);
 
-    my $prefix = ":::Dr.Heapstat:::";
+    my $prefix = "~~Dr.H~~";
 
     # With PR 408644, the client creates the log dir, to better handle
     # fork+exec -- but that means our post-processing has to go find

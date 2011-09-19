@@ -106,7 +106,7 @@
 # define inline __inline
 # define INLINE_FORCED __forceinline
 /* Use special C99 operator _Pragma to generate a pragma from a macro */
-# if _MSC_VER <= 1200 /* FIXME: __pragma may work w/ vc6: then don't need #if */
+# if _MSC_VER <= 1200 /* XXX: __pragma may work w/ vc6: then don't need #if */
 #  define ACTUAL_PRAGMA(p) _Pragma ( #p )
 # else
 #   define ACTUAL_PRAGMA(p) __pragma ( p )
@@ -184,17 +184,24 @@ extern file_t f_results;
 #endif
 
 /* for notifying user 
- * FIXME: should add messagebox, controlled by option
+ * XXX: should add messagebox, controlled by option
  */
 #ifdef TOOL_DR_MEMORY
-# define PREFIX ":::Dr.Memory::: "
+# define PREFIX_MAIN_THREAD "~~Dr.M~~ "
 #else
-# define PREFIX ":::Dr.Heapstat::: "
+# define PREFIX_MAIN_THREAD "~~Dr.H~~ "
 #endif
+
+void
+print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar);
+
+void
+print_prefix_to_console(void);
+
 #define NOTIFY(...) do { \
     ELOG(0, __VA_ARGS__); \
     if (op_print_stderr) { \
-        PRINT_CONSOLE("%s", PREFIX); \
+        print_prefix_to_console(); \
         PRINT_CONSOLE(__VA_ARGS__); \
     }                                         \
 } while (0)
@@ -208,7 +215,7 @@ extern file_t f_results;
 #define NOTIFY_COND(cond, f, ...) do { \
     ELOGF(0, f, __VA_ARGS__); \
     if ((cond) && op_print_stderr) { \
-        PRINT_CONSOLE("%s", PREFIX); \
+        print_prefix_to_console(); \
         PRINT_CONSOLE(__VA_ARGS__); \
     }                                         \
 } while (0)
