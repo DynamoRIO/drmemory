@@ -305,6 +305,21 @@ print_prefix_to_console(void)
     PRINT_CONSOLE("%s", buf);
 }
 
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+bool
+print_to_cmd(char *buf)
+{
+    /* we avoid buffer size limits in drsym_write_to_console by directly
+     * talking to kernel32 ourselves
+     */
+    uint written;
+    if (!WriteFile(GetStdHandle(STD_ERROR_HANDLE),
+                   buf, (DWORD) strlen(buf), (LPDWORD) &written, NULL))
+        return false;
+    return true;
+}
+#endif
+
 /***************************************************************************
  * STRING PARSING
  *
