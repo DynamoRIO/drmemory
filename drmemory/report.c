@@ -1180,11 +1180,17 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
         }
     }
     NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
-    NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
-                num_suppressions_matched_user, num_suppressions_matched_default);
+    if (options.suppress[0] != '\0') {
+        NOTIFY_COND(notify, f,
+                    "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
+                    num_suppressions_matched_user, num_suppressions_matched_default);
+        if (options.count_leaks) {
+            NOTIFY_COND(notify, f,
+                        "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
+                        num_suppressed_leaks_user, num_suppressed_leaks_default);
+        }
+    }
     if (options.count_leaks) {
-        NOTIFY_COND(notify, f, "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
-                    num_suppressed_leaks_user, num_suppressed_leaks_default);
         /* We simplify the results.txt and stderr view by omitting some details */
         if (print_full_stats) {
             /* Not sending to stderr */
@@ -1624,7 +1630,6 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
 
     reporting = !on_suppression_list(type, &ecs, &spec);
     if (!reporting) {
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
         err->suppressed = true;
         err->suppressed_by_default = spec->is_default;
         err->suppress_spec = spec;
@@ -1633,6 +1638,11 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         else
             num_suppressions_matched_user++;
         num_total[type]--;
+        if (IF_DEBUG_ELSE(options.verbose < 2, true)) {
+            dr_mutex_unlock(error_lock);
+            goto report_error_done;
+        }
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
     } else {
         acquire_error_number(err);
         num_reported_errors++;
@@ -2020,6 +2030,10 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             err->suppress_spec->bytes_leaked += size + indirect_size;
             err->suppressed = true;
             num_total[type]--;
+        }
+        if (IF_DEBUG_ELSE(options.verbose < 2, true)) {
+            dr_mutex_unlock(error_lock);
+            goto report_leak_done;
         }
         BUFPRINT(buf, bufsz, sofar, len, "SUPPRESSED ");
     } else if (maybe_reachable) {

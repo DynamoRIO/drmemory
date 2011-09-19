@@ -641,7 +641,9 @@ sub process_all_errors()
             $found_ignored_start = 1;
             $client_ignored = ""; # reset so we don't accumulate
         } elsif ($found_ignored_start) {
-            if (/^\s*(\d+) (.+)$/) {
+            if (/assumed-innocuous/) {
+                # i#345: only show in logfile
+            } elsif (/^\s*(\d+) (.+)$/) {
                 if (/(\d+) user-suppressed, *(\d+) default-suppressed error/) {
                     $client_suppressed_errors_default = $2;
                     $client_suppressed_errors_user = $1;
@@ -1278,14 +1280,16 @@ sub print_summary($fh, $reset, $summary_only, $print_default_supp)
         print $fh $tmp_lines;
     }
     print $fh $pfx."ERRORS IGNORED:\n";
-    if (!$leaks_only) {
-        printf $fh "%s  %5d user-suppressed, %5d default-suppressed error(s)\n",
-               $pfx, $client_suppressed_errors_user + $post_suppressed_errors_user,
-               $client_suppressed_errors_default + $post_suppressed_errors_default;
+    if ($#supp_syms_file >= 0) {
+        if (!$leaks_only) {
+            printf $fh "%s  %5d user-suppressed, %5d default-suppressed error(s)\n",
+            $pfx, $client_suppressed_errors_user + $post_suppressed_errors_user,
+            $client_suppressed_errors_default + $post_suppressed_errors_default;
+        }
+        printf $fh "%s  %5d user-suppressed, %5d default-suppressed leak(s)\n",
+        $pfx, $client_suppressed_leaks_user + $post_suppressed_leaks_user,
+        $client_suppressed_leaks_default + $post_suppressed_leaks_default;
     }
-    printf $fh "%s  %5d user-suppressed, %5d default-suppressed leak(s)\n",
-               $pfx, $client_suppressed_leaks_user + $post_suppressed_leaks_user,
-               $client_suppressed_leaks_default + $post_suppressed_leaks_default;
     if ($client_ignored ne '') {
         $tmp_lines = $client_ignored;
         $tmp_lines =~ s/^/$default_prefix/msg if ($fh == \*STDERR);

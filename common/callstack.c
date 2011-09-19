@@ -509,7 +509,8 @@ print_file_and_line(symbolized_frame_t *frame IN,
 static void
 print_frame(symbolized_frame_t *frame IN,
             char *buf, size_t bufsz, size_t *sofar,
-            bool use_custom_flags, uint custom_flags)
+            bool use_custom_flags, uint custom_flags,
+            size_t max_func_len)
 {
     ssize_t len = 0;
     size_t align_sym = 0, align_mod = 0, align_moffs = 0;
@@ -517,8 +518,9 @@ print_frame(symbolized_frame_t *frame IN,
 
     if (TEST(PRINT_ALIGN_COLUMNS, flags)) {
         /* XXX: could expose these as options.  could also align "abs <mod+offs>". */
-        align_sym = 35;
-        align_mod = 15;
+        /* Shift alignment to match func name lengths, up to a limit */
+        align_sym = (max_func_len > 0 ? (max_func_len < 70 ? max_func_len : 70) : 35);
+        align_mod = 13; /* 8.3! */
         align_moffs = 6;
     }
 
@@ -684,7 +686,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 {
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
-        print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG);
+        print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG, 0);
         return true;
     }
     return false;
@@ -1336,12 +1338,12 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                        char *buf, size_t bufsz, size_t *sofar)
 {
     uint i;
-    size_t len;
+    ssize_t len;
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
         packed_frame_to_symbolized(pcs, &frame, i);
-        print_frame(&frame, buf, bufsz, sofar, false, 0);
+        print_frame(&frame, buf, bufsz, sofar, false, 0, 0);
         if (op_truncate_below != NULL &&
             text_matches_any_pattern((const char *)frame.func, op_truncate_below, false))
             break;
@@ -1529,9 +1531,17 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
 {
     uint i;
     ssize_t len;
+    size_t max_flen = 0;
     ASSERT(scs != NULL, "invalid args");
+    if (TEST(PRINT_ALIGN_COLUMNS, op_print_flags)) {
+        for (i = 0; i < scs->num_frames; i++) {
+            size_t flen = strlen(scs->frames[i].func);
+            if (flen > max_flen)
+                max_flen = flen;
+        }
+    }
     for (i = 0; i < scs->num_frames; i++) {
-        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0);
+        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0, max_flen);
         if (op_truncate_below != NULL &&
             text_matches_any_pattern(scs->frames[i].func, op_truncate_below, false))
             break;

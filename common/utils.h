@@ -55,9 +55,11 @@
 
 #ifdef DEBUG
 # define IF_DEBUG(x) x
+# define IF_DEBUG_ELSE(x,y) x
 # define _IF_DEBUG(x) , x
 #else
 # define IF_DEBUG(x)
+# define IF_DEBUG_ELSE(x,y) y
 # define _IF_DEBUG(x)
 #endif
 
