@@ -282,6 +282,7 @@ newtest(patterns patterns.c)
 
 if (UNIX)
   newtest(signal signal.c)
+  newtest(unix_syscalls unix_syscalls.c)
   target_link_libraries(signal m)
   if (NOT VMKERNEL)
     # PR 468352: SYS_clone w/o CLONE_SETTLS not supported on ESXi

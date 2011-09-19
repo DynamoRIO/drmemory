@@ -705,15 +705,7 @@ sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg,
                 int argnum, bool pre, byte *start, int sysnum, dr_mcontext_t *mc)
 {
     ptr_uint_t size = 0;
-    if (arg->size == SYSARG_SIZE_CSTRING) {
-        /* FIXME PR 408539: check addressability and definedness of each
-         * byte prior to deref and find end.  (We only need this
-         * on syscall since in user code we'll see the individual
-         * refs (or rep cmps)).
-         * XXX: should use handle_cstring()
-         */
-        size = 0; /* for now */
-    } else if (arg->size == SYSARG_POST_SIZE_RETVAL) {
+    if (arg->size == SYSARG_POST_SIZE_RETVAL) {
         /* XXX: some syscalls (in particular NtGdi* and NtUser*) return
          * the capacity needed when the input buffer is NULL or
          * size of input buffer is given as 0.  For the buffer being NULL

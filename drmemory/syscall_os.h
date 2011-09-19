@@ -62,7 +62,7 @@ enum {
     /* syscall_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.
      */
-    SYSARG_SIZE_CSTRING       = -100,
+    /* <available>            = -100, */
     /* used in repeated syscall_arg_t entry for post-syscall size */
     SYSARG_POST_SIZE_RETVAL   = -101,
     /* size is stored as a field of size 4 bytes with an offset
@@ -87,6 +87,7 @@ enum {
     SYSARG_TYPE_CLSMENUNAME         = 11,
     SYSARG_TYPE_MENUITEMINFOW       = 12,
     SYSARG_TYPE_UNICODE_STRING_NOLEN= 13,
+    SYSARG_TYPE_CSTRING             = 14,
 };
 
 /* We encode the actual size of a write, if it can differ from the

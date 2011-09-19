@@ -249,7 +249,8 @@ safe_strnlen(const char *str, size_t max)
 #define UNKNOWN false
 #define W (SYSARG_WRITE)
 #define R (SYSARG_READ)
-#define CSTRING (SYSARG_SIZE_CSTRING)
+#define CT (SYSARG_COMPLEX_TYPE)
+#define CSTRING (SYSARG_TYPE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_info[] = {
     {0,"restart_syscall", OK, 0,},
@@ -257,24 +258,24 @@ syscall_info_t syscall_info[] = {
     {2,"fork", OK, 0,},
     {3,"read", OK, 3,{{1,-2,W},{1,RET,W},}},
     {4,"write", OK, 3,{{1,-2,R},}},
-    {5,"open", OK, 2,{{0,CSTRING,R},}}, /*special-cased: 3rd arg not always required*/
+    {5,"open", OK, 2,{{0,0,R|CT,CSTRING},}}, /*special-cased: 3rd arg not always required*/
     {6,"close", OK, 1,},
     {7,"waitpid", OK, 3,{{1,sizeof(int),W},}},
-    {8,"creat", OK, 2,{{0,CSTRING,R},}},
-    {9,"link", OK, 2,{{0,CSTRING,R},{1,CSTRING,R},}},
-    {10,"unlink", OK, 1,{{0,CSTRING,R},}},
-    {11,"execve", OK, 3,{{0,CSTRING,R},/* FIXME: char** argv and envp */}},
-    {12,"chdir", OK, 1,{{0,CSTRING,R},}},
+    {8,"creat", OK, 2,{{0,0,R|CT,CSTRING},}},
+    {9,"link", OK, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
+    {10,"unlink", OK, 1,{{0,0,R|CT,CSTRING},}},
+    {11,"execve", OK, 3,{{0,0,R|CT,CSTRING},/* FIXME: char** argv and envp */}},
+    {12,"chdir", OK, 1,{{0,0,R|CT,CSTRING},}},
     {13,"time", OK, 1,{{0,sizeof(time_t),W},}},
-    {14,"mknod", OK, 3,{{0,CSTRING,R},}},
-    {15,"chmod", OK, 2,{{0,CSTRING,R},}},
-    {16,"lchown16", OK, 3,{{0,CSTRING,R},}},
+    {14,"mknod", OK, 3,{{0,0,R|CT,CSTRING},}},
+    {15,"chmod", OK, 2,{{0,0,R|CT,CSTRING},}},
+    {16,"lchown16", OK, 3,{{0,0,R|CT,CSTRING},}},
     {17,"ni_syscall", OK, 0,},
-    {18,"stat", OK, 2,{{0,CSTRING,R},{1,sizeof(struct __old_kernel_stat),W},}},
+    {18,"stat", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct __old_kernel_stat),W},}},
     {19,"lseek", OK, 3,},
     {20,"getpid", OK, 0,},
-    {21,"mount", OK, 5,{{0,CSTRING,R},{1,CSTRING,R},{2,CSTRING,R},/*FIXME: 4 varies: ignore for now*/}},
-    {22,"oldumount", OK, 1,{{0,CSTRING,R},}},
+    {21,"mount", OK, 5,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,0,R|CT,CSTRING},/*FIXME: 4 varies: ignore for now*/}},
+    {22,"oldumount", OK, 1,{{0,0,R|CT,CSTRING},}},
     {23,"setuid16", OK, 1,},
     {24,"getuid16", OK, 0,},
     {25,"stime", OK, 1,{{0,sizeof(time_t),R},}},
@@ -282,17 +283,17 @@ syscall_info_t syscall_info[] = {
     {27,"alarm", OK, 1,},
     {28,"fstat", OK, 2,{{1,sizeof(struct __old_kernel_stat),W},}},
     {29,"pause", OK, 0,},
-    {30,"utime", OK, 2,{{0,CSTRING,R},{1,sizeof(struct utimbuf),R},}},
+    {30,"utime", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct utimbuf),R},}},
     {31,"ni_syscall", OK, 0,},
     {32,"ni_syscall", OK, 0,},
-    {33,"access", OK, 2,{{0,CSTRING,R},}},
+    {33,"access", OK, 2,{{0,0,R|CT,CSTRING},}},
     {34,"nice", OK, 1,},
     {35,"ni_syscall", OK, 0,},
     {36,"sync", OK, 0,},
     {37,"kill", OK, 2,},
-    {38,"rename", OK, 2,{{0,CSTRING,R},{1,CSTRING,R},}},
-    {39,"mkdir", OK, 2,{{0,CSTRING,R},}},
-    {40,"rmdir", OK, 1,{{0,CSTRING,R},}},
+    {38,"rename", OK, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
+    {39,"mkdir", OK, 2,{{0,0,R|CT,CSTRING},}},
+    {40,"rmdir", OK, 1,{{0,0,R|CT,CSTRING},}},
     {41,"dup", OK, 1,},
     {42,"pipe", OK, 1,{{0,2*sizeof(int),W},}},
     {43,"times", OK, 1,{{0,sizeof(struct tms),W},}},
@@ -303,8 +304,8 @@ syscall_info_t syscall_info[] = {
     {48,"signal", OK, 2,},
     {49,"geteuid16", OK, 0,},
     {50,"getegid16", OK, 0,},
-    {51,"acct", OK, 1,{{0,CSTRING,R},}},
-    {52,"umount", OK, 2,{{0,CSTRING,R},}},
+    {51,"acct", OK, 1,{{0,0,R|CT,CSTRING},}},
+    {52,"umount", OK, 2,{{0,0,R|CT,CSTRING},}},
     {53,"ni_syscall", OK, 0,},
     {54,"ioctl", OK, 3,}, /* varies: special-cased below */
     {55,"fcntl", OK, 2,}, /*special-cased: 3rd arg not always required*/
@@ -313,7 +314,7 @@ syscall_info_t syscall_info[] = {
     {58,"ni_syscall", OK, 0,},
     {59,"olduname", OK, 1, /* FIXME: ***Missing prototype*** */ },
     {60,"umask", OK, 1,},
-    {61,"chroot", OK, 1,{{0,CSTRING,R},}},
+    {61,"chroot", OK, 1,{{0,0,R|CT,CSTRING},}},
     {62,"ustat", OK, 2,{{1,sizeof(struct ustat),W},}},
     {63,"dup2", OK, 2,},
     {64,"getppid", OK, 0,},
@@ -335,31 +336,31 @@ syscall_info_t syscall_info[] = {
     {80,"getgroups16", OK, 2,/* FIXME how encode these: {{1,ARG1 * sizeof(vki_old_gid_t),W},{1,RES * sizeof(vki_old_gid_t),W},}*/},
     {81,"setgroups16", OK, 2,/* FIXME how encode these:{{1,ARG1 * sizeof(vki_old_gid_t),R},}*/},
     {82,"old_select", OK, /*FIXME*/},
-    {83,"symlink", OK, 2,{{0,CSTRING,R},{1,CSTRING,R},}},
-    {84,"lstat", OK, 2,{{0,CSTRING,R},{1,sizeof(struct __old_kernel_stat),W},}},
-    {85,"readlink", OK, 3,{{0,CSTRING,R},{1,-2,W},{1,RET,W},}},
-    {86,"uselib", OK, 1,{{0,CSTRING,R},}},
-    {87,"swapon", OK, 2,{{0,CSTRING,R},}},
+    {83,"symlink", OK, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
+    {84,"lstat", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct __old_kernel_stat),W},}},
+    {85,"readlink", OK, 3,{{0,0,R|CT,CSTRING},{1,-2,W},{1,RET,W},}},
+    {86,"uselib", OK, 1,{{0,0,R|CT,CSTRING},}},
+    {87,"swapon", OK, 2,{{0,0,R|CT,CSTRING},}},
     {88,"reboot", OK, 4, /*FIXME: 3 is optional*/},
     {89,"old_readdir", OK, 3,/*FIXME type: {{1,sizeof(struct old_linux_dirent),W},}*/},
     {90,"mmap", OK, /*FIXME*/},
     {91,"munmap", OK, 2,},
-    {92,"truncate", OK, 2,{{0,CSTRING,R},}},
+    {92,"truncate", OK, 2,{{0,0,R|CT,CSTRING},}},
     {93,"ftruncate", OK, 2,},
     {94,"fchmod", OK, 2,},
     {95,"fchown16", OK, 3,},
     {96,"getpriority", OK, 2,},
     {97,"setpriority", OK, 3,},
     {98,"ni_syscall", OK, 0,},
-    {99,"statfs", OK, 2,{{0,CSTRING,R},{1,sizeof(struct statfs),W},}},
+    {99,"statfs", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct statfs),W},}},
     {100,"fstatfs", OK, 2,{{1,sizeof(struct statfs),W},}},
     {101,"ioperm", OK, 3,},
     {102,"socketcall", OK, 2, /* special-cased below */},
     {103,"syslog", OK, 3,{{1,-2,W},}},
     {104,"setitimer", OK, 3,{{1,sizeof(struct itimerval),R},{2,sizeof(struct itimerval),W},}},
     {105,"getitimer", OK, 2,{{1,sizeof(struct itimerval),W},}},
-    {106,"newstat", OK, 2,{{0,CSTRING,R},{1,sizeof(struct stat),W},}},
-    {107,"newlstat", OK, 2,{{0,CSTRING,R},{1,sizeof(struct stat),W},}},
+    {106,"newstat", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat),W},}},
+    {107,"newlstat", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat),W},}},
     {108,"newfstat", OK, 2,{{1,sizeof(struct stat),W},}},
     {109,"uname", OK, 1, /* FIXME: ***Missing prototype*** */ },
     {110,"iopl", OK, 1,},
@@ -367,7 +368,7 @@ syscall_info_t syscall_info[] = {
     {112,"ni_syscall", OK, 0,},
     {113,"vm86old", OK, 1, /* FIXME: ***Missing prototype*** */ },
     {114,"wait4", OK, 4,{{1,sizeof(int),W},{3,sizeof(struct rusage),W},}},
-    {115,"swapoff", OK, 1,{{0,CSTRING,R},}},
+    {115,"swapoff", OK, 1,{{0,0,R|CT,CSTRING},}},
     {116,"sysinfo", OK, 1,{{0,sizeof(struct sysinfo),W},}},
     {117,"ipc", OK, 1, /* special-cased below */ },
     {118,"fsync", OK, 1,},
@@ -380,10 +381,10 @@ syscall_info_t syscall_info[] = {
     {125,"mprotect", OK, 3,},
     {126,"sigprocmask", OK, 3,/*FIXME type: {{1,sizeof(old_sigset_t),R},{2,sizeof(old_sigset_t),W},}*/},
     {127,"ni_syscall", OK, 0,},
-    {128,"init_module", OK, 3,{{0,-1,R},{2,CSTRING,R},}},
-    {129,"delete_module", OK, 2, {{0,CSTRING,R,},}},
+    {128,"init_module", OK, 3,{{0,-1,R},{2,0,R|CT,CSTRING},}},
+    {129,"delete_module", OK, 2, {{0,0,R|CT,CSTRING},}},
     {130,"ni_syscall", OK, 0,},
-    {131,"quotactl", OK, 4,{{1,CSTRING,R}, /* FIXME: #3 varies */}},
+    {131,"quotactl", OK, 4,{{1,0,R|CT,CSTRING}, /* FIXME: #3 varies */}},
     {132,"getpgid", OK, 1,},
     {133,"fchdir", OK, 1,},
     {134,"bdflush", OK, 2,},
@@ -437,7 +438,7 @@ syscall_info_t syscall_info[] = {
     {180,"pread64", OK, 4,{{1,-2,W},{1,RET,W},}},
 /* WARNING: pwrite64 4 != 5 */
     {181,"pwrite64", OK, 4,{{1,-2,R},}},
-    {182,"chown16", OK, 3,{{0,CSTRING,R},}},
+    {182,"chown16", OK, 3,{{0,0,R|CT,CSTRING},}},
     {183,"getcwd", OK, 2,{{0,-1,W},{0,RET,W},}},
     {184,"capget", OK, 2,{{0,sizeof(cap_user_header_t),R},{1,sizeof(cap_user_data_t),W},}},
     {185,"capset", OK, 2,{{0,sizeof(cap_user_header_t),R},{1,sizeof(cap_user_data_t),R},}},
@@ -449,13 +450,13 @@ syscall_info_t syscall_info[] = {
     {191,"getrlimit", OK, 2,{{1,sizeof(struct rlimit),W},}},
     {192,"mmap2", OK, 6,},
 /* WARNING: truncate64 2 != 3 */
-    {193,"truncate64", OK, 2,{{0,CSTRING,R},}},
+    {193,"truncate64", OK, 2,{{0,0,R|CT,CSTRING},}},
 /* WARNING: ftruncate64 2 != 3 */
     {194,"ftruncate64", OK, 2,},
-    {195,"stat64", OK, 2,{{0,CSTRING,R},{1,sizeof(struct stat64),W},}},
-    {196,"lstat64", OK, 2,{{0,CSTRING,R},{1,sizeof(struct stat64),W},}},
+    {195,"stat64", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat64),W},}},
+    {196,"lstat64", OK, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat64),W},}},
     {197,"fstat64", OK, 2,{{1,sizeof(struct stat64),W,}}},
-    {198,"lchown", OK, 3,{{0,CSTRING,R},}},
+    {198,"lchown", OK, 3,{{0,0,R|CT,CSTRING},}},
     {199,"getuid", OK, 0,},
     {200,"getgid", OK, 0,},
     {201,"geteuid", OK, 0,},
@@ -469,7 +470,7 @@ syscall_info_t syscall_info[] = {
     {209,"getresuid", OK, 3,{{0,sizeof(uid_t),W},{1,sizeof(uid_t),W},{2,sizeof(uid_t),W},}},
     {210,"setresgid", OK, 3,},
     {211,"getresgid", OK, 3,{{0,sizeof(gid_t),W},{1,sizeof(gid_t),W},{2,sizeof(gid_t),W},}},
-    {212,"chown", OK, 3,{{0,CSTRING,R},}},
+    {212,"chown", OK, 3,{{0,0,R|CT,CSTRING},}},
     {213,"setuid", OK, 1,},
     {214,"setgid", OK, 1,},
     {215,"setfsuid", OK, 1,},
@@ -483,18 +484,18 @@ syscall_info_t syscall_info[] = {
     {223,"ni_syscall", OK, 0,},
     {224,"gettid", OK, 0,},
     {225,"readahead", OK, 3,},
-    {226,"setxattr", OK, 5,{{0,CSTRING,R},{1,CSTRING,R},{2,-3,R},}},
-    {227,"lsetxattr", OK, 5,{{0,CSTRING,R},{1,CSTRING,R},{2,-3,R},}},
-    {228,"fsetxattr", OK, 5,{{1,CSTRING,R},{2,-3,R},}},
-    {229,"getxattr", OK, 4,{{0,CSTRING,R},{1,CSTRING,R},{2,-3,W},{2,RET,W},}},
-    {230,"lgetxattr", OK, 4,{{0,CSTRING,R},{1,CSTRING,R},{2,-3,W},{2,RET,W},}},
-    {231,"fgetxattr", OK, 4,{{1,CSTRING,R},{2,-3,W},{2,RET,W},}},
-    {232,"listxattr", OK, 3,{{0,CSTRING,R},{1,-2,W},{1,RET,W},}},
-    {233,"llistxattr", OK, 3,{{0,CSTRING,R},{1,-2,W},{1,RET,W},}},
+    {226,"setxattr", OK, 5,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,-3,R},}},
+    {227,"lsetxattr", OK, 5,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,-3,R},}},
+    {228,"fsetxattr", OK, 5,{{1,0,R|CT,CSTRING},{2,-3,R},}},
+    {229,"getxattr", OK, 4,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,-3,W},{2,RET,W},}},
+    {230,"lgetxattr", OK, 4,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,-3,W},{2,RET,W},}},
+    {231,"fgetxattr", OK, 4,{{1,0,R|CT,CSTRING},{2,-3,W},{2,RET,W},}},
+    {232,"listxattr", OK, 3,{{0,0,R|CT,CSTRING},{1,-2,W},{1,RET,W},}},
+    {233,"llistxattr", OK, 3,{{0,0,R|CT,CSTRING},{1,-2,W},{1,RET,W},}},
     {234,"flistxattr", OK, 3,{{1,-2,W},{1,RET,W},}},
-    {235,"removexattr", OK, 2,{{0,CSTRING,R},{1,CSTRING,R},}},
-    {236,"lremovexattr", OK, 2,{{0,CSTRING,R},{1,CSTRING,R},}},
-    {237,"fremovexattr", OK, 2,{{1,CSTRING,R},}},
+    {235,"removexattr", OK, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
+    {236,"lremovexattr", OK, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
+    {237,"fremovexattr", OK, 2,{{1,0,R|CT,CSTRING},}},
     {238,"tkill", OK, 2,},
     {239,"sendfile64", OK, 4,{{2,sizeof(loff_t),W},}},
     {240,"futex", OK, 3,{{0,sizeof(uint),R},}},/*rest are special-cased*/
@@ -527,10 +528,10 @@ syscall_info_t syscall_info[] = {
     {265,"clock_gettime", OK, 2,{{1,sizeof(struct timespec),W},}},
     {266,"clock_getres", OK, 2,{{1,sizeof(struct timespec),W},}},
     {267,"clock_nanosleep", OK, 4,{{2,sizeof(struct timespec),R},{3,sizeof(struct timespec),W},}},
-    {268,"statfs64", OK, 3,{{0,CSTRING,R},{2,-1,W},}},
+    {268,"statfs64", OK, 3,{{0,0,R|CT,CSTRING},{2,-1,W},}},
     {269,"fstatfs64", OK, 3,{{2,-1,W},}},
     {270,"tgkill", OK, 3,},
-    {271,"utimes", OK, 2,{{0,CSTRING,R},{1,2 * sizeof(struct timeval),R},}},
+    {271,"utimes", OK, 2,{{0,0,R|CT,CSTRING},{1,2 * sizeof(struct timeval),R},}},
 /* WARNING: fadvise64_64 4 != 6 */
     {272,"fadvise64_64", OK, 4,},
     {273,"ni_syscall", OK, 0,},
@@ -538,7 +539,7 @@ syscall_info_t syscall_info[] = {
     {275,"get_mempolicy", OK, 5,/*FIXME {{0,sizeof(int),W}, {1,VG_ROUNDUP(ARG3,sizeof(UWord)*8)/sizeof(UWord),W},}*/},
     {276,"set_mempolicy", OK, 3, /*FIXME {{1,VG_ROUNDUP(ARG3,sizeof(UWord))/sizeof(UWord),R},}*/},
     {277,"mq_open", OK, 4, /* FIXME 0,CSTRING,R, 0,****** special-case:  "mq_open(attr->mq_msgsize)", OK, (Addr)&attr->mq_msgsize, sizeof(attr->mq_msgsize),R, 3,sizeof(struct mq_attr),U, */},
-    {278,"mq_unlink", OK, 1,{{0,CSTRING,R},}},
+    {278,"mq_unlink", OK, 1,{{0,0,R|CT,CSTRING},}},
     {279,"mq_timedsend", OK, 5,{{1,-2,R},{4,sizeof(struct timespec),R}},},
     {280,"mq_timedreceive", OK, 5,{{1,-2,W},{3,sizeof(unsigned int),W},{4,sizeof(struct timespec),R}},},
     {281,"mq_notify", OK, 2,{{1,sizeof(struct sigevent),R},}},
@@ -546,30 +547,30 @@ syscall_info_t syscall_info[] = {
     {283,"kexec_load", OK, 4, /* FIXME 2,sizeof(struct kexec_segment),U, */},
     {284,"waitid", OK, 5,{{2,sizeof(struct siginfo),W},{4,sizeof(struct rusage),W},}},
     {285,"ni_syscall", OK, 0,},
-    {286,"add_key", OK, 5,{{0,CSTRING,R},{1,CSTRING,R},{2,-3,R},}},
-    {287,"request_key", OK, 4,{{0,CSTRING,R},{1,CSTRING,R},{2,CSTRING,R},}},
-    {288,"keyctl", OK, 5,{{1,CSTRING,R},{2,-3,R},{2,RET,R},{3,CSTRING,R},}},
+    {286,"add_key", OK, 5,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,-3,R},}},
+    {287,"request_key", OK, 4,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},{2,0,R|CT,CSTRING},}},
+    {288,"keyctl", OK, 5,{{1,0,R|CT,CSTRING},{2,-3,R},{2,RET,R},{3,0,R|CT,CSTRING},}},
     {289,"ioprio_set", OK, 3,},
     {290,"ioprio_get", OK, 2,},
     {291,"inotify_init", OK, 0,},
-    {292,"inotify_add_watch", OK, 3,{{1,CSTRING,R},}},
+    {292,"inotify_add_watch", OK, 3,{{1,0,R|CT,CSTRING},}},
     {293,"inotify_rm_watch", OK, 2,},
     {294,"migrate_pages", OK, 4, /* FIXME 2,sizeof(unsigned long),U, 3,sizeof(unsigned long),U, */},
-    {295,"openat", OK, 4,{{1,CSTRING,R},}},
-    {296,"mkdirat", OK, 3,{{1,CSTRING,R},}},
-    {297,"mknodat", OK, 4,{{1,CSTRING,R},}},
+    {295,"openat", OK, 4,{{1,0,R|CT,CSTRING},}},
+    {296,"mkdirat", OK, 3,{{1,0,R|CT,CSTRING},}},
+    {297,"mknodat", OK, 4,{{1,0,R|CT,CSTRING},}},
 /* WARNING: fchownat 5 != 4 */
-    {298,"fchownat", OK, 5,{{1,CSTRING,R},}},
-    {299,"futimesat", OK, 3,{{1,CSTRING,R},{2,2 * sizeof(struct timeval),R},}},
+    {298,"fchownat", OK, 5,{{1,0,R|CT,CSTRING},}},
+    {299,"futimesat", OK, 3,{{1,0,R|CT,CSTRING},{2,2 * sizeof(struct timeval),R},}},
     {300,"fstatat64", OK, 4, /* FIXME 1,sizeof(char),U, 2,sizeof(struct stat64),U, */},
 /* WARNING: unlinkat 3 != 2 */
-    {301,"unlinkat", OK, 3,{{1,CSTRING,R},}},
-    {302,"renameat", OK, 4,{{1,CSTRING,R},{3,CSTRING,R},}},
-    {303,"linkat", OK, 5,{{1,CSTRING,R},{3,CSTRING,R},}},
-    {304,"symlinkat", OK, 3,{{0,CSTRING,R},{2,CSTRING,R},}},
-    {305,"readlinkat", OK, 4,{{1,CSTRING,R},{2,-3,W},{2,RET,W},}},
-    {306,"fchmodat", OK, 3,{{1,CSTRING,R},}},
-    {307,"faccessat", OK, 3,{{1,CSTRING,R},}},
+    {301,"unlinkat", OK, 3,{{1,0,R|CT,CSTRING},}},
+    {302,"renameat", OK, 4,{{1,0,R|CT,CSTRING},{3,0,R|CT,CSTRING},}},
+    {303,"linkat", OK, 5,{{1,0,R|CT,CSTRING},{3,0,R|CT,CSTRING},}},
+    {304,"symlinkat", OK, 3,{{0,0,R|CT,CSTRING},{2,0,R|CT,CSTRING},}},
+    {305,"readlinkat", OK, 4,{{1,0,R|CT,CSTRING},{2,-3,W},{2,RET,W},}},
+    {306,"fchmodat", OK, 3,{{1,0,R|CT,CSTRING},}},
+    {307,"faccessat", OK, 3,{{1,0,R|CT,CSTRING},}},
     {308,"pselect6", OK, 6, /* special-cased below */},
     {309,"ppoll", OK, 5, /* FIXME 0,sizeof(struct pollfd),U,{2,sizeof(struct timespec),R},{3,sizeof(kernel_sigset_t),R}, 3,****** special-case:  (Addr)(&ufds[i].revents), sizeof(ufds[i].revents),R, */},
     {310,"unshare", OK, 1,},
@@ -582,7 +583,7 @@ syscall_info_t syscall_info[] = {
     {317,"move_pages", OK, 6, /* FIXME 2,sizeof(void),U, 3,sizeof(int),U, 4,sizeof(int),U, */},
     {318,"getcpu", OK, 3, /* FIXME 0,sizeof(unsigned),U, 1,sizeof(unsigned),U, 2,sizeof(struct getcpu_cache),U, */},
     {319,"epoll_pwait", OK, 6,{{1,sizeof(struct epoll_event),W},/*FIXME {1,sizeof(struct epoll_event)*RES,W},*/{4,sizeof(kernel_sigset_t),R},}},
-    {320,"utimensat", OK, 4,{{1,CSTRING,R},{2,2 * sizeof(struct timespec),R},}},
+    {320,"utimensat", OK, 4,{{1,0,R|CT,CSTRING},{2,2 * sizeof(struct timespec),R},}},
     {321,"signalfd", OK, 3,{{1,sizeof(kernel_sigset_t),R},}},
 /* WARNING: timerfd_create 2 != 3 */
     {322,"timerfd_create", OK, 2,},
@@ -601,6 +602,7 @@ syscall_info_t syscall_info[] = {
 #undef UNKNOWN
 #undef W
 #undef R
+#undef CT
 #undef CSTRING
 #undef RET
 
@@ -2644,15 +2646,42 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
     };
 }
 
+static bool
+handle_cstring_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                      uint arg_num,
+                      const syscall_arg_t *arg_info,
+                      app_pc start, uint size/*in bytes*/)
+{
+    return handle_cstring(pre, sysnum, mc, NULL, start, size, arg_info->flags,
+                          NULL,
+                          /* let normal check ensure full size is addressable */
+                          false);
+}
+
+bool
+os_handle_syscall_arg_access(bool pre,
+                             int sysnum, dr_mcontext_t *mc, uint arg_num,
+                             const syscall_arg_t *arg_info,
+                             app_pc start, uint size)
+{
+    if (!TEST(SYSARG_COMPLEX_TYPE, arg_info->flags))
+        return false;
+
+    switch (arg_info->misc) {
+    case SYSARG_TYPE_CSTRING:
+        return handle_cstring_access(pre, sysnum, mc, arg_num,
+                                     arg_info, start, size);
+    }
+    return false;
+}
+
 bool
 os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                                  const syscall_arg_t *arg_info,
                                  app_pc start, uint size)
 {
-    /* we use specific sysnum handlers in os_shadow_{pre,post}_syscall rather than
-     * flags on the general syscall entry tables, so nothing to do here
-     */
-    return false;
+    return os_handle_syscall_arg_access(true/*pre*/, sysnum, mc, arg_num,
+                                        arg_info, start, size);
 }
 
 bool
@@ -2660,10 +2689,8 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size)
 {
-    /* we use specific sysnum handlers in os_shadow_{pre,post}_syscall rather than
-     * flags on the general syscall entry tables, so nothing to do here
-     */
-    return false;
+    return os_handle_syscall_arg_access(false/*!pre*/, sysnum, mc, arg_num,
+                                        arg_info, start, size);
 }
 
 bool
@@ -2682,4 +2709,3 @@ os_syscall_get_name(uint num)
     /* everything's in the table */
     return NULL;
 }
-
