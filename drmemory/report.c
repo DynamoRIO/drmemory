@@ -1940,7 +1940,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         num_reachable_leaks++;
         if (!options.show_reachable)
             return;
-        label = "REACHABLE";
+        label = "REACHABLE ";
     } else if (!known_malloc) {
         /* This is really a curiosity for developers: not an error for
          * addressable memory to remain within a heap region.
@@ -1969,6 +1969,10 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     /* we need to know the type prior to dup checking */
     if (label != NULL) {
         type = ERROR_MAX_VAL;
+#ifdef USE_DRSYMS
+        if (reachable && options.show_reachable)
+            tofile = f_results;
+#endif
     } else if (early && !reachable && options.ignore_early_leaks) {
         /* early reachable are listed as reachable, not ignored */
         label = "IGNORED ";
@@ -2117,7 +2121,8 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     BUFPRINT(buf, bufsz, sofar, len, NL);
     buf_print = buf;
     if ((type == ERROR_LEAK && options.check_leaks) ||
-        (type == ERROR_POSSIBLE_LEAK && options.possible_leaks)) {
+        (type == ERROR_POSSIBLE_LEAK && options.possible_leaks) ||
+        (reachable && options.show_reachable)) {
         ASSERT(pcs != NULL, "malloc must have callstack");
         symbolized_callstack_print(&ecs.scs, buf, bufsz, &sofar, NULL);
         BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);
