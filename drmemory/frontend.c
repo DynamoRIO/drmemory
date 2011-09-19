@@ -271,8 +271,11 @@ process_results_file(const char *logdir, process_id_t pid)
             bool found_summary = false;
             if ((stream = fopen(resfile, "r" )) != NULL) {
                 while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
-                    if (!found_summary)
+                    if (!found_summary) {
                         found_summary = (strstr(line, "ERRORS FOUND:") == line);
+                        if (found_summary)
+                            fprintf(stderr, "%s\r\n", prefix);
+                    }
                     if (found_summary)
                         fprintf(stderr, "%s%s", prefix, line);
                 }

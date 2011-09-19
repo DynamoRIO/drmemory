@@ -1123,7 +1123,8 @@ create_global_logfile(void)
 #endif
     /* make sure "Dr. Memory" is 1st (or 2nd on linux) in file (for PR 453867) */
     print_version(f_global, false);
-    NOTIFY("log dir is %s\n", logsubdir);
+    if (options.verbose > 1)
+        NOTIFY("log dir is %s\n", logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
 #ifdef USE_DRSYMS
@@ -1346,7 +1347,11 @@ dr_init(client_id_t id)
 
     /* now that we know whether -quiet, print basic info */
     NOTIFY("Dr. Memory version %s\n", VERSION_STRING);
-    NOTIFY("options are \"%s\"\n", opstr);
+# ifdef WINDOWS
+    NOTIFY("Running \"%S\"\n", get_app_commandline());
+# endif
+    if (options.verbose > 1)
+        NOTIFY("options are \"%s\"\n", opstr);
 
     /* glibc malloc 8-byte-aligns all its allocs: but 2x redzone_size matches that */
     ASSERT(!options.size_in_redzone || options.redzone_size >= sizeof(size_t),

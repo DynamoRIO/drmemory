@@ -1001,17 +1001,7 @@ report_init(void)
     LOGF(0, f_results, "Dr. Memory results for pid %d: \"%s\""NL,
          dr_get_process_id(), dr_get_application_name());
 # ifdef WINDOWS
-    {
-        PEB *peb = get_app_PEB();
-        if (peb != NULL) {
-            RTL_USER_PROCESS_PARAMETERS *param = (RTL_USER_PROCESS_PARAMETERS *)
-                peb->ProcessParameters;
-            if (param != NULL) {
-                ELOGF(0, f_results, "Application cmdline: \"%S\""NL,
-                     param->CommandLine.Buffer);
-            }
-        }
-    }
+    ELOGF(0, f_results, "Application cmdline: \"%S\""NL, get_app_commandline());
 # endif
     LOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
          dr_get_process_id(), dr_get_application_name());
@@ -1144,7 +1134,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
         }
     }
 
-    dr_fprintf(f, ""NL);
+    NOTIFY_COND(notify IF_DRSYMS(&& options.results_to_stderr), f, NL);
     NOTIFY_COND(notify, f, "ERRORS FOUND:"NL);
     for (i = 0; i < ERROR_MAX_VAL; i++) {
         if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK) {
@@ -1179,29 +1169,32 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
                         num_unique[i], num_total[i], error_name[i]);
         }
     }
-    NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
-    if (options.suppress[0] != '\0') {
-        NOTIFY_COND(notify, f,
-                    "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
-                    num_suppressions_matched_user, num_suppressions_matched_default);
+    if (!options.brief || num_throttled_errors > 0 || num_throttled_leaks > 0)
+        NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
+    if (!options.brief) {
+        if (options.suppress[0] != '\0') {
+            NOTIFY_COND(notify, f,
+                        "  %5d user-suppressed, %5d default-suppressed error(s)"NL,
+                        num_suppressions_matched_user, num_suppressions_matched_default);
+            if (options.count_leaks) {
+                NOTIFY_COND(notify, f,
+                            "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
+                            num_suppressed_leaks_user, num_suppressed_leaks_default);
+            }
+        }
         if (options.count_leaks) {
-            NOTIFY_COND(notify, f,
-                        "  %5d user-suppressed, %5d default-suppressed leak(s)"NL,
-                        num_suppressed_leaks_user, num_suppressed_leaks_default);
-        }
-    }
-    if (options.count_leaks) {
-        /* We simplify the results.txt and stderr view by omitting some details */
-        if (print_full_stats) {
-            /* Not sending to stderr */
-            dr_fprintf(f, "  %5d ignored assumed-innocuous system leak(s)"NL,
-                       num_leaks_ignored);
-        }
-        NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
-                    num_reachable_leaks);
-        if (!options.show_reachable) {
-            NOTIFY_COND(notify, f,
-                        "         (re-run with \"-show_reachable\" for details)"NL);
+            /* We simplify the results.txt and stderr view by omitting some details */
+            if (print_full_stats) {
+                /* Not sending to stderr */
+                dr_fprintf(f, "  %5d ignored assumed-innocuous system leak(s)"NL,
+                           num_leaks_ignored);
+            }
+            NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
+                        num_reachable_leaks);
+            if (!options.show_reachable) {
+                NOTIFY_COND(notify, f,
+                            "         (re-run with \"-show_reachable\" for details)"NL);
+            }
         }
     }
     if (num_throttled_errors > 0) {

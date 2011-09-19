@@ -655,6 +655,19 @@ is_wow64_process(void)
     return dr_is_wow64();
 }
 
+const wchar_t *
+get_app_commandline(void)
+{
+    PEB *peb = get_app_PEB();
+    if (peb != NULL) {
+        RTL_USER_PROCESS_PARAMETERS *param = (RTL_USER_PROCESS_PARAMETERS *)
+            peb->ProcessParameters;
+        if (param != NULL) {
+            return param->CommandLine.Buffer;
+        }
+    }
+    return L"";
+}
 
 bool
 opc_is_in_syscall_wrapper(uint opc)
