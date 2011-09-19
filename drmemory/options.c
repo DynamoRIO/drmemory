@@ -193,9 +193,17 @@ option_read_opstring_t(const char *s, char *word, void *var_in /* really opstrin
                        const char *opname, /*ignored: */int minval, int maxval)
 {
     opstring_t *var = (opstring_t *) var_in;
+    const char *pre_s = s;
     s = get_option_word(s, word);
     if (s == NULL)
         option_error(opname, "missing value");
+    else if (*word == '-') {
+        /* assume an empty value that wasn't double-quoted and so didn't
+         * survive through shell and frontend to us
+         */
+        word = "";
+        s = pre_s;
+    }
     dr_snprintf(*var, BUFFER_SIZE_ELEMENTS(*var), "%s", word);
     NULL_TERMINATE_BUFFER(*var);
     return s;

@@ -47,6 +47,12 @@ static size_t op_fp_scan_sz;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
 static const char * (*op_get_syscall_name)(uint);
 static bool (*op_is_dword_defined)(byte *);
+static const char *op_truncate_below;
+static const char *op_modname_hide;
+static const char *op_srcfile_prefix;
+static const char *op_srcfile_hide;
+
+#define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
 
 /* PR 454536: to avoid races we read a page all at once */
 static void *page_buf_lock;
@@ -114,6 +120,8 @@ typedef struct _modname_info_t {
      * names; else -1
      */
     int index;
+    /* i#589: don't show module! for executable or other modules */
+    bool hide_modname;
 #ifdef DEBUG
     /* Avoid repeated warnings about symbols */
     bool warned_no_syms;
@@ -203,6 +211,8 @@ struct _symbolized_frame_t {
      * "system call ..." in func.  is_module distinguishes.
      */
     bool is_module;
+    /* i#589: don't show module! for executable or other modules */
+    bool hide_modname;
     char modname[MAX_MODULE_LEN+1]; /* always null-terminated */
     /* This is a string instead of a number, again for comparison w/ wildcards
      * in the modoffs in suppression frames
@@ -244,7 +254,11 @@ void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
                const char *(*get_syscall_name)(uint),
-               bool (*is_dword_defined)(byte *))
+               bool (*is_dword_defined)(byte *),
+               const char *callstack_truncate_below,
+               const char *callstack_modname_hide,
+               const char *callstack_srcfile_hide,
+               const char *callstack_srcfile_prefix)
 {
     op_max_frames = callstack_max_frames;
     op_stack_swap_threshold = stack_swap_threshold;
@@ -253,6 +267,10 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_print_flags = print_flags;
     op_get_syscall_name = get_syscall_name;
     op_is_dword_defined = is_dword_defined;
+    op_truncate_below = callstack_truncate_below;
+    op_modname_hide = callstack_modname_hide;
+    op_srcfile_hide = callstack_srcfile_hide;
+    op_srcfile_prefix = callstack_srcfile_prefix;
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
@@ -291,6 +309,11 @@ callstack_thread_init(void *drcontext)
      */
     pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
     pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_CALLSTACK);
+#ifdef WINDOWS
+    if (get_TEB() != NULL) {
+        pt->stack_lowest_frame = get_TEB()->StackBase;
+    } 
+#endif
 }
 
 void
@@ -308,6 +331,7 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     frame->num = frame_num;
     memset(&frame->loc, 0, sizeof(frame->loc));
     frame->is_module = false;
+    frame->hide_modname = false;
     frame->modname[0] = '\0';
     frame->modoffs[0] = '\0';
     frame->func[0] = '?';
@@ -434,13 +458,28 @@ print_file_and_line(symbolized_frame_t *frame IN,
 {
     ssize_t len = 0;
     /* XXX: add option for printing "[]" if field not present? */
-    if (frame->fname[0] != '\0') {
+    if (frame->fname[0] != '\0' &&
+        /* i#589: support hiding source files matching pattern */
+        (op_srcfile_hide == NULL ||
+         !text_matches_any_pattern(frame->fname, op_srcfile_hide, IGNORE_FILE_CASE))) {
+        const char *fname = frame->fname;
         if (TEST(PRINT_SRCFILE_NEWLINE, print_flags))
             BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX);
         else
             BUFPRINT(buf, bufsz, *sofar, len, " [");
-        BUFPRINT(buf, bufsz, *sofar, len, "%."STRINGIFY(MAX_FILENAME_LEN)"s",
-                 frame->fname);
+        if (op_srcfile_prefix != NULL) {
+            /* i#575: support truncating source file prefix */
+            const char *matched;
+            const char *match =
+                text_contains_any_string(fname, op_srcfile_prefix,
+                                         IGNORE_FILE_CASE, &matched);
+            if (match != NULL) {
+                fname = match + strlen(matched);
+                if (fname[0] == '/' || fname[0] == '\\')
+                    fname++;
+            }
+        }
+        BUFPRINT(buf, bufsz, *sofar, len, "%."STRINGIFY(MAX_FILENAME_LEN)"s", fname);
         if (!TEST(PRINT_SRCFILE_NO_COLON, print_flags))
             BUFPRINT(buf, bufsz, *sofar, len, ":");
         else /* windbg format */
@@ -497,8 +536,12 @@ print_frame(symbolized_frame_t *frame IN,
             ASSERT(frame->func[0] == '<' /* "<not in a module>" */, "inconsistency");
     } else {
         if (!TEST(PRINT_SYMBOL_FIRST, flags)) {
-            BUFPRINT(buf, bufsz, *sofar, len, "%s!%-*s", frame->modname,
-                     align_sym, frame->func);
+            if (!frame->hide_modname)
+                BUFPRINT(buf, bufsz, *sofar, len, "%s!", frame->modname);
+            else
+                align_mod += strlen(frame->modname) + 1 /*!*/;
+            BUFPRINT(buf, bufsz, *sofar, len, "%-*s",
+                     align_mod + align_sym - strlen(frame->modname), frame->func);
         } else
             BUFPRINT(buf, bufsz, *sofar, len, "%-*s", align_sym, frame->func);
         if (TEST(PRINT_SYMBOL_OFFSETS, flags))
@@ -599,9 +642,10 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
             const char *modname = (name_info->name == NULL) ?
                 "<name unavailable>" : name_info->name;
             frame->is_module = true;
+            frame->hide_modname = name_info->hide_modname;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
-            dr_snprintf(frame->modoffs, MAX_MODULE_LEN, PIFX, pc - mod_start);
+            dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, pc - mod_start);
             NULL_TERMINATE_BUFFER(frame->modoffs);
 #ifdef USE_DRSYMS
             if (name_info->path != NULL) {
@@ -737,6 +781,7 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
      * use try/except there like on Linux?
      * Should we also store the stack bounds and then we know when
      * to stop instead of incurring a fault on every callstack?
+     * XXX: should support partial safe read for invalid page next to stack 
      */
     if (safe_read((app_pc)ALIGN_BACKWARD(fp, PAGE_SIZE), PAGE_SIZE, page_buf)) {
         app_pc buf_pg = (app_pc) ALIGN_BACKWARD(fp, PAGE_SIZE);
@@ -745,10 +790,17 @@ find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/
         app_pc slot0 = 0, slot1;
         bool match, match_next_frame, fp_defined = false;
         size_t ret_offs = TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) ? sizeof(app_pc) : 0;
+        app_pc stop = tos + op_fp_scan_sz;
+#ifdef WINDOWS
+        /* if on original thread stack, stop at limit (i#588) */
+        TEB *teb = get_TEB();
+        if (teb != NULL && fp >= (app_pc)teb->StackLimit && fp < (app_pc)teb->StackBase)
+            stop = (app_pc)teb->StackBase;
+#endif
         /* Scan one page worth and look for potential fp,retaddr pair */
         STATS_INC(find_next_fp_scans);
         /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) */
-        for (sp = tos; sp - tos < op_fp_scan_sz; sp+=sizeof(app_pc)) {
+        for (sp = tos; sp < stop; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
             if (retaddr != NULL)
@@ -1253,6 +1305,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
             const char *modname = (info->name == NULL) ?
                 "<name unavailable>" : info->name;
             frame->is_module = true;
+            frame->hide_modname = info->hide_modname;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
@@ -1289,6 +1342,9 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
         packed_frame_to_symbolized(pcs, &frame, i);
         print_frame(&frame, buf, bufsz, sofar, false, 0);
+        if (op_truncate_below != NULL &&
+            text_matches_any_pattern((const char *)frame.func, op_truncate_below, false))
+            break;
     }
     if (num_frames == 0)
         BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
@@ -1476,6 +1532,9 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
     ASSERT(scs != NULL, "invalid args");
     for (i = 0; i < scs->num_frames; i++) {
         print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0);
+        if (op_truncate_below != NULL &&
+            text_matches_any_pattern(scs->frames[i].func, op_truncate_below, false))
+            break;
     }
     BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
 }
@@ -1558,6 +1617,10 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->name = drmem_strdup(name, HEAPSTAT_HASHTABLE);
         name_info->path = drmem_strdup(info->full_path, HEAPSTAT_HASHTABLE);
         name_info->index = modname_array_end; /* store first index if multi-entry */
+        /* we cache this value to avoid re-matching on every frame */
+        name_info->hide_modname =
+            (op_modname_hide != NULL &&
+             text_matches_any_pattern(name_info->name, op_modname_hide, IGNORE_FILE_CASE));
 #ifdef DEBUG
         name_info->warned_no_syms = false;
 #endif

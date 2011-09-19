@@ -38,7 +38,6 @@
 # include <errno.h>
 #endif
 #include <limits.h>
-#include <ctype.h> /* for tolower */
 
 static uint error_id; /* errors + leaks */
 static uint num_reported_errors;
@@ -724,55 +723,6 @@ write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic)
 #endif
 
 static bool
-text_matches_pattern(const char *text, const char *pattern,
-                     bool ignore_case)
-{
-    /* Match text with pattern and return the result.
-     * The pattern may contain '*' and '?' wildcards.
-     */
-    const char *cur_text = text,
-               *text_last_asterisk = NULL,
-               *pattern_last_asterisk = NULL;
-    char cmp_cur, cmp_pat;
-    while (*cur_text != '\0') {
-        cmp_cur = *cur_text;
-        cmp_pat = *pattern;
-        if (ignore_case) {
-            cmp_cur = (char) tolower(cmp_cur);
-            cmp_pat = (char) tolower(cmp_pat);
-        }
-        if (*pattern == '*') {
-            while (*++pattern == '*') {
-                /* Skip consecutive '*'s */
-            }
-            if (*pattern == '\0') {
-                /* the pattern ends with a series of '*' */
-                LOG(5, "    text_matches_pattern \"%s\" == \"%s\"\n", text, pattern);
-                return true;
-            }
-            text_last_asterisk = cur_text;
-            pattern_last_asterisk = pattern;
-        } else if ((cmp_cur == cmp_pat) || (*pattern == '?')) {
-            ++cur_text;
-            ++pattern;
-        } else if (text_last_asterisk != NULL) {
-            /* No match. But we have seen at least one '*', so go back
-             * and try at the next position.
-             */
-            pattern = pattern_last_asterisk;
-            cur_text = text_last_asterisk++;
-        } else {
-            LOG(5, "    text_matches_pattern \"%s\" != \"%s\"\n", text, pattern);
-            return false;
-        }
-    }
-    while (*pattern == '*')
-        ++pattern;
-    LOG(4, "    text_matches_pattern \"%s\": end at \"%.5s\"\n", text, pattern);
-    return *pattern == '\0';
-}
-
-static bool
 top_frame_matches_suppression_frame(const error_callstack_t *ecs,
                                     uint idx,
                                     const suppress_frame_t *supp)
@@ -928,6 +878,27 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
 
 /***************************************************************************/
 
+#ifdef USE_DRSYMS
+/* converts a ,-separated string to null-separated w/ double null at end */
+static void
+convert_commas_to_nulls(char *buf, size_t bufsz)
+{
+    /* ensure double-null-terminated */
+    char *c = buf + strlen(buf) + 1;
+    if (c - buf >= bufsz - 1) {
+        ASSERT(false, "callstack_truncate_below too big");
+        c -= 2; /* put 2nd null before orig null */
+    }
+    *c = '\0';
+    /* convert from ,-separated to separate strings */
+    c = strchr(buf, ',');
+    while (c != NULL) {
+        *c = '\0';
+        c = strchr(c + 1, ',');
+    }
+}
+#endif
+
 static void
 print_timestamp(file_t f, uint64 timestamp, const char *prefix)
 {
@@ -976,12 +947,24 @@ report_init(void)
     print_timestamp(f_global, timestamp_start, "start time");
 
     error_lock = dr_mutex_create();
- 
+
     hashtable_init_ex(&error_table, ERROR_HASH_BITS, HASH_CUSTOM,
                       false/*!str_dup*/, false/*using error_lock*/,
                       (void (*)(void*)) stored_error_free,
                       (uint (*)(void*)) stored_error_hash,
                       (bool (*)(void*, void*)) stored_error_cmp);
+
+#ifdef USE_DRSYMS
+    /* callstack.c wants these as null-separated, double-null-terminated */
+    convert_commas_to_nulls(options.callstack_truncate_below,
+                            BUFFER_SIZE_ELEMENTS(options.callstack_truncate_below));
+    convert_commas_to_nulls(options.callstack_modname_hide,
+                            BUFFER_SIZE_ELEMENTS(options.callstack_modname_hide));
+    convert_commas_to_nulls(options.callstack_srcfile_hide,
+                            BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_hide));
+    convert_commas_to_nulls(options.callstack_srcfile_prefix,
+                            BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix));
+#endif
 
     /* must be BEFORE read_suppression_file (PR 474542) */
     callstack_init(options.callstack_max_frames,
@@ -997,7 +980,21 @@ report_init(void)
                    options.callstack_max_scan,
                    IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
                    get_syscall_name,
-                   options.shadowing ? is_dword_defined : NULL);
+                   options.shadowing ? is_dword_defined : NULL,
+#ifdef USE_DRSYMS
+                   /* pass NULL since callstack.c uses that as quick check */
+                   (options.callstack_truncate_below[0] == '\0') ? NULL :
+                   options.callstack_truncate_below,
+                   (options.callstack_modname_hide[0] == '\0') ? NULL :
+                   options.callstack_modname_hide,
+                   (options.callstack_srcfile_hide[0] == '\0') ? NULL :
+                   options.callstack_srcfile_hide,
+                   (options.callstack_srcfile_prefix[0] == '\0') ? NULL :
+                   options.callstack_srcfile_prefix
+#else
+                   NULL, NULL, NULL, NULL
+#endif
+                   );
 
 #ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();

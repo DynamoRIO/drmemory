@@ -614,13 +614,23 @@ char *
 drmem_strndup(const char *src, size_t max, heapstat_t type);
 
 /***************************************************************************
- * OPTIONS
+ * STRINGS
  */
 
 #define MAX_OPTION_LEN MAXIMUM_PATH
 
 const char *
 get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
+
+bool
+text_matches_pattern(const char *text, const char *pattern, bool ignore_case);
+
+bool
+text_matches_any_pattern(const char *text, const char *patterns, bool ignore_case);
+
+const char *
+text_contains_any_string(const char *text, const char *patterns, bool ignore_case,
+                         const char **matched);
 
 /***************************************************************************
  * HASHTABLE

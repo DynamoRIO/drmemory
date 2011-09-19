@@ -527,7 +527,7 @@ int main(int argc, char *argv[])
                 no_resfile = true;
             /* pass to client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-                     cliops_sofar, len, "%s ", argv[i]);
+                     cliops_sofar, len, "`%s` ", argv[i]);
         }
     }
 

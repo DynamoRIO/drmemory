@@ -183,6 +183,27 @@ OPTION_CLIENT(client, callstack_style, uint, 0x101, 0, 0x1ff,
               "<li>0x0040 = @&file @ line@& instead of @&file:line@&@@"
               "<li>0x0080 = @&symbol library@& instead of @&library!symbol@&@@"
               "<li>0x0100 = put fields in aligned columns</ul>@@")
+              /* (when adding, update the max value as well!) */
+
+#ifdef TOOL_DR_MEMORY
+# ifdef USE_DRSYMS /* NYI for postprocess */
+/* _REPEATABLE would take too much capacity and too much option string space to
+ * specify more than one or two.
+ */
+OPTION_CLIENT_STRING(client, callstack_truncate_below, "main",
+                     ",-separated list of function names at which to truncate callstacks",
+                     "Callstacks will be truncated at any frame that matches any of these ,-separated function names.  The function names can contain * or ? wildcards.")
+OPTION_CLIENT_STRING(client, callstack_modname_hide, "*.exe",
+                     ",-separated list of module names to hide in callstack frames",
+                     "Callstack frames will not list module names matching any of these ,-separated patterns.  The names can contain * or ? wildcards.")
+OPTION_CLIENT_STRING(client, callstack_srcfile_hide, "",
+                     ",-separated list of source file paths to hide in callstack frames",
+                     "Callstack frames will not list source file paths matching any of these ,-separated patterns.  The paths can contain * or ? wildcards.")
+OPTION_CLIENT_STRING(client, callstack_srcfile_prefix, "",
+                     ",-separated list of path prefixes to remove",
+                     "Callstack frame source paths that match any of these ,-separated prefixes will be printed without the leading portion up to and including the match.")
+# endif
+#endif
 
 /* by default scan forward a fraction of a page: good compromise bet perf (scanning
  * can be the bottleneck) and good callstacks

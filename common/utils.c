@@ -37,6 +37,7 @@
 # include <string.h>
 #endif
 #include <stddef.h> /* for offsetof */
+#include <ctype.h> /* for tolower */
 
 /* globals that affect NOTIFY* and *LOG* macros */
 bool op_print_stderr = true;
@@ -276,18 +277,9 @@ hashtable_delete_with_stats(hashtable_t *table, const char *name)
 }
 
 /***************************************************************************
- * OPTION PARSING
+ * STRING PARSING
  *
  */
-
-#ifdef LINUX
-/* FIXME: i#30: provide safe libc routines like we do on Windows */
-static int
-isspace(int c)
-{
-    return (c == ' ' || c == '\t');
-}
-#endif
 
 const char *
 get_option_word(const char *s, char buf[MAX_OPTION_LEN])
@@ -312,6 +304,111 @@ get_option_word(const char *s, char buf[MAX_OPTION_LEN])
         return NULL;
     else
         return s;
+}
+
+bool
+text_matches_pattern(const char *text, const char *pattern,
+                     bool ignore_case)
+{
+    /* Match text with pattern and return the result.
+     * The pattern may contain '*' and '?' wildcards.
+     */
+    const char *cur_text = text,
+               *text_last_asterisk = NULL,
+               *pattern_last_asterisk = NULL;
+    char cmp_cur, cmp_pat;
+    while (*cur_text != '\0') {
+        cmp_cur = *cur_text;
+        cmp_pat = *pattern;
+        if (ignore_case) {
+            cmp_cur = (char) tolower(cmp_cur);
+            cmp_pat = (char) tolower(cmp_pat);
+        }
+        if (*pattern == '*') {
+            while (*++pattern == '*') {
+                /* Skip consecutive '*'s */
+            }
+            if (*pattern == '\0') {
+                /* the pattern ends with a series of '*' */
+                LOG(5, "    text_matches_pattern \"%s\" == \"%s\"\n", text, pattern);
+                return true;
+            }
+            text_last_asterisk = cur_text;
+            pattern_last_asterisk = pattern;
+        } else if ((cmp_cur == cmp_pat) || (*pattern == '?')) {
+            ++cur_text;
+            ++pattern;
+        } else if (text_last_asterisk != NULL) {
+            /* No match. But we have seen at least one '*', so go back
+             * and try at the next position.
+             */
+            pattern = pattern_last_asterisk;
+            cur_text = text_last_asterisk++;
+        } else {
+            LOG(5, "    text_matches_pattern \"%s\" != \"%s\"\n", text, pattern);
+            return false;
+        }
+    }
+    while (*pattern == '*')
+        ++pattern;
+    LOG(4, "    text_matches_pattern \"%s\": end at \"%.5s\"\n", text, pattern);
+    return *pattern == '\0';
+}
+
+/* patterns is a null-separated, double-null-terminated list of strings */
+bool
+text_matches_any_pattern(const char *text, const char *patterns, bool ignore_case)
+{
+    const char *c = patterns;
+    while (*c != '\0') {
+        if (text_matches_pattern(text, c, ignore_case))
+            return true;
+        c += strlen(c) + 1;
+    }
+    return false;
+}
+
+/* not available in ntdll CRT so we supply our own */
+static const char *
+strcasestr(const char *text, const char *pattern)
+{
+    const char *cur_text, *cur_pattern, *root;
+    cur_text = text;
+    root = text;
+    cur_pattern = pattern;
+    while (true) {
+        if (*cur_pattern == '\0')
+            return root;
+        if (*cur_text == '\0')
+            return NULL;
+        if ((char)tolower(*cur_text) == (char)tolower(*cur_pattern)) {
+            cur_text++;
+            cur_pattern++;
+        } else {
+            root++;
+            cur_text = root;
+            cur_pattern = pattern;
+        }
+    }
+}
+
+/* patterns is a null-separated, double-null-terminated list of strings */
+const char *
+text_contains_any_string(const char *text, const char *patterns, bool ignore_case,
+                         const char **matched)
+{
+    const char *c = patterns;
+    while (*c != '\0') {
+        const char *match =
+            ignore_case ? strcasestr(text, c) : strstr(text, c);
+        if (match != NULL) {
+            if (matched != NULL)
+                *matched = c;
+            return match;
+        }
+        c += strlen(c) + 1;
+    }
+    return NULL;
 }
 
 /***************************************************************************

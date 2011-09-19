@@ -121,7 +121,7 @@ enum {
 
 /* Options for how to display callstacks.
  * N.B.: postprocess.pl has a duplicate copy (once we have linux online syms
- * that will go away) so keep them in sync
+ * that will go away), as does optionsx.h, so keep them in sync
  */
 enum {
     PRINT_FRAME_NUMBERS        = 0x0001,
@@ -184,7 +184,11 @@ void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
                const char *(*get_syscall_name)(uint),
-               bool (*is_dword_defined)(byte *));
+               bool (*is_dword_defined)(byte *),
+               const char *frame_truncate_below,
+               const char *callstack_modname_hide,
+               const char *callstack_srcfile_hide,
+               const char *callstack_srcfile_prefix);
 
 void
 callstack_exit(void);

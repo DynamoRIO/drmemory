@@ -225,7 +225,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   if (TOOL_DR_HEAPSTAT)
     # XXX: this works manually but doesn't seem to get through ctest: but
     # the test is passing so not taking the time to figure it out
-    set(postcmd "${cmd_base};-view_leaks;-callstack_style 0x21;-x;${exepath};-profdir")
+    set(postcmd "${cmd_base};-view_leaks;-callstack_modname_hide '';-callstack_style 0x21;-x;${exepath};-profdir")
   else (TOOL_DR_HEAPSTAT)
     if (postprocess)
       # test -skip_results + -results (PR 575481)
@@ -339,16 +339,21 @@ if (NOT TOOL_DR_HEAPSTAT)
     set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
   # test multiple supp files (i#574)
-  newtest_nobuild(suppress suppress ""
-    "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF)
+  if (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB};-callstack_modname_hide;;" "" OFF)
+  else (USE_DRSYMS)
+    newtest_nobuild(suppress suppress ""
+      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF)
+  endif (USE_DRSYMS)
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF)
-  newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF)
+  newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF)
+  newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF)
 
   set(nudge_test_args "")
 
