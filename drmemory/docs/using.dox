@@ -356,12 +356,8 @@ The instruction is printed out in an error report in a \p Note: field.  For
 example:
 \code
 Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
-@0:00:01.500 in thread 1776
-Note: next higher malloc: 0x001338e8-0x00133938
-Note: prev lower malloc:  0x001337e8-0x00133820
-Note: 0x001338a8-0x001338ac overlaps freed memory 0x00133898-0x001338d4
-Note: instruction: mov    (%eax) -> %eax 
 ...
+Note: instruction: mov    (%eax) -> %eax
 \endcode
 
 A suppression can contain an \p instruction= line after the error type line
@@ -478,46 +474,65 @@ whether the target address is inside a region that has been freed.  For
 example, here is a sample error report:
 
 \code
-Error #1: UNADDRESSABLE ACCESS: reading 0x08e574b3-0x08e574b4 1 byte(s)
-Elapsed time = 0:00:00.130 in thread 8156
-Note: prev lower malloc:  0x08e574b0-0x08e574b3
-Note: instruction: movzx  (%eax) -> %eax 
-# 0 malloc!main                                     [/home/bruening/drmemory/git/src/tests/malloc.c:96]
-# 1 libc.so.6!__libc_start_main                     [/build/buildd/eglibc-2.11.1/csu/libc-start.c:226]
-# 2 malloc!_start                                  
+Error #1: UNADDRESSABLE ACCESS: reading 0x000a720b-0x000a720c 1 byte(s)
+# 0 main                            [e:\derek\drmemory\git\src\tests\malloc.c:96]
+Note: @0:00:01.500 in thread 3808
+Note: refers to 1 byte(s) beyond last valid byte in prior malloc
+Note: prev lower malloc:  0x000a7208-0x000a720b
+Note: instruction: mov    0x03(%edx) -> %al
 \endcode
 
-The \p callstack_style option can be used to customize how callstacks are
-printed out.  Here is another style for the same callstack:
-
-\code
-Error #1: UNADDRESSABLE ACCESS: reading 0x08e574b3-0x08e574b4 1 byte(s)
-Elapsed time = 0:00:00.1310in thread 8156
-Note: prev lower malloc:  0x08e574b0-0x08e574b3
-Note: instruction: movzx  (%eax) -> %eax 
-# 0 malloc!main (0x08048906 <malloc+0x906>)
-    /home/bruening/drmemory/git/src/tests/malloc.c:96
-# 1 malloc!_start (0x08048751 <malloc+0x751>)
-    ??:0
-\endcode
-
-Note how the "prev lower malloc" ends at 0x08e574b3 just before the invalid
-address 0x08e574b4, indicating a read that went one byte too far.
+Note how the "prev lower malloc" ends at 0x000a720b just before the invalid
+address, indicating a read that went one byte too far, as indicated.
 
 Here is another example:
 
 \code
 Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
-@0:00:01.500 in thread 1776
+# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
+# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: @0:00:02.141 in thread 3024
 Note: next higher malloc: 0x001338e8-0x00133938
 Note: prev lower malloc:  0x001337e8-0x00133820
-Note: 0x001338a8-0x001338ac overlaps freed memory 0x00133898-0x001338d4
-Note: instruction: mov    (%eax) -> %eax 
-# 0 suppress.exe!unaddr_test1                        [e:\derek\drmemory\git\src\tests\suppress.c:110]
-# 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:269]
-# 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
-# 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
-# 4 KERNEL32.dll!BaseProcessStart                   
+Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
+Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: instruction: mov    (%eax) -> %eax
+\endcode
+
+The \p -brief option provides less information but may be easier to read:
+
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
+# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
+# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: refers to memory that was freed here:
+Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+\endcode
+
+The \p callstack_style option can be used to customize how callstacks are
+printed out.  Here is another style for the same callstack (without -brief):
+
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+# 0 unaddr_test1 (0x0040130b <suppress.exe+0x130b>)
+    e:\derek\drmemory\git\src\tests\suppress.c:110
+# 1 test (0x0040112d <suppress.exe+0x112d>)
+    e:\derek\drmemory\git\src\tests\suppress.c:269
+# 2 main (0x0040107e <suppress.exe+0x107e>)
+    e:\derek\drmemory\git\src\tests\suppress.c:297
+Note: @0:00:01.453 in thread 4088
+Note: next higher malloc: 0x001338e8-0x00133938
+Note: prev lower malloc:  0x001337e8-0x00133820
+Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
+Note: # 0 test (0x00401121 <suppress.exe+0x1121>)
+Note:     e:\derek\drmemory\git\src\tests\suppress.c:269
+Note: # 1 main (0x0040107e <suppress.exe+0x107e>)
+Note:     e:\derek\drmemory\git\src\tests\suppress.c:297
+Note: instruction: mov    (%eax) -> %eax
 \endcode
 
 In this case Dr. Memory is able to report that the target address is inside

@@ -318,6 +318,9 @@ OPTION_CLIENT_SCOPE(drmemscope, delay_frees, uint, 2000, 0, UINT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, delay_frees_maxsz, uint, 20000000, 0, UINT_MAX,
                     "Maximum size of frees to delay before committing",
                     "Maximum size of frees to delay before committing.  The larger this number, the greater the likelihood that "TOOLNAME" will identify use-after-free errors.  However, the larger this number, the more memory will be used.  This value is separate for each set of allocation routines.")
+OPTION_CLIENT_BOOL(drmemscope, delay_frees_stack, false,
+                   "Record callstacks on free to use when reporting use-after-free",
+                   "Record callstacks on free to use when reporting use-after-free or other errors that overlap with freed objects.  There is a slight performance hit incurred by this feature for malloc-intensive applications.")
 OPTION_CLIENT_BOOL(drmemscope, leaks_only, false,
                    "Check only for leaks and not memory access errors",
                    "Puts "TOOLNAME" into a leak-check-only mode that has lower overhead but does not detect other types of errors other than invalid frees.")

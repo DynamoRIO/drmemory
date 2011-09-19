@@ -58,8 +58,6 @@ static const char *op_srcfile_hide;
 static void *page_buf_lock;
 static char page_buf[PAGE_SIZE];
 
-static const char *end_marker = IF_DRSYMS_ELSE("", "\terror end"NL);
-
 #ifdef WINDOWS
 # define FP_PREFIX ""
 #else
@@ -240,14 +238,12 @@ max_callstack_size(void)
 {
     static const char *max_line = "\tfp=0x12345678 parent=0x12345678 0x12345678 <>"NL;
     size_t max_addr_sym_len = MAX_ADDR_LEN;
-    size_t additional_len = strlen(end_marker);
 #ifdef USE_DRSYMS
     max_addr_sym_len += 1/*' '*/ + MAX_SYMBOL_LEN + 1/*\n*/ +
         strlen(LINE_PREFIX) + MAX_FILE_LINE_LEN;
-    additional_len = 0; /* no end marker */
 #endif
     return ((op_max_frames+1)/*for the ... line: over-estimate*/
-            *(strlen(max_line)+max_addr_sym_len)) + additional_len + 1/*null*/;
+            *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
 
 void
@@ -306,8 +302,9 @@ callstack_thread_init(void *drcontext)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     /* PR 456181: we need our error reports to use a single atomic write.
      * We use a thread-private buffer to avoid using stack space or locks.
+     * We can have a second callstack for delayed frees (i#205).
      */
-    pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
+    pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size() * 2;
     pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_CALLSTACK);
 #ifdef WINDOWS
     if (get_TEB() != NULL) {
@@ -454,7 +451,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
 static void
 print_file_and_line(symbolized_frame_t *frame IN,
                     char *buf, size_t bufsz, size_t *sofar,
-                    uint print_flags)
+                    uint print_flags, const char *prefix)
 {
     ssize_t len = 0;
     /* XXX: add option for printing "[]" if field not present? */
@@ -463,9 +460,10 @@ print_file_and_line(symbolized_frame_t *frame IN,
         (op_srcfile_hide == NULL ||
          !text_matches_any_pattern(frame->fname, op_srcfile_hide, IGNORE_FILE_CASE))) {
         const char *fname = frame->fname;
-        if (TEST(PRINT_SRCFILE_NEWLINE, print_flags))
-            BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX);
-        else
+        if (TEST(PRINT_SRCFILE_NEWLINE, print_flags)) {
+            BUFPRINT(buf, bufsz, *sofar, len, NL"%s"LINE_PREFIX,
+                     prefix == NULL ? "" : prefix);
+        } else
             BUFPRINT(buf, bufsz, *sofar, len, " [");
         if (op_srcfile_prefix != NULL) {
             /* i#575: support truncating source file prefix */
@@ -510,11 +508,14 @@ static void
 print_frame(symbolized_frame_t *frame IN,
             char *buf, size_t bufsz, size_t *sofar,
             bool use_custom_flags, uint custom_flags,
-            size_t max_func_len)
+            size_t max_func_len, const char *prefix)
 {
     ssize_t len = 0;
     size_t align_sym = 0, align_mod = 0, align_moffs = 0;
     uint flags = use_custom_flags ? custom_flags : op_print_flags;
+
+    if (prefix != NULL)
+        BUFPRINT(buf, bufsz, *sofar, len, "%s", prefix);
 
     if (TEST(PRINT_ALIGN_COLUMNS, flags)) {
         /* XXX: could expose these as options.  could also align "abs <mod+offs>". */
@@ -553,7 +554,7 @@ print_frame(symbolized_frame_t *frame IN,
 
         /* if file+line are inlined, put before abs+mod!offs */
         if (!TEST(PRINT_SRCFILE_NEWLINE, flags))
-            print_file_and_line(frame, buf, bufsz, sofar, flags);
+            print_file_and_line(frame, buf, bufsz, sofar, flags, prefix);
     }
 
     if ((frame->loc.type == APP_LOC_PC && TEST(PRINT_ABS_ADDRESS, flags)) ||
@@ -574,7 +575,7 @@ print_frame(symbolized_frame_t *frame IN,
     /* if file+line are on separate line, put after abs+mod!offs */
     if (TEST(PRINT_SRCFILE_NEWLINE, flags)) {
         if (frame->is_module) {
-            print_file_and_line(frame, buf, bufsz, sofar, flags);
+            print_file_and_line(frame, buf, bufsz, sofar, flags, prefix);
         } else if (frame->loc.type == APP_LOC_PC) {
             BUFPRINT(buf, bufsz, *sofar, len, NL""LINE_PREFIX"??:0");
         }
@@ -686,7 +687,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 {
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
-        print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG, 0);
+        print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG, 0, NULL);
         return true;
     }
     return false;
@@ -1068,8 +1069,6 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     if (pt != NULL && lowest_frame > pt->stack_lowest_frame)
         pt->stack_lowest_frame = lowest_frame;
 
-    if (buf != NULL)
-        BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
     if (buf != NULL) {
         buf[bufsz-2] = '\n';
         buf[bufsz-1] = '\0';
@@ -1330,26 +1329,23 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
 }
 
 /* 0 for num_frames means to print them all prefixed with tabs and
- * absolute addresses, and to print an end marker.
+ * absolute addresses.
  * otherwise num_frames indicates the number of frames to be printed.
  */
 void
 packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
-                       char *buf, size_t bufsz, size_t *sofar)
+                       char *buf, size_t bufsz, size_t *sofar, const char *prefix)
 {
     uint i;
-    ssize_t len;
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
         packed_frame_to_symbolized(pcs, &frame, i);
-        print_frame(&frame, buf, bufsz, sofar, false, 0, 0);
+        print_frame(&frame, buf, bufsz, sofar, false, 0, 0, prefix);
         if (op_truncate_below != NULL &&
             text_matches_any_pattern((const char *)frame.func, op_truncate_below, false))
             break;
     }
-    if (num_frames == 0)
-        BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
 }
 
 void
@@ -1385,7 +1381,7 @@ packed_callstack_log(packed_callstack_t *pcs, file_t f)
         buf = pt->errbuf;
         bufsz = pt->errbufsz;
     }
-    packed_callstack_print(pcs, 0, buf, bufsz, &sofar);
+    packed_callstack_print(pcs, 0, buf, bufsz, &sofar, NULL);
     if (f == INVALID_FILE)
         LOG_LARGE(0, buf);
     else
@@ -1527,10 +1523,9 @@ packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2])
 
 void
 symbolized_callstack_print(const symbolized_callstack_t *scs IN,
-                           char *buf, size_t bufsz, size_t *sofar)
+                           char *buf, size_t bufsz, size_t *sofar, const char *prefix)
 {
     uint i;
-    ssize_t len;
     size_t max_flen = 0;
     ASSERT(scs != NULL, "invalid args");
     if (TEST(PRINT_ALIGN_COLUMNS, op_print_flags)) {
@@ -1541,12 +1536,11 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
         }
     }
     for (i = 0; i < scs->num_frames; i++) {
-        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0, max_flen);
+        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0, max_flen, prefix);
         if (op_truncate_below != NULL &&
             text_matches_any_pattern(scs->frames[i].func, op_truncate_below, false))
             break;
     }
-    BUFPRINT(buf, bufsz, *sofar, len, "%s", end_marker);
 }
 
 void

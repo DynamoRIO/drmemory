@@ -156,7 +156,7 @@ option_read_uint(const char *s, char *word, void *var_in /* really uint* */,
     uint *var = (uint *) var_in;
     ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
     s = get_option_word(s, word);
-    if (s == NULL)
+    if (s == NULL || word[0] == '\0')
         option_error(opname, "missing value");
     /* %u allows negative so we explicitly check */
     if (word[0] == '-')
@@ -164,7 +164,7 @@ option_read_uint(const char *s, char *word, void *var_in /* really uint* */,
     /* allow hex: must read it first, else 0 in 0x will be taken */
     if (sscanf(word, "0x%x", var) != 1 &&
         sscanf(word, "%u", var) != 1)
-        option_error(opname, "");
+        option_error(opname, "invalid unsigned integer");
     if (*var < minval || *var > maxval)
         option_error(opname, "value is outside allowed range");
     return s;
@@ -177,12 +177,12 @@ option_read_int(const char *s, char *word, void *var_in /* really int* */,
     int *var = (int *) var_in;
     ASSERT(s != NULL && word != NULL && var != NULL && opname != NULL, "invalid param");
     s = get_option_word(s, word);
-    if (s == NULL)
+    if (s == NULL || word[0] == '\0')
         option_error(opname, "missing value");
     /* allow hex: must read it first, else 0 in 0x will be taken */
     if (sscanf(word, "0x%x", var) != 1 &&
         sscanf(word, "%d", var) != 1)
-        option_error(opname, "");
+        option_error(opname, "invalid integer");
     if (*var < minval || *var > maxval)
         option_error(opname, "value is outside allowed range");
     return s;

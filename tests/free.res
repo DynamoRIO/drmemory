@@ -20,11 +20,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+free.c:46
 prev lower malloc
 that was freed
-free.c:46
 
 Error #2: UNADDRESSABLE ACCESS: writing 1 byte(s)
+free.c:53
 # whether have "prev lower malloc" is nondet
 that was freed
-free.c:53

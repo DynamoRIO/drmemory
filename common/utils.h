@@ -619,6 +619,8 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
  * STRINGS
  */
 
+#define END_MARKER IF_DRSYMS_ELSE("", "\terror end"NL)
+
 #define MAX_OPTION_LEN MAXIMUM_PATH
 
 const char *

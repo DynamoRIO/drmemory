@@ -62,6 +62,9 @@ void
 check_reachability(bool at_exit);
 
 bool
-overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end);
+overlaps_delayed_free(byte *start, byte *end,
+                      byte **free_start OUT,
+                      byte **free_end OUT,
+                      packed_callstack_t **pcs OUT);
 
 #endif /* _ALLOC_DRMEM_H_ */

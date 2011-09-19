@@ -673,7 +673,8 @@ dump_callstack(packed_callstack_t *pcs, per_callstack_t *per,
      * currently synchronize
      */
     BUFPRINT(buf, bufsz, *sofar, len, "CALLSTACK %u\n", per->id);
-    packed_callstack_print(pcs, 0, buf, bufsz, sofar);
+    packed_callstack_print(pcs, 0, buf, bufsz, sofar, NULL);
+    BUFPRINT(buf, bufsz, *sofar, len, "%s", END_MARKER);
     print_buffer(f_callstack, buf);
 }
 
@@ -896,6 +897,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
  */
 app_pc
 client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
+                   app_pc free_routine,
                    void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     return real_base;

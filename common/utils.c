@@ -300,7 +300,7 @@ get_option_word(const char *s, char buf[MAX_OPTION_LEN])
     if (quoted && *s == endquote)
         s++;
     buf[i] = '\0';
-    if (i == 0)
+    if (i == 0 && *s == '\0')
         return NULL;
     else
         return s;

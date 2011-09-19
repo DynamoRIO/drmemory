@@ -218,7 +218,7 @@ packed_callstack_first_frame_retaddr(packed_callstack_t *pcs);
 
 void
 packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
-                       char *buf, size_t bufsz, size_t *sofar);
+                       char *buf, size_t bufsz, size_t *sofar, const char *prefix);
 
 #ifdef DEBUG
 void
@@ -275,7 +275,7 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
 
 void
 symbolized_callstack_print(const symbolized_callstack_t *scs IN,
-                           char *buf, size_t bufsz, size_t *sofar);
+                           char *buf, size_t bufsz, size_t *sofar, const char *prefix);
 
 void
 symbolized_callstack_free(symbolized_callstack_t *scs);

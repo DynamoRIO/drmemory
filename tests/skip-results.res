@@ -20,8 +20,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-Note: prev lower malloc
 malloc.c:96
+Note: prev lower malloc
 Error #2: UNINITIALIZED READ
 malloc.c:106
 Error #3: UNINITIALIZED READ

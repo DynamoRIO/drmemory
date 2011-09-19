@@ -81,6 +81,8 @@ typedef struct _delay_free_t {
     ptr_int_t auxarg;
 #endif
     size_t real_size; /* includes redzones */
+    bool has_redzone;
+    packed_callstack_t *pcs; /* i#205 for reporting where freed */
 } delay_free_t;
 
 /* We need a separate free queue per malloc routine (PR 476805) */
@@ -182,9 +184,7 @@ void
 alloc_drmem_exit(void)
 {
     alloc_exit(); /* must be before deleting alloc_stack_table */
-    LOG(1, "final alloc stack table size: %u bits, %u entries\n",
-        alloc_stack_table.table_bits, alloc_stack_table.entries);
-    hashtable_delete(&alloc_stack_table);
+    hashtable_delete_with_stats(&alloc_stack_table, "alloc stack table");
 #ifdef LINUX
     hashtable_delete(&sighand_table);
     rb_tree_destroy(mmap_tree);
@@ -286,11 +286,9 @@ alloc_callstack_free(void *p)
 }
 
 void
-client_malloc_data_free(void *data)
+shared_callstack_free(packed_callstack_t *pcs)
 {
-    packed_callstack_t *pcs = (packed_callstack_t *) data;
     uint count;
-    ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
     if (pcs == NULL)
         return;
     count = packed_callstack_free(pcs);
@@ -304,9 +302,17 @@ client_malloc_data_free(void *data)
     }
 }
 
-void *
-client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
-                      void *existing_data, dr_mcontext_t *mc, app_pc post_call)
+void
+client_malloc_data_free(void *data)
+{
+    packed_callstack_t *pcs = (packed_callstack_t *) data;
+    ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
+    shared_callstack_free(pcs);
+}
+
+static packed_callstack_t *
+get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
+                     app_pc post_call)
 {
     /* XXX i#75: when the app has a ton of mallocs that are quickly freed,
      * we spend a lot of time building and tearing down callstacks
@@ -320,8 +326,6 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
      */
     packed_callstack_t *pcs;
     packed_callstack_t *existing;
-    if (!options.count_leaks)
-        return NULL;
     if (existing_data != NULL)
         pcs = (packed_callstack_t *) existing_data;
     else {
@@ -360,7 +364,17 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
      * and the refcount hits 1 we remove from alloc_stack_table.
      */
     packed_callstack_add_ref(pcs);
-    return (void *) pcs;
+    return pcs;
+}
+
+void *
+client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
+                      void *existing_data, dr_mcontext_t *mc, app_pc post_call)
+{
+    if (!options.count_leaks)
+        return NULL;
+    return (void *)
+        get_shared_callstack((packed_callstack_t *)existing_data, mc, post_call);
 }
 
 void
@@ -529,7 +543,13 @@ client_remove_malloc_routine(void *client_data)
     /* We assume no lock is needed on destroy */
     if (options.delay_frees > 0) {
         delay_free_info_t *info = (delay_free_info_t *) client_data;
+        int i;
         ASSERT(info != NULL, "invalid param");
+        for (i = 0; i < info->delay_free_fill; i++) {
+            if (info->delay_free_list[i].addr != NULL) {
+                shared_callstack_free(info->delay_free_list[i].pcs);
+            }
+        }
         global_free(info->delay_free_list,
                     options.delay_frees * sizeof(*info->delay_free_list), HEAPSTAT_MISC);
         global_free(info, sizeof(*info), HEAPSTAT_MISC);
@@ -585,6 +605,8 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
             pass_to_free + info->delay_free_list[idx].real_size
             _IF_WINDOWS(auxarg == NULL ? 0 : *auxarg));
     }
+    shared_callstack_free(info->delay_free_list[idx].pcs);
+    info->delay_free_list[idx].pcs = NULL;
     return pass_to_free;
 }
 
@@ -593,6 +615,7 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
  */
 app_pc
 client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
+                   app_pc free_routine,
                    void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     report_malloc(base, base+size, "free", mc);
@@ -614,6 +637,8 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
         ptr_int_t pass_auxarg;
 #endif
         size_t real_size;
+        uint idx;
+        bool full;
         ASSERT(info != NULL, "invalid param");
         dr_mutex_lock(delay_free_lock);
         /* Store real base and real size: i.e., including redzones (PR 572716) */
@@ -680,31 +705,19 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             }
         }
 
-        rb_insert(delay_free_tree, real_base, real_size, (void *)(base == real_base));
-        LOG(2, "inserted into delay_free_tree (queue idx=%d): "PFX
-            "-"PFX" %d bytes no-redzone=%d\n",
+        LOG(2, "inserting into delay_free_tree (queue idx=%d): "PFX
+            "-"PFX" %d bytes redzone=%d\n",
             DELAY_FREE_FULL(info) ? info->delay_free_head : info->delay_free_fill,
-            real_base, real_base + real_size, real_size, base == real_base);
+            real_base, real_base + real_size, real_size, base != real_base);
 
         if (DELAY_FREE_FULL(info)) {
+            full = true;
             if (pass_to_free == NULL) {
                 pass_to_free = next_to_free(info, info->delay_free_head
                                             _IF_WINDOWS(&pass_auxarg),
                                             "delayed free queue full");
             }
-            info->delay_free_list[info->delay_free_head].addr = real_base;
-#ifdef WINDOWS
-            /* should we be doing safe_read() and safe_write()? */
-            if (auxarg != NULL) {
-                info->delay_free_list[info->delay_free_head].auxarg = *auxarg;
-                *auxarg = pass_auxarg;
-            } else {
-                info->delay_free_list[info->delay_free_head].auxarg = 0;
-                ASSERT(pass_auxarg == 0, "whether using auxarg should be consistent");
-            }
-#endif
-            info->delay_free_list[info->delay_free_head].real_size = real_size;
-            STATS_ADD(delayed_free_bytes, real_size);
+            idx = info->delay_free_head;
             info->delay_free_head++;
             if (info->delay_free_head >= options.delay_frees)
                 info->delay_free_head = 0;
@@ -714,22 +727,39 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                 info->delay_free_fill, real_base, real_base + real_size
                 _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
             ASSERT(info->delay_free_fill <= options.delay_frees - 1, "internal error");
-            info->delay_free_list[info->delay_free_fill].addr = real_base;
-#ifdef WINDOWS
-            /* should we be doing safe_read() and safe_write()? */
-            if (auxarg != NULL)
-                info->delay_free_list[info->delay_free_fill].auxarg = *auxarg;
-            else
-                info->delay_free_list[info->delay_free_fill].auxarg = 0;
-#endif
-            info->delay_free_list[info->delay_free_fill].real_size = real_size;
-            STATS_ADD(delayed_free_bytes, size);
+            full = false;
+            idx = info->delay_free_fill;
             info->delay_free_fill++;
             /* Rather than try to engineer a return, we continue on w/
              * pass_to_free as NULL which free() is guaranteed to handle
              */
-            STATS_ADD(delayed_free_bytes, (uint)real_size);
         }
+
+        rb_insert(delay_free_tree, real_base, real_size,
+                  (void *)&info->delay_free_list[idx]);
+
+        info->delay_free_list[idx].addr = real_base;
+#ifdef WINDOWS
+        /* should we be doing safe_read() and safe_write()? */
+        if (auxarg != NULL) {
+            info->delay_free_list[idx].auxarg = *auxarg;
+            if (full)
+                *auxarg = pass_auxarg;
+        } else {
+            info->delay_free_list[idx].auxarg = 0;
+            if (full)
+                ASSERT(pass_auxarg == 0, "whether using auxarg should be consistent");
+        }
+#endif
+        info->delay_free_list[idx].real_size = real_size;
+        info->delay_free_list[idx].has_redzone = (base != real_base);
+        if (options.delay_frees_stack)
+            info->delay_free_list[idx].pcs = get_shared_callstack(NULL, mc, free_routine);
+        else
+            info->delay_free_list[idx].pcs = NULL;
+
+        STATS_ADD(delayed_free_bytes, (uint)real_size);
+
         dr_mutex_unlock(delay_free_lock);
         return pass_to_free;
     }
@@ -762,6 +792,8 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
             else
                 ASSERT(false, "delay_free_tree inconsistent");
             info->delay_free_list[i].addr = NULL;
+            shared_callstack_free(info->delay_free_list[i].pcs);
+            info->delay_free_list[i].pcs = NULL;
             num_removed++;
         }
     }
@@ -772,7 +804,10 @@ client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
 #endif
 
 bool
-overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end)
+overlaps_delayed_free(byte *start, byte *end,
+                      byte **free_start OUT,
+                      byte **free_end OUT,
+                      packed_callstack_t **pcs OUT)
 {
     bool res = false;
     rb_node_t *node;
@@ -788,16 +823,14 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
          */
         app_pc real_base;
         size_t size;
-        union {
-            void *pad_out; /* rb_node_fields will write void*-sized bytes! (i#508) */
-            bool no_redzone;
-        } client;
+        delay_free_t *info;
         size_t redsz;
-        rb_node_fields(node, &real_base, &size, (void **)&client);
-        redsz = (client.no_redzone ? 0 : options.redzone_size);
+        rb_node_fields(node, &real_base, &size, (void **)&info);
+        ASSERT(info != NULL, "invalid free tree info");
+        redsz = (info->has_redzone ? options.redzone_size : 0);
         LOG(3, "\toverlap real base: "PFX", size: %d, redzone: %d\n",
             real_base, size, redsz);
-        if (!client.no_redzone ||
+        if (info->has_redzone ||
             (start < real_base + size - options.redzone_size &&
              end > real_base + options.redzone_size)) {
             res = true;
@@ -806,6 +839,12 @@ overlaps_delayed_free(byte *start, byte *end, byte **free_start, byte **free_end
             /* size is the app-asked-for-size */
             if (free_end != NULL)
                 *free_end = real_base + size - redsz;
+            if (pcs != NULL) {
+                if (info->pcs == NULL)
+                    *pcs = NULL;
+                else
+                    *pcs = packed_callstack_clone(info->pcs);
+            }
         }
     }
     dr_mutex_unlock(delay_free_lock);

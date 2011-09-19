@@ -693,8 +693,8 @@ sub process_one_error($raw_error_lines_array_ref)
         my $supp = parse_error($lines, $err_str);
         $error_cache{$err_str}{"type"} = $error{"type"};
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
-        lookup_addr();
-        my ($err_str_ref, $err_cstack_ref) = generate_error_info();
+        my @symlines = lookup_addr(\%error);
+        my ($err_str_ref, $err_cstack_ref) = generate_error_info(\%error, \@symlines);
         my $is_default;
 
         # If the error passes the source filter and doesn't match
@@ -856,6 +856,7 @@ sub parse_error($arr_ref, $err_str)
     my ($lines, $err_str) = @_;
     my $supp = "";
     $error{"aux_info"} = "";
+    my $process_free_cstack = 0;
     foreach $line (@{$lines}) {
         # We ignore the error # since symbol-based suppressions can
         # eliminate errors from the middle, except for including
@@ -863,7 +864,7 @@ sub parse_error($arr_ref, $err_str)
         # We must include all the text after the error type to match
         # the client's output for online syms (xref PR 540913)
         if ($line =~ /^Error #\s*(\d+)+: (UN\w+\s+\w+)(:.*)$/ ||
-            $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(:.*)$/ ||
+            $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (REPORTED WARNING:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+.*)$/) {
@@ -874,9 +875,12 @@ sub parse_error($arr_ref, $err_str)
             $error{"addr"} = [];
             $error{"modoffs"} = [];
             $error{"is_module"} = [];
+            $free{"addr"} = [];
+            $free{"modoffs"} = [];
+            $free{"is_module"} = [];
             $supp .= "$2\n";
             if ($line =~ /^Error #\s*\d+: UN\w+\s+\w+:/ ||
-                $line =~ /^Error #\s*\d+: INVALID HEAP ARGUMENT:/ ||
+                $line =~ /^Error #\s*\d+: INVALID HEAP ARGUMENT/ ||
                 $line =~ /^Error #\s*\d+: REPORTED WARNING:/) {
                 if ($line =~ /^Error #\s*\d+: REPORTED WARNING:\s+(.*)$/) {
                     # strip the REPORTED from the msg
@@ -893,12 +897,32 @@ sub parse_error($arr_ref, $err_str)
             } else {
                 die "Unrecognized error type: $line";
             }
-        } elsif ($line =~ /^@(\S+) in thread (\d+)/) {
+        } elsif ($line =~ /^  info: @(\S+) in thread (\d+)/) {
             $error{"time"} = $1;
             $error{"thread"} = $2;
         } elsif ($line =~ /^  info: (.*)$/) {
             # additional info (PR 535568)
-            $error{"aux_info"} .= "Note: $1\n";
+            my $info = $1;
+            # a callstack for freed memory (i#205)
+            if ($info =~ /^#\s*\d+\s+\S+!\?\s*\((\w+)\s+(<[^>]+>)\)/) {
+                if ($1 ne "0x00000000") {
+                    $process_free_cstack = 1;
+                    push @{$free{"addr"}}, $1;
+                    push @{$free{"modoffs"}}, $2;
+                    push @{$free{"is_module"}}, 1;
+                }
+            } else {
+                if ($process_free_cstack) {
+                    my @symlines = lookup_addr(\%free);
+                    my ($err_str_ref, $err_cstack_ref) =
+                        generate_callstack(\%error, \@symlines);
+                    my $aux_cstack = ${$err_str_ref};
+                    $aux_cstack =~ s/^/Note: /msg;
+                    $error{"aux_info"} .= $aux_cstack;
+                    $process_free_cstack = 0;
+                }
+                $error{"aux_info"} .= "Note: $info\n";
+            }
         } elsif ($line =~ /^#\s*\d+\s+(system\s+call\s+.+)$/) {
             my $txt = $1;
             $txt =~ s/\s+$//; # remove trailing whitespace including \r
@@ -921,22 +945,31 @@ sub parse_error($arr_ref, $err_str)
             $supp .= "$2\n";
         }
     }
+    if ($process_free_cstack) {
+        my @symlines = lookup_addr(\%free);
+        my ($err_str_ref, $err_cstack_ref) =
+            generate_callstack(\%error, \@symlines);
+        my $aux_cstack = ${$err_str_ref};
+        $aux_cstack =~ s/^/Note: /msg;
+        $error{"aux_info"} .= $aux_cstack;
+        $process_free_cstack = 0;
+    }
     $supp =~ s/REPORTED WARNING/WARNING/;
     return $supp;
 }
 
 #-------------------------------------------------------------------------------
-# Looks up the addresses associated with one error, which is defined in the 
-# global hash %error by parse_error().
+# Looks up the addresses associated with one error
 #
-sub lookup_addr()
+sub lookup_addr($error_ref)
 {
+    my ($error) = @_;
     my $module = "";
     my $off = 0;
     @symlines = ();
-    $num_frames = scalar @{$error{"addr"}};
+    my $num_frames = scalar @{${$error}{"addr"}};
     for ($a=0; $a<$num_frames; $a++) {
-        my $modoffs = $error{"modoffs"}[$a];
+        my $modoffs = ${$error}{"modoffs"}[$a];
         my $symout = '';
         # PR 543863: subtract one from retaddrs in callstacks so the line#
         # is for the call and not for the next source code line, but only
@@ -952,11 +985,11 @@ sub lookup_addr()
         }
 
         # To use offset with addr2line needs to be relative to section.
-        if ($error{"modoffs"}[$a] =~ /<(.*)\+0x([a-f0-9]+)>/) {
+        if (${$error}{"modoffs"}[$a] =~ /<(.*)\+0x([a-f0-9]+)>/) {
             $module = $1;
             $offs = hex($2);
-        } elsif ($error{"addr"}[$a] =~ /^system\s+call/) {
-            push @symlines, $error{"addr"}[$a];
+        } elsif (${$error}{"addr"}[$a] =~ /^system\s+call/) {
+            push @symlines, ${$error}{"addr"}[$a];
             push @symlines, "<system call>";
             next;
         } else {
@@ -1036,6 +1069,7 @@ sub lookup_addr()
         push @symlines, $symfile_cache{$modoffs}{"symbol"};
         push @symlines, $symfile_cache{$modoffs}{"file"};
     }
+    return @symlines;
 }
 
 #-------------------------------------------------------------------------------
@@ -1043,8 +1077,30 @@ sub lookup_addr()
 # array references (both can be large, so no point in copying these around for
 # hundreds of callstacks - references are efficient).
 #
-sub generate_error_info()
+sub generate_error_info($error_ref, $symlines_ref)
 {
+    my ($error, $symlines) = @_;
+    my $err_str = "";
+
+    $err_str = "$prefix\n";
+    # numbytes and aux_info are currently only for the 1st unique (PR 423750
+    # covers providing such info for dups)
+    $err_str .= $prefix."Error \#$errnum: ".${$error}{"name"}.${$error}{"details"}."\n";
+
+    my ($err_str_ref, $err_cstack_ref) = generate_callstack($error, $symlines);
+    $err_str .= ${$err_str_ref};
+
+    # When aggregating we'll just take the first timestamp + thread id
+    $err_str .= $prefix."Note: elapsed time = ".${$error}{"time"}.
+        " in thread ".${$error}{"thread"}."\n" if (defined(${$error}{"time"}));
+    $err_str .= ${$error}{"aux_info"};
+
+    return \$err_str, $err_cstack_ref;
+}
+
+sub generate_callstack($error_ref, $symlines_ref)
+{
+    my ($error, $symlines) = @_;
     my $err_str = "";
     my @err_cstack = ();
 
@@ -1068,15 +1124,7 @@ sub generate_error_info()
         $align_modsym = 47;
     }
 
-    $num_frames = scalar @{$error{"addr"}};
-    $err_str = "$prefix\n";
-    # numbytes and aux_info are currently only for the 1st unique (PR 423750
-    # covers providing such info for dups)
-    $err_str .= $prefix."Error \#$errnum: ".$error{"name"}.$error{"details"}."\n";
-    # When aggregating we'll just take the first timestamp + thread id
-    $err_str .= $prefix."Elapsed time = ".$error{"time"}.
-        " in thread ".$error{"thread"}."\n" if (defined($error{"time"}));
-    $err_str .= $error{"aux_info"};
+    my $num_frames = scalar @{${$error}{"addr"}};
     if ($num_frames == 0) {
         $err_str .= $prefix."<no callstack available>\n";
     } else {
@@ -1085,11 +1133,11 @@ sub generate_error_info()
             if ($callstack_style & $PRINT_FRAME_NUMBERS) {
                 $err_str .= sprintf("#%2d ", $a);
             }
-            my $modfunc = "$symlines[$a*2]";
-            my $fileline = $symlines[$a*2+1];
-            if (!$error{"is_module"}[$a]) {
-                my $label = ($error{"addr"}[$a] =~ /^system\s+call/) ?
-                    $error{"addr"}[$a] : "<not in a module>";
+            my $modfunc = "${$symlines}[$a*2]";
+            my $fileline = ${$symlines}[$a*2+1];
+            if (!${$error}{"is_module"}[$a]) {
+                my $label = (${$error}{"addr"}[$a] =~ /^system\s+call/) ?
+                    ${$error}{"addr"}[$a] : "<not in a module>";
                 $err_str .= sprintf("%-*s", $align_modsym, $label);
                 # $fileline already either "<system call>" or "?:0"
             } else {
@@ -1104,36 +1152,36 @@ sub generate_error_info()
                     $fileline =~ s/:/ @ /;
                 }
                 if (!($callstack_style & $PRINT_SRCFILE_NEWLINE)) {
-                    if ($symlines[$a*2+1] ne '??:0') {
+                    if (${$symlines}[$a*2+1] ne '??:0') {
                         $err_str .= " ["."$fileline"."]";
                     }
                 }
             }
-            if (($error{"addr"}[$a] !~ /^system\s+call/ &&
+            if ((${$error}{"addr"}[$a] !~ /^system\s+call/ &&
                  ($callstack_style & $PRINT_ABS_ADDRESS)) ||
-                ($error{"is_module"}[$a] &&
+                (${$error}{"is_module"}[$a] &&
                  ($callstack_style & $PRINT_MODULE_OFFSETS))) {
                 $err_str .= " (";
-                if ($error{"addr"}[$a] !~ /^system\s+call/ &&
+                if (${$error}{"addr"}[$a] !~ /^system\s+call/ &&
                     ($callstack_style & $PRINT_ABS_ADDRESS)) {
-                    $err_str .= $error{"addr"}[$a];
-                    if ($error{"is_module"}[$a] &&
+                    $err_str .= ${$error}{"addr"}[$a];
+                    if (${$error}{"is_module"}[$a] &&
                         ($callstack_style & $PRINT_MODULE_OFFSETS)) {
                         $err_str .= " ";
                     }
                 }
-                if ($error{"is_module"}[$a] &&
+                if (${$error}{"is_module"}[$a] &&
                     ($callstack_style & $PRINT_MODULE_OFFSETS)) {
-                    $err_str .= $error{"modoffs"}[$a];
+                    $err_str .= ${$error}{"modoffs"}[$a];
                 }
                 $err_str .= ")";
             }
-            if ($error{"addr"}[$a] =~ /^system\s+call/) {
-                push @err_cstack, $error{"addr"}[$a];
+            if (${$error}{"addr"}[$a] =~ /^system\s+call/) {
+                push @err_cstack, ${$error}{"addr"}[$a];
             } else {
-                $modoffs = $error{"modoffs"}[$a];
+                $modoffs = ${$error}{"modoffs"}[$a];
                 $modoffs =~ s/<(.*)>/$1/;
-                $func = $symlines[$a*2];
+                $func = ${$symlines}[$a*2];
                 # for vmk mod+offs may not have mod but mod!func will (PR 363063)
                 if ($modoffs =~ /^\+/ && $func =~ /^(.+)!/) {
                     $modoffs = $1.$modoffs;

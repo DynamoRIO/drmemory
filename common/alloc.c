@@ -3219,7 +3219,11 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
 
         ASSERT(routine->set != NULL, "free must be part of set");
         change_base = client_handle_free
-            (base, size, real_base, mc, routine->set->client
+            /* if we pass routine->pc, we can miss a frame b/c call_site may
+             * be at top of stack with ebp pointing to its parent frame.
+             * developer doesn't need to see explicit free() frame, right?
+             */
+            (base, size, real_base, mc, call_site, routine->set->client
              _IF_WINDOWS((type == RTL_ROUTINE_FREE) ?
                          ((ptr_int_t *) APP_ARG_ADDR(mc, 1, inside)) : 
                          ((type == HEAP_ROUTINE_FREE_DBG) ?

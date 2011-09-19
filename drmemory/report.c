@@ -1413,6 +1413,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
     byte *start, *end, *next_start = NULL, *prev_end = NULL;
     ssize_t size;
     bool found = false;
+    packed_callstack_t *pcs = NULL;
     if (!is_in_heap_region(addr))
         return;
     /* I measured replacing the malloc hashtable with an interval tree
@@ -1517,7 +1518,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
      * delay list as well as free-by-realloc (xref i#69: we now
      * replace realloc so realloc frees will be on the queue).
      */
-    found = overlaps_delayed_free(addr, addr+sz, &start, &end);
+    found = overlaps_delayed_free(addr, addr+sz, &start, &end, &pcs);
     if (!found && next_start != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_FORWARD(addr, MALLOC_CHUNK_ALIGNMENT);
@@ -1558,17 +1559,32 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
          */
         if (invalid_heap_arg && addr == start) {
             BUFPRINT(buf, bufsz, *sofar, len,
-                     "%sfree called on already freed memory"NL, INFO_PFX);
+                     "%smemory was previously freed", INFO_PFX);
         } else if (options.brief) {
-            BUFPRINT(buf, bufsz, *sofar, len,
-                     "%srefers to %d byte(s) inside freed memory"NL,
-                     INFO_PFX, addr - start);
+            BUFPRINT(buf, bufsz, *sofar, len, "%srefers to ", INFO_PFX);
+            if (addr > start)
+                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) into ", addr - start);
+            BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
         } else {
             BUFPRINT(buf, bufsz, *sofar, len,
-                     "%s"PFX"-"PFX" overlaps freed memory "PFX"-"PFX""NL,
+                     "%s"PFX"-"PFX" overlaps memory "PFX"-"PFX" that was freed",
                      INFO_PFX, addr, addr+sz, start, end);
         }
+        if (pcs != NULL) {
+            symbolized_callstack_t scs;
+            BUFPRINT(buf, bufsz, *sofar, len, " here:"NL);
+            /* to get var-align we need to convert to symbolized.
+             * if we remove var-align feature, should use direct packed_callstack_print
+             * and avoid this extra work
+             */
+            packed_callstack_to_symbolized(pcs, &scs);
+            symbolized_callstack_print(&scs, pt->errbuf, pt->errbufsz, sofar, INFO_PFX);
+            symbolized_callstack_free(&scs);
+        } else
+            BUFPRINT(buf, bufsz, *sofar, len, NL);
     }
+    if (pcs != NULL)
+        packed_callstack_free(pcs);
     if (!invalid_heap_arg && pt->in_heap_routine > 0) {
         BUFPRINT(buf, bufsz, *sofar, len,
                  "%s<inside heap routine and may be false positive: please file a bug>"NL,
@@ -1700,14 +1716,14 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, PFX"-"PFX" ", addr, addr+sz);
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%d byte(s)", sz);
         /* only report for syscall params or large (string) ops: always if subset */
-        if (container_start != NULL &&
+        if (!options.brief && container_start != NULL &&
             (container_end - container_start > 8 || addr > container_start ||
              addr+sz < container_end || loc->type == APP_LOC_SYSCALL)) {
             ASSERT(container_end > container_start, "invalid range");
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                      " within "PFX"-"PFX""NL, container_start, container_end);
         } else
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
     } else if (type == ERROR_UNDEFINED) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "UNINITIALIZED READ: ");
         if (addr < (app_pc)(64*1024)) {
@@ -1741,7 +1757,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
          */
         ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "INVALID HEAP ARGUMENT: %s", msg);
+                 "INVALID HEAP ARGUMENT to %s()", msg);
         if (!options.brief)
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, " "PFX, addr);
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
@@ -1756,8 +1772,12 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
                  "UNKNOWN ERROR TYPE: REPORT THIS BUG"NL);
     }
 
-    if (!options.brief)
+    symbolized_callstack_print(&ecs.scs, pt->errbuf, pt->errbufsz, &sofar, NULL);
+
+    if (!options.brief) {
+        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", INFO_PFX);
         print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
+    }
 
     if (type == ERROR_UNADDRESSABLE || type == ERROR_INVALID_HEAP_ARG ||
         (type == ERROR_WARNING && sz > 0)) {
@@ -1771,7 +1791,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
                  INFO_PFX, ecs.instruction);
     }
 
-    symbolized_callstack_print(&ecs.scs, pt->errbuf, pt->errbufsz, &sofar);
+    BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", END_MARKER);
 
     report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results : pt->f, pt->f),
                              pt->errbuf, loc, false);
@@ -2105,7 +2125,8 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     if ((type == ERROR_LEAK && options.check_leaks) ||
         (type == ERROR_POSSIBLE_LEAK && options.possible_leaks)) {
         ASSERT(pcs != NULL, "malloc must have callstack");
-        symbolized_callstack_print(&ecs.scs, buf, bufsz, &sofar);
+        symbolized_callstack_print(&ecs.scs, buf, bufsz, &sofar, NULL);
+        BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);
     } else if (type == ERROR_LEAK || type == ERROR_POSSIBLE_LEAK) {
         BUFPRINT(buf, bufsz, sofar, len,
                  "   (run with -check_%sleaks to obtain a callstack)"NL,
