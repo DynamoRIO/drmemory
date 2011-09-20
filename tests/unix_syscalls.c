@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <unistd.h>
 
 #define BUFSZ 1024
 
@@ -86,7 +87,6 @@ void access_filesystem(void)
 {
     char tmpdir[] = "syscallsXXXXXX";
     int fd;
-    char *dir;
     char buf[BUFSZ];
     int n;
 
