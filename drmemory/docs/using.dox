@@ -485,7 +485,8 @@ Note: instruction: mov    0x03(%edx) -> %al
 Note how the "prev lower malloc" ends at 0x000a720b just before the invalid
 address, indicating a read that went one byte too far, as indicated.
 
-Here is another example:
+Here is another example, using the \p -delay_frees_stack option to obtain
+the callstack of the freed memory:
 
 \code
 Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
