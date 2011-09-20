@@ -20,3 +20,6 @@
 #
 Error #1: UNADDRESSABLE ACCESS: reading 10 byte(s)
 unix_syscalls.c:62
+
+Error #2: UNINITIALIZED READ: reading 10 byte(s)
+unix_syscalls.c:81

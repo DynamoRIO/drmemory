@@ -50,7 +50,7 @@ typedef struct _padded_str_t {
  */
 void unaddr_open(void)
 {
-    char devnull[] = "/dev/null";
+    const char devnull[] = "/dev/null";
     padded_str_t *dangling_ptr;
     int fd;
 
@@ -60,6 +60,25 @@ void unaddr_open(void)
 
     /* open unaddr use */
     fd = open(dangling_ptr->str, O_WRONLY);
+    close(fd);
+}
+
+/* Create an uninit usage passed to the open syscall.  We try to make this work
+ * when run natively by initializing it on the stack once, calling it again, and
+ * praying that the previous stack frame lines up with the current one.
+ */
+void uninit_open(int initialize)
+{
+    const char devnull[] = "/dev/null";
+    padded_str_t stack_str;
+    int fd;
+
+    if (initialize) {
+        memcpy(stack_str.str, devnull, sizeof(devnull));
+    }
+
+    /* open uninit use */
+    fd = open(stack_str.str, O_WRONLY);
     close(fd);
 }
 
@@ -102,6 +121,8 @@ int main(void)
 {
     access_filesystem();
     unaddr_open();
+    uninit_open(1);
+    uninit_open(0);
     printf("done\n");
     return 0;
 }
