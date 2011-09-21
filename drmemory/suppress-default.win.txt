@@ -144,6 +144,11 @@ name=default i#504 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 RSAENH.dll!*
 
+UNADDRESSABLE ACCESS
+name=default i#462 (write beyond TOS)
+instruction=mov    %e?? -> 0xfffffffc(%esp)
+ADVAPI32.dll!*
+
 ##################################################
 # i#492: false positive that needs per-bit granularity (i#113)
 # There is a chance of false negative on user-passed input to this
@@ -205,6 +210,13 @@ UNINITIALIZED READ
 name=default i#493 (bit manip)
 instruction=test   * $0x??
 usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
+
+# callstacks on vista
+UNINITIALIZED READ
+name=default i#493 (bit manip)
+instruction=test   * $0x??
+USP10.dll!*
+USP10.dll!Script*
 
 ##################################################
 # i#494: Custom data not all initialized
