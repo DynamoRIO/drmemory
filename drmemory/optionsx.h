@@ -142,12 +142,12 @@ OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
               "Verbosity level in log files",
               "Verbosity level in log files: 0=none, 1=warnings, 2+=diagnostic.  Primarily for debugging of "TOOLNAME" itself.")
 OPTION_CLIENT_BOOL(client, quiet, false,
-                   "Suppress stderr messages",
-                   "Suppress stderr messages and, on Windows, popup messages.")
+                   "Suppress stderr messages and results",
+                   "Suppress stderr messages and, on Windows, popup messages.  Overrides -results_to_stderr.")
 #ifdef USE_DRSYMS
-OPTION_CLIENT_BOOL(client, results_to_stderr, false,
+OPTION_CLIENT_BOOL(client, results_to_stderr, true,
                    "Print error reports to stderr in addition to results.txt",
-                   "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.  However, on Windows 7, this option is only supported from a cygwin shell (either cmd or rxvt window).  In a Windows 7 cmd shell there will be no output (other than the final summary).")
+                   "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.")
 #endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",

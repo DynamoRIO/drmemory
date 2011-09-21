@@ -164,8 +164,11 @@ leak_handle_alloc(per_thread_t *pt, app_pc base, size_t size)
      * some are allocated after Heap creation, so we probably won't
      * come in here
      */
-    if (pt->in_create)
+    if (pt->in_create) {
+        LOG(3, "since in_create, ignoring whether "PFX"-"PFX" is ever leaked\n",
+            base, base+size);
         malloc_set_client_flag(base, MALLOC_IGNORE_LEAK);
+    }
 #endif
 }
 

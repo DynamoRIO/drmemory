@@ -70,6 +70,7 @@
 
 static bool verbose;
 static bool quiet;
+static bool results_to_stderr = true;
 static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
 #define prefix "~~Dr.M~~ "
@@ -163,6 +164,48 @@ print_usage(void)
 } while (0)
 
 static bool
+on_vista_or_later(void)
+{
+    OSVERSIONINFO version;
+    version.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+    return (GetVersionEx(&version) &&
+            version.dwPlatformId == VER_PLATFORM_WIN32_NT && 
+            version.dwMajorVersion >= 6 &&
+            version.dwMinorVersion >= 0);
+}
+
+static bool
+is_graphical_app(const char *exe)
+{
+    /* reads the PE headers to see whether the given image is a graphical app */
+    HANDLE f;
+    DWORD offs;
+    DWORD read;
+    IMAGE_DOS_HEADER dos;
+    IMAGE_NT_HEADERS nt;
+    bool res = false; /* err on side of console */
+    f = CreateFile(exe, GENERIC_READ, FILE_SHARE_READ,
+                   NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (f == INVALID_HANDLE_VALUE)
+        return res;
+    if (!ReadFile(f, &dos, sizeof(dos), &read, NULL) ||
+        read != sizeof(dos) ||
+        dos.e_magic != IMAGE_DOS_SIGNATURE)
+        goto is_graphical_app_done;
+    offs = SetFilePointer(f, dos.e_lfanew, NULL, FILE_BEGIN);
+    if (offs == INVALID_SET_FILE_POINTER)
+        goto is_graphical_app_done;
+    if (!ReadFile(f, &nt, sizeof(nt), &read, NULL) ||
+        read != sizeof(nt) ||
+        nt.Signature != IMAGE_NT_SIGNATURE)
+        goto is_graphical_app_done;
+    res = (nt.OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI);
+ is_graphical_app_done:
+    CloseHandle(f);
+    return res;
+}
+
+static bool
 ends_in_exe(const char *s)
 {
     /* really we want caseless strstr */
@@ -220,7 +263,7 @@ write_pid_to_file(const char *pidfile, process_id_t pid)
  * but we live with it since extremely unlikely.
  */
 static void
-process_results_file(const char *logdir, process_id_t pid)
+process_results_file(const char *logdir, process_id_t pid, const char *app)
 {
     HANDLE f;
     char fname[MAXIMUM_PATH];
@@ -251,7 +294,9 @@ process_results_file(const char *logdir, process_id_t pid)
         warn("unable to delete temp file %s: %d", fname, GetLastError());
     }
 
-    if (!quiet) {
+    if (!quiet &&
+        /* on vista, or win7+ with i#440, output works from client, even during exit */
+        !on_vista_or_later()) {
         /* Even with console-writing support from drsyms, the client cannot write
          * to a cmd console from the exit event: nor can it write for a graphical
          * application (xref i#261/PR 562198).  Thus when within cmd we always
@@ -265,10 +310,12 @@ process_results_file(const char *logdir, process_id_t pid)
          */
         bool in_cmd = ((((ptr_int_t)GetStdHandle(STD_OUTPUT_HANDLE)) & 0x10000003)
                        == 0x3);
+        /* Don't show leaks for graphical app, since won't have other errors */
+        bool show_leaks = !quiet && results_to_stderr && !is_graphical_app(app);
         if (in_cmd) {
             FILE *stream;
             char line[100];
-            bool found_summary = false;
+            bool found_summary = false, in_leak = false;
             if ((stream = fopen(resfile, "r" )) != NULL) {
                 while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
                     if (!found_summary) {
@@ -276,7 +323,17 @@ process_results_file(const char *logdir, process_id_t pid)
                         if (found_summary)
                             fprintf(stderr, "%s\r\n", prefix);
                     }
-                    if (found_summary)
+                    if (!in_leak && show_leaks) {
+                        in_leak = (strstr(line, ": LEAK") != NULL) ||
+                            (strstr(line, ": POSSIBLE LEAK") != NULL) ||
+                            (strstr(line, ": REACHABLE LEAK") != NULL);
+                        if (in_leak)
+                            fprintf(stderr, "%s\r\n", prefix);
+                    } else {
+                        if (line[0] == '\r' || line[0] == '\n')
+                            in_leak = false;
+                    }
+                    if (found_summary || in_leak)
                         fprintf(stderr, "%s%s", prefix, line);
                 }
                 fclose(stream);
@@ -437,6 +494,13 @@ int main(int argc, char *argv[])
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "%s ", argv[i]);
             quiet = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-no_results_to_stderr") == 0) {
+            /* also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "%s ", argv[i]);
+            results_to_stderr = false;
             continue;
         }
         else if (strcmp(argv[i], "-batch") == 0) {
@@ -681,7 +745,7 @@ int main(int argc, char *argv[])
     if (errcode != WAIT_OBJECT_0)
         info("failed to wait for app: %d\n", errcode);
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
-    process_results_file(logdir, pid);
+    process_results_file(logdir, pid, app_name);
     return errcode;
  error:
     dr_inject_process_exit(inject_data, false);

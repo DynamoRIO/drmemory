@@ -337,6 +337,10 @@ options_init(const char *opstr)
     if (!options.count_leaks) {
         options.check_leaks_on_destroy = false;
     }
+# ifdef USE_DRSYMS
+    if (options.quiet)
+        options.results_to_stderr = false; /* quiet overrides it */
+# endif
     if (options.check_uninitialized) {
         if (options.check_stack_bounds)
             usage_error("-check_stack_bounds only valid w/ -no_check_uninitialized", "");
