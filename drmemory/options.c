@@ -377,6 +377,11 @@ options_init(const char *opstr)
             NULL_TERMINATE_BUFFER(options.callstack_srcfile_prefix);
         }
 # endif
+        /* kind of a hack for now, making -brief "better reports", until
+         * resolve perf issues w/ this option
+         */
+        if (!option_specified.delay_frees_stack)
+            options.delay_frees_stack = true;
     }
 #endif
 }
