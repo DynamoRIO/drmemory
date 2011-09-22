@@ -218,6 +218,17 @@ instruction=test   * $0x??
 USP10.dll!*
 USP10.dll!Script*
 
+# cmp instead of test, seen recently on win7 calc
+UNINITIALIZED READ
+name=default i#493 (bit manip)
+instruction=cmp    0x1c(%ebp)*
+usp10.dll!CUspShapingDrawingSurface::GenericGlyphOut
+# w/o syms
+UNINITIALIZED READ
+name=default i#493 (bit manip)
+instruction=cmp    0x1c(%ebp)*
+usp10.dll!ScriptPositionSingleGlyph
+
 ##################################################
 # i#494: Custom data not all initialized
 
