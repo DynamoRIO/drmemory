@@ -413,7 +413,10 @@ Each error found by Dr. Memory is listed in the \p results.txt file (see
 error, the address and size of the memory access in question (if applicable
 to the error type), a timestamp and thread identifier indicating when and
 where the error was detected, and a callstack of the application at the
-point of the error.
+point of the error.  The thread identifier can be correlated with the
+function of a particular thread by locating the thread creation callstack
+in the \p global.pid.log file in the same directory as the \p results.txt
+file.
 
 The \p -brief option can be used to request simpler and in some cases
 easier to read (i.e., more suited to novices) error reports that hide STL

@@ -59,9 +59,31 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.4 and 1.4.3 include:
+ - Changed the default callstack printing style and added control
+   over the style via the -callstack_style runtime option
+ - Various bug fixes
+
 The changes between version 1.4.3 and 1.4.2 include:
  - Changed the default callstack printing style and added control
    over the style via the -callstack_style runtime option
+ - On Windows, printing errors to stderr is now on by default
+ - On Windows, several options now control simplifying callstacks:
+   -callstack_truncate_after, -callstack_srcfile_prefix,
+   -callstack_modname_hide, -callstack_srcfile_hide,.
+   The -brief option sets these to common defaults and hides
+   absolute addresses for simpler reports.
+ - Callstack walking in presence of FPO is now supported.
+ - Added a new mode that is several times faster but does not check
+   for uninitialized reads: -no_check_uninitialized.
+ - Thread creation stack traces are now available in the global.pid.log
+   file for identifying threads.
+ - Suppressions can take names, and the list of used suppressions is
+   printed out in the results file.
+ - Increased default -redzone_size to 16
+ - Suppression can take instruction specifiers for narrower scope.
+ - The Valgrind Memcheck suppression format is supported for legacy
+   suppression files: however, C++ symbols must be de-mangled at this time.
  - Various bug fixes
 
 The changes between version 1.4.2 and 1.4.1 include:
