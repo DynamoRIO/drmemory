@@ -198,7 +198,7 @@ OPTION_CLIENT_STRING(client, callstack_truncate_below, "main",
                      "Callstacks will be truncated at any frame that matches any of these ,-separated function names.  The function names can contain * or ? wildcards.")
 OPTION_CLIENT_STRING(client, callstack_modname_hide, "*.exe",
                      ",-separated list of module names to hide in callstack frames",
-                     "Callstack frames will not list module names matching any of these ,-separated patterns.  The names can contain * or ? wildcards.")
+                     "Callstack frames will not list module names matching any of these ,-separated patterns.  The names can contain * or ? wildcards.  The module name will be displayed whenever the function name is uknown, however.")
 OPTION_CLIENT_STRING(client, callstack_srcfile_hide, "",
                      ",-separated list of source file paths to hide in callstack frames",
                      "Callstack frames will not list source file paths matching any of these ,-separated patterns.  The paths can contain * or ? wildcards.")

@@ -539,7 +539,7 @@ print_frame(symbolized_frame_t *frame IN,
             ASSERT(frame->func[0] == '<' /* "<not in a module>" */, "inconsistency");
     } else {
         if (!TEST(PRINT_SYMBOL_FIRST, flags)) {
-            if (!frame->hide_modname)
+            if (!frame->hide_modname || strcmp(frame->func, "?") == 0)
                 BUFPRINT(buf, bufsz, *sofar, len, "%s!", frame->modname);
             else
                 align_mod += strlen(frame->modname) + 1 /*!*/;
