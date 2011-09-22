@@ -80,7 +80,7 @@ report_leak_stats_revert(void);
 void
 report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             bool early, bool reachable, bool maybe_reachable, uint shadow_state,
-            packed_callstack_t *pcs);
+            packed_callstack_t *pcs, bool count_reachable, bool show_reachable);
 
 void
 report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc);

@@ -140,13 +140,15 @@ my $callstack_style = "0x101"; # should keep in sync, but normally passed even i
                   "INVALID HEAP ARGUMENT",
                   "WARNING",
                   "LEAK",
-                  "POSSIBLE LEAK");
+                  "POSSIBLE LEAK",
+                  "REACHABLE LEAK");
 %err_types = ("UNADDRESSABLE ACCESS" => "unaddressable access(es)",
               "UNINITIALIZED READ"   => "uninitialized access(es)",
               "INVALID HEAP ARGUMENT"=> "invalid heap argument(s)",
               "WARNING"              => "warning(s)",
               "LEAK"                 => "leak(s)",
-              "POSSIBLE LEAK"        => "possible leak(s)");
+              "POSSIBLE LEAK"        => "possible leak(s)",
+              "REACHABLE LEAK"       => "still-reachable allocation(s)");
 
 $nudge_count = 0;
 # for PR 477013 to echo client summary lines
@@ -692,6 +694,7 @@ sub process_one_error($raw_error_lines_array_ref)
         $errnum++;
         my $supp = parse_error($lines, $err_str);
         $error_cache{$err_str}{"type"} = $error{"type"};
+        $errnum-- if ($error{"type"} =~ /REACHABLE LEAK/);
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
         my @symlines = lookup_addr(\%error);
         my ($err_str_ref, $err_cstack_ref) = generate_error_info(\%error, \@symlines);
@@ -867,6 +870,7 @@ sub parse_error($arr_ref, $err_str)
             $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (REPORTED WARNING:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+.*)$/ ||
+            $line =~ /^(\s*)(REACHABLE LEAK)(\s+\d+.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+.*)$/) {
             $client_errnum_to_name[$1] = $err_str;
             $error{"name"} = $2;
@@ -894,8 +898,10 @@ sub parse_error($arr_ref, $err_str)
                 } else {
                     die "Error: unknown leak detail text ".$error{"details"}."\n";
                 }
+            } elsif ($line =~ /^(\s*)(REACHABLE LEAK)(\s+\d+.*)$/) {
+                # nothing special to do
             } else {
-                die "Unrecognized error type: $line";
+                die "Unrecognized error type: \"$line\"";
             }
         } elsif ($line =~ /^  info: @(\S+) in thread (\d+)/) {
             $error{"time"} = $1;
@@ -1085,7 +1091,11 @@ sub generate_error_info($error_ref, $symlines_ref)
     $err_str = "$prefix\n";
     # numbytes and aux_info are currently only for the 1st unique (PR 423750
     # covers providing such info for dups)
-    $err_str .= $prefix."Error \#$errnum: ".${$error}{"name"}.${$error}{"details"}."\n";
+    $err_str .= $prefix;
+    if (${$error}{"name"} !~ /REACHABLE LEAK/) {
+        $err_str .= "Error \#$errnum: ";
+    }
+    $err_str .= ${$error}{"name"}.${$error}{"details"}."\n";
 
     my ($err_str_ref, $err_cstack_ref) = generate_callstack($error, $symlines);
     $err_str .= ${$err_str_ref};
@@ -1914,7 +1924,8 @@ sub is_line_start_of_error($line)
         $line =~ /^Error #\s*\d+: (INVALID HEAP ARGUMENT)/ ||
         $line =~ /^Error #\s*\d+: REPORTED (WARNING)/ ||
         $line =~ /^Error #\s*\d+: (LEAK)/ ||
-        $line =~ /^Error #\s*\d+: (POSSIBLE LEAK)/) {
+        $line =~ /^Error #\s*\d+: (POSSIBLE LEAK)/ ||
+        $line =~ /^(REACHABLE LEAK)/) {
         return $1;
     }
     return 0;

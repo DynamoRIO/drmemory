@@ -991,7 +991,8 @@ client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 void
 client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool pre_us, bool reachable,
-                  bool maybe_reachable, void *client_data)
+                  bool maybe_reachable, void *client_data,
+                  bool count_reachable, bool show_reachable)
 {
     per_callstack_t *per = get_cstack_from_alloc_data(client_data);
     ssize_t len = 0;
@@ -1006,8 +1007,9 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
     if (pre_us && options.ignore_early_leaks)
         return;
     if (reachable) {
-        ATOMIC_INC32(reachable_leak_count);
-        if (!options.show_reachable)
+        if (count_reachable)
+            ATOMIC_INC32(reachable_leak_count);
+        if (!show_reachable)
             return;
     }
     if (maybe_reachable && !options.possible_leaks)
@@ -2053,6 +2055,7 @@ dr_init(client_id_t client_id)
                   options.midchunk_inheritance_ok,
                   options.midchunk_string_ok,
                   options.midchunk_size_ok,
+                  options.show_reachable,
                   NULL, NULL, NULL);
     }
 }

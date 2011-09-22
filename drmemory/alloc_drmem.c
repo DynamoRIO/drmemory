@@ -170,6 +170,7 @@ alloc_drmem_init(void)
               options.midchunk_inheritance_ok,
               options.midchunk_string_ok,
               options.midchunk_size_ok,
+              options.show_reachable,
               next_defined_dword,
               end_of_defined_region,
               is_register_defined);
@@ -2062,7 +2063,8 @@ client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
 void
 client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool pre_us, bool reachable,
-                  bool maybe_reachable, void *client_data)
+                  bool maybe_reachable, void *client_data,
+                  bool count_reachable, bool show_reachable)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) client_data;
     if (!options.count_leaks) {
@@ -2070,7 +2072,7 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
         return;
     }
     report_leak(true, start, end - start, indirect_bytes, pre_us, reachable,
-                maybe_reachable, SHADOW_UNKNOWN, pcs);
+                maybe_reachable, SHADOW_UNKNOWN, pcs, count_reachable, show_reachable);
 }
 
 static byte *

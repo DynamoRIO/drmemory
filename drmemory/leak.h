@@ -41,7 +41,8 @@ extern uint midchunk_string_ptrs;
 void
 client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool pre_us, bool reachable,
-                  bool maybe_reachable, void *client_data);
+                  bool maybe_reachable, void *client_data,
+                  bool count_reachable, bool show_reachable);
 
 /**************************/
 /* Must be called by client */
@@ -53,6 +54,7 @@ leak_init(bool have_defined_info,
           bool midchunk_inheritance_ok,
           bool midchunk_string_ok,
           bool midchunk_size_ok,
+          bool show_reachable,
           byte *(*next_defined_dword)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t));

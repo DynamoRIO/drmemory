@@ -1904,7 +1904,7 @@ report_leak_stats_revert(void)
 void
 report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             bool early, bool reachable, bool maybe_reachable, uint shadow_state,
-            packed_callstack_t *pcs)
+            packed_callstack_t *pcs, bool count_reachable, bool show_reachable)
 {
     /* If not in a known malloc region it could be an unaddressable byte
      * that was erroneously written to (and we reported already) but
@@ -1934,11 +1934,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
      * reachable toward the max
      */
     if (reachable) {
-        /* if options.show_reachable and past report_leak_max, we'll inc
+        /* if show_reachable and past report_leak_max, we'll inc
          * this counter and num_throttled_leaks: oh well.
          */
-        num_reachable_leaks++;
-        if (!options.show_reachable)
+        if (count_reachable)
+            num_reachable_leaks++;
+        if (!show_reachable)
             return;
         label = "REACHABLE ";
     } else if (!known_malloc) {
@@ -1970,7 +1971,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     if (label != NULL) {
         type = ERROR_MAX_VAL;
 #ifdef USE_DRSYMS
-        if (reachable && options.show_reachable)
+        if (reachable && show_reachable)
             tofile = f_results;
 #endif
     } else if (early && !reachable && options.ignore_early_leaks) {
@@ -2122,7 +2123,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     buf_print = buf;
     if ((type == ERROR_LEAK && options.check_leaks) ||
         (type == ERROR_POSSIBLE_LEAK && options.possible_leaks) ||
-        (reachable && options.show_reachable)) {
+        (reachable && show_reachable)) {
         ASSERT(pcs != NULL, "malloc must have callstack");
         symbolized_callstack_print(&ecs.scs, buf, bufsz, &sofar, NULL);
         BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);

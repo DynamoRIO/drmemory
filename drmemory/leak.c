@@ -71,6 +71,8 @@ typedef struct _reachability_data_t {
      * Secondary scans find chunks reachable via mid-chunk pointers.
      */
     bool primary_scan;
+    bool first_of_2_iters;
+    bool last_of_2_iters;
     /* Queue of reachable malloc chunks */
     pc_entry_t *reachq_head;
     pc_entry_t *reachq_tail;
@@ -101,6 +103,7 @@ static bool op_midchunk_new_ok;
 static bool op_midchunk_inheritance_ok;
 static bool op_midchunk_string_ok;
 static bool op_midchunk_size_ok;
+static bool op_show_reachable;
 static byte *(*cb_next_defined_dword)(byte *, byte *);
 static byte *(*cb_end_of_defined_region)(byte *, byte *);
 static bool (*cb_is_register_defined)(void *, reg_id_t);
@@ -119,6 +122,7 @@ leak_init(bool have_defined_info,
           bool midchunk_inheritance_ok,
           bool midchunk_string_ok,
           bool midchunk_size_ok,
+          bool show_reachable,
           byte *(*next_defined_dword)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t))
@@ -133,6 +137,7 @@ leak_init(bool have_defined_info,
     op_midchunk_inheritance_ok = midchunk_inheritance_ok;
     op_midchunk_string_ok = midchunk_string_ok;
     op_midchunk_size_ok = midchunk_size_ok;
+    op_show_reachable = show_reachable;
     if (op_have_defined_info) {
         ASSERT(next_defined_dword != NULL, "defined info needs cbs");
         ASSERT(end_of_defined_region != NULL, "defined info needs cbs");
@@ -210,7 +215,7 @@ leak_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
                           /* Report as a possible leak since technically not
                            * incorrect to free heap w/ live mallocs inside
                            */
-                          true, malloc_get_client_data(start));
+                          true, malloc_get_client_data(start), true, false);
     }
 }
 #endif
@@ -924,7 +929,9 @@ malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
      * we never print detailed info for them, just add their sizes to
      * their parent direct leaks
      */
-    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_INDIRECTLY_REACHABLE, client_flags)) {
+    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_INDIRECTLY_REACHABLE, client_flags) &&
+        /* for 2nd pass only report reachable */
+        (!data->last_of_2_iters || TEST(MALLOC_REACHABLE, client_flags))) {
         rb_node_t *node = rb_find(data->alloc_tree, start);
         unreach_entry_t *unreach;
         ASSERT(node != NULL, "must be in rbtree");
@@ -934,11 +941,15 @@ malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
                           pre_us,
                           TEST(MALLOC_REACHABLE, client_flags), 
                           TEST(MALLOC_MAYBE_REACHABLE, client_flags),
-                          client_data);
+                          client_data,
+                          !data->last_of_2_iters, /* count on 1st iter */
+                          data->last_of_2_iters); /* show, but no double-count, on 2nd */
     }
     /* clear for any subsequent reachability walks */
-    malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
-                             MALLOC_INDIRECTLY_REACHABLE);
+    if (!data->first_of_2_iters) {
+        malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
+                                 MALLOC_INDIRECTLY_REACHABLE);
+    }
 }
 
 static void
@@ -1120,7 +1131,16 @@ leak_scan_for_leaks(bool at_exit)
     }
 
     /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */
+
+    /* in order to separate reachable from real leaks we do two passes */
+    if (op_show_reachable)
+        data.first_of_2_iters = true;
     malloc_iterate(malloc_iterate_cb, &data);
+    if (op_show_reachable) {
+        data.first_of_2_iters = false;
+        data.last_of_2_iters = true;
+        malloc_iterate(malloc_iterate_cb, &data);
+    }
 
     if (drcontexts != NULL) {
         IF_DEBUG(bool ok =)
