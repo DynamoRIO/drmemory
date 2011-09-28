@@ -135,17 +135,25 @@ have the unstripped versions in separate locations, you can point at those
 locations using the \p DRMEMORY_LIB_PATH environment variable, which is a
 colon-separated list of directories.
 
-On Windows, when using static debug versions of msvcrt (e.g., building with
-the "/MTd" flag), if your application does not have symbols then Dr. Memory
-will not be able to identify and avoid conflicts with msvcrt's own heap
-debugging facilities, which may lead to false positives and/or false
-negatives.  Be sure to build with debugging information included.
+On Windows, the debug DLL C library (specified with the "/MDd" flag) is
+currently not supported.  Instead, build your application with either the
+release DLL ("/MD") or the release or debug static library ("/MT" or
+"/MTd"), although "/MTd" is not recommended (see below).  When using Visual
+Studio, the release library can be selected from Visual Studio's
+configuration dialog (press Alt-F7 to bring it up) under the C/C++ | Code
+Generation | Runtime Library settings.  Change "Multi-threaded Debug DLL
+(/MDd)" to "Multi-threaded DLL (/MD)".
 
-Additionally, on Windows, when using debug versions of msvcrt (e.g.,
-building with the "/MTd" or "/MDd" flag), you will not be able to control
-the redzone size.  The debug heap checks will mostly be disabled as they
-overlap and can conflict with Dr. Memory's checks.  It is recommended that
-the release version of the heap routines be used.
+On Window. , when using debug versions of the C library (when building with
+the "/MTd" flag ("/MDd" is not supported at all), you will not be able to
+control the redzone size.  The debug heap checks will mostly be disabled as
+they overlap and can conflict with Dr. Memory's checks.  It is recommended
+that the release version of the heap routines be used.  Additionally, when
+using static debug versions of msvcrt (the "/MTd" flag), if your
+application does not have symbols then Dr. Memory will not be able to
+identify and avoid conflicts with msvcrt's own heap debugging facilities,
+which may lead to false positives and/or false negatives.  Be sure to build
+with debugging information included.
 
 You'll get better callstacks in error reports if you disable inlining.  For
 cl.exe, "/Ob0", or for gcc or g++, "-fno-inline".  Dr. Memory should be

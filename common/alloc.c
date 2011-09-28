@@ -1725,6 +1725,20 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             (strcmp(modname, "drmemorylib.dll") == 0 ||
              strcmp(modname, "dynamorio.dll") == 0))
             return;
+
+        /* i#606: no support for /MDd b/c need private pdb to intercept
+         * heap routines, and can't see inside LFH chunks allocated before
+         * we were injected
+         */
+        if (modname != NULL &&
+            /* match msvcrt.dll and msvcrNN.dll */
+            text_matches_pattern(modname, "msvcr*d.dll", true/*ignore case*/)) {
+            NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL not supported. "
+                         "Please rebuild your application with either the Release "
+                         "build (/MD or /MT) or static Debug library (/MTd)."NL);
+            dr_abort();
+        }
+
         dr_mutex_lock(alloc_routine_lock);
 #ifdef USE_DRSYMS
         if (lookup_symbol_or_export(info, "_malloc_dbg") != NULL) {

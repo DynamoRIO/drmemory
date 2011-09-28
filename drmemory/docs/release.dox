@@ -67,7 +67,7 @@ The changes between version 1.4.3 and 1.4.2 include:
    over the style via the -callstack_style runtime option
  - On Windows, printing errors to stderr is now on by default
  - On Windows, several options now control simplifying callstacks:
-   -callstack_truncate_after, -callstack_srcfile_prefix,
+   -callstack_truncate_below, -callstack_srcfile_prefix,
    -callstack_modname_hide, -callstack_srcfile_hide.
    The -brief option sets these to common defaults and hides
    absolute addresses for simpler reports.
@@ -170,15 +170,13 @@ The changes between version 1.1.0 and 1.0.1 include:
 This is a Beta version.  It has some missing features and undoubtedly
 some bugs.  The missing features include:
 
- - Windows graphical system call parameters are not all known, which can
-   result in false positives and false negatives, especially with
-   graphical Windows applications.
+ - Windows system call parameters are not all known, which can
+   result in false positives and false negatives, especially on Vista or
+   Windows 7, or with code that interacts with the network.
  - The malloc in the Cygwin C library is not yet tracked separately from
    the Windows API malloc which can lead to false negatives.
  - Definedness is tracked at the byte level, not at the bit level,
    which when bitfields are in use can lead to false positives.
- - System calls unique to Windows 2003 and Vista are missing, which
-   can result in false positives and false negatives.
  - 64-bit support: we plan to add this in the future.
  - 32-bit applications on 64-bit Windows have some limitations (these are
    actually limitations of the current version of the underlying DynamoRIO
