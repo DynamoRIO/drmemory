@@ -60,8 +60,6 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between version 1.4.4 and 1.4.3 include:
- - Changed the default callstack printing style and added control
-   over the style via the -callstack_style runtime option
  - Various bug fixes
 
 The changes between version 1.4.3 and 1.4.2 include:
@@ -70,7 +68,7 @@ The changes between version 1.4.3 and 1.4.2 include:
  - On Windows, printing errors to stderr is now on by default
  - On Windows, several options now control simplifying callstacks:
    -callstack_truncate_after, -callstack_srcfile_prefix,
-   -callstack_modname_hide, -callstack_srcfile_hide,.
+   -callstack_modname_hide, -callstack_srcfile_hide.
    The -brief option sets these to common defaults and hides
    absolute addresses for simpler reports.
  - Callstack walking in presence of FPO is now supported.
