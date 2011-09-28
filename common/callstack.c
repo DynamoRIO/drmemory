@@ -1630,7 +1630,8 @@ add_new_module(void *drcontext, const module_data_t *info)
         ASSERT(!has_noname, "multiple modules w/o name: may lose data");
         has_noname = true;
     }
-    LOG(1, "module load event: \"%s\" "PFX"-"PFX"\n", name, info->start, info->end);
+    LOG(1, "module load event: \"%s\" "PFX"-"PFX" %s\n",
+        name, info->start, info->end, info->full_path);
 
     hashtable_lock(&modname_table);
     name_info = (modname_info_t *) hashtable_lookup(&modname_table, (void*)name);

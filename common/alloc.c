@@ -458,7 +458,8 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     (sizeof(possible_crtdbg_routines)/sizeof(possible_crtdbg_routines[0]))
 
 /* for i#51 so we can disable crtdbg checks */
-#define CRTDBG_FLAG_NAME "_crtDbgFlag"
+#define CRTDBG_FLAG_NAME "crtDbgFlag"
+#define CRTDBG_FLAG_NAME_ALT "_crtDbgFlag"
 
 static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlSizeHeap", RTL_ROUTINE_SIZE },
@@ -984,6 +985,8 @@ disable_crtdbg(const module_data_t *mod)
      * confused).
      */
     crtdbg_flag_ptr = (int *) lookup_internal_symbol(mod, CRTDBG_FLAG_NAME);
+    if (crtdbg_flag_ptr == NULL)
+        crtdbg_flag_ptr = (int *) lookup_internal_symbol(mod, CRTDBG_FLAG_NAME_ALT);
     LOG(2, "%s @"PFX"\n", CRTDBG_FLAG_NAME, crtdbg_flag_ptr);
     if (crtdbg_flag_ptr != NULL &&
         dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
