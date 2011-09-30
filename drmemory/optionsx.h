@@ -94,6 +94,11 @@ OPTION_FRONT_STRING(front, drmemory, "",
 OPTION_FRONT_STRING(front, srcfilter, "",
                     "Only show errors referencing named file",
                     "Do not show errors that do not reference the named source file somewhere in their callstacks.")
+# ifdef WINDOWS
+OPTION_FRONT_BOOL(front, top_stats, false,
+                  "Show time taken and memory usage of whole process",
+                  "Primarily for use by developers of the tool.  Shows time taken and memory usage of the whole process at the end of the run")
+# endif
 #endif /* TOOL_DR_MEMORY */
 OPTION_FRONT_BOOL(front, follow_children, true,
                   "Monitor child processes",

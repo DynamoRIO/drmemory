@@ -44,6 +44,7 @@
 #include "dr_config.h"
 #include <assert.h>
 #include <stdio.h>
+#include <time.h>
 
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 #define MAX_APP_CMDLINE 4096
@@ -73,6 +74,8 @@ static bool quiet;
 static bool results_to_stderr = true;
 static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
+static bool top_stats;
+
 #define prefix "~~Dr.M~~ "
 
 #define fatal(msg, ...) do { \
@@ -398,6 +401,8 @@ int main(int argc, char *argv[])
     process_id_t pid;
     bool have_logdir = false;
 
+    time_t start_time, end_time;
+
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
     get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
     c = buf + strlen(buf) - 1;
@@ -505,6 +510,10 @@ int main(int argc, char *argv[])
         }
         else if (strcmp(argv[i], "-batch") == 0) {
             batch = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-top_stats") == 0) {
+            top_stats = true;
             continue;
         }
         else if (strcmp(argv[i], "-dr_debug") == 0) {
@@ -739,11 +748,19 @@ int main(int argc, char *argv[])
         goto error; /* actually won't get here */
     }
 
+    if (top_stats)
+        start_time = time(NULL);
     dr_inject_process_run(inject_data);
     info("waiting for app to exit...");
     errcode = WaitForSingleObject(dr_inject_get_process_handle(inject_data), INFINITE);
     if (errcode != WAIT_OBJECT_0)
         info("failed to wait for app: %d\n", errcode);
+    if (top_stats) {
+        double wallclock;
+        end_time = time(NULL);
+        wallclock = difftime(end_time, start_time);
+        dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
+    }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
     process_results_file(logdir, pid, app_name);
     return errcode;
