@@ -60,7 +60,8 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between version 1.4.4 and 1.4.3 include:
- - Various bug fixes
+ - Fix for missing output in cmd on Win7 SP1
+ - Check for /MDd and abort
 
 The changes between version 1.4.3 and 1.4.2 include:
  - Changed the default callstack printing style and added control
