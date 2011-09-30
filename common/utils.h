@@ -149,6 +149,7 @@ extern bool op_ignore_asserts;
 extern file_t f_global;
 #ifdef USE_DRSYMS
 extern file_t f_results;
+extern bool op_use_symcache;
 #endif
 
 /* Workarounds for i#261 where DR can't write to cmd console.
@@ -468,14 +469,22 @@ bool
 safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONAL OUT*/);
 
 #ifdef USE_DRSYMS
+# ifdef STATISTICS
+extern uint symbol_lookups;
+extern uint symbol_searches;
+extern uint symbol_lookup_cache_hits;
+extern uint symbol_search_cache_hits;
+# endif
 app_pc
 lookup_symbol(const module_data_t *mod, const char *symname);
 
 app_pc
 lookup_internal_symbol(const module_data_t *mod, const char *symname);
 
-/* iterates over symbols matching modname!sym_pattern until
- * callback returns false
+/* Iterates over symbols matching modname!sym_pattern until
+ * callback returns false.
+ * N.B.: if you add a call to this routine, or modify an existing call,
+ * bump SYMCACHE_VERSION and add symcache checks.
  */
 bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,

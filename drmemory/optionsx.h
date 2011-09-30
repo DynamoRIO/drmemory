@@ -136,8 +136,8 @@ OPTION_CLIENT_BOOL(client, brief, false,
                    "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps")
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
-                     "Destination for log files",
-                     "Destination for log files and result files.")
+                     "Base directory for result file subdirectories and symbol cache",
+                     "Destination base directory for result files and symbol cache.  A subdirectory inside this base directory is created for each process that is run, along with a single shared symbol cache directory.  If you specify a separate base directory for every run, you will lose the benefits of symbol caching.")
 OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
               "Verbosity level in log files",
               "Verbosity level in log files: 0=none, 1=warnings, 2+=diagnostic.  Primarily for debugging of "TOOLNAME" itself.")
@@ -307,6 +307,12 @@ OPTION_CLIENT_BOOL(drmemscope, batch, false,
 OPTION_CLIENT_BOOL(drmemscope, summary, true,
                    "Display a summary of results to stderr",
                    "Display a summary of errors to stderr at app exit.")
+OPTION_CLIENT_BOOL(drmemscope, use_symcache, true,
+                   "Cache results of symbol lookups to speed up future runs",
+                   "Cache results of symbol lookups to speed up future runs")
+OPTION_CLIENT(client, symcache_minsize, uint, 1000, 0, UINT_MAX,
+                   "Minimum module size to cache symbols for",
+                   "Minimum module size to cache symbols for.  Note that there's little downside to caching and it is pretty much always better to cache.")
 #else
 OPTION_CLIENT_BOOL(drmemscope, summary, false,
                    "Display a summary prior to symbol processing",

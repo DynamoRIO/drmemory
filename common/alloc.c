@@ -163,6 +163,9 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #include "heap.h"
 #include "callstack.h"
 #include "redblack.h"
+#ifdef USE_DRSYMS
+# include "symcache.h"
+#endif
 #ifdef LINUX
 # include "sysnum_linux.h"
 # include <sys/mman.h>
@@ -918,13 +921,19 @@ static app_pc
 lookup_symbol_or_export(const module_data_t *mod, const char *name)
 {
 #ifdef USE_DRSYMS
+    app_pc res;
     if (mod->full_path != NULL) {
-        app_pc res = lookup_symbol(mod, name);
+        res = lookup_symbol(mod, name);
         if (res != NULL)
             return res;
     }
-#endif
+    res = (app_pc) dr_get_proc_address(mod->handle, name);
+    if (res != NULL && op_use_symcache)
+        symcache_add(mod, name, res - mod->start);
+    return res;
+#else
     return (app_pc) dr_get_proc_address(mod->handle, name);
+#endif
 }
 
 /* caller must hold alloc routine lock */
@@ -1022,6 +1031,10 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     const char *modname = dr_module_preferred_name(edata->mod);
 #endif
     ASSERT(edata != NULL && pc != NULL, "invalid params");
+#ifdef USE_DRSYMS
+    if (op_use_symcache)
+        symcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
+#endif
     if (edata->set == NULL) {
         edata->set = (alloc_routine_set_t *)
             global_alloc(sizeof(*edata->set), HEAPSTAT_HASHTABLE);
@@ -1090,6 +1103,10 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
                 } else {
                     LOG(2, "marking %s as processed since regex didn't match\n", name);
                     edata->processed[i] = true;
+#ifdef USE_DRSYMS
+                    if (op_use_symcache)
+                        symcache_add(edata->mod, edata->possible[i].name, 0);
+#endif
                 }
             }
         }
@@ -1123,17 +1140,39 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
      */
     if (possible == possible_libc_routines ||
         possible == possible_crtdbg_routines) {
+        bool all_processed = true;
         edata.processed = (bool *)
             global_alloc(sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
         memset(edata.processed, 0, sizeof(*edata.processed)*num_possible);
-        if (possible == possible_libc_routines) {
-            find_alloc_regex(&edata, "mall*", "mall", NULL);
-            find_alloc_regex(&edata, "*alloc", NULL, "alloc");
-            find_alloc_regex(&edata, "*_impl", NULL, "_impl");
-        } else if (possible == possible_crtdbg_routines) {
-            find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
-            find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
-            find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+
+        /* First we check the symbol cache */
+        if (op_use_symcache && symcache_module_is_cached(mod)) {
+            size_t modoffs;
+            uint count;
+            uint idx;
+            for (i = 0; i < num_possible; i++) {
+                for (idx = 0, count = 1;
+                     idx < count && symcache_lookup(mod, possible[i].name,
+                                                    idx, &modoffs, &count); idx++) {
+                    STATS_INC(symbol_search_cache_hits);
+                    edata.processed[i] = true;
+                    if (modoffs != 0)
+                        add_to_alloc_set(&edata, mod->start + modoffs, i);
+                }
+                if (all_processed && !edata.processed[i])
+                    all_processed = false;
+            }
+        }
+        if (!all_processed) {
+            if (possible == possible_libc_routines) {
+                find_alloc_regex(&edata, "mall*", "mall", NULL);
+                find_alloc_regex(&edata, "*alloc", NULL, "alloc");
+                find_alloc_regex(&edata, "*_impl", NULL, "_impl");
+            } else if (possible == possible_crtdbg_routines) {
+                find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
+                find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
+                find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+            }
         }
     }
 #endif
@@ -1629,18 +1668,29 @@ alloc_exit(void)
 
 #ifdef USE_DRSYMS
 # define OPERATOR_DELETE_NAME "operator delete"
+static void
+add_operator_delete(const module_data_t *mod, size_t modoffs)
+{
+    /* not part of any malloc routine set */
+    add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE,
+                      OPERATOR_DELETE_NAME, NULL);
+#ifdef USE_DRSYMS
+    if (op_use_symcache)
+        symcache_add(mod, OPERATOR_DELETE_NAME, modoffs);
+#endif
+    LOG(1, "intercepting operator delete @"PFX" in module %s\n",
+        mod->start + modoffs,
+        (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
+        dr_module_preferred_name(mod));
+}
+
 static bool
 enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 {
     const module_data_t *mod = (const module_data_t *) data;
     ASSERT(mod != NULL, "invalid param");
     /* not part of any malloc routine set */
-    add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE,
-                      OPERATOR_DELETE_NAME, NULL);
-    LOG(1, "intercepting operator delete @"PFX" in module %s\n",
-        mod->start + modoffs,
-        (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
-        dr_module_preferred_name(mod));
+    add_operator_delete(mod, modoffs);
     return true; /* keep iterating */
 }
 #endif
@@ -1749,14 +1799,35 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              * so we simply skip our redzone for msvcrtdbg: after all there's
              * already a redzone there.
              */
+            bool found = false;
             use_redzone = false;
             LOG(1, "NOT using redzones for routines in %s "PFX"\n",
                 (modname == NULL) ? "<noname>" : modname, info->start);
             /* We watch debug operator delete b/c it reads malloc's headers (i#26)! */
-            if (!lookup_all_symbols(info, OPERATOR_DELETE_NAME,
-                                    enumerate_syms_cb, (void *) info)) {
-                LOG(1, "error searching symbols for %s\n",
-                    (modname == NULL) ? "<noname>" : modname);
+            if (op_use_symcache && symcache_module_is_cached(info)) {
+                size_t modoffs;
+                uint count;
+                uint idx;
+                for (idx = 0, count = 1;
+                     idx < count && symcache_lookup(info, OPERATOR_DELETE_NAME,
+                                                    idx, &modoffs, &count); idx++) {
+                    found = true;
+                    STATS_INC(symbol_search_cache_hits);
+                    if (modoffs != 0)
+                        add_operator_delete(info, modoffs);
+                }
+            } 
+            if (!found) {
+#ifdef USE_DRSYMS
+                /* add 0, which will be replaced if we find it */
+                if (op_use_symcache)
+                    symcache_add(info, OPERATOR_DELETE_NAME, 0);
+#endif
+                if (!lookup_all_symbols(info, OPERATOR_DELETE_NAME,
+                                       enumerate_syms_cb, (void *) info)) {
+                    LOG(1, "error searching symbols for %s\n",
+                        (modname == NULL) ? "<noname>" : modname);
+                }
             }
         } else
             no_dbg_routines = true;

@@ -106,6 +106,9 @@ drmem_options_init(const char *opstr)
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;
     op_ignore_asserts = options.ignore_asserts;
+#ifdef USE_DRSYMS
+    op_use_symcache = options.use_symcache;
+#endif
 }
 
 /***************************************************************************
@@ -194,6 +197,11 @@ dump_statistics(void)
                cstack_is_retaddr, cstack_is_retaddr_backdecode,
                cstack_is_retaddr_unreadable);
     dr_fprintf(f_global, "symbol names truncated: %8u\n", symbol_names_truncated);
+#ifdef USE_DRSYMS
+    dr_fprintf(f_global, "symbol lookups: %6u cached %6u, searches: %6u cached %6u\n",
+               symbol_lookups, symbol_lookup_cache_hits,
+               symbol_searches, symbol_search_cache_hits);
+#endif
     dr_fprintf(f_global, "stack swaps: %8u, triggers: %8u\n",
                stack_swaps, stack_swap_triggers);
     dr_fprintf(f_global, "push addr tot: %8u heap: %6u mmap: %6u\n",
@@ -292,6 +300,10 @@ event_exit(void)
 
     if (!options.perturb_only)
         report_exit();
+#ifdef USE_DRSYMS
+    if (options.use_symcache)
+        symcache_exit();
+#endif
     utils_exit();
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
@@ -1248,6 +1260,11 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     /* measure module processing time: mostly symbols (xref i#313) */
     print_timestamp_elapsed_to_file(f_global, "pre-module-load ");
 #endif
+#ifdef USE_DRSYMS
+    /* must be before alloc_module_load */
+    if (options.use_symcache)
+        symcache_module_load(drcontext, info, loaded);
+#endif
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
     if (!options.leaks_only && options.shadowing)
@@ -1269,6 +1286,10 @@ event_module_unload(void *drcontext, const module_data_t *info)
     if (!options.leaks_only && options.shadowing)
         replace_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
+#ifdef USE_DRSYMS
+    if (options.use_symcache)
+        symcache_module_unload(drcontext, info);
+#endif
 }
 
 static void
@@ -1383,6 +1404,11 @@ dr_init(client_id_t id)
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Memory version %s\n", VERSION_STRING);
 
+#ifdef USE_DRSYMS
+    if (options.use_symcache)
+        symcache_init(options.logdir, options.symcache_minsize);
+#endif
+
     if (!options.perturb_only)
         report_init();
 
@@ -1394,6 +1420,11 @@ dr_init(client_id_t id)
     ASSERT(data != NULL, "cannot find ntdll.dll");
     ntdll_base = data->start;
     ntdll_end = data->end;
+# ifdef USE_DRSYMS
+    /* initialize early so we can cache sym lookup in leak_init */
+    if (options.use_symcache)
+        symcache_module_load(drcontext, data, true);
+# endif
     dr_free_module_data(data);
     ASSERT(ntdll_base != NULL, "internal error finding ntdll.dll base");
     LOG(2, "ntdll is "PFX"-"PFX"\n", ntdll_base, ntdll_end);

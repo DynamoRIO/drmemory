@@ -469,7 +469,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
         /* PR 495787: handle non-precise flushing where new bbs can be created
          * before the old ones are fully deleted
          */
-        LOG(3, "event_fragment_delete "PFX" ignore_next_delete=%d\n",
+        LOG(2, "event_fragment_delete "PFX" ignore_next_delete=%d\n",
             tag, save->ignore_next_delete);
         if (save->ignore_next_delete == 0) {
             bb_size = save->bb_size;

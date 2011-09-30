@@ -29,6 +29,7 @@
 #include "utils.h"
 #ifdef USE_DRSYMS
 # include "drsyms.h"
+# include "symcache.h"
 #endif
 #ifdef WINDOWS
 # include "windefs.h"
@@ -46,6 +47,15 @@ bool op_pause_at_assert;
 bool op_pause_via_loop;
 bool op_ignore_asserts;
 file_t f_global = INVALID_FILE;
+#ifdef USE_DRSYMS
+bool op_use_symcache;
+# ifdef STATISTICS
+uint symbol_lookups;
+uint symbol_searches;
+uint symbol_lookup_cache_hits;
+uint symbol_search_cache_hits;
+# endif
+#endif
 
 #ifdef WINDOWS
 static dr_os_version_t os_version;
@@ -188,6 +198,21 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
 
     if (mod->full_path == NULL)
         return NULL;
+    if (callback == NULL) {
+        if (op_use_symcache) {
+            uint count;
+            /* if there are multiple we just return the first one */
+            if (symcache_lookup(mod, sym_pattern, 0, &modoffs, &count)) {
+                STATS_INC(symbol_lookup_cache_hits);
+                if (modoffs == 0)
+                    return NULL;
+                else
+                    return mod->start + modoffs;
+            }
+        }
+        STATS_INC(symbol_lookups); /* not total, rather un-cached */
+    } else
+        STATS_INC(symbol_searches);
 
     for (c = mod->full_path; *c != '\0'; c++) {
         if (*c == DIRSEP IF_WINDOWS(|| *c == '\\'))
@@ -224,16 +249,21 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     }
     LOG(2, "sym lookup of %s in %s => %d "PFX"\n", sym_with_mod, mod->full_path,
         symres, modoffs);
-    if (symres == DRSYM_SUCCESS) {
+    if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (callback == NULL) {
+            if (op_use_symcache)
+                symcache_add(mod, sym_pattern, modoffs);
             if (modoffs == 0) /* using as sentinel: assuming no sym there */
                 return NULL;
             else
                 return mod->start + modoffs;
         } else /* non-null to indicate success */
             return mod->start;
-    } else
+    } else {
+        if (symres == DRSYM_ERROR_SYMBOL_NOT_FOUND && op_use_symcache)
+            symcache_add(mod, sym_pattern, 0);
         return NULL;
+    }
 }
 
 app_pc
@@ -248,6 +278,11 @@ lookup_internal_symbol(const module_data_t *mod, const char *symname)
     return lookup_symbol_common(mod, symname, true, NULL, NULL);
 }
 
+/* Iterates over symbols matching modname!sym_pattern until
+ * callback returns false.
+ * N.B.: if you add a call to this routine, or modify an existing call,
+ * bump SYMCACHE_VERSION and add symcache checks.
+ */
 bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
                    drsym_enumerate_cb callback, void *data)

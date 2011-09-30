@@ -43,6 +43,9 @@
 #include "utils.h"
 #include "heap.h"
 #include "drmemory.h"
+#ifdef USE_DRSYMS
+# include "symcache.h"
+#endif
 #ifdef LINUX
 # include <unistd.h> /* size_t */
 #endif
@@ -682,9 +685,13 @@ replace_routine(bool add, const module_data_t *mod,
         replace_routine_name[index], addr,
         modname == NULL ? "<noname>" : modname, mod->start);
     /* We can't store 0 in the table (==miss) so we store index + 1 */
-    if (add)
+    if (add) {
+#ifdef USE_DRSYMS
+        if (options.use_symcache)
+            symcache_add(mod, replace_routine_name[index], addr - mod->start);
+#endif
         hashtable_add(&replace_table, (void*)addr, (void*)(index+1));
-    else
+    } else
         hashtable_remove(&replace_table, (void*)addr);
 }
 
@@ -847,8 +854,24 @@ replace_in_module(const module_data_t *mod, bool add)
         }
 #ifdef USE_DRSYMS
         else {
+            size_t modoffs;
+            uint count;
+            uint idx;
             LOG(3, "did not find export %s\n", replace_routine_name[i]);
-            missing_export = true;
+            if (options.use_symcache && symcache_module_is_cached(mod)) {
+                for (idx = 0, count = 1;
+                     idx < count && symcache_lookup(mod, replace_routine_name[i],
+                                                    idx, &modoffs, &count); idx++) {
+                    STATS_INC(symbol_search_cache_hits);
+                    edata.processed[i] = true;
+                    if (modoffs != 0)
+                        replace_routine(add, mod, mod->start + modoffs, i);
+                }
+            }
+            if (!edata.processed[i]) {
+                LOG(2, "did not find %s in symcache\n", replace_routine_name[i]);
+                missing_export = true;
+            }
         }
 #endif
         if (addr != NULL) {
@@ -866,6 +889,13 @@ replace_in_module(const module_data_t *mod, bool add)
          * It's faster to look up multiple via regex (xref i#315)
          * when most modules don't have any of the replacement syms.
          */
+        /* add 0, which will be replaced if we find it */
+        if (options.use_symcache) {
+            for (i = 0; i < REPLACE_NUM; i++) {
+                if (!edata.processed[i])
+                    symcache_add(mod, replace_routine_name[i], 0);
+            }
+        }
         /* These regex cover all function names we replace.  Both
          * number of syms and number of queries count.  This is a good
          * compromise.  "*mem*" has too many matches, while
@@ -873,6 +903,7 @@ replace_in_module(const module_data_t *mod, bool add)
          * many queries.  Note that dbghelp does not support a regex
          * symbol for "0 or 1 chars".
          */
+        /* N.B.: if you change these regexes, bump SYMCACHE_VERSION! */
         find_syms_regex(&edata, "[msw]?????");
         find_syms_regex(&edata, "[msw]??????");
 # ifdef LINUX

@@ -638,6 +638,9 @@ else (TOOL_DR_HEAPSTAT)
     common/utils.c
     common/redblack.c
     common/crypto.c)
+  if (USE_DRSYMS)
+    set(srcs ${srcs} common/symcache.c)
+  endif (USE_DRSYMS)
   if (UNIX)
     set(srcs ${srcs} drmemory/syscall_linux.c)
   else (UNIX)
