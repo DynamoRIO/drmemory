@@ -885,8 +885,9 @@ instr_check_definedness(instr_t *inst)
     return 
         /* always check conditional jumps */
         instr_is_cbr(inst) ||
-        (options.check_non_moves && !opc_is_move(opc)) ||
-        (options.check_cmps &&
+        (options.check_uninit_non_moves && !opc_is_move(opc)) ||
+        options.check_uninit_all ||
+        (options.check_uninit_cmps &&
          /* a compare writes eflags but nothing else, or is a loop, cmps, or cmovcc.
           * for cmpxchg* only some operands are compared: see always_check_definedness.
           */
@@ -975,11 +976,12 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
      *   0x0046b0d9  31 d1                xor    %edx %ecx -> %ecx
      *   0x0046b0db  01 cf                add    %ecx %edi -> %edi
      *   0x0046b0dd  73 2c                jnb    $0x0046b10b
-     * we have two different checks: one for !options.check_non_moves where
+     * we have two different checks: one for !options.check_uninit_non_moves where
      * the error isn't raised until the jnb and one for error on xor.
      * FIXME: share code w/ is_rawmemchr_pattern() in alloc_drmem.c
      */
-    if (options.check_non_moves) {
+    if (options.check_uninit_non_moves ||
+        options.check_uninit_all) {
         static const byte RAWMEMCHR_PATTERN_NONMOVES[5] = {0xbf, 0xff, 0xfe, 0xfe, 0xfe};
         ASSERT(sizeof(RAWMEMCHR_PATTERN_NONMOVES) <= BUFFER_SIZE_BYTES(buf),
                "buf too small");
@@ -1266,7 +1268,7 @@ check_andor_sources(void *drcontext, instr_t *inst,
      *       00424722 75c4             jnz     crafty+0x246e8 (004246e8)
      *
      * We can't do these checks solely on reported undefined instances b/c of the
-     * OP_and (and OP_test if -no_check_cmps) so we must mark defined.
+     * OP_and (and OP_test if -no_check_uninit_cmps) so we must mark defined.
      * Of course this leaves us open to false negatives.
      */
     if (opc != OP_or && sz == 4 &&
@@ -1884,7 +1886,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
      * - check addressability of all memory operands
      * - check definedness of all source operands if:
      *   o no GPR or memory dest (=> no way to store definedness)
-     *   o if options.check_non_moves is on and this is not just a move
+     *   o if options.check_uninit_non_moves is on and this is not just a move
      * - check definedness of certain source operands:
      *   o base or index register to a memory ref
      *     (includes esp/ebp operand to a push/pop)
@@ -1964,6 +1966,8 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                 /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
             } else if (check_definedness || always_check_definedness(&inst, i)) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
+                if (options.leave_uninit)
+                    flags |= MEMREF_USE_VALUES;
             } else {
                 /* If we're checking, to avoid further errors we do not
                  * propagate the shadow vals (and thus we essentially
@@ -1989,6 +1993,13 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                      * equivalent to propagating SHADOW_DEFINED) or check */
                 } else if (check_definedness || always_check_definedness(&inst, i)) {
                     check_register_defined(drcontext, reg, &loc, sz, mc, &inst);
+                    if (options.leave_uninit) {
+                        integrate_register_shadow
+                            (&inst, i, 
+                             /* do not combine srcs if checking after */
+                             check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
+                             reg, shadow, pushpop);
+                    }
                 } else {
                     /* See above: we only propagate when not checking */
                     integrate_register_shadow
@@ -2021,6 +2032,13 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
              * equivalent to propagating SHADOW_DEFINED) or check */
         } else if (check_definedness) {
             check_register_defined(drcontext, REG_EFLAGS, &loc, 1, mc, &inst);
+            if (options.leave_uninit) {
+                integrate_register_shadow
+                    (&inst, 0, 
+                     /* do not combine srcs if checking after */
+                     check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
+                     REG_EFLAGS, shadow, pushpop);
+            }
         } else {
             /* See above: we only propagate when not checking */
             integrate_register_shadow
@@ -2072,6 +2090,8 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                 /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
             } else if (check_definedness) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
+                if (options.leave_uninit)
+                    flags |= MEMREF_USE_VALUES;
                 /* since checking, we mark as SHADOW_DEFINED (see above) */
             } else {
                 ASSERT(sz <= sizeof(shadow_vals), "internal shadow val error");
@@ -3029,7 +3049,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     bad_end = addr + i;
                     allgood = false;
                     /* Set to defined to avoid duplicate errors */
-                    shadow_set_byte(addr+i, SHADOW_DEFINED);
+                    if (!options.leave_uninit)
+                        shadow_set_byte(addr+i, SHADOW_DEFINED);
                 }
 #ifdef STATISTICS
                 else
@@ -3569,7 +3590,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
             !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6, instr_get_eflags(inst)))
             continue;
 
-        /* for cmp/test+jcc -check_cmps don't need to instrument jcc */
+        /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */
         if (bi.eflags_defined && opc_is_jcc(instr_get_opcode(inst)))
             continue;
 

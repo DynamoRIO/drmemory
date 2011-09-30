@@ -59,6 +59,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.5 and 1.4.4 include:
+ - Renamed the -check_cmps option to -check_uninit_cmps
+ - Renamed the -check_non_moves option to -check_uninit_non_moves
+
 The changes between version 1.4.4 and 1.4.3 include:
  - Fix for missing output in cmd on Win7 SP1
  - Check for /MDd and abort

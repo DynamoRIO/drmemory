@@ -806,7 +806,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     if (!mi->need_offs) { /* if not set above */
         mi->need_offs = 
             ( (mi->store || mi->dst_reg != REG_NULL) ||
-              /* need offs if propagating eflags (esp for -no_check_cmps) */
+              /* need offs if propagating eflags (esp for -no_check_uninit_cmps) */
               (mi->load && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
                !instr_check_definedness(inst)) ) &&
             (mi->memsz < 4 && !opnd_is_immed_int(mi->memoffs));
@@ -922,7 +922,7 @@ set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
         /* Strategy for and/test/or: don't need 2 passes like slowpath since
          * if check_definedness we can bail out to slowpath and start over there.
          * Thus we mark as checking for OP_and and OP_or; OP_test by default is
-         * if options.check_cmps.
+         * if options.check_uninit_cmps.
          */
         mi->check_definedness = true;
         /* To do the full check in the fastpath would take some work:

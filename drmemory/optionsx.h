@@ -272,19 +272,22 @@ OPTION_CLIENT_BOOL(client, show_threads, true,
                    "Whether to print the callstack of each thread creation point to the global logfile, which can be useful to identify which thread was involved in an error report.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
 
 /* Exposed for Dr. Memory only */
-OPTION_CLIENT_BOOL(drmemscope, check_cmps, true,
+OPTION_CLIENT_BOOL(drmemscope, check_uninit_cmps, true,
                    /* If we check when eflags is written, we can mark the source
                     * undefined reg as defined (since we're reporting there)
                     * and avoid multiple errors on later jcc, etc.
                     */
-                   "Check register definedness of cmps",
+                   "Check definedness of comparison instructions",
                    "Report definedness errors on compares instead of waiting for conditional jmps.")
-OPTION_CLIENT_BOOL(drmemscope, check_non_moves, false,
+OPTION_CLIENT_BOOL(drmemscope, check_uninit_non_moves, false,
                    /* XXX: should also support different checks on a per-module
                     * basis to be more stringent w/ non-3rd-party code?
                     */
-                   "Check register definedness of non-moves",
+                   "Check definedness of all non-move instructions",
                    "Report definedness errors on any instruction that is not a move.  Note: turning this option on may result in false positives, but can also help diagnose errors through earlier error reporting.")
+OPTION_CLIENT_BOOL(drmemscope, check_uninit_all, false,
+                   "Check definedness of all instructions",
+                   "Report definedness errors on any instruction, rather than the default of waiting until something meaningful is done, which reduces false positives.  Note: turning this option on may result in false positives, but can also help diagnose errors through earlier error reporting.")
 OPTION_CLIENT_SCOPE(drmemscope, stack_swap_threshold, int, 0x9000, 256, INT_MAX,
                     "Stack change amount to consider a swap",
                     "Stack change amount to consider a swap instead of an allocation or de-allocation on the same stack.  "TOOLNAME" attempts to dynamically tune this value unless it is changed from its default.")
@@ -508,3 +511,6 @@ OPTION_CLIENT_BOOL(internal, syscall_driver, false,
 OPTION_CLIENT_BOOL(internal, verify_sysnums, false,
                    "Check system call numbers at startup",
                    "Check system call numbers at startup")
+OPTION_CLIENT_BOOL(internal, leave_uninit, false,
+                   "Do not mark an uninitialized value as defined once reported",
+                   "Do not mark an uninitialized value as defined once reported.  This may result in many reports for the same error.")
