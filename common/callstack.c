@@ -1112,6 +1112,10 @@ print_buffer(file_t f, char *buf)
      */
     size_t sz = strlen(buf);
     ssize_t res;
+    if (f == INVALID_FILE) {
+        ASSERT(IF_WINDOWS(f == STDERR ||) false, "print_buffer invalid file");
+        return;
+    }
     while (true) {
         res = dr_write_file(f, buf, sz);
         if (res < 0) {
