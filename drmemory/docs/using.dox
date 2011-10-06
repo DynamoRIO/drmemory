@@ -144,7 +144,7 @@ configuration dialog (press Alt-F7 to bring it up) under the C/C++ | Code
 Generation | Runtime Library settings.  Change "Multi-threaded Debug DLL
 (/MDd)" to "Multi-threaded DLL (/MD)".
 
-On Window. , when using debug versions of the C library (when building with
+On Windows, when using debug versions of the C library (when building with
 the "/MTd" flag ("/MDd" is not supported at all), you will not be able to
 control the redzone size.  The debug heap checks will mostly be disabled as
 they overlap and can conflict with Dr. Memory's checks.  It is recommended
@@ -161,6 +161,13 @@ able to determine callstacks in the presence of frame pointer optimizations
 (FPO) in most cases, but if you see strange callstacks in an optimized
 application consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
 "-fno-omit-frame-pointer".
+
+The Visual Studio compiler's /RTC1 flag can prevent Dr. Memory from
+reporting uninitialized reads of local variables, and the /RTC1 checks for
+uninitialized reads themselves may not catch everything that Dr. Memory
+finds.  However, /RTC1 does perform additional stack checks that Dr. Memory
+does not, so for best results, your application should be run under
+Dr. Memory without /RTC1, and run natively with /RTC1.
 
 ********************
 \subsection sec_invocation Invoking Dr. Memory
