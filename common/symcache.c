@@ -379,9 +379,12 @@ symcache_init(const char *symcache_basedir,
     NULL_TERMINATE_BUFFER(symcache_dir);
     if (!dr_directory_exists(symcache_dir)) {
         if (!dr_create_dir(symcache_dir)) {
-            NOTIFY_ERROR("Unable to create symcache dir %s\n", symcache_dir);
-            ASSERT(false, "unable to create symcache dir");
-            dr_abort();
+            /* check again in case of a race (i#616) */
+            if (!dr_directory_exists(symcache_dir)) {
+                NOTIFY_ERROR("Unable to create symcache dir %s\n", symcache_dir);
+                ASSERT(false, "unable to create symcache dir");
+                dr_abort();
+            }
         }
     }
 }
