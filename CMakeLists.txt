@@ -91,34 +91,38 @@ if (TOOL_DR_HEAPSTAT)
   set(toolname_cap_spc "Dr. Heapstat")
   set(DEFINES ${DEFINES} -DTOOL_DR_HEAPSTAT)
 
-  # Flex building is done only for Dr. HeapStat visualization tool.  So Java
-  # is needed only for that too.
-  if (NOT DEFINED JAVA)     # Not using toolchain then
-    set(Java_FIND_QUIETLY ON) # avoid errors about missing javac
-    include(FindJava)
-    if (JAVA_RUNTIME)
-      set(JAVA "${JAVA_RUNTIME}")
-      message(STATUS "Found Java interpreter ${JAVA}")
-    else (JAVA_RUNTIME)
-      message(FATAL_ERROR "Can't find Java interpreter: please set JAVA var")
-    endif (JAVA_RUNTIME)
-  endif (NOT DEFINED JAVA)
-
-  # There is no standard install path so the user must tell us where they
-  # installed the Flex SDK, either via env var FLEXROOT or FLEX_SDK CMake var.
-  set(FLEX_SDK "$ENV{FLEXROOT}" CACHE PATH "Path to Flex SDK.")
-  set(FLEX_MXMLC "${FLEX_SDK}/lib/mxmlc.jar"
+  option(BUILD_VISUALIZER "build Dr. Heapstat visualizer (requires Flex SDK and Java)")
+  if (BUILD_VISUALIZER)
+    # Flex building is done only for Dr. HeapStat visualization tool.  So Java
+    # is needed only for that too.
+    if (NOT DEFINED JAVA)     # Not using toolchain then
+      set(Java_FIND_QUIETLY ON) # avoid errors about missing javac
+      include(FindJava)
+      if (JAVA_RUNTIME)
+        set(JAVA "${JAVA_RUNTIME}")
+        message(STATUS "Found Java interpreter ${JAVA}")
+      else (JAVA_RUNTIME)
+        message(FATAL_ERROR "Can't find Java interpreter: please set JAVA var")
+      endif (JAVA_RUNTIME)
+    endif (NOT DEFINED JAVA)
+    
+    # There is no standard install path so the user must tell us where they
+    # installed the Flex SDK, either via env var FLEXROOT or FLEX_SDK CMake var.
+    set(FLEX_SDK "$ENV{FLEXROOT}" CACHE PATH "Path to Flex SDK.")
+    set(FLEX_MXMLC "${FLEX_SDK}/lib/mxmlc.jar"
       CACHE FILEPATH "Path to Flex MXML compiler.")
-  if (NOT EXISTS "${FLEX_MXMLC}")
+    if (NOT EXISTS "${FLEX_MXMLC}")
       message(FATAL_ERROR "Flex compiler ${FLEX_MXMLC} not found: set FLEX_SDK var or FLEXROOT env var")
-  endif ()
-  message(STATUS "Found Flex MXML compiler ${FLEX_MXMLC}")
+    endif ()
+    message(STATUS "Found Flex MXML compiler ${FLEX_MXMLC}")
 
-  set(FLEX_FRAMEWORKS "${FLEX_SDK}/frameworks"
+    set(FLEX_FRAMEWORKS "${FLEX_SDK}/frameworks"
       CACHE PATH "Path to Flex frameworks, i.e., standard libraries.")
-  if (NOT EXISTS "${FLEX_FRAMEWORKS}")
+    if (NOT EXISTS "${FLEX_FRAMEWORKS}")
       message(FATAL_ERROR "Flex frameworks path ${FLEX_FRAMEWORKS} not found.")
-  endif ()
+    endif ()
+  endif (BUILD_VISUALIZER)
+
   set(DRSYMS_DEFAULT OFF)
 else (TOOL_DR_HEAPSTAT)
   # Dr. Memory
@@ -779,7 +783,7 @@ set_property(SOURCE common/alloc_unopt.c APPEND PROPERTY COMPILE_FLAGS "${DISABL
 
 # Though the swf file isn't an executable it is in bin32 because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
-if (TOOL_DR_HEAPSTAT)
+if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
   add_custom_target(vistool ALL DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf")
   add_custom_command(
     OUTPUT ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
@@ -789,7 +793,7 @@ if (TOOL_DR_HEAPSTAT)
       ${PROJECT_SOURCE_DIR}/${tooldir}/${toolname}.mxml
       -o ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
     VERBATIM)
-endif (TOOL_DR_HEAPSTAT)
+endif (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
 
 # should go into a configure.h if we get enough of these
 set(script_aux "")
@@ -978,10 +982,12 @@ if (NOT "${script_aux}" STREQUAL "")
     WORLD_READ WORLD_EXECUTE)
 endif ()
 if (TOOL_DR_HEAPSTAT)
-  install(FILES
-    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
-    DESTINATION "${INSTALL_BIN}"
-    PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
+  if (BUILD_VISUALIZER)
+    install(FILES
+      ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
+      DESTINATION "${INSTALL_BIN}"
+      PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
+  endif (BUILD_VISUALIZER)
 else (TOOL_DR_HEAPSTAT)
   install(FILES
     ${PROJECT_BINARY_DIR}/${BUILD_BIN}/suppress-default.txt
