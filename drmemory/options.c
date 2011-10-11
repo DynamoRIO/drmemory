@@ -278,7 +278,7 @@ options_init(const char *opstr)
        option_error(word, "unknown option");
     }
 
-    if (options.logdir[0] == '\0') {
+    if (!option_specified.logdir) {
         dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir),
                     "%s", DEFAULT_LOGDIR);
         NULL_TERMINATE_BUFFER(options.logdir);
