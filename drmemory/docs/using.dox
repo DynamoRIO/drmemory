@@ -142,7 +142,10 @@ release DLL ("/MD") or the release or debug static library ("/MT" or
 Studio, the release library can be selected from Visual Studio's
 configuration dialog (press Alt-F7 to bring it up) under the C/C++ | Code
 Generation | Runtime Library settings.  Change "Multi-threaded Debug DLL
-(/MDd)" to "Multi-threaded DLL (/MD)".
+(/MDd)" to "Multi-threaded DLL (/MD)".  If your application is C++, another
+step is necessary when using /MD to avoid the C++ Debug DLL:
+under Configuration Properties | C/C++ | Preprocessor, remove
+"_DEBUG" from the list of "Preprocessor Definitions".
 
 On Windows, when using debug versions of the C library (when building with
 the "/MTd" flag ("/MDd" is not supported at all), you will not be able to

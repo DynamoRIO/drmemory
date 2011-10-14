@@ -1785,7 +1785,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             text_matches_pattern(modname, "msvcr*d.dll", true/*ignore case*/)) {
             NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL not supported. "
                          "Please rebuild your application with either the Release "
-                         "build (/MD or /MT) or static Debug library (/MTd)."NL);
+                         "build (/MD or /MT) or static Debug library (/MTd)."
+                         "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."NL);
             dr_abort();
         }
 
