@@ -365,12 +365,14 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
              */
             if (save->scratch1 != REG_NULL) {
                 regval = get_thread_tls_value(drcontext, SPILL_SLOT_1);
-                LOG(2, "restoring per-bb %d to "PFX"\n", save->scratch1, regval);
+                LOG(2, "restoring per-bb %s to "PFX"\n",
+                    get_register_name(save->scratch1), regval);
                 reg_set_value(save->scratch1, info->mcontext, regval);
             }
             if (save->scratch2 != REG_NULL) {
                 regval = get_thread_tls_value(drcontext, SPILL_SLOT_2);
-                LOG(2, "restoring per-bb %d to "PFX"\n", save->scratch2, regval);
+                LOG(2, "restoring per-bb %s to "PFX"\n",
+                    get_register_name(save->scratch2), regval);
                 reg_set_value(save->scratch2, info->mcontext, regval);
             }
         }

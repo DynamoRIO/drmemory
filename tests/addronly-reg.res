@@ -19,22 +19,18 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-before regtest!
-after regtest!
-before subdword test!
-after subdword test!
-before subdword test2!
-after subdword test2!
-before repstr test!
-after repstr test!
-before eflags test!
-after eflags test!
-before addronly test!
-after addronly test!
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       2 unique,     2 total unaddressable access(es)
-~~Dr.M~~      12 unique,    12 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       3 unique,     3 total,    158 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+%if WINDOWS
+Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:593
+Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:605
+%endif
+%if UNIX
+Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:631
+Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:642
+%endif
+Error #3: LEAK 15 direct bytes + 0 indirect bytes
+Error #4: LEAK 15 direct bytes + 0 indirect bytes
+Error #5: LEAK 128 direct bytes + 0 indirect bytes

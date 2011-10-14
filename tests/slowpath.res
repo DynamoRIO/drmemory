@@ -44,6 +44,10 @@ Error #11: UNINITIALIZED READ: reading register ecx
 registers.c:349
 Error #12: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:379
+Error #13: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:593
+Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:605
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
@@ -70,6 +74,11 @@ Error #11: UNINITIALIZED READ: reading register ecx
 registers.c:360
 Error #12: UNINITIALIZED READ: reading 8 byte(s)
 registers.c:385
+Error #13: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:631
+Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
+registers.c:642
 %endif
-Error #13: LEAK 15 direct bytes + 0 indirect bytes
-Error #14: LEAK 15 direct bytes + 0 indirect bytes
+Error #15: LEAK 15 direct bytes + 0 indirect bytes
+Error #16: LEAK 15 direct bytes + 0 indirect bytes
+Error #17: LEAK 128 direct bytes + 0 indirect bytes

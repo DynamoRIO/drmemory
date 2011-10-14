@@ -1485,6 +1485,7 @@ shadow_registers_init(void)
     /* XXX: could save space by not allocating shadow regs for -no_check_uninitialized */
     IF_DEBUG(bool ok =)
         dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_TLS_SLOTS, 0);
+    LOG(2, "TLS shadow base: "PIFX"\n", tls_shadow_base);
     ASSERT(ok, "fatal error: unable to reserve tls slots");
     ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
 }
@@ -1645,7 +1646,8 @@ opnd_create_own_spill_slot(uint index)
     ASSERT(index < options.num_spill_slots, "spill slot index overflow");
     ASSERT(options.shadowing, "incorrectly called");
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1,
+        /* must use 0 scale to match what DR decodes for opnd_same */
+        (SEG_FS, REG_NULL, REG_NULL, 0,
          tls_shadow_base + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t), OPSZ_PTR,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */

@@ -1739,7 +1739,9 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 }
 
-/* single eflags save per bb */
+/* Single eflags save per bb 
+ * N.B.: the sequence added here is matched in restore_mcontext_on_shadow_fault()
+ */
 static void
 restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, bb_info_t *bi)
@@ -3113,7 +3115,37 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 }
 #endif /* TOOL_DR_MEMORY */
 
+static bool
+instr_needs_eflags_restore(instr_t *inst, uint aflags_liveness)
+{
+    return (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst)) ||
+            /* If the app instr writes some subset of eflags we need to restore
+             * rest so they're combined properly
+             */
+            (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && 
+             aflags_liveness != EFLAGS_WRITE_6));
+}
+
 #ifdef TOOL_DR_MEMORY
+static bool
+instr_is_restore_eflags(void *drcontext, instr_t *inst)
+{
+    return (instr_get_opcode(inst) == OP_mov_ld &&
+            opnd_is_far_base_disp(instr_get_src(inst, 0)) &&
+            /* opnd_same fails b/c of force_full_disp differences */
+            opnd_get_disp(instr_get_src(inst, 0)) ==
+            opnd_get_disp(spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX)));
+}
+
+static bool
+instr_is_spill_reg(void *drcontext, instr_t *inst)
+{
+    return (instr_get_opcode(inst) == OP_mov_st &&
+            opnd_is_far_base_disp(instr_get_dst(inst, 0)) &&
+            /* distinguish our pop store of 0x55 from slow slot eax spill */
+            opnd_get_size(instr_get_src(inst, 0)) == OPSZ_PTR);
+}
+
 /* PR 448701: handle fault on write to a special shadow block.
  * Restores mc to app values and returns a pointer to app instr,
  * which caller must free.
@@ -3153,6 +3185,55 @@ restore_mcontext_on_shadow_fault(void *drcontext,
     decode(drcontext, dr_app_pc_for_decoding(mc->pc), app_inst);
     pc = pc_post_fault;
     instr_init(drcontext, &inst);
+
+    /* First we look for eflags restore.  We could try and work it into the
+     * regular loop to be more efficient but it gets messy.  We want to skip
+     * the whole thing (i#533).
+     */
+    if (instr_needs_eflags_restore(app_inst,
+                                   /* not worth storing liveness for bb or decoding
+                                    * whole bb here, so we may have false pos
+                                    */
+                                   instr_get_eflags(app_inst)) ||
+        mc->pc == save->last_instr /* bottom of bb restores */) {
+        /* Skip what's added by restore_aflags_if_live() prior to GPR restores */
+        bool has_eflags_restore = false;
+        pc = decode(drcontext, pc, &inst);
+        if (instr_valid(&inst)) {
+            bool has_spill_eax = false;
+            if (instr_get_opcode(&inst) == OP_xchg ||
+                instr_is_spill_reg(drcontext, &inst)) {
+                has_spill_eax = true;
+                instr_reset(drcontext, &inst);
+                pc = decode(drcontext, pc, &inst);
+            }
+            if (instr_is_restore_eflags(drcontext, &inst)) {
+                has_eflags_restore = true;
+                /* skip it and any add+sahf */
+                instr_reset(drcontext, &inst);
+                pc = decode(drcontext, pc, &inst);
+                if (instr_get_opcode(&inst) == OP_add) {
+                    instr_reset(drcontext, &inst);
+                    pc = decode(drcontext, pc, &inst);
+                }
+                ASSERT(instr_get_opcode(&inst) == OP_sahf, "invalid flags restore");
+                if (has_spill_eax) {
+                    /* skip restore */
+                    instr_reset(drcontext, &inst);
+                    pc = decode(drcontext, pc, &inst);
+                    ASSERT(instr_get_opcode(&inst) == OP_xchg ||
+                           instr_get_opcode(&inst) == OP_mov_ld, "invalid restore");
+                }
+            }
+        } else
+            ASSERT(false, "unknown restore instr"); /* we'll reset below for release */
+        if (!has_eflags_restore) {
+            /* since we didn't have bb liveness we could come here and not find it */
+            pc = pc_post_fault;
+        }
+        instr_reset(drcontext, &inst);
+    }
+
     while (true) {
         pc = decode(drcontext, pc, &inst);
         DOLOG(3, {
@@ -3181,7 +3262,7 @@ restore_mcontext_on_shadow_fault(void *drcontext,
             reg1 = opnd_get_reg(instr_get_src(&inst, 0));
             reg2 = opnd_get_reg(instr_get_src(&inst, 1));
             /* If one of the regs is a whole-bb spill, its real value is
-             * in the TLS slot, so don't swap (PR 501740)
+             * in the TLS slot, so don't swap (PR 501740).
              */
             if (mc->pc != save->last_instr) {
                 if (reg1 == save->scratch1 || reg1 == save->scratch2) {
@@ -3193,41 +3274,61 @@ restore_mcontext_on_shadow_fault(void *drcontext,
                     } else {
                         /* The app's value was in the global's mcxt slot */
                         val2 = reg_get_value(reg1, raw_mc);
+                        LOG(3, "\tsetting %s to "PFX"\n",
+                            get_register_name(reg2), val2);
                         reg_set_value(reg2, mc, val2);
                     }
                 } else if (reg2 == save->scratch1 || reg2 == save->scratch2) {
                     swap = false;
                     /* The app's value was in the global's mcxt slot */
                     val1 = reg_get_value(reg2, raw_mc);
+                    LOG(3, "\tsetting %s to "PFX"\n",
+                        get_register_name(reg1), val1);
                     reg_set_value(reg1, mc, val1);
                 }
             }
             if (swap) {
                 val1 = reg_get_value(reg1, mc);
                 val2 = reg_get_value(reg2, mc);
+                LOG(3, "\tsetting %s to "PFX" and %s to "PFX"\n",
+                    get_register_name(reg2), val1,
+                    get_register_name(reg1), val2);
                 reg_set_value(reg2, mc, val1);
                 reg_set_value(reg1, mc, val2);
             }
         } else if (instr_get_opcode(&inst) == OP_mov_ld &&
                    opnd_is_far_base_disp(instr_get_src(&inst, 0))) {
-            int offs = opnd_get_disp(instr_get_src(&inst, 0));
-            ASSERT(opnd_get_index(instr_get_src(&inst, 0)) == REG_NULL, "unknown tls");
-            ASSERT(opnd_get_segment(instr_get_src(&inst, 0)) == SEG_FS, "unknown tls");
+            opnd_t src = instr_get_src(&inst, 0);
+            int offs = opnd_get_disp(src);
+            IF_DEBUG(opnd_t flag_slot = spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX);)
+            ASSERT(opnd_get_index(src) == REG_NULL, "unknown tls");
+            ASSERT(opnd_get_segment(src) == SEG_FS, "unknown tls");
             ASSERT(opnd_is_reg(instr_get_dst(&inst, 0)), "unknown tls");
             /* We read directly from the tls slot regardless of whether ours or
              * DR's: no easy way to translate to DR spill slot # and use C
              * interface.
              */
+            LOG(3, "\tsetting %s to "PFX"\n",
+                get_register_name(opnd_get_reg(instr_get_dst(&inst, 0))),
+                get_raw_tls_value(offs));
+            /* XXX: opnd_same() fails b/c we have force_full_disp set, which is
+             * not set on decoding
+             */
+            ASSERT(offs != opnd_get_disp(flag_slot), "failed to skip eflags restore");
             reg_set_value(opnd_get_reg(instr_get_dst(&inst, 0)), mc,
                           get_raw_tls_value(offs));
-        } else if (instr_get_opcode(&inst) == OP_mov_st &&
-                   opnd_is_far_base_disp(instr_get_dst(&inst, 0)) &&
-                   /* distinguish our pop store of 0x55 from slow slot eax spill */
-                   opnd_get_size(instr_get_src(&inst, 0)) == OPSZ_PTR) {
-            /* Start of non-fast DR spill slot sequence */
-            /* FIXME: NOT TESTED: not easy since we now require our own spill slots */
+        } else if (instr_is_spill_reg(drcontext, &inst)) {
+            /* Start of non-fast DR spill slot sequence.
+             * We skip eflags restore so this can't be a local store of eax.
+             */
             reg_t val;
             int offs;
+            if (opnd_get_disp(instr_get_dst(&inst, 0)) <
+                opnd_get_disp(spill_slot_opnd(drcontext, SPILL_SLOT_1))) {
+                /* this is ecx spill for DR's own mangling */
+                break;
+            }
+            /* FIXME: NOT TESTED: not easy since we now require our own spill slots */
             instr_reset(drcontext, &inst);
             pc = decode(drcontext, pc, &inst);
             ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
@@ -3244,14 +3345,18 @@ restore_mcontext_on_shadow_fault(void *drcontext,
             offs = opnd_get_disp(instr_get_src(&inst, 0));
             ASSERT(offs < sizeof(*raw_mc), "unknown slow spill");
             val = *(reg_t *)(((byte *)raw_mc) + offs);
+            LOG(3, "\tsetting %s to "PFX"\n",
+                get_register_name(opnd_get_reg(instr_get_dst(&inst, 0))), val);
             reg_set_value(opnd_get_reg(instr_get_dst(&inst, 0)), mc, val);
 
             instr_reset(drcontext, &inst);
             pc = decode(drcontext, pc, &inst);
             ASSERT(instr_get_opcode(&inst) == OP_mov_ld &&
                    opnd_is_far_base_disp(instr_get_src(&inst, 0)), "unknown slow spill");
+        } else if (instr_get_opcode(&inst) == OP_sahf) {
+            ASSERT(false, "should have skipped eflags restore");
         } else if (instr_is_cti(&inst) ||
-                   /* for no uninits our cmovcc sequence has no cti before app instr */
+                   /* for no uninits our instru has no cti before app instr */
                    !options.check_uninitialized) {
             break;
         }
@@ -5081,12 +5186,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
         return;
 
     /* Before each read, restore global spilled registers */
-    if (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst)) ||
-        /* If the app instr writes some subset of eflags we need to restore
-         * rest so they're combined properly
-         */
-        (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && 
-         bi->aflags != EFLAGS_WRITE_6))
+    if (instr_needs_eflags_restore(inst, bi->aflags))
         restore_aflags_if_live(drcontext, bb, inst, mi, bi);
     /* Optimization: don't bother to restore if this is not a meaningful read
      * (e.g., xor with self)

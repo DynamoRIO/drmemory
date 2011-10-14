@@ -49,7 +49,7 @@ static void check_reg(byte *pusha_base, int pre_val, int offs)
 static void
 regtest()
 {
-    printf("before regtest\n");
+    printf("before regtest!\n"); /* using ! as workaround for i#625 */
 #ifdef WINDOWS
     /* XXX i#403: add asm_defines.asm and write cross-os asm */
     __asm {
@@ -173,7 +173,7 @@ regtest()
     asm("popal");
     asm("pop %eax");
 #endif
-    printf("after regtest\n");
+    printf("after regtest!\n");
 }
 
 void
@@ -184,7 +184,7 @@ subdword_test(void)
      */
     char *undef = (char *) malloc(128);
     int val;
-    printf("before subdword test\n");
+    printf("before subdword test!\n");
 #ifdef WINDOWS
     /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
@@ -221,7 +221,7 @@ subdword_test(void)
 #endif
     if (val == 0) /* uninit */
         array[0] = val;
-    printf("after subdword test\n");
+    printf("after subdword test!\n");
     free(undef);
 }
 
@@ -238,7 +238,7 @@ repstr_test(void)
         if (i != 7)
             a1[i] = 0;
     }
-    printf("before repstr test\n");
+    printf("before repstr test!\n");
 #ifdef WINDOWS
     /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
@@ -286,7 +286,7 @@ repstr_test(void)
     asm("mov   $1, %eax");
     asm("xadd  %eax, (%edi)");
 #endif
-    printf("after repstr test\n");
+    printf("after repstr test!\n");
     free(undef);
 }
 
@@ -295,7 +295,7 @@ void
 eflags_test(void)
 {
     char *undef = (char *) malloc(16);
-    printf("before eflags test\n");
+    printf("before eflags test!\n");
 #ifdef WINDOWS
     /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
@@ -330,7 +330,7 @@ eflags_test(void)
     asm("setb  %cl");
     asm("cmp   $4, %cl"); /* error: eflags prop through setcc (PR 408552) */
 #endif
-    printf("after eflags test\n");
+    printf("after eflags test!\n");
     free(undef);
 }
 
@@ -435,7 +435,7 @@ subdword_test2(void)
      */
     char *undef = (char *) malloc(128);
     int val1, val2;
-    printf("before subdword test2\n");
+    printf("before subdword test2!\n");
 #ifdef WINDOWS
     /* XXX i#403: add asm_defines.asm and write cross-os asm: this is getting
      * hard to maintain w/ two copies
@@ -566,8 +566,95 @@ subdword_test2(void)
         array[0] = val1;
     if (val2 == 0) /* uninit */
         array[0] = val2;
-    printf("after subdword test2\n");
+    printf("after subdword test2!\n");
     free(undef);
+}
+
+void
+addronly_test(void)
+{
+    /* test state restoration on ud2a fault path (in particular, i#533)
+     * when run w/ -no_check_uninitialized
+     */
+    char unused[128]; /* i#624: shift in stack to avoid stale ptr for addronly */
+    char *undef = (char *) malloc(128);
+    unused[0] = 1;
+    printf("before addronly test!\n");
+
+#ifdef WINDOWS
+    /* XXX i#403: add asm_defines.asm and write cross-os asm: this is getting
+     * hard to maintain w/ two copies
+     */
+    __asm {
+        pushad
+        mov   eax, undef
+
+        /* i#533: eflags restore */
+        inc   byte ptr [eax+128] /* partial aflags write so need aflags restore */
+        inc   eax /* ensure ebx and edx are the scratch regs to get xchg */
+        inc   eax
+        inc   eax
+        inc   eax
+        inc   ecx
+        inc   ecx
+        inc   ecx
+        inc   ecx
+        jmp   foo /* end bb */
+      foo:
+
+        inc   byte ptr [eax+128] /* partial aflags write so need aflags restore */
+        inc   ebx /* this time have eax and ecx as the scratch regs */
+        inc   ebx
+        inc   ebx
+        inc   ebx
+        mov   edx, 0
+        inc   edx
+        inc   edx
+        inc   edx
+        jmp   foo2 /* end bb */
+      foo2:
+
+        popad
+    }
+#else
+    asm("pusha");
+    asm("mov   %0, %%eax" : : "g"(undef) : "eax");
+
+    /* i#533: eflags restore */
+    /* XXX: having separate asm lines means the compiler can insert spill code
+     * in between (rnk: clang -O0 does), but it means the entire sequence
+     * is one source line, messing up the line-based testing.  Going w/ separate
+     * lines for now since it works out in gcc: in the future we'll probably
+     * need separate, true asm anyway (for 64-bit) and we'll get the best of
+     * both worlds then.
+     */
+    asm("incb  128(%eax)");
+    asm("inc   %eax");
+    asm("inc   %eax");
+    asm("inc   %eax");
+    asm("inc   %eax");
+    asm("inc   %ecx");
+    asm("inc   %ecx");
+    asm("inc   %ecx");
+    asm("inc   %ecx");
+    asm("jmp foo");
+    asm("foo:");
+    asm("incb  128(%eax)");
+    asm("inc   %ebx");
+    asm("inc   %ebx");
+    asm("inc   %ebx");
+    asm("inc   %ebx");
+    asm("mov   $0, %edx");
+    asm("inc   %edx");
+    asm("inc   %edx");
+    asm("inc   %edx");
+    asm("jmp foo2");
+    asm("foo2:");
+
+    asm("popa");
+#endif
+    printf("after addronly test!\n");
+    /* we go ahead and leak it b/c glibc complains on free */
 }
 
 int
@@ -598,6 +685,8 @@ main()
     and_or_test();
 
     float_test();
+
+    addronly_test();
 
     return 0;
 }
