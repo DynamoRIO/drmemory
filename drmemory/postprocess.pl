@@ -110,6 +110,7 @@ my $gen_suppress_syms = 1;
 my $default_suppress_file = "$bindir/suppress-default.txt";
 my $drmem_disabled = 0;
 my $callstack_style = "0x101"; # should keep in sync, but normally passed even if default
+my $warned_legacy_supp = 0;
 
 # Use an error cache to prevent processing duplicates; indexed by error info
 # excluding read/write message in the first line.  PR 420942.
@@ -207,6 +208,13 @@ if ($leaks_only) {
     # no summary in global log so we must add
     $report_leaks = 1;
 }
+
+$deprecated_supp_msg1 =
+    "WARNING: Deprecated legacy limited Valgrind suppression format detected.\n";
+$deprecated_supp_msg2 =
+    "Use bin/valgrind2drmemory.pl to convert to more-powerful supported ".
+    "Dr. Memory format.\n";
+
 if ($callstack_style =~ /^0x(.*)/) {
     # GetOptions doesn't support hex so we parse a string
     $callstack_style = hex($1);
@@ -1695,23 +1703,40 @@ sub read_suppression_info($file_in, $default_in)
     }
 
     while (<SUPP_IN>) {
-        next if (/^\s*$/ || /^\#/);  # skip blank lines and ones starting with #
+        next if (/^\s*$/ || /^\s*\#/);  # skip blank lines and ones starting with #
         s/\r//g if (!$is_unix);
         # is_line_start_of_*() can't match ^WARNING since client uses that
         # for other purposes so we add REPORTED in for the match (and then
         # remove when storing the suppression type)
         s/^WARNING/REPORTED WARNING/;
         if ($brace_line > -1) {
+            if (!$warned_legacy_supp) {
+                $warned_legacy_supp = 1;
+                if (!$quiet) {
+                    print stderr $default_prefix.$deprecated_supp_msg1;
+                    print stderr $default_prefix.$deprecated_supp_msg2;
+                    print $deprecated_supp_msg1.$deprecated_supp_msg2;
+                }
+            }
             $brace_line++;
             s/^\s*//;
             s/\s*$//;
             if ($brace_line == 1) {
                 $name = $_;
             } elsif ($brace_line == 2) {
-                if (/^Memcheck:Addr\d+$/ || /^Memcheck:Jump$/) {
+                if (($type = is_line_start_of_suppression($_))) {
+                    # i#282: support mixed format
+                } elsif (!/^Memcheck:/) {
+                    # skip it
+                    while (<SUPP_IN>) {
+                        last if (/^\s*}/);
+                    }
+                    $num_supp--;
+                    $total_supp--;
+                    next;
+                } elsif (/^Memcheck:Addr\d+$/ || /^Memcheck:Jump$/) {
                     # We ignore the {1,2,4,8,16} after Addr
                     $type = 'UNADDRESSABLE ACCESS';
-                    return true;
                 } elsif (/^Memcheck:Value\d+$/ || /^Memcheck:Cond$/ ||
                            # XXX: is Param used for unaddr syscall params?
                            /^Memcheck:Param/) {
@@ -1726,20 +1751,23 @@ sub read_suppression_info($file_in, $default_in)
                     $type = 'WARNING';
                 } else {
                     $callstack .= $_;   # need the malformed frame to print it out
-                    die "ERROR: unknown frame in Valgrind-style suppression:\n".
-                        "$type\n$callstack\n";
+                    die "ERROR: unknown type for Valgrind-style suppression:\n".
+                        "$name\n$callstack\n";
                 }
             } elsif (/^fun:(.*)$/) {
                 # Valgrind format fun:sym => *!sym */
                 # FIXME i#282: Valgrind C++ symbols are mangled!  NYI
                 $callstack .= "*!$1\n";
-            } elsif (/^fun:(.*)$/) {
+            } elsif (/^obj:(.*)$/) {
                 # Valgrind format obj:mod => mod!* */
                 $callstack .= "$1!*\n";
+            } elsif (/^\.\.\.$/) {
+                # Valgrind format obj:mod => mod!* */
+                $callstack .= $_;
             } elsif (/^}/) {
                 $brace_line = -1;
             }
-        } elsif ((/^.+!.+$/ && !/.*\+.*/) || # mod!func, but no '+'
+        } elsif ((/^.+!.+$/ && !/^</) || # mod!func, but no leading <
                  # support missing module for vmk (PR 363063)
                  (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
                  /<not in a module>/ || /^system call / || /^\.\.\./) {
@@ -1748,7 +1776,7 @@ sub read_suppression_info($file_in, $default_in)
             $callstack =~ s/[ \t]*$//; # trim trailing whitespace (i#381)
         } elsif (($new_type = is_line_start_of_error($_)) ||
                  ($new_type = is_line_start_of_suppression($_)) ||
-                 /^{/) {
+                 /^\s*{/) {
             $valid_frame = 0;
             $num_supp++ if ($callstack ne '');
             $total_supp++;
@@ -1939,12 +1967,14 @@ sub is_line_start_of_error($line)
 sub is_line_start_of_suppression($line)
 {
     my ($line) = @_;
-    if ($line =~ /^(UNADDRESSABLE ACCESS)/ ||
-        $line =~ /^(UNINITIALIZED READ)/ ||
-        $line =~ /^(INVALID HEAP ARGUMENT)/ ||
-        $line =~ /^REPORTED (WARNING)/ ||
-        $line =~ /^(LEAK)/ ||
-        $line =~ /^(POSSIBLE LEAK)/) {
+    foreach $type (@err_type_keys) {
+        if ($line =~ /^($type)/ ||
+             # i#282: support Tool:Type
+            $line =~ /^Dr.Memory:($type)/) {
+            return $1;
+        }
+    }
+    if ($line =~ /^REPORTED (WARNING)/) {
         return $1;
     }
     return 0;

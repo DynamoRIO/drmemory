@@ -100,6 +100,8 @@ static const char *const suppress_name[] = {
     "POSSIBLE LEAK",    
 };
 
+#define DRMEM_VALGRIND_TOOLNAME "Dr.Memory"
+
 /* The error_lock protects these as well as error_table */
 static uint num_unique[ERROR_MAX_VAL];
 static uint num_total[ERROR_MAX_VAL];
@@ -218,6 +220,7 @@ struct _suppress_spec_t {
     suppress_frame_t *frames;
     suppress_frame_t *last_frame;
     bool is_default; /* from default file, or user-specified? */
+    bool is_memcheck_syscall;
     size_t bytes_leaked;
     /* During initial reading it's easier to build a linked list.
      * We could convert to an array after reading both suppress files,
@@ -253,7 +256,7 @@ error_callstack_init(error_callstack_t *ecs)
 }
 
 static int
-get_suppress_type(char *line)
+get_suppress_type(const char *line)
 {
     int i;
     ASSERT(line != NULL, "invalid param");
@@ -261,7 +264,11 @@ get_suppress_type(char *line)
         return -1;
     /* Perf: we could stick the 6 names in a hashtable */
     for (i = 0; i < ERROR_MAX_VAL; i++) {
-        if (strstr(line, suppress_name[i]) == line)
+        const char *start =  strstr(line, suppress_name[i]);
+        if (start == line ||
+            /* Support "Dr.Memory:<type>" for legacy format */
+            (start == line + strlen(DRMEM_VALGRIND_TOOLNAME) + 1/*":"*/ &&
+             strstr(line, DRMEM_VALGRIND_TOOLNAME) == line))
             return i;
     }
     return -1;
@@ -386,9 +393,11 @@ suppress_spec_finish(suppress_spec_t *spec,
 static bool
 suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
                           const char *line_in, size_t line_len, int brace_line,
-                          const char *line)
+                          const char *line, bool *skip OUT)
 {
     const char *c;
+    if (skip != NULL)
+        *skip = false;
 
     /* look for top-level spec lines.  we could disallow once callstack starts
      * but I'm not bothering.
@@ -403,17 +412,29 @@ suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
          * We don't have a perfect mapping here.
          */
         ASSERT(spec->type == -1, "duplicate error types");
-        if (strstr(line, "Memcheck:Addr") == line ||
-            strcmp(line, "Memcheck:Jump") == 0) {
+        /* Support "Dr.Memory:<type>" mixed format */
+        spec->type = get_suppress_type(line);
+        if (spec->type > -1) {
+            return true;
+        } else if (strstr(line, "Memcheck:") != line) {
+            /* Not a Memcheck type */
+            if (skip != NULL)
+                *skip = true;
+            return true;
+        } else if (strstr(line, "Memcheck:Addr") == line ||
+                   strcmp(line, "Memcheck:Jump") == 0) {
             /* We ignore the {1,2,4,8,16} after Addr */
             spec->type = ERROR_UNADDRESSABLE;
             return true;
         } else if (strstr(line, "Memcheck:Value") == line ||
-                   strcmp(line, "Memcheck:Cond") == 0 ||
-                   /* XXX: is Param used for unaddr syscall params? */
-                   strcmp(line, "Memcheck:Param") == 0) {
+                   strcmp(line, "Memcheck:Cond") == 0) {
             /* We ignore the {1,2,4,8,16} after Value */
             spec->type = ERROR_UNDEFINED;
+            return true;
+        } else if (strcmp(line, "Memcheck:Param") == 0) {
+            /* XXX: is Param used for unaddr syscall params too? */
+            spec->type = ERROR_UNDEFINED;
+            spec->is_memcheck_syscall = true;
             return true;
         } else if (strcmp(line, "Memcheck:Leak") == 0) {
             spec->type = ERROR_LEAK;
@@ -458,7 +479,7 @@ suppress_spec_prefix_line(suppress_spec_t *spec, const char *cstack_start,
     return false;
 }
 
-/* Returns whether this frame has symbols in it */
+/* Returns whether to keep the suppression, based on this frame */
 static bool
 suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
                         const char *line_in, size_t line_len, int brace_line)
@@ -466,12 +487,13 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     suppress_frame_t *frame;
     bool has_symbols = false;
     const char *line;
+    bool skip_supp = false;
 
     /* make a local copy that ends in \0 so we can use strchr, etc. */
     line = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
 
     if (suppress_spec_prefix_line(spec, cstack_start, line_in, line_len,
-                                  brace_line, line))
+                                  brace_line, line, &skip_supp))
         goto add_frame_done;
 
     spec->num_frames++;
@@ -506,19 +528,24 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
             frame->is_module = true;
             frame->modname = drmem_strdup(line + strlen("obj:"), HEAPSTAT_REPORT);
             frame->func = drmem_strdup("*", HEAPSTAT_REPORT);
+        } else if (strstr(line, "...") == line) {
+            frame->is_ellipsis = true;
+        } else if (spec->is_memcheck_syscall && spec->num_frames == 1) {
+            /* 1st frame of Memcheck:Param can be syscall name + args.
+             * Often has params which we don't want: "epoll_ctl(epfd)"
+             */
+            const char *stop = strchr(line, '(');
+            ASSERT(!frame->is_module, "incorrect initialization");
+            frame->func = drmem_strndup(line_in,
+                                        (stop != NULL) ? stop - line: line_len,
+                                        HEAPSTAT_REPORT);
         } else {
             report_malformed_suppression(cstack_start, line_in + line_len,
                                          "Unknown frame in Valgrind-style callstack");
             ASSERT(false, "should not reach here");
         }
-    } else if (strchr(line, '!') != NULL && strchr(line, '+') == NULL && line[0] != '<') {
-        const char *bang = strchr(line, '!');
-        has_symbols = true;
-        frame->is_module = true;
-        frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_REPORT);
-        frame->func = drmem_strndup(bang + 1, line_len - (bang + 1 - line),
-                                    HEAPSTAT_REPORT);
     } else if (line[0] == '<' && strchr(line, '+') != NULL &&
+               /* we assume module doesn't have ! in its name */
                strchr(line, '>') != NULL && strchr(line, '!') == NULL) {
         const char *plus = strchr(line, '+');
         frame->is_module = true;
@@ -533,6 +560,14 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
                                          INCORRECT_FRAME_MSG);
             ASSERT(false, "should not reach here");
         }
+    } else if (strchr(line, '!') != NULL && line[0] != '<') {
+        /* note that we can't exclude any + ("operator+") or < (templates) */
+        const char *bang = strchr(line, '!');
+        has_symbols = true;
+        frame->is_module = true;
+        frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_REPORT);
+        frame->func = drmem_strndup(bang + 1, line_len - (bang + 1 - line),
+                                    HEAPSTAT_REPORT);
     } else if (strcmp(line, "<not in a module>") == 0) {
         ASSERT(!frame->is_module, "incorrect initialization");
         frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
@@ -560,7 +595,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     
  add_frame_done:
     global_free((byte *)line, strlen(line) + 1, HEAPSTAT_REPORT);
-    return has_symbols;
+    return !skip_supp && IF_DRSYMS_ELSE(true, !has_symbols);
 }
 
 static void
@@ -570,7 +605,7 @@ read_suppression_file(file_t f, bool is_default)
     suppress_spec_t *spec = NULL;
     char *cstack_start;
     int type;
-    bool has_symbolic_frames = false;
+    bool skip_suppression = false;
     int brace_line = -1;
     bool new_error = false;
 
@@ -628,6 +663,13 @@ read_suppression_file(file_t f, bool is_default)
             else if (line[0] == '{') {
                 new_error = true;
                 brace_line = 0;
+                DO_ONCE({
+                    /* There is no script for Windows (nobody has Valgrind
+                     * suppressions on Windows except WINE users) so we can't say
+                     * "use script": for Linux we rely on postprocess saying that
+                     */
+                    NOTIFY("WARNING: Deprecated legacy limited Valgrind suppression format detected.  Please convert to the more-powerful supported Dr. Memory format.\n");
+                });
             }
         } else if (line[0] == '}') {
             brace_line = -1;
@@ -636,7 +678,7 @@ read_suppression_file(file_t f, bool is_default)
             brace_line++;
         if (new_error) {
             if (spec != NULL) {
-                if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+                if (!skip_suppression)
                     suppress_spec_finish(spec, cstack_start, line - 1);
                 else
                     suppress_spec_free(spec);
@@ -644,18 +686,18 @@ read_suppression_file(file_t f, bool is_default)
             /* A new callstack */
             cstack_start = line;
             spec = suppress_spec_create(type, is_default);
-            has_symbolic_frames = false;
+            skip_suppression = false;
         } else if (spec != NULL) {
-            if (suppress_spec_add_frame(spec, cstack_start, line, newline - line,
+            if (!suppress_spec_add_frame(spec, cstack_start, line, newline - line,
                                         brace_line))
-                has_symbolic_frames = true;
+                skip_suppression = true;
         } else {
             report_malformed_suppression(cstack_start, newline, INCORRECT_FRAME_MSG);
             ASSERT(false, "should not reach here");
         }
     }
     if (spec != NULL) {
-        if (IF_DRSYMS_ELSE(true, !has_symbolic_frames))
+        if (!skip_suppression)
             suppress_spec_finish(spec, cstack_start, line - 1);
         else
             suppress_spec_free(spec);
@@ -666,7 +708,9 @@ read_suppression_file(file_t f, bool is_default)
 static void
 open_and_read_suppression_file(const char *fname, bool is_default)
 {
+#ifdef USE_DRSYMS
     uint prev_suppressions = num_suppressions;
+#endif
     const char *label = (is_default) ? "default" : "user";
     if (fname == NULL || fname[0] == '\0') {
         dr_fprintf(f_global, "No %s suppression file specified\n", label);
@@ -678,10 +722,12 @@ open_and_read_suppression_file(const char *fname, bool is_default)
             return;
         }
         read_suppression_file(f, is_default);
-        /* Don't print to stderr about default suppression file */
+#ifdef USE_DRSYMS
+        /* Don't print to stderr about default suppression file, and don't print
+         * at all when postprocess is handling all the symbolic stacks
+         */
         NOTIFY_COND(!is_default, f_global, "Recorded %d suppression(s) from %s %s\n",
                     num_suppressions - prev_suppressions, label, fname);
-#ifdef USE_DRSYMS
         ELOGF(0, f_results, "Recorded %d suppression(s) from %s %s"NL,
               num_suppressions - prev_suppressions, label, fname);
 #endif

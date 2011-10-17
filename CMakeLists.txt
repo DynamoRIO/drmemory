@@ -889,6 +889,10 @@ else (WIN32)
       ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig"
       "${drconfig_copy}" VERBATIM)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
+  if (NOT TOOL_DR_HEAPSTAT)
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/valgrind2drmemory.pl"
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/valgrind2drmemory.pl" COPYONLY)
+  endif (NOT TOOL_DR_HEAPSTAT)
 endif (WIN32)
 if (TOOL_DR_HEAPSTAT)
   # we need a copy of Dr. Memory's postprocess for leaks (PR 536878)
@@ -993,6 +997,13 @@ else (TOOL_DR_HEAPSTAT)
     ${PROJECT_BINARY_DIR}/${BUILD_BIN}/suppress-default.txt
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
+  if (UNIX)
+    install(FILES
+      ${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/valgrind2drmemory.pl
+      DESTINATION "bin"
+      PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+      WORLD_READ WORLD_EXECUTE)
+  endif (UNIX)
 endif (TOOL_DR_HEAPSTAT)
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION "${INSTALL_LIB}"

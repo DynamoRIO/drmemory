@@ -75,14 +75,15 @@ su??ress!unini??test7
 
 #-------------------------------------------------------------------------------
 
-# unaddressable access: plain
-UNADDRESSABLE ACCESS
-name=unaddr_test1 plain
-suppress!unaddr_test1
-suppress!test
-suppress!main
+# unaddressable access: plain, valgrind style w/ drmem type
+{
+  unaddr_test1 plain
+  Dr.Memory:UNADDRESSABLE ACCESS
+  fun:unaddr_test1
+  fun:test
+  fun:main
+}
 
-# unaddressable access: wildcard in module
 UNADDRESSABLE ACCESS
 name=unaddr_test2 *
 s*s!unaddr_test2

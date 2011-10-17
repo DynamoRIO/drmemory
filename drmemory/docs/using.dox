@@ -391,8 +391,21 @@ myranlib.dll!GenRanHelper*
 myranlib.dll!GenRan*
 \endcode
 
-Valgrind-style suppressions are supported, but currently only with
-unmangled C++ symbols.
+For users with existing Valgrind Memcheck suppression files, Dr. Memory
+supports Valgrind-style suppressions, but not with mangled C++ symbols.
+On Linux, a script called \p valgrind2drmemory.pl is provided in the bin
+directory that can be used to convert a legacy Valgrind suppression file to
+the Dr. Memory format.  It uses heuristics to convert mangled C++ symbols
+that contain wildcards and may not succeed on complex types (it prints a
+warning for those it fails on).  Use it like this:
+
+\code
+bin/valgrind2drmemory.pl /path/to/old-supp-file /path/to/new-drmem-towrite
+\endcode
+
+The Dr. Memory suppression format is more powerful then the Valgrind format
+and matches the Windows module!function standards used by other tools.  We
+recommend converting to the Dr. Memory format from a legacy format.
 
 Another method of ignoring errors is to filter the reported errors to focus
 on particular source files.  Use the \p -srcfilter option to do this:
