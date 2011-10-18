@@ -291,10 +291,19 @@ static void test(void)
     printf("done\n");
 }
 
+static void
+run_some_again(void)
+{
+    /* hard to write such tests so we call twice w/ different callstacks */
+    syscall_test();
+    non_module_test();
+}
+
 int main()
 {
     int_p = (int *) ALLOC(7*sizeof(int));
     test();
+    run_some_again();
     int_p = NULL;   /* to make the last leak to be truly unreachable */
     return 0;
 }

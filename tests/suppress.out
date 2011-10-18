@@ -38,7 +38,7 @@ done
 ~~Dr.M~~       0 unique,     0 total warning(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
-~~Dr.M~~      17 user-suppressed error(s)
+~~Dr.M~~      19 user-suppressed error(s)
 %if DRSYMS
 ~~Dr.M~~       7 user-suppressed leak(s)
 %endif

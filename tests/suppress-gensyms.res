@@ -27,7 +27,7 @@ suppress.c:65
 suppress!test
 suppress.c:259
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #2: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -37,7 +37,7 @@ suppress.c:70
 suppress!test
 suppress.c:260
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #3: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -47,7 +47,7 @@ suppress.c:75
 suppress!test
 suppress.c:261
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #4: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -57,7 +57,7 @@ suppress.c:80
 suppress!test
 suppress.c:262
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #5: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -67,7 +67,7 @@ suppress.c:85
 suppress!test
 suppress.c:263
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #6: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -87,7 +87,7 @@ suppress.c:98
 suppress!test
 suppress.c:264
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #7: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
@@ -107,7 +107,7 @@ suppress.c:103
 suppress!test
 suppress.c:265
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
 suppress!unaddr_test1
@@ -115,7 +115,7 @@ suppress.c:110
 suppress!test
 suppress.c:269
 suppress!main
-suppress.c:297
+suppress.c:305
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
@@ -125,7 +125,7 @@ suppress.c:117
 suppress!test
 suppress.c:270
 suppress!main
-suppress.c:297
+suppress.c:305
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
@@ -135,7 +135,7 @@ suppress.c:124
 suppress!test
 suppress.c:271
 suppress!main
-suppress.c:297
+suppress.c:305
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
@@ -145,7 +145,7 @@ suppress.c:131
 suppress!test
 suppress.c:272
 suppress!main
-suppress.c:297
+suppress.c:305
 # non-det so disabling: Note: prev lower malloc:
 that was freed
 
@@ -155,7 +155,7 @@ suppress.c:179
 suppress!test
 suppress.c:282
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #13: UNINITIALIZED READ: reading 4 byte(s)
 %if WINDOWS
@@ -172,14 +172,14 @@ suppress.c:215
 suppress!test
 suppress.c:284
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #14: UNINITIALIZED READ: reading register
 <not in a module>
 suppress!test
 suppress.c:286
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #15: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
@@ -188,7 +188,7 @@ suppress.c:198
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #16: UNADDRESSABLE ACCESS: reading 4 byte(s)
 # non-det so disabling: Note: next higher malloc:
@@ -197,7 +197,7 @@ suppress.c:200
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 
 Error #17: INVALID HEAP ARGUMENT
 suppress!invalid_free_test1
@@ -210,7 +210,7 @@ suppress.c:207
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 
 # these are sometimes out of order
 %OUT_OF_ORDER
@@ -221,7 +221,7 @@ suppress.c:137
 suppress!test
 suppress.c:274
 suppress!main
-suppress.c:297
+suppress.c:305
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test2
@@ -229,7 +229,7 @@ suppress.c:143
 suppress!test
 suppress.c:275
 suppress!main
-suppress.c:297
+suppress.c:305
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test3
@@ -237,7 +237,7 @@ suppress.c:149
 suppress!test
 suppress.c:276
 suppress!main
-suppress.c:297
+suppress.c:305
 
 : LEAK 4 direct bytes + 0 indirect bytes
 suppress!leak_test4
@@ -245,7 +245,7 @@ suppress.c:155
 suppress!test
 suppress.c:277
 suppress!main
-suppress.c:297
+suppress.c:305
 
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
 suppress!possible_leak_test1
@@ -253,7 +253,7 @@ suppress.c:163
 suppress!test
 suppress.c:279
 suppress!main
-suppress.c:297
+suppress.c:305
 
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
 suppress!possible_leak_test2
@@ -261,7 +261,7 @@ suppress.c:171
 suppress!test
 suppress.c:280
 suppress!main
-suppress.c:297
+suppress.c:305
 
 %if DRSYMS
 # w/o drsyms we can't get RtlpHeapFailureInfo (i#292)
@@ -272,7 +272,7 @@ suppress.c:188
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 %endif
 
 %if CYGWIN_PREVISTA
@@ -282,7 +282,7 @@ suppress.c:188
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 %endif
 
 %if UNIX
@@ -292,5 +292,5 @@ suppress.c:188
 suppress!test
 suppress.c:289
 suppress!main
-suppress.c:297
+suppress.c:305
 %endif

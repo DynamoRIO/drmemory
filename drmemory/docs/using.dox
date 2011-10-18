@@ -350,6 +350,10 @@ wildcards in either the module or function name (or offset for \p
 their unmangled form.  If a literal "*" is desired, a "?" should usually be
 used instead to avoid the "*" wildcard expansion.
 
+To match any frame at all, use a single "*".  To match any module but not
+any non-module (and thus not match a system call or non-module code, such
+as generated code), use "*!*".
+
 Callstacks automatically employ support prefix matching.  Prefix matching
 means that the callstack in the suppression file is considered a match if
 it matches the top of any actual callstack during a run.  This allows

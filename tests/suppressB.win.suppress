@@ -33,6 +33,20 @@ name=syscall
 system call NtQueryVirtualMemory parameter value #1
 kernel*.dll!VirtualQuery
 suppress.exe!syscall_test
+suppress.exe!test
+
+# ensure * matches any frame (i#527)
+UNINITIALIZED READ
+name=not in a module
+*
+suppress.exe!run_some_again
+
+UNINITIALIZED READ
+name=syscall
+*
+kernel*.dll!VirtualQuery
+suppress.exe!syscall_test
+suppress.exe!run_some_again
 
 #-------------------------------------------------------------------------------
 

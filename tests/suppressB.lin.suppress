@@ -33,6 +33,20 @@ name=syscall
 system call write parameter #1
 ...
 suppress!syscall_test
+suppress!test
+
+# ensure * matches any frame (i#527)
+UNINITIALIZED READ
+name=single * for not in a module
+*
+suppress!run_some_again
+
+UNINITIALIZED READ
+name=single * for syscall
+*
+...
+suppress!syscall_test
+suppress!run_some_again
 
 #-------------------------------------------------------------------------------
 

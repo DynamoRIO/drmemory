@@ -202,6 +202,7 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
  */
 typedef struct _suppress_frame_t {
     bool is_ellipsis; /* "..." wildcard */
+    bool is_star;     /* "*" wildcard (i#527) */
     bool is_module;
     char *modname;
     char *modoffs; /* string b/c we allow wildcards in it */
@@ -281,6 +282,7 @@ get_suppress_type(const char *line)
     " <module+0xhexoffset>"NL\
     " <not in a module>"NL\
     " system call Name"NL\
+    " *"NL\
     " ..."
 
 static void
@@ -322,6 +324,8 @@ suppress_frame_print(file_t f, const suppress_frame_t *frame, const char *prefix
     ELOGF(0, f, "%s: ", prefix);
     if (frame->is_ellipsis)
         ELOGF(0, f, "...\n");
+    else if (frame->is_star)
+        ELOGF(0, f, "*\n");
     else if (!frame->is_module)
         ELOGF(0, f, "%s\n", frame->func);
     else {
@@ -530,6 +534,8 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
             frame->func = drmem_strdup("*", HEAPSTAT_REPORT);
         } else if (strstr(line, "...") == line) {
             frame->is_ellipsis = true;
+        } else if (strstr(line, "*") == line) {
+            frame->is_star = true;
         } else if (spec->is_memcheck_syscall && spec->num_frames == 1) {
             /* 1st frame of Memcheck:Param can be syscall name + args.
              * Often has params which we don't want: "epoll_ctl(epfd)"
@@ -573,6 +579,8 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
         frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
     } else if (strcmp(line, "...") == 0) {
         frame->is_ellipsis = true;
+    } else if (strcmp(line, "*") == 0) {
+        frame->is_star = true;
     } else if (strstr(line, "system call ") != NULL) {
         ASSERT(!frame->is_module, "incorrect initialization");
         frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
@@ -779,6 +787,10 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
     });
     if (idx >= ecs->scs.num_frames)
         return false;
+
+    /* "*" matches everything ("*!*" only matches module frames) (i#527) */
+    if (supp->is_star)
+        return true;
 
     if (!supp->is_module) {
         return (!symbolized_callstack_frame_is_module(&ecs->scs, idx) &&

@@ -1761,16 +1761,19 @@ sub read_suppression_info($file_in, $default_in)
             } elsif (/^obj:(.*)$/) {
                 # Valgrind format obj:mod => mod!* */
                 $callstack .= "$1!*\n";
-            } elsif (/^\.\.\.$/) {
-                # Valgrind format obj:mod => mod!* */
+            } elsif (/^\.\.\.$/ || /^\*$/) {
                 $callstack .= $_;
             } elsif (/^}/) {
                 $brace_line = -1;
             }
+        } elsif (/^instruction=/) {
+            # instruction suppression (i#498): we don't support here so ignore
+        } elsif (/^name=(.*)$/) {
+            $name = $1;
         } elsif ((/^.+!.+$/ && !/^</) || # mod!func, but no leading <
                  # support missing module for vmk (PR 363063)
                  (/^<.*\+.+>$/ && !/.*!.*/) || # <mod+off>, but no '!'
-                 /<not in a module>/ || /^system call / || /^\.\.\./) {
+                 /<not in a module>/ || /^system call / || /^\.\.\.$/ || /^\*$/) {
             $valid_frame = 1;
             $callstack .= $_;
             $callstack =~ s/[ \t]*$//; # trim trailing whitespace (i#381)
@@ -1786,10 +1789,6 @@ sub read_suppression_info($file_in, $default_in)
             $type = $new_type;
             $name = sprintf("<no name %d>", $total_supp);
             $brace_line = (/^{/) ? 0: -1;
-        } elsif (/^instruction=/) {
-            # instruction suppression (i#498): we don't support here so ignore
-        } elsif (/^name=(.*)$/) {
-            $name = $1;
         } else {
             $callstack .= $_;   # need the malformed frame to print it out
             die "ERROR: malformed suppression:\n".
@@ -1800,6 +1799,7 @@ sub read_suppression_info($file_in, $default_in)
                 "\t <module+0xhexoffset>\n".
                 "\t <not in a module>\n".
                 "\t system call Name\n".
+                "\t *\n".
                 "\t ...\n";
         }
     }
