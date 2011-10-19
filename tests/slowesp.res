@@ -79,6 +79,7 @@ registers.c:631
 Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
 registers.c:642
 %endif
-Error #15: LEAK 15 direct bytes + 0 indirect bytes
-Error #16: LEAK 15 direct bytes + 0 indirect bytes
-Error #17: LEAK 128 direct bytes + 0 indirect bytes
+%OUT_OF_ORDER
+: LEAK 15 direct bytes + 0 indirect bytes
+: LEAK 15 direct bytes + 0 indirect bytes
+: LEAK 128 direct bytes + 0 indirect bytes
