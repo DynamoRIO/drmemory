@@ -32,7 +32,7 @@ i = 2500000
 Sideline thread finished
 Waiting for child to exit
 Child has exited
-~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~ NO ERRORS FOUND:
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)

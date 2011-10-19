@@ -621,7 +621,7 @@ sub process_all_errors()
 
         # PR 477013: provide proper summary: we need to extract info from
         # the client on what it ignored
-        if (/^ERRORS FOUND:/) {
+        if (/^ERRORS FOUND:/ || /^NO ERRORS FOUND:/) {
             $found_summary_start = 1;
             $client_leak_summary = ""; # reset so we don't accumulate
         } elsif ($found_summary_start) {
@@ -1316,7 +1316,15 @@ sub print_summary($fh, $reset, $summary_only, $print_default_supp)
     print $fh "$pfx\n";
     print $fh $pfx."MEMORY CHECKS WERE DISABLED FOR AT LEAST PART OF THIS RUN!\n"
         if ($drmem_disabled);
-    print $fh $pfx."ERRORS FOUND:\n";
+    my $total_reported_errors = 0;
+    foreach $type (@err_type_keys) {
+        $total_reported_errors += $error_summary{$type}{"unique"};
+    }
+    if ($total_reported_errors > 0) {
+        print $fh $pfx."ERRORS FOUND:\n";
+    } else {
+        print $fh $pfx."NO ERRORS FOUND:\n";
+    }
     foreach $type (@err_type_keys) {
         if ($type =~ /LEAK/) {
             if ($report_leaks) {

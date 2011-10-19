@@ -1193,7 +1193,10 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
     }
 
     NOTIFY_COND(notify IF_DRSYMS(&& options.results_to_stderr), f, NL);
-    NOTIFY_COND(notify, f, "ERRORS FOUND:"NL);
+    NOTIFY_COND(notify, f, 
+                (num_reported_errors > 0 || num_bytes_leaked > 0 ||
+                 num_bytes_possible_leaked > 0) ?
+                "ERRORS FOUND:"NL : "NO ERRORS FOUND:"NL);
     for (i = 0; i < ERROR_MAX_VAL; i++) {
         if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK) {
             if (options.count_leaks) {

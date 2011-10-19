@@ -25,7 +25,7 @@ in foo
 in foo
 data[10] = 0
 all done
-~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~ NO ERRORS FOUND:
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
