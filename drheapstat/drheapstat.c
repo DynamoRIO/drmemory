@@ -42,6 +42,7 @@
 # define _GNU_SOURCE /* for sched.h */
 # include <sched.h>  /* for CLONE_VM */
 # include <sys/time.h>
+# include <signal.h> /* for SIGSEGV */
 #endif
 #include <stddef.h> /* for offsetof */
 

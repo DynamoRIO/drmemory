@@ -704,10 +704,11 @@ handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
     ASSERT(ZERO_STACK(), "incorrectly called");
 
     instr_init(drcontext, &app_inst);
-    decode(drcontext, mc->pc, &app_inst);
-
     instr_init(drcontext, &inst);
-    nxt_pc = decode(drcontext, pc, &inst);
+    if (!safe_decode(drcontext, mc->pc, &app_inst, NULL))
+        goto handle_zeroing_fault_done;
+    if (!safe_decode(drcontext, pc, &inst, &nxt_pc))
+        goto handle_zeroing_fault_done;
 
     if (instr_get_opcode(&inst) == OP_mov_st &&
         opnd_is_immed_int(instr_get_src(&inst, 0)) &&
@@ -728,6 +729,7 @@ handle_zeroing_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
         raw_mc->pc = nxt_pc;
         ours = true;
     }
+ handle_zeroing_fault_done:
     instr_free(drcontext, &app_inst);
     instr_free(drcontext, &inst);
     return ours;
