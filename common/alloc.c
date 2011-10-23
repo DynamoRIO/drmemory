@@ -4539,6 +4539,7 @@ alloc_hook(app_pc pc)
              */
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
+            memset(pt->tailcall_target, 0, sizeof(pt->tailcall_target));
         }
         /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
          * there via APC: only on Vista+ is it a "Ki" routine
