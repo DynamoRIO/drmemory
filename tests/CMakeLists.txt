@@ -123,10 +123,17 @@ else (UNIX)
   # Also, /MTd results in the debug heap code throwing an exception
   # when malloc.exe does free(0x1234).
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
+  # But for cygwin to find operators we need /MD (until we have online
+  # syms)
+  if (USE_DRSYMS)
+    set(LIBC_FLAG "/MT")
+  else (USE_DRSYMS)
+    set(LIBC_FLAG "/MD")
+  endif (USE_DRSYMS)
   string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
-  string(REGEX REPLACE "/MDd?" "/MT" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+  string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-  string(REGEX REPLACE "/MDd?" "/MT" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+  string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   # With /MT, cs2bug.cpp gets link errors with libcpmtd.lib so we remove _DEBUG:
   string(REGEX REPLACE "/D_DEBUG" "" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
@@ -181,7 +188,9 @@ set(cmd_script -P "./runtest.cmake")
 # options parsing errors in drmemory.pl and drmem client.
 # The postprocess arg is a bool that applies only for Dr. Memory:
 # whether to run the front-end with -results after the app is run.
-function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
+# The resbase arg support specifying a different .res and .out name
+# to use.
+function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   get_relative_location(${exe} exepath)
 
   set(cmd ${cmd_base})
@@ -240,11 +249,14 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
   endif (TOOL_DR_HEAPSTAT)
   string(REGEX REPLACE " " "@@" postcmd "${postcmd}")
   string(REGEX REPLACE ";" "@" postcmd "${postcmd}")
+  if ("${resbase}" STREQUAL "")
+    set(resbase "${test}") 
+  endif ("${resbase}" STREQUAL "")
   add_test(${test} ${CMAKE_COMMAND}
     -D cmd:STRING=${cmd}
     -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
-    -D outpat:STRING=${src_param_pattern}/${test}.out
-    -D respat:STRING=${src_param_pattern}/${test}.res
+    -D outpat:STRING=${src_param_pattern}/${resbase}.out
+    -D respat:STRING=${src_param_pattern}/${resbase}.res
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
     -D USE_DRSYMS:BOOL=${USE_DRSYMS}
@@ -257,17 +269,18 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess)
     ${cmd_script})
 endfunction(newtest_nobuild)
 
-function(newtest_ex test source test_ops drmem_ops dr_ops postprocess)
+function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase)
   tobuild(${test} ${source})
-  newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}" ${postprocess})
+  newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    ${postprocess} "${resbase}")
 endfunction(newtest_ex)
 
 function(newtest test source)
-  newtest_ex(${test} ${source} "" "" "" OFF)
+  newtest_ex(${test} ${source} "" "" "" OFF "")
 endfunction(newtest)
 
-function(newtest_custbuild test source cust_flags)
-  newtest_ex(${test} ${source} "" "" "" OFF)
+function(newtest_custbuild test source cust_flags resbase)
+  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}")
   get_target_property(cur_flags ${test} COMPILE_FLAGS)
   set_target_properties(${test} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
 endfunction(newtest_custbuild)
@@ -279,7 +292,7 @@ newtest(registers registers.c)
 # linux glibc backtrace on hashtable curiosities causing problems:
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF)
+newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF "")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -293,12 +306,12 @@ if (UNIX)
     newtest(clone clone.c)
   endif (NOT VMKERNEL)
   get_relative_location(malloc malloc_path)
-  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF)
+  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "")
   newtest(pthreads pthreads.c)
   target_link_libraries(pthreads pthread)
   tobuild_lib(loaderlib loader.lib.c "" "")
   get_relative_location(loaderlib loaderlib_path)
-  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF)
+  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "")
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
@@ -310,7 +323,7 @@ else (UNIX)
   tobuild_lib(unloadlib unload.lib.c "" "/nodefaultlib /noentry")
 endif (UNIX)
 get_relative_location(unloadlib unloadlib_path)
-newtest_ex(unload unload.c "${unloadlib_path}" "" "" OFF)
+newtest_ex(unload unload.c "${unloadlib_path}" "" "" OFF "")
 if (UNIX)
   target_link_libraries(unload dl)
 endif (UNIX)
@@ -322,12 +335,12 @@ if (NOT TOOL_DR_HEAPSTAT)
   # PR 464804: test runtime options
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
-  newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF)
-  newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF)
-  newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF)
-  newtest_nobuild(addronly free "" "-no_check_uninitialized" "" OFF)
-  newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF)
-  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF)
+  newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
+  newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "")
+  newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "")
+  newtest_nobuild(addronly free "" "-no_check_uninitialized" "" OFF "")
+  newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
+  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -348,10 +361,11 @@ if (NOT TOOL_DR_HEAPSTAT)
   # test multiple supp files (i#574)
   if (USE_DRSYMS)
     newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB};-callstack_modname_hide;;" "" OFF)
+      "-suppress;${supp_fileA};-suppress;${supp_fileB};-callstack_modname_hide;;"
+      "" OFF "")
   else (USE_DRSYMS)
     newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF)
+      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF "")
   endif (USE_DRSYMS)
 
   # i#80: test suppression file generation and use via multiple runs
@@ -361,37 +375,41 @@ if (NOT TOOL_DR_HEAPSTAT)
   # suppress output files
   if (USE_DRSYMS)
     newtest_nobuild(suppress-genoffs suppress ""
-      "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF)
+      "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF "")
     newtest_nobuild(suppress-gensyms suppress ""
-      "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF)
+      "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF "")
   else (USE_DRSYMS)
-    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF)
-    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF)
+    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
+    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")
   endif (USE_DRSYMS)
 
   set(nudge_test_args "")
 
   if (UNIX)
     # test -skip_results + -results (PR 575481)
-    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON)
+    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
   endif (UNIX)
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
   if (UNIX)
-    newtest_nobuild(perturb pthreads "" "-perturb_only" "" OFF)
+    newtest_nobuild(perturb pthreads "" "-perturb_only" "" OFF "")
   else (UNIX)
-    newtest_nobuild(perturb winthreads  "" "-perturb_only" "" OFF)
+    newtest_nobuild(perturb winthreads  "" "-perturb_only" "" OFF "")
   endif (UNIX)
 
   if (WIN32)
     newtest(wincrt wincrt.cpp)
-    if (USE_DRSYMS)
-      # cygwin build can't see static malloc routines
-      newtest_custbuild(wincrtdbg wincrt.cpp "/MTd")
-      newtest_custbuild(malloccrt malloc.c "/MTd")
+    if (USE_DRSYMS) # cygwin build can't see static malloc routines
+      newtest_custbuild(wincrtdbg wincrt.cpp "/MTd" "")
+      newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
+      newtest_custbuild(mallocMD malloc.c "/MD" malloc)
+
+      # C++ tests with other libc configs
+      # FIXME i#638: C++ /MTd crashes drmem!
+      #newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd" cs2bug)
+      newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
     endif (USE_DRSYMS)
-    # FIXME PR 406287: add /MDd test
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -404,12 +422,12 @@ if (NOT TOOL_DR_HEAPSTAT)
   endif (UNIX)
 
 else (NOT TOOL_DR_HEAPSTAT)
-  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF)
+  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
 
-  newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF)
-  newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF)
-  newtest_nobuild(time-instrs malloc "" "-time_instrs" "" OFF)
-  newtest_nobuild(dump malloc "" "-dump" "" OFF)
+  newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF "")
+  newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF "")
+  newtest_nobuild(time-instrs malloc "" "-time_instrs" "" OFF "")
+  newtest_nobuild(dump malloc "" "-dump" "" OFF "")
 
   set(nudge_test_args "")
 endif (NOT TOOL_DR_HEAPSTAT)
@@ -421,7 +439,7 @@ get_relative_location(infloop infloop_path)
 # the test to run as a final drmem arg
 newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
-  "${nudge_test_args}--;${infloop_path}" "" OFF)
+  "${nudge_test_args}--;${infloop_path}" "" OFF "")
 
 newtest(leakcycle leakcycle.cpp)
 
