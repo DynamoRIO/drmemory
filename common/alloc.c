@@ -4740,6 +4740,9 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
     app_pc target = NULL;
     uint opc = instr_get_opcode(inst);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    bool is_tail_call = false;
+    instr_t callee;
+    instr_t *check_ind = inst;
     /* We use opnd_compute_address() to get any segment base included.
      * Since no registers are present, mc can just be empty.
      */
@@ -4763,7 +4766,6 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
         }
         post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
     } else if (opc == OP_call) {
-        instr_t callee;
         ASSERT(opc == OP_call, "far call not supported");
         target = opnd_get_pc(instr_get_target(inst));
         post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
@@ -4830,43 +4832,43 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
         instr_free(drcontext, &callee);
     } else if (opc == OP_jmp) {
         /* Look for tail call */
-        bool is_tail_call = false;
         target = opnd_get_pc(instr_get_target(inst));
         if (is_alloc_routine(target)) {
             is_tail_call = true;
         } else {
             /* May jmp to plt jmp* */
-            instr_t callee;
             instr_init(drcontext, &callee);
             if (decode(drcontext, target, &callee) != NULL &&
-                instr_get_opcode(&callee) == OP_jmp_ind) {
-                opnd_t opnd = instr_get_target(&callee);
-                if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_NULL &&
-                    opnd_get_index(opnd) == REG_NULL) {
-                    if (safe_read(opnd_compute_address(opnd, &mc), sizeof(target),
-                                  &target) &&
-                        is_alloc_routine(target))
-                        is_tail_call = true;
-                }
+                instr_get_opcode(&callee) == OP_jmp_ind) { 
+                check_ind = &callee; /* check below */
             }
-            instr_free(drcontext, &callee);
         }
-        if (is_tail_call) {
-            /* We don't know return address statically */
-            app_pc post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-            LOG(2, "tailcall @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
-            dr_insert_clean_call(drcontext, bb, inst, (void *)handle_tailcall,
-                                 false, 2, OPND_CREATE_INT32((int)target),
-                                 OPND_CREATE_INT32((ptr_int_t)post_call));
+    } else if (opc != OP_jmp_ind)
+        ASSERT(false, "unknown cti at call site");
+    if (instr_get_opcode(check_ind) == OP_jmp_ind) {
+        /* We do see indirect tailcalls (i#637) with /MD and operator {new,delete} */
+        opnd_t opnd = instr_get_target(check_ind);
+        if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_NULL &&
+            opnd_get_index(opnd) == REG_NULL) {
+            if (safe_read(opnd_compute_address(opnd, &mc), sizeof(target),
+                          &target) &&
+                is_alloc_routine(target))
+                is_tail_call = true;
         }
-        return;
-    } else if (opc == OP_jmp_ind) {
         /* We don't do anything: if we weren't able to recognize a
          * call;jmp* pattern when we saw the call, we don't add retaddr.
          * And we never put in pre-instru for indirect cti.
          */
-    } else {
-        ASSERT(false, "unknown cti at call site");
+    }
+    if (check_ind != inst)
+        instr_free(drcontext, &callee);
+    if (is_tail_call) {
+        /* We don't know return address statically */
+        app_pc post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
+        LOG(2, "tailcall @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
+        dr_insert_clean_call(drcontext, bb, inst, (void *)handle_tailcall,
+                             false, 2, OPND_CREATE_INT32((int)target),
+                             OPND_CREATE_INT32((ptr_int_t)post_call));
     }
     /* we no longer insert pre-hook call at call site, only in callee (i#559) */
 }
