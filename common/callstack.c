@@ -934,8 +934,19 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     if (buf != NULL)
         dr_mutex_lock(page_buf_lock);
 
+    if (mc != NULL) {
+    LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
+               mc->ebp, mc->esp,
+               (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->ebp));
+    }
     if (mc != NULL && mc->esp != 0 &&
-        (mc->ebp < mc->esp || mc->ebp - mc->esp > op_stack_swap_threshold ||
+        (!ALIGNED(mc->ebp, sizeof(void*)) ||
+         mc->ebp < mc->esp || 
+         mc->ebp - mc->esp > op_stack_swap_threshold ||
+         /* avoid stale fp,ra pair (i#640) */
+         (op_is_dword_defined != NULL &&
+          (!op_is_dword_defined((byte*)mc->ebp) ||
+           !op_is_dword_defined((byte*)mc->ebp + sizeof(void*)))) ||
          (!safe_read((byte *)mc->ebp, sizeof(appdata), &appdata) ||
           /* check the very first retaddr since ebp might point at
            * a misleading stack slot
