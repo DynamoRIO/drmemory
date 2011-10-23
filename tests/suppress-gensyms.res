@@ -201,12 +201,7 @@ suppress.c:305
 
 Error #17: INVALID HEAP ARGUMENT
 suppress!invalid_free_test1
-%if WINDOWS
 suppress.c:206
-%endif
-%if UNIX
-suppress.c:207
-%endif
 suppress!test
 suppress.c:289
 suppress!main

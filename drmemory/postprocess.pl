@@ -704,7 +704,9 @@ sub process_one_error($raw_error_lines_array_ref)
         $error_cache{$err_str}{"type"} = $error{"type"};
         $errnum-- if ($error{"type"} =~ /REACHABLE LEAK/);
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
-        my @symlines = lookup_addr(\%error);
+        # first frame is a retaddr for invalid heap arg
+        my $first_retaddr = ($error{"type"} =~ /INVALID HEAP/);
+        my @symlines = lookup_addr(\%error, $first_retaddr);
         my ($err_str_ref, $err_cstack_ref) = generate_error_info(\%error, \@symlines);
         my $is_default;
 
@@ -903,6 +905,8 @@ sub parse_error($arr_ref, $err_str)
                      $line =~ /^Error #\s*\d+: POSSIBLE LEAK/) {
                 if ($error{"details"} =~ /\s(\d+) direct.*\s(\d+) indirect/) {
                     $error{"numbytes"} = $1 + $2;
+                } elsif ($error{"details"} =~ /\s(\d+) bytes/) {
+                    $error{"numbytes"} = $1 + $2;
                 } else {
                     die "Error: unknown leak detail text ".$error{"details"}."\n";
                 }
@@ -975,9 +979,9 @@ sub parse_error($arr_ref, $err_str)
 #-------------------------------------------------------------------------------
 # Looks up the addresses associated with one error
 #
-sub lookup_addr($error_ref)
+sub lookup_addr($error_ref, $first_retaddr)
 {
-    my ($error) = @_;
+    my ($error, $first_retaddr) = @_;
     my $module = "";
     my $off = 0;
     @symlines = ();
@@ -988,8 +992,8 @@ sub lookup_addr($error_ref)
         # PR 543863: subtract one from retaddrs in callstacks so the line#
         # is for the call and not for the next source code line, but only
         # for symbol lookup so we still display a valid instr addr.
-        # We assume first frame is not a retaddr.
-        my $addr_sym_disp = ($a == 0) ? 0 : -1;
+        # We assume first frame is not a retaddr, unless invalid heap arg.
+        my $addr_sym_disp = ($a == 0 && !$first_retaddr) ? 0 : -1;
 
         # Lookup symbol and file name cache.  PR 420921.
         if (defined $symfile_cache{$modoffs}) {

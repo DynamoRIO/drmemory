@@ -27,13 +27,7 @@ malloc.c:106
 Error #3: UNINITIALIZED READ
 malloc.c:119
 Error #4: INVALID HEAP ARGUMENT
-%if WINDOWS
-# addr2line and winsyms report slightly different results here
 malloc.c:163
-%endif
-%if UNIX
-malloc.c:164
-%endif
 %if WINDOWS
 Error #5: WARNING: heap allocation failed
 malloc.c:175
