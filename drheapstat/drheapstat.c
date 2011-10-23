@@ -1678,6 +1678,42 @@ event_fork(void *drcontext)
 }
 #endif
 
+#ifdef LINUX
+dr_signal_action_t
+event_signal(void *drcontext, dr_siginfo_t *info)
+{
+    if (info->sig == SIGSEGV && ZERO_STACK() &&
+        handle_zeroing_fault(drcontext, info->access_address, info->raw_mcontext,
+                             info->mcontext)) {
+        return DR_SIGNAL_SUPPRESS;
+    }
+    return DR_SIGNAL_DELIVER;
+}
+#else
+bool
+event_exception(void *drcontext, dr_exception_t *excpt)
+{
+    if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+        app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
+        if (ZERO_STACK() &&
+            excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+            handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                 excpt->mcontext)) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
+bool
+event_restore_state_nop(void *drcontext, bool restore_memory,
+                        dr_restore_state_info_t *info)
+{
+    /* nothing: just here to avoid DR warning on zeroing loop faulting instrs */
+    return true;
+}
+
 static bool
 event_filter_syscall(void *drcontext, int sysnum)
 {
@@ -1973,14 +2009,24 @@ dr_init(client_id_t client_id)
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);
 #endif
+    if (ZERO_STACK()) {
+#ifdef LINUX
+        dr_register_signal_event(event_signal);
+#else
+        dr_register_exception_event(event_exception);
+#endif
+    }
     dr_register_filter_syscall_event(event_filter_syscall);
     dr_register_pre_syscall_event(event_pre_syscall);
     dr_register_post_syscall_event(event_post_syscall);
     dr_register_nudge_event(event_nudge, client_id);
-    if (options.staleness) {
+    if (options.staleness)
         dr_register_restore_state_ex_event(event_restore_state);
+    /* DR complains if we have xl8 fields and faults w/o restore-state events */
+    else if (ZERO_STACK())
+        dr_register_restore_state_ex_event(event_restore_state_nop);
+    if (options.staleness)
         dr_register_delete_event(event_fragment_delete);
-    }
 
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Heapstat version %s\n", VERSION_STRING);
