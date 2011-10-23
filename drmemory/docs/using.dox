@@ -652,6 +652,22 @@ Elapsed time = 0:00:00.180 in thread 21848
 # 2 malloc!_start                                  
 \endcode
 
+Another common example of an invalid argument is a mismatch in calling
+free() versus operator delete versus operator delete[].  This will be
+reported as:
+
+\code
+Error #4: INVALID HEAP ARGUMENT: wrong free/delete/delete[] called
+# 0 test_mismatch                   [cs2bug.cpp:122]
+# 1 main                            [cs2bug.cpp:139]
+Note: memory was allocated here:
+Note: # 0 test_mismatch                   [cs2bug.cpp:121]
+Note: # 1 main                            [cs2bug.cpp:139]
+\endcode
+
+For code compiled with Visual Studio, detecting such mismatches relies on
+having debug information.
+
 ********************
 \subsection sec_leaks Memory Leaks
 

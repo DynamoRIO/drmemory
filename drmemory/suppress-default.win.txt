@@ -37,10 +37,7 @@ ADVAPI32.dll!SystemFunction036
 
 LEAK
 name=default i#257 (real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init)
-...
-*!operator new*
 # this frame can be inlined: *!std::_Maklocstr<char>
-# would like to match 0 or 1 frame but no support for that
 ...
 *!std::numpunct<*>::_Init
 

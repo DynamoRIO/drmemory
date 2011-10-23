@@ -295,6 +295,7 @@ foreach (str ${patterns})
     # if %CYGWIN is NOT present then counts as Windows
     string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+    string(REGEX REPLACE "(^|\n)%if !CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     # distinguish pre-vista from post-vista
     if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
       string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1" 

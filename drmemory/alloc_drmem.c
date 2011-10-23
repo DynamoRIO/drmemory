@@ -401,8 +401,27 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
                         bool is_free)
 {
     app_loc_t loc;
+    char msg[64];
     pc_to_loc(&loc, pc);
-    report_invalid_heap_arg(&loc, target, mc, routine, is_free);
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg), " to %s()", routine);
+    NULL_TERMINATE_BUFFER(msg);
+    report_invalid_heap_arg(&loc, target, mc, msg, is_free);
+}
+
+void
+client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+                       void *client_data)
+{
+    app_loc_t loc;
+    char msg[128];
+    packed_callstack_t *pcs = NULL;
+    pc_to_loc(&loc, pc);
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                ": wrong free/delete/delete[] called");
+    NULL_TERMINATE_BUFFER(msg);
+    /* we want to report the callstack where it was allocated */
+    pcs = (packed_callstack_t *) client_data;
+    report_mismatched_heap(&loc, target, mc, msg, pcs);
 }
 
 void

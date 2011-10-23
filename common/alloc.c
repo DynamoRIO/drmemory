@@ -252,6 +252,7 @@ static void *alloc_routine_lock; /* protects alloc_routine_table */
 
 typedef enum {
     HEAPSET_LIBC,
+    HEAPSET_CPP,
 #ifdef WINDOWS
     HEAPSET_LIBC_DBG,
     HEAPSET_RTL,
@@ -277,6 +278,14 @@ typedef enum {
     HEAP_ROUTINE_MEMALIGN,
     HEAP_ROUTINE_VALLOC,
     HEAP_ROUTINE_PVALLOC,
+    /* On Windows, we must watch debug operator delete b/c it reads
+     * malloc's headers (i#26).  On both platforms we want to watch
+     * the operators to find mismatches (i#123).
+     */
+    HEAP_ROUTINE_NEW,
+    HEAP_ROUTINE_NEW_ARRAY,
+    HEAP_ROUTINE_DELETE,
+    HEAP_ROUTINE_DELETE_ARRAY,
     /* Group label for routines that might read heap headers but
      * need no explicit argument modification
      */
@@ -294,8 +303,6 @@ typedef enum {
     HEAP_ROUTINE_REALLOC_DBG,
     HEAP_ROUTINE_FREE_DBG,
     HEAP_ROUTINE_CALLOC_DBG,
-    /* We must watch debug operator delete b/c it reads malloc's headers (i#26)! */
-    HEAP_ROUTINE_DELETE,
     /* To avoid debug CRT checks (i#51) */
     HEAP_ROUTINE_SET_DBG,
     HEAP_ROUTINE_DBG_NOP,
@@ -372,6 +379,18 @@ is_calloc_routine(routine_type_t type)
     return (type == HEAP_ROUTINE_CALLOC IF_WINDOWS(|| type == HEAP_ROUTINE_CALLOC_DBG));
 }
 
+static inline bool
+is_new_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_NEW || type == HEAP_ROUTINE_NEW_ARRAY);
+}
+
+static inline bool
+is_delete_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_DELETE || type == HEAP_ROUTINE_DELETE_ARRAY);
+}
+
 typedef struct _possible_alloc_routine_t {
     const char *name;
     routine_type_t type;
@@ -425,6 +444,87 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 };
 #define POSSIBLE_LIBC_ROUTINE_NUM \
     (sizeof(possible_libc_routines)/sizeof(possible_libc_routines[0]))
+
+static const possible_alloc_routine_t possible_cpp_routines[] = {
+#ifdef USE_DRSYMS
+    /* XXX: currently drsyms does NOT include function params, which is what
+     * we want here as we want to include all overloads in symcache but
+     * be able to easily enumerate them from function name only.
+     * Once including params is an option in drsyms we need to ensure
+     * we turn it off for these lookups.
+     */
+    /* XXX i#633: do we need to handle this?
+     * cs2bug!`operator new'::`6'::`dynamic atexit destructor for 'nomem'' ( void )
+     */
+    { "operator new",      HEAP_ROUTINE_NEW },
+    { "operator new[]",    HEAP_ROUTINE_NEW_ARRAY },
+    { "operator delete",   HEAP_ROUTINE_DELETE },
+    { "operator delete[]", HEAP_ROUTINE_DELETE_ARRAY },
+#else
+    /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
+     * the standard Itanium ABI/VS manglings for the standard operators.
+     * XXX: we'll miss overloads that add more args.
+     * XXX: we assume drsyms will find and de-mangle exports
+     * in stripped modules so that when we have drsyms we can ignore
+     * these manglings.
+     */
+# ifdef LINUX
+    /* operator new(unsigned int) */
+    { "_Znwj",                HEAP_ROUTINE_NEW },
+    /* operator new[](unsigned int) */
+    { "_Znaj",                HEAP_ROUTINE_NEW_ARRAY },
+    /* operator new(unsigned int, std::nothrow_t const&) */
+    { "_ZnwjRKSt9nothrow_t",  HEAP_ROUTINE_NEW },
+    /* operator new[](unsigned int, std::nothrow_t const&) */
+    { "_ZnajRKSt9nothrow_t",  HEAP_ROUTINE_NEW_ARRAY },
+    /* operator delete(void*) */
+    { "_ZdlPv",               HEAP_ROUTINE_DELETE },
+    /* operator delete[](void*) */
+    { "_ZdaPv",               HEAP_ROUTINE_DELETE_ARRAY },
+    /* operator delete(void*, std::nothrow_t const&) */
+    { "_ZdlPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE },
+    /* operator delete[](void*, std::nothrow_t const&) */
+    { "_ZdaPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_ARRAY },
+# else
+    /* operator new(unsigned int) */
+    { "??2@YAPAXI@Z",       HEAP_ROUTINE_NEW },
+    /* operator new(unsigned int,int,char const *,int) */
+    { "_??2@YAPAXIHPBDH@Z", HEAP_ROUTINE_NEW },
+    /* operator new[](unsigned int) */
+    { "??_U@YAPAXI@Z",      HEAP_ROUTINE_NEW_ARRAY },
+    /* operator new[](unsigned int,int,char const *,int) */
+    { "??_U@YAPAXIHPBDH@Z", HEAP_ROUTINE_NEW_ARRAY },
+    /* operator delete(void *) */
+    { "??3@YAXPAX@Z",       HEAP_ROUTINE_DELETE },
+    /* operator delete[](void *) */
+    { "??_V@YAXPAX@Z",      HEAP_ROUTINE_DELETE_ARRAY },
+# endif
+#endif /* USE_DRSYMS */
+};
+# define POSSIBLE_CPP_ROUTINE_NUM \
+    (sizeof(possible_cpp_routines)/sizeof(possible_cpp_routines[0]))
+
+static const char *
+translate_routine_name(const char *name)
+{
+#ifndef USE_DRSYMS
+    /* temporary until we have online syms */
+    /* could add to table but doesn't seem worth adding a whole new field */
+    if (strcmp(name, "_Znwj") == 0 ||
+        strcmp(name, "_ZnwjRKSt9nothrow_t"))
+        return "operator new";
+    else if (strcmp(name, "_Znaj") == 0 ||
+             strcmp(name, "_ZnwjRKSt9nothrow_t"))
+        return "operator new[]";
+    if (strcmp(name, "_ZdlPv") == 0 ||
+        strcmp(name, "_ZdlPvRKSt9nothrow_t"))
+        return "operator delete";
+    else if (strcmp(name, "_ZdaPv") == 0 ||
+             strcmp(name, "_ZdaPvRKSt9nothrow_t"))
+        return "operator delete[]";
+#endif
+    return name;
+}
 
 #ifdef WINDOWS
 static const possible_alloc_routine_t possible_crtdbg_routines[] = {
@@ -539,7 +639,12 @@ struct _alloc_routine_set_t {
     uint refcnt;
     /* For options.replace_realloc */
     byte *realloc_replacement;
+    /* For simpler removal on module unload */
+    app_pc modbase;
 };
+
+/* The set for the dynamic libc lib */
+static alloc_routine_set_t *set_dyn_libc;
 
 /* lock is held when this is called */
 static void
@@ -678,7 +783,10 @@ malloc_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_MALLOC_DBG];
 #endif
-    return set->func[HEAP_ROUTINE_MALLOC];
+    if (set->type == HEAPSET_CPP)
+        return set->func[HEAP_ROUTINE_NEW];
+    else
+        return set->func[HEAP_ROUTINE_MALLOC];
 }
 
 static alloc_routine_entry_t *
@@ -692,6 +800,8 @@ realloc_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_REALLOC_DBG];
 #endif
+    if (set->type == HEAPSET_CPP)
+        return NULL;
     return set->func[HEAP_ROUTINE_REALLOC];
 }
 
@@ -706,6 +816,8 @@ free_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_FREE_DBG];
 #endif
+    if (set->type == HEAPSET_CPP)
+        return set->func[HEAP_ROUTINE_DELETE];
     return set->func[HEAP_ROUTINE_FREE];
 }
 
@@ -939,7 +1051,7 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name)
 /* caller must hold alloc routine lock */
 static alloc_routine_entry_t *
 add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
-                  alloc_routine_set_t *set)
+                  alloc_routine_set_t *set, app_pc modbase)
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
@@ -958,7 +1070,9 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     if (e->set != NULL) {
         e->set->refcnt++;
         e->set->func[e->type] = e;
-    }
+        e->set->modbase = modbase;
+    } else
+        ASSERT(false, "set is required w/ new module unload scheme");
     IF_DEBUG(is_new = )
         hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
     ASSERT(is_new, "alloc entry should not already exist");
@@ -1044,7 +1158,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->set->type = edata->set_type;
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
-                      edata->set);
+                      edata->set, edata->mod->start);
     if (edata->processed != NULL)
         edata->processed[idx] = true;
     LOG(1, "intercepting %s @"PFX" in module %s\n",
@@ -1067,7 +1181,11 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
     ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
     LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
     for (i = 0; i < edata->num_possible; i++) {
-        if (!edata->processed[i] && strcmp(name, edata->possible[i].name) == 0) {
+        /* We do not check !edata->processed[i] b/c we want all copies.
+         * Extra copies will have interception entries in hashtable,
+         * but only the last one will be in the set's array of funcs.
+         */
+        if (strcmp(name, edata->possible[i].name) == 0) {
             add_to_alloc_set(edata, edata->mod->start + modoffs, i);
             break;
         }
@@ -1116,7 +1234,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 #endif /* USE_DRSYMS */
 
 /* caller must hold alloc routine lock */
-static void
+static alloc_routine_set_t *
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
                     uint num_possible, bool use_redzone, bool expect_all,
                     heapset_type_t type)
@@ -1139,7 +1257,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
      * total lookup time in half.  i#315.
      */
     if (possible == possible_libc_routines ||
-        possible == possible_crtdbg_routines) {
+        possible == possible_crtdbg_routines ||
+        possible == possible_cpp_routines) {
         bool all_processed = true;
         edata.processed = (bool *)
             global_alloc(sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
@@ -1151,6 +1270,13 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
             uint count;
             uint idx;
             for (i = 0; i < num_possible; i++) {
+                /* For cpp operators we have to find all of them.  We assume the
+                 * symcache contains all entries for a particular symbol, if it
+                 * has any (already assuming that elsewhere).  If not in
+                 * symcache we do wildcard search below.  We also assume all
+                 * function overloads are present but w/o function parameter
+                 * names.
+                 */
                 for (idx = 0, count = 1;
                      idx < count && symcache_lookup(mod, possible[i].name,
                                                     idx, &modoffs, &count); idx++) {
@@ -1172,6 +1298,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
                 find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
                 find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+            } else if (possible == possible_cpp_routines) {
+                find_alloc_regex(&edata, "operator new*", "operator new", NULL);
+                find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
             }
         }
     }
@@ -1226,6 +1355,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     if (edata.processed != NULL)
         global_free(edata.processed, sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
 #endif
+    return edata.set;
 }
 
 static size_t
@@ -1532,7 +1662,15 @@ static hashtable_t native_alloc_table;
 enum {
     MALLOC_VALID  = MALLOC_RESERVED_1,
     MALLOC_PRE_US = MALLOC_RESERVED_2,
-    /* The other two are reserved for future use */
+    /* These are to distinguish whether from malloc, new, or new[] (i#123).
+     * 4 states using MALLOC_RESERVED_3 and MALLOC_RESERVED_4.
+     */
+    MALLOC_ALLOCATOR_FLAGS     = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+    MALLOC_ALLOCATOR_UNKNOWN   = 0x0,
+    MALLOC_ALLOCATOR_MALLOC    = MALLOC_RESERVED_3,
+    MALLOC_ALLOCATOR_NEW       = MALLOC_RESERVED_4,
+    MALLOC_ALLOCATOR_NEW_ARRAY = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+    /* The rest are reserved for future use */
     MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
                                     MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
 };
@@ -1632,9 +1770,7 @@ alloc_exit(void)
     if (!options.track_allocs)
         return;
 
-    LOG(1, "final alloc routine table size: %u bits, %u entries\n",
-        alloc_routine_table.table_bits, alloc_routine_table.entries);
-    hashtable_delete(&alloc_routine_table);
+    hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
     dr_mutex_destroy(alloc_routine_lock);
 
     LOG(1, "final malloc table size: %u bits, %u entries\n",
@@ -1666,34 +1802,18 @@ alloc_exit(void)
     }
 }
 
-#ifdef USE_DRSYMS
-# define OPERATOR_DELETE_NAME "operator delete"
-static void
-add_operator_delete(const module_data_t *mod, size_t modoffs)
+static uint
+malloc_allocator_type(alloc_routine_entry_t *routine)
 {
-    /* not part of any malloc routine set */
-    add_alloc_routine(mod->start + modoffs, HEAP_ROUTINE_DELETE,
-                      OPERATOR_DELETE_NAME, NULL);
-#ifdef USE_DRSYMS
-    if (op_use_symcache)
-        symcache_add(mod, OPERATOR_DELETE_NAME, modoffs);
-#endif
-    LOG(1, "intercepting operator delete @"PFX" in module %s\n",
-        mod->start + modoffs,
-        (dr_module_preferred_name(mod) == NULL) ? "<noname>" :
-        dr_module_preferred_name(mod));
+    if (routine->type == HEAP_ROUTINE_NEW ||
+        routine->type == HEAP_ROUTINE_DELETE)
+        return MALLOC_ALLOCATOR_NEW;
+    else if (routine->type == HEAP_ROUTINE_NEW_ARRAY ||
+             routine->type == HEAP_ROUTINE_DELETE_ARRAY)
+        return MALLOC_ALLOCATOR_NEW_ARRAY;
+    else
+        return MALLOC_ALLOCATOR_MALLOC;
 }
-
-static bool
-enumerate_syms_cb(const char *name, size_t modoffs, void *data)
-{
-    const module_data_t *mod = (const module_data_t *) data;
-    ASSERT(mod != NULL, "invalid param");
-    /* not part of any malloc routine set */
-    add_operator_delete(mod, modoffs);
-    return true; /* keep iterating */
-}
-#endif
 
 #ifdef WINDOWS
 static void
@@ -1761,6 +1881,9 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
+    alloc_routine_set_t *set_libc;
+    alloc_routine_set_t *set_cpp;
+
 #ifdef WINDOWS
     alloc_find_syscalls(drcontext, info);
 #endif
@@ -1800,41 +1923,24 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              * so we simply skip our redzone for msvcrtdbg: after all there's
              * already a redzone there.
              */
-            bool found = false;
             use_redzone = false;
             LOG(1, "NOT using redzones for routines in %s "PFX"\n",
                 (modname == NULL) ? "<noname>" : modname, info->start);
-            /* We watch debug operator delete b/c it reads malloc's headers (i#26)! */
-            if (op_use_symcache && symcache_module_is_cached(info)) {
-                size_t modoffs;
-                uint count;
-                uint idx;
-                for (idx = 0, count = 1;
-                     idx < count && symcache_lookup(info, OPERATOR_DELETE_NAME,
-                                                    idx, &modoffs, &count); idx++) {
-                    found = true;
-                    STATS_INC(symbol_search_cache_hits);
-                    if (modoffs != 0)
-                        add_operator_delete(info, modoffs);
-                }
-            } 
-            if (!found) {
-#ifdef USE_DRSYMS
-                /* add 0, which will be replaced if we find it */
-                if (op_use_symcache)
-                    symcache_add(info, OPERATOR_DELETE_NAME, 0);
-#endif
-                if (!lookup_all_symbols(info, OPERATOR_DELETE_NAME,
-                                       enumerate_syms_cb, (void *) info)) {
-                    LOG(1, "error searching symbols for %s\n",
-                        (modname == NULL) ? "<noname>" : modname);
-                }
-            }
+            /* We watch debug operator delete b/c it reads malloc's headers (i#26)
+             * but we now watch it in general so we don't need to special-case
+             * it here.
+             */
         } else
             no_dbg_routines = true;
 #endif
-        find_alloc_routines(info, possible_libc_routines,
-                            POSSIBLE_LIBC_ROUTINE_NUM, use_redzone, false, HEAPSET_LIBC);
+        set_libc = find_alloc_routines(info, possible_libc_routines,
+                                       POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
+                                       false, HEAPSET_LIBC);
+        if (info->start == get_libc_base()) {
+            if (set_dyn_libc != NULL)
+                WARN("WARNING: two libcs found");
+            set_dyn_libc = set_libc;
+        }
 #ifdef WINDOWS
         /* optimization: assume no other dbg routines if no _malloc_dbg */
         if (!no_dbg_routines) {
@@ -1843,6 +1949,23 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                                 HEAPSET_LIBC_DBG);
         }
 #endif
+        set_cpp = find_alloc_routines(info, possible_cpp_routines,
+                                      POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
+                                      false, HEAPSET_LIBC);
+        if (set_cpp != NULL) {
+            /* for static, use corresponding libc for size.
+             * for dynamic, use dynamic libc.
+             */
+            alloc_routine_set_t *cpp_libc =
+                (set_libc == NULL) ? set_dyn_libc : set_libc;
+            if (cpp_libc != NULL) {
+                set_cpp->func[HEAP_ROUTINE_SIZE_USABLE] =
+                    cpp_libc->func[HEAP_ROUTINE_SIZE_USABLE];
+                set_cpp->func[HEAP_ROUTINE_SIZE_REQUESTED] =
+                    cpp_libc->func[HEAP_ROUTINE_SIZE_REQUESTED];
+            } else
+                WARN("WARNING: no libc found for cpp");
+        }
         dr_mutex_unlock(alloc_routine_lock);
     }
 }
@@ -1851,15 +1974,23 @@ void
 alloc_module_unload(void *drcontext, const module_data_t *info)
 {
     if (options.track_heap) {
-        int i;
+        uint i;
+        /* Rather than re-looking-up all the symbols, or storing
+         * them all in some module-indexed table (we don't even
+         * store them all in each set b/c of duplicates), we walk
+         * the interception table.  It's not very big, and module
+         * unload is rare.
+         * chromium ui_tests run:
+         *   final alloc routine table size: 7 bits, 44 entries
+         */
         dr_mutex_lock(alloc_routine_lock);
-        for (i = 0; i < POSSIBLE_LIBC_ROUTINE_NUM; i++) {
-            app_pc pc = lookup_symbol_or_export(info, possible_libc_routines[i].name);
-            LOG(3, "lookup %s => "PFX"\n", possible_libc_routines[i].name, pc);
-            if (pc != NULL) {
-                alloc_routine_entry_t *e =
-                    hashtable_lookup(&alloc_routine_table, (void *)pc);
-                if (e != NULL) {
+        for (i = 0; i < HASHTABLE_SIZE(alloc_routine_table.table_bits); i++) {
+            hash_entry_t *he, *nxt;
+            for (he = alloc_routine_table.table[i]; he != NULL; he = nxt) {
+                alloc_routine_entry_t *e = (alloc_routine_entry_t *) he->payload;
+                /* we are removing while while iterating */
+                nxt = he->next;
+                if (e->set->modbase == info->start) {
                     IF_DEBUG(bool found;)
                     /* could wait for realloc but we remove on 1st hit */
                     if (e->set->realloc_replacement != NULL) {
@@ -1892,17 +2023,17 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         dr_mutex_unlock(gencode_lock);
                     }
                     IF_DEBUG(found =)
-                        hashtable_remove(&alloc_routine_table, (void *)pc);
+                        hashtable_remove(&alloc_routine_table, (void *)e->pc);
 
                     LOG(3, "removing %s "PFX" from interception table: found=%d\n",
-                        possible_libc_routines[i].name, pc, found); 
+                        e->name, e->pc, found); 
                     DOLOG(1, {
                         if (!found) {
                             /* some dlls have malloc_usable_size and _msize
                              * pointing at the same place, which will trigger this
                              */
                             LOG(1, "WARNING: did not find %s @"PFX" for %s\n",
-                                possible_libc_routines[i].name, pc,
+                                e->name, e->pc,
                                 dr_module_preferred_name(info) == NULL ? "<null>" :
                                 dr_module_preferred_name(info));
                         }
@@ -1910,16 +2041,6 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                 }
             }
         }
-#ifdef WINDOWS
-        for (i = 0; i < POSSIBLE_CRTDBG_ROUTINE_NUM; i++) {
-            app_pc pc = lookup_symbol_or_export(info, possible_crtdbg_routines[i].name);
-            if (pc != NULL) {
-                IF_DEBUG(bool found = )
-                    hashtable_remove(&alloc_routine_table, (void *)pc);
-                ASSERT(found, "alloc entry should be in table");
-            }
-        }
-#endif
         dr_mutex_unlock(alloc_routine_lock);
     }
 
@@ -2013,7 +2134,8 @@ malloc_unlock_if_locked_by_me(bool by_me)
  */
 static void
 malloc_add_common(app_pc start, app_pc end, app_pc real_end,
-                  bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
+                  bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call,
+                  uint alloc_type)
 {
     malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     malloc_entry_t *old_e;
@@ -2031,6 +2153,8 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     e->flags = MALLOC_VALID;
     if (pre_us)
         e->flags |= MALLOC_PRE_US;
+    e->flags |= alloc_type;
+    LOG(3, "%s: type=%x\n", __FUNCTION__, alloc_type);
     e->flags |= (client_flags & MALLOC_POSSIBLE_CLIENT_FLAGS);
     /* grab lock around client call and hashtable operations */
     locked_by_me = malloc_lock_if_not_held_by_me();
@@ -2072,7 +2196,7 @@ void
 malloc_add(app_pc start, app_pc end, app_pc real_end,
            bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
 {
-    malloc_add_common(start, end, real_end, pre_us, client_flags, mc, post_call);
+    malloc_add_common(start, end, real_end, pre_us, client_flags, mc, post_call, 0);
 }
 
 /* up to caller to lock and unlock */
@@ -2186,6 +2310,19 @@ malloc_entry_is_pre_us(malloc_entry_t *e, bool ok_if_invalid)
 {
     return (TEST(MALLOC_PRE_US, e->flags) &&
             (TEST(MALLOC_VALID, e->flags) || ok_if_invalid));
+}
+
+static uint
+malloc_alloc_type(byte *start)
+{
+    malloc_entry_t *e;
+    bool locked_by_me = malloc_lock_if_not_held_by_me();
+    uint res = 0;
+    e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
+    if (e != NULL)
+        res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
+    malloc_unlock_if_locked_by_me(locked_by_me);
+    return res;
 }
 
 bool
@@ -3014,7 +3151,8 @@ check_valid_heap_block(byte *block, per_thread_t *pt, dr_mcontext_t *mc,
         IF_WINDOWS_ELSE(!pt->heap_tangent, true)) {
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
-                                block, mc, routine, is_free);
+                                /* client_data not needed so not bothering */
+                                block, mc, translate_routine_name(routine), is_free);
         return false;
     }
     return true;
@@ -3203,6 +3341,49 @@ set_auxarg(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt, bool inside,
  * FREE
  */
 
+/* i#123: report mismatch in free/delete/delete[]
+ * Caller must hold malloc lock
+ */
+static bool
+handle_free_check_mismatch(void *drcontext, dr_mcontext_t *mc, bool inside,
+                           app_pc call_site, alloc_routine_entry_t *routine)
+{
+    /* XXX: safe_read */
+#ifdef WINDOWS
+    routine_type_t type = routine->type;
+#endif
+    app_pc base = (app_pc) APP_ARG(mc, ARGNUM_FREE_PTR(type), inside);
+    uint alloc_type = malloc_alloc_type(base);
+    uint free_type = malloc_allocator_type(routine);
+    LOG(3, "alloc/free match test: alloc %x vs free %x %s\n",
+        alloc_type, free_type, routine->name);
+    /* If have no info, can't say whether a mismatch */
+    if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
+        alloc_type != free_type) {
+#ifdef WINDOWS
+        /* Modules using msvcr*.dll still have their own operator wrappers that
+         * make tailcalls to msvcr*.dll; yet this is done asymmetrically such
+         * that if there are no symbols for the module, all drmem sees is the
+         * call to msvcr*.dll, and the asymmetry causes a mismatch.  Given that
+         * VS{2005,2008,2010} under /MD and /MDd all have private wrappers, the
+         * solution is to simply not report mismatches when the outer layer is
+         * in msvcr*.dll and we're dealing with [] vs non-[].
+         */
+        if (routine->set->modbase == get_libc_base() &&
+            alloc_type != MALLOC_ALLOCATOR_MALLOC &&
+            free_type != MALLOC_ALLOCATOR_MALLOC) {
+            LOG(2, "ignoring operator mismatch b/c msvcr* is outer layer\n");
+            return true;
+        }
+#endif
+        client_mismatched_heap(inside ? get_retaddr_at_entry(mc) : call_site,
+                               base, mc, translate_routine_name(routine->name),
+                               malloc_get_client_data(base));
+        return false;
+    }
+    return true;
+}
+
 static void
 handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_site,
                 alloc_routine_entry_t *routine)
@@ -3272,7 +3453,8 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
             pt->expect_lib_to_fail = true;
             /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
             client_invalid_heap_arg(inside ? get_retaddr_at_entry(mc) : call_site,
-                                    base, mc, routine->name, true);
+                                    base, mc, translate_routine_name(routine->name),
+                                    true);
         }
     } else {
         app_pc change_base;
@@ -3670,8 +3852,8 @@ handle_malloc_post(void *drcontext, dr_mcontext_t *mc, bool realloc, app_pc post
         handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
     } else {
         if (options.record_allocs) {
-            malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
-                       0, mc, post_call);
+            malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
+                              false, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
                              zeroed, realloc, mc);
@@ -3838,8 +4020,8 @@ handle_realloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
         if (options.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
-            malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
-                       0, mc, post_call);
+            malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
+                              false, 0, mc, post_call, pt->allocator);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
                  * as pre-us since we did not put a redzone on it
@@ -3959,8 +4141,8 @@ handle_calloc_post(void *drcontext, dr_mcontext_t *mc, app_pc post_call,
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
         if (options.record_allocs) {
-            malloc_add(app_base, app_base + pt->alloc_size, real_base+pad_size, false,
-                       0, mc, post_call);
+            malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
+                              false, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
                              true/*zeroed*/, false/*!realloc*/, mc);
@@ -4433,6 +4615,32 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     });
 #endif
     enter_heap_routine(pt, expect);
+
+    /* i#123: check for mismatches.  Because of placement new and other
+     * complications, new and delete are non-adjusting layers: we just
+     * do mismatch checks.
+     */
+    if (is_new_routine(type) ||
+        is_malloc_routine(type) ||
+        is_realloc_routine(type) ||
+        is_calloc_routine(type)) {
+        /* just record outer layer: leave adjusting to malloc (i#123).
+         * XXX: we assume none of the "fake" outer layers like LdrShutdownProcess
+         * call operators in a way we care about
+         */
+        if (pt->in_heap_routine == 1 || pt->allocator == 0) {
+            pt->allocator = malloc_allocator_type(&routine);
+            LOG(3, "alloc type: %x\n", pt->allocator);
+        }
+    }
+    else if (is_delete_routine(type) ||
+             is_free_routine(type)) {
+        if (pt->in_heap_routine == 1) {
+            handle_free_check_mismatch(drcontext, &mc, inside, call_site, &routine);
+            pt->allocator = 0;
+        }
+    }
+
     if (is_free_routine(type)) {
         handle_free_pre(drcontext, &mc, inside, call_site, &routine);
     }
@@ -4607,7 +4815,7 @@ handle_alloc_post(app_pc func, app_pc post_call)
     if (pt->in_heap_routine == 0)
         client_exiting_heap_routine();
 
-    if (is_free_routine(type)) {
+    if (is_free_routine(type) || is_delete_routine(type)) {
         handle_free_post(drcontext, &mc, &routine);
     }
     else if (is_size_routine(type)) {
@@ -4743,6 +4951,7 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
     bool is_tail_call = false;
     instr_t callee;
     instr_t *check_ind = inst;
+    bool free_callee = false;
     /* We use opnd_compute_address() to get any segment base included.
      * Since no registers are present, mc can just be empty.
      */
@@ -4838,6 +5047,7 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
         } else {
             /* May jmp to plt jmp* */
             instr_init(drcontext, &callee);
+            free_callee = true;
             if (decode(drcontext, target, &callee) != NULL &&
                 instr_get_opcode(&callee) == OP_jmp_ind) { 
                 check_ind = &callee; /* check below */
@@ -4860,7 +5070,7 @@ check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t 
          * And we never put in pre-instru for indirect cti.
          */
     }
-    if (check_ind != inst)
+    if (free_callee)
         instr_free(drcontext, &callee);
     if (is_tail_call) {
         /* We don't know return address statically */

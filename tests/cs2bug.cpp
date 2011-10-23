@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -20,6 +21,59 @@
  */
 
 #include <iostream>
+#include "stdlib.h"
+
+/* our delete mismatches can crash so we use fault handling for a more robust test */
+#ifdef LINUX
+# include <unistd.h>
+# include <signal.h>
+# include <ucontext.h>
+# include <errno.h>
+# include <assert.h>
+/* just use single-arg handlers */
+typedef void (*handler_t)(int);
+typedef void (*handler_3_t)(int, struct siginfo *, void *);
+#endif
+
+#include <setjmp.h>
+jmp_buf mark;
+
+#ifdef LINUX
+static void
+signal_handler(int sig)
+{
+    if (sig == SIGSEGV)
+        longjmp(mark, 1);
+    else
+        exit(1);
+}
+static void
+intercept_signal(int sig, handler_t handler)
+{
+    int rc;
+    struct sigaction act;
+    act.sa_sigaction = (handler_3_t) handler;
+    rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
+    assert(rc == 0);
+    act.sa_flags = SA_NOMASK | SA_SIGINFO | SA_ONSTACK;
+    rc = sigaction(sig, &act, NULL);
+    assert(rc == 0);
+}
+#else
+/* sort of a hack to avoid the MessageBox of the unhandled exception spoiling
+ * our batch runs
+ */
+# include <windows.h>
+/* top-level exception handler */
+static LONG
+our_top_handler(struct _EXCEPTION_POINTERS * pExceptionInfo)
+{
+    if (pExceptionInfo->ExceptionRecord->ExceptionCode == EXCEPTION_ACCESS_VIOLATION) {
+        longjmp(mark, 1);
+    }
+    return EXCEPTION_EXECUTE_HANDLER; /* => global unwind and silent death */
+}
+#endif
 
 static void
 test_basic()
@@ -35,7 +89,8 @@ test_basic()
      * the overflow if do a[3], so doing a[4], which is not detected.
      */
     a[4] = 12;
-    delete a;
+    if (setjmp(mark) == 0)
+        delete a; /* also a mismatch */
 }
 
 class hasdtr {
@@ -113,13 +168,45 @@ test_exception()
    }
 }
 
+static void
+test_mismatch()
+{
+    int *x = new int[7];
+    if (setjmp(mark) == 0)
+        delete x; /* technically no adverse effects since no destructor */
+    x = new int[7];
+    if (setjmp(mark) == 0)
+        free(x);
+    x = (int *) malloc(7);
+    if (setjmp(mark) == 0)
+        delete x;
+    x = (int *) malloc(7);
+    if (setjmp(mark) == 0)
+        delete[] x;
+}
+
 int main() 
 {
+#ifdef LINUX
+    intercept_signal(SIGSEGV, signal_handler);
+#else
+    SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
+#endif
+
     test_leaks();
 
     test_basic();
 
     test_exception();
 
+    test_mismatch();
+
     std::cout << "bye" << std::endl;
+
+    /* mismatches above end up causing RtlpCoalesceFreeBlocks to crash resulting
+     * in failing app exit code: simpler to just exit
+     */
+    exit(0);
+
+    return 0;
 }

@@ -59,14 +59,18 @@ typedef struct _alloc_options_t {
 
 /* Flags stored with each malloc entry */
 enum {
-    MALLOC_RESERVED_1 = 0x01,
-    MALLOC_RESERVED_2 = 0x02,
-    MALLOC_RESERVED_3 = 0x04,
-    MALLOC_RESERVED_4 = 0x08,
-    MALLOC_CLIENT_1 =   0x10,
-    MALLOC_CLIENT_2 =   0x20,
-    MALLOC_CLIENT_3 =   0x40,
-    MALLOC_CLIENT_4 =   0x80,
+    MALLOC_RESERVED_1 = 0x0001,
+    MALLOC_RESERVED_2 = 0x0002,
+    MALLOC_RESERVED_3 = 0x0004,
+    MALLOC_RESERVED_4 = 0x0008,
+    MALLOC_CLIENT_1 =   0x0010,
+    MALLOC_CLIENT_2 =   0x0020,
+    MALLOC_CLIENT_3 =   0x0040,
+    MALLOC_CLIENT_4 =   0x0080,
+    MALLOC_RESERVED_5 = 0x0100,
+    MALLOC_RESERVED_6 = 0x0200,
+    MALLOC_RESERVED_7 = 0x0400,
+    MALLOC_RESERVED_8 = 0x0800,
 };
 
 /* system/lib calls we want to intercept */
@@ -255,6 +259,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
 void
 client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
                         bool is_free);
+
+void
+client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+                       void *client_data);
 
 void
 client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon);

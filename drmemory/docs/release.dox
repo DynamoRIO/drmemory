@@ -60,8 +60,14 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between version 1.4.5 and 1.4.4 include:
+ - The tool now detects mismatched use of malloc/new/new[] vs
+   free/delete/delete[]
+ - Added a script to convert Memcheck suppression files to
+   the Dr. Memory format.
+ - Performance improvements on large applications via a symbol cache
  - Renamed the -check_cmps option to -check_uninit_cmps
  - Renamed the -check_non_moves option to -check_uninit_non_moves
+ - Various bug fixes
 
 The changes between version 1.4.4 and 1.4.3 include:
  - Fix for missing output in cmd on Win7 SP1

@@ -912,6 +912,14 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 }
 
 void
+client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+                       void *client_data)
+{
+    /* not reporting today */
+    LOG(1, "mismatched heap routines\n");
+}
+
+void
 client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
 {
 }

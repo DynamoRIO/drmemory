@@ -877,8 +877,10 @@ replace_in_module(const module_data_t *mod, bool add)
         if (addr != NULL) {
             replace_routine(add, mod, addr, i);
         } else {
-            /* We should find every single routine in libc */
-            ASSERT(mod->start != libc, "can't find libc routine to replace");
+            /* We should find every single routine in libc on linux: on windows
+             * the wide-char ones aren't always there
+             */
+            IF_LINUX(ASSERT(mod->start != libc, "can't find libc routine to replace"));
         }
     }
 

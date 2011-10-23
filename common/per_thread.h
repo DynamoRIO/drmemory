@@ -84,6 +84,8 @@ typedef struct _per_thread_t {
     /* record post-call in case flushed (i#559) */
     app_pc cur_post_call;
     app_pc post_call[MAX_HEAP_NESTING];
+    /* record which outer layer was used to allocate (i#123) */
+    uint allocator;
 
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];

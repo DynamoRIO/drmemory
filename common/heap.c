@@ -160,13 +160,16 @@ get_libc_base(void)
             data = dr_module_iterator_next(iter);
             modname = dr_module_preferred_name(data);
             if (modname != NULL) {
-                if (strncmp(modname, IF_WINDOWS_ELSE("msvcr", "libc."), 5) == 0) {
+                if (text_matches_pattern(modname,
+                                         IF_WINDOWS_ELSE("msvcr*", "libc.*"),
+                                         IF_WINDOWS_ELSE(true, false))) {
 #ifdef WINDOWS
                     /* If we see both msvcrt.dll and MSVCRNN.dll (e.g., MSVCR80.dll),
                      * we want the latter, as the former is only there b/c of a small
                      * number of imports from the latter.
                      */
-                    if (libc_base != NULL || strncmp(modname, "msvcrt.", 7) != 0)
+                    if (libc_base != NULL ||
+                        text_matches_pattern(modname, "msvcrt.dll", true))
 #endif
                         libc_base = data->start;
                 }
