@@ -237,7 +237,8 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     /* We rely on drsym_init() having been called during init */
     if (full) {
         /* A SymSearch full search is slower than SymFromName */
-        symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs);
+        symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs,
+                                     DRSYM_DEMANGLE);
     } else {
         /* drsym_search_symbols() is faster than either drsym_lookup_symbol() or
          * drsym_enumerate_symbols() (i#313)
@@ -1153,4 +1154,3 @@ utils_exit(void)
     }
 #endif
 }
-

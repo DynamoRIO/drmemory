@@ -354,7 +354,7 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
     sym->struct_size = sizeof(*sym);
     sym->name_size = MAX_FUNC_LEN;
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
-    symres = drsym_lookup_address(modpath, modoffs, sym);
+    symres = drsym_lookup_address(modpath, modoffs, sym, DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX")\n",
             modpath, modoffs, sym->name, modoffs - sym->start_offs,
@@ -411,7 +411,8 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
     sym->struct_size = sizeof(*sym);
     sym->name_size = MAX_FUNC_LEN;
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
-    symres = drsym_lookup_address(data->full_path, addr - data->start, sym);
+    symres = drsym_lookup_address(data->full_path, addr - data->start, sym,
+                                  DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (sym->name_available_size >= sym->name_size) {
             DO_ONCE({ 
