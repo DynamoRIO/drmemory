@@ -913,7 +913,8 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 }
 
 void
-client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
+                       const char *alloc_routine, const char *free_routine,
                        void *client_data)
 {
     /* not reporting today */

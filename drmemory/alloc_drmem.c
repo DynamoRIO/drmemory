@@ -409,18 +409,26 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 }
 
 void
-client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,
+client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
+                       const char *alloc_routine, const char *free_routine,
                        void *client_data)
 {
     app_loc_t loc;
     char msg[128];
     packed_callstack_t *pcs = NULL;
+    if (!options.check_delete_mismatch)
+        return;
     pc_to_loc(&loc, pc);
-    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                ": wrong free/delete/delete[] called");
-    NULL_TERMINATE_BUFFER(msg);
-    /* we want to report the callstack where it was allocated */
+    /* i#642: We want to report the callstack where it was allocated.  But, we want
+     * no-leak mode to be as fast as possible, so we don't record per-malloc
+     * callstacks just for this feature.  Instead we try to report the allocator and
+     * free routines involved.
+     */
     pcs = (packed_callstack_t *) client_data;
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                ": allocated with %s, freed with %s",
+                alloc_routine, free_routine);
+    NULL_TERMINATE_BUFFER(msg);
     report_mismatched_heap(&loc, target, mc, msg, pcs);
 }
 

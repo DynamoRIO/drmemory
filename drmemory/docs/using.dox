@@ -657,7 +657,7 @@ free() versus operator delete versus operator delete[].  This will be
 reported as:
 
 \code
-Error #4: INVALID HEAP ARGUMENT: wrong free/delete/delete[] called
+Error #4: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 # 0 test_mismatch                   [cs2bug.cpp:122]
 # 1 main                            [cs2bug.cpp:139]
 Note: memory was allocated here:
@@ -666,7 +666,12 @@ Note: # 1 main                            [cs2bug.cpp:139]
 \endcode
 
 For code compiled with Visual Studio, detecting such mismatches relies on
-having debug information.
+having debug information.  Certain Visual Studio optimizations can also
+preclude the ability to detect mismatches when using a static C library, so
+using either a Debug build of your application or linking to the dynamic C
+library may be required to identify these bugs.  Also note that if leak
+counting is completely disabled via \p -no-count_leaks then the callstack
+of the allocation will not be reported on a mismatch.
 
 ********************
 \subsection sec_leaks Memory Leaks

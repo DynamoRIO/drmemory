@@ -1651,7 +1651,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
 static void
 report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
              app_pc container_start, app_pc container_end,
-             const char *msg, dr_mcontext_t *mc, bool report_instruction,
+             const char *msg, dr_mcontext_t *mc,
+             bool report_instruction, bool report_neighbors,
              packed_callstack_t *pcs)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
@@ -1815,8 +1816,8 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         ASSERT(msg != NULL, "invalid arg");
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "INVALID HEAP ARGUMENT%s", msg);
-        /* If pcs is non-NULL we assume that's all we want to print (mismatch error) */
-        if (!options.brief && pcs == NULL)
+        /* Only print address when reporting neighbors */
+        if (!options.brief && pcs == NULL && report_neighbors)
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, " "PFX, addr);
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
     } else if (type == ERROR_WARNING) {
@@ -1837,15 +1838,12 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
     }
 
-    if (type == ERROR_UNADDRESSABLE ||
-        /* If pcs is non-NULL we assume that's all we want to print (mismatch error) */
-        (type == ERROR_INVALID_HEAP_ARG && pcs == NULL) ||
-        (type == ERROR_WARNING && sz > 0)) {
+    if (report_neighbors) {
         /* print auxiliary info about the target address (PR 535568) */
         report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz,
                          type == ERROR_INVALID_HEAP_ARG);
     }
-    if (type == ERROR_INVALID_HEAP_ARG && pcs != NULL) {
+    if (pcs != NULL) {
         symbolized_callstack_t scs;
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%smemory was allocated here:"NL, INFO_PFX);
@@ -1889,7 +1887,8 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             dr_mcontext_t *mc)
 {
     report_error(ERROR_UNADDRESSABLE, loc, addr, sz, write,
-                 container_start, container_end, NULL, mc, true/*include instr*/, NULL);
+                 container_start, container_end, NULL, mc, true/*include instr*/,
+                 true/*report neighbors*/, NULL);
 }
 
 void
@@ -1898,7 +1897,8 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
                       dr_mcontext_t *mc)
 {
     report_error(ERROR_UNDEFINED, loc, addr, sz, false,
-                 container_start, container_end, NULL, mc, true/*include instr*/, NULL);
+                 container_start, container_end, NULL, mc, true/*include instr*/,
+                 false/*no neighbors*/, NULL);
 }
 
 void
@@ -1913,7 +1913,7 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
             report_warning(loc, mc, "free() called with NULL pointer", NULL, 0, false);
     } else {
         report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL,
-                     msg, mc, false, NULL);
+                     msg, mc, false/*no instr*/, true/*neighbors*/, NULL);
     }
 }
 
@@ -1922,7 +1922,7 @@ report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
                        const char *msg, packed_callstack_t *pcs)
 {
     report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL,
-                 msg, mc, false, pcs);
+                 msg, mc, false/*no instr*/, false/*no neighbors*/, pcs);
 }
 
 void
@@ -1930,7 +1930,7 @@ report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
                app_pc addr, size_t sz, bool report_instruction)
 {
     report_error(ERROR_WARNING, loc, addr, sz, false, NULL, NULL, msg, mc,
-                 report_instruction, NULL);
+                 report_instruction, sz > 0/*neighbors*/, NULL);
 }
 
 /* saves the values of all counts that are modified in report_leak() */

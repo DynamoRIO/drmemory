@@ -510,17 +510,18 @@ translate_routine_name(const char *name)
 #ifndef USE_DRSYMS
     /* temporary until we have online syms */
     /* could add to table but doesn't seem worth adding a whole new field */
-    if (strcmp(name, "_Znwj") == 0 ||
-        strcmp(name, "_ZnwjRKSt9nothrow_t"))
+    if (strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXI@Z", "_Znwj")) == 0 ||
+        strcmp(name, IF_WINDOWS_ELSE("_??2@YAPAXIHPBDH@Z", "_ZnwjRKSt9nothrow_t")) == 0)
         return "operator new";
-    else if (strcmp(name, "_Znaj") == 0 ||
-             strcmp(name, "_ZnwjRKSt9nothrow_t"))
+    else if (strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXI@Z", "_Znaj")) == 0 ||
+             strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXIHPBDH@Z",
+                                          "_ZnwjRKSt9nothrow_t")) == 0)
         return "operator new[]";
-    if (strcmp(name, "_ZdlPv") == 0 ||
-        strcmp(name, "_ZdlPvRKSt9nothrow_t"))
+    if (strcmp(name, IF_WINDOWS_ELSE("??3@YAXPAX@Z", "_ZdlPv")) == 0
+        IF_LINUX(|| strcmp(name, "_ZdlPvRKSt9nothrow_t") == 0))
         return "operator delete";
-    else if (strcmp(name, "_ZdaPv") == 0 ||
-             strcmp(name, "_ZdaPvRKSt9nothrow_t"))
+    else if (strcmp(name, IF_WINDOWS_ELSE("??_V@YAXPAX@Z", "_ZdaPv")) == 0
+             IF_LINUX(|| strcmp(name, "_ZdaPvRKSt9nothrow_t") == 0))
         return "operator delete[]";
 #endif
     return name;
@@ -641,6 +642,8 @@ struct _alloc_routine_set_t {
     byte *realloc_replacement;
     /* For simpler removal on module unload */
     app_pc modbase;
+    /* For i#643 */
+    bool check_mismatch;
 };
 
 /* The set for the dynamic libc lib */
@@ -1051,7 +1054,7 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name)
 /* caller must hold alloc routine lock */
 static alloc_routine_entry_t *
 add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
-                  alloc_routine_set_t *set, app_pc modbase)
+                  alloc_routine_set_t *set, app_pc modbase, const char *modname)
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
@@ -1059,6 +1062,26 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     if (e != NULL) {
         /* this happens w/ things like cfree which maps to free in libc */
         LOG(1, "alloc routine %s "PFX" is already intercepted\n", name, pc);
+        /* i#643: operator collapse makes distinguishing impossible.
+         * I was unable to determine what causes Chromium Release build to
+         * collapse its operators: could not repro in a small sample project.
+         *
+         * XXX: we don't check for only delete vs delete[] mismatch
+         * b/c some free() calls end up going here even though "free"
+         * lookup finds the routine the deletes call: the deletes and
+         * some free()-ish calls (ones that line up w/ malloc) all go
+         * to the same point.  But that's hard to detect so we just
+         * say "all bets are off" when plain==[].
+         */
+        if ((type == HEAP_ROUTINE_DELETE &&
+             e->type == HEAP_ROUTINE_DELETE_ARRAY) ||
+            (type == HEAP_ROUTINE_DELETE_ARRAY &&
+             e->type == HEAP_ROUTINE_DELETE)) {
+            e->set->check_mismatch = false;
+            /* i#463: some optimized libs have identical operator stubs */
+            WARN("WARNING: delete == delete[] => disabling mismatch detection for %s\n",
+                 modname);
+        }
         return e;
     }
     e = global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
@@ -1071,6 +1094,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
         e->set->refcnt++;
         e->set->func[e->type] = e;
         e->set->modbase = modbase;
+        e->set->check_mismatch = true;
     } else
         ASSERT(false, "set is required w/ new module unload scheme");
     IF_DEBUG(is_new = )
@@ -1141,9 +1165,9 @@ typedef struct _set_enum_data_t {
 static void
 add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
 {
-#ifdef DEBUG
     const char *modname = dr_module_preferred_name(edata->mod);
-#endif
+    if (modname == NULL)
+        modname = "<noname>";
     ASSERT(edata != NULL && pc != NULL, "invalid params");
 #ifdef USE_DRSYMS
     if (op_use_symcache)
@@ -1158,11 +1182,11 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->set->type = edata->set_type;
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
-                      edata->set, edata->mod->start);
+                      edata->set, edata->mod->start, modname);
     if (edata->processed != NULL)
         edata->processed[idx] = true;
     LOG(1, "intercepting %s @"PFX" in module %s\n",
-        edata->possible[idx].name, pc, (modname == NULL) ? "<noname>" : modname);
+        edata->possible[idx].name, pc, modname);
 #if defined(WINDOWS) && defined(USE_DRSYMS)
     if (options.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
         disable_crtdbg(edata->mod);
@@ -1664,6 +1688,9 @@ enum {
     MALLOC_PRE_US = MALLOC_RESERVED_2,
     /* These are to distinguish whether from malloc, new, or new[] (i#123).
      * 4 states using MALLOC_RESERVED_3 and MALLOC_RESERVED_4.
+     * XXX: I tried also distinguishing HeapAlloc/RtlAllocateHeap
+     * but I hit a lot of false positives w/ even a small test app
+     * where free() would free: did not investigate.
      */
     MALLOC_ALLOCATOR_FLAGS     = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
     MALLOC_ALLOCATOR_UNKNOWN   = 0x0,
@@ -2323,6 +2350,22 @@ malloc_alloc_type(byte *start)
         res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
     malloc_unlock_if_locked_by_me(locked_by_me);
     return res;
+}
+
+static const char *
+malloc_alloc_type_name(uint flags)
+{
+    if (flags == MALLOC_ALLOCATOR_NEW) /* yes, == not TEST */
+        return "operator new";
+    else if (flags == MALLOC_ALLOCATOR_NEW_ARRAY)
+        return "operator new[]";
+    else {
+        /* We could store the actual name ("HeapAlloc", "calloc", _malloc_dbg",
+         * "memalign", etc.) but that would cost too much memory to keep per
+         * malloc, and this should be clear enough for most users.
+         */
+        return "malloc";
+    }
 }
 
 bool
@@ -3376,8 +3419,15 @@ handle_free_check_mismatch(void *drcontext, dr_mcontext_t *mc, bool inside,
             return true;
         }
 #endif
+        /* i#643: operator collapse makes distinguishing impossible */
+        if (!routine->set->check_mismatch) {
+            LOG(2, "ignoring operator mismatch b/c delete==delete[]\n");
+            return true;
+        }
         client_mismatched_heap(inside ? get_retaddr_at_entry(mc) : call_site,
-                               base, mc, translate_routine_name(routine->name),
+                               base, mc,
+                               malloc_alloc_type_name(alloc_type),
+                               translate_routine_name(routine->name),
                                malloc_get_client_data(base));
         return false;
     }

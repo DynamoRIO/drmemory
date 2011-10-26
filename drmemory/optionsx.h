@@ -359,6 +359,9 @@ OPTION_CLIENT_BOOL(internal, check_tls, true,
                    "Check for access to un-reserved TLS slots",
                    "Check for access to un-reserved TLS slots")
 #endif
+OPTION_CLIENT_BOOL(drmemscope, check_delete_mismatch, true,
+                   "Whether to check for free/delete/delete[] mismatches",
+                   "Whether to check for free/delete/delete[] mismatches")
 
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",
