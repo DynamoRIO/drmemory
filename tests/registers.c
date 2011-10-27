@@ -651,10 +651,17 @@ addronly_test(void)
     asm("jmp foo2");
     asm("foo2:");
 
+    /* Undo the modifications our unaddrs made to make glibc happy when running
+     * natively.  After the first two writes, the memory is marked as defined,
+     * so these don't get reported.
+     */
+    asm("decb  124(%eax)");
+    asm("decb  128(%eax)");
+
     asm("popa");
 #endif
+    free(undef);
     printf("after addronly test!\n");
-    /* we go ahead and leak it b/c glibc complains on free */
 }
 
 int

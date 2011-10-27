@@ -33,4 +33,3 @@ registers.c:642
 %endif
 Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes
-Error #5: LEAK 128 direct bytes + 0 indirect bytes

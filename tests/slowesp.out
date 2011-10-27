@@ -36,5 +36,5 @@ after addronly test!
 ~~Dr.M~~      12 unique,    12 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       3 unique,     3 total,    158 byte(s) of leak(s)
+~~Dr.M~~       2 unique,     2 total,     30 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

@@ -82,4 +82,3 @@ registers.c:642
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
 : LEAK 15 direct bytes + 0 indirect bytes
-: LEAK 128 direct bytes + 0 indirect bytes
