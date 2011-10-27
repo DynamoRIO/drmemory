@@ -39,16 +39,13 @@ done
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 ~~Dr.M~~      19 user-suppressed error(s)
-%if DRSYMS
-~~Dr.M~~       7 user-suppressed leak(s)
-%endif
-# really need better conditionals to avoid all this duplication
-%if CYGWIN_VISTAPLUS
+# i#292: There are 5 leaks and 2 possible leaks, all of which we suppress.  The
+# 5th leak is still reachable from RtlpHeapFailureInfo on Vista+.  If we have
+# ntdll.pdb we find and ignore roots in RtlpHeapFailureInfo, giving us 7
+# suppressed leaks.  If we don't have ntdll.pdb, we only find 4+2 leaks.  Unless
+# we add support to the test suite to fetch ntdll.pdb (as part of building the
+# symcache?), we accept either result.
+%ANYLINE
 ~~Dr.M~~       6 user-suppressed leak(s)
-%endif
-%if CYGWIN_PREVISTA
 ~~Dr.M~~       7 user-suppressed leak(s)
-%endif
-%if UNIX
-~~Dr.M~~       7 user-suppressed leak(s)
-%endif
+%ENDANYLINE

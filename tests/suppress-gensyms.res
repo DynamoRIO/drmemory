@@ -258,17 +258,17 @@ suppress.c:280
 suppress!main
 suppress.c:305
 
-%if DRSYMS
-# w/o drsyms we can't get RtlpHeapFailureInfo (i#292)
-# this will also happen on machines w/o private syms for ntdll
-: LEAK 32 direct bytes + 0 indirect bytes
-suppress!invalid_free_test1
-suppress.c:188
-suppress!test
-suppress.c:289
-suppress!main
-suppress.c:305
-%endif
+# i#292: We can only find this leak on Vista+ if we have ntdll.pdb and drsyms.
+# Until we add support to fetch ntdll.pdb, we allow this leak to be missed.
+#%if DRSYMS
+#: LEAK 32 direct bytes + 0 indirect bytes
+#suppress!invalid_free_test1
+#suppress.c:188
+#suppress!test
+#suppress.c:289
+#suppress!main
+#suppress.c:305
+#%endif
 
 %if CYGWIN_PREVISTA
 : LEAK 32 direct bytes + 0 indirect bytes

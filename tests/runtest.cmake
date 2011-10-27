@@ -319,6 +319,17 @@ foreach (str ${patterns})
     string(REGEX REPLACE "(^|\n)%if DRSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
   endif (USE_DRSYMS)
 
+  # Our expected output files don't support regexes, but we do support matching
+  # any of a set of lines with %ANYLINE blocks.
+  string(REGEX MATCH "(^|\n)%ANYLINE\n[^%]+\n%ENDANYLINE\n" anyline_sec "${${str}}")
+  while (anyline_sec)
+    string(REGEX REPLACE "^\n?%ANYLINE\n" "(" anyline_regex "${anyline_sec}")
+    string(REGEX REPLACE "\n%ENDANYLINE\n$" ")\n" anyline_regex "${anyline_regex}")
+    string(REGEX REPLACE "\n" "|" anyline_regex "${anyline_regex}")
+    string(REPLACE "${anyline_sec}" "${anyline_regex}" ${str} "${${str}}")
+    string(REGEX MATCH "(^|\n)%ANYLINE\n[^%]+\n%ENDANYLINE\n" anyline_sec "${${str}}")
+  endwhile()
+
   string(REGEX REPLACE "(^|\n)%(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
 endforeach (str)
 
