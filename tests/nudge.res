@@ -33,8 +33,8 @@ infloop.c:92
 Error #2: LEAK 42 direct bytes + 17 indirect bytes
 infloop.c:81
 %endif
-%if UNIX
 %OUT_OF_ORDER
+%if UNIX
 LEAK 160 direct bytes + 0 indirect bytes
 infloop.c:92
 LEAK 42 direct bytes + 17 indirect bytes
