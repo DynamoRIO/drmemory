@@ -20,6 +20,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 starting
+# First nudge error report.
 ~~Dr.M~~ ERRORS FOUND:
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
@@ -36,4 +37,12 @@ starting
 %if UNIX
 ~~Dr.M~~       2 unique,    21 total,   3259 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+%endif
+# Second nudge error report.  We don't match the output of it, just that it was
+# here.
+~~Dr.M~~ ERRORS FOUND:
+# On exit error report.  We don't get this on Windows because we use DRkill to
+# end infloop.exe.
+%if UNIX
+~~Dr.M~~ ERRORS FOUND:
 %endif
