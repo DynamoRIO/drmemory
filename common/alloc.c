@@ -1081,6 +1081,14 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
             /* i#463: some optimized libs have identical operator stubs */
             WARN("WARNING: delete == delete[] => disabling mismatch detection for %s\n",
                  modname);
+        } else if ((type == HEAP_ROUTINE_NEW &&
+                    e->type == HEAP_ROUTINE_NEW_ARRAY) ||
+                   (type == HEAP_ROUTINE_NEW_ARRAY &&
+                    e->type == HEAP_ROUTINE_NEW)) {
+            e->set->check_mismatch = false;
+            /* i#463: some optimized libs have identical operator stubs */
+            WARN("WARNING: new == new[] => disabling mismatch detection for %s\n",
+                 modname);
         }
         return e;
     }
@@ -1094,7 +1102,6 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
         e->set->refcnt++;
         e->set->func[e->type] = e;
         e->set->modbase = modbase;
-        e->set->check_mismatch = true;
     } else
         ASSERT(false, "set is required w/ new module unload scheme");
     IF_DEBUG(is_new = )
@@ -1180,6 +1187,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->set->use_redzone = (edata->use_redzone && options.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
         edata->set->type = edata->set_type;
+        edata->set->check_mismatch = true;
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
                       edata->set, edata->mod->start, modname);
