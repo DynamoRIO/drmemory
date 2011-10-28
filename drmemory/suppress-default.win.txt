@@ -289,3 +289,10 @@ name=default i#529 (multi-instr partial xor-with-self)
 instruction=test   0x70(%e??) *
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*
+
+##################################################
+# i#655: deliberate mismatch
+
+INVALID HEAP ARGUMENT
+name=i#655: allocate with new and free with free()
+*!std::_DebugHeapDelete<*>
