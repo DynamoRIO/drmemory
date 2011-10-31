@@ -19,4 +19,9 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: LEAK 4 direct bytes + 4 indirect bytes
+# Either allocation site could be the root, it depends which had the lower
+# memory address.
+%ANYLINE
 leakcycle.cpp:60
+leakcycle.cpp:68
+%ENDANYLINE

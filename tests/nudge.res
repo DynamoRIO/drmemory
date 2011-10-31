@@ -19,24 +19,14 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-%if WINDOWS
+%OUT_OF_ORDER
 # XXX: extra leak due to encoded pointer (PR 482555) is no longer happening on
 # my machine!  not sure what's going on
-#Error #1: LEAK 128 direct bytes + 0 indirect bytes
+#%if WINDOWS
+#LEAK 128 direct bytes + 0 indirect bytes
 #crtheap.c:61
-#Error #2: LEAK 160 direct bytes + 0 indirect bytes
-#infloop.c:91
-#Error #3: LEAK 42 direct bytes + 17 indirect bytes
-#infloop.c:80
-Error #1: LEAK 160 direct bytes + 0 indirect bytes
-infloop.c:92
-Error #2: LEAK 42 direct bytes + 17 indirect bytes
-infloop.c:81
-%endif
-%OUT_OF_ORDER
-%if UNIX
+#%endif
 LEAK 160 direct bytes + 0 indirect bytes
 infloop.c:92
 LEAK 42 direct bytes + 17 indirect bytes
 infloop.c:81
-%endif

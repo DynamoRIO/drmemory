@@ -331,13 +331,6 @@ foreach (str ${patterns})
   endwhile()
 
   string(REGEX REPLACE "(^|\n)%(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
-
-  if ("${cmd}" MATCHES "run_in_bg")
-    # When matching the ~~Dr.M~~ prefix for the nudge test, we don't care if the
-    # output came from the frontend or from the application responding to a
-    # nudge, so we match either Dr.M or the thread id.
-    string(REPLACE "~~Dr\\.M~~" "~~(Dr\\.M|[0-9]+)~~" ${str} "${${str}}")
-  endif ()
 endforeach (str)
 
 ##################################################

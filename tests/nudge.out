@@ -20,29 +20,32 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 starting
+# On Windows, the prefixes for messages from the nudge handler use ~~TID~~
+# prefixes due to the injected thread.  On Linux, it's ~~Dr.H~~.  Just match the
+# trailing tildes.
 # First nudge error report.
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
+~~ ERRORS FOUND:
+~~       0 unique,     0 total unaddressable access(es)
+~~       0 unique,     0 total uninitialized access(es)
+~~       0 unique,     0 total invalid heap argument(s)
+~~       0 unique,     0 total warning(s)
 %if WINDOWS
 # XXX: extra leak due to encoded pointer (PR 482555) is no longer
 # happening on my machine!  not sure what's going on
-#~~Dr.M~~       3 unique,    22 total,   3387 byte(s) of leak(s)
-~~Dr.M~~       2 unique,    21 total,   3259 byte(s) of leak(s)
+#~~       3 unique,    22 total,   3387 byte(s) of leak(s)
+~~       2 unique,    21 total,   3259 byte(s) of leak(s)
 # FIXME PR 485354: sometimes some or all of the leaks are "possible": why?
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 %endif
 %if UNIX
-~~Dr.M~~       2 unique,    21 total,   3259 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+~~       2 unique,    21 total,   3259 byte(s) of leak(s)
+~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 %endif
 # Second nudge error report.  We don't match the output of it, just that it was
 # here.
-~~Dr.M~~ ERRORS FOUND:
+~~ ERRORS FOUND:
 # On exit error report.  We don't get this on Windows because we use DRkill to
 # end infloop.exe.
 %if UNIX
-~~Dr.M~~ ERRORS FOUND:
+~~ ERRORS FOUND:
 %endif
