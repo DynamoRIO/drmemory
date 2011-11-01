@@ -782,12 +782,11 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
      * as we add more routines.
      */
     i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
-    /* XXX: some modules have multiple addresses for one symbol: e.g., unit_tests.exe 
+    /* i#617: some modules have multiple addresses for one symbol: e.g., unit_tests.exe 
      * strlen, strchr, and strrchr
      */
     if (i != 0 && !edata->processed[i-1]) {
         i--;
-        edata->processed[i] = true;
         replace_routine(edata->add, edata->mod, edata->mod->start + modoffs, i);
     }
     return true; /* keep iterating */
@@ -820,9 +819,13 @@ replace_in_module(const module_data_t *mod, bool add)
     void *drcontext = dr_get_current_drcontext();
 #ifdef USE_DRSYMS
     sym_enum_data_t edata = {add, {0,}, mod};
-    bool missing_export = false;
+    bool missing_entry = false;
 #endif
     ASSERT(options.replace_libc, "should not be called if op not on");
+    /* step 1: find and replace symbols in exports 
+     * if we find an export we can't mark as processed b/c
+     * there can be other symbols of same name.
+     */
     for (i=0; i<REPLACE_NUM; i++) {
         dr_export_info_t info;
         app_pc addr = NULL;
@@ -830,9 +833,6 @@ replace_in_module(const module_data_t *mod, bool add)
                                    &info, sizeof(info))) {
             addr = (app_pc) info.address;
             ASSERT(addr != NULL, "can't succeed yet have NULL addr!");
-#ifdef USE_DRSYMS
-            edata.processed[i] = true;
-#endif
             if (info.is_indirect_code) {
                 /* i#248/PR 510905: new ELF indirect code object type.
                  * We have to call the export to get the real impl.
@@ -852,28 +852,6 @@ replace_in_module(const module_data_t *mod, bool add)
                     replace_all_strlen(add, mod, i, orig_addr, addr);
             }
         }
-#ifdef USE_DRSYMS
-        else {
-            size_t modoffs;
-            uint count;
-            uint idx;
-            LOG(3, "did not find export %s\n", replace_routine_name[i]);
-            if (options.use_symcache && symcache_module_is_cached(mod)) {
-                for (idx = 0, count = 1;
-                     idx < count && symcache_lookup(mod, replace_routine_name[i],
-                                                    idx, &modoffs, &count); idx++) {
-                    STATS_INC(symbol_search_cache_hits);
-                    edata.processed[i] = true;
-                    if (modoffs != 0)
-                        replace_routine(add, mod, mod->start + modoffs, i);
-                }
-            }
-            if (!edata.processed[i]) {
-                LOG(2, "did not find %s in symcache\n", replace_routine_name[i]);
-                missing_export = true;
-            }
-        }
-#endif
         if (addr != NULL) {
             replace_routine(add, mod, addr, i);
         } else {
@@ -885,7 +863,36 @@ replace_in_module(const module_data_t *mod, bool add)
     }
 
 #ifdef USE_DRSYMS
-    if (missing_export) {
+    /* step 2, find and replace symbols in symcache 
+     * i#617: some modules have multiple addresses for one symbol: 
+     * e.g., unit_tests.exe: strlen, strchr, and strrchr,
+     * so we always need check if we can find it in the symcache.
+     * We assume that we have all the entries of a symbol if we can find one
+     * entry for that symbol in the symcache.
+     */
+    for (i = 0; i < REPLACE_NUM; i++) {
+        size_t modoffs;
+        uint count;
+        uint idx;
+        LOG(3, "Search %s in symcache\n", replace_routine_name[i]);
+        if (options.use_symcache && symcache_module_is_cached(mod)) {
+            for (idx = 0, count = 1;
+                 idx < count && symcache_lookup(mod, replace_routine_name[i],
+                                                idx, &modoffs, &count); idx++) {
+                STATS_INC(symbol_search_cache_hits);
+                edata.processed[i] = true;
+                if (modoffs != 0)
+                    replace_routine(add, mod, mod->start + modoffs, i);
+            }
+        }
+        if (!edata.processed[i]) {
+            LOG(2, "did not find %s in symcache\n", replace_routine_name[i]);
+            missing_entry = true;
+        }
+    }
+
+    /* step 3, some symbols are not found in symcache, lookup them in modules */
+    if (missing_entry) {
         /* PR 486382: look up these symbols online for all modules.
          * We rely on drsym_init() having been called during init.
          * It's faster to look up multiple via regex (xref i#315)

@@ -46,6 +46,8 @@
  * - Using just module name for the file and not worrying about
  *   conflicts since this is just a performance improvement: thus some
  *   SxS or other modules may end up w/ competing cache files.
+ * - i#617, we assume that we have all the entries of a symbol 
+ *   if we can find one entry for that symbol in the symcache.
  */
 
 #define SYMCACHE_FILE_HEADER "Dr. Memory symbol cache version"
@@ -55,7 +57,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 1
+#define SYMCACHE_VERSION 2
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
