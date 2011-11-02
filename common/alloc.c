@@ -1006,7 +1006,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         /* I assume there's only one ret */
     } while (!instr_is_return(&inst));
     if (found_calls < 4) { /* PIC base call makes 5 on linux */
-        NOTIFY_ERROR("Dr. Memory compiled incorrectly: realloc template optimized?");
+        NOTIFY_ERROR("Dr. Memory compiled incorrectly: realloc template optimized?"NL);
         dr_abort();
     }
     instr_reset(drcontext, &inst);
@@ -4764,7 +4764,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         /* XXX: once we have the aligned-malloc routines turn this
          * into a NOTIFY_ERROR and dr_abort
          */
-        NOTIFY_ERROR("unhandled heap routine %s\n", routine.name);
+        NOTIFY_ERROR("unhandled heap routine %s"NL, routine.name);
         dr_abort();
     }
 }

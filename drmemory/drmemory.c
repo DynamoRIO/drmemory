@@ -353,7 +353,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
         dr_log(drcontext, LOG_ALL, 1, 
                "DrMemory: log for thread %d is %s\n",
                dr_get_thread_id(drcontext), logname);
-        NOTIFY("thread logfile is %s\n", logname);
+        NOTIFY("thread logfile is %s"NL, logname);
     }
     return f;
 }
@@ -1122,7 +1122,7 @@ create_global_logfile(void)
          */
     } while (!dr_create_dir(logsubdir) && ++count < LOGDIR_TRY_MAX);
     if (count >= LOGDIR_TRY_MAX) {
-        NOTIFY_ERROR("Unable to create subdir in log base dir %s\n", options.logdir);
+        NOTIFY_ERROR("Unable to create subdir in log base dir %s"NL, options.logdir);
         ASSERT(false, "unable to create unique logsubdir");
         dr_abort();
     }
@@ -1136,7 +1136,7 @@ create_global_logfile(void)
     /* make sure "Dr. Memory" is 1st (or 2nd on linux) in file (for PR 453867) */
     print_version(f_global, false);
     if (options.verbose > 1)
-        NOTIFY("log dir is %s\n", logsubdir);
+        NOTIFY("log dir is %s"NL, logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
 #ifdef USE_DRSYMS
@@ -1350,7 +1350,7 @@ dr_init(client_id_t id)
 #endif
     if (data == NULL) {
 # ifndef VMX86_SERVER /* remove once have PR 363063 */
-        NOTIFY("WARNING: cannot find executable image\n");
+        NOTIFY("WARNING: cannot find executable image"NL);
 # endif
     } else {
         app_base = data->start;
@@ -1367,12 +1367,12 @@ dr_init(client_id_t id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
-    NOTIFY("Dr. Memory version %s\n", VERSION_STRING);
+    NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
 # ifdef WINDOWS
-    NOTIFY("Running \"%S\"\n", get_app_commandline());
+    NOTIFY("Running \"%S\""NL, get_app_commandline());
 # endif
     if (options.verbose > 1)
-        NOTIFY("options are \"%s\"\n", opstr);
+        NOTIFY("options are \"%s\""NL, opstr);
 
     /* glibc malloc 8-byte-aligns all its allocs: but 2x redzone_size matches that */
     ASSERT(!options.size_in_redzone || options.redzone_size >= sizeof(size_t),

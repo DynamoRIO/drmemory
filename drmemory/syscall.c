@@ -154,7 +154,7 @@ syscall_load_auxlib(const char *name)
     BUFPRINT(buf, bufsz, sofar, len, "/%s", name);
     auxlib = dr_load_aux_library(auxpath, &auxlib_start, &auxlib_end);
     if (auxlib == NULL) {
-        NOTIFY_ERROR("Error loading auxiliary library %s\n", auxpath);
+        NOTIFY_ERROR("Error loading auxiliary library %s"NL, auxpath);
         goto auxlib_load_error;
     }
 
@@ -166,7 +166,7 @@ syscall_load_auxlib(const char *name)
     if (drauxlib_ver_compat == NULL || drauxlib_ver_cur == NULL ||
         *drauxlib_ver_compat > SYSAUXLIB_MIN_VERSION_USED ||
         *drauxlib_ver_cur < SYSAUXLIB_MIN_VERSION_USED) {
-        NOTIFY_ERROR("Version %d mismatch with aux library %s version %d-%d",
+        NOTIFY_ERROR("Version %d mismatch with aux library %s version %d-%d"NL,
                      SYSAUXLIB_MIN_VERSION_USED, auxpath,
                      (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur,
                      (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur);
@@ -187,12 +187,12 @@ syscall_load_auxlib(const char *name)
         BINDFUNC(auxlib, func, sysauxlib_mem_param_info) == NULL ||
         BINDFUNC(auxlib, func, sysauxlib_is_fork) == NULL ||
         BINDFUNC(auxlib, func, sysauxlib_is_exec) == NULL) {
-        NOTIFY_ERROR("Required export %s missing from aux library %s",
+        NOTIFY_ERROR("Required export %s missing from aux library %s"NL,
                      func, auxpath);
         goto auxlib_load_error;
     }
     if (!sysauxlib_init()) {
-        NOTIFY_ERROR("aux library init failed: do you have the latest version?\n");
+        NOTIFY_ERROR("aux library init failed: do you have the latest version?"NL);
         goto auxlib_load_error;
     }
     return true;

@@ -290,7 +290,7 @@ report_malformed_suppression(const char *orig_start,
                              const char *orig_end,
                              const char *message)
 {
-    NOTIFY("Malformed suppression:\n%.*s\n%s\n",
+    NOTIFY("Malformed suppression:"NL"%.*s"NL"%s"NL,
            orig_end - orig_start, orig_start, message);
     usage_error("Malformed suppression. See the log file for the details", "");
 }
@@ -631,7 +631,7 @@ read_suppression_file(file_t f, bool is_default)
         const char *label = (is_default) ? "default" : "user";
         if (map != NULL)
             dr_unmap_file(map, actual_size);
-        NOTIFY_ERROR("Error mapping %s suppression file\n", label);
+        NOTIFY_ERROR("Error mapping %s suppression file"NL, label);
         return;
     }
 
@@ -676,7 +676,7 @@ read_suppression_file(file_t f, bool is_default)
                      * suppressions on Windows except WINE users) so we can't say
                      * "use script": for Linux we rely on postprocess saying that
                      */
-                    NOTIFY("WARNING: Deprecated legacy limited Valgrind suppression format detected.  Please convert to the more-powerful supported Dr. Memory format.\n");
+                    NOTIFY("WARNING: Deprecated legacy limited Valgrind suppression format detected.  Please convert to the more-powerful supported Dr. Memory format."NL);
                 });
             }
         } else if (line[0] == '}') {
@@ -725,7 +725,7 @@ open_and_read_suppression_file(const char *fname, bool is_default)
     } else {
         file_t f = dr_open_file(fname, DR_FILE_READ);
         if (f == INVALID_FILE) {
-            NOTIFY_ERROR("Error opening %s suppression file %s\n", label, fname);
+            NOTIFY_ERROR("Error opening %s suppression file %s"NL, label, fname);
             dr_abort();
             return;
         }
@@ -734,7 +734,7 @@ open_and_read_suppression_file(const char *fname, bool is_default)
         /* Don't print to stderr about default suppression file, and don't print
          * at all when postprocess is handling all the symbolic stacks
          */
-        NOTIFY_COND(!is_default, f_global, "Recorded %d suppression(s) from %s %s\n",
+        NOTIFY_COND(!is_default, f_global, "Recorded %d suppression(s) from %s %s"NL,
                     num_suppressions - prev_suppressions, label, fname);
         ELOGF(0, f_results, "Recorded %d suppression(s) from %s %s"NL,
               num_suppressions - prev_suppressions, label, fname);

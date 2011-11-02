@@ -1412,7 +1412,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
         dr_log(drcontext, LOG_ALL, 1, 
                "DrMemory: log for thread %d is %s\n",
                dr_get_thread_id(drcontext), logname);
-        NOTIFY("thread logfile is %s\n", logname);
+        NOTIFY("thread logfile is %s"NL, logname);
     }
     return f;
 }
@@ -1440,7 +1440,7 @@ create_global_logfile(void)
          */
     } while (!dr_create_dir(logsubdir) && ++count < LOGDIR_TRY_MAX);
     if (count >= LOGDIR_TRY_MAX) {
-        NOTIFY_ERROR("Unable to create subdir in log base dir %s\n", options.logdir);
+        NOTIFY_ERROR("Unable to create subdir in log base dir %s"NL, options.logdir);
         ASSERT(false, "unable to create unique logsubdir");
         dr_abort();
     }
@@ -1453,7 +1453,7 @@ create_global_logfile(void)
 #endif
     /* make sure "Dr. Heapstat" is 1st (or 2nd on linux) in file (for PR 453867) */
     dr_fprintf(f_global, "Dr. Heapstat version %s\n", VERSION_STRING);
-    NOTIFY("log dir is %s\n", logsubdir);
+    NOTIFY("log dir is %s"NL, logsubdir);
     LOGF(1, f_global, "running %s\n",
          (dr_get_application_name() == NULL) ? "<null>" : dr_get_application_name());
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
@@ -1860,7 +1860,7 @@ event_nudge(void *drcontext, uint64 argument)
     malloc_unlock();
     check_for_leaks(false/*!at_exit*/);
     print_nudge_header(f_global);
-    NOTIFY("Received nudge\n", logsubdir);
+    NOTIFY("Received nudge"NL, logsubdir);
 }
 
 static void
@@ -1996,8 +1996,8 @@ dr_init(client_id_t client_id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
-    NOTIFY("Dr. Heapstat version %s\n", VERSION_STRING);
-    NOTIFY("options are \"%s\"\n", opstr);
+    NOTIFY("Dr. Heapstat version %s"NL, VERSION_STRING);
+    NOTIFY("options are \"%s\""NL, opstr);
 
     create_global_logfile();
     LOG(0, "options are \"%s\"\n", opstr);

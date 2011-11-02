@@ -95,6 +95,23 @@ set(run_tests ON)
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}/..")
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
+
+##################################################
+# pre-commit source file checks
+file(GLOB cfiles ${CTEST_SOURCE_DIRECTORY}/*/*.c)
+foreach (cfile ${cfiles})
+  file(READ "${cfile}" string)
+
+  # Check for NL instead of \n in NOTIFY*
+  string(REGEX MATCH "NOTIFY[^(\n]*\\([^)]*\\\\n" match "${string}")
+  if (NOT "${match}" STREQUAL "")
+    message(FATAL_ERROR "In ${cfile}, use NL macro, not \\n, for NOTIFY string: ${match}")
+  endif ()
+
+endforeach ()
+##################################################
+
+
 # run cygwin tests only if cygwin is installed
 set(test_cygwin ${have_cygwin}) # have_cygwin set by runsuite_common_pre.cmake
 

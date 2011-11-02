@@ -126,18 +126,18 @@ usage_error(const char *msg, const char *submsg)
 static void
 option_error(const char *whichop, const char *msg)
 {
-    NOTIFY_ERROR("Usage error on option \"%s\"%s%s: aborting\n",
+    NOTIFY_ERROR("Usage error on option \"%s\"%s%s: aborting"NL,
                  whichop, (msg[0] == '\0') ? "" : ": ", msg);
-    NOTIFY_NO_PREFIX("Dr. Memory options (use -no_<op> to disable bool):\n");
+    NOTIFY_NO_PREFIX("Dr. Memory options (use -no_<op> to disable bool):"NL);
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s\n", #name,             \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
                              bool_string[(int)defval], short);          \
         } else if (TYPE_HAS_RANGE_##type)                               \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s\n", #name" <int>", #defval, short); \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <int>", #defval, short); \
         else                                                            \
-            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s\n", #name" <string>", #defval, short); \
+            NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <string>", #defval, short); \
     }
 #define OPTION_FRONT OPTION_CLIENT
     /* we use <> so other tools can override the optionsx.h in "." */

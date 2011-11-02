@@ -259,7 +259,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         map = dr_map_file(f, &actual_size, 0, NULL, DR_MEMPROT_READ, 0);
     }
     if (!ok || map == NULL || actual_size < map_size) {
-        NOTIFY_ERROR("Error mapping symcache file for %s\n", modname);
+        NOTIFY_ERROR("Error mapping symcache file for %s"NL, modname);
         goto symcache_read_symfile_done;
     }
     if (strncmp((char *)map, SYMCACHE_FILE_HEADER, strlen(SYMCACHE_FILE_HEADER)) != 0) {
@@ -383,7 +383,7 @@ symcache_init(const char *symcache_basedir,
         if (!dr_create_dir(symcache_dir)) {
             /* check again in case of a race (i#616) */
             if (!dr_directory_exists(symcache_dir)) {
-                NOTIFY_ERROR("Unable to create symcache dir %s\n", symcache_dir);
+                NOTIFY_ERROR("Unable to create symcache dir %s"NL, symcache_dir);
                 ASSERT(false, "unable to create symcache dir");
                 dr_abort();
             }
