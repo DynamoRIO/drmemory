@@ -296,13 +296,3 @@ RPCRT4.dll!*
 INVALID HEAP ARGUMENT
 name=default i#655: allocate with new and free with free()
 *!std::_DebugHeapDelete<*>
-
-##################################################
-# i#664: system leak in std::basic_string<>::find_last_not_of
-# We hit this in cs2bug while doing std::ostream::operator<< on some systems
-# when building with cygwin.
-
-LEAK
-name=default i#664: system leak in std::basic_string<>::find_last_not_of
-...
-*!std::basic_string<*>::find_last_not_of
