@@ -221,7 +221,7 @@ mmap_tree_add(byte *base, size_t size)
         LOG(2, "mmap add: merged "PFX"-"PFX" with existing => "PFX"-"PFX"\n",
             base, base+size, merge_base, merge_end);
         node = rb_insert(mmap_tree, merge_base, merge_end - merge_base, NULL);
-        ASSERT(node != NULL, "mmap tree error");
+        ASSERT(node == NULL, "mmap tree error");
     }
     dr_mutex_unlock(mmap_tree_lock);
 }
