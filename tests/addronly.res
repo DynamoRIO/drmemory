@@ -21,7 +21,7 @@
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
 free.c:46
-prev lower malloc
+# no "prev lower malloc" when enable DR's private loader
 that was freed
 
 Error #2: UNADDRESSABLE ACCESS: writing 1 byte(s)

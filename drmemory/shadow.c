@@ -1315,8 +1315,10 @@ typedef struct _shadow_registers_t {
 #endif
 #ifdef LINUX
     /* We store segment bases here for dynamic access from thread-shared code */
-    byte *fs_base;
-    byte *gs_base;
+    byte *app_fs_base;
+    byte *app_gs_base;
+    byte *dr_fs_base;
+    byte *dr_gs_base;
 #elif !defined(TOOL_DR_MEMORY)
     /* Avoid empty struct.  FIXME: this is a waste of a tls slot */
     void *bogus;
@@ -1375,9 +1377,12 @@ tls_base_offs(void)
 {
     ASSERT(options.shadowing, "incorrectly called");
     return tls_shadow_base +
-        offsetof(shadow_registers_t, IF_X64_ELSE(gs_base, fs_base));
+        offsetof(shadow_registers_t, IF_X64_ELSE(dr_gs_base, dr_fs_base));
 }
 
+/* Create a far memory reference opnd to access DR's TLS memory slot
+ * for getting app's TLS base address. 
+ */
 opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
 {
@@ -1385,8 +1390,8 @@ opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
     ASSERT(options.shadowing, "incorrectly called");
     ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
     stored_base_offs = tls_shadow_base +
-        ((seg == SEG_FS) ? offsetof(shadow_registers_t, fs_base) : 
-         offsetof(shadow_registers_t, gs_base));
+        ((seg == SEG_FS) ? offsetof(shadow_registers_t, app_fs_base) : 
+         offsetof(shadow_registers_t, app_gs_base));
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
          /* we do NOT want an addr16 prefix since most likely going to run on
@@ -1395,23 +1400,29 @@ opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
 }
 #endif
 
+static byte *
+get_own_seg_base(void)
+{
+    byte *seg_base;
+#ifdef WINDOWS
+    seg_base = (byte *) get_TEB();
+#else
+    uint offs = tls_base_offs();
+    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
+    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
+    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
+#endif
+    return seg_base;
+}
+
 #if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
 static shadow_registers_t *
 get_shadow_registers(void)
 {
-#ifdef WINDOWS
-    byte *teb_addr = (byte *) get_TEB();
-    ASSERT(options.shadowing, "incorrectly called");
-    return (shadow_registers_t *) (teb_addr + tls_shadow_base);
-#else
-    uint offs = tls_base_offs();
     byte *seg_base;
     ASSERT(options.shadowing, "incorrectly called");
-    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
-    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
-    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
+    seg_base = get_own_seg_base();
     return (shadow_registers_t *)(seg_base + tls_shadow_base);
-#endif
 }
 #endif /* TOOL_DR_MEMORY || WINDOWS */
 
@@ -1430,16 +1441,18 @@ shadow_registers_thread_init(void *drcontext)
     shadow_registers_t *sr;
 #ifdef LINUX
     /* bootstrap: can't call get_shadow_registers until set up seg bases */
-    byte *fs_base =
+    byte *app_fs_base =
         opnd_compute_address(opnd_create_far_base_disp(SEG_FS, REG_NULL, REG_NULL,
                                                        0, 0, OPSZ_lea), &mc);
-    byte *gs_base =
+    byte *app_gs_base =
         opnd_compute_address(opnd_create_far_base_disp(SEG_GS, REG_NULL, REG_NULL,
                                                        0, 0, OPSZ_lea), &mc);
+    byte *dr_fs_base = dr_get_dr_segment_base(SEG_FS);
+    byte *dr_gs_base = dr_get_dr_segment_base(SEG_GS);
 # ifdef X64
-    sr = (shadow_registers_t *) (gs_base + tls_shadow_base);
+    sr = (shadow_registers_t *) (dr_gs_base + tls_shadow_base);
 # else
-    sr = (shadow_registers_t *) (fs_base + tls_shadow_base);
+    sr = (shadow_registers_t *) (dr_fs_base + tls_shadow_base);
 # endif
 #else
     sr = get_shadow_registers();
@@ -1469,9 +1482,13 @@ shadow_registers_thread_init(void *drcontext)
 
 #ifdef LINUX
     /* FIXME PR 406315: look for dynamic changes to fs and gs */
-    sr->fs_base = fs_base;
-    sr->gs_base = gs_base;
-    LOG(1, "fs base="PFX", gs base="PFX"\n", fs_base, gs_base);
+    sr->app_fs_base = app_fs_base;
+    sr->app_gs_base = app_gs_base;
+    sr->dr_fs_base  = dr_fs_base;
+    sr->dr_gs_base  = dr_gs_base;
+    LOG(1, "app: fs base="PFX", gs base="PFX"\n"
+        "dr: fs base"PFX", gs base="PFX"\n",
+        app_fs_base, app_gs_base, dr_fs_base, dr_gs_base);
 #endif
 
     /* store in per-thread data struct so we can access from another thread */
@@ -1652,21 +1669,6 @@ opnd_create_own_spill_slot(uint index)
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
-}
-
-static byte *
-get_own_seg_base(void)
-{
-    byte *seg_base;
-#ifdef WINDOWS
-    seg_base = (byte *) get_TEB();
-#else
-    uint offs = tls_base_offs();
-    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
-    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
-    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
-#endif
-    return seg_base;
 }
 
 ptr_uint_t
