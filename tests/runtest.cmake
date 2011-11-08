@@ -333,6 +333,32 @@ foreach (str ${patterns})
   string(REGEX REPLACE "(^|\n)%(if|endif)[^\n]*\n" "\\1" ${str} "${${str}}")
 endforeach (str)
 
+# Remove up to and including the line matched by 'needle'.  Used to ensure that
+# each pattern line matches in order.  Regex matching is greedy, so we can't
+# just replace up to ${needle} because there may be later matches.  Instead, we
+# remove one line at a time.
+function(remove_up_to_and_including_line haystack_out haystack needle)
+  # paranoid so have an escape from loop here w/ prev_haystack.
+  set(prev_haystack "")
+  while (NOT "${haystack}" STREQUAL "${prev_haystack}" AND
+         NOT "${haystack}" MATCHES "^[^\n]*${needle}")
+    set(prev_haystack "${haystack}")
+    string(REGEX REPLACE "^[^\n]+" "" haystack "${haystack}")
+    string(REGEX REPLACE "^\r?\n" "" haystack "${haystack}")
+  endwhile ()
+  # Remove the line that was matched.
+  string(REGEX REPLACE "^[^\n]+" "" haystack "${haystack}")
+  string(REGEX REPLACE "^\r?\n" "" haystack "${haystack}")
+  set(${haystack_out} "${haystack}" PARENT_SCOPE)
+endfunction(remove_up_to_and_including_line)
+
+# Removes the regex we use for matching newlines.
+function(strip_trailing_newline_regex str_out str)
+  # Use [?] to match raw ? because CMake doesn't like \?.
+  string(REGEX REPLACE "(\r[?])?\n$" "" str "${str}")
+  set(${str_out} "${str}" PARENT_SCOPE)
+endfunction(strip_trailing_newline_regex)
+
 ##################################################
 # check stderr
 
@@ -352,7 +378,7 @@ foreach (line ${lines})
     # FIXME PR 470723: add Dr. Heapstat-specific tests
     if (NOT TOOL_DR_HEAPSTAT OR
         NOT "${line}" MATCHES "^~~Dr\\\\.M~~")
-      string(REGEX REPLACE "\r?\n$" "" line "${line}")
+      strip_trailing_newline_regex(line "${line}")
       set(msg "stderr failed to match \"${line}\"")
       # try to find what was meant to match
       string(REGEX REPLACE "[0-9]" "." rline "${line}")
@@ -361,22 +387,11 @@ foreach (line ${lines})
       if (NOT "${real_out}" STREQUAL "")
         set(msg "${msg}, found \"${real_out}\" instead")
       endif ()
+      set(msg "${msg}\nstderr:\n${cmd_err}")
       message(FATAL_ERROR "${msg}")
     endif ()
   endif ()
-  # remove up to and including the line matched, to enforce
-  # matching in order, and for better error message.
-  # regex matching is greedy so we can't just replace up to
-  # ${line} b/c there may be later matches, so we remove one
-  # line at a time.
-  # paranoid so have an escape from loop here w/ prev_cmd_tomatch.
-  set(prev_cmd_tomatch "")
-  while (NOT "${cmd_tomatch}" STREQUAL "${prev_cmd_tomatch}" AND
-      NOT "${cmd_tomatch}" MATCHES "^[^\n]*${line}")
-    set(prev_cmd_tomatch "${cmd_tomatch}")
-    string(REGEX REPLACE "^[^\n]+" "" cmd_tomatch "${cmd_tomatch}")
-    string(REGEX REPLACE "^\r?\n" "" cmd_tomatch "${cmd_tomatch}")
-  endwhile ()
+  remove_up_to_and_including_line(cmd_tomatch "${cmd_tomatch}" "${line}")
 endforeach (line)
 
 ##################################################
@@ -456,7 +471,7 @@ if (resmatch)
       set(require_in_order 1)
     else ()
       # we do NOT include the newline, to support matching intra-line substrings
-      string(REGEX REPLACE "\r?\n" "" line "${line}")
+      strip_trailing_newline_regex(line "${line}")
       if (NOT "${results}" MATCHES "${line}")
         set(msg "${resfile_using} failed to match \"${line}\"")
         # try to find what was meant to match
@@ -469,19 +484,7 @@ if (resmatch)
         message(FATAL_ERROR "${msg}")
       endif ()
       if (require_in_order)
-        # remove up to and including the line matched, to enforce
-        # matching in order, and for better error message.
-        # regex matching is greedy so we can't just replace up to
-        # ${line} b/c there may be later matches, so we remove one
-        # line at a time.
-        # paranoid so have an escape from loop here w/ prev_results.
-        set(prev_results "")
-        while (NOT "${results}" STREQUAL "${prev_results}" AND
-            NOT "${results}" MATCHES "^[^\n]*${line}")
-          set(prev_results "${results}")
-          string(REGEX REPLACE "^[^\n]+" "" results "${results}")
-          string(REGEX REPLACE "^\r?\n" "" results "${results}")
-        endwhile ()
+        remove_up_to_and_including_line(results "${results}" "${line}")
       endif (require_in_order)
     endif ()
   endforeach (line)
