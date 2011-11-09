@@ -1838,7 +1838,7 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
     $callstack =~ s/^<\+/<*+/gm;
 
     # make module name case-insensitive on windows
-    if ($is_cygwin) {
+    if (!$is_unix) {
         $callstack =~ s/^([^!\+\n]+)([!\+])/\U\1\2/msg; 
     }
 
@@ -1909,7 +1909,7 @@ sub suppress($errname, $callstack_ref, $default_ref, $supp_mod_offs, $bytes_leak
             my $sym = $';   # save $' as fileparse() can do a regex
             my $modname = fileparse($1);
             # make module name case-insensitive on windows
-            if ($is_cygwin) {
+            if (!$is_unix) {
                 $modname =~ s/^([^!\+]+)([!\+])/\U\1\2/;
             }
             $callstk_str .= $modname."!$sym\n";
