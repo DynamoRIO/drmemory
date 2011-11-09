@@ -257,6 +257,7 @@ typedef enum {
     HEAPSET_CPP,
 #ifdef WINDOWS
     HEAPSET_LIBC_DBG,
+    HEAPSET_CPP_DBG,
     HEAPSET_RTL,
 #endif
 } heapset_type_t;
@@ -391,6 +392,21 @@ static inline bool
 is_delete_routine(routine_type_t type)
 {
     return (type == HEAP_ROUTINE_DELETE || type == HEAP_ROUTINE_DELETE_ARRAY);
+}
+
+static inline bool
+routine_needs_post_wrap(routine_type_t type, heapset_type_t set_type)
+{
+    /* i#674: don't bother to do post wrap for delete since there are
+     * a lot of call sites there.  we do need post for new to
+     * distinguish placement new.  an alternative would be to get
+     * function params from drsyms: but I'm not sure I trust that
+     * as there could be some global new overload that doesn't
+     * call malloc that would mess us up anyway.
+     * We do need to intercept post so we can have in_heap_routine set
+     * for operator delete if using MSVC debug crt (i#26).
+     */
+    return !is_delete_routine(type) IF_WINDOWS(|| set_type == HEAPSET_CPP_DBG);
 }
 
 typedef struct _possible_alloc_routine_t {
@@ -625,6 +641,10 @@ typedef struct _alloc_routine_entry_t {
     /* Once we have an API for custom allocators (PR 406756) will we need a
      * separate name field, or we'll just call them by their type names?
      */
+    /* Do we care about the post wrapper?  If not we can save a lot (b/c our
+     * call site method causes a lot of instrumentation when there's high fan-in)
+     */
+    bool intercept_post;
 } alloc_routine_entry_t;
 
 /* Set of malloc routines */
@@ -675,6 +695,18 @@ is_alloc_routine(app_pc pc)
     found = (hashtable_lookup(&alloc_routine_table, (void *)pc) != NULL);
     dr_mutex_unlock(alloc_routine_lock);
     return found;
+}
+
+static bool
+is_alloc_prepost_routine(app_pc pc)
+{
+    alloc_routine_entry_t *e;
+    bool res = false;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    res = (e != NULL && e->intercept_post);
+    dr_mutex_unlock(alloc_routine_lock);
+    return res;
 }
 
 static byte *
@@ -788,7 +820,7 @@ malloc_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_MALLOC_DBG];
 #endif
-    if (set->type == HEAPSET_CPP)
+    if (set->type == HEAPSET_CPP IF_WINDOWS(|| set->type == HEAPSET_CPP_DBG))
         return set->func[HEAP_ROUTINE_NEW];
     else
         return set->func[HEAP_ROUTINE_MALLOC];
@@ -805,7 +837,7 @@ realloc_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_REALLOC_DBG];
 #endif
-    if (set->type == HEAPSET_CPP)
+    if (set->type == HEAPSET_CPP IF_WINDOWS(|| set->type == HEAPSET_CPP_DBG))
         return NULL;
     return set->func[HEAP_ROUTINE_REALLOC];
 }
@@ -821,7 +853,7 @@ free_func_in_set(alloc_routine_set_t *set)
     else if (set->type == HEAPSET_LIBC_DBG)
         return set->func[HEAP_ROUTINE_FREE_DBG];
 #endif
-    if (set->type == HEAPSET_CPP)
+    if (set->type == HEAPSET_CPP IF_WINDOWS(|| set->type == HEAPSET_CPP_DBG))
         return set->func[HEAP_ROUTINE_DELETE];
     return set->func[HEAP_ROUTINE_FREE];
 }
@@ -889,6 +921,7 @@ replace_realloc_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     pt->alloc_base = (byte *) APP_ARG(mc, 1, inside);
+    LOG(2, "replace_realloc_size_pre "PFX"\n", pt->alloc_base);
 }
 
 static void
@@ -1100,6 +1133,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     ASSERT(e->type < HEAP_ROUTINE_COUNT, "invalid type");
     e->name = name;
     e->set = set;
+    e->intercept_post = routine_needs_post_wrap(type, set->type);
     if (e->set != NULL) {
         e->set->refcnt++;
         e->set->func[e->type] = e;
@@ -1765,6 +1799,7 @@ enum {
     MALLOC_ALLOCATOR_MALLOC    = MALLOC_RESERVED_3,
     MALLOC_ALLOCATOR_NEW       = MALLOC_RESERVED_4,
     MALLOC_ALLOCATOR_NEW_ARRAY = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+    MALLOC_ALLOCATOR_CHECKED   = MALLOC_RESERVED_5,
     /* The rest are reserved for future use */
     MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
                                     MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
@@ -2047,7 +2082,13 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         if (options.intercept_operators) {
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
-                                          false, HEAPSET_LIBC);
+                                          false,
+                                          /* we assume we only hit i#26 where op delete
+                                           * reads heap headers when _malloc_dbg
+                                           * is present in same lib
+                                           */
+                                          IF_WINDOWS(!no_dbg_routines ? HEAPSET_CPP_DBG :)
+                                          HEAPSET_CPP);
         }
         if (set_cpp != NULL) {
             /* for static, use corresponding libc for size.
@@ -2407,6 +2448,9 @@ malloc_entry_is_pre_us(malloc_entry_t *e, bool ok_if_invalid)
             (TEST(MALLOC_VALID, e->flags) || ok_if_invalid));
 }
 
+/* if alloc has already been checked, returns 0.
+ * if not, returns type, and then marks allocation as having been checked.
+ */
 static uint
 malloc_alloc_type(byte *start)
 {
@@ -2414,8 +2458,14 @@ malloc_alloc_type(byte *start)
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     uint res = 0;
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL)
-        res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
+    if (e != NULL) {
+        if (TEST(MALLOC_ALLOCATOR_CHECKED, e->flags))
+            res = 0;
+        else {
+            res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
+            e->flags |= MALLOC_ALLOCATOR_CHECKED;
+        }
+    }
     malloc_unlock_if_locked_by_me(locked_by_me);
     return res;
 }
@@ -3453,6 +3503,24 @@ set_auxarg(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt, bool inside,
 /**************************************************
  * FREE
  */
+
+static void
+record_allocator(void *drcontext, per_thread_t *pt, alloc_routine_entry_t *routine)
+{
+    /* just record outer layer: leave adjusting to malloc (i#123).
+     * XXX: we assume none of the "fake" outer layers like LdrShutdownProcess
+     * call operators in a way we care about
+     */
+    /* new[] will call new w/ no change in in_heap_routine (i#674) so
+     * we have to only record when 0.  this means we assume we always
+     * reach malloc-post where allocator field will get cleared.
+     */
+    if (pt->in_heap_routine == 0/*always for new, and called pre-enter for malloc*/ &&
+        pt->allocator == 0) {
+        pt->allocator = malloc_allocator_type(routine);
+        LOG(3, "alloc type: %x\n", pt->allocator);
+    }
+}
 
 /* i#123: report mismatch in free/delete/delete[]
  * Caller must hold malloc lock
@@ -4573,62 +4641,68 @@ alloc_hook(app_pc pc)
          * know size though but can be pretty sure.
          */
         LOG(3, "alloc_hook retaddr="PFX"\n", retaddr);
-        /* If we did not detect that this was an alloc call at the call site,
-         * then we need to dynamically flush and mark the retaddr
-         */
-        hashtable_lock(&post_call_table);
-        e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)retaddr);
-        IF_DEBUG(has_entry = (e != NULL));
-        /* PR 454616: we may have added an entry and started a flush
-         * but not finished the flush, so we check not just the entry
-         * but also the existing_instrumented flag.
-         */
-        if (e == NULL || !e->existing_instrumented) {
-            /* PR 406714: we no longer add retaddrs statically so it's
-             * normal to come here
+        /* process post-call wrapping if necessary */
+        if (is_alloc_prepost_routine(pc) || is_replace_routine(pc)) {
+            /* If we did not detect that this was an alloc call at the call site,
+             * then we need to dynamically flush and mark the retaddr
              */
-            LOG(2, "found new retaddr: call to %s from "PFX" %s\n",
-                get_alloc_routine_name(pc), retaddr, e == NULL ? "all-new" : "non-instru");
-            if (e == NULL) {
-                e = post_call_entry_add(retaddr, false, false);
-            }
-            /* now that we have an entry in the synchronized post_call_table
-             * any new code coming in will be instrumented.
-             * we assume we only care about fragments starting at retaddr:
-             * we have no traces so nothing should cross it unless there's some
-             * weird mid-call-instr target in which case it's not post-call.
+            hashtable_lock(&post_call_table);
+            e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)retaddr);
+            IF_DEBUG(has_entry = (e != NULL));
+            /* PR 454616: we may have added an entry and started a flush
+             * but not finished the flush, so we check not just the entry
+             * but also the existing_instrumented flag.
              */
-            if (dr_fragment_exists_at(drcontext, (void *)retaddr)) {
-                /* We don't support -opt_memory so we use dr_unlink_flush_region
-                 * to avoid synchall costs.  We can't use dr_delay_flush_region
-                 * b/c we need to not enter before we're done w/ callee.
-                 * We don't need a synchronous flush.
+            if (e == NULL || !e->existing_instrumented) {
+                /* PR 406714: we no longer add retaddrs statically so it's
+                 * normal to come here
                  */
-                LOG(2, "flushing "PFX", should re-appear at "PFX"\n", retaddr, pc);
-                STATS_INC(post_call_flushes);
-                /* unlock for the flush */
-                hashtable_unlock(&post_call_table);
-                dr_unlink_flush_region(retaddr, 1);
-                /* now we are guaranteed no thread is inside the fragment */
-                /* another thread may have done a racy competing flush: should be fine */
-                hashtable_lock(&post_call_table);
-                e = (post_call_entry_t *)
-                    hashtable_lookup(&post_call_table, (void*)retaddr);
-                if (e != NULL) /* selfmod could disappear once have PR 408529 */
-                    e->existing_instrumented = true;
-                else /* XXX i#553: recursion count could get off */
-                    WARN("WARNING: post-call disappeared\n");
-                hashtable_unlock(&post_call_table);
-                /* Since the flush will remove the fragment we're already in,
-                 * we have to redirect execution to the callee again.
+                LOG(2, "found new retaddr: call to %s from "PFX" %s\n",
+                    get_alloc_routine_name(pc), retaddr, e == NULL ? "all-new" :
+                    "non-instru");
+                if (e == NULL) {
+                    e = post_call_entry_add(retaddr, false, false);
+                }
+                /* now that we have an entry in the synchronized post_call_table
+                 * any new code coming in will be instrumented.
+                 * we assume we only care about fragments starting at retaddr:
+                 * we have no traces so nothing should cross it unless there's some
+                 * weird mid-call-instr target in which case it's not post-call.
                  */
-                mc.eip = pc;
-                dr_redirect_execution(&mc);
-                ASSERT(false, "dr_redirect_execution should not return");
+                if (dr_fragment_exists_at(drcontext, (void *)retaddr)) {
+                    /* We don't support -opt_memory so we use dr_unlink_flush_region
+                     * to avoid synchall costs.  We can't use dr_delay_flush_region
+                     * b/c we need to not enter before we're done w/ callee.
+                     * We don't need a synchronous flush.
+                     */
+                    LOG(2, "flushing "PFX", should re-appear at "PFX"\n", retaddr, pc);
+                    STATS_INC(post_call_flushes);
+                    /* unlock for the flush */
+                    hashtable_unlock(&post_call_table);
+                    dr_unlink_flush_region(retaddr, 1);
+                    /* now we are guaranteed no thread is inside the fragment */
+                    /* another thread may have done a racy competing
+                     * flush: should be fine 
+                     */
+                    hashtable_lock(&post_call_table);
+                    e = (post_call_entry_t *)
+                        hashtable_lookup(&post_call_table, (void*)retaddr);
+                    if (e != NULL) /* selfmod could disappear once have PR 408529 */
+                        e->existing_instrumented = true;
+                    else /* XXX i#553: recursion count could get off */
+                        WARN("WARNING: post-call disappeared\n");
+                    hashtable_unlock(&post_call_table);
+                    /* Since the flush will remove the fragment we're already in,
+                     * we have to redirect execution to the callee again.
+                     */
+                    mc.eip = pc;
+                    dr_redirect_execution(&mc);
+                    ASSERT(false, "dr_redirect_execution should not return");
+                }
+                e->existing_instrumented = true;
             }
-            e->existing_instrumented = true;
+            hashtable_unlock(&post_call_table);
         }
-        hashtable_unlock(&post_call_table);
         /* If we did not yet do the pre-call instrumentation (i.e., we
          * came here via indirect call/jmp) then do it now.  Note that
          * we can't use "in_heap_routine==0 || !has_entry" as the test
@@ -4736,7 +4810,6 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         }
     });
 #endif
-    enter_heap_routine(pt, expect, &mc);
 
     /* i#123: check for mismatches.  Because of placement new and other
      * complications, new and delete are non-adjusting layers: we just
@@ -4746,22 +4819,19 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         is_malloc_routine(type) ||
         is_realloc_routine(type) ||
         is_calloc_routine(type)) {
-        /* just record outer layer: leave adjusting to malloc (i#123).
-         * XXX: we assume none of the "fake" outer layers like LdrShutdownProcess
-         * call operators in a way we care about
-         */
-        if (pt->in_heap_routine == 1 || pt->allocator == 0) {
-            pt->allocator = malloc_allocator_type(&routine);
-            LOG(3, "alloc type: %x\n", pt->allocator);
-        }
-    }
-    else if (is_delete_routine(type) ||
-             is_free_routine(type)) {
-        if (pt->in_heap_routine == 1) {
+        record_allocator(drcontext, pt, &routine);
+    } else if (is_delete_routine(type) ||
+               is_free_routine(type)) {
+        if (pt->in_heap_routine == 0) {
             handle_free_check_mismatch(drcontext, &mc, inside, call_site, &routine);
-            pt->allocator = 0;
+            pt->allocator = 0; /* in case missed alloc post */
         }
     }
+    if (!routine_needs_post_wrap(routine.type, routine.set->type))
+        return; /* no post wrap so don't "enter" */
+             
+    enter_heap_routine(pt, expect, &mc);
+    ASSERT(is_alloc_prepost_routine(expect), "must have post-wrap");
 
     if (is_free_routine(type)) {
         handle_free_pre(drcontext, &mc, inside, call_site, &routine);
@@ -4888,7 +4958,11 @@ handle_alloc_post_func(void *drcontext, dr_mcontext_t *mc,
     if (pt->in_heap_routine == 0)
         client_exiting_heap_routine();
 
-    if (is_free_routine(type) || is_delete_routine(type)) {
+    if (is_new_routine(type)) {
+        /* clear to handle placement new */
+        pt->allocator = 0;
+    }
+    else if (is_free_routine(type)) {
         handle_free_post(drcontext, mc, &routine);
     }
     else if (is_size_routine(type)) {
@@ -4911,6 +4985,8 @@ handle_alloc_post_func(void *drcontext, dr_mcontext_t *mc,
         handle_destroy_post(drcontext, mc);
 #endif
     }
+    /* b/c operators no longer have exits (i#674) we must clear here */
+    pt->allocator = 0;
 }
 
 /* only used if options.track_heap */
