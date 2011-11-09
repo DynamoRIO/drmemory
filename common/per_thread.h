@@ -74,11 +74,11 @@ typedef struct _per_thread_t {
      */
     int in_heap_adjusted;
     bool in_realloc;
-    /* handle nested tailcalls */
-    app_pc tailcall_target[MAX_HEAP_NESTING];
-    app_pc tailcall_post_call[MAX_HEAP_NESTING];
+    bool in_realloc_size;
     /* record which heap routine */
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
+    /* record app esp to handle nested tailcalls */
+    reg_t app_esp[MAX_HEAP_NESTING];
     bool ignored_alloc;
     app_pc alloc_being_freed; /* handles post-pre-free actions */
     /* record post-call in case flushed (i#559) */

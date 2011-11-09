@@ -1605,7 +1605,6 @@ typedef struct _post_call_entry_t {
      * says "please add instru for this callee" and one saying "all
      * existing fragments have instru"
      */
-    app_pc callee;
     bool existing_instrumented;
 } post_call_entry_t;
 
@@ -1619,36 +1618,39 @@ post_call_entry_free(void *v)
 
 /* caller must hold lock */
 static post_call_entry_t *
-post_call_entry_add(app_pc postcall, app_pc callee, bool instrumented)
+post_call_entry_add(app_pc postcall, bool instrumented)
 {
     post_call_entry_t *e = (post_call_entry_t *)
         global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
-    e->callee = callee;
     e->existing_instrumented = false;
     hashtable_add(&post_call_table, (void*)postcall, (void*)e);
-    LOG(2, "adding post-call %s "PFX" from "PFX"\n",
-        get_alloc_routine_name(callee), callee, postcall);
+    LOG(2, "adding post-call from "PFX"\n", postcall);
     return e;
 }
 
-static app_pc
+/* marks as having instrumentation if it finds the entry */
+static bool
 post_call_lookup(per_thread_t *pt, app_pc pc)
 {
+    bool res = false;
     post_call_entry_t *e;
-    app_pc res = NULL;
     hashtable_lock(&post_call_table);
     e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)pc);
-    if (e == NULL && pt->in_heap_routine > 0) {
+    if (e != NULL) {
+        res = true;
+        e->existing_instrumented = true;
+    } else if (pt->in_heap_routine > 0) {
         /* i#559: if our post-call point was flushed while we were in the
          * callee, ensure we reinstate it
          */
-        if (pc == pt->post_call[pt->in_heap_routine]) {
-            e = post_call_entry_add(pc, pt->last_alloc_routine[pt->in_heap_routine],
-                                    false);
+        int i;
+        for (i = pt->in_heap_routine; i >= 0; i--) {
+            if (pc == pt->post_call[i]) {
+                post_call_entry_add(pc, false);
+                res = true;
+            }
         }
     }
-    if (e != NULL)
-        res = e->callee;
     hashtable_unlock(&post_call_table);
     return res;
 }
@@ -3227,7 +3229,7 @@ malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
 }
 
 static void
-enter_heap_routine(per_thread_t *pt, app_pc pc)
+enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc)
 {
     if (pt->in_heap_routine == 0) {
         /* if tangent, check_recursive_same_sequence() will call this */
@@ -3240,6 +3242,7 @@ enter_heap_routine(per_thread_t *pt, app_pc pc)
     if (pt->in_heap_routine < MAX_HEAP_NESTING) {
         pt->last_alloc_routine[pt->in_heap_routine] = pc;
         pt->post_call[pt->in_heap_routine] = pt->cur_post_call;
+        pt->app_esp[pt->in_heap_routine] = mc->esp;
     } else {
         LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
             get_alloc_routine_name(pc), pt->in_heap_routine, MAX_HEAP_NESTING);
@@ -3257,6 +3260,7 @@ enter_heap_routine(per_thread_t *pt, app_pc pc)
  */
 static bool
 check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
+                              dr_mcontext_t *mc,
                               alloc_routine_entry_t *routine,
                               ptr_int_t arg1, ptr_int_t arg2)
 {
@@ -3307,7 +3311,7 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
                 pt->in_heap_routine--; /* undo the inc */
                 new_pt = per_thread_stack_push(drcontext, pt);
                 new_pt->heap_tangent = true;
-                enter_heap_routine(new_pt, routine->pc);
+                enter_heap_routine(new_pt, routine->pc, mc);
                 ASSERT(new_pt->in_heap_routine == 1, "inheap not cleared in new cxt");
                 *pt_caller = new_pt;
                 return false;
@@ -3466,7 +3470,7 @@ handle_free_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
         hashtable_remove(&native_alloc_table, (void*)base);
         return;
     }
-    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
                                       redzone_size(routine))) {
         /* we assume we're called from RtlReAllocateheap, who will handle
@@ -3623,7 +3627,7 @@ handle_size_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_sit
     if (malloc_is_native(base, pt, true))
         return;
     /* non-recursive: else we assume base already adjusted */
-    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
                                       redzone_size(routine))) {
         return;
@@ -3744,7 +3748,7 @@ handle_malloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
         }
     }
 #endif
-    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
         return;
     }
@@ -3958,7 +3962,7 @@ handle_realloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call_
     if (is_rtl_routine(type))
         pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
 #endif
-    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
         return;
     }
@@ -4123,7 +4127,7 @@ handle_calloc_pre(void *drcontext, dr_mcontext_t *mc, bool inside,
     if (is_rtl_routine(routine->type))
         pt->heap_handle = (HANDLE) APP_ARG(mc, 1, inside);
 #endif
-    if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
         return;
     }
@@ -4380,7 +4384,7 @@ handle_userinfo_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
     app_pc base = (app_pc) APP_ARG(mc, 3, inside);
     if (malloc_is_native(base, pt, true))
         return;
-    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
                                       redzone_size(routine))) {
         return;
@@ -4427,7 +4431,7 @@ handle_validate_pre(void *drcontext, dr_mcontext_t *mc, bool inside, app_pc call
     app_pc base = (app_pc) APP_ARG(mc, 3, inside);
     if (malloc_is_native(base, pt, true))
         return;
-    if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
+    if (check_recursive_same_sequence(drcontext, &pt, mc, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
                                       redzone_size(routine))) {
         return;
@@ -4525,10 +4529,10 @@ alloc_hook(app_pc pc)
             /* PR 406714: we no longer add retaddrs statically so it's
              * normal to come here
              */
-            LOG(2, "found new retaddr: call to %s from "PFX"\n",
-                get_alloc_routine_name(pc), retaddr);
+            LOG(2, "found new retaddr: call to %s from "PFX" %s\n",
+                get_alloc_routine_name(pc), retaddr, e == NULL ? "all-new" : "non-instru");
             if (e == NULL) {
-                e = post_call_entry_add(retaddr, pc, false);
+                e = post_call_entry_add(retaddr, false);
             }
             /* now that we have an entry in the synchronized post_call_table
              * any new code coming in will be instrumented.
@@ -4597,7 +4601,6 @@ alloc_hook(app_pc pc)
              */
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
-            memset(pt->tailcall_target, 0, sizeof(pt->tailcall_target));
         }
         /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
          * there via APC: only on Vista+ is it a "Ki" routine
@@ -4636,6 +4639,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     mc.size = sizeof(mc);
     dr_get_mcontext(drcontext, &mc);
     if (is_replace_routine(expect)) {
+        pt->in_realloc_size = true;
         replace_realloc_size_pre(drcontext, &mc, inside);
         return;
     }
@@ -4673,7 +4677,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         }
     });
 #endif
-    enter_heap_routine(pt, expect);
+    enter_heap_routine(pt, expect, &mc);
 
     /* i#123: check for mismatches.  Because of placement new and other
      * complications, new and delete are non-adjusting layers: we just
@@ -4771,72 +4775,23 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
 
 /* only used if options.track_heap */
 static void
-handle_alloc_post(app_pc func, app_pc post_call)
+handle_alloc_post_func(void *drcontext, dr_mcontext_t *mc,
+                       app_pc func, app_pc post_call)
 {
-    void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
     bool adjusted = false;
-    mc.size = sizeof(mc);
-    dr_get_mcontext(drcontext, &mc);
-    if (is_replace_routine(func)) {
-        replace_realloc_size_post(drcontext, &mc);
-        return;
-    }
+
     if (!get_alloc_entry(func, &routine)) {
         ASSERT(false, "fatal: can't find alloc entry");
         return; /* maybe release build will limp along */
     }
     type = routine.type;
-    ASSERT(options.track_heap, "requires track_heap");
     ASSERT(func != NULL, "handle_alloc_post: func is NULL!");
-    if (pt->in_heap_routine == 0) {
-        /* jump or other method of targeting post-call site w/o executing
-         * call; or, did an indirect call that no longer matches */
-        LOG(2, "post-call-site w/o executing alloc call "PFX" %s\n",
-            func, get_alloc_routine_name(func));
-        return;
-    }
-    /* We must check tailcall_target BEORE last_alloc_routine */
-    while (pt->in_heap_routine > 0 &&
-           /* tailcall was recorded at in_heap minus one */
-           pt->tailcall_target[pt->in_heap_routine - 1] != NULL) {
-        /* We've missed the return from a tailcalled alloc routine,
-         * so process that now before this "outer" return.  PR 418138.
-         */
-        app_pc inner_func = pt->tailcall_target[pt->in_heap_routine - 1];
-        app_pc inner_post = pt->tailcall_post_call[pt->in_heap_routine - 1];
-        /* If the tailcall was not an exit from the outer (e.g., it's
-         * an exit from a helper routine) just clear and proceed.
-         * We assume no self-recursive tailcalls.
-         */
-        pt->tailcall_target[pt->in_heap_routine - 1] = NULL;
-        pt->tailcall_post_call[pt->in_heap_routine - 1] = NULL;
-        if (inner_func != func) {
-            LOGPT(2, pt, "tailcall: bypassed inner "PFX" %s before outer "PFX" %s\n",
-                  inner_func, get_alloc_routine_name(inner_func),
-                  func, get_alloc_routine_name(func));
-            ASSERT(pt->in_heap_routine > 1, "tailcall mistake");
-            handle_alloc_post(inner_func, inner_post);
-        }
-    }
-    if (pt->in_heap_routine < MAX_HEAP_NESTING &&
-        pt->last_alloc_routine[pt->in_heap_routine] != func) {
-        /* a jump or other transfer to a post-call site, where the
-         * transfer happens inside a heap routine and so we can't use
-         * the in_heap_routine==0 check above.  we distinguish
-         * from a real post-call by comparing the last_alloc_routine.
-         * this was hit in PR 465516.
-         */
-        LOG(2, "post-call-site inside "PFX" %s w/o executing alloc call "PFX" %s\n",
-            pt->last_alloc_routine[pt->in_heap_routine],
-            get_alloc_routine_name(pt->last_alloc_routine[pt->in_heap_routine]),
-            func, get_alloc_routine_name(func));
-        return;
-    }
+    ASSERT(pt->in_heap_routine > 0, "caller should have checked");
+
     /* We speculatively place our post-alloc instru, and if once in_heap_routine
      * is > 0 there are call sites that do not always call alloc routines,
      * we can decrement when we should wait -- but no such scenario should
@@ -4846,7 +4801,7 @@ handle_alloc_post(app_pc func, app_pc post_call)
         func, get_alloc_routine_name(func),
         pt->in_heap_routine, pt->in_heap_adjusted);
     DOLOG(4, {
-        print_callstack_to_file(drcontext, &mc, post_call, INVALID_FILE/*use pt->f*/);
+        print_callstack_to_file(drcontext, mc, post_call, INVALID_FILE/*use pt->f*/);
     });
     if (pt->in_heap_routine == pt->in_heap_adjusted) {
         pt->in_heap_adjusted = 0;
@@ -4857,17 +4812,17 @@ handle_alloc_post(app_pc func, app_pc post_call)
         (!adjusted && pt->in_heap_adjusted < pt->in_heap_routine)) {
         if (pt->ignored_alloc) {
             LOG(2, "ignored post-alloc routine "PFX" %s => "PFX"\n",
-                func, get_alloc_routine_name(func), mc.eax);
+                func, get_alloc_routine_name(func), mc->eax);
             /* remember the alloc so we can ignore on size or free */
             ASSERT(is_malloc_routine(type) ||
                    is_realloc_routine(type) ||
                    is_calloc_routine(type), "ignored_alloc incorrectly set");
-            hashtable_add(&native_alloc_table, (void*)mc.eax, (void*)mc.eax);
+            hashtable_add(&native_alloc_table, (void*)mc->eax, (void*)mc->eax);
             pt->ignored_alloc = false;
         } else {
             /* some outer level did the adjustment, so nop for us */
             LOG(2, "recursive post-alloc routine "PFX" %s: no adjustments; eax="PFX"\n",
-                func, get_alloc_routine_name(func), mc.eax);
+                func, get_alloc_routine_name(func), mc->eax);
         }
         return;
     }
@@ -4875,28 +4830,81 @@ handle_alloc_post(app_pc func, app_pc post_call)
         client_exiting_heap_routine();
 
     if (is_free_routine(type) || is_delete_routine(type)) {
-        handle_free_post(drcontext, &mc, &routine);
+        handle_free_post(drcontext, mc, &routine);
     }
     else if (is_size_routine(type)) {
-        handle_size_post(drcontext, &mc, &routine);
+        handle_size_post(drcontext, mc, &routine);
     }
     else if (is_malloc_routine(type)) {
-        handle_malloc_post(drcontext, &mc, false/*!realloc*/, post_call, &routine);
+        handle_malloc_post(drcontext, mc, false/*!realloc*/, post_call, &routine);
     } else if (is_realloc_routine(type)) {
-        handle_realloc_post(drcontext, &mc, post_call, &routine);
+        handle_realloc_post(drcontext, mc, post_call, &routine);
     } else if (is_calloc_routine(type)) {
-        handle_calloc_post(drcontext, &mc, post_call, &routine);
+        handle_calloc_post(drcontext, mc, post_call, &routine);
 #ifdef WINDOWS
     } else if (type == RTL_ROUTINE_GETINFO ||
                type == RTL_ROUTINE_SETINFO ||
                type == RTL_ROUTINE_SETFLAGS) {
-        handle_userinfo_post(drcontext, &mc);
+        handle_userinfo_post(drcontext, mc);
     } else if (type == RTL_ROUTINE_CREATE) {
-        handle_create_post(drcontext, &mc);
+        handle_create_post(drcontext, mc);
     } else if (type == RTL_ROUTINE_DESTROY) {
-        handle_destroy_post(drcontext, &mc);
+        handle_destroy_post(drcontext, mc);
 #endif
     }
+}
+
+/* only used if options.track_heap */
+static void
+handle_alloc_post(app_pc post_call)
+{
+    void *drcontext = dr_get_current_drcontext();
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
+    dr_get_mcontext(drcontext, &mc);
+
+    ASSERT(options.track_heap, "requires track_heap");
+
+    if (pt->in_realloc_size) {
+        /* we're in replace_realloc_size_app and we used to call
+         * is_replace_routine(func) but we don't have func anymore and
+         * we don't make this a full layer.
+         * we assume nothing else will happen in between pre and post.
+         */
+        replace_realloc_size_post(drcontext, &mc);
+        pt->in_realloc_size = false;
+        return;
+    }
+
+    if (pt->in_heap_routine == 0) {
+        /* jump or other method of targeting post-call site w/o executing
+         * call; or, did an indirect call that no longer matches */
+        LOG(2, "post-call-site "PFX" w/o executing alloc call\n", post_call);
+        return;
+    }
+
+    /* process post for all funcs whose frames we bypassed.
+     * we assume they were all bypassed b/c of tailcalls and that their
+     * posts should be called (on an exception we clear out our data
+     * and won't come here; for longjmp we assume we want to call the post
+     * although the retval won't be there...XXX).
+     *
+     * we no longer store the callee for a post-call site b/c there
+     * can be multiple and it's complex to control which one is used
+     * (outer or inner or middle) consistently.  we don't need the
+     * callee to distinguish a jump or other transfer to a post-call
+     * site where the transfer happens inside a heap routine (passing
+     * the in_heap_routine==0 check above: PR 465516.) b/c our stack
+     * check will identify whether we've left any heap routines we
+     * entered.
+     */
+    while (pt->in_heap_routine > 0 &&
+           pt->app_esp[pt->in_heap_routine] < mc.esp) {
+        handle_alloc_post_func(drcontext, &mc,
+                               pt->last_alloc_routine[pt->in_heap_routine], post_call);
+    }
+
 #ifdef WINDOWS
     if (pt->in_heap_routine == 0 && pt->heap_tangent) {
         ASSERT(pt->in_heap_adjusted == 0, "inheap vs adjust mismatch");
@@ -4906,240 +4914,15 @@ handle_alloc_post(app_pc func, app_pc post_call)
 #endif
 }
 
-static void
-add_post_call_address(void *drcontext, app_pc post_call, app_pc callee)
-{
-    /* We could add to post_call_table here if no fragment exists yet, but it's racy,
-     * and we can't easily flush from here (can't do a dr_delay_flush_region
-     * like we used to: resulted in bug PR 406714), so we wait for the in-callee
-     * alloc hook and do a real flush there.
-     * We could clean up: remove this call, eliminate the PLT call;jmp*
-     * auto-detection -- but leaving for now until have more large apps
-     * under our belt and we're sure we don't have too many flushes and
-     * we're not missing something (#flushes should be similar since if
-     * doesn't exist here won't exist when reach callee).
-     */
-}
-
-static void
-handle_tailcall(app_pc callee, app_pc post_call)
-{
-    /* For a func that uses a tailcall to call an alloc routine, we have
-     * to get the retaddr dynamically.
-     */
-    void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    app_pc retaddr = 0;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    if (pt->in_heap_routine > 0) {
-        /* Store the target so we can process both this and the "outer"
-         * alloc routine at the outer's post-call point (PR 418138).
-         */
-        LOGPT(2, pt, "tailcall from "PFX" to "PFX" %s\n",
-              post_call, callee, get_alloc_routine_name(callee));
-        ASSERT(pt->tailcall_target[pt->in_heap_routine] == NULL,
-               "tailcall var not cleaned up");
-        pt->tailcall_target[pt->in_heap_routine] = callee;
-        pt->tailcall_post_call[pt->in_heap_routine] = post_call;
-    }
-    dr_get_mcontext(drcontext, &mc);
-    if (safe_read((void *)mc.esp, sizeof(retaddr), &retaddr)) {
-        hashtable_lock(&post_call_table);
-        if (hashtable_lookup(&post_call_table, (void*)retaddr) == NULL) {
-            add_post_call_address(drcontext, retaddr, callee);
-        }
-        hashtable_unlock(&post_call_table);
-    } else {
-        LOG(1, "WARNING: handle_tailcall: can't read retaddr\n");
-    }
-}
-
 /* only used if options.track_heap */
 static void
 instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
-                           app_pc target, app_pc post_call)
+                           app_pc post_call)
 {
     ASSERT(options.track_heap, "requires track_heap");
     dr_insert_clean_call(drcontext, bb, inst, (void *) handle_alloc_post,
-                         false/*no fpstate*/, 2,
-                         OPND_CREATE_INTPTR((ptr_int_t)target),
+                         false/*no fpstate*/, 1,
                          OPND_CREATE_INTPTR((ptr_int_t)post_call));
-}
-
-/* Used for options.track_heap.  Our strategy is to identify call sites,
- * where we can insert both pre and post instrumentation more easily
- * than only dealing with the callee.
- * We can speculatively insert post instrumentation and detect at
- * runtime whether it is indeed post-call (assuming alloc routines
- * themselves have consistent call sites: else can decrement in_heap_routine
- * too early), but for pre-instrumentation we can't tell so we need to
- * be sure the call's target won't vary.
- * Thus, for indirect calls we try to mark the return site, for
- * performance to avoid a flush, but we wait until inside the
- * callee to perform pre-instrumentation.
- * We store in the call_site_table whether pre-instrumentation has been done.
- *
- * We assume that each call site calls at most one alloc routine.
- * This can be violated by indirect calls that vary or by a direct
- * call to A that then tailcalls B.
- * PR 418138: the latter scenario actually happens on Fedora10's
- * glibc with realloc(NULL,) tailcalling malloc(): for now we rely
- * on identifying such a tailcall statically.  The only general
- * solution is to switch to providing our own malloc routines.
- *
- * FIXME: for PR 406714 I turned add_post_call_address() into a nop:
- * if we're sure we want that long-term we can remove a lot of the
- * code here that is only trying to find retaddr ahead of time
- *
- * Further update: we no longer insert pre-hook call at call site,
- * only in callee (i#559), so this routine is only used to look for
- * tailcalls.
- *
- * FIXME: would be nice for DR to support post-cti instrumentation!
- * Even if we had to do custom exit stubs here, still simpler than
- * hashtables.
- */
-static void
-check_potential_alloc_site(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst)
-{
-    app_pc post_call = NULL;
-    app_pc target = NULL;
-    uint opc = instr_get_opcode(inst);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    bool is_tail_call = false;
-    instr_t callee;
-    instr_t *check_ind = inst;
-    bool free_callee = false;
-    /* We use opnd_compute_address() to get any segment base included.
-     * Since no registers are present, mc can just be empty.
-     */
-    memset(&mc, 0, sizeof(mc));
-    mc.size = sizeof(mc);
-    ASSERT(options.track_heap, "requires track_heap");
-    if (opc == OP_call_ind IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) {
-        /* we're post-rebind: get current dynamic target and see if
-         * a malloc or realloc routine
-         */
-        /* FIXME: we could get the mcontext and try to emulate up to
-         * the cti point: but for non-PIC should always be an
-         * absolute address!
-         */
-        opnd_t opnd = instr_get_target(inst);
-        if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_NULL &&
-            opnd_get_index(opnd) == REG_NULL) {
-            if (!safe_read(opnd_compute_address(opnd, &mc), sizeof(target), &target))
-                target = NULL;
-            LOG(2, "call* @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
-        }
-        post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-    } else if (opc == OP_call) {
-        ASSERT(opc == OP_call, "far call not supported");
-        target = opnd_get_pc(instr_get_target(inst));
-        post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-
-        /* Look for call;jmp* to get retaddr ahead of time and avoid having
-         * to flush from inside callee.
-         * However, we don't speculatively put in pre-call instrumentation,
-         * in case the indirect target changes.
-         */
-        instr_init(drcontext, &callee);
-        if (decode(drcontext, target, &callee) != NULL &&
-            instr_get_opcode(&callee) == OP_jmp_ind) {
-            opnd_t opnd = instr_get_target(&callee);
-            app_pc jmp_target;
-            /* If jmp* is to absolute address, obtain it now. */
-            if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_NULL &&
-                opnd_get_index(opnd) == REG_NULL) {
-                if (!safe_read(opnd_compute_address(opnd, &mc), sizeof(jmp_target),
-                               &jmp_target))
-                    jmp_target = NULL;
-                LOG(2, "call;jmp* @"PFX";"PFX" tgt "PFX"\n",
-                    instr_get_app_pc(inst), target, jmp_target);
-            } else if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_EBX &&
-                       opnd_get_index(opnd) == REG_NULL) {
-                /* Find the first app instr */
-                instr_t *in;
-                for (in = instrlist_first(bb);
-                     !instr_ok_to_mangle(in);
-                     in = instr_get_next(in))
-                    ;
-                /* If jmp* is reg-rel for PIC PLT, try to handle the
-                 * common case, where ebx is adjusted immediately after
-                 * the thunk call:
-                 *
-                 *     0x0044e775  call   $0x0040551f %esp -> %esp (%esp)
-                 *       0x0040551f  mov    (%esp) -> %ebx
-                 *       0x00405522  ret    %esp (%esp) -> %esp
-                 *     0x0044e77a  add    $0x0011087a %ebx -> %ebx
-                 *     0x0044e780  sub    $0x00000014 %esp -> %esp
-                 *     0x0044e783  mov    $0x00000160 -> (%esp)
-                 *     0x0044e78a  call   $0x0040545c %esp -> %esp (%esp)
-                 *       0x0040545c  jmp    0x00000014(%ebx)
-                 */
-                if (instr_get_opcode(in) == OP_add &&
-                    opnd_is_immed_int(instr_get_src(in, 0))) {
-                    int offs = opnd_get_immed_int(instr_get_src(in, 0));
-                    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-                    mc.size = sizeof(mc);
-                    dr_get_mcontext(drcontext, &mc);
-                    /* opnd_compute_address will get segment base and include the
-                     * mc.ebx at bb start, and we add offs to get ebx at jmp*
-                     */
-                    if (!safe_read(opnd_compute_address(opnd, &mc) + offs,
-                                   sizeof(jmp_target), &jmp_target))
-                        jmp_target = NULL;
-                    LOG(2, "call;jmp* via ebx @"PFX" tgt "PFX"\n", target, jmp_target);
-                }
-            }
-            if (jmp_target != NULL && is_alloc_routine(jmp_target)) {
-                post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-                add_post_call_address(drcontext, post_call, jmp_target);
-            }
-        }
-        instr_free(drcontext, &callee);
-    } else if (opc == OP_jmp) {
-        /* Look for tail call */
-        target = opnd_get_pc(instr_get_target(inst));
-        if (is_alloc_routine(target)) {
-            is_tail_call = true;
-        } else {
-            /* May jmp to plt jmp* */
-            instr_init(drcontext, &callee);
-            free_callee = true;
-            if (decode(drcontext, target, &callee) != NULL &&
-                instr_get_opcode(&callee) == OP_jmp_ind) { 
-                check_ind = &callee; /* check below */
-            }
-        }
-    } else if (opc != OP_jmp_ind)
-        ASSERT(false, "unknown cti at call site");
-    if (instr_get_opcode(check_ind) == OP_jmp_ind) {
-        /* We do see indirect tailcalls (i#637) with /MD and operator {new,delete} */
-        opnd_t opnd = instr_get_target(check_ind);
-        if (opnd_is_base_disp(opnd) && opnd_get_base(opnd) == REG_NULL &&
-            opnd_get_index(opnd) == REG_NULL) {
-            if (safe_read(opnd_compute_address(opnd, &mc), sizeof(target),
-                          &target) &&
-                is_alloc_routine(target))
-                is_tail_call = true;
-        }
-        /* We don't do anything: if we weren't able to recognize a
-         * call;jmp* pattern when we saw the call, we don't add retaddr.
-         * And we never put in pre-instru for indirect cti.
-         */
-    }
-    if (free_callee)
-        instr_free(drcontext, &callee);
-    if (is_tail_call) {
-        /* We don't know return address statically */
-        app_pc post_call = instr_get_app_pc(inst) + instr_length(drcontext, inst);
-        LOG(2, "tailcall @"PFX" tgt "PFX"\n", instr_get_app_pc(inst), target);
-        dr_insert_clean_call(drcontext, bb, inst, (void *)handle_tailcall,
-                             false, 2, OPND_CREATE_INT32((int)target),
-                             OPND_CREATE_INT32((ptr_int_t)post_call));
-    }
-    /* we no longer insert pre-hook call at call site, only in callee (i#559) */
 }
 
 #ifdef WINDOWS
@@ -5197,9 +4980,8 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
         *exiting_alloc = false;
 
     if (options.track_heap) {
-        app_pc callee = post_call_lookup(pt, pc);
-        if (callee != NULL) {
-            instrument_post_alloc_site(drcontext, bb, inst, callee, pc);
+        if (post_call_lookup(pt, pc)) {
+            instrument_post_alloc_site(drcontext, bb, inst, pc);
             if (exiting_alloc != NULL)
                 *exiting_alloc = true;
         }
@@ -5217,12 +4999,12 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
             if (entering_alloc != NULL)
                 *entering_alloc = true;
         }
-        if ((instr_is_call(inst)
-             IF_WINDOWS(&& !instr_is_wow64_syscall(inst))) ||
-            instr_get_opcode(inst) == OP_jmp_ind ||
-            instr_get_opcode(inst) == OP_jmp) {
-            check_potential_alloc_site(drcontext, tag, bb, inst);
-        }
+        /* We used to calculate retaddr for calls and add to post-call
+         * table here, but we no longer do that since it doesn't buy
+         * us much and we need to check for new callers dynamically
+         * anyway.  We also used to handle tailcalls by identifying
+         * them, but using stored esp works better (i#662)
+         */
     }
 #ifdef WINDOWS
     if (instr_get_opcode(inst) == OP_int &&
