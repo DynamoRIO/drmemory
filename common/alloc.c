@@ -1612,6 +1612,17 @@ typedef struct _post_call_entry_t {
      * existing fragments have instru"
      */
     bool existing_instrumented;
+    /* There seems to be no easy solution to correctly removing from
+     * the table without extra removals from our own non-consistency
+     * flushes: with delayed deletion we can easily have races, and if
+     * conservative we have performance problems where one tag's flush
+     * removes a whole buch of post-call, delayed deletion causes
+     * table removal after re-instrumentation, and then the next
+     * retaddr check causes another flush.
+     * Xref i#673, DRi#409, i#114, i#260.
+     */
+# define POST_CALL_PRIOR_BYTES_STORED 6 /* max normal call size */
+    byte prior[POST_CALL_PRIOR_BYTES_STORED];
 } post_call_entry_t;
 
 static void
@@ -1629,6 +1640,11 @@ post_call_entry_add(app_pc postcall, bool instrumented, bool from_symcache)
     post_call_entry_t *e = (post_call_entry_t *)
         global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     e->existing_instrumented = false;
+    if (!safe_read(postcall - POST_CALL_PRIOR_BYTES_STORED, POST_CALL_PRIOR_BYTES_STORED,
+                   e->prior)) {
+        WARN("WARNING: unable to read pre-postcall bytes for "PFX"\n", postcall);
+        memset(e->prior, 0, sizeof(e->prior));
+    }
     hashtable_add(&post_call_table, (void*)postcall, (void*)e);
     LOG(2, "adding post-call from "PFX"\n", postcall);
 #ifdef USE_DRSYMS
@@ -1643,6 +1659,26 @@ post_call_entry_add(app_pc postcall, bool instrumented, bool from_symcache)
     return e;
 }
 
+/* caller must hold post_call_table lock */
+static bool
+post_call_consistent(app_pc postcall, post_call_entry_t *e)
+{
+    byte cur[POST_CALL_PRIOR_BYTES_STORED];
+    ASSERT(e != NULL, "invalid param");
+    /* i#673: to avoid all the problems w/ invalidating on delete, we instead
+     * invalidate on lookup.  We store the prior 6 bytes which is the call
+     * instruction, which is what we care about.  Note that it's ok for us
+     * to not be 100% accurate b/c we now use stored-esp and in-heap on
+     * post-call and so make no assumptions about post-call sites.
+     */
+    if (!safe_read(postcall - POST_CALL_PRIOR_BYTES_STORED, POST_CALL_PRIOR_BYTES_STORED,
+                   cur)) {
+        WARN("WARNING: unable to read pre-postcall bytes for "PFX"\n", postcall);
+        return false;
+    }
+    return (memcmp(e->prior, cur, POST_CALL_PRIOR_BYTES_STORED) == 0);
+}
+
 /* marks as having instrumentation if it finds the entry */
 static bool
 post_call_lookup(per_thread_t *pt, app_pc pc)
@@ -1652,8 +1688,15 @@ post_call_lookup(per_thread_t *pt, app_pc pc)
     hashtable_lock(&post_call_table);
     e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)pc);
     if (e != NULL) {
-        res = true;
-        e->existing_instrumented = true;
+        res = post_call_consistent(pc, e);
+        if (!res) {
+            IF_DEBUG(bool found =)
+                hashtable_remove(&post_call_table, (void *)pc);
+            ASSERT(found, "have lock, must still be there");
+            LOG(2, "post-call "PFX" inconsistent: removing from table\n", pc);
+        } else {
+            e->existing_instrumented = true;
+        }
     } else if (pt->in_heap_routine > 0) {
         /* i#559: if our post-call point was flushed while we were in the
          * callee, ensure we reinstate it
@@ -2124,28 +2167,8 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
 void
 alloc_fragment_delete(void *dc/*may be NULL*/, void *tag)
 {
-    IF_DEBUG(bool removed;)
-    if (!options.track_allocs)
-        return;
-    /* For post_call_table, just like in our use of dr_fragment_exists_at, we
-     * assume no traces and that we only care about fragments starting there.
-     *
-     * XXX: if we had DRi#409 we could avoid doing this removal on
-     * non-cache-consistency deletion: though usually if we remove on our
-     * own flush we should re-mark as post-call w/o another flush since in
-     * most cases the post-call is reached via the call.
-     *
-     * An alternative would be to not remove here, to store the
-     * pre-call bytes, and to check on new bbs whether they changed.
-     */
-    hashtable_lock(&post_call_table);
-    IF_DEBUG(removed =) 
-        hashtable_remove(&post_call_table, tag);
-    DOLOG(2, {
-        if (removed)
-            LOG(1, "removed "PFX" from post_call_table\n", tag);
-    });
-    hashtable_unlock(&post_call_table);
+    /* switched to checking consistency at lookup time (i#673) */
+    return;
 }
 
 /* We need to support our malloc routines being called either on their
