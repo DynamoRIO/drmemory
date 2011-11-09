@@ -56,6 +56,8 @@ typedef struct _alloc_options_t {
     bool prefer_msize;
     /* use symcache to cache post-call addresses (i#669) */
     bool cache_postcall;
+    /* whether to intercept operator new* and operator delete* */
+    bool intercept_operators;
     /* Add new options here */
 } alloc_options_t;
 

@@ -150,6 +150,7 @@ alloc_drmem_init(void)
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
     alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache_postcall, false);
+    alloc_ops.intercept_operators = options.check_delete_mismatch;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,

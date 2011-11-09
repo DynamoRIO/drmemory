@@ -2062,6 +2062,7 @@ dr_init(client_id_t client_id)
     alloc_ops.record_allocs = true;
     alloc_ops.get_padded_size = true;
     alloc_ops.cache_postcall = false;
+    alloc_ops.intercept_operators = false;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,

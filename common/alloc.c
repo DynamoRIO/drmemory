@@ -1977,7 +1977,7 @@ void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     alloc_routine_set_t *set_libc;
-    alloc_routine_set_t *set_cpp;
+    alloc_routine_set_t *set_cpp = NULL;
 
 #ifdef WINDOWS
     alloc_find_syscalls(drcontext, info);
@@ -2044,9 +2044,11 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                                 HEAPSET_LIBC_DBG);
         }
 #endif
-        set_cpp = find_alloc_routines(info, possible_cpp_routines,
-                                      POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
-                                      false, HEAPSET_LIBC);
+        if (options.intercept_operators) {
+            set_cpp = find_alloc_routines(info, possible_cpp_routines,
+                                          POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
+                                          false, HEAPSET_LIBC);
+        }
         if (set_cpp != NULL) {
             /* for static, use corresponding libc for size.
              * for dynamic, use dynamic libc.
