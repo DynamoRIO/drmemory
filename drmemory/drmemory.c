@@ -179,8 +179,8 @@ dump_statistics(void)
                reg_dead, reg_xchg, reg_spill, reg_spill_slow, reg_spill_own);
     dr_fprintf(f_global, "bb reg spills: used %8u, unused %8u\n",
                reg_spill_used_in_bb, reg_spill_unused_in_bb);
-    dr_fprintf(f_global, "post-call-site flushes:%8u\n",
-               post_call_flushes);
+    dr_fprintf(f_global, "wrap pre: %8u, wrap post: %8u, post-call-site flushes:%8u\n",
+               wrap_pre, wrap_post, post_call_flushes);
     dr_fprintf(f_global, "shadow blocks allocated: %6u, freed: %6u\n",
                shadow_block_alloc, shadow_block_free);
     dr_fprintf(f_global, "special shadow blocks, unaddr: %6u, undef: %6u, def: %6u\n",

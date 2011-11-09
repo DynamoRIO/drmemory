@@ -318,6 +318,9 @@ OPTION_CLIENT_BOOL(drmemscope, use_symcache, true,
 OPTION_CLIENT(client, symcache_minsize, uint, 1000, 0, UINT_MAX,
                    "Minimum module size to cache symbols for",
                    "Minimum module size to cache symbols for.  Note that there's little downside to caching and it is pretty much always better to cache.")
+OPTION_CLIENT_BOOL(drmemscope, use_symcache_postcall, true,
+                   "Cache post-call sites to speed up future runs",
+                   "Cache post-call sites to speed up future runs")
 #else
 OPTION_CLIENT_BOOL(drmemscope, summary, false,
                    "Display a summary prior to symbol processing",

@@ -57,11 +57,19 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 2
+#define SYMCACHE_VERSION 3
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
 #define SYMCACHE_MODULE_TABLE_HASH_BITS 6
+
+/* We need a large buffer to hold post-call addresses for i#669.
+ * XXX: this makes the file large enough that it may be worth
+ * implementing dr_file_rename() and switching to a
+ * write-to-temp-and-rename strategy rather than needing to write it
+ * all to a single buffer first.
+ */
+#define SYMCACHE_MAX_FILE_SIZE (128*1024)
 
 /* We key on modname b/c that's also our filename: not worth adding version
  * or anything else to the name.
@@ -172,7 +180,8 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     uint i;
     file_t f;
     hashtable_t *symtable = &modcache->table;
-    static char buf[2048]; /* caller holds lock so we can use static buf */
+    /* caller holds lock so we can use static buf */
+    static char buf[SYMCACHE_MAX_FILE_SIZE];
     size_t sofar = 0;
     ssize_t len;
     size_t bsz = BUFFER_SIZE_ELEMENTS(buf);
@@ -212,12 +221,18 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         hash_entry_t *he;
         for (he = symtable->table[i]; he != NULL; he = he->next) {
             offset_list_t *olist = (offset_list_t *) he->payload;
+            if (olist == NULL)
+                continue;
+            /* skip symbol in dup entries to save space */
+            BUFPRINT(buf, bsz, sofar, len, "%s", he->key);
             while (olist != NULL) {
-                BUFPRINT(buf, bsz, sofar, len, "%s,0x%x\n", he->key, olist->offs);
+                BUFPRINT(buf, bsz, sofar, len, ",0x%x\n", olist->offs);
                 olist = olist->next;
             }
         }
     }
+    if (sofar >= bsz - 100) /* dr_snprintf cuts off if line will overflow */
+        WARN("WARNING: nearing or hit symcache max size limit\n");
     /* now update size */
     ASSERT(filesz_loc + 6 < bsz, "buffer calc way off");
     dr_snprintf(buf + filesz_loc, 6, "%6u", sofar);
@@ -334,6 +349,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
     if (line != NULL)
         line++;
 
+    symbol[0] = '\0';
     for (; line != NULL && line < ((char *)map) + map_size; line = next_line) {
         const char *newline = strchr(line, '\n');
         if (newline == NULL) {
@@ -342,6 +358,11 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
             next_line = newline + 1;
         }
         if (sscanf(line, "%"MAX_SYMLEN_MINUS_1_STR"[^,],0x%x", symbol, &offs) == 2) {
+            symcache_symbol_add(modname, symtable, symbol, offs);
+        } else if (symbol[0] != '\0' && sscanf(line, ",0x%x", &offs) == 1) {
+            /* duplicate entries are allowed to not list the symbol, to save
+             * space in the file (mainly for post-call caching i#669)
+             */
             symcache_symbol_add(modname, symtable, symbol, offs);
         } else {
             WARN("WARNING: malformed symbol cache line \"%.*s\"\n",

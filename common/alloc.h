@@ -54,6 +54,8 @@ typedef struct _alloc_options_t {
      * really something of a hack for chromium: i#314, i#320
      */
     bool prefer_msize;
+    /* use symcache to cache post-call addresses (i#669) */
+    bool cache_postcall;
     /* Add new options here */
 } alloc_options_t;
 
@@ -85,6 +87,8 @@ extern int sysnum_setcontext;
 #endif
 
 #ifdef STATISTICS
+extern uint wrap_pre;
+extern uint wrap_post;
 extern uint post_call_flushes;
 extern uint num_mallocs;
 extern uint num_large_mallocs;

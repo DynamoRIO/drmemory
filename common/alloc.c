@@ -205,6 +205,8 @@ int sysnum_UserConnectToServer = -1;
 #endif
 
 #ifdef STATISTICS
+uint wrap_pre;
+uint wrap_post;
 uint post_call_flushes;
 uint num_mallocs;
 uint num_large_mallocs;
@@ -1600,6 +1602,10 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 #define POST_CALL_TABLE_HASH_BITS 10
 static hashtable_t post_call_table;
 
+#ifdef USE_DRSYMS
+# define POST_CALL_SYMCACHE_NAME "__DrMemory_post_call"
+#endif
+
 typedef struct _post_call_entry_t {
     /* PR 454616: we need two flags in the post_call_table: one that
      * says "please add instru for this callee" and one saying "all
@@ -1618,13 +1624,22 @@ post_call_entry_free(void *v)
 
 /* caller must hold lock */
 static post_call_entry_t *
-post_call_entry_add(app_pc postcall, bool instrumented)
+post_call_entry_add(app_pc postcall, bool instrumented, bool from_symcache)
 {
     post_call_entry_t *e = (post_call_entry_t *)
         global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     e->existing_instrumented = false;
     hashtable_add(&post_call_table, (void*)postcall, (void*)e);
     LOG(2, "adding post-call from "PFX"\n", postcall);
+#ifdef USE_DRSYMS
+    if (options.cache_postcall && !from_symcache) {
+        module_data_t *data = dr_lookup_module(postcall);
+        if (data != NULL) {
+            symcache_add(data, POST_CALL_SYMCACHE_NAME, postcall - data->start);
+            dr_free_module_data(data);
+        }
+    }
+#endif
     return e;
 }
 
@@ -1646,7 +1661,7 @@ post_call_lookup(per_thread_t *pt, app_pc pc)
         int i;
         for (i = pt->in_heap_routine; i >= 0; i--) {
             if (pc == pt->post_call[i]) {
-                post_call_entry_add(pc, false);
+                post_call_entry_add(pc, false, false);
                 res = true;
             }
         }
@@ -2005,6 +2020,24 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         }
         dr_mutex_unlock(alloc_routine_lock);
     }
+
+#ifdef USE_DRSYMS
+    if (options.track_allocs && options.cache_postcall &&
+        symcache_module_is_cached(info)) {
+        size_t modoffs;
+        uint count;
+        uint idx;
+        uint i;
+        hashtable_lock(&post_call_table);
+        for (idx = 0, count = 1;
+             idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
+                                            idx, &modoffs, &count); idx++) {
+            if (modoffs != 0)
+                post_call_entry_add(info->start + modoffs, false, true);
+        }
+        hashtable_unlock(&post_call_table);
+    }
+#endif
 }
 
 void
@@ -4532,7 +4565,7 @@ alloc_hook(app_pc pc)
             LOG(2, "found new retaddr: call to %s from "PFX" %s\n",
                 get_alloc_routine_name(pc), retaddr, e == NULL ? "all-new" : "non-instru");
             if (e == NULL) {
-                e = post_call_entry_add(retaddr, false);
+                e = post_call_entry_add(retaddr, false, false);
             }
             /* now that we have an entry in the synchronized post_call_table
              * any new code coming in will be instrumented.
@@ -4619,6 +4652,7 @@ alloc_hook(app_pc pc)
 static void
 insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
 {
+    STATS_INC(wrap_pre);
     dr_prepare_for_call(drcontext, bb, inst);
     PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32((uint)pc)));
     PRE(bb, inst, INSTR_CREATE_call(drcontext, opnd_create_pc((app_pc)alloc_hook)));
@@ -4920,6 +4954,7 @@ instrument_post_alloc_site(void *drcontext, instrlist_t *bb, instr_t *inst,
                            app_pc post_call)
 {
     ASSERT(options.track_heap, "requires track_heap");
+    STATS_INC(wrap_post);
     dr_insert_clean_call(drcontext, bb, inst, (void *) handle_alloc_post,
                          false/*no fpstate*/, 1,
                          OPND_CREATE_INTPTR((ptr_int_t)post_call));
