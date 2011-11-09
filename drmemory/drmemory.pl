@@ -286,8 +286,8 @@ if ($aggregate) {
     # in the app args: seems reasonable to require user to pass us a
     # real executable, so must prefix scripts with shell or perl.
     die "application $apppath not found\n$usage\n" unless (-e $apppath);
-    # warn if 64-bit (i#33)
-    die "64-bit applications not yet supported\n" if (`file $apppath` =~ /64-bit/);
+    # warn if 64-bit (i#33); swallow stderr if file cmd doesn't exist on Cygwin
+    die "64-bit applications not yet supported\n" if (`file $apppath 2>&1` =~ /64-bit/);
     push @appcmdline, &vmk_app_pre_args(\@ARGV) if ($is_vmk);
     push @appcmdline, @ARGV;
 }
