@@ -359,6 +359,8 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
  symcache_read_symfile_done:
     if (map != NULL)
         dr_unmap_file(map, actual_size);
+    if (f != INVALID_FILE)
+        dr_close_file(f);
     return res;
 }
 
