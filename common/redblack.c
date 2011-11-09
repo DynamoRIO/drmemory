@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2011 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -47,30 +48,23 @@ struct _rb_node_t {
     void *client;
 };
 
-/* Sentinel NIL node to mark leaves rather than NULL.  Simplifies
- * node deletion; see CLR.
- * Exported for users to use as static root node initial value.
- */
-static rb_node_t NIL_node = {
-    &NIL_node, /* parent */
-    &NIL_node, /* right */
-    &NIL_node, /* left */
-    BLACK,     /* color */
-    NULL,      /* base */
-    0,         /* size */
-    NULL,      /* max */
-    NULL       /* client */
-};
-
-static rb_node_t *NIL = &NIL_node;
-
 /* Data structure to wrap around the root node, to store global info
  * such as callback routines.
  */
 struct _rb_tree_t {
     rb_node_t *root;
+    /* Sentinel NIL node to mark leaves rather than NULL.  Simplifies
+     * node deletion; see CLR.
+     *
+     * While the leaves in one tree can all share this leaf node,
+     * we need to write to its parent on certain operations, so we
+     * need a separate copy per tree.
+     */
+    rb_node_t NIL_node;
     void (*free_payload_func)(void*);
 };
+
+#define NIL(tree) (&(tree)->NIL_node)
 
 static inline byte *
 ptrmax(byte *val1, byte *val2)
@@ -84,7 +78,6 @@ void
 rb_node_fields(rb_node_t *node, byte **base OUT, size_t *size OUT, void **client OUT)
 {
     ASSERT(node != NULL, "invalid param");
-    ASSERT(node != NIL, "should not ask for fields of NIL!");
     if (base != NULL)
         *base = node->base;
     if (size != NULL)
@@ -98,21 +91,20 @@ void
 rb_node_set_client(rb_node_t *node, void *client)
 {
     ASSERT(node != NULL, "invalid param");
-    ASSERT(node != NIL, "should not set fields of NIL!");
     node->client = client;
 }
 
 /* Allocate a new node */
 static rb_node_t *
-rb_new_node(byte *base, size_t size, void *client)
+rb_new_node(rb_tree_t *tree, byte *base, size_t size, void *client)
 {
     rb_node_t *node = (rb_node_t *) global_alloc(sizeof(rb_node_t), HEAPSTAT_RBTREE);
     ASSERT(node != NULL, "alloc failed");
 
     if (node != NULL) {
-        node->parent = NIL;
-        node->right = NIL;
-        node->left = NIL;
+        node->parent = NIL(tree);
+        node->right = NIL(tree);
+        node->left = NIL(tree);
         node->color = RED;
         node->base = base;
         node->size = size;
@@ -137,7 +129,7 @@ rb_free_node(rb_tree_t *tree, rb_node_t *node, bool free_payload)
 static void
 rb_clear_helper(rb_tree_t *tree, rb_node_t *node)
 {
-    if (node != NIL) {
+    if (node != NIL(tree)) {
         rb_clear_helper(tree, node->left);
         rb_clear_helper(tree, node->right);
         rb_free_node(tree, node, true/*free payload*/);
@@ -149,7 +141,7 @@ void
 rb_clear(rb_tree_t *tree)
 {
     rb_clear_helper(tree, tree->root);
-    tree->root = NIL;
+    tree->root = NIL(tree);
 }
 
 
@@ -161,7 +153,7 @@ rb_find(rb_tree_t *tree, byte *base)
 {
     rb_node_t *iter = tree->root;
 
-    while (iter != NIL) {
+    while (iter != NIL(tree)) {
         if (base == iter->base) {
             return iter;
         }
@@ -178,36 +170,36 @@ rb_find(rb_tree_t *tree, byte *base)
 
 
 static inline rb_node_t *
-get_next_helper(void *client, rb_node_t *curr)
+get_next_helper(rb_tree_t *tree, void *client, rb_node_t *curr)
 {
     rb_node_t *node;
-    if (curr == NIL) {
-        return NIL;
+    if (curr == NIL(tree)) {
+        return NIL(tree);
     }
 
     if (curr->client == client) {
         return curr;
     }
     
-    node = get_next_helper(client, curr->left);
-    if (node != NIL) {
+    node = get_next_helper(tree, client, curr->left);
+    if (node != NIL(tree)) {
         return node;
     }
 
-    node = get_next_helper(client, curr->right);
-    if (node != NIL) {
+    node = get_next_helper(tree, client, curr->right);
+    if (node != NIL(tree)) {
         return node;
     }
 
-    return NIL;
+    return NIL(tree);
 }
 
 /* Find the first node with client field == 'client' */
 rb_node_t *
 rb_find_client_node(rb_tree_t *tree, void *client)
 {
-    rb_node_t *node = get_next_helper(client, tree->root);
-    if (node == NIL) {
+    rb_node_t *node = get_next_helper(tree, client, tree->root);
+    if (node == NIL(tree)) {
         return NULL;
     }
 
@@ -216,18 +208,19 @@ rb_find_client_node(rb_tree_t *tree, void *client)
 
 
 static void
-rb_right_rotate(rb_node_t **root, rb_node_t *y)
+rb_right_rotate(rb_tree_t *tree, rb_node_t *y)
 {
     rb_node_t *x = y->left;
+    ASSERT(y != NIL(tree), "don't change NIL(tree)");
 
     y->left = x->right;
-    if (x->right != NIL) {
+    if (x->right != NIL(tree)) {
         x->right->parent = y;
     }
 
     x->parent = y->parent;
-    if (y->parent == NIL) {
-        *root = x;
+    if (y->parent == NIL(tree)) {
+        tree->root = x;
     }
     else if (y == y->parent->left) {
         y->parent->left = x;
@@ -246,18 +239,19 @@ rb_right_rotate(rb_node_t **root, rb_node_t *y)
 
 
 static void
-rb_left_rotate(rb_node_t **root, rb_node_t *x)
+rb_left_rotate(rb_tree_t *tree, rb_node_t *x)
 {
     rb_node_t *y = x->right;
+    ASSERT(x != NIL(tree), "don't change NIL(tree)");
 
     x->right = y->left;
-    if (y->left != NIL) {
+    if (y->left != NIL(tree)) {
         y->left->parent = x;
     }
 
     y->parent = x->parent;
-    if (x->parent == NIL) {
-        *root = y;
+    if (x->parent == NIL(tree)) {
+        tree->root = y;
     }
     else if (x == x->parent->left) {
         x->parent->left = y;
@@ -276,15 +270,15 @@ rb_left_rotate(rb_node_t **root, rb_node_t *x)
 
 
 static inline void
-rb_delete_fixup(rb_node_t **root, rb_node_t *x)
+rb_delete_fixup(rb_tree_t *tree, rb_node_t *x)
 {
-    while (x != *root && x->color == BLACK) {
+    while (x != tree->root && x->color == BLACK) {
         if (x == x->parent->left) {
             rb_node_t *w = x->parent->right;
             if (w->color == RED) {
                 w->color = BLACK;
                 x->parent->color = RED;
-                rb_left_rotate(root, x->parent);
+                rb_left_rotate(tree, x->parent);
                 w = x->parent->right;
             }
             if (w->left->color == BLACK && w->right->color == BLACK) {
@@ -295,14 +289,14 @@ rb_delete_fixup(rb_node_t **root, rb_node_t *x)
                 if (w->right->color == BLACK) {
                     w->left->color = BLACK;
                     w->color = RED;
-                    rb_right_rotate(root, w);
+                    rb_right_rotate(tree, w);
                     w = x->parent->right;
                 }
                 w->color = x->parent->color;
                 x->parent->color = BLACK;
                 w->right->color = BLACK;
-                rb_left_rotate(root, x->parent);
-                x = *root;
+                rb_left_rotate(tree, x->parent);
+                x = tree->root;
             }
         }
         else {
@@ -310,7 +304,7 @@ rb_delete_fixup(rb_node_t **root, rb_node_t *x)
             if (w->color == RED) {
                 w->color = BLACK;
                 x->parent->color = RED;
-                rb_right_rotate(root, x->parent);
+                rb_right_rotate(tree, x->parent);
                 w = x->parent->left;
             }
             if (w->right->color == BLACK && w->left->color == BLACK) {
@@ -321,14 +315,14 @@ rb_delete_fixup(rb_node_t **root, rb_node_t *x)
                 if (w->left->color == BLACK) {
                     w->right->color = BLACK;
                     w->color = RED;
-                    rb_left_rotate(root, w);
+                    rb_left_rotate(tree, w);
                     w = x->parent->left;
                 }
                 w->color = x->parent->color;
                 x->parent->color = BLACK;
                 w->left->color = BLACK;
-                rb_right_rotate(root, x->parent);
-                x = *root;
+                rb_right_rotate(tree, x->parent);
+                x = tree->root;
             }
         }
     }
@@ -339,18 +333,18 @@ rb_delete_fixup(rb_node_t **root, rb_node_t *x)
 
 /* Find immediate successor of node 'x' */
 static inline rb_node_t *
-rb_successor(rb_node_t *x)
+rb_successor(rb_tree_t *tree, rb_node_t *x)
 {
-    if (x->right != NIL) {
+    if (x->right != NIL(tree)) {
         x = x->right;
-        while (x->left != NIL) {
+        while (x->left != NIL(tree)) {
             x = x->left;
         }
         return x;
     }
     else {
         rb_node_t *y = x->parent;
-        while (y != NIL && x == y->right) {
+        while (y != NIL(tree) && x == y->right) {
             x = y;
             y = y->parent;
         }
@@ -365,18 +359,19 @@ rb_delete(rb_tree_t *tree, rb_node_t *z)
 {
     rb_node_t *y, *x;
     void *client_tmp;
+    ASSERT(z != NIL(tree), "don't change NIL(tree)");
 
-    if (z->left == NIL || z->right == NIL) {
+    if (z->left == NIL(tree) || z->right == NIL(tree)) {
         y = z;
     }
     else {
-        y = rb_successor(z);
+        y = rb_successor(tree, z);
     }
 
-    x = (y->left != NIL) ? y->left : y->right;
+    x = (y->left != NIL(tree)) ? y->left : y->right;
     x->parent = y->parent;
 
-    if (y->parent == NIL) {
+    if (y->parent == NIL(tree)) {
         tree->root = x;
     }
     else if (y == y->parent->left) {
@@ -397,7 +392,7 @@ rb_delete(rb_tree_t *tree, rb_node_t *z)
     }
 
     if (y->color == BLACK) {
-        rb_delete_fixup(&tree->root, x);
+        rb_delete_fixup(tree, x);
     }
 
     rb_free_node(tree, y, true/*free payload*/);
@@ -408,17 +403,17 @@ rb_delete(rb_tree_t *tree, rb_node_t *z)
  * an RB tree.
  */
 static rb_node_t *
-bt_insert(rb_node_t **root, rb_node_t *node)
+bt_insert(rb_tree_t *tree, rb_node_t *node)
 {
-    rb_node_t *iter = NIL;
-    rb_node_t **p_iter = root;
+    rb_node_t *iter = NIL(tree);
+    rb_node_t **p_iter = &tree->root;
 
     byte *nbase = node->base;
 #ifdef DEBUG
     byte *nlast = nbase + node->size;
 #endif
 
-    while (*p_iter != NIL) {
+    while (*p_iter != NIL(tree)) {
         byte *ibase;
 #ifdef DEBUG
         byte *ilast;
@@ -454,18 +449,18 @@ bt_insert(rb_node_t **root, rb_node_t *node)
 
 /* Insert node 'x' into the RB tree. */
 static rb_node_t *
-rb_insert_helper(rb_node_t **root, rb_node_t *x)
+rb_insert_helper(rb_tree_t *tree, rb_node_t *x)
 {
-    rb_node_t *node = bt_insert(root, x);
+    rb_node_t *node = bt_insert(tree, x);
     if (node != NULL) {
         /* the new node overlaps with an existing node */
         return node;
     }
 
-    while (x != *root && x->parent->color == RED) {
+    while (x != tree->root && x->parent->color == RED) {
         if (x->parent == x->parent->parent->left) {
             rb_node_t *y = x->parent->parent->right;
-            if (y != NIL && y->color == RED) {
+            if (y != NIL(tree) && y->color == RED) {
                 x->parent->color = BLACK;
                 y->color = BLACK;
                 x->parent->parent->color = RED;
@@ -474,16 +469,16 @@ rb_insert_helper(rb_node_t **root, rb_node_t *x)
             else {
                 if (x == x->parent->right) {
                     x = x->parent;
-                    rb_left_rotate(root, x);
+                    rb_left_rotate(tree, x);
                 }
                 x->parent->color = BLACK;
                 x->parent->parent->color = RED;
-                rb_right_rotate(root, x->parent->parent);
+                rb_right_rotate(tree, x->parent->parent);
             }
         }
         else {
             rb_node_t *y = x->parent->parent->left;
-            if (y != NIL && y->color == RED) {
+            if (y != NIL(tree) && y->color == RED) {
                 x->parent->color = BLACK;
                 y->color = BLACK;
                 x->parent->parent->color = RED;
@@ -492,16 +487,16 @@ rb_insert_helper(rb_node_t **root, rb_node_t *x)
             else {
                 if (x == x->parent->left) {
                     x = x->parent;
-                    rb_right_rotate(root, x);
+                    rb_right_rotate(tree, x);
                 }
                 x->parent->color = BLACK;
                 x->parent->parent->color = RED;
-                rb_left_rotate(root, x->parent->parent);
+                rb_left_rotate(tree, x->parent->parent);
             }
         }
     }
 
-    (*root)->color = BLACK;
+    tree->root->color = BLACK;
     return NULL;
 }
 
@@ -511,8 +506,8 @@ rb_insert_helper(rb_node_t **root, rb_node_t *x)
 rb_node_t *
 rb_insert(rb_tree_t *tree, byte *base, size_t size, void *client)
 {
-    rb_node_t *node = rb_new_node(base, size, client);
-    rb_node_t *existing = rb_insert_helper(&tree->root, node);
+    rb_node_t *node = rb_new_node(tree, base, size, client);
+    rb_node_t *existing = rb_insert_helper(tree, node);
     if (existing != NULL)
         rb_free_node(tree, node, false/*do not free payload*/);
     return existing;
@@ -524,7 +519,7 @@ rb_in_node(rb_tree_t *tree, byte *addr)
 {
     rb_node_t *iter = tree->root;
 
-    while (iter != NIL) {
+    while (iter != NIL(tree)) {
         byte *base = iter->base;
         byte *last = base + iter->size;
 
@@ -550,7 +545,7 @@ rb_overlaps_node(rb_tree_t *tree, byte *start, byte *end)
 {
     rb_node_t *iter = tree->root;
 
-    while (iter != NIL) {
+    while (iter != NIL(tree)) {
         byte *base = iter->base;
         byte *last = base + iter->size;
 
@@ -574,7 +569,7 @@ rb_node_t *
 rb_next_higher_node(rb_tree_t *tree, byte *addr)
 {
     rb_node_t *iter = tree->root;
-    while (iter != NIL) {
+    while (iter != NIL(tree)) {
         if (addr >= iter->left->max && addr < iter->base + iter->size) {
             return iter;
         } 
@@ -597,8 +592,8 @@ rb_node_t *
 rb_next_lower_node(rb_tree_t *tree, byte *addr)
 {
     rb_node_t *iter = tree->root;
-    while (iter != NIL) {
-        if (addr >= iter->base && (iter->right == NIL || addr < iter->right->base)) {
+    while (iter != NIL(tree)) {
+        if (addr >= iter->base && (iter->right == NIL(tree) || addr < iter->right->base)) {
             return iter;
         } 
         else if (addr < iter->base) {
@@ -617,8 +612,8 @@ rb_node_t *
 rb_max_node(rb_tree_t *tree)
 {
     rb_node_t *iter = tree->root;
-    if (iter != NIL) {
-        while (iter->right != NIL)
+    if (iter != NIL(tree)) {
+        while (iter->right != NIL(tree))
             iter = iter->right;
     }
     return iter;
@@ -629,8 +624,8 @@ rb_node_t *
 rb_min_node(rb_tree_t *tree)
 {
     rb_node_t *iter = tree->root;
-    if (iter != NIL) {
-        while (iter->left != NIL)
+    if (iter != NIL(tree)) {
+        while (iter->left != NIL(tree))
             iter = iter->left;
     }
     return iter;
@@ -641,7 +636,17 @@ rb_tree_t *
 rb_tree_create(void (*free_payload_func)(void*))
 {
     rb_tree_t *tree = global_alloc(sizeof(*tree), HEAPSTAT_RBTREE);
-    tree->root = &NIL_node;
+
+    tree->NIL_node.parent = NIL(tree);
+    tree->NIL_node.right = NIL(tree);
+    tree->NIL_node.left = NIL(tree);
+    tree->NIL_node.color = BLACK;
+    tree->NIL_node.base = NULL;
+    tree->NIL_node.size = 0;
+    tree->NIL_node.max = NULL;
+    tree->NIL_node.client = NULL;
+
+    tree->root = NIL(tree);
     tree->free_payload_func = free_payload_func;
     return tree;
 }
@@ -655,14 +660,15 @@ rb_tree_destroy(rb_tree_t *tree)
 }
 
 static void
-iterate_helper(rb_node_t *node, void (*iter_cb)(rb_node_t *, void *), void *iter_data)
+iterate_helper(rb_tree_t *tree, rb_node_t *node,
+               void (*iter_cb)(rb_node_t *, void *), void *iter_data)
 {
-    ASSERT(node != NULL && node != NIL && iter_cb != NULL, "invalid params");
-    if (node->left != NIL)
-        iterate_helper(node->left, iter_cb, iter_data);
+    ASSERT(node != NULL && node != NIL(tree) && iter_cb != NULL, "invalid params");
+    if (node->left != NIL(tree))
+        iterate_helper(tree, node->left, iter_cb, iter_data);
     iter_cb(node, iter_data);
-    if (node->right != NIL)
-        iterate_helper(node->right, iter_cb, iter_data);
+    if (node->right != NIL(tree))
+        iterate_helper(tree, node->right, iter_cb, iter_data);
 }
 
 /* Performs an in-order traversal, calling iter_cb on each node. */
@@ -670,27 +676,27 @@ void
 rb_iterate(rb_tree_t *tree, void (*iter_cb)(rb_node_t *, void *), void *iter_data)
 {
     ASSERT(tree != NULL && iter_cb != NULL, "invalid params");
-    if (tree->root != NIL)
-        iterate_helper(tree->root, iter_cb, iter_data);
+    if (tree->root != NIL(tree))
+        iterate_helper(tree, tree->root, iter_cb, iter_data);
 }
 
 /***************************************************************************/
 #ifdef DEBUG_UNIT_TEST
 
 static void
-print_helper(rb_node_t *node, FILE *fp)
+print_helper(rb_tree_t *tree, rb_node_t *node, FILE *fp)
 {
     fprintf(fp, "n%d [label = \"%s %d\"]\n", 
             node->base,
             node->color == RED ? "R" : "B",
             node->base);
 
-    if (node->left != NIL) {
+    if (node->left != NIL(tree)) {
         fprintf(fp, "  n%d -> n%d\n", node->base, node->left->base);
         print_helper(node->left, fp);
     }
 
-    if (node->right != NIL) {
+    if (node->right != NIL(tree)) {
         fprintf(fp, "  n%d -> n%d\n", node->base, node->right->base);        
         print_helper(node->right, fp);
     }
@@ -706,8 +712,8 @@ rb_print(rb_tree_t *tree, char *filename)
     }
 
     fprintf(fp, "digraph g {\n");
-    if (root != NIL) {
-        print_helper(tree->root, fp);
+    if (tree->root != NIL(tree)) {
+        print_helper(tree, tree->root, fp);
     }
     fprintf(fp, "}\n");
 
@@ -716,30 +722,31 @@ rb_print(rb_tree_t *tree, char *filename)
 
 
 static void
-rb_check_node(rb_node_t *node, int *black, byte **max, byte **min, bool *ret)
+rb_check_node(rb_tree_t *tree, rb_node_t *node,
+              int *black, byte **max, byte **min, bool *ret)
 {
     byte *left_max, *left_min, *right_max, *right_min;
     int left_black, right_black;
 
-    if (node == NIL) {
+    if (node == NIL(tree)) {
         *black = 1;
         return;
     }
 
     /* check the red-black invariant */
     if (node->color == RED) {
-        if ((node->left != NIL && node->left->color != BLACK) ||
-            (node->right != NIL && node->right->color != BLACK)) {
+        if ((node->left != NIL(tree) && node->left->color != BLACK) ||
+            (node->right != NIL(tree) && node->right->color != BLACK)) {
             *ret = false;
         }
     }
 
     /* gather info for left and right subtrees */
-    rb_check_node(node->left, &left_black, &left_max, &left_min, ret);
-    rb_check_node(node->right, &right_black, &right_max, &right_min, ret);
+    rb_check_node(tree, node->left, &left_black, &left_max, &left_min, ret);
+    rb_check_node(tree, node->right, &right_black, &right_max, &right_min, ret);
 
     /* check binary-tree integrity */
-    if (node->right == NIL) {
+    if (node->right == NIL(tree)) {
         *max = node->base;
     }
     else {
@@ -749,7 +756,7 @@ rb_check_node(rb_node_t *node, int *black, byte **max, byte **min, bool *ret)
         }
     }
 
-    if (node->left == NIL) {
+    if (node->left == NIL(tree)) {
         *min = node->base;
     }
     else {
@@ -774,7 +781,7 @@ rb_check_tree(rb_tree_t *tree)
     bool ret = true;
     int black;
     byte *max, *min;
-    rb_check_node(tree->root, &black, &max, &min, &ret);
+    rb_check_node(tree, tree->root, &black, &max, &min, &ret);
     return ret;
 }
 
