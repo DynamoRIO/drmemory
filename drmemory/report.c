@@ -1477,6 +1477,10 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
      */
     /* We don't walk more than PAGE_SIZE: FIXME: make larger? */
     for (end = addr+sz; end < addr+sz + PAGE_SIZE; ) {
+        if (MAP_4B_TO_1B) {
+            /* granularity is 4 so don't report tail of dword of bad ref (i#622) */
+            end = (byte *)ALIGN_FORWARD(end, 4);
+        }
         if (options.shadowing &&
             !shadow_check_range(end, PAGE_SIZE, SHADOW_UNADDRESSABLE,
                                 &start, NULL, NULL)) {
@@ -1500,7 +1504,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                     if (next_start - addr+sz < 8) {
                         BUFPRINT(buf, bufsz, *sofar, len,
                                  "%srefers to %d byte(s) before next malloc"NL,
-                                 INFO_PFX, next_start - addr+sz);
+                                 INFO_PFX, next_start - addr+sz-1);
                     }
                     if (!options.brief) {
                         BUFPRINT(buf, bufsz, *sofar, len,
