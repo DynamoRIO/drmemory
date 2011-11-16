@@ -183,6 +183,9 @@ test_mismatch()
     x = (int *) malloc(7);
     if (setjmp(mark) == 0)
         delete[] x;
+    /* not a mismatch, but test debug operator del (i#500) */
+    x = new int[7];
+    delete[] x;
 }
 
 int main() 

@@ -406,8 +406,7 @@ if (NOT TOOL_DR_HEAPSTAT)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
       # C++ tests with other libc configs
-      # FIXME i#638: C++ /MTd crashes drmem!
-      #newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd" cs2bug)
+      newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd" cs2bug)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
     endif (USE_DRSYMS)
   endif (WIN32)
