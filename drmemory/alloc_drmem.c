@@ -149,7 +149,8 @@ alloc_drmem_init(void)
         !options.leaks_only && options.shadowing;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
-    alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache_postcall, false);
+    alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
+                                              options.use_symcache_postcall, false);
     alloc_ops.intercept_operators = options.check_delete_mismatch;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 

@@ -59,44 +59,54 @@
  *
  * When adding, make sure the regexs passed to find_syms_regex() cover
  * the new name!
+ *
+ * Template: REPLACE_DEF(name, corresponding-wide-char-version)
+ *
  */
-#define REPLACE_DEFS()     \
-    REPLACE_DEF(memset)    \
-    REPLACE_DEF(memcpy)    \
-    REPLACE_DEF(memchr)    \
-    IF_LINUX(REPLACE_DEF(memrchr)) \
-    IF_LINUX(REPLACE_DEF(rawmemchr)) \
-    REPLACE_DEF(strchr)    \
-    REPLACE_DEF(strrchr)   \
-    IF_LINUX(REPLACE_DEF(strchrnul)) \
-    REPLACE_DEF(strlen)    \
-    REPLACE_DEF(strcmp)    \
-    REPLACE_DEF(strncmp)   \
-    REPLACE_DEF(strcpy)    \
-    REPLACE_DEF(strncpy)   \
-    REPLACE_DEF(strcat)    \
-    REPLACE_DEF(strncat)   \
-    REPLACE_DEF(memmove)   \
+#define REPLACE_DEFS()             \
+    REPLACE_DEF(memset, NULL)      \
+    REPLACE_DEF(memcpy, NULL)      \
+    REPLACE_DEF(memchr, NULL)      \
+    IF_LINUX(REPLACE_DEF(memrchr, NULL)) \
+    IF_LINUX(REPLACE_DEF(rawmemchr, NULL)) \
+    REPLACE_DEF(strchr, NULL)      \
+    REPLACE_DEF(strrchr, NULL)     \
+    IF_LINUX(REPLACE_DEF(strchrnul, NULL)) \
+    REPLACE_DEF(strlen, "wcslen")  \
+    REPLACE_DEF(strcmp, "wcscmp")  \
+    REPLACE_DEF(strncmp, "wcsncmp")\
+    REPLACE_DEF(strcpy, NULL)      \
+    REPLACE_DEF(strncpy, NULL)     \
+    REPLACE_DEF(strcat, NULL)      \
+    REPLACE_DEF(strncat, NULL)     \
+    REPLACE_DEF(memmove, NULL)     \
     /* DO NOT ADD ABOVE HERE w/o updating drmemory.pl -libc_addrs */ \
-    REPLACE_DEF(memcmp)    \
-    REPLACE_DEF(wmemset)   \
-    REPLACE_DEF(wmemcpy)   \
-    REPLACE_DEF(wmemchr)   \
-    REPLACE_DEF(wcslen)    \
-    REPLACE_DEF(wcscmp)    \
-    REPLACE_DEF(wcsncmp)   \
-    REPLACE_DEF(wmemcmp)
+    REPLACE_DEF(memcmp, NULL)      \
+    REPLACE_DEF(wmemset, NULL)     \
+    REPLACE_DEF(wmemcpy, NULL)     \
+    REPLACE_DEF(wmemchr, NULL)     \
+    REPLACE_DEF(wcslen, NULL)      \
+    REPLACE_DEF(wcscmp, NULL)      \
+    REPLACE_DEF(wcsncmp, NULL)     \
+    REPLACE_DEF(wmemcmp, NULL)
 
 /* TODO(timurrrr): add wrappers for wcschr, wcsrchr, wcscpy, wcsncpy, wcscat,
  * wcsncat, wmemmove.
  */
 
 static const char *replace_routine_name[] = {
-#define REPLACE_DEF(nm) STRINGIFY(nm),
+#define REPLACE_DEF(nm, wide) STRINGIFY(nm),
     REPLACE_DEFS()
 #undef REPLACE_DEF
 };
 #define REPLACE_NUM (sizeof(replace_routine_name)/sizeof(replace_routine_name[0]))
+
+static const char * const replace_routine_wide_alt[] = {
+#define REPLACE_DEF(nm, wide) wide,
+    REPLACE_DEFS()
+#undef REPLACE_DEF
+};
+
 
 /* This table is only written at init time, so no synch needed */
 #define REPLACE_TABLE_HASH_BITS 6
@@ -577,7 +587,7 @@ ACTUAL_PRAGMA( code_seg() )
  ***************************************************************************/
 
 static const void *replace_routine_addr[] = {
-#define REPLACE_DEF(nm) replace_##nm,
+#define REPLACE_DEF(nm, wide) replace_##nm,
     REPLACE_DEFS()
 #undef REPLACE_DEF
 };
@@ -775,19 +785,72 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 {
     uint i;
     sym_enum_data_t *edata = (sym_enum_data_t *) data;
+    bool replace = true;
     ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
     LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
+
     /* Using hashtable lookup to avoid linear walk of strcmp.
      * Linear walk isn't much slower now, but will become worse
      * as we add more routines.
      */
     i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
-    /* i#617: some modules have multiple addresses for one symbol: e.g., unit_tests.exe 
-     * strlen, strchr, and strrchr
+    if (i == 0)
+        return true; /* keep iterating */
+
+#ifdef WINDOWS /* drsym_get_func_type NYI on Linux, and wchar_t rarely used there */
+    /* i#682: chrome has str* routines that take in wchar_t.  We ask for types
+     * and treat wide as corresponding wcs*.  We only look at the str* routines
+     * and we assume each has a char* (or const char*) pointer as its first arg.
+     * Could have a bool in REPLACE_DEFS.
      */
-    if (i != 0 && !edata->processed[i-1]) {
-        i--;
-        replace_routine(edata->add, edata->mod, edata->mod->start + modoffs, i);
+    if (name[0] == 's' && name[1] == 't' && name[2] == 'r') {
+        size_t bufsz = 256; /* good starting size: big enough for str* in practice */
+        char *buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+        drsym_func_type_t *func_type;
+        drsym_error_t err;
+        do {
+            err = drsym_get_func_type(edata->mod->full_path, modoffs,
+                                      buf, bufsz, &func_type);
+            if (err != DRSYM_ERROR_NOMEM)
+                break;
+            global_free(buf, bufsz, HEAPSTAT_MISC);
+            bufsz *= 2;
+            buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+        } while (true);
+        if (err == DRSYM_SUCCESS &&
+            func_type->num_args >= 1 &&
+            func_type->arg_types[0]->kind == DRSYM_TYPE_PTR) {
+            drsym_ptr_type_t *arg_type = (drsym_ptr_type_t*) func_type->arg_types[0];
+            if (arg_type->elt_type->kind == DRSYM_TYPE_INT &&
+                arg_type->elt_type->size == sizeof(wchar_t)) {
+                WARN("WARNING: %s "PIFX" arg type is wchar_t*!\n", name, modoffs);
+                if (i != 0 && replace_routine_wide_alt[i-1] != NULL) {
+                    /* Replace as wide-char routine instead.  It will get
+                     * put into symcache under the wide name, so we will
+                     * avoid this type lookup next time.
+                     */
+                    name = replace_routine_wide_alt[i-1];
+                    i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
+                } else
+                    replace = false;
+            } else if (arg_type->elt_type->kind != DRSYM_TYPE_INT ||
+                       arg_type->elt_type->size != sizeof(char)) {
+                WARN("WARNING: %s "PIFX" has unknown arg types!\n", name, modoffs);
+                replace = false;
+            }
+        }
+        global_free(buf, bufsz, HEAPSTAT_MISC);
+    }
+#endif
+
+    if (replace) {
+        /* i#617: some modules have multiple addresses for one symbol:
+         * e.g., unit_tests.exe strlen, strchr, and strrchr
+         */
+        if (i != 0 && !edata->processed[i-1]) {
+            i--;
+            replace_routine(edata->add, edata->mod, edata->mod->start + modoffs, i);
+        }
     }
     return true; /* keep iterating */
 }
