@@ -463,6 +463,19 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
     LOGPT(SYSCALL_VERBOSE, pt, "in event_basic_block(tag="PFX")%s%s\n", tag,
           for_trace ? " for trace" : "",
           translating ? " translating" : "");
+#ifdef USE_DRSYMS
+    DOLOG(3, {
+        char buf[128];
+        size_t sofar = 0;
+        ssize_t len;
+        if (!translating) {
+            BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                     "new basic block @"PFX" ==", tag);
+            print_symbol(tag, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+            LOG(1, "%s\n", buf);
+        }
+    });
+#endif
     return instrument_bb(drcontext, tag, bb, for_trace, translating);
 }
 

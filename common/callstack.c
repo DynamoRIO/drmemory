@@ -390,7 +390,7 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
     }
 }
 
-static bool
+bool
 print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
 {
     bool res;
@@ -421,8 +421,8 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
             });
             STATS_INC(symbol_names_truncated);
         }
-        /* I like have +0x%x to show offs within func but we'll match addr2line */
-        BUFPRINT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
+        /* I like having +0x%x to show offs within func but we'll match addr2line */
+        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
         if (TEST(PRINT_SYMBOL_OFFSETS, op_print_flags)) {
             BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX,
                      addr - data->start - sym->start_offs);
