@@ -229,6 +229,10 @@ insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                       scratch_reg_info_t *si, int aflags);
 
 void
+restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
+                       fastpath_info_t *mi, bb_info_t *bi);
+
+void
 add_jcc_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, uint jcc_opcode,
                  fastpath_info_t *mi);
 

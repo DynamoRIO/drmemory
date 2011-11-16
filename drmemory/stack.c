@@ -286,6 +286,22 @@ get_esp_adjust_type(uint opc)
     case OP_leave:
     case OP_lea:
     case OP_xchg:
+    case OP_cmovb:
+    case OP_cmovnb:
+    case OP_cmovbe:
+    case OP_cmovnbe:
+    case OP_cmovl:
+    case OP_cmovnl:
+    case OP_cmovle:
+    case OP_cmovnle:
+    case OP_cmovo:
+    case OP_cmovno:
+    case OP_cmovp:
+    case OP_cmovnp:
+    case OP_cmovs:
+    case OP_cmovns:
+    case OP_cmovz:
+    case OP_cmovnz:
         return ESP_ADJUST_ABSOLUTE;
     case OP_inc:
     case OP_dec:
@@ -454,6 +470,30 @@ handle_esp_adjust_shared_slowpath_zero(reg_t val)
     handle_esp_adjust_shared_slowpath(val, false);
 }
 
+/* i#668: instrument code to handle esp adjustment via cmovcc. */
+static void
+instrument_esp_cmovcc_adjust(void *drcontext, 
+                             instrlist_t *bb, 
+                             instr_t *inst,
+                             instr_t *skip,
+                             bb_info_t *bi)
+{
+    instr_t *jcc;
+    int opc = instr_get_opcode(inst);
+    /* restore the app's aflags if necessary */
+    if (!options.leaks_only && whole_bb_spills_enabled()) {
+        restore_aflags_if_live(drcontext, bb, inst, NULL, bi);
+        /* to avoid eflags save on the mark_eflags_used later */
+        bi->eflags_used = true;
+    }
+    /* jcc skip */
+    jcc = INSTR_CREATE_jcc_short(drcontext,
+                                 instr_cmovcc_to_jcc(opc),
+                                 opnd_create_instr(skip));
+    instr_invert_cbr(jcc);
+    PRE(bb, inst, jcc);
+}
+
 static app_pc
 generate_shared_esp_slowpath_helper(void *drcontext, instrlist_t *ilist, app_pc pc,
                                     bool shadow_xsp/*else, zero*/)
@@ -546,9 +586,14 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     int opc = instr_get_opcode(inst);
     opnd_t arg;
     esp_adjust_t type;
+    instr_t *skip;
     
     if (!needs_esp_adjust(inst, shadow_xsp))
         return false;
+
+    skip = INSTR_CREATE_label(drcontext);
+    if (opc_is_cmovcc(opc))
+        instrument_esp_cmovcc_adjust(drcontext, bb, inst, skip, bi);
 
     /* Call handle_esp_adjust */
     arg = instr_get_src(inst, 0); /* immed is 1st src */
@@ -683,6 +728,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                        handle_esp_adjust_zero),
                              false, 2, OPND_CREATE_INT32(type), arg);
     }
+    PRE(bb, inst, skip);
     return true;
 }
 
@@ -850,6 +896,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     bool eflags_live;
     esp_adjust_t type = get_esp_adjust_type(opc);
     reg_id_t reg_mod;
+    instr_t *skip;
     
     if (!needs_esp_adjust(inst, shadow_xsp))
         return false;
@@ -870,7 +917,8 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else if (opc == OP_enter) {
         negate = true;
     } else if (opc == OP_mov_st || opc == OP_mov_ld ||
-               opc == OP_leave || opc == OP_lea) {
+               opc == OP_leave || opc == OP_lea ||
+               opc_is_cmovcc(opc)) {
         absolute = true;
     } else if (opc == OP_xchg) {
         absolute = true;
@@ -884,6 +932,10 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     memset(&mi, 0, sizeof(mi));
     mi.bb = bi;
+
+    skip = INSTR_CREATE_label(drcontext);
+    if (opc_is_cmovcc(opc))
+        instrument_esp_cmovcc_adjust(drcontext, bb, inst, skip, bi);
 
     /* set up regs and spill info */
     if (!shadow_xsp) {
@@ -992,6 +1044,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg3, false/*restore*/, false);
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, false/*restore*/, false);
     insert_spill_or_restore(drcontext, bb, inst, &mi.reg1, false/*restore*/, false);
+    PRE(bb, inst, skip);
     return true;
 }
 

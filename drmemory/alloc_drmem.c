@@ -2043,7 +2043,7 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
                 base, base+sz);
             ASSERT(!dr_memory_is_dr_internal(addr) &&
                    !dr_memory_is_in_client(addr),
-                   "app is using tool's memory: please report this!");
+                   "App is using tool's memory: please report this!");
             shadow_set_range(base, base+sz, SHADOW_DEFINED);
             return true;
         }

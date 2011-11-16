@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+static void *orig_esi;
 static void *stack0;
 static void *stack1;
 static void *stack2;
@@ -91,6 +92,72 @@ test_alloca(void)
     free(x);
 }
 
+void
+wrong()
+{
+    printf("in wrong\n");
+}
+
+void
+right()
+{
+    printf("in right\n");
+}
+
+void
+test_cmovcc(void)
+{
+#ifdef WINDOWS
+    __asm {
+        mov stack0, esp   /* store orig stack */
+        mov orig_esi, esi /* store orig ebp */
+        mov esi, stack1
+        cmp esi, esp
+        cmovne esp, esi /* test execute cmovcc */
+        jne correct1
+        call wrong
+        jmp test2
+        correct1:
+        call right
+        test2:
+        mov esi, stack1
+        cmp esp, esi     /* they should be equal */
+        cmovne esp, esi  /* test skip cmovcc */
+        je correct2
+        call wrong
+        jmp done
+        correct2:
+        call right
+        done:
+        mov esi, orig_esi /* restore orig esi */
+        mov esp, stack0 /* restore orig stack */
+    };
+#else
+    __asm("mov %%esp, %0" : "=m"(stack0)); /* store orig stack */
+    __asm("mov %%esi, %0" : "=m"(orig_esi)); /* store orig esi */
+    __asm("mov %0, %%esi" : : "g" (stack1));
+    __asm("cmp %%esi, %%esp" :);
+    __asm("cmovne %%esi, %%esp" :);
+    __asm("jne correct1");
+    __asm("call wrong");
+    __asm("jmp test2");
+    __asm("correct1:");
+    __asm("call right");
+    __asm("test2:");
+    __asm("mov %0, %%esi" : : "g" (stack1));
+    __asm("cmp %%esi, %%esp" :);
+    __asm("cmovne %%esi, %%esp" : );
+    __asm("je correct2");
+    __asm("call wrong");
+    __asm("jmp done");
+    __asm("correct2:");
+    __asm("call right");
+    __asm("done:");
+    __asm("mov %0, %%esi" : : "g"(orig_esi)); /* restore orig esi */
+    __asm("mov %0, %%esp" : : "g"(stack0)); /* restore orig stack */
+#endif
+}
+
 int
 main()
 {
@@ -102,6 +169,8 @@ main()
     test_swap(32*1024, 24*1024);
     /* test giant alloca (will also test fault on special shadow write) */
     test_alloca();
+    /* i#668 test esp adjusted by cmovcc */
+    test_cmovcc();
     printf("all done\n");
     return 0;
 }

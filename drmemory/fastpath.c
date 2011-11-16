@@ -1742,7 +1742,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
 /* Single eflags save per bb 
  * N.B.: the sequence added here is matched in restore_mcontext_on_shadow_fault()
  */
-static void
+void
 restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, bb_info_t *bi)
 {
