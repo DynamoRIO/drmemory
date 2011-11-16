@@ -2020,7 +2020,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 
     if (options.track_heap) {
         const char *modname = dr_module_preferred_name(info);
-        bool use_redzone = true;
 #ifdef WINDOWS
         bool no_dbg_routines = false;
 #endif
@@ -2044,27 +2043,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         }
 
         dr_mutex_lock(alloc_routine_lock);
-#ifdef USE_DRSYMS
-        if (lookup_symbol_or_export(info, "_malloc_dbg") != NULL) {
-            /* i#26: msvcrtdbg adds its own redzone that contains a debugging
-             * data structure.  The problem is that operator delete() assumes
-             * this data struct is placed immediately prior to the ptr
-             * returned by malloc.  We aren't intercepting new or delete
-             * so we simply skip our redzone for msvcrtdbg: after all there's
-             * already a redzone there.
-             */
-            use_redzone = false;
-            LOG(1, "NOT using redzones for routines in %s "PFX"\n",
-                (modname == NULL) ? "<noname>" : modname, info->start);
-            /* We watch debug operator delete b/c it reads malloc's headers (i#26)
-             * but we now watch it in general so we don't need to special-case
-             * it here.
-             */
-        } else
-            no_dbg_routines = true;
-#endif
         set_libc = find_alloc_routines(info, possible_libc_routines,
-                                       POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
+                                       POSSIBLE_LIBC_ROUTINE_NUM, true,
                                        false, HEAPSET_LIBC);
         if (info->start == get_libc_base()) {
             if (set_dyn_libc != NULL)
@@ -2072,16 +2052,32 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             set_dyn_libc = set_libc;
         }
 #ifdef WINDOWS
+# ifdef USE_DRSYMS
         /* optimization: assume no other dbg routines if no _malloc_dbg */
+        no_dbg_routines = (lookup_symbol_or_export(info, "_malloc_dbg") == NULL);
+# endif
+        /* i#26: msvcrtdbg adds its own redzone that contains a debugging
+         * data structure.  The problem is that operator delete() assumes
+         * this data struct is placed immediately prior to the ptr
+         * returned by malloc.  We aren't intercepting new or delete
+         * as full layers so we simply skip our redzone for msvcrtdbg: after all there's
+         * already a redzone there.
+         */
+        /* We watch debug operator delete b/c it reads malloc's headers (i#26)
+         * but we now watch it in general so we don't need to special-case
+         * it here.
+         */
         if (!no_dbg_routines) {
+            LOG(1, "NOT using redzones for _dbg routines in %s "PFX"\n",
+                (modname == NULL) ? "<noname>" : modname, info->start);
             find_alloc_routines(info, possible_crtdbg_routines,
-                                POSSIBLE_CRTDBG_ROUTINE_NUM, use_redzone, false,
+                                POSSIBLE_CRTDBG_ROUTINE_NUM, false, false,
                                 HEAPSET_LIBC_DBG);
         }
 #endif
         if (options.intercept_operators) {
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
-                                          POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
+                                          POSSIBLE_CPP_ROUTINE_NUM, true,
                                           false,
                                           /* we assume we only hit i#26 where op delete
                                            * reads heap headers when _malloc_dbg
@@ -4731,6 +4727,7 @@ alloc_hook(app_pc pc)
              * NtContinue) and determine whether returning to heap routine.  For
              * now assuming heap routines do not handle faults.
              */
+            LOG(2, "Exception in app\n");
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
         }
