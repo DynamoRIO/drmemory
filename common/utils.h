@@ -24,6 +24,7 @@
 #define _UTILS_H_ 1
 
 #include "hashtable.h"
+#include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
 
 #include <limits.h>
 
@@ -637,7 +638,11 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
 
 #define END_MARKER IF_DRSYMS_ELSE("", "\terror end"NL)
 
-#define MAX_OPTION_LEN MAXIMUM_PATH
+/* DR_MAX_OPTIONS_LENGTH is the maximum client options string length that DR
+ * will give us.  by making each individual option buffer this long, we won't
+ * have truncation issues.
+ */
+#define MAX_OPTION_LEN DR_MAX_OPTIONS_LENGTH
 
 const char *
 get_option_word(const char *s, char buf[MAX_OPTION_LEN]);

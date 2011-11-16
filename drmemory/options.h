@@ -23,12 +23,12 @@
 #ifndef _OPTIONS_H_
 #define _OPTIONS_H_ 1
 
-#include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
+#include "utils.h"  /* for MAX_OPTION_LEN */
 
-typedef char opstring_t[DR_MAX_OPTIONS_LENGTH];
+typedef char opstring_t[MAX_OPTION_LEN];
 
 /* for repeatable options (i#574): ends in double nul */
-typedef char multi_opstring_t[DR_MAX_OPTIONS_LENGTH];
+typedef char multi_opstring_t[MAX_OPTION_LEN];
 
 typedef struct _drmemory_options_t {
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \

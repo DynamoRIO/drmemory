@@ -39,8 +39,6 @@
  * OPTIONS
  */
 
-#define MAX_OPTION_LEN MAXIMUM_PATH
-
 /* not part of the default in optionsx.h b/c that's what front-end passes */
 #ifdef LINUX
 # define DEFAULT_LOGDIR "/tmp"
@@ -385,4 +383,3 @@ options_init(const char *opstr)
     }
 #endif
 }
-
