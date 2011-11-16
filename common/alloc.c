@@ -552,6 +552,8 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
     { "_free_dbg", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg", HEAP_ROUTINE_CALLOC_DBG },
+    /* _nh_malloc_dbg is called directly by debug operator new (i#500) */
+    { "_nh_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
     /* the _impl versions are sometimes called directly 
      * XXX: there are also _base versions but they always call _impl?
      */
@@ -2013,6 +2015,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     alloc_routine_set_t *set_libc;
     alloc_routine_set_t *set_cpp = NULL;
+    bool use_redzone = true;
 
 #ifdef WINDOWS
     alloc_find_syscalls(drcontext, info);
@@ -2033,7 +2036,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
          * we were injected
          */
         if (modname != NULL &&
-            /* match msvcrt.dll and msvcrNN.dll */
+            /* match msvcrtd.dll and msvcrNN.dll */
             text_matches_pattern(modname, "msvcr*d.dll", true/*ignore case*/)) {
             NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL not supported. "
                          "Please rebuild your application with either the Release "
@@ -2043,8 +2046,34 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         }
 
         dr_mutex_lock(alloc_routine_lock);
+#ifdef WINDOWS
+        if (lookup_symbol_or_export(info, "_malloc_dbg") != NULL) {
+            if (modname == NULL ||
+                !text_matches_pattern(modname, "msvcrt.dll", true/*ignore case*/)) {
+                /* i#500: debug operator new calls either malloc, which calls
+                 * _nh_malloc_dbg, or calls _nh_malloc_dbg directly; yet debug
+                 * operator delete calls _free_dbg: so we're forced to disable all
+                 * redzones since the layers don't line up.  In general when using
+                 * debug version of msvcrt everything is debug, so we disable
+                 * redzones for all C and C++ allocators.  However, msvcrt.dll
+                 * contains _malloc_dbg (but not _nh_malloc_dbg), yet its operator
+                 * new is not debug and calls (regular) malloc.  Note that
+                 * _nh_malloc_dbg is not exported so we can't use that as a decider.
+                 */
+                use_redzone = false;
+                LOG(1, "NOT using redzones for any allocators in %s "PFX"\n",
+                    (modname == NULL) ? "<noname>" : modname, info->start);
+            } else {
+                LOG(1, "NOT using redzones for _dbg routines in %s "PFX"\n",
+                    (modname == NULL) ? "<noname>" : modname, info->start);
+            }
+        } else {
+            /* optimization: assume no other dbg routines if no _malloc_dbg */
+            no_dbg_routines = true;
+        }
+# endif
         set_libc = find_alloc_routines(info, possible_libc_routines,
-                                       POSSIBLE_LIBC_ROUTINE_NUM, true,
+                                       POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
                                        false, HEAPSET_LIBC);
         if (info->start == get_libc_base()) {
             if (set_dyn_libc != NULL)
@@ -2052,10 +2081,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             set_dyn_libc = set_libc;
         }
 #ifdef WINDOWS
-# ifdef USE_DRSYMS
-        /* optimization: assume no other dbg routines if no _malloc_dbg */
-        no_dbg_routines = (lookup_symbol_or_export(info, "_malloc_dbg") == NULL);
-# endif
         /* i#26: msvcrtdbg adds its own redzone that contains a debugging
          * data structure.  The problem is that operator delete() assumes
          * this data struct is placed immediately prior to the ptr
@@ -2068,8 +2093,6 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
          * it here.
          */
         if (!no_dbg_routines) {
-            LOG(1, "NOT using redzones for _dbg routines in %s "PFX"\n",
-                (modname == NULL) ? "<noname>" : modname, info->start);
             find_alloc_routines(info, possible_crtdbg_routines,
                                 POSSIBLE_CRTDBG_ROUTINE_NUM, false, false,
                                 HEAPSET_LIBC_DBG);
@@ -2077,7 +2100,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
         if (options.intercept_operators) {
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
-                                          POSSIBLE_CPP_ROUTINE_NUM, true,
+                                          POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
                                           false,
                                           /* we assume we only hit i#26 where op delete
                                            * reads heap headers when _malloc_dbg
