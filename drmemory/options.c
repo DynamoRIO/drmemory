@@ -358,7 +358,7 @@ options_init(const char *opstr)
             /* Hide Visual Studio STL and CRT source file paths */
             dr_snprintf(options.callstack_srcfile_hide,
                         BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_hide),
-                        "*visual studio*,*self_x86*");
+                        "*program files*visual studio*,*self_x86*");
             NULL_TERMINATE_BUFFER(options.callstack_srcfile_hide);
         }
         if (!option_specified.callstack_srcfile_prefix) { /* overridable */
