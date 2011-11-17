@@ -296,6 +296,12 @@ options_init(const char *opstr)
          */
         options.shadowing = false;
     }
+    /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath
+     * XXX: there is nothing fundamentally impossible, it is just we didn't
+     * bother to make it work as such combination is not very useful.
+     */
+    if (options.leaks_only && !options.esp_fastpath)
+        usage_error("-leaks_only cannot be used with -no_esp_fastpath", "");
     if (options.perturb_only) {
         options.perturb = true;
         options.track_allocs = false;
