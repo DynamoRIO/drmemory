@@ -970,10 +970,15 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
 }
 
 static void
-prepare_thread_for_scan(void *drcontext)
+prepare_thread_for_scan(void *drcontext, bool *was_app_state OUT)
 {
+    ASSERT(was_app_state != NULL, "invalid param");
+    *was_app_state = dr_using_app_state(drcontext);
+    LOG(2, "%s: thread %d was %s state\n", __FUNCTION__,
+        dr_get_thread_id(drcontext), *was_app_state ? "app" : "priv");
     /* Restore app's PEB and TEB fields (i#248) */
-    dr_switch_to_app_state(drcontext);
+    if (!*was_app_state)
+        dr_switch_to_app_state(drcontext);
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
     LOG(3, "prepare_thread_for_scan: thread %d has TLS "PFX"\n",
@@ -998,10 +1003,11 @@ prepare_thread_for_scan(void *drcontext)
 }
 
 static void
-restore_thread_after_scan(void *drcontext)
+restore_thread_after_scan(void *drcontext, bool was_app_state)
 {
     /* Restore private PEB and TEB fields (i#248) */
-    dr_switch_to_dr_state(drcontext);
+    if (!was_app_state)
+        dr_switch_to_dr_state(drcontext);
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
     if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
@@ -1020,7 +1026,8 @@ leak_scan_for_leaks(bool at_exit)
 {
     pc_entry_t *e, *next_e;
     void **drcontexts = NULL;
-    uint num_threads, i;
+    bool *was_app_state = NULL;
+    uint num_threads = 0, i;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     reachability_data_t data;
 #ifdef DEBUG
@@ -1054,12 +1061,17 @@ leak_scan_for_leaks(bool at_exit)
         /* PR 428709: reachability mid-run */
         if (!dr_suspend_all_other_threads(&drcontexts, &num_threads, NULL)) {
             LOG(0, "WARNING: not all threads suspended for reachability analysis\n");
-            /* We carry on and live w/ the raciness */
+            /* We carry on and live w/ the raciness.  We still allocate was_app_state
+             * to store cur thread info.
+             */
+            ASSERT(num_threads == 0, "param clobbered on failure");
         }
         /* Restore app's PEB and TEB fields (i#248) */
+        /* Store prior state (+1 for cur thread) (i#5) */
+        was_app_state = (bool *) global_alloc((num_threads+1)*sizeof(bool), HEAPSTAT_MISC);
         for (i = 0; i < num_threads; i++)
-            prepare_thread_for_scan(drcontexts[i]);
-        prepare_thread_for_scan(dr_get_current_drcontext());
+            prepare_thread_for_scan(drcontexts[i], &was_app_state[i]);
+        prepare_thread_for_scan(dr_get_current_drcontext(), &was_app_state[num_threads]);
     }
 
     memset(&data, 0, sizeof(data));
@@ -1126,8 +1138,11 @@ leak_scan_for_leaks(bool at_exit)
     if (drcontexts != NULL) {
         /* Back to private PEB and TEB fields (i#248) */
         for (i = 0; i < num_threads; i++)
-            restore_thread_after_scan(drcontexts[i]);
-        restore_thread_after_scan(dr_get_current_drcontext());
+            restore_thread_after_scan(drcontexts[i], was_app_state[i]);
+    }
+    if (was_app_state != NULL) {
+        restore_thread_after_scan(dr_get_current_drcontext(), was_app_state[num_threads]);
+        global_free(was_app_state, (num_threads+1)*sizeof(bool), HEAPSTAT_MISC);
     }
 
     /* up to caller to call report_leak_stats_{checkpoint,revert} if desired */

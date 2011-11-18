@@ -686,6 +686,10 @@ get_app_PEB(void)
      * copy, so we query DR to get the app's PEB.
      * Note that NtQueryInformationProcess, disturbingly, returns the pointer
      * in the TEB, so we can't use that!
+     * Update: I'm not seeing NtQueryInformationProcess do that: for i#5
+     * it returns the system PEB, not TEB->ProcessEnvironmentBlock.
+     * Does it do different things at different times, or was I measuring on
+     * different OS's?  The latter is on xp64.
      */
     return (PEB *) dr_get_app_PEB();
 }

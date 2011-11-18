@@ -59,6 +59,9 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.6 and 1.4.5 include:
+ - Various bug fixes
+
 The changes between version 1.4.5 and 1.4.4 include:
  - The tool now detects mismatched use of malloc/new/new[] vs
    free/delete/delete[]
