@@ -147,6 +147,7 @@ alloc_drmem_init(void)
 #ifdef WINDOWS
     alloc_ops.disable_crtdbg = options.disable_crtdbg &&
         !options.leaks_only && options.shadowing;
+    alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
     alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
@@ -174,6 +175,7 @@ alloc_drmem_init(void)
               options.midchunk_string_ok,
               options.midchunk_size_ok,
               options.show_reachable,
+              IF_WINDOWS_(options.check_encoded_pointers)
               next_defined_dword,
               end_of_defined_region,
               is_register_defined);

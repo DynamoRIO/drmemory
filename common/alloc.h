@@ -49,6 +49,8 @@ typedef struct _alloc_options_t {
 #ifdef WINDOWS
     /* Disable debug CRT checks */
     bool disable_crtdbg;
+    /* Track encoded pointers */
+    bool check_encoded_pointers;
 #endif
     /* prefer _msize to malloc_usable_size.
      * really something of a hack for chromium: i#314, i#320
@@ -95,6 +97,9 @@ extern uint post_call_flushes;
 extern uint num_mallocs;
 extern uint num_large_mallocs;
 extern uint num_frees;
+# ifdef WINDOWS
+extern uint pointers_encoded;
+# endif
 #endif
 
 void
@@ -323,5 +328,11 @@ client_add_malloc_routine(app_pc pc);
 
 void
 client_remove_malloc_routine(void *client_data);
+
+/* Encoded pointer tracking (i#153).  Guarantees that a non-NULL value
+ * returned will always return NULL if passed back through.
+ */
+byte *
+get_decoded_ptr(byte *encoded);
 
 #endif /* _ALLOC_H_ */

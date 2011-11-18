@@ -2055,6 +2055,7 @@ dr_init(client_id_t client_id)
      * the alloc_stack_table, so no refcounts
      */
 
+    memset(&alloc_ops, 0, sizeof(alloc_ops));
     alloc_ops.track_allocs = true;
     alloc_ops.track_heap = true;
     alloc_ops.redzone_size = 0; /* no redzone */
@@ -2063,6 +2064,9 @@ dr_init(client_id_t client_id)
     alloc_ops.get_padded_size = true;
     alloc_ops.cache_postcall = false;
     alloc_ops.intercept_operators = false;
+#ifdef WINDOWS
+    alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
+#endif
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
@@ -2114,6 +2118,7 @@ dr_init(client_id_t client_id)
                   options.midchunk_string_ok,
                   options.midchunk_size_ok,
                   options.show_reachable,
+                  IF_WINDOWS_(options.check_encoded_pointers)
                   NULL, NULL, NULL);
     }
 }

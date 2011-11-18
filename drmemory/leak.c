@@ -21,6 +21,7 @@
  */
 
 #include "dr_api.h"
+#include "utils.h"
 #include "leak.h"
 #include "alloc.h"
 #include "heap.h"
@@ -94,6 +95,7 @@ uint midchunk_postsize_ptrs;
 uint midchunk_postnew_ptrs;
 uint midchunk_postinheritance_ptrs;
 uint midchunk_string_ptrs;
+uint encoded_pointers_scanned;
 #endif
 
 /* FIXME PR 487993: switch to file-private sets of options and option parsing */ 
@@ -104,6 +106,9 @@ static bool op_midchunk_inheritance_ok;
 static bool op_midchunk_string_ok;
 static bool op_midchunk_size_ok;
 static bool op_show_reachable;
+#ifdef WINDOWS
+static bool op_check_encoded_pointers;
+#endif
 static byte *(*cb_next_defined_dword)(byte *, byte *);
 static byte *(*cb_end_of_defined_region)(byte *, byte *);
 static bool (*cb_is_register_defined)(void *, reg_id_t);
@@ -123,6 +128,7 @@ leak_init(bool have_defined_info,
           bool midchunk_string_ok,
           bool midchunk_size_ok,
           bool show_reachable,
+          IF_WINDOWS_(bool check_encoded_pointers)
           byte *(*next_defined_dword)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t))
@@ -138,6 +144,9 @@ leak_init(bool have_defined_info,
     op_midchunk_string_ok = midchunk_string_ok;
     op_midchunk_size_ok = midchunk_size_ok;
     op_show_reachable = show_reachable;
+#ifdef WINDOWS
+    op_check_encoded_pointers = check_encoded_pointers;
+#endif
     if (op_have_defined_info) {
         ASSERT(next_defined_dword != NULL, "defined info needs cbs");
         ASSERT(end_of_defined_region != NULL, "defined info needs cbs");
@@ -622,26 +631,53 @@ static void
 check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *data)
 {
     byte *chunk_start = NULL;
-    byte *chunk_end = malloc_end(pointer);
+    byte *chunk_end;
     bool add_reachable = false, add_maybe_reachable = false;
     uint flags = 0;
     bool reachable = false;
     rb_node_t *node = NULL;
 
-    if (chunk_end != NULL) {
-        if (ptr_addr >= pointer && ptr_addr < chunk_end) {
-            LOG(3, "\t("PFX" points to start of its own chunk "PFX"-"PFX")\n",
-                ptr_addr, pointer, chunk_end);
-        } else {
-            flags = malloc_get_client_flags(pointer);
-            LOG(3, "\t"PFX" points to chunk "PFX"-"PFX"\n", ptr_addr, pointer, chunk_end);
-            chunk_start = pointer;
-            reachable = true;
+    if (pointer == NULL)
+        return;
+
+#ifdef WINDOWS
+    if (op_check_encoded_pointers) {
+        /* XXX: measure perf hit of yet another hashtable lookup on every single ptr.
+         * Could store in malloc table since already looking there, and assuming
+         * disjoint though could imagine an xor happening to collide.
+         */
+        byte *decoded = get_decoded_ptr(pointer);
+        if (decoded != NULL) {
+            LOG(3, "\t("PFX" when decoded is "PFX" so checking both)\n",
+                pointer, decoded);
+            STATS_INC(encoded_pointers_scanned);
+            /* We check both encoded and decoded b/c xor could collide w/ heap addr.
+             * No reverse in table so we won't recurse forever.
+             */
+            ASSERT(get_decoded_ptr(decoded) == NULL, "encoded table can't have reverse");
+            check_reachability_pointer(decoded, ptr_addr, data);
+            pointer = decoded;
         }
-    } else {
-        size_t chunk_size;
-        node = rb_in_node(data->alloc_tree, pointer);
-        if (node != NULL) {
+    }
+#endif
+
+    /* We look in rbtree first since likely to miss both so why do hash lookup */
+    node = rb_in_node(data->alloc_tree, pointer);
+    if (node != NULL) {
+        chunk_end = malloc_end(pointer);
+        if (chunk_end != NULL) {
+            if (ptr_addr >= pointer && ptr_addr < chunk_end) {
+                LOG(3, "\t("PFX" points to start of its own chunk "PFX"-"PFX")\n",
+                    ptr_addr, pointer, chunk_end);
+            } else {
+                flags = malloc_get_client_flags(pointer);
+                LOG(3, "\t"PFX" points to chunk "PFX"-"PFX"\n",
+                    ptr_addr, pointer, chunk_end);
+                chunk_start = pointer;
+                reachable = true;
+            }
+        } else {
+            size_t chunk_size;
             rb_node_fields(node, &chunk_start, &chunk_size, NULL);
             chunk_end = chunk_start + chunk_size;
             ASSERT(is_in_heap_region(pointer), "heap data struct inconsistency");
@@ -671,22 +707,22 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
                     add_maybe_reachable = true;
                 }
             }
-        } else {
-#if 0
-            /* FIXME PR 484550: investigate addressable bytes in heap but not in
-             * chunk.  I'm seeing defined bytes in heap regions that aren't in
-             * allocated chunk.  My old leak checking also found bytes inside
-             * heap regions that were not UNADDR but I don't know how often
-             * those were not in chunks, and most of those were from UNADDR
-             * errors that we then marked as defined.  This may well be some
-             * inconsistency that should be fixed so we should investigate.
-             * For now, relaxing the assert.
-             */
-            ASSERT(!is_in_heap_region(pointer) || 
-                   shadow_get_byte(pointer) == SHADOW_UNADDRESSABLE,
-                   "heap data struct inconsistency");
-#endif
         }
+    } else {
+#if 0
+        /* FIXME PR 484550: investigate addressable bytes in heap but not in
+         * chunk.  I'm seeing defined bytes in heap regions that aren't in
+         * allocated chunk.  My old leak checking also found bytes inside
+         * heap regions that were not UNADDR but I don't know how often
+         * those were not in chunks, and most of those were from UNADDR
+         * errors that we then marked as defined.  This may well be some
+         * inconsistency that should be fixed so we should investigate.
+         * For now, relaxing the assert.
+         */
+        ASSERT(!is_in_heap_region(pointer) ||
+               shadow_get_byte(pointer) == SHADOW_UNADDRESSABLE,
+               "heap data struct inconsistency");
+#endif
     }
 #ifdef WINDOWS
     if (reachable && rtl_fail_info != NULL &&

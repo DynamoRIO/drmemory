@@ -218,6 +218,11 @@ dump_statistics(void)
                xl8_not_shared_mem2mem, xl8_not_shared_offs);
     dr_fprintf(f_global, "\t%6u instrs slowpath, %6u count slowpath\n",
                xl8_shared_slowpath_instrs, xl8_shared_slowpath_count);
+#ifdef WINDOWS
+    dr_fprintf(f_global,
+               "encoded pointers: total: %5u, seen during leak scan: %5u\n",
+               pointers_encoded, encoded_pointers_scanned);
+#endif
     dr_fprintf(f_global,
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,

@@ -245,6 +245,11 @@ OPTION_CLIENT_BOOL(client, check_leaks_on_destroy, true,
 OPTION_CLIENT_BOOL(client, possible_leaks, true,
                    "Show possible-leak callstacks",
                    "Whether to list possibly-reachable allocations when leak checking.  Requires -check_leaks.")
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(client, check_encoded_pointers, true,
+                   "Check for encoded pointers",
+                   "Check for encoded pointers to eliminate false positives from pointers kept in encoded form.")
+#endif
 OPTION_CLIENT_BOOL(client, midchunk_size_ok, true,
                    "Consider mid-chunk post-size pointers legitimate",
                    "Consider allocations reached by a mid-allocation pointer that points past a size field at the head of the allocation to be reachable instead of possibly leaked.  Currently this option looks for a very specific pattern.  If your application's header is slightly different please contact the authors about generalizing this check.")
