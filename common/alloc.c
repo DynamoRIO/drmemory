@@ -1649,6 +1649,15 @@ static hashtable_t post_call_table;
 # define POST_CALL_SYMCACHE_NAME "__DrMemory_post_call"
 #endif
 
+#ifdef USE_DRSYMS
+/* We can't use post-call symcache entries at DR's module load event b/c
+ * it's prior to rebasing.  Our solution is to wait for the first execution
+ * from that module.  To find it we store the bounds in an interval tree.
+ * Protected by post_call_table lock.
+ */
+static rb_tree_t *mod_pending_tree;
+#endif
+
 typedef struct _post_call_entry_t {
     /* PR 454616: we need two flags in the post_call_table: one that
      * says "please add instru for this callee" and one saying "all
@@ -1905,6 +1914,10 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
                           NULL, NULL);
+#ifdef USE_DRSYMS
+        if (options.cache_postcall)
+            mod_pending_tree = rb_tree_create(NULL);
+#endif
         hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!strdup*/);
 #ifdef WINDOWS
@@ -1948,6 +1961,10 @@ alloc_exit(void)
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
         hashtable_delete_with_stats(&post_call_table, "post_call");
+#ifdef USE_DRSYMS
+        if (options.cache_postcall)
+            rb_tree_destroy(mod_pending_tree);
+#endif
         hashtable_delete_with_stats(&native_alloc_table, "native_alloc");
 #ifdef WINDOWS
         hashtable_delete_with_stats(&encoded_ptr_table, "encoded_ptr");
@@ -2155,21 +2172,50 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #ifdef USE_DRSYMS
     if (options.track_allocs && options.cache_postcall &&
         symcache_module_is_cached(info)) {
-        size_t modoffs;
-        uint count;
-        uint idx;
-        uint i;
+        /* i#690: we can't add post-call entries now b/c the module has
+         * not been rebased and we need to store actual code so we
+         * use a pending entry.
+         */
+        IF_DEBUG(rb_node_t *existing;)
         hashtable_lock(&post_call_table);
-        for (idx = 0, count = 1;
-             idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
-                                            idx, &modoffs, &count); idx++) {
-            if (modoffs != 0)
-                post_call_entry_add(info->start + modoffs, false, true);
-        }
+        IF_DEBUG(existing =)
+            rb_insert(mod_pending_tree, info->start, info->end - info->start, NULL);
         hashtable_unlock(&post_call_table);
+        ASSERT(existing == NULL, "new module overlaps w/ existing");
     }
 #endif
 }
+
+#ifdef USE_DRSYMS
+static void
+alloc_check_pending_module(app_pc pc)
+{
+    if (options.track_allocs && options.cache_postcall) {
+        rb_node_t *node;
+        hashtable_lock(&post_call_table);
+        node = rb_in_node(mod_pending_tree, pc);
+        if (node != NULL) {
+            size_t modoffs;
+            uint count;
+            uint idx;
+            uint i;
+            module_data_t *info;
+            rb_delete(mod_pending_tree, node);
+            info = dr_lookup_module(pc);
+            ASSERT(info != NULL, "module can't disappear");
+            ASSERT(symcache_module_is_cached(info), "must have symcache");
+            for (idx = 0, count = 1;
+                 idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
+                                                idx, &modoffs, &count); idx++) {
+                if (modoffs != 0)
+                    post_call_entry_add(info->start + modoffs, false, true);
+            }
+            dr_free_module_data(info);
+        }
+        hashtable_unlock(&post_call_table);
+    }
+}
+#endif
 
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
@@ -2247,6 +2293,14 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
 
     if (options.track_allocs) {
         hashtable_lock(&post_call_table);
+#ifdef USE_DRSYMS
+        if (options.cache_postcall) {
+            rb_node_t *node = rb_in_node(mod_pending_tree, info->start);
+            /* module unloaded w/o any code executed */
+            if (node != NULL)
+                rb_delete(mod_pending_tree, node);
+        }
+#endif
         hashtable_remove_range(&post_call_table, info->start, info->end);
         hashtable_unlock(&post_call_table);
     }
@@ -5224,6 +5278,10 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
         *exiting_alloc = false;
 
     if (options.track_heap) {
+#ifdef USE_DRSYMS
+        /* must call this before post_call_lookup() */
+        alloc_check_pending_module(pc);
+#endif
         if (post_call_lookup(pt, pc)) {
             instrument_post_alloc_site(drcontext, bb, inst, pc);
             if (exiting_alloc != NULL)
