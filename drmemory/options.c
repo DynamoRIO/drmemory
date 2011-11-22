@@ -342,8 +342,11 @@ options_init(const char *opstr)
         options.check_leaks_on_destroy = false;
     }
 # ifdef USE_DRSYMS
-    if (options.quiet)
-        options.results_to_stderr = false; /* quiet overrides it */
+    if (options.quiet) {
+        /* quiet overrides both of these. */
+        options.results_to_stderr = false;
+        options.summary = false;
+    }
 # endif
     if (options.check_uninitialized) {
         if (options.check_stack_bounds)

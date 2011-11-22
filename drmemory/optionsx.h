@@ -148,7 +148,7 @@ OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
               "Verbosity level in log files: 0=none, 1=warnings, 2+=diagnostic.  Primarily for debugging of "TOOLNAME" itself.")
 OPTION_CLIENT_BOOL(client, quiet, false,
                    "Suppress stderr messages and results",
-                   "Suppress stderr messages and, on Windows, popup messages.  Overrides -results_to_stderr.")
+                   "Suppress stderr messages and, on Windows, popup messages.  Overrides -results_to_stderr and -summary.")
 #ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(client, results_to_stderr, true,
                    "Print error reports to stderr in addition to results.txt",
@@ -316,7 +316,7 @@ OPTION_CLIENT_BOOL(drmemscope, batch, false,
                    "Do not launch notepad with the results file at application exit.")
 OPTION_CLIENT_BOOL(drmemscope, summary, true,
                    "Display a summary of results to stderr",
-                   "Display a summary of errors to stderr at app exit.")
+                   "Display process startup information and a summary of errors to stderr at app exit.")
 OPTION_CLIENT_BOOL(drmemscope, use_symcache, true,
                    "Cache results of symbol lookups to speed up future runs",
                    "Cache results of symbol lookups to speed up future runs")
@@ -329,7 +329,7 @@ OPTION_CLIENT_BOOL(drmemscope, use_symcache_postcall, true,
 #else
 OPTION_CLIENT_BOOL(drmemscope, summary, false,
                    "Display a summary prior to symbol processing",
-                   "Display a summary of errors prior to symbol-based suppression and other processing.")
+                   "Display process startup information and a summary of errors prior to symbol-based suppression and other processing.")
 #endif
 OPTION_CLIENT_BOOL(drmemscope, warn_null_ptr, false,
                    "Warn if NULL passed to free/realloc",

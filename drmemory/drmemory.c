@@ -1153,7 +1153,7 @@ create_global_logfile(void)
 #endif
     /* make sure "Dr. Memory" is 1st (or 2nd on linux) in file (for PR 453867) */
     print_version(f_global, false);
-    if (options.verbose > 1)
+    if (options.summary && options.verbose > 1)
         NOTIFY("log dir is %s"NL, logsubdir);
     LOGF(1, f_global, "global logfile fd=%d\n", f_global);
 
@@ -1385,11 +1385,13 @@ dr_init(client_id_t id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
-    NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
+    if (options.summary)
+        NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
 # ifdef WINDOWS
-    NOTIFY("Running \"%S\""NL, get_app_commandline());
+    if (options.summary)
+        NOTIFY("Running \"%S\""NL, get_app_commandline());
 # endif
-    if (options.verbose > 1)
+    if (options.summary && options.verbose > 1)
         NOTIFY("options are \"%s\""NL, opstr);
 
     /* glibc malloc 8-byte-aligns all its allocs: but 2x redzone_size matches that */
