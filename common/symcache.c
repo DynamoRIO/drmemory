@@ -63,13 +63,17 @@
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
 #define SYMCACHE_MODULE_TABLE_HASH_BITS 6
 
-/* We need a large buffer to hold post-call addresses for i#669.
- * XXX: this makes the file large enough that it may be worth
- * implementing dr_file_rename() and switching to a
- * write-to-temp-and-rename strategy rather than needing to write it
- * all to a single buffer first.
+/* Size of the buffer used to write the symbol cache.  This is stack allocated,
+ * so it should not be increased.
  */
-#define SYMCACHE_MAX_FILE_SIZE (128*1024)
+#define SYMCACHE_BUFFER_SIZE 4096
+
+/* The number of digits used for the decimal representation of the file size of
+ * the symcache file.
+ */
+#define SYMCACHE_SIZE_DIGITS 6
+
+#define SYMCACHE_MAX_TMP_TRIES 1000
 
 /* We key on modname b/c that's also our filename: not worth adding version
  * or anything else to the name.
@@ -121,14 +125,11 @@ symcache_free_entry(void *v)
     }
 }
 
-static file_t
-symcache_open_symfile(const char *modname, uint open_flags)
+static void
+symcache_get_filename(const char *modname, char *symfile, size_t symfile_count)
 {
-    char symfile[MAXIMUM_PATH];
-    dr_snprintf(symfile, BUFFER_SIZE_ELEMENTS(symfile),
-                "%s/%s.txt", symcache_dir, modname);
-    NULL_TERMINATE_BUFFER(symfile);
-    return dr_open_file(symfile, open_flags);
+    dr_snprintf(symfile, symfile_count, "%s/%s.txt", symcache_dir, modname);
+    symfile[symfile_count-1] = '\0';
 }
 
 /* If an entry already exists and is 0, replaces it; else adds a new
@@ -180,12 +181,14 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     uint i;
     file_t f;
     hashtable_t *symtable = &modcache->table;
-    /* caller holds lock so we can use static buf */
-    static char buf[SYMCACHE_MAX_FILE_SIZE];
+    char buf[SYMCACHE_BUFFER_SIZE];
     size_t sofar = 0;
     ssize_t len;
     size_t bsz = BUFFER_SIZE_ELEMENTS(buf);
     size_t filesz_loc;
+    char symfile[MAXIMUM_PATH];
+    char symfile_tmp[MAXIMUM_PATH];
+    int64 file_size;
 
     /* if from file, we assume it's a waste of time to re-write file:
      * the version matched after all, unless we appended to it.
@@ -195,27 +198,39 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     if (symtable->entries == 0)
         return; /* nothing to write */
 
-    /* XXX: the most atomic update would be to write to a temp file and rename
-     * to the official name.  Currently we at least write to a buffer and write
-     * to the file in one fell swoop.  Dueling writes should either result in
-     * one winner or two files in one: the second will be ruled out by the size
-     * self-constincy check, as well as the policy of aborting when reading and
-     * encountering an ill-formed line.
-     */
-    BUFPRINT(buf, bsz, sofar, len, "%s %d\n", SYMCACHE_FILE_HEADER, SYMCACHE_VERSION);
+    /* Open the temp symcache that we will rename.  */
+    symcache_get_filename(modname, symfile, BUFFER_SIZE_ELEMENTS(symfile));
+    f = INVALID_FILE;
+    i = 0;
+    while (f == INVALID_FILE && i < SYMCACHE_MAX_TMP_TRIES) {
+        dr_snprintf(symfile_tmp, BUFFER_SIZE_ELEMENTS(symfile_tmp),
+                    "%s.%04d.tmp", symfile, i);
+        NULL_TERMINATE_BUFFER(symfile_tmp);
+        f = dr_open_file(symfile_tmp, DR_FILE_WRITE_REQUIRE_NEW);
+        i++;
+    }
+    if (f == INVALID_FILE) {
+        NOTIFY_ERROR("Unable to create temp file for symfile %s"NL, symfile);
+        return;
+    }
+
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, "%s %d\n",
+                   SYMCACHE_FILE_HEADER, SYMCACHE_VERSION);
     /* Leave room for file size for self-consistency check */
-    filesz_loc = sofar;
-    BUFPRINT(buf, bsz, sofar, len, "%6u,", 0);
+    filesz_loc = sofar;  /* XXX: Assumes that the buffer hasn't been flushed. */
+    BUFFERED_WRITE(f, buf, bsz, sofar, len,
+                   "%"STRINGIFY(SYMCACHE_SIZE_DIGITS)"u,", 0);
 #ifdef WINDOWS
-    BUFPRINT(buf, bsz, sofar, len,
-             UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
-             "%u,%u,%lu\n",
-             modcache->module_file_size, modcache->file_version.version,
-             modcache->product_version.version,
-             modcache->checksum, modcache->timestamp,
-             modcache->module_internal_size);
+    BUFFERED_WRITE(f, buf, bsz, sofar, len,
+                   UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
+                   UINT64_FORMAT_STRING",%u,%u,%lu\n",
+                   modcache->module_file_size, modcache->file_version.version,
+                   modcache->product_version.version,
+                   modcache->checksum, modcache->timestamp,
+                   modcache->module_internal_size);
 #else
-    BUFPRINT(buf, bsz, sofar, len, UINT64_FORMAT_STRING"\n", modcache->module_file_size);
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING"\n",
+                   modcache->module_file_size);
 #endif
     for (i = 0; i < HASHTABLE_SIZE(symtable->table_bits); i++) {
         hash_entry_t *he;
@@ -224,24 +239,33 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
             if (olist == NULL)
                 continue;
             /* skip symbol in dup entries to save space */
-            BUFPRINT(buf, bsz, sofar, len, "%s", he->key);
+            BUFFERED_WRITE(f, buf, bsz, sofar, len, "%s", he->key);
             while (olist != NULL) {
-                BUFPRINT(buf, bsz, sofar, len, ",0x%x\n", olist->offs);
+                BUFFERED_WRITE(f, buf, bsz, sofar, len, ",0x%x\n", olist->offs);
                 olist = olist->next;
             }
         }
     }
-    if (sofar >= bsz - 100) /* dr_snprintf cuts off if line will overflow */
-        WARN("WARNING: nearing or hit symcache max size limit\n");
-    /* now update size */
-    ASSERT(filesz_loc + 6 < bsz, "buffer calc way off");
-    dr_snprintf(buf + filesz_loc, 6, "%6u", sofar);
-    buf[filesz_loc + 6] = ','; /* remove null */
 
-    f = symcache_open_symfile(modname, DR_FILE_WRITE_OVERWRITE);
-    if (f != INVALID_FILE) {
-        dr_write_file(f, buf, sofar);
+    /* now update size */
+    FLUSH_BUFFER(f, buf, sofar);
+    if ((file_size = dr_file_tell(f)) < 0 ||
+        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
+                    "%"STRINGIFY(SYMCACHE_SIZE_DIGITS)"u", file_size) < 0 ||
+        !dr_file_seek(f, filesz_loc, DR_SEEK_SET) ||
+        dr_write_file(f, buf, SYMCACHE_SIZE_DIGITS) != SYMCACHE_SIZE_DIGITS) {
+        /* If any steps fail, warn and give up. */
+        NOTIFY_ERROR("WARNING: Unable to write symcache file size."NL);
         dr_close_file(f);
+        dr_delete_file(symfile_tmp);
+        return;
+    }
+
+    dr_close_file(f);
+
+    if (!dr_rename_file(symfile_tmp, symfile, /*replace*/true)) {
+        NOTIFY_ERROR("WARNING: Failed to rename the symcache file."NL);
+        dr_delete_file(symfile_tmp);
     }
 }
 
@@ -262,7 +286,11 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
     size_t actual_size;
     bool ok;
     void *map = NULL;
-    file_t f = symcache_open_symfile(modname, DR_FILE_READ);
+    char symfile[MAXIMUM_PATH];
+    file_t f;
+
+    symcache_get_filename(modname, symfile, BUFFER_SIZE_ELEMENTS(symfile));
+    f = dr_open_file(symfile, DR_FILE_READ);
     if (f == INVALID_FILE)
         return res;
     LOG(2, "processing symbol cache file for %s\n", modname);

@@ -335,19 +335,19 @@ print_prefix_to_console(void);
 #define FLUSH_BUFFER(fd, buf, sofar) do { \
     if ((sofar) > 0) \
         dr_write_file(fd, buf, sofar); \
+    (sofar) = 0; \
 } while (0)
 
 #define BUFFERED_WRITE(fd, buf, bufsz, sofar, len, ...) do { \
     int old_sofar = sofar; \
     BUFPRINT_NO_ASSERT(buf, bufsz, sofar, len, __VA_ARGS__); \
  \
-    /* Did the buffer overflow?  If so restore the buffer to before the  \
-     * snprintf, flush it to the file and reprint to the buffer. \
+    /* If the buffer overflows, sofar will not be updated.  If that happens, \
+     * flush the buffer to the file and reprint to the buffer. \
      */ \
-    if ((sofar) >= (bufsz)) { \
+    if (old_sofar == (sofar)) { \
         (buf)[old_sofar] = '\0';  /* not needed, strictly speaking; be safe */ \
-        FLUSH_BUFFER(fd, buf, old_sofar); \
-        (sofar) = 0; \
+        FLUSH_BUFFER(fd, buf, sofar); /* pass sofar to get it zeroed */ \
         BUFPRINT_NO_ASSERT(buf, bufsz, sofar, len, __VA_ARGS__); \
         ASSERT((bufsz) > (sofar), "single write can't overflow buffer"); \
     } \
