@@ -152,7 +152,10 @@ alloc_drmem_init(void)
     alloc_ops.prefer_msize = options.prefer_msize;
     alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
                                               options.use_symcache_postcall, false);
-    alloc_ops.intercept_operators = options.check_delete_mismatch;
+    /* we can't disable operator interception if !options.check_delete_mismatch
+     * b/c of msvc debug delete reading headers
+     */
+    alloc_ops.intercept_operators = !options.leaks_only && options.shadowing;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
