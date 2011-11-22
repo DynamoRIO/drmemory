@@ -21,7 +21,7 @@
 #
 starting
 # On Windows, the prefixes for messages from the nudge handler use ~~TID~~
-# prefixes due to the injected thread.  On Linux, it's ~~Dr.H~~.  Just match the
+# prefixes due to the injected thread.  On Linux, it's ~~Dr.M~~.  Just match the
 # trailing tildes.
 # First nudge error report.
 ~~ ERRORS FOUND:
@@ -29,18 +29,8 @@ starting
 ~~       0 unique,     0 total uninitialized access(es)
 ~~       0 unique,     0 total invalid heap argument(s)
 ~~       0 unique,     0 total warning(s)
-%if WINDOWS
-# XXX: extra leak due to encoded pointer (PR 482555) is no longer
-# happening on my machine!  not sure what's going on
-#~~       3 unique,    22 total,   3387 byte(s) of leak(s)
-~~       2 unique,    21 total,   3259 byte(s) of leak(s)
-# FIXME PR 485354: sometimes some or all of the leaks are "possible": why?
-~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
-%endif
-%if UNIX
 ~~       2 unique,    21 total,   3259 byte(s) of leak(s)
 ~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
-%endif
 # Second nudge error report.  We don't match the output of it, just that it was
 # here.
 ~~ ERRORS FOUND:
