@@ -62,10 +62,11 @@
  * PR 561775: drsyms (esp newer versions) uses a lot of stack, which
  *   caused DR 20K stack to overlow, so upping to 36K (biggest callstack
  *   is module load event where DR has already used a bunch of stack,
- *   and PR 486382 does name-to-addr symbol lookup)
+ *   and PR 486382 does name-to-addr symbol lookup).
+ *   update: DR's default is now 56K so this is no longer needed.
  */
 #define DEFAULT_DR_OPS \
-    "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -stack_size 36K"
+    "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256"
 
 #define DRMEM_CLIENT_ID 0
 
