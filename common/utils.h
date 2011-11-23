@@ -321,7 +321,7 @@ print_prefix_to_console(void);
  */
 #define BUFPRINT_NO_ASSERT(buf, bufsz, sofar, len, ...) do { \
     len = dr_snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
-    sofar += (len < 0 ? 0 : len); \
+    sofar += (len == -1 ? ((bufsz)-(sofar)) : (len < 0 ? 0 : len)); \
     /* be paranoid: though usually many calls in a row and could delay until end */ \
     (buf)[(bufsz)-1] = '\0';                                 \
 } while (0)
@@ -342,11 +342,15 @@ print_prefix_to_console(void);
     int old_sofar = sofar; \
     BUFPRINT_NO_ASSERT(buf, bufsz, sofar, len, __VA_ARGS__); \
  \
-    /* If the buffer overflows, sofar will not be updated.  If that happens, \
+    /* If the buffer overflows, \
      * flush the buffer to the file and reprint to the buffer. \
+     * We must treat the buffer length being hit exactly as an overflow \
+     * b/c the NULL already clobbered our data. \
      */ \
-    if (old_sofar == (sofar)) { \
+    if ((sofar) >= (bufsz)) { \
+        ASSERT((bufsz) > old_sofar, "unexpected overflow"); \
         (buf)[old_sofar] = '\0';  /* not needed, strictly speaking; be safe */ \
+        (sofar) = old_sofar; \
         FLUSH_BUFFER(fd, buf, sofar); /* pass sofar to get it zeroed */ \
         BUFPRINT_NO_ASSERT(buf, bufsz, sofar, len, __VA_ARGS__); \
         ASSERT((bufsz) > (sofar), "single write can't overflow buffer"); \
