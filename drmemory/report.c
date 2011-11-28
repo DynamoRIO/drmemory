@@ -732,9 +732,12 @@ open_and_read_suppression_file(const char *fname, bool is_default)
         read_suppression_file(f, is_default);
 #ifdef USE_DRSYMS
         /* Don't print to stderr about default suppression file, and don't print
-         * at all when postprocess is handling all the symbolic stacks
+         * at all when postprocess is handling all the symbolic stacks.  Also
+         * don't print if the user passed -no_summary, or we'll get this for
+         * every subprocess.
          */
-        NOTIFY_COND(!is_default, f_global, "Recorded %d suppression(s) from %s %s"NL,
+        NOTIFY_COND(options.summary && !is_default, f_global,
+                    "Recorded %d suppression(s) from %s %s"NL,
                     num_suppressions - prev_suppressions, label, fname);
         ELOGF(0, f_results, "Recorded %d suppression(s) from %s %s"NL,
               num_suppressions - prev_suppressions, label, fname);
@@ -2320,4 +2323,3 @@ report_child_thread(void *drcontext, thread_id_t child)
         print_buffer(pt->f, pt->errbuf);
     }
 }
-
