@@ -749,13 +749,14 @@ open_and_read_suppression_file(const char *fname, bool is_default)
 #ifdef USE_DRSYMS
 /* up to caller to lock f_results file */
 static void
-write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic)
+write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic, uint id)
 {
     int i;
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     ASSERT(scs != NULL, "invalid param");
 
     dr_fprintf(f_suppress, "%s"NL, suppress_name[type]);
+    dr_fprintf(f_suppress, "name=Error #%d (update to meaningful name)"NL, id);
 
     for (i = 0; i < scs->num_frames; i++) {
         if (symbolized_callstack_frame_is_module(scs, i)) {
@@ -778,6 +779,31 @@ write_suppress_pattern(uint type, symbolized_callstack_t *scs, bool symbolic)
     }
 }
 #endif
+
+static void
+report_error_suppression(uint type, error_callstack_t *ecs, uint id)
+{
+#ifdef USE_DRSYMS /* else reported in postprocessing */
+    if (!options.gen_suppress_syms && !options.gen_suppress_offs)
+        return;
+    /* write supp patterns to f_suppress */
+    dr_mutex_lock(suppress_file_lock);
+    /* XXX: if both -no_gen_suppress_offs and -no_gen_suppress_syms we
+     * could not create any file at all: for now we create an empty
+     * file for simplicity
+     */
+    dr_fprintf(f_suppress, "# Suppression for Error #%d"NL, id);
+    if (options.gen_suppress_syms)
+        write_suppress_pattern(type, &ecs->scs, true/*mod!func*/, id);
+    if (options.gen_suppress_offs) {
+        if (options.gen_suppress_syms)
+            dr_fprintf(f_suppress, "\n## Mod+offs-style suppression for Error #%d:"NL, id);
+        write_suppress_pattern(type, &ecs->scs, false/*mod+offs*/, id);
+    }
+    dr_fprintf(f_suppress, ""NL);
+    dr_mutex_unlock(suppress_file_lock);
+#endif
+}
 
 static bool
 top_frame_matches_suppression_frame(const error_callstack_t *ecs,
@@ -917,23 +943,6 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
             return true;
     }
     LOG(3, "supp: no match\n");
-#ifdef USE_DRSYMS
-    /* write supp patterns to f_suppress */
-    dr_mutex_lock(suppress_file_lock);
-    /* XXX: if both -no_gen_suppress_offs and -no_gen_suppress_syms we
-     * could not create any file at all: for now we create an empty
-     * file for simplicity
-     */
-    if (options.gen_suppress_syms)
-        write_suppress_pattern(type, &ecs->scs, true/*mod!func*/);
-    if (options.gen_suppress_offs) {
-        if (options.gen_suppress_syms)
-            dr_fprintf(f_suppress, "\n# the mod+offs form of the above callstack:"NL);
-        write_suppress_pattern(type, &ecs->scs, false/*mod+offs*/);
-    }
-    dr_fprintf(f_suppress, ""NL);
-    dr_mutex_unlock(suppress_file_lock);
-#endif
     return false;
 }
 
@@ -1761,6 +1770,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
     } else {
         acquire_error_number(err);
+        report_error_suppression(type, &ecs, err->id);
         num_reported_errors++;
     }
     dr_mutex_unlock(error_lock);
@@ -2142,9 +2152,10 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
              * last nudge, but we do re-print the callstacks so it's
              * easy to see all the nudges at that point.
              */
-            if (err->id == 0 && (!maybe_reachable || options.possible_leaks))
+            if (err->id == 0 && (!maybe_reachable || options.possible_leaks)) {
                 acquire_error_number(err);
-            else {
+                report_error_suppression(type, &ecs, err->id);
+            } else {
                 /* num_unique was set to 0 after nudge */
 #ifdef STATISTICS /* for num_nudges */
                 ASSERT(err->id == 0 || num_nudges > 0 ||
