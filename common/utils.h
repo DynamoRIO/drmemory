@@ -155,7 +155,7 @@ extern bool op_use_symcache;
 
 /* Workarounds for i#261 where DR can't write to cmd console.
  *
- * 1) Use drsyms, which has already loaded a private kernel32, to write to the
+ * 1) Use private kernel32!WriteFile to write to the
  * console.  This could be unsafe to do in the middle of app operations but our
  * notifications are usually at startup and shutdown only.  Writing to the
  * console involves sending a message to csrss which we hope we can treat like a
@@ -173,17 +173,16 @@ extern bool op_use_symcache;
  * buffer size).
  */
 #ifdef USE_DRSYMS
-# define IN_CMD (drsym_using_console())
+# define IN_CMD (dr_using_console())
 # define USE_MSGBOX (op_print_stderr && IN_CMD)
-/* drsym_write_to_console works on both cmd and cygwin rxvt/xterm */
-# define PRINT_CONSOLE(...) drsym_write_to_console(__VA_ARGS__)
 #else
 /* For non-USE_DRSYMS Windows we just don't support cmd: unfortunately this
  * includes cygwin in cmd.  With PR 561181 we'll get cygwin into USE_DRSYMS.
  */
 # define USE_MSGBOX (false)
-# define PRINT_CONSOLE(...) dr_fprintf(STDERR, __VA_ARGS__)
 #endif
+/* dr_fprintf() now prints to the console after dr_enable_console_printing() */
+#define PRINT_CONSOLE(...) dr_fprintf(STDERR, __VA_ARGS__)
 
 /* for notifying user 
  * XXX: should add messagebox, controlled by option

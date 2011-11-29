@@ -1385,6 +1385,9 @@ dr_init(client_id_t id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
+#ifdef USE_DRSYMS
+    dr_enable_console_printing();
+#endif
     if (options.summary)
         NOTIFY("Dr. Memory version %s"NL, VERSION_STRING);
 # ifdef WINDOWS

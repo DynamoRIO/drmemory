@@ -301,7 +301,7 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     if (!quiet &&
         /* on vista, or win7+ with i#440, output works from client, even during exit */
         !on_vista_or_later()) {
-        /* Even with console-writing support from drsyms, the client cannot write
+        /* Even with console-writing support from DR, the client cannot write
          * to a cmd console from the exit event: nor can it write for a graphical
          * application (xref i#261/PR 562198).  Thus when within cmd we always
          * paste the results from the file here.

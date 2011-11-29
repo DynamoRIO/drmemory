@@ -1388,7 +1388,7 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
             }
         }
 #ifdef USE_DRSYMS
-        /* XXX DRi#440: console output not showing up on win7! */
+        /* XXX DRi#556: console output not showing up on win7 for 64-bit apps! */
         if (f == STDERR && IN_CMD)
             print_to_cmd(newbuf);
         else

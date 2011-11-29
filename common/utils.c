@@ -345,7 +345,7 @@ print_prefix_to_console(void)
 bool
 print_to_cmd(char *buf)
 {
-    /* we avoid buffer size limits in drsym_write_to_console by directly
+    /* we avoid buffer size limits in dr_fprintf by directly
      * talking to kernel32 ourselves
      */
     uint written;
