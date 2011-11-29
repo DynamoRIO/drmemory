@@ -384,6 +384,7 @@ int main(int argc, char *argv[])
      */
     char logdir[MAXIMUM_PATH];
     char suppress[MAXIMUM_PATH];
+    char symcache_dir[MAXIMUM_PATH];
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
@@ -585,12 +586,27 @@ int main(int argc, char *argv[])
             NULL_TERMINATE_BUFFER(logdir);
             /* added to client ops below */
         }
+        else if (strcmp(argv[i], "-symcache_dir") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            /* make absolute */
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(symcache_dir),
+                            symcache_dir, NULL);
+            NULL_TERMINATE_BUFFER(symcache_dir);
+            if (_access(symcache_dir, 2/*write*/) == -1) {
+                fatal("invalid -symcache_dir: cannot find/write %s", symcache_dir);
+                goto error; /* actually won't get here */
+            }
+            info("symcache_dir is \"%s\"", symcache_dir);
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "-symcache_dir `%s` ", symcache_dir);
+        }
         else if (strcmp(argv[i], "-suppress") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* front-end provides relative-to-absolute and existence check */
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(logdir), suppress, NULL);
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(suppress), suppress, NULL);
             NULL_TERMINATE_BUFFER(suppress);
             if (_access(suppress, 4/*read*/) == -1) {
                 fatal("cannot find -suppress file %s", suppress);
@@ -696,7 +712,7 @@ int main(int argc, char *argv[])
     }
 
     if (_access(logdir, 2/*write*/) == -1) {
-        fatal("invalid -logdir: cannot find %s", logdir);
+        fatal("invalid -logdir: cannot find/write %s", logdir);
         goto error; /* actually won't get here */
     }
     info("logdir is \"%s\"", logdir);

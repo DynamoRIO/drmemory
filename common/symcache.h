@@ -27,7 +27,7 @@
 #define _SYMCACHE_H_ 1
 
 void
-symcache_init(const char *symcache_basedir,
+symcache_init(const char *symcache_dir,
               size_t modsize_cache_threshold);
 
 void

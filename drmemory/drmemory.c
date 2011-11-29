@@ -1426,7 +1426,7 @@ dr_init(client_id_t id)
 
 #ifdef USE_DRSYMS
     if (options.use_symcache)
-        symcache_init(options.logdir, options.symcache_minsize);
+        symcache_init(options.symcache_dir, options.symcache_minsize);
 #endif
 
     if (!options.perturb_only)

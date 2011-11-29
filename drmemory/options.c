@@ -281,6 +281,17 @@ options_init(const char *opstr)
                     "%s", DEFAULT_LOGDIR);
         NULL_TERMINATE_BUFFER(options.logdir);
     }
+#if defined(TOOL_DR_MEMORY) && defined(USE_DRSYMS)
+    if (!option_specified.symcache_dir) {
+        /* XXX: dynamically allocating option space would save some space;
+         * could then just point at logdir: though we now put the "/symcache"
+         * here instead of in symcache_init().
+         */
+        dr_snprintf(options.symcache_dir, BUFFER_SIZE_ELEMENTS(options.symcache_dir),
+                    "%s/symcache", options.logdir);
+        NULL_TERMINATE_BUFFER(options.symcache_dir);
+    }
+#endif
 
     if (option_specified.stack_swap_threshold)
         stack_swap_threshold_fixed = true;

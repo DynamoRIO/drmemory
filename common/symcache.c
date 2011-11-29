@@ -414,7 +414,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
 }
 
 void
-symcache_init(const char *symcache_basedir,
+symcache_init(const char *symcache_dir_in,
               size_t modsize_cache_threshold)
 {
     initialized = true;
@@ -428,7 +428,7 @@ symcache_init(const char *symcache_basedir,
     symcache_lock = dr_mutex_create();
 
     dr_snprintf(symcache_dir, BUFFER_SIZE_ELEMENTS(symcache_dir), 
-                "%s/symcache", symcache_basedir);
+                "%s", symcache_dir_in);
     NULL_TERMINATE_BUFFER(symcache_dir);
     if (!dr_directory_exists(symcache_dir)) {
         if (!dr_create_dir(symcache_dir)) {

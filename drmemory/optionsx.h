@@ -142,7 +142,7 @@ OPTION_CLIENT_BOOL(client, brief, false,
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
                      "Base directory for result file subdirectories and symbol cache",
-                     "Destination base directory for result files and symbol cache.  A subdirectory inside this base directory is created for each process that is run, along with a single shared symbol cache directory.  If you specify a separate base directory for every run, you will lose the benefits of symbol caching.")
+                     "Destination base directory for result files and the symbol cache (unless -symcache_dir is specified).  A subdirectory inside this base directory is created for each process that is run, along with a single shared symbol cache directory.  If you specify a separate base directory for every run, you will lose the benefits of symbol caching, unless you also specify a separate shared cache directory with the -symcache_dir option.")
 OPTION_CLIENT(client, verbose, uint, 1, 0, 32,
               "Verbosity level in log files",
               "Verbosity level in log files: 0=none, 1=warnings, 2+=diagnostic.  Primarily for debugging of "TOOLNAME" itself.")
@@ -320,6 +320,9 @@ OPTION_CLIENT_BOOL(drmemscope, summary, true,
 OPTION_CLIENT_BOOL(drmemscope, use_symcache, true,
                    "Cache results of symbol lookups to speed up future runs",
                    "Cache results of symbol lookups to speed up future runs")
+OPTION_CLIENT_STRING(drmemscope, symcache_dir, "<install>/logs/symcache",
+                     "Directory for symbol cache files",
+                     "Destination for symbol cache files.  When using a unique log directory for each run, symbols will not be shared across runs because the default cache location is inside the log directory.  Use this option to set a shared directory.")
 OPTION_CLIENT(client, symcache_minsize, uint, 1000, 0, UINT_MAX,
                    "Minimum module size to cache symbols for",
                    "Minimum module size to cache symbols for.  Note that there's little downside to caching and it is pretty much always better to cache.")
