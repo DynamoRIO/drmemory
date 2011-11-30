@@ -1,0 +1,63 @@
+# **********************************************************
+# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; 
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+begin
+
+Testing Rtl*MemoryZone:
+# Don't match, different everytime
+#zone: 0xXXXXXX
+block 0 offset: 0x0001c
+block 1 offset: 0x0101c
+block 2 offset: 0x0201c
+block 3 offset: 0x0301c
+can allocate from padding: 1
+cannot allocate beyond padding: 1
+sizeof(*zone) == block - zone: 1
+Segment.NextSegment == NULL: 1
+Segment.Size: 20480
+Segment.Next: 0x0101c
+Segment.Limit: 0x05000
+FirstSegment == zone: 1
+# Don't match, different everytime
+#heap start: 0xXXXXXX, end: 0xXXXXXX
+zone is not in heap: 1
+
+Testing Rtl*MemoryBlockLookaside:
+# Don't match, different everytime
+#lookaside: 0xXXXXXX
+lookaside is not in heap: 1
+block 0 is not in heap: 1
+block 1 is not in heap: 1
+block 2 is not in heap: 1
+block 3 is not in heap: 1
+# XXX: This is unexpected, I don't understand the Rtl*MemoryBlockLookaside
+# routines well enough to explain why the fifth allocation succeeds.
+#cannot allocate beyond size: 1
+# XXX: This also doesn't make sense.  After getting a successful status code we
+# get a clearly unaddressable block location.
+#block after reset: 00000004
+done
+~~Dr.M~~ NO ERRORS FOUND:
+~~Dr.M~~       0 unique,     0 total unaddressable access(es)
+~~Dr.M~~       0 unique,     0 total uninitialized access(es)
+~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
+~~Dr.M~~       0 unique,     0 total warning(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

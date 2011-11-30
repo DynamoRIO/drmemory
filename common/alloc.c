@@ -605,8 +605,22 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     /* XXX: i#297: investigate these new routines */
     { "RtlMultipleAllocateHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
     { "RtlMultipleFreeHeap", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
-    { "RtlAllocateMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
-    { "RtlAllocateMemoryZone", HEAP_ROUTINE_NOT_HANDLED_NOTIFY },
+    /* i#318: These are very basic pool allocators provided by ntdll and used by
+     * low-level Windows libraries such as AUDIOSES.DLL.
+     * FIXME: We cannot use HEAP_ROUTINE_NOT_HANDLED because that causes us to
+     * interpret the backing vallocs as heaps, which turns any usage of this
+     * layer into unaddrs.  Ideally we'd just log these calls.
+     */
+#if 0
+    { "RtlCreateMemoryZone", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlAllocateMemoryZone", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlResetMemoryZone", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlDestroyMemoryZone", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlCreateMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlAllocateMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlResetMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED },
+    { "RtlDestroyMemoryBlockLookaside", HEAP_ROUTINE_NOT_HANDLED },
+#endif
     /* kernel32!LocalFree calls these.  these call RtlEnterCriticalSection
      * and ntdll!RtlpCheckHeapSignature and directly touch heap headers.
      */
