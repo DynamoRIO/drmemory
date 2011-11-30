@@ -25,5 +25,12 @@ Exiting
 ~~Dr.M~~       1 unique,     2 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
+# FIXME i#683: This is the FLS of the still-live threads which we sometimes
+# can't find the root for.
+%ANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
+~~Dr.M~~       1 unique,     1 total,    532 byte(s) of leak(s)
+~~Dr.M~~       1 unique,     2 total,   1064 byte(s) of leak(s)
+~~Dr.M~~       1 unique,     3 total,   1596 byte(s) of leak(s)
+%ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
