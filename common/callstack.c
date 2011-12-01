@@ -1389,11 +1389,20 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
 {
     uint i;
     scs->num_frames = pcs->num_frames;
+    scs->num_frames_allocated = pcs->num_frames;
     scs->frames = (symbolized_frame_t *)
         global_alloc(sizeof(*scs->frames) * scs->num_frames, HEAPSTAT_CALLSTACK);
     ASSERT(pcs != NULL, "invalid args");
     for (i = 0; i < pcs->num_frames; i++) {
         packed_frame_to_symbolized(pcs, &scs->frames[i], i);
+        /* we truncate for real and not just on printing (i#700) */
+        if (op_truncate_below != NULL &&
+            text_matches_any_pattern((const char *)scs->frames[i].func,
+                                     op_truncate_below, false)) {
+            /* not worth re-allocating */
+            scs->num_frames = i + 1;
+            break;
+        }
     }
 }
 
@@ -1572,9 +1581,9 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
     }
     for (i = 0; i < scs->num_frames; i++) {
         print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0, max_flen, prefix);
-        if (op_truncate_below != NULL &&
-            text_matches_any_pattern(scs->frames[i].func, op_truncate_below, false))
-            break;
+        /* op_truncate_below should have been done when symbolized cstack created.
+         * too much of a perf hit to assert on every single frame.
+         */
     }
 }
 
@@ -1583,7 +1592,7 @@ symbolized_callstack_free(symbolized_callstack_t *scs)
 {
     ASSERT(scs != NULL, "invalid args");
     if (scs->frames != NULL) {
-        global_free(scs->frames, sizeof(*scs->frames) * scs->num_frames,
+        global_free(scs->frames, sizeof(*scs->frames) * scs->num_frames_allocated,
                     HEAPSTAT_CALLSTACK);
     }
 }

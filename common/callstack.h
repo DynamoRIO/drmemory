@@ -266,6 +266,7 @@ typedef struct _symbolized_frame_t symbolized_frame_t;
 
 typedef struct _symbolized_callstack_t {
     ushort num_frames;
+    ushort num_frames_allocated; /* in case truncated, we don't realloc */
     symbolized_frame_t *frames;
 } symbolized_callstack_t;
 
