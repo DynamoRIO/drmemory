@@ -14,6 +14,10 @@
 #endif
 #define RTL_MEMORY_ZONES_H_
 
+#include <windows.h>
+
+typedef LONG NTSTATUS;
+
 /* Memory zone routines and types.  These seem to implement a straightforward
  * pool allocator on top of NtAllocateVirtualMemory that does not grow.
  * When creating a memory zone, we make a minimum space request, and the size of

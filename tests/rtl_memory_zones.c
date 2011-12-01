@@ -29,8 +29,6 @@
 
 #include "rtl_memory_zones.h"
 
-typedef LONG NTSTATUS;
-
 NTSTATUS
 (NTAPI *RtlGetProcessHeaps)(
     IN ULONG count,
