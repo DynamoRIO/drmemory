@@ -1106,7 +1106,6 @@ client_handle_exception(void *drcontext, dr_mcontext_t *mc)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    cpt->in_seh = true;
     cpt->heap_critsec = NULL;
 }
 
@@ -1115,8 +1114,7 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    if (cpt->in_seh) {
-        cpt->in_seh = false;
+    if (is_in_seh(drcontext)) {
         cpt->heap_critsec = NULL;
     }
     /* else it was an APC */
@@ -1905,7 +1903,7 @@ is_heap_seh(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     bool match = false;
-    if (!cpt->in_seh || !is_in_heap_region(addr))
+    if (!is_in_seh(drcontext) || !is_in_heap_region(addr))
         return false;
     /* If in SEH and addr is in heap region and addr matches the critsec
      * we recorded earlier on pattern-matched code that looks like a

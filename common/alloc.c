@@ -3016,6 +3016,9 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             handle_cbret(true/*syscall*/);
         } else if (sysnum == sysnum_continue) {
             client_handle_continue(drcontext, mc);
+            if (pt->in_seh)
+                pt->in_seh = false;
+            /* else, an APC */
         }
     }
 #else /* WINDOWS */
@@ -3042,6 +3045,26 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
 }
 
 #ifdef WINDOWS
+bool
+is_in_seh(void *drcontext)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    return pt->in_seh;
+}
+
+/* Here for sharing among users of the callstack module.
+ * i#701: on unwind, xbp is set to original fault value and can
+ * result in an incorrect callstack.  May help on earlier steps in SEH
+ * as well so not trying to detect unwind: instead we just track between
+ * KiUserExceptionDispatcher and NtContinue and ignore xbp throughout.
+ */
+bool
+is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc)
+{
+    return is_in_seh(drcontext);
+}
+
+
 static void
 handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
 {
@@ -4904,6 +4927,7 @@ alloc_hook(app_pc pc)
             LOG(2, "Exception in app\n");
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
+            pt->in_seh = true;
             client_handle_exception(drcontext, &mc);
         }
         /* we should ignore LdrInitializeThunk on pre-Vista since we'll get

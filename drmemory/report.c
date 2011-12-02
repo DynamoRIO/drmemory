@@ -1051,6 +1051,7 @@ report_init(void)
                    IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
                    get_syscall_name,
                    options.shadowing ? is_dword_defined : NULL,
+                   IF_WINDOWS_ELSE(is_in_seh_unwind, NULL),
 #ifdef USE_DRSYMS
                    /* pass NULL since callstack.c uses that as quick check */
                    (options.callstack_truncate_below[0] == '\0') ? NULL :

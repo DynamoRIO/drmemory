@@ -98,6 +98,8 @@ typedef struct _per_thread_t {
     bool heap_tangent; /* not a callback but a heap tangent (i#301) */
     HANDLE heap_handle; /* used to identify the Heap of new allocations */
     byte *to_be_encoded; /* for encoded pointer tracking (i#153) */
+
+    bool in_seh; /* track whether handling an exception */
 #endif
 
 #ifdef WINDOWS

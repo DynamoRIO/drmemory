@@ -63,7 +63,6 @@ typedef struct _client_per_thread_t {
     /* since we can't get TEB via syscall for some threads (i#442) */
     TEB *teb;
     /* for heap seh accesses (i#689) */
-    bool in_seh;
     RTL_CRITICAL_SECTION *heap_critsec;
 # endif
 #endif /* TOOL_DR_MEMORY */

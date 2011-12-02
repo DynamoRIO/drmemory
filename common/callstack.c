@@ -47,6 +47,7 @@ static size_t op_fp_scan_sz;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
 static const char * (*op_get_syscall_name)(uint);
 static bool (*op_is_dword_defined)(byte *);
+static bool (*op_ignore_xbp)(void *drcontext, dr_mcontext_t *mc);
 static const char *op_truncate_below;
 static const char *op_modname_hide;
 static const char *op_srcfile_prefix;
@@ -251,6 +252,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
                const char *(*get_syscall_name)(uint),
                bool (*is_dword_defined)(byte *),
+               bool (*ignore_xbp)(void *, dr_mcontext_t *),
                const char *callstack_truncate_below,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
@@ -263,6 +265,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_print_flags = print_flags;
     op_get_syscall_name = get_syscall_name;
     op_is_dword_defined = is_dword_defined;
+    op_ignore_xbp = ignore_xbp;
     op_truncate_below = callstack_truncate_below;
     op_modname_hide = callstack_modname_hide;
     op_srcfile_hide = callstack_srcfile_hide;
@@ -424,12 +427,13 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
         /* I like having +0x%x to show offs within func but we'll match addr2line */
         BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
         if (TEST(PRINT_SYMBOL_OFFSETS, op_print_flags)) {
-            BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX,
-                     addr - data->start - sym->start_offs);
+            /* no assert for any of these bufprints: for just printing we'll truncate */
+            BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "+"PIFX,
+                               addr - data->start - sym->start_offs);
         }
         res = true;
     } else {
-        BUFPRINT(buf, bufsz, *sofar, len, " %s!?", modname);
+        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!?", modname);
         res = false;
     }
     dr_free_module_data(data);
@@ -944,6 +948,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         (!ALIGNED(mc->ebp, sizeof(void*)) ||
          mc->ebp < mc->esp || 
          mc->ebp - mc->esp > op_stack_swap_threshold ||
+         (op_ignore_xbp != NULL &&
+          op_ignore_xbp(drcontext, mc)) ||
          /* avoid stale fp,ra pair (i#640) */
          (op_is_dword_defined != NULL &&
           (!op_is_dword_defined((byte*)mc->ebp) ||

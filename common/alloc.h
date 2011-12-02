@@ -316,6 +316,12 @@ client_handle_exception(void *drcontext, dr_mcontext_t *mc);
 
 void
 client_handle_continue(void *drcontext, dr_mcontext_t *mc);
+
+bool
+is_in_seh(void *drcontext);
+
+bool
+is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc);
 #endif
 
 void
