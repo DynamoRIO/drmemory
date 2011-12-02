@@ -308,6 +308,14 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
 void
 client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
                        bool new_depth);
+void
+client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc);
+
+void
+client_handle_exception(void *drcontext, dr_mcontext_t *mc);
+
+void
+client_handle_continue(void *drcontext, dr_mcontext_t *mc);
 #endif
 
 void

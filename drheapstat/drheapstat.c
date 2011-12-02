@@ -986,6 +986,16 @@ void
 client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
 {
 }
+
+void
+client_handle_exception(void *drcontext, dr_mcontext_t *mc)
+{
+}
+
+void
+client_handle_continue(void *drcontext, dr_mcontext_t *mc)
+{
+}
 #endif /* WINDOWS */
 
 void

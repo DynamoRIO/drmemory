@@ -62,6 +62,10 @@ static void *mmap_tree_lock; /* maybe rbtree should support internal synch */
 uint alloc_stack_count;
 #endif
 
+#ifdef WINDOWS
+app_pc addr_RtlLeaveCrit; /* for i#689 */
+#endif
+
 /***************************************************************************
  * DELAYED-FREE LIST
  */
@@ -187,6 +191,12 @@ alloc_drmem_init(void)
         delay_free_lock = dr_mutex_create();
         delay_free_tree = rb_tree_create(NULL);
     }
+
+#ifdef WINDOWS /* for i#689 */
+    ASSERT(ntdll_base != NULL, "init ordering problem");
+    addr_RtlLeaveCrit = (app_pc)
+        dr_get_proc_address(ntdll_base, "RtlLeaveCriticalSection");
+#endif
 }
 
 void
@@ -1090,6 +1100,27 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
      */
     cpt->pre_callback_esp = sp;
 }
+
+void
+client_handle_exception(void *drcontext, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cpt->in_seh = true;
+    cpt->heap_critsec = NULL;
+}
+
+void
+client_handle_continue(void *drcontext, dr_mcontext_t *mc)
+{
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    if (cpt->in_seh) {
+        cpt->in_seh = false;
+        cpt->heap_critsec = NULL;
+    }
+    /* else it was an APC */
+}
 #endif /* WINDOWS */
 
 /***************************************************************************
@@ -1849,6 +1880,67 @@ is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     return false;
 }
 
+#ifdef WINDOWS
+static bool
+is_heap_seh(void *drcontext, bool write, app_pc pc, app_pc next_pc,
+            app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT,
+            app_loc_t *loc, dr_mcontext_t *mc)
+{
+    /* i#689: Rtl*Heap SEH finalizer reads Heap to unlock the Heap's critsec.
+     * There's no good way to find the finalizer, or auto-suppress, so we
+     * pattern-match the code, which seems fairly stable:
+     *
+     * xp64:
+     *   ntdll!RtlAllocateHeap+0xe87:
+     *   7d629bb6 ffb778050000     push    dword ptr [edi+0x578]
+     *   7d629bbc e81656ffff       call    ntdll!RtlLeaveCriticalSection (7d61f1d7)
+     *   7d629bc1 e98c7affff       jmp     ntdll!RtlAllocateHeap+0xe92 (7d621652)
+     *
+     * win7:
+     *   ntdll!RtlpAllocateHeap+0xe7f:
+     *   770024f8 ffb3cc000000     push    dword ptr [ebx+0xcc]
+     *   770024fe e86dfdfdff       call    ntdll!RtlLeaveCriticalSection (76fe2270)
+     *   77002503 e9ad17ffff       jmp     ntdll!RtlpAllocateHeap+0xe8a (76ff3cb5)
+     */
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    bool match = false;
+    if (!cpt->in_seh || !is_in_heap_region(addr))
+        return false;
+    /* If in SEH and addr is in heap region and addr matches the critsec
+     * we recorded earlier on pattern-matched code that looks like a
+     * finalizer for Rtl*Heap, allow the ref.  We could further check that
+     * pc is inside RtlLeaveCriticalSection as that routine is contiguous
+     * but that makes it more fragile IMHO.
+     */
+    if (addr >= (byte*)cpt->heap_critsec &&
+        addr < (byte*)cpt->heap_critsec + sizeof(*cpt->heap_critsec)) {
+        LOG(2, "SEH Heap CritSec field exception: "PFX" accessing "PFX"\n", pc, addr);
+        return true;
+    }
+    /* See if code looks like Rtl*Heap finalizer */
+    if (instr_get_opcode(inst) == OP_push &&
+        opnd_is_memory_reference(instr_get_src(inst, 0))) {
+        instr_t next;
+        app_pc dpc = next_pc;
+        instr_init(drcontext, &next);
+        if (!safe_decode(drcontext, dpc, &next, &dpc))
+            return false;
+        if (instr_is_call(&next) &&
+            opnd_is_pc(instr_get_target(&next)) &&
+            opnd_get_pc(instr_get_target(&next)) == addr_RtlLeaveCrit) {
+            byte *ptr = opnd_compute_address(instr_get_src(inst, 0), mc);
+            if (safe_read(ptr, sizeof(cpt->heap_critsec), &cpt->heap_critsec)) {
+                LOG(2, "SEH Heap CritSec exception: "PFX" accessing "PFX"\n", pc, addr);
+                match = true;
+            }
+        }
+        instr_free(drcontext, &next);
+    }
+    return match;
+}
+#endif /* WINDOWS */
+
 static bool
 is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
                             dr_mcontext_t *mc)
@@ -1891,6 +1983,12 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
         if (match)
             unreadable_ok = true;
     }
+#ifdef WINDOWS
+    if (!match) {
+        match = is_heap_seh(drcontext, write, pc, dpc, addr, sz,
+                            &inst, &now_addressable, loc, mc);
+    }
+#endif
     if (match) {
         /* PR 503779: be sure to not do this readability check before
          * the heap header/tls checks, else we have big perf hits!

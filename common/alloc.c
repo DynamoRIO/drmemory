@@ -3014,6 +3014,8 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             }
         } else if (sysnum == sysnum_cbret) {
             handle_cbret(true/*syscall*/);
+        } else if (sysnum == sysnum_continue) {
+            client_handle_continue(drcontext, mc);
         }
     }
 #else /* WINDOWS */
@@ -4902,6 +4904,7 @@ alloc_hook(app_pc pc)
             LOG(2, "Exception in app\n");
             pt->in_heap_routine = 0;
             pt->in_heap_adjusted = 0;
+            client_handle_exception(drcontext, &mc);
         }
         /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
          * there via APC: only on Vista+ is it a "Ki" routine
