@@ -30,24 +30,3 @@ getval: childAB
 myfunc: parB
 hi
 bye
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       1 unique,     1 total unaddressable access(es)
-~~Dr.M~~       1 unique,     1 total uninitialized access(es)
-# FIXME: The correct answer is 5 invalid heap args, all due to mismatches.
-# Without drsyms for Cygwin (DR i#589), we can't always tell the difference
-# between new/new[] and delete/delete[], so we sometimes get 3 or 4 mismatches.
-%ANYLINE
-~~Dr.M~~       3 unique,     3 total invalid heap argument(s)
-~~Dr.M~~       4 unique,     4 total invalid heap argument(s)
-~~Dr.M~~       5 unique,     5 total invalid heap argument(s)
-%ENDANYLINE
-~~Dr.M~~       0 unique,     0 total warning(s)
-%ANYLINE
-# Unix:
-~~Dr.M~~       2 unique,     2 total,     27 byte(s) of leak(s)
-# Windows: FIXME PR 587093: string code disabled for now
-~~Dr.M~~       1 unique,     1 total,      4 byte(s) of leak(s)
-# FIXME i#664: On Cygwin with bad symbols we fail to suppress a 1 byte system leak.
-~~Dr.M~~       2 unique,     2 total,      5 byte(s) of leak(s)
-%ENDANYLINE
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

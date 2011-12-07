@@ -33,20 +33,22 @@ bye
 ~~Dr.M~~ ERRORS FOUND:
 ~~Dr.M~~       1 unique,     1 total unaddressable access(es)
 ~~Dr.M~~       1 unique,     1 total uninitialized access(es)
-%if CYGWIN
-# i#589: no syms so can't find due to asymmetric inlines (xref i#123)
+# FIXME: The correct answer is 5 invalid heap args, all due to mismatches.
+# Without drsyms for Cygwin (DR i#589), we can't always tell the difference
+# between new/new[] and delete/delete[], so we sometimes get 3 or 4 mismatches.
+%ANYLINE
 ~~Dr.M~~       3 unique,     3 total invalid heap argument(s)
-%endif
-%if !CYGWIN
+~~Dr.M~~       4 unique,     4 total invalid heap argument(s)
 ~~Dr.M~~       5 unique,     5 total invalid heap argument(s)
-%endif
+%ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total warning(s)
-%if UNIX
+%ANYLINE
+# Unix:
 ~~Dr.M~~       2 unique,     2 total,     27 byte(s) of leak(s)
-%endif
-%if WINDOWS
-# FIXME PR 587093: string code disabled for now
+# Windows: FIXME PR 587093: string code disabled for now
 ~~Dr.M~~       1 unique,     1 total,      4 byte(s) of leak(s)
-%endif
+# FIXME i#664: On Cygwin with bad symbols we fail to suppress a 1 byte system leak.
+~~Dr.M~~       2 unique,     2 total,      5 byte(s) of leak(s)
+%ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
 still-reachable allocation(s)

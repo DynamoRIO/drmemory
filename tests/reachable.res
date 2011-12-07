@@ -59,18 +59,19 @@ Error #5: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator dele
 cs2bug.cpp:185
 memory was allocated here:
 cs2bug.cpp:183
-Error #6: LEAK 4 direct bytes + 0 indirect bytes
+# FIXME i#664: We sometimes fail to suppress a 1 byte system leak, which shows up here.
+: LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:82
 %endif
 %if UNIX
-Error #8: LEAK 4 direct bytes + 19 indirect bytes
+: LEAK 4 direct bytes + 19 indirect bytes
 cs2bug.cpp:155
-Error #9: LEAK 4 direct bytes + 0 indirect bytes
+: LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:82
 %endif
 %if WINDOWS
 # FIXME PR 587093: string code disabled for now
-Error #8: LEAK 4 direct bytes + 0 indirect bytes
+: LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:82
 %endif
 # ensure reachable leaks are printed, and after regular leaks
