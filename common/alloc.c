@@ -3461,7 +3461,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
     client_post_syscall(drcontext, sysnum, pt);
 }
 
-static app_pc
+static inline app_pc
 get_retaddr_at_entry(dr_mcontext_t *mc)
 {
     app_pc retaddr = NULL;
@@ -4893,7 +4893,8 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
                     alloc_routine_entry_t *routine);
 
 static void
-alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine)
+alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine,
+           reg_t xsp)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -4903,8 +4904,13 @@ alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine)
     IF_DEBUG(bool has_entry;)
 
     mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
+    /* we use a passed-in xsp to avoid dr_get_mcontext */
+    mc.flags = DR_MC_CONTROL;
+    mc.xsp = xsp;
+#ifdef X86_64
+# error Need other registers for app param values
+#endif
+
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
     ASSERT(options.track_heap, "unknown reason in alloc hook");
 
@@ -4982,6 +4988,8 @@ alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine)
                     /* Since the flush will remove the fragment we're already in,
                      * we have to redirect execution to the callee again.
                      */
+                    mc.flags = DR_MC_ALL; /* must use ALL for dr_redirect_execution */
+                    dr_get_mcontext(drcontext, &mc);
                     mc.eip = pc;
                     dr_redirect_execution(&mc);
                     ASSERT(false, "dr_redirect_execution should not return");
@@ -5063,10 +5071,12 @@ insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool prep
             alloc_routine_entry_t *routine)
 {
     STATS_INC(wrap_pre);
-    dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 3,
+    dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 4,
                          OPND_CREATE_INTPTR((uint)pc),
                          OPND_CREATE_INT32((uint)prepost),
-                         OPND_CREATE_INTPTR((ptr_uint_t)routine));
+                         OPND_CREATE_INTPTR((ptr_uint_t)routine),
+                         /* pass in xsp to avoid dr_get_mcontext */
+                         opnd_create_reg(DR_REG_XSP));
 }
 
 /* only used if options.track_heap */
