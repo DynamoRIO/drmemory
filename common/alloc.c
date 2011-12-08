@@ -711,13 +711,17 @@ alloc_routine_entry_free(void *p)
 }
 
 static bool
-is_alloc_routine(app_pc pc)
+is_alloc_routine(app_pc pc, bool *prepost OUT)
 {
-    bool found = false;
+    alloc_routine_entry_t *e;
+    bool res = false;
     dr_mutex_lock(alloc_routine_lock);
-    found = (hashtable_lookup(&alloc_routine_table, (void *)pc) != NULL);
+    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
+    res = e != NULL;
+    if (prepost != NULL)
+        *prepost = (e != NULL && e->intercept_post);
     dr_mutex_unlock(alloc_routine_lock);
-    return found;
+    return res;
 }
 
 static bool
@@ -4814,7 +4818,7 @@ get_decoded_ptr(byte *encoded)
  */
 
 static void
-alloc_hook(app_pc pc)
+alloc_hook(app_pc pc, bool prepost)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -4823,7 +4827,7 @@ alloc_hook(app_pc pc)
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    if (options.track_heap && (is_alloc_routine(pc) || is_replace_routine(pc))) {
+    if (options.track_heap) {
         /* if the entry was a jmp* and we didn't see the call prior to it,
          * we did not know the retaddr, so add it now 
          */
@@ -4836,7 +4840,9 @@ alloc_hook(app_pc pc)
          */
         LOG(3, "alloc_hook retaddr="PFX"\n", retaddr);
         /* process post-call wrapping if necessary */
-        if (is_alloc_prepost_routine(pc) || is_replace_routine(pc)) {
+        ASSERT(prepost || !is_replace_routine(pc),
+               "replace-routine caller should set prepost");
+        if (prepost) {
             /* If we did not detect that this was an alloc call at the call site,
              * then we need to dynamically flush and mark the retaddr
              */
@@ -4914,10 +4920,23 @@ alloc_hook(app_pc pc)
         handle_alloc_pre_ex(retaddr, pc,
                             true/*indirect: though now w/ i#559 direct come here too*/,
                             pc, true/*inside callee*/, &mc);
-    } 
+    } else
+        ASSERT(false, "unknown reason in alloc hook");
+}
+
 #ifdef WINDOWS
-    else if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
-             pc == addr_KiException || pc == addr_KiRaise) {
+static void
+alloc_syscall_hook(app_pc pc)
+{
+    void *drcontext = dr_get_current_drcontext();
+    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
+    dr_get_mcontext(drcontext, &mc);
+    ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
+    if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
+        pc == addr_KiException || pc == addr_KiRaise) {
         /* our per-thread data is private per callback so we're already handling
          * cbs (though we don't expect callbacks to interrupt heap routines).
          * we handle exceptions interrupting heap routines here.
@@ -4942,20 +4961,26 @@ alloc_hook(app_pc pc)
         if (pc == addr_KiCallback) {
             per_thread_stack_push(drcontext, pt);
         }
-    }
-#endif
-    else
+    } else
         ASSERT(false, "unknown reason in alloc hook");
 }
 
 static void
-insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
+insert_syscall_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
 {
     STATS_INC(wrap_pre);
-    dr_prepare_for_call(drcontext, bb, inst);
-    PRE(bb, inst, INSTR_CREATE_push_imm(drcontext, OPND_CREATE_INT32((uint)pc)));
-    PRE(bb, inst, INSTR_CREATE_call(drcontext, opnd_create_pc((app_pc)alloc_hook)));
-    dr_cleanup_after_call(drcontext, bb, inst, sizeof(reg_t));
+    dr_insert_clean_call(drcontext, bb, inst, alloc_syscall_hook, false, 1,
+                         OPND_CREATE_INT32((uint)pc));
+}
+#endif /* WINDOWS */
+
+static void
+insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool prepost)
+{
+    STATS_INC(wrap_pre);
+    dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 2,
+                         OPND_CREATE_INT32((uint)pc),
+                         OPND_CREATE_INT32((uint)prepost));
 }
 
 /* only used if options.track_heap */
@@ -5333,14 +5358,15 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     }
 #ifdef WINDOWS
     if (is_alloc_sysroutine(pc)) {
-        insert_hook(drcontext, bb, inst, pc);
+        insert_syscall_hook(drcontext, bb, inst, pc);
     }
 #endif
     if (options.track_heap) {
+        bool prepost;
         if (is_replace_routine(pc))
-            insert_hook(drcontext, bb, inst, pc);
-        else if (is_alloc_routine(pc)) {
-            insert_hook(drcontext, bb, inst, pc);
+            insert_hook(drcontext, bb, inst, pc, true/*pre and post*/);
+        else if (is_alloc_routine(pc, &prepost)) {
+            insert_hook(drcontext, bb, inst, pc, prepost);
             if (entering_alloc != NULL)
                 *entering_alloc = true;
         }
