@@ -4890,7 +4890,7 @@ handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
                     alloc_routine_entry_t *routine);
 
 static void
-alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine,
+alloc_hook(app_pc pc, bool needs_post, alloc_routine_entry_t *routine,
            reg_t xsp)
 {
     void *drcontext = dr_get_current_drcontext();
@@ -4921,9 +4921,9 @@ alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine,
      */
     LOG(3, "alloc_hook retaddr="PFX"\n", retaddr);
     /* process post-call wrapping if necessary */
-    ASSERT(prepost || !is_replace_routine(pc),
-           "replace-routine caller should set prepost");
-    if (prepost) {
+    ASSERT(needs_post || !is_replace_routine(pc),
+           "replace-routine caller should set needs_post");
+    if (needs_post) {
         /* If we did not detect that this was an alloc call at the call site,
          * then we need to dynamically flush and mark the retaddr
          */
@@ -5064,13 +5064,13 @@ insert_syscall_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
 #endif /* WINDOWS */
 
 static void
-insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool prepost,
+insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool needs_post,
             alloc_routine_entry_t *routine)
 {
     STATS_INC(wrap_pre);
     dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 4,
                          OPND_CREATE_INTPTR((uint)pc),
-                         OPND_CREATE_INT32((uint)prepost),
+                         OPND_CREATE_INT32((uint)needs_post),
                          OPND_CREATE_INTPTR((ptr_uint_t)routine),
                          /* pass in xsp to avoid dr_get_mcontext */
                          opnd_create_reg(DR_REG_XSP));
