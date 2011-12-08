@@ -1674,6 +1674,8 @@ static hashtable_t post_call_table;
  * Protected by post_call_table lock.
  */
 static rb_tree_t *mod_pending_tree;
+/* Used for quick check w/o need for lock.  Written while holding post_call lock. */
+static uint mod_pending_entries;
 #endif
 
 typedef struct _post_call_entry_t {
@@ -2198,6 +2200,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         hashtable_lock(&post_call_table);
         IF_DEBUG(existing =)
             rb_insert(mod_pending_tree, info->start, info->end - info->start, NULL);
+        mod_pending_entries++;
         hashtable_unlock(&post_call_table);
         ASSERT(existing == NULL, "new module overlaps w/ existing");
     }
@@ -2210,6 +2213,13 @@ alloc_check_pending_module(app_pc pc)
 {
     if (options.track_allocs && options.cache_postcall) {
         rb_node_t *node;
+
+        /* avoid lookup on every single bb */
+        static app_pc last_page;
+        if (mod_pending_entries == 0 || (app_pc)PAGE_START(pc) == last_page)
+            return;
+        last_page = (app_pc)PAGE_START(pc);
+
         hashtable_lock(&post_call_table);
         node = rb_in_node(mod_pending_tree, pc);
         if (node != NULL) {
@@ -2219,6 +2229,7 @@ alloc_check_pending_module(app_pc pc)
             uint i;
             module_data_t *info;
             rb_delete(mod_pending_tree, node);
+            mod_pending_entries--;
             info = dr_lookup_module(pc);
             ASSERT(info != NULL, "module can't disappear");
             ASSERT(symcache_module_is_cached(info), "must have symcache");
@@ -2315,8 +2326,10 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         if (options.cache_postcall) {
             rb_node_t *node = rb_in_node(mod_pending_tree, info->start);
             /* module unloaded w/o any code executed */
-            if (node != NULL)
+            if (node != NULL) {
                 rb_delete(mod_pending_tree, node);
+                mod_pending_entries--;
+            }
         }
 #endif
         hashtable_remove_range(&post_call_table, info->start, info->end);
