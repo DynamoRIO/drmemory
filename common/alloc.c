@@ -1884,7 +1884,8 @@ malloc_hash(void *v)
 {
     uint hash = (uint)(ptr_uint_t) v;
     ASSERT(MALLOC_CHUNK_ALIGNMENT == 8, "update hash func please");
-    return (hash >> 3);
+    /* Many mallocs are larger than 8 and we get fewer collisions w/ >> 5 */
+    return (hash >> 5);
 }
 
 /* If track_allocs is false, only callbacks and callback returns are tracked.
@@ -1923,9 +1924,18 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     }
 
     if (options.track_allocs) {
+        hashtable_config_t hashconfig;
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
                           malloc_hash, NULL);
+        /* hash lookup can be a bottleneck so it's worth taking some extra space
+         * to reduce the collision chains
+         */
+        hashconfig.size = sizeof(hashconfig);
+        hashconfig.resizable = true;
+        hashconfig.resize_threshold = 50; /* default is 75 */
+        hashtable_configure(&malloc_table, &hashconfig);
+
         large_malloc_tree = rb_tree_create(NULL);
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
@@ -2460,6 +2470,14 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     /* PR 567117: client event with entry in hashtable */
     client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
 
+#ifdef STATISTICS
+    STATS_INC(num_mallocs);
+    if (num_mallocs % 10000 == 0) {
+        hashtable_cluster_stats(&malloc_table, "malloc table");
+        LOG(1, "malloc table stats after %u malloc calls\n", num_mallocs);
+    }
+#endif
+
     malloc_unlock_if_locked_by_me(locked_by_me);
     if (old_e != NULL) {
         ASSERT(!TEST(MALLOC_VALID, old_e->flags), "internal error in malloc tracking");
@@ -2470,7 +2488,6 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
         print_callstack_to_file(dr_get_current_drcontext(), mc, post_call,
                                 INVALID_FILE/*use pt->f*/);
     });
-    STATS_INC(num_mallocs);
 }
 
 void

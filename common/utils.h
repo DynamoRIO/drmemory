@@ -515,6 +515,11 @@ get_private_heap_handle(void);
 void
 hashtable_delete_with_stats(hashtable_t *table, const char *name);
 
+#ifdef STATISTICS
+void
+hashtable_cluster_stats(hashtable_t *table, const char *name);
+#endif
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

@@ -314,6 +314,29 @@ hashtable_delete_with_stats(hashtable_t *table, const char *name)
     hashtable_delete(table);
 }
 
+#ifdef STATISTICS
+void
+hashtable_cluster_stats(hashtable_t *table, const char *name)
+{
+    uint max_cluster = 0, tot_cluster = 0, count_cluster = 0;
+    uint i;
+    for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
+        hash_entry_t *he;
+        uint cluster = 0;
+        if (table->table[i] != NULL)
+            count_cluster++;
+        for (he = table->table[i]; he != NULL; he = he->next)
+            cluster++;
+        if (cluster > max_cluster)
+            max_cluster = cluster;
+        tot_cluster += cluster;
+    }
+    /* we don't want to use floating point so we print count and tot */
+    LOG(0, "%s table: clusters=%u max=%u tot=%u\n",
+        name, count_cluster, max_cluster, tot_cluster);
+}
+#endif
+
 void
 print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar)
 {
