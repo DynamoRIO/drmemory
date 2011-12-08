@@ -968,6 +968,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     int i;
     bool res = true;
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
 
 #ifdef STATISTICS
@@ -1052,6 +1053,7 @@ event_post_syscall(void *drcontext, int sysnum)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
 
 #ifdef SYSCALL_DRIVER

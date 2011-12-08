@@ -781,6 +781,7 @@ get_cur_src_value(void *drcontext, instr_t *inst, uint i, reg_t *val)
     if (val == NULL)
         return false;
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     if (opnd_is_memory_reference(src)) {
         app_pc addr = opnd_compute_address(src, &mc);
@@ -2164,6 +2165,7 @@ slow_path(app_pc pc, app_pc decode_pc)
     void *drcontext = dr_get_current_drcontext();
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     return slow_path_with_mc(drcontext, pc, decode_pc, &mc);
 }

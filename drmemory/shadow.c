@@ -1437,6 +1437,7 @@ shadow_registers_thread_init(void *drcontext)
 #ifdef LINUX
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 #endif
     shadow_registers_t *sr;
 #ifdef LINUX

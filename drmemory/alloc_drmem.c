@@ -1025,6 +1025,7 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
     if (!options.check_stack_bounds)
         return;
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.esp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
@@ -1130,6 +1131,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 {
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     if (options.leaks_only || !options.shadowing)
         return;
     dr_get_mcontext(drcontext, &mc);
@@ -1380,6 +1382,7 @@ at_signal_handler(void)
     byte *sp, *stop;
     ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *)mc.xsp;
     stop = sp + MAX_SIGNAL_FRAME_SIZE;

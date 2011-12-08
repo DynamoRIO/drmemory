@@ -1076,6 +1076,7 @@ leak_scan_for_leaks(bool at_exit)
 #endif
     LOG(1, "checking leaks via reachability analysis\n");
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 
     /* Strategy: First walk non-heap memory that is defined to find reachable
      * heap blocks.  (Ideally we would skip memory that has not been modified

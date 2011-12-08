@@ -2324,6 +2324,7 @@ report_child_thread(void *drcontext, thread_id_t child)
 
         dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
         mc.size = sizeof(mc);
+        mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
         dr_get_mcontext(drcontext, &mc);
 
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,

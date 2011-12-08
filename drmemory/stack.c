@@ -331,6 +331,7 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     void *drcontext = dr_get_current_drcontext();
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
     STATS_INC(adjust_esp_executions);
     dr_get_mcontext(drcontext, &mc);
     if (type == ESP_ADJUST_ABSOLUTE) {

@@ -876,6 +876,7 @@ set_thread_initial_structures(void *drcontext)
     cpt->teb = teb;
 
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
     /* FIXME: we currently assume the whole TEB except the 64 tls slots are
      * defined, b/c we're not in early enough to watch the others.
      */
@@ -1024,9 +1025,10 @@ set_initial_structures(void *drcontext)
      * For subsequent threads we do this when handling the clone syscall
      */
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
     app_pc stack_base;
     size_t stack_size;
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);
     if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
         LOG(1, "initial stack is "PFX"-"PFX", sp="PFX"\n",

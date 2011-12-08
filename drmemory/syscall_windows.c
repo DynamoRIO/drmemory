@@ -2269,6 +2269,7 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
     if (sysnum == sysnum_CreateThreadEx)
         return handle_pre_CreateThreadEx(drcontext, sysnum, pt, &mc);
@@ -2336,6 +2337,7 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
     /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
      * client_post_syscall() where common/alloc.c identifies the sysnum: but

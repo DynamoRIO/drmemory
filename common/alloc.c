@@ -4820,6 +4820,7 @@ alloc_hook(app_pc pc)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
     if (options.track_heap && (is_alloc_routine(pc) || is_replace_routine(pc))) {
@@ -4885,6 +4886,9 @@ alloc_hook(app_pc pc)
                     else /* XXX i#553: recursion count could get off */
                         WARN("WARNING: post-call disappeared\n");
                     hashtable_unlock(&post_call_table);
+                    /* need all state to redirect */
+                    mc.flags = DR_MC_ALL;
+                    dr_get_mcontext(drcontext, &mc);
                     /* Since the flush will remove the fragment we're already in,
                      * we have to redirect execution to the callee again.
                      */
@@ -4966,6 +4970,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     alloc_routine_entry_t routine;
     routine_type_t type;
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     if (is_replace_routine(expect)) {
         pt->in_realloc_size = true;
@@ -5200,6 +5205,7 @@ handle_alloc_post(app_pc post_call)
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
 
     ASSERT(options.track_heap, "requires track_heap");
