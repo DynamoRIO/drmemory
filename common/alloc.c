@@ -227,6 +227,7 @@ get_brk(void)
 /* These take 1-based arg numbers */
 #define APP_ARG_ADDR(mc, num, retaddr_yet) \
     ((mc)->esp + ((num)-1+((retaddr_yet)?1:0))*sizeof(reg_t))
+/* XXX: if options.conservative, use safe_read() */
 #define APP_ARG(mc, num, retaddr_yet) \
     (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
 
@@ -3464,8 +3465,11 @@ static app_pc
 get_retaddr_at_entry(dr_mcontext_t *mc)
 {
     app_pc retaddr = NULL;
-    if (!safe_read((void *)mc->xsp, sizeof(retaddr), &retaddr))
-        ASSERT(false, "error reading retaddr at func entry");
+    if (options.conservative) {
+        if (!safe_read((void *)mc->xsp, sizeof(retaddr), &retaddr))
+            ASSERT(false, "error reading retaddr at func entry");
+    } else
+        retaddr = *(app_pc*)(mc->xsp);
     return retaddr;
 }
 
