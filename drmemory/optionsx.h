@@ -280,6 +280,9 @@ OPTION_CLIENT_BOOL(client, gen_suppress_syms, true,
 OPTION_CLIENT_BOOL(client, show_threads, true,
                    "Print the callstack of each thread creation point",
                    "Whether to print the callstack of each thread creation point to the global logfile, which can be useful to identify which thread was involved in an error report.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
+OPTION_CLIENT_BOOL(client, conservative, false,
+                   "Be conservative whenever reading application memory",
+                   "Be conservative whenever reading application memory.  When this option is disabled, "TOOLNAME" may read return addresses and arguments passed to functions without fault-handling code, which gains performance but can sacrifice robustness when running hand-crafted assembly code")
 
 /* Exposed for Dr. Memory only */
 OPTION_CLIENT_BOOL(drmemscope, check_uninit_cmps, true,

@@ -60,6 +60,10 @@ typedef struct _alloc_options_t {
     bool cache_postcall;
     /* whether to intercept operator new* and operator delete* */
     bool intercept_operators;
+    /* whether to be conservative about reading app stack or whether
+     * to worry about racy module unloads
+     */
+    bool conservative;
     /* Add new options here */
 } alloc_options_t;
 

@@ -77,6 +77,7 @@ typedef struct _per_thread_t {
     bool in_realloc_size;
     /* record which heap routine */
     app_pc last_alloc_routine[MAX_HEAP_NESTING];
+    void *last_alloc_info[MAX_HEAP_NESTING];
     /* record app esp to handle nested tailcalls */
     reg_t app_esp[MAX_HEAP_NESTING];
     bool ignored_alloc;

@@ -216,11 +216,6 @@ uint pointers_encoded;
 # endif
 #endif
 
-/* only used if options.track_heap */
-static void
-handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
-                    app_pc actual, bool inside, dr_mcontext_t *mc);
-
 #ifdef LINUX
 app_pc
 get_brk(void)
@@ -710,18 +705,18 @@ alloc_routine_entry_free(void *p)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
-static bool
-is_alloc_routine(app_pc pc, bool *prepost OUT)
+/* XXX: the caller should only de-reference the returned pointer
+ * if -no_conservative b/c a racy module unload could result
+ * in it being freed once the lock is released here
+ */
+static alloc_routine_entry_t *
+is_alloc_routine(app_pc pc)
 {
-    alloc_routine_entry_t *e;
-    bool res = false;
+    alloc_routine_entry_t *e = NULL;
     dr_mutex_lock(alloc_routine_lock);
     e = hashtable_lookup(&alloc_routine_table, (void *)pc);
-    res = e != NULL;
-    if (prepost != NULL)
-        *prepost = (e != NULL && e->intercept_post);
     dr_mutex_unlock(alloc_routine_lock);
-    return res;
+    return e;
 }
 
 static byte *
@@ -774,6 +769,7 @@ get_alloc_routine_name(app_pc pc)
  * the app's libraries, so really no entry should become invalid while
  * processing an app call into that library, but our call into the
  * size routine could fail if the app library is racily unloaded.
+ * Today we only use this for -conservative.
  */
 static bool
 get_alloc_entry(app_pc pc, alloc_routine_entry_t *entry)
@@ -3511,7 +3507,8 @@ malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
 }
 
 static void
-enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc)
+enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc,
+                   alloc_routine_entry_t *routine)
 {
     if (pt->in_heap_routine == 0) {
         /* if tangent, check_recursive_same_sequence() will call this */
@@ -3523,6 +3520,8 @@ enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc)
      */
     if (pt->in_heap_routine < MAX_HEAP_NESTING) {
         pt->last_alloc_routine[pt->in_heap_routine] = pc;
+        if (!options.conservative)
+            pt->last_alloc_info[pt->in_heap_routine] = routine;
         pt->post_call[pt->in_heap_routine] = pt->cur_post_call;
         pt->app_esp[pt->in_heap_routine] = mc->esp;
     } else {
@@ -3566,34 +3565,51 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
          * delay free queue, etc. so the redzone adjustment matches.
          */
         if (is_rtl_routine(routine->type)) {
-            app_pc pc = NULL;
-            alloc_routine_entry_t last_routine;
+            bool tangent = false;
+            alloc_routine_entry_t *last_routine = NULL;
+            alloc_routine_entry_t last_routine_local;
             ASSERT(pt->in_heap_routine > 0, "invalid heap counter");
             if (pt->in_heap_routine < MAX_HEAP_NESTING) {
-                pc = pt->last_alloc_routine[pt->in_heap_routine-1];
+                tangent = (pt->last_alloc_routine[pt->in_heap_routine-1] != NULL);
+                if (!options.replace_realloc) {
+                    /* need to get last_routine */
+                    if (options.conservative) {
+                        /* i#708: get a copy from table while holding lock, rather than
+                         * using pointer into struct that can be deleted if module
+                         * is racily unloaded
+                         */
+                        app_pc pc = pt->last_alloc_routine[pt->in_heap_routine-1];
+                        if (pc != NULL && get_alloc_entry(pc, &last_routine_local))
+                            last_routine = &last_routine_local;
+                        else {
+                            LOGPT(1, pt, "WARNING: may misclassify recursion: "
+                                  "bad last routine\n");
+                        }
+                    } else {
+                        last_routine = (alloc_routine_entry_t *)
+                            pt->last_alloc_info[pt->in_heap_routine-1];
+                    }
+                    if (last_routine != NULL &&
+                        last_routine->type == RTL_ROUTINE_REALLOC &&
+                        (routine->type == RTL_ROUTINE_MALLOC ||
+                         routine->type == RTL_ROUTINE_FREE)) {
+                        /* no new context for just realloc calling malloc+free (i#441) */
+                        tangent = false;
+                    }
+                }
             } else
                 LOGPT(1, pt, "WARNING: may misclassify recursion: exceeding nest max\n");
-            if (pc != NULL && !get_alloc_entry(pc, &last_routine)) {
-                LOGPT(1, pt, "WARNING: may misclassify recursion: bad last routine\n");
-                pc = NULL;
-            }
-            if (!options.replace_realloc &&
-                last_routine.type == RTL_ROUTINE_REALLOC &&
-                (routine->type == RTL_ROUTINE_MALLOC ||
-                 routine->type == RTL_ROUTINE_FREE)) {
-                /* don't do a new context for just realloc calling malloc+free (i#441) */
-                pc = NULL;
-            }
             LOGPT(2, pt, "check_recursive %s: "PFX" vs "PFX"\n",
                   routine->name, arg1, arg2);
-            if (pc != NULL && is_rtl_routine(last_routine.type) && arg1 != arg2) {
+            if (tangent && last_routine != NULL &&
+                is_rtl_routine(last_routine->type) && arg1 != arg2) {
                 per_thread_t *new_pt;
                 LOGPT(2, pt, "%s recursive call: tangential => new context\n",
                       routine->name);
                 pt->in_heap_routine--; /* undo the inc */
                 new_pt = per_thread_stack_push(drcontext, pt);
                 new_pt->heap_tangent = true;
-                enter_heap_routine(new_pt, routine->pc, mc);
+                enter_heap_routine(new_pt, routine->pc, mc, routine);
                 ASSERT(new_pt->in_heap_routine == 1, "inheap not cleared in new cxt");
                 *pt_caller = new_pt;
                 return false;
@@ -4849,8 +4865,14 @@ get_decoded_ptr(byte *encoded)
  * SHARED HOOK CODE
  */
 
+/* only used if options.track_heap */
 static void
-alloc_hook(app_pc pc, bool prepost)
+handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
+                    app_pc actual, bool inside, dr_mcontext_t *mc,
+                    alloc_routine_entry_t *routine);
+
+static void
+alloc_hook(app_pc pc, bool prepost, alloc_routine_entry_t *routine)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
@@ -4962,7 +4984,7 @@ alloc_hook(app_pc pc, bool prepost)
     pt->cur_post_call = retaddr;
     handle_alloc_pre_ex(retaddr, pc,
                         true/*indirect: though now w/ i#559 direct come here too*/,
-                        pc, true/*inside callee*/, &mc);
+                        pc, true/*inside callee*/, &mc, routine);
 }
 
 #ifdef WINDOWS
@@ -5016,34 +5038,43 @@ insert_syscall_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
 #endif /* WINDOWS */
 
 static void
-insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool prepost)
+insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool prepost,
+            alloc_routine_entry_t *routine)
 {
     STATS_INC(wrap_pre);
-    dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 2,
-                         OPND_CREATE_INT32((uint)pc),
-                         OPND_CREATE_INT32((uint)prepost));
+    dr_insert_clean_call(drcontext, bb, inst, alloc_hook, false, 3,
+                         OPND_CREATE_INTPTR((uint)pc),
+                         OPND_CREATE_INT32((uint)prepost),
+                         OPND_CREATE_INTPTR((ptr_uint_t)routine));
 }
 
 /* only used if options.track_heap */
 static void
 handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
-                    app_pc actual, bool inside, dr_mcontext_t *mc)
+                    app_pc actual, bool inside, dr_mcontext_t *mc,
+                    alloc_routine_entry_t *routine)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    /* get a copy of the routine so don't need lock */
-    alloc_routine_entry_t routine;
     routine_type_t type;
+    alloc_routine_entry_t routine_local;
     if (is_replace_routine(expect)) {
         pt->in_realloc_size = true;
         replace_realloc_size_pre(drcontext, mc, inside);
         return;
     }
-    if (!get_alloc_entry(expect, &routine)) {
-        ASSERT(false, "fatal: can't find alloc entry");
-        return; /* maybe release build will limp along */
+    if (options.conservative) {
+        /* i#708: get a copy from table while holding lock, rather than using
+         * pointer into struct that can be deleted if module is racily unloaded
+         */
+        if (!get_alloc_entry(expect, &routine_local)) {
+            ASSERT(false, "fatal: can't find alloc entry");
+            return; /* maybe release build will limp along */
+        }
+        routine = &routine_local;
     }
-    type = routine.type;
+    ASSERT(routine != NULL, "invalid param"); /* is NULL for is_replace_routine */
+    type = routine->type;
 
     ASSERT(expect != NULL, "handle_alloc_pre: expect is NULL!");
     if (indirect) {
@@ -5082,48 +5113,48 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         is_malloc_routine(type) ||
         is_realloc_routine(type) ||
         is_calloc_routine(type)) {
-        record_allocator(drcontext, pt, &routine);
+        record_allocator(drcontext, pt, routine);
     } else if (is_delete_routine(type) ||
                is_free_routine(type)) {
         if (pt->in_heap_routine == 0) {
-            handle_free_check_mismatch(drcontext, mc, inside, call_site, &routine);
+            handle_free_check_mismatch(drcontext, mc, inside, call_site, routine);
             pt->allocator = 0; /* in case missed alloc post */
         }
     }
-    if (!routine.intercept_post)
+    if (!routine->intercept_post)
         return; /* no post wrap so don't "enter" */
              
-    enter_heap_routine(pt, expect, mc);
+    enter_heap_routine(pt, expect, mc, routine);
 
     if (is_free_routine(type)) {
-        handle_free_pre(drcontext, mc, inside, call_site, &routine);
+        handle_free_pre(drcontext, mc, inside, call_site, routine);
     }
     else if (is_size_routine(type)) {
-        handle_size_pre(drcontext, mc, inside, call_site, &routine);
+        handle_size_pre(drcontext, mc, inside, call_site, routine);
     }
     else if (is_malloc_routine(type)) {
-        handle_malloc_pre(drcontext, mc, inside, &routine);
+        handle_malloc_pre(drcontext, mc, inside, routine);
     }
     else if (is_realloc_routine(type)) {
-        handle_realloc_pre(drcontext, mc, inside, call_site, &routine);
+        handle_realloc_pre(drcontext, mc, inside, call_site, routine);
     }
     else if (is_calloc_routine(type)) {
-        handle_calloc_pre(drcontext, mc, inside, &routine);
+        handle_calloc_pre(drcontext, mc, inside, routine);
     }
 #ifdef WINDOWS
     else if (type == RTL_ROUTINE_CREATE) {
         handle_create_pre(drcontext, mc, inside);
     }
     else if (type == RTL_ROUTINE_DESTROY) {
-        handle_destroy_pre(drcontext, mc, inside, &routine);
+        handle_destroy_pre(drcontext, mc, inside, routine);
     }
     else if (type == RTL_ROUTINE_VALIDATE) {
-        handle_validate_pre(drcontext, mc, inside, call_site, &routine);
+        handle_validate_pre(drcontext, mc, inside, call_site, routine);
     }
     else if (type == RTL_ROUTINE_GETINFO ||
              type == RTL_ROUTINE_SETINFO ||
              type == RTL_ROUTINE_SETFLAGS) {
-        handle_userinfo_pre(drcontext, mc, inside, call_site, &routine);
+        handle_userinfo_pre(drcontext, mc, inside, call_site, routine);
     }
     else if (type == RTL_ROUTINE_HEAPINFO) {
         /* i#280: turn both HeapEnableTerminationOnCorruption and
@@ -5134,7 +5165,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
          * and making up some errno.
          */
         /* RtlSetHeapInformation(HANDLE heap, HEAP_INFORMATION_CLASS class, ...) */
-        LOG(1, "disabling %s "PFX" %d\n", routine.name,
+        LOG(1, "disabling %s "PFX" %d\n", routine->name,
             *((int *)APP_ARG_ADDR(mc, 1, inside)),
             *((int *)APP_ARG_ADDR(mc, 2, inside)));
         *((int *)APP_ARG_ADDR(mc, 2, inside)) = -1;
@@ -5144,7 +5175,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     }
     else if (options.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
         /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
-        LOG(1, "disabling %s %d\n", routine.name,
+        LOG(1, "disabling %s %d\n", routine->name,
             *((int *)APP_ARG_ADDR(mc, 1, inside)));
         *((int *)APP_ARG_ADDR(mc, 1, inside)) = 0;
     }
@@ -5157,13 +5188,13 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         /* XXX: once we have the aligned-malloc routines turn this
          * into a NOTIFY_ERROR and dr_abort
          */
-        LOG(1, "WARNING: unhandled heap routine %s\n", routine.name);
+        LOG(1, "WARNING: unhandled heap routine %s\n", routine->name);
     }
     else if (type == HEAP_ROUTINE_NOT_HANDLED_NOTIFY) {
         /* XXX: once we have the aligned-malloc routines turn this
          * into a NOTIFY_ERROR and dr_abort
          */
-        NOTIFY_ERROR("unhandled heap routine %s"NL, routine.name);
+        NOTIFY_ERROR("unhandled heap routine %s"NL, routine->name);
         dr_abort();
     }
 }
@@ -5171,19 +5202,26 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
 /* only used if options.track_heap */
 static void
 handle_alloc_post_func(void *drcontext, dr_mcontext_t *mc,
-                       app_pc func, app_pc post_call)
+                       app_pc func, app_pc post_call,
+                       alloc_routine_entry_t *routine)
 {
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    /* get a copy of the routine so don't need lock */
-    alloc_routine_entry_t routine;
     routine_type_t type;
     bool adjusted = false;
+    alloc_routine_entry_t routine_local;
 
-    if (!get_alloc_entry(func, &routine)) {
-        ASSERT(false, "fatal: can't find alloc entry");
-        return; /* maybe release build will limp along */
+    if (options.conservative) {
+        /* i#708: get a copy from table while holding lock, rather than using
+         * pointer into struct that can be deleted if module is racily unloaded
+         */
+        if (!get_alloc_entry(func, &routine_local)) {
+            ASSERT(false, "fatal: can't find alloc entry");
+            return; /* maybe release build will limp along */
+        }
+        routine = &routine_local;
     }
-    type = routine.type;
+
+    type = routine->type;
     ASSERT(func != NULL, "handle_alloc_post: func is NULL!");
     ASSERT(pt->in_heap_routine > 0, "caller should have checked");
 
@@ -5229,17 +5267,17 @@ handle_alloc_post_func(void *drcontext, dr_mcontext_t *mc,
         pt->allocator = 0;
     }
     else if (is_free_routine(type)) {
-        handle_free_post(drcontext, mc, &routine);
+        handle_free_post(drcontext, mc, routine);
     }
     else if (is_size_routine(type)) {
-        handle_size_post(drcontext, mc, &routine);
+        handle_size_post(drcontext, mc, routine);
     }
     else if (is_malloc_routine(type)) {
-        handle_malloc_post(drcontext, mc, false/*!realloc*/, post_call, &routine);
+        handle_malloc_post(drcontext, mc, false/*!realloc*/, post_call, routine);
     } else if (is_realloc_routine(type)) {
-        handle_realloc_post(drcontext, mc, post_call, &routine);
+        handle_realloc_post(drcontext, mc, post_call, routine);
     } else if (is_calloc_routine(type)) {
-        handle_calloc_post(drcontext, mc, post_call, &routine);
+        handle_calloc_post(drcontext, mc, post_call, routine);
 #ifdef WINDOWS
     } else if (type == RTL_ROUTINE_GETINFO ||
                type == RTL_ROUTINE_SETINFO ||
@@ -5307,7 +5345,9 @@ handle_alloc_post(app_pc post_call)
     while (pt->in_heap_routine > 0 &&
            pt->app_esp[pt->in_heap_routine] < mc.esp) {
         handle_alloc_post_func(drcontext, &mc,
-                               pt->last_alloc_routine[pt->in_heap_routine], post_call);
+                               pt->last_alloc_routine[pt->in_heap_routine], post_call,
+                               (alloc_routine_entry_t *)
+                               pt->last_alloc_info[pt->in_heap_routine]);
     }
 
 #ifdef WINDOWS
@@ -5402,13 +5442,18 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     }
 #endif
     if (options.track_heap) {
-        bool prepost;
         if (is_replace_routine(pc))
-            insert_hook(drcontext, bb, inst, pc, true/*pre and post*/);
-        else if (is_alloc_routine(pc, &prepost)) {
-            insert_hook(drcontext, bb, inst, pc, prepost);
-            if (entering_alloc != NULL)
-                *entering_alloc = true;
+            insert_hook(drcontext, bb, inst, pc, true/*pre and post*/, NULL);
+        else {
+            alloc_routine_entry_t *e = is_alloc_routine(pc);
+            if (e != NULL) {
+                /* N.B.: e can be unsafe to use if containing module is
+                 * racily unloaded.  We risk it here even for -conservative.
+                 */
+                insert_hook(drcontext, bb, inst, pc, e->intercept_post, e);
+                if (entering_alloc != NULL)
+                    *entering_alloc = true;
+            }
         }
         /* We used to calculate retaddr for calls and add to post-call
          * table here, but we no longer do that since it doesn't buy

@@ -160,6 +160,7 @@ alloc_drmem_init(void)
      * b/c of msvc debug delete reading headers
      */
     alloc_ops.intercept_operators = !options.leaks_only && options.shadowing;
+    alloc_ops.conservative = options.conservative;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,

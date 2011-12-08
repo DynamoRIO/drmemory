@@ -2080,6 +2080,7 @@ dr_init(client_id_t client_id)
 #ifdef WINDOWS
     alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
+    alloc_ops.conservative = options.conservative;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
