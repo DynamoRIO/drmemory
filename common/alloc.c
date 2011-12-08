@@ -724,18 +724,6 @@ is_alloc_routine(app_pc pc, bool *prepost OUT)
     return res;
 }
 
-static bool
-is_alloc_prepost_routine(app_pc pc)
-{
-    alloc_routine_entry_t *e;
-    bool res = false;
-    dr_mutex_lock(alloc_routine_lock);
-    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
-    res = (e != NULL && e->intercept_post);
-    dr_mutex_unlock(alloc_routine_lock);
-    return res;
-}
-
 static byte *
 replace_alloc_routine(app_pc pc)
 {
@@ -5102,11 +5090,10 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             pt->allocator = 0; /* in case missed alloc post */
         }
     }
-    if (!routine_needs_post_wrap(routine.type, routine.set->type))
+    if (!routine.intercept_post)
         return; /* no post wrap so don't "enter" */
              
     enter_heap_routine(pt, expect, mc);
-    ASSERT(is_alloc_prepost_routine(expect), "must have post-wrap");
 
     if (is_free_routine(type)) {
         handle_free_pre(drcontext, mc, inside, call_site, &routine);
