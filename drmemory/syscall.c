@@ -423,7 +423,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     app_pc start;
     int i, j;
-    if (!options.analyze_unknown_syscalls)
+    if (!options.analyze_unknown_syscalls ||
+        !options.check_uninitialized)
         return;
     LOG(SYSCALL_VERBOSE, "unknown system call #"PIFX" %s\n",
         sysnum, os_syscall_get_name(sysnum) == NULL ? "" : os_syscall_get_name(sysnum));
@@ -534,7 +535,8 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
     int i, j;
     byte *w_at = NULL;
     byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
-    if (!options.analyze_unknown_syscalls)
+    if (!options.analyze_unknown_syscalls ||
+        !options.check_uninitialized)
         return;
     /* we analyze params even if syscall failed, since in some cases
      * some params are still written (xref i#486, i#358)
