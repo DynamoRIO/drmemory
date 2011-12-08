@@ -219,7 +219,7 @@ uint pointers_encoded;
 /* only used if options.track_heap */
 static void
 handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
-                    app_pc actual, bool inside);
+                    app_pc actual, bool inside, dr_mcontext_t *mc);
 
 #ifdef LINUX
 app_pc
@@ -4913,7 +4913,7 @@ alloc_hook(app_pc pc)
         pt->cur_post_call = retaddr;
         handle_alloc_pre_ex(retaddr, pc,
                             true/*indirect: though now w/ i#559 direct come here too*/,
-                            pc, true/*inside callee*/);
+                            pc, true/*inside callee*/, &mc);
     } 
 #ifdef WINDOWS
     else if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
@@ -4961,20 +4961,16 @@ insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
 /* only used if options.track_heap */
 static void
 handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
-                    app_pc actual, bool inside)
+                    app_pc actual, bool inside, dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     /* get a copy of the routine so don't need lock */
     alloc_routine_entry_t routine;
     routine_type_t type;
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
     if (is_replace_routine(expect)) {
         pt->in_realloc_size = true;
-        replace_realloc_size_pre(drcontext, &mc, inside);
+        replace_realloc_size_pre(drcontext, mc, inside);
         return;
     }
     if (!get_alloc_entry(expect, &routine)) {
@@ -4998,7 +4994,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
         pt->in_heap_routine > 0 ? " (recursive)" : "",
         inside ? "post-retaddr" : "pre-retaddr");
     DOLOG(4, {
-        print_callstack_to_file(drcontext, &mc, call_site, INVALID_FILE/*use pt->f*/);
+        print_callstack_to_file(drcontext, mc, call_site, INVALID_FILE/*use pt->f*/);
     });
 #if defined(WINDOWS) && defined (USE_DRSYMS)
     DODEBUG({
@@ -5006,7 +5002,7 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
             (is_free_routine(type) || is_size_routine(type) ||
              is_malloc_routine(type) || is_realloc_routine(type) ||
              is_calloc_routine(type))) {
-            HANDLE heap = (HANDLE) APP_ARG(&mc, 1, inside);
+            HANDLE heap = (HANDLE) APP_ARG(mc, 1, inside);
             ASSERT(heap != get_private_heap_handle(), "app is using priv heap");
         }
     });
@@ -5024,45 +5020,45 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
     } else if (is_delete_routine(type) ||
                is_free_routine(type)) {
         if (pt->in_heap_routine == 0) {
-            handle_free_check_mismatch(drcontext, &mc, inside, call_site, &routine);
+            handle_free_check_mismatch(drcontext, mc, inside, call_site, &routine);
             pt->allocator = 0; /* in case missed alloc post */
         }
     }
     if (!routine_needs_post_wrap(routine.type, routine.set->type))
         return; /* no post wrap so don't "enter" */
              
-    enter_heap_routine(pt, expect, &mc);
+    enter_heap_routine(pt, expect, mc);
     ASSERT(is_alloc_prepost_routine(expect), "must have post-wrap");
 
     if (is_free_routine(type)) {
-        handle_free_pre(drcontext, &mc, inside, call_site, &routine);
+        handle_free_pre(drcontext, mc, inside, call_site, &routine);
     }
     else if (is_size_routine(type)) {
-        handle_size_pre(drcontext, &mc, inside, call_site, &routine);
+        handle_size_pre(drcontext, mc, inside, call_site, &routine);
     }
     else if (is_malloc_routine(type)) {
-        handle_malloc_pre(drcontext, &mc, inside, &routine);
+        handle_malloc_pre(drcontext, mc, inside, &routine);
     }
     else if (is_realloc_routine(type)) {
-        handle_realloc_pre(drcontext, &mc, inside, call_site, &routine);
+        handle_realloc_pre(drcontext, mc, inside, call_site, &routine);
     }
     else if (is_calloc_routine(type)) {
-        handle_calloc_pre(drcontext, &mc, inside, &routine);
+        handle_calloc_pre(drcontext, mc, inside, &routine);
     }
 #ifdef WINDOWS
     else if (type == RTL_ROUTINE_CREATE) {
-        handle_create_pre(drcontext, &mc, inside);
+        handle_create_pre(drcontext, mc, inside);
     }
     else if (type == RTL_ROUTINE_DESTROY) {
-        handle_destroy_pre(drcontext, &mc, inside, &routine);
+        handle_destroy_pre(drcontext, mc, inside, &routine);
     }
     else if (type == RTL_ROUTINE_VALIDATE) {
-        handle_validate_pre(drcontext, &mc, inside, call_site, &routine);
+        handle_validate_pre(drcontext, mc, inside, call_site, &routine);
     }
     else if (type == RTL_ROUTINE_GETINFO ||
              type == RTL_ROUTINE_SETINFO ||
              type == RTL_ROUTINE_SETFLAGS) {
-        handle_userinfo_pre(drcontext, &mc, inside, call_site, &routine);
+        handle_userinfo_pre(drcontext, mc, inside, call_site, &routine);
     }
     else if (type == RTL_ROUTINE_HEAPINFO) {
         /* i#280: turn both HeapEnableTerminationOnCorruption and
@@ -5074,22 +5070,22 @@ handle_alloc_pre_ex(app_pc call_site, app_pc expect, bool indirect,
          */
         /* RtlSetHeapInformation(HANDLE heap, HEAP_INFORMATION_CLASS class, ...) */
         LOG(1, "disabling %s "PFX" %d\n", routine.name,
-            *((int *)APP_ARG_ADDR(&mc, 1, inside)),
-            *((int *)APP_ARG_ADDR(&mc, 2, inside)));
-        *((int *)APP_ARG_ADDR(&mc, 2, inside)) = -1;
+            *((int *)APP_ARG_ADDR(mc, 1, inside)),
+            *((int *)APP_ARG_ADDR(mc, 2, inside)));
+        *((int *)APP_ARG_ADDR(mc, 2, inside)) = -1;
     }
     else if (type == RTL_ROUTINE_CREATE_ACTCXT) {
-        handle_create_actcxt_pre(drcontext, &mc, inside);
+        handle_create_actcxt_pre(drcontext, mc, inside);
     }
     else if (options.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
         /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
         LOG(1, "disabling %s %d\n", routine.name,
-            *((int *)APP_ARG_ADDR(&mc, 1, inside)));
-        *((int *)APP_ARG_ADDR(&mc, 1, inside)) = 0;
+            *((int *)APP_ARG_ADDR(mc, 1, inside)));
+        *((int *)APP_ARG_ADDR(mc, 1, inside)) = 0;
     }
     else if (type == RTL_ROUTINE_ENCODE_PTR) {
         if (options.check_encoded_pointers)
-            handle_encoded_ptr_pre(drcontext, &mc, inside);
+            handle_encoded_ptr_pre(drcontext, mc, inside);
     }
 #endif
     else if (type == HEAP_ROUTINE_NOT_HANDLED) {
