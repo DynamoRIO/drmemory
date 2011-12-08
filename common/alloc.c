@@ -3591,24 +3591,24 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
             ASSERT(pt->in_heap_routine > 0, "invalid heap counter");
             if (pt->in_heap_routine < MAX_HEAP_NESTING) {
                 tangent = (pt->last_alloc_routine[pt->in_heap_routine-1] != NULL);
-                if (!options.replace_realloc) {
-                    /* need to get last_routine */
-                    if (options.conservative) {
-                        /* i#708: get a copy from table while holding lock, rather than
-                         * using pointer into struct that can be deleted if module
-                         * is racily unloaded
-                         */
-                        app_pc pc = pt->last_alloc_routine[pt->in_heap_routine-1];
-                        if (pc != NULL && get_alloc_entry(pc, &last_routine_local))
-                            last_routine = &last_routine_local;
-                        else {
-                            LOGPT(1, pt, "WARNING: may misclassify recursion: "
-                                  "bad last routine\n");
-                        }
-                    } else {
-                        last_routine = (alloc_routine_entry_t *)
-                            pt->last_alloc_info[pt->in_heap_routine-1];
+                /* need to get last_routine */
+                if (options.conservative) {
+                    /* i#708: get a copy from table while holding lock, rather than
+                     * using pointer into struct that can be deleted if module
+                     * is racily unloaded
+                     */
+                    app_pc pc = pt->last_alloc_routine[pt->in_heap_routine-1];
+                    if (pc != NULL && get_alloc_entry(pc, &last_routine_local))
+                        last_routine = &last_routine_local;
+                    else {
+                        LOGPT(1, pt, "WARNING: may misclassify recursion: "
+                              "bad last routine\n");
                     }
+                } else {
+                    last_routine = (alloc_routine_entry_t *)
+                        pt->last_alloc_info[pt->in_heap_routine-1];
+                }
+                if (!options.replace_realloc) {
                     if (last_routine != NULL &&
                         last_routine->type == RTL_ROUTINE_REALLOC &&
                         (routine->type == RTL_ROUTINE_MALLOC ||
