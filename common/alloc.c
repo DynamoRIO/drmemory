@@ -1658,10 +1658,12 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 
 /* Hashtable so we can remember post-call pcs (since
  * post-cti-instrumentation is not supported by DR).
- * Synchronized externally to safeguard the externally-allocated payload.
+ * Synchronized externally to safeguard the externally-allocated payload,
+ * using an rwlock b/c read on every instruction.
  */
 #define POST_CALL_TABLE_HASH_BITS 10
 static hashtable_t post_call_table;
+static void *post_call_rwlock;
 
 #ifdef USE_DRSYMS
 # define POST_CALL_SYMCACHE_NAME "__DrMemory_post_call"
@@ -1671,10 +1673,10 @@ static hashtable_t post_call_table;
 /* We can't use post-call symcache entries at DR's module load event b/c
  * it's prior to rebasing.  Our solution is to wait for the first execution
  * from that module.  To find it we store the bounds in an interval tree.
- * Protected by post_call_table lock.
+ * Protected by post_call_rwlock.
  */
 static rb_tree_t *mod_pending_tree;
-/* Used for quick check w/o need for lock.  Written while holding post_call lock. */
+/* Used for quick check w/o need for lock.  Written while holding post_call_rwlock. */
 static uint mod_pending_entries;
 #endif
 
@@ -1705,12 +1707,13 @@ post_call_entry_free(void *v)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
-/* caller must hold lock */
+/* caller must hold write lock */
 static post_call_entry_t *
 post_call_entry_add(app_pc postcall, bool instrumented, bool from_symcache)
 {
     post_call_entry_t *e = (post_call_entry_t *)
         global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+    ASSERT(dr_rwlock_self_owns_write_lock(post_call_rwlock), "must hold write lock");
     e->existing_instrumented = false;
     if (!safe_read(postcall - POST_CALL_PRIOR_BYTES_STORED, POST_CALL_PRIOR_BYTES_STORED,
                    e->prior)) {
@@ -1731,7 +1734,7 @@ post_call_entry_add(app_pc postcall, bool instrumented, bool from_symcache)
     return e;
 }
 
-/* caller must hold post_call_table lock */
+/* caller must hold post_call_rwlock read lock or write lock */
 static bool
 post_call_consistent(app_pc postcall, post_call_entry_t *e)
 {
@@ -1757,16 +1760,25 @@ post_call_lookup(per_thread_t *pt, app_pc pc)
 {
     bool res = false;
     post_call_entry_t *e;
-    hashtable_lock(&post_call_table);
+    dr_rwlock_read_lock(post_call_rwlock);
     e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)pc);
     if (e != NULL) {
         res = post_call_consistent(pc, e);
         if (!res) {
-            IF_DEBUG(bool found =)
-                hashtable_remove(&post_call_table, (void *)pc);
-            ASSERT(found, "have lock, must still be there");
-            LOG(2, "post-call "PFX" inconsistent: removing from table\n", pc);
+            bool found;
+            /* need the write lock */
+            dr_rwlock_read_unlock(post_call_rwlock);
+            e = NULL; /* no longer safe */
+            dr_rwlock_write_lock(post_call_rwlock);
+            found = hashtable_remove(&post_call_table, (void *)pc);
+            dr_rwlock_write_unlock(post_call_rwlock);
+            if (found)
+                LOG(2, "post-call "PFX" inconsistent: removing from table\n", pc);
+            else
+                WARN("WARNING: race: entry disappeared while not holding lock"NL);
+            return res;
         } else {
+            /* we write this w/ just read lock: atomic write */
             e->existing_instrumented = true;
         }
     } else if (pt->in_heap_routine > 0) {
@@ -1781,7 +1793,7 @@ post_call_lookup(per_thread_t *pt, app_pc pc)
             }
         }
     }
-    hashtable_unlock(&post_call_table);
+    dr_rwlock_read_unlock(post_call_rwlock);
     return res;
 }
 
@@ -1934,6 +1946,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_init_ex(&post_call_table, POST_CALL_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, post_call_entry_free,
                           NULL, NULL);
+        post_call_rwlock = dr_rwlock_create();
 #ifdef USE_DRSYMS
         if (options.cache_postcall)
             mod_pending_tree = rb_tree_create(NULL);
@@ -1981,6 +1994,7 @@ alloc_exit(void)
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
         hashtable_delete_with_stats(&post_call_table, "post_call");
+        dr_rwlock_destroy(post_call_rwlock);
 #ifdef USE_DRSYMS
         if (options.cache_postcall)
             rb_tree_destroy(mod_pending_tree);
@@ -2074,7 +2088,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
 #endif
 
 #ifdef USE_DRSYMS
-/* caller must hold post_call_table lock */
+/* caller must hold post_call_rwlock write lock */
 static void
 alloc_load_symcache_postcall(const module_data_t *info)
 {
@@ -2214,7 +2228,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #ifdef USE_DRSYMS
     if (options.track_allocs && options.cache_postcall &&
         symcache_module_is_cached(info)) {
-        hashtable_lock(&post_call_table);
+        dr_rwlock_write_lock(post_call_rwlock);
         if (loaded) {
             alloc_load_symcache_postcall(info);
         } else {
@@ -2227,7 +2241,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             mod_pending_entries++;
             ASSERT(existing == NULL, "new module overlaps w/ existing");
         }
-        hashtable_unlock(&post_call_table);
+        dr_rwlock_write_unlock(post_call_rwlock);
     }
 #endif
 }
@@ -2245,7 +2259,8 @@ alloc_check_pending_module(app_pc pc)
             return;
         last_page = (app_pc)PAGE_START(pc);
 
-        hashtable_lock(&post_call_table);
+        /* checks above make it ok to use write lock here */
+        dr_rwlock_write_lock(post_call_rwlock);
         node = rb_in_node(mod_pending_tree, pc);
         if (node != NULL) {
             module_data_t *info;
@@ -2257,7 +2272,7 @@ alloc_check_pending_module(app_pc pc)
             alloc_load_symcache_postcall(info);
             dr_free_module_data(info);
         }
-        hashtable_unlock(&post_call_table);
+        dr_rwlock_write_unlock(post_call_rwlock);
     }
 }
 #endif
@@ -2337,7 +2352,7 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
     }
 
     if (options.track_allocs) {
-        hashtable_lock(&post_call_table);
+        dr_rwlock_write_lock(post_call_rwlock);
 #ifdef USE_DRSYMS
         if (options.cache_postcall) {
             rb_node_t *node = rb_in_node(mod_pending_tree, info->start);
@@ -2349,7 +2364,7 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         }
 #endif
         hashtable_remove_range(&post_call_table, info->start, info->end);
-        hashtable_unlock(&post_call_table);
+        dr_rwlock_write_unlock(post_call_rwlock);
     }
 }
 
@@ -4852,36 +4867,45 @@ alloc_hook(app_pc pc, bool prepost)
     void *drcontext = dr_get_current_drcontext();
     per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    app_pc retaddr;
+    post_call_entry_t *e;
+    IF_DEBUG(bool has_entry;)
+
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    if (options.track_heap) {
-        /* if the entry was a jmp* and we didn't see the call prior to it,
-         * we did not know the retaddr, so add it now 
+    ASSERT(options.track_heap, "unknown reason in alloc hook");
+
+    /* if the entry was a jmp* and we didn't see the call prior to it,
+     * we did not know the retaddr, so add it now 
+     */
+    retaddr = get_retaddr_at_entry(&mc);
+    /* We will come here again after the flush-redirect.
+     * FIXME: should we try to flush the call instr itself: don't
+     * know size though but can be pretty sure.
+     */
+    LOG(3, "alloc_hook retaddr="PFX"\n", retaddr);
+    /* process post-call wrapping if necessary */
+    ASSERT(prepost || !is_replace_routine(pc),
+           "replace-routine caller should set prepost");
+    if (prepost) {
+        /* If we did not detect that this was an alloc call at the call site,
+         * then we need to dynamically flush and mark the retaddr
          */
-        app_pc retaddr = get_retaddr_at_entry(&mc);
-        post_call_entry_t *e;
-        IF_DEBUG(bool has_entry;)
-        /* We will come here again after the flush-redirect.
-         * FIXME: should we try to flush the call instr itself: don't
-         * know size though but can be pretty sure.
+        dr_rwlock_read_lock(post_call_rwlock);
+        e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)retaddr);
+        IF_DEBUG(has_entry = (e != NULL));
+        /* PR 454616: we may have added an entry and started a flush
+         * but not finished the flush, so we check not just the entry
+         * but also the existing_instrumented flag.
          */
-        LOG(3, "alloc_hook retaddr="PFX"\n", retaddr);
-        /* process post-call wrapping if necessary */
-        ASSERT(prepost || !is_replace_routine(pc),
-               "replace-routine caller should set prepost");
-        if (prepost) {
-            /* If we did not detect that this was an alloc call at the call site,
-             * then we need to dynamically flush and mark the retaddr
-             */
-            hashtable_lock(&post_call_table);
+        if (e == NULL || !e->existing_instrumented) {
+            /* switch to write lock */
+            dr_rwlock_read_unlock(post_call_rwlock);
+            dr_rwlock_write_lock(post_call_rwlock);
+            /* have to re-lookup */
             e = (post_call_entry_t *) hashtable_lookup(&post_call_table, (void*)retaddr);
-            IF_DEBUG(has_entry = (e != NULL));
-            /* PR 454616: we may have added an entry and started a flush
-             * but not finished the flush, so we check not just the entry
-             * but also the existing_instrumented flag.
-             */
             if (e == NULL || !e->existing_instrumented) {
                 /* PR 406714: we no longer add retaddrs statically so it's
                  * normal to come here
@@ -4907,20 +4931,20 @@ alloc_hook(app_pc pc, bool prepost)
                     LOG(2, "flushing "PFX", should re-appear at "PFX"\n", retaddr, pc);
                     STATS_INC(post_call_flushes);
                     /* unlock for the flush */
-                    hashtable_unlock(&post_call_table);
+                    dr_rwlock_write_unlock(post_call_rwlock);
                     dr_unlink_flush_region(retaddr, 1);
                     /* now we are guaranteed no thread is inside the fragment */
                     /* another thread may have done a racy competing
                      * flush: should be fine 
                      */
-                    hashtable_lock(&post_call_table);
+                    dr_rwlock_read_lock(post_call_rwlock);
                     e = (post_call_entry_t *)
                         hashtable_lookup(&post_call_table, (void*)retaddr);
                     if (e != NULL) /* selfmod could disappear once have PR 408529 */
                         e->existing_instrumented = true;
                     else /* XXX i#553: recursion count could get off */
                         WARN("WARNING: post-call disappeared\n");
-                    hashtable_unlock(&post_call_table);
+                    dr_rwlock_read_unlock(post_call_rwlock);
                     /* need all state to redirect */
                     mc.flags = DR_MC_ALL;
                     dr_get_mcontext(drcontext, &mc);
@@ -4933,24 +4957,24 @@ alloc_hook(app_pc pc, bool prepost)
                 }
                 e->existing_instrumented = true;
             }
-            hashtable_unlock(&post_call_table);
-        }
-        /* If we did not yet do the pre-call instrumentation (i.e., we
-         * came here via indirect call/jmp) then do it now.  Note that
-         * we can't use "in_heap_routine==0 || !has_entry" as the test
-         * here since we want to repeat the pre-instru for a recursive
-         * invocation of a call* for which we did identify the
-         * retaddr.  An example of a recursive call is glibc's
-         * double-free check calling strdup and calloc.
-         * Update: we now longer do pre-call instru so we always call the
-         * pre-hook here.
-         */
-        pt->cur_post_call = retaddr;
-        handle_alloc_pre_ex(retaddr, pc,
-                            true/*indirect: though now w/ i#559 direct come here too*/,
-                            pc, true/*inside callee*/, &mc);
-    } else
-        ASSERT(false, "unknown reason in alloc hook");
+            dr_rwlock_write_unlock(post_call_rwlock);
+        } else
+            dr_rwlock_read_unlock(post_call_rwlock);
+    }
+    /* If we did not yet do the pre-call instrumentation (i.e., we
+     * came here via indirect call/jmp) then do it now.  Note that
+     * we can't use "in_heap_routine==0 || !has_entry" as the test
+     * here since we want to repeat the pre-instru for a recursive
+     * invocation of a call* for which we did identify the
+     * retaddr.  An example of a recursive call is glibc's
+     * double-free check calling strdup and calloc.
+     * Update: we now longer do pre-call instru so we always call the
+     * pre-hook here.
+     */
+    pt->cur_post_call = retaddr;
+    handle_alloc_pre_ex(retaddr, pc,
+                        true/*indirect: though now w/ i#559 direct come here too*/,
+                        pc, true/*inside callee*/, &mc);
 }
 
 #ifdef WINDOWS
