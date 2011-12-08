@@ -1015,18 +1015,19 @@ os_shared_post_syscall(void *drcontext, int sysnum)
      * handle to file path, and write both as a FORKEXEC line in
      * f_fork.
      */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    if (NT_SUCCESS(dr_syscall_get_result(drcontext)) &&
-        (sysnum == sysnum_CreateThread || sysnum == sysnum_CreateThreadEx) &&
-        is_current_process((HANDLE)pt->sysarg[3]/*3rd arg for both*/)) {
-        HANDLE thread_handle;
-        thread_id_t child = INVALID_THREAD_ID;
-        if (safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle))
-            child = get_tid_from_handle(thread_handle);
-        if (child != INVALID_THREAD_ID)
-            report_child_thread(drcontext, child);
-        else
-            WARN("WARNING: unable to determine child thread it\n");
+    if (sysnum == sysnum_CreateThread || sysnum == sysnum_CreateThreadEx) {
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        if (NT_SUCCESS(dr_syscall_get_result(drcontext)) &&
+            is_current_process((HANDLE)pt->sysarg[3]/*3rd arg for both*/)) {
+            HANDLE thread_handle;
+            thread_id_t child = INVALID_THREAD_ID;
+            if (safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle))
+                child = get_tid_from_handle(thread_handle);
+            if (child != INVALID_THREAD_ID)
+                report_child_thread(drcontext, child);
+            else
+                WARN("WARNING: unable to determine child thread it\n");
+        }
     }
 }
 
