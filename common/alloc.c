@@ -2073,6 +2073,28 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
 }
 #endif
 
+#ifdef USE_DRSYMS
+/* caller must hold post_call_table lock */
+static void
+alloc_load_symcache_postcall(const module_data_t *info)
+{
+    ASSERT(info != NULL, "invalid args");
+    if (options.track_allocs && options.cache_postcall) {
+        size_t modoffs;
+        uint count;
+        uint idx;
+        uint i;
+        ASSERT(symcache_module_is_cached(info), "must have symcache");
+        for (idx = 0, count = 1;
+             idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
+                                            idx, &modoffs, &count); idx++) {
+            if (modoffs != 0)
+                post_call_entry_add(info->start + modoffs, false, true);
+        }
+    }
+}
+#endif
+
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
@@ -2192,17 +2214,20 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #ifdef USE_DRSYMS
     if (options.track_allocs && options.cache_postcall &&
         symcache_module_is_cached(info)) {
-        /* i#690: we can't add post-call entries now b/c the module has
-         * not been rebased and we need to store actual code so we
-         * use a pending entry.
-         */
-        IF_DEBUG(rb_node_t *existing;)
         hashtable_lock(&post_call_table);
-        IF_DEBUG(existing =)
-            rb_insert(mod_pending_tree, info->start, info->end - info->start, NULL);
-        mod_pending_entries++;
+        if (loaded) {
+            alloc_load_symcache_postcall(info);
+        } else {
+            /* i#690: we can't add post-call entries now b/c the module has
+             * not been rebased and we need to store actual code so we
+             * use a pending entry.
+             */
+            IF_DEBUG(rb_node_t *existing =)
+                rb_insert(mod_pending_tree, info->start, info->end - info->start, NULL);
+            mod_pending_entries++;
+            ASSERT(existing == NULL, "new module overlaps w/ existing");
+        }
         hashtable_unlock(&post_call_table);
-        ASSERT(existing == NULL, "new module overlaps w/ existing");
     }
 #endif
 }
@@ -2223,22 +2248,13 @@ alloc_check_pending_module(app_pc pc)
         hashtable_lock(&post_call_table);
         node = rb_in_node(mod_pending_tree, pc);
         if (node != NULL) {
-            size_t modoffs;
-            uint count;
-            uint idx;
-            uint i;
             module_data_t *info;
             rb_delete(mod_pending_tree, node);
             mod_pending_entries--;
             info = dr_lookup_module(pc);
             ASSERT(info != NULL, "module can't disappear");
             ASSERT(symcache_module_is_cached(info), "must have symcache");
-            for (idx = 0, count = 1;
-                 idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
-                                                idx, &modoffs, &count); idx++) {
-                if (modoffs != 0)
-                    post_call_entry_add(info->start + modoffs, false, true);
-            }
+            alloc_load_symcache_postcall(info);
             dr_free_module_data(info);
         }
         hashtable_unlock(&post_call_table);
