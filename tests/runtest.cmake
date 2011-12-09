@@ -391,10 +391,11 @@ foreach (line ${lines})
     string(REGEX REPLACE "\n" "\r?\n" line "${line}")
   endif (WIN32)
   if (NOT "${cmd_tomatch}" MATCHES "${line}")
-    # ignore Dr. Memory lines for Dr. Heapstat
+    # Ignore Dr. Memory lines for Dr. Heapstat.  Match ~~Dr.M~~ anywhere in the
+    # line, since %ANYLINE can insert a paren at the beginning of the line.
     # FIXME PR 470723: add Dr. Heapstat-specific tests
     if (NOT TOOL_DR_HEAPSTAT OR
-        NOT "${line}" MATCHES "^~~Dr\\\\.M~~")
+        NOT "${line}" MATCHES "~~Dr\\\\.M~~")
       strip_trailing_newline_regex(line "${line}")
       set(msg "stderr failed to match \"${line}\"")
       # try to find what was meant to match
