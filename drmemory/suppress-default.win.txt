@@ -296,3 +296,16 @@ RPCRT4.dll!*
 INVALID HEAP ARGUMENT
 name=default i#655: allocate with new and free with free()
 *!std::_DebugHeapDelete<*>
+
+##################################################
+# i#709: bit manip uninit
+# Highly probable bit-level definedness issue, as it is
+# masking all but the low bit in the test instruction.
+UNINITIALIZED READ
+name=default i#709
+instruction=test   0x??(%esi) $0x??
+CLBCatQ.DLL!*
+...
+CLBCatQ.DLL!*
+ntdll.dll!*
+ntdll.dll!LdrShutdownProcess
