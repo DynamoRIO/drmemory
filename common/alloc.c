@@ -1813,12 +1813,6 @@ static thread_id_t malloc_lock_owner = THREAD_ID_INVALID;
 #define LARGE_MALLOC_MIN_SIZE 12*1024
 static rb_tree_t *large_malloc_tree;
 
-/* We ignore Rtl*Heap-internal allocs.  We need to avoid complaining
- * about invalid heap args so we store them in a separate table.
- */
-#define NATIVE_ALLOC_TABLE_HASH_BITS 6
-static hashtable_t native_alloc_table;
-
 #ifdef WINDOWS
 /* We track encoded pointers to avoid false positive leaks (i#153).
  * XXX: really this should be done in leak.c but wrapping support
@@ -1846,6 +1840,8 @@ enum {
     MALLOC_ALLOCATOR_NEW       = MALLOC_RESERVED_4,
     MALLOC_ALLOCATOR_NEW_ARRAY = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
     MALLOC_ALLOCATOR_CHECKED   = MALLOC_RESERVED_5,
+    /* We ignore Rtl*Heap-internal allocs */
+    MALLOC_RTL_INTERNAL        = MALLOC_RESERVED_6,
     /* The rest are reserved for future use */
     MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
                                     MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
@@ -1874,7 +1870,8 @@ static void
 malloc_entry_free(void *v)
 {
     malloc_entry_t *e = (malloc_entry_t *) v;
-    client_malloc_data_free(e->data);
+    if (!TEST(MALLOC_RTL_INTERNAL, e->flags))
+        client_malloc_data_free(e->data);
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
@@ -1945,8 +1942,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         if (options.cache_postcall)
             mod_pending_tree = rb_tree_create(NULL);
 #endif
-        hashtable_init(&native_alloc_table, NATIVE_ALLOC_TABLE_HASH_BITS,
-                       HASH_INTPTR, false/*!strdup*/);
 #ifdef WINDOWS
         hashtable_init(&encoded_ptr_table, ENCODED_PTR_TABLE_HASH_BITS,
                        HASH_INTPTR, false/*!strdup*/);
@@ -1993,7 +1988,6 @@ alloc_exit(void)
         if (options.cache_postcall)
             rb_tree_destroy(mod_pending_tree);
 #endif
-        hashtable_delete_with_stats(&native_alloc_table, "native_alloc");
 #ifdef WINDOWS
         hashtable_delete_with_stats(&encoded_ptr_table, "encoded_ptr");
 #endif
@@ -2425,13 +2419,14 @@ malloc_unlock_if_locked_by_me(bool by_me)
  */
 static void
 malloc_add_common(app_pc start, app_pc end, app_pc real_end,
-                  bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call,
+                  uint flags, uint client_flags, dr_mcontext_t *mc, app_pc post_call,
                   uint alloc_type)
 {
     malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     malloc_entry_t *old_e;
     bool locked_by_me;
-    ASSERT((options.redzone_size > 0 && pre_us) || options.record_allocs, 
+    ASSERT((options.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
+           options.record_allocs, 
            "internal inconsistency on when doing detailed malloc tracking");
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t) 
@@ -2441,17 +2436,18 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     e->end = end;
     ASSERT(real_end != NULL && real_end - end <= USHRT_MAX, "real_end suspicously big");
     e->usable_extra = (real_end - end);
-    e->flags = MALLOC_VALID;
-    if (pre_us)
-        e->flags |= MALLOC_PRE_US;
+    e->flags = MALLOC_VALID | flags;
     e->flags |= alloc_type;
     LOG(3, "%s: type=%x\n", __FUNCTION__, alloc_type);
     e->flags |= (client_flags & MALLOC_POSSIBLE_CLIENT_FLAGS);
     /* grab lock around client call and hashtable operations */
     locked_by_me = malloc_lock_if_not_held_by_me();
 
-    e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
-                                    NULL, mc, post_call);
+    if (!TEST(MALLOC_RTL_INTERNAL, flags)) { /* don't show internal allocs to client */
+        e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
+                                        NULL, mc, post_call);
+    } else
+        e->data = NULL;
 
     ASSERT(is_entirely_in_heap_region(start, end), "heap data struct inconsistency");
     /* We invalidate rather than remove on a free and finalize the remove
@@ -2460,18 +2456,21 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
      */
     old_e = hashtable_add_replace(&malloc_table, (void *) start, (void *)e);
 
-    if (end - start >= LARGE_MALLOC_MIN_SIZE) {
+    if (!TEST(MALLOC_RTL_INTERNAL, flags) && end - start >= LARGE_MALLOC_MIN_SIZE) {
         IF_DEBUG(rb_node_t *node =)
             rb_insert(large_malloc_tree, e->start, e->end - e->start, NULL);
         ASSERT(node == NULL, "error in large malloc tree");
         STATS_INC(num_large_mallocs);
     }
 
-    /* PR 567117: client event with entry in hashtable */
-    client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
+    if (!TEST(MALLOC_RTL_INTERNAL, flags)) { /* don't show internal allocs to client */
+        /* PR 567117: client event with entry in hashtable */
+        client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
+    }
 
 #ifdef STATISTICS
-    STATS_INC(num_mallocs);
+    if (!TEST(MALLOC_RTL_INTERNAL, flags))
+        STATS_INC(num_mallocs);
     if (num_mallocs % 10000 == 0) {
         hashtable_cluster_stats(&malloc_table, "malloc table");
         LOG(1, "malloc table stats after %u malloc calls\n", num_mallocs);
@@ -2494,7 +2493,8 @@ void
 malloc_add(app_pc start, app_pc end, app_pc real_end,
            bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
 {
-    malloc_add_common(start, end, real_end, pre_us, client_flags, mc, post_call, 0);
+    malloc_add_common(start, end, real_end, pre_us ? MALLOC_PRE_US : 0,
+                      client_flags, mc, post_call, 0);
 }
 
 /* up to caller to lock and unlock */
@@ -2510,21 +2510,29 @@ malloc_entry_remove(malloc_entry_t *e)
 {
     app_pc start, end, real_end;
     ASSERT(e != NULL, "invalid arg");
-    /* cache values for post-event */
-    start = e->start;
-    end = e->end;
-    real_end = e->end + e->usable_extra;
-    client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
-    if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
-        rb_node_t *node = rb_find(large_malloc_tree, e->start);
-        ASSERT(node != NULL, "error in large malloc tree");
-        if (node != NULL)
-            rb_delete(large_malloc_tree, node);
+    if (!TEST(MALLOC_RTL_INTERNAL, e->flags)) {
+        /* cache values for post-event */
+        start = e->start;
+        end = e->end;
+        real_end = e->end + e->usable_extra;
+        client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
+        if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
+            rb_node_t *node = rb_find(large_malloc_tree, e->start);
+            ASSERT(node != NULL, "error in large malloc tree");
+            if (node != NULL)
+                rb_delete(large_malloc_tree, node);
+        }
     }
-    if (hashtable_remove(&malloc_table, e->start))
-        STATS_INC(num_frees);
-    /* PR 567117: client event with entry removed from hashtable */
-    client_remove_malloc_post(start, end, real_end);
+    if (hashtable_remove(&malloc_table, e->start)) {
+#ifdef STATISTICS
+        if (!TEST(MALLOC_RTL_INTERNAL, e->flags))
+            STATS_INC(num_frees);
+#endif
+    }
+    if (!TEST(MALLOC_RTL_INTERNAL, e->flags)) {
+        /* PR 567117: client event with entry removed from hashtable */
+        client_remove_malloc_post(start, end, real_end);
+    }
 }
 
 void
@@ -2676,6 +2684,41 @@ malloc_set_pre_us(app_pc start)
     if (e != NULL)
         e->flags |= MALLOC_PRE_US;
     malloc_unlock_if_locked_by_me(locked_by_me);
+}
+
+/* Returns true if the malloc is ignored by us */
+static bool
+malloc_entry_is_native(malloc_entry_t *e,
+                       app_pc start, per_thread_t *pt, bool consider_being_freed)
+{
+#ifdef WINDOWS
+    return ((e != NULL && TEST(MALLOC_RTL_INTERNAL, e->flags)) ||
+            /* the free routine might call other routines like size
+             * after we removed from malloc table (i#432)
+             */
+            (consider_being_freed && start == pt->alloc_being_freed &&
+             start != NULL && (e == NULL || !TEST(MALLOC_VALID, e->flags))));
+#else
+    /* optimization: currently nothing in the table */
+    return false;
+#endif
+}
+
+static bool
+malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
+{
+#ifdef WINDOWS
+    bool res = false;
+    malloc_entry_t *e;
+    bool locked_by_me = malloc_lock_if_not_held_by_me();
+    e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
+    res = malloc_entry_is_native(e, start, pt, consider_being_freed);
+    malloc_unlock_if_locked_by_me(locked_by_me);
+    return res;
+#else
+    /* optimization: currently nothing in the table */
+    return false;
+#endif
 }
 
 #ifdef DEBUG
@@ -3509,23 +3552,6 @@ check_valid_heap_block(byte *block, per_thread_t *pt, dr_mcontext_t *mc,
     return true;
 }
 
-/* Returns true if the malloc is ignored by us */
-static bool
-malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
-{
-#ifdef WINDOWS
-    return ((hashtable_lookup(&native_alloc_table, (void*)start) != NULL) ||
-            /* the free routine might call other routines like size
-             * after we removed from native alloc table (i#432)
-             */
-            (consider_being_freed && start == pt->alloc_being_freed &&
-             start != NULL && malloc_end(start) == NULL));
-#else
-    /* optimization: currently nothing in the table */
-    return false;
-#endif
-}
-
 static void
 enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc,
                    alloc_routine_entry_t *routine)
@@ -3664,7 +3690,6 @@ set_auxarg(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside,
     routine_type_t type = routine->type;
     if (is_free_routine(type)) {
         if (type == RTL_ROUTINE_FREE) {
-            /* FIXME: safe_read */
             /* Note that these do not reflect what's really being freed if
              * -delay_frees > 0 
              */
@@ -3679,7 +3704,6 @@ set_auxarg(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside,
         }
     } else if (is_size_routine(type)) {
         if (type == RTL_ROUTINE_SIZE) {
-            /* FIXME: safe_read */
             pt->alloc_flags = (uint) APP_ARG(mc, 2, inside);
             pt->auxarg = APP_ARG(mc, 1, inside);
         } else if (type == HEAP_ROUTINE_SIZE_REQUESTED_DBG) {
@@ -3693,7 +3717,6 @@ set_auxarg(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside,
                is_realloc_routine(type) ||
                is_calloc_routine(type)) {
         if (is_rtl_routine(type)) {
-            /* FIXME: safe_read */
             pt->alloc_flags = (uint) APP_ARG(mc, 2, inside);
             pt->auxarg = APP_ARG(mc, 1, inside);
         } else if (type == HEAP_ROUTINE_MALLOC_DBG) {
@@ -3790,7 +3813,6 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
 #if defined(WINDOWS) || defined(DEBUG)
     routine_type_t type = routine->type;
 #endif
-    /* FIXME: safe_read */
     app_pc base = (app_pc) APP_ARG(mc, ARGNUM_FREE_PTR(type), inside);
     app_pc real_base = base;
 #ifdef WINDOWS
@@ -3802,10 +3824,6 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
 
     pt->alloc_being_freed = base;
 
-    if (malloc_is_native(base, pt, false)) {
-        hashtable_remove(&native_alloc_table, (void*)base);
-        return;
-    }
     if (check_recursive_same_sequence(drcontext, &pt, mc, routine, (ptr_int_t) base,
                                       (ptr_int_t) pt->alloc_base -
                                       redzone_size(routine))) {
@@ -3835,6 +3853,11 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
      */
     malloc_lock();
     entry = malloc_lookup(base);
+    if (malloc_entry_is_native(entry, base, pt, false)) {
+        malloc_entry_remove(entry);
+        malloc_unlock();
+        return;
+    }
     if (entry != NULL && redzone_size(routine) > 0 &&
         !malloc_entry_is_pre_us(entry, false))
         real_base = base - redzone_size(routine);
@@ -4251,7 +4274,7 @@ handle_malloc_post(void *drcontext, per_thread_t *pt,
     } else {
         if (options.record_allocs) {
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              false, 0, mc, post_call, pt->allocator);
+                              0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
                              zeroed, realloc, mc);
@@ -4290,7 +4313,7 @@ handle_realloc_pre(void *drcontext, per_thread_t *pt,
         return;
     }
     if (malloc_is_native(base, pt, true)) {
-        hashtable_remove(&native_alloc_table, (void*)base);
+        malloc_remove((void*)base);
         return;
     }
 #ifdef WINDOWS
@@ -4419,7 +4442,7 @@ handle_realloc_post(void *drcontext, per_thread_t *pt,
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              false, 0, mc, post_call, pt->allocator);
+                              0, 0, mc, post_call, pt->allocator);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
                  * as pre-us since we did not put a redzone on it
@@ -4540,7 +4563,7 @@ handle_calloc_post(void *drcontext, per_thread_t *pt,
     } else {
         if (options.record_allocs) {
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              false, 0, mc, post_call, pt->allocator);
+                              0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
                              true/*zeroed*/, false/*!realloc*/, mc);
@@ -5276,7 +5299,10 @@ handle_alloc_post_func(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc,
             ASSERT(is_malloc_routine(type) ||
                    is_realloc_routine(type) ||
                    is_calloc_routine(type), "ignored_alloc incorrectly set");
-            hashtable_add(&native_alloc_table, (void*)mc->eax, (void*)mc->eax);
+            malloc_add_common((app_pc)mc->eax,
+                              /* don't need size */
+                              (app_pc)mc->eax, (app_pc)mc->eax,
+                              MALLOC_RTL_INTERNAL, 0, mc, post_call, type);
             pt->ignored_alloc = false;
         } else {
             /* some outer level did the adjustment, so nop for us */
