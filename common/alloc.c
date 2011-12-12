@@ -2620,6 +2620,23 @@ malloc_entry_is_pre_us(malloc_entry_t *e, bool ok_if_invalid)
 
 /* if alloc has already been checked, returns 0.
  * if not, returns type, and then marks allocation as having been checked.
+ * caller should hold lock
+ */
+static uint
+malloc_alloc_entry_type(malloc_entry_t *e)
+{
+    uint res;
+    if (TEST(MALLOC_ALLOCATOR_CHECKED, e->flags))
+        res = 0;
+    else {
+        res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
+        e->flags |= MALLOC_ALLOCATOR_CHECKED;
+    }
+    return res;
+}
+
+/* if alloc has already been checked, returns 0.
+ * if not, returns type, and then marks allocation as having been checked.
  */
 static uint
 malloc_alloc_type(byte *start)
@@ -2628,14 +2645,8 @@ malloc_alloc_type(byte *start)
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     uint res = 0;
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL) {
-        if (TEST(MALLOC_ALLOCATOR_CHECKED, e->flags))
-            res = 0;
-        else {
-            res = (e->flags & MALLOC_ALLOCATOR_FLAGS);
-            e->flags |= MALLOC_ALLOCATOR_CHECKED;
-        }
-    }
+    if (e != NULL)
+        res = malloc_alloc_entry_type(e);
     malloc_unlock_if_locked_by_me(locked_by_me);
     return res;
 }
@@ -3760,14 +3771,17 @@ record_allocator(void *drcontext, per_thread_t *pt, alloc_routine_entry_t *routi
  */
 static bool
 handle_free_check_mismatch(void *drcontext, dr_mcontext_t *mc, bool inside,
-                           app_pc call_site, alloc_routine_entry_t *routine)
+                           app_pc call_site, alloc_routine_entry_t *routine,
+                           malloc_entry_t *entry)
 {
     /* XXX: safe_read */
 #ifdef WINDOWS
     routine_type_t type = routine->type;
 #endif
     app_pc base = (app_pc) APP_ARG(mc, ARGNUM_FREE_PTR(type), inside);
-    uint alloc_type = malloc_alloc_type(base);
+    /* We pass in entry to avoid an extra hashtable lookup */
+    uint alloc_type = (entry == NULL) ? malloc_alloc_type(base) :
+        malloc_alloc_entry_type(entry);
     uint free_type = malloc_allocator_type(routine);
     LOG(3, "alloc/free match test: alloc %x vs free %x %s\n",
         alloc_type, free_type, routine->name);
@@ -3853,11 +3867,13 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
      */
     malloc_lock();
     entry = malloc_lookup(base);
-    if (malloc_entry_is_native(entry, base, pt, false)) {
+    if (entry != NULL && malloc_entry_is_native(entry, base, pt, false)) {
         malloc_entry_remove(entry);
         malloc_unlock();
         return;
     }
+    if (entry != NULL && pt->in_heap_routine == 1/*alread incremented, so outer*/)
+        handle_free_check_mismatch(drcontext, mc, inside, call_site, routine, entry);
     if (entry != NULL && redzone_size(routine) > 0 &&
         !malloc_entry_is_pre_us(entry, false))
         real_base = base - redzone_size(routine);
@@ -5167,7 +5183,11 @@ handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
     } else if (is_delete_routine(type) ||
                is_free_routine(type)) {
         if (pt->in_heap_routine == 0) {
-            handle_free_check_mismatch(drcontext, mc, inside, call_site, routine);
+            if (is_delete_routine(type)) {
+                /* free() checked in handle_free_pre */
+                handle_free_check_mismatch(drcontext, mc, inside, call_site,
+                                           routine, NULL);
+            }
             pt->allocator = 0; /* in case missed alloc post */
         }
     }
