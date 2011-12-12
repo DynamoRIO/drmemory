@@ -25,6 +25,7 @@
 
 #include "hashtable.h"
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
+#include "per_thread.h"
 
 #include <limits.h>
 

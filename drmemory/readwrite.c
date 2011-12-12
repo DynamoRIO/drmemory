@@ -37,6 +37,7 @@
 #include "syscall.h"
 #include "replace.h"
 #include "perturb.h"
+#include "annotations.h"
 #ifdef TOOL_DR_HEAPSTAT
 # include "../drheapstat/staleness.h"
 #endif
@@ -3463,6 +3464,14 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     if (!options.leaks_only && options.shadowing) {
         /* String routine replacement */
         replace_instrument(drcontext, bb);
+    }
+#endif
+
+    /* Insert instrumentation to handle valgrind annotations. */
+    process_valgrind_annotations(drcontext, bb);
+
+#ifdef TOOL_DR_MEMORY
+    if (!options.leaks_only && options.shadowing) {
         /* XXX: this should be AFTER app_to_app_transformations, but something's
          * not working right: the rep-movs transformation is marking something
          * as meta that shouldn't be?!?

@@ -613,6 +613,7 @@ if (TOOL_DR_HEAPSTAT)
     # For leak checking we need stack.c but it pulls in the inter-dependent
     # readwrite, fastpath, and shadow: we'll want those for staleness anyway.
     # Looking more and more like Dr. Memory!
+    drmemory/annotations.c
     drmemory/leak.c
     drmemory/options.c
     drmemory/stack.c
@@ -623,6 +624,7 @@ if (TOOL_DR_HEAPSTAT)
 else (TOOL_DR_HEAPSTAT)
   # Dr. Memory
   set(srcs
+    drmemory/annotations.c
     drmemory/drmemory.c
     drmemory/readwrite.c
     drmemory/fastpath.c
@@ -769,7 +771,7 @@ endif (WIN32 AND USE_DRSYMS)
 ##################################################
 
 # must be AFTER DR local build since affects subdirs
-include_directories(common ${tooldir})
+include_directories(common ${tooldir} "third_party/valgrind")
 if (SYSCALL_DRIVER)
   include_directories(${SYSCALL_DRIVER_SRCDIR})
 endif (SYSCALL_DRIVER)

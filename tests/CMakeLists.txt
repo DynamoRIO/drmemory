@@ -41,6 +41,9 @@ if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   endforeach ()
 endif ()
 
+# For their annotations.
+include_directories("../third_party/valgrind")
+
 function(set_props target)
   if (UNIX)
     set(defs "-DLINUX")
@@ -418,6 +421,8 @@ if (NOT TOOL_DR_HEAPSTAT)
   if (UNIX)
     target_link_libraries(realloc pthread)
   endif (UNIX)
+
+  newtest(annotations annotations.c)
 
   if (UNIX)
     newtest(memalign memalign.c)
