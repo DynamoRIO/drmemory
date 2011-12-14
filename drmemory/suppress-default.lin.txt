@@ -121,6 +121,17 @@ name=default (ld-linux stores index+1)
 ld-linux.so.2!_dl_allocate_tls
 
 ##################################################
+# i#717: eglibc loader seems to have a one time leak
+# FIXME i#720: If we believe this is a one time leak we should limit it to only
+# suppress one report.
+LEAK
+name=default (one-time eglibc ld-linux leak)
+ld-linux.so.2!_dl_map_object_deps
+ld-linux.so.2!dl_open_worker
+...
+libdl.so.2!__dlopen
+
+##################################################
 # PR 564660: libz optimized code
 # Xref http://www.zlib.net/zlib_faq.html#faq36
 
