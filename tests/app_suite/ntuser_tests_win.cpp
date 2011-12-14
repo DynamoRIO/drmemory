@@ -21,12 +21,21 @@
 
 #include <windows.h>
 
-#include <commctrl.h>
 #include <winuser.h>
 
 #include "gtest/gtest.h"
 
+// For InitCommonControlsEx
+#include <commctrl.h>
 #pragma comment(lib, "comctl32.lib")
+
+// For GetAdaptersInfo
+#include <iphlpapi.h>
+#pragma comment(lib, "IPHLPAPI.lib")
+
+// A potentially externally visible global.  Useful if you want to make a
+// statement the compiler can't delete.
+int global_for_side_effects;
 
 TEST(NtUserTests, SystemParametersInfo) {
     // Was: http://code.google.com/p/drmemory/issues/detail?id=10
@@ -38,6 +47,7 @@ TEST(NtUserTests, SystemParametersInfo) {
 }
 
 namespace Clipboard_Tests {
+
 void WriteStringToClipboard(const std::string& str) {
     HWND hWnd = ::GetDesktopWindow();
     ASSERT_NE(0, ::OpenClipboard(hWnd));
@@ -76,7 +86,8 @@ TEST(NtUserTests, ClipboardPutGet) {
     ReadAsciiStringFromClipboard(&tmp);
     ASSERT_STREQ("ASCII", tmp.c_str());
 }
-}
+
+} /* Clipboard_Tests */
 
 TEST(NtUserTests, CoInitializeUninitialize) {
     // Was: http://code.google.com/p/drmemory/issues/detail?id=65
@@ -91,4 +102,24 @@ TEST(NtUserTests, InitCommonControlsEx) {
     InitCtrlEx.dwSize = sizeof(INITCOMMONCONTROLSEX);
     InitCtrlEx.dwICC  = ICC_PROGRESS_CLASS;
     InitCommonControlsEx(&InitCtrlEx);  // initialize common control sex
+}
+
+TEST(NtUserTests, DISABLED_GetAdaptersInfoTest) {
+    // http://code.google.com/p/drmemory/issues/detail?id=719
+    IP_ADAPTER_INFO dummy;
+    ULONG size = 0;  // force overflow
+    ULONG res = GetAdaptersInfo(&dummy, &size);
+    ASSERT_EQ(ERROR_BUFFER_OVERFLOW, res)
+        << "Failed to determine number of networks available.";
+
+    char *buffer = new char[size];
+    IP_ADAPTER_INFO *infos = (IP_ADAPTER_INFO*)buffer;
+    res = GetAdaptersInfo(infos, &size);
+    ASSERT_EQ(NO_ERROR, res);
+    // Verify that we don't get uninits from using the outputs in conditionals.
+    if (size > 0) {
+        MEMORY_BASIC_INFORMATION mbi;
+        VirtualQuery(infos->Next, &mbi, sizeof(mbi));
+    }
+    delete [] buffer;
 }
