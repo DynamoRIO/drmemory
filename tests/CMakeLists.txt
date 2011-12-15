@@ -254,6 +254,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   string(REGEX REPLACE ";" "@" postcmd "${postcmd}")
   if ("${resbase}" STREQUAL "")
     set(resbase "${test}") 
+    string(REGEX REPLACE "_FLAKY$" "" resbase "${resbase}")
   endif ("${resbase}" STREQUAL "")
   add_test(${test} ${CMAKE_COMMAND}
     -D cmd:STRING=${cmd}
@@ -395,10 +396,11 @@ if (NOT TOOL_DR_HEAPSTAT)
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
+  # FIXME i#715: perturb is flaky on the bots.
   if (UNIX)
-    newtest_nobuild(perturb pthreads "" "-perturb_only" "" OFF "")
+    newtest_nobuild(perturb_FLAKY pthreads "" "-perturb_only" "" OFF "")
   else (UNIX)
-    newtest_nobuild(perturb winthreads  "" "-perturb_only" "" OFF "")
+    newtest_nobuild(perturb_FLAKY winthreads  "" "-perturb_only" "" OFF "")
   endif (UNIX)
 
   if (WIN32)
@@ -417,9 +419,14 @@ if (NOT TOOL_DR_HEAPSTAT)
     endif (USE_DRSYMS)
   endif (WIN32)
 
-  newtest(realloc realloc.c)
+  # FIXME i#657: realloc is flaky on the Windows bots.
+  set(realloc "realloc")
+  if (WIN32)
+    set(realloc "realloc_FLAKY")
+  endif ()
+  newtest(${realloc} realloc.c)
   if (UNIX)
-    target_link_libraries(realloc pthread)
+    target_link_libraries(${realloc} pthread)
   endif (UNIX)
 
   newtest(annotations annotations.c)
