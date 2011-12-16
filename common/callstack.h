@@ -303,8 +303,7 @@ symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
  */
 bool
 print_address(char *buf, size_t bufsz, size_t *sofar,
-              app_pc pc, module_data_t *mod_in /*optional*/,
-              bool omit_non_module, bool sub1_sym, bool for_log);
+              app_pc pc, module_data_t *mod_in /*optional*/, bool for_log);
 
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 

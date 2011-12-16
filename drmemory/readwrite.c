@@ -3134,7 +3134,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
             char buf[256];
             size_t sofar = 0;
             print_address(buf, BUFFER_SIZE_BYTES(buf), &sofar, loc_to_pc(loc),
-                          NULL, false, false, true);
+                          NULL, true/*for log*/);
             NULL_TERMINATE_BUFFER(buf);
             LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x 0x%02x)%s %s ",
                 loc_to_print(loc),

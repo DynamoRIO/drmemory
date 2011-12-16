@@ -704,17 +704,32 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
     return false;
 }
 
-bool
-print_address(char *buf, size_t bufsz, size_t *sofar,
-              app_pc pc, module_data_t *mod_in /*optional*/,
-              bool skip_non_module, bool sub1_sym, bool for_log)
+static bool
+print_address_common(char *buf, size_t bufsz, size_t *sofar,
+                     app_pc pc, module_data_t *mod_in /*optional*/,
+                     bool skip_non_module, bool sub1_sym, bool for_log,
+                     bool *last_frame OUT, uint frame_num)
 {
     symbolized_frame_t frame; /* 480 bytes but our stack can handle it */
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
+        frame.num = frame_num;
         print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG, 0, NULL);
+        if (last_frame != NULL && op_truncate_below != NULL) {
+            *last_frame = text_matches_any_pattern((const char *)frame.func,
+                                                   op_truncate_below, false);
+        }
         return true;
     }
     return false;
+}
+
+bool
+print_address(char *buf, size_t bufsz, size_t *sofar,
+              app_pc pc, module_data_t *mod_in /*optional*/, bool for_log)
+{
+    return print_address_common(buf, bufsz, sofar, pc, mod_in,
+                                false/*include non-module*/, false/*don't sub1*/,
+                                for_log, NULL, 0);
 }
 
 #define OP_CALL_DIR 0xe8
@@ -929,6 +944,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     bool first_iter = true;
     bool have_appdata = false;
     bool scanned = false;
+    bool last_frame = false;
 
     ASSERT(num == 0 || num == 1, "only 1 frame can already be printed");
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
@@ -1005,14 +1021,16 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             if (buf != NULL) /* undo the fp= print */
                 *sofar = prev_sofar;
         } else if ((pcs == NULL &&
-                    print_address(buf, bufsz, sofar, appdata.retaddr, NULL,
-                                  !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
-                                  true, for_log)) ||
+                    print_address_common(buf, bufsz, sofar, appdata.retaddr, NULL,
+                                         !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
+                                         true, for_log, &last_frame, num)) ||
                    (pcs != NULL &&
                     address_to_frame(NULL, pcs, appdata.retaddr, NULL,
                                      !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
                                      true, pcs->num_frames))) {
             num++;
+            if (last_frame)
+                break;
         } else {
             if (buf != NULL) /* undo the fp= print */
                 *sofar = prev_sofar;
@@ -1168,8 +1186,7 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
     }
 
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "# 0 ");
-    print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL,
-                  false/*print non-module addr*/, false, true);
+    print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL, true/*for log*/);
     print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
                     true/*incl fp*/, NULL, 1, true);
     print_buffer(f == INVALID_FILE ? pt->f : f, pt->errbuf);
