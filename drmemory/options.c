@@ -316,6 +316,7 @@ options_init(const char *opstr)
     if (options.perturb_only) {
         options.perturb = true;
         options.track_allocs = false;
+        options.show_threads = false;
     }
     if (!options.track_allocs)
         options.track_heap = false;

@@ -278,8 +278,11 @@ OPTION_CLIENT_BOOL(client, gen_suppress_syms, true,
                    "Generate mod!syms suppressions in the output suppress file",
                    "Generate mod!syms suppressions in addition to mod+offs suppressions in the output suppress file")
 OPTION_CLIENT_BOOL(client, show_threads, true,
+                   "Print the callstack of each thread creation point referenced in an error",
+                   "Whether to print the callstack of each thread creation point referenced in an error report to the global logfile, which can be useful to identify which thread was involved in the error report.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
+OPTION_CLIENT_BOOL(client, show_all_threads, false,
                    "Print the callstack of each thread creation point",
-                   "Whether to print the callstack of each thread creation point to the global logfile, which can be useful to identify which thread was involved in an error report.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
+                   "Whether to print the callstack of each thread creation point (whether referenced in an error report or not) to the global logfile.  This can be useful to identify which thread was involved in error reports, as well as general diagnostics for what threads were present during a run.  Look for 'NEW THREAD' in the global.pid.log file in the log directory where the results.txt file is found.")
 OPTION_CLIENT_BOOL(client, conservative, false,
                    "Be conservative whenever reading application memory",
                    "Be conservative whenever reading application memory.  When this option is disabled, "TOOLNAME" may read return addresses and arguments passed to functions without fault-handling code, which gains performance but can sacrifice robustness when running hand-crafted assembly code")

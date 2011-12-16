@@ -193,6 +193,24 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
  */
 #define INFO_PFX IF_DRSYMS_ELSE("Note: ", "  info: ")
 
+/* To provide thread callstacks (i#312), we don't want to symbolize and
+ * print at thread creation time b/c the symbolization is a noticeable
+ * perf hit on runs with no errors (i#714).  Thus we store a callstack
+ * and only symbolize when an error is reported for that thread.
+ */
+#define THREAD_HASH_BITS 6
+/* Key is thread id, payload is packed_callstack_t * */
+static hashtable_t thread_table;
+static void *thread_table_lock;
+static thread_id_t main_thread;
+static bool main_thread_printed;
+
+static void
+report_delayed_thread(thread_id_t tid);
+
+static void
+report_main_thread(void);
+
 /***************************************************************************
  * suppression list
  */
@@ -1112,6 +1130,18 @@ report_init(void)
         open_and_read_suppression_file(c, false);
         c += strlen(c) + 1;
     }
+
+    if (options.show_threads || options.show_all_threads) {
+        main_thread = dr_get_thread_id(dr_get_current_drcontext());
+        if (options.show_all_threads)
+            report_main_thread();
+    }
+    if (options.show_threads && !options.show_all_threads) {
+        thread_table_lock = dr_mutex_create();
+        hashtable_init_ex(&thread_table, THREAD_HASH_BITS, HASH_INTPTR,
+                          false/*!str_dup*/, false/*!synch*/,
+                          (void (*)(void*)) packed_callstack_free, NULL, NULL);
+    }
 }
 
 #ifdef LINUX
@@ -1146,19 +1176,19 @@ report_fork_init(void)
     num_suppressions_matched_default = 0;
     num_suppressed_leaks_default = 0;
     num_reachable_leaks = 0;
-    /* FIXME: provide hashtable_clear() */
-    hashtable_delete(&error_table);
-    hashtable_init_ex(&error_table, ERROR_HASH_BITS, HASH_CUSTOM,
-                      false/*!str_dup*/, false/*using error_lock*/,
-                      (void (*)(void*)) stored_error_free,
-                      (uint (*)(void*)) stored_error_hash,
-                      (bool (*)(void*, void*)) stored_error_cmp);
+    hashtable_clear(&error_table);
     /* Be sure to reset the error list (xref PR 519222)
      * The error list points at hashtable payloads so nothing to free 
      */
     error_head = NULL;
     error_tail = NULL;
     dr_mutex_unlock(error_lock);
+
+    if (options.show_threads && !options.show_all_threads) {
+        dr_mutex_lock(thread_table_lock);
+        hashtable_clear(&thread_table);
+        dr_mutex_unlock(thread_table_lock);
+    }
 }
 #endif
 
@@ -1314,6 +1344,11 @@ report_exit(void)
             suppress_spec_free(spec);
         }
     }
+
+    if (options.show_threads && !options.show_all_threads) {
+        hashtable_delete(&thread_table);
+        dr_mutex_destroy(thread_table_lock);
+    }
 }
 
 void
@@ -1326,12 +1361,24 @@ void
 report_thread_exit(void *drcontext)
 {
     callstack_thread_exit(drcontext);
+
+    if (options.show_threads && !options.show_all_threads) {
+        /* this thread can't be involved in any error reports, and thread ids
+         * can be re-used, so we must remove
+         */
+        dr_mutex_lock(thread_table_lock);
+        /* we don't assert that it existed b/c we may have removed earlier
+         * if this thread hit an error
+         */
+        hashtable_remove(&thread_table, (void *)dr_get_thread_id(drcontext));
+        dr_mutex_unlock(thread_table_lock);
+    }
 }
 
 /***************************************************************************/
 
 static void
-print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar)
+print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar, bool error)
 {
     /* PR 465163: include timestamp and thread id in callstacks */
     ssize_t len = 0;
@@ -1341,9 +1388,12 @@ print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar)
     uint sec = (uint) (abssec % 60);
     uint min = (uint) (abssec / 60);
     uint hour = min / 60;
+    thread_id_t tid = dr_get_thread_id(dr_get_current_drcontext());
     min %= 60;
     BUFPRINT(buf, bufsz, *sofar, len, "@%u:%02d:%02d.%03d in thread %d"NL,
-             hour, min, sec, msec, dr_get_thread_id(dr_get_current_drcontext()));
+             hour, min, sec, msec, tid);
+    if (error && options.show_threads && !options.show_all_threads)
+        report_delayed_thread(tid);
 }
 
 void
@@ -1353,7 +1403,7 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix)
     size_t sofar = 0;
     ssize_t len = 0;
     BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len, "%s", prefix);
-    print_timestamp_and_thread(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+    print_timestamp_and_thread(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false);
     print_buffer(f, buf);
 }
 
@@ -1853,7 +1903,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
 
     if (!options.brief) {
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", INFO_PFX);
-        print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar);
+        print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, true);
     }
 
     if (report_neighbors) {
@@ -2317,7 +2367,7 @@ report_child_thread(void *drcontext, thread_id_t child)
      * w/ the errors, unless we cache their callstacks somewhere until
      * the end.
      */
-    if (options.show_threads && !options.perturb_only) {
+    if (options.show_threads || options.show_all_threads) {
         per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         ssize_t len = 0;
         size_t sofar = 0;
@@ -2327,12 +2377,63 @@ report_child_thread(void *drcontext, thread_id_t child)
         mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
         dr_get_mcontext(drcontext, &mc);
 
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "\nNEW THREAD: child thread %d created by parent thread %d\n",
-                 child, dr_get_thread_id(drcontext));
-        print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
-                        NULL, 0, false);
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
-        print_buffer(pt->f, pt->errbuf);
+        ASSERT(!options.perturb_only, "-perturb_only should disable -show_threads");
+
+        if (options.show_all_threads) {
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
+                     "\nNEW THREAD: child thread %d created by parent thread %d\n",
+                     child, dr_get_thread_id(drcontext));
+            print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
+                            NULL, 0, false);
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
+            print_buffer(pt->f, pt->errbuf);
+        } else {
+            packed_callstack_t *pcs;
+            /* XXX DRi#640: despite DRi#442, pc is no good here: points at wow64
+             * do-syscall, so we pass NULL for app_loc_t and skip top frame
+             */
+            packed_callstack_record(&pcs, &mc, NULL);
+            dr_mutex_lock(thread_table_lock);
+            hashtable_add(&thread_table, (void *)child, (void *)pcs);
+            dr_mutex_unlock(thread_table_lock);
+        }
     }
+}
+
+/* We only symbolized and report thread callstacks when involved in an error (i#714) */
+static void
+report_delayed_thread(thread_id_t tid)
+{
+    packed_callstack_t *pcs;
+    ASSERT(options.show_threads && !options.show_all_threads, "incorrect usage");
+    dr_mutex_lock(thread_table_lock);
+    pcs = (packed_callstack_t *) hashtable_lookup(&thread_table, (void *)tid);
+    if (pcs != NULL) {
+        void *drcontext = dr_get_current_drcontext();
+        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        ssize_t len = 0;
+        size_t sofar = 0;
+        /* we can't use pt->buf b/c we're in the middle of a report */
+        size_t bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
+        char *buf = (char *) global_alloc(bufsz, HEAPSTAT_CALLSTACK);
+        BUFPRINT(buf, bufsz, sofar, len,
+                 "\nNEW THREAD: thread id %d created here:\n", tid);
+        packed_callstack_print(pcs, 0/*all frames*/,
+                               buf, bufsz, &sofar, "");
+        BUFPRINT(buf, bufsz, sofar, len, "\n");
+        print_buffer(pt->f, buf);
+        global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
+        /* we only need to report once */
+        hashtable_remove(&thread_table, (void *)tid);
+    } else if (tid == main_thread && !main_thread_printed) {
+        report_main_thread();
+        main_thread_printed = true;
+    }
+    dr_mutex_unlock(thread_table_lock);
+}
+
+static void
+report_main_thread(void)
+{
+    ELOG(0, "\nNEW THREAD: main thread %d\n\n", main_thread);
 }
