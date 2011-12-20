@@ -212,6 +212,8 @@ struct _symbolized_frame_t {
     bool is_module;
     /* i#589: don't show module! for executable or other modules */
     bool hide_modname;
+    /* i#635 i#603: Print offsets for frames without symbols. */
+    bool has_symbols;
     char modname[MAX_MODULE_LEN+1]; /* always null-terminated */
     /* This is a string instead of a number, again for comparison w/ wildcards
      * in the modoffs in suppression frames
@@ -332,6 +334,7 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     memset(&frame->loc, 0, sizeof(frame->loc));
     frame->is_module = false;
     frame->hide_modname = false;
+    frame->has_symbols = false;
     frame->modname[0] = '\0';
     frame->modoffs[0] = '\0';
     frame->func[0] = '?';
@@ -369,6 +372,7 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
             });
             STATS_INC(symbol_names_truncated);
         }
+        frame->has_symbols = TEST(DRSYM_SYMBOLS, sym->debug_kind);
         dr_snprintf(frame->func, MAX_FUNC_LEN, sym->name);
         NULL_TERMINATE_BUFFER(frame->func);
         frame->funcoffs = (modoffs - sym->start_offs);
@@ -525,12 +529,23 @@ print_frame(symbolized_frame_t *frame IN,
     ssize_t len = 0;
     size_t align_sym = 0, align_mod = 0, align_moffs = 0;
     uint flags = use_custom_flags ? custom_flags : op_print_flags;
-    /* TO avoid trailing whitespace, determine now what will be printed at end of line */
     bool include_srcfile = frame_include_srcfile(frame);
-    bool print_addrs =
+    bool print_addrs, later_info;
+
+    if (!frame->has_symbols && TEST(PRINT_NOSYMS_OFFSETS, flags)) {
+        /* i#603: Print absaddr and/or mod/offs if we don't have symbols. */
+        flags |= PRINT_ABS_ADDRESS | PRINT_MODULE_OFFSETS;
+        /* i#635: Print symoffs if we don't have symbols. */
+        flags |= PRINT_SYMBOL_OFFSETS;
+    }
+
+    /* To avoid trailing whitespace, determine now what will be printed at end
+     * of line.
+     */
+    print_addrs =
         ((frame->loc.type == APP_LOC_PC && TEST(PRINT_ABS_ADDRESS, flags)) ||
-         (frame->is_module && TEST(PRINT_MODULE_OFFSETS, flags)));
-    bool later_info = print_addrs ||
+         (frame->is_module              && TEST(PRINT_MODULE_OFFSETS, flags)));
+    later_info = print_addrs || TEST(PRINT_SYMBOL_OFFSETS, flags) ||
         (include_srcfile && !TEST(PRINT_SRCFILE_NEWLINE, flags));
 
     if (prefix != NULL)
@@ -539,9 +554,9 @@ print_frame(symbolized_frame_t *frame IN,
     if (TEST(PRINT_ALIGN_COLUMNS, flags)) {
         /* XXX: could expose these as options.  could also align "abs <mod+offs>". */
         /* Avoid trailing whitespace by not aligning if line-final (i#584) */
-        if (TESTANY(PRINT_SYMBOL_FIRST|PRINT_SYMBOL_OFFSETS, flags) || later_info) {
+        if (TESTANY(PRINT_SYMBOL_FIRST, flags) || later_info) {
             /* Shift alignment to match func name lengths, up to a limit */
-            align_sym = (max_func_len > 0 ? (max_func_len < 70 ? max_func_len : 70) : 35);
+            align_sym = (max_func_len > 0 ? (max_func_len < 60 ? max_func_len : 60) : 35);
         }
         if ((TEST(PRINT_SYMBOL_OFFSETS, flags) && !TEST(PRINT_SYMBOL_FIRST, flags)) ||
             later_info)

@@ -179,18 +179,22 @@ OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
               "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
 #endif
 
-OPTION_CLIENT(client, callstack_style, uint, 0x101, 0, 0x1ff,
+OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
               "Set of flags that controls the callstack printing style",
               "Set of flags that controls the callstack printing style: @@<ul>"
               "<li>0x0001 = show frame numbers@@"
               "<li>0x0002 = show absolute address@@"
               "<li>0x0004 = show offset from library base@@"
-              "<li>0x0008 = show offset from symbol start: @&library!symbol+offs@&@@"
+              "<li>0x0008 = show offset from symbol start:"
+              " @&library!symbol+offs@&@@"
               "<li>0x0010 = show offset from line start: @&foo.c:44+0x8@&@@"
               "<li>0x0020 = @&file:line@& on separate line@@"
               "<li>0x0040 = @&file @ line@& instead of @&file:line@&@@"
               "<li>0x0080 = @&symbol library@& instead of @&library!symbol@&@@"
-              "<li>0x0100 = put fields in aligned columns</ul>@@")
+              "<li>0x0100 = put fields in aligned columns@@"
+              "<li>0x0200 = show symbol and module offset when symbols are"
+              " missing@@"
+              "</ul>@@")
               /* (when adding, update the max value as well!) */
 
 #ifdef TOOL_DR_MEMORY

@@ -1136,6 +1136,7 @@ sub generate_callstack($error_ref, $symlines_ref)
     my $PRINT_SRCFILE_NO_COLON     = 0x0040;
     my $PRINT_SYMBOL_FIRST         = 0x0080;
     my $PRINT_ALIGN_COLUMNS        = 0x0100;
+    my $PRINT_NOSYMS_OFFSETS       = 0x0200; # not implemented
 
     my $align_sym = 0;
     my $align_mod = 0;
