@@ -1945,6 +1945,8 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         wait_for_user("pausing at unaddressable access error");
     else if (type == ERROR_UNDEFINED && reporting && options.pause_at_uninitialized)
         wait_for_user("pausing at uninitialized read error");
+    else if (reporting && options.pause_at_error)
+        wait_for_user("pausing at error");
 
     symbolized_callstack_free(&ecs.scs);
 }

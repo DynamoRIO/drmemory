@@ -60,6 +60,7 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between version 1.4.6 and 1.4.5 include:
+ - Added -pause_at_error option
  - Various bug fixes
 
 The changes between version 1.4.5 and 1.4.4 include:
