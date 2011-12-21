@@ -305,6 +305,8 @@ typedef enum {
     HEAP_ROUTINE_REALLOC_DBG,
     HEAP_ROUTINE_FREE_DBG,
     HEAP_ROUTINE_CALLOC_DBG,
+    /* Free wrapper used in place of real delete or delete[] operators (i#722,i#655) */
+    HEAP_ROUTINE_DebugHeapDelete,
     /* To avoid debug CRT checks (i#51) */
     HEAP_ROUTINE_SET_DBG,
     HEAP_ROUTINE_DBG_NOP,
@@ -406,6 +408,10 @@ routine_needs_post_wrap(routine_type_t type, heapset_type_t set_type)
      * We do need to intercept post so we can have in_heap_routine set
      * for operator delete if using MSVC debug crt (i#26).
      */
+#ifdef WINDOWS
+    if (type == HEAP_ROUTINE_DebugHeapDelete)
+        return false;
+#endif
     return !is_delete_routine(type) IF_WINDOWS(|| set_type == HEAPSET_CPP_DBG);
 }
 
@@ -576,6 +582,10 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgBreak", HEAP_ROUTINE_DBG_NOP },
+    /* This is the name we store in the symcache for i#722.
+     * This means we are storing something different from the actual symbol names.
+     */
+    { "std::_DebugHeapDelete<>", HEAP_ROUTINE_DebugHeapDelete },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
 #define POSSIBLE_CRTDBG_ROUTINE_NUM \
@@ -1201,6 +1211,77 @@ disable_crtdbg(const module_data_t *mod)
         LOG(1, "WARNING: unable to disable crtdbg checks\n");
     }
 }
+
+static size_t
+find_debug_delete_interception(app_pc mod_start, size_t modoffs)
+{
+    /* i#722, i#655: MSVS libraries call _DELETE_CRT(ptr) or _DELETE_CRT_VEC(ptr)
+     * which for release build map to operatore delete or operator delete[], resp.
+     * However, for _DEBUG, both map to the same routine std::_DebugHeapDelete, which
+     * explicitly calls the destructor and then call free(), sometimes via tailcall.
+     * This means we would report a mismatch for an allocation with new but
+     * deallocation with free().  To suppress that, we could use a suppression, but
+     * b/c of the tailcall std::_DebugHeapDelete is sometimes not on the callstack.
+     * So, we intercept the routine and set a flag saying "ignore mismatches for the
+     * next call to free()".  But, we have to set the flag after the destructor, as
+     * it can go destroy sub-objects.  So we look for the interior call/jmp to free
+     * here.  (An alternative to decoding would be to intercept on entry and store a
+     * stack of pointers, but it might get quite deep.  We have the sources to
+     * std::_DebugHeapDelete so we know it's short w/ no surprises (at least in
+     * current MSVS versions).
+     */
+    void *drcontext = dr_get_current_drcontext();
+    IF_DEBUG(per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);)
+    byte *pc, *npc = mod_start + modoffs;
+    instr_t inst;
+    bool found = false;
+    instr_init(drcontext, &inst);
+    LOG(3, "%s: decoding "PFX"\n", __FUNCTION__, npc);
+    do {
+        instr_reset(drcontext, &inst);
+        pc = npc;
+        DODEBUG({
+            disassemble_with_info(drcontext, pc, LOGFILE(pt), true/*pc*/, true/*bytes*/);
+        });
+        npc = decode(drcontext, pc, &inst);
+        if (npc == NULL) {
+            ASSERT(false, "invalid instr in _DebugHeapDelete");
+            break;
+        }
+        if (instr_is_call_direct(&inst) || instr_is_ubr(&inst)) {
+            /* The first direct call or jmp should be the call or tailcall to
+             * free.  There may be a cbr earlier, and an indirect call to a
+             * destructor.  There may also be a direct call to a destructor.  We
+             * assume we've already found free() and that we only care about a
+             * call/jmp to this module's free().
+             */
+            opnd_t op = instr_get_target(&inst);
+            app_pc tgt;
+            ASSERT(opnd_is_pc(op), "must be pc");
+            tgt = opnd_get_pc(op);
+            LOG(3, "%s: found direct call/jmp to "PFX"\n", __FUNCTION__, tgt);
+            ASSERT(dr_mutex_self_owns(alloc_routine_lock), "caller must hold lock");
+            if (hashtable_lookup(&alloc_routine_table, (void *)tgt) != NULL) {
+                LOG(2, "%s: found direct call/jmp to free? "PFX"\n", __FUNCTION__, tgt);
+                modoffs = pc - mod_start;
+                found = true;
+                break;
+            }
+        }
+        /* Should find before ret and within one page (this is a short routine) */
+    } while (!instr_is_return(&inst) && npc - (mod_start + modoffs) < PAGE_SIZE);
+    instr_free(drcontext, &inst);
+    if (!found) {
+        /* Bail.  If we just intercept entry we can suppress mismatch
+         * on the wrong free (either in destructor in this routine,
+         * or later if arg to this routine is NULL: which we can't
+         * easily check w/ later intercept b/c of tailcall vs call).
+         */
+        WARN("WARNING: unable to suppress std::_DebugHeapDelete mismatch errors\n");
+        modoffs = 0;
+    }
+    return modoffs;
+}
 #endif
 
 /* for passing data to sym callback, and simpler to use for
@@ -1213,6 +1294,8 @@ typedef struct _set_enum_data_t {
     uint num_possible;
     bool *processed;
     bool use_redzone;
+    /* if a wildcard lookup */
+    const char *wildcard_name;
     const module_data_t *mod;
 } set_enum_data_t;
 
@@ -1264,8 +1347,21 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
          * Extra copies will have interception entries in hashtable,
          * but only the last one will be in the set's array of funcs.
          */
-        if (strcmp(name, edata->possible[i].name) == 0) {
-            add_to_alloc_set(edata, edata->mod->start + modoffs, i);
+        /* For wildcard routines we assume they ONLY match routines we're
+         * interested in, and we furthermore store all matches in symcache as
+         * dups using the non-wildcard name in the possible* array.
+         */
+        if ((edata->wildcard_name != NULL &&
+             strcmp(edata->possible[i].name, edata->wildcard_name) == 0) ||
+            (edata->wildcard_name == NULL &&
+             strcmp(name, edata->possible[i].name) == 0)) {
+#ifdef WINDOWS
+            if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete) {
+                modoffs = find_debug_delete_interception(edata->mod->start, modoffs);
+            }
+#endif
+            if (modoffs != 0)
+                add_to_alloc_set(edata, edata->mod->start + modoffs, i);
             break;
         }
     }
@@ -1273,7 +1369,7 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
 }
 
 /* Only supports "\w*" && prefix=="\w", "*\w" && suffix=="\w", 
- * or "*\w**" w/ neither prefix nor suffix
+ * or a wildcard for which we want to wrap all matches
  */
 static void
 find_alloc_regex(set_enum_data_t *edata, const char *regex,
@@ -1284,11 +1380,11 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         for (i = 0; i < edata->num_possible; i++) {
             const char *name = edata->possible[i].name;
             if (!edata->processed[i] &&
+                /* can't look up wildcard in exports */
+                edata->wildcard_name != NULL &&
                 ((prefix != NULL && strstr(name, prefix) == name) ||
                  (suffix != NULL && strlen(name) >= strlen(suffix) &&
-                  strcmp(name + strlen(name) - strlen(suffix), suffix) == 0) ||
-                 (suffix == NULL && prefix == NULL &&
-                  strstr(name, prefix) != NULL))) {
+                  strcmp(name + strlen(name) - strlen(suffix), suffix) == 0))) {
                 /* XXX: somehow drsym_search_symbols misses msvcrt!malloc
                  * (dbghelp 6.11+ w/ full search does find it but full takes too
                  * long) so we always try an export lookup
@@ -1330,6 +1426,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.use_redzone = use_redzone;
     edata.mod = mod;
     edata.processed = NULL;
+    edata.wildcard_name = NULL;
 #ifdef USE_DRSYMS
     /* Symbol lookup is expensive for large apps so we batch some
      * requests together using regex symbol lookup, which cuts the
@@ -1378,6 +1475,14 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
                 find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
                 find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+# ifdef WINDOWS
+                /* wrapper in place of real delete or delete[] operators (i#722,i#655) */
+                edata.wildcard_name = "std::_DebugHeapDelete<>";
+                find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
+                                 /* no export lookups so pass NULL */
+                                 NULL, NULL);
+                edata.wildcard_name = NULL;
+# endif
             } else if (possible == possible_cpp_routines) {
                 find_alloc_regex(&edata, "operator new*", "operator new", NULL);
                 find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
@@ -3763,6 +3868,9 @@ record_allocator(void *drcontext, per_thread_t *pt, alloc_routine_entry_t *routi
     if (pt->in_heap_routine == 0/*always for new, and called pre-enter for malloc*/ &&
         pt->allocator == 0) {
         pt->allocator = malloc_allocator_type(routine);
+#ifdef WINDOWS
+        pt->ignore_next_mismatch = false; /* just in case */
+#endif
         LOG(3, "alloc type: %x\n", pt->allocator);
     }
 }
@@ -3873,8 +3981,19 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
         malloc_unlock();
         return;
     }
-    if (entry != NULL && pt->in_heap_routine == 1/*alread incremented, so outer*/)
-        handle_free_check_mismatch(drcontext, mc, inside, call_site, routine, entry);
+    if (entry != NULL && pt->in_heap_routine == 1/*alread incremented, so outer*/) {
+#ifdef WINDOWS
+        if (pt->ignore_next_mismatch)
+            pt->ignore_next_mismatch = false;
+        else
+#endif
+            handle_free_check_mismatch(drcontext, mc, inside, call_site, routine, entry);
+    } 
+#ifdef WINDOWS
+    else if (pt->ignore_next_mismatch)
+        pt->ignore_next_mismatch = false;
+#endif
+
     if (entry != NULL && redzone_size(routine) > 0 &&
         !malloc_entry_is_pre_us(entry, false))
         real_base = base - redzone_size(routine);
@@ -5188,9 +5307,23 @@ handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
                 /* free() checked in handle_free_pre */
                 handle_free_check_mismatch(drcontext, mc, inside, call_site,
                                            routine, NULL);
+#ifdef WINDOWS
+                pt->ignore_next_mismatch = false; /* just in case */
+#endif
             }
             pt->allocator = 0; /* in case missed alloc post */
         }
+#ifdef WINDOWS
+    } else if (type == HEAP_ROUTINE_DebugHeapDelete) {
+        /* std::_DebugHeapDelete<*> is used for both delete and delete[] and it
+         * directly calls free so we can't find mismatches when it's used.  This
+         * is i#722 and i#655.  We're at the call/jmp to free inside
+         * std::_DebugHeapDelete, so unfortunately we can't easily get the arg
+         * and store it as a better check than a bool flag w/o having more info
+         * on whether jmp or call.
+         */
+        pt->ignore_next_mismatch = true;
+#endif
     }
     if (!routine->intercept_post)
         return; /* no post wrap so don't "enter" */

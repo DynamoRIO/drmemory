@@ -48,6 +48,10 @@
  *   SxS or other modules may end up w/ competing cache files.
  * - i#617, we assume that we have all the entries of a symbol 
  *   if we can find one entry for that symbol in the symcache.
+ * - Anyone creating synthetic symcaches (e.g., for i#192) needs to be aware
+ *   of wildcard symcache entries.  i#722 added
+ *   "std::_DebugHeapDelete<*>" whose matches are stored as
+ *   "std::_DebugHeapDelete<>" duplicates.
  */
 
 #define SYMCACHE_FILE_HEADER "Dr. Memory symbol cache version"

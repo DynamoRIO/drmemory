@@ -87,6 +87,12 @@ typedef struct _per_thread_t {
     app_pc post_call[MAX_HEAP_NESTING];
     /* record which outer layer was used to allocate (i#123) */
     uint allocator;
+#ifdef WINDOWS
+    /* avoid deliberate mismatches from _DebugHeapDelete<*> being used instead of
+     * operator delete* (i#722,i#655)
+     */
+    bool ignore_next_mismatch;
+#endif
 
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];

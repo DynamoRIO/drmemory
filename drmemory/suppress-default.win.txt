@@ -291,13 +291,6 @@ RPCRT4.dll!Ndr*
 RPCRT4.dll!*
 
 ##################################################
-# i#655: deliberate mismatch
-
-INVALID HEAP ARGUMENT
-name=default i#655: allocate with new and free with free()
-*!std::_DebugHeapDelete<*>
-
-##################################################
 # i#709: bit manip uninit
 # Highly probable bit-level definedness issue, as it is
 # masking all but the low bit in the test instruction.
