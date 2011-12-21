@@ -1367,7 +1367,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 if (all_processed && !edata.processed[i])
                     all_processed = false;
             }
-        }
+        } else
+            all_processed = false;
         if (!all_processed) {
             if (possible == possible_libc_routines) {
                 find_alloc_regex(&edata, "mall*", "mall", NULL);
