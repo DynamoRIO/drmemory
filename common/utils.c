@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -858,6 +858,9 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
     }
 #  endif
     if (entry == NULL)
+        return -1;
+    /* look for partial map (i#730) */
+    if (entry >= info->end) /* XXX: syscall_num will decode a few instrs in */
         return -1;
     num = syscall_num(drcontext, entry);
     ASSERT(num != -1, "error finding key syscall number");

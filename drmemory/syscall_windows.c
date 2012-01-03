@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -759,8 +759,12 @@ syscall_num_from_name(void *drcontext, const module_data_t *info, const char *na
     app_pc entry = (app_pc)
         dr_get_proc_address(info->start, name);
     int num = -1;
-    if (entry != NULL)
+    if (entry != NULL) {
+        /* look for partial map (i#730) */
+        if (entry >= info->end) /* XXX: syscall_num will decode a few instrs in */
+            return -1;
         num = syscall_num(drcontext, entry);
+    }
 #ifdef USE_DRSYMS
     if (entry == NULL && sym_lookup) {
         /* i#388: for those that aren't exported, if we have symbols, find the

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -690,6 +690,12 @@ replace_routine(bool add, const module_data_t *mod,
                 app_pc addr, int index)
 {
     IF_DEBUG(const char *modname = dr_module_preferred_name(mod);)
+    /* look for partial map (i#730) */
+    if (addr >= mod->end) {
+        LOG(1, "NOT replacing %s @"PFX" beyond end of mapping for module %s\n",
+            replace_routine_name[index], addr, modname == NULL ? "<noname>" : modname);
+        return;
+    }
     LOG(2, "%s %s @"PFX" in %s (base "PFX")\n",
         add ? "replacing" : "removing replacement",
         replace_routine_name[index], addr,
@@ -731,8 +737,15 @@ replace_all_strlen(bool add, const module_data_t *mod,
     do {
         instr_reset(drcontext, &inst);
         prev_pc = pc;
-        pc = decode(drcontext, pc, &inst);
-        if (pc == NULL || !instr_valid(&inst)) {
+        /* look for partial map (i#730) */
+        if (pc + MAX_INSTR_SIZE > mod->end) {
+            WARN("WARNING: decoding off end of module for %s\n",
+                 replace_routine_name[index]);
+            break;
+        }
+        /* use safe_decode() in case of addr in gap in ELF module */
+        if (!safe_decode(drcontext, pc, &inst, &pc) ||
+            pc == NULL || !instr_valid(&inst)) {
             LOG(1, "WARNING: invalid instr at indir func %s "PFX"\n",
                 replace_routine_name[index], prev_pc);
             break;

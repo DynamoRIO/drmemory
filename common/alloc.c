@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1213,7 +1213,7 @@ disable_crtdbg(const module_data_t *mod)
 }
 
 static size_t
-find_debug_delete_interception(app_pc mod_start, size_t modoffs)
+find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
 {
     /* i#722, i#655: MSVS libraries call _DELETE_CRT(ptr) or _DELETE_CRT_VEC(ptr)
      * which for release build map to operatore delete or operator delete[], resp.
@@ -1243,6 +1243,11 @@ find_debug_delete_interception(app_pc mod_start, size_t modoffs)
         DODEBUG({
             disassemble_with_info(drcontext, pc, LOGFILE(pt), true/*pc*/, true/*bytes*/);
         });
+        /* look for partial map (i#730) */
+        if (pc + MAX_INSTR_SIZE > mod_end) {
+            WARN("WARNING: decoding off end of module for _DebugHeapDelete\n");
+            break;
+        }
         npc = decode(drcontext, pc, &inst);
         if (npc == NULL) {
             ASSERT(false, "invalid instr in _DebugHeapDelete");
@@ -1306,6 +1311,12 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     if (modname == NULL)
         modname = "<noname>";
     ASSERT(edata != NULL && pc != NULL, "invalid params");
+    /* look for partial map (i#730) */
+    if (pc >= edata->mod->end) {
+        LOG(1, "NOT intercepting %s @"PFX" beyond end of mapping for module %s\n",
+            edata->possible[idx].name, pc, modname);
+        return;
+    }
 #ifdef USE_DRSYMS
     if (op_use_symcache)
         symcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
@@ -1356,8 +1367,11 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
             (edata->wildcard_name == NULL &&
              strcmp(name, edata->possible[i].name) == 0)) {
 #ifdef WINDOWS
-            if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete) {
-                modoffs = find_debug_delete_interception(edata->mod->start, modoffs);
+            if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
+                /* look for partial map (i#730) */
+                modoffs < edata->mod->end - edata->mod->start) {
+                modoffs = find_debug_delete_interception
+                    (edata->mod->start, edata->mod->end, modoffs);
             }
 #endif
             if (modoffs != 0)
@@ -1507,7 +1521,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
          */
         if (pc != NULL) {
             char buf[16];
-            if (safe_read(pc, sizeof(buf), buf)) {
+            if (pc < mod->end && safe_read(pc, sizeof(buf), buf)) {
                 instr_t inst;
                 void *drcontext = dr_get_current_drcontext();
                 instr_init(drcontext, &inst);
