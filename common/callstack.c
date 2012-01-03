@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1697,7 +1697,9 @@ add_new_module(void *drcontext, const module_data_t *info)
         name, info->start, info->end, info->full_path);
 
     hashtable_lock(&modname_table);
-    name_info = (modname_info_t *) hashtable_lookup(&modname_table, (void*)name);
+    /* key via path to reduce chance of duplicate name (i#729) */
+    name_info = (modname_info_t *) hashtable_lookup(&modname_table,
+                                                    (void*)info->full_path);
     if (name_info == NULL) {
         name_info = (modname_info_t *)
             global_alloc(sizeof(*name_info), HEAPSTAT_HASHTABLE);
@@ -1711,7 +1713,7 @@ add_new_module(void *drcontext, const module_data_t *info)
 #ifdef DEBUG
         name_info->warned_no_syms = false;
 #endif
-        hashtable_add(&modname_table, (void*)name_info->name, (void*)name_info);
+        hashtable_add(&modname_table, (void*)name_info->path, (void*)name_info);
         /* We need an entry for every 16M of module size */
         sz = info->end - info->start;
         while (true) {

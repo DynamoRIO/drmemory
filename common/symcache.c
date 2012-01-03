@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -79,8 +79,10 @@
 
 #define SYMCACHE_MAX_TMP_TRIES 1000
 
-/* We key on modname b/c that's also our filename: not worth adding version
- * or anything else to the name.
+/* We key on full path to reduce chance of duplicate name (i#729).
+ * If we do have duplicate preferred name, though, note that only one can
+ * have a symcache file b/c our file namespace does not have versions
+ * in it.
  */
 static hashtable_t symcache_table;
 
@@ -91,6 +93,8 @@ static bool initialized;
 
 /* Entry in the outer table */
 typedef struct _mod_cache_t {
+    /* strdup-ed modname since key now holds path */
+    const char *modname;
     bool from_file; /* came from a cache file */
     bool appended; /* added to since read from file? */
     /* Table of offset_list_t entries */
@@ -125,6 +129,10 @@ symcache_free_entry(void *v)
     mod_cache_t *modcache = (mod_cache_t *) v;
     if (modcache != NULL) {
         hashtable_delete(&modcache->table);
+        if (modcache->modname != NULL) {
+            global_free((void *)modcache->modname, strlen(modcache->modname) + 1,
+                        HEAPSTAT_HASHTABLE);
+        }
         global_free(modcache, sizeof(*modcache), HEAPSTAT_HASHTABLE);
     }
 }
@@ -456,7 +464,7 @@ symcache_exit(void)
         hash_entry_t *he;
         for (he = symcache_table.table[i]; he != NULL; he = he->next) {
             mod_cache_t *modcache = (mod_cache_t *) he->payload;
-            symcache_write_symfile(he->key, modcache);
+            symcache_write_symfile(modcache->modname, modcache);
         }
     }
     hashtable_delete(&symcache_table);
@@ -498,7 +506,8 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
 
     /* support initializing prior to module events => called twice */
     dr_mutex_lock(symcache_lock);
-    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)modname);
+    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table,
+                                                (void *)mod->full_path);
     dr_mutex_unlock(symcache_lock);
     if (modcache != NULL)
         return;
@@ -526,11 +535,16 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     modcache->module_internal_size = mod->module_internal_size;
 #endif
 
+    modcache->modname = drmem_strdup(modname, HEAPSTAT_HASHTABLE);
     modcache->from_file = symcache_read_symfile(mod, modname, modcache);
 
     dr_mutex_lock(symcache_lock);
-    if (!hashtable_add(&symcache_table, (void *)modname, (void *)modcache)) {
-        WARN("WARNING: duplicate module names: only caching symbols from first\n");
+    if (!hashtable_add(&symcache_table, (void *)mod->full_path, (void *)modcache)) {
+        /* this should be really rare to have dup paths (xref i#729) -- and
+         * actually we now have a lookup up above so we should only get here
+         * on a race while we let go of the lock
+         */
+        WARN("WARNING: duplicate module paths: only caching symbols from first\n");
         hashtable_delete(&modcache->table);
         global_free(modcache, sizeof(*modcache), HEAPSTAT_HASHTABLE);
     }
@@ -546,10 +560,10 @@ symcache_module_unload(void *drcontext, const module_data_t *mod)
         return; /* don't support caching */
     ASSERT(initialized, "symcache was not initialized");
     dr_mutex_lock(symcache_lock);
-    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)modname);
+    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache != NULL) {
         symcache_write_symfile(modname, modcache);
-        hashtable_remove(&symcache_table, (void *)modname);
+        hashtable_remove(&symcache_table, (void *)mod->full_path);
     }
     dr_mutex_unlock(symcache_lock);
 }
@@ -564,7 +578,7 @@ symcache_module_is_cached(const module_data_t *mod)
         return false; /* don't support caching */
     ASSERT(initialized, "symcache was not initialized");
     dr_mutex_lock(symcache_lock);
-    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)modname);
+    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache != NULL)
         res = modcache->table.entries > 0;
     dr_mutex_unlock(symcache_lock);
@@ -583,7 +597,7 @@ symcache_add(const module_data_t *mod, const char *symbol, size_t offs)
         return false; /* don't support caching */
     ASSERT(initialized, "symcache was not initialized");
     dr_mutex_lock(symcache_lock);
-    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)modname);
+    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache == NULL) {
         LOG(2, "%s: there is no cache for %s\n", __FUNCTION__, modname);
         dr_mutex_unlock(symcache_lock);
@@ -621,7 +635,7 @@ symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
         return false;
     }
     dr_mutex_lock(symcache_lock);
-    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)modname);
+    modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache == NULL) {
         dr_mutex_unlock(symcache_lock);
         return false;
