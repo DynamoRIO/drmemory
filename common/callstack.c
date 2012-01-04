@@ -1245,6 +1245,8 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             if (pcs->is_packed) {
                 pcs->frames.packed[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
                 pcs->frames.packed[0].modname_idx = 0;
+                ASSERT(loc->u.syscall.sysnum < MAX_MODOFFS_STORED,
+                       "sysnum too large to fit in packed_frame_t.modoffs");
                 pcs->frames.packed[0].modoffs = loc->u.syscall.sysnum;
             } else {
                 pcs->frames.full[0].loc.syscall_aux = loc->u.syscall.syscall_aux;

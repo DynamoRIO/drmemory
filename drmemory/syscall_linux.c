@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -880,6 +880,7 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
      * additional pointers."  These are marked above with "FIXME: more".
      * They are listed in the man page but I'm too lazy to add them just now.
      */
+    /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     switch (request) {
 
     // <include/asm-i386/socket.h>
@@ -1660,6 +1661,7 @@ handle_pre_socketcall(void *drcontext, dr_mcontext_t *mc)
         arg[0], arg[1], arg[2], arg[3], arg[4]);/*unsafe reads*/
     if (arg == NULL)
         return;
+    /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     switch (request) {
     case SYS_SOCKET:
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
@@ -1981,6 +1983,7 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
     ptr_uint_t *ptr = (ptr_uint_t *) dr_syscall_get_param(drcontext, 4);
     ptr_int_t arg5 = (int) dr_syscall_get_param(drcontext, 5);
     /* They all use param #0, which is checked via table specifying 1 arg */
+    /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     switch (request) {
     case SEMTIMEDOP:
         /* int semtimedop(int semid, struct sembuf *sops, unsigned nsops,
@@ -2319,6 +2322,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     /* They all use param #0, which is checked via table specifying 1 arg.
      * Officially it's a 5-arg syscall but so far nothing using beyond 2 args.
      */
+    /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     switch (request) {
     case PR_SET_PDEATHSIG:
     case PR_SET_UNALIGN:

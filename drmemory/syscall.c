@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -390,6 +390,7 @@ get_syscall_name(uint num)
 
 #ifdef WINDOWS
 /* uses tables and other sources not available to sysnum_from_name() */
+/* will not locate secondary syscalls */
 int
 get_syscall_num(void *drcontext, const module_data_t *info, const char *name)
 {
@@ -877,10 +878,15 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 #ifdef WINDOWS
     ptr_int_t result = dr_syscall_get_result(drcontext);
 #endif
-    LOG(SYSCALL_VERBOSE, "processing post system call #"PIFX" %s res="PIFX"\n",
-        sysnum, sysinfo->name, dr_syscall_get_result(drcontext));
-    num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
-                               sysinfo->args_size);
+    LOG(SYSCALL_VERBOSE, "processing post system call #");
+    if (SYSNUM_HAS_SECONDARY(sysnum)) {
+        LOG(SYSCALL_VERBOSE, PIFX"."PIFX, SYSNUM_PRIMARY(sysnum),
+            SYSNUM_SECONDARY(sysnum));
+    } else
+        LOG(SYSCALL_VERBOSE, PIFX, sysnum);
+    LOG(SYSCALL_VERBOSE, " %s res="PIFX"\n",
+        sysinfo->name, dr_syscall_get_result(drcontext));
+    num_args = SYSINFO_NUM_ARGS(sysinfo);
     for (i=0; i<num_args; i++) {
         LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x "PFX"\n",
             sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags,
@@ -961,6 +967,26 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     }
 }
 
+static syscall_info_t *
+get_sysinfo(int *sysnum IN OUT, per_thread_t *pt)
+{
+    syscall_info_t *sysinfo = syscall_lookup(*sysnum);
+    if (sysinfo != NULL) {
+        if (TEST(SYSINFO_SECONDARY_TABLE, sysinfo->flags)) {
+            uint code;
+            ASSERT(SYSINFO_NUM_ARGS(sysinfo) >= 1, "at least 1 arg for code");
+            code = pt->sysarg[sysinfo->arg[0].param];
+            /* encode a new sysnum */
+            ASSERT((uint)*sysnum <= SYSNUM_MAX_PRIMARY, "sysnum too large");
+            ASSERT(code <= SYSNUM_MAX_SECONDARY, "secondary sysnum too large");
+            *sysnum = SYSNUM_COMBINE(*sysnum, code);
+            /* get a new sysinfo */
+            sysinfo = syscall_lookup(*sysnum);
+        }
+    }
+    return sysinfo;
+}
+
 static bool
 event_pre_syscall(void *drcontext, int sysnum)
 {
@@ -974,6 +1000,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     dr_get_mcontext(drcontext, &mc);
 
 #ifdef STATISTICS
+    /* XXX: we could dynamically allocate entries and separate secondary syscalls */
     if (sysnum >= MAX_SYSNUM-1) {
         ATOMIC_INC32(syscall_invoked[MAX_SYSNUM-1]);
     } else {
@@ -1011,8 +1038,13 @@ event_pre_syscall(void *drcontext, int sysnum)
 
     if (!options.leaks_only && options.shadowing) {
         bool known = false;
-        sysinfo = syscall_lookup(sysnum);
+        sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {
+            if (SYSNUM_HAS_SECONDARY(sysnum)) {
+                LOG(SYSCALL_VERBOSE, "system call #"PIFX"."PIFX" %s\n",
+                    SYSNUM_PRIMARY(sysnum), SYSNUM_SECONDARY(sysnum),
+                    get_syscall_name(sysnum));
+            }
             known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
             res = os_shadow_pre_syscall(drcontext, sysnum) && res;
@@ -1077,11 +1109,12 @@ event_post_syscall(void *drcontext, int sysnum)
 
     if (!options.leaks_only && options.shadowing) {
         bool known = false;
-        syscall_info_t *sysinfo = syscall_lookup(sysnum);
+        syscall_info_t *sysinfo;
 
         /* post-syscall, eax is defined */
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
+        sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {
             known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             if (!os_syscall_succeeded(sysnum, sysinfo,

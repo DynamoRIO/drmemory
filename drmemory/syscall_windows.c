@@ -24,6 +24,7 @@
 #include "drmemory.h"
 #include "syscall.h"
 #include "syscall_os.h"
+#include "syscall_windows.h"
 #include "readwrite.h"
 #include <stddef.h> /* offsetof */
 
@@ -60,56 +61,56 @@ handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
 #define GDI32 USER32
 #define KERNEL32 USER32
 
-const char * const sysnum_names[] = {
+static const char * const sysnum_names[] = {
 #define USER32(name, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   #name,
 #include "syscall_numx.h"
 #undef USER32
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
-const int win7wow_sysnums[] = {
+static const int win7wow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7wow,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int win7x86_sysnums[] = {
+static const int win7x86_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7x86,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int vistawow_sysnums[] = {
+static const int vistawow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistawow,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int vistax86_sysnums[] = {
+static const int vistax86_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistax86,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int winXPwow_sysnums[] = {
+static const int winXPwow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpwow,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int win2003_sysnums[] = {
+static const int win2003_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2003,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int winXP_sysnums[] = {
+static const int winXP_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpx86,
 #include "syscall_numx.h"
 #undef USER32
 };
 
-const int win2K_sysnums[] = {
+static const int win2K_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2K,
 #include "syscall_numx.h"
 #undef USER32
@@ -141,7 +142,7 @@ static hashtable_t sysname_table;
  * vary by Windows version.
  */
 #define SYSTABLE_HASH_BITS 12 /* has ntoskrnl and win32k.sys */
-static hashtable_t systable;
+hashtable_t systable;
 
 /* Syscalls that need special processing.  The address of each is kept
  * in the syscall_info_t entry so we don't need separate lookup.
@@ -915,6 +916,7 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     }
 
     hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
+    syscall_wingdi_init(drcontext, ntdll_base, &info);
 }
 
 void
@@ -925,6 +927,7 @@ syscall_os_exit(void)
 #ifdef STATISTICS
     hashtable_delete(&sysname_table);
 #endif
+    syscall_wingdi_exit();
 }
 
 void
@@ -950,6 +953,7 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
             if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
                 add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
         }
+        syscall_wingdi_user32_load(drcontext, info);
     } else if (stri_eq(modname, "imm32.dll")) {
         for (i = 0; i < num_user32_syscalls(); i++) {
             if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
@@ -2253,6 +2257,7 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *
     }
 
     /* FIXME i#377: add more ioctl codes. */
+    /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     if (is_afd_ioctl) {
         handle_AFD_ioctl(pre, sysnum, pt, mc);
     }

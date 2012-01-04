@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -127,6 +127,14 @@ enum {
      * we can split the flag up but seems safer to combine.
      */
     SYSINFO_RET_SMALL_WRITE_LAST= 0x00000010,
+    /* System call takes a code from one of its params that is in essence
+     * a new system call number in a new sub-space.
+     * The num_out field contains a pointer to a new syscall_info_t
+     * array to use with the first param's code.
+     * The first argument field indicates which param contains the code.
+     * Any other argument fields in the initial entry are ignored.
+     */
+    SYSINFO_SECONDARY_TABLE     = 0x00000020,
 };
 
 #ifdef WINDOWS
@@ -140,6 +148,9 @@ enum {
 
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
+#define SYSINFO_NUM_ARGS(info) \
+    IF_WINDOWS_ELSE((info)->args_size/sizeof(reg_t), (info)->args_size)
+
 typedef struct _syscall_info_t {
     int num; /* system call number: filled in dynamically */
     const char *name;
@@ -147,7 +158,11 @@ typedef struct _syscall_info_t {
     int args_size; /* for Windows: total size of args; for Linux: arg count */
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];
-    /* for custom handling w/o separate number lookup */
+    /* For custom handling w/o separate number lookup.
+     * If SYSINFO_SECONDARY_TABLE is set in flags, this is instead
+     * a pointer to a new syscall_info_t table.
+     * (I'd use a union but that makes syscall table initializers uglier)
+     */
     int *num_out;
 } syscall_info_t;
 
@@ -157,6 +172,24 @@ extern syscall_info_t syscall_info[];
     ((pre) ? (TEST(SYSARG_READ, (flags)) ? \
               MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE) : \
      (TEST(SYSARG_WRITE, (flags)) ? MEMREF_WRITE : 0))
+
+/* For secondary syscalls, b/c we have "int sysnum" as a param all over the place,
+ * we don't want to introduce a compound type.
+ * So, we pack it into a single integer value.
+ * Because we store it as a 24-bit value in packed_frame_t we limit to 24 bits
+ * everywhere.
+ * We assume the primary maxes out at 0x3fff and the secondary at 0x1ff
+ * which is true for all uses today: but we if we start using secondary
+ * for ioctls we will need to expand this and perhaps have a different way
+ * of encoding into packed_frame_t.
+ * Top bit indicates whether secondary exists (since sysnum can be 0).
+ */
+#define SYSNUM_HAS_SECONDARY(combined) ((combined) & 0x800000)
+#define SYSNUM_COMBINE(primary, secondary) ((primary) | ((secondary) << 14) | 0x800000)
+#define SYSNUM_MAX_PRIMARY 0x3fff
+#define SYSNUM_PRIMARY(combined) ((combined) & 0x3fff)
+#define SYSNUM_MAX_SECONDARY 0x1ff
+#define SYSNUM_SECONDARY(combined) (((combined) >> 14) & SYSNUM_MAX_SECONDARY)
 
 void
 syscall_os_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base));

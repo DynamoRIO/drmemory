@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -27,6 +27,7 @@
 #include "drmemory.h"
 #include "syscall.h"
 #include "syscall_os.h"
+#include "syscall_windows.h"
 #include "readwrite.h"
 #include "shadow.h"
 #include <stddef.h> /* offsetof */
@@ -55,6 +56,7 @@
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 
+/***************************************************************************/
 /* System calls with wrappers in kernel32.dll (on win7 these are duplicated
  * in kernelbase.dll as well but w/ the same syscall number)
  * Not all wrappers are exported: xref i#388.
@@ -82,6 +84,7 @@ num_kernel32_syscalls(void)
     return NUM_KERNEL32_SYSCALLS;
 }
 
+/***************************************************************************/
 /* System calls with wrappers in user32.dll.
  * Not all wrappers are exported: xref i#388.
  *
@@ -105,7 +108,16 @@ static int sysnum_UserGetRawInputDeviceInfo = -1;
 static int sysnum_UserTrackMouseEvent = -1;
 static int sysnum_UserCreateWindowStation = -1;
 static int sysnum_UserLoadKeyboardLayoutEx = -1;
-static int sysnum_UserCallTwoParam = -1;
+
+/* forward decl so "extern" */
+extern syscall_info_t syscall_usercall_info[];
+
+/* Table that maps usercall names to (un-combined) numbers.
+ * Number can be 0 so we store +1.
+ */
+#define USERCALL_TABLE_HASH_BITS 8
+static hashtable_t usercall_table;
+
 
 syscall_info_t syscall_user32_info[] = {
     {0,"NtUserActivateKeyboardLayout", OK, 8, },
@@ -122,16 +134,16 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserBuildPropList", OK, 16, {{1,-2,W,}, {1,-3,WI,}, {3,sizeof(DWORD),W,}, }},
     {0,"NtUserCalcMenuBar", OK, 20, },
     /* FIXME i#389: NtUserCall* take in a code and perform a variety of tasks */
-    {0,"NtUserCallHwnd", UNKNOWN, 8, },
-    {0,"NtUserCallHwndLock", UNKNOWN, 8, },
-    {0,"NtUserCallHwndOpt", UNKNOWN, 8, },
-    {0,"NtUserCallHwndParam", UNKNOWN, 12, },
-    {0,"NtUserCallHwndParamLock", UNKNOWN, 12, },
+    {0,"NtUserCallHwnd", OK|SYSINFO_SECONDARY_TABLE, 8, {{1,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, 8, {{1,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallHwndOpt", OK|SYSINFO_SECONDARY_TABLE, 8, {{1,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallHwndParam", OK|SYSINFO_SECONDARY_TABLE, 12, {{2,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallHwndParamLock", OK|SYSINFO_SECONDARY_TABLE, 12, {{2,}}, (int*)syscall_usercall_info},
     {0,"NtUserCallMsgFilter", UNKNOWN, 8, {{0,sizeof(MSG),R|W,}, }},
     {0,"NtUserCallNextHookEx", UNKNOWN, 16, },
-    {0,"NtUserCallNoParam", UNKNOWN, 4, },
-    {0,"NtUserCallOneParam", UNKNOWN, 8, },
-    {0,"NtUserCallTwoParam", UNKNOWN, 12, {{0,}}, &sysnum_UserCallTwoParam},
+    {0,"NtUserCallNoParam", OK|SYSINFO_SECONDARY_TABLE, 4, {{0,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallOneParam", OK|SYSINFO_SECONDARY_TABLE, 8, {{1,}}, (int*)syscall_usercall_info},
+    {0,"NtUserCallTwoParam", OK|SYSINFO_SECONDARY_TABLE, 12, {{2,}}, (int*)syscall_usercall_info},
     {0,"NtUserChangeClipboardChain", OK, 8, },
     {0,"NtUserChangeDisplaySettings", OK, 20, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {4,-5,W,}, }},
     {0,"NtUserCheckDesktopByThreadId", OK, 4, },
@@ -447,6 +459,259 @@ num_user32_syscalls(void)
     return NUM_USER32_SYSCALLS;
 }
 
+/***************************************************************************
+ * NtUserCall* secondary system call numbers
+ */
+
+#define NONE -1
+
+static const char * const usercall_names[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   #type"."#name,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+#define NUM_USERCALL_NAMES (sizeof(usercall_names)/sizeof(usercall_names[0]))
+
+static const char * const usercall_primary[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   #type,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int win7_usercall_nums[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   w7,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int winvista_usercall_nums[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   vista,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int win2003_usercall_nums[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   w2003,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int winxp_usercall_nums[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   xp,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+static const int win2k_usercall_nums[] = {
+#define USERCALL(type, name, w7, vista, w2003, xp, w2k)   w2k,
+#include "syscall_usercallx.h"
+#undef USERCALL
+};
+
+/* Secondary system calls for NtUserCall{No,One,Two}Param */
+static syscall_info_t syscall_usercall_info[] = {
+    {0,"NtUserCallNoParam.CREATEMENU", OK, 4, },
+    {0,"NtUserCallNoParam.CREATEMENUPOPUP", OK, 4, },
+    {0,"NtUserCallNoParam.DISABLEPROCWNDGHSTING", OK, 4, },
+    {0,"NtUserCallNoParam.MSQCLEARWAKEMASK", OK, 4, },
+    {0,"NtUserCallNoParam.ALLOWFOREGNDACTIVATION", OK, 4, },
+    {0,"NtUserCallNoParam.CREATESYSTEMTHREADS", OK, 4, },
+    {0,"NtUserCallNoParam.UNKNOWN", UNKNOWN, 4, },
+    {0,"NtUserCallNoParam.DESTROY_CARET", OK, 4, },
+    {0,"NtUserCallNoParam.GETDEVICECHANGEINFO", OK, 4, },
+    {0,"NtUserCallNoParam.GETIMESHOWSTATUS", OK, 4, },
+    {0,"NtUserCallNoParam.GETINPUTDESKTOP", OK, 4, },
+    {0,"NtUserCallNoParam.GETMSESSAGEPOS", OK, 4, },
+    {0,"NtUserCallNoParam.GETREMOTEPROCID", OK, 4, },
+    {0,"NtUserCallNoParam.HIDECURSORNOCAPTURE", OK, 4, },
+    {0,"NtUserCallNoParam.LOADCURSANDICOS", OK, 4, },
+    {0,"NtUserCallNoParam.PREPAREFORLOGOFF", OK, 4, },
+    {0,"NtUserCallNoParam.RELEASECAPTURE", OK, 4, },
+    {0,"NtUserCallNoParam.RESETDBLCLICK", OK, 4, },
+    {0,"NtUserCallNoParam.ZAPACTIVEANDFOUS", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTECONSHDWSTOP", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTEDISCONNECT", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTELOGOFF", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTENTSECURITY", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTESHDWSETUP", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTESHDWSTOP", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTEPASSTHRUENABLE", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTEPASSTHRUDISABLE", OK, 4, },
+    {0,"NtUserCallNoParam.REMOTECONNECTSTATE", OK, 4, },
+    {0,"NtUserCallNoParam.UPDATEPERUSERIMMENABLING", OK, 4, },
+    {0,"NtUserCallNoParam.USERPWRCALLOUTWORKER", OK, 4, },
+    {0,"NtUserCallNoParam.WAKERITFORSHTDWN", OK, 4, },
+    {0,"NtUserCallNoParam.INIT_MESSAGE_PUMP", OK, 4, },
+    {0,"NtUserCallNoParam.UNINIT_MESSAGE_PUMP", OK, 4, },
+    {0,"NtUserCallNoParam.LOADUSERAPIHOOK", OK, 4, },
+
+    {0,"NtUserCallOneParam.BEGINDEFERWNDPOS", OK, 8, /*int count.  allocates memory but in the kernel*/},
+    {0,"NtUserCallOneParam.GETSENDMSGRECVR", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.WINDOWFROMDC", OK, 8, /*HDC*/},
+    {0,"NtUserCallOneParam.ALLOWSETFOREGND", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.CREATEEMPTYCUROBJECT", OK, 8, /*unused*/},
+    {0,"NtUserCallOneParam.CREATESYSTEMTHREADS", OK, 8, /*UINT*/},
+    {0,"NtUserCallOneParam.CSDDEUNINITIALIZE", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.DIRECTEDYIELD", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.ENUMCLIPBOARDFORMATS", OK, 8, /*UINT*/},
+    {0,"NtUserCallOneParam.GETCURSORPOS", OK, 8, {{0,sizeof(POINTL),W},}},
+    {0,"NtUserCallOneParam.GETINPUTEVENT", OK, 8, /*DWORD*/},
+    {0,"NtUserCallOneParam.GETKEYBOARDLAYOUT", OK, 8, /*DWORD*/},
+    {0,"NtUserCallOneParam.GETKEYBOARDTYPE", OK, 8, /*DWORD*/},
+    {0,"NtUserCallOneParam.GETPROCDEFLAYOUT", OK, 8, {{0,sizeof(DWORD),W},}},
+    {0,"NtUserCallOneParam.GETQUEUESTATUS", OK, 8, /*DWORD*/},
+    {0,"NtUserCallOneParam.GETWINSTAINFO", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.HANDLESYSTHRDCREATFAIL", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.LOCKFOREGNDWINDOW", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.LOADFONTS", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.MAPDEKTOPOBJECT", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.MESSAGEBEEP", OK, 8, /*LPARAM*/},
+    {0,"NtUserCallOneParam.PLAYEVENTSOUND", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.POSTQUITMESSAGE", OK, 8, /*int exit code*/},
+    {0,"NtUserCallOneParam.PREPAREFORLOGOFF", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.REALIZEPALETTE", OK, 8, /*HDC*/},
+    {0,"NtUserCallOneParam.REGISTERLPK", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.REGISTERSYSTEMTHREAD", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.REMOTERECONNECT", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.REMOTETHINWIRESTATUS", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.RELEASEDC", OK, 8, /*HDC*/},
+    {0,"NtUserCallOneParam.REMOTENOTIFY", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.REPLYMESSAGE", OK, 8, /*LRESULT*/},
+    {0,"NtUserCallOneParam.SETCARETBLINKTIME", OK, 8, /*UINT*/},
+    {0,"NtUserCallOneParam.SETDBLCLICKTIME", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.SETIMESHOWSTATUS", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.SETMESSAGEEXTRAINFO", OK, 8, /*LPARAM*/},
+    {0,"NtUserCallOneParam.SETPROCDEFLAYOUT", OK, 8, /*DWORD for PROCESSINFO.dwLayout*/},
+    {0,"NtUserCallOneParam.SETWATERMARKSTRINGS", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.SHOWCURSOR", OK, 8, /*BOOL*/},
+    {0,"NtUserCallOneParam.SHOWSTARTGLASS", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.SWAPMOUSEBUTTON", OK, 8, /*BOOL*/},
+
+    {0,"NtUserCallOneParam.UNKNOWN", UNKNOWN, 8, },
+    {0,"NtUserCallOneParam.UNKNOWN", UNKNOWN, 8, },
+
+    {0,"NtUserCallHwnd.DEREGISTERSHELLHOOKWINDOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwnd.DWP_GETENABLEDPOPUP", UNKNOWN, 8, },
+    {0,"NtUserCallHwnd.GETWNDCONTEXTHLPID", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwnd.REGISTERSHELLHOOKWINDOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwnd.UNKNOWN", UNKNOWN, 8, },
+
+    {0,"NtUserCallHwndOpt.SETPROGMANWINDOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndOpt.SETTASKMANWINDOW", OK, 8, /*HWND*/},
+
+    {0,"NtUserCallHwndParam.GETCLASSICOCUR", UNKNOWN, 12, },
+    {0,"NtUserCallHwndParam.CLEARWINDOWSTATE", UNKNOWN, 12, },
+    {0,"NtUserCallHwndParam.KILLSYSTEMTIMER", OK, 12, /*HWND, timer id*/},
+    {0,"NtUserCallHwndParam.SETDIALOGPOINTER", OK, 12, /*HWND, BOOL*/ },
+    {0,"NtUserCallHwndParam.SETVISIBLE", UNKNOWN, 12, },
+    {0,"NtUserCallHwndParam.SETWNDCONTEXTHLPID", OK, 12, /*HWND, HANDLE*/},
+    {0,"NtUserCallHwndParam.SETWINDOWSTATE", UNKNOWN, 12, },
+
+    /* XXX: confirm the rest: assuming for now all just take HWND */
+    {0,"NtUserCallHwndLock.WINDOWHASSHADOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.ARRANGEICONICWINDOWS", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.DRAWMENUBAR", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.CHECKIMESHOWSTATUSINTHRD", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.GETSYSMENUHANDLE", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.REDRAWFRAME", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.REDRAWFRAMEANDHOOK", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.SETDLGSYSMENU", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.SETFOREGROUNDWINDOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.SETSYSMENU", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.UPDATECKIENTRECT", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.UPDATEWINDOW", OK, 8, /*HWND*/},
+    {0,"NtUserCallHwndLock.UNKNOWN", UNKNOWN, 8, },
+
+    {0,"NtUserCallTwoParam.ENABLEWINDOW", OK, 12, /*HWND, BOOL*/},
+    {0,"NtUserCallTwoParam.REDRAWTITLE", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.SHOWOWNEDPOPUPS", OK, 12, /*HWND, BOOL*/},
+    {0,"NtUserCallTwoParam.SWITCHTOTHISWINDOW", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.UPDATEWINDOWS", UNKNOWN, 12, },
+
+    {0,"NtUserCallHwndParamLock.VALIDATERGN", OK, 12, /*HWND, HRGN*/},
+
+    {0,"NtUserCallTwoParam.CHANGEWNDMSGFILTER", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.GETCURSORPOS", OK, 12, {{0,sizeof(POINTL),W},}/*other param is hardcoded as 0x1*/},
+    {0,"NtUserCallTwoParam.GETHDEVNAME", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.INITANSIOEM", OK, 12, {{1,0,W|CT,SYSARG_TYPE_CSTRING_WIDE},}},
+    {0,"NtUserCallTwoParam.NLSSENDIMENOTIFY", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.REGISTERGHSTWND", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.REGISTERLOGONPROCESS", OK, 12, /*HANDLE, BOOL*/},
+    {0,"NtUserCallTwoParam.REGISTERSYSTEMTHREAD", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.REGISTERSBLFROSTWND", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.REGISTERUSERHUNGAPPHANDLERS", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.SHADOWCLEANUP", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.REMOTESHADOWSTART", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.SETCARETPOS", OK, 12, /*int, int*/},
+    {0,"NtUserCallTwoParam.SETCURSORPOS", OK, 12, /*int, int*/},
+    {0,"NtUserCallTwoParam.SETPHYSCURSORPOS", UNKNOWN, 12, },
+    {0,"NtUserCallTwoParam.UNHOOKWINDOWSHOOK", OK, 12, /*int, HOOKPROC*/},
+    {0,"NtUserCallTwoParam.WOWCLEANUP", UNKNOWN, 12, },
+};
+#define NUM_USERCALL_SYSCALLS \
+    (sizeof(syscall_usercall_info)/sizeof(syscall_usercall_info[0]))
+
+void
+syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver)
+{
+    uint i;
+    const int *usercalls;
+    switch (ver->version) {
+    case DR_WINDOWS_VERSION_7:     usercalls = win7_usercall_nums;     break;
+    case DR_WINDOWS_VERSION_VISTA: usercalls = winvista_usercall_nums; break;
+    case DR_WINDOWS_VERSION_2003:  usercalls = win2003_usercall_nums;  break;
+    case DR_WINDOWS_VERSION_XP:    usercalls = winxp_usercall_nums;    break;
+    case DR_WINDOWS_VERSION_2000:  usercalls = win2k_usercall_nums;    break;
+    case DR_WINDOWS_VERSION_NT:
+    default:
+        usage_error("This version of Windows is not supported", "");
+    }
+
+    /* Set up hashtable to translate usercall names to numbers */
+    hashtable_init(&usercall_table, USERCALL_TABLE_HASH_BITS,
+                   HASH_STRING, false/*!strdup*/);
+    for (i = 0; i < NUM_USERCALL_NAMES; i++) {
+        if (usercalls[i] != NONE) {
+            IF_DEBUG(bool ok =)
+                hashtable_add(&usercall_table, (void *)usercall_names[i],
+                              (void *)(usercalls[i] + 1/*avoid 0*/));
+            ASSERT(ok, "no dup entries in usercall_table");
+        }
+    }
+    ASSERT(NUM_USERCALL_NAMES == NUM_USERCALL_SYSCALLS, "mismatch in usercall tables");
+}
+
+void
+syscall_wingdi_exit(void)
+{
+    hashtable_delete(&usercall_table);
+}
+
+void
+syscall_wingdi_user32_load(void *drcontext, const module_data_t *info)
+{
+    uint i;
+    for (i = 0; i < NUM_USERCALL_SYSCALLS; i++) {
+        syscall_info_t *syslist = &syscall_usercall_info[i];
+        uint secondary = (uint)
+            hashtable_lookup(&usercall_table, (void *)syslist->name);
+        if (secondary != 0) {
+            /* no reason to support syscall_num_from_name() and it's simple
+             * enough to directly add rather than add more complexity to
+             * add_syscall_entry()
+             */
+            uint primary = get_syscall_num(drcontext, info, usercall_primary[i]);
+            syslist->num = SYSNUM_COMBINE(primary, secondary - 1/*+1 in table*/);
+            hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
+            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d (0x%04x)\n",
+                syslist->name, syslist->num, syslist->num);
+        } else {
+            LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", syslist->name);
+        }
+    }
+}
+
+/***************************************************************************/
 /* System calls with wrappers in gdi32.dll.
  * Not all wrappers are exported: xref i#388.
  *
@@ -1961,23 +2226,6 @@ handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, per_thread_t *
 }
 
 static bool
-handle_UserCallTwoParam(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
-                        dr_mcontext_t *mc)
-{
-    DWORD code = (DWORD) pt->sysarg[2];
-    /* FIXME i#389: codes vary by platform so need a per-OS table, and need
-     * to handle the rest of them
-     */
-    if (get_windows_version() == DR_WINDOWS_VERSION_7 &&
-        code == 0x6a /* TWOPARAM_ROUTINE_INITANSIOEM */) {
-        /* 2nd param is an OUT wide string */
-        handle_cwstring(pre, sysnum, mc, "TWOPARAM_ROUTINE_INITANSIOEM",
-                        (byte *) pt->sysarg[1], 0, SYSARG_WRITE, NULL, true);
-    }
-    return true;
-}
-
-static bool
 handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                            dr_mcontext_t *mc)
 {
@@ -2165,8 +2413,6 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
          * Also check whether it's defined after first deciding whether
          * we're on SP1: use core's method of checking for export?
          */
-    } else if (sysnum == sysnum_UserCallTwoParam) {
-        return handle_UserCallTwoParam(pre, drcontext, sysnum, pt, mc);
     } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (pre) {
