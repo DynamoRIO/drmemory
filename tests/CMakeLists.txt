@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -143,9 +143,12 @@ else (UNIX)
     "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   string(REGEX REPLACE "/O2" "/Od" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-  # removing RTC really just for tests/unload
-  string(REGEX REPLACE "/RTC1" "" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+  # removing RTC initially just for tests/unload but on app_suite it's thwarting
+  # drmem's checks while not detecting many simple uninits through its own checks
+  string(REGEX REPLACE "/RTC." "" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+  string(REGEX REPLACE "/RTC." "" CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+    "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   if (NOT DEBUG_BUILD)
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       foreach (var C;CXX;EXE_LINKER;MODULE_LINKER;SHARED_LINKER)
