@@ -34,6 +34,8 @@
 #include "../wininc/afd_shared.h"
 #include "../wininc/msafdlib.h"
 #include "../wininc/winioctl.h"
+#include "../wininc/tcpioctl.h"
+#include "../wininc/iptypes_undocumented.h"
 
 extern bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
@@ -1726,13 +1728,26 @@ ZwDeviceIoControlFile(
     );
 */
 
-/* Note that the AFD (Ancillary Function Driver, afd.sys, for winsock)
- * ioctls don't follow the regular CTL_CODE where the device is <<16.
+/* winioctl.h provides:
+ * CTL_CODE: Forms code from dev_type, function, access, method.
+ * DEVICE_TYPE_FROM_CTL_CODE: Extracts device bits.
+ * METHOD_FROM_CTL_CODE: Extracts method bits.
+ *
+ * Below we provide macros to get the other bits.
+ */
+#define FUNCTION_FROM_CTL_CODE(code) (((code) >> 2) & 0xfff)
+#define ACCESS_FROM_CTL_CODE(code) (((code) >> 14) & 0x3)
+
+/* The AFD (Ancillary Function Driver, afd.sys, for winsock)
+ * ioctls don't follow the regular CTL_CODE where the device is << 16.
  * Instead they have the device (FILE_DEVICE_NETWORK == 0x12) << 12,
  * and the function << 2, with access bits always set to 0.
  * NtDeviceIoControlFile only looks at the access and method bits
  * though.
+ *
+ * FIXME this is not foolproof: could be FILE_DEVICE_BEEP with other bits.
  */
+#define IS_AFD_IOCTL(code) ((code >> 12) == FILE_DEVICE_NETWORK)
 
 /* XXX: very similar to Linux layouts, though exact constants are different.
  * Still, should be able to share some code.
@@ -1795,17 +1810,20 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
     check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, (byte*)ptr, sz, mc, id)
 #define MARK_WRITE(ptr, sz, id) \
     check_sysmem(MEMREF_WRITE, sysnum, ptr, sz, mc, id)
+#define CHECK_OUT_PARAM(ptr, sz, id) \
+    check_sysmem((pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE), \
+                 sysnum, ptr, sz, mc, id)
 
-static void handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt,
-                             dr_mcontext_t *mc)
+static void
+handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
 {
     uint full_code = (uint) pt->sysarg[5];
     byte *inbuf = (byte *) pt->sysarg[6];
     uint insz = (uint) pt->sysarg[7];
     /* FIXME: put max of insz on all the sizes below */
 
-    /* Extract operation from 0x12xxx and bottom 2 method bits */
-    uint opcode = (full_code & 0xfff) >> 2;
+    /* Extract operation. */
+    uint opcode = FUNCTION_FROM_CTL_CODE(full_code);
 
     /* We have "8,-9,W" in the table so we only need to handle additional pointers
      * here or cases where subsets of the full output buffer are written.
@@ -2211,39 +2229,184 @@ static void handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt,
     ASSERT(pre, "Sanity check - we should only process pre- ioctls at this point");
 }
 
+/* Helper for checking an optional output buffer.  If the buffer was allocated
+ * on the heap, warns if the expected size and the allocation size do not
+ * match.
+ */
+static void
+check_out_buf(bool pre, int sysnum, dr_mcontext_t *mc, void *buf, size_t size,
+              const char *name)
+{
+    ssize_t heap_size = malloc_size(buf);
+    if (pre && buf != NULL && heap_size >= 0 && (size_t)heap_size != size) {
+        WARN("WARNING: heap buffer \"%s\" at "PFX" is of size %d bytes, "
+             "which does not match the expected size of %d bytes.\n",
+             name, buf, heap_size, size);
+    }
+    CHECK_OUT_PARAM(buf, size, name);
+}
+
+/* Handles ioctls of type FILE_DEVICE_NETWORK.  Some codes are documented in
+ * wininc/tcpioctl.h.
+ */
+static void
+handle_NET_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
+{
+    uint full_code = (uint) pt->sysarg[5];
+    byte *inbuf = (byte *) pt->sysarg[6];
+    uint insz = (uint) pt->sysarg[7];
+    byte *outbuf = (byte *) pt->sysarg[8];
+    uint outsz = (uint) pt->sysarg[9];
+    bool handled;
+
+    /* Extract operation. */
+    uint function = FUNCTION_FROM_CTL_CODE(full_code);
+
+    ASSERT((uint)FILE_DEVICE_NETWORK == DEVICE_TYPE_FROM_CTL_CODE(full_code),
+           "Unknown device type for handle_NET_ioctl!");
+
+    /* Set handled to false in the default path. */
+    handled = true;
+    switch (full_code) {
+
+    case _TCP_CTL_CODE(0x003, METHOD_NEITHER, FILE_ANY_ACCESS): /* 0x12000f */ {
+        /* New in Vista+: called from NSI.dll through
+         * IPHPAPI.dll!GetAdaptersInfo.  Found these similar ioctl values, but
+         * none of these match the observed behavior:
+         * - IOCTL_IPV6_QUERY_NEIGHBOR_CACHE from nddip6.h in WinCE DDK
+         * - IOCTL_IP_NAT_DELETE_INTERFACE from ipnat.h in WinCE DDK
+         * These checks are based on reverse engineering the interface.
+         */
+        net_ioctl_003_inout_t data;
+        ip_adapter_info_t *adapter_info;
+        LOG(SYSCALL_VERBOSE, "IOCTL_NET_0x003\n");
+        if (inbuf == NULL || inbuf != outbuf ||
+            insz != sizeof(data) || insz != outsz) {
+            WARN("WARNING: expected same in/out param of size %d for ioctl "
+                 PFX"\n", sizeof(data), full_code);
+            break;
+        }
+        if (!safe_read(inbuf, sizeof(data), &data)) {
+            WARN("WARNING: unable to read param for ioctl "PFX"\n", full_code);
+            break;
+        }
+        adapter_info = data.adapter_info;
+        if (pre && data.buf1) {
+            CHECK_DEF(data.buf1, data.buf1_sz, "net ioctl 0x003 buf1");
+        }
+        CHECK_OUT_PARAM(data.buf2, data.buf2_sz,
+                        "net ioctl 0x003 buf2");
+
+        /* Check whole buffer for addressability, but the kernel only writes
+         * part of the output, so mark each struct member individually.
+         */
+        if (pre) {
+            if (data.adapter_info_sz != sizeof(ip_adapter_info_t)) {
+                WARN("WARNING: adapter info struct size does not match "
+                     "expectation: found %d expected %d\n",
+                     data.adapter_info_sz, sizeof(ip_adapter_info_t));
+            }
+            CHECK_ADDR(adapter_info, data.adapter_info_sz,
+                       "net ioctl 0x003 adapter_info");
+        } else if (adapter_info != NULL) {
+            /* XXX: Can we refactor these struct field checks here and above so
+             * we only have to write the pointer, type, and field once?
+             */
+            MARK_WRITE((byte*)&adapter_info->adapter_name_len,
+                       sizeof(adapter_info->adapter_name_len),
+                       "net ioctl 0x003 adapter_info->adapter_name_len");
+            MARK_WRITE((byte*)&adapter_info->adapter_name,
+                       sizeof(adapter_info->adapter_name),
+                       "net ioctl 0x003 adapter_info->adapter_name");
+            MARK_WRITE((byte*)&adapter_info->unknown_a,
+                       sizeof(adapter_info->unknown_a),
+                       "net ioctl 0x003 adapter_info->unknown_a");
+            MARK_WRITE((byte*)&adapter_info->unknown_b,
+                       sizeof(adapter_info->unknown_b),
+                       "net ioctl 0x003 adapter_info->unknown_b");
+            MARK_WRITE((byte*)&adapter_info->unknown_c,
+                       sizeof(adapter_info->unknown_c),
+                       "net ioctl 0x003 adapter_info->unknown_c");
+            MARK_WRITE((byte*)&adapter_info->unknown_d,
+                       sizeof(adapter_info->unknown_d),
+                       "net ioctl 0x003 adapter_info->unknown_d");
+        }
+        break;
+    }
+
+    case _TCP_CTL_CODE(0x006, METHOD_NEITHER, FILE_ANY_ACCESS): /* 0x12001b */ {
+        /* New in Vista+: called from NSI.dll through
+         * IPHPAPI.dll!GetAdaptersInfo.
+         */
+        net_ioctl_006_inout_t data;
+        uint buf1sz, buf2sz, buf3sz, buf4sz;
+        LOG(SYSCALL_VERBOSE, "IOCTL_NET_0x006\n");
+        if (inbuf == NULL || inbuf != outbuf ||
+            sizeof(data) != insz || insz != outsz) {
+            WARN("WARNING: expected same in/out param of size %d for ioctl "
+                 PFX"\n", sizeof(data), full_code);
+            break;
+        }
+        if (!safe_read(inbuf, sizeof(data), &data)) {
+            WARN("WARNING: unable to read param for ioctl "PFX"\n", full_code);
+            break;
+        }
+        buf1sz = data.buf1_elt_sz * data.num_elts;
+        buf2sz = data.buf2_elt_sz * data.num_elts;
+        buf3sz = data.buf3_elt_sz * data.num_elts;
+        buf4sz = data.buf4_elt_sz * data.num_elts;
+        check_out_buf(pre, sysnum, mc, data.buf1, buf1sz, "net ioctl 0x006 buf1");
+        check_out_buf(pre, sysnum, mc, data.buf2, buf2sz, "net ioctl 0x006 buf2");
+        check_out_buf(pre, sysnum, mc, data.buf3, buf3sz, "net ioctl 0x006 buf3");
+        check_out_buf(pre, sysnum, mc, data.buf4, buf4sz, "net ioctl 0x006 buf4");
+        break;
+    }
+
+    /* These are known ioctl values used prior to Vista.  They seem to read and
+     * write flat structures and we believe they are handled well by our default
+     * behavior.
+     */
+    case IOCTL_TCP_QUERY_INFORMATION_EX:
+    case IOCTL_TCP_SET_INFORMATION_EX:
+        if (pre) {
+            CHECK_DEF(inbuf, insz, "NET InputBuffer");
+        }
+        break;
+
+    default:
+        handled = false;
+        break;
+    }
+
+    if (!handled) {
+        /* Unknown ioctl.  Check inbuf for full def and let table mark outbuf as
+         * written.
+         */
+        if (pre) {
+            WARN("WARNING: unhandled NET ioctl "PIFX" => op %d\n",
+                 full_code, function);
+            CHECK_DEF(inbuf, insz, "NET InputBuffer");
+        }
+    }
+}
+
 static bool
 handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                            dr_mcontext_t *mc)
 {
     uint code = (uint) pt->sysarg[5];
-    /* FIXME this is not foolproof: could be FILE_DEVICE_BEEP */
-    bool is_afd_ioctl = ((code >> 12) == 0x12);
+    uint device = (uint) DEVICE_TYPE_FROM_CTL_CODE(code);
+    byte *inbuf = (byte *) pt->sysarg[6];
+    uint insz = (uint) pt->sysarg[7];
 
+    /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
+     * the input buffer needs to be defined.
+     */
+
+    /* Common ioctl handling before calling more specific handler. */
     if (pre) {
-        byte *inbuf = (byte *) pt->sysarg[6];
-        uint insz = (uint) pt->sysarg[7];
         if (inbuf == NULL)
             return true;
-        /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
-         * the input buffer needs to be defined.
-         */
-        /* XXX i#378: should break down the output buffer as well since it
-         * may not all be written to.
-         */
-
-        if (is_afd_ioctl) {
-            /* This is redundant for those where entire buffer must be defined but
-             * most need subset defined.
-             */
-            CHECK_ADDR(inbuf, insz, "InputBuffer");
-        } else {
-            /* FIXME i#377: add more ioctl codes. */
-            WARN("WARNING: unknown ioctl "PIFX" => op %d\n",
-                 pt->sysarg[5], (code >> 2) & 0xfff);
-            /* XXX: should perhaps dump a callstack too at higher verbosity */
-            /* assume full thing must be defined */
-            CHECK_DEF(inbuf, insz, "InputBuffer");
-        }
     } else {
         /* We have "8,-9,W" in the table so we only need to handle additional pointers
          * here or cases where subsets of the full output buffer are written.
@@ -2256,11 +2419,31 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *
             return true;
     }
 
-    /* FIXME i#377: add more ioctl codes. */
     /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
-    if (is_afd_ioctl) {
+    if (IS_AFD_IOCTL(code)) {
+        /* This is redundant for those where entire buffer must be defined but
+         * most need subset defined.
+         */
+        if (pre)
+            CHECK_ADDR(inbuf, insz, "InputBuffer");
         handle_AFD_ioctl(pre, sysnum, pt, mc);
+    } else if (device == FILE_DEVICE_NETWORK) {
+        handle_NET_ioctl(pre, sysnum, pt, mc);
+    } else {
+        /* FIXME i#377: add more ioctl codes. */
+        WARN("WARNING: unknown ioctl "PIFX" => op %d\n",
+                code, FUNCTION_FROM_CTL_CODE(code));
+        /* XXX: should perhaps dump a callstack too at higher verbosity */
+        /* assume full thing must be defined */
+        if (pre)
+            CHECK_DEF(inbuf, insz, "InputBuffer");
+
+        /* Table always marks outbuf as written during post callback.
+         * XXX i#378: should break down the output buffer as well since it
+         * may not all be written to.
+         */
     }
+
     return true;
 }
 

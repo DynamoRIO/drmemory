@@ -104,24 +104,30 @@ TEST(NtUserTests, InitCommonControlsEx) {
     InitCommonControlsEx(&InitCtrlEx);  // initialize common control sex
 }
 
-TEST(NtUserTests, DISABLED_GetAdaptersInfoTest) {
+TEST(NtUserTests, GetAdaptersInfoTest) {
     // http://code.google.com/p/drmemory/issues/detail?id=719
     IP_ADAPTER_INFO dummy;
     ULONG size = 0;  // force overflow
     ULONG res = GetAdaptersInfo(&dummy, &size);
-    ASSERT_EQ(ERROR_BUFFER_OVERFLOW, res)
-        << "Failed to determine number of networks available.";
+    if (res != NO_ERROR) {
+        ASSERT_EQ(ERROR_BUFFER_OVERFLOW, res)
+            << "Failed to determine number of networks available.";
 
-    char *buffer = new char[size];
-    IP_ADAPTER_INFO *infos = (IP_ADAPTER_INFO*)buffer;
-    res = GetAdaptersInfo(infos, &size);
-    ASSERT_EQ(NO_ERROR, res);
-    // Verify that we don't get uninits from using the outputs in conditionals.
-    if (size > 0) {
-        MEMORY_BASIC_INFORMATION mbi;
-        VirtualQuery(infos->Next, &mbi, sizeof(mbi));
+        char *buffer = new char[size];
+        IP_ADAPTER_INFO *infos = (IP_ADAPTER_INFO*)buffer;
+        res = GetAdaptersInfo(infos, &size);
+        ASSERT_EQ(NO_ERROR, res);
+        // Verify that we don't get uninits from using the outputs in
+        // conditionals.
+        if (size > 0) {
+            MEMORY_BASIC_INFORMATION mbi;
+            VirtualQuery(infos->Next, &mbi, sizeof(mbi));
+        }
+        delete [] buffer;
+    } else {
+        ASSERT_EQ(0, size)
+            << "GetAdaptersInfo should only succeed when there are 0 adapters";
     }
-    delete [] buffer;
 }
 
 TEST(NtUserTests, CursorTest) {

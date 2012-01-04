@@ -11,6 +11,7 @@
 
 #define CTL_CODE( DeviceType, Function, Method, Access ) (                 \
     ((DeviceType) << 16) | ((Access) << 14) | ((Function) << 2) | (Method) \
+)
 
 #define DEVICE_TYPE_FROM_CTL_CODE(ctrlCode)     (((DWORD)(ctrlCode & 0xffff0000)) >> 16)
 #define METHOD_FROM_CTL_CODE(ctrlCode)          ((DWORD)(ctrlCode & 3))
