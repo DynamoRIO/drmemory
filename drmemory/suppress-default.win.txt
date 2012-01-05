@@ -302,3 +302,22 @@ CLBCatQ.DLL!*
 CLBCatQ.DLL!*
 ntdll.dll!*
 ntdll.dll!LdrShutdownProcess
+
+##################################################
+# i#733: false pos leak from plfCreateLOCALFONT
+# This function looks like it's creating a linked list whose nodes are all
+# allocated from within a single array.  The first array element is the last
+# node in the list, and the last array element is the head of the list which is
+# returned.  Unless we change our leak scanner to follow pointers reachable via
+# mid-chunk pointers, we won't be able to handle this kind of leak.
+POSSIBLE LEAK
+name=default i#733
+GDI32.dll!plfCreateLOCALFONT
+
+# w/o symbols
+POSSIBLE LEAK
+name=default i#733
+GDI32.dll!*
+GDI32.dll!CreateFontIndirectExW
+GDI32.dll!CreateFontIndirectW
+
