@@ -42,8 +42,12 @@ TEST(NtUserTests, SystemParametersInfo) {
     NONCLIENTMETRICS metrics;
     ZeroMemory(&metrics, sizeof(NONCLIENTMETRICS));
     metrics.cbSize = sizeof(NONCLIENTMETRICS);
-    SystemParametersInfo(SPI_GETNONCLIENTMETRICS, sizeof(NONCLIENTMETRICS),
-                         &metrics, 0);
+    BOOL success = SystemParametersInfo(SPI_GETNONCLIENTMETRICS,
+                                        sizeof(NONCLIENTMETRICS), &metrics, 0);
+    ASSERT_EQ(TRUE, success);
+    success = SystemParametersInfo(SPI_SETNONCLIENTMETRICS,
+                                   sizeof(NONCLIENTMETRICS), &metrics, 0);
+    ASSERT_EQ(TRUE, success);
 }
 
 namespace Clipboard_Tests {

@@ -1490,7 +1490,8 @@ handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
 
 static void
 handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
-                        byte *start, uint arg_flags, NONCLIENTMETRICSW *safe)
+                        byte *start, size_t size_specified,
+                        uint arg_flags, NONCLIENTMETRICSW *safe)
 {
     NONCLIENTMETRICSW *ptr_arg = (NONCLIENTMETRICSW *) start;
     NONCLIENTMETRICSW *ptr_safe;
@@ -1506,7 +1507,26 @@ handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc
         }
         ptr_safe = &ptr_local;
     }
-    size = ptr_safe->cbSize;
+    /* Turns out that despite user32!SystemParametersInfoA requiring both uiParam
+     * and cbSize, it turns around and calls NtUserSystemParametersInfo w/o
+     * initializing cbSize!  Plus, it passes the A size instead of the W size!
+     * Ditto on SET where it keeps the A size in the temp struct cbSize.
+     * So we don't check that ptr_arg->cbSize is defined for pre-write
+     * and we pretty much ignore the uiParam and cbSize values except
+     * post-write (kernel puts in the right size).  Crazy.
+     */
+    LOG(2, "NONCLIENTMETRICSW %s: sizeof(NONCLIENTMETRICSW)=%x, cbSize=%x, uiParam=%x\n",
+        TEST(SYSARG_WRITE, arg_flags) ? "write" : "read",
+        sizeof(NONCLIENTMETRICSW), ptr_safe->cbSize, size_specified);
+    if (running_on_Win7_or_later()/*win7 seems to set cbSize properly, always*/ ||
+        (!pre && TEST(SYSARG_WRITE, arg_flags)))
+        size = ptr_safe->cbSize;
+    else {
+        /* MAX to handle future additions.  I don't think older versions
+         * have smaller NONCLIENTMETRICSW than anywhere we're compiling.
+         */
+        size = MAX(sizeof(NONCLIENTMETRICSW), size_specified);
+    }
 
     if (pre && TEST(SYSARG_WRITE, arg_flags)) {
         check_sysmem(check_type, sysnum, start, size, mc, "NONCLIENTMETRICSW");
@@ -1787,7 +1807,7 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_threa
     case SPI_GETDRAGFULLWINDOWS: get = true;  sz = sizeof(BOOL); break;
     case SPI_SETDRAGFULLWINDOWS: get = false; uses_uiParam = true; break;
     case SPI_GETNONCLIENTMETRICS: {
-        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam,
+        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam, uiParam,
                                 SYSARG_WRITE, NULL);
         get = true;
         uses_uiParam = true;
@@ -1795,7 +1815,7 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_threa
         break;
     }
     case SPI_SETNONCLIENTMETRICS: {
-        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam,
+        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam, uiParam,
                                 SYSARG_READ, NULL);
         get = false;
         uses_uiParam = true;

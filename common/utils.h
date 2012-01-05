@@ -452,6 +452,7 @@ atomic_add32_return_sum(volatile int *x, int val)
 }
 
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
+#define MAX(x,y) ((x) > (y) ? (x) : (y))
 
 /***************************************************************************
  * UTILITY ROUTINES
