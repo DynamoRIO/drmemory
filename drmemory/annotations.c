@@ -37,6 +37,7 @@
 #include "annotations.h"
 #include "utils.h"
 #include "shadow.h"
+#include "options.h"
 
 /* For VG_USERREQ__* enums. */
 #include "valgrind.h"
@@ -61,6 +62,13 @@ handle_make_mem_defined_if_addressable(vg_client_request_t *request)
     ptr_uint_t len = request->args[1];
     app_pc end = start + len;
     app_pc cur;
+
+    /* No-op if we're not tracking definedness. */
+    if (options.leaks_only || !options.shadowing || !options.check_uninitialized)
+        return 1;
+
+    LOG(2, "Marking addressable bytes in range "PFX"-"PFX" as defined \n",
+        start, end);
 
     /* XXX: We could try to be clever for perf, but these annotations are rare,
      * so we go byte by byte.

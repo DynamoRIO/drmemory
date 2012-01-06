@@ -298,6 +298,7 @@ static shadow_block_t *
 get_shadow_table(uint idx)
 {
     /* We store the displacement (shadow minus app) (PR 553724) */
+    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
     return (shadow_block_t *)
         (shadow_table[idx] + (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY));
 }
