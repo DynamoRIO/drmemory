@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -98,16 +98,41 @@ include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
 ##################################################
 # pre-commit source file checks
-file(GLOB cfiles ${CTEST_SOURCE_DIRECTORY}/*/*.c)
+file(GLOB cfiles 
+  ${CTEST_SOURCE_DIRECTORY}/*/*.c
+  ${CTEST_SOURCE_DIRECTORY}/*/*.cpp
+  ${CTEST_SOURCE_DIRECTORY}/*/*/*.c
+  ${CTEST_SOURCE_DIRECTORY}/*/*/*.cpp)
 foreach (cfile ${cfiles})
-  file(READ "${cfile}" string)
+  if (NOT "${cfile}" MATCHES "dynamorio/")
+    file(READ "${cfile}" string)
 
-  # Check for NL instead of \n in NOTIFY*
-  string(REGEX MATCH "NOTIFY[^(\n]*\\([^)]*\\\\n" match "${string}")
-  if (NOT "${match}" STREQUAL "")
-    message(FATAL_ERROR "In ${cfile}, use NL macro, not \\n, for NOTIFY string: ${match}")
+    # Check for NL instead of \n in NOTIFY*
+    string(REGEX MATCH "NOTIFY[^(\n]*\\([^)]*\\\\n" match "${string}")
+    if (NOT "${match}" STREQUAL "")
+      message(FATAL_ERROR "In ${cfile}, use NL macro, not \\n, for NOTIFY string: ${match}")
+    endif ()
+
+    # Check for CR.  Unfortunately file(READ) seems to throw away CR's
+    # so we resort to perl.  Dev must run suite on Linux where perl
+    # is likely to be found.
+    include(FindPerl)
+    if (PERL_FOUND)
+      execute_process(COMMAND
+        ${PERL} -n -e "print $_ if (/\\r\\n/);" "${cfile}"
+        RESULT_VARIABLE perl_result
+        ERROR_QUIET
+        OUTPUT_VARIABLE perl_out)
+      if (NOT perl_result)
+        if (NOT "${perl_out}" STREQUAL "")
+          string(REGEX MATCHALL "\n" perl_lines "${perl_out}")
+          list(LENGTH perl_lines num_perl_lines)
+          message(FATAL_ERROR "${cfile} has ${num_perl_lines} DOS line endings")
+        endif ()
+      endif ()
+    endif ()
+
   endif ()
-
 endforeach ()
 ##################################################
 
