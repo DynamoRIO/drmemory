@@ -321,3 +321,52 @@ GDI32.dll!*
 GDI32.dll!CreateFontIndirectExW
 GDI32.dll!CreateFontIndirectW
 
+##################################################
+# i#18: false pos leak from ole32.dll!EventEntry::CreatePoolEntry
+# CreatePoolEntry allocates a 24 byte EventPoolEntry object that has an
+# SLIST_ENTRY field in it.  The link pointer is at offset 0xC in the struct, and
+# so we get a mid-chunk pointer and a possible leak.
+POSSIBLE LEAK
+name=default i#18 CreatePoolEntry mid-chunk linked list leak
+ole32.dll!LockEntry::operator new
+ole32.dll!EventPoolEntry::CreatePoolEntry
+ole32.dll!EventPoolEntry::ThreadInit
+ole32.dll!CRWLock::ThreadInit
+ole32.dll!COleTls::TLSAllocData
+# CoInitializeEx does a tail call, so we don't see it here.
+
+# w/o symbols: callstack is all private syms so we use modoffs despite being
+# OS-specific and brittle.
+# FIXME i#741: Find a less-brittle way to write this.
+POSSIBLE LEAK
+name=default i#18 CreatePoolEntry mid-chunk linked list leak (nosyms win7)
+<ole32.dll+0x3f0ce>
+<ole32.dll+0x3f10d>
+<ole32.dll+0x40e77>
+<ole32.dll+0x408f4>
+<ole32.dll+0x4080b>
+# CoInitializeEx does a tail call, so we don't see it here.
+
+##################################################
+# i#18: one-time true leak in LockEntry::ThreadInit
+# ole32.dll!LockEntry::ThreadInit is called once from CoInitialize, but neither
+# CRWLock::ThreadCleanup or LockEntry::ThreadCleanup are ever called.  This
+# looks like an intentional, one time leak of a pool of lock entries designed
+# to have the same lifetime as the process.
+LEAK
+name=default i#18 LockEntry::ThreadInit pool leak
+ole32.dll!LockEntry::ThreadInit
+ole32.dll!CRWLock::ThreadInit
+ole32.dll!COleTls::TLSAllocData
+# CoInitializeEx does a tail call, so we don't see it here.
+
+# w/o symbols: callstack is all private syms so we use modoffs despite being
+# OS-specific and brittle.
+# FIXME i#741: Find a less-brittle way to write this.
+LEAK
+name=default i#18 LockEntry::ThreadInit pool leak (nosyms win7)
+<ole32.dll+0x40739>
+<ole32.dll+0x408e5>
+<ole32.dll+0x4080b>
+# CoInitializeEx does a tail call, so we don't see it here.
+
