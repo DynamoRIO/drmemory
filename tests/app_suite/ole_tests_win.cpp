@@ -19,6 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#if _MSC_VER <= 1400
+# define _WIN32_WINNT 0x0400 /* == NT4 */ /* not set for VS2005 */
+#endif
+
 #include <windows.h>
 #include <objbase.h>
 #include <stdlib.h>
