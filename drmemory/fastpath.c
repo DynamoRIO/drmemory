@@ -171,43 +171,40 @@ insert_add_to_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
  *   EFLAGS_WRITE_OF  = writes OF before reading it
  *   EFLAGS_READ_6    = reads some of 6 before writing
  *   0                = no information yet
- * Optionally returns the instr that does the reading/writing, if
- * the return value is EFLAGS_WRITE_6 or EFLAGS_READ_6.
+ *
+ * Returns a LIVE_ constant for each register in live[]
  */
 static uint
-get_aflags_liveness(instr_t *inst)
+get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
 {
     uint res = 0;
     uint merge;
-    while (inst != NULL) {
-        merge = instr_get_arith_flags(inst);
-        if (TESTANY(EFLAGS_READ_6, merge)) {
-            uint w2r = EFLAGS_WRITE_TO_READ(res);
-            if (!TESTALL((merge & EFLAGS_READ_6), w2r))
-                return EFLAGS_READ_6; /* reads a flag before it's written */
-        }
-        if (TESTANY(EFLAGS_WRITE_6, merge)) {
-            res |= (merge & EFLAGS_WRITE_6);
-            if (TESTALL(EFLAGS_WRITE_6, res) && !TESTANY(EFLAGS_READ_6, res))
-                return EFLAGS_WRITE_6; /* all written before read */
-        }
-        inst = instr_get_next(inst);
-    }
-    if (TEST(EFLAGS_WRITE_OF, res) && !TEST(EFLAGS_READ_OF, res))
-        return EFLAGS_WRITE_OF;
-    return res;
-}
-
-/* Returns a LIVE_ constant for each register */
-static void
-get_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
-{
     int r;
+    bool aflags_known = false;
     for (r = 0; r < NUM_LIVENESS_REGS; r++)
         live[r] = LIVE_UNKNOWN;
     while (inst != NULL) {
+        /* aflags */
+        if (!aflags_known) {
+            merge = instr_get_arith_flags(inst);
+            if (TESTANY(EFLAGS_READ_6, merge)) {
+                uint w2r = EFLAGS_WRITE_TO_READ(res);
+                if (!TESTALL((merge & EFLAGS_READ_6), w2r)) {
+                    res = EFLAGS_READ_6; /* reads a flag before it's written */
+                    aflags_known = true;
+                }
+            }
+            if (TESTANY(EFLAGS_WRITE_6, merge)) {
+                res |= (merge & EFLAGS_WRITE_6);
+                if (TESTALL(EFLAGS_WRITE_6, res) && !TESTANY(EFLAGS_READ_6, res)) {
+                    res = EFLAGS_WRITE_6; /* all written before read */
+                    aflags_known = true;
+                }
+            }
+        }
         if (instr_is_cti(inst))
-            return;
+            break;
+        /* liveness */
         for (r = 0; r < NUM_LIVENESS_REGS; r++) {
             reg_id_t reg = r + REG_START_32;
             if (live[r] == LIVE_UNKNOWN) {
@@ -222,6 +219,9 @@ get_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
         }
         inst = instr_get_next(inst);
     }
+    if (!aflags_known && TEST(EFLAGS_WRITE_OF, res) && !TEST(EFLAGS_READ_OF, res))
+        return EFLAGS_WRITE_OF;
+    return res;
 }
 
 static void
@@ -1399,8 +1399,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     int local_slot[] = {SPILL_SLOT_4, SPILL_SLOT_5};
     int local_idx = 0;
     IF_DEBUG(const int local_idx_max = sizeof(local_slot)/sizeof(local_slot[0]);)
-    get_reg_liveness(inst, live);
-    mi->aflags = get_aflags_liveness(inst);
+    mi->aflags = get_aflags_and_reg_liveness(inst, live);
 
     ASSERT((whole_bb_spills_enabled() && mi->bb->reg1.reg != REG_NULL) ||
            (!whole_bb_spills_enabled() && mi->bb->reg1.reg == REG_NULL),
@@ -5080,12 +5079,11 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
     /* Haven't instrumented below here yet, so forward analysis should
      * see only app instrs
      */
-    get_reg_liveness(inst, live);
+    bi->aflags = get_aflags_and_reg_liveness(inst, live);
     /* Update the dead fields */
     bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
     bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
 
-    bi->aflags = get_aflags_liveness(inst);
     bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
 }
 
@@ -5237,11 +5235,10 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* Haven't instrumented below here yet, so forward analysis should
      * see only app instrs
      */
-    bi->aflags = get_aflags_liveness(next);
     /* We updated reg*.dead in fastpath_pre_instrument() but here we want
      * liveness post-app-instr
      */
-    get_reg_liveness(next, live);
+    bi->aflags = get_aflags_and_reg_liveness(next, live);
     /* Update the dead fields */
     bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
     bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
