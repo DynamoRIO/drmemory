@@ -552,3 +552,6 @@ OPTION_CLIENT_BOOL(internal, verify_sysnums, false,
 OPTION_CLIENT_BOOL(internal, leave_uninit, false,
                    "Do not mark an uninitialized value as defined once reported",
                    "Do not mark an uninitialized value as defined once reported.  This may result in many reports for the same error.")
+OPTION_CLIENT_BOOL(client, leak_scan, true,
+                   "Perform leak scan",
+                   "Whether to perform the leak scan.  For performance measurement purposes only.")

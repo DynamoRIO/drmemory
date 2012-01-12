@@ -2239,6 +2239,8 @@ check_reachability(bool at_exit)
         return;
     if (!options.count_leaks)
         return;
+    if (!options.leak_scan)
+        return;
     leak_scan_for_leaks(at_exit);
 }
 
