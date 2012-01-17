@@ -1,6 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# Copyright (c) 2012 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -20,30 +19,10 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
-UNINITIALIZED READ
-suppress!do_uninit_read
-suppress.c:59
-suppress!do_uninit_cb
-suppress.c:258
-# Drop the dll module name as it's different on Linux, and the source file name
-# tells us which module it was.
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-suppress!call_into_foo
-suppress.c
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-!callback_with_n_frames
-suppress-mod-foo.c
-suppress!mod_ellipsis_test
-suppress.c
+NO ERRORS FOUND:
+      0 unique,     0 total unaddressable access(es)
+      0 unique,     0 total uninitialized access(es)
+      0 unique,     0 total invalid heap argument(s)
+      0 unique,     0 total warning(s)
+      0 unique,     0 total,      0 byte(s) of leak(s)
+      0 unique,     0 total,      0 byte(s) of possible leak(s)

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -246,12 +246,100 @@ non_module_test(void)
 #endif
 }
 
+/* Function pointers to exports. */
+typedef void (*cb_n_frames_t)(void (*func)(void), unsigned n);
+static cb_n_frames_t foo_cb_with_n_frames;
+static cb_n_frames_t bar_cb_with_n_frames;
+
+static void
+do_uninit_cb(void)
+{
+    void *int_p = ALLOC(sizeof(int));
+    do_uninit_read(int_p);
+    FREE(int_p);
+}
+
+/* This uninit reached through suppress-mod-bar.dll will be suppressed. */
+static void
+call_into_bar(void)
+{
+    bar_cb_with_n_frames(do_uninit_cb, 4);
+}
+
+/* This uninit reached through suppress-mod-foo.dll will not be suppressed. */
+static void
+call_into_foo(void)
+{
+    foo_cb_with_n_frames(do_uninit_cb, 4);
+}
+
+/* Down here to avoid disturbing line numbers. */
+#ifdef LINUX
+# include <dlfcn.h>
+# include <string.h>
+#endif
+
+static void
+mod_ellipsis_test(const char *argv0)
+{
+#ifdef WINDOWS
+    HANDLE foo = LoadLibrary("suppress-mod-foo.dll");
+    HANDLE bar = LoadLibrary("suppress-mod-bar.dll");
+    foo_cb_with_n_frames = (cb_n_frames_t)GetProcAddress(foo, "callback_with_n_frames");
+    bar_cb_with_n_frames = (cb_n_frames_t)GetProcAddress(bar, "callback_with_n_frames");
+#else /* LINUX */
+    char exe_dir[/*MAX_PATH*/260];
+    char libname[/*MAX_PATH*/260];
+    char *last_sep;
+    void *foo;
+    void *bar;
+    strncpy(exe_dir, argv0, sizeof(exe_dir));
+    exe_dir[sizeof(exe_dir)-1] = '\0';
+    last_sep = strrchr(exe_dir, '/');
+    if (last_sep == NULL) {
+        printf("can't find dir of argv[0]!\n");
+        return;
+    }
+    *last_sep = '\0';
+    snprintf(libname, sizeof(libname), "%s/%s", exe_dir, "libsuppress-mod-foo.so");
+    libname[sizeof(libname)-1] = '\0';
+    foo = dlopen(libname, RTLD_LAZY);
+    snprintf(libname, sizeof(libname), "%s/%s", exe_dir, "libsuppress-mod-bar.so");
+    libname[sizeof(libname)-1] = '\0';
+    bar = dlopen(libname, RTLD_LAZY);
+    foo_cb_with_n_frames = (cb_n_frames_t)dlsym(foo, "callback_with_n_frames");
+    bar_cb_with_n_frames = (cb_n_frames_t)dlsym(bar, "callback_with_n_frames");
+#endif
+
+    if (foo == NULL ||
+        bar == NULL ||
+        foo_cb_with_n_frames == NULL ||
+        bar_cb_with_n_frames == NULL) {
+        printf("error loading suppress-mod-foo or bar library!\n");
+        return;
+    }
+
+    foo_cb_with_n_frames(call_into_bar, 4);
+    /* This will produce an uninit error that should *not* be suppressed,
+     * because it goes through foo.dll and not bar.dll.
+     */
+    foo_cb_with_n_frames(call_into_foo, 4);
+
+#ifdef WINDOWS
+    FreeLibrary(foo);
+    FreeLibrary(bar);
+#else /* LINUX */
+    dlclose(foo);
+    dlclose(bar);
+#endif
+}
+
 /* This function exists only to provide more than 2 frames in the error
  * callstack.
  * FIXME: PR 464804: suppression of invalid frees and errors at syscalls need
  * to be tested, but they haven't been implemented yet (PR 406739).
  */
-static void test(void)
+static void test(int argc, char **argv)
 {
     /* Must have different function names otherwise one mod!func suppression 
      * will suppress all tests without room for testing other types.
@@ -285,6 +373,8 @@ static void test(void)
 
     non_module_test();
 
+    mod_ellipsis_test(argv[0]);
+
     /* running this test last b/c it can corrupt the free list */
     invalid_free_test1();
 
@@ -299,10 +389,10 @@ run_some_again(void)
     non_module_test();
 }
 
-int main()
+int main(int argc, char **argv)
 {
     int_p = (int *) ALLOC(7*sizeof(int));
-    test();
+    test(argc, argv);
     run_some_again();
     int_p = NULL;   /* to make the last leak to be truly unreachable */
     return 0;

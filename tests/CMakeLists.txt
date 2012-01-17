@@ -351,6 +351,14 @@ if (NOT TOOL_DR_HEAPSTAT)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
+  if (WIN32)
+    tobuild_lib(suppress-mod-foo suppress-mod-foo.c "" "/nodefaultlib /noentry")
+    tobuild_lib(suppress-mod-bar suppress-mod-bar.c "" "/nodefaultlib /noentry")
+  else ()
+    tobuild_lib(suppress-mod-foo suppress-mod-foo.c "" "")
+    tobuild_lib(suppress-mod-bar suppress-mod-bar.c "" "")
+    target_link_libraries(suppress dl)  # Needed for dlopen.
+  endif ()
 
   # test suppress wildcards
   if (UNIX)

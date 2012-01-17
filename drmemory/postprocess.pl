@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -1868,7 +1868,8 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
     $callstack =~ s/^<(.+)\+(.+)>$/$1\\+$2![^+]+/gm;
 
     # do this after so our ^ above match
-    $callstack =~ s/\\\.\\\.\\\.\n/(.*\n)*/g;
+    $callstack =~ s/^(.+)!\\\.\\\.\\\.\n/($1!.*\\n)*/g;
+    $callstack =~ s/\\\.\\\.\\\.\n/(.*\\n)*/g;
 
     # We want prefix matching but using /m so need \A not ^
     $callstack = "\\A" . $callstack;

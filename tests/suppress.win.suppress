@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -73,6 +73,15 @@ name=uninit_test7 ... + ? + mod!off suppression
 suppress.exe!uninit_test7
 ...
 <su?pr?ss.exe+0x1???>
+
+# uninitialized read: two mod!...
+UNINITIALIZED READ
+name=mod_ellipsis_test two mod!...
+suppress.exe!...
+suppress-mod-bar.dll!...
+suppress.exe!call_into_bar
+suppress-mod-foo.dll!...
+suppress.exe!mod_ellipsis_test
 
 #-------------------------------------------------------------------------------
 

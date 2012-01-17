@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -219,7 +219,7 @@ report_main_thread(void);
  * callstack a list of frames
  */
 typedef struct _suppress_frame_t {
-    bool is_ellipsis; /* "..." wildcard */
+    bool is_ellipsis; /* "..." wildcard, can be combined with modname (i#738) */
     bool is_star;     /* "*" wildcard (i#527) */
     bool is_module;
     char *modname;
@@ -340,19 +340,21 @@ suppress_frame_print(file_t f, const suppress_frame_t *frame, const char *prefix
 {
     ASSERT(frame != NULL, "invalid arg");
     ELOGF(0, f, "%s: ", prefix);
-    if (frame->is_ellipsis)
+    if (frame->is_ellipsis && frame->modname == NULL)
         ELOGF(0, f, "...\n");
     else if (frame->is_star)
         ELOGF(0, f, "*\n");
     else if (!frame->is_module)
         ELOGF(0, f, "%s\n", frame->func);
     else {
-        if (frame->func == NULL)
+        if (frame->func == NULL && !frame->is_ellipsis)
             ELOGF(0, f, "<");
         if (frame->modname != NULL)
             ELOGF(0, f, "%s", frame->modname);
         if (frame->func != NULL)
             ELOGF(0, f, "!%s\n", frame->func);
+        else if (frame->is_ellipsis)
+            ELOGF(0, f, "!...\n");
         else
             ELOGF(0, f, "+%s>\n", frame->modoffs);
     }
@@ -590,8 +592,12 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
         has_symbols = true;
         frame->is_module = true;
         frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_REPORT);
-        frame->func = drmem_strndup(bang + 1, line_len - (bang + 1 - line),
-                                    HEAPSTAT_REPORT);
+        if (strstr(bang + 1, "...") == bang + 1) {
+            frame->is_ellipsis = true;
+        } else {
+            frame->func = drmem_strndup(bang + 1, line_len - (bang + 1 - line),
+                                        HEAPSTAT_REPORT);
+        }
     } else if (strcmp(line, "<not in a module>") == 0) {
         ASSERT(!frame->is_module, "incorrect initialization");
         frame->func = drmem_strndup(line_in, line_len, HEAPSTAT_REPORT);
@@ -823,6 +829,19 @@ report_error_suppression(uint type, error_callstack_t *ecs, uint id)
 #endif
 }
 
+/* Match a frame's module name against a suppression frame's module name.
+ */
+static bool
+frame_matches_modname(const error_callstack_t *ecs, uint idx,
+                      const suppress_frame_t *supp)
+{
+    ASSERT(supp != NULL && supp->is_module && supp->modname != NULL,
+           "Must have a suppression with a modname!");
+    return text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, idx),
+                                supp->modname,
+                                /*ignore_case=*/IF_WINDOWS_ELSE(true, false));
+}
+
 static bool
 top_frame_matches_suppression_frame(const error_callstack_t *ecs,
                                     uint idx,
@@ -834,6 +853,15 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
     });
     if (idx >= ecs->scs.num_frames)
         return false;
+
+    if (supp->is_ellipsis) {
+        if (supp->is_module) {
+            /* i#738: mod!... only matches if the modules match. */
+            return frame_matches_modname(ecs, idx, supp);
+        } else {
+            return true;  /* Plain ellipsis matches every frame. */
+        }
+    }
 
     /* "*" matches everything ("*!*" only matches module frames) (i#527) */
     if (supp->is_star)
@@ -849,9 +877,7 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
         /* "<mod+offs>" suppression frame */
         if (!symbolized_callstack_frame_is_module(&ecs->scs, idx))
             return false;
-        return (text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, idx),
-                                     supp->modname,
-                                     IF_WINDOWS_ELSE(true,false)/*case*/) &&
+        return (frame_matches_modname(ecs, idx, supp) &&
                 text_matches_pattern(symbolized_callstack_frame_modoffs(&ecs->scs, idx),
                                      supp->modoffs, true/*ignore case*/));
     } else {
@@ -865,9 +891,7 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
             return false;
         }
 #endif
-        return (text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, idx),
-                                     supp->modname,
-                                     IF_WINDOWS_ELSE(true,false)/*case*/) &&
+        return (frame_matches_modname(ecs, idx, supp) &&
                 text_matches_pattern(func, supp->func, false/*consider case*/));
     }
 }
@@ -877,7 +901,7 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
 {
     uint i;
     int scs_last_ellipsis = -1;
-    suppress_frame_t *supp_last_ellipsis = NULL;
+    suppress_frame_t *cur_ellipsis_supp = NULL;
     suppress_frame_t *supp = spec->frames;
 
     /* i#498: allow restricting by instruction */
@@ -896,24 +920,23 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
              * suppression has matched the top of the stack.
              */
             return true;
-        } else if (supp->is_ellipsis) {
-            for (supp = supp->next;
-                 supp != NULL && supp->is_ellipsis;
-                 supp = supp->next) {
-                /* skip consecutive '...' */
-            }
-            /* we should have aborted when parsing */
-            ASSERT(supp != NULL, "Suppression ends with '...'");
-            scs_last_ellipsis = i;
-            supp_last_ellipsis = supp;
-            i--; /* counteract for's ++ */
         } else if (top_frame_matches_suppression_frame(ecs, i, supp)) {
-            supp = supp->next;
-        } else if (scs_last_ellipsis > -1) {
-            /* No match. But we have seen at least one '...', so go back
-             * and try at the next position.
+            if (supp->is_ellipsis) {
+                cur_ellipsis_supp = supp;
+                supp = supp->next;
+                /* we should have aborted when parsing */
+                ASSERT(supp != NULL, "Suppression ends with '...'");
+                scs_last_ellipsis = i;
+                i--; /* counteract for's ++ */
+            } else {
+                supp = supp->next;
+            }
+        } else if (scs_last_ellipsis > -1 &&
+                   (!cur_ellipsis_supp->is_module ||
+                    frame_matches_modname(ecs, i, cur_ellipsis_supp))) {
+            /* We didn't match the next suppression frame, but we did match to
+             * the current open ellipsis.
              */
-            supp = supp_last_ellipsis;
             scs_last_ellipsis++;
             i = scs_last_ellipsis - 1; /* counteract for's ++ */
         } else {

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -522,8 +522,8 @@ if (resmatch)
     string(REPLACE "@-no_gen_suppress_syms" "" cmd_with_at "${cmd_with_at}")
     string(REPLACE "@-no_gen_suppress_offs" "" cmd_with_at "${cmd_with_at}")
     # use output compare files from plain suppress test
-    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress" outpat "${outpat}")
-    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress" respat "${respat}")
+    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress-noerrors" outpat "${outpat}")
+    string(REGEX REPLACE "suppress-gen[a-z]*" "suppress-noerrors" respat "${respat}")
     message("running 2nd command ${cmd_with_at} vs ${outpat} and ${respat}")
     execute_process(COMMAND ${CMAKE_COMMAND}
       -D cmd:STRING=${cmd_with_at}

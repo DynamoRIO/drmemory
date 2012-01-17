@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -64,6 +64,17 @@ UNADDRESSABLE ACCESS
 name=default (ld-linux strlen)
 ld-linux.so.2!*
 ld-linux.so.2!_dl_map_object_from_fd
+ld-linux.so.2!_dl_map_object
+
+UNINITIALIZED READ
+name=default (ld-linux strlen)
+ld-linux.so.2!*
+ld-linux.so.2!_dl_map_object_from_fd
+ld-linux.so.2!_dl_map_object
+
+UNINITIALIZED READ
+name=default (ld-linux strlen)
+ld-linux.so.2!*
 ld-linux.so.2!_dl_map_object
 
 UNINITIALIZED READ
