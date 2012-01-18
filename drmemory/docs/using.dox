@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -325,6 +325,17 @@ executable is not located at the same path as when it was executed with \p
 along with the \p -results parameter.
 
 The \p -skip_results option is not currently available on Windows.
+
+********************
+\subsection sec_syslib_syms System Library Symbols
+
+On Linux, Dr. Memory will look in the default debug directories for symbols
+for a library: a <tt>.debug</tt> subdirectory of the library's directory or
+in <tt>/usr/lib/debug</tt>.
+
+On Windows, the <tt>_NT_SYMBOL_PATH</tt> environment variable is honored by
+Dr. Memory as a local cache of \p pdb files.  However, Dr. Memory does not
+support symbol store paths (those that contain \p srv).
 
 ********************
 \subsection sec_suppress Suppressing Errors
