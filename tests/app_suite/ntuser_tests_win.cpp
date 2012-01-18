@@ -116,17 +116,19 @@ TEST(NtUserTests, CursorTest) {
     // test NtUserCall* GETCURSORPOS, SETCURSORPOS, SHOWCURSOR
     POINT point;
     BOOL success = GetCursorPos(&point);
-    ASSERT_EQ(TRUE, success);
+    EXPECT_EQ(TRUE, success) << "GetCursorPos failed: "
+                             << GetLastError() << '\n';
     // Check uninits
     if (success) {
         MEMORY_BASIC_INFORMATION mbi;
         VirtualQuery((VOID*)(point.x + point.y), &mbi, sizeof(mbi));
     }
     success = SetCursorPos(point.x, point.y);
-    ASSERT_EQ(TRUE, success);
+    EXPECT_EQ(TRUE, success) << "SetCursorPos failed: "
+                             << GetLastError() << '\n';
 
     int display_count = ShowCursor(TRUE);
-    ASSERT_EQ(1, display_count);
+    EXPECT_EQ(1, display_count);
 }
 
 TEST(NtUserTests, WindowRgnTest) {

@@ -381,7 +381,8 @@ name=default i#743
 instruction=test   0x*(%???) $0x??
 CLBCatQ.DLL!...
 ole32.dll!*
-ole32.dll!CoCreateInstanceEx
+# Reached through ole32.dll!CoCreateInstanceEx, but that frame is more than 11
+# frames deep so we drop it.
 
 ##################################################
 # i#745: bit manip uninit

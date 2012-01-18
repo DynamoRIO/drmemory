@@ -42,20 +42,19 @@ class ShellTest : public ::testing::Test {
         // Compute link filename.
         wchar_t temp_dir[MAX_PATH];
         int len = GetTempPathW(BUFFER_SIZE_ELEMENTS(temp_dir), temp_dir);
-        // GetTempPathW sometimes gives an 8.3 path, so canonicalize into a full
+        // GetTempPathW sometimes gives an 8.3 path, so canonicalize into a long
         // path.
-        wchar_t full_dir[MAX_PATH];
-        len = GetFullPathNameW(temp_dir, BUFFER_SIZE_ELEMENTS(full_dir),
-                               full_dir, NULL);
-        EXPECT_NE(0, len) << "GetFullPathNameW failed: "
+        wchar_t long_dir[MAX_PATH];
+        len = GetLongPathNameW(temp_dir, long_dir, BUFFER_SIZE_ELEMENTS(long_dir));
+        EXPECT_NE(0, len) << "GetLongPathNameW failed: "
                           << GetLastError() << '\n';
         link_path_.clear();
-        link_path_ += temp_dir;  // Documented to end in trailing slash.
+        link_path_ += long_dir;  // Documented to end in trailing slash.
         link_path_ += kTempLinkName;
 
         // Create a text file.
         file_path_.clear();
-        file_path_ += temp_dir;  // Documented to end in trailing slash.
+        file_path_ += long_dir;  // Documented to end in trailing slash.
         file_path_ += kTempFileName;
         std::wofstream file;
         file.open(file_path_.c_str());
