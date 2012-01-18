@@ -612,7 +612,7 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
         if (pointer == chunk_start + MALLOC_CHUNK_ALIGNMENT) {
             /* i#754: Try first two size_t slots in chunk.  We've seen the size
              * at offset 4 in an 8 byte header in the ldapMalloc layer in
-             * WDLAPI32.dll.
+             * WLDAP32.dll.
              */
             uint i;
             for (i = 0; i < 2; i++) {

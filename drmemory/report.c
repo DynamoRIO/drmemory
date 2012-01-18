@@ -297,6 +297,7 @@ get_suppress_type(const char *line)
     "The last frame is incorrect!"NL NL\
     "Frames should be one of the following:"NL\
     " module!function"NL\
+    " module!..."NL\
     " <module+0xhexoffset>"NL\
     " <not in a module>"NL\
     " system call Name"NL\

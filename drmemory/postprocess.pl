@@ -1809,6 +1809,7 @@ sub read_suppression_info($file_in, $default_in)
                 "The last frame is incorrect!\n\n".
                 "Frames should be one of the following:\n".
                 "\t module!function\n".
+                "\t module!...\n".
                 "\t <module+0xhexoffset>\n".
                 "\t <not in a module>\n".
                 "\t system call Name\n".
