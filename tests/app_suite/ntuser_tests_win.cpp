@@ -23,6 +23,7 @@
 
 #include <winuser.h>
 
+#include "os_version_win.h"
 #include "gtest/gtest.h"
 
 // For InitCommonControlsEx
@@ -82,12 +83,7 @@ void ReadAsciiStringFromClipboard(std::string *result) {
 
 // FIXME i#734: Re-enable when no uninits.
 TEST(NtUserTests, ClipboardPutGet) {
-    OSVERSIONINFOEX os_ver;
-    memset(&os_ver, 0, sizeof(os_ver));
-    os_ver.dwOSVersionInfoSize = sizeof(os_ver);
-    bool success = GetVersionEx((LPOSVERSIONINFO)&os_ver);
-    ASSERT_TRUE(success);
-    if (os_ver.dwMajorVersion >= 6) {
+    if (GetWindowsVersion() >= WIN_VISTA) {
         printf("WARNING: Disabling ClipboardPutGet on Win Vista+, see i#734.\n");
         return;
     }
@@ -146,19 +142,14 @@ TEST(NtUserTests, WindowRgnTest) {
 
 TEST(NtUserTests, MenuTest) {
     // FIXME i#736: Re-enable on XP when passes.
-    OSVERSIONINFOEX os_ver;
-    memset(&os_ver, 0, sizeof(os_ver));
-    os_ver.dwOSVersionInfoSize = sizeof(os_ver);
-    BOOL success = GetVersionEx((LPOSVERSIONINFO)&os_ver);
-    ASSERT_TRUE(success);
-    if (os_ver.dwMajorVersion < 6) {
+    if (GetWindowsVersion() < WIN_VISTA) {
         printf("WARNING: Disabling MenuTest on Pre-Vista, see i#736.\n");
         return;
     }
 
     // test NtUserCall* DRAWMENUBAR
     HWND hwnd = ::GetDesktopWindow();
-    success = DrawMenuBar(hwnd);
+    BOOL success = DrawMenuBar(hwnd);
     ASSERT_EQ(FALSE, success); /* no menu on desktop window */
 
     // test NtUserCall* CREATEMENU + CREATEPOPUPMENU and NtUserDestroyMenu
