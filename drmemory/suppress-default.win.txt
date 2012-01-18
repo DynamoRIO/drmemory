@@ -89,6 +89,11 @@ name=default i#306 (critical section 8-byte-in pointer)
 ...
 ntdll.dll!RtlInitializeCriticalSection
 
+POSSIBLE LEAK
+name=default i#306 (critical section 8-byte-in pointer)
+...
+ntdll.dll!RtlInitializeCriticalSectionAndSpinCount
+
 ##################################################
 # i#337: real bug in RtlpLowFragHeapAllocFromContext.
 # w/o symbols RtlpLowFragHeapAllocFromContext shows up
@@ -297,9 +302,7 @@ RPCRT4.dll!*
 UNINITIALIZED READ
 name=default i#709
 instruction=test   0x??(%esi) $0x??
-CLBCatQ.DLL!*
-...
-CLBCatQ.DLL!*
+CLBCatQ.DLL!...
 ntdll.dll!*
 ntdll.dll!LdrShutdownProcess
 
@@ -370,3 +373,108 @@ name=default i#18 LockEntry::ThreadInit pool leak (nosyms win7)
 <ole32.dll+0x4080b>
 # CoInitializeEx does a tail call, so we don't see it here.
 
+##################################################
+# i#743: bit manip uninit
+# Highly probable bit-level definedness issue, similar to i#709.
+UNINITIALIZED READ
+name=default i#743
+instruction=test   0x*(%???) $0x??
+CLBCatQ.DLL!...
+ole32.dll!*
+ole32.dll!CoCreateInstanceEx
+
+##################################################
+# i#745: bit manip uninit
+# Bit-level definedness issue.
+UNINITIALIZED READ
+name=default i#745 bit-level in ShouldShowExtension
+instruction=test   * $0x??
+SHELL32.dll!CFileExtension::_ShouldShowExtension
+SHELL32.dll!CFileSysItemString::ShouldShowExtension
+
+# We don't have any exports to hang our hat on, so our instruction is very
+# specific, and possibly brittle.
+UNINITIALIZED READ
+name=default i#745 bit-level in ShouldShowExtension (nosyms win7)
+instruction=test   0xffffffdc(%ebp) $0x02
+shell32.dll!*
+shell32.dll!*
+shell32.dll!*
+shell32.dll!*
+shell32.dll!*
+
+##################################################
+# i#745: Bit-level uninit false pos in shell32.dll!_GetExtensionFlags.
+# Can see where one bit is selected in shell32.dll!ShowSuperHidden, which
+# _GetExtensionFlags calls.
+UNINITIALIZED READ
+name=default i#745 true uninit in _GetExtensionFlags
+instruction=test   %eax %eax
+SHELL32.dll!CFileSysItemString::_GetExtensionFlags
+
+UNINITIALIZED READ
+name=default i#745 true uninit in _GetExtensionFlags (nosyms win7)
+instruction=test   %eax %eax
+SHELL32.dll!*
+SHELL32.dll!*
+SHELL32.dll!*
+SHELL32.dll!*
+SHELL32.dll!*
+
+##################################################
+# i#751: possible THREAD object leak
+# Hasn't been fully investigated to determine where the mid-chunk pointer is
+# rooted and to see if we could implement a heuristic to detect this as true
+# reachability.
+POSSIBLE LEAK
+name=default i#751: possible THREAD object leak
+rpcrt4.dll!AllocWrapper
+rpcrt4.dll!operator new
+rpcrt4.dll!ThreadSelfHelper
+
+# These are fairly fragile nosyms suppressions, since we have no exports.
+POSSIBLE LEAK
+name=default i#751: possible THREAD object leak (nosyms a)
+rpcrt4.dll!...
+rpcrt4.dll!RpcBindingFromStringBindingW
+
+POSSIBLE LEAK
+name=default i#751: possible THREAD object leak (nosyms b)
+rpcrt4.dll!...
+ntdll.dll!*
+# Nearest export is TpCallbackIndependent
+ntdll.dll!*
+kernel*.dll!BaseThreadInitThunk
+
+##################################################
+# i#753: System leak from a shell32 thread that loads setupapi.dll.
+# Something is wrong with the way this thread terminates that prevents these two
+# objects from being cleaned up.  It might be desirable to hook the thread
+# termination and save the TEB contents for the reachability scan at shutdown to
+# silence system leaks like these.
+LEAK
+name=default i#753: RtlpUpdateTEBLanguage leak
+ntdll.dll!RtlpUpdateTEBLanguage
+...
+ntdll.dll!RtlLoadString
+...
+setupapi.dll!_CRT_INIT
+
+# i#753: System leak from a shell32 thread that loads setupapi.dll.
+LEAK
+name=default i#753: LdrpSearchResourceSection_U leak
+ntdll.dll!LdrpSearchResourceSection_U
+...
+ntdll.dll!RtlLoadString
+...
+setupapi.dll!_CRT_INIT
+
+# i#753: System leak from a shell32 thread that loads setupapi.dll.
+LEAK
+name=default i#753: leaks in thread not cleaned up by shell32 (nosyms)
+ntdll.dll!...
+ntdll.dll!RtlLoadString
+...
+setupapi.dll!*
+...
+kernel*.dll!LoadLibrary*

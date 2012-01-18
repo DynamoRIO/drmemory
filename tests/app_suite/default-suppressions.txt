@@ -41,22 +41,6 @@ UNINITIALIZED READ
 ...
 sophos*.dll!*
 
-########################################################
-# http://code.google.com/p/drmemory/issues/detail?id=17
-POSSIBLE LEAK
-GDI32.dll!*
-GDI32.dll!CreateFontIndirectExW
-GDI32.dll!CreateFontIndirectW
-UxTheme.dll!*
-...
-ntdll.dll!KiUserCallbackDispatcher
-
-# http://code.google.com/p/drmemory/issues/detail?id=18
-LEAK
-ole32.dll!*
-...
-ole32.dll!CoInitialize
-
 # http://code.google.com/p/drmemory/issues/detail?id=275
 LEAK
 *!_getptd_noexit
@@ -66,16 +50,6 @@ LEAK
 LEAK
 ...
 ntdll.dll!RtlAllocateActivationContextStack
-
-# http://code.google.com/p/drmemory/issues/detail?id=380
-UNINITIALIZED READ
-...
-KERNEL32.dll!FormatMessageA
-KERNEL32.dll!FormatMessageA
-KERNEL32.dll!WerpNotifyLoadStringResource
-KERNEL32.dll!SetConsoleNlsMode
-KERNEL32.dll!GetNumberFormatW
-KERNEL32.dll!LoadStringBaseExW
 
 # http://code.google.com/p/drmemory/issues/detail?id=382
 LEAK
@@ -100,19 +74,3 @@ msvcrt.dll!memcpy_s
 LEAK
 ntdll.dll!RtlInitOutOfProcessMemoryStream
 ntdll.dll!RtlInitializeCriticalSection
-
-# http://code.google.com/p/drmemory/issues/detail?id=509
-UNADDRESSABLE ACCESS
-ADVAPI32.dll!*
-...
-ADVAPI32.dll!SystemFunction036
-
-# http://code.google.com/p/drmemory/issues/detail?id=511
-UNINITIALIZED READ
-RPCRT4.dll!*
-...
-RPCRT4.dll!UuidCreate
-ole32.dll!*
-
-# Don't remove the above empty line at EOF - this is a workaround for
-# http://code.google.com/p/drmemory/issues/detail?id=41

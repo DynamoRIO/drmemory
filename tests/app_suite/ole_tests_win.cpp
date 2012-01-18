@@ -50,8 +50,7 @@ TEST(OleTest, CoInitialize) {
     CoUninitialize();
 }
 
-// FIXME i#743: Re-enable when it doesn't produce uninits.
-TEST(OleTest, DISABLED_CoCreateInstance) {
+TEST(OleTest, CoCreateInstance) {
     HRESULT hr = CoInitialize(NULL);
     ASSERT_TRUE(SUCCEEDED(hr));
 

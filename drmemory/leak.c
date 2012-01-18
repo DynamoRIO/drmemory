@@ -610,16 +610,24 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
          * generalize the pattern match as we accumulate more examples.
          */
         if (pointer == chunk_start + MALLOC_CHUNK_ALIGNMENT) {
-            size_t val;
-            if (leak_safe_read_heap(chunk_start, (void **) &val) &&
-                /* I've seen the total size as well as the size minus
-                 * the extra header stored (the latter in sqlite)
-                 */
-                (val == (chunk_end - chunk_start) ||
-                 val == (chunk_end - chunk_start - MALLOC_CHUNK_ALIGNMENT))) {
-                LOG(3, "\tmid-chunk "PFX" is post-size => ok\n", pointer);
-                STATS_INC(midchunk_postsize_ptrs);
-                return true;
+            /* i#754: Try first two size_t slots in chunk.  We've seen the size
+             * at offset 4 in an 8 byte header in the ldapMalloc layer in
+             * WDLAPI32.dll.
+             */
+            uint i;
+            for (i = 0; i < 2; i++) {
+                size_t val;
+                size_t offset = i * sizeof(size_t);
+                if (leak_safe_read_heap(chunk_start + offset, (void **) &val) &&
+                    /* I've seen the total size as well as the size minus
+                     * the extra header stored (the latter in sqlite)
+                     */
+                    (val == (chunk_end - chunk_start) ||
+                     val == (chunk_end - chunk_start - MALLOC_CHUNK_ALIGNMENT))) {
+                    LOG(3, "\tmid-chunk "PFX" is post-size => ok\n", pointer);
+                    STATS_INC(midchunk_postsize_ptrs);
+                    return true;
+                }
             }
         }
     }
