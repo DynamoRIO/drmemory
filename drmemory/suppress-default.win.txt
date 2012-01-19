@@ -288,10 +288,12 @@ RPCRT4.dll!UuidCreate
 #  test   0x70(%esi) $0x00000200 
 #  test   0x70(%ebx) $0x00000100 
 #  test   0x70(%edi) %esi
+# On Vista, this bitfield seems to be a short, so we get "data16 test" for the
+# instruction.
 
 UNINITIALIZED READ
 name=default i#529 (multi-instr partial xor-with-self)
-instruction=test   0x70(%e??) *
+instruction=*test   0x70(%e??) *
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*
 
@@ -306,6 +308,14 @@ CLBCatQ.DLL!...
 ntdll.dll!*
 ntdll.dll!LdrShutdownProcess
 
+# We get a slightly different stack on XP.
+UNINITIALIZED READ
+name=default i#709
+instruction=test   0x??(%esi) $0x??
+CLBCatQ.DLL!...
+ntdll.dll!*
+ntdll.dll!RtlDestroyEnvironment
+
 ##################################################
 # i#733: false pos leak from plfCreateLOCALFONT
 # This function looks like it's creating a linked list whose nodes are all
@@ -319,7 +329,7 @@ GDI32.dll!plfCreateLOCALFONT
 
 # w/o symbols
 POSSIBLE LEAK
-name=default i#733
+name=default i#733 (nosyms)
 GDI32.dll!*
 GDI32.dll!CreateFontIndirectExW
 GDI32.dll!CreateFontIndirectW
@@ -330,8 +340,9 @@ GDI32.dll!CreateFontIndirectW
 # SLIST_ENTRY field in it.  The link pointer is at offset 0xC in the struct, and
 # so we get a mid-chunk pointer and a possible leak.
 POSSIBLE LEAK
-name=default i#18 CreatePoolEntry mid-chunk linked list leak
-ole32.dll!LockEntry::operator new
+name=default i#18 CreatePoolEntry mid-chunk linked list leak (win7)
+# "*" below is LockEntry on Win7 and EventPoolEntry on Vista.
+ole32.dll!*::operator new
 ole32.dll!EventPoolEntry::CreatePoolEntry
 ole32.dll!EventPoolEntry::ThreadInit
 ole32.dll!CRWLock::ThreadInit
@@ -349,6 +360,16 @@ name=default i#18 CreatePoolEntry mid-chunk linked list leak (nosyms win7)
 <ole32.dll+0x408f4>
 <ole32.dll+0x4080b>
 # CoInitializeEx does a tail call, so we don't see it here.
+
+# w/o symbols on Vista
+# FIXME i#741: Find a less-brittle way to write this.
+POSSIBLE LEAK
+name=default i#18 CreatePoolEntry mid-chunk linked list leak (nosyms win vista)
+<ole32.dll+0x597ca>
+<ole32.dll+0x3204f>
+<ole32.dll+0x34acb>
+<ole32.dll+0x57cf2>
+<ole32.dll+0x57ea2>
 
 ##################################################
 # i#18: one-time true leak in LockEntry::ThreadInit
