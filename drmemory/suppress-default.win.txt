@@ -289,11 +289,18 @@ RPCRT4.dll!UuidCreate
 #  test   0x70(%ebx) $0x00000100 
 #  test   0x70(%edi) %esi
 # On Vista, this bitfield seems to be a short, so we get "data16 test" for the
-# instruction.
+# instruction.  These are in Ndr* routines, but on Vista without symbols we get
+# NDRContextUnmarshall as the nearest export, so we use N*.
 
 UNINITIALIZED READ
 name=default i#529 (multi-instr partial xor-with-self)
 instruction=*test   0x70(%e??) *
+RPCRT4.dll!N*
+RPCRT4.dll!*
+
+UNINITIALIZED READ
+name=default i#529 (alternate bit-level fp on Vista)
+instruction=test   %esi %eax
 RPCRT4.dll!Ndr*
 RPCRT4.dll!*
 
@@ -308,13 +315,15 @@ CLBCatQ.DLL!...
 ntdll.dll!*
 ntdll.dll!LdrShutdownProcess
 
-# We get a slightly different stack on XP.
+# We get a slightly different stacks on XP and Vista.  ExitProcess in
+# kernel32.dll is the best export to match.
 UNINITIALIZED READ
 name=default i#709
 instruction=test   0x??(%esi) $0x??
 CLBCatQ.DLL!...
-ntdll.dll!*
-ntdll.dll!RtlDestroyEnvironment
+ntdll.dll!...
+kernel*.dll!...
+kernel*.dll!ExitProcess
 
 ##################################################
 # i#733: false pos leak from plfCreateLOCALFONT
@@ -393,6 +402,15 @@ name=default i#18 LockEntry::ThreadInit pool leak (nosyms win7)
 <ole32.dll+0x408e5>
 <ole32.dll+0x4080b>
 # CoInitializeEx does a tail call, so we don't see it here.
+
+# w/o symbols: callstack is all private syms so we use modoffs despite being
+# OS-specific and brittle.
+# FIXME i#741: Find a less-brittle way to write this.
+LEAK
+name=default i#18 LockEntry::ThreadInit pool leak (nosyms vista)
+<ole32.dll+0x57d2c>
+<ole32.dll+0x57ce3>
+<ole32.dll+0x57ea2>
 
 ##################################################
 # i#743: bit manip uninit
