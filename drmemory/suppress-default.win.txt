@@ -516,3 +516,20 @@ ntdll.dll!...
 ntdll.dll!RtlLoadString
 ...
 setupapi.dll!*
+
+##################################################
+# i#737: weird unaddr in msxml3.dll
+# msxml3!MpHeapFree reads from the start of the page
+# containing the Rtl heap allocation being freed,
+# which often ends up as an unaddressable access.
+# MpHeapFree is called from msxml3!MemFree which is called
+# from msxml3 routines, so we look for 3 in a row.
+# We hope that app data passed in will not go through 3
+# layers before any bug there is found.
+
+UNADDRESSABLE ACCESS
+name=default i#737: msxml3 heap probe
+msxml3.dll!*
+msxml3.dll!*
+msxml3.dll!*
+
