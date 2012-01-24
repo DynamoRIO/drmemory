@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -533,3 +533,22 @@ msxml3.dll!*
 msxml3.dll!*
 msxml3.dll!*
 
+##################################################
+# i#752: GDI usage errors seen in system libraries on Chrome shutdown
+
+WARNING
+name=default i#752: riched shutdown A
+system call NtGdiDeleteObjectApp
+# w/ syms top frame is RICHED20.dll!CCcs::DestroyFont
+RICHED20.dll!...
+ntdll.dll!...
+ntdll.dll!LdrShutdownProcess
+
+WARNING
+name=default i#752: riched shutdown B
+system call NtGdiDeleteObjectApp
+GDI32.dll!DeleteDC
+# w/ syms top frame is RICHED20.dll!CW32System::~CW32System
+RICHED20.dll!...
+ntdll.dll!...
+ntdll.dll!LdrShutdownProcess

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -382,6 +382,9 @@ OPTION_CLIENT_BOOL(drmemscope, fault_to_slowpath, true,
 OPTION_CLIENT_BOOL(internal, check_tls, true,
                    "Check for access to un-reserved TLS slots",
                    "Check for access to un-reserved TLS slots")
+OPTION_CLIENT_BOOL(drmemscope, check_gdi, true,
+                   "Check for GDI API usage errors",
+                   "Check for GDI API usage errors.  Any errors detected will be reported as errors of type WARNING.  Currently this option is only supported on Windows 7.")
 #endif
 OPTION_CLIENT_BOOL(drmemscope, check_delete_mismatch, true,
                    "Whether to check for free/delete/delete[] mismatches",

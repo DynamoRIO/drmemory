@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -402,5 +402,11 @@ options_init(const char *opstr)
         if (!option_specified.delay_frees_stack)
             options.delay_frees_stack = true;
     }
+# ifdef WINDOWS
+    if (options.check_gdi && !running_on_Win7_or_later()) {
+        /* FIXME i#764: too many Select calls don't make it to syscall pre-win7 */
+        options.check_gdi = false;
+    }
+# endif
 #endif
 }

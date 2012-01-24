@@ -868,21 +868,39 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
     return num;
 }
 
+static void
+init_os_version(void)
+{
+    dr_os_version_info_t info = {sizeof(info),};
+    if (dr_get_os_version(&info))
+        os_version = info.version;
+    else {
+        ASSERT(false, "unable to get Windows version");
+        os_version = DR_WINDOWS_VERSION_7;
+    }
+}
+
 bool
 running_on_Win7_or_later(void)
 {
+    if (os_version == 0)
+        init_os_version();
     return (os_version >= DR_WINDOWS_VERSION_7);
 }
 
 bool
 running_on_Vista_or_later(void)
 {
+    if (os_version == 0)
+        init_os_version();
     return (os_version >= DR_WINDOWS_VERSION_VISTA);
 }
 
 dr_os_version_t
 get_windows_version(void)
 {
+    if (os_version == 0)
+        init_os_version();
     return os_version;
 }
 
@@ -1149,13 +1167,8 @@ void
 utils_init(void)
 {
 #ifdef WINDOWS
-    dr_os_version_info_t info = {sizeof(info),};
-    if (dr_get_os_version(&info))
-        os_version = info.version;
-    else {
-        ASSERT(false, "unable to get Windows version");
-        os_version = DR_WINDOWS_VERSION_7;
-    }
+    if (os_version == 0)
+        init_os_version();
 #endif
 
 #ifdef USE_DRSYMS

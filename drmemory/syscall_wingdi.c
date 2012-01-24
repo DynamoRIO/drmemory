@@ -109,6 +109,14 @@ static int sysnum_UserTrackMouseEvent = -1;
 static int sysnum_UserCreateWindowStation = -1;
 static int sysnum_UserLoadKeyboardLayoutEx = -1;
 
+/* used for GDI checks */
+static int sysnum_UserGetDC = -1;
+static int sysnum_UserGetDCEx = -1;
+static int sysnum_UserGetWindowDC = -1;
+static int sysnum_UserBeginPaint = -1;
+static int sysnum_UserReleaseDC = -1;
+static int sysnum_UserEndPaint = -1;
+
 /* forward decl so "extern" */
 extern syscall_info_t syscall_usercall_info[];
 
@@ -124,7 +132,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserAlterWindowStyle", OK, 12, },
     {0,"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, 12, },
     {0,"NtUserAttachThreadInput", OK, 12, },
-    {0,"NtUserBeginPaint", OK|SYSINFO_RET_ZERO_FAIL, 8, {{1,sizeof(PAINTSTRUCT),W,}, }},
+    {0,"NtUserBeginPaint", OK|SYSINFO_RET_ZERO_FAIL, 8, {{1,sizeof(PAINTSTRUCT),W,}, }, &sysnum_UserBeginPaint},
     {0,"NtUserBitBltSysBmp", OK, 32, },
     {0,"NtUserBlockInput", OK, 4, },
     {0,"NtUserBuildHimcList", OK|SYSINFO_IMM32_DLL, 16, {{2,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HIMC)}, {3,sizeof(UINT),W}, }},
@@ -192,7 +200,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserEnableScrollBar", OK, 12, },
     {0,"NtUserEndDeferWindowPosEx", OK, 8, },
     {0,"NtUserEndMenu", OK, 0, },
-    {0,"NtUserEndPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),R,}, }},
+    {0,"NtUserEndPaint", OK, 8, {{1,sizeof(PAINTSTRUCT),R,}, }, &sysnum_UserEndPaint},
     {0,"NtUserEnumDisplayDevices", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,SYSARG_SIZE_IN_FIELD,W,offsetof(DISPLAY_DEVICEW,cb)}, }},
     {0,"NtUserEnumDisplayMonitors", OK, 20, {{1,sizeof(RECT),R,},/*experimentally this matches win32 API version so no more mem args*/ }},
     {0,"NtUserEnumDisplaySettings", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(DEVMODEW)/*really var-len*/,W|CT,SYSARG_TYPE_DEVMODEW}, }},
@@ -226,8 +234,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetControlColor", OK, 16, },
     {0,"NtUserGetCursorFrameInfo", OK, 16, },
     {0,"NtUserGetCursorInfo", OK, 4, {{0,SYSARG_SIZE_IN_FIELD,W,offsetof(CURSORINFO,cbSize)}, }},
-    {0,"NtUserGetDC", OK|SYSINFO_RET_ZERO_FAIL, 4, },
-    {0,"NtUserGetDCEx", OK|SYSINFO_RET_ZERO_FAIL, 12, },
+    {0,"NtUserGetDC", OK|SYSINFO_RET_ZERO_FAIL, 4, {{0,}}, &sysnum_UserGetDC},
+    {0,"NtUserGetDCEx", OK|SYSINFO_RET_ZERO_FAIL, 12, {{0,}}, &sysnum_UserGetDCEx},
     {0,"NtUserGetDoubleClickTime", OK, 0, },
     {0,"NtUserGetForegroundWindow", OK, 0, },
     {0,"NtUserGetGUIThreadInfo", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(GUITHREADINFO,cbSize)}, }},
@@ -277,7 +285,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetUpdateRect", OK, 12, {{1,sizeof(RECT),W,}, }},
     {0,"NtUserGetUpdateRgn", OK, 12, },
     {0,"NtUserGetWOWClass", OK, 8, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserGetWindowDC", OK|SYSINFO_RET_ZERO_FAIL, 4, },
+    {0,"NtUserGetWindowDC", OK|SYSINFO_RET_ZERO_FAIL, 4, {{0,}}, &sysnum_UserGetWindowDC},
     {0,"NtUserGetWindowPlacement", OK, 8, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(WINDOWPLACEMENT,length)}, }},
     {0,"NtUserHardErrorControl", OK, 12, },
     {0,"NtUserHideCaret", OK, 4, },
@@ -574,7 +582,7 @@ static syscall_info_t syscall_usercall_info[] = {
     {0,"NtUserCallOneParam.REGISTERSYSTEMTHREAD", UNKNOWN, 8, },
     {0,"NtUserCallOneParam.REMOTERECONNECT", UNKNOWN, 8, },
     {0,"NtUserCallOneParam.REMOTETHINWIRESTATUS", UNKNOWN, 8, },
-    {0,"NtUserCallOneParam.RELEASEDC", OK, 8, /*HDC*/},
+    {0,"NtUserCallOneParam.RELEASEDC", OK, 8, /*HDC*/{{0,}}, &sysnum_UserReleaseDC},
     {0,"NtUserCallOneParam.REMOTENOTIFY", UNKNOWN, 8, },
     {0,"NtUserCallOneParam.REPLYMESSAGE", OK, 8, /*LRESULT*/},
     {0,"NtUserCallOneParam.SETCARETBLINKTIME", OK, 8, /*UINT*/},
@@ -679,12 +687,32 @@ syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ve
         }
     }
     ASSERT(NUM_USERCALL_NAMES == NUM_USERCALL_SYSCALLS, "mismatch in usercall tables");
+
+    if (options.check_gdi)
+        gdicheck_init();
 }
 
 void
 syscall_wingdi_exit(void)
 {
+    if (options.check_gdi)
+        gdicheck_exit();
+
     hashtable_delete(&usercall_table);
+}
+
+void
+syscall_wingdi_thread_init(void *drcontext)
+{
+    if (options.check_gdi)
+        gdicheck_thread_init(drcontext);
+}
+
+void
+syscall_wingdi_thread_exit(void *drcontext)
+{
+    if (options.check_gdi)
+        gdicheck_thread_exit(drcontext);
 }
 
 void
@@ -703,6 +731,8 @@ syscall_wingdi_user32_load(void *drcontext, const module_data_t *info)
             uint primary = get_syscall_num(drcontext, info, usercall_primary[i]);
             syslist->num = SYSNUM_COMBINE(primary, secondary - 1/*+1 in table*/);
             hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
+            if (syslist->num_out != NULL)
+                *syslist->num_out = syslist->num;
             LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d (0x%04x)\n",
                 syslist->name, syslist->num, syslist->num);
         } else {
@@ -753,18 +783,30 @@ static int sysnum_GdiDoPalette = -1;
 static int sysnum_GdiExtTextOutW = -1;
 static int sysnum_GdiOpenDCW = -1;
 
+/* used for GDI checks */
+static int sysnum_GdiGetDCforBitmap = -1;
+static int sysnum_GdiDdGetDC = -1;
+static int sysnum_GdiCreateMetafileDC = -1;
+static int sysnum_GdiCreateCompatibleDC = -1;
+static int sysnum_GdiDeleteObjectApp = -1;
+static int sysnum_GdiExtSelectClipRgn = -1;
+static int sysnum_GdiSelectBrush = -1;
+static int sysnum_GdiSelectPen = -1;
+static int sysnum_GdiSelectBitmap = -1;
+static int sysnum_GdiSelectFont = -1;
+
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
     {0,"NtGdiSetDIBitsToDeviceInternal", OK, 64, {{9,-12,R,}, {10,sizeof(BITMAPINFO),R,}, }},
     {0,"NtGdiGetFontResourceInfoInternalW", OK, 28, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {4,sizeof(DWORD),W,}, {5,-3,W,}, }},
     {0,"NtGdiGetGlyphIndicesW", OK, 20, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {3,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(WORD)}, }},
     {0,"NtGdiGetGlyphIndicesWInternal", OK, 24, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {3,sizeof(WORD),W,}, }},
-    {0,"NtGdiCreatePaletteInternal", OK, 8, {{0,},}/*too complex: special-cased*/, &sysnum_GdiCreatePaletteInternal},
+    {0,"NtGdiCreatePaletteInternal", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,},}/*too complex: special-cased*/, &sysnum_GdiCreatePaletteInternal},
     {0,"NtGdiArcInternal", OK, 40, },
     {0,"NtGdiGetOutlineTextMetricsInternalW", OK, 16, {{2,-1,W,}, {3,sizeof(TMDIFF),W,}, }},
     {0,"NtGdiGetAndSetDCDword", OK, 16, {{3,sizeof(DWORD),W,}, }},
     {0,"NtGdiGetDCObject", OK, 8, },
-    {0,"NtGdiGetDCforBitmap", OK, 4, },
+    {0,"NtGdiGetDCforBitmap", OK|SYSINFO_RET_ZERO_FAIL, 4, {{0,}}, &sysnum_GdiGetDCforBitmap},
     {0,"NtGdiGetMonitorID", OK, 12, {{2,-1,W,}, }},
     {0,"NtGdiGetLinkedUFIs", OK, 12, {{1,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, }},
     {0,"NtGdiSetLinkedUFIs", OK, 12, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, }},
@@ -805,7 +847,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiDdFlip", OK, 20, {{4,sizeof(DD_FLIPDATA),R|W,}, }},
     {0,"NtGdiDdGetAvailDriverMemory", OK, 8, {{1,sizeof(DD_GETAVAILDRIVERMEMORYDATA),R|W,}, }},
     {0,"NtGdiDdGetBltStatus", OK, 8, {{1,sizeof(DD_GETBLTSTATUSDATA),R|W,}, }},
-    {0,"NtGdiDdGetDC", OK, 8, {{1,sizeof(PALETTEENTRY),R,}, }},
+    {0,"NtGdiDdGetDC", OK|SYSINFO_RET_ZERO_FAIL, 8, {{1,sizeof(PALETTEENTRY),R,}, }, &sysnum_GdiDdGetDC},
     {0,"NtGdiDdGetDriverInfo", OK, 8, {{1,sizeof(DD_GETDRIVERINFODATA),R|W,}, }},
     {0,"NtGdiDdGetFlipStatus", OK, 8, {{1,sizeof(DD_GETFLIPSTATUSDATA),R|W,}, }},
     {0,"NtGdiDdGetScanLine", OK, 8, {{1,sizeof(DD_GETSCANLINEDATA),R|W,}, }},
@@ -879,25 +921,25 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiSetDeviceGammaRamp", OK, 8, },
     {0,"NtGdiIcmBrushInfo", OK, 32, {{2,sizeof(BITMAPINFO) + ((/*MAX_COLORTABLE*/256 - 1) * sizeof(RGBQUAD)),R|W,}, {3,-4,R|SYSARG_LENGTH_INOUT,}, {4,sizeof(ULONG),R|W,}, {5,sizeof(DWORD),W,}, {6,sizeof(BOOL),W,}, }},
     {0,"NtGdiFlush", OK, 0, },
-    {0,"NtGdiCreateMetafileDC", OK, 4, },
+    {0,"NtGdiCreateMetafileDC", OK|SYSINFO_RET_ZERO_FAIL, 4, {{0,}}, &sysnum_GdiCreateMetafileDC},
     {0,"NtGdiMakeInfoDC", OK, 8, },
     {0,"NtGdiCreateClientObj", OK, 4, },
     {0,"NtGdiDeleteClientObj", OK, 4, },
     {0,"NtGdiGetBitmapBits", OK, 12, {{2,-1,W,}, }},
-    {0,"NtGdiDeleteObjectApp", OK, 4, },
+    {0,"NtGdiDeleteObjectApp", OK, 4, {{0,}}, &sysnum_GdiDeleteObjectApp},
     {0,"NtGdiGetPath", OK, 16, {{1,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINT)}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(BYTE)}, }},
-    {0,"NtGdiCreateCompatibleDC", OK, 4, },
-    {0,"NtGdiCreateDIBitmapInternal", OK, 44, {{4,-8,R,}, {5,-7,R,}, }},
+    {0,"NtGdiCreateCompatibleDC", OK|SYSINFO_RET_ZERO_FAIL, 4, {{0,}}, &sysnum_GdiCreateCompatibleDC},
+    {0,"NtGdiCreateDIBitmapInternal", OK|SYSINFO_RET_ZERO_FAIL, 44, {{4,-8,R,}, {5,-7,R,}, }},
     {0,"NtGdiCreateDIBSection", OK|SYSINFO_RET_ZERO_FAIL, 36, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }, &sysnum_GdiCreateDIBSection},
-    {0,"NtGdiCreateSolidBrush", OK, 8, },
-    {0,"NtGdiCreateDIBBrush", OK, 24, },
-    {0,"NtGdiCreatePatternBrushInternal", OK, 12, },
-    {0,"NtGdiCreateHatchBrushInternal", OK, 12, },
-    {0,"NtGdiExtCreatePen", OK, 44, {{7,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(ULONG)}, }},
-    {0,"NtGdiCreateEllipticRgn", OK, 16, },
-    {0,"NtGdiCreateRoundRectRgn", OK, 24, },
+    {0,"NtGdiCreateSolidBrush", OK|SYSINFO_RET_ZERO_FAIL, 8, },
+    {0,"NtGdiCreateDIBBrush", OK|SYSINFO_RET_ZERO_FAIL, 24, },
+    {0,"NtGdiCreatePatternBrushInternal", OK|SYSINFO_RET_ZERO_FAIL, 12, },
+    {0,"NtGdiCreateHatchBrushInternal", OK|SYSINFO_RET_ZERO_FAIL, 12, },
+    {0,"NtGdiExtCreatePen", OK|SYSINFO_RET_ZERO_FAIL, 44, {{7,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(ULONG)}, }},
+    {0,"NtGdiCreateEllipticRgn", OK|SYSINFO_RET_ZERO_FAIL, 16, },
+    {0,"NtGdiCreateRoundRectRgn", OK|SYSINFO_RET_ZERO_FAIL, 24, },
     {0,"NtGdiCreateServerMetaFile", OK, 24, {{2,-1,R,}, }},
-    {0,"NtGdiExtCreateRegion", OK, 12, {{0,sizeof(XFORM),R,}, {2,-1,R,}, }},
+    {0,"NtGdiExtCreateRegion", OK|SYSINFO_RET_ZERO_FAIL, 12, {{0,sizeof(XFORM),R,}, {2,-1,R,}, }},
     {0,"NtGdiMakeFontDir", OK, 20, {{1,-2,W,}, {3,-4,R,}, }},
     {0,"NtGdiPolyDraw", OK, 16, {{1,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINT)}, {2,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(BYTE)}, }},
     {0,"NtGdiPolyTextOutW", OK, 16, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(POLYTEXTW)}, }},
@@ -960,7 +1002,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetRasterizerCaps", OK, 8, {{0,-1,W,}, }},
     {0,"NtGdiGetKerningPairs", OK, 12, {{2,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(KERNINGPAIR)}, {2,RET,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(KERNINGPAIR)}, }},
     {0,"NtGdiMonoBitmap", OK, 4, },
-    {0,"NtGdiGetObjectBitmapHandle", OK, 8, {{1,sizeof(UINT),W,}, }},
+    {0,"NtGdiGetObjectBitmapHandle", OK|SYSINFO_RET_ZERO_FAIL, 8, {{1,sizeof(UINT),W,}, }},
     {0,"NtGdiEnumObjects", OK, 16, {{3,-2,W,}, }},
     {0,"NtGdiResetDC", OK, 20, {{1,sizeof(DEVMODEW)/*really var-len*/,R|CT,SYSARG_TYPE_DEVMODEW}, {2,sizeof(BOOL),W,}, {3,sizeof(DRIVER_INFO_2W),R,}, {4,sizeof(PUMDHPDEV *),W,}, }},
     {0,"NtGdiSetBoundsRect", OK, 12, {{1,sizeof(RECT),R,}, }},
@@ -984,12 +1026,12 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetPerBandInfo", OK, 8, {{1,sizeof(PERBANDINFO),R|W,}, }},
     {0,"NtGdiGetStats", OK, 20, {{3,-4,W,}, }},
     {0,"NtGdiSetMagicColors", OK, 12, },
-    {0,"NtGdiSelectBrush", OK, 8, },
-    {0,"NtGdiSelectPen", OK, 8, },
-    {0,"NtGdiSelectBitmap", OK, 8, },
-    {0,"NtGdiSelectFont", OK, 8, },
-    {0,"NtGdiExtSelectClipRgn", OK, 12, },
-    {0,"NtGdiCreatePen", OK, 16, },
+    {0,"NtGdiSelectBrush", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectBrush},
+    {0,"NtGdiSelectPen", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectPen},
+    {0,"NtGdiSelectBitmap", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectBitmap},
+    {0,"NtGdiSelectFont", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectFont},
+    {0,"NtGdiExtSelectClipRgn", OK, 12, {{0,}}, &sysnum_GdiExtSelectClipRgn},
+    {0,"NtGdiCreatePen", OK|SYSINFO_RET_ZERO_FAIL, 16, },
     {0,"NtGdiBitBlt", OK, 44, },
     {0,"NtGdiTileBitBlt", OK, 28, {{1,sizeof(RECTL),R,}, {3,sizeof(RECTL),R,}, {4,sizeof(POINTL),R,}, }},
     {0,"NtGdiTransparentBlt", OK, 44, },
@@ -999,13 +1041,13 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetRandomRgn", OK, 12, },
     {0,"NtGdiExtTextOutW", OK, 36, {{4,sizeof(RECT),R,}, {5,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {7,-6,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(INT)/*can be larger: special-cased*/}, }, &sysnum_GdiExtTextOutW},
     {0,"NtGdiIntersectClipRect", OK, 20, },
-    {0,"NtGdiCreateRectRgn", OK, 16, },
+    {0,"NtGdiCreateRectRgn", OK|SYSINFO_RET_ZERO_FAIL, 16, },
     {0,"NtGdiPatBlt", OK, 24, },
     {0,"NtGdiPolyPatBlt", OK, 20, {{2,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(POLYPATBLT)}, }},
     {0,"NtGdiUnrealizeObject", OK, 4, },
     {0,"NtGdiGetStockObject", OK, 4, },
-    {0,"NtGdiCreateCompatibleBitmap", OK, 12, },
-    {0,"NtGdiCreateBitmapFromDxSurface", OK, 20, },
+    {0,"NtGdiCreateCompatibleBitmap", OK|SYSINFO_RET_ZERO_FAIL, 12, },
+    {0,"NtGdiCreateBitmapFromDxSurface", OK|SYSINFO_RET_ZERO_FAIL, 20, },
     {0,"NtGdiBeginGdiRendering", OK, 8, },
     {0,"NtGdiEndGdiRendering", OK, 12, {{2,sizeof(BOOL),W,}, }},
     {0,"NtGdiLineTo", OK, 12, },
@@ -1015,7 +1057,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetDeviceCapsAll", OK, 8, {{1,sizeof(DEVCAPS),W,}, }},
     {0,"NtGdiStretchBlt", OK, 48, },
     {0,"NtGdiSetBrushOrg", OK, 16, {{3,sizeof(POINT),W,}, }},
-    {0,"NtGdiCreateBitmap", OK, 20, {{4,sizeof(BYTE),R,}, }},
+    {0,"NtGdiCreateBitmap", OK|SYSINFO_RET_ZERO_FAIL, 20, {{4,sizeof(BYTE),R,}, }},
     {0,"NtGdiCreateHalftonePalette", OK, 4, },
     {0,"NtGdiRestoreDC", OK, 8, },
     {0,"NtGdiExcludeClipRect", OK, 20, },
@@ -2392,10 +2434,26 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                      (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
                      mc, "DRIVER_INFO_2W");
+    } else if (options.check_gdi) {
+        HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+        gdicheck_dc_alloc(hdc, true/*Create not Get*/, false, sysnum, mc);
     }
     check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                  (byte *) pt->sysarg[num_pump], sizeof(PUMDHPDEV *),
                  mc, "PUMDHPDEV*");
+    return true;
+}
+
+static bool
+handle_GdiSelect(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+                 dr_mcontext_t *mc)
+{
+    if (options.check_gdi) {
+        HDC hdc = (HDC) pt->sysarg[0];
+        HANDLE new_obj = (HANDLE) pt->sysarg[1];
+        HANDLE old_obj = (HANDLE) dr_syscall_get_result(drcontext);
+        gdicheck_dc_select_obj(hdc, old_obj, new_obj, sysnum, mc);
+    }
     return true;
 }
 
@@ -2406,8 +2464,18 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
     /* handlers here do not check for success so we check up front */
     if (!pre) {
         syscall_info_t *sysinfo = syscall_lookup(sysnum);
-        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
+        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext))) {
+            /* to report selecting one bitmap into two DC's we need to call even
+             * on failure (on win7 at least, GDI detects this)
+             */
+            if (options.check_gdi &&
+                (sysnum == sysnum_GdiExtSelectClipRgn || sysnum == sysnum_GdiSelectBrush ||
+                 sysnum == sysnum_GdiSelectPen || sysnum == sysnum_GdiSelectBitmap ||
+                 sysnum == sysnum_GdiSelectFont)) {
+                return handle_GdiSelect(pre, drcontext, sysnum, pt, mc);
+            }
             return true;
+        }
     }
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
@@ -2466,6 +2534,56 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
         }
     } else if (sysnum == sysnum_GdiOpenDCW) {
         return handle_GdiOpenDCW(pre, drcontext, sysnum, pt, mc);
+    } 
+
+    /* Syscalls that are only examined for GDI checks (there are some GDI
+     * checks above as well in syscalls that also need other processing)
+     */
+    if (options.check_gdi) {
+        if (sysnum == sysnum_UserGetDC || sysnum == sysnum_UserGetDCEx ||
+            sysnum == sysnum_UserGetWindowDC || sysnum == sysnum_UserBeginPaint ||
+            sysnum == sysnum_GdiGetDCforBitmap || sysnum == sysnum_GdiDdGetDC) {
+            if (!pre) {
+                HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+                gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
+                if (sysnum == sysnum_UserBeginPaint) {
+                    /* we store the hdc for access in EndPaint */
+                    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+                    cpt->paintDC = hdc;
+                }
+            }
+        } else if (sysnum == sysnum_GdiCreateMetafileDC ||
+                   sysnum == sysnum_GdiCreateCompatibleDC) {
+            if (!pre) {
+                HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+                gdicheck_dc_alloc(hdc, true/*Create not Get*/,
+                                  (sysnum == sysnum_GdiCreateCompatibleDC &&
+                                   pt->sysarg[0] == 0),
+                                  sysnum, mc);
+            }
+        } else if (sysnum == sysnum_UserReleaseDC || sysnum == sysnum_UserEndPaint) {
+            if (pre) {
+                HDC hdc;
+                if (sysnum == sysnum_UserReleaseDC)
+                    hdc = (HDC)pt->sysarg[0];
+                else {
+                    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+                    hdc = cpt->paintDC;
+                    cpt->paintDC = NULL;
+                }
+                gdicheck_dc_free(hdc, false/*Get not Create*/, sysnum, mc);
+            }
+        } else if (sysnum == sysnum_GdiDeleteObjectApp) {
+            if (pre)
+                gdicheck_obj_free((HANDLE)pt->sysarg[0], sysnum, mc);
+        } else if (sysnum == sysnum_GdiExtSelectClipRgn ||
+                   sysnum == sysnum_GdiSelectBrush ||
+                   sysnum == sysnum_GdiSelectPen ||
+                   sysnum == sysnum_GdiSelectBitmap ||
+                   sysnum == sysnum_GdiSelectFont) {
+            if (!pre)
+                handle_GdiSelect(pre, drcontext, sysnum, pt, mc);
+        }
     }
 
     return true; /* execute syscall */

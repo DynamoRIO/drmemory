@@ -620,6 +620,16 @@ syscall_os_exit(void)
 }
 
 void
+syscall_os_thread_init(void *drcontext)
+{
+}
+
+void
+syscall_os_thread_exit(void *drcontext)
+{
+}
+
+void
 syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
 }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -64,6 +64,8 @@ typedef struct _client_per_thread_t {
     TEB *teb;
     /* for heap seh accesses (i#689) */
     RTL_CRITICAL_SECTION *heap_critsec;
+    /* for GDI checks (i#752) */
+    HDC paintDC;
 # endif
 #endif /* TOOL_DR_MEMORY */
 

@@ -428,6 +428,8 @@ if (NOT TOOL_DR_HEAPSTAT)
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd" cs2bug)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
     endif (USE_DRSYMS)
+
+    newtest(gdi gdi.cpp)
   endif (WIN32)
 
   # FIXME i#657: realloc is flaky on the Windows bots.

@@ -1151,6 +1151,8 @@ syscall_thread_init(void *drcontext)
     if (options.syscall_driver)
         driver_thread_init(drcontext);
 #endif
+
+    syscall_os_thread_init(drcontext);
 }
 
 void
@@ -1172,6 +1174,8 @@ syscall_reset_per_thread(void *drcontext, per_thread_t *pt)
 void
 syscall_thread_exit(void *drcontext, per_thread_t *pt)
 {
+    syscall_os_thread_exit(drcontext);
+
     syscall_reset_per_thread(drcontext, pt);
 
 #ifdef SYSCALL_DRIVER

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -44,4 +44,33 @@ TEST(NtGdiTests, GetTextMetricsW) {
 TEST(NtGdiTests, CreateTextServices) {
     // Was: http://code.google.com/p/drmemory/issues/detail?id=455
     CreateTextServices(NULL, NULL, NULL);  // it fails but it's OK
+}
+
+TEST(NtGdiTests, DeviceContext) {
+    HDC mydc = GetDC(NULL);
+    HGDIOBJ prior = SelectObject(mydc, GetStockObject(WHITE_BRUSH));
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+    prior = SelectObject(mydc, prior);
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+
+    HDC dupdc = CreateCompatibleDC(mydc);
+    HBRUSH brush = CreateSolidBrush(RGB(200,200,200));
+    HPEN pen = CreatePen(PS_SOLID,  0xab,RGB(0xab,0xcd,0xef));
+    prior = SelectObject(dupdc, brush);
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+    prior = SelectObject(dupdc, prior);
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+    prior = SelectObject(dupdc, pen);
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+    prior = SelectObject(dupdc, prior);
+    EXPECT_NE((HGDIOBJ)NULL, prior);
+
+    BOOL ok = DeleteObject(brush);
+    EXPECT_EQ(TRUE, ok);
+    ok = DeleteObject(pen);
+    EXPECT_EQ(TRUE, ok);
+    ok = DeleteDC(dupdc);
+    EXPECT_EQ(TRUE, ok);
+    int res = ReleaseDC(NULL, mydc);
+    EXPECT_EQ(1, res);
 }

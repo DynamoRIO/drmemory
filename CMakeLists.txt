@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -652,6 +652,7 @@ else (TOOL_DR_HEAPSTAT)
   else (UNIX)
     set(srcs ${srcs} drmemory/syscall_windows.c)
     set(srcs ${srcs} drmemory/syscall_wingdi.c)
+    set(srcs ${srcs} drmemory/gdicheck.c)
     if (SYSCALL_DRIVER)
       set(srcs ${srcs} drmemory/syscall_driver.c)
     endif (SYSCALL_DRIVER)

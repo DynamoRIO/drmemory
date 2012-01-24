@@ -717,6 +717,25 @@ Error #12: WARNING: heap allocation failed
 # 4 KERNEL32.dll!BaseProcessStart                   
 \endcode
 
+Dr. Memory also identifies common errors in using the Windows GDI API and
+reports these errors as warning.  For example:
+
+\code
+Error #15: WARNING: GDI usage error: DC 0x2d011230 that contains selected object being deleted
+# 0 system call NtGdiDeleteObjectApp                            
+# 1 GDI32.dll!DeleteDC                                                        +0x11     (0x76b458c5 <GDI32.dll+0x158c5>)
+# 2 chrome.dll!skia::BitmapPlatformDevice::BitmapPlatformDeviceData::ReleaseBitmapDC [c:\src\chromium\src\skia\ext\bitmap_platform_device_win.cc:58]
+# 3 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
+# 4 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
+# 5 chrome.dll!SkCanvas::internalRestore                                       [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:824]
+# 6 chrome.dll!SkCanvas::~SkCanvas                                             [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:449]
+\endcode
+
+Note that some of these GDI usage errors are best programming practices and
+may not result in detrimental behavior in actual usage on more recent
+versions of Windows.  Detection of these errors can be disabled with the \p
+-no_check_gdi runtime option.
+
 ****************************************************************************
 ****************************************************************************
 */

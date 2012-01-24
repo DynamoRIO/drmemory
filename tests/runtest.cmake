@@ -324,6 +324,14 @@ foreach (str ${patterns})
     if (WIN32)
       string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+      # distinguish win7
+      if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
+        string(REGEX REPLACE "(^|\n)%if WIN7PLUS[^%]+\n%endif\n" "\\1" 
+          ${str} "${${str}}")
+      else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
+        string(REGEX REPLACE "(^|\n)%if WIN7PRE[^%]+\n%endif\n" "\\1" 
+          ${str} "${${str}}")
+      endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
     elseif (UNIX)
       string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
@@ -477,6 +485,7 @@ if (resmatch)
   
   # remove absolute addresses (from PR 535568)
   string(REGEX REPLACE " 0x[0-9a-f]+-0x[0-9a-f]+" "" results "${results}")
+  string(REGEX REPLACE " 0x[0-9a-f]+" "" results "${results}")
   # canonicalize by removing ".exe" (XXX: maybe should have regex in .res instead?)
   string(REGEX REPLACE "\\.exe!" "!" results "${results}")
 
