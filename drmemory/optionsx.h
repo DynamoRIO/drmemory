@@ -382,7 +382,8 @@ OPTION_CLIENT_BOOL(drmemscope, fault_to_slowpath, true,
 OPTION_CLIENT_BOOL(internal, check_tls, true,
                    "Check for access to un-reserved TLS slots",
                    "Check for access to un-reserved TLS slots")
-OPTION_CLIENT_BOOL(drmemscope, check_gdi, true,
+/* FIXME i#764: disabled b/c even on win7sp1 in certain situations we can have false pos */
+OPTION_CLIENT_BOOL(drmemscope, check_gdi, false,
                    "Check for GDI API usage errors",
                    "Check for GDI API usage errors.  Any errors detected will be reported as errors of type WARNING.  Currently this option is only supported on Windows 7.")
 #endif

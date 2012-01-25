@@ -20,7 +20,8 @@
 #
 
 # FIXME i#764: disabled for pre-win7
-%if WIN7PLUS
+%EMPTY_OK
+
 Error #1: WARNING: GDI usage error: free mismatch for DC: use ReleaseDC only for GetDC and DeleteDC only for CreateDC
 system call NtGdiDeleteObjectApp
 GDI32.dll!DeleteDC
@@ -86,4 +87,3 @@ test_DC_bitmap
 gdi.cpp:175
 main
 gdi.cpp:206
-%endif

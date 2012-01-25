@@ -324,14 +324,6 @@ foreach (str ${patterns})
     if (WIN32)
       string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
-      # distinguish win7
-      if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
-        string(REGEX REPLACE "(^|\n)%if WIN7PLUS[^%]+\n%endif\n" "\\1" 
-          ${str} "${${str}}")
-      else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
-        string(REGEX REPLACE "(^|\n)%if WIN7PRE[^%]+\n%endif\n" "\\1" 
-          ${str} "${${str}}")
-      endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
     elseif (UNIX)
       string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
@@ -351,6 +343,8 @@ foreach (str ${patterns})
     string(REGEX REPLACE "\n%ENDANYLINE\n$" ")" anyline_regex "${anyline_regex}")
     string(REGEX REPLACE "\n" "|" anyline_regex "${anyline_regex}")
     set(anyline_regex "${anyline_regex}\n")  # Put back trailing \n.
+    # Don't remove \n from prior line
+    string(REGEX REPLACE "^\n" "" anyline_sec "${anyline_sec}")
     string(REPLACE "${anyline_sec}" "${anyline_regex}" ${str} "${${str}}")
     string(REGEX MATCH "(^|\n)%ANYLINE\n[^%]+\n%ENDANYLINE\n" anyline_sec "${${str}}")
   endwhile()
@@ -491,15 +485,22 @@ if (resmatch)
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   set(require_in_order 1)
+  set(empty_ok 0)
   foreach (line ${lines})
     if ("${line}" MATCHES "^%OUT_OF_ORDER")
       set(require_in_order 0)
     elseif ("${line}" MATCHES "^%IN_ORDER")
       set(require_in_order 1)
+    elseif ("${line}" MATCHES "^%EMPTY_OK")
+      set(empty_ok 1)
     else ()
       # we do NOT include the newline, to support matching intra-line substrings
       strip_trailing_newline_regex(line "${line}")
       if (NOT "${results}" MATCHES "${line}")
+        if (empty_ok AND "${contents}" MATCHES "NO ERRORS FOUND")
+          # allow empty file
+          break()
+        endif ()
         set(msg "${resfile_using} failed to match \"${line}\"")
         # try to find what was meant to match
         string(REGEX REPLACE "[0-9]" "." rline "${line}")

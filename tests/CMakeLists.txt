@@ -429,9 +429,7 @@ if (NOT TOOL_DR_HEAPSTAT)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
     endif (USE_DRSYMS)
 
-    # FIXME i#764: currently only works on win7sp1 and cmake's built-in
-    # vars won't distinguish sp's for us so disabling
-    #newtest(gdi gdi.cpp)
+    newtest(gdi gdi.cpp)
   endif (WIN32)
 
   # FIXME i#657: realloc is flaky on the Windows bots.

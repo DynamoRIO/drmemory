@@ -58,7 +58,7 @@ uint symbol_search_cache_hits;
 #endif
 
 #ifdef WINDOWS
-static dr_os_version_t os_version;
+static dr_os_version_info_t os_version = {sizeof(os_version),};
 #endif
 
 #if defined(WINDOWS) && defined (USE_DRSYMS)
@@ -871,37 +871,46 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
 static void
 init_os_version(void)
 {
-    dr_os_version_info_t info = {sizeof(info),};
-    if (dr_get_os_version(&info))
-        os_version = info.version;
-    else {
+    if (!dr_get_os_version(&os_version)) {
         ASSERT(false, "unable to get Windows version");
-        os_version = DR_WINDOWS_VERSION_7;
+        /* assume latest just to make progress: good chance of working */
+        os_version.version = DR_WINDOWS_VERSION_7;
+        os_version.service_pack_major = 1;
+        os_version.service_pack_minor = 0;
     }
 }
 
 bool
 running_on_Win7_or_later(void)
 {
-    if (os_version == 0)
+    if (os_version.version == 0)
         init_os_version();
-    return (os_version >= DR_WINDOWS_VERSION_7);
+    return (os_version.version >= DR_WINDOWS_VERSION_7);
+}
+
+bool
+running_on_Win7SP1_or_later(void)
+{
+    if (os_version.version == 0)
+        init_os_version();
+    return (os_version.version >= DR_WINDOWS_VERSION_7 &&
+            os_version.service_pack_major >= 1);
 }
 
 bool
 running_on_Vista_or_later(void)
 {
-    if (os_version == 0)
+    if (os_version.version == 0)
         init_os_version();
-    return (os_version >= DR_WINDOWS_VERSION_VISTA);
+    return (os_version.version >= DR_WINDOWS_VERSION_VISTA);
 }
 
 dr_os_version_t
 get_windows_version(void)
 {
-    if (os_version == 0)
+    if (os_version.version == 0)
         init_os_version();
-    return os_version;
+    return os_version.version;
 }
 
 GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
@@ -1167,7 +1176,7 @@ void
 utils_init(void)
 {
 #ifdef WINDOWS
-    if (os_version == 0)
+    if (os_version.version == 0)
         init_os_version();
 #endif
 

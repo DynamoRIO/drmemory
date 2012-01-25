@@ -403,7 +403,7 @@ options_init(const char *opstr)
             options.delay_frees_stack = true;
     }
 # ifdef WINDOWS
-    if (options.check_gdi && !running_on_Win7_or_later()) {
+    if (options.check_gdi && !running_on_Win7SP1_or_later()) {
         /* FIXME i#764: too many Select calls don't make it to syscall pre-win7 */
         options.check_gdi = false;
     }

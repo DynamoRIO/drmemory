@@ -563,6 +563,9 @@ bool
 running_on_Win7_or_later(void);
 
 bool
+running_on_Win7SP1_or_later(void);
+
+bool
 running_on_Vista_or_later(void);
 
 dr_os_version_t

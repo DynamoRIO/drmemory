@@ -18,20 +18,18 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# FIXME i#764: disabled for pre-win7
-%if WIN7PLUS
+# FIXME i#764: disabled for pre-win7sp1 and not easy for ctest to
+# distinguish service packs so we allow either
+%ANYLINE
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~      10 unique,    10 total warning(s)
-%endif
-%if WIN7PRE
 ~~Dr.M~~ NO ERRORS FOUND:
+%ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
+%ANYLINE
+~~Dr.M~~      10 unique,    10 total warning(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-%endif
+%ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
