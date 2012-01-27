@@ -1760,6 +1760,11 @@ ZwDeviceIoControlFile(
  * FIXME this is not foolproof: could be FILE_DEVICE_BEEP with other bits.
  */
 #define IS_AFD_IOCTL(code) ((code >> 12) == FILE_DEVICE_NETWORK)
+/* Since the AFD "device" overlaps with the function, we have to mask out those
+ * overlapping high bits to get the right code.
+ */
+#define AFD_FUNCTION_FROM_CTL_CODE(code) \
+        (FUNCTION_FROM_CTL_CODE(code) & 0x3ff)
 
 /* XXX: very similar to Linux layouts, though exact constants are different.
  * Still, should be able to share some code.
@@ -1835,7 +1840,7 @@ handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
     /* FIXME: put max of insz on all the sizes below */
 
     /* Extract operation. */
-    uint opcode = FUNCTION_FROM_CTL_CODE(full_code);
+    uint opcode = AFD_FUNCTION_FROM_CTL_CODE(full_code);
 
     /* We have "8,-9,W" in the table so we only need to handle additional pointers
      * here or cases where subsets of the full output buffer are written.
