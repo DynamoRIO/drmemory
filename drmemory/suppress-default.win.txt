@@ -289,7 +289,7 @@ RPCRT4.dll!UuidCreate
 #  test   0x70(%ebx) $0x00000100 
 #  test   0x70(%edi) %esi
 # On Vista, this bitfield seems to be a short, so we get "data16 test" for the
-# instruction.  These are in Ndr* routines, but on Vista without symbols we get
+# instruction.  These are in Ndr* routines, but without symbols we sometimes get
 # NDRContextUnmarshall as the nearest export, so we use N*.
 
 UNINITIALIZED READ
@@ -299,9 +299,9 @@ RPCRT4.dll!N*
 RPCRT4.dll!*
 
 UNINITIALIZED READ
-name=default i#529 (alternate bit-level fp on Vista)
+name=default i#529 (alternate bit-level fp)
 instruction=test   %esi %eax
-RPCRT4.dll!Ndr*
+RPCRT4.dll!N*
 RPCRT4.dll!*
 
 ##################################################
