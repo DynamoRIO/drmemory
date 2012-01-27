@@ -483,7 +483,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     hashtable_unlock(&bb_table);
 
     if (bb_size > 0) {
-        /* i#260: remove xl8_sharing_table and ignore_unaddr_table entries.  We can't
+        /* i#260: remove xl8_sharing_table entries.  We can't
          * decode forward (not always safe) and query every app pc, so we store the
          * bb size and assume bbs are contiguous (no elision) and there are no traces
          * (already assuming that for i#114 and dr_fragment_exists_at()).  We assume
@@ -492,14 +492,17 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
          *
          * Without removing, new code that replaces old code at the same address can
          * fail to be optimized b/c it will use the old code's history: so a perf
-         * failure, not a correctness failure.  Failing to remove from
-         * ignore_unaddr_table can lead to false negatives.
+         * failure, not a correctness failure.
          */
         /* XXX i#551: -single_arg_slowpath adds a second xl8_sharing_table entry with
          * cache pc for each app pc entry which we are not deleting yet.  May need a
          * table to map the two.  Xref DRi#409: while there's no good solution from
          * the DR side for app pc flushing, perhaps some event on re-using cache pcs
          * could work but seems too specialized.
+         */
+        /* i#768: We used to invalidate entries from ignore_unaddr_table here,
+         * but that ends up thrashing the code cache.  Instead we remove stale
+         * entries in the new bb event if the alloca pattern no longer matches.
          */
         app_pc start = dr_fragment_app_pc(tag);
         /* It turns out that hashtable_remove_range() is really slow: xl8_sharing_table
@@ -510,7 +513,6 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
         int i;
         for (i = 0; i < bb_size; i++) {
             hashtable_remove(&xl8_sharing_table, (void *)(start + i));
-            hashtable_remove(&ignore_unaddr_table, (void *)(start + i));
         }
     }
 

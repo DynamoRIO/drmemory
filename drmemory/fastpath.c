@@ -30,6 +30,7 @@
 #include "fastpath.h"
 #include "shadow.h"
 #include "stack.h"
+#include "alloc_drmem.h"
 
 #ifdef LINUX
 # include <signal.h> /* for SIGSEGV */
@@ -3855,8 +3856,20 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif
 
     if (hashtable_lookup(&ignore_unaddr_table, instr_get_app_pc(inst)) != NULL) {
-        check_ignore_unaddr = true;
-        check_ignore_tls = false; /* do not check in-heap tls slot */
+        /* i#768: Double-check that it's still OK to ignore unaddrs from this
+         * instruction in case the code changed.
+         */
+        app_pc pc = instr_get_app_pc(inst);
+        app_pc next_pc = pc + instr_length(drcontext, inst);
+        bool now_addressable;  /* unused */
+        if (is_alloca_pattern(drcontext, pc, next_pc, inst, &now_addressable)) {
+            check_ignore_unaddr = true;
+            check_ignore_tls = false; /* do not check in-heap tls slot */
+        } else {
+            /* The code changed, so remove the stale PC. */
+            hashtable_remove(&ignore_unaddr_table, pc);
+            LOG(2, "removing stale alloca probe exception at "PFX NL, pc);
+        }
     }
     /* PR 578892: fastpath heap routine unaddr accesses */
     if (check_ignore_unaddr && (mi->load || mi->store)) {

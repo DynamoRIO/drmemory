@@ -67,4 +67,8 @@ overlaps_delayed_free(byte *start, byte *end,
                       byte **free_end OUT,
                       packed_callstack_t **pcs OUT);
 
+bool
+is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
+                  bool *now_addressable OUT);
+
 #endif /* _ALLOC_DRMEM_H_ */

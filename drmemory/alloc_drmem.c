@@ -1491,9 +1491,9 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     return match;
 }
 
-static bool
-is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
-                  app_pc addr, uint sz, instr_t *inst, bool *now_addressable OUT)
+bool
+is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
+                  bool *now_addressable OUT)
 {
     /* Check for alloca probes to trigger guard pages.
      * So far we've seen just a handful of different sequences:
@@ -1662,29 +1662,7 @@ is_alloca_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
          */
         *now_addressable = false;
     }
-#ifdef STATISTICS
-    if (match)
-        STATS_INC(alloca_exception);
-#endif
     instr_free(drcontext, &next);
-
-    if (match) {
-        /* i#91: for some apps there are so many alloca probes that it's a perf
-         * hit to come to the slowpath, so we note the address, flush the
-         * fragment, and ignore unaddrs there in the future.
-         */
-        bool exists = hashtable_add(&ignore_unaddr_table, pc, (void *)1);
-        if (exists) {
-            /* this can happen on concurrent execution prior to the flush */
-            ELOG(0, "WARNING: ignore_unaddr_table entry came to slowpath\n");
-        } else {
-            bool success = dr_delay_flush_region(pc, 1, 0, NULL);
-            if (!success) {
-                ASSERT(false, "ignore_unaddr_table flush failed");
-                ELOG(0, "WARNING: ignore_unaddr_table flush failed!\n");
-            }
-        }
-    }
 
     return match;
 }
@@ -1943,6 +1921,28 @@ is_heap_seh(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 }
 #endif /* WINDOWS */
 
+/* i#91: For some apps there are so many alloca probes that it's a perf hit to
+ * come to the slowpath, so we note the address, flush the fragment, and ignore
+ * unaddrs there in the future.  To prevent false negatives if the code changes,
+ * we check if the alloca pattern still matches in the bb creation event.
+ */
+static void
+add_alloca_exception(void *drcontext, app_pc pc)
+{
+    bool success;
+    STATS_INC(alloca_exception);
+    success = hashtable_add(&ignore_unaddr_table, pc, (void *)1);
+    LOG(2, "adding "PFX" to ignore_unaddr_table from thread "SZFMT
+        ", exists: %d\n", pc, dr_get_thread_id(drcontext), !success);
+    if (!success) {
+        /* this can happen on concurrent execution prior to the flush */
+        ELOG(0, "WARNING: ignore_unaddr_table entry came to slowpath\n");
+    } else {
+        success = dr_delay_flush_region(pc, 1, 0, NULL);
+        ASSERT(success, "ignore_unaddr_table flush failed");
+    }
+}
+
 static bool
 is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
                             dr_mcontext_t *mc)
@@ -1961,11 +1961,12 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
     ASSERT(instr_valid(&inst), "unknown suspect instr");
 
     if (!match) {
-        match = is_alloca_pattern(drcontext, write, pc, dpc, addr, sz,
-                                  &inst, &now_addressable);
-        /* it's ok for the target addr to be unreadable if stack guard page (i#538) */
-        if (match)
+        match = is_alloca_pattern(drcontext, pc, dpc, &inst, &now_addressable);
+        if (match) {
+            /* it's ok for the target addr to be unreadable if stack guard page (i#538) */
             unreadable_ok = true;
+            add_alloca_exception(drcontext, pc);
+        }
     }
     if (!match) {
         match = is_strlen_pattern(drcontext, write, pc, dpc, addr, sz,
