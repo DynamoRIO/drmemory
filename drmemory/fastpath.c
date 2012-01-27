@@ -30,7 +30,9 @@
 #include "fastpath.h"
 #include "shadow.h"
 #include "stack.h"
-#include "alloc_drmem.h"
+#ifdef TOOL_DR_MEMORY
+# include "alloc_drmem.h"
+#endif
 
 #ifdef LINUX
 # include <signal.h> /* for SIGSEGV */
@@ -3855,6 +3857,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
            "load2x only supported if not propagating");
 #endif
 
+#ifdef TOOL_DR_MEMORY
     if (hashtable_lookup(&ignore_unaddr_table, instr_get_app_pc(inst)) != NULL) {
         /* i#768: Double-check that it's still OK to ignore unaddrs from this
          * instruction in case the code changed.
@@ -3871,6 +3874,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             LOG(2, "removing stale alloca probe exception at "PFX NL, pc);
         }
     }
+#endif
+
     /* PR 578892: fastpath heap routine unaddr accesses */
     if (check_ignore_unaddr && (mi->load || mi->store)) {
         LOG(4, "in heap routine: adding nop-if-mem-unaddr checks\n");
