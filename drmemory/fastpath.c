@@ -3718,9 +3718,9 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #endif
 #ifdef TOOL_DR_MEMORY
     instr_t *check_ignore_resume = NULL;
+    bool check_ignore_tls = true;
 #endif
     bool check_appval, need_reg3_for_appval;
-    bool check_ignore_tls = true;
 
     /* mi is memset to 0 so bools and pointers are false/NULL */
     mi->slowpath = INSTR_CREATE_label(drcontext);
