@@ -2909,7 +2909,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         /* ADDR is assumed to be for writes only (i#517) */
         TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags) &&
         !TEST(MEMREF_IS_READ, flags);
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
         (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"), loc_to_print(loc), addr, sz,
@@ -3463,7 +3463,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     /* First, do replacements; then, app-to-app; finally, instrument. */
     alloc_replace_instrument(drcontext, bb);
 #ifdef TOOL_DR_MEMORY
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         /* String routine replacement */
         replace_instrument(drcontext, bb);
     }
@@ -3473,7 +3473,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     process_valgrind_annotations(drcontext, bb);
 
 #ifdef TOOL_DR_MEMORY
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         /* XXX: this should be AFTER app_to_app_transformations, but something's
          * not working right: the rep-movs transformation is marking something
          * as meta that shouldn't be?!?
@@ -3519,13 +3519,13 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         }
 
 #if defined(LINUX) && defined(TOOL_DR_MEMORY)
-        if (!options.leaks_only && options.shadowing &&
+        if (options.shadowing &&
             hashtable_lookup(&sighand_table, (void*)pc) != NULL) {
             instrument_signal_handler(drcontext, bb, inst, pc);
         }
 #endif
 
-        if (!options.leaks_only && options.shadowing) {
+        if (options.shadowing) {
             /* We want to spill AFTER any clean call in case it changes mcontext */
             bi.spill_after = instr_get_prev(inst);
             
@@ -3609,7 +3609,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         if (bi.eflags_defined && opc_is_jcc(instr_get_opcode(inst)))
             continue;
 
-        if (!options.leaks_only && options.shadowing &&
+        if (options.shadowing &&
             (options.check_uninitialized || has_noignorable_mem)) {
             if (instr_ok_for_instrument_fastpath(inst, &mi, &bi)) {
                 instrument_fastpath(drcontext, bb, inst, &mi, check_ignore_unaddr);
@@ -3659,7 +3659,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         }
 
         /* None of the "continues" above need to be processed here */
-        if (!options.leaks_only && options.shadowing)
+        if (options.shadowing)
             fastpath_pre_app_instr(drcontext, bb, inst, &bi, &mi);
 
         if (mi.appclone != NULL) {
@@ -3713,7 +3713,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     }
     LOG(5, "\texiting instrument_bb\n");
 
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         fastpath_bottom_of_bb(drcontext, tag, bb, &bi, added_instru, translating,
                               check_ignore_unaddr);
     }

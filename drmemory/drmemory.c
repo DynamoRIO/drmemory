@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -393,18 +393,16 @@ event_thread_init(void *drcontext)
     create_thread_logfile(drcontext);
     LOGPT(2, pt, "in event_thread_init()\n");
     if (options.shadowing) {
-        if (!options.leaks_only) {
-            /* For 1st thread we can't get mcontext so we wait for 1st bb.
-             * For subsequent we can.  Xref i#117/PR 395156.
-             * FIXME: other threads injected or created early like
-             * we've seen on Windows could mess this up.
-             */
-            static bool first_time = true;
-            if (first_time) /* 1st thread: no lock needed */
-                first_time = false;
-            else
-                set_thread_initial_structures(drcontext);
-        }
+        /* For 1st thread we can't get mcontext so we wait for 1st bb.
+         * For subsequent we can.  Xref i#117/PR 395156.
+         * FIXME: other threads injected or created early like
+         * we've seen on Windows could mess this up.
+         */
+        static bool first_time = true;
+        if (first_time) /* 1st thread: no lock needed */
+            first_time = false;
+        else
+            set_thread_initial_structures(drcontext);
         shadow_thread_init(drcontext);
     }
     syscall_thread_init(drcontext);
@@ -426,7 +424,7 @@ event_thread_exit(void *drcontext)
         close_file(pt->f);
     }
 #ifdef WINDOWS
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         /* the kernel de-allocs teb so we need to explicitly handle it */
         /* use cached teb since can't query for some threads (i#442) */
         client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
@@ -509,7 +507,7 @@ mmap_walk(app_pc start, size_t size,
     MEMORY_BASIC_INFORMATION mbi = {0};
     app_pc map_base = mbi.AllocationBase;
     app_pc map_end = (byte *)mbi.AllocationBase + mbi.RegionSize;
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     if (mbi_start == NULL) {
         if (dr_virtual_query(start, &mbi, sizeof(mbi)) != sizeof(mbi)) {
             ASSERT(false, "error walking initial memory mappings");
@@ -560,7 +558,7 @@ mmap_walk(app_pc start, size_t size,
     module_data_t *data;
     app_pc pc, module_start, module_end;
     bool image;
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
 
     /* we assume that only a module will have multiple pieces with different prots */
     data = dr_lookup_module(start);
@@ -775,7 +773,7 @@ memory_walk(void)
             }
         }
 
-        if (pc_to_add != NULL && !options.leaks_only && options.shadowing) {
+        if (pc_to_add != NULL && options.shadowing) {
             LOG(2, "\tpre-existing region "PFX"-"PFX" prot=%x type=%d\n",
                 pc_to_add, end, info.prot, info.type);
             /* FIXME PR 406328: if no-access should we leave as unaddressable?
@@ -1054,14 +1052,14 @@ heap_iter_region(app_pc start, app_pc end _IF_WINDOWS(HANDLE heap))
     if (options.track_heap) {
         heap_region_add(start, end, true/*arena*/, 0);
         IF_WINDOWS(heap_region_set_heap(start, heap);)
-    } else if (!options.leaks_only && options.shadowing)
+    } else if (options.shadowing)
         shadow_set_range(start, end, SHADOW_UNDEFINED);
 }
 
 static void
 heap_iter_chunk(app_pc start, app_pc end)
 {
-    if (!options.leaks_only && options.shadowing)
+    if (options.shadowing)
         shadow_set_range(start, end, SHADOW_DEFINED);
     /* We track mallocs even if not counting leaks in order to
      * handle failed frees properly
@@ -1095,12 +1093,12 @@ set_initial_layout(void)
 #ifdef WINDOWS
     if (options.leaks_only || options.shadowing)
         heap_walk();
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         set_initial_structures(dr_get_current_drcontext());
         memory_walk();
     }
 #else
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         /* identify stack before memory walk */
         set_initial_structures(dr_get_current_drcontext());
     }
@@ -1288,7 +1286,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
-    if (!options.leaks_only && options.shadowing)
+    if (options.shadowing)
         replace_module_load(drcontext, info, loaded);
     syscall_module_load(drcontext, info, loaded); /* must precede alloc_module_load */
     alloc_module_load(drcontext, info, loaded);
@@ -1304,7 +1302,7 @@ event_module_unload(void *drcontext, const module_data_t *info)
 {
     if (!options.perturb_only)
         callstack_module_unload(drcontext, info);
-    if (!options.leaks_only && options.shadowing)
+    if (options.shadowing)
         replace_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
 #ifdef USE_DRSYMS

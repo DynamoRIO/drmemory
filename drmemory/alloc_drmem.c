@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -147,10 +147,10 @@ alloc_drmem_init(void)
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
     alloc_ops.get_padded_size = false; /* don't need padding size */
     alloc_ops.replace_realloc = options.replace_realloc &&
-        !options.leaks_only && options.shadowing;
+        options.shadowing;
 #ifdef WINDOWS
     alloc_ops.disable_crtdbg = options.disable_crtdbg &&
-        !options.leaks_only && options.shadowing;
+        options.shadowing;
     alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
@@ -159,7 +159,7 @@ alloc_drmem_init(void)
     /* we can't disable operator interception if !options.check_delete_mismatch
      * b/c of msvc debug delete reading headers
      */
-    alloc_ops.intercept_operators = !options.leaks_only && options.shadowing;
+    alloc_ops.intercept_operators = options.shadowing;
     alloc_ops.conservative = options.conservative;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
@@ -464,7 +464,7 @@ client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,
      * mark as defined and to leave as unaddressable and to mark as
      * defined here (xref PR 531619).
      */
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         uint val = zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED;
         shadow_set_range(base, base + size, val);
     }
@@ -490,7 +490,7 @@ client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
     /* Copy over old allocation's shadow values.  If new region is bigger, mark
      * the extra space at the end as undefined.  PR 486049.
      */ 
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         if (new_size > old_size) {
             shadow_copy_range(old_base, new_base, old_size);
             shadow_set_range(new_base + old_size, new_base + new_size,
@@ -667,10 +667,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
 {
     report_malloc(base, base+size, "free", mc);
 
-    if (!options.leaks_only && options.shadowing)
+    if (options.shadowing)
         shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
 
-    if (!options.leaks_only && options.shadowing && options.delay_frees > 0) {
+    if (options.shadowing && options.delay_frees > 0) {
         /* PR 406762: delay frees to catch more errors.  We put
          * this to-be-freed memory in a delay FIFO and leave it as
          * unaddressable.  One the FIFO fills up we substitute the
@@ -902,7 +902,7 @@ void
 client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
 {
 #ifdef WINDOWS
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         if (anon) {
             if (pt->in_heap_routine == 0)
                 shadow_set_range(base, base+size, SHADOW_DEFINED);
@@ -929,11 +929,11 @@ client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
          * new arenas gracefully and without races (xref PR 427601, PR
          * 531619).
          */
-        if (pt->in_heap_routine == 0 && !options.leaks_only && options.shadowing)
+        if (pt->in_heap_routine == 0 && options.shadowing)
             shadow_set_range(base, base+size, SHADOW_DEFINED);
         /* PR 418629: to determine stack bounds accurately we track mmaps */
         mmap_tree_add(base, size);
-    } else if (!options.leaks_only && options.shadowing) {
+    } else if (options.shadowing) {
         /* mapping a file: if an image need to walk sub-regions.
          * FIXME: on linux though the sub-regions have their own
          * mmaps: wait for those?
@@ -949,7 +949,7 @@ void
 client_handle_munmap(app_pc base, size_t size, bool anon)
 {
 #ifdef WINDOWS
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         if (anon)
             shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
         else
@@ -958,9 +958,9 @@ client_handle_munmap(app_pc base, size_t size, bool anon)
 #else
     /* anon not known to common/alloc.c so we see whether in the anon table */
     if (mmap_tree_remove(base, size)) {
-        if (!options.leaks_only && options.shadowing)
+        if (options.shadowing)
             shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
-    } else if (!options.leaks_only && options.shadowing)
+    } else if (options.shadowing)
         mmap_walk(base, size, IF_WINDOWS_(NULL) false/*remove*/);
 #endif
     LOG(2, "munmap %s "PFX"-"PFX"\n", anon ? "anon" : "file",
@@ -972,7 +972,7 @@ client_handle_munmap_fail(app_pc base, size_t size, bool anon)
 {
 #ifdef WINDOWS
     /* FIXME: need to restore shadow values by storing on pre-syscall */
-    if (!options.leaks_only && options.shadowing)
+    if (options.shadowing)
         mmap_walk(base, size, IF_WINDOWS_(NULL) true/*add*/);
 #else
     if (anon) {
@@ -981,10 +981,10 @@ client_handle_munmap_fail(app_pc base, size_t size, bool anon)
          * race handling model.  Xref malloc race handling: but
          * that relies on detecting failures ahead of time.
          */
-        if (!options.leaks_only && options.shadowing)
+        if (options.shadowing)
             shadow_set_range(base, base+size, SHADOW_DEFINED);
         mmap_tree_add(base, size);
-    } else if (!options.leaks_only && options.shadowing)
+    } else if (options.shadowing)
         mmap_walk(base, size, true/*add*/);
 #endif
 }
@@ -995,7 +995,7 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
                      bool image)
 {
     bool shrink = (new_size < old_size);
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         shadow_copy_range(old_base, new_base, shrink ? new_size : old_size);
         if (shrink) {
             shadow_set_range(old_base+new_size, old_base+old_size,
@@ -1381,7 +1381,7 @@ at_signal_handler(void)
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);

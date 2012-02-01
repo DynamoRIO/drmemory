@@ -302,9 +302,6 @@ options_init(const char *opstr)
     if (options.leaks_only || options.perturb_only) {
         /* for performance use only DR's slots */
         options.num_spill_slots = 0;
-        /* we now disable shadowing for leaks_only so we could clean up
-         * all the existing checks for both to only check shadowing
-         */
         options.shadowing = false;
     }
     /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath

@@ -298,7 +298,7 @@ static shadow_block_t *
 get_shadow_table(uint idx)
 {
     /* We store the displacement (shadow minus app) (PR 553724) */
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     return (shadow_block_t *)
         (shadow_table[idx] + (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY));
 }
@@ -528,7 +528,7 @@ void
 shadow_set_range(app_pc start, app_pc end, uint val)
 {
     app_pc pc = start;
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     ASSERT(val <= 4, "invalid shadow value");
     LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
     DOLOG(2, {

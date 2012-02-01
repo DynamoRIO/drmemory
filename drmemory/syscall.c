@@ -240,7 +240,7 @@ auxlib_check_sysparam_defined(void *drcontext, uint sysnum, uint argnum,
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     app_loc_t loc;
     reg_id_t reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     syscall_to_loc(&loc, sysnum, NULL);
     check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
 }
@@ -626,7 +626,7 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
     /* Don't trigger asserts in handle_mem_ref(): syscall will probably fail
      * or it's an optional arg
      */
-    ASSERT(!options.leaks_only && options.shadowing, "shadowing disabled");
+    ASSERT(options.shadowing, "shadowing disabled");
     if (!options.check_uninitialized && flags != MEMREF_CHECK_ADDRESSABLE)
         return;
     if (ptr != NULL && sz > 0 && flags != 0) {
@@ -1036,7 +1036,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
 
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         bool known = false;
         sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {
@@ -1107,7 +1107,7 @@ event_post_syscall(void *drcontext, int sysnum)
     if (auxlib_known_syscall(sysnum))
         auxlib_shared_post_syscall(drcontext, sysnum, &mc);
 
-    if (!options.leaks_only && options.shadowing) {
+    if (options.shadowing) {
         bool known = false;
         syscall_info_t *sysinfo;
 
