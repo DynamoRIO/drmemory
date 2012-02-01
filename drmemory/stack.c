@@ -482,7 +482,7 @@ instrument_esp_cmovcc_adjust(void *drcontext,
     instr_t *jcc;
     int opc = instr_get_opcode(inst);
     /* restore the app's aflags if necessary */
-    if (!options.leaks_only && whole_bb_spills_enabled()) {
+    if (whole_bb_spills_enabled()) {
         restore_aflags_if_live(drcontext, bb, inst, NULL, bi);
         /* to avoid eflags save on the mark_eflags_used later */
         bi->eflags_used = true;

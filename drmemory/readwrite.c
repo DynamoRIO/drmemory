@@ -316,7 +316,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     ASSERT(pt != NULL, "pt shouldn't be null");
     cpt = (client_per_thread_t *) pt->client_data;
 
-    if (options.leaks_only || !options.shadowing)
+    if (!options.shadowing)
         return true;
 
     /* Are we asking DR to translate just pc?  Then return true and ignore regs */
@@ -462,7 +462,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     stringop_entry_t *stringop;
     uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
-    if (options.leaks_only || !options.shadowing)
+    if (!options.shadowing)
         return;
 #endif
 
@@ -2575,30 +2575,28 @@ instrument_init(void)
     });
 #endif
 
-    if (!options.leaks_only) {
-        gencode_lock = dr_mutex_create();
+    gencode_lock = dr_mutex_create();
 
-        hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
-                          false/*!synch*/, bb_table_free_entry, NULL, NULL);
-        hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
-        hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
-        stringop_lock = dr_mutex_create();
-        hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
-                          false/*!strdup*/, false/*!synch*/,
-                          stringop_free_entry, NULL, NULL);
-        hashtable_init_ex(&stringop_us2app_table, STRINGOP_HASH_BITS, HASH_INTPTR,
-                          false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
+    hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
+                      false/*!synch*/, bb_table_free_entry, NULL, NULL);
+    hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+    hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+    stringop_lock = dr_mutex_create();
+    hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
+                      false/*!strdup*/, false/*!synch*/,
+                      stringop_free_entry, NULL, NULL);
+    hashtable_init_ex(&stringop_us2app_table, STRINGOP_HASH_BITS, HASH_INTPTR,
+                      false/*!strdup*/, false/*!synch*/, NULL, NULL, NULL);
 
 #ifdef STATISTICS
-        next_stats_dump = options.stats_dump_interval;
+    next_stats_dump = options.stats_dump_interval;
 #endif
         
 #ifdef TOOL_DR_MEMORY
-        replace_init();
+    replace_init();
 #endif
-    }
 }
 
 void
@@ -2609,18 +2607,16 @@ instrument_exit(void)
 #ifdef TOOL_DR_MEMORY
     nonheap_free(shared_slowpath_region, SHARED_SLOWPATH_SIZE, HEAPSTAT_GENCODE);
 #endif
-    if (!options.leaks_only) {
-        dr_mutex_destroy(gencode_lock);
-        hashtable_delete_with_stats(&bb_table, "bb_table");
-        hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
-        hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
-        dr_mutex_destroy(stringop_lock);
-        hashtable_delete(&stringop_app2us_table);
-        hashtable_delete(&stringop_us2app_table);
+    dr_mutex_destroy(gencode_lock);
+    hashtable_delete_with_stats(&bb_table, "bb_table");
+    hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
+    hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
+    dr_mutex_destroy(stringop_lock);
+    hashtable_delete(&stringop_app2us_table);
+    hashtable_delete(&stringop_us2app_table);
 #ifdef TOOL_DR_MEMORY
-        replace_exit();
+    replace_exit();
 #endif
-    }
 }
 
 /* PR 525807: try to handle small malloced stacks */
@@ -3640,7 +3636,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
          */
         if ((options.leaks_only || options.shadowing) &&
             instr_writes_esp(inst)) {
-            bool shadow_xsp = !options.leaks_only &&
+            bool shadow_xsp = options.shadowing &&
                 (options.check_uninitialized || options.check_stack_bounds);
             bool zero_stack = ZERO_STACK();
             if (shadow_xsp || zero_stack) {

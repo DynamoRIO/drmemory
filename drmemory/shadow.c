@@ -1756,15 +1756,13 @@ shadow_init(void)
 {
     ASSERT(options.shadowing, "shadowing disabled");
     shadow_registers_init();
-    if (!options.leaks_only)
-        shadow_table_init();
+    shadow_table_init();
 }
 
 void
 shadow_exit(void)
 {
     shadow_registers_exit();
-    if (!options.leaks_only)
-        shadow_table_exit();
+    shadow_table_exit();
 }
 

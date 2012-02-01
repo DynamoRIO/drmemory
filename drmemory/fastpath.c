@@ -5055,14 +5055,13 @@ whole_bb_spills_enabled(void)
 #ifdef TOOL_DR_HEAPSTAT
             options.staleness &&
 #endif
-            options.shadowing && 
             /* should we enable whole-bb for -leaks_only?
              * we'd need to enable bb table and state restore on fault.
              * since it's rare to have more than one stack adjust in a
              * single bb, I don't think we'd gain enough perf to be worth
              * the complexity.
              */
-            !options.leaks_only);
+            options.shadowing);
 }
 
 void

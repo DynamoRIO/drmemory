@@ -64,7 +64,7 @@ handle_make_mem_defined_if_addressable(vg_client_request_t *request)
     app_pc cur;
 
     /* No-op if we're not tracking definedness. */
-    if (options.leaks_only || !options.shadowing || !options.check_uninitialized)
+    if (!options.shadowing || !options.check_uninitialized)
         return 1;
 
     LOG(2, "Marking addressable bytes in range "PFX"-"PFX" as defined \n",

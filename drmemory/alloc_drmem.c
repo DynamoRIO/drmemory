@@ -146,11 +146,9 @@ alloc_drmem_init(void)
     alloc_ops.size_in_redzone = options.size_in_redzone;
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
     alloc_ops.get_padded_size = false; /* don't need padding size */
-    alloc_ops.replace_realloc = options.replace_realloc &&
-        options.shadowing;
+    alloc_ops.replace_realloc = options.replace_realloc && options.shadowing;
 #ifdef WINDOWS
-    alloc_ops.disable_crtdbg = options.disable_crtdbg &&
-        options.shadowing;
+    alloc_ops.disable_crtdbg = options.disable_crtdbg && options.shadowing;
     alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
@@ -1019,7 +1017,7 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
     client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    if (options.leaks_only || !options.shadowing)
+    if (!options.shadowing)
         return;
     syscall_handle_cbret(drcontext, pt_parent, pt_child);
 
@@ -1072,7 +1070,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
-    if (options.leaks_only || !options.shadowing || !options.check_stack_bounds)
+    if (!options.shadowing || !options.check_stack_bounds)
         return;
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
@@ -1133,7 +1131,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    if (options.leaks_only || !options.shadowing)
+    if (!options.shadowing)
         return;
     dr_get_mcontext(drcontext, &mc);
 #ifdef WINDOWS
@@ -1316,7 +1314,7 @@ client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 #ifdef LINUX
     ptr_int_t result = dr_syscall_get_result(drcontext);
     client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    if (options.leaks_only || !options.shadowing)
+    if (!options.shadowing)
         return;
     if (sysnum == SYS_rt_sigaction
         IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
@@ -2190,7 +2188,7 @@ client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
                        void *client_data)
 {
     /* don't report leaks if we never scanned (could have bailed for PR 574018) */
-    if (!options.leaks_only && !options.shadowing)
+    if (!options.track_allocs)
         return;
     if (options.count_leaks)
         leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
@@ -2235,8 +2233,8 @@ is_register_defined(void *drcontext, reg_id_t reg)
 void
 check_reachability(bool at_exit)
 {
-    /* no point in scanning unless we have leaks-only info or full shadowing */
-    if (!options.leaks_only && !options.shadowing)
+    /* no leak scan if we do not memory alloc (could have bailed for PR 574018) */
+    if (!options.track_allocs)
         return;
     if (!options.count_leaks)
         return;

@@ -2319,6 +2319,8 @@ check_prctl_whitelist(byte *prctl_arg1)
              */
             ELOGF(0, f_global, "\n*********\nDISABLING MEMORY CHECKING for %s\n", nm);
             options.shadowing = false;
+            options.track_allocs = false;
+            options.count_leaks = false;
             dr_flush_region(0, ~((ptr_uint_t)0));
         }
     }
