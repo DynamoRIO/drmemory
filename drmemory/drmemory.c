@@ -1091,7 +1091,7 @@ set_initial_layout(void)
      * walk to find it.
      */
 #ifdef WINDOWS
-    if (options.leaks_only || options.shadowing)
+    if (options.track_allocs)
         heap_walk();
     if (options.shadowing) {
         set_initial_structures(dr_get_current_drcontext());
@@ -1102,7 +1102,7 @@ set_initial_layout(void)
         /* identify stack before memory walk */
         set_initial_structures(dr_get_current_drcontext());
     }
-    if (options.leaks_only || options.shadowing) {
+    if (options.track_allocs) {
         /* leaks_only still needs memory_walk to find heap base */
         memory_walk();
         heap_walk();
@@ -1286,7 +1286,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
-    if (options.shadowing)
+    if (INSTRUMENT_MEMREFS())
         replace_module_load(drcontext, info, loaded);
     syscall_module_load(drcontext, info, loaded); /* must precede alloc_module_load */
     alloc_module_load(drcontext, info, loaded);
@@ -1302,7 +1302,7 @@ event_module_unload(void *drcontext, const module_data_t *info)
 {
     if (!options.perturb_only)
         callstack_module_unload(drcontext, info);
-    if (options.shadowing)
+    if (INSTRUMENT_MEMREFS())
         replace_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
 #ifdef USE_DRSYMS

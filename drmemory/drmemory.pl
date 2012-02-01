@@ -118,6 +118,7 @@ $batch = 0; # batch mode: no popups please
 #   if we re-insert in for_trace bbs it will work.)
 # to save space we use -bb_single_restore_prefix
 # PR 415155: our code expansion causes us to exceed max bb size sometimes
+# XXX: for pattern mode, we should be able to use traces for better performance.
 $def_dr_ops = "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256";
 $user_ops = "";
 $nudge_pid = "";

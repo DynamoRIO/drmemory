@@ -626,7 +626,7 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
     /* Don't trigger asserts in handle_mem_ref(): syscall will probably fail
      * or it's an optional arg
      */
-    ASSERT(options.shadowing, "shadowing disabled");
+    ASSERT(INSTRUMENT_MEMREFS(), "memory reference checking disabled");
     if (!options.check_uninitialized && flags != MEMREF_CHECK_ADDRESSABLE)
         return;
     if (ptr != NULL && sz > 0 && flags != 0) {
@@ -1036,7 +1036,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
 
-    if (options.shadowing) {
+    if (INSTRUMENT_MEMREFS()) {
         bool known = false;
         sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {

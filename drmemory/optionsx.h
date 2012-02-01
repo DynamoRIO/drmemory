@@ -427,7 +427,12 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_max, uint, 50, 0, UINT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
                     "Seed used for random delays added by -perturb",
                     "To reproduce the random delays added by -perturb, pass the seed from the logfile from the target run to this option.  There may still be non-determinism in the rest of the system, however.")
-
+OPTION_CLIENT_BOOL(drmemscope, light, false,
+                   "Enables a lightweight mode that detects only critical errors",
+                   "This option enables a lightweight mode that detects only critical errors.  Currently these include only unaddressable accesses.")
+OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, 0, 0, USHRT_MAX,
+                    "Enables pattern mode. A non-zero 2-byte value must be provided",
+                    "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")
 
 /****************************************************************************
  * Un-documented client options, for developer use only

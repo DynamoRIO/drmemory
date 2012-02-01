@@ -462,7 +462,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     stringop_entry_t *stringop;
     uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
-    if (!options.shadowing)
+    if (!INSTRUMENT_MEMREFS())
         return;
 #endif
 
@@ -2530,55 +2530,59 @@ instrument_init(void)
     instrlist_t *ilist;
 #endif
 
-    if (!options.shadowing)
+    if (!INSTRUMENT_MEMREFS())
         return;
 
 #ifdef TOOL_DR_MEMORY
-    ilist = instrlist_create(drcontext);
+    if (options.shadowing) {
+        ilist = instrlist_create(drcontext);
 
-    shared_slowpath_region = (byte *)
-        nonheap_alloc(SHARED_SLOWPATH_SIZE,
-                      DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC,
-                      HEAPSTAT_GENCODE);
-    pc = shared_slowpath_region;
-
-    pc = generate_shared_slowpath(drcontext, ilist, pc);
-    ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
-           "shared esp slowpath too large");
-
-    pc = generate_shared_esp_slowpath(drcontext, ilist, pc);
-    ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
-           "shared esp slowpath too large");
-    pc = generate_shared_esp_fastpath(drcontext, ilist, pc);
-    ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
-           "shared esp fastpath too large");
-
-    instrlist_clear_and_destroy(drcontext, ilist);
-
-    /* now mark as +rx (non-writable) */
-    ok = dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
-                           DR_MEMPROT_READ|DR_MEMPROT_EXEC);
-    ASSERT(ok, "-w failed on shared routines gencode");
-
-    DOLOG(2, {
-        byte *end_pc = pc;
+        shared_slowpath_region = (byte *)
+            nonheap_alloc(SHARED_SLOWPATH_SIZE,
+                          DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC,
+                          HEAPSTAT_GENCODE);
         pc = shared_slowpath_region;
-        LOG(2, "shared_slowpath region:\n");
-        while (pc < end_pc) {
-            pc = disassemble_with_info(drcontext, pc, f_global,
-                                       true/*show pc*/, true/*show bytes*/);
-        }
-    });
+
+        pc = generate_shared_slowpath(drcontext, ilist, pc);
+        ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
+               "shared esp slowpath too large");
+
+        pc = generate_shared_esp_slowpath(drcontext, ilist, pc);
+        ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
+               "shared esp slowpath too large");
+        pc = generate_shared_esp_fastpath(drcontext, ilist, pc);
+        ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
+               "shared esp fastpath too large");
+
+        instrlist_clear_and_destroy(drcontext, ilist);
+
+        /* now mark as +rx (non-writable) */
+        ok = dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
+                               DR_MEMPROT_READ|DR_MEMPROT_EXEC);
+        ASSERT(ok, "-w failed on shared routines gencode");
+
+        DOLOG(2, {
+            byte *end_pc = pc;
+            pc = shared_slowpath_region;
+            LOG(2, "shared_slowpath region:\n");
+            while (pc < end_pc) {
+                pc = disassemble_with_info(drcontext, pc, f_global,
+                                           true/*show pc*/, true/*show bytes*/);
+            }
+        });
+    }
 #endif
 
-    gencode_lock = dr_mutex_create();
+    if (options.shadowing) {
+        gencode_lock = dr_mutex_create();
 
-    hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
-                      false/*!synch*/, bb_table_free_entry, NULL, NULL);
-    hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
-                   false/*!strdup*/);
-    hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
-                   false/*!strdup*/);
+        hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
+                          false/*!synch*/, bb_table_free_entry, NULL, NULL);
+        hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
+        hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
+                       false/*!strdup*/);
+    }
     stringop_lock = dr_mutex_create();
     hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
                       false/*!strdup*/, false/*!synch*/,
@@ -2598,15 +2602,20 @@ instrument_init(void)
 void
 instrument_exit(void)
 {
-    if (!options.shadowing)
+    if (!INSTRUMENT_MEMREFS())
         return;
 #ifdef TOOL_DR_MEMORY
-    nonheap_free(shared_slowpath_region, SHARED_SLOWPATH_SIZE, HEAPSTAT_GENCODE);
+    if (options.shadowing) {
+        nonheap_free(shared_slowpath_region, SHARED_SLOWPATH_SIZE, 
+                     HEAPSTAT_GENCODE);
+    }
 #endif
-    dr_mutex_destroy(gencode_lock);
-    hashtable_delete_with_stats(&bb_table, "bb_table");
-    hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
-    hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
+    if (options.shadowing) {
+        dr_mutex_destroy(gencode_lock);
+        hashtable_delete_with_stats(&bb_table, "bb_table");
+        hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
+        hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
+    }
     dr_mutex_destroy(stringop_lock);
     hashtable_delete(&stringop_app2us_table);
     hashtable_delete(&stringop_us2app_table);
@@ -3370,7 +3379,7 @@ static void
 app_to_app_transformations(void *drcontext, instrlist_t *bb, bb_info_t *bi,
                            bool translating)
 {
-    if (options.repstr_to_loop && options.shadowing)
+    if (options.repstr_to_loop && INSTRUMENT_MEMREFS())
         convert_repstr_to_loop(drcontext, bb, bi, translating);
 }
 
@@ -3455,7 +3464,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     /* First, do replacements; then, app-to-app; finally, instrument. */
     alloc_replace_instrument(drcontext, bb);
 #ifdef TOOL_DR_MEMORY
-    if (options.shadowing) {
+    if (INSTRUMENT_MEMREFS()) {
         /* String routine replacement */
         replace_instrument(drcontext, bb);
     }
@@ -3497,7 +3506,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
         /* We can't change check_ignore_unaddr in the middle b/c of recreation
          * so only set if entering/exiting on first
          */
-        if (inst == first && options.shadowing && options.check_ignore_unaddr) {
+        if (inst == first && INSTRUMENT_MEMREFS() && options.check_ignore_unaddr) {
             if (entering_alloc) {
                 check_ignore_unaddr = true;
                 LOG(2, "entering heap routine: adding nop-if-mem-unaddr checks\n");

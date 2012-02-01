@@ -146,9 +146,9 @@ alloc_drmem_init(void)
     alloc_ops.size_in_redzone = options.size_in_redzone;
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
     alloc_ops.get_padded_size = false; /* don't need padding size */
-    alloc_ops.replace_realloc = options.replace_realloc && options.shadowing;
+    alloc_ops.replace_realloc = options.replace_realloc && INSTRUMENT_MEMREFS();
 #ifdef WINDOWS
-    alloc_ops.disable_crtdbg = options.disable_crtdbg && options.shadowing;
+    alloc_ops.disable_crtdbg = options.disable_crtdbg && INSTRUMENT_MEMREFS();
     alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
@@ -157,7 +157,7 @@ alloc_drmem_init(void)
     /* we can't disable operator interception if !options.check_delete_mismatch
      * b/c of msvc debug delete reading headers
      */
-    alloc_ops.intercept_operators = options.shadowing;
+    alloc_ops.intercept_operators = INSTRUMENT_MEMREFS();
     alloc_ops.conservative = options.conservative;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
@@ -668,7 +668,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
     if (options.shadowing)
         shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
 
-    if (options.shadowing && options.delay_frees > 0) {
+    if (INSTRUMENT_MEMREFS() && options.delay_frees > 0) {
         /* PR 406762: delay frees to catch more errors.  We put
          * this to-be-freed memory in a delay FIFO and leave it as
          * unaddressable.  One the FIFO fills up we substitute the

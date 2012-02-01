@@ -703,7 +703,7 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
     ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
     NULL_TERMINATE_BUFFER(idmsg);
 
-    ASSERT(options.shadowing, "shadowing disabled");
+    ASSERT(INSTRUMENT_MEMREFS(), "memory reference checking disabled");
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
      */
@@ -711,9 +711,10 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
         reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                     (app_pc)mc->xsp, argsz, mc, idmsg);
-    } else {
+        check_sysmem(options.shadowing ? 
+                     MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE,
+                     sysnum, (app_pc)mc->xsp, argsz, mc, idmsg);
+    } else if (options.shadowing){
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, idmsg);
         check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);

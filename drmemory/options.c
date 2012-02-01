@@ -347,6 +347,26 @@ options_init(const char *opstr)
     if ((options.snapshots & (~(options.snapshots-1))) != options.snapshots)
         usage_error("-snapshots must be power of 2", "");
 #else
+    if (options.light) {
+        /* XXX: we can switch to pattern mode later */
+        options.check_uninitialized = false;
+    }
+    if (options.pattern != 0) {
+        /* we do not need shadow memory */
+        options.shadowing = false;
+        /* we need 2 spill slots for aflags and eax in the whole bb */
+        options.num_spill_slots = 2;
+        /* the size is not stored in redzone */
+        options.size_in_redzone = false;
+        /* we use two-byte pattern */
+        options.pattern |= options.pattern << 16;
+        /* no unknown syscalls analysis */
+        options.analyze_unknown_syscalls = false;
+        if (options.leaks_only)
+            usage_error("-leaks_only cannot be used with pattern mode", "");
+        /* FIXME: i#750 */
+        ASSERT(false, "Not Implemented Yet");
+    }
     if (!options.count_leaks) {
         options.check_leaks_on_destroy = false;
     }

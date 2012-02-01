@@ -58,5 +58,6 @@ usage_error(const char *msg, const char *submsg);
 /* we zero for leaks, and staleness does not care about xsp */
 # define ZERO_STACK() (options.zero_stack && options.check_leaks)
 #endif
+#define INSTRUMENT_MEMREFS() (options.shadowing || options.pattern != 0)
 
 #endif /* _OPTIONS_H_ */
