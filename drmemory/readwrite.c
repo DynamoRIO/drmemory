@@ -2542,20 +2542,16 @@ instrument_init(void)
                       HEAPSTAT_GENCODE);
     pc = shared_slowpath_region;
 
-    if (!options.leaks_only) {
-        pc = generate_shared_slowpath(drcontext, ilist, pc);
-        ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
-               "shared esp slowpath too large");
-    }
+    pc = generate_shared_slowpath(drcontext, ilist, pc);
+    ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
+           "shared esp slowpath too large");
 
     pc = generate_shared_esp_slowpath(drcontext, ilist, pc);
     ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
            "shared esp slowpath too large");
-    if (!options.leaks_only) {
-        pc = generate_shared_esp_fastpath(drcontext, ilist, pc);
-        ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
-               "shared esp fastpath too large");
-    }
+    pc = generate_shared_esp_fastpath(drcontext, ilist, pc);
+    ASSERT(pc - shared_slowpath_region <= SHARED_SLOWPATH_SIZE,
+           "shared esp fastpath too large");
 
     instrlist_clear_and_destroy(drcontext, ilist);
 
