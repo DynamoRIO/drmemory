@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -41,6 +41,7 @@
 #ifdef TOOL_DR_HEAPSTAT
 # include "../drheapstat/staleness.h"
 #endif
+#include "pattern.h"
 
 /* State restoration: need to record which bbs have eflags-save-at-top.
  * We store the app pc of the last instr in the bb.
@@ -462,7 +463,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     stringop_entry_t *stringop;
     uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
-    if (!INSTRUMENT_MEMREFS())
+    if (!options.shadowing)
         return;
 #endif
 
@@ -1643,7 +1644,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
                    4, mc, shadow_vals);
 }
 
-static bool
+bool
 opnd_uses_nonignorable_memory(opnd_t opnd)
 {
     /* XXX: we could track ebp and try to determine when not used as frame ptr */
@@ -3556,6 +3557,12 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
 #ifdef WINDOWS
         ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
+#ifdef TOOL_DR_MEMORY
+        if (options.pattern != 0) {
+            pattern_instrument_check(drcontext, bb, inst);
+            continue;
+        }
+#endif
         if (!options.shadowing && !options.leaks_only)
             continue;
         if (instr_is_interrupt(inst))
@@ -3712,6 +3719,10 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
             }
         }
     }
+#ifdef TOOL_DR_MEMORY
+    if (options.pattern != 0)
+        pattern_instrument_reverse_scan(drcontext, bb);
+#endif
     LOG(5, "\texiting instrument_bb\n");
 
     if (options.shadowing) {

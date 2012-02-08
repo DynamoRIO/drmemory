@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -219,6 +219,16 @@ insert_spill_global(void *drcontext, instrlist_t *bb, instr_t *inst,
 void
 pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3,
                   bool reg3_must_be_ecx, opnd_t no_overlap1, opnd_t no_overlap2);
+
+/* insert aflags save code sequence w/o spill: lahf; seto %al; */
+void
+insert_save_aflags_nospill(void *drcontext, instrlist_t *ilist,
+                           instr_t *inst, bool save_oflag);
+
+/* insert aflags restore code sequence w/o spill: add %al, 0x7f; sahf; */
+void
+insert_restore_aflags_nospill(void *drcontext, instrlist_t *ilist,
+                              instr_t *inst, bool restore_oflag);
 
 void
 insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,

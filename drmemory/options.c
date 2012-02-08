@@ -354,18 +354,23 @@ options_init(const char *opstr)
     if (options.pattern != 0) {
         /* we do not need shadow memory */
         options.shadowing = false;
-        /* we need 2 spill slots for aflags and eax in the whole bb */
-        options.num_spill_slots = 2;
+        /* we need 0 spill slots across app instrs for now */
+        options.num_spill_slots = 0;
         /* the size is not stored in redzone */
         options.size_in_redzone = false;
         /* we use two-byte pattern */
         options.pattern |= options.pattern << 16;
         /* no unknown syscalls analysis */
         options.analyze_unknown_syscalls = false;
+        /* no uninitialized checks */
+        options.check_uninitialized = false;
+        /* no stack related checks */
+        options.check_stack_bounds = false;
+        options.check_stack_access = false;
+        /* XXX: i#775, no unaligned reference check */
+        options.check_alignment    = false;
         if (options.leaks_only)
             usage_error("-leaks_only cannot be used with pattern mode", "");
-        /* FIXME: i#750 */
-        ASSERT(false, "Not Implemented Yet");
     }
     if (!options.count_leaks) {
         options.check_leaks_on_destroy = false;

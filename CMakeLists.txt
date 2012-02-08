@@ -631,6 +631,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/stack.c
     drmemory/shadow.c
     drmemory/options.c
+    drmemory/pattern.c
     common/alloc.c
     common/alloc_unopt.c
     common/heap.c

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1663,7 +1663,7 @@ opnd_t
 opnd_create_own_spill_slot(uint index)
 {
     ASSERT(index < options.num_spill_slots, "spill slot index overflow");
-    ASSERT(options.shadowing, "incorrectly called");
+    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     return opnd_create_far_base_disp_ex
         /* must use 0 scale to match what DR decodes for opnd_same */
         (SEG_FS, REG_NULL, REG_NULL, 0,

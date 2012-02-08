@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -33,6 +33,7 @@
 #ifdef TOOL_DR_MEMORY
 # include "alloc_drmem.h"
 #endif
+#include "pattern.h"
 
 #ifdef LINUX
 # include <signal.h> /* for SIGSEGV */
@@ -1623,6 +1624,30 @@ insert_spill_or_restore(void *drcontext, instrlist_t *bb, instr_t *inst,
     insert_spill_common(drcontext, bb, inst, si, spill, just_xchg, false);
 }
 
+/* insert aflags save code sequence w/o spill: lahf; seto %al; */
+void
+insert_save_aflags_nospill(void *drcontext, instrlist_t *ilist,
+                           instr_t *inst, bool save_oflag)
+{
+    PRE(ilist, inst, INSTR_CREATE_lahf(drcontext));
+    if (save_oflag) {
+        PRE(ilist, inst,
+            INSTR_CREATE_setcc(drcontext, OP_seto, opnd_create_reg(DR_REG_AL)));
+    }
+}
+
+/* insert aflags restore code sequence w/o spill: add %al, 0x7f; sahf; */
+void
+insert_restore_aflags_nospill(void *drcontext, instrlist_t *ilist,
+                              instr_t *inst, bool restore_oflag)
+{
+    if (restore_oflag) {
+        PRE(ilist, inst, INSTR_CREATE_add
+            (drcontext, opnd_create_reg(REG_AL), OPND_CREATE_INT8(0x7f)));
+    }
+    PRE(ilist, inst, INSTR_CREATE_sahf(drcontext));
+}
+
 void
 insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                    scratch_reg_info_t *si, int aflags)
@@ -1631,22 +1656,15 @@ insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(si->reg == REG_EAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, true/*save*/, false);
     }
-    PRE(bb, inst, INSTR_CREATE_lahf(drcontext));
-    if (aflags != EFLAGS_WRITE_OF) {
-        PRE(bb, inst,
-            INSTR_CREATE_setcc(drcontext, OP_seto, opnd_create_reg(REG_AL)));
-    }
+    insert_save_aflags_nospill(drcontext, bb, inst, aflags != EFLAGS_WRITE_OF);
 }
 
 void
 insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                       scratch_reg_info_t *si, int aflags)
 {
-    if (aflags != EFLAGS_WRITE_OF) {
-        PRE(bb, inst, INSTR_CREATE_add
-            (drcontext, opnd_create_reg(REG_AL), OPND_CREATE_INT8(0x7f)));
-    }
-    PRE(bb, inst, INSTR_CREATE_sahf(drcontext));
+    insert_restore_aflags_nospill(drcontext, bb, inst,
+                                  aflags != EFLAGS_WRITE_OF);
     if (si->reg != REG_NULL) {
         ASSERT(si->reg == REG_EAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, false/*restore*/, false);
@@ -3579,9 +3597,13 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
          */
         LOG(2, "SIGSEGV @"PFX" (xl8=>"PFX") accessing "PFX"\n",
             info->raw_mcontext->xip, info->mcontext->xip, target);
-        if (ZERO_STACK() &&
-            handle_zeroing_fault(drcontext, target, info->raw_mcontext,
-                                 info->mcontext)) {
+        if (options.pattern != 0) {
+            if (pattern_handle_segv_fault(drcontext, info->raw_mcontext))
+                return DR_SIGNAL_SUPPRESS;
+            return DR_SIGNAL_DELIVER;
+        } else if (ZERO_STACK() &&
+                   handle_zeroing_fault(drcontext, target, info->raw_mcontext,
+                                        info->mcontext)) {
             return DR_SIGNAL_SUPPRESS;
         } else if (options.leaks_only) {
             return DR_SIGNAL_DELIVER;
@@ -3598,8 +3620,13 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
     } if (info->sig == SIGILL) {
         LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
             info->raw_mcontext->xip, info->mcontext->xip);
-        if (handle_slowpath_fault(drcontext, info->raw_mcontext, info->mcontext,
-                                  info->fault_fragment_info.tag))
+        if (options.pattern != 0) {
+            if (pattern_handle_ill_fault(drcontext, info->raw_mcontext))
+                return DR_SIGNAL_SUPPRESS;
+            return DR_SIGNAL_DELIVER;
+        } else if (handle_slowpath_fault(drcontext, info->raw_mcontext, 
+                                         info->mcontext,
+                                         info->fault_fragment_info.tag))
             return DR_SIGNAL_SUPPRESS;
     }
 # endif
@@ -3612,10 +3639,12 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
 # ifdef TOOL_DR_MEMORY
     if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
-        if (ZERO_STACK() &&
-            excpt->record->ExceptionInformation[0] == 1 /* write */ &&
-            handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
-                                 excpt->mcontext)) {
+        if (options.pattern != 0) {
+            return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext);
+        } else if (ZERO_STACK() &&
+                   excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+                   handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                        excpt->mcontext)) {
             return false;
         } else if (options.leaks_only) {
             return true;
@@ -3629,10 +3658,14 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
              */
             return false;
         }
-    } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION &&
-               handle_slowpath_fault(drcontext, excpt->raw_mcontext, excpt->mcontext,
-                                     excpt->fault_fragment_info.tag)) {
-        return false;
+    } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
+        if (options.pattern != 0) {
+            return !pattern_handle_ill_fault(drcontext, excpt->raw_mcontext);
+        } else if (handle_slowpath_fault(drcontext, excpt->raw_mcontext,
+                                         excpt->mcontext,
+                                         excpt->fault_fragment_info.tag)) {
+            return false;
+        }
     }
 # endif
     return true;

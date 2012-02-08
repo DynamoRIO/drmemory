@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -157,6 +157,9 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
               bool for_trace, bool translating);
 
 bool
+opnd_uses_nonignorable_memory(opnd_t opnd);
+
+bool
 check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
                dr_mcontext_t *mc, uint *shadow_vals);
 
@@ -200,6 +203,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 #define UD2A_LENGTH         2
 #define CMP_OPCODE       0x80
 #define CMP_BASE_IMM1_LENGTH  3
+#define UD2A_OPCODE      0x0b0f
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

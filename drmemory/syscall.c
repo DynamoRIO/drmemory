@@ -1036,7 +1036,8 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
 
-    if (INSTRUMENT_MEMREFS()) {
+    /* FIXME: i#750 need enable system call parameter checks in pattern mode. */
+    if (options.shadowing) {
         bool known = false;
         sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {
