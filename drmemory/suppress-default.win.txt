@@ -545,3 +545,24 @@ GDI32.dll!DeleteDC
 RICHED20.dll!...
 ntdll.dll!...
 ntdll.dll!LdrShutdownProcess
+
+##################################################
+# i#757: RPC binding leaks in sspicli.dll
+# We use "SspiCli.dll!Cre*" as the last frame to match either
+# CreateRpcConnection or CredUnmarshalTarget which is the nearest export on
+# Win7.
+LEAK
+name=default i#757: RPC binding leaks in sspicli.dll
+RPCRT4.dll!...
+RPCRT4.dll!I_RpcAllocate
+RPCRT4.dll!...
+SspiCli.dll!*
+SspiCli.dll!Cre*
+
+LEAK
+name=default i#757: RPC binding copy leaks in sspicli.dll
+RPCRT4.dll!...
+RPCRT4.dll!I_RpcBindingCopy
+RPCRT4.dll!...
+SspiCli.dll!*
+SspiCli.dll!Cre*
