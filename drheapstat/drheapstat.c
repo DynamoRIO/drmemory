@@ -1973,6 +1973,8 @@ event_thread_init(void *drcontext)
     callstack_thread_init(drcontext);
     if (options.check_leaks || options.staleness)
         shadow_thread_init(drcontext);
+    if (options.staleness)
+        instrument_thread_init(drcontext);
 }
 
 static void 
@@ -1981,6 +1983,8 @@ event_thread_exit(void *drcontext)
     tls_heapstat_t *pt = (tls_heapstat_t *)
         drmgr_get_tls_field(drcontext, tls_idx_heapstat);
     LOGPT(2, PT_GET(drcontext), "in event_thread_exit()\n");
+    if (options.staleness)
+        instrument_thread_init(drcontext);
     callstack_thread_exit(drcontext);
     utils_thread_exit(drcontext);
     thread_free(drcontext, (void *) pt->errbuf, pt->errbufsz, HEAPSTAT_MISC);

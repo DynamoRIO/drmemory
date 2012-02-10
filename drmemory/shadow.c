@@ -30,6 +30,8 @@
 # include "../drheapstat/staleness.h"
 #endif
 
+#include "readwrite.h" /* get_own_seg_base */
+
 #ifdef TOOL_DR_MEMORY /* around whole shadow table */
 
 /***************************************************************************
@@ -1313,22 +1315,13 @@ typedef struct _shadow_registers_t {
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
     byte padding[2];
-#endif
-#ifdef LINUX
-    /* We store segment bases here for dynamic access from thread-shared code */
-    byte *app_fs_base;
-    byte *app_gs_base;
-    byte *dr_fs_base;
-    byte *dr_gs_base;
-#elif !defined(TOOL_DR_MEMORY)
+#else
     /* Avoid empty struct.  FIXME: this is a waste of a tls slot */
     void *bogus;
 #endif
 } shadow_registers_t;
 
 #define NUM_SHADOW_TLS_SLOTS (sizeof(shadow_registers_t)/sizeof(reg_t))
-
-#define NUM_TLS_SLOTS (NUM_SHADOW_TLS_SLOTS + options.num_spill_slots)
 
 static uint tls_shadow_base;
 
@@ -1375,50 +1368,6 @@ opnd_create_shadow_inheap_slot(void)
 }
 #endif /* TOOL_DR_MEMORY */
 
-#ifdef LINUX
-static uint
-tls_base_offs(void)
-{
-    ASSERT(options.shadowing, "incorrectly called");
-    return tls_shadow_base +
-        offsetof(shadow_registers_t, IF_X64_ELSE(dr_gs_base, dr_fs_base));
-}
-
-/* Create a far memory reference opnd to access DR's TLS memory slot
- * for getting app's TLS base address. 
- */
-opnd_t
-opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
-{
-    uint stored_base_offs;
-    ASSERT(options.shadowing, "incorrectly called");
-    ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
-    stored_base_offs = tls_shadow_base +
-        ((seg == SEG_FS) ? offsetof(shadow_registers_t, app_fs_base) : 
-         offsetof(shadow_registers_t, app_gs_base));
-    return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
-         /* we do NOT want an addr16 prefix since most likely going to run on
-          * Core or Core2, and P4 doesn't care that much */
-         false, true, false);
-}
-#endif
-
-static byte *
-get_own_seg_base(void)
-{
-    byte *seg_base;
-#ifdef WINDOWS
-    seg_base = (byte *) get_TEB();
-#else
-    uint offs = tls_base_offs();
-    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
-    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
-    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
-#endif
-    return seg_base;
-}
-
 #if defined(TOOL_DR_MEMORY) || defined(WINDOWS)
 static shadow_registers_t *
 get_shadow_registers(void)
@@ -1436,27 +1385,10 @@ shadow_registers_thread_init(void *drcontext)
 #ifdef TOOL_DR_MEMORY
     static bool first_thread = true;
 #endif
-#ifdef LINUX
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-#endif
     shadow_registers_t *sr;
 #ifdef LINUX
-    /* bootstrap: can't call get_shadow_registers until set up seg bases */
-    byte *app_fs_base =
-        opnd_compute_address(opnd_create_far_base_disp(SEG_FS, REG_NULL, REG_NULL,
-                                                       0, 0, OPSZ_lea), &mc);
-    byte *app_gs_base =
-        opnd_compute_address(opnd_create_far_base_disp(SEG_GS, REG_NULL, REG_NULL,
-                                                       0, 0, OPSZ_lea), &mc);
-    byte *dr_fs_base = dr_get_dr_segment_base(SEG_FS);
-    byte *dr_gs_base = dr_get_dr_segment_base(SEG_GS);
-# ifdef X64
-    sr = (shadow_registers_t *) (dr_gs_base + tls_shadow_base);
-# else
-    sr = (shadow_registers_t *) (dr_fs_base + tls_shadow_base);
-# endif
+    sr = (shadow_registers_t *)
+        (dr_get_dr_segment_base(IF_X64_ELSE(SEG_GS, SEG_FS)) + tls_shadow_base);
 #else
     sr = get_shadow_registers();
 #endif
@@ -1483,17 +1415,6 @@ shadow_registers_thread_init(void *drcontext)
     sr->in_heap_routine = 0;
 #endif /* TOOL_DR_MEMORY */
 
-#ifdef LINUX
-    /* FIXME PR 406315: look for dynamic changes to fs and gs */
-    sr->app_fs_base = app_fs_base;
-    sr->app_gs_base = app_gs_base;
-    sr->dr_fs_base  = dr_fs_base;
-    sr->dr_gs_base  = dr_gs_base;
-    LOG(1, "app: fs base="PFX", gs base="PFX"\n"
-        "dr: fs base"PFX", gs base="PFX"\n",
-        app_fs_base, app_gs_base, dr_fs_base, dr_gs_base);
-#endif
-
     /* store in per-thread data struct so we can access from another thread */
     drmgr_set_tls_field(drcontext, tls_idx_shadow, (void *) sr);
 }
@@ -1510,7 +1431,7 @@ shadow_registers_init(void)
     reg_id_t seg;
     /* XXX: could save space by not allocating shadow regs for -no_check_uninitialized */
     IF_DEBUG(bool ok =)
-        dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_TLS_SLOTS, 0);
+        dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_SHADOW_TLS_SLOTS, 0);
     tls_idx_shadow = drmgr_register_tls_field();
     ASSERT(tls_idx_shadow > -1, "failed to reserve TLS slot");
     LOG(2, "TLS shadow base: "PIFX"\n", tls_shadow_base);
@@ -1522,7 +1443,7 @@ static void
 shadow_registers_exit(void)
 {
     IF_DEBUG(bool ok =)
-        dr_raw_tls_cfree(tls_shadow_base, NUM_TLS_SLOTS);
+        dr_raw_tls_cfree(tls_shadow_base, NUM_SHADOW_TLS_SLOTS);
     ASSERT(ok, "WARNING: unable to free tls slots");
     drmgr_unregister_tls_field(tls_idx_shadow);
 }
@@ -1657,98 +1578,6 @@ is_shadow_register_defined(byte val)
             val == SHADOW_DWORD_DEFINED);
 }
 #endif /* TOOL_DR_MEMORY */
-
-
-/* we allocate our own register spill slots for faster access than
- * the non-directly-addressable DR slots (only 3 are direct)
- */
-uint
-num_own_spill_slots(void)
-{
-    return options.num_spill_slots;
-}
-
-opnd_t
-opnd_create_own_spill_slot(uint index)
-{
-    ASSERT(index < options.num_spill_slots, "spill slot index overflow");
-    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
-    return opnd_create_far_base_disp_ex
-        /* must use 0 scale to match what DR decodes for opnd_same */
-        (SEG_FS, REG_NULL, REG_NULL, 0,
-         tls_shadow_base + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t), OPSZ_PTR,
-         /* we do NOT want an addr16 prefix since most likely going to run on
-          * Core or Core2, and P4 doesn't care that much */
-         false, true, false);
-}
-
-ptr_uint_t
-get_own_tls_value(uint index)
-{
-    if (index < options.num_spill_slots) {
-        byte *seg_base = get_own_seg_base();
-        return *(ptr_uint_t *) (seg_base + tls_shadow_base +
-                                (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t));
-    } else {
-        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
-        return dr_read_saved_reg(dr_get_current_drcontext(), DR_slot);
-    }
-}
-
-void
-set_own_tls_value(uint index, ptr_uint_t val)
-{
-    if (index < options.num_spill_slots) {
-        byte *seg_base = get_own_seg_base();
-        *(ptr_uint_t *)(seg_base + tls_shadow_base +
-                        (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
-    } else {
-        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
-        dr_write_saved_reg(dr_get_current_drcontext(), DR_slot, val);
-    }
-}
-
-ptr_uint_t
-get_thread_tls_value(void *drcontext, uint index)
-{
-    if (index < options.num_spill_slots) {
-        shadow_registers_t *sr = (shadow_registers_t *)
-            drmgr_get_tls_field(drcontext, tls_idx_shadow);
-        return *(ptr_uint_t *)
-            (((byte *)sr) + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t));
-    } else {
-        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
-        return dr_read_saved_reg(drcontext, DR_slot);
-    }
-}
-
-void
-set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
-{
-    if (index < options.num_spill_slots) {
-        shadow_registers_t *sr = (shadow_registers_t *)
-            drmgr_get_tls_field(drcontext, tls_idx_shadow);
-        *(ptr_uint_t *)
-            (((byte *)sr) + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
-    } else {
-        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
-        dr_write_saved_reg(drcontext, DR_slot, val);
-    }
-}
-
-ptr_uint_t
-get_raw_tls_value(uint offset)
-{
-    ptr_uint_t val;
-#ifdef WINDOWS
-    val = *(ptr_uint_t *)(((byte *)get_TEB()) + offset);
-#else
-    asm("movzx %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
-    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
-    asm("mov %%"ASM_XAX", %0" : "=m"(val) : : ASM_XAX);
-#endif
-    return val;
-}
 
 /***************************************************************************/
 

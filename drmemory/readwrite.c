@@ -42,6 +42,7 @@
 # include "../drheapstat/staleness.h"
 #endif
 #include "pattern.h"
+#include <stddef.h>
 
 /* State restoration: need to record which bbs have eflags-save-at-top.
  * We store the app pc of the last instr in the bb.
@@ -288,6 +289,233 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
             return true;
     }
     return false;
+}
+
+/***************************************************************************
+ * we allocate our own register spill slots for faster access than
+ * the non-directly-addressable DR slots (only 3 are direct)
+ */
+
+#ifdef LINUX
+/* Data for which we need direct addressability access from instrumentation */
+typedef struct _tls_instru_t {
+    /* We store segment bases here for dynamic access from thread-shared code */
+    byte *app_fs_base;
+    byte *app_gs_base;
+    byte *dr_fs_base;
+    byte *dr_gs_base;
+} tls_instru_t;
+/* followed by reg spill slots */
+# define NUM_INSTRU_TLS_SLOTS (sizeof(tls_instru_t)/sizeof(byte *))
+#else
+# define NUM_INSTRU_TLS_SLOTS 0
+/* just reg spill slots */
+#endif
+
+#define NUM_TLS_SLOTS (NUM_INSTRU_TLS_SLOTS + options.num_spill_slots)
+
+/* the offset of our tls_instr_t + reg spill tls slots */
+static uint tls_instru_base;
+
+/* we store a pointer in regular tls for access to other threads' TLS */
+static int tls_idx_instru = -1;
+
+#ifdef LINUX
+static uint
+tls_base_offs(void)
+{
+    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
+    return tls_instru_base +
+        offsetof(tls_instru_t, IF_X64_ELSE(dr_gs_base, dr_fs_base));
+}
+
+/* Create a far memory reference opnd to access DR's TLS memory slot
+ * for getting app's TLS base address. 
+ */
+opnd_t
+opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
+{
+    uint stored_base_offs;
+    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
+    ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
+    stored_base_offs = tls_instru_base +
+        ((seg == SEG_FS) ? offsetof(tls_instru_t, app_fs_base) : 
+         offsetof(tls_instru_t, app_gs_base));
+    return opnd_create_far_base_disp_ex
+        (SEG_FS, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
+         /* we do NOT want an addr16 prefix since most likely going to run on
+          * Core or Core2, and P4 doesn't care that much */
+         false, true, false);
+}
+#endif
+
+byte *
+get_own_seg_base(void)
+{
+    byte *seg_base;
+#ifdef WINDOWS
+    seg_base = (byte *) get_TEB();
+#else
+    uint offs = tls_base_offs();
+    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
+    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
+    asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
+#endif
+    return seg_base;
+}
+
+static void
+instru_tls_init(void)
+{
+    reg_id_t seg;
+    IF_DEBUG(bool ok =)
+        dr_raw_tls_calloc(&seg, &tls_instru_base, NUM_TLS_SLOTS, 0);
+    LOG(2, "TLS spill base: "PIFX"\n", tls_instru_base);
+    tls_idx_instru = drmgr_register_tls_field();
+    ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
+    ASSERT(ok, "fatal error: unable to reserve tls slots");
+    ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
+}
+
+static void
+instru_tls_exit(void)
+{
+    IF_DEBUG(bool ok =)
+        dr_raw_tls_cfree(tls_instru_base, NUM_TLS_SLOTS);
+    ASSERT(ok, "WARNING: unable to free tls slots");
+    drmgr_unregister_tls_field(tls_idx_instru);
+}
+
+static void
+instru_tls_thread_init(void *drcontext)
+{
+#ifdef LINUX
+    tls_instru_t *tls;
+    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    mc.size = sizeof(mc);
+    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
+
+    /* bootstrap: can't call get_own_seg_base() until set up seg base fields */
+    byte *app_fs_base =
+        opnd_compute_address(opnd_create_far_base_disp(SEG_FS, REG_NULL, REG_NULL,
+                                                       0, 0, OPSZ_lea), &mc);
+    byte *app_gs_base =
+        opnd_compute_address(opnd_create_far_base_disp(SEG_GS, REG_NULL, REG_NULL,
+                                                       0, 0, OPSZ_lea), &mc);
+    byte *dr_fs_base = dr_get_dr_segment_base(SEG_FS);
+    byte *dr_gs_base = dr_get_dr_segment_base(SEG_GS);
+# ifdef X64
+    tls = (tls_instru_t *) (dr_gs_base + tls_instru_base);
+# else
+    tls = (tls_instru_t *) (dr_fs_base + tls_instru_base);
+# endif
+    /* FIXME PR 406315: look for dynamic changes to fs and gs */
+    tls->app_fs_base = app_fs_base;
+    tls->app_gs_base = app_gs_base;
+    tls->dr_fs_base  = dr_fs_base;
+    tls->dr_gs_base  = dr_gs_base;
+    LOG(1, "app: fs base="PFX", gs base="PFX"\n"
+        "dr: fs base"PFX", gs base="PFX"\n",
+        app_fs_base, app_gs_base, dr_fs_base, dr_gs_base);
+    /* store in per-thread data struct so we can access from another thread */
+    drmgr_set_tls_field(drcontext, tls_idx_instru, (void *) tls);
+#else
+    /* store in per-thread data struct so we can access from another thread */
+    drmgr_set_tls_field(drcontext, tls_idx_instru, (void *)
+                        (get_own_seg_base() + tls_instru_base));
+#endif
+}
+
+static void
+instru_tls_thread_exit(void *drcontext)
+{
+    drmgr_set_tls_field(drcontext, tls_idx_instru, NULL);
+}
+
+uint
+num_own_spill_slots(void)
+{
+    return options.num_spill_slots;
+}
+
+opnd_t
+opnd_create_own_spill_slot(uint index)
+{
+    ASSERT(index < options.num_spill_slots, "spill slot index overflow");
+    ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
+    return opnd_create_far_base_disp_ex
+        /* must use 0 scale to match what DR decodes for opnd_same */
+        (SEG_FS, REG_NULL, REG_NULL, 0,
+         tls_instru_base + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t), OPSZ_PTR,
+         /* we do NOT want an addr16 prefix since most likely going to run on
+          * Core or Core2, and P4 doesn't care that much */
+         false, true, false);
+}
+
+ptr_uint_t
+get_own_tls_value(uint index)
+{
+    if (index < options.num_spill_slots) {
+        byte *seg_base = get_own_seg_base();
+        return *(ptr_uint_t *) (seg_base + tls_instru_base +
+                                (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t));
+    } else {
+        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
+        return dr_read_saved_reg(dr_get_current_drcontext(), DR_slot);
+    }
+}
+
+void
+set_own_tls_value(uint index, ptr_uint_t val)
+{
+    if (index < options.num_spill_slots) {
+        byte *seg_base = get_own_seg_base();
+        *(ptr_uint_t *)(seg_base + tls_instru_base +
+                        (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
+    } else {
+        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
+        dr_write_saved_reg(dr_get_current_drcontext(), DR_slot, val);
+    }
+}
+
+ptr_uint_t
+get_thread_tls_value(void *drcontext, uint index)
+{
+    if (index < options.num_spill_slots) {
+        byte *tls = (byte *) drmgr_get_tls_field(drcontext, tls_idx_instru);
+        return *(ptr_uint_t *)
+            (tls + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t));
+    } else {
+        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
+        return dr_read_saved_reg(drcontext, DR_slot);
+    }
+}
+
+void
+set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
+{
+    if (index < options.num_spill_slots) {
+        byte *tls = (byte *) drmgr_get_tls_field(drcontext, tls_idx_instru);
+        *(ptr_uint_t *)
+            (tls + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
+    } else {
+        dr_spill_slot_t DR_slot = index - options.num_spill_slots;
+        dr_write_saved_reg(drcontext, DR_slot, val);
+    }
+}
+
+ptr_uint_t
+get_raw_tls_value(uint offset)
+{
+    ptr_uint_t val;
+#ifdef WINDOWS
+    val = *(ptr_uint_t *)(((byte *)get_TEB()) + offset);
+#else
+    asm("movzx %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
+    asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
+    asm("mov %%"ASM_XAX", %0" : "=m"(val) : : ASM_XAX);
+#endif
+    return val;
 }
 
 /***************************************************************************
@@ -2529,6 +2757,8 @@ instrument_init(void)
     if (!INSTRUMENT_MEMREFS())
         return;
 
+    instru_tls_init();
+
 #ifdef TOOL_DR_MEMORY
     if (options.shadowing) {
         ilist = instrlist_create(drcontext);
@@ -2618,6 +2848,23 @@ instrument_exit(void)
 #ifdef TOOL_DR_MEMORY
     replace_exit();
 #endif
+    instru_tls_exit();
+}
+
+void
+instrument_thread_init(void *drcontext)
+{
+    if (!INSTRUMENT_MEMREFS())
+        return;
+    instru_tls_thread_init(drcontext);
+}
+
+void
+instrument_thread_exit(void *drcontext)
+{
+    if (!INSTRUMENT_MEMREFS())
+        return;
+    instru_tls_thread_exit(drcontext);
 }
 
 /* PR 525807: try to handle small malloced stacks */

@@ -45,6 +45,12 @@ instrument_init(void);
 void
 instrument_exit(void);
 
+void
+instrument_thread_init(void *drcontext);
+
+void
+instrument_thread_exit(void *drcontext);
+
 byte *
 generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc);
 
@@ -190,27 +196,8 @@ bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);
 
 /***************************************************************************
- * ISA UTILITY ROUTINES
+ * REGISTER SPILLING
  */
-
-#define REP_PREFIX    0xf3
-#define REPNE_PREFIX  0xf2
-#define MOVS_4_OPCODE 0xa5
-#define LOOP_INSTR_OPCODE 0xe2
-#define LOOP_INSTR_LENGTH 2
-#define JNZ_SHORT_OPCODE    0x75
-#define JNZ_SHORT_LENGTH    2
-#define UD2A_LENGTH         2
-#define CMP_OPCODE       0x80
-#define CMP_BASE_IMM1_LENGTH  3
-#define UD2A_OPCODE      0x0b0f
-
-/* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
- * Things would work without this (just lower performance, but on selfmod only)
- * except our short ctis don't reach w/ all the selfmod mangling: and we don't
- * have jmp_smart (i#56/PR 209710)!
- */
-#define PREXL8M instrlist_meta_fault_preinsert
 
 /* eflags eax and up-front save use this slot, and whole-bb spilling stores
  * eflags itself (lahf+seto) here
@@ -233,6 +220,53 @@ spill_slot_opnd(void *drcontext, dr_spill_slot_t slot);
 
 bool
 is_spill_slot_opnd(void *drcontext, opnd_t op);
+
+byte *
+get_own_seg_base(void);
+
+uint
+num_own_spill_slots(void);
+
+opnd_t
+opnd_create_own_spill_slot(uint index);
+
+ptr_uint_t
+get_own_tls_value(uint index);
+
+void
+set_own_tls_value(uint index, ptr_uint_t val);
+
+ptr_uint_t
+get_thread_tls_value(void *drcontext, uint index);
+
+void
+set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val);
+
+ptr_uint_t
+get_raw_tls_value(uint offset);
+
+/***************************************************************************
+ * ISA UTILITY ROUTINES
+ */
+
+#define REP_PREFIX    0xf3
+#define REPNE_PREFIX  0xf2
+#define MOVS_4_OPCODE 0xa5
+#define LOOP_INSTR_OPCODE 0xe2
+#define LOOP_INSTR_LENGTH 2
+#define JNZ_SHORT_OPCODE    0x75
+#define JNZ_SHORT_LENGTH    2
+#define UD2A_LENGTH         2
+#define CMP_OPCODE       0x80
+#define CMP_BASE_IMM1_LENGTH  3
+#define UD2A_OPCODE      0x0b0f
+
+/* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
+ * Things would work without this (just lower performance, but on selfmod only)
+ * except our short ctis don't reach w/ all the selfmod mangling: and we don't
+ * have jmp_smart (i#56/PR 209710)!
+ */
+#define PREXL8M instrlist_meta_fault_preinsert
 
 bool
 reg_is_gpr(reg_id_t reg);

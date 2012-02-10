@@ -405,6 +405,7 @@ event_thread_init(void *drcontext)
     utils_thread_init(drcontext);
     create_thread_logfile(drcontext);
     LOGPT(2, PT_GET(drcontext), "in event_thread_init()\n");
+    instrument_thread_init(drcontext);
     if (options.shadowing) {
         /* For 1st thread we can't get mcontext so we wait for 1st bb.
          * For subsequent we can.  Xref i#117/PR 395156.
@@ -455,6 +456,7 @@ event_thread_exit(void *drcontext)
     syscall_thread_exit(drcontext);
     if (options.shadowing)
         shadow_thread_exit(drcontext);
+    instrument_thread_exit(drcontext);
     utils_thread_exit(drcontext);
     /* with PR 536058 we do have dcontext in exit event so indicate explicitly
      * that we've cleaned up the per-thread data

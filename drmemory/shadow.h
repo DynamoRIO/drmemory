@@ -253,25 +253,4 @@ set_shadow_inheap(uint val);
 bool
 is_shadow_register_defined(byte val);
 
-uint
-num_own_spill_slots(void);
-
-opnd_t
-opnd_create_own_spill_slot(uint index);
-
-ptr_uint_t
-get_own_tls_value(uint index);
-
-void
-set_own_tls_value(uint index, ptr_uint_t val);
-
-ptr_uint_t
-get_thread_tls_value(void *drcontext, uint index);
-
-void
-set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val);
-
-ptr_uint_t
-get_raw_tls_value(uint offset);
-
 #endif /* _SHADOW_H_ */
