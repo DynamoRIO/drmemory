@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,7 +26,6 @@
 
 #include "dr_api.h"
 #include "drheapstat.h"
-#include "../drmemory/client_per_thread.h"
 #include "alloc.h"
 #include "heap.h"
 #include "callstack.h"
@@ -79,7 +78,7 @@ static bool sideline_exit;
  * calling our exit event so we have no chance to clean up its memory.
  * DR then asserts about leaks.  Using a targeted solution for now.
  */
-static per_thread_t *sideline_pt;
+static tls_util_t *sideline_pt;
 static int leak_count;
 static int reachable_leak_count;
 
@@ -133,6 +132,33 @@ static hashtable_t alloc_stack_table;
 /* Used to check collisions with crc32 */
 static hashtable_t alloc_md5_table;
 #endif
+
+/***************************************************************************
+ * TLS and CLS
+ */
+
+typedef struct _tls_heapstat_t {
+    char *errbuf; /* buffer for atomic writes */
+    size_t errbufsz;
+# ifdef LINUX
+    int64 filepos; /* f_callstack file position */
+# endif
+} tls_heapstat_t;
+
+/* XXX: share w/ syscall_os.h */
+#ifdef WINDOWS
+# define SYSCALL_NUM_ARG_STORE 14
+#else
+# define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
+#endif
+
+typedef struct _cls_heapstat_t {
+    /* for recording args so post-syscall can examine */
+    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+} cls_heapstat_t;
+
+static int tls_idx_heapstat = -1;
+static int cls_idx_heapstat = -1;
 
 /***************************************************************************
  * OPTIONS
@@ -308,8 +334,10 @@ client_malloc_data_free(void *data)
 }
 
 static void
-get_buffer(per_thread_t *pt, char **buf/*OUT*/, size_t *bufsz/*OUT*/)
+get_buffer(void *drcontext, char **buf/*OUT*/, size_t *bufsz/*OUT*/)
 {
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_heapstat);
     ASSERT(buf != NULL && bufsz != NULL, "invalid args");
     if (pt == NULL) {
         /* at init time no pt yet */
@@ -322,8 +350,10 @@ get_buffer(per_thread_t *pt, char **buf/*OUT*/, size_t *bufsz/*OUT*/)
 }
 
 static void
-release_buffer(per_thread_t *pt, char *buf, size_t bufsz)
+release_buffer(void *drcontext, char *buf, size_t bufsz)
 {
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_heapstat);
     if (pt == NULL) {
         global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
     }
@@ -685,7 +715,6 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
                       void *existing_data, dr_mcontext_t *mc, app_pc post_call)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     per_callstack_t *per;
     char *buf;
     size_t bufsz;
@@ -693,7 +722,7 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
 #ifdef STATISTICS
     static uint malloc_count;
 #endif
-    get_buffer(pt, &buf, &bufsz);
+    get_buffer(drcontext, &buf, &bufsz);
     if (existing_data != NULL) {
         per = get_cstack_from_alloc_data(existing_data);
         IF_DEBUG({
@@ -767,7 +796,7 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
     if (((malloc_count++) % STATS_DUMP_FREQ) == 0)
         dump_statistics();
 #endif
-    release_buffer(pt, buf, bufsz);
+    release_buffer(drcontext, buf, bufsz);
 
     if (options.staleness)
         return (void *) staleness_create_per_alloc(per, stamp);
@@ -866,20 +895,20 @@ snapshot_exit(void)
 }
 
 void
-client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,
+client_handle_malloc(void *drcontext, app_pc base, size_t size,
                      app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc)
 {
     if (options.check_leaks)
-        leak_handle_alloc(pt, base, size);
+        leak_handle_alloc(drcontext, base, size);
 }
 
 void
-client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
+client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
                       app_pc new_base, size_t new_size, app_pc new_real_base,
                       dr_mcontext_t *mc)
 {
     if (options.check_leaks)
-        leak_handle_alloc(pt, new_base, new_size);
+        leak_handle_alloc(drcontext, new_base, new_size);
 }
 
 void
@@ -922,7 +951,7 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
 }
 
 void
-client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
+client_handle_mmap(void *drcontext, app_pc base, size_t size, bool anon)
 {
 }
 
@@ -957,7 +986,7 @@ client_remove_malloc_routine(void *client_data)
 
 #ifdef WINDOWS
 void
-client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
+client_handle_heap_destroy(void *drcontext, HANDLE heap,
                            void *client_data)
 {
 }
@@ -970,16 +999,13 @@ client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
 }
 
 void
-client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
+client_handle_cbret(void *drcontext)
 {
 }
 
 void
-client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                       bool new_depth)
+client_handle_callback(void *drcontext)
 {
-    /* we share a single client_data struct */
-    pt_child->client_data = pt_parent->client_data;
 }
 
 void
@@ -999,12 +1025,12 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 #endif /* WINDOWS */
 
 void
-client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
 }
 
 void
-client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
 }
 
@@ -1020,7 +1046,6 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
     char *buf;
     size_t bufsz;
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     int num;
 
     ASSERT(options.check_leaks, "leak checking error");
@@ -1036,7 +1061,7 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
         return;
 
     num = atomic_add32_return_sum((volatile int *)&leak_count, 1);
-    get_buffer(pt, &buf, &bufsz);
+    get_buffer(drcontext, &buf, &bufsz);
     BUFPRINT(buf, bufsz, sofar, len, "Error #%d: ", num);
     if (reachable)
         BUFPRINT(buf, bufsz, sofar, len, "REACHABLE ");
@@ -1047,7 +1072,7 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
              "\n\tcallstack=%d\n\terror end\n",
              (end - start), start, end, indirect_bytes, per->id);
     print_buffer(f_global, buf);
-    release_buffer(pt, buf, bufsz);
+    release_buffer(drcontext, buf, bufsz);
 }
 
 /***************************************************************************
@@ -1210,9 +1235,6 @@ static dr_emit_flags_t
 event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
                   bool for_trace, bool translating)
 {
-#ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-#endif
     instr_t *inst, *next_inst;
     instr_t *first = instrlist_first(bb), *where_dead = NULL;
     bool flags_dead = false;
@@ -1221,7 +1243,7 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
     fastpath_info_t mi;
     bool added_instru = false;
     memset(&bi, 0, sizeof(bi));
-    DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
+    DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
 
     alloc_replace_instrument(drcontext, bb);
     if (options.staleness)
@@ -1263,7 +1285,8 @@ event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
                     added_instru = true;
                 } else {
                     LOG(3, "fastpath unavailable "PFX": ", instr_get_app_pc(inst));
-                    DOLOG(3, { instr_disassemble(drcontext, inst, pt->f); });
+                    DOLOG(3, { instr_disassemble(drcontext, inst,
+                                                 LOGFILE_GET(drcontext)); });
                     LOG(3, "\n");
                     bi.shared_memop = opnd_create_null();
                     /* Restore whole-bb spilled regs (PR 489221) 
@@ -1613,8 +1636,8 @@ sideline_run(void *arg)
         sideline_pt = global_alloc(sizeof(*sideline_pt), HEAPSTAT_MISC);
         memset(sideline_pt, 0, sizeof(*sideline_pt));
         /* store it in the slot provided in the drcontext */
-        dr_set_tls_field(drcontext, (void *)sideline_pt);
-        sideline_pt->f = open_logfile("sideline.log", false, -1);
+        drmgr_set_tls_field(drcontext, tls_idx_util, (void *)sideline_pt);
+        utils_thread_set_file(drcontext, open_logfile("sideline.log", false, -1));
     }
     if (options.staleness)
         timer_stale = options.stale_granularity;
@@ -1641,8 +1664,8 @@ static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_heapstat);
     /* fds are shared across fork so we must duplicate */
     file_t f_parent_callstack = dr_dup_file_handle(f_callstack);
     /* we assume no lock is needed since only one thread post-fork */
@@ -1656,8 +1679,8 @@ event_fork(void *drcontext)
     close_file(f_nudge);
     /* now create new files for all 5 */
     create_global_logfile();
-    pt->f = f_global;
-    LOG(0, "new logfile after fork fd=%d\n", pt->f);
+    utils_thread_set_file(drcontext, f_global);
+    LOG(0, "new logfile after fork fd=%d\n", f_global);
 
     /* we don't expect the user to go find the parent's data,
      * so we need to duplicate the callstack file and start
@@ -1669,19 +1692,19 @@ event_fork(void *drcontext)
     if (dr_file_seek(f_parent_callstack, 0, DR_SEEK_SET)) {
         int64 curpos = 0;
         ssize_t sz;
-        LOG(1, "copying parent callstacks "INT64_FORMAT_STRING" bytes\n", cpt->filepos);
-        while (curpos + sizeof(buf) <= cpt->filepos) {
+        LOG(1, "copying parent callstacks "INT64_FORMAT_STRING" bytes\n", pt->filepos);
+        while (curpos + sizeof(buf) <= pt->filepos) {
             sz = dr_read_file(f_parent_callstack, buf, sizeof(buf));
             ASSERT(sz == sizeof(buf), "error reading parent callstack data");
             sz = dr_write_file(f_callstack, buf, sizeof(buf));
             ASSERT(sz == sizeof(buf), "error writing parent callstack data");
             curpos += sizeof(buf);
         }
-        ASSERT(cpt->filepos - curpos < sizeof(buf), "buf calc error");
-        sz = dr_read_file(f_parent_callstack, buf, cpt->filepos - curpos);
-        ASSERT(sz == cpt->filepos - curpos, "error reading parent callstack data");
-        sz = dr_write_file(f_callstack, buf, cpt->filepos - curpos);
-        ASSERT(sz == cpt->filepos - curpos, "error writing parent callstack data");
+        ASSERT(pt->filepos - curpos < sizeof(buf), "buf calc error");
+        sz = dr_read_file(f_parent_callstack, buf, pt->filepos - curpos);
+        ASSERT(sz == pt->filepos - curpos, "error reading parent callstack data");
+        sz = dr_write_file(f_callstack, buf, pt->filepos - curpos);
+        ASSERT(sz == pt->filepos - curpos, "error writing parent callstack data");
     } else
         LOG(0, "ERROR: unable to copy parent callstack file\n");
     close_file(f_parent_callstack);
@@ -1745,7 +1768,10 @@ event_filter_syscall(void *drcontext, int sysnum)
 static bool
 event_pre_syscall(void *drcontext, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_heapstat);
+    cls_heapstat_t *cpt = (cls_heapstat_t *)
+        drmgr_get_cls_field(drcontext, cls_idx_heapstat);
     int i;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1759,9 +1785,9 @@ event_pre_syscall(void *drcontext, int sysnum)
      * params will hit unreadable page.
      */
     for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++)
-        pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
+        cpt->sysarg[i] = dr_syscall_get_param(drcontext, i);
 
-    handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
+    handle_pre_alloc_syscall(drcontext, sysnum, &mc, cpt->sysarg, SYSCALL_NUM_ARG_STORE);
 
 #ifdef LINUX
     if (sysnum == SYS_fork ||
@@ -1772,9 +1798,8 @@ event_pre_syscall(void *drcontext, int sysnum)
          */
         IF_VMX86(|| sysnum == 1025)) {
         /* Store the file offset in the client_data field, shared across callbacks */
-        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-        cpt->filepos = dr_file_tell(f_callstack);
-        LOG(1, "SYS_fork: callstack file @ "INT64_FORMAT_STRING"\n", cpt->filepos);
+        pt->filepos = dr_file_tell(f_callstack);
+        LOG(1, "SYS_fork: callstack file @ "INT64_FORMAT_STRING"\n", pt->filepos);
     }
 #endif
     return true; /* execute syscall */
@@ -1783,12 +1808,13 @@ event_pre_syscall(void *drcontext, int sysnum)
 static void
 event_post_syscall(void *drcontext, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_heapstat_t *cpt = (cls_heapstat_t *)
+        drmgr_get_cls_field(drcontext, cls_idx_heapstat);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
-    handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
+    handle_post_alloc_syscall(drcontext, sysnum, &mc, cpt->sysarg, SYSCALL_NUM_ARG_STORE);
 }
 
 static void
@@ -1796,13 +1822,12 @@ check_for_leaks(bool at_exit)
 {
     if (options.check_leaks) {
         void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         ssize_t len = 0;
         size_t sofar = 0;
         char *buf;
         size_t bufsz;
         leak_scan_for_leaks(at_exit);
-        get_buffer(pt, &buf, &bufsz);
+        get_buffer(drcontext, &buf, &bufsz);
         BUFPRINT(buf, bufsz, sofar, len,
                  "ERRORS IGNORED:\n  %5d still-reachable allocation(s)\n",
                  reachable_leak_count);
@@ -1812,7 +1837,7 @@ check_for_leaks(bool at_exit)
                      " for details)\n");
         }
         print_buffer(f_global, buf);
-        release_buffer(pt, buf, bufsz);
+        release_buffer(drcontext, buf, bufsz);
     }
 }
 
@@ -1896,27 +1921,55 @@ event_fragment_delete(void *drcontext, void *tag)
     alloc_fragment_delete(drcontext, tag);
 }
 
+static void
+event_context_init(void *drcontext, bool new_depth)
+{
+    cls_heapstat_t *data;
+    if (new_depth) {
+        data = (cls_heapstat_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
+        drmgr_set_cls_field(drcontext, cls_idx_heapstat, data);
+    } else
+        data = (cls_heapstat_t *) drmgr_get_cls_field(drcontext, cls_idx_heapstat);
+    memset(data, 0, sizeof(*data));
+}
+
+static void
+event_context_exit(void *drcontext, bool thread_exit)
+{
+    if (thread_exit) {
+        cls_heapstat_t *cpt = (cls_heapstat_t *)
+            drmgr_get_cls_field(drcontext, cls_idx_heapstat);
+        thread_free(drcontext, cpt, sizeof(*cpt), HEAPSTAT_MISC);
+    }
+    /* else, nothing to do: we leave the struct for re-use on next callback */
+}
+
 static void 
 event_thread_init(void *drcontext)
 {
     uint which_thread = atomic_add32_return_sum((volatile int *)&num_threads, 1) - 1;
-    per_thread_t *pt = thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
-    client_per_thread_t *cpt = thread_alloc(drcontext, sizeof(*cpt), HEAPSTAT_MISC);
+    file_t f;
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
     memset(pt, 0, sizeof(*pt));
-    memset(cpt, 0, sizeof(*cpt));
-    pt->client_data = (void *) cpt;
-    /* store it in the slot provided in the drcontext */
-    dr_set_tls_field(drcontext, (void *)pt);
+    drmgr_set_tls_field(drcontext, tls_idx_heapstat, (void *)pt);
+
+    utils_thread_init(drcontext);
     LOGF(0, f_global, "new thread #%d id=%d\n",
          which_thread, dr_get_thread_id(drcontext));
     if (!options.thread_logs) {
-        pt->f = f_global;
+        f = f_global;
     } else {
         /* we're going to dump our data to a per-thread file */
-        pt->f = open_logfile("thread", false, which_thread/*tid suffix*/);
-        LOGPT(1, pt, "thread logfile fd=%d\n", pt->f);
+        f = open_logfile("thread", false, which_thread/*tid suffix*/);
+        LOGPT(1, PT_GET(drcontext), "thread logfile fd=%d\n", f);
     }
-    LOGPT(2, pt, "in event_thread_init()\n");
+    utils_thread_set_file(drcontext, f);
+
+    pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
+    pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_MISC);
+
+    LOGPT(2, PT_GET(drcontext), "in event_thread_init()\n");
     callstack_thread_init(drcontext);
     if (options.check_leaks || options.staleness)
         shadow_thread_init(drcontext);
@@ -1925,27 +1978,17 @@ event_thread_init(void *drcontext)
 static void 
 event_thread_exit(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    LOGPT(2, pt, "in event_thread_exit()\n");
+    tls_heapstat_t *pt = (tls_heapstat_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_heapstat);
+    LOGPT(2, PT_GET(drcontext), "in event_thread_exit()\n");
     callstack_thread_exit(drcontext);
-    /* shared across callbacks */
-    thread_free(drcontext, pt->client_data, sizeof(client_per_thread_t), HEAPSTAT_MISC);
-#ifdef WINDOWS
-    while (pt->prev != NULL)
-        pt = pt->prev;
-    while (pt != NULL) {
-        per_thread_t *tmp = pt;
-        LOG(2, "freeing per_thread_t "PFX"\n", tmp);
-        pt = pt->next;
-        thread_free(drcontext, tmp, sizeof(*tmp), HEAPSTAT_MISC);
-    }
-#else
-    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
-#endif
+    utils_thread_exit(drcontext);
+    thread_free(drcontext, (void *) pt->errbuf, pt->errbufsz, HEAPSTAT_MISC);
     /* with PR 536058 we do have dcontext in exit event so indicate explicitly
      * that we've cleaned up the per-thread data
      */
-    dr_set_tls_field(drcontext, NULL);
+    drmgr_set_tls_field(drcontext, tls_idx_heapstat, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
 
 static void 
@@ -1984,6 +2027,11 @@ event_exit(void)
     dump_statistics();
 #endif
 
+    drmgr_unregister_tls_field(tls_idx_heapstat);
+    drmgr_unregister_cls_field(event_context_init, event_context_exit,
+                               cls_idx_heapstat);
+    drmgr_exit();
+
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
     dr_fprintf(f_callstack, "LOG END\n");
@@ -2005,6 +2053,14 @@ dr_init(client_id_t client_id)
 
     ASSERT(opstr != NULL, "error obtaining option string");
     drheap_options_init(opstr);
+
+    drmgr_init(); /* must be before utils_init and any other tls/cls uses */
+    tls_idx_heapstat = drmgr_register_tls_field();
+    ASSERT(tls_idx_heapstat > -1, "unable to reserve TLS slot");
+    cls_idx_heapstat = drmgr_register_cls_field
+        (event_context_init, event_context_exit);
+    ASSERT(cls_idx_heapstat > -1, "unable to reserve CLS field");
+
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
@@ -2015,8 +2071,9 @@ dr_init(client_id_t client_id)
     LOG(0, "options are \"%s\"\n", opstr);
 
     dr_register_exit_event(event_exit);
-    dr_register_thread_init_event(event_thread_init);
-    dr_register_thread_exit_event(event_thread_exit);
+    drmgr_register_thread_init_event(event_thread_init);
+    drmgr_register_thread_exit_event(event_thread_exit);
+#undef dr_register_bb_event /* FIXME i#777: temporary to separate drmgr commits */
     dr_register_bb_event(event_basic_block);
     dr_register_module_load_event(event_module_load);
     dr_register_module_unload_event(event_module_unload);
@@ -2031,7 +2088,7 @@ dr_init(client_id_t client_id)
 #endif
     }
     dr_register_filter_syscall_event(event_filter_syscall);
-    dr_register_pre_syscall_event(event_pre_syscall);
+    drmgr_register_pre_syscall_event(event_pre_syscall);
     dr_register_post_syscall_event(event_post_syscall);
     dr_register_nudge_event(event_nudge, client_id);
     if (options.staleness)

@@ -38,6 +38,8 @@
 # include "syscall_driver.h"
 #endif
 
+int cls_idx_syscall = -1;
+
 /***************************************************************************
  * SYSTEM CALLS
  */
@@ -236,8 +238,7 @@ static void
 auxlib_check_sysparam_defined(void *drcontext, uint sysnum, uint argnum,
                               dr_mcontext_t *mc, size_t argsz)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     app_loc_t loc;
     reg_id_t reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
     ASSERT(options.shadowing, "shadowing disabled");
@@ -248,8 +249,7 @@ auxlib_check_sysparam_defined(void *drcontext, uint sysnum, uint argnum,
 static bool
 auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     char path[MAXIMUM_PATH];
     cpt->sysaux_params = sysauxlib_save_params(drcontext);
 #ifdef LINUX
@@ -266,8 +266,7 @@ auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 static void
 auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     char path[MAXIMUM_PATH];
     process_id_t child;
     ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
@@ -289,8 +288,7 @@ auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 static bool
 auxlib_shadow_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     int i;
     if (auxlib == NULL || !auxlib_known_syscall(sysnum))
         return true;
@@ -334,8 +332,7 @@ auxlib_shadow_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 static void
 auxlib_shadow_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     if (auxlib == NULL || !auxlib_known_syscall(sysnum))
         return;
     ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
@@ -419,9 +416,8 @@ static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
  */
 static void
 handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                           per_thread_t *pt)
+                           cls_syscall_t *cpt)
 {
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     app_pc start;
     int i, j;
     if (!options.analyze_unknown_syscalls ||
@@ -530,9 +526,8 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
 }
 
 static void
-handle_post_unknown_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
 {
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
     int i, j;
     byte *w_at = NULL;
     byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
@@ -704,7 +699,7 @@ handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
 
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
-sysarg_get_size(void *drcontext, per_thread_t *pt, syscall_arg_t *arg,
+sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
                 int argnum, bool pre, byte *start, int sysnum, dr_mcontext_t *mc)
 {
     ptr_uint_t size = 0;
@@ -786,7 +781,7 @@ static void
 process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
                                      syscall_info_t *sysinfo)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     app_pc start;
     ptr_uint_t size;
     uint num_args;
@@ -869,7 +864,7 @@ static void
 process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
                                       syscall_info_t *sysinfo)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     app_pc start;
     ptr_uint_t size, last_size;
     uint num_args;
@@ -968,7 +963,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 }
 
 static syscall_info_t *
-get_sysinfo(int *sysnum IN OUT, per_thread_t *pt)
+get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt)
 {
     syscall_info_t *sysinfo = syscall_lookup(*sysnum);
     if (sysinfo != NULL) {
@@ -990,7 +985,7 @@ get_sysinfo(int *sysnum IN OUT, per_thread_t *pt)
 static bool
 event_pre_syscall(void *drcontext, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     syscall_info_t *sysinfo;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     int i;
@@ -1032,7 +1027,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     }
 
     /* give os-specific-code chance to do non-shadow processing */
-    res = os_shared_pre_syscall(drcontext, sysnum);
+    res = os_shared_pre_syscall(drcontext, pt, sysnum);
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
 
@@ -1048,7 +1043,7 @@ event_pre_syscall(void *drcontext, int sysnum)
             }
             known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
-            res = os_shadow_pre_syscall(drcontext, sysnum) && res;
+            res = os_shadow_pre_syscall(drcontext, pt, sysnum) && res;
         }
         /* there may be overlap between our table and auxlib: e.g., SYS_ioctl */
         if (auxlib_known_syscall(sysnum)) {
@@ -1064,7 +1059,7 @@ event_pre_syscall(void *drcontext, int sysnum)
      * shadow handling for proper NtContinue handling and proper
      * NtCallbackReturn handling
      */
-    handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt);
+    handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt->sysarg, SYSCALL_NUM_ARG_STORE);
 
     if (options.perturb)
         res = perturb_pre_syscall(drcontext, sysnum) && res;
@@ -1076,7 +1071,7 @@ event_pre_syscall(void *drcontext, int sysnum)
      * as a sanity check on both sides.
      */
     if (options.syscall_driver)
-        driver_pre_syscall(drcontext, sysnum, pt);
+        driver_pre_syscall(drcontext, sysnum);
 #endif
 
     return res;
@@ -1085,7 +1080,7 @@ event_pre_syscall(void *drcontext, int sysnum)
 static void
 event_post_syscall(void *drcontext, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -1099,12 +1094,12 @@ event_post_syscall(void *drcontext, int sysnum)
     if (options.syscall_driver) {
         const char *name = get_syscall_name(sysnum);
         if (name == NULL || strcmp(name, "NtMapViewOfSection") != 0)
-            driver_process_writes(drcontext, sysnum, pt);
+            driver_process_writes(drcontext, sysnum);
     }
 #endif
 
-    handle_post_alloc_syscall(drcontext, sysnum, &mc, pt);
-    os_shared_post_syscall(drcontext, sysnum);
+    handle_post_alloc_syscall(drcontext, sysnum, &mc, pt->sysarg, SYSCALL_NUM_ARG_STORE);
+    os_shared_post_syscall(drcontext, pt, sysnum);
     if (auxlib_known_syscall(sysnum))
         auxlib_shared_post_syscall(drcontext, sysnum, &mc);
 
@@ -1126,7 +1121,7 @@ event_post_syscall(void *drcontext, int sysnum)
                 /* commit the writes via MEMREF_WRITE */
                 process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
             }
-            os_shadow_post_syscall(drcontext, sysnum);
+            os_shadow_post_syscall(drcontext, pt, sysnum);
         }
         if (auxlib_known_syscall(sysnum)) {
             known = true;
@@ -1143,6 +1138,39 @@ event_filter_syscall(void *drcontext, int sysnum)
     return true; /* intercept everything */
 }
 
+static void
+syscall_context_init(void *drcontext, bool new_depth)
+{
+    cls_syscall_t *data;
+    if (new_depth) {
+        data = (cls_syscall_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
+        drmgr_set_cls_field(drcontext, cls_idx_syscall, data);
+    } else
+        data = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    memset(data, 0, sizeof(*data));
+}
+
+static void
+syscall_context_exit(void *drcontext, bool thread_exit)
+{
+    if (thread_exit) {
+        cls_syscall_t *cpt = (cls_syscall_t *)
+            drmgr_get_cls_field(drcontext, cls_idx_syscall);
+        int i;
+        for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
+            if (cpt->sysarg_val_bytes[i] > 0) {
+                ASSERT(cpt->sysarg_val[i] != NULL, "sysarg alloc error");
+                thread_free(drcontext, cpt->sysarg_val[i], cpt->sysarg_val_bytes[i],
+                            HEAPSTAT_MISC);
+            } else {
+                ASSERT(cpt->sysarg_val[i] == NULL, "sysarg alloc error");
+            }
+        }
+        thread_free(drcontext, cpt, sizeof(*cpt), HEAPSTAT_MISC);
+    }
+    /* else, nothing to do: we leave the struct for re-use on next callback */
+}
+
 void
 syscall_thread_init(void *drcontext)
 {
@@ -1157,27 +1185,9 @@ syscall_thread_init(void *drcontext)
 }
 
 void
-syscall_reset_per_thread(void *drcontext, per_thread_t *pt)
-{
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    int i;
-    for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
-        if (cpt->sysarg_val_bytes[i] > 0) {
-            ASSERT(cpt->sysarg_val[i] != NULL, "sysarg alloc error");
-            thread_free(drcontext, cpt->sysarg_val[i], cpt->sysarg_val_bytes[i],
-                        HEAPSTAT_MISC);
-        } else {
-            ASSERT(cpt->sysarg_val[i] == NULL, "sysarg alloc error");
-        }
-    }
-}
-
-void
-syscall_thread_exit(void *drcontext, per_thread_t *pt)
+syscall_thread_exit(void *drcontext)
 {
     syscall_os_thread_exit(drcontext);
-
-    syscall_reset_per_thread(drcontext, pt);
 
 #ifdef SYSCALL_DRIVER
     if (options.syscall_driver)
@@ -1188,6 +1198,9 @@ syscall_thread_exit(void *drcontext, per_thread_t *pt)
 void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 {
+    cls_idx_syscall = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
+    ASSERT(cls_idx_syscall > -1, "unable to reserve CLS field");
+
     syscall_os_init(drcontext _IF_WINDOWS(ntdll_base));
 
     /* We used to handle all the gory details of Windows pre- and
@@ -1214,7 +1227,7 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
      * easier to port to Linux.
      */
     dr_register_filter_syscall_event(event_filter_syscall);
-    dr_register_pre_syscall_event(event_pre_syscall);
+    drmgr_register_pre_syscall_event(event_pre_syscall);
     dr_register_post_syscall_event(event_post_syscall);
 
     /* We support additional system call handling via a separate shared library */
@@ -1239,6 +1252,9 @@ syscall_exit(void)
         LOG(1, "WARNING: unable to unload auxlib\n");
  
     syscall_os_exit();
+
+    drmgr_unregister_cls_field(syscall_context_init, syscall_context_exit,
+                               cls_idx_syscall);
 }
 
 void
@@ -1248,20 +1264,23 @@ syscall_module_load(void *drcontext, const module_data_t *info, bool loaded)
 }
 
 void
-syscall_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                        bool new_depth)
+syscall_handle_callback(void *drcontext)
 {
+    /* note that this is not quite the same as syscall_context_init() b/c
+     * that includes thread init (no callback)
+     */
 #ifdef SYSCALL_DRIVER
     if (options.syscall_driver)
-        driver_handle_callback(drcontext, pt_parent, pt_child, new_depth);
+        driver_handle_callback(drcontext);
 #endif
 }
 
 void
-syscall_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
+syscall_handle_cbret(void *drcontext)
 {
+    /* we could get rid of this and call from syscall_context_exit() for !thread_exit */
 #ifdef SYSCALL_DRIVER
     if (options.syscall_driver)
-        driver_handle_cbret(drcontext, pt_parent, pt_child);
+        driver_handle_cbret(drcontext);
 #endif
 }

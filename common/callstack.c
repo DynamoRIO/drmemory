@@ -25,7 +25,7 @@
  */
 
 #include "dr_api.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "callstack.h"
 #include "utils.h"
 #include "redblack.h"
@@ -73,6 +73,14 @@ uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
 uint cstack_is_retaddr_unreadable;
 #endif
+
+typedef struct _tls_callstack_t {
+    char *errbuf; /* buffer for atomic writes to global logfile */
+    size_t errbufsz;
+    app_pc stack_lowest_frame; /* optimization for recording callstacks */
+} tls_callstack_t;
+
+static int tls_idx_callstack = -1;
 
 /****************************************************************************
  * Binary callstacks for storing callstacks of allocation sites.
@@ -260,6 +268,9 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_srcfile_hide,
                const char *callstack_srcfile_prefix)
 {
+    tls_idx_callstack = drmgr_register_tls_field();
+    ASSERT(tls_idx_callstack > -1, "unable to reserve TLS slot");
+
     op_max_frames = callstack_max_frames;
     op_stack_swap_threshold = stack_swap_threshold;
     op_fp_flags = fp_flags;
@@ -299,12 +310,16 @@ callstack_exit(void)
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 #endif
+
+    drmgr_unregister_tls_field(tls_idx_callstack);
 }
 
 void
 callstack_thread_init(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    tls_callstack_t *pt = (tls_callstack_t *)
+        thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
+    drmgr_set_tls_field(drcontext, tls_idx_callstack, pt);
     /* PR 456181: we need our error reports to use a single atomic write.
      * We use a thread-private buffer to avoid using stack space or locks.
      * We can have a second callstack for delayed frees (i#205).
@@ -321,8 +336,11 @@ callstack_thread_init(void *drcontext)
 void
 callstack_thread_exit(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    tls_callstack_t *pt = (tls_callstack_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_callstack);
     thread_free(drcontext, (void *) pt->errbuf, pt->errbufsz, HEAPSTAT_CALLSTACK);
+    drmgr_set_tls_field(drcontext, tls_idx_callstack, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
 
 /***************************************************************************/
@@ -807,7 +825,7 @@ is_retaddr(byte *pc)
 
 /* caller must hold page_buf_lock */
 static app_pc
-find_next_fp(per_thread_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
+find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
 {
     /* Heuristic: scan stack for retaddr, or fp + retaddr pair */
     ASSERT(fp != NULL, "internal callstack-finding error");
@@ -944,8 +962,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool for_log)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *)
-        ((drcontext == NULL) ? NULL : dr_get_tls_field(drcontext));
+    tls_callstack_t *pt = (tls_callstack_t *)
+        ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_callstack));
     int num = num_frames_printed;   /* PR 475453 - wrong call stack depths */
     ssize_t len = 0;
     ptr_uint_t *pc = (mc == NULL ? NULL : (ptr_uint_t *) mc->ebp);
@@ -1192,8 +1210,8 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
 {
     size_t sofar = 0;
     ssize_t len;
-    per_thread_t *pt = (per_thread_t *)
-        ((drcontext == NULL) ? NULL : dr_get_tls_field(drcontext));
+    tls_callstack_t *pt = (tls_callstack_t *)
+        ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_callstack));
     /* mc and pc will be NULL for startup heap iter */
     if (pt == NULL) {
         LOG(1, "Can't report callstack as pt is NULL\n");
@@ -1204,7 +1222,7 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
     print_address(pt->errbuf, pt->errbufsz, &sofar, pc, NULL, true/*for log*/);
     print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc,
                     true/*incl fp*/, NULL, 1, true);
-    print_buffer(f == INVALID_FILE ? pt->f : f, pt->errbuf);
+    print_buffer(f == INVALID_FILE ? LOGFILE_GET(drcontext) : f, pt->errbuf);
 }
 #endif /* DEBUG */
 
@@ -1451,8 +1469,8 @@ void
 packed_callstack_log(packed_callstack_t *pcs, file_t f)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *)
-        ((drcontext == NULL) ? NULL : dr_get_tls_field(drcontext));
+    tls_callstack_t *pt = (tls_callstack_t *)
+        ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_callstack));
     char *buf;
     size_t bufsz;
     size_t sofar = 0;

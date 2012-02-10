@@ -38,7 +38,7 @@
 #include "../wininc/iptypes_undocumented.h"
 
 extern bool
-wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                        dr_mcontext_t *mc);
 
 extern bool
@@ -1024,13 +1024,13 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 }
 
 bool
-os_shared_pre_syscall(void *drcontext, int sysnum)
+os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
     return true; /* execute syscall */
 }
 
 void
-os_shared_post_syscall(void *drcontext, int sysnum)
+os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
     /* FIXME PR 456501: watch CreateProcess, CreateProcessEx, and
      * CreateUserProcess.  Convert process handle to pid and section
@@ -1038,7 +1038,6 @@ os_shared_post_syscall(void *drcontext, int sysnum)
      * f_fork.
      */
     if (sysnum == sysnum_CreateThread || sysnum == sysnum_CreateThreadEx) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         if (NT_SUCCESS(dr_syscall_get_result(drcontext)) &&
             is_current_process((HANDLE)pt->sysarg[3]/*3rd arg for both*/)) {
             HANDLE thread_handle;
@@ -1549,7 +1548,7 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
  */
 
 static void
-handle_post_CreateThread(void *drcontext, int sysnum, per_thread_t *pt,
+handle_post_CreateThread(void *drcontext, int sysnum, cls_syscall_t *pt,
                          dr_mcontext_t *mc)
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
@@ -1577,7 +1576,7 @@ handle_post_CreateThread(void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
+handle_pre_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
                           dr_mcontext_t *mc)
 {
     if (is_current_process((HANDLE)pt->sysarg[3])) {
@@ -1607,7 +1606,7 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static void
-handle_post_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
+handle_post_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
                            dr_mcontext_t *mc)
 {
     if (is_current_process((HANDLE)pt->sysarg[3]) &&
@@ -1641,7 +1640,7 @@ handle_post_CreateThreadEx(void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_pre_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
+handle_pre_CreateUserProcess(void *drcontext, int sysnum, cls_syscall_t *pt,
                              dr_mcontext_t *mc)
 {
     create_proc_thread_info_t info;
@@ -1658,7 +1657,7 @@ handle_pre_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static void
-handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
+handle_post_CreateUserProcess(void *drcontext, int sysnum, cls_syscall_t *pt,
                               dr_mcontext_t *mc)
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
@@ -1674,7 +1673,7 @@ handle_post_CreateUserProcess(void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                             dr_mcontext_t *mc)
 {
     /* Normally the buffer is just output.  For the input case here we
@@ -1697,7 +1696,7 @@ handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, per_thread_
 }
 
 static bool
-handle_SetSystemInformation(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_SetSystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                             dr_mcontext_t *mc)
 {
     /* Normally the buffer is just input, but some info classes write data */
@@ -1832,7 +1831,7 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
                  sysnum, ptr, sz, mc, id)
 
 static void
-handle_AFD_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
+handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
     uint full_code = (uint) pt->sysarg[5];
     byte *inbuf = (byte *) pt->sysarg[6];
@@ -2267,7 +2266,7 @@ check_out_buf(bool pre, int sysnum, dr_mcontext_t *mc, void *buf, size_t size,
  * wininc/tcpioctl.h.
  */
 static void
-handle_NET_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
+handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
     uint full_code = (uint) pt->sysarg[5];
     byte *inbuf = (byte *) pt->sysarg[6];
@@ -2408,7 +2407,7 @@ handle_NET_ioctl(bool pre, int sysnum, per_thread_t *pt, dr_mcontext_t *mc)
 }
 
 static bool
-handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                            dr_mcontext_t *mc)
 {
     uint code = (uint) pt->sysarg[5];
@@ -2474,9 +2473,8 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, per_thread_t *
 
 
 bool
-os_shadow_pre_syscall(void *drcontext, int sysnum)
+os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -2503,7 +2501,7 @@ void
 syscall_diagnostics(void *drcontext, int sysnum)
 {
     /* XXX: even though only at -verbose 2, should use safe_read for all derefs */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_tls_field(drcontext, cls_idx_syscall);
     syscall_info_t *sysinfo = syscall_lookup(sysnum);
     if (sysinfo == NULL)
         return;
@@ -2542,9 +2540,8 @@ syscall_diagnostics(void *drcontext, int sysnum)
 #endif
 
 void
-os_shadow_post_syscall(void *drcontext, int sysnum)
+os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */

@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,7 +27,7 @@
 #ifndef _LEAK_H_
 #define _LEAK_H_ 1
 
-#include "per_thread.h"
+#include "drmgr.h"
 
 #ifdef STATISTICS
 extern uint midchunk_postsize_ptrs;
@@ -66,7 +67,7 @@ leak_scan_for_leaks(bool at_exit);
 
 /* User must call from client_handle_malloc() and client_handle_realloc() */
 void
-leak_handle_alloc(per_thread_t *pt, app_pc base, size_t size);
+leak_handle_alloc(void *drcontext, app_pc base, size_t size);
 
 /* User must call from client_exit_iter_chunk() */
 void

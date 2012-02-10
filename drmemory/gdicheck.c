@@ -35,6 +35,10 @@
 
 #include "../wininc/ntgdihdl.h"
 
+#ifndef WINDOWS
+# error WINDOWS-only
+#endif
+
 /* For device context (DC) checks we store data per DC */
 typedef struct _per_dc_t {
     thread_id_t thread;

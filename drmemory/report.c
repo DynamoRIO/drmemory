@@ -69,6 +69,13 @@ static size_t saved_bytes_possible_leaked;
 
 static uint64 timestamp_start;
 
+typedef struct _tls_report_t {
+    char *errbuf; /* buffer for atomic writes to global logfile */
+    size_t errbufsz;
+} tls_report_t;
+
+static int tls_idx_report = -1;
+
 /***************************************************************************/
 /* Store all errors so we can eliminate duplicates (PR 484167) */
 
@@ -1058,6 +1065,9 @@ report_init(void)
     timestamp_start = dr_get_milliseconds();
     print_timestamp(f_global, timestamp_start, "start time");
 
+    tls_idx_report = drmgr_register_tls_field();
+    ASSERT(tls_idx_report > -1, "unable to reserve TLS slot");
+
     error_lock = dr_mutex_create();
 
     hashtable_init_ex(&error_table, ERROR_HASH_BITS, HASH_CUSTOM,
@@ -1373,17 +1383,27 @@ report_exit(void)
         hashtable_delete(&thread_table);
         dr_mutex_destroy(thread_table_lock);
     }
+
+    drmgr_unregister_tls_field(tls_idx_report);
 }
 
 void
 report_thread_init(void *drcontext)
 {
+    tls_report_t *pt = (tls_report_t *)
+        thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
+    drmgr_set_tls_field(drcontext, tls_idx_report, pt);
+    pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size()*2;
+    pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_REPORT);
+
     callstack_thread_init(drcontext);
 }
 
 void
 report_thread_exit(void *drcontext)
 {
+    tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
+
     callstack_thread_exit(drcontext);
 
     if (options.show_threads && !options.show_all_threads) {
@@ -1397,6 +1417,10 @@ report_thread_exit(void *drcontext)
         hashtable_remove(&thread_table, (void *)dr_get_thread_id(drcontext));
         dr_mutex_unlock(thread_table_lock);
     }
+
+    thread_free(drcontext, (void *) pt->errbuf, pt->errbufsz, HEAPSTAT_REPORT);
+    drmgr_set_tls_field(drcontext, tls_idx_report, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
 
 /***************************************************************************/
@@ -1550,7 +1574,7 @@ static void
 report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                  bool invalid_heap_arg)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
+    void *drcontext = dr_get_current_drcontext();
     ssize_t len = 0;
     byte *start, *end, *next_start = NULL, *prev_end = NULL;
     ssize_t size;
@@ -1731,7 +1755,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
     }
     if (pcs != NULL)
         packed_callstack_free(pcs);
-    if (!invalid_heap_arg && pt->in_heap_routine > 0) {
+    if (!invalid_heap_arg && alloc_in_heap_routine(drcontext)) {
         BUFPRINT(buf, bufsz, *sofar, len,
                  "%s<inside heap routine and may be false positive: please file a bug>"NL,
                  INFO_PFX);
@@ -1746,7 +1770,8 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
              bool report_instruction, bool report_neighbors,
              packed_callstack_t *pcs)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(dr_get_current_drcontext());
+    void *drcontext = dr_get_current_drcontext();
+    tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
     stored_error_t *err;
     bool reporting = false;
     ssize_t len = 0;
@@ -1955,7 +1980,9 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
 
     BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", END_MARKER);
 
-    report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results : pt->f, pt->f),
+    report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results :
+                                            LOGFILE_GET(drcontext),
+                                            LOGFILE_GET(drcontext)),
                              pt->errbuf, loc, false);
 #ifdef USE_DRSYMS
     if (reporting && options.results_to_stderr) {
@@ -2135,12 +2162,12 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         num_throttled_leaks++;
         return;
     }
-    if (drcontext == NULL || dr_get_tls_field(drcontext) == NULL) {
+    if (drcontext == NULL || drmgr_get_tls_field(drcontext, tls_idx_report) == NULL) {
         /* at exit time thread already cleaned up */
         bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
         buf = (char *) global_alloc(bufsz, HEAPSTAT_CALLSTACK);
     } else {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
         buf = pt->errbuf;
         bufsz = pt->errbufsz;
     }
@@ -2322,7 +2349,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 #endif
 
  report_leak_done:
-    if (drcontext == NULL || dr_get_tls_field(drcontext) == NULL)
+    if (drcontext == NULL || drmgr_get_tls_field(drcontext, tls_idx_report) == NULL)
         global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
     symbolized_callstack_free(&ecs.scs);
 }
@@ -2332,15 +2359,15 @@ void
 report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
 {
     DOLOG(3, {
-        per_thread_t *pt = (per_thread_t *)
-            dr_get_tls_field(dr_get_current_drcontext());
+        void *drcontext = dr_get_current_drcontext();
+        tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
         ssize_t len = 0;
         size_t sofar = 0;
         BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
                  "%s "PFX"-"PFX"\n", routine, start, end);
         print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/,
                         NULL, 0, true);
-        report_error_from_buffer(pt->f, pt->errbuf, NULL, false);
+        report_error_from_buffer(LOGFILE_GET(drcontext), pt->errbuf, NULL, false);
     });
 }
 
@@ -2353,8 +2380,8 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
         char *buf;
         size_t bufsz;
         void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt = (per_thread_t *)
-            ((drcontext == NULL) ? NULL : dr_get_tls_field(drcontext));
+        tls_report_t *pt = (tls_report_t *)
+            (drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_report);
         if (pt == NULL) {
             /* at init time no pt yet */
             bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
@@ -2394,7 +2421,7 @@ report_child_thread(void *drcontext, thread_id_t child)
      * the end.
      */
     if (options.show_threads || options.show_all_threads) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
         ssize_t len = 0;
         size_t sofar = 0;
 
@@ -2412,7 +2439,7 @@ report_child_thread(void *drcontext, thread_id_t child)
             print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
                             NULL, 0, false);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
-            print_buffer(pt->f, pt->errbuf);
+            print_buffer(LOGFILE_GET(drcontext), pt->errbuf);
         } else {
             packed_callstack_t *pcs;
             /* XXX DRi#640: despite DRi#442, pc is no good here: points at wow64
@@ -2436,7 +2463,6 @@ report_delayed_thread(thread_id_t tid)
     pcs = (packed_callstack_t *) hashtable_lookup(&thread_table, (void *)tid);
     if (pcs != NULL) {
         void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         ssize_t len = 0;
         size_t sofar = 0;
         /* we can't use pt->buf b/c we're in the middle of a report */
@@ -2447,7 +2473,7 @@ report_delayed_thread(thread_id_t tid)
         packed_callstack_print(pcs, 0/*all frames*/,
                                buf, bufsz, &sofar, "");
         BUFPRINT(buf, bufsz, sofar, len, "\n");
-        print_buffer(pt->f, buf);
+        print_buffer(LOGFILE_GET(drcontext), buf);
         global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
         /* we only need to report once */
         hashtable_remove(&thread_table, (void *)tid);

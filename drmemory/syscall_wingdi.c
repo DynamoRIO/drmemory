@@ -1751,7 +1751,7 @@ wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num
  */
 
 static bool
-handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                                 dr_mcontext_t *mc)
 {
     UINT uiAction = (UINT) pt->sysarg[0];
@@ -2137,7 +2137,7 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, per_threa
 }
 
 static bool
-handle_UserMenuInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserMenuInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                         dr_mcontext_t *mc)
 {
     /* 3rd param is bool saying whether it's Set or Get */
@@ -2158,7 +2158,7 @@ handle_UserMenuInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                         dr_mcontext_t *mc)
 {
     /* 4th param is bool saying whether it's Set or Get */
@@ -2172,7 +2172,7 @@ handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                          dr_mcontext_t *mc)
 {
     /* buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
@@ -2186,7 +2186,7 @@ handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt
 }
 
 static bool
-handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                              dr_mcontext_t *mc)
 {
     uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
@@ -2215,7 +2215,7 @@ handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, per_thread_t
 }
 
 static bool
-handle_UserGetRawInputData(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserGetRawInputData(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                            dr_mcontext_t *mc)
 {
     byte *buf = (byte *) pt->sysarg[2];
@@ -2228,7 +2228,7 @@ handle_UserGetRawInputData(bool pre, void *drcontext, int sysnum, per_thread_t *
 }
 
 static bool
-handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                                  dr_mcontext_t *mc)
 {
     uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
@@ -2258,7 +2258,7 @@ handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, per_thre
 }
 
 static bool
-handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                            dr_mcontext_t *mc)
 {
     DWORD dwFlags = (BOOL) pt->sysarg[3];
@@ -2288,7 +2288,7 @@ handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, per_thread_t *
 }
 
 static bool
-handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                            dr_mcontext_t *mc)
 {
     byte *dib;
@@ -2323,7 +2323,7 @@ handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, per_thread_t *
 }
 
 static bool
-handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                       dr_mcontext_t *mc)
 {
     ENUMLOGFONTEXDVW dvw;
@@ -2393,7 +2393,7 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                     dr_mcontext_t *mc)
 {
     /* Entry would read: {3,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)}
@@ -2415,7 +2415,7 @@ handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                   dr_mcontext_t *mc)
 {
     /* An extra arg "BOOL bDisplay" was added as arg #4 in Vista so
@@ -2445,7 +2445,7 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 static bool
-handle_GdiSelect(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+handle_GdiSelect(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                  dr_mcontext_t *mc)
 {
     if (options.check_gdi) {
@@ -2458,7 +2458,7 @@ handle_GdiSelect(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
 }
 
 bool
-wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
+wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                        dr_mcontext_t *mc)
 {
     /* handlers here do not check for success so we check up front */
@@ -2548,8 +2548,7 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                 gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
                 if (sysnum == sysnum_UserBeginPaint) {
                     /* we store the hdc for access in EndPaint */
-                    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-                    cpt->paintDC = hdc;
+                    pt->paintDC = hdc;
                 }
             }
         } else if (sysnum == sysnum_GdiCreateMetafileDC ||
@@ -2567,9 +2566,8 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, per_thread_t *pt,
                 if (sysnum == sysnum_UserReleaseDC)
                     hdc = (HDC)pt->sysarg[0];
                 else {
-                    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-                    hdc = cpt->paintDC;
-                    cpt->paintDC = NULL;
+                    hdc = pt->paintDC;
+                    pt->paintDC = NULL;
                 }
                 gdicheck_dc_free(hdc, false/*Get not Create*/, sysnum, mc);
             }

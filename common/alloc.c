@@ -232,6 +232,95 @@ get_brk(void)
     (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
 
 /***************************************************************************
+ * PER-THREAD DATA
+ */
+
+/* all our data is callback-private */
+int cls_idx_alloc = -1;
+
+#define MAX_HEAP_NESTING 12
+
+typedef struct _cls_alloc_t {
+    /* communicating from pre to post alloc routines */
+#ifdef LINUX
+    app_pc sbrk;
+#else
+    ptr_int_t auxarg; /* heap or blocktype or generic additional arg */
+#endif
+    uint alloc_flags;
+    size_t alloc_size;
+    size_t realloc_old_size;
+    size_t realloc_replace_size;
+    app_pc alloc_base;
+    bool syscall_this_process;
+    /* we need to split these to handle cases like exception inside RtlFreeHeap */
+    bool expect_sys_to_fail;
+    bool expect_lib_to_fail;
+    uint valloc_type;
+    bool valloc_commit;
+    app_pc munmap_base;
+    /* indicates thread is inside a heap creation routine */
+    int in_heap_routine;
+    /* at what value of in_heap_routine did we adjust heap routine args?
+     * (we only allow one level of recursion to do so)
+     */
+    int in_heap_adjusted;
+    bool in_realloc;
+    bool in_realloc_size;
+    /* record which heap routine */
+    app_pc last_alloc_routine[MAX_HEAP_NESTING];
+    void *last_alloc_info[MAX_HEAP_NESTING];
+    /* record app esp to handle nested tailcalls */
+    reg_t app_esp[MAX_HEAP_NESTING];
+    bool ignored_alloc;
+    app_pc alloc_being_freed; /* handles post-pre-free actions */
+    /* record post-call in case flushed (i#559) */
+    app_pc cur_post_call;
+    app_pc post_call[MAX_HEAP_NESTING];
+    /* record which outer layer was used to allocate (i#123) */
+    uint allocator;
+#ifdef WINDOWS
+    /* avoid deliberate mismatches from _DebugHeapDelete<*> being used instead of
+     * operator delete* (i#722,i#655)
+     */
+    bool ignore_next_mismatch;
+#endif
+    bool in_calloc;
+    bool malloc_from_calloc;
+#ifdef WINDOWS
+    bool in_create; /* are we inside RtlCreateHeap */
+    bool malloc_from_realloc;
+    bool heap_tangent; /* not a callback but a heap tangent (i#301) */
+    HANDLE heap_handle; /* used to identify the Heap of new allocations */
+    byte *to_be_encoded; /* for encoded pointer tracking (i#153) */
+
+    bool in_seh; /* track whether handling an exception */
+#endif
+} cls_alloc_t;
+
+static void
+alloc_context_init(void *drcontext, bool new_depth)
+{
+    cls_alloc_t *data;
+    if (new_depth) {
+        data = (cls_alloc_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
+        drmgr_set_cls_field(drcontext, cls_idx_alloc, data);
+    } else
+        data = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
+    memset(data, 0, sizeof(*data));
+}
+
+static void
+alloc_context_exit(void *drcontext, bool thread_exit)
+{
+    if (thread_exit) {
+        cls_alloc_t *data = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
+        thread_free(drcontext, data, sizeof(*data), HEAPSTAT_MISC);
+    }
+    /* else, nothing to do: we leave the struct for re-use on next callback */
+}
+
+/***************************************************************************
  * MALLOC ROUTINES
  */
 
@@ -939,7 +1028,7 @@ is_replace_routine(app_pc pc)
 }
 
 static void
-replace_realloc_size_pre(void *drcontext, per_thread_t *pt,
+replace_realloc_size_pre(void *drcontext, cls_alloc_t *pt,
                          dr_mcontext_t *mc, bool inside)
 {
     pt->alloc_base = (byte *) APP_ARG(mc, 1, inside);
@@ -947,7 +1036,7 @@ replace_realloc_size_pre(void *drcontext, per_thread_t *pt,
 }
 
 static void
-replace_realloc_size_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
+replace_realloc_size_post(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc)
 {
     ASSERT(mc->xax == 0, "replace_realloc_size_app always returns 0");
     /* should never fail for our uses */
@@ -1231,7 +1320,8 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
      * current MSVS versions).
      */
     void *drcontext = dr_get_current_drcontext();
-    IF_DEBUG(per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);)
+    IF_DEBUG(cls_alloc_t *pt = (cls_alloc_t *)
+             drmgr_get_cls_field(drcontext, cls_idx_alloc);)
     byte *pc, *npc = mod_start + modoffs;
     instr_t inst;
     bool found = false;
@@ -1241,7 +1331,8 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
         instr_reset(drcontext, &inst);
         pc = npc;
         DODEBUG({
-            disassemble_with_info(drcontext, pc, LOGFILE(pt), true/*pc*/, true/*bytes*/);
+            disassemble_with_info(drcontext, pc, LOGFILE_GET(drcontext),
+                                  true/*pc*/, true/*bytes*/);
         });
         /* look for partial map (i#730) */
         if (pc + MAX_INSTR_SIZE > mod_end) {
@@ -1860,7 +1951,7 @@ post_call_consistent(app_pc postcall, post_call_entry_t *e)
 
 /* marks as having instrumentation if it finds the entry */
 static bool
-post_call_lookup(per_thread_t *pt, app_pc pc)
+post_call_lookup(cls_alloc_t *pt, app_pc pc)
 {
     bool res = false;
     post_call_entry_t *e;
@@ -2031,6 +2122,10 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     memcpy(&options, ops, ops_size);
     ASSERT(options.track_allocs || !options.track_heap,
            "track_heap requires track_allocs");
+
+    cls_idx_alloc = drmgr_register_cls_field(alloc_context_init, alloc_context_exit);
+    ASSERT(cls_idx_alloc > -1, "unable to reserve CLS field");
+
     if (!options.track_allocs)
         options.track_heap = false;
 
@@ -2132,6 +2227,8 @@ alloc_exit(void)
         nonheap_free(gencode_start, GENCODE_SIZE, HEAPSTAT_GENCODE);
         dr_mutex_destroy(gencode_lock);
     }
+
+    drmgr_unregister_cls_field(alloc_context_init, alloc_context_exit, cls_idx_alloc);
 }
 
 static uint
@@ -2834,7 +2931,7 @@ malloc_set_pre_us(app_pc start)
 
 /* Returns true if the malloc is ignored by us */
 static inline bool
-malloc_entry_is_native_ex(malloc_entry_t *e, app_pc start, per_thread_t *pt,
+malloc_entry_is_native_ex(malloc_entry_t *e, app_pc start, cls_alloc_t *pt,
                           bool consider_being_freed)
 {
     if (malloc_entry_is_native(e))
@@ -2852,7 +2949,7 @@ malloc_entry_is_native_ex(malloc_entry_t *e, app_pc start, per_thread_t *pt,
 }
 
 static bool
-malloc_is_native(app_pc start, per_thread_t *pt, bool consider_being_freed)
+malloc_is_native(app_pc start, cls_alloc_t *pt, bool consider_being_freed)
 {
 #ifdef WINDOWS
     bool res = false;
@@ -3003,101 +3100,38 @@ malloc_iterate(void (*cb)(app_pc start, app_pc end, app_pc real_end,
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
+#ifdef WINDOWS
+bool
+alloc_in_create(void *drcontext)
+{
+    /* XXX: should we pass in_create as a param to client_handle_malloc() to avoid
+     * this extra overhead to get back our own CLS?
+     */
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
+    return pt->in_create;
+}
+#endif
+
+bool
+alloc_in_heap_routine(void *drcontext)
+{
+    /* XXX: should we pass in_create as a param to client_handle_malloc() to avoid
+     * this extra overhead to get back our own CLS?
+     */
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
+    return pt->in_heap_routine > 0;
+}
+
 /*
  ***************************************************************************/
 
 #ifdef WINDOWS
-# ifdef DEBUG
-static int callback_depth;
-# endif
-
-/* we use a stack of per-thread data both for callbacks and for recursive
- * tangential heap allocation sequences (i#301)
- */
-static void
-per_thread_stack_pop(void *drcontext, per_thread_t *pt_child, bool cbret)
-{
-    /* Our callback interception is AFTER DR's, but our cbret is BEFORE. */
-    per_thread_t *pt_parent = pt_child->prev;
-    ASSERT(drcontext == dr_get_current_drcontext(), "own thread only");
-    ASSERT(pt_child == (per_thread_t *) dr_get_tls_field(drcontext), "pt mismatch");
-    /* pt_parent can be NULL if we took over in the middle of a callback
-     * (one reason we don't support AppInit injection: i#112).
-     */
-    ASSERT(pt_parent != NULL, "callback stack off: is AppInit on?");
-
-    DOLOG(2, {
-        ASSERT(callback_depth > 0, "callback stack off");
-        callback_depth--;
-        LOG(2, "after cbret depth=%d pt="PFX" prev="PFX" next="PFX"\n",
-            callback_depth, pt_parent, pt_parent->prev, pt_parent->next);
-    });
-
-    /* client needs no action on pop, but does on real cbret */
-    if (cbret)
-        client_handle_cbret(drcontext, pt_parent, pt_child);
-
-    /* swap in as the current structure */
-    dr_set_tls_field(drcontext, (void *)pt_parent);
-}
-
-/* Returns the new struct */
-static per_thread_t *
-per_thread_stack_push(void *drcontext, per_thread_t *pt)
-{
-    /* Our syscall data needs to be preserved so we use a stack of
-     * data structures.  Since the client field is indirected inside
-     * the client_data pointer in the dcontext, we're safe from
-     * dcontext swaps changing anything underneath us.
-     */
-    per_thread_t *pt_parent = (per_thread_t *) dr_get_tls_field(drcontext);
-    per_thread_t *pt_child = pt_parent->next;
-    per_thread_t *tmp;
-    void *tmp_data;
-    bool new_depth = false;
-    /* We re-use to avoid churn */
-    if (pt_child == NULL) {
-        pt_child = thread_alloc(drcontext, sizeof(*pt_child), HEAPSTAT_MISC);
-        memset(pt_child, 0, sizeof(*pt_child));
-        pt_parent->next = pt_child;
-        pt_child->next = NULL;
-        new_depth = true;
-        LOG(2, "created new per_thread_t "PFX" for callback depth %d\n",
-            pt_child, callback_depth+1);
-    }
-    tmp = pt_child->next;
-    /* by default re-use the old client_data pointer */
-    tmp_data = pt_child->client_data;
-    memset(pt_child, 0, sizeof(*pt_child));
-    pt_child->next = tmp;
-    pt_child->prev = pt_parent;
-    pt_child->client_data = tmp_data;
-    /* preserve certain fields */
-    pt_child->f = pt_parent->f;
-    pt_child->errbuf = pt_parent->errbuf;
-    pt_child->errbufsz = pt_parent->errbufsz;
-    pt_child->stack_lowest_frame = pt_parent->stack_lowest_frame;
-    /* let client fine-tune, in particular client_data field */
-    client_handle_callback(drcontext, pt_parent, pt_child, new_depth);
-    /* swap in as the current structure */
-    dr_set_tls_field(drcontext, (void *)pt_child);
-
-    DOLOG(2, {
-        callback_depth++;
-        LOG(2, "after callback depth=%d pt="PFX" prev="PFX" next="PFX"\n",
-            callback_depth, pt_child, pt_child->prev, pt_child->next);
-    });
-    return pt_child;
-}
-
 static void
 handle_cbret(bool syscall)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt_child = (per_thread_t *) dr_get_tls_field(drcontext);
-    per_thread_stack_pop(drcontext, pt_child, true/*cbret*/);
+    client_handle_cbret(drcontext);
 }
-
 #endif
 
 bool
@@ -3131,8 +3165,12 @@ alloc_syscall_filter(void *drcontext, int sysnum)
 }
 
 void
-handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thread_t *pt)
+handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t sysarg[],
+                         uint arg_cap)
 {
+#if defined(WINDOWS) || defined(DEBUG)
+    cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
+#endif
 #ifdef WINDOWS
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
@@ -3158,7 +3196,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                 pt->syscall_this_process = is_current_process(process);
             DOLOG(2, {
                 if (!pt->syscall_this_process)
-                    LOGPT(2, pt, "sysnum %d on other process "PIFX"\n", sysnum, process);
+                    LOG(2, "sysnum %d on other process "PIFX"\n", sysnum, process);
             });
         }
         if (sysnum == sysnum_valloc) {
@@ -3202,8 +3240,8 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
                              */
                             byte *alloc_base;
                             size_t alloc_size = allocation_size(base, &alloc_base);
-                            LOGPT(2, pt, "Adding unknown heap region "PFX"-"PFX"\n",
-                                  alloc_base, alloc_base + alloc_size);
+                            LOG(2, "Adding unknown heap region "PFX"-"PFX"\n",
+                                alloc_base, alloc_base + alloc_size);
                             heap_region_add(alloc_base, alloc_base + alloc_size,
                                             true/*new heap*/, mc);
                         }
@@ -3246,7 +3284,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
             if (pt->syscall_this_process) {
                 /* syscall still works when not passed alloc base, but mmap_walk
                  * looks up the base so we don't need to call allocation_size() */
-                LOGPT(2, pt, "NtUnmapViewOfSection: "PFX"\n", pt->munmap_base);
+                LOG(2, "NtUnmapViewOfSection: "PFX"\n", pt->munmap_base);
                 client_handle_munmap(pt->munmap_base,
                                      allocation_size(pt->munmap_base, NULL),
                                      false/*file-backed*/);
@@ -3268,7 +3306,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
          * FIXME: need to store shadow values here so can restore.
          * Also need to handle races: xref race handling for malloc.
          */
-        LOGPT(2, pt, "SYS_munmap "PFX"-"PFX"\n", base, base+size);
+        LOG(2, "SYS_munmap "PFX"-"PFX"\n", base, base+size);
         client_handle_munmap(base, size, false/*up to caller to determine*/);
         /* if part of heap remove it from list */
         if (options.track_heap)
@@ -3280,14 +3318,14 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thr
     }
 # endif
 #endif /* WINDOWS */
-    client_pre_syscall(drcontext, sysnum, pt);
+    client_pre_syscall(drcontext, sysnum, sysarg);
 }
 
 #ifdef WINDOWS
 bool
 is_in_seh(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     return pt->in_seh;
 }
 
@@ -3305,24 +3343,24 @@ is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc)
 
 
 static void
-handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sysarg[])
 {
     bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
     if (success && pt->syscall_this_process) {
-        app_pc *base_ptr = (app_pc *) pt->sysarg[1];
-        size_t *size_ptr = (size_t *) pt->sysarg[3];
+        app_pc *base_ptr = (app_pc *) sysarg[1];
+        size_t *size_ptr = (size_t *) sysarg[3];
         app_pc base;
         size_t size;
         if (!safe_read(base_ptr, sizeof(*base_ptr), &base) ||
             !safe_read(size_ptr, sizeof(*size_ptr), &size)) {
-            LOGPT(1, pt, "WARNING: NtAllocateVirtualMemory: error reading param\n");
+            LOG(1, "WARNING: NtAllocateVirtualMemory: error reading param\n");
             return;
         }
-        LOGPT(2, pt, "NtAllocateVirtualMemory: "PFX"-"PFX" %s%s%s%s\n",
-              base, base+size, pt->valloc_commit ? "vcommit " : "",
-              TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
-              TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
-              pt->in_heap_routine > 0 ? "in-heap " : "");
+        LOG(2, "NtAllocateVirtualMemory: "PFX"-"PFX" %s%s%s%s\n",
+            base, base+size, pt->valloc_commit ? "vcommit " : "",
+            TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
+            TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
+            pt->in_heap_routine > 0 ? "in-heap " : "");
         if (options.track_heap) {
             /* if !valloc_commit, we assume it's part of a heap */
             if (pt->valloc_commit) {
@@ -3330,10 +3368,9 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                 ASSERT(!is_in_heap_region(base),
                        "HeapAlloc vs VirtualAlloc: error distinguishing");
                 if (pt->in_heap_routine == 0) {
-                    LOGPT(2, pt,
-                          "NtAllocateVirtualMemory non-heap alloc "PFX"-"PFX"\n",
-                          base, base+size);
-                    client_handle_mmap(pt, base, size, true/*anon*/);
+                    LOG(2, "NtAllocateVirtualMemory non-heap alloc "PFX"-"PFX"\n",
+                        base, base+size);
+                    client_handle_mmap(drcontext, base, size, true/*anon*/);
                 } else {
                     byte *heap_base, *heap_end;
                     if (heap_region_bounds(base - 1, &heap_base, &heap_end) &&
@@ -3353,9 +3390,8 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
                          * FIXME: our red zone here will end up wasting an entire 64KB
                          * if the request size + headers would have been 64KB-aligned.
                          */
-                        LOGPT(2, pt,
-                              "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
-                              base, base+size);
+                        LOG(2, "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
+                            base, base+size);
                         /* there are headers on this one */
                         heap_region_add(base, base+size, false/*!arena*/, mc);
                         /* set Heap if from RtlAllocateHeap */
@@ -3374,25 +3410,24 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
             }
         } else {
             if (TEST(MEM_COMMIT, pt->valloc_type)) {
-                LOGPT(2, pt, "NtAllocateVirtualMemory commit "PFX"-"PFX"\n",
-                      base, base+size);
-                client_handle_mmap(pt, base, size, true/*anon*/);
+                LOG(2, "NtAllocateVirtualMemory commit "PFX"-"PFX"\n",
+                    base, base+size);
+                client_handle_mmap(drcontext, base, size, true/*anon*/);
             }
         }
     } else {
         DOLOG(2, {
-            app_pc *base_ptr = (app_pc *) pt->sysarg[1];
-            size_t *size_ptr = (size_t *) pt->sysarg[3];
+            app_pc *base_ptr = (app_pc *) sysarg[1];
+            size_t *size_ptr = (size_t *) sysarg[3];
             app_pc base;
             size_t size;
             if (safe_read(base_ptr, sizeof(*base_ptr), &base) &&
                 safe_read(size_ptr, sizeof(*size_ptr), &size)) {
-                LOGPT(2, pt, "NtAllocateVirtualMemory res="PFX" %s: "PFX"-"PFX"\n",
-                      dr_syscall_get_result(drcontext),
-                      pt->syscall_this_process ? "" : "other-process",
-                      base, base+size);
+                LOG(2, "NtAllocateVirtualMemory res="PFX" %s: "PFX"-"PFX"\n",
+                    dr_syscall_get_result(drcontext),
+                    pt->syscall_this_process ? "" : "other-process", base, base+size);
             } else {
-                LOGPT(1, pt, "WARNING: NtAllocateVirtualMemory: error reading param\n");
+                LOG(1, "WARNING: NtAllocateVirtualMemory: error reading param\n");
                 return;
             }
         });
@@ -3400,11 +3435,11 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
 }
 
 static void
-handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sysarg[])
 {
     bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
-    app_pc *base_ptr = (app_pc *) pt->sysarg[1];
-    size_t *size_ptr = (size_t *) pt->sysarg[2];
+    app_pc *base_ptr = (app_pc *) sysarg[1];
+    size_t *size_ptr = (size_t *) sysarg[2];
     app_pc base;
     size_t size;
     if (!pt->syscall_this_process)
@@ -3412,11 +3447,10 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
     if (success &&
         safe_read(base_ptr, sizeof(*base_ptr), &base) &&
         safe_read(size_ptr, sizeof(*size_ptr), &size)) {
-        LOGPT(2, pt, "NtFreeVirtualMemory: "PFX"-"PFX", %s%s%s\n",
-              base, base+size,
-              TEST(MEM_DECOMMIT, pt->valloc_type) ? "decommit " : "",
-              TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
-              pt->in_heap_routine > 0 ? "in-heap " : "");
+        LOG(2, "NtFreeVirtualMemory: "PFX"-"PFX", %s%s%s\n", base, base+size,
+            TEST(MEM_DECOMMIT, pt->valloc_type) ? "decommit " : "",
+            TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
+            pt->in_heap_routine > 0 ? "in-heap " : "");
         ASSERT(!pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to succeed");
         if (options.track_heap) {
             /* Are we freeing an entire region? */
@@ -3461,7 +3495,7 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
     } else {
         DOLOG(1, {
             if (success) {
-                LOGPT(1, pt, "WARNING: NtFreeVirtualMemory: error reading param\n");
+                LOG(1, "WARNING: NtFreeVirtualMemory: error reading param\n");
             } else {
                 /* not serious: we didn't do anything pre-syscall */
                 if (!pt->expect_sys_to_fail)
@@ -3472,18 +3506,19 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
 }
 
 static void
-handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, per_thread_t *pt)
+handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt,
+                                reg_t sysarg[])
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
         /* A data file is mmapped by csrss and its base is stored at offset 0x10 */
 # define UserConnectToServer_BASE_OFFS 0x10
         app_pc base;
-        if (safe_read((byte *)pt->sysarg[1] + UserConnectToServer_BASE_OFFS,
+        if (safe_read((byte *)sysarg[1] + UserConnectToServer_BASE_OFFS,
                       sizeof(base), &base)) {
             app_pc check_base;
             size_t sz = allocation_size(base, &check_base);
             if (base == check_base)
-                client_handle_mmap(pt, base, sz, false/*file-backed*/);
+                client_handle_mmap(drcontext, base, sz, false/*file-backed*/);
             else
                 WARN("WARNING: UserConnectToServer has invalid base");
         }
@@ -3492,22 +3527,24 @@ handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, per_thread_t
 #endif /* WINDOWS */
 
 void
-handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_thread_t *pt)
+handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t sysarg[],
+                          uint arg_cap)
 {
+    cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
 #ifdef WINDOWS
     /* we access up to param#4 */
-    ASSERT(SYSCALL_NUM_ARG_STORE >= 6, "need to up #sysargs stored");
+    ASSERT(arg_cap >= 6, "need to up #sysargs stored");
     if (sysnum == sysnum_mmap) {
         /* FIXME: provide a memory tracking interface? */
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (success && pt->syscall_this_process) {
-            app_pc *base_ptr = (app_pc *) pt->sysarg[2];
+            app_pc *base_ptr = (app_pc *) sysarg[2];
             app_pc base;
             if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
-                LOGPT(1, pt, "WARNING: NtMapViewOfSection: error reading param\n");
+                LOG(1, "WARNING: NtMapViewOfSection: error reading param\n");
             } else {
-                LOGPT(2, pt, "NtMapViewOfSection: "PFX"\n", base);
-                client_handle_mmap(pt, base, allocation_size(base, NULL),
+                LOG(2, "NtMapViewOfSection: "PFX"\n", base);
+                client_handle_mmap(drcontext, base, allocation_size(base, NULL),
                                    false/*file-backed*/);
             }
         }
@@ -3515,39 +3552,38 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (!success && pt->syscall_this_process) {
             /* restore */
-            LOGPT(2, pt, "NtUnmapViewOfSection failed: restoring "PFX"\n",
-                   pt->munmap_base);
+            LOG(2, "NtUnmapViewOfSection failed: restoring "PFX"\n", pt->munmap_base);
             client_handle_munmap_fail(pt->munmap_base,
                                       allocation_size(pt->munmap_base, NULL),
                                       false/*file-backed*/);
         }
     } else if (sysnum == sysnum_valloc) {
-        handle_post_valloc(drcontext, mc, pt);
+        handle_post_valloc(drcontext, mc, pt, sysarg);
     } else if (sysnum == sysnum_vfree) {
         if (pt->syscall_this_process)
-            handle_post_vfree(drcontext, mc, pt);
+            handle_post_vfree(drcontext, mc, pt, sysarg);
     } else if (sysnum == sysnum_mapcmf) {
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (success && pt->syscall_this_process) {
-            app_pc *base_ptr = (app_pc *) pt->sysarg[5];
+            app_pc *base_ptr = (app_pc *) sysarg[5];
             app_pc base;
             if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
-                LOGPT(1, pt, "WARNING: NtMapCMFModule: error reading param\n");
+                LOG(1, "WARNING: NtMapCMFModule: error reading param\n");
             } else {
-                LOGPT(2, pt, "NtMapCMFModule: "PFX"-"PFX"\n",
-                      base, base + allocation_size(base, NULL));
-                client_handle_mmap(pt, base, allocation_size(base, NULL),
+                LOG(2, "NtMapCMFModule: "PFX"-"PFX"\n",
+                    base, base + allocation_size(base, NULL));
+                client_handle_mmap(drcontext, base, allocation_size(base, NULL),
                                    /* I believe it's file-backed: xref DRi#415 */
                                    false/*file-backed*/);
             }
         }
     } else if (sysnum == sysnum_UserConnectToServer) {
-        handle_post_UserConnectToServer(drcontext, mc, pt);
+        handle_post_UserConnectToServer(drcontext, mc, pt, sysarg);
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
     bool success = (result >= 0);
-    ASSERT(SYSCALL_NUM_ARG_STORE >= 4, "need to up #sysargs stored");
+    ASSERT(arg_cap >= 4, "need to up #sysargs stored");
     if (sysnum == SYS_mmap IF_X86_32(|| sysnum == SYS_mmap2)) {
         unsigned long flags = 0;
         size_t size = 0;
@@ -3560,13 +3596,13 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                  *                unsigned long prot, unsigned long flags,
                  *                unsigned long fd, unsigned long pgoff)
                  */
-                flags = (unsigned long) pt->sysarg[3];
-                size = (size_t) pt->sysarg[1];
+                flags = (unsigned long) sysarg[3];
+                size = (size_t) sysarg[1];
             }
 # ifdef X86_32
             if (sysnum == SYS_mmap) {
                 mmap_arg_struct_t arg;
-                if (!safe_read((void *)pt->sysarg[0], sizeof(arg), &arg)) {
+                if (!safe_read((void *)sysarg[0], sizeof(arg), &arg)) {
                     ASSERT(false, "failed to read successful mmap arg struct");
                     /* fallback is to walk as though an image */
                     memset(&arg, 0, sizeof(arg));
@@ -3575,8 +3611,8 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                 size = arg.len;
             }
 # endif
-            LOGPT(2, pt, "SYS_mmap: "PFX"-"PFX" %d\n", base, base+size, flags);
-            client_handle_mmap(pt, base, size, TEST(MAP_ANONYMOUS, flags));
+            LOG(2, "SYS_mmap: "PFX"-"PFX" %d\n", base, base+size, flags);
+            client_handle_mmap(drcontext, base, size, TEST(MAP_ANONYMOUS, flags));
             if (TEST(MAP_ANONYMOUS, flags)) {
                 if (pt->in_heap_routine > 0) {
                     /* We don't know whether a new arena or a one-off large
@@ -3588,17 +3624,17 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
                 }
             }
         } else {
-            LOGPT(2, pt, "SYS_mmap failed "PIFX"\n", result);
+            LOG(2, "SYS_mmap failed "PIFX"\n", result);
         }
         /* FIXME: races: could be unmapped already */
     }
     else if (sysnum == SYS_munmap) {
         if (!success) {
             /* we already marked unaddressable: restore */
-            app_pc base = (app_pc) pt->sysarg[0];
-            size_t size = (size_t) pt->sysarg[1];
+            app_pc base = (app_pc) sysarg[0];
+            size_t size = (size_t) sysarg[1];
             dr_mem_info_t info;
-            LOGPT(2, pt, "SYS_munmap "PFX"-"PFX" failed\n", base, base+size);
+            LOG(2, "SYS_munmap "PFX"-"PFX" failed\n", base, base+size);
             if (!dr_query_memory_ex(base, &info))
                 ASSERT(false, "mem query failed");
             client_handle_munmap_fail(base, size, info.type != DR_MEMTYPE_IMAGE);
@@ -3607,10 +3643,10 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
         }
     } 
     else if (sysnum == SYS_mremap) {
-        app_pc old_base = (app_pc) pt->sysarg[0];
-        size_t old_size = (size_t) pt->sysarg[1];
+        app_pc old_base = (app_pc) sysarg[0];
+        size_t old_size = (size_t) sysarg[1];
         app_pc new_base = (app_pc) result;
-        size_t new_size = (size_t) pt->sysarg[2];
+        size_t new_size = (size_t) sysarg[2];
         /* libc interprets up to -PAGE_SIZE as an error */
         bool mmap_success = (result > 0 || result < -PAGE_SIZE);
         if (mmap_success) {
@@ -3621,8 +3657,8 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
              * race handler.  For now we just want common cases working.
              */
             dr_mem_info_t info;
-            LOGPT(2, pt, "SYS_mremap from "PFX"-"PFX" to "PFX"-"PFX"\n",
-                  old_base, old_base+old_size, new_base, new_base+new_size);
+            LOG(2, "SYS_mremap from "PFX"-"PFX" to "PFX"-"PFX"\n",
+                old_base, old_base+old_size, new_base, new_base+new_size);
             if (!dr_query_memory_ex(new_base, &info))
                 ASSERT(false, "mem query failed");
             client_handle_mremap(old_base, old_size, new_base, new_size,
@@ -3647,7 +3683,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, per_th
         heap_region_adjust(get_heap_start(), (app_pc) result);
     }
 #endif /* WINDOWS */
-    client_post_syscall(drcontext, sysnum, pt);
+    client_post_syscall(drcontext, sysnum, sysarg);
 }
 
 static inline app_pc
@@ -3681,7 +3717,7 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
  * Caller should check for NULL separately if it's not an invalid arg.
  */
 static bool
-check_valid_heap_block(byte *block, per_thread_t *pt, dr_mcontext_t *mc,
+check_valid_heap_block(byte *block, cls_alloc_t *pt, dr_mcontext_t *mc,
                        bool inside, app_pc call_site,
                        const char *routine, bool is_free)
 {
@@ -3700,7 +3736,7 @@ check_valid_heap_block(byte *block, per_thread_t *pt, dr_mcontext_t *mc,
 }
 
 static void
-enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc,
+enter_heap_routine(cls_alloc_t *pt, app_pc pc, dr_mcontext_t *mc,
                    alloc_routine_entry_t *routine)
 {
     if (pt->in_heap_routine == 0) {
@@ -3726,19 +3762,19 @@ enter_heap_routine(per_thread_t *pt, app_pc pc, dr_mcontext_t *mc,
 /* Returns true if this call is a recursive helper to aid in the same
  * sequences of calls.  If it's a new tangential sequence, pushes a new
  * data structure on the per-thread stack and returns false.
- * In the latter case, caller should re-set per_thread_t.
+ * In the latter case, caller should re-set cls_alloc_t.
  *
  * The args_match checks use either pt->alloc_base or pt->alloc_size.
  * Thus, anyone setting in_heap_adjusted should set both alloc_{base,size}
  * via set_handling_heap_layer() so we don't compare to garbage.
  */
 static bool
-check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
+check_recursive_same_sequence(void *drcontext, cls_alloc_t **pt_caller,
                               dr_mcontext_t *mc,
                               alloc_routine_entry_t *routine,
                               ptr_int_t arg1, ptr_int_t arg2)
 {
-    per_thread_t *pt = *pt_caller;
+    cls_alloc_t *pt = *pt_caller;
     /* We assume that a typical nested call to an alloc routine (malloc, realloc,
      * calloc) is working on the same allocation and not a separate one.
      * We do our adjustments in the outer pre and the outer post.
@@ -3774,8 +3810,7 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
                     if (pc != NULL && get_alloc_entry(pc, &last_routine_local))
                         last_routine = &last_routine_local;
                     else {
-                        LOGPT(1, pt, "WARNING: may misclassify recursion: "
-                              "bad last routine\n");
+                        LOG(1, "WARNING: may misclassify recursion: bad last routine\n");
                     }
                 } else {
                     last_routine = (alloc_routine_entry_t *)
@@ -3791,16 +3826,18 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
                     }
                 }
             } else
-                LOGPT(1, pt, "WARNING: may misclassify recursion: exceeding nest max\n");
-            LOGPT(2, pt, "check_recursive %s: "PFX" vs "PFX"\n",
-                  routine->name, arg1, arg2);
+                LOG(1, "WARNING: may misclassify recursion: exceeding nest max\n");
+            LOG(2, "check_recursive %s: "PFX" vs "PFX"\n", routine->name, arg1, arg2);
             if (tangent && last_routine != NULL &&
                 is_rtl_routine(last_routine->type) && arg1 != arg2) {
-                per_thread_t *new_pt;
-                LOGPT(2, pt, "%s recursive call: tangential => new context\n",
-                      routine->name);
+                cls_alloc_t *new_pt;
+                IF_DEBUG(bool ok;)
+                LOG(2, "%s recursive call: tangential => new context\n", routine->name);
                 pt->in_heap_routine--; /* undo the inc */
-                new_pt = per_thread_stack_push(drcontext, pt);
+                IF_DEBUG(ok =)
+                    drmgr_push_cls(drcontext);
+                ASSERT(ok, "drmgr cls stack push failed: tangent tracking error!");
+                new_pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
                 new_pt->heap_tangent = true;
                 enter_heap_routine(new_pt, routine->pc, mc, routine);
                 ASSERT(new_pt->in_heap_routine == 1, "inheap not cleared in new cxt");
@@ -3809,8 +3846,7 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
             }
         }
 #endif
-        LOGPT(2, pt, "%s recursive call: helper, so no adjustments\n",
-              routine->name);
+        LOG(2, "%s recursive call: helper, so no adjustments\n", routine->name);
         return true;
     }
     /* non-recursive */
@@ -3818,7 +3854,7 @@ check_recursive_same_sequence(void *drcontext, per_thread_t **pt_caller,
 }
 
 static void
-set_handling_heap_layer(per_thread_t *pt, byte *alloc_base, size_t alloc_size)
+set_handling_heap_layer(cls_alloc_t *pt, byte *alloc_base, size_t alloc_size)
 {
     pt->in_heap_adjusted = pt->in_heap_routine;
     /* We want to set both of these so our args_match checks for
@@ -3831,7 +3867,7 @@ set_handling_heap_layer(per_thread_t *pt, byte *alloc_base, size_t alloc_size)
 
 #ifdef WINDOWS
 static void
-set_auxarg(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside,
+set_auxarg(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc, bool inside,
            alloc_routine_entry_t *routine)
 {
     routine_type_t type = routine->type;
@@ -3885,7 +3921,7 @@ set_auxarg(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside,
  */
 
 static void
-record_allocator(void *drcontext, per_thread_t *pt, alloc_routine_entry_t *routine)
+record_allocator(void *drcontext, cls_alloc_t *pt, alloc_routine_entry_t *routine)
 {
     /* just record outer layer: leave adjusting to malloc (i#123).
      * XXX: we assume none of the "fake" outer layers like LdrShutdownProcess
@@ -3959,7 +3995,7 @@ handle_free_check_mismatch(void *drcontext, dr_mcontext_t *mc, bool inside,
 }
 
 static void
-handle_free_pre(void *drcontext, per_thread_t *pt,
+handle_free_pre(void *drcontext, cls_alloc_t *pt,
                 dr_mcontext_t *mc, bool inside, app_pc call_site,
                 alloc_routine_entry_t *routine)
 {
@@ -3982,7 +4018,7 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
                                       redzone_size(routine))) {
         /* we assume we're called from RtlReAllocateheap, who will handle
          * all adjustments and shadow updates */
-        LOGPT(2, pt, "free of "PFX" recursive: not adjusting\n", base);
+        LOG(2, "free of "PFX" recursive: not adjusting\n", base);
         /* try to catch errors like PR 406714 */
         ASSERT(/* don't crash calling size routine so first see whether
                 * entry exists: but don't use lock, since we can deadlock
@@ -4052,7 +4088,7 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
             if (malloc_entry_is_pre_us(entry, false)) {
                 /* was allocated before we took control, so no redzone */
                 size_in_zone = false;
-                LOGPT(2, pt, "free of pre-control "PFX"-"PFX"\n", base, base+size);
+                LOG(2, "free of pre-control "PFX"-"PFX"\n", base, base+size);
             } else {
                 *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR(type), inside))) = real_base;
             }
@@ -4113,7 +4149,7 @@ handle_free_pre(void *drcontext, per_thread_t *pt,
 }
 
 static void
-handle_free_post(void *drcontext, per_thread_t *pt,
+handle_free_post(void *drcontext, cls_alloc_t *pt,
                  dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
     pt->alloc_being_freed = NULL;
@@ -4143,7 +4179,7 @@ handle_free_post(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_size_pre(void *drcontext, per_thread_t *pt,
+handle_size_pre(void *drcontext, cls_alloc_t *pt,
                 dr_mcontext_t *mc, bool inside, app_pc call_site,
                 alloc_routine_entry_t *routine)
 {
@@ -4182,7 +4218,7 @@ handle_size_pre(void *drcontext, per_thread_t *pt,
 }
 
 static void
-handle_size_post(void *drcontext, per_thread_t *pt,
+handle_size_post(void *drcontext, cls_alloc_t *pt,
                  dr_mcontext_t *mc, alloc_routine_entry_t *routine)
 {
     uint failure = IF_WINDOWS_ELSE((routine->type == RTL_ROUTINE_SIZE) ? ~0UL : 0, 0);
@@ -4234,7 +4270,7 @@ size_plus_redzone_overflow(alloc_routine_entry_t *routine, size_t asked_for)
 
 /* If realloc is true, this is realloc(NULL, size) */
 static void
-handle_malloc_pre(void *drcontext, per_thread_t *pt,
+handle_malloc_pre(void *drcontext, cls_alloc_t *pt,
                   dr_mcontext_t *mc, bool inside,
                   alloc_routine_entry_t *routine)
 {
@@ -4260,14 +4296,13 @@ handle_malloc_pre(void *drcontext, per_thread_t *pt,
     if (is_rtl_routine(type)) {
         uint flags = (uint) APP_ARG(mc, 2, inside);
         if (TEST(RTL_LFH_BLOCK_FLAG, flags)) {
-            LOGPT(2, pt, "%s is LFH block size="PIFX" alloc: ignoring\n",
-                  routine->name, size);
+            LOG(2, "%s is LFH block size="PIFX" alloc: ignoring\n", routine->name, size);
             pt->ignored_alloc = true;
             return;
         }
         if (TESTALL(RTL_LOOKASIDE_BLOCK_FLAGS, flags)) {
-            LOGPT(2, pt, "%s is lookaside block size="PIFX" alloc: ignoring\n",
-                  routine->name, size);
+            LOG(2, "%s is lookaside block size="PIFX" alloc: ignoring\n",
+                routine->name, size);
             pt->ignored_alloc = true;
             return;
         }
@@ -4301,11 +4336,11 @@ handle_malloc_pre(void *drcontext, per_thread_t *pt,
         }
     }
     /* FIXME PR 406742: handle HEAP_GENERATE_EXCEPTIONS windows flag */
-    LOGPT(2, pt, "malloc-pre" IF_WINDOWS(" heap="PFX)
-          " size="PIFX IF_WINDOWS(" flags="PIFX) "%s\n",
-          IF_WINDOWS_(APP_ARG(mc, 1, inside))
-          pt->alloc_size _IF_WINDOWS(pt->alloc_flags),
-          realloc ? "(realloc(NULL,sz))" : "");
+    LOG(2, "malloc-pre" IF_WINDOWS(" heap="PFX)
+        " size="PIFX IF_WINDOWS(" flags="PIFX) "%s\n",
+        IF_WINDOWS_(APP_ARG(mc, 1, inside))
+        pt->alloc_size _IF_WINDOWS(pt->alloc_flags),
+        realloc ? "(realloc(NULL,sz))" : "");
 }
 
 /* Returns the actual allocated size.  This can be either the
@@ -4351,7 +4386,7 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
 }
 
 static app_pc
-adjust_alloc_result(void *drcontext, per_thread_t *pt,
+adjust_alloc_result(void *drcontext, cls_alloc_t *pt,
                     dr_mcontext_t *mc, size_t *padded_size_out,
                     bool used_redzone, alloc_routine_entry_t *routine)
 {
@@ -4369,16 +4404,14 @@ adjust_alloc_result(void *drcontext, per_thread_t *pt,
          * on free() we have to use the real size here
          */
         if (used_redzone && !options.size_in_redzone && redzone_size(routine) > 0) {
-            LOGPT(2, pt, "adjusting alloc size "PIFX" to match real size "PIFX"\n",
-                  pt->alloc_size, real_size - redzone_size(routine)*2);
+            LOG(2, "adjusting alloc size "PIFX" to match real size "PIFX"\n",
+                pt->alloc_size, real_size - redzone_size(routine)*2);
             pt->alloc_size = real_size - redzone_size(routine)*2;
         }
-        LOGPT(2, pt, "%s-post "PFX"-"PFX" = "PIFX" (really "PFX"-"PFX" "PIFX")\n",
-              routine->name,
-              app_base, app_base+pt->alloc_size, pt->alloc_size,
-              app_base - (used_redzone ? redzone_size(routine) : 0),
-              app_base - (used_redzone ? redzone_size(routine) : 0) + real_size,
-              real_size);
+        LOG(2, "%s-post "PFX"-"PFX" = "PIFX" (really "PFX"-"PFX" "PIFX")\n",
+            routine->name, app_base, app_base+pt->alloc_size, pt->alloc_size,
+            app_base - (used_redzone ? redzone_size(routine) : 0),
+            app_base - (used_redzone ? redzone_size(routine) : 0) + real_size, real_size);
         if (used_redzone && redzone_size(routine) > 0) {
             if (options.size_in_redzone) {
                 ASSERT(redzone_size(routine) >= sizeof(size_t), "redzone size too small");
@@ -4389,8 +4422,8 @@ adjust_alloc_result(void *drcontext, per_thread_t *pt,
              * by RtlAllocateHeap that we're messing up?
              * Should we preserve any obvious alignment we see?
              */
-            LOGPT(2, pt, "%s-post changing from "PFX" to "PFX"\n",
-                  routine->name, mc->eax, app_base);
+            LOG(2, "%s-post changing from "PFX" to "PFX"\n",
+                routine->name, mc->eax, app_base);
             mc->eax = (reg_t) app_base;
             dr_set_mcontext(drcontext, mc);
         }
@@ -4415,7 +4448,7 @@ handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
 }
 
 static void
-handle_malloc_post(void *drcontext, per_thread_t *pt,
+handle_malloc_post(void *drcontext, cls_alloc_t *pt,
                    dr_mcontext_t *mc, bool realloc, app_pc post_call,
                    alloc_routine_entry_t *routine)
 {
@@ -4442,7 +4475,7 @@ handle_malloc_post(void *drcontext, per_thread_t *pt,
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, post_call, pt->allocator);
         }
-        client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
+        client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              zeroed, realloc, mc);
     }
 }
@@ -4452,7 +4485,7 @@ handle_malloc_post(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_realloc_pre(void *drcontext, per_thread_t *pt,
+handle_realloc_pre(void *drcontext, cls_alloc_t *pt,
                    dr_mcontext_t *mc, bool inside, app_pc call_site,
                    alloc_routine_entry_t *routine)
 {
@@ -4474,8 +4507,7 @@ handle_realloc_pre(void *drcontext, per_thread_t *pt,
     if (options.replace_realloc) {
         /* subsequent malloc will clobber alloc_size */
         pt->realloc_replace_size = size;
-        LOGPT(2, pt, "realloc-pre "PFX" new size %d\n",
-               base, pt->realloc_replace_size);
+        LOG(2, "realloc-pre "PFX" new size %d\n", base, pt->realloc_replace_size);
         return;
     }
     if (malloc_is_native(base, pt, true)) {
@@ -4516,8 +4548,8 @@ handle_realloc_pre(void *drcontext, per_thread_t *pt,
             malloc_set_valid(pt->alloc_base, false);
             invalidated = true;
             size_in_zone = false;
-            LOGPT(2, pt, "realloc of pre-control "PFX"-"PFX"\n",
-                   pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
+            LOG(2, "realloc of pre-control "PFX"-"PFX"\n",
+                pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
         } else {
             real_base -= redzone_size(routine);
             *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_REALLOC_PTR(type), inside))) =
@@ -4561,24 +4593,24 @@ handle_realloc_pre(void *drcontext, per_thread_t *pt,
     }
     ASSERT((ssize_t)pt->realloc_old_size != -1,
            "error determining heap block size");
-    LOGPT(2, pt, "realloc-pre "IF_WINDOWS("heap="PFX)
-          " base="PFX" oldsz="PIFX" newsz="PIFX"\n",
-          IF_WINDOWS_(APP_ARG(mc, 1, inside))
-          pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
+    LOG(2, "realloc-pre "IF_WINDOWS("heap="PFX)
+        " base="PFX" oldsz="PIFX" newsz="PIFX"\n",
+        IF_WINDOWS_(APP_ARG(mc, 1, inside))
+        pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
     if (options.record_allocs && !invalidated)
         malloc_set_valid(pt->alloc_base, false);
 }
 
 static void
-handle_realloc_post(void *drcontext, per_thread_t *pt,
+handle_realloc_post(void *drcontext, cls_alloc_t *pt,
                     dr_mcontext_t *mc, app_pc post_call,
                     alloc_routine_entry_t *routine)
 {
     if (options.replace_realloc) {
         /* for sz==0 normal to return NULL */
         if (mc->eax == 0 && pt->realloc_replace_size != 0) {
-            LOGPT(2, pt, "realloc-post failure %d %d\n",
-                   pt->alloc_size, pt->realloc_replace_size);
+            LOG(2, "realloc-post failure %d %d\n",
+                pt->alloc_size, pt->realloc_replace_size);
             handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
         }
         return;
@@ -4615,11 +4647,11 @@ handle_realloc_post(void *drcontext, per_thread_t *pt,
                  */
                 ASSERT(real_base == app_base, "no redzone on realloc(,0)");
                 malloc_set_pre_us(app_base);
-                LOGPT(2, pt, "realloc-post "PFX" sz=0 no redzone padsz="PIFX"\n",
-                      app_base, pad_size);
+                LOG(2, "realloc-post "PFX" sz=0 no redzone padsz="PIFX"\n",
+                    app_base, pad_size);
             }
         }
-        client_handle_realloc(pt, pt->alloc_base, old_end - pt->alloc_base,
+        client_handle_realloc(drcontext, pt->alloc_base, old_end - pt->alloc_base,
                               app_base, pt->alloc_size, real_base, mc);
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
@@ -4627,8 +4659,8 @@ handle_realloc_post(void *drcontext, per_thread_t *pt,
             options.record_allocs) {
             /* still there, and still pre-us if it was before */
             malloc_set_valid(pt->alloc_base, true);
-            LOGPT(2, pt, "re-instating failed realloc as pre-control "PFX"-"PFX"\n",
-                   pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
+            LOG(2, "re-instating failed realloc as pre-control "PFX"-"PFX"\n",
+                pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
         }
         handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
     }
@@ -4639,7 +4671,7 @@ handle_realloc_post(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_calloc_pre(void *drcontext, per_thread_t *pt,
+handle_calloc_pre(void *drcontext, cls_alloc_t *pt,
                   dr_mcontext_t *mc, bool inside,
                   alloc_routine_entry_t *routine)
 {
@@ -4705,11 +4737,11 @@ handle_calloc_pre(void *drcontext, per_thread_t *pt,
                 *((size_t *)(APP_ARG_ADDR(mc, 1, inside))) = count + extra_count;
         }
     }
-    LOGPT(2, pt, "calloc-pre "PIFX" x "PIFX"\n", count, each);
+    LOG(2, "calloc-pre "PIFX" x "PIFX"\n", count, each);
 }
 
 static void
-handle_calloc_post(void *drcontext, per_thread_t *pt,
+handle_calloc_post(void *drcontext, cls_alloc_t *pt,
                    dr_mcontext_t *mc, app_pc post_call,
                    alloc_routine_entry_t *routine)
 {
@@ -4731,7 +4763,7 @@ handle_calloc_post(void *drcontext, per_thread_t *pt,
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, post_call, pt->allocator);
         }
-        client_handle_malloc(pt, app_base, pt->alloc_size, real_base,
+        client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              true/*zeroed*/, false/*!realloc*/, mc);
     }
 }
@@ -4742,7 +4774,7 @@ handle_calloc_post(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_create_pre(void *drcontext, per_thread_t *pt,
+handle_create_pre(void *drcontext, cls_alloc_t *pt,
                   dr_mcontext_t *mc, bool inside)
 {
     /* RtlCreateHeap(ULONG Flags,
@@ -4761,7 +4793,7 @@ handle_create_pre(void *drcontext, per_thread_t *pt,
 }
 
 static void
-handle_create_post(void *drcontext, per_thread_t *pt,
+handle_create_post(void *drcontext, cls_alloc_t *pt,
                    dr_mcontext_t *mc)
 {
     /* RtlCreateHeap(ULONG Flags,
@@ -4832,7 +4864,7 @@ heap_destroy_segment_iter_cb(byte *start, byte *end, void *data)
 }
 
 static void
-handle_destroy_pre(void *drcontext, per_thread_t *pt,
+handle_destroy_pre(void *drcontext, cls_alloc_t *pt,
                    dr_mcontext_t *mc, bool inside,
                    alloc_routine_entry_t *routine)
 {
@@ -4860,11 +4892,11 @@ handle_destroy_pre(void *drcontext, per_thread_t *pt,
     heap_region_iterate_heap(heap, heap_destroy_segment_iter_cb, (void *) heap);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
     ASSERT(routine->set != NULL, "destroy must be part of set");
-    client_handle_heap_destroy(drcontext, pt, heap, routine->set->client);
+    client_handle_heap_destroy(drcontext, heap, routine->set->client);
 }
 
 static void
-handle_destroy_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
+handle_destroy_post(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc)
 {
     /* RtlDestroyHeap(ULONG Flags,
      *               PVOID HeapBase OPTIONAL,
@@ -4880,7 +4912,7 @@ handle_destroy_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
  */
 
 static void
-handle_userinfo_pre(void *drcontext, per_thread_t *pt,
+handle_userinfo_pre(void *drcontext, cls_alloc_t *pt,
                     dr_mcontext_t *mc, bool inside, app_pc call_site,
                     alloc_routine_entry_t *routine)
 {
@@ -4934,7 +4966,7 @@ handle_userinfo_pre(void *drcontext, per_thread_t *pt,
 }
 
 static void
-handle_userinfo_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
+handle_userinfo_post(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc)
 {
     /* FIXME: do we need to adjust the uservalue result? */
 }
@@ -4944,7 +4976,7 @@ handle_userinfo_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
  */
 
 static void
-handle_validate_pre(void *drcontext, per_thread_t *pt,
+handle_validate_pre(void *drcontext, cls_alloc_t *pt,
                     dr_mcontext_t *mc, bool inside, app_pc call_site,
                     alloc_routine_entry_t *routine)
 {
@@ -4986,7 +5018,7 @@ handle_validate_pre(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_create_actcxt_pre(void *drcontext, per_thread_t *pt,
+handle_create_actcxt_pre(void *drcontext, cls_alloc_t *pt,
                          dr_mcontext_t *mc, bool inside)
 {
     /* i#352: kernel32!CreateActCtxW invokes csrss via
@@ -5004,9 +5036,9 @@ handle_create_actcxt_pre(void *drcontext, per_thread_t *pt,
     byte *base = (byte *) APP_ARG(mc, 2, inside);
     size_t size = allocation_size(base, NULL);
     if (size != 0) {
-        LOGPT(2, pt, "RtlCreateActivationContext (via csrss): "PFX"-"PFX"\n",
-              base, base + size);
-        client_handle_mmap(pt, base, size, false/*file-backed*/);
+        LOG(2, "RtlCreateActivationContext (via csrss): "PFX"-"PFX"\n",
+            base, base + size);
+        client_handle_mmap(drcontext, base, size, false/*file-backed*/);
     } else {
         LOG(1, "WARNING: RtlCreateActivationContext invalid base "PFX"\n", base);
     }
@@ -5027,14 +5059,14 @@ handle_create_actcxt_pre(void *drcontext, per_thread_t *pt,
  */
 
 static void
-handle_encoded_ptr_pre(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc, bool inside)
+handle_encoded_ptr_pre(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc, bool inside)
 {
     pt->to_be_encoded = (byte *) APP_ARG(mc, 1, inside);
     ASSERT(options.check_encoded_pointers, "should not be called");
 }
 
 static void
-handle_encoded_ptr_post(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc)
+handle_encoded_ptr_post(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc)
 {
     byte *encoded = (byte *) mc->eax;
     ASSERT(options.check_encoded_pointers, "should not be called");
@@ -5073,7 +5105,7 @@ get_decoded_ptr(byte *encoded)
 
 /* only used if options.track_heap */
 static void
-handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
+handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt,
                     app_pc call_site, app_pc expect, bool indirect,
                     app_pc actual, bool inside, dr_mcontext_t *mc,
                     alloc_routine_entry_t *routine);
@@ -5083,7 +5115,7 @@ alloc_hook(app_pc pc, bool needs_post, alloc_routine_entry_t *routine,
            reg_t xsp)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     app_pc retaddr;
     post_call_entry_t *e;
@@ -5207,7 +5239,7 @@ static void
 alloc_syscall_hook(app_pc pc)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -5237,7 +5269,7 @@ alloc_syscall_hook(app_pc pc)
         if (pc != addr_KiLdrThunk || running_on_Vista_or_later())
             client_handle_Ki(drcontext, pc, &mc);
         if (pc == addr_KiCallback) {
-            per_thread_stack_push(drcontext, pt);
+            client_handle_callback(drcontext);
         }
     } else
         ASSERT(false, "unknown reason in alloc hook");
@@ -5267,7 +5299,7 @@ insert_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc, bool need
 
 /* only used if options.track_heap */
 static void
-handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
+handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt,
                     app_pc call_site, app_pc expect, bool indirect,
                     app_pc actual, bool inside, dr_mcontext_t *mc,
                     alloc_routine_entry_t *routine)
@@ -5435,7 +5467,7 @@ handle_alloc_pre_ex(void *drcontext, per_thread_t *pt,
 
 /* only used if options.track_heap */
 static void
-handle_alloc_post_func(void *drcontext, per_thread_t *pt, dr_mcontext_t *mc,
+handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, dr_mcontext_t *mc,
                        app_pc func, app_pc post_call,
                        alloc_routine_entry_t *routine)
 {
@@ -5537,7 +5569,7 @@ static void
 handle_alloc_post(app_pc post_call)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -5588,9 +5620,12 @@ handle_alloc_post(app_pc post_call)
 
 #ifdef WINDOWS
     if (pt->in_heap_routine == 0 && pt->heap_tangent) {
+        IF_DEBUG(bool ok;)
         ASSERT(pt->in_heap_adjusted == 0, "inheap vs adjust mismatch");
-        LOG(2, "leaving heap tangent: popping per_thread_t stack\n");
-        per_thread_stack_pop(drcontext, pt, false/*!cbret*/);
+        LOG(2, "leaving heap tangent: popping cls_alloc_t stack\n");
+        IF_DEBUG(ok = )
+            drmgr_pop_cls(drcontext);
+        ASSERT(ok, "drmgr cls stack pop failed: tangent tracking error!");
     }
 #endif
 }
@@ -5621,6 +5656,9 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
 {
     byte *pc, *replacement;
     instr_t *inst = instrlist_first(bb);
+    /* skip meta instrs in case any were added */
+    while (inst != NULL && !instr_ok_to_mangle(inst))
+        inst = instr_get_next(inst);
     if (inst == NULL)
         return;
     pc = instr_get_app_pc(inst);
@@ -5653,7 +5691,7 @@ void
 alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     app_pc pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
     if (entering_alloc != NULL)

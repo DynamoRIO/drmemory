@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -42,20 +42,16 @@ void
 syscall_thread_init(void *drcontext);
 
 void
-syscall_thread_exit(void *drcontext, per_thread_t *pt);
+syscall_thread_exit(void *drcontext);
 
 void
 syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
 void
-syscall_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                        bool new_depth);
+syscall_handle_callback(void *drcontext);
 
 void
-syscall_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child);
-
-void
-syscall_reset_per_thread(void *drcontext, per_thread_t *pt);
+syscall_handle_cbret(void *drcontext);
 
 void
 syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);

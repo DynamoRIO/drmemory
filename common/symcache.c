@@ -32,7 +32,7 @@
 
 #include "dr_api.h"
 #include "symcache.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 
 #undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */

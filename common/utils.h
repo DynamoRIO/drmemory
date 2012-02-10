@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -25,7 +25,7 @@
 
 #include "hashtable.h"
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
-#include "per_thread.h"
+#include "drmgr.h"
 
 #include <limits.h>
 
@@ -228,11 +228,23 @@ print_prefix_to_console(void);
     }                                         \
 } while (0)
 
-/* for warning/error reporting to logfile */
+/***************************************************************************
+ * for warning/error reporting to logfile
+ */
+
+/* Per-thread data shared across callbacks and all modules */
+typedef struct _tls_util_t {
+    file_t f;  /* logfile */
+} tls_util_t;
+
+extern int tls_idx_util;
+
 #define LOGFILE(pt) ((pt) == NULL ? f_global : (pt)->f)
-#define LOGFILE_LOOKUP() \
-    LOGFILE((dr_get_current_drcontext() == NULL) ? NULL : \
-            (per_thread_t *)dr_get_tls_field(dr_get_current_drcontext()))
+#define PT_GET(dc) \
+    (((dc) == NULL) ? NULL : (tls_util_t *)drmgr_get_tls_field(dc, tls_idx_util))
+#define LOGFILE_GET(dc) LOGFILE(PT_GET(dc))
+#define PT_LOOKUP() PT_GET(dr_get_current_drcontext())
+#define LOGFILE_LOOKUP() LOGFILE(PT_LOOKUP())
 /* we require a ,fmt arg but C99 requires one+ argument which we just strip */
 #define ELOGF(level, f, ...) do {   \
     if (op_verbose_level >= (level) && (f) != INVALID_FILE) \
@@ -241,9 +253,7 @@ print_prefix_to_console(void);
 #define ELOGPT(level, pt, ...) \
     ELOGF(level, LOGFILE(pt), __VA_ARGS__)
 #define ELOG(level, ...) \
-    ELOGPT(level, (dr_get_current_drcontext() == NULL) ? NULL : \
-           (per_thread_t *)dr_get_tls_field(dr_get_current_drcontext()), \
-           __VA_ARGS__)
+    ELOGPT(level, PT_LOOKUP(), __VA_ARGS__)
 /* DR's fprintf has a size limit */
 #define ELOG_LARGE_F(level, f, s) do {   \
     if (op_verbose_level >= (level) && (f) != INVALID_FILE) \
@@ -253,7 +263,8 @@ print_prefix_to_console(void);
     ELOG_LARGE_F(level, LOGFILE(pt), s)
 #define ELOG_LARGE(level, s) \
     ELOG_LARGE_PT(level, (dr_get_current_drcontext() == NULL) ? NULL : \
-                  (per_thread_t *)dr_get_tls_field(dr_get_current_drcontext()), s)
+                  (tls_util_t *)drmgr_get_tls_field(dr_get_current_drcontext(), \
+                                                    tls_idx_util), s)
 
 #define WARN(...) ELOGF(0, f_global, __VA_ARGS__)
 
@@ -681,5 +692,14 @@ utils_init(void);
 
 void
 utils_exit(void);
+
+void
+utils_thread_init(void *drcontext);
+
+void
+utils_thread_exit(void *drcontext);
+
+void
+utils_thread_set_file(void *drcontext, file_t f);
 
 #endif /* _UTILS_H_ */

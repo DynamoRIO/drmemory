@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -26,7 +27,7 @@
 #ifndef _PERTURB_H_
 #define _PERTURB_H_ 1
 
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 
 void

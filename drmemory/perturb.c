@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -24,7 +25,7 @@
  */
 
 #include "dr_api.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 #include "options.h"
 #include "heap.h" /* get_ntdll_base */

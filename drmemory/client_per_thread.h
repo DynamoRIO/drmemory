@@ -26,14 +26,10 @@
 #include "dr_api.h"
 #include "utils.h"
 
-#define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
-
 /* Additonal per-thread data.
- * Fields are assumed to be callback-context-private on Windows.
- * If they should be shared they must be explicitly copied
- * in client_handle_callback() in alloc_drmem.c.
+ * Fields are callback-context-private on Windows.
  */
-typedef struct _client_per_thread_t {
+typedef struct _cls_drmem_t {
     /* Dr. Heapstat must share the same struct since sharing so much
      * Dr. Memory code.  For Dr. Heapstat this struct is shared
      * across callbacks!
@@ -46,43 +42,30 @@ typedef struct _client_per_thread_t {
     app_pc prev_sigaltstack; /* used on syscall failure */
     size_t prev_sigaltsize;  /* used on syscall failure */
 # else
-    app_pc pre_callback_esp;
-# endif
-
-    /* for comparing memory across unknown system calls */
-    app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
-    size_t sysarg_sz[SYSCALL_NUM_ARG_TRACK];
-    /* dynamically allocated */
-    size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
-    byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
-
-# ifdef WINDOWS
-    /* for talking with syscall-info driver */
-    void *driver_buffer;
-    int sysnum;
-    /* since we can't get TEB via syscall for some threads (i#442) */
-    TEB *teb;
     /* for heap seh accesses (i#689) */
     RTL_CRITICAL_SECTION *heap_critsec;
-    /* for GDI checks (i#752) */
-    HDC paintDC;
 # endif
 #endif /* TOOL_DR_MEMORY */
 
-    /* pointer for finding shadow regs for other threads */
-    void *shadow_regs;
-
     /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
     bool self_translating;
+} cls_drmem_t;
 
-#ifdef TOOL_DR_HEAPSTAT
-# ifdef LINUX
-    int64 filepos; /* f_callstack file position */
+extern int cls_idx_drmem;
+
+/* Per-thread data shared across callbacks */
+typedef struct _tls_drmem_t {
+#ifdef WINDOWS
+# ifdef TOOL_DR_MEMORY
+    app_pc pre_callback_esp;
 # endif
-#endif /* TOOL_DR_HEAPSTAT */
+    /* since we can't get TEB via syscall for some threads (i#442) */
+    TEB *teb;
+#else
+    void *empty; /* not worth code ugliness to have no TLS at all */
+#endif
+} tls_drmem_t;
 
-    /* Saves syscall params across syscall */
-    void *sysaux_params;
-} client_per_thread_t;
+extern int tls_idx_drmem;
 
 #endif /* _CLIENT_PER_THREAD_ */

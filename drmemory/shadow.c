@@ -1332,6 +1332,9 @@ typedef struct _shadow_registers_t {
 
 static uint tls_shadow_base;
 
+/* we store a pointer for finding shadow regs for other threads */
+static int tls_idx_shadow = -1;
+
 #ifdef TOOL_DR_MEMORY
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg)
@@ -1433,8 +1436,6 @@ shadow_registers_thread_init(void *drcontext)
 #ifdef TOOL_DR_MEMORY
     static bool first_thread = true;
 #endif
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
 #ifdef LINUX
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1494,7 +1495,13 @@ shadow_registers_thread_init(void *drcontext)
 #endif
 
     /* store in per-thread data struct so we can access from another thread */
-    cpt->shadow_regs = (void *) sr;
+    drmgr_set_tls_field(drcontext, tls_idx_shadow, (void *) sr);
+}
+
+static void
+shadow_registers_thread_exit(void *drcontext)
+{
+    drmgr_set_tls_field(drcontext, tls_idx_shadow, NULL);
 }
 
 static void
@@ -1504,6 +1511,8 @@ shadow_registers_init(void)
     /* XXX: could save space by not allocating shadow regs for -no_check_uninitialized */
     IF_DEBUG(bool ok =)
         dr_raw_tls_calloc(&seg, &tls_shadow_base, NUM_TLS_SLOTS, 0);
+    tls_idx_shadow = drmgr_register_tls_field();
+    ASSERT(tls_idx_shadow > -1, "failed to reserve TLS slot");
     LOG(2, "TLS shadow base: "PIFX"\n", tls_shadow_base);
     ASSERT(ok, "fatal error: unable to reserve tls slots");
     ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
@@ -1515,6 +1524,7 @@ shadow_registers_exit(void)
     IF_DEBUG(bool ok =)
         dr_raw_tls_cfree(tls_shadow_base, NUM_TLS_SLOTS);
     ASSERT(ok, "WARNING: unable to free tls slots");
+    drmgr_unregister_tls_field(tls_idx_shadow);
 }
 
 #ifdef TOOL_DR_MEMORY
@@ -1573,9 +1583,8 @@ get_shadow_register(reg_id_t reg)
 byte
 get_thread_shadow_register(void *drcontext, reg_id_t reg)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    shadow_registers_t *sr = (shadow_registers_t *) cpt->shadow_regs;
+    shadow_registers_t *sr = (shadow_registers_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_shadow);
     ASSERT(options.shadowing, "incorrectly called");
     return get_shadow_register_common(sr, reg);
 }
@@ -1703,9 +1712,8 @@ ptr_uint_t
 get_thread_tls_value(void *drcontext, uint index)
 {
     if (index < options.num_spill_slots) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-        shadow_registers_t *sr = (shadow_registers_t *) cpt->shadow_regs;
+        shadow_registers_t *sr = (shadow_registers_t *)
+            drmgr_get_tls_field(drcontext, tls_idx_shadow);
         return *(ptr_uint_t *)
             (((byte *)sr) + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t));
     } else {
@@ -1718,9 +1726,8 @@ void
 set_thread_tls_value(void *drcontext, uint index, ptr_uint_t val)
 {
     if (index < options.num_spill_slots) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-        shadow_registers_t *sr = (shadow_registers_t *) cpt->shadow_regs;
+        shadow_registers_t *sr = (shadow_registers_t *)
+            drmgr_get_tls_field(drcontext, tls_idx_shadow);
         *(ptr_uint_t *)
             (((byte *)sr) + (NUM_SHADOW_TLS_SLOTS + index)*sizeof(ptr_uint_t)) = val;
     } else {
@@ -1749,6 +1756,12 @@ void
 shadow_thread_init(void *drcontext)
 {
     shadow_registers_thread_init(drcontext);
+}
+
+void
+shadow_thread_exit(void *drcontext)
+{
+    shadow_registers_thread_exit(drcontext);
 }
 
 void

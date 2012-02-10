@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -121,6 +121,9 @@ shadow_exit(void);
 
 void
 shadow_thread_init(void *drcontext);
+
+void
+shadow_thread_exit(void *drcontext);
 
 size_t
 get_shadow_block_size(void);

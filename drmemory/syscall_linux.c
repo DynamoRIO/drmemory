@@ -1517,9 +1517,8 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
 }
 
 static void
-handle_post_ioctl(void *drcontext, dr_mcontext_t *mc)
+handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint request = (uint) pt->sysarg[1];
     void *arg = (ptr_uint_t *) pt->sysarg[2];
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -1650,9 +1649,8 @@ check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
 }
 
 static void
-handle_pre_socketcall(void *drcontext, dr_mcontext_t *mc)
+handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint request = (uint) dr_syscall_get_param(drcontext, 0);
     /* The first sysparam is an array of args of varying length */
     ptr_uint_t *arg = (ptr_uint_t *) dr_syscall_get_param(drcontext, 1);
@@ -1861,9 +1859,8 @@ handle_pre_socketcall(void *drcontext, dr_mcontext_t *mc)
 }
 
 static void
-handle_post_socketcall(void *drcontext, dr_mcontext_t *mc)
+handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint request = (uint) pt->sysarg[0];
     ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[1];
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -2219,9 +2216,8 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
 }
 
 static void
-handle_post_ipc(void *drcontext, dr_mcontext_t *mc)
+handle_post_ipc(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint request = (uint) pt->sysarg[0];
     ptr_uint_t *ptr = (ptr_uint_t *) pt->sysarg[4];
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -2388,9 +2384,8 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
 }
 
 static void
-handle_post_prctl(void *drcontext, dr_mcontext_t *mc)
+handle_post_prctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     uint request = (uint) pt->sysarg[0];
     ptr_int_t result = dr_syscall_get_result(drcontext);
     switch (request) {
@@ -2436,7 +2431,7 @@ handle_pre_execve(void *drcontext)
 
 /* for tasks unrelated to shadowing that are common to all tools */
 bool
-os_shared_pre_syscall(void *drcontext, int sysnum)
+os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
     bool res = true;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
@@ -2457,9 +2452,8 @@ os_shared_pre_syscall(void *drcontext, int sysnum)
 
 /* for tasks unrelated to shadowing that are common to all tools */
 void
-os_shared_post_syscall(void *drcontext, int sysnum)
+os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     switch (sysnum) {
     case SYS_clone: {
         uint flags = (uint) pt->sysarg[0];
@@ -2483,7 +2477,7 @@ os_shared_post_syscall(void *drcontext, int sysnum)
 }
 
 bool
-os_shadow_pre_syscall(void *drcontext, int sysnum)
+os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
     bool res = true;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
@@ -2548,7 +2542,7 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
         handle_pre_ioctl(drcontext, &mc); 
         break;
     case SYS_socketcall: 
-        handle_pre_socketcall(drcontext, &mc); 
+        handle_pre_socketcall(drcontext, pt, &mc); 
         break;
     case SYS_ipc: 
         handle_pre_ipc(drcontext, &mc); 
@@ -2628,9 +2622,8 @@ os_shadow_pre_syscall(void *drcontext, int sysnum)
 }
 
 void
-os_shadow_post_syscall(void *drcontext, int sysnum)
+os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -2652,16 +2645,16 @@ os_shadow_post_syscall(void *drcontext, int sysnum)
         break;
     }
     case SYS_ioctl: 
-        handle_post_ioctl(drcontext, &mc); 
+        handle_post_ioctl(drcontext, pt, &mc); 
         break;
     case SYS_socketcall: 
-        handle_post_socketcall(drcontext, &mc); 
+        handle_post_socketcall(drcontext, pt, &mc); 
         break;
     case SYS_ipc: 
-        handle_post_ipc(drcontext, &mc); 
+        handle_post_ipc(drcontext, pt, &mc); 
         break;
     case SYS_prctl:
-        handle_post_prctl(drcontext, &mc);
+        handle_post_prctl(drcontext, pt, &mc);
         break;
     };
 }

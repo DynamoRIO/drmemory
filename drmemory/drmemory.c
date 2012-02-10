@@ -92,6 +92,15 @@ set_thread_initial_structures(void *drcontext);
 
 client_id_t client_id;
 
+int cls_idx_drmem = -1;
+int tls_idx_drmem = -1;
+
+static void
+event_context_init(void *drcontext, bool new_depth);
+
+static void
+event_context_exit(void *drcontext, bool thread_exit);
+
 /***************************************************************************
  * OPTIONS
  */
@@ -311,6 +320,10 @@ event_exit(void)
 #endif
     utils_exit();
 
+    drmgr_unregister_tls_field(tls_idx_drmem);
+    drmgr_unregister_cls_field(event_context_init, event_context_exit, cls_idx_drmem);
+    drmgr_exit();
+
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.
      */
@@ -366,32 +379,32 @@ open_logfile(const char *name, bool pid_log, int which_thread)
 static void
 create_thread_logfile(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    file_t f;
     uint which_thread = atomic_add32_return_sum((volatile int *)&num_threads, 1) - 1;
     LOGF(0, f_global, "new thread #%d id=%d\n",
          which_thread, dr_get_thread_id(drcontext));
 
     if (!options.thread_logs) {
-        pt->f = f_global;
+        f = f_global;
     } else {
         /* we're going to dump our data to a per-thread file */
-        pt->f = open_logfile("thread", false, which_thread/*tid suffix*/);
-        LOGPT(1, pt, "thread logfile fd=%d\n", pt->f);
+        f = open_logfile("thread", false, which_thread/*tid suffix*/);
+        LOGPT(1, PT_GET(drcontext), "thread logfile fd=%d\n", f);
     }
+    utils_thread_set_file(drcontext, f);
 }
 
 static void 
 event_thread_init(void *drcontext)
 {
-    per_thread_t *pt = thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
-    client_per_thread_t *cpt = thread_alloc(drcontext, sizeof(*cpt), HEAPSTAT_MISC);
+    tls_drmem_t *pt = (tls_drmem_t *)
+        thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
     memset(pt, 0, sizeof(*pt));
-    memset(cpt, 0, sizeof(*cpt));
-    pt->client_data = (void *) cpt;
-    /* store it in the slot provided in the drcontext */
-    dr_set_tls_field(drcontext, (void *)pt);
+    drmgr_set_tls_field(drcontext, tls_idx_drmem, (void *)pt);
+
+    utils_thread_init(drcontext);
     create_thread_logfile(drcontext);
-    LOGPT(2, pt, "in event_thread_init()\n");
+    LOGPT(2, PT_GET(drcontext), "in event_thread_init()\n");
     if (options.shadowing) {
         /* For 1st thread we can't get mcontext so we wait for 1st bb.
          * For subsequent we can.  Xref i#117/PR 395156.
@@ -406,7 +419,8 @@ event_thread_init(void *drcontext)
         shadow_thread_init(drcontext);
     }
     syscall_thread_init(drcontext);
-    report_thread_init(drcontext);
+    if (!options.perturb_only)
+        report_thread_init(drcontext);
     if (options.perturb)
         perturb_thread_init();
 }
@@ -414,56 +428,68 @@ event_thread_init(void *drcontext)
 static void 
 event_thread_exit(void *drcontext)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    LOGPT(2, pt, "in event_thread_exit() %d\n", dr_get_thread_id(drcontext));
+    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
+    LOGPT(2, PT_GET(drcontext), "in event_thread_exit() %d\n",
+          dr_get_thread_id(drcontext));
     if (options.perturb)
         perturb_thread_exit();
-    report_thread_exit(drcontext);
+    if (!options.perturb_only)
+        report_thread_exit(drcontext);
     if (options.thread_logs) {
-        dr_fprintf(pt->f, "LOG END\n");
-        close_file(pt->f);
+        file_t f = LOGFILE_GET(drcontext);
+        dr_fprintf(f, "LOG END\n");
+        close_file(f);
     }
 #ifdef WINDOWS
     if (options.shadowing) {
         /* the kernel de-allocs teb so we need to explicitly handle it */
         /* use cached teb since can't query for some threads (i#442) */
-        client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-        TEB *teb = cpt->teb;
+        tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
+        TEB *teb = pt->teb;
         ASSERT(teb != NULL, "cannot determine TEB for exiting thread");
         shadow_set_range((app_pc)teb, (app_pc)teb + sizeof(*teb), SHADOW_UNADDRESSABLE);
         /* pass cached teb to leak scan (i#547) in place we won't free */
         set_thread_tls_value(drcontext, SPILL_SLOT_1, (ptr_uint_t)teb);
     }
-
-    while (pt->prev != NULL)
-        pt = pt->prev;
-    while (pt != NULL) {
-        per_thread_t *tmp = pt;
-        LOG(2, "freeing per_thread_t "PFX"\n", tmp);
-        syscall_thread_exit(drcontext, tmp);
-        thread_free(drcontext, pt->client_data,
-                    sizeof(client_per_thread_t), HEAPSTAT_MISC);
-        pt = pt->next;
-        thread_free(drcontext, tmp, sizeof(*tmp), HEAPSTAT_MISC);
-    }
-#else
-    syscall_thread_exit(drcontext, pt);
-    thread_free(drcontext, pt->client_data, sizeof(client_per_thread_t), HEAPSTAT_MISC);
-    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 #endif
+    syscall_thread_exit(drcontext);
+    if (options.shadowing)
+        shadow_thread_exit(drcontext);
+    utils_thread_exit(drcontext);
     /* with PR 536058 we do have dcontext in exit event so indicate explicitly
      * that we've cleaned up the per-thread data
      */
-    dr_set_tls_field(drcontext, NULL);
+    drmgr_set_tls_field(drcontext, tls_idx_drmem, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
+}
+
+static void
+event_context_init(void *drcontext, bool new_depth)
+{
+    cls_drmem_t *data;
+    if (new_depth) {
+        data = (cls_drmem_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
+        drmgr_set_cls_field(drcontext, cls_idx_drmem, data);
+    } else
+        data = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+    memset(data, 0, sizeof(*data));
+}
+
+static void
+event_context_exit(void *drcontext, bool thread_exit)
+{
+    if (thread_exit) {
+        cls_drmem_t *data = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+        thread_free(drcontext, data, sizeof(*data), HEAPSTAT_MISC);
+    }
+    /* else, nothing to do: we leave the struct for re-use on next callback */
 }
 
 static dr_emit_flags_t
 event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
                   bool for_trace, bool translating)
 {
-    IF_DEBUG(per_thread_t *pt = (per_thread_t *)
-             dr_get_tls_field(dr_get_current_drcontext()));
-    LOGPT(SYSCALL_VERBOSE, pt, "in event_basic_block(tag="PFX")%s%s\n", tag,
+    LOGPT(SYSCALL_VERBOSE, PT_LOOKUP(), "in event_basic_block(tag="PFX")%s%s\n", tag,
           for_trace ? " for trace" : "",
           translating ? " translating" : "");
 #ifdef USE_DRSYMS
@@ -869,9 +895,8 @@ set_thread_initial_structures(void *drcontext)
     TEB *teb = get_TEB();
 
     /* cache TEB since can't get it from syscall for some threads (i#442) */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    cpt->teb = teb;
+    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
+    pt->teb = teb;
 
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
@@ -1195,9 +1220,6 @@ static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
-# ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-# endif
 # ifndef USE_DRSYMS
     file_t f_parent_fork = f_fork;
 # endif
@@ -1218,7 +1240,7 @@ event_fork(void *drcontext)
      */
     create_thread_logfile(drcontext);
     LOGF(0, f_global, "new logfile after fork\n");
-    LOG(0, "new logfile after fork fd=%d\n", pt->f);
+    LOG(0, "new logfile after fork fd=%d\n", PT_GET(drcontext));
     if (!options.shadowing) {
         /* notify postprocess (PR 574018) */
         LOG(0, "\n*********\nDISABLING MEMORY CHECKING via option\n");
@@ -1383,6 +1405,21 @@ dr_init(client_id_t id)
     opstr = dr_get_options(client_id);
     ASSERT(opstr != NULL, "error obtaining option string");
     drmem_options_init(opstr);
+
+    /* FIXME i#777: this is temporary to allow separating the drmgr TLS+CLS
+     * changes from drmgr bb changes.
+     * This puts drmgr's clean calls for CLS cb tracking before our bb
+     * event, which is what we want: o/w we have 8-bit reachability issues.
+     */
+#undef dr_register_bb_event
+    dr_register_bb_event(event_basic_block);
+
+    drmgr_init(); /* must be before utils_init and any other tls/cls uses */
+    tls_idx_drmem = drmgr_register_tls_field();
+    ASSERT(tls_idx_drmem > -1, "unable to reserve TLS");
+    cls_idx_drmem = drmgr_register_cls_field(event_context_init, event_context_exit);
+    ASSERT(cls_idx_drmem > -1, "unable to reserve CLS");
+
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
@@ -1410,9 +1447,8 @@ dr_init(client_id_t id)
     LOG(2, "executable \"%s\" is "PFX"-"PFX"\n", app_path, app_base, app_end);
 
     dr_register_exit_event(event_exit);
-    dr_register_thread_init_event(event_thread_init);
-    dr_register_thread_exit_event(event_thread_exit);
-    dr_register_bb_event(event_basic_block);
+    drmgr_register_thread_init_event(event_thread_init);
+    drmgr_register_thread_exit_event(event_thread_exit);
     dr_register_restore_state_ex_event(event_restore_state);
     dr_register_delete_event(event_fragment_delete);
     dr_register_module_load_event(event_module_load);

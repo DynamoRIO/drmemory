@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -59,6 +59,16 @@ GET_NTDLL(NtDeviceIoControlFile, (IN HANDLE FileHandle,
 
 static file_t f_driver;
 
+/* we process interrupted data on a callback so we need the parent's
+ * values which we store in TLS
+ */
+static int tls_idx_driver = -1;
+
+typedef struct _tls_driver_t {
+    void *driver_buffer;
+    int sysnum;
+} tls_driver_t;
+
 void
 driver_init(void)
 {
@@ -66,6 +76,10 @@ driver_init(void)
     f_driver = dr_open_file("\\\\.\\DrMemory", DR_FILE_READ);
     if (f_driver == INVALID_FILE)
         WARN("WARNING: unable to open driver file\n");
+
+    /* our driver_buffer is cross-callback so we use a TLS slot */
+    tls_idx_driver = drmgr_register_tls_field();
+    ASSERT(tls_idx_driver > -1, "unable to reserve TLS slot");
 }
 
 void
@@ -83,18 +97,18 @@ driver_thread_init(void *drcontext)
     IO_STATUS_BLOCK iob = {0,0};
     WritesBufferRegistration registration;
     WritesBuffer *writes;
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    tls_driver_t *pt = (tls_driver_t *)
+        thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
+    drmgr_set_tls_field(drcontext, tls_idx_driver, (void *) pt);
     if (f_driver == INVALID_FILE)
         return;
-    /* Note: we use the same buffer across callbacks (see syscall_handle_callback()) */
-    ASSERT(cpt->driver_buffer == NULL, "should only be called at init");
+    /* Note: we use the same buffer across callbacks (see driver_handle_callback()) */
     registration.buffer_size = sizeof(WritesBuffer) +
         sizeof(WrittenSection)*(MAX_WRITES_TO_RECORD - 1/*1 already in struct*/);
-    cpt->driver_buffer = thread_alloc(drcontext, registration.buffer_size, HEAPSTAT_MISC);
-    writes = (WritesBuffer *) cpt->driver_buffer;
+    pt->driver_buffer = thread_alloc(drcontext, registration.buffer_size, HEAPSTAT_MISC);
+    writes = (WritesBuffer *) pt->driver_buffer;
     writes->num_writes = MAX_WRITES_TO_RECORD;
-    registration.buffer = cpt->driver_buffer;
+    registration.buffer = pt->driver_buffer;
 
     res = NtDeviceIoControlFile(f_driver, NULL, NULL, NULL, &iob,
                                 IOCTL_DRMEMORY_REGISTER_THREAD_BUFFER,
@@ -105,8 +119,8 @@ driver_thread_init(void *drcontext)
         LOG(1, "Failed to register w/ syscall driver: "PFX"\n", res);
     } else {
         LOG(1, "Syscall driver reg for thread %d succeeded: buffer "PFX"-"PFX"\n",
-            dr_get_thread_id(drcontext), cpt->driver_buffer,
-            (byte*)cpt->driver_buffer + registration.buffer_size);
+            dr_get_thread_id(drcontext), pt->driver_buffer,
+            (byte*)pt->driver_buffer + registration.buffer_size);
         ASSERT(iob.Information == 0, "we didn't ask for prior reg");
     }
 }
@@ -117,8 +131,7 @@ driver_thread_exit(void *drcontext)
     NTSTATUS res;
     IO_STATUS_BLOCK iob = {0,0};
     WritesBufferRegistration registration = {NULL, 0};
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
     size_t sz = sizeof(WritesBuffer) +
         sizeof(WrittenSection)*(MAX_WRITES_TO_RECORD - 1/*1 already in struct*/);
     if (f_driver == INVALID_FILE)
@@ -128,41 +141,40 @@ driver_thread_exit(void *drcontext)
                                 NULL, 0, NULL, 0);
     if (!NT_SUCCESS(res))
         LOG(1, "Failed to unregister thread buffer: "PFX"\n", res);
-    thread_free(drcontext, cpt->driver_buffer, sz, HEAPSTAT_MISC);
+    thread_free(drcontext, pt->driver_buffer, sz, HEAPSTAT_MISC);
+    drmgr_set_tls_field(drcontext, tls_idx_driver, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
 
 void
-driver_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                        bool new_depth)
+driver_handle_callback(void *drcontext)
 {
     /* Callback strategy: use same kernel write buffer.  We process any kernel writes
      * that were already made by the interrupted syscall here.
      * XXX: DR or drmem cb-handling code could have made syscalls before getting
      * to here!
      */
-    client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    client_per_thread_t *cpt_child = (client_per_thread_t *) pt_child->client_data;
-    cpt_child->driver_buffer = cpt_parent->driver_buffer;
-    driver_process_writes(drcontext, cpt_parent->sysnum, pt_parent);
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    driver_process_writes(drcontext, pt->sysnum);
 }
 
 void
-driver_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
+driver_handle_cbret(void *drcontext)
 {
     /* Reset buffer */
-    client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    driver_pre_syscall(drcontext, cpt_parent->sysnum, pt_parent);
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    driver_pre_syscall(drcontext, pt->sysnum);
 }
 
 void
-driver_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+driver_pre_syscall(void *drcontext, int sysnum)
 {
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    WritesBuffer *writes = (WritesBuffer *) cpt->driver_buffer;
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
     size_t i;
 
     /* remember for syscall_handle_cbret */
-    cpt->sysnum = sysnum;
+    pt->sysnum = sysnum;
 
     if (f_driver == INVALID_FILE || writes == NULL)
         return;
@@ -171,10 +183,10 @@ driver_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
 }
 
 bool
-driver_process_writes(void *drcontext, int sysnum, per_thread_t *pt)
+driver_process_writes(void *drcontext, int sysnum)
 {
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
-    WritesBuffer *writes = (WritesBuffer *) cpt->driver_buffer;
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
     size_t i, num;
     if (f_driver == INVALID_FILE)
         return false;

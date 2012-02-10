@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -55,7 +56,7 @@
 
 #include "dr_api.h"
 #include "utils.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "crypto.h"
 #include <string.h>
 

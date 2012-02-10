@@ -25,7 +25,7 @@
 #endif
 
 #include "dr_api.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 #ifdef USE_DRSYMS
 # include "drsyms.h"
@@ -41,6 +41,7 @@
 #include <ctype.h> /* for tolower */
 
 /* globals that affect NOTIFY* and *LOG* macros */
+int tls_idx_util = -1;
 bool op_print_stderr = true;
 uint op_verbose_level;
 bool op_pause_at_assert;
@@ -1172,9 +1173,16 @@ hashwrap_assert_fail(const char *msg)
     ASSERT(false, msg);
 }
 
+/***************************************************************************
+ * INIT/EXIT
+ */
+
 void
 utils_init(void)
 {
+    tls_idx_util = drmgr_register_tls_field();
+    ASSERT(tls_idx_util > -1, "failed to obtain TLS slot");
+
 #ifdef WINDOWS
     if (os_version.version == 0)
         init_os_version();
@@ -1205,4 +1213,31 @@ utils_exit(void)
         LOG(1, "WARNING: error cleaning up symbol library\n");
     }
 #endif
+    drmgr_unregister_tls_field(tls_idx_util);
+}
+
+void
+utils_thread_init(void *drcontext)
+{
+    tls_util_t *pt = (tls_util_t *) thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
+    memset(pt, 0, sizeof(*pt));
+    drmgr_set_tls_field(drcontext, tls_idx_util, (void *) pt);
+}
+
+void
+utils_thread_exit(void *drcontext)
+{
+    tls_util_t *pt = (tls_util_t *) drmgr_get_tls_field(drcontext, tls_idx_util);
+    /* with PR 536058 we do have dcontext in exit event so indicate explicitly
+     * that we've cleaned up the per-thread data
+     */
+    drmgr_set_tls_field(drcontext, tls_idx_util, NULL);
+    thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
+}
+
+void
+utils_thread_set_file(void *drcontext, file_t f)
+{
+    tls_util_t *pt = (tls_util_t *) drmgr_get_tls_field(drcontext, tls_idx_util);
+    pt->f = f;
 }

@@ -450,7 +450,7 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
 }
 
 void
-client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,
+client_handle_malloc(void *drcontext, app_pc base, size_t size,
                      app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc)
 {
     /* For calloc via malloc, post-malloc marks as undefined, and we should
@@ -468,11 +468,11 @@ client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,
     }
     report_malloc(base, base + size,
                   realloc ? "realloc" : "malloc", mc);
-    leak_handle_alloc(pt, base, size);
+    leak_handle_alloc(drcontext, base, size);
 }
 
 void
-client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
+client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
                       app_pc new_base, size_t new_size, app_pc new_real_base,
                       dr_mcontext_t *mc)
 {
@@ -525,7 +525,7 @@ client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
     }
     report_malloc(old_base, old_base+old_size, "realloc-old", mc);
     report_malloc(new_base, new_base+new_size, "realloc-new", mc);
-    leak_handle_alloc(pt, new_base, new_size);
+    leak_handle_alloc(drcontext, new_base, new_size);
 }
 
 void
@@ -814,8 +814,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
 #ifdef WINDOWS
 /* i#264: client needs to clean up any data related to allocs inside this heap */
 void
-client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
-                           void *client_data)
+client_handle_heap_destroy(void *drcontext, HANDLE heap, void *client_data)
 {
     delay_free_info_t *info = (delay_free_info_t *) client_data;
     int i, num_removed = 0;
@@ -897,12 +896,15 @@ overlaps_delayed_free(byte *start, byte *end,
 }
 
 void
-client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
+client_handle_mmap(void *drcontext, app_pc base, size_t size, bool anon)
 {
 #ifdef WINDOWS
     if (options.shadowing) {
         if (anon) {
-            if (pt->in_heap_routine == 0)
+            /* XXX: we could pass in_heap_routine in as a bool if the overhead
+             * of the CLS retrieval shows up
+             */
+            if (!alloc_in_heap_routine(drcontext))
                 shadow_set_range(base, base+size, SHADOW_DEFINED);
             else {
                 /* FIXME PR 575260: should we do what we do on linux and leave
@@ -927,7 +929,7 @@ client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon)
          * new arenas gracefully and without races (xref PR 427601, PR
          * 531619).
          */
-        if (pt->in_heap_routine == 0 && options.shadowing)
+        if (!alloc_in_heap_routine(drcontext) && options.shadowing)
             shadow_set_range(base, base+size, SHADOW_DEFINED);
         /* PR 418629: to determine stack bounds accurately we track mmaps */
         mmap_tree_add(base, size);
@@ -1012,15 +1014,16 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 
 #ifdef WINDOWS
 void
-client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child)
+client_handle_cbret(void *drcontext)
 {
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
-    client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
+    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
     if (!options.shadowing)
         return;
-    syscall_handle_cbret(drcontext, pt_parent, pt_child);
+    syscall_handle_cbret(drcontext);
 
+    /* we use a TLS, not CLS, slot to get the parent callback context esp value */
     if (!options.check_stack_bounds)
         return;
     mc.size = sizeof(mc);
@@ -1028,40 +1031,21 @@ client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_c
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.esp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
-        sp, cpt_parent->pre_callback_esp);
-    for (; sp < cpt_parent->pre_callback_esp; sp++)
+        sp, pt->pre_callback_esp);
+    for (; sp < pt->pre_callback_esp; sp++)
         shadow_set_byte(sp, SHADOW_UNADDRESSABLE);
 }
 
 void
-client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                       bool new_depth)
+client_handle_callback(void *drcontext)
 {
-    client_per_thread_t *cpt_parent = (client_per_thread_t *) pt_parent->client_data;
-    client_per_thread_t *cpt;
-    if (new_depth) {
-        cpt = thread_alloc(drcontext, sizeof(*cpt), HEAPSTAT_MISC);
-        memset(cpt, 0, sizeof(*cpt));
-        pt_child->client_data = (void *) cpt;
-    } else {
-        /* client_data for most part is not shared so first clear the old one */
-        cpt = (client_per_thread_t *) pt_child->client_data;
-        syscall_reset_per_thread(drcontext, pt_child);
-        memset(cpt, 0, sizeof(*cpt));
-    }
-    /* shared fields */
-    cpt->shadow_regs = cpt_parent->shadow_regs;
-#ifdef WINDOWS
-    cpt->teb = cpt_parent->teb;
-#endif
-    syscall_handle_callback(drcontext, pt_parent, pt_child, new_depth);
+    syscall_handle_callback(drcontext);
 }
 
 void
 client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
     /* The kernel has placed some data on the stack.  We assume we're
      * on the same thread stack.  FIXME: check those assumptions by checking
      * default stack bounds.
@@ -1098,22 +1082,20 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     /* We do want to set the parent's for callback, so tls field is correct
      * since this is prior to client_handle_callback()
      */
-    cpt->pre_callback_esp = sp;
+    pt->pre_callback_esp = sp;
 }
 
 void
 client_handle_exception(void *drcontext, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     cpt->heap_critsec = NULL;
 }
 
 void
 client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (is_in_seh(drcontext)) {
         cpt->heap_critsec = NULL;
     }
@@ -1126,7 +1108,7 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
  */
 
 void
-client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1184,7 +1166,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         ASSERT(false, "NtSetContextThread NYI");
     }
 #else
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (sysnum == SYS_rt_sigaction
         IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
         /* PR 406333: linux signal delivery.
@@ -1195,20 +1177,20 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         void *handler = NULL;
         if (sysnum == SYS_rt_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)pt->sysarg[1], sizeof(handler), &handler);
+            safe_read((void *)sysarg[1], sizeof(handler), &handler);
         }
 # ifdef X86_32
         else if (sysnum == SYS_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)pt->sysarg[1], sizeof(handler), &handler);
+            safe_read((void *)sysarg[1], sizeof(handler), &handler);
         }
         else if (sysnum == SYS_signal) {
             /* 2nd arg is handler */
-            handler = (void *) pt->sysarg[1];
+            handler = (void *) sysarg[1];
         }
 # endif
         if (handler != NULL) {
-            LOGPT(2, pt, "SYS_rt_sigaction/etc.: new handler "PFX"\n", handler);
+            LOG(2, "SYS_rt_sigaction/etc.: new handler "PFX"\n", handler);
             /* We make a simplifying assumption: handler code is only used for
              * signal handling.  We could keep a counter and inc on every success
              * and dec on failure and on change to IGN/DFL and remove when it hits
@@ -1220,7 +1202,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
             if (handler != SIG_IGN && handler != SIG_DFL)
                 hashtable_add(&sighand_table, (void*)handler, (void*)1);
         } else {
-            LOGPT(2, pt, "SYS_rt_sigaction/etc.: bad handler\n");
+            LOG(2, "SYS_rt_sigaction/etc.: bad handler\n");
         }
     }
     else if ((sysnum == SYS_rt_sigreturn IF_X86_32(|| sysnum == SYS_sigreturn)) &&
@@ -1277,7 +1259,7 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
         stack_t stk;
         cpt->prev_sigaltstack = cpt->sigaltstack;
         cpt->prev_sigaltsize = cpt->sigaltsize;
-        if (safe_read((void *)pt->sysarg[0], sizeof(stk), &stk)) {
+        if (safe_read((void *)sysarg[0], sizeof(stk), &stk)) {
             if (stk.ss_flags == SS_DISABLE) {
                 cpt->sigaltstack = NULL;
                 cpt->sigaltsize = 0;
@@ -1302,25 +1284,25 @@ client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt)
             }
             LOG(2, "new sigaltstack "PFX"\n", cpt->sigaltstack);
         } else {
-            LOG(2, "WARNING: can't read sigaltstack param "PFX"\n", pt->sysarg[0]);
+            LOG(2, "WARNING: can't read sigaltstack param "PFX"\n", sysarg[0]);
         }
     }
 #endif /* WINDOWS */
 }
 
 void
-client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt)
+client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
 #ifdef LINUX
     ptr_int_t result = dr_syscall_get_result(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (!options.shadowing)
         return;
     if (sysnum == SYS_rt_sigaction
         IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
         if (result != 0) {
-            LOGPT(2, pt, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
-                  pt->sysarg[1]);
+            LOG(2, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
+                  sysarg[1]);
             /* See notes above: if we had a counter we could remove from
              * sighand_table if there were no successfull registrations --
              * but we assume handler code is only used for signals so
@@ -1375,8 +1357,7 @@ at_signal_handler(void)
      * adjacent memory: we ignore that.
      */
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
     ASSERT(options.shadowing, "shadowing disabled");
@@ -1880,8 +1861,7 @@ is_heap_seh(void *drcontext, bool write, app_pc pc, app_pc next_pc,
      *   770024fe e86dfdfdff       call    ntdll!RtlLeaveCriticalSection (76fe2270)
      *   77002503 e9ad17ffff       jmp     ntdll!RtlpAllocateHeap+0xe8a (76ff3cb5)
      */
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     bool match = false;
     if (!is_in_seh(drcontext) || !is_in_heap_region(addr))
         return false;
@@ -2054,7 +2034,6 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
                                bool addr_on_stack, dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
 #ifdef WINDOWS
     TEB *teb = get_TEB();
     /* We can't use teb->ProcessEnvironmentBlock b/c i#249 points it at private PEB */
@@ -2064,7 +2043,7 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
     /* It's important to handle the very-common heap-header w/o translating
      * loc's pc field which is a perf hit
      */
-    if (addr_in_heap && pt->in_heap_routine > 0) {
+    if (addr_in_heap && alloc_in_heap_routine(drcontext)) {
         /* FIXME: ideally we would know exactly which fields were header
          * fields and which ones were ok to write to, to avoid heap corruption
          * by bugs in heap routines (and avoid allowing bad reads by other

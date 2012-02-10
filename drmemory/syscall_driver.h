@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -35,16 +35,16 @@ void
 driver_thread_exit(void *drcontext);
 
 void
-driver_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child);
+driver_handle_callback(void *drcontext);
 
 void
-driver_reset_per_thread(void *drcontext, per_thread_t *pt);
+driver_handle_cbret(void *drcontext);
 
 void
-driver_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt);
+driver_pre_syscall(void *drcontext, int sysnum);
 
 bool
-driver_process_writes(void *drcontext, int sysnum, per_thread_t *pt);
+driver_process_writes(void *drcontext, int sysnum);
 
 
 #endif /* _SYSCALL_DRIVER_H_ */

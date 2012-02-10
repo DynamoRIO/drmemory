@@ -312,10 +312,8 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     bb_saved_info_t *save;
 
 #ifdef TOOL_DR_MEMORY
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt;
-    ASSERT(pt != NULL, "pt shouldn't be null");
-    cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+    ASSERT(cpt != NULL, "cpt shouldn't be null");
 
     if (!options.shadowing)
         return true;
@@ -401,9 +399,8 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     decode(drcontext, info->raw_mcontext->pc, &inst);
     ASSERT(instr_valid(&inst), "unknown translation instr");
     DOLOG(3, {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         LOG(3, "considering to-be-translated instr: ");
-        instr_disassemble(drcontext, &inst, pt->f);
+        instr_disassemble(drcontext, &inst, LOGFILE_GET(drcontext));
         LOG(3, "\n");
     });
     for (memopidx = 0;
@@ -1724,9 +1721,6 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc)
 {
-#ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-#endif
     instr_t inst;
     int opc;
 #ifdef TOOL_DR_MEMORY
@@ -1870,7 +1864,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 
     DOLOG(3, { 
         LOG(3, "\nslow_path "PFX": ", pc);
-        instr_disassemble(drcontext, &inst, pt->f);
+        instr_disassemble(drcontext, &inst, LOGFILE_GET(drcontext));
         if (instr_num_dsts(&inst) > 0 &&
             opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
             LOG(3, " | 0x%x",
@@ -2023,7 +2017,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         LOG(4, "shadow_vals after src %d ", i);
         DOLOG(4, {
             int j;
-            opnd_disassemble(drcontext, opnd, pt->f);
+            opnd_disassemble(drcontext, opnd, LOGFILE_GET(drcontext));
             LOG(4, ": ");
             for (j = 0; j < OPND_SHADOW_ARRAY_LEN; j++)
                 LOG(4, "%d", shadow_vals[j]);
@@ -2136,9 +2130,10 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
              * SPILL_SLOT_5 intermediate target
              */
             byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
-            client_per_thread_t *cpt = (client_per_thread_t *) pt->client_data;
             /* ensure event_restore_state() returns true */
             byte *xl8;
+            cls_drmem_t *cpt = (cls_drmem_t *)
+                drmgr_get_cls_field(drcontext, cls_idx_drmem);
             cpt->self_translating = true;
             xl8 = dr_app_pc_from_cache_pc(ret_pc);
             cpt->self_translating = false;
@@ -2695,10 +2690,7 @@ translate_cache_pc(byte *pc_to_xl8)
 {
     app_pc res;
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
-    client_per_thread_t *cpt;
-    ASSERT(pt != NULL, "pt shouldn't be null");
-    cpt = (client_per_thread_t *) pt->client_data;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     ASSERT(cpt != NULL, "pt shouldn't be null");
     ASSERT(pc_to_xl8 != NULL, "invalid param");
     ASSERT(options.single_arg_slowpath, "only used for single_arg_slowpath");
@@ -3388,7 +3380,6 @@ dr_emit_flags_t
 instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
               bool for_trace, bool translating)
 {
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
     instr_t *inst, *next_inst, *first;
     uint i;
     app_pc pc;
@@ -3411,7 +3402,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
     memset(&mi, 0, sizeof(mi));
 
     LOG(5, "in instrument_bb\n");
-    DOLOG(3, instrlist_disassemble(drcontext, tag, bb, pt->f););
+    DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
 #ifdef TOOL_DR_MEMORY
     DOLOG(4, { 
         if (options.shadowing) {
@@ -3442,7 +3433,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
              * it doesn't matter.
              */
             check_ignore_unaddr = (options.check_ignore_unaddr &&
-                                   pt->in_heap_routine > 0);
+                                   alloc_in_heap_routine(drcontext));
             DOLOG(2, {
                 if (check_ignore_unaddr)
                     LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
@@ -3624,7 +3615,7 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
                 added_instru = true;
             } else {
                 LOG(3, "fastpath unavailable "PFX": ", pc);
-                DOLOG(3, { instr_disassemble(drcontext, inst, pt->f); });
+                DOLOG(3, { instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext)); });
                 LOG(3, "\n");
                 bi.shared_memop = opnd_create_null();
                 /* Restore whole-bb spilled regs (PR 489221) 
@@ -3678,12 +3669,11 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
                 nxt = instr_get_next(nxt);
             ASSERT(nxt != NULL, "app clone error");
             DOLOG(3, {
-                per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
                 LOG(3, "comparing: ");
-                instr_disassemble(drcontext, mi.appclone, pt->f);
+                instr_disassemble(drcontext, mi.appclone, LOGFILE_GET(drcontext));
                 LOG(3, "\n");
                 LOG(3, "with: ");
-                instr_disassemble(drcontext, nxt, pt->f);
+                instr_disassemble(drcontext, nxt, LOGFILE_GET(drcontext));
                 LOG(3, "\n");
             });
             STATS_INC(app_instrs_fastpath);
@@ -3711,9 +3701,8 @@ instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
                 STATS_INC(app_instrs_no_dup);
             } else {
                 DOLOG(3, {
-                    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
                     LOG(3, "need dup for: ");
-                    instr_disassemble(drcontext, mi.appclone, pt->f);
+                    instr_disassemble(drcontext, mi.appclone, LOGFILE_GET(drcontext));
                     LOG(3, "\n");
                 });
             }

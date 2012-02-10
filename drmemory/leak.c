@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -21,6 +21,7 @@
  */
 
 #include "dr_api.h"
+#include "drmemory.h"
 #include "utils.h"
 #include "leak.h"
 #include "alloc.h"
@@ -169,7 +170,7 @@ leak_init(bool have_defined_info,
 
 /* User must call from client_handle_malloc() and client_handle_realloc() */
 void
-leak_handle_alloc(per_thread_t *pt, app_pc base, size_t size)
+leak_handle_alloc(void *drcontext, app_pc base, size_t size)
 {
 #ifdef WINDOWS
     /* Suppress the per-Heap leak of an RtlCreateHeap-allocated big chunk
@@ -178,7 +179,7 @@ leak_handle_alloc(per_thread_t *pt, app_pc base, size_t size)
      * some are allocated after Heap creation, so we probably won't
      * come in here
      */
-    if (pt->in_create) {
+    if (alloc_in_create(drcontext)) {
         LOG(3, "since in_create, ignoring whether "PFX"-"PFX" is ever leaked\n",
             base, base+size);
         malloc_set_client_flag(base, MALLOC_IGNORE_LEAK);
@@ -1026,8 +1027,8 @@ prepare_thread_for_scan(void *drcontext, bool *was_app_state OUT)
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
     LOG(3, "prepare_thread_for_scan: thread %d has TLS "PFX"\n",
-        dr_get_thread_id(drcontext), dr_get_tls_field(drcontext));
-    if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
+        dr_get_thread_id(drcontext), drmgr_get_tls_field(drcontext, tls_idx_drmem));
+    if (drmgr_get_tls_field(drcontext, tls_idx_drmem) == NULL && op_have_defined_info) {
         /* We received the exit event for this thread and marked its
          * TEB as unaddr -- but we want to scan that memory.
          * We treat it all as defined (instead of calling set_teb_initial_shadow())
@@ -1054,7 +1055,7 @@ restore_thread_after_scan(void *drcontext, bool was_app_state)
         dr_switch_to_dr_state(drcontext);
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
-    if (dr_get_tls_field(drcontext) == NULL && op_have_defined_info) {
+    if (drmgr_get_tls_field(drcontext, tls_idx_drmem) == NULL && op_have_defined_info) {
         /* Re-mark as unaddr */
         TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
         if (teb == NULL) /* see above */

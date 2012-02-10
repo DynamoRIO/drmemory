@@ -39,7 +39,7 @@
 #endif
 
 #include "dr_api.h"
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 #include "heap.h"
 #include "drmemory.h"
@@ -1060,6 +1060,9 @@ replace_instrument(void *drcontext, instrlist_t *bb)
     instr_t *inst = instrlist_first(bb);
     if (!options.replace_libc)
         return;
+    /* skip meta instrs in case any were added */
+    while (inst != NULL && !instr_ok_to_mangle(inst))
+        inst = instr_get_next(inst);
     if (inst == NULL)
         return;
     pc = instr_get_app_pc(inst);

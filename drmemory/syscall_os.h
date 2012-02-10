@@ -23,6 +23,36 @@
 #ifndef _SYSCALL_OS_H_
 #define _SYSCALL_OS_H_ 1
 
+#ifdef WINDOWS
+# define SYSCALL_NUM_ARG_STORE 14
+#else
+# define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
+#endif
+
+#define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
+
+extern int cls_idx_syscall;
+
+typedef struct _cls_syscall_t {
+    /* for recording args so post-syscall can examine */
+    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+
+    /* for comparing memory across unknown system calls */
+    app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
+    size_t sysarg_sz[SYSCALL_NUM_ARG_TRACK];
+    /* dynamically allocated */
+    size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
+    byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
+
+    /* Saves syscall params across syscall */
+    void *sysaux_params;
+
+#ifdef WINDOWS
+    /* for GDI checks (i#752) */
+    HDC paintDC;
+#endif
+} cls_syscall_t;
+
 enum {
     /*****************************************/
     /* syscall_arg_t.flags */
@@ -217,17 +247,17 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 
 /* for tasks unrelated to shadowing that are common to all tools */
 bool
-os_shared_pre_syscall(void *drcontext, int sysnum);
+os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
 
 void
-os_shared_post_syscall(void *drcontext, int sysnum);
+os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
 
 /* for memory shadowing checks */
 bool
-os_shadow_pre_syscall(void *drcontext, int sysnum);
+os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
 
 void
-os_shadow_post_syscall(void *drcontext, int sysnum);
+os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
 
 /* returns true if the given argument was processed in a non-standard way
  * (e.g. OS-specific structures) and we should skip the standard check

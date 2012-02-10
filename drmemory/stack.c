@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -650,7 +650,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     type = get_esp_adjust_type(opc);
     if (type == ESP_ADJUST_INVALID) {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_util_t *pt = PT_GET(drcontext);
         ELOGPT(0, pt, "ERROR: new stack-adjusting instr: ");
         instr_disassemble(drcontext, inst, pt->f);
         ELOGPT(0, pt, "\n");

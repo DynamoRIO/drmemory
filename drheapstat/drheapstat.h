@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -23,7 +23,7 @@
 #ifndef _DRHEAPSTAT_H_
 #define _DRHEAPSTAT_H_ 1
 
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 #include "../drmemory/options.h"
 

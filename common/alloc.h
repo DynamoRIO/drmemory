@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,7 +27,7 @@
 #ifndef _ALLOC_H_
 #define _ALLOC_H_ 1
 
-#include "per_thread.h"
+#include "drmgr.h"
 #include "utils.h"
 #include "callstack.h"
 
@@ -133,11 +133,11 @@ alloc_syscall_filter(void *drcontext, int sysnum);
 
 void
 handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                         per_thread_t *pt);
+                         reg_t sysarg[], uint arg_cap);
 
 void
 handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                          per_thread_t *pt);
+                          reg_t sysarg[], uint arg_cap);
 
 void
 malloc_add(app_pc start, app_pc end, app_pc real_end,
@@ -203,6 +203,14 @@ malloc_lock(void);
 void
 malloc_unlock(void);
 
+#ifdef WINDOWS
+bool
+alloc_in_create(void *drcontext);
+#endif
+
+bool
+alloc_in_heap_routine(void *drcontext);
+
 /***************************************************************************
  * CLIENT CALLBACKS
  */
@@ -247,11 +255,11 @@ void
 client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end);
 
 void
-client_handle_malloc(per_thread_t *pt, app_pc base, size_t size,
+client_handle_malloc(void *drcontext, app_pc base, size_t size,
                      app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc);
 
 void
-client_handle_realloc(per_thread_t *pt, app_pc old_base, size_t old_size,
+client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
                       app_pc new_base, size_t new_size, app_pc new_real_base,
                       dr_mcontext_t *mc);
 
@@ -281,7 +289,7 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
                        void *client_data);
 
 void
-client_handle_mmap(per_thread_t *pt, app_pc base, size_t size, bool anon);
+client_handle_mmap(void *drcontext, app_pc base, size_t size, bool anon);
 
 void
 client_handle_munmap(app_pc base, size_t size, bool anon);
@@ -297,21 +305,17 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 
 #ifdef WINDOWS
 void
-client_handle_heap_destroy(void *drcontext, per_thread_t *pt, HANDLE heap,
-                           void *client_data);
+client_handle_heap_destroy(void *drcontext, HANDLE heap, void *client_data);
 
 void
 client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end);
 
 void
-client_handle_cbret(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child);
+client_handle_cbret(void *drcontext);
 
-/* should only act on the new data struct on the callback stack: may be called
- * for other than a real Windows callback
- */
 void
-client_handle_callback(void *drcontext, per_thread_t *pt_parent, per_thread_t *pt_child,
-                       bool new_depth);
+client_handle_callback(void *drcontext);
+
 void
 client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc);
 
@@ -329,10 +333,10 @@ is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc);
 #endif
 
 void
-client_pre_syscall(void *drcontext, int sysnum, per_thread_t *pt);
+client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[]);
 
 void
-client_post_syscall(void *drcontext, int sysnum, per_thread_t *pt);
+client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[]);
 
 void
 client_entering_heap_routine(void);

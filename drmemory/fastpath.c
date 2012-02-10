@@ -995,9 +995,8 @@ set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
 
     DOLOG(4, {
         if (mi->check_definedness) {
-            per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
             LOG(3, "checking definedness for: ");
-            instr_disassemble(drcontext, inst, pt->f);
+            instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext));
             LOG(3, "\n");
         }
     });
@@ -1557,9 +1556,8 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
 
     DOLOG(4, {
         void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt;
-        ASSERT(drcontext != NULL, "should always have dcontext in cur DR");
-        pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_util_t *pt = PT_GET(drcontext);
+        ASSERT(pt != NULL, "should always have dcontext in cur DR");
         LOG(3, "scratch: ");
         instr_disassemble(drcontext, inst, LOGFILE(pt));
         LOG(3, "| ");
@@ -3179,7 +3177,7 @@ restore_mcontext_on_shadow_fault(void *drcontext,
     instr_t inst;
     instr_t *app_inst;
 #ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    tls_util_t *pt = PT_GET(drcontext);
 #endif
 
     /* We need to restore the app registers in order to emulate the app instr
@@ -3437,7 +3435,7 @@ handle_special_shadow_fault(void *drcontext, byte *target,
     opnd_t shadowop;
     bb_saved_info_t *save;
 #ifdef DEBUG
-    per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+    tls_util_t *pt = PT_GET(drcontext);
 #endif
 
     LOG(2, "write fault to special shadow @"PFX"\n", target);
@@ -3861,9 +3859,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     }
 
     DOLOG(3, {
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
         LOG(3, "fastpath: ");
-        instr_disassemble(drcontext, inst, LOGFILE(pt));
+        instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext));
         LOG(3, "| prop=%d srcsz=%d dstsz=%d checkdef=%d markdef=%d checkunaddr=%d\n",
             mi->num_to_propagate, mi->src_opsz, mi->opsz, mi->check_definedness,
             mark_defined, check_ignore_unaddr);
@@ -4850,7 +4847,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef DEBUG
     else if (!save_aflags && mi->aflags != EFLAGS_WRITE_6) {
         instr_t *in;
-        per_thread_t *pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_util_t *pt = PT_GET(drcontext);
         if (instru_start == NULL)
             in = instrlist_first(bb);
         else
@@ -5065,9 +5062,8 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
 #endif
     DOLOG(3, {
         void *drcontext = dr_get_current_drcontext();
-        per_thread_t *pt;
-        ASSERT(drcontext != NULL, "should always have dcontext in cur DR");
-        pt = (per_thread_t *) dr_get_tls_field(drcontext);
+        tls_util_t *pt = PT_GET(drcontext);
+        ASSERT(pt != NULL, "should always have dcontext in cur DR");
         LOG(3, "whole-bb scratch: ");
         print_scratch_reg(drcontext, &bi->reg1, 1, LOGFILE(pt));
         LOG(3, " x%d, ", uses_least);
