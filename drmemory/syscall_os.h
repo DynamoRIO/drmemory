@@ -103,21 +103,23 @@ enum {
     /*****************************************/
     /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
     /* The following flags are used on Windows. */
-    SYSARG_TYPE_PORT_MESSAGE        =  0,
-    SYSARG_TYPE_CONTEXT             =  1,
-    SYSARG_TYPE_EXCEPTION_RECORD    =  2,
-    SYSARG_TYPE_SECURITY_QOS        =  3,
-    SYSARG_TYPE_SECURITY_DESCRIPTOR =  4,
-    SYSARG_TYPE_UNICODE_STRING      =  5,
-    SYSARG_TYPE_CSTRING_WIDE        =  6,
-    SYSARG_TYPE_OBJECT_ATTRIBUTES   =  7,
-    SYSARG_TYPE_LARGE_STRING        =  8,
-    SYSARG_TYPE_DEVMODEW            =  9,
-    SYSARG_TYPE_WNDCLASSEXW         = 10,
-    SYSARG_TYPE_CLSMENUNAME         = 11,
-    SYSARG_TYPE_MENUITEMINFOW       = 12,
-    SYSARG_TYPE_UNICODE_STRING_NOLEN= 13,
-    SYSARG_TYPE_CSTRING             = 14,
+    SYSARG_TYPE_PORT_MESSAGE            =  0,
+    SYSARG_TYPE_CONTEXT                 =  1,
+    SYSARG_TYPE_EXCEPTION_RECORD        =  2,
+    SYSARG_TYPE_SECURITY_QOS            =  3,
+    SYSARG_TYPE_SECURITY_DESCRIPTOR     =  4,
+    SYSARG_TYPE_UNICODE_STRING          =  5,
+    SYSARG_TYPE_CSTRING_WIDE            =  6,
+    SYSARG_TYPE_OBJECT_ATTRIBUTES       =  7,
+    SYSARG_TYPE_LARGE_STRING            =  8,
+    SYSARG_TYPE_DEVMODEW                =  9,
+    SYSARG_TYPE_WNDCLASSEXW             = 10,
+    SYSARG_TYPE_CLSMENUNAME             = 11,
+    SYSARG_TYPE_MENUITEMINFOW           = 12,
+    SYSARG_TYPE_UNICODE_STRING_NOLEN    = 13,
+    SYSARG_TYPE_CSTRING                 = 14,
+    SYSARG_TYPE_ALPC_PORT_ATTRIBUTES    = 15,
+    SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES= 16,
 };
 
 /* We encode the actual size of a write, if it can differ from the

@@ -36,6 +36,7 @@
 #include "../wininc/winioctl.h"
 #include "../wininc/tcpioctl.h"
 #include "../wininc/iptypes_undocumented.h"
+#include "../wininc/ntalpctyp.h"
 
 extern bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
@@ -561,21 +562,18 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /* added in Windows Vista SP0 */
     {0,"NtAcquireCMFViewOwnership", UNKNOWN, 12, },
-    {0,"NtAlpcAcceptConnectPort", UNKNOWN, 36, },
-    {0,"NtAlpcCancelMessage", UNKNOWN, 12, },
-    {0,"NtAlpcConnectPort", UNKNOWN, 44, },
-    {0,"NtAlpcCreatePort", UNKNOWN, 12, },
-    {0,"NtAlpcCreatePortSection", UNKNOWN, 24, },
-    {0,"NtAlpcCreatePortSection", UNKNOWN, 24, },
-    {0,"NtAlpcCreateResourceReserve", UNKNOWN, 16, },
+    {0,"NtAlpcConnectPort", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {5,sizeof(SID),R}, {6,-7,WI}, {7,sizeof(ULONG),R|W}, {8,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {9,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {10,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtAlpcCreatePort", OK, 12, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
+    {0,"NtAlpcCreatePortSection", OK, 24, {{4,sizeof(HANDLE),W}, {5,sizeof(ULONG),W}, }},
+    {0,"NtAlpcCreateResourceReserve", OK, 16, {{3,sizeof(HANDLE),W}, }},
     {0,"NtAlpcCreateSectionView", UNKNOWN, 12, },
-    {0,"NtAlpcCreateSecurityContext", UNKNOWN, 12, },
+    {0,"NtAlpcCreateSecurityContext", OK, 12, {{2,sizeof(ALPC_SECURITY_ATTRIBUTES),R|W|CT,SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES}, }},
     {0,"NtAlpcDeletePortSection", UNKNOWN, 12, },
     {0,"NtAlpcDeleteResourceReserve", UNKNOWN, 12, },
     {0,"NtAlpcDeleteSectionView", UNKNOWN, 12, },
-    {0,"NtAlpcDeleteSecurityContext", UNKNOWN, 12, },
-    {0,"NtAlpcDisconnectPort", UNKNOWN, 8, },
-    {0,"NtAlpcImpersonateClientOfPort", UNKNOWN, 12, },
+    {0,"NtAlpcDeleteSecurityContext", OK, 12, },
+    {0,"NtAlpcDisconnectPort", OK, 8, },
+    {0,"NtAlpcImpersonateClientOfPort", OK, 12, {{1,sizeof(PORT_MESSAGE), R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
     {0,"NtAlpcOpenSenderProcess", UNKNOWN, 24, },
     {0,"NtAlpcOpenSenderThread", UNKNOWN, 24, },
     {0,"NtAlpcQueryInformation", UNKNOWN, 20, },
@@ -1484,6 +1482,53 @@ handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 static bool
+handle_alpc_port_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                                   uint arg_num,
+                                   const syscall_arg_t *arg_info,
+                                   app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    ALPC_PORT_ATTRIBUTES *apa = (ALPC_PORT_ATTRIBUTES *) start;
+    ASSERT(size == sizeof(ALPC_PORT_ATTRIBUTES), "invalid size");
+    
+    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start, size, mc,
+                 "ALPC_PORT_ATTRIBUTES");
+    check_sysmem(check_type, sysnum, (byte *) &apa->Flags, sizeof(apa->Flags),
+                 mc, "ALPC_PORT_ATTRIBUTES.Flags");
+    handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
+                               (byte *) &apa->SecurityQos,
+                               sizeof(SECURITY_QUALITY_OF_SERVICE));
+    check_sysmem(check_type, sysnum, (byte *) &apa->MaxMessageLength,
+                 ((byte *) &apa->MaxTotalSectionSize) + sizeof(apa->MaxTotalSectionSize) -
+                 (byte *) &apa->MaxMessageLength,
+                 mc, "ALPC_PORT_ATTRIBUTES MaxMessageLength through MaxTotalSectionSize");
+    return true;
+}
+
+static bool
+handle_alpc_security_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                                       uint arg_num,
+                                       const syscall_arg_t *arg_info,
+                                       app_pc start, uint size)
+{
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    ALPC_SECURITY_ATTRIBUTES asa;
+    ALPC_SECURITY_ATTRIBUTES *arg = (ALPC_SECURITY_ATTRIBUTES *) start;
+    ASSERT(size == sizeof(ALPC_SECURITY_ATTRIBUTES), "invalid size");
+
+    check_sysmem(check_type, sysnum, start, sizeof(arg->Flags) +
+                 sizeof(arg->SecurityQos) + sizeof(arg->ContextHandle), mc,
+                 "ALPC_SECURITY_ATTRIBUTES fields");
+    if (safe_read((void*)start, sizeof(asa), &asa)) {
+        handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
+                                   (byte *) asa.SecurityQos,
+                                   sizeof(SECURITY_QUALITY_OF_SERVICE));
+    } else
+        WARN("WARNING: unable to read syscall param\n");
+    return true;
+}
+
+static bool
 os_handle_syscall_arg_access(bool pre,
                              int sysnum, dr_mcontext_t *mc, uint arg_num,
                              const syscall_arg_t *arg_info,
@@ -1520,6 +1565,12 @@ os_handle_syscall_arg_access(bool pre,
     case SYSARG_TYPE_CSTRING_WIDE:
         return handle_cstring_wide_access(pre, sysnum, mc, arg_num,
                                           arg_info, start, size);
+    case SYSARG_TYPE_ALPC_PORT_ATTRIBUTES:
+        return handle_alpc_port_attributes_access(pre, sysnum, mc, arg_num,
+                                                  arg_info, start, size);
+    case SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES:
+        return handle_alpc_security_attributes_access(pre, sysnum, mc, arg_num,
+                                                      arg_info, start, size);
     }
     return wingdi_process_syscall_arg(pre, sysnum, mc, arg_num,
                                       arg_info, start, size);
