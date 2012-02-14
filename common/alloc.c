@@ -3960,6 +3960,18 @@ handle_free_check_mismatch(void *drcontext, dr_mcontext_t *mc, bool inside,
     uint free_type = malloc_allocator_type(routine);
     LOG(3, "alloc/free match test: alloc %x vs free %x %s\n",
         alloc_type, free_type, routine->name);
+    if (entry == NULL && alloc_type == MALLOC_ALLOCATOR_UNKNOWN) {
+        /* try 4 bytes back, in case this is an array w/ size passed to delete */
+        alloc_type = malloc_alloc_type(base - sizeof(int));
+        if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN)
+            base -= sizeof(int);
+        else {
+            /* try 4 bytes in, in case this is a non-array passed to delete[] */
+            alloc_type = malloc_alloc_type(base + sizeof(int));
+            if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN)
+                base += sizeof(int);
+        }
+    }
     /* If have no info, can't say whether a mismatch */
     if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
         alloc_type != free_type) {
@@ -4047,7 +4059,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt,
         malloc_unlock();
         return;
     }
-    if (entry != NULL && pt->in_heap_routine == 1/*alread incremented, so outer*/) {
+    if (pt->in_heap_routine == 1/*alread incremented, so outer*/) {
 #ifdef WINDOWS
         if (pt->ignore_next_mismatch)
             pt->ignore_next_mismatch = false;
