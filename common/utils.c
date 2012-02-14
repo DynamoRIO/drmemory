@@ -172,6 +172,14 @@ safe_decode(void *drcontext, app_pc pc, instr_t *inst, app_pc *next_pc /*OPTIONA
 }
 
 #ifdef USE_DRSYMS
+bool
+lookup_has_fast_search(const module_data_t *mod)
+{
+    drsym_debug_kind_t kind;
+    drsym_error_t res = drsym_get_module_debug_kind(mod->full_path, &kind);
+    return TEST(DRSYM_PDB, kind);
+}
+
 /* default cb used when we want first match */
 static bool
 search_syms_cb(const char *name, size_t modoffs, void *data)
@@ -181,6 +189,34 @@ search_syms_cb(const char *name, size_t modoffs, void *data)
     ASSERT(ans != NULL, "invalid param");
     *ans = modoffs;
     return false; /* stop iterating: we want first match */
+}
+
+typedef struct _search_regex_t {
+    const char *regex;
+    drsym_enumerate_cb orig_cb;
+    void *orig_data;
+} search_regex_t;
+
+/* cb used when we need to do our own regex matching
+ * XXX: would be better for drsyms to do this for us instead of
+ * returning NYI on search, although we'd still have
+ * multiple loops: for efficiency might need to pool together
+ * what we're interested in from all modules and do one loop.
+ * maybe each module registers pattern and gets callback from
+ * some central module event code.
+ */
+static bool
+search_syms_regex_cb(const char *name, size_t modoffs, void *data)
+{
+    search_regex_t *sr = (search_regex_t *) data;
+    const char *sym = strchr(sr->regex, '!');
+    LOG(3, "%s: comparing %s to pattern %s\n", __FUNCTION__,
+        name, sym == NULL ? sr->regex : sym + 1);
+    if (sr->regex[0] == '\0' ||
+        text_matches_pattern(name, sym == NULL ? sr->regex : sym + 1, false)) {
+        return sr->orig_cb(name, modoffs, sr->orig_data);
+    }
+    return true; /* keep iterating */
 }
 
 static app_pc
@@ -248,6 +284,21 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         symres = drsym_search_symbols(mod->full_path, sym_with_mod, false,
                                       callback == NULL ? search_syms_cb : callback,
                                       callback == NULL ? &modoffs : data);
+        if (symres == DRSYM_ERROR_NOT_IMPLEMENTED) {
+            /* ELF or PECOFF where regex search is NYI
+             * XXX: better for caller to do single walk though: should we
+             * return failure and have caller call back with "" and its own
+             * pattern-matching callback?
+             */
+            search_regex_t *sr = (search_regex_t *)
+                global_alloc(sizeof(*sr), HEAPSTAT_MISC);
+            sr->regex = sym_with_mod;
+            sr->orig_cb = callback == NULL ? search_syms_cb : callback;
+            sr->orig_data = callback == NULL ? &modoffs : data;
+            symres = drsym_enumerate_symbols(mod->full_path, search_syms_regex_cb,
+                                             (void *) sr, DRSYM_DEMANGLE);
+            global_free(sr, sizeof(*sr), HEAPSTAT_MISC);
+        }
     }
     LOG(2, "sym lookup of %s in %s => %d "PFX"\n", sym_with_mod, mod->full_path,
         symres, modoffs);

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -19,35 +19,43 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-%if WINDOWS
-# if this starts not matching on other platforms/compiler just remove the print!
+%ANYLINE
+# MSVC
 size=4 capacity=15
-%endif
-%if UNIX
+# Linux, MinGW
 size=4 capacity=4
-%endif
+%ENDANYLINE
 getval: childAB
 myfunc: parB
 hi
 bye
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       1 unique,     1 total unaddressable access(es)
-~~Dr.M~~       1 unique,     1 total uninitialized access(es)
-# FIXME: The correct answer is 5 invalid heap args, all due to mismatches.
-# Without drsyms for Cygwin (DR i#589), we can't always tell the difference
-# between new/new[] and delete/delete[], so we sometimes get 3 or 4 mismatches.
 %ANYLINE
-~~Dr.M~~       3 unique,     3 total invalid heap argument(s)
-~~Dr.M~~       4 unique,     4 total invalid heap argument(s)
-~~Dr.M~~       5 unique,     5 total invalid heap argument(s)
+# MinGW xp64
+~~Dr.M~~       3 unique,     3 total unaddressable access(es)
+# everything else
+~~Dr.M~~       2 unique,     2 total unaddressable access(es)
+%ENDANYLINE
+%ANYLINE
+# Linux/MinGW/VS2005
+~~Dr.M~~       2 unique,     2 total uninitialized access(es)
+# VS2008 Win7
+~~Dr.M~~       3 unique,     3 total uninitialized access(es)
+%ENDANYLINE
+%ANYLINE
+# Linux/MinGW
+~~Dr.M~~      11 unique,    12 total invalid heap argument(s)
+# MinGW xp64
+~~Dr.M~~      10 unique,    11 total invalid heap argument(s)
+# MSVC
+~~Dr.M~~       9 unique,    12 total invalid heap argument(s)
 %ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total warning(s)
 %ANYLINE
-# Unix:
-~~Dr.M~~       2 unique,     2 total,     27 byte(s) of leak(s)
 # Windows: FIXME PR 587093: string code disabled for now
-~~Dr.M~~       1 unique,     1 total,      4 byte(s) of leak(s)
-# FIXME i#664: On Cygwin with bad symbols we fail to suppress a 1 byte system leak.
-~~Dr.M~~       2 unique,     2 total,      5 byte(s) of leak(s)
+# MSVC: mismatches don't end up freeing anything
+~~Dr.M~~       4 unique,     4 total,    551 byte(s) of leak(s)
+# Linux/MinGW
+~~Dr.M~~       5 unique,     5 total,    574 byte(s) of leak(s)
 %ENDANYLINE
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)

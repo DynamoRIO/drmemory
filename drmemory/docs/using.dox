@@ -94,20 +94,22 @@ displayed.  The option \p -batch can be used to disable the launch of \p
 notepad at application exit.
 
 ********************
-\subsection sec_windows_cygwin Dr. Memory and Cygwin
+\subsection sec_windows_cygwin Dr. Memory and MinGW or Cygwin
 
-If you wish to run Cygwin applications under Dr. Memory, you will need to
-use the separate Cygwin build of Dr. Memory as the regular Windows build is
-not able to read Cygwin symbols.  Also, make sure you have the following
-Cygwin utilities installed:
+Dr. Memory supports applications compiled with the MinGW gcc or g++
+compilers, but will only provide line number information if DWARF2
+debugging information is present.  The default for MinGW gcc prior to
+version 4.3 is to use the stabs format, which is not supported by
+Dr. Memory.  Pass the -ggdb option to gcc to generate DWARF2 format
+instead.
 
- - perl
- - objdump (binutils package)
- - addr2line (binutils package)
+For MinGW C++ applications, Dr. Memory also requires the use of static
+libstdc++ libraries.  Pass "-static-libgcc -static-libstdc++" to g++ to
+request this.  Since these static libraries contain frame pointer
+optimizations, we recommend passing the "-no_callstack_use_top_fp" runtime
+option to Dr. Memory.  This is also discussed below.
 
-For this Beta release, on Windows it is recommended to use native Windows
-applications (i.e., built via cl.exe or Visual Studio rather than g++) as
-there are many false positives in the Cygwin libraries.
+Currently there is no support for applications built with Cygwin gcc.
 
 The regular Dr. Memory build can be executed just fine from a Cygwin
 shell when targeting non-Cygwin applications.
@@ -423,7 +425,7 @@ Note: instruction: mov    (%eax) -> %eax
 
 A suppression can contain an \p instruction= line after the error type line
 which will be matched against this note field.  It can contain wildcards.
-The \p instruction= line is currently ignored on Linux or Cygwin.  Here is
+The \p instruction= line is currently ignored on Linux.  Here is
 an example:
 
 \code

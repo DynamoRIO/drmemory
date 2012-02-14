@@ -1453,10 +1453,17 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
          * interested in, and we furthermore store all matches in symcache as
          * dups using the non-wildcard name in the possible* array.
          */
+        size_t len = strlen(edata->possible[i].name);
         if ((edata->wildcard_name != NULL &&
              strcmp(edata->possible[i].name, edata->wildcard_name) == 0) ||
             (edata->wildcard_name == NULL &&
-             strcmp(name, edata->possible[i].name) == 0)) {
+             strcmp(name, edata->possible[i].name) == 0 ||
+             /* Deal with PECOFF/ELF having "()" at end.
+              * XXX: would be much nicer for drsyms to provide consistent format!
+              */
+             (strstr(name, edata->possible[i].name) == name &&
+              strlen(name) == len + 2 &&
+              name[len] == '(' && name[len+1] == ')'))) {
 #ifdef WINDOWS
             if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
                 /* look for partial map (i#730) */
@@ -1572,23 +1579,31 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         } else
             all_processed = false;
         if (!all_processed) {
+            bool has_fast_search = lookup_has_fast_search(mod);
             if (possible == possible_libc_routines) {
-                find_alloc_regex(&edata, "mall*", "mall", NULL);
-                find_alloc_regex(&edata, "*alloc", NULL, "alloc");
-                find_alloc_regex(&edata, "*_impl", NULL, "_impl");
+                if (has_fast_search) { /* else faster to do indiv lookups */
+                    find_alloc_regex(&edata, "mall*", "mall", NULL);
+                    find_alloc_regex(&edata, "*alloc", NULL, "alloc");
+                    find_alloc_regex(&edata, "*_impl", NULL, "_impl");
+                }
             } else if (possible == possible_crtdbg_routines) {
-                find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
-                find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
-                find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+                if (has_fast_search) { /* else faster to do indiv lookups */
+                    find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
+                    find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
+                    find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
 # ifdef WINDOWS
-                /* wrapper in place of real delete or delete[] operators (i#722,i#655) */
-                edata.wildcard_name = "std::_DebugHeapDelete<>";
-                find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
-                                 /* no export lookups so pass NULL */
-                                 NULL, NULL);
-                edata.wildcard_name = NULL;
+                    /* wrapper in place of real delete or delete[] operators
+                     * (i#722,i#655)
+                     */
+                    edata.wildcard_name = "std::_DebugHeapDelete<>";
+                    find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
+                                     /* no export lookups so pass NULL */
+                                     NULL, NULL);
+                    edata.wildcard_name = NULL;
 # endif
+                }
             } else if (possible == possible_cpp_routines) {
+                /* regardless of fast search we want to find all overloads */
                 find_alloc_regex(&edata, "operator new*", "operator new", NULL);
                 find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
             }

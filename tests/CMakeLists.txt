@@ -44,6 +44,17 @@ endif ()
 # For their annotations.
 include_directories("../third_party/valgrind")
 
+if (WIN32)
+  # if MinGW gcc is available, we do some extra tests
+  # (we do not yet support Cygwin)
+  find_program(GCC mingw32-g++.exe DOC "path to MinGW g++.exe" PATHS "c:/mingw/bin")
+  if (NOT GCC)
+    message(STATUS "MinGW gcc not found: some tests will be disabled")
+  else (NOT GCC)
+    message(STATUS "Found MinGW gcc at ${GCC}")
+  endif (NOT GCC)
+endif (WIN32)
+
 function(set_props target)
   if (UNIX)
     set(defs "-DLINUX")
@@ -197,7 +208,11 @@ set(cmd_script -P "./runtest.cmake")
 # The resbase arg support specifying a different .res and .out name
 # to use.
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
-  get_relative_location(${exe} exepath)
+  if (${exe} MATCHES ".exe$")
+    set(exepath ${exe})
+  else ()
+    get_relative_location(${exe} exepath)
+  endif ()
 
   set(cmd ${cmd_base})
   if (NOT "${dr_ops}" STREQUAL "")
@@ -291,6 +306,25 @@ function(newtest_custbuild test source cust_flags resbase)
   get_target_property(cur_flags ${test} COMPILE_FLAGS)
   set_target_properties(${test} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
 endfunction(newtest_custbuild)
+
+function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess resbase)
+  add_custom_target(target_${test} DEPENDS ${test}.exe)
+  set(exepath ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test}.exe)
+  add_custom_command(OUTPUT ${test}.exe
+    DEPENDS ${source} ${CMAKE_CURRENT_SOURCE_DIR}/rungcc.cmake
+    COMMAND ${CMAKE_COMMAND}
+    # to work around i#84 be sure to put a space after -D for 1st arg at least
+    ARGS -D exename=${exepath}
+       -D gcc=${GCC}
+       -D source=${CMAKE_CURRENT_SOURCE_DIR}/${source}
+       -D args=
+       -P ${CMAKE_CURRENT_SOURCE_DIR}/rungcc.cmake
+    VERBATIM # recommended: p260
+    )
+  newtest_nobuild(${test} ${exepath} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    "${postprocess}" "${resbase}")
+  add_dependencies(${depender} target_${test})
+endfunction(newtest_gcc)
 
 newtest(hello hello.c)
 newtest(malloc malloc.c)
@@ -425,9 +459,17 @@ if (NOT TOOL_DR_HEAPSTAT)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
       # C++ tests with other libc configs
-      newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd" cs2bug)
+      # for /MTd, we skip the destructor mismatches, as they end up raising
+      # heap assertions that we can't recover from
+      newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
     endif (USE_DRSYMS)
+
+    if (GCC)
+      # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)
+      newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "-no_callstack_use_top_fp"
+        "" "" cs2bug)
+    endif (GCC)
 
     newtest(gdi gdi.cpp)
   endif (WIN32)

@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drsyms.h"
 #include "drmemory.h"
 #include "shadow.h"
 #include "readwrite.h"
@@ -1773,6 +1774,24 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
     }
 }
 
+#ifdef USE_DRSYMS
+static void
+report_symbol_advice(void)
+{
+    drsym_debug_kind_t kind;
+    drsym_error_t res = drsym_get_module_debug_kind(app_path, &kind);
+    if (!TESTANY(DRSYM_DWARF_LINE|DRSYM_PDB, kind)) {
+        ELOGF(0, f_results, NL);
+        NOTIFY_COND(true, f_results,
+                    "WARNING: application is missing line number information."NL);
+        if (TEST(DRSYM_PECOFF_SYMTAB, kind)) {
+            NOTIFY_COND(true, f_results,
+                  "Re-compile with the -ggdb flag to include DWARF2 line numbers."NL);
+        }
+    }
+}
+#endif
+
 /* pcs is only used for invalid heap args */
 static void
 report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
@@ -1789,6 +1808,18 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     size_t sofar = 0;
     suppress_spec_t *spec;
     error_callstack_t ecs;
+
+#ifdef USE_DRSYMS
+    /* we do not want to use dbghelp at init time b/c that's too early so we
+     * only check symbols and give warnings if we end up reporting something
+     */
+    static bool reported_any_error;
+    if (!reported_any_error) {
+        report_symbol_advice();
+        reported_any_error = true;
+    }
+#endif
+
     error_callstack_init(&ecs);
 
     /* Our report_max throttling is post-dup-checking, to make the option

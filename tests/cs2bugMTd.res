@@ -28,38 +28,6 @@ cs2bug.cpp:93
 memory was allocated here:
 cs2bug.cpp:87
 ##################################################
-# test_mismatch_dtr()
-: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
-cs2bug.cpp:180
-memory was allocated here:
-cs2bug.cpp:178
-%OPTIONAL # Linux
-: INVALID HEAP ARGUMENT to free()
-%ENDOPTIONAL
-: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
-cs2bug.cpp:183
-memory was allocated here:
-cs2bug.cpp:181
-: UNINITIALIZED READ
-cs2bug.cpp:99
-cs2bug.cpp:186
-: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
-cs2bug.cpp:186
-memory was allocated here:
-cs2bug.cpp:184
-%OPTIONAL # VS2008 Win7
-: UNINITIALIZED READ
-%ENDOPTIONAL
-: UNADDRESSABLE ACCESS
-cs2bug.cpp:189
-: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
-cs2bug.cpp:189
-memory was allocated here:
-cs2bug.cpp:187
-%OPTIONAL # Linux
-: INVALID HEAP ARGUMENT to free()
-%ENDOPTIONAL
-##################################################
 # test_mismatch_int()
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:201
@@ -79,23 +47,5 @@ memory was allocated here:
 cs2bug.cpp:208
 ##################################################
 # leaks
-%OUT_OF_ORDER
 : LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:82
-%if UNIX
-# FIXME PR 587093: string code disabled for now on Windows
-: LEAK 4 direct bytes + 19 indirect bytes
-cs2bug.cpp:155
-%endif
-%OPTIONAL # Linux/VS2005
-: LEAK 88 direct bytes + 168 indirect bytes
-cs2bug.cpp:178
-%ENDOPTIONAL
-: LEAK 88 direct bytes + 196 indirect bytes
-cs2bug.cpp:181
-: LEAK 7 direct bytes + 0 indirect bytes
-cs2bug.cpp:187
-# ensure reachable leaks are printed, and after regular leaks
-REACHABLE LEAK
-REACHABLE LEAK
-REACHABLE LEAK

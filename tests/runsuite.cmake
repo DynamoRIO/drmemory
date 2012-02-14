@@ -137,9 +137,6 @@ endforeach ()
 ##################################################
 
 
-# run cygwin tests only if cygwin is installed
-set(test_cygwin ${have_cygwin}) # have_cygwin set by runsuite_common_pre.cmake
-
 set(tools "")
 # build drmemory last, so our package is a drmem package
 if (NOT arg_drmemory_only)
@@ -183,23 +180,6 @@ foreach (tool ${tools})
         VMKERNEL:BOOL=ON
         " ON ON "") # only run release tests for long suite
     endif (arg_vmk_only OR arg_test_vmk)
-  else (UNIX)
-    if ("${tool}" MATCHES "MEMORY" AND test_cygwin)
-      # No online symbol support for cygwin yet so using separate build
-      # with postprocess model (PR 561181)
-      testbuild("${name}-cyg-dbg-32" OFF "
-        ${tool}
-        ${DR_entry}
-        CMAKE_BUILD_TYPE:STRING=Debug
-        USE_DRSYMS:BOOL=OFF
-        ")
-      testbuild_ex("${name}-cyg-rel-32" OFF "
-        ${tool}
-        ${DR_entry}
-        CMAKE_BUILD_TYPE:STRING=Release
-        USE_DRSYMS:BOOL=OFF
-        " ON OFF "") # only run release tests for long suite
-    endif ("${tool}" MATCHES "MEMORY" AND test_cygwin)
   endif (UNIX)
 endforeach (tool)
 

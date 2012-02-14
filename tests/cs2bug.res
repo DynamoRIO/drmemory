@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -19,58 +19,87 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Error #1: UNINITIALIZED READ
+: UNINITIALIZED READ
 cs2bug.cpp:83
-Error #2: UNADDRESSABLE ACCESS: writing 4 byte(s)
+: UNADDRESSABLE ACCESS: writing 4 byte(s)
 cs2bug.cpp:91
-%if !CYGWIN
-Error #3: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:93
 memory was allocated here:
 cs2bug.cpp:87
-Error #4: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
-cs2bug.cpp:176
-memory was allocated here:
-cs2bug.cpp:174
-Error #5: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
-cs2bug.cpp:179
-memory was allocated here:
-cs2bug.cpp:177
-Error #6: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
-cs2bug.cpp:182
-memory was allocated here:
+##################################################
+# test_mismatch_dtr()
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:180
-Error #7: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
-cs2bug.cpp:185
 memory was allocated here:
+cs2bug.cpp:178
+%OPTIONAL # Linux
+: INVALID HEAP ARGUMENT to free()
+%ENDOPTIONAL
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
 cs2bug.cpp:183
-%endif
-%if CYGWIN
-# i#589: no syms so can't find some errors due to asymmetric inlines (xref i#123)
-Error #3: INVALID HEAP ARGUMENT: allocated with operator new, freed with free
-cs2bug.cpp:179
 memory was allocated here:
-cs2bug.cpp:177
-Error #4: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
-cs2bug.cpp:182
+cs2bug.cpp:181
+: UNINITIALIZED READ
+cs2bug.cpp:99
+cs2bug.cpp:186
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
+cs2bug.cpp:186
 memory was allocated here:
-cs2bug.cpp:180
-Error #5: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
-cs2bug.cpp:185
+cs2bug.cpp:184
+%OPTIONAL # VS2008 Win7
+: UNINITIALIZED READ
+cs2bug.cpp:186
+%ENDOPTIONAL
+: UNADDRESSABLE ACCESS
+cs2bug.cpp:189
+%OPTIONAL
+# MinGW xp64 crashes rather than reporting final mismatch
+: UNADDRESSABLE ACCESS
+cs2bug.cpp:189
+%ENDOPTIONAL
+%OPTIONAL
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
+cs2bug.cpp:189
 memory was allocated here:
-cs2bug.cpp:183
-# FIXME i#664: We sometimes fail to suppress a 1 byte system leak, which shows up here.
+cs2bug.cpp:187
+%ENDOPTIONAL
+%OPTIONAL # Linux
+: INVALID HEAP ARGUMENT to free()
+%ENDOPTIONAL
+##################################################
+# test_mismatch_int()
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
+cs2bug.cpp:201
+memory was allocated here:
+cs2bug.cpp:199
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
+cs2bug.cpp:204
+memory was allocated here:
+cs2bug.cpp:202
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
+cs2bug.cpp:207
+memory was allocated here:
+cs2bug.cpp:205
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
+cs2bug.cpp:210
+memory was allocated here:
+cs2bug.cpp:208
+##################################################
+# leaks
+%OUT_OF_ORDER
 : LEAK 4 direct bytes + 0 indirect bytes
 cs2bug.cpp:82
-%endif
 %if UNIX
+# FIXME PR 587093: string code disabled for now on Windows
 : LEAK 4 direct bytes + 19 indirect bytes
 cs2bug.cpp:155
-: LEAK 4 direct bytes + 0 indirect bytes
-cs2bug.cpp:82
 %endif
-%if WINDOWS
-# FIXME PR 587093: string code disabled for now
-: LEAK 4 direct bytes + 0 indirect bytes
-cs2bug.cpp:82
-%endif
+%OPTIONAL # Linux/VS2005
+: LEAK 88 direct bytes + 168 indirect bytes
+cs2bug.cpp:178
+%ENDOPTIONAL
+: LEAK 88 direct bytes + 196 indirect bytes
+cs2bug.cpp:181
+: LEAK 7 direct bytes + 0 indirect bytes
+cs2bug.cpp:187

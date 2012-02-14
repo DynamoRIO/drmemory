@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -169,7 +169,32 @@ test_exception()
 }
 
 static void
-test_mismatch()
+test_mismatch_dtr()
+{
+#ifndef SKIP_MISMATCH_DTR
+    /* /MTd, we skip the destructor mismatches, as they end up raising
+     * heap assertions that we can't recover from
+     */
+    hasdtr *x = new hasdtr[7];
+    if (setjmp(mark) == 0)
+        delete x;
+    x = new hasdtr[7];
+    if (setjmp(mark) == 0)
+        free(x);
+    x = (hasdtr *) malloc(7);
+    if (setjmp(mark) == 0)
+        delete x;
+    x = (hasdtr *) malloc(7);
+    if (setjmp(mark) == 0)
+        delete[] x; /* unaddr reading size + dtr calls might crash before mismatch */
+    /* not a mismatch, but test debug operator del (i#500) */
+    x = new hasdtr[7];
+    delete[] x;
+#endif
+}
+
+static void
+test_mismatch_int()
 {
     int *x = new int[7];
     if (setjmp(mark) == 0)
@@ -202,7 +227,8 @@ int main()
 
     test_exception();
 
-    test_mismatch();
+    test_mismatch_dtr();
+    test_mismatch_int();
 
     std::cout << "bye" << std::endl;
 

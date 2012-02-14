@@ -988,13 +988,19 @@ replace_in_module(const module_data_t *mod, bool add)
          * many queries.  Note that dbghelp does not support a regex
          * symbol for "0 or 1 chars".
          */
-        /* N.B.: if you change these regexes, bump SYMCACHE_VERSION! */
-        find_syms_regex(&edata, "[msw]?????");
-        find_syms_regex(&edata, "[msw]??????");
+        if (lookup_has_fast_search(mod)) {
+            /* N.B.: if you change these regexes, bump SYMCACHE_VERSION! */
+            find_syms_regex(&edata, "[msw]?????");
+            find_syms_regex(&edata, "[msw]??????");
 # ifdef LINUX
-        find_syms_regex(&edata, "strchrnul");
-        find_syms_regex(&edata, "rawmemchr");
+            find_syms_regex(&edata, "strchrnul");
+            find_syms_regex(&edata, "rawmemchr");
 # endif
+        } else {
+            /* better to do just one walk */
+            if (!lookup_all_symbols(edata.mod, "", enumerate_syms_cb, (void *)&edata))
+                LOG(2, "WARNING: failed to look up symbols to replace\n");
+        }
     }
 #endif
 }
