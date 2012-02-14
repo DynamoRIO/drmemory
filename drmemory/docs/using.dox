@@ -170,6 +170,12 @@ able to determine callstacks in the presence of frame pointer optimizations
 application consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
 "-fno-omit-frame-pointer".
 
+If your application links with a static library that was built with frame
+pointer optimizations and you observe missing frames on your callstacks,
+try running with the option "-no_callstack_use_top_fp".  This will add some
+additional overhead on malloc-intensive applications, but should eliminate
+skipped frames.
+
 The Visual Studio compiler's /RTC1 flag can prevent Dr. Memory from
 reporting uninitialized reads of local variables, and the /RTC1 checks for
 uninitialized reads themselves may not catch everything that Dr. Memory

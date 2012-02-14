@@ -1057,6 +1057,17 @@ is_dword_defined(byte *addr)
     return (shadow_get_dword(addr) == SHADOW_DWORD_DEFINED);
 }
 
+static bool
+callstack_ignore_initial_xbp(void *drcontext, dr_mcontext_t *mc)
+{
+    /* i#783: we expose option for whether to always scan at start */
+    if (!options.callstack_use_top_fp
+        IF_WINDOWS(|| is_in_seh_unwind(drcontext, mc)))
+        return true;
+    else
+        return false;
+}
+
 void
 report_init(void)
 {
@@ -1103,7 +1114,7 @@ report_init(void)
                    IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
                    get_syscall_name,
                    options.shadowing ? is_dword_defined : NULL,
-                   IF_WINDOWS_ELSE(is_in_seh_unwind, NULL),
+                   callstack_ignore_initial_xbp,
 #ifdef USE_DRSYMS
                    /* pass NULL since callstack.c uses that as quick check */
                    (options.callstack_truncate_below[0] == '\0') ? NULL :

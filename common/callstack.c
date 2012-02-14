@@ -989,7 +989,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         dr_mutex_lock(page_buf_lock);
 
     if (mc != NULL) {
-    LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
+        LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
                mc->ebp, mc->esp,
                (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->ebp));
     }

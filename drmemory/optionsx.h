@@ -220,6 +220,9 @@ OPTION_CLIENT_STRING(client, callstack_srcfile_prefix, "",
 # endif
 #endif
 
+OPTION_CLIENT_BOOL(client, callstack_use_top_fp, true,
+              "Use the top-level ebp/rbp register as the first frame pointer",
+              "Whether to trust the top-level ebp/rbp register to hold the next frame pointer.  Normally this is correct.  However, if a frameless function is on top of the stack, using the ebp register can cause a callstack to skip the next function.  If this option is set to false, the callstack walk will perform a stack scan at the top of every callstack.  This adds additional overhead in exchange for more accuracy.  It should not be necessary to disable this option normally, unless an application or one of its static libraries is built with optimizations that omit frame pointers.")
 /* by default scan forward a fraction of a page: good compromise bet perf (scanning
  * can be the bottleneck) and good callstacks
  */
