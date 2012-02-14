@@ -2565,7 +2565,7 @@ syscall_diagnostics(void *drcontext, int sysnum)
         return;
     if (strcmp(sysinfo->name, "NtQueryValueKey") == 0) {
         UNICODE_STRING *us = (UNICODE_STRING *) pt->sysarg[1];
-        LOG(2, "NtQueryValueKey %S => ", us->Buffer);
+        LOG(2, "NtQueryValueKey %S => ", (us == NULL) ? L"" : us->Buffer);
         if (pt->sysarg[2] == KeyValuePartialInformation) {
             KEY_VALUE_PARTIAL_INFORMATION *info = (KEY_VALUE_PARTIAL_INFORMATION *)
                 pt->sysarg[3];
@@ -2589,8 +2589,11 @@ syscall_diagnostics(void *drcontext, int sysnum)
     } else if (strcmp(sysinfo->name, "NtOpenFile") == 0 ||
                strcmp(sysinfo->name, "NtCreateFile") == 0) {
         OBJECT_ATTRIBUTES *obj = (OBJECT_ATTRIBUTES *) pt->sysarg[2];
-        if (obj != NULL && obj->ObjectName != NULL)
-            LOG(2, "%s %S\n", sysinfo->name, obj->ObjectName->Buffer);
+        DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+            if (obj != NULL && obj->ObjectName != NULL)
+                LOG(2, "%s %S\n", sysinfo->name, obj->ObjectName->Buffer);
+        }, { /* EXCEPT */
+        });
     }
 }
 #endif
