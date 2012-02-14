@@ -25,7 +25,9 @@
  */
 
 #include "dr_api.h"
-#include "drsyms.h"
+#ifdef USE_DRSYMS
+# include "drsyms.h"
+#endif
 #include "drmemory.h"
 #include "shadow.h"
 #include "readwrite.h"
