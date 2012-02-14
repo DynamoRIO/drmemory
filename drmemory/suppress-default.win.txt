@@ -566,3 +566,11 @@ RPCRT4.dll!I_RpcBindingCopy
 RPCRT4.dll!...
 SspiCli.dll!*
 SspiCli.dll!Cre*
+
+##################################################
+# i#781: argv[] leak in mingw CRT
+
+POSSIBLE LEAK
+msvcrt.dll!...
+msvcrt.dll!__getmainargs
+*!__mingw_CRTStartup
