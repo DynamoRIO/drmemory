@@ -58,9 +58,30 @@ NtAlpcCreateSectionView(
 
 NTSTATUS NTAPI
 NtAlpcCreateSecurityContext(
-    __in HANDLE
+    __in HANDLE                       PortHandle,
     __reserved ULONG                  Flags,
     __inout PALPC_SECURITY_ATTRIBUTES SecurityAttribute
+    );
+
+NTSTATUS NTAPI
+NtAlpcDeletePortSection(
+    __in HANDLE      PortHandle,
+    __reserved ULONG Flags,
+    __in HANDLE      SectionHandle
+    );
+
+NTSTATUS NTAPI
+NtAlpcDeleteResourceReserve(
+    __in HANDLE      PortHandle,
+    __reserved ULONG Flags,
+    __in HANDLE      ResourceID
+    );
+
+NTSTATUS NTAPI
+NtAlpcDeleteSectionView(
+    __in HANDLE      PortHandle,
+    __reserved ULONG Flags,
+    __in PVOID       ViewBase
     );
 
 NTSTATUS NTAPI

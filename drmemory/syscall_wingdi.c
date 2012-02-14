@@ -1250,7 +1250,7 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
      */
     if (is_atom(start))
         return true; /* handled */
-    /* we assume OUT fields jlst have their Buffer as OUT */
+    /* we assume OUT fields just have their Buffer as OUT */
     if (pre) {
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Length,
                      sizeof(arg->Length), mc, "LARGE_STRING.Length");

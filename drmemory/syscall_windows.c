@@ -562,15 +562,20 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /* added in Windows Vista SP0 */
     {0,"NtAcquireCMFViewOwnership", UNKNOWN, 12, },
+    {0,"NtAlpcAcceptConnectPort", UNKNOWN, 36, },
+    {0,"NtAlpcCancelMessage", UNKNOWN, 12, },
     {0,"NtAlpcConnectPort", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {5,sizeof(SID),R}, {6,-7,WI}, {7,sizeof(ULONG),R|W}, {8,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {9,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {10,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtAlpcCreatePort", OK, 12, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
     {0,"NtAlpcCreatePortSection", OK, 24, {{4,sizeof(HANDLE),W}, {5,sizeof(ULONG),W}, }},
     {0,"NtAlpcCreateResourceReserve", OK, 16, {{3,sizeof(HANDLE),W}, }},
     {0,"NtAlpcCreateSectionView", UNKNOWN, 12, },
     {0,"NtAlpcCreateSecurityContext", OK, 12, {{2,sizeof(ALPC_SECURITY_ATTRIBUTES),R|W|CT,SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES}, }},
-    {0,"NtAlpcDeletePortSection", UNKNOWN, 12, },
-    {0,"NtAlpcDeleteResourceReserve", UNKNOWN, 12, },
-    {0,"NtAlpcDeleteSectionView", UNKNOWN, 12, },
+    {0,"NtAlpcDeletePortSection", OK, 12, },
+    {0,"NtAlpcDeleteResourceReserve", OK, 12, },
+    /* XXX: ok for shadowing purposes, but we should look at tracking
+     * the allocation once we understand NtAlpcCreateSectionView
+     */
+    {0,"NtAlpcDeleteSectionView", OK, 12, },
     {0,"NtAlpcDeleteSecurityContext", OK, 12, },
     {0,"NtAlpcDisconnectPort", OK, 8, },
     {0,"NtAlpcImpersonateClientOfPort", OK, 12, {{1,sizeof(PORT_MESSAGE), R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
