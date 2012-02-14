@@ -693,6 +693,11 @@ if (WIN32)
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   set_source_files_properties(tools/winsyms.c PROPERTIES
     COMPILE_FLAGS "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
+
+  # symbol query tool
+  add_executable(symquery tools/symquery.c)
+  configure_DynamoRIO_standalone(symquery)
+  use_DynamoRIO_extension(symquery drsyms)
 endif (WIN32)
 
 ##################################################
@@ -851,6 +856,11 @@ if (WIN32)
     if (USE_DRSYMS)
       configure_file("${DynamoRIO_DIR}/../bin32/drconfig.exe"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
+      # symquery needs dynamorio.dll and drsyms.dll in same dir
+      configure_file("${DynamoRIO_DIR}/../ext/lib32/release/drsyms.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
+      configure_file("${DynamoRIO_DIR}/../lib32/release/dynamorio.dll"
+        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
     endif (USE_DRSYMS)
   else (USER_SPECIFIED_DynamoRIO_DIR)
     # XXX: I can't get "TARGET drconfiglib POST_BUILD" to work, maybe b/c
@@ -874,6 +884,19 @@ if (WIN32)
         COMMAND ${CMAKE_COMMAND}
         ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig.exe"
         "${drconfigexe_copy}" VERBATIM)
+      # symquery needs dynamorio.dll and drsyms.dll in same dir
+      set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
+      add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
+      add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy "${DynamoRIO_DIR}/../ext/lib32/release/drsyms.dll"
+        "${drsymsdll_copy}" VERBATIM)
+      set(drdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
+      add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
+      add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy "${DynamoRIO_DIR}/../lib32/release/dynamorio.dll"
+        "${drdll_copy}" VERBATIM)
     endif (USE_DRSYMS)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (USE_DRSYMS)
