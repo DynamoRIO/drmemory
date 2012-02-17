@@ -896,7 +896,8 @@ snapshot_exit(void)
 
 void
 client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc)
+                     app_pc real_base, size_t real_size,
+                     bool zeroed, bool realloc, dr_mcontext_t *mc)
 {
     if (options.check_leaks)
         leak_handle_alloc(drcontext, base, size);

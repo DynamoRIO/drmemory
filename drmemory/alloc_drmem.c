@@ -39,6 +39,7 @@
 #else
 # include "stack.h"
 #endif
+#include "pattern.h"
 
 /* PR 465174: share allocation site callstacks.
  * This table should only be accessed while holding the lock for
@@ -145,7 +146,12 @@ alloc_drmem_init(void)
     alloc_ops.redzone_size = options.redzone_size;
     alloc_ops.size_in_redzone = options.size_in_redzone;
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
-    alloc_ops.get_padded_size = false; /* don't need padding size */
+    /* shadow mode assumes everything is unaddr and so doesn't need to know
+     * padding b/c it will naturally be unaddr;
+     * while pattern mode assumes everything is addr and has to know exact 
+     * bounds to mark unaddr
+     */
+    alloc_ops.get_padded_size = (options.pattern == 0) ? false : true;
     alloc_ops.replace_realloc = options.replace_realloc && INSTRUMENT_MEMREFS();
 #ifdef WINDOWS
     alloc_ops.disable_crtdbg = options.disable_crtdbg && INSTRUMENT_MEMREFS();
@@ -451,7 +457,8 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
 
 void
 client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc)
+                     app_pc real_base, size_t real_size,
+                     bool zeroed, bool realloc, dr_mcontext_t *mc)
 {
     /* For calloc via malloc, post-malloc marks as undefined, and we should
      * see the memset which should then mark as defined.
@@ -465,6 +472,9 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
     if (options.shadowing) {
         uint val = zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED;
         shadow_set_range(base, base + size, val);
+    }
+    if (options.pattern != 0) {
+        pattern_handle_malloc(base, size, real_base, real_size);
     }
     report_malloc(base, base + size,
                   realloc ? "realloc" : "malloc", mc);
@@ -522,6 +532,10 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
                 start = new_base + new_size;
             shadow_set_range(start, old_base + old_size, SHADOW_UNADDRESSABLE);
         }
+    }
+    if (options.pattern != 0) {
+        pattern_handle_realloc(old_base, old_size, new_base, new_size,
+                               new_real_base);
     }
     report_malloc(old_base, old_base+old_size, "realloc-old", mc);
     report_malloc(new_base, new_base+new_size, "realloc-new", mc);
@@ -649,6 +663,11 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
             IF_WINDOWS(" auxarg="PFX) "\n", reason, pass_to_free,
             pass_to_free + info->delay_free_list[idx].real_size
             _IF_WINDOWS(auxarg == NULL ? 0 : *auxarg));
+        if (options.pattern != 0) {
+            pattern_handle_real_free(pass_to_free /* real_base */,
+                                     info->delay_free_list[idx].real_size, 
+                                     true /* delayed */);
+        }
     }
     shared_callstack_free(info->delay_free_list[idx].pcs);
     info->delay_free_list[idx].pcs = NULL;
@@ -700,6 +719,8 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
             LOG(2, "malloc size %d is larger than max delay %d so freeing immediately\n",
                 real_size, options.delay_frees_maxsz);
             dr_mutex_unlock(delay_free_lock);
+            if (options.pattern != 0)
+                pattern_handle_real_free(base, size, false);
             return real_base;
         }
 
@@ -746,6 +767,9 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                     real_size);
                 info->delay_free_bytes -= real_size;
                 dr_mutex_unlock(delay_free_lock);
+                if (options.pattern != 0) {
+                    pattern_handle_real_free(base, size, false);
+                }
                 return real_base;
             }
         }
@@ -806,8 +830,12 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
         STATS_ADD(delayed_free_bytes, (uint)real_size);
 
         dr_mutex_unlock(delay_free_lock);
+        if (options.pattern != 0)
+            pattern_handle_delayed_free(base, size);
         return pass_to_free;
     }
+    if (options.pattern != 0)
+        pattern_handle_real_free(base, size, false);
     return real_base; /* no change */
 }
 

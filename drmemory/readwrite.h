@@ -260,6 +260,10 @@ get_raw_tls_value(uint offset);
 #define CMP_OPCODE       0x80
 #define CMP_BASE_IMM1_LENGTH  3
 #define UD2A_OPCODE      0x0b0f
+/* N.B.: other opcodes like ADD also use 0x81, and CMP with immed opnd may use 
+ * other opcode value too. 
+ */
+#define CMP_IMMED_OPCODE 0x81
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

@@ -254,9 +254,15 @@ client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data);
 void
 client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end);
 
+/* real_size is the actual size of memory allocated by allocator.
+ * If alloc_options.get_padded_size, the padded_size is passed in;
+ * otherwise, an inaccurate real_size is passed in, 
+ * possibly (app_size + redzone_size*2).
+ */
 void
 client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, bool zeroed, bool realloc, dr_mcontext_t *mc);
+                     app_pc real_base, size_t real_size, 
+                     bool zeroed, bool realloc, dr_mcontext_t *mc);
 
 void
 client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,

@@ -32,6 +32,7 @@
 #include "utils.h"
 #include "options.h"
 #include "shadow.h"
+#include "pattern.h"
 
 #undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
@@ -354,10 +355,15 @@ options_init(const char *opstr)
     if (options.pattern != 0) {
         /* we do not need shadow memory */
         options.shadowing = false;
-        /* we need 0 spill slots across app instrs for now */
-        options.num_spill_slots = 0;
+        /* we need 1 spill slots for now */
+        options.num_spill_slots = 1;
         /* the size is not stored in redzone */
         options.size_in_redzone = false;
+        if (options.redzone_size == 0 ||
+            !ALIGNED(options.redzone_size, sizeof(ptr_int_t))) {
+            usage_error("redzone size must be pointer-size-aligned non-zero"
+                        " in pattern mode", "");
+        }
         /* we use two-byte pattern */
         options.pattern |= options.pattern << 16;
         /* no unknown syscalls analysis */

@@ -3619,7 +3619,8 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
         LOG(2, "SIGILL @"PFX" (xl8=>"PFX")\n",
             info->raw_mcontext->xip, info->mcontext->xip);
         if (options.pattern != 0) {
-            if (pattern_handle_ill_fault(drcontext, info->raw_mcontext))
+            if (pattern_handle_ill_fault(drcontext, info->raw_mcontext,
+                                         info->mcontext))
                 return DR_SIGNAL_SUPPRESS;
             return DR_SIGNAL_DELIVER;
         } else if (handle_slowpath_fault(drcontext, info->raw_mcontext, 
@@ -3658,7 +3659,8 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
         }
     } else if (excpt->record->ExceptionCode == STATUS_ILLEGAL_INSTRUCTION) {
         if (options.pattern != 0) {
-            return !pattern_handle_ill_fault(drcontext, excpt->raw_mcontext);
+            return !pattern_handle_ill_fault(drcontext, excpt->raw_mcontext,
+                                             excpt->mcontext);
         } else if (handle_slowpath_fault(drcontext, excpt->raw_mcontext,
                                          excpt->mcontext,
                                          excpt->fault_fragment_info.tag)) {

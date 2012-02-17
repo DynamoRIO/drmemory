@@ -67,6 +67,7 @@
 #include "stack.h"
 #include "perturb.h"
 #include <stddef.h> /* for offsetof */
+#include "pattern.h"
 
 char logsubdir[MAXIMUM_PATH];
 #ifndef USE_DRSYMS
@@ -308,6 +309,8 @@ event_exit(void)
 
     syscall_exit();
     alloc_drmem_exit();
+    if (options.pattern != 0)
+        pattern_exit();
     if (options.shadowing)
         shadow_exit();
     hashtable_delete(&known_table);
@@ -1476,6 +1479,9 @@ dr_init(client_id_t id)
 
     if (options.shadowing)
         shadow_init();
+
+    if (options.pattern != 0)
+        pattern_init();
 
 #ifdef WINDOWS
     data = dr_lookup_module_by_name("ntdll.dll");

@@ -32,6 +32,30 @@ bool
 pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc);
 
 bool
-pattern_handle_ill_fault(void *drcontext, dr_mcontext_t *raw_mc);
+pattern_handle_ill_fault(void *drcontext, dr_mcontext_t *raw_mc, 
+                         dr_mcontext_t *mc);
+
+void
+pattern_init(void);
+
+void
+pattern_exit(void);
+
+void
+pattern_handle_malloc(app_pc app_base,  size_t app_size,
+                      app_pc real_base, size_t real_size);
+
+void
+pattern_handle_real_free(app_pc base,  size_t size, bool delayed);
+
+void
+pattern_handle_delayed_free(app_pc base, size_t size);
+
+void
+pattern_handle_realloc(app_pc old_base, size_t old_size,
+                       app_pc new_base, size_t new_size, app_pc new_real_base);
+
+bool
+pattern_addr_in_redzone(byte *addr);
 
 #endif /* _PATTERN_H_ */

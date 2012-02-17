@@ -2793,6 +2793,12 @@ malloc_remove(app_pc start)
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
+static size_t
+malloc_entry_size(malloc_entry_t *e)
+{
+    return (e == NULL ? (size_t)-1 : (e->end - e->start));
+}
+
 void
 malloc_set_valid(app_pc start, bool valid)
 {
@@ -4120,20 +4126,22 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt,
                 *((app_pc *)(APP_ARG_ADDR(mc, ARGNUM_FREE_PTR(type), inside))) = real_base;
             }
         }
-        /* We don't know how to read the Rtl headers, so we must
-         * either use our redzone to store the size or call RtlSizeHeap.
-         * When we use our redzone or RtlSizeHeap, we treat extra space beyond
-         * the requested as unaddressable, which seems the right way to go;
-         * on linux w/o a redzone we do not have the requested size as
-         * malloc_usable_size() returns the padded size (as opposed to
-         * RtlSizeHeap which returns the requested size).
+        /* We don't know how to read the Rtl headers, so we can
+         * use our redzone or hashtable to store the size, or call RtlSizeHeap.
+         * either way, we treat extra space beyond the requested as unaddressable,
+         * which seems the right way to go;
+         * on linux w/o a stored size in redzone or hashtable, we do not have 
+         * the requested size as malloc_usable_size() returns the padded size
+         * (as opposed to RtlSizeHeap which returns the requested size),
+         * so now we assume we have the hashtable and get the size from redzone
+         * or hashtable.
          */
         if (size_in_zone)
             size = *((size_t *)(base - redzone_size(routine)));
         else {
-            size = get_alloc_size(IF_WINDOWS_((reg_t)heap) real_base, routine);
+            /* since we have hashtable, we can use it to retrieve the app size */
+            size = malloc_entry_size(entry);
             ASSERT((ssize_t)size != -1, "error determining heap block size");
-            size -= redzone_size(routine)*2;
         }
         LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX" size="PIFX" => "PFX"\n",
             IF_WINDOWS_(heap) base, size, real_base);
@@ -4390,10 +4398,19 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
         if (options.get_padded_size && padded_size_out != NULL) {
             *padded_size_out = get_padded_size(IF_WINDOWS_(auxarg)
                                                real_base, routine);
-            if (*padded_size_out == -1)
-                *padded_size_out = ALIGN_FORWARD(real_size, 8);
+            if (*padded_size_out == -1) {
+                /* i#787: the size returned from malloc_usable_size() in Linux
+                 * is not 8-byte aligned but 4-byte aligned.
+                 */
+                *padded_size_out = ALIGN_FORWARD(real_size,
+                                                 IF_WINDOWS_ELSE(8, 4));
+            }
         } else if (padded_size_out != NULL) {
-            *padded_size_out = ALIGN_FORWARD(real_size, 8);
+            /* i#787: the size returned from malloc_usable_size() in Linux
+             * is not 8-byte aligned but 4-byte aligned.
+             */
+            *padded_size_out = ALIGN_FORWARD(real_size,
+                                             IF_WINDOWS_ELSE(8, 4));
         }
     } else {
         /* FIXME: if no malloc_usable_size() (and can't call malloc_size()
@@ -4406,8 +4423,13 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
                "overflow should have failed");
         real_size = app_size + 2*redzone_size(routine);
         /* Unless re-using a larger free chunk, aligning to 8 should do it */
-        if (padded_size_out != NULL)
-            *padded_size_out = ALIGN_FORWARD(real_size, 8);
+        if (padded_size_out != NULL) {
+            /* i#787: the size returned from malloc_usable_size() in Linux
+             * is not 8-byte aligned but 4-byte aligned.
+             */
+            *padded_size_out = ALIGN_FORWARD(real_size,
+                                             IF_WINDOWS_ELSE(8, 4));
+        }
     }
     return real_size;
 }
@@ -4415,6 +4437,7 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
 static app_pc
 adjust_alloc_result(void *drcontext, cls_alloc_t *pt,
                     dr_mcontext_t *mc, size_t *padded_size_out,
+                    size_t *real_size_out,
                     bool used_redzone, alloc_routine_entry_t *routine)
 {
     if (mc->eax != 0) {
@@ -4427,14 +4450,6 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt,
          * already adjusted the size */
         if (used_redzone && redzone_size(routine) > 0)
             app_base += redzone_size(routine);
-        /* We have to be consistent: if we don't store the requested size for use
-         * on free() we have to use the real size here
-         */
-        if (used_redzone && !options.size_in_redzone && redzone_size(routine) > 0) {
-            LOG(2, "adjusting alloc size "PIFX" to match real size "PIFX"\n",
-                pt->alloc_size, real_size - redzone_size(routine)*2);
-            pt->alloc_size = real_size - redzone_size(routine)*2;
-        }
         LOG(2, "%s-post "PFX"-"PFX" = "PIFX" (really "PFX"-"PFX" "PIFX")\n",
             routine->name, app_base, app_base+pt->alloc_size, pt->alloc_size,
             app_base - (used_redzone ? redzone_size(routine) : 0),
@@ -4461,6 +4476,8 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt,
         if (is_rtl_routine(routine->type) && pt->auxarg != 0)
             heap_region_set_heap(app_base, (HANDLE)pt->auxarg);
 #endif
+        if (real_size_out != NULL)
+            *real_size_out = real_size;
         return app_base;
     } else {
         return NULL;
@@ -4480,8 +4497,9 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt,
                    alloc_routine_entry_t *routine)
 {
     app_pc real_base = (app_pc) mc->eax;
-    size_t pad_size;
-    app_pc app_base = adjust_alloc_result(drcontext, pt, mc, &pad_size, true, routine);
+    size_t pad_size, real_size;
+    app_pc app_base = adjust_alloc_result(drcontext, pt, mc, &pad_size,
+                                          &real_size, true, routine);
     bool zeroed = IF_WINDOWS_ELSE(is_rtl_routine(routine->type) ?
                                   TEST(HEAP_ZERO_MEMORY, pt->alloc_flags) :
                                   pt->in_calloc, pt->in_calloc);
@@ -4503,6 +4521,8 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
+                             /* if no padded size, use real size instead */
+                             options.get_padded_size ? pad_size : real_size,
                              zeroed, realloc, mc);
     }
 }
@@ -4657,8 +4677,9 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt,
 #endif
     if (mc->eax != 0) {
         app_pc real_base = (app_pc) mc->eax;
-        size_t pad_size;
+        size_t pad_size, real_size;
         app_pc app_base = adjust_alloc_result(drcontext, pt, mc, &pad_size,
+                                              &real_size,
                                               /* no redzone for sz==0 */
                                               pt->alloc_size != 0, routine);
         app_pc old_end = pt->alloc_base + pt->realloc_old_size;
@@ -4666,7 +4687,9 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt,
         if (options.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
-            malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
+            malloc_add_common(app_base, app_base + pt->alloc_size,
+                              real_base + 
+                              (options.get_padded_size ? pad_size : real_size),
                               0, 0, mc, post_call, pt->allocator);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
@@ -4773,7 +4796,7 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt,
                    alloc_routine_entry_t *routine)
 {
     app_pc real_base = (app_pc) mc->eax;
-    size_t pad_size;
+    size_t pad_size, real_size;
     app_pc app_base;
     ASSERT(pt->in_calloc, "calloc tracking messed up");
     pt->in_calloc = false;
@@ -4782,7 +4805,8 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt,
         pt->malloc_from_calloc = false;
         return;
     }
-    app_base = adjust_alloc_result(drcontext, pt, mc, &pad_size, true, routine);
+    app_base = adjust_alloc_result(drcontext, pt, mc, &pad_size,
+                                   &real_size, true, routine);
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
@@ -4791,6 +4815,8 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
+                             /* if no padded size, use real size */
+                             options.get_padded_size ? pad_size : real_size,
                              true/*zeroed*/, false/*!realloc*/, mc);
     }
 }

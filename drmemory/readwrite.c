@@ -372,6 +372,7 @@ instru_tls_init(void)
         dr_raw_tls_calloc(&seg, &tls_instru_base, NUM_TLS_SLOTS, 0);
     LOG(2, "TLS spill base: "PIFX"\n", tls_instru_base);
     tls_idx_instru = drmgr_register_tls_field();
+    ASSERT(NUM_TLS_SLOTS > 0, "NUM_TLS_SLOTS should be > 0");
     ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
     ASSERT(ok, "fatal error: unable to reserve tls slots");
     ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
