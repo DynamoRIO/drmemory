@@ -26,6 +26,7 @@
 
 #include "dr_api.h"
 #include "drmgr.h"
+#include "drmemory.h"
 #include "utils.h"
 #include "options.h"
 #include "heap.h" /* get_ntdll_base */
@@ -98,6 +99,14 @@ static int sysnum_SetLowEventPair;
  */
 #endif
 
+static dr_emit_flags_t
+perturb_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                          bool for_trace, bool translating, void **user_data);
+
+static dr_emit_flags_t
+perturb_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                        bool for_trace, bool translating, void *user_data);
+
 /***************************************************************************
  * Insert delays in synch and thread/process operations to try and force
  * abnormal thread orderings and tease out race conditions
@@ -152,7 +161,13 @@ is_synch_routine(app_pc pc)
 void
 perturb_init(void)
 {
+    drmgr_priority_t priority = {sizeof(priority), "drmemory.perturb", NULL, NULL,
+                                 DRMGR_PRIORITY_INSERT_PERTURB};
     ASSERT(options.perturb, "should not be called");
+    if (!drmgr_register_bb_instrumentation_event(perturb_event_bb_analysis,
+                                                 perturb_event_bb_insert,
+                                                 &priority))
+        ASSERT(false, "drmgr registration failed");
     if (options.perturb_seed != 0)
         dr_set_random_seed(options.perturb_seed);
     LOG(1, "initial random seed: %d\n", dr_get_random_seed());
@@ -348,10 +363,17 @@ instr_is_synch_op(instr_t *inst)
                         instr_get_src(inst, 1))));
 }
 
-void
-perturb_instrument(void *drcontext, instrlist_t *bb, instr_t *inst)
+static dr_emit_flags_t
+perturb_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                          bool for_trace, bool translating, void **user_data)
 {
-    ASSERT(options.perturb, "should not be called");
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+perturb_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                        bool for_trace, bool translating, void *user_data)
+{
     if (instr_is_synch_op(inst)) {
         dr_insert_clean_call(drcontext, bb, inst, (void *)do_delay, false,
                              1, OPND_CREATE_INT32(SYNCH_INSTR));
@@ -360,4 +382,5 @@ perturb_instrument(void *drcontext, instrlist_t *bb, instr_t *inst)
                              1, OPND_CREATE_INT32(SYNCH_LIBRARY));
     }
     /* XXX: maybe add delay on post as well as pre */
+    return DR_EMIT_DEFAULT;
 }

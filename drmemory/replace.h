@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -44,8 +44,5 @@ in_replace_routine(app_pc pc);
 
 bool
 in_replace_memset(app_pc pc);
-
-void
-replace_instrument(void *drcontext, instrlist_t *bb);
 
 #endif /* _REPLACE_H_ */

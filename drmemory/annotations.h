@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -29,6 +29,9 @@
 #include "dr_api.h"
 
 void
-process_valgrind_annotations(void *dc, instrlist_t *bb);
+annotate_init(void);
+
+void
+annotate_exit(void);
 
 #endif /* _ANNOTATIONS_H_ */

@@ -231,6 +231,10 @@ get_brk(void)
 #define APP_ARG(mc, num, retaddr_yet) \
     (*((reg_t *)(APP_ARG_ADDR(mc, num, retaddr_yet))))
 
+static dr_emit_flags_t
+alloc_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                       bool for_trace, bool translating);
+
 /***************************************************************************
  * PER-THREAD DATA
  */
@@ -2133,6 +2137,11 @@ malloc_hash(void *v)
 void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
+    drmgr_priority_t priority = {sizeof(priority), "drmemory.alloc", NULL, NULL,
+                                 ALLOC_PRIORITY_REPLACE};
+    if (!drmgr_register_bb_app2app_event(alloc_event_bb_app2app, &priority))
+        ASSERT(false, "drmgr registration failed");
+
     ASSERT(ops_size <= sizeof(options), "option struct too large");
     memcpy(&options, ops, ops_size);
     ASSERT(options.track_allocs || !options.track_heap,
@@ -5704,8 +5713,9 @@ replaced_nop_routine(void)
 }
 #endif
 
-void
-alloc_replace_instrument(void *drcontext, instrlist_t *bb)
+static dr_emit_flags_t
+alloc_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                       bool for_trace, bool translating)
 {
     byte *pc, *replacement;
     instr_t *inst = instrlist_first(bb);
@@ -5713,7 +5723,7 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
     while (inst != NULL && !instr_ok_to_mangle(inst))
         inst = instr_get_next(inst);
     if (inst == NULL)
-        return;
+        return DR_EMIT_DEFAULT;
     pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
     if (options.replace_realloc) {
@@ -5738,6 +5748,7 @@ alloc_replace_instrument(void *drcontext, instrlist_t *bb)
                                        pc));
     }
 #endif
+    return DR_EMIT_DEFAULT;
 }
 
 void
@@ -5746,11 +5757,12 @@ alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
 {
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     app_pc pc = instr_get_app_pc(inst);
-    ASSERT(pc != NULL, "can't get app pc for instr");
     if (entering_alloc != NULL)
         *entering_alloc = false;
     if (exiting_alloc != NULL)
         *exiting_alloc = false;
+    if (pc == NULL)
+        return;
 
     if (options.track_heap) {
 #ifdef USE_DRSYMS

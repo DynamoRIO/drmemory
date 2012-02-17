@@ -158,10 +158,6 @@ extern hashtable_t xl8_sharing_table;
 /* alloca handling in fastpath (i#91) */
 extern hashtable_t ignore_unaddr_table;
 
-dr_emit_flags_t
-instrument_bb(void *drcontext, void *tag, instrlist_t *bb,
-              bool for_trace, bool translating);
-
 bool
 opnd_uses_nonignorable_memory(opnd_t opnd);
 
@@ -187,7 +183,7 @@ void
 instrument_fragment_delete(void *drcontext, void *tag);
 
 bool
-instr_can_use_shared_slowpath(instr_t *inst);
+instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi);
 
 void
 instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_info_t *mi);

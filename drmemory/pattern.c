@@ -47,12 +47,15 @@
 static rb_tree_t *pattern_malloc_tree;
 static void *pattern_malloc_tree_rwlock;
 
+static ptr_uint_t note_base;
+
 enum {
     NOTE_NULL = 0,
     NOTE_SAVE_AFLAGS,
     NOTE_SAVE_AFLAGS_WITH_EAX,    /* need restore app's EAX after */
     NOTE_RESTORE_AFLAGS,
     NOTE_RESTORE_AFLAGS_WITH_EAX, /* need restore aflags to EAX first */
+    NOTE_MAX_VALUE,
 };
 
 /* check if the opnd should be instrumented for checks */
@@ -224,9 +227,9 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app)
     /* aflags save label */
     label = INSTR_CREATE_label(drcontext);
     if (restore_eax)
-        instr_set_note(label, (void *)NOTE_SAVE_AFLAGS_WITH_EAX);
+        instr_set_note(label, (void *)(note_base + NOTE_SAVE_AFLAGS_WITH_EAX));
     else
-        instr_set_note(label, (void *)NOTE_SAVE_AFLAGS);
+        instr_set_note(label, (void *)(note_base + NOTE_SAVE_AFLAGS));
     PRE(ilist, app, label);
     /* pattern check code */
     for (i = 0; i < num_refs; i++)
@@ -234,9 +237,9 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app)
     /* aflags restore label */
     label = INSTR_CREATE_label(drcontext);
     if (restore_eax)
-        instr_set_note(label, (void *)NOTE_RESTORE_AFLAGS_WITH_EAX);
+        instr_set_note(label, (void *)(note_base + NOTE_RESTORE_AFLAGS_WITH_EAX));
     else
-        instr_set_note(label, (void *)NOTE_RESTORE_AFLAGS);
+        instr_set_note(label, (void *)(note_base + NOTE_RESTORE_AFLAGS));
     PRE(ilist, app, label);
 }
 
@@ -278,24 +281,24 @@ pattern_reg_liveness_update_on_reverse_scan(instr_t *instr, reg_id_t reg,
 }
 
 static instr_t *
-pattern_find_aflags_save_label(instr_t *restore, ptr_int_t note_restore,
-                               ptr_int_t *note_save)
+pattern_find_aflags_save_label(instr_t *restore, ptr_uint_t note_restore,
+                               ptr_uint_t *note_save)
 {
-    ptr_int_t note;
+    ptr_uint_t note;
     instr_t *save;
     for (save  = instr_get_prev(restore);
          save != NULL;
          save  = instr_get_prev(save)) {
         if (!instr_is_label(save))
             continue;
-        note = (ptr_int_t)instr_get_note(save);
-        if (note != NOTE_SAVE_AFLAGS &&
-            note != NOTE_SAVE_AFLAGS_WITH_EAX)
+        note = (ptr_uint_t)instr_get_note(save);
+        if (note != (note_base + NOTE_SAVE_AFLAGS) &&
+            note != (note_base + NOTE_SAVE_AFLAGS_WITH_EAX))
             continue;
-        ASSERT((note         == NOTE_SAVE_AFLAGS && 
-                note_restore == NOTE_RESTORE_AFLAGS) ||
-               (note         == NOTE_SAVE_AFLAGS_WITH_EAX &&
-                note_restore == NOTE_RESTORE_AFLAGS_WITH_EAX),
+        ASSERT((note         == (note_base + NOTE_SAVE_AFLAGS) && 
+                note_restore == (note_base + NOTE_RESTORE_AFLAGS)) ||
+               (note         == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX) &&
+                note_restore == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)),
                "Mis-match on eax save/restore");
         *note_save = note;
         return save;
@@ -308,10 +311,10 @@ pattern_find_aflags_save_label(instr_t *restore, ptr_int_t note_restore,
  */
 static instr_t *
 pattern_remove_aflags_pair(void *drcontext, instrlist_t *ilist,
-                           instr_t *restore, ptr_int_t note_restore)
+                           instr_t *restore, ptr_uint_t note_restore)
 {
     instr_t *save, *prev;
-    ptr_int_t note_save;
+    ptr_uint_t note_save;
     save = pattern_find_aflags_save_label(restore, note_restore, &note_save);
     ASSERT(save != NULL, "Mis-match on aflags save/restore");
     prev = instr_get_prev(save);
@@ -329,7 +332,7 @@ static void
 pattern_insert_save_aflags(void *drcontext, instrlist_t *ilist, instr_t *save,
                            bool save_app_xax, bool restore_app_xax)
 {
-    IF_DEBUG(ptr_int_t note = (ptr_int_t)instr_get_note(save);)
+    IF_DEBUG(ptr_uint_t note = (ptr_uint_t)instr_get_note(save);)
     ASSERT(note != 0 && instr_is_label(save), "wrong aflags save label");
     if (save_app_xax) {
         /* save app xax */
@@ -360,7 +363,7 @@ pattern_insert_restore_aflags(void *drcontext, instrlist_t *ilist,
                               instr_t *restore,
                               bool load_aflags, bool restore_app_xax)
 {
-    IF_DEBUG(ptr_int_t note = (ptr_int_t)instr_get_note(restore);)
+    IF_DEBUG(ptr_uint_t note = (ptr_uint_t)instr_get_note(restore);)
     ASSERT(note != 0 && instr_is_label(restore), "wrong aflags restore label");
     if (load_aflags) {
         /* restore aflags from tls slot to xax */
@@ -380,17 +383,18 @@ pattern_insert_restore_aflags(void *drcontext, instrlist_t *ilist,
 static instr_t *
 pattern_insert_aflags_pair(void *drcontext, instrlist_t *ilist,
                            instr_t *restore,
-                           ptr_int_t note_restore, int eax_live)
+                           ptr_uint_t note_restore, int eax_live)
 {
     instr_t *save, *prev;
-    ptr_int_t note_save = NOTE_NULL;
+    ptr_uint_t note_save = (note_base + NOTE_NULL);
     save = pattern_find_aflags_save_label(restore, note_restore, &note_save);
     ASSERT(save != NULL, "Mis-match on aflags save/restore");
     prev = instr_get_prev(save);
     pattern_insert_save_aflags(drcontext, ilist, save, eax_live != LIVE_DEAD, 
-                               note_save == NOTE_SAVE_AFLAGS_WITH_EAX);
+                               note_save == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX));
     pattern_insert_restore_aflags(drcontext, ilist, restore,
-                                  note_restore == NOTE_RESTORE_AFLAGS_WITH_EAX,
+                                  note_restore == (note_base +
+                                                   NOTE_RESTORE_AFLAGS_WITH_EAX),
                                   eax_live != LIVE_DEAD);
     instrlist_remove(ilist, restore);
     instr_destroy(drcontext, restore);
@@ -410,7 +414,7 @@ void
 pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
 {
     instr_t *instr, *prev;
-    ptr_int_t note;
+    ptr_uint_t note;
     int eax_live    = LIVE_LIVE;
     int aflags_live = LIVE_LIVE;
 
@@ -426,8 +430,8 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
         }
         if (!instr_is_label(instr))
             continue;
-        note = (ptr_int_t)instr_get_note(instr);
-        if (note == NOTE_NULL)
+        note = (ptr_uint_t)instr_get_note(instr);
+        if (note == (note_base + NOTE_NULL))
             continue;
         /* XXX: i#776
          * instead of blindly insert aflags save and restore, we
@@ -438,8 +442,8 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
          * 3. TODO: group aflags save/restore if aflags and eax not touched 
          *    (can be relaxed later) 
          */
-        if (note == NOTE_RESTORE_AFLAGS ||
-            note == NOTE_RESTORE_AFLAGS_WITH_EAX) {
+        if (note == (note_base + NOTE_RESTORE_AFLAGS) ||
+            note == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)) {
             if (aflags_live == LIVE_DEAD) {
                 /* aflags is dead, we do not need to save them, remove  */
                 prev = pattern_remove_aflags_pair(drcontext, ilist, instr, note);
@@ -770,6 +774,9 @@ pattern_init(void)
     ASSERT(options.pattern != 0, "should not be called");
     pattern_malloc_tree = rb_tree_create(NULL);
     pattern_malloc_tree_rwlock = dr_rwlock_create();
+
+    note_base = drmgr_reserve_note_range(NOTE_MAX_VALUE);
+    ASSERT(note_base != DRMGR_NOTE_NONE, "failed to get note value");
 }
 
 void
@@ -779,4 +786,3 @@ pattern_exit(void)
     dr_rwlock_destroy(pattern_malloc_tree_rwlock);
     rb_tree_destroy(pattern_malloc_tree);
 }
-

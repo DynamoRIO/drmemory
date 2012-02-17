@@ -31,6 +31,9 @@
 #include "utils.h"
 #include "callstack.h"
 
+/* priority of the app2app replacement routine */
+#define ALLOC_PRIORITY_REPLACE -110
+
 /* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8
 
@@ -124,9 +127,6 @@ alloc_fragment_delete(void *drcontext, void *tag);
 void
 alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                  bool *entering_alloc, bool *exiting_alloc);
-
-void
-alloc_replace_instrument(void *drcontext, instrlist_t *bb);
 
 bool
 alloc_syscall_filter(void *drcontext, int sysnum);

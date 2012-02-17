@@ -51,6 +51,14 @@
 # define IF_MD5_ELSE(x, y) y
 #endif
 
+/* for sharing data among instrumentation passes */
+typedef struct _instru_info_t {
+    bb_info_t bi;
+    instr_t *where_dead;
+    bool flags_dead;
+    uint instrs_in_bb;
+} instru_info_t;
+
 char logsubdir[MAXIMUM_PATH];
 file_t f_callstack = INVALID_FILE;
 file_t f_snapshot = INVALID_FILE;
@@ -1233,101 +1241,121 @@ insert_instr_counter(void *drcontext, instrlist_t *bb,
 }
 
 static dr_emit_flags_t
-event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
-                  bool for_trace, bool translating)
+event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                         bool for_trace, bool translating, void **user_data OUT)
 {
-    instr_t *inst, *next_inst;
-    instr_t *first = instrlist_first(bb), *where_dead = NULL;
-    bool flags_dead = false;
-    uint instrs_in_bb = 0, flags;
-    bb_info_t bi;
-    fastpath_info_t mi;
-    bool added_instru = false;
-    memset(&bi, 0, sizeof(bi));
+    /* we pass bi among all 4 phases */
+    instru_info_t *ii = thread_alloc(drcontext, sizeof(*ii), HEAPSTAT_PERBB);
+    memset(ii, 0, sizeof(*ii));
+    *user_data = (void *) ii;
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                         bool for_trace, bool translating, void *user_data)
+{
+    instru_info_t *ii = (instru_info_t *) user_data;
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
-
-    alloc_replace_instrument(drcontext, bb);
     if (options.staleness)
-        fastpath_top_of_bb(drcontext, tag, bb, &bi);
+        fastpath_top_of_bb(drcontext, tag, bb, &ii->bi);
+    return DR_EMIT_DEFAULT;
+}
 
-    for (inst = instrlist_first(bb); inst != NULL; inst = next_inst) {
-        next_inst = instr_get_next(inst);
-        instrs_in_bb++;
+static dr_emit_flags_t
+event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                       bool for_trace, bool translating, void *user_data)
+{
+    instru_info_t *ii = (instru_info_t *) user_data;
+    uint flags;
+    fastpath_info_t mi;
 
-        if (options.time_instrs) {
-            /* See if flags are dead anywhere.
-             * FIXME: for fault handling we should either consider a faultable
-             * instr as having live flags or recover somehow: ignoring for now
-             * as pathological.
-             */
-            flags = instr_get_arith_flags(inst);
-            /* We insert after the prev instr to avoid messing up
-             * -check_leaks instrumentation (PR 560871)
-             */
-            if (TESTALL(EFLAGS_WRITE_6, flags) && !TESTANY(EFLAGS_READ_6, flags)) {
-                where_dead = instr_get_prev(inst);
-                flags_dead = true;
+    ii->instrs_in_bb++;
+
+    if (options.time_instrs) {
+        /* See if flags are dead anywhere.
+         * FIXME: for fault handling we should either consider a faultable
+         * instr as having live flags or recover somehow: ignoring for now
+         * as pathological.
+         */
+        flags = instr_get_arith_flags(inst);
+        /* We insert after the prev instr to avoid messing up
+         * -check_leaks instrumentation (PR 560871)
+         */
+        if (TESTALL(EFLAGS_WRITE_6, flags) && !TESTANY(EFLAGS_READ_6, flags)) {
+            ii->where_dead = instr_get_prev(inst);
+            ii->flags_dead = true;
+        }
+    }
+
+    /* Memory allocation tracking */
+    alloc_instrument(drcontext, tag, bb, inst, NULL, NULL);
+
+    if (options.staleness) {
+        /* We want to spill AFTER any clean call in case it changes mcontext */
+        ii->bi.spill_after = instr_get_prev(inst);
+        
+        /* update liveness of whole-bb spilled regs */
+        fastpath_pre_instrument(drcontext, bb, inst, &ii->bi);
+
+        if (instr_uses_memory_we_track(inst)) {
+            if (instr_ok_for_instrument_fastpath(inst, &mi, &ii->bi)) {
+                instrument_fastpath(drcontext, bb, inst, &mi, false);
+                ii->bi.added_instru = true;
+            } else {
+                LOG(3, "fastpath unavailable "PFX": ", instr_get_app_pc(inst));
+                DOLOG(3, { instr_disassemble(drcontext, inst,
+                                             LOGFILE_GET(drcontext)); });
+                LOG(3, "\n");
+                ii->bi.shared_memop = opnd_create_null();
+                /* Restore whole-bb spilled regs (PR 489221) 
+                 * FIXME: optimize via liveness analysis
+                 */
+                mi.reg1 = ii->bi.reg1;
+                mi.reg2 = ii->bi.reg2;
+                memset(&mi.reg3, 0, sizeof(mi.reg3));
+                instrument_slowpath(drcontext, bb, inst,
+                                    whole_bb_spills_enabled() ? &mi : NULL);
+                /* for whole-bb slowpath does interact w/ global regs */
+                ii->bi.added_instru = whole_bb_spills_enabled();
             }
         }
+    }
 
-        /* Memory allocation tracking */
-        alloc_instrument(drcontext, tag, bb, inst, NULL, NULL);
-
-        if (options.staleness) {
-            /* We want to spill AFTER any clean call in case it changes mcontext */
-            bi.spill_after = instr_get_prev(inst);
-            
-            /* update liveness of whole-bb spilled regs */
-            fastpath_pre_instrument(drcontext, bb, inst, &bi);
-
-            if (instr_uses_memory_we_track(inst)) {
-                if (instr_ok_for_instrument_fastpath(inst, &mi, &bi)) {
-                    instrument_fastpath(drcontext, bb, inst, &mi, false);
-                    added_instru = true;
-                } else {
-                    LOG(3, "fastpath unavailable "PFX": ", instr_get_app_pc(inst));
-                    DOLOG(3, { instr_disassemble(drcontext, inst,
-                                                 LOGFILE_GET(drcontext)); });
-                    LOG(3, "\n");
-                    bi.shared_memop = opnd_create_null();
-                    /* Restore whole-bb spilled regs (PR 489221) 
-                     * FIXME: optimize via liveness analysis
-                     */
-                    mi.reg1 = bi.reg1;
-                    mi.reg2 = bi.reg2;
-                    memset(&mi.reg3, 0, sizeof(mi.reg3));
-                    instrument_slowpath(drcontext, bb, inst,
-                                        whole_bb_spills_enabled() ? &mi : NULL);
-                    /* for whole-bb slowpath does interact w/ global regs */
-                    added_instru = whole_bb_spills_enabled();
-                }
-            }
-        }
-
-        if (ZERO_STACK() && instr_writes_esp(inst)) {
-            /* any new spill must be after the alloc instru */
-            bi.spill_after = instr_get_prev(inst);
-            /* we zero for leaks, and staleness does not care about xsp */
-            instrument_esp_adjust(drcontext, bb, inst, &bi, false/*zero not shadow*/);
-            added_instru = true;
-        }
-
-        if (options.staleness)
-            fastpath_pre_app_instr(drcontext, bb, inst, &bi, &mi);
+    if (ZERO_STACK() && instr_writes_esp(inst)) {
+        /* any new spill must be after the alloc instru */
+        ii->bi.spill_after = instr_get_prev(inst);
+        /* we zero for leaks, and staleness does not care about xsp */
+        instrument_esp_adjust(drcontext, bb, inst, &ii->bi, false/*zero not shadow*/);
+        ii->bi.added_instru = true;
     }
 
     if (options.staleness)
-        fastpath_bottom_of_bb(drcontext, tag, bb, &bi, added_instru, translating, false);
+        fastpath_pre_app_instr(drcontext, bb, inst, &ii->bi, &mi);
+
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
+                       bool for_trace, bool translating, void *user_data)
+{
+    instru_info_t *ii = (instru_info_t *) user_data;
+    if (options.staleness) {
+        fastpath_bottom_of_bb(drcontext, tag, bb, &ii->bi, ii->bi.added_instru,
+                              translating, false);
+    }
     if (options.time_instrs) {
-        insert_instr_counter(drcontext, bb, first, flags_dead,
+        insert_instr_counter(drcontext, bb, instrlist_first(bb), ii->flags_dead,
                              /* insert after the prev instr to avoid messing up
                               * -check_leaks instrumentation (PR 560871)
                               */
-                             (where_dead == NULL) ?
-                             instrlist_first(bb) : instr_get_next(where_dead),
-                             instrs_in_bb);
+                             (ii->where_dead == NULL) ?
+                             instrlist_first(bb) : instr_get_next(ii->where_dead),
+                             ii->instrs_in_bb);
     }
 
+    thread_free(drcontext, ii, sizeof(*ii), HEAPSTAT_PERBB);
     return DR_EMIT_DEFAULT; /* deterministic */
 }
 
@@ -2055,6 +2083,7 @@ dr_init(client_id_t client_id)
 {
     const char *opstr = dr_get_options(client_id);
     alloc_options_t alloc_ops;
+    drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 0};
 
     ASSERT(opstr != NULL, "error obtaining option string");
     drheap_options_init(opstr);
@@ -2078,8 +2107,11 @@ dr_init(client_id_t client_id)
     dr_register_exit_event(event_exit);
     drmgr_register_thread_init_event(event_thread_init);
     drmgr_register_thread_exit_event(event_thread_exit);
-#undef dr_register_bb_event /* FIXME i#777: temporary to separate drmgr commits */
-    dr_register_bb_event(event_basic_block);
+
+    if (!drmgr_register_bb_instrumentation_ex_event
+        (event_bb_app2app, event_bb_analysis, event_bb_insert,
+         event_bb_instru2instru, &priority))
+        ASSERT(false, "drmgr registration failed");
     dr_register_module_load_event(event_module_load);
     dr_register_module_unload_event(event_module_unload);
 #ifdef LINUX

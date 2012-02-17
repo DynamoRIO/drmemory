@@ -23,6 +23,9 @@
 #define _PATTERN_H_ 1
 
 void
+pattern_init(void);
+
+void
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app);
 
 void

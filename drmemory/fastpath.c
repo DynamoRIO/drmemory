@@ -352,7 +352,7 @@ is_alu(fastpath_info_t *mi)
 static bool
 opnd_ok_for_fastpath(opnd_t op, int opnum, bool dst, fastpath_info_t *mi)
 {
-    if (opnd_is_immed_int(op) || opnd_is_pc(op)) {
+    if (opnd_is_immed_int(op) || opnd_is_pc(op) || opnd_is_instr(op)) {
         return true;
     } else if (opnd_is_reg(op)) {
         if (!reg_ok_for_fastpath(op))
@@ -2062,7 +2062,7 @@ add_jmp_done_with_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     instr_t *prev;
     ASSERT(fastpath_restore != NULL, "invalid param");
 
-    if (!instr_can_use_shared_slowpath(inst)) {
+    if (!instr_can_use_shared_slowpath(inst, mi)) {
         /* need to reach over clean call.  we don't bother w/ optimizations
          * in this case since rare.
          */
@@ -4916,7 +4916,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* check again b/c no-uninits may have removed regular slowpath */
     if (mi->need_slowpath) {
         PRE(bb, inst, mi->slowpath);
-        if (!instr_can_use_shared_slowpath(inst)) {
+        if (!instr_can_use_shared_slowpath(inst, mi)) {
             /* must restore now */
             if (mi->aflags != EFLAGS_WRITE_6) {
                 if (mi->aflags != EFLAGS_WRITE_OF) {
@@ -5122,10 +5122,20 @@ void
 fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
 {
     int live[NUM_LIVENESS_REGS];
+
+    app_pc pc = instr_get_app_pc(inst);
+    if (pc != NULL) {
+        if (bi->first_app_pc == NULL)
+            bi->first_app_pc = pc;
+        bi->last_app_pc = pc;
+    }
+
     if (!whole_bb_spills_enabled())
         return;
     /* Haven't instrumented below here yet, so forward analysis should
      * see only app instrs
+     * XXX i#777: should do reverse walk during analysis phase and store results
+     * in bit array in new note fields
      */
     bi->aflags = get_aflags_and_reg_liveness(inst, live);
     /* Update the dead fields */
@@ -5219,6 +5229,9 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
                        bb_info_t *bi, fastpath_info_t *mi)
 {
     /* Preserve app semantics wrt global spilled registers */
+    /* XXX i#777: gets next instr, and below does liveness analysis w/ forward scan.
+     * should use stored info from reverse scan done during analysis phase.
+     */
     instr_t *next = instr_get_next(inst);
     int live[NUM_LIVENESS_REGS];
     bool restored_for_read = false;
@@ -5381,22 +5394,20 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         if (bi->is_repstr_to_loop)
             save->last_instr = NULL;
         else
-            save->last_instr = instr_get_app_pc(last);
+            save->last_instr = bi->last_app_pc;
         save->check_ignore_unaddr = check_ignore_unaddr;
-        {
-            /* we store the size and assume bbs are contiguous so we can free (i#260) */
-            instr_t *inst;
-            for (inst = instrlist_first(bb); /* find first app inst */
-                 inst != NULL && !instr_ok_to_mangle(inst);
-                 inst = instr_get_next(inst))
-                ;
-            ASSERT(instr_get_app_pc(last) != NULL, "last instr should have app pc");
-            ASSERT(instr_get_app_pc(inst) != NULL, "first instr should have app pc");
-            ASSERT(instr_get_app_pc(last) >= instr_get_app_pc(inst),
+
+        /* we store the size and assume bbs are contiguous so we can free (i#260) */
+        ASSERT(bi->first_app_pc != NULL, "first instr should have app pc");
+        ASSERT(bi->last_app_pc != NULL, "last instr should have app pc");
+        if (bi->is_repstr_to_loop) /* first is +1 hack */
+            bi->first_app_pc = bi->last_app_pc;
+        else {
+            ASSERT(bi->last_app_pc >= bi->first_app_pc,
                    "bb should be contiguous w/ increasing pcs");
-            save->bb_size = instr_get_app_pc(last) + instr_length(drcontext, last) -
-                instr_get_app_pc(inst);
         }
+        save->bb_size = decode_next_pc(drcontext, bi->last_app_pc) - bi->first_app_pc;
+
         /* PR 495787: Due to non-precise flushing we can have a flushed bb
          * removed from the htables and then a new bb created before we received
          * the deletion event.  We can't tell this apart from duplication due to

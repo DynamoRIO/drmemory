@@ -62,7 +62,7 @@ typedef struct _opnd_info_t {
 #define MAX_FASTPATH_DSTS 2
 typedef struct _fastpath_info_t {
     bb_info_t *bb;
-
+    
     /* Filled in by instr_ok_for_instrument_fastpath()
      * The fastpath handles up to 3 sources and 2 dests subject to:
      * - Only one source memop
@@ -140,6 +140,21 @@ struct _bb_info_t {
     opnd_t shared_memop;      /* the orig memop that did a full load */
     int shared_disp_reg1;     /* disp from orig memop already in reg1 */
     int shared_disp_implicit; /* implicit disp from orig memop (push/pop) */
+    /* filled in during analysis and insert phases */
+    bool check_ignore_unaddr;
+    bool first_instr;
+    bool added_instru;
+    /* for calculating size of bb */
+    app_pc first_app_pc;
+    app_pc last_app_pc;
+    /* for repstr loop xform: fake app pcs to use for slowpath.
+     * we used to keep these in note fields but w/ drmgr we can no longer
+     * do that.  inserting labels is awkward b/c they get separated from their
+     * app instrs.
+     */
+    app_pc fake_xl8; /* general for whole bb */
+    instr_t *fake_xl8_override_instr; /* override fake_xl8 for this instr */
+    app_pc fake_xl8_override_pc;
 };
 
 /* Info per bb we need to save in order to restore app state */

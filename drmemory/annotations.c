@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -34,6 +34,8 @@
  */
 
 #include "dr_api.h"
+#include "drmgr.h"
+#include "drmemory.h"
 #include "annotations.h"
 #include "utils.h"
 #include "shadow.h"
@@ -42,6 +44,8 @@
 /* For VG_USERREQ__* enums. */
 #include "valgrind.h"
 #include "memcheck.h"
+
+static ptr_uint_t note_annotate_here;
 
 enum {
     VG_PATTERN_LENGTH = 5,
@@ -163,11 +167,12 @@ expected_rol_immeds[VG_PATTERN_LENGTH] = {
  */
 static bool
 match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
-                             instr_t **next_instr)
+                       instr_t **next_instr)
 {
     instr_t *instrs[VG_PATTERN_LENGTH];
     uint i;
     bool found_xax, found_xdx;
+    instr_t *label;
 
     instrs[0] = instr;
     for (i = 0; i < BUFFER_SIZE_ELEMENTS(instrs); i++) {
@@ -245,9 +250,10 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
         instr_destroy(dc, instrs[i]);
     }
 
-    /* Insert clean call and pass &_zzq_args. */
-    dr_insert_clean_call(dc, bb, *next_instr, (void*)handle_vg_annotation,
-                         /*fpstate=*/false, 1, opnd_create_reg(DR_REG_EAX));
+    /* Leave label so insert phase knows where to insert clean call */
+    label = INSTR_CREATE_label(dc);
+    instr_set_note(label, (void *)note_annotate_here);
+    instrlist_meta_preinsert(bb, *next_instr, label);
 
     return true;
 }
@@ -262,13 +268,57 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
  * fastpath_top_of_bb picks scratch registers.  If we ever get a chance, we
  * should try to combine this pass over the bb with another.
  */
-void
-process_valgrind_annotations(void *dc, instrlist_t *bb)
+static dr_emit_flags_t
+annotate_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                          bool for_trace, bool translating)
 {
     instr_t *instr;
     instr_t *next_instr;
     for (instr = instrlist_first(bb); instr != NULL; instr = next_instr) {
         next_instr = instr_get_next(instr);
-        (void)match_valgrind_pattern(dc, bb, instr, &next_instr);
+        (void)match_valgrind_pattern(drcontext, bb, instr, &next_instr);
     }
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+annotate_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                           bool for_trace, bool translating, void **user_data)
+{
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+annotate_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                         bool for_trace, bool translating, void *user_data)
+{
+    /* app2app left a label where clean call should go */
+    if (instr_is_label(inst) && instr_get_note(inst) == (void *)note_annotate_here) {
+        /* Insert clean call and pass &_zzq_args. */
+        dr_insert_clean_call(drcontext, bb, inst, (void*)handle_vg_annotation,
+                             /*fpstate=*/false, 1, opnd_create_reg(DR_REG_EAX));
+    }
+    return DR_EMIT_DEFAULT;
+}
+
+void
+annotate_init(void)
+{
+    drmgr_priority_t pri_app2app = {sizeof(pri_app2app), "drmemory.annotate", NULL, NULL,
+                                    DRMGR_PRIORITY_APP2APP_ANNOTATE};
+    drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.annotate", NULL, NULL,
+                                   DRMGR_PRIORITY_INSERT_ANNOTATE};
+    if (!drmgr_register_bb_app2app_event(annotate_event_bb_app2app, &pri_app2app))
+        ASSERT(false, "drmgr registration failed");
+    if (!drmgr_register_bb_instrumentation_event(annotate_event_bb_analysis,
+                                                 annotate_event_bb_insert,
+                                                 &pri_insert))
+        ASSERT(false, "drmgr registration failed");
+    note_annotate_here = drmgr_reserve_note_range(1);
+    ASSERT(note_annotate_here != DRMGR_NOTE_NONE, "failed to reserve note value");
+}
+
+void
+annotate_exit(void)
+{
 }

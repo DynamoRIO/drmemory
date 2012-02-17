@@ -34,6 +34,27 @@
 
 extern client_id_t client_id;
 
+/* instrumentation ordering */
+enum {
+    /* replace first, then app2app */
+    DRMGR_PRIORITY_REPLACE_LIBC     = -120,
+#if 0
+    /* XXX: should we use name ordering for this since in common/? */
+    DRMGR_PRIORITY_REPLACE_ALLOC    = -110, /* ALLOC_PRIORITY_REPLACE */
+#endif
+    DRMGR_PRIORITY_APP2APP_ANNOTATE = - 10,
+    /* b/c we're using the 4-at-once interface we have the same priority
+     * for string loop app2app, annotation app2app, and main insertion.
+     * we want main insertion to g
+     */
+    DRMGR_PRIORITY_INSTRU           =   10,
+    /* we want to insert clean calls after the main instru to avoid reachability
+     * issues w/ main instru that jmps to restore code before app instr
+     */
+    DRMGR_PRIORITY_INSERT_ANNOTATE  =  110,
+    DRMGR_PRIORITY_INSERT_PERTURB   =  120,
+};
+
 /***************************************************************************
  * DATA SHARED ACROSS MODULES
  */

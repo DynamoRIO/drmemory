@@ -490,29 +490,6 @@ event_context_exit(void *drcontext, bool thread_exit)
     /* else, nothing to do: we leave the struct for re-use on next callback */
 }
 
-static dr_emit_flags_t
-event_basic_block(void *drcontext, void *tag, instrlist_t *bb,
-                  bool for_trace, bool translating)
-{
-    LOGPT(SYSCALL_VERBOSE, PT_LOOKUP(), "in event_basic_block(tag="PFX")%s%s\n", tag,
-          for_trace ? " for trace" : "",
-          translating ? " translating" : "");
-#ifdef USE_DRSYMS
-    DOLOG(3, {
-        char buf[128];
-        size_t sofar = 0;
-        ssize_t len;
-        if (!translating) {
-            BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
-                     "new basic block @"PFX" ==", tag);
-            print_symbol(tag, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
-            LOG(1, "%s\n", buf);
-        }
-    });
-#endif
-    return instrument_bb(drcontext, tag, bb, for_trace, translating);
-}
-
 #ifdef LINUX
 bool
 is_in_client_or_DR_lib(app_pc pc)
@@ -1410,14 +1387,6 @@ dr_init(client_id_t id)
     opstr = dr_get_options(client_id);
     ASSERT(opstr != NULL, "error obtaining option string");
     drmem_options_init(opstr);
-
-    /* FIXME i#777: this is temporary to allow separating the drmgr TLS+CLS
-     * changes from drmgr bb changes.
-     * This puts drmgr's clean calls for CLS cb tracking before our bb
-     * event, which is what we want: o/w we have 8-bit reachability issues.
-     */
-#undef dr_register_bb_event
-    dr_register_bb_event(event_basic_block);
 
     drmgr_init(); /* must be before utils_init and any other tls/cls uses */
     tls_idx_drmem = drmgr_register_tls_field();

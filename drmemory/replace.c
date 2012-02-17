@@ -127,6 +127,10 @@ typedef struct _sym_enum_data_t {
 static hashtable_t replace_name_table;
 #endif
 
+static dr_emit_flags_t
+replace_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                         bool for_trace, bool translating);
+
 /***************************************************************************
  * The replacements themselves.
  * These routines are not static so that under gdb a fault will show
@@ -619,6 +623,11 @@ replace_init(void)
         int i;
         char *s;
 
+        drmgr_priority_t priority = {sizeof(priority), "drmemory.replace", NULL, NULL,
+                                     DRMGR_PRIORITY_REPLACE_LIBC};
+        if (!drmgr_register_bb_app2app_event(replace_event_bb_app2app, &priority))
+            ASSERT(false, "drmgr registration failed");
+
         hashtable_init(&replace_table, REPLACE_TABLE_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
         /* replace_module_load will be called for each module to populate the hashtable */
@@ -1032,7 +1041,8 @@ replace_module_unload(void *drcontext, const module_data_t *info)
 bool
 in_replace_routine(app_pc pc)
 {
-    return (pc >= replace_routine_start &&
+    return (options.replace_libc &&
+            pc >= replace_routine_start &&
             pc < replace_routine_start + PAGE_SIZE);
 }
 
@@ -1058,19 +1068,20 @@ in_replace_memset(app_pc pc)
  * a jump to the replacement routine.  This avoids having faults in
  * our lib, for which DR will abort.
  */
-void
-replace_instrument(void *drcontext, instrlist_t *bb)
+static dr_emit_flags_t
+replace_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
+                         bool for_trace, bool translating)
 {
     app_pc pc, replacement;
     int idx;
     instr_t *inst = instrlist_first(bb);
     if (!options.replace_libc)
-        return;
+        return DR_EMIT_DEFAULT;
     /* skip meta instrs in case any were added */
     while (inst != NULL && !instr_ok_to_mangle(inst))
         inst = instr_get_next(inst);
     if (inst == NULL)
-        return;
+        return DR_EMIT_DEFAULT;
     pc = instr_get_app_pc(inst);
     ASSERT(pc != NULL, "can't get app pc for instr");
     idx = (int) hashtable_lookup(&replace_table, (void*)pc);
@@ -1082,4 +1093,5 @@ replace_instrument(void *drcontext, instrlist_t *bb)
         instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
                                        (drcontext, opnd_create_pc(replacement)), pc));
     }
+    return DR_EMIT_DEFAULT;
 }
