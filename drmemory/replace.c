@@ -39,7 +39,7 @@
 #endif
 
 #include "dr_api.h"
-#include "drmgr.h"
+#include "drwrap.h"
 #include "utils.h"
 #include "heap.h"
 #include "drmemory.h"
@@ -108,10 +108,6 @@ static const char * const replace_routine_wide_alt[] = {
 };
 
 
-/* This table is only written at init time, so no synch needed */
-#define REPLACE_TABLE_HASH_BITS 6
-static hashtable_t replace_table;
-
 static app_pc replace_routine_start;
 
 #ifdef USE_DRSYMS
@@ -126,10 +122,6 @@ typedef struct _sym_enum_data_t {
 #define REPLACE_NAME_TABLE_HASH_BITS 6
 static hashtable_t replace_name_table;
 #endif
-
-static dr_emit_flags_t
-replace_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                         bool for_trace, bool translating);
 
 /***************************************************************************
  * The replacements themselves.
@@ -623,13 +615,6 @@ replace_init(void)
         int i;
         char *s;
 
-        drmgr_priority_t priority = {sizeof(priority), "drmemory.replace", NULL, NULL,
-                                     DRMGR_PRIORITY_REPLACE_LIBC};
-        if (!drmgr_register_bb_app2app_event(replace_event_bb_app2app, &priority))
-            ASSERT(false, "drmgr registration failed");
-
-        hashtable_init(&replace_table, REPLACE_TABLE_HASH_BITS, HASH_INTPTR,
-                       false/*!strdup*/);
         /* replace_module_load will be called for each module to populate the hashtable */
         ASSERT(PAGE_START(get_function_entry((app_pc)replace_memset)) ==
                PAGE_START(get_function_entry((app_pc)replace_memmove)),
@@ -651,7 +636,8 @@ replace_init(void)
                 sscanf(s, PIFMT, (ptr_uint_t *)&addr) == 1) {
                 LOG(2, "replacing %s @"PFX" in executable from options\n",
                     replace_routine_name[i], addr);
-                hashtable_add(&replace_table, (void*)addr, (void*)(i+1));
+                if (!drwrap_replace((app_pc)addr, (app_pc)replace_routine_addr[i], false))
+                    ASSERT(false, "failed to replace");
             }
             s = strchr(s, ',');
             if (s != NULL)
@@ -673,12 +659,11 @@ replace_init(void)
 void
 replace_exit(void)
 {
-    if (options.replace_libc) {
-        hashtable_delete(&replace_table);
 #ifdef USE_DRSYMS
+    if (options.replace_libc) {
         hashtable_delete(&replace_name_table);
-#endif
     }
+#endif
 }
 
 static inline generic_func_t
@@ -715,9 +700,21 @@ replace_routine(bool add, const module_data_t *mod,
         if (options.use_symcache)
             symcache_add(mod, replace_routine_name[index], addr - mod->start);
 #endif
-        hashtable_add(&replace_table, (void*)addr, (void*)(index+1));
-    } else
-        hashtable_remove(&replace_table, (void*)addr);
+        /* Replacement strategy: we assume these routines will always be entered in
+         * a new bb (we're not going to request elision or indcall2direct from DR).
+         * We want to interpret our own routines, so we replace the whole bb with
+         * a jump to the replacement routine.  This avoids having faults in
+         * our lib, for which DR will abort.
+         */
+        /* Pass true to override b/c we do end up w/ dups b/c we process exports
+         * and then all symbols (see below)
+         */
+        if (!drwrap_replace((app_pc)addr, (app_pc)replace_routine_addr[index], true))
+            ASSERT(false, "failed to replace");
+    } else {
+        if (!drwrap_replace((app_pc)addr, NULL, true))
+            ASSERT(false, "failed to un-replace");
+    }
 }
 
 /* Modern glibc uses an ELF indirect code object to enable strlen to
@@ -1060,38 +1057,4 @@ in_replace_memset(app_pc pc)
         memcpy_entry = get_function_entry((app_pc)replace_memcpy);
     }
     return (pc >= (app_pc)memset_entry && pc < (app_pc)memcpy_entry);
-}
-
-/* Replacement strategy: we assume these routines will always be entered in
- * a new bb (we're not going to request elision or indcall2direct from DR).
- * We want to interpret our own routines, so we replace the whole bb with
- * a jump to the replacement routine.  This avoids having faults in
- * our lib, for which DR will abort.
- */
-static dr_emit_flags_t
-replace_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                         bool for_trace, bool translating)
-{
-    app_pc pc, replacement;
-    int idx;
-    instr_t *inst = instrlist_first(bb);
-    if (!options.replace_libc)
-        return DR_EMIT_DEFAULT;
-    /* skip meta instrs in case any were added */
-    while (inst != NULL && !instr_ok_to_mangle(inst))
-        inst = instr_get_next(inst);
-    if (inst == NULL)
-        return DR_EMIT_DEFAULT;
-    pc = instr_get_app_pc(inst);
-    ASSERT(pc != NULL, "can't get app pc for instr");
-    idx = (int) hashtable_lookup(&replace_table, (void*)pc);
-    if (idx != 0) {
-        idx--; /* index + 1 is stored in the table */
-        replacement = (app_pc) replace_routine_addr[idx];
-        LOG(2, "replacing %s at "PFX"\n", replace_routine_name[idx], pc);
-        instrlist_clear(drcontext, bb);
-        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
-                                       (drcontext, opnd_create_pc(replacement)), pc));
-    }
-    return DR_EMIT_DEFAULT;
 }

@@ -31,10 +31,8 @@
 #include "utils.h"
 #include "callstack.h"
 
-/* priority of the app2app replacement routine */
-#define ALLOC_PRIORITY_REPLACE -110
 /* priority of the analysis + insert routines */
-#define ALLOC_PRIORITY_INSERT   130
+#define DRMGR_PRIORITY_INSERT_ALLOC 130
 
 /* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8

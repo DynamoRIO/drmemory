@@ -37,12 +37,10 @@ extern client_id_t client_id;
 /* instrumentation ordering */
 enum {
     /* replace first, then app2app */
-    DRMGR_PRIORITY_REPLACE_LIBC     = -120,
 #if 0
-    /* XXX: should we use name ordering for this since in common/? */
-    DRMGR_PRIORITY_REPLACE_ALLOC    = -110, /* ALLOC_PRIORITY_REPLACE */
+    DRMGR_PRIORITY_APP2APP_DRWRAP   = -500, /* from drwrap.h */
 #endif
-    DRMGR_PRIORITY_APP2APP_ANNOTATE = - 10,
+    DRMGR_PRIORITY_APP2APP_ANNOTATE = -100,
 #if 0
     /* we need our alloc wrapping to go before main instru, so that it
      * has access to restored app registers

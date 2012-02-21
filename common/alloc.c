@@ -206,9 +206,13 @@ alloc_hook(void *wrapcxt, INOUT void **user_data);
 static void
 handle_alloc_post(void *wrapcxt, void *user_data);
 
-static dr_emit_flags_t
-alloc_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                       bool for_trace, bool translating);
+#ifdef WINDOWS
+static void
+alloc_wrap_exception(void *wrapcxt, void OUT **user_data);
+
+static void
+alloc_wrap_Ki(void *wrapcxt, void OUT **user_data);
+#endif
 
 static dr_emit_flags_t
 alloc_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
@@ -304,15 +308,6 @@ alloc_context_exit(void *drcontext, bool thread_exit)
 /***************************************************************************
  * MALLOC ROUTINES
  */
-
-#ifdef WINDOWS
-/* ntdll kernel-entry hook points */
-static app_pc addr_KiAPC;
-static app_pc addr_KiLdrThunk;
-static app_pc addr_KiCallback;
-static app_pc addr_KiException;
-static app_pc addr_KiRaise;
-#endif /* WINDOWS */
 
 /* We need to track multiple sets of library routines and multiple layers
  * (xref PR 476805, DRi#284) so we need a hashtable of entry points
@@ -786,19 +781,6 @@ alloc_routine_entry_free(void *p)
     global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
 }
 
-static byte *
-replace_alloc_routine(app_pc pc)
-{
-    alloc_routine_entry_t *e;
-    byte *res = NULL;
-    dr_mutex_lock(alloc_routine_lock);
-    e = hashtable_lookup(&alloc_routine_table, (void *)pc);
-    if (e != NULL && is_realloc_routine(e->type) && e->set != NULL)
-        res = e->set->realloc_replacement;
-    dr_mutex_unlock(alloc_routine_lock);
-    return res;
-}
-
 #ifdef WINDOWS
 static bool
 replace_crtdbg_routine(app_pc pc)
@@ -852,17 +834,6 @@ get_alloc_entry(app_pc pc, alloc_routine_entry_t *entry)
     dr_mutex_unlock(alloc_routine_lock);
     return found;
 }
-
-#ifdef WINDOWS
-static bool
-is_alloc_sysroutine(app_pc pc)
-{
-    /* Should switch to table if add many more syscalls */
-    return (pc != NULL &&
-            (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
-             pc == addr_KiException || pc == addr_KiRaise));
-}
-#endif
 
 static alloc_routine_entry_t *
 size_func_in_set(alloc_routine_set_t *set)
@@ -1020,7 +991,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     alloc_routine_entry_t *set_malloc = malloc_func_in_set(set);
     alloc_routine_entry_t *set_size = size_func_in_set(set);
     alloc_routine_entry_t *set_free = free_func_in_set(set);
-    IF_DEBUG(alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);)
+    alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);
     byte *size_func;
     uint found_calls = 0;
     byte **free_list = NULL;
@@ -1130,6 +1101,8 @@ generate_realloc_replacement(alloc_routine_set_t *set)
 
     if (success) {
         set->realloc_replacement = epc_start;
+        if (!drwrap_replace(set_realloc->pc, set->realloc_replacement, false))
+            ASSERT(false, "failed to replace realloc");
         LOG(1, "replacement realloc @"PFX"\n", epc_start);
     } else {
         /* if we fail consequences are races and non-delayed-frees: not fatal */
@@ -1141,6 +1114,15 @@ generate_realloc_replacement(alloc_routine_set_t *set)
 /***************************************************************************
  * MALLOC WRAPPING
  */
+
+#ifdef WINDOWS
+/* we replace app _CrtDbgReport* with this routine */
+static ptr_int_t
+replaced_nop_routine(void)
+{
+    return 0;
+}
+#endif
 
 static app_pc
 lookup_symbol_or_export(const module_data_t *mod, const char *name)
@@ -1218,10 +1200,23 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     IF_DEBUG(is_new = )
         hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
     ASSERT(is_new, "alloc entry should not already exist");
-    if (!drwrap_wrap_ex(pc, alloc_hook,
-                        e->intercept_post ? handle_alloc_post : NULL, (void *)e,
-                        DRWRAP_UNWIND_ON_EXCEPTION))
-        ASSERT(false, "failed to wrap alloc routine");
+#ifdef WINDOWS
+    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+        /* cdecl so no args to clean up.
+         * we can't just insert a generated ret b/c our slowpath
+         * assumes the raw bits are persistent.
+         */
+        if (!drwrap_replace(pc, (app_pc)replaced_nop_routine, false))
+            ASSERT(false, "failed to replace dbg-nop");
+    } else {
+#endif
+        if (!drwrap_wrap_ex(pc, alloc_hook,
+                            e->intercept_post ? handle_alloc_post : NULL, (void *)e,
+                            DRWRAP_UNWIND_ON_EXCEPTION))
+            ASSERT(false, "failed to wrap alloc routine");
+#ifdef WINDOWS
+    }
+#endif
     return e;
 }
 
@@ -1990,13 +1985,8 @@ malloc_hash(void *v)
 void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
-    drmgr_priority_t pri_app2app = {sizeof(pri_app2app), "drmemory.alloc.app2app",
-                                    NULL, NULL, ALLOC_PRIORITY_REPLACE};
     drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.alloc.insert",
-                                   NULL, NULL, ALLOC_PRIORITY_INSERT};
-
-    if (!drmgr_register_bb_app2app_event(alloc_event_bb_app2app, &pri_app2app))
-        ASSERT(false, "drmgr registration failed");
+                                   NULL, NULL, DRMGR_PRIORITY_INSERT_ALLOC};
     if (!drmgr_register_bb_instrumentation_event(alloc_event_bb_analysis,
                                                  alloc_event_bb_insert, &pri_insert))
         ASSERT(false, "drmgr registration failed");
@@ -2143,9 +2133,13 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
         return;
 
     if (stri_eq(modname, "ntdll.dll")) {
-        addr_KiCallback = (app_pc) dr_get_proc_address(info->start,
-                                                       "KiUserCallbackDispatcher");
+        app_pc addr_KiCallback = (app_pc)
+            dr_get_proc_address(info->start, "KiUserCallbackDispatcher");
+        ASSERT(addr_KiCallback != NULL, "can't find Ki routine");
+        if (!drwrap_wrap_ex(addr_KiCallback, alloc_wrap_Ki, NULL, (void*)1, 0))
+            ASSERT(false, "failed to wrap");
         if (options.track_allocs) {
+            app_pc addr_KiAPC, addr_KiLdrThunk, addr_KiException, addr_KiRaise;
             addr_KiAPC = (app_pc) dr_get_proc_address(info->start,
                                                       "KiUserApcDispatcher");
             addr_KiLdrThunk = (app_pc) dr_get_proc_address(info->start,
@@ -2158,6 +2152,19 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
              * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not
              * entered from the kernel.
              */
+            ASSERT(addr_KiAPC != NULL && addr_KiLdrThunk != NULL &&
+                   addr_KiException != NULL && addr_KiRaise != NULL,
+                   "can't find Ki routine");
+            if (!drwrap_wrap_ex(addr_KiAPC, alloc_wrap_Ki, NULL, (void*)0, 0) ||
+                !drwrap_wrap(addr_KiException, alloc_wrap_exception, NULL) ||
+                !drwrap_wrap_ex(addr_KiRaise, alloc_wrap_Ki, NULL, (void*)0, 0))
+                ASSERT(false, "failed to wrap");
+            /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
+             * there via APC: only on Vista+ is it a "Ki" routine
+             */
+            if (running_on_Vista_or_later() &&
+                !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
+                ASSERT(false, "failed to wrap");
             
             sysnum_mmap = sysnum_from_name(drcontext, info, "NtMapViewOfSection");
             ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
@@ -2418,6 +2425,9 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         /* put replacement routine on free list (i#545) */
                         byte **free_list;
                         dr_mutex_lock(gencode_lock);
+                        if (!drwrap_replace(realloc_func_in_set(e->set)->pc,
+                                            NULL/*remove*/, true))
+                            ASSERT(false, "failed to un-replace realloc");
 #ifdef WINDOWS
                         free_list = (e->set->type == HEAPSET_RTL) ? &gencode_free_Rtl :
                             ((e->set->type == HEAPSET_LIBC_DBG) ? &gencode_free_dbg :
@@ -5079,51 +5089,40 @@ alloc_hook(void *wrapcxt, INOUT void **user_data)
 
 #ifdef WINDOWS
 static void
-alloc_syscall_hook(app_pc pc)
+alloc_wrap_exception(void *wrapcxt, void OUT **user_data)
 {
     void *drcontext = dr_get_current_drcontext();
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_GPR; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
-    ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    if (pc == addr_KiAPC || pc == addr_KiLdrThunk || pc == addr_KiCallback ||
-        pc == addr_KiException || pc == addr_KiRaise) {
-        /* our per-thread data is private per callback so we're already handling
-         * cbs (though we don't expect callbacks to interrupt heap routines).
-         * we handle exceptions interrupting heap routines here.
-         */
-        if (pc == addr_KiException) {
-            /* XXX PR 408545: preserve pre-fault values and watch NtContinue and
-             * longjmp (unless longjmp from top handler still invokes
-             * NtContinue) and determine whether returning to heap routine.  For
-             * now assuming heap routines do not handle faults.
-             */
-            LOG(2, "Exception in app\n");
-            /* we don't need to clear pt->in_heap{routine,adjusted} b/c
-             * drwrap will now call our post-call w/ wrapcxt==NULL
-             */
-            pt->in_seh = true;
-            client_handle_exception(drcontext, &mc);
-        }
-        /* we should ignore LdrInitializeThunk on pre-Vista since we'll get
-         * there via APC: only on Vista+ is it a "Ki" routine
-         */
-        if (pc != addr_KiLdrThunk || running_on_Vista_or_later())
-            client_handle_Ki(drcontext, pc, &mc);
-        if (pc == addr_KiCallback) {
-            client_handle_callback(drcontext);
-        }
-    } else
-        ASSERT(false, "unknown reason in alloc hook");
+    dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR); /* don't need xmm */
+    /* XXX PR 408545: preserve pre-fault values and watch NtContinue and
+     * longjmp (unless longjmp from top handler still invokes
+     * NtContinue) and determine whether returning to heap routine.  For
+     * now assuming heap routines do not handle faults.
+     *
+     * Update: drwrap now uses heuristics to try and handle SEH unwind.
+     * we don't need to clear pt->in_heap{routine,adjusted} b/c
+     * drwrap will now call our post-call w/ wrapcxt==NULL
+     */
+    LOG(2, "Exception in app\n");
+    pt->in_seh = true;
+    client_handle_exception(drcontext, mc);
+    client_handle_Ki(drcontext, drwrap_get_func(wrapcxt), mc);
 }
 
 static void
-insert_syscall_hook(void *drcontext, instrlist_t *bb, instr_t *inst, byte *pc)
+alloc_wrap_Ki(void *wrapcxt, void OUT **user_data)
 {
-    dr_insert_clean_call(drcontext, bb, inst, alloc_syscall_hook, false, 1,
-                         OPND_CREATE_INT32((uint)pc));
+    app_pc pc = drwrap_get_func(wrapcxt);
+    void *drcontext = dr_get_current_drcontext();
+    dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR); /* don't need xmm */
+    ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
+    /* our per-thread data is private per callback so we're already handling
+     * cbs (though we don't expect callbacks to interrupt heap routines).
+     * we handle exceptions interrupting heap routines here.
+     */
+    client_handle_Ki(drcontext, pc, mc);
+    if (*user_data /* means it's a callback */)
+        client_handle_callback(drcontext);
 }
 #endif /* WINDOWS */
 
@@ -5410,53 +5409,6 @@ handle_alloc_post(void *wrapcxt, void *user_data)
 #endif
 }
 
-#ifdef WINDOWS
-/* we replace app _CrtDbgReport* with this routine */
-static ptr_int_t
-replaced_nop_routine(void)
-{
-    return 0;
-}
-#endif
-
-static dr_emit_flags_t
-alloc_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
-                       bool for_trace, bool translating)
-{
-    byte *pc, *replacement;
-    instr_t *inst = instrlist_first(bb);
-    /* skip meta instrs in case any were added */
-    while (inst != NULL && !instr_ok_to_mangle(inst))
-        inst = instr_get_next(inst);
-    if (inst == NULL)
-        return DR_EMIT_DEFAULT;
-    pc = instr_get_app_pc(inst);
-    ASSERT(pc != NULL, "can't get app pc for instr");
-    if (options.replace_realloc) {
-        replacement = replace_alloc_routine(pc);
-        if (replacement != NULL) {
-            LOG(2, "replacing realloc "PFX" => "PFX"\n", pc, replacement);
-            instrlist_clear(drcontext, bb);
-            instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp
-                                           (drcontext, opnd_create_pc(replacement)), pc));
-        }
-    }
-#ifdef WINDOWS
-    if (options.disable_crtdbg && replace_crtdbg_routine(pc)) {
-        LOG(2, "replacing crtdbg routine @"PFX"\n", pc);
-        instrlist_clear(drcontext, bb);
-        /* cdecl so no args to clean up.
-         * we can't just insert a generated ret b/c our slowpath
-         * assumes the raw bits are persistent.
-         */
-        instrlist_append(bb, INSTR_XL8(INSTR_CREATE_jmp(drcontext, opnd_create_pc
-                                                        ((app_pc)replaced_nop_routine)),
-                                       pc));
-    }
-#endif
-    return DR_EMIT_DEFAULT;
-}
-
 bool
 alloc_entering_alloc_routine(app_pc pc)
 {
@@ -5501,11 +5453,6 @@ alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst
     app_pc pc = instr_get_app_pc(inst);
     if (pc == NULL)
         return DR_EMIT_DEFAULT;
-#ifdef WINDOWS
-    if (is_alloc_sysroutine(pc)) {
-        insert_syscall_hook(drcontext, bb, inst, pc);
-    }
-#endif
 #ifdef WINDOWS
     if (instr_get_opcode(inst) == OP_int &&
         opnd_get_immed_int(instr_get_src(inst, 0)) == CBRET_INTERRUPT_NUM) {
