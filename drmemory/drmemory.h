@@ -43,16 +43,25 @@ enum {
     DRMGR_PRIORITY_REPLACE_ALLOC    = -110, /* ALLOC_PRIORITY_REPLACE */
 #endif
     DRMGR_PRIORITY_APP2APP_ANNOTATE = - 10,
+#if 0
+    /* we need our alloc wrapping to go before main instru, so that it
+     * has access to restored app registers
+     */
+    DRMGR_PRIORITY_INSERT_DRWRAP    =  500, /* from drwrap.h */
+#endif
     /* b/c we're using the 4-at-once interface we have the same priority
      * for string loop app2app, annotation app2app, and main insertion.
      * we want main insertion to g
      */
-    DRMGR_PRIORITY_INSTRU           =   10,
+    DRMGR_PRIORITY_INSTRU           = 1000,
     /* we want to insert clean calls after the main instru to avoid reachability
      * issues w/ main instru that jmps to restore code before app instr
      */
-    DRMGR_PRIORITY_INSERT_ANNOTATE  =  110,
-    DRMGR_PRIORITY_INSERT_PERTURB   =  120,
+    DRMGR_PRIORITY_INSERT_ANNOTATE  = 2000,
+    DRMGR_PRIORITY_INSERT_PERTURB   = 2010,
+#if 0
+    DRMGR_PRIORITY_INSERT_ALLOC     = 2020, /* from alloc.h */
+#endif
 };
 
 /***************************************************************************

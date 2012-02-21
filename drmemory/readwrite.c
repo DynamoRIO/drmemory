@@ -3657,7 +3657,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     app_pc pc = instr_get_app_pc(inst);
     uint opc;
     bool has_gpr, has_mem, has_noignorable_mem;
-    bool entering_alloc, exiting_alloc;
     fastpath_info_t mi;
 
     if (!instr_ok_to_mangle(inst))
@@ -3665,18 +3664,14 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 
     memset(&mi, 0, sizeof(mi));
 
-    /* Memory allocation tracking: we want enter/exit info so we call from
-     * here rather than alloc registering its own pass.
-     */
-    alloc_instrument(drcontext, tag, bb, inst, &entering_alloc, &exiting_alloc);
     /* We can't change bi->check_ignore_unaddr in the middle b/c of recreation
      * so only set if entering/exiting on first
      */
     if (bi->first_instr && INSTRUMENT_MEMREFS() && options.check_ignore_unaddr) {
-        if (entering_alloc) {
+        if (alloc_entering_alloc_routine(pc)) {
             bi->check_ignore_unaddr = true;
             LOG(2, "entering heap routine: adding nop-if-mem-unaddr checks\n");
-        } else if (exiting_alloc) {
+        } else if (alloc_exiting_alloc_routine(pc)) {
             /* we wait until post-call so pt->in_heap_routine >0 in post-call
              * bb event, so avoid adding checks there
              */

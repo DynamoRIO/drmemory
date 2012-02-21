@@ -25,6 +25,7 @@
  */
 
 #include "dr_api.h"
+#include "drwrap.h"
 #include "drheapstat.h"
 #include "alloc.h"
 #include "heap.h"
@@ -1288,9 +1289,6 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
         }
     }
 
-    /* Memory allocation tracking */
-    alloc_instrument(drcontext, tag, bb, inst, NULL, NULL);
-
     if (options.staleness) {
         /* We want to spill AFTER any clean call in case it changes mcontext */
         ii->bi.spill_after = instr_get_prev(inst);
@@ -1354,6 +1352,9 @@ event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
                              instrlist_first(bb) : instr_get_next(ii->where_dead),
                              ii->instrs_in_bb);
     }
+
+    LOG(3, "final instrumentation:\n");
+    DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
 
     thread_free(drcontext, ii, sizeof(*ii), HEAPSTAT_PERBB);
     return DR_EMIT_DEFAULT; /* deterministic */
@@ -2063,6 +2064,7 @@ event_exit(void)
     drmgr_unregister_tls_field(tls_idx_heapstat);
     drmgr_unregister_cls_field(event_context_init, event_context_exit,
                                cls_idx_heapstat);
+    drwrap_exit();
     drmgr_exit();
 
     dr_fprintf(f_global, "LOG END\n");
@@ -2083,7 +2085,7 @@ dr_init(client_id_t client_id)
 {
     const char *opstr = dr_get_options(client_id);
     alloc_options_t alloc_ops;
-    drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 0};
+    drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 1000};
 
     ASSERT(opstr != NULL, "error obtaining option string");
     drheap_options_init(opstr);
@@ -2095,6 +2097,7 @@ dr_init(client_id_t client_id)
         (event_context_init, event_context_exit);
     ASSERT(cls_idx_heapstat > -1, "unable to reserve CLS field");
 
+    drwrap_init();
     utils_init();
 
     /* now that we know whether -quiet, print basic info */

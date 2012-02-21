@@ -53,6 +53,7 @@
 /***************************************************************************/
 
 #include "dr_api.h"
+#include "drwrap.h"
 #include "drmemory.h"
 #include "readwrite.h"
 #include "fastpath.h"
@@ -189,8 +190,6 @@ dump_statistics(void)
                reg_dead, reg_xchg, reg_spill, reg_spill_slow, reg_spill_own);
     dr_fprintf(f_global, "bb reg spills: used %8u, unused %8u\n",
                reg_spill_used_in_bb, reg_spill_unused_in_bb);
-    dr_fprintf(f_global, "wrap pre: %8u, wrap post: %8u, post-call-site flushes:%8u\n",
-               wrap_pre, wrap_post, post_call_flushes);
     dr_fprintf(f_global, "shadow blocks allocated: %6u, freed: %6u\n",
                shadow_block_alloc, shadow_block_free);
     dr_fprintf(f_global, "special shadow blocks, unaddr: %6u, undef: %6u, def: %6u\n",
@@ -325,6 +324,7 @@ event_exit(void)
 
     drmgr_unregister_tls_field(tls_idx_drmem);
     drmgr_unregister_cls_field(event_context_init, event_context_exit, cls_idx_drmem);
+    drwrap_exit();
     drmgr_exit();
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
@@ -1394,6 +1394,10 @@ dr_init(client_id_t id)
     cls_idx_drmem = drmgr_register_cls_field(event_context_init, event_context_exit);
     ASSERT(cls_idx_drmem > -1, "unable to reserve CLS");
 
+    /* we deliberately do not request safe drwrap retaddr+arg accesses b/c
+     * that's a perf hit and we can live w/ the risk of not doing it
+     */
+    drwrap_init();
     utils_init();
 
     /* now that we know whether -quiet, print basic info */

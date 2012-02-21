@@ -750,8 +750,10 @@ set(DynamoRIO_REG_COMPATIBILITY ON)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
+# XXX DRi#684: switch these to static libs for lower overhead
 use_DynamoRIO_extension(${client_target} drmgr)
 use_DynamoRIO_extension(${client_target} drutil)
+use_DynamoRIO_extension(${client_target} drwrap)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")

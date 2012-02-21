@@ -33,6 +33,8 @@
 
 /* priority of the app2app replacement routine */
 #define ALLOC_PRIORITY_REPLACE -110
+/* priority of the analysis + insert routines */
+#define ALLOC_PRIORITY_INSERT   130
 
 /* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8
@@ -100,7 +102,6 @@ extern int sysnum_setcontext;
 #ifdef STATISTICS
 extern uint wrap_pre;
 extern uint wrap_post;
-extern uint post_call_flushes;
 extern uint num_mallocs;
 extern uint num_large_mallocs;
 extern uint num_frees;
@@ -109,9 +110,11 @@ extern uint pointers_encoded;
 # endif
 #endif
 
+/* caller should call drmgr_init() and drwrap_init() */
 void
 alloc_init(alloc_options_t *ops, size_t ops_size);
 
+/* caller should call drmgr_exit() and drwrap_exit() */
 void
 alloc_exit(void);
 
@@ -124,9 +127,11 @@ alloc_module_unload(void *drcontext, const module_data_t *info);
 void
 alloc_fragment_delete(void *drcontext, void *tag);
 
-void
-alloc_instrument(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
-                 bool *entering_alloc, bool *exiting_alloc);
+bool
+alloc_entering_alloc_routine(app_pc pc);
+
+bool
+alloc_exiting_alloc_routine(app_pc pc);
 
 bool
 alloc_syscall_filter(void *drcontext, int sysnum);
