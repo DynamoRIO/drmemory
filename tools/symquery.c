@@ -86,7 +86,7 @@ main(int argc, char *argv[])
     BOOL searchall = FALSE;
 
     for (i = 1; i < argc; i++) {
-        if (stricmp(argv[i], "-e") == 0) {
+        if (_stricmp(argv[i], "-e") == 0) {
             if (i+1 >= argc) {
                 PRINT_USAGE(argv[0]);
                 return 1;
@@ -97,32 +97,32 @@ main(int argc, char *argv[])
                 printf("ERROR: invalid path %s\n", dll);
                 return 1;
             }
-        } else if (stricmp(argv[i], "-f") == 0) {
+        } else if (_stricmp(argv[i], "-f") == 0) {
             show_func = TRUE;
-        } else if (stricmp(argv[i], "-v") == 0) {
+        } else if (_stricmp(argv[i], "-v") == 0) {
             verbose = TRUE;
-        } else if (stricmp(argv[i], "-a") == 0 ||
-                   stricmp(argv[i], "-s") == 0) {
+        } else if (_stricmp(argv[i], "-a") == 0 ||
+                   _stricmp(argv[i], "-s") == 0) {
             if (i+1 >= argc) {
                 PRINT_USAGE(argv[0]);
                 return 1;
             }
-            if (stricmp(argv[i], "-a") == 0)
+            if (_stricmp(argv[i], "-a") == 0)
                 addr2sym = TRUE;
             else
                 sym2addr = TRUE;
             i++;
             /* rest of args read below */
             break;
-        } else if (stricmp(argv[i], "-q") == 0) {
+        } else if (_stricmp(argv[i], "-q") == 0) {
             addr2sym_multi = TRUE;
-        } else if (stricmp(argv[i], "--enum") == 0) {
+        } else if (_stricmp(argv[i], "--enum") == 0) {
             enumerate = TRUE;
-        } else if (stricmp(argv[i], "--list") == 0) {
+        } else if (_stricmp(argv[i], "--list") == 0) {
             enumerate_all = TRUE;
-        } else if (stricmp(argv[i], "--search") == 0) {
+        } else if (_stricmp(argv[i], "--search") == 0) {
             search = TRUE;
-        } else if (stricmp(argv[i], "--searchall") == 0) {
+        } else if (_stricmp(argv[i], "--searchall") == 0) {
             search = TRUE;
             searchall = TRUE;
         } else {

@@ -83,6 +83,8 @@ option(CHECK_WITH_MD5 "use crc32 for callstack hashes but check for collisions w
 if (CHECK_WITH_MD5)
   set(DEFINES ${DEFINES} -DCHECK_WITH_MD5)
 endif (CHECK_WITH_MD5)
+option(STATIC_DRSYMS "use static drsyms library" ON)
+
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
   set(toolname drheapstat)
@@ -543,6 +545,24 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
   if (NOT EXISTS "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
     message(FATAL_ERROR "${DynamoRIO_DIR}/DynamoRIOConfig.cmake does not exist: invalid DynamoRIO_DIR")
   endif ()
+
+  # ensure was built w/ static ext libs
+  if (UNIX)
+    set(LIB_EXT "so")
+    set(LIB_PFX "lib")
+  else (UNIX)
+    set(LIB_EXT "dll")
+    set(LIB_PFX "")
+  endif (UNIX)
+  if (EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drwrap.${LIB_EXT}" OR
+      EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drutil.${LIB_EXT}" OR
+      EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}")
+    message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic extensions: please re-build with static extension libraries")
+  endif ()
+  if (STATIC_DRSYMS AND EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drsyms.${LIB_EXT}")
+    message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic drsyms: please re-build with static drsyms")
+  endif ()
+
   message(STATUS "Attempting to use pre-built DynamoRIO: ${DynamoRIO_DIR}")
   find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
   if (NOT DynamoRIO_FOUND)
@@ -680,10 +700,6 @@ set_target_properties(${client_target} PROPERTIES
 set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 if (WIN32)
-  # we statically link with msvcrt.lib for vc /O2's use of __aulldvrm
-  # this does NOT add any dynamic dependence on libc
-  target_link_libraries(${client_target} ntdll msvcrt)
-
   # our addr2line for Windows
   add_executable(winsyms tools/winsyms.c)
   target_link_libraries(winsyms dbghelp)
@@ -718,6 +734,18 @@ if (NOT USER_SPECIFIED_DynamoRIO_DIR)
     set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
     set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
   endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+  # for efficiency, have all our extensions be static.  we have the same
+  # LGPL license as drutil and drwrap so it works out.
+  set(DR_EXT_DRWRAP_STATIC ON CACHE BOOL "static drwrap")
+  set(DR_EXT_DRUTIL_STATIC ON CACHE BOOL "static drutil")
+  set(DR_EXT_DRMGR_STATIC ON CACHE BOOL "static drmgr")
+  if (STATIC_DRSYMS)
+    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
+    # libc use.  If we end up needing late kernel32 use for early
+    # injection we may want to go back to dynamic drsyms (and delayed
+    # dr_enable_console_printing()).
+    set(DR_EXT_DRSYMS_STATIC ON CACHE BOOL "static drsyms")
+  endif (STATIC_DRSYMS)
 
   # we do not want DR install
   set(DO_DR_INSTALL OFF)
@@ -747,10 +775,12 @@ if (NOT USER_SPECIFIED_DynamoRIO_DIR)
 endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 
 set(DynamoRIO_REG_COMPATIBILITY ON)
+if (STATIC_DRSYMS)
+  set(DynamoRIO_USE_LIBC ON)
+endif (STATIC_DRSYMS)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
-# XXX DRi#684: switch these to static libs for lower overhead
 use_DynamoRIO_extension(${client_target} drmgr)
 use_DynamoRIO_extension(${client_target} drutil)
 use_DynamoRIO_extension(${client_target} drwrap)
@@ -769,9 +799,19 @@ if (WIN32 AND USE_DRSYMS)
   set_target_properties(${toolname} PROPERTIES
     VERSION ${TOOL_VERSION_NUMBER})
   set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-
-  use_DynamoRIO_extension(${client_target} drsyms)
 endif (WIN32 AND USE_DRSYMS)
+if (WIN32)
+  use_DynamoRIO_extension(${client_target} drsyms)
+
+  # we have to link with ntdll AFTER any libcmt.lib from configure_DynamoRIO_client
+  # or use_DynamoRIO_extension (w/ static libs)
+  target_link_libraries(${client_target} ntdll)
+  # we used to statically link with msvcrt.lib for vc /O2's use of __aulldvrm,
+  # and it didn't add any dynamic dependence on libc, except now that we
+  # use static extension libraries it does add msvcr*.dll imports!
+  # so I removed "msvcrt" from target_link_libraries() and so far haven't
+  # hit the __aulldvrm issue.
+endif (WIN32)
 
 #
 ##################################################
@@ -850,6 +890,7 @@ if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
     "${options_for_perl}")
 endif (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
 if (WIN32)
+  # copy for winsyms and symquery
   configure_file("${DBGHELP_DLL}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll" COPYONLY)
   if (USER_SPECIFIED_DynamoRIO_DIR)
@@ -861,9 +902,12 @@ if (WIN32)
     if (USE_DRSYMS)
       configure_file("${DynamoRIO_DIR}/../bin32/drconfig.exe"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
-      # symquery needs dynamorio.dll and drsyms.dll in same dir
-      configure_file("${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
-        "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
+      if (NOT STATIC_DRSYMS)
+        # symquery needs drsyms.dll in same dir
+        configure_file("${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
+          "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
+      endif (NOT STATIC_DRSYMS)
+      # symquery needs dynamorio.dll in same dir
       configure_file("${DynamoRIO_DIR}/../lib32/${build_type}/dynamorio.dll"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
     endif (USE_DRSYMS)
@@ -889,13 +933,16 @@ if (WIN32)
         COMMAND ${CMAKE_COMMAND}
         ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig.exe"
         "${drconfigexe_copy}" VERBATIM)
-      # symquery needs dynamorio.dll and drsyms.dll in same dir
-      set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
-      add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
-      add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
-        COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
+      if (NOT STATIC_DRSYMS)
+        # symquery needs drsyms.dll in same dir
+        set(drsymsdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll")
+        add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
+        add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
+          COMMAND ${CMAKE_COMMAND}
+          ARGS -E copy "${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
         "${drsymsdll_copy}" VERBATIM)
+      endif (NOT STATIC_DRSYMS)
+      # symquery needs dynamorio.dll in same dir
       set(drdll_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll")
       add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
       add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
@@ -905,7 +952,7 @@ if (WIN32)
     endif (USE_DRSYMS)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (USE_DRSYMS)
-    # above copy is for winsyms.exe, this is for drmemorylib
+    # above copy is for winsyms and symquery, this is for drmemorylib
     configure_file("${DBGHELP_DLL}"
       "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
   endif (USE_DRSYMS)
