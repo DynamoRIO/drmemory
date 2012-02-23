@@ -22,6 +22,8 @@
 #ifndef _PATTERN_H_
 #define _PATTERN_H_ 1
 
+#include "callstack.h"  /* for app_loc_t */
+
 void
 pattern_init(void);
 
@@ -60,5 +62,9 @@ pattern_handle_realloc(app_pc old_base, size_t old_size,
 
 bool
 pattern_addr_in_redzone(byte *addr);
+
+bool
+pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
+                       dr_mcontext_t *mc, bool is_write);
 
 #endif /* _PATTERN_H_ */

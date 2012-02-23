@@ -1765,7 +1765,16 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 # ifdef X64
 #  error NYI
 # endif
-    if (!is_rtl_routine(routine->type) || auxarg == 0/*invalid heap for Rtl*/) {
+    if (!is_rtl_routine(routine->type) || auxarg == 0/*invalid heap for Rtl*/
+# ifdef TOOL_DR_MEMORY
+        /* FIXME i#789: win7sp1 has different header for padded_size.
+         * the temporary solution is to return aligned size instead until
+         * we know how to parse the header for correct padded size.
+         */
+        /* XXX i#789: need test on win7sp0 to check if we need skip sp0 too */
+        || running_on_Win7SP1_or_later() 
+# endif
+        ) {
         if (size_func == NULL ||
             is_size_requested_routine(size_func->type)) {
             /* FIXME PR 595800: should look at headers and try to
@@ -4414,8 +4423,9 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
-                             /* if no padded size, use real size instead */
-                             options.get_padded_size ? pad_size : real_size,
+                             /* if no padded size, use aligned real size */
+                             options.get_padded_size ?
+                             pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
                              zeroed, realloc, mc);
     }
 }
@@ -4708,8 +4718,9 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
-                             /* if no padded size, use real size */
-                             options.get_padded_size ? pad_size : real_size,
+                             /* if no padded size, use aligned real size */
+                             options.get_padded_size ?
+                             pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
                              true/*zeroed*/, false/*!realloc*/, mc);
     }
 }

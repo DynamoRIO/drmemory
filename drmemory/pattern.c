@@ -477,7 +477,6 @@ pattern_handle_ill_fault(void *drcontext,
                          dr_mcontext_t *mc)
 {
     app_pc addr;
-    size_t size = 0;
     bool   is_write;
     int    memopidx;
     instr_t instr;
@@ -496,44 +495,15 @@ pattern_handle_ill_fault(void *drcontext,
          instr_compute_address_ex_pos(&instr, mc, memopidx,
                                       &addr, &is_write, &pos);
          memopidx++) {
-        uint val;
-        size_t check_sz;
+        app_loc_t loc;
+        size_t size = 0;
         opnd_t opnd = is_write ? 
             instr_get_dst(&instr, pos) : instr_get_src(&instr, pos);
         if (!pattern_opnd_need_check(opnd))
             continue;
-        /* XXX i#774: for ref of >4 byte, we check the starting 4-byte */
-        check_sz = size < 4 ? 2 : 4;
-        /* there are several memory opnd, so it should be faster to check
-         * before lookup in the rbtree.
-         */
-        if ((safe_read(addr, check_sz, &val) &&
-             (ushort)val == (ushort)options.pattern &&
-             (check_sz == 4 ? val == options.pattern : true)) &&
-            (pattern_addr_in_redzone(addr) ||
-             overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
-            /* XXX: i#786: the actually freed memory is neither in malloc tree
-             * nor in delayed free rbtree, in which case we cannot detect. We 
-             * can maintain the information in pattern malloc tree, i.e. mark 
-             * the tree node as invalid on free and remove/change the tree
-             * node on re-use of the memory.
-             */
-            app_loc_t loc;
-            pc_to_loc(&loc, mc->pc);
-            report_unaddressable_access(&loc, addr, size, is_write,
-                                        addr, addr + size, mc);
-            /* clobber the pattern to avoid duplicate reports for this same addr
-             * or possible ud2a if the 2nd memref is also unaddressable.
-             */
-            /* should this be a safe_write?
-             * we reach here which means safe_read works and
-             * it is in redzone or delayed free, so not worth the overhead.
-             */
-            if (check_sz == 4)
-                *(uint *)addr = 0;
-            else
-                *(ushort *)addr = 0;
-        }
+        size = opnd_size_in_bytes(opnd_get_size(opnd));
+        pc_to_loc(&loc, mc->pc);
+        pattern_handle_mem_ref(&loc, addr, size, mc, is_write);
     }
     instr_free(drcontext, &instr);
     /* we are not skipping all cmps for this instr, which is ok because we 
@@ -766,6 +736,50 @@ pattern_handle_realloc(app_pc old_base, size_t old_size,
 {
     /* FIXME: i#779, support -no_replace_realloc for pattern mode */
     ASSERT(options.replace_realloc, "-no_replace_realloc not supported");
+}
+
+/* returns true if no errors were found */
+bool
+pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
+                       dr_mcontext_t *mc, bool is_write)
+{
+    uint val;
+    size_t check_sz;
+    /* XXX i#774: for ref of >4 byte, we check the starting 4-byte */
+    check_sz = size < 4 ? 2 : 4;
+    /* there are several memory opnd, so it should be faster to check
+     * before lookup in the rbtree.
+     */
+    if ((safe_read(addr, check_sz, &val) &&
+         (ushort)val == (ushort)options.pattern &&
+         (check_sz == 4 ? val == options.pattern : true)) &&
+        (pattern_addr_in_redzone(addr) ||
+         overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
+        /* XXX: i#786: the actually freed memory is neither in malloc tree
+         * nor in delayed free rbtree, in which case we cannot detect. We 
+         * can maintain the information in pattern malloc tree, i.e. mark 
+         * the tree node as invalid on free and remove/change the tree
+         * node on re-use of the memory.
+         */
+        if (!check_unaddressable_exceptions(is_write, loc, addr, size,
+                                            false, mc)) {
+            report_unaddressable_access(loc, addr, size, is_write,
+                                        addr, addr + size, mc);
+        }
+        /* clobber the pattern to avoid duplicate reports for this same addr
+         * or possible ud2a if the 2nd memref is also unaddressable.
+         */
+        /* should this be a safe_write?
+         * we reach here which means safe_read works and
+         * it is in redzone or delayed free, so not worth the overhead.
+         */
+        if (check_sz == 4)
+            *(uint *)addr = 0;
+        else
+            *(ushort *)addr = 0;
+        return false;
+    }
+    return true;
 }
 
 void

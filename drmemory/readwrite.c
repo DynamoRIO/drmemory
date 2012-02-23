@@ -2828,8 +2828,6 @@ instrument_init(void)
 #ifdef TOOL_DR_MEMORY
     if (INSTRUMENT_MEMREFS())
         replace_init();
-    if (options.pattern != 0)
-        pattern_init();
 #endif
 }
 
@@ -3138,6 +3136,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
 #ifdef TOOL_DR_MEMORY
 /* handle_mem_ref checks addressability and if necessary checks
  * definedness and adjusts addressability
+ * returns true if no errors were found
  */
 bool
 handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t *mc,
@@ -3151,7 +3150,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     bool found_bad_addr = false;
     uint bad_type = SHADOW_DEFINED; /* i.e., no error */
 #ifdef STATISTICS
-    bool was_special = shadow_get_special(addr, NULL);
+    bool was_special = options.shadowing ? 
+        shadow_get_special(addr, NULL) : false;
     bool exception = false;
 #endif
     app_pc stack_base = NULL;
@@ -3161,6 +3161,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         /* ADDR is assumed to be for writes only (i#517) */
         TESTANY(MEMREF_WRITE | MEMREF_CHECK_ADDRESSABLE, flags) &&
         !TEST(MEMREF_IS_READ, flags);
+    if (options.pattern != 0)
+        return pattern_handle_mem_ref(loc, addr, sz, mc, is_write);
     ASSERT(options.shadowing, "shadowing disabled");
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
