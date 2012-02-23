@@ -789,11 +789,6 @@ static int sysnum_GdiDdGetDC = -1;
 static int sysnum_GdiCreateMetafileDC = -1;
 static int sysnum_GdiCreateCompatibleDC = -1;
 static int sysnum_GdiDeleteObjectApp = -1;
-static int sysnum_GdiExtSelectClipRgn = -1;
-static int sysnum_GdiSelectBrush = -1;
-static int sysnum_GdiSelectPen = -1;
-static int sysnum_GdiSelectBitmap = -1;
-static int sysnum_GdiSelectFont = -1;
 
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
@@ -1026,11 +1021,11 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetPerBandInfo", OK, 8, {{1,sizeof(PERBANDINFO),R|W,}, }},
     {0,"NtGdiGetStats", OK, 20, {{3,-4,W,}, }},
     {0,"NtGdiSetMagicColors", OK, 12, },
-    {0,"NtGdiSelectBrush", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectBrush},
-    {0,"NtGdiSelectPen", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectPen},
-    {0,"NtGdiSelectBitmap", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectBitmap},
-    {0,"NtGdiSelectFont", OK|SYSINFO_RET_ZERO_FAIL, 8, {{0,}}, &sysnum_GdiSelectFont},
-    {0,"NtGdiExtSelectClipRgn", OK, 12, {{0,}}, &sysnum_GdiExtSelectClipRgn},
+    {0,"NtGdiSelectBrush", OK|SYSINFO_RET_ZERO_FAIL, 8, },
+    {0,"NtGdiSelectPen", OK|SYSINFO_RET_ZERO_FAIL, 8, },
+    {0,"NtGdiSelectBitmap", OK|SYSINFO_RET_ZERO_FAIL, 8, },
+    {0,"NtGdiSelectFont", OK|SYSINFO_RET_ZERO_FAIL, 8, },
+    {0,"NtGdiExtSelectClipRgn", OK, 12, },
     {0,"NtGdiCreatePen", OK|SYSINFO_RET_ZERO_FAIL, 16, },
     {0,"NtGdiBitBlt", OK, 44, },
     {0,"NtGdiTileBitBlt", OK, 28, {{1,sizeof(RECTL),R,}, {3,sizeof(RECTL),R,}, {4,sizeof(POINTL),R,}, }},
@@ -2444,19 +2439,6 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     return true;
 }
 
-static bool
-handle_GdiSelect(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                 dr_mcontext_t *mc)
-{
-    if (options.check_gdi) {
-        HDC hdc = (HDC) pt->sysarg[0];
-        HANDLE new_obj = (HANDLE) pt->sysarg[1];
-        HANDLE old_obj = (HANDLE) dr_syscall_get_result(drcontext);
-        gdicheck_dc_select_obj(hdc, old_obj, new_obj, sysnum, mc);
-    }
-    return true;
-}
-
 bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                        dr_mcontext_t *mc)
@@ -2465,15 +2447,6 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     if (!pre) {
         syscall_info_t *sysinfo = syscall_lookup(sysnum);
         if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext))) {
-            /* to report selecting one bitmap into two DC's we need to call even
-             * on failure (on win7 at least, GDI detects this)
-             */
-            if (options.check_gdi &&
-                (sysnum == sysnum_GdiExtSelectClipRgn || sysnum == sysnum_GdiSelectBrush ||
-                 sysnum == sysnum_GdiSelectPen || sysnum == sysnum_GdiSelectBitmap ||
-                 sysnum == sysnum_GdiSelectFont)) {
-                return handle_GdiSelect(pre, drcontext, sysnum, pt, mc);
-            }
             return true;
         }
     }
@@ -2574,13 +2547,6 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
         } else if (sysnum == sysnum_GdiDeleteObjectApp) {
             if (pre)
                 gdicheck_obj_free((HANDLE)pt->sysarg[0], sysnum, mc);
-        } else if (sysnum == sysnum_GdiExtSelectClipRgn ||
-                   sysnum == sysnum_GdiSelectBrush ||
-                   sysnum == sysnum_GdiSelectPen ||
-                   sysnum == sysnum_GdiSelectBitmap ||
-                   sysnum == sysnum_GdiSelectFont) {
-            if (!pre)
-                handle_GdiSelect(pre, drcontext, sysnum, pt, mc);
         }
     }
 

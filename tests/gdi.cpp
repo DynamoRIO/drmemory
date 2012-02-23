@@ -96,9 +96,10 @@ test_DC_threads(void)
     HDC dupdc = NULL; // MSDN says this is bad only for dup of NULL
     thread = (HANDLE) _beginthreadex(NULL, 0, thread_dup_DC, (void*)&dupdc, 0, &tid);
     WaitForSingleObject(thread, INFINITE);
-    HBITMAP mybm = CreateBitmap(30, 30, 1, 16, NULL);
+    HBITMAP mybm = CreateCompatibleBitmap(dupdc, 30, 30);
     assert(mybm != NULL);
     HGDIOBJ orig = SelectObject(dupdc, mybm); // error raised
+    assert(orig != NULL);
     SelectObject(dupdc, orig); // error raised
     DeleteDC(dupdc);
     DeleteObject(mybm);
@@ -106,20 +107,22 @@ test_DC_threads(void)
     dupdc = mydc;
     thread = (HANDLE) _beginthreadex(NULL, 0, thread_dup_DC, (void*)&dupdc, 0, &tid);
     WaitForSingleObject(thread, INFINITE);
-    mybm = CreateBitmap(30, 30, 1, 16, NULL);
+    mybm = CreateCompatibleBitmap(dupdc, 30, 30);
     assert(mybm != NULL);
     orig = SelectObject(dupdc, mybm);
+    assert(orig != NULL);
     SelectObject(dupdc, orig); // Should have no error raised!
     DeleteDC(dupdc);
     DeleteObject(mybm);
 
     // Test DrMem check for: do not operate on a single DC from two different threads
-    mybm = CreateBitmap(30, 30, 1, 16, NULL);
-    assert(mybm != NULL);
     // we need a memory DC to select a bitmap into
     dupdc = CreateCompatibleDC(mydc);
     assert(dupdc != NULL);
+    mybm = CreateCompatibleBitmap(dupdc, 16, 16);
+    assert(mybm != NULL);
     orig = SelectObject(dupdc, mybm);
+    assert(orig != NULL);
     SelectObject(dupdc, orig);
     thread = (HANDLE) _beginthreadex(NULL, 0, thread_select, (void*)dupdc, 0, &tid);
     WaitForSingleObject(thread, INFINITE);
@@ -142,15 +145,16 @@ test_DC_objdel(void)
     HDC mydc = GetDC(NULL);
     assert(mydc != NULL);
     HGDIOBJ orig = SelectObject(mydc, mypen);
-    DeleteObject(mypen); // FIXME i#764: error not raised
+    DeleteObject(mypen); // error raised
     SelectObject(mydc, orig);
 
-    HBITMAP mybm = CreateBitmap(30, 30, 1, 16, NULL);
-    assert(mybm != NULL);
     // we need a memory DC to select a bitmap into
     HDC dupdc = CreateCompatibleDC(mydc);
     assert(dupdc != NULL);
+    HBITMAP mybm = CreateCompatibleBitmap(dupdc, 30, 30);
+    assert(mybm != NULL);
     orig = SelectObject(dupdc, mybm);
+    assert(orig != NULL);
     DeleteObject(mybm); // error raised
     SelectObject(dupdc, orig);
     DeleteDC(dupdc);
@@ -161,8 +165,6 @@ static void
 test_DC_bitmap(void)
 {
     // Test DrMem check for: do not select the same bitmap into two different DC's
-    HBITMAP mybm = CreateBitmap(30, 30, 1, 16, NULL);
-    assert(mybm != NULL);
     HDC mydc = GetDC(NULL);
     assert(mydc != NULL);
     // we need a memory DC to select a bitmap into
@@ -170,8 +172,12 @@ test_DC_bitmap(void)
     assert(dupdcA != NULL);
     HDC dupdcB = CreateCompatibleDC(mydc);
     assert(dupdcB != NULL);
-    SelectObject(dupdcA, mybm);
-    SelectObject(dupdcB, mybm); // error raised
+    HBITMAP mybm = CreateCompatibleBitmap(dupdcA, 30, 30);
+    assert(mybm != NULL);
+    HGDIOBJ orig = SelectObject(dupdcA, mybm);
+    assert(orig != NULL);
+    orig = SelectObject(dupdcB, mybm); // error raised
+    // not asserting b/c orig is NULL on win7
     DeleteDC(dupdcA); // error raised
     DeleteDC(dupdcB);
     ReleaseDC(NULL, mydc);
@@ -181,7 +187,7 @@ static void
 test_DC_select(void)
 {
     // Test DrMem check for: non-default objects selected in a DC being deleted
-    // FIXME i#764: need to intercept library routine to see pen selection
+    // (N.B. (i#764): need to intercept library routine to see pen selection)
     HPEN mypen = CreatePen(PS_SOLID,  0xab,RGB(0xab,0xcd,0xef));
     assert(mypen != NULL);
     HDC mydc = GetDC(NULL);
@@ -189,8 +195,8 @@ test_DC_select(void)
     HDC dupdc = CreateCompatibleDC(mydc);
     assert(dupdc != NULL);
     SelectObject(dupdc, mypen);
-    DeleteDC(dupdc); // FIXME i#764: error not yet detected
-    DeleteObject(mypen);
+    DeleteDC(dupdc); // error raised
+    DeleteObject(mypen); // error raised
     ReleaseDC(NULL, mydc);
 }
 

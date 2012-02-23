@@ -30,6 +30,7 @@
  */
 
 #include "dr_api.h"
+#include "drwrap.h"
 #include "drmemory.h"
 #include "callstack.h"
 
@@ -63,10 +64,16 @@ per_dc_free(void *p)
     global_free(pdc, sizeof(*pdc), HEAPSTAT_HASHTABLE);
 }
 
+static void
+gdicheck_module_load(void *drcontext, const module_data_t *info, bool loaded);
+
 void
 gdicheck_init(void)
 {
     ASSERT(options.check_gdi, "incorrectly called");
+
+    dr_register_module_load_event(gdicheck_module_load);
+
     hashtable_init_ex(&dc_table, DC_TABLE_HASH_BITS, HASH_INTPTR, 
                       false/*!str_dup*/, true/*synch*/,
                       per_dc_free, NULL, NULL);
@@ -116,13 +123,16 @@ gdicheck_thread_exit(void *drcontext)
 #define REPORT_MAX_SZ 512
 
 static void
-gdicheck_report(uint sysnum, dr_mcontext_t *mc, const char *msg, ...)
+gdicheck_report(app_pc addr, uint sysnum, dr_mcontext_t *mc, const char *msg, ...)
 {
     va_list ap;
     app_loc_t loc;
     char buf[REPORT_MAX_SZ];
     int len;
-    syscall_to_loc(&loc, sysnum, NULL);
+    if (addr == NULL)
+        syscall_to_loc(&loc, sysnum, NULL);
+    else
+        pc_to_loc(&loc, addr - 1); /* auto -1 is only for later frames */
     va_start(ap, msg);
     /* XXX: perhaps better to have a constant header string describing
      * the type of error, for simpler suppressions, and have auxiliary
@@ -191,21 +201,21 @@ gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc)
     }
     /* Check: Proper pairing GetDC|ReleaseDC and CreateDC|DeleteDC */
     if ((!pdc->created && create) || (pdc->created && !create)) {
-        gdicheck_report(sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
                         "free mismatch for DC "PFX": use ReleaseDC only for GetDC "
                         "and DeleteDC only for CreateDC", hdc);
     }
     /* Check: ReleaseDC called from the same thread that called GetDC */
     if (!pdc->created &&
         pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
-        gdicheck_report(sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
                         "ReleaseDC for DC "PFX" called from different thread %d "
                         "than the thread %d that called GetDC", hdc, pdc->thread,
                         dr_get_thread_id(dr_get_current_drcontext()));
     }
     /* Check: No non-default objects are selected in a DC being deleted */
     if (pdc->non_stock_selected > 0) {
-        gdicheck_report(sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
                         "DC "PFX" that contains selected object being deleted", hdc);
     }
     IF_DEBUG(found = )
@@ -230,7 +240,7 @@ gdicheck_obj_free(HANDLE obj, uint sysnum, dr_mcontext_t *mc)
         if (hdc != NULL) {
             per_dc_t *pdc;
             /* Check: an HGDIOBJ being deleted is selected in any DC */
-            gdicheck_report(sysnum, mc, REPORT_PREFIX
+            gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
                             "deleting an object "PFX" that is selected into DC", obj);
             /* XXX: could be a race: but threads aren't supposed to share GDI objs.
              * One solution is for hashtable_remove() to return the key.
@@ -247,16 +257,14 @@ gdicheck_obj_free(HANDLE obj, uint sysnum, dr_mcontext_t *mc)
     }
 }
 
-/* FIXME i#764: for pen and brush (and sometimes font?), not making it to select syscall!
- * => need to intercept gdi32!SelectObject library routine
- */
-void
+static void
 gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
-                       uint sysnum, dr_mcontext_t *mc)
+                       app_pc addr, dr_mcontext_t *mc)
 {
     per_dc_t *pdc = (per_dc_t *) hashtable_lookup(&dc_table, (void *)hdc);
     LOG(2, "GDI obj select prior="PFX" new="PFX" hdc="PFX"\n", prior_obj, new_obj, hdc);
     if (pdc != NULL) {
+        LOG(3, "\thdc="PFX" non_stock_sel=%d\n", hdc, pdc->non_stock_selected);
         /* Check: CreateCompatibleDC is not used after creating thread exits.
          * MSDN says a DC created by CreateCompatibleDC(NULL) is owned by the
          * creating thread and is invalid after it exits.
@@ -268,7 +276,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          * local objects that are created, used, and then destroyed.
          */
         if (pdc->dup_null && pdc->thread == INVALID_THREAD_ID) {
-            gdicheck_report(sysnum, mc, REPORT_PREFIX
+            gdicheck_report(addr, 0, mc, REPORT_PREFIX
                             "DC "PFX" used for select was created by now-dead thread "
                             "by duplicating NULL, which makes it a thread-private DC",
                             hdc);
@@ -278,23 +286,41 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          */
         else if (pdc->thread != INVALID_THREAD_ID &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
-            gdicheck_report(sysnum, mc, REPORT_PREFIX
+            gdicheck_report(addr, 0, mc, REPORT_PREFIX
                             "DC created by one thread %d and used by another %d",
                             pdc->thread, dr_get_thread_id(dr_get_current_drcontext()));
         }
-        if (!obj_is_stock(prior_obj)) {
-            pdc->non_stock_selected--;
-            hashtable_remove(&selected_table, (void *)prior_obj);
-        }
-        if (!obj_is_stock(new_obj)) {
-            HDC curdc;
-            pdc->non_stock_selected++;
-            curdc = hashtable_add_replace(&selected_table, (void *)new_obj, (void *)hdc);
+        if (prior_obj == NULL || prior_obj == HGDI_ERROR) {
+            /* call failed */
+            HDC curdc = (HDC) hashtable_lookup(&selected_table, (void *)new_obj);
             /* Check: do not select the same bitmap into two different DC's */
             if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
-                gdicheck_report(sysnum, mc, REPORT_PREFIX
+                gdicheck_report(addr, 0, mc, REPORT_PREFIX
                                 "same bitmap "PFX" selected into two different DC's "
                                 PFX" and "PFX, new_obj, hdc, curdc);
+            }
+        } else  {
+            if (!obj_is_stock(prior_obj)) {
+                /* can already be zero of prior_obj was deleted */
+                if (pdc->non_stock_selected > 0)
+                    pdc->non_stock_selected--;
+                LOG(3, "\thdc="PFX" now has non_stock_sel=%d\n",
+                    hdc, pdc->non_stock_selected);
+                hashtable_remove(&selected_table, (void *)prior_obj);
+            }
+            if (!obj_is_stock(new_obj)) {
+                HDC curdc;
+                pdc->non_stock_selected++;
+                LOG(3, "\thdc="PFX" now has non_stock_sel=%d\n",
+                    hdc, pdc->non_stock_selected);
+                curdc = hashtable_add_replace(&selected_table, (void *)new_obj,
+                                              (void *)hdc);
+                /* Check: do not select the same bitmap into two different DC's */
+                if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
+                    gdicheck_report(addr, 0, mc, REPORT_PREFIX
+                                    "same bitmap "PFX" selected into two different DC's "
+                                    PFX" and "PFX, new_obj, hdc, curdc);
+                }
             }
         }
     } else {
@@ -303,3 +329,58 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          */
     }
 }
+
+/***************************************************************************
+ * WRAPPING GDI32 LIBRARY ROUTINES
+ *
+ * i#764: for pen and brush (and sometimes font?), not making it to select
+ * syscall on pre-win7 or when there's no interactive user
+ * => need to intercept gdi32!SelectObject library routine.
+ * we go ahead and ignore the NtGdi*Select* syscalls then to avoid
+ * duplicate handling (NtGdiExtSelectClipRgn, NtGdiSelectBrush,
+ * NtGdiSelectPen, NtGdiSelectBitmap, NtGdiSelectFont).
+ */
+
+typedef struct _select_args_t {
+    HDC hdc;
+    HGDIOBJ new_obj;
+} select_args_t;
+
+static void
+gdicheck_wrap_pre_SelectObject(void *wrapcxt, void OUT **user_data)
+{
+    select_args_t *args = (select_args_t *) global_alloc(sizeof(*args), HEAPSTAT_MISC);
+    args->hdc = (HDC) drwrap_get_arg(wrapcxt, 0);
+    args->new_obj = (HANDLE) drwrap_get_arg(wrapcxt, 1);
+    *user_data = (void *) args;
+}
+
+static void
+gdicheck_wrap_post_SelectObject(void *wrapcxt, void *user_data)
+{
+    select_args_t *args = (select_args_t *) user_data;
+    void *drcontext = dr_get_current_drcontext();
+    dr_mcontext_t *mc = drwrap_get_mcontext_ex
+        (wrapcxt, DR_MC_INTEGER|DR_MC_CONTROL); /* don't need xmm */
+    HANDLE old_obj = (HANDLE) drwrap_get_retval(wrapcxt);
+    /* to report selecting one bitmap into two DC's we need to call even
+     * on failure (on win7 at least, GDI detects this)
+     */
+    gdicheck_dc_select_obj(args->hdc, old_obj, args->new_obj,
+                           drwrap_get_retaddr(wrapcxt), mc);
+    global_free(args, sizeof(*args), HEAPSTAT_MISC);
+}
+
+static void
+gdicheck_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    const char *modname = dr_module_preferred_name(info);
+    if (modname != NULL && strcasecmp(modname, "gdi32.dll") == 0) {
+        app_pc addr = (app_pc) dr_get_proc_address(info->start, "SelectObject");
+        ASSERT(addr != NULL, "can't find gdi32!SelectObject");
+        if (addr == NULL || !drwrap_wrap(addr, gdicheck_wrap_pre_SelectObject,
+                                         gdicheck_wrap_post_SelectObject))
+            ASSERT(false, "failed to wrap gdi32!SelectObject");
+    }
+}
+

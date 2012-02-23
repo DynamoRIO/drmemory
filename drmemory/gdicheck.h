@@ -43,8 +43,4 @@ gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_
 void
 gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc);
 
-void
-gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
-                       uint sysnum, dr_mcontext_t *mc);
-
 #endif /* _GDICHECK_H_ */

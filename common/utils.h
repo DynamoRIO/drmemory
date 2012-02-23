@@ -469,6 +469,10 @@ atomic_add32_return_sum(volatile int *x, int val)
  * UTILITY ROUTINES
  */
 
+#ifdef WINDOWS
+# define strcasecmp _stricmp
+#endif
+
 void *
 memset(void *dst, int val, size_t size);
 
