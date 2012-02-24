@@ -2298,7 +2298,7 @@ handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, cls_syscall_t 
         if (dr_query_memory(dib, &dib_base, &dib_size, NULL)) {
             LOG(SYSCALL_VERBOSE, "NtGdiCreateDIBSection created "PFX"-"PFX"\n",
                 dib_base, dib_base+dib_size);
-            client_handle_mmap(pt, dib_base, dib_size,
+            client_handle_mmap(drcontext, dib_base, dib_size,
                                /* XXX: may not be file-backed but treating as
                                 * all-defined and non-heap which is what this param
                                 * does today.  could do dr_virtual_query().
