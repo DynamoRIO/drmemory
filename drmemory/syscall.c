@@ -1139,15 +1139,32 @@ event_filter_syscall(void *drcontext, int sysnum)
 }
 
 static void
+syscall_reset_per_thread(void *drcontext, cls_syscall_t *cpt)
+{
+    int i;
+    for (i = 0; i < SYSCALL_NUM_ARG_TRACK; i++) {
+        if (cpt->sysarg_val_bytes[i] > 0) {
+            ASSERT(cpt->sysarg_val[i] != NULL, "sysarg alloc error");
+            thread_free(drcontext, cpt->sysarg_val[i], cpt->sysarg_val_bytes[i],
+                        HEAPSTAT_MISC);
+        } else {
+            ASSERT(cpt->sysarg_val[i] == NULL, "sysarg alloc error");
+        }
+    }
+}
+
+static void
 syscall_context_init(void *drcontext, bool new_depth)
 {
-    cls_syscall_t *data;
+    cls_syscall_t *cpt;
     if (new_depth) {
-        data = (cls_syscall_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
-        drmgr_set_cls_field(drcontext, cls_idx_syscall, data);
-    } else
-        data = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    memset(data, 0, sizeof(*data));
+        cpt = (cls_syscall_t *) thread_alloc(drcontext, sizeof(*cpt), HEAPSTAT_MISC);
+        drmgr_set_cls_field(drcontext, cls_idx_syscall, cpt);
+    } else {
+        cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+        syscall_reset_per_thread(drcontext, cpt);
+    }
+    memset(cpt, 0, sizeof(*cpt));
 }
 
 static void
@@ -1156,16 +1173,7 @@ syscall_context_exit(void *drcontext, bool thread_exit)
     if (thread_exit) {
         cls_syscall_t *cpt = (cls_syscall_t *)
             drmgr_get_cls_field(drcontext, cls_idx_syscall);
-        int i;
-        for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
-            if (cpt->sysarg_val_bytes[i] > 0) {
-                ASSERT(cpt->sysarg_val[i] != NULL, "sysarg alloc error");
-                thread_free(drcontext, cpt->sysarg_val[i], cpt->sysarg_val_bytes[i],
-                            HEAPSTAT_MISC);
-            } else {
-                ASSERT(cpt->sysarg_val[i] == NULL, "sysarg alloc error");
-            }
-        }
+        syscall_reset_per_thread(drcontext, cpt);
         thread_free(drcontext, cpt, sizeof(*cpt), HEAPSTAT_MISC);
     }
     /* else, nothing to do: we leave the struct for re-use on next callback */
