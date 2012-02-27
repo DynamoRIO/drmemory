@@ -915,7 +915,9 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         if (sysinfo->arg[i].param == last_param) {
             /* For a double entry, the 2nd indicates the actual written size */
             if (size == 0
-                IF_WINDOWS(/* i#: don't use OUT size on partial write */
+                IF_WINDOWS(/* i#798: On async write, use capacity, not OUT size. */
+                           || result == STATUS_PENDING
+                           /* i#486, i#531: don't use OUT size on partial write */
                            || result == STATUS_BUFFER_TOO_SMALL
                            || result == STATUS_BUFFER_OVERFLOW)) {
                 /* we use SYSARG_LENGTH_INOUT for some optional params: in that
