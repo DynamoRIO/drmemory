@@ -2016,6 +2016,10 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
                           HASH_INTPTR, false/*!str_dup*/, false/*!synch*/,
                           alloc_routine_entry_free, NULL, NULL);
         alloc_routine_lock = dr_mutex_create();
+        /* We want leaner wrapping and we are ok w/ no dups and no dynamic
+         * wrap changes
+         */
+        drwrap_set_global_flags(DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS);
     }
 
     if (options.replace_realloc) {
