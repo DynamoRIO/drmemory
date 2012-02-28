@@ -5069,11 +5069,20 @@ alloc_hook(void *wrapcxt, INOUT void **user_data)
 {
     app_pc pc = drwrap_get_func(wrapcxt);
     alloc_routine_entry_t *routine = (alloc_routine_entry_t *) *user_data;
-    void *drcontext = dr_get_current_drcontext();
+    void *drcontext = drwrap_get_drcontext(wrapcxt);
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     app_pc retaddr;
 
-    /* pass to handle_alloc_post() */
+    /* pass to handle_alloc_post()
+     * N.B.: note that I tried passing pt, but the cost of handling a
+     * heap tangent pushing a new CLS context outweighs the gain from
+     * not having to call drmgr_get_cls_field() in the post-hook
+     * (I tried A. storing user_data in pt and having heap tangent update,
+     * B. having the pre-helpers return pt, and C. storing pt->in_heap_routine
+     * level pre and post handle_alloc_pre_ex() and re-calling
+     * drmgr_get_cls_field() if the level didn't change: none beat out
+     * the current code).  (I had a backpointer in pt to get drcontext.)
+     */
     *user_data = drcontext;
 
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
