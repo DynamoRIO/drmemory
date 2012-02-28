@@ -563,3 +563,12 @@ POSSIBLE LEAK
 msvcrt.dll!...
 msvcrt.dll!__getmainargs
 *!__mingw_CRTStartup
+
+##################################################
+# i#790: possible leak in msvcrt/mingw CRT
+# XXX: need to analyze
+
+POSSIBLE LEAK
+msvcrt.dll!strcpy_s
+msvcrt.dll!...
+*!__mingw_CRTStartup
