@@ -382,6 +382,9 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(addronly free "" "-no_check_uninitialized" "" OFF "")
   newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
+  if (USE_DRSYMS)
+    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+  endif (USE_DRSYMS)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

@@ -2504,16 +2504,17 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
 
     if (options.track_allocs) {
 #ifdef USE_DRSYMS
-        dr_mutex_lock(post_call_lock);
         if (options.cache_postcall) {
-            rb_node_t *node = rb_in_node(mod_pending_tree, info->start);
+            rb_node_t *node;
+            dr_mutex_lock(post_call_lock);
+            node = rb_in_node(mod_pending_tree, info->start);
             /* module unloaded w/o any code executed */
             if (node != NULL) {
                 rb_delete(mod_pending_tree, node);
                 mod_pending_entries--;
             }
+            dr_mutex_unlock(post_call_lock);
         }
-        dr_mutex_unlock(post_call_lock);
 #endif
     }
 }
@@ -2671,8 +2672,9 @@ static void
 malloc_entry_remove(malloc_entry_t *e)
 {
     app_pc start, end, real_end;
+    bool native = malloc_entry_is_native(e);
     ASSERT(e != NULL, "invalid arg");
-    if (!malloc_entry_is_native(e)) {
+    if (!native) {
         /* cache values for post-event */
         start = e->start;
         end = e->end;
@@ -2687,11 +2689,11 @@ malloc_entry_remove(malloc_entry_t *e)
     }
     if (hashtable_remove(&malloc_table, e->start)) {
 #ifdef STATISTICS
-        if (!malloc_entry_is_native(e))
+        if (!native)
             STATS_INC(num_frees);
 #endif
     }
-    if (!malloc_entry_is_native(e)) {
+    if (!native) {
         /* PR 567117: client event with entry removed from hashtable */
         client_remove_malloc_post(start, end, real_end);
     }
