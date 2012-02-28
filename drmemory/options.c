@@ -349,8 +349,10 @@ options_init(const char *opstr)
         usage_error("-snapshots must be power of 2", "");
 #else
     if (options.light) {
-        /* XXX: we can switch to pattern mode later */
+        /* we can switch to pattern mode later */
         options.check_uninitialized = false;
+        if (!option_specified.count_leaks)
+            options.count_leaks = false;
     }
     if (options.pattern != 0) {
         /* we do not need shadow memory */
