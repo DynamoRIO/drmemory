@@ -222,6 +222,9 @@ static dr_emit_flags_t
 alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                       bool for_trace, bool translating, void *user_data);
 
+static bool
+malloc_lock_held_by_self(void);
+
 /***************************************************************************
  * PER-THREAD DATA
  */
@@ -1664,6 +1667,14 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
 {
     ssize_t sz;
     alloc_routine_entry_t *size_func = get_size_func(routine);
+    /* we avoid calling app size routine for two reasons: performance
+     * (i#689 part 2) and correctness to avoid deadlocks (i#795, i#30).
+     * for options.get_padded_size, well, we risk it: removing the
+     * drwrap lock (i#689 part 1 DRWRAP_NO_FRILLS) helps there b/c we
+     * won't be holding a lock when we call here
+     */
+    ASSERT(options.get_padded_size, "should not get here");
+    ASSERT(!malloc_lock_held_by_self(), "should not hold lock here");
 #ifdef WINDOWS
     if (is_rtl_routine(routine->type)) {
         /* auxarg is heap */
@@ -4348,9 +4359,21 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 {
     if (mc->eax != 0) {
         app_pc app_base = (app_pc) mc->eax;
-        size_t real_size =
-            get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
-                                pt->alloc_size, padded_size_out, routine);
+        size_t real_size;
+        bool query_for_size = options.get_padded_size;
+        if (query_for_size) {
+            real_size = get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
+                                            pt->alloc_size, padded_size_out, routine);
+        } else {
+            /* avoid calling app size routine for two reasons: performance
+             * (i#689 part 2) and correctness to avoid deadlocks (i#795, i#30)
+             */
+            real_size = pt->alloc_size + redzone_size(routine) * 2;
+            if (padded_size_out != NULL)
+                *padded_size_out = ALIGN_FORWARD
+                    /* using 4 for linux b/c of i#787 */
+                    (real_size, IF_WINDOWS_ELSE(MALLOC_CHUNK_ALIGNMENT, 4));
+        }
         ASSERT(real_size != -1, "error getting real size");
         /* If recursive we assume called by RtlReAllocateHeap where we
          * already adjusted the size */
