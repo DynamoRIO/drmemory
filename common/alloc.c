@@ -1168,22 +1168,28 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
          * to the same point.  But that's hard to detect so we just
          * say "all bets are off" when plain==[].
          */
-        if ((type == HEAP_ROUTINE_DELETE &&
-             e->type == HEAP_ROUTINE_DELETE_ARRAY) ||
-            (type == HEAP_ROUTINE_DELETE_ARRAY &&
-             e->type == HEAP_ROUTINE_DELETE)) {
-            e->set->check_mismatch = false;
-            /* i#463: some optimized libs have identical operator stubs */
-            WARN("WARNING: delete == delete[] => disabling mismatch detection for %s\n",
-                 modname);
-        } else if ((type == HEAP_ROUTINE_NEW &&
-                    e->type == HEAP_ROUTINE_NEW_ARRAY) ||
-                   (type == HEAP_ROUTINE_NEW_ARRAY &&
-                    e->type == HEAP_ROUTINE_NEW)) {
-            e->set->check_mismatch = false;
-            /* i#463: some optimized libs have identical operator stubs */
-            WARN("WARNING: new == new[] => disabling mismatch detection for %s\n",
-                 modname);
+        if (type != e->type) {
+            if ((type == HEAP_ROUTINE_FREE ||
+                 type == HEAP_ROUTINE_DELETE ||
+                 type == HEAP_ROUTINE_DELETE_ARRAY) &&
+                (e->type == HEAP_ROUTINE_FREE ||
+                 e->type == HEAP_ROUTINE_DELETE ||
+                 e->type == HEAP_ROUTINE_DELETE_ARRAY)) {
+                e->set->check_mismatch = false;
+                /* i#643: some optimized libs have identical operator stubs */
+                WARN("WARNING: free/delete/delete[] are collapsed together,"
+                     " disabling mismatch detection for %s\n",
+                     modname);
+            } else if ((type == HEAP_ROUTINE_NEW ||
+                        type == HEAP_ROUTINE_NEW_ARRAY) &&
+                       (e->type == HEAP_ROUTINE_NEW ||
+                        e->type == HEAP_ROUTINE_NEW_ARRAY)) {
+                e->set->check_mismatch = false;
+                /* i#643: some optimized libs have identical operator stubs */
+                WARN("WARNING: new == new[] =>"
+                     " disabling mismatch detection for %s\n",
+                     modname);
+            }
         }
         return e;
     }
