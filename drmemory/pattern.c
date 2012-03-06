@@ -42,10 +42,13 @@
 #define MAX_REFS_PER_INSTR 3
 #define PATTERN_SLOT_XAX    SPILL_SLOT_1
 #define PATTERN_SLOT_AFLAGS SPILL_SLOT_2
+#define SWAP_BYTE(x)  ((0x0ff & ((x) >> 8)) | ((0x0ff & (x)) << 8))
+#define PATTERN_REVERSE(x) (SWAP_BYTE(x) | (SWAP_BYTE(x) << 16))
 
 /* we use a redblack tree to keep malloc info */
 static rb_tree_t *pattern_malloc_tree;
 static void *pattern_malloc_tree_rwlock;
+static uint  pattern_reverse;
 
 static ptr_uint_t note_base;
 
@@ -91,7 +94,7 @@ static void
 pattern_insert_check_code(void *drcontext, instrlist_t *ilist, 
                           instr_t *app, opnd_t ref)
 {
-    opnd_size_t opsz = opnd_get_size(ref);
+    opnd_size_t opsz, size = opnd_get_size(ref);
     instr_t *label;
     int opcode = instr_get_opcode(app);
     app_pc pc = instr_get_app_pc(app);
@@ -102,7 +105,7 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     /* XXX: i#774, we perform 2-byte check for 1/2-byte reference and 4-byte 
      * otherwise, should we do 2 4-byte checks for case like 8-byte reference?
      */
-    if (opsz > OPSZ_2) {
+    if (size > OPSZ_2) {
         opsz = OPSZ_4;
         opnd = OPND_CREATE_INT32(options.pattern);
     } else {
@@ -141,6 +144,21 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
     /* label */
     PRE(ilist, app, label);
+    /* insert check for unaligned one-byte access */
+    if (size == OPSZ_1) {
+        opnd  = OPND_CREATE_INT16((short)pattern_reverse);
+        label = INSTR_CREATE_label(drcontext);
+        /* cmp ref, pattern_reverse */
+        PREXL8M(ilist, app,
+                INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, opnd), pc));
+        /* jne label */
+        PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
+                                               opnd_create_instr(label)));
+        /* use ud2a to cause an illegal exception if match. */
+        PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
+        /* label */
+        PRE(ilist, app, label);
+    }
     if (opcode == OP_xlat) {
         /* restore xax 
          * XXX: we can avoid restore xax if aflags is to be restored.
@@ -462,11 +480,11 @@ pattern_ill_instr_is_instrumented(byte *pc)
     /* check if our code sequence */
     if (!safe_read(pc - JNZ_SHORT_LENGTH - 2 /* 2 bytes of cmp immed value */,
                    BUFFER_SIZE_BYTES(buf), buf)   ||
-        buf[0] != (byte)options.pattern           ||
-        buf[1] != (byte)(options.pattern >> 8)    ||
-        buf[2] != JNZ_SHORT_OPCODE                || 
-        buf[3] != UD2A_LENGTH                     ||
-        *(ushort *)&buf[4] != (ushort)UD2A_OPCODE)
+        (buf[2] != JNZ_SHORT_OPCODE) || 
+        (buf[3] != UD2A_LENGTH)      ||
+        ((*(ushort *)&buf[0] != (ushort)options.pattern) &&
+         (*(ushort *)&buf[0] != (ushort)pattern_reverse)) ||
+        (*(ushort *)&buf[4] != (ushort)UD2A_OPCODE))
         return false;
     return true;
 }
@@ -530,11 +548,14 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
             opnd_t opnd = instr_get_src(inst, 1);
             ASSERT(opnd_is_immed_int(opnd), "Similar code sequence is seen");
             if (opnd_get_size(opnd) == OPSZ_4) {
-                ASSERT(opnd_get_immed_int(opnd) == (int)options.pattern,
+                ASSERT(opnd_get_immed_int(opnd) == (int)options.pattern ||
+                       opnd_get_immed_int(opnd) == (int)pattern_reverse,
                        "Similar code sequence is seen");
             } else {
                 ASSERT((ushort)opnd_get_immed_int(opnd) ==
-                       (ushort)options.pattern,
+                       (ushort)options.pattern ||
+                       (ushort)opnd_get_immed_int(opnd) ==
+                       (ushort)pattern_reverse,
                        "Similar code sequence is seen");
             }
         });
@@ -608,8 +629,8 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc)
 }
 
 void
-pattern_handle_malloc(app_pc app_base,  size_t app_size,
-                      app_pc real_base, size_t real_size)
+pattern_handle_malloc(byte *app_base,  size_t app_size,
+                      byte *real_base, size_t real_size)
 {
     ASSERT(options.pattern != 0, "should not be called");
     if ((app_base - real_base) == options.redzone_size) {
@@ -631,10 +652,14 @@ pattern_handle_malloc(app_pc app_base,  size_t app_size,
         /* the app_size might be unaligned, which will be expanded with padding
          * by allocator. We will fill the padding whenever possible.
          */
-        if (!ALIGNED((app_base + app_size), 4)) {
-            /* the pattern must be 2-byte aligned */
-            *(ushort *)ALIGN_FORWARD((app_base + app_size), 2) = 
-                (ushort)options.pattern;
+        redzone = (uint *)(app_base + app_size);
+        if (!ALIGNED(redzone, 2)) {
+            *redzone = pattern_reverse;
+        } else if (!ALIGNED(redzone, 4)) {
+            /* the redzone must be 2-byte aligned, fill the 2-byte 
+             * if it is not 4-byte aligned
+             */
+            *(ushort *)redzone = (ushort)options.pattern;
         }
         for (redzone = (uint *)ALIGN_FORWARD((app_base + app_size), 4);
              redzone < (uint *)(real_base + real_size);
@@ -740,7 +765,7 @@ pattern_handle_realloc(app_pc old_base, size_t old_size,
 
 /* returns true if no errors were found */
 bool
-pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
+pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
                        dr_mcontext_t *mc, bool is_write)
 {
     uint val;
@@ -751,8 +776,10 @@ pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
      * before lookup in the rbtree.
      */
     if ((safe_read(addr, check_sz, &val) &&
-         (ushort)val == (ushort)options.pattern &&
-         (check_sz == 4 ? val == options.pattern : true)) &&
+         ((ushort)val == (ushort)options.pattern ||
+          (ushort)val == (ushort)pattern_reverse) &&
+         (check_sz == 4 ? (val == options.pattern || val == pattern_reverse)
+          : true)) &&
         (pattern_addr_in_redzone(addr) ||
          overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree
@@ -791,6 +818,13 @@ pattern_init(void)
 
     note_base = drmgr_reserve_note_range(NOTE_MAX_VALUE);
     ASSERT(note_base != DRMGR_NOTE_NONE, "failed to get note value");
+
+    /* reverse the byte order for unaligned checks:
+     * for example, if the pattern is 0x43214321, the reversed pattern is
+     * 0x21432143. If we check both value on any memory access, we are able
+     * to check both aligned and unaligned access.
+     */
+    pattern_reverse = PATTERN_REVERSE(options.pattern);
 }
 
 void

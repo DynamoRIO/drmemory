@@ -47,8 +47,8 @@ void
 pattern_exit(void);
 
 void
-pattern_handle_malloc(app_pc app_base,  size_t app_size,
-                      app_pc real_base, size_t real_size);
+pattern_handle_malloc(byte *app_base,  size_t app_size,
+                      byte *real_base, size_t real_size);
 
 void
 pattern_handle_real_free(app_pc base,  size_t size, bool delayed);
