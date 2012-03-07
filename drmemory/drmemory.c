@@ -1304,6 +1304,9 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 static void
 event_module_unload(void *drcontext, const module_data_t *info)
 {
+    LOG(1, "unloading module %s "PFX"-"PFX"\n",
+        dr_module_preferred_name(info) == NULL ? "<null>" :
+        dr_module_preferred_name(info), info->start, info->end);
     if (!options.perturb_only)
         callstack_module_unload(drcontext, info);
     if (INSTRUMENT_MEMREFS())

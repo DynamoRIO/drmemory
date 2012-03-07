@@ -1219,6 +1219,10 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
             ASSERT(false, "failed to replace dbg-nop");
     } else {
 #endif
+        /* there could be a race on unload where passing e is unsafe but
+         * we live w/ it
+         * XXX: for -conservative we should do a lookup
+         */
         if (!drwrap_wrap_ex(pc, alloc_hook,
                             e->intercept_post ? handle_alloc_post : NULL, (void *)e,
                             DRWRAP_UNWIND_ON_EXCEPTION))
@@ -1398,8 +1402,8 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
                       edata->set, edata->mod->start, modname);
     if (edata->processed != NULL)
         edata->processed[idx] = true;
-    LOG(1, "intercepting %s @"PFX" in module %s\n",
-        edata->possible[idx].name, pc, modname);
+    LOG(1, "intercepting %s @"PFX" type %d in module %s\n",
+        edata->possible[idx].name, pc, edata->possible[idx].type, modname);
 #if defined(WINDOWS) && defined(USE_DRSYMS)
     if (options.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
         disable_crtdbg(edata->mod);
@@ -5119,6 +5123,9 @@ static void
 alloc_hook(void *wrapcxt, INOUT void **user_data)
 {
     app_pc pc = drwrap_get_func(wrapcxt);
+    /* XXX: for -conservative we should do a lookup and not trust *user_data
+     * b/c we could have racy unload of a module
+     */
     alloc_routine_entry_t *routine = (alloc_routine_entry_t *) *user_data;
     void *drcontext = drwrap_get_drcontext(wrapcxt);
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
@@ -5222,10 +5229,15 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     type = routine->type;
 
     ASSERT(expect != NULL, "handle_alloc_pre: expect is NULL!");
-    LOG(2, "entering alloc routine "PFX" %s rec=%d adj=%d%s\n",
+    LOG(2, "entering alloc routine "PFX" %s type=%d rec=%d adj=%d%s\n",
         expect, get_alloc_routine_name(expect),
         pt->in_heap_routine, pt->in_heap_adjusted,
         pt->in_heap_routine > 0 ? " (recursive)" : "");
+    DOLOG(3, {
+        /* check for things like i#816 */
+        ASSERT(strcmp(get_alloc_routine_name(expect), routine->name) == 0,
+               "error in user_data passed to pre-alloc hook");
+    });
     DOLOG(4, {
         print_callstack_to_file(drcontext, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
                                 call_site, INVALID_FILE/*use pt->f*/);
