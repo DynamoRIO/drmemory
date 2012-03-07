@@ -90,17 +90,6 @@ drmemory_options_t options = {
 #undef OPTION_CLIENT
 #undef OPTION_FRONT
 
-/* indicates whether a value was explicitly specified */
-typedef struct _option_specified_t {
-#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
-    bool name;
-#define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
-    /*nothing*/
-    /* we use <> so other tools can override the optionsx.h in "." */
-#include <optionsx.h>
-} option_specified_t;
-#undef OPTION_CLIENT
-#undef OPTION_FRONT
 option_specified_t option_specified = {
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     false,

@@ -1102,6 +1102,21 @@ report_init(void)
                             BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix));
 #endif
 
+#ifdef WINDOWS
+    {
+        /* i#805: auto-detect mingw app and enable -no_callstack_use_top_fp */
+        drsym_debug_kind_t kind;
+        /* XXX: if for early injection we don't want to use drsyms this early,
+         * we can delay this b/c it's used in a callback and not passed to
+         * callstack_init()
+         */
+        if (drsym_get_module_debug_kind(app_path, &kind) == DRSYM_SUCCESS &&
+            TEST(DRSYM_PECOFF_SYMTAB, kind) &&
+            !option_specified.callstack_use_top_fp)
+            options.callstack_use_top_fp = false;
+    }
+#endif
+
     /* must be BEFORE read_suppression_file (PR 474542) */
     callstack_init(options.callstack_max_frames,
                    /* I used to use options.stack_swap_threshold but that

@@ -475,8 +475,8 @@ if (NOT TOOL_DR_HEAPSTAT)
 
     if (GCC)
       # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)
-      newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "-no_callstack_use_top_fp"
-        "" "" cs2bug)
+      # With i#805, -no_callstack_use_top_fp is set automatically
+      newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "" "" "" cs2bug)
     endif (GCC)
 
     newtest(gdi gdi.cpp)

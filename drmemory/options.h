@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -41,7 +41,21 @@ typedef struct _drmemory_options_t {
 #undef OPTION_CLIENT
 #undef OPTION_FRONT
 
+/* indicates whether a value was explicitly specified */
+typedef struct _option_specified_t {
+#define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
+    bool name;
+#define OPTION_FRONT(scope, name, type, defval, min, max, short, long) \
+    /*nothing*/
+    /* we use <> so other tools can override the optionsx.h in "." */
+#include <optionsx.h>
+} option_specified_t;
+#undef OPTION_CLIENT
+#undef OPTION_FRONT
+
 extern drmemory_options_t options;
+
+extern option_specified_t option_specified;
 
 extern bool stack_swap_threshold_fixed;
 

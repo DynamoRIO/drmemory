@@ -107,7 +107,9 @@ For MinGW C++ applications, Dr. Memory also requires the use of static
 libstdc++ libraries.  Pass "-static-libgcc -static-libstdc++" to g++ to
 request this.  Since these static libraries contain frame pointer
 optimizations, we recommend passing the "-no_callstack_use_top_fp" runtime
-option to Dr. Memory.  This is also discussed below.
+option to Dr. Memory.  This option is also discussed below.  Dr. Memory
+attempts to automatically use this setting when it executes an application
+built with MinGW.
 
 Currently there is no support for applications built with Cygwin gcc.
 
