@@ -59,9 +59,18 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between version 1.4.7 and 1.4.6 include:
+ - Various bug fixes
+
 The changes between version 1.4.6 and 1.4.5 include:
  - Added MinGW support
+ - Added GDI API usage error reports
+ - Added -light mode that does not detect uninitialized reads
+   or leaks but is more performant
  - Added -pause_at_error option
+ - Added mod!... suppression wildcard
+ - Reduced false positives from graphical operations
+ - Various performance improvements
  - Various bug fixes
 
 The changes between version 1.4.5 and 1.4.4 include:

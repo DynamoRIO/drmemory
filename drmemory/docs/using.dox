@@ -295,6 +295,8 @@ the log directories as sub-directories to aggregate all of them:
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate /parent/logdir/
 </tt>
 
+Currently the \p -aggregate option is not available on Windows.
+
 ********************
 \subsection sec_daemon Applications That Do Not Exit
 
@@ -476,6 +478,18 @@ extremely-optimized versions of these routines.  So if an application
 expects a crash inside a routine like \p strlen, do not be alarmed if it
 shows up as \p replace_strlen in the Dr. Memory library rather than \p
 strlen in the C library.
+
+********************
+\subsection sec_light Light Mode
+
+Dr. Memory provides a "light" mode that detects fewer errors in order to
+gain performance.  It does not detect uninitialized reads nor leaks.  It
+does detect unaddressable accesses, invalid heap arguments, and warnings.
+Use the runtime option \p -light to use light mode.
+
+To add leak checking to light mode, add the option \p -count_leaks after
+the \p -light option.  This will identify all error types except
+uninitialized reads.
 
 ***************************************************************************
 \htmlonly
@@ -728,7 +742,7 @@ Error #12: WARNING: heap allocation failed
 \endcode
 
 Dr. Memory also identifies common errors in using the Windows GDI API and
-reports these errors as warning.  For example:
+reports these errors as warnings.  For example:
 
 \code
 Error #15: WARNING: GDI usage error: DC 0x2d011230 that contains selected object being deleted
