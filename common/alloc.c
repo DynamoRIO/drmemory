@@ -2483,9 +2483,18 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         e->set->realloc_replacement = NULL;
                         dr_mutex_unlock(gencode_lock);
                     }
-                    if (!drwrap_unwrap(e->pc, alloc_hook,
-                                       e->intercept_post ? handle_alloc_post : NULL))
-                        ASSERT(false, "failed to unwrap alloc routine");
+#ifdef WINDOWS
+                    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+                        if (!drwrap_replace(e->pc, NULL/*remove*/, true))
+                            ASSERT(false, "failed to unreplace dbg-nop");
+                    } else {
+#endif
+                        if (!drwrap_unwrap(e->pc, alloc_hook,
+                                           e->intercept_post ? handle_alloc_post : NULL))
+                            ASSERT(false, "failed to unwrap alloc routine");
+#ifdef WINDOWS
+                    }
+#endif
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);
 

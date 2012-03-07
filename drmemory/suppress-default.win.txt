@@ -560,6 +560,7 @@ SspiCli.dll!Cre*
 # i#781: argv[] leak in mingw CRT
 
 POSSIBLE LEAK
+name=default i#781: argv[] possible leak in mingw CRT
 msvcrt.dll!...
 msvcrt.dll!__getmainargs
 *!__mingw_CRTStartup
@@ -569,6 +570,29 @@ msvcrt.dll!__getmainargs
 # XXX: need to analyze
 
 POSSIBLE LEAK
+name=default i#781: strcpy_s possible leak in CRT
 msvcrt.dll!strcpy_s
 msvcrt.dll!...
 *!__mingw_CRTStartup
+
+##################################################
+# i#817: possible leaks in msvcrt CRT
+# XXX: need to analyze
+# Using * b/c happens with static CRT
+
+POSSIBLE LEAK
+name=default i#817a: _setenvp possible leak in CRT
+*!_setenvp
+*!_CRT_INIT
+
+POSSIBLE LEAK
+name=default i#817b: _setargv possible leak in CRT
+...
+*!_setargv
+*!_CRT_INIT
+
+POSSIBLE LEAK
+name=default i#817c: __onexitinit possible leak in CRT
+*!__onexitinit
+...
+*!_CRT_INIT

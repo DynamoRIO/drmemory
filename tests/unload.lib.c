@@ -29,6 +29,7 @@
 
 typedef unsigned long size_t;
 
+#ifdef USE_CUSTOM_MALLOC
 LIB_EXPORT
 void *
 malloc(size_t size)
@@ -49,6 +50,7 @@ realloc(void *ptr, size_t size)
 {
     return 0;
 }
+#endif /* USE_CUSTOM_MALLOC */
 
 #ifdef WINDOWS
 
