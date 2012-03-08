@@ -1,9 +1,23 @@
 ===========================================================================
 ACKNOWLEDGEMENTS / AUTHORS OF DR. MEMORY
 
+The following is a partial list of the people who have contributed to
+Dr. Memory, in alphabetical order.  Many others have provided invaluable
+insights, suggestions, and constructive criticism.
+
+  * Derek Bruening
+  * Bharath Chandramohan
+  * Shawn Denbow
+  * Timur Iskhodzhanov
+  * Reid Kleckner
+  * Qin Zhao 
+
 Dr. Memory was originally developed by Derek Bruening for Windows.  Derek later
 ported Dr. Memory to Linux.
 
+Reid Kleckner and Qin Zhao contributed to many different features on both
+Windows and Linux.
+Shawn Denbow contributed to Windows system call handling.
 Timur Iskhodzhanov contributed to error suppression and testing.
 Bharath Chandramohan contributed to an ESXi port of Dr. Memory.
 
