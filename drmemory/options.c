@@ -281,6 +281,13 @@ options_init(const char *opstr)
                     "%s/symcache", options.logdir);
         NULL_TERMINATE_BUFFER(options.symcache_dir);
     }
+# ifdef WINDOWS
+    /* i#723: Pre-load pdbs so that we can symbolize leak callstacks. */
+    if (!option_specified.preload_symbols &&
+        get_windows_version() == DR_WINDOWS_VERSION_VISTA) {
+        options.preload_symbols = true;
+    }
+# endif /* WINDOWS */
 #endif
 
     if (option_specified.stack_swap_threshold)

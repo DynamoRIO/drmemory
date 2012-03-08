@@ -70,6 +70,10 @@
 #include <stddef.h> /* for offsetof */
 #include "pattern.h"
 
+#ifdef USE_DRSYMS
+# include "drsyms.h" /* for pre-loading pdbs on Vista */
+#endif
+
 char logsubdir[MAXIMUM_PATH];
 #ifndef USE_DRSYMS
 file_t f_fork = INVALID_FILE;
@@ -1287,7 +1291,20 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     /* must be before alloc_module_load */
     if (options.use_symcache)
         symcache_module_load(drcontext, info, loaded);
-#endif
+# ifdef WINDOWS
+    if (options.preload_symbols) {
+        /* i#723: We can't load symbols for modules with dbghelp during shutdown
+         * on Vista, so we pre-load everything.  This wastes memory and is
+         * fragile since drsyms doesn't promise to cache pdbs forever, but for
+         * now it allows us to symbolize leak callstacks.
+         */
+        drsym_info_t syminfo;
+        syminfo.struct_size = sizeof(syminfo);
+        syminfo.name_size = sizeof(syminfo.name);  /* Don't need name. */
+        drsym_lookup_address(info->full_path, 0, &syminfo, DRSYM_DEFAULT_FLAGS);
+    }
+# endif /* WINDOWS */
+#endif /* USE_DRSYMS */
     if (!options.perturb_only)
         callstack_module_load(drcontext, info, loaded);
     if (INSTRUMENT_MEMREFS())

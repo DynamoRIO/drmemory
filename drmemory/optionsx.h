@@ -345,6 +345,11 @@ OPTION_CLIENT(client, symcache_minsize, uint, 1000, 0, UINT_MAX,
 OPTION_CLIENT_BOOL(drmemscope, use_symcache_postcall, true,
                    "Cache post-call sites to speed up future runs",
                    "Cache post-call sites to speed up future runs.  Requires -use_symcache to be true.")
+# ifdef WINDOWS
+OPTION_CLIENT_BOOL(drmemscope, preload_symbols, false,
+                   "Preload debug symbols on module load",
+                   "Preload debug symbols on module load.  Debug symbols cannot be loaded during leak reporting on Vista, so this option is on by default on Vista.  This option may cause excess memory usage from unneeded debugging symbols.")
+# endif /* WINDOWS */
 #else
 OPTION_CLIENT_BOOL(drmemscope, summary, false,
                    "Display a summary prior to symbol processing",
