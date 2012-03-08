@@ -568,7 +568,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAlpcCreatePort", OK, 12, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
     {0,"NtAlpcCreatePortSection", OK, 24, {{4,sizeof(HANDLE),W}, {5,sizeof(ULONG),W}, }},
     {0,"NtAlpcCreateResourceReserve", OK, 16, {{3,sizeof(HANDLE),W}, }},
-    {0,"NtAlpcCreateSectionView", UNKNOWN, 12, },
+    {0,"NtAlpcCreateSectionView", OK, 12, {{2,sizeof(ALPC_DATA_VIEW),R|W}, }},
     {0,"NtAlpcCreateSecurityContext", OK, 12, {{2,sizeof(ALPC_SECURITY_ATTRIBUTES),R|W|CT,SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES}, }},
     {0,"NtAlpcDeletePortSection", OK, 12, },
     {0,"NtAlpcDeleteResourceReserve", OK, 12, },
@@ -579,12 +579,11 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAlpcDeleteSecurityContext", OK, 12, },
     {0,"NtAlpcDisconnectPort", OK, 8, },
     {0,"NtAlpcImpersonateClientOfPort", OK, 12, {{1,sizeof(PORT_MESSAGE), R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
-    {0,"NtAlpcOpenSenderProcess", UNKNOWN, 24, },
-    {0,"NtAlpcOpenSenderThread", UNKNOWN, 24, },
+    {0,"NtAlpcOpenSenderProcess", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtAlpcOpenSenderThread", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtAlpcQueryInformation", UNKNOWN, 20, },
     {0,"NtAlpcQueryInformationMessage", UNKNOWN, 24, },
-    {0,"NtAlpcQueryInformationMessage", UNKNOWN, 24, },
-    {0,"NtAlpcRevokeSecurityContext", UNKNOWN, 12, },
+    {0,"NtAlpcRevokeSecurityContext", OK, 12, },
     /* FIXME i#98:
      * + #2 should be {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}
      *   but it seems to have custom data that is not all IN

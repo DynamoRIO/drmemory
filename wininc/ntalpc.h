@@ -105,6 +105,33 @@ NtAlpcImpersonateClientOfPort(
     );
 
 NTSTATUS NTAPI
+NtAlpcOpenSenderProcess(
+    __out HANDLE            ProcessHandle,
+    __in HANDLE             PortHandle,
+    __in PPORT_MESSAGE      PortMessage,
+    __reserved ULONG        Flags,
+    __in ACCESS_MASK        Access,
+    __in POBJECT_ATTRIBUTES ObjectAttribute
+    );
+
+NTSTATUS NTAPI
+NtAlpcOpenSenderThread(
+    __out HANDLE            ThreadHandle,
+    __in HANDLE             PortHandle,
+    __in PPORT_MESSAGE      PortMessage,
+    __reserved ULONG        Flags,
+    __in ACCESS_MASK        Access,
+    __in POBJECT_ATTRIBUTES ObjectAttributes
+    );
+
+NTSTATUS NTAPI
+NtAlpcRevokeSecurityContext(
+    __in HANDLE      PortHandle,
+    __reserved ULONG Flags,
+    __in HANDLE      ContextHandle
+    );
+
+NTSTATUS NTAPI
 NtAlpcSendWaitReceivePort(
     __in HANDLE                             PortHandle,
     __in ULONG                              Flags,
