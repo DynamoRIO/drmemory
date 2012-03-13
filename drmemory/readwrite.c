@@ -3615,6 +3615,7 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
             ASSERT(save != NULL, "missing bb info");
             if (save->check_ignore_unaddr)
                 bi->check_ignore_unaddr = true;
+            bi->share_xl8_max_diff = save->share_xl8_max_diff;
             hashtable_unlock(&bb_table);
         } else {
             /* We want to ignore unaddr refs by heap routines (when touching headers,
@@ -3630,6 +3631,8 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
                 if (bi->check_ignore_unaddr)
                     LOG(2, "inside heap routine: adding nop-if-mem-unaddr checks\n");
             });
+            /* i#826: share_xl8_max_diff changes over time, so save it. */
+            bi->share_xl8_max_diff = options.share_xl8_max_diff;
 #ifdef TOOL_DR_MEMORY
             if (options.check_memset_unaddr &&
                 in_replace_memset(dr_fragment_app_pc(tag))) {

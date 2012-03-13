@@ -1282,8 +1282,8 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
         }
         shadow_diff = (nxt_disp - cur_disp) / 4; /* 2 shadow bits per byte */
         /* The option is more intuitive to have it *4 so we /4 here */
-        if (shadow_diff > (int)options.share_xl8_max_diff/4 ||
-            shadow_diff < -(int)(options.share_xl8_max_diff/4)) {
+        if (shadow_diff > (int)cur->bb->share_xl8_max_diff/4 ||
+            shadow_diff < -(int)(cur->bb->share_xl8_max_diff/4)) {
             LOG(3, "  NOT sharing: disp diff %d too big\n", shadow_diff);
             STATS_INC(xl8_not_shared_disp_too_big);
             return false;
@@ -5396,6 +5396,8 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         else
             save->last_instr = bi->last_app_pc;
         save->check_ignore_unaddr = check_ignore_unaddr;
+        /* i#826: share_xl8_max_diff can change, save it. */
+        save->share_xl8_max_diff = bi->share_xl8_max_diff;
 
         /* we store the size and assume bbs are contiguous so we can free (i#260) */
         ASSERT(bi->first_app_pc != NULL, "first instr should have app pc");

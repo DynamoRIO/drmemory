@@ -155,6 +155,8 @@ struct _bb_info_t {
     app_pc fake_xl8; /* general for whole bb */
     instr_t *fake_xl8_override_instr; /* override fake_xl8 for this instr */
     app_pc fake_xl8_override_pc;
+    /* i#826: share_xl8_max_diff changes over time, so save it. */
+    uint share_xl8_max_diff;
 };
 
 /* Info per bb we need to save in order to restore app state */
@@ -169,6 +171,8 @@ typedef struct _bb_saved_info_t {
     /* we store the size and assume bbs are contiguous so we can free (i#260) */
     ushort bb_size;
     app_pc last_instr;
+    /* i#826: share_xl8_max_diff changes over time, so save it. */
+    uint share_xl8_max_diff;
 } bb_saved_info_t;
 
 bool
