@@ -519,12 +519,13 @@ setupapi.dll!*
 # from msxml3 routines, so we look for 3 in a row.
 # We hope that app data passed in will not go through 3
 # layers before any bug there is found.
+# Also happens in msxml6.dll.
 
 UNADDRESSABLE ACCESS
-name=default i#737: msxml3 heap probe
-msxml3.dll!*
-msxml3.dll!*
-msxml3.dll!*
+name=default i#737: msxml heap probe
+msxml?.dll!*
+msxml?.dll!*
+msxml?.dll!*
 
 ##################################################
 # i#752: GDI usage errors seen in system libraries on Chrome shutdown
