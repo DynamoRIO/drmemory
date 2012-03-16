@@ -5230,7 +5230,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 
     ASSERT(expect != NULL, "handle_alloc_pre: expect is NULL!");
     LOG(2, "entering alloc routine "PFX" %s type=%d rec=%d adj=%d%s\n",
-        expect, get_alloc_routine_name(expect),
+        expect, get_alloc_routine_name(expect), type,
         pt->in_heap_routine, pt->in_heap_adjusted,
         pt->in_heap_routine > 0 ? " (recursive)" : "");
     DOLOG(3, {
