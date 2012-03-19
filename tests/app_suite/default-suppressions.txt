@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -74,3 +74,11 @@ msvcrt.dll!memcpy_s
 LEAK
 ntdll.dll!RtlInitOutOfProcessMemoryStream
 ntdll.dll!RtlInitializeCriticalSection
+
+########################################################
+# Deliberate bugs in tests
+
+UNINITIALIZED READ
+name=i#837: deliberate race in test
+racecheck*.exe!DoubleCheckedLocking::UseMe
+racecheck*.exe!DoubleCheckedLocking::Worker3
