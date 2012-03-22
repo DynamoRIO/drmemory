@@ -127,6 +127,8 @@ typedef struct _modname_info_t {
      * names; else -1
      */
     int index;
+    /* i#446: Unique module id for postprocessing. */
+    uint id;
     /* i#589: don't show module! for executable or other modules */
     bool hide_modname;
 #ifdef DEBUG
@@ -188,6 +190,11 @@ static modname_info_t *modname_array[MAX_MODNAMES_STORED];
 /* Index 0 is reserved to indicate a system call as the top frame of a callstack */
 static uint modname_array_end = 1;
 
+/* Unique id for looking up full module paths when postprocessing.  Protected by
+ * modname_table lock.  0 means syscall or no module.
+ */
+static uint modname_unique_id = 1;
+
 /* PR 473640: our own module region tree */
 static rb_tree_t *module_tree;
 static void *modtree_lock;
@@ -222,6 +229,8 @@ struct _symbolized_frame_t {
     bool hide_modname;
     /* i#635 i#603: Print offsets for frames without symbols. */
     bool has_symbols;
+    /* i#446: Unique id of the module. */
+    uint modid;
     char modname[MAX_MODULE_LEN+1]; /* always null-terminated */
     /* This is a string instead of a number, again for comparison w/ wildcards
      * in the modoffs in suppression frames
@@ -353,6 +362,7 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     frame->is_module = false;
     frame->hide_modname = false;
     frame->has_symbols = false;
+    frame->modid = 0;
     frame->modname[0] = '\0';
     frame->modoffs[0] = '\0';
     frame->func[0] = '?';
@@ -473,7 +483,7 @@ frame_include_srcfile(symbolized_frame_t *frame IN)
 }
 
 /* We provide control over many aspects of callstack formatting (i#290)
- * encoded in op_print_flags.
+ * encoded in print_flags.
  * We put file:line in [] and absaddr <mod!offs> in ()
  *
  * Example:
@@ -562,7 +572,8 @@ print_frame(symbolized_frame_t *frame IN,
      */
     print_addrs =
         ((frame->loc.type == APP_LOC_PC && TEST(PRINT_ABS_ADDRESS, flags)) ||
-         (frame->is_module              && TEST(PRINT_MODULE_OFFSETS, flags)));
+         (frame->is_module && TEST(PRINT_MODULE_OFFSETS | PRINT_MODULE_ID,
+                                   flags)));
     later_info = print_addrs || TEST(PRINT_SYMBOL_OFFSETS, flags) ||
         (include_srcfile && !TEST(PRINT_SRCFILE_NEWLINE, flags));
 
@@ -628,6 +639,10 @@ print_frame(symbolized_frame_t *frame IN,
                      frame->modname, frame->modoffs);
         }
         BUFPRINT(buf, bufsz, *sofar, len, ")");
+        if (TEST(PRINT_MODULE_ID, flags)) {
+            /* i#446: We need unique module ids when postprocessing. */
+            BUFPRINT(buf, bufsz, *sofar, len, " modid:%d", frame->modid);
+        }
     }
     /* if file+line are on separate line, put after abs+mod!offs */
     if (TEST(PRINT_SRCFILE_NEWLINE, flags)) {
@@ -1400,6 +1415,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
                 "<name unavailable>" : info->name;
             frame->is_module = true;
             frame->hide_modname = info->hide_modname;
+            frame->modid = info->id;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
@@ -1625,12 +1641,14 @@ packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2])
 
 void
 symbolized_callstack_print(const symbolized_callstack_t *scs IN,
-                           char *buf, size_t bufsz, size_t *sofar, const char *prefix)
+                           char *buf, size_t bufsz, size_t *sofar,
+                           const char *prefix, bool for_log)
 {
     uint i;
     size_t max_flen = 0;
+    uint print_flags = for_log ? PRINT_FOR_POSTPROCESS : op_print_flags;
     ASSERT(scs != NULL, "invalid args");
-    if (TEST(PRINT_ALIGN_COLUMNS, op_print_flags)) {
+    if (TEST(PRINT_ALIGN_COLUMNS, print_flags)) {
         for (i = 0; i < scs->num_frames; i++) {
             size_t flen = strlen(scs->frames[i].func);
             if (flen > max_flen)
@@ -1638,7 +1656,8 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
         }
     }
     for (i = 0; i < scs->num_frames; i++) {
-        print_frame(&scs->frames[i], buf, bufsz, sofar, false, 0, max_flen, prefix);
+        print_frame(&scs->frames[i], buf, bufsz, sofar, for_log, print_flags,
+                    max_flen, prefix);
         /* op_truncate_below should have been done when symbolized cstack created.
          * too much of a perf hit to assert on every single frame.
          */
@@ -1713,8 +1732,6 @@ add_new_module(void *drcontext, const module_data_t *info)
         ASSERT(!has_noname, "multiple modules w/o name: may lose data");
         has_noname = true;
     }
-    LOG(1, "module load event: \"%s\" "PFX"-"PFX" %s\n",
-        name, info->start, info->end, info->full_path);
 
     hashtable_lock(&modname_table);
     /* key via path to reduce chance of duplicate name (i#729) */
@@ -1726,6 +1743,7 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->name = drmem_strdup(name, HEAPSTAT_HASHTABLE);
         name_info->path = drmem_strdup(info->full_path, HEAPSTAT_HASHTABLE);
         name_info->index = modname_array_end; /* store first index if multi-entry */
+        name_info->id = modname_unique_id++;
         /* we cache this value to avoid re-matching on every frame */
         name_info->hide_modname =
             (op_modname_hide != NULL &&
@@ -1756,6 +1774,13 @@ add_new_module(void *drcontext, const module_data_t *info)
             sz -= MAX_MODOFFS_STORED;
         }
     }
+
+    /* i#446: Log module load events with a full path and unique id for
+     * postprocessing.
+     */
+    dr_fprintf(f_global, NL"module load event: \"%s\" "PFX"-"PFX" modid: %d %s"NL,
+               name, info->start, info->end, name_info->id, info->full_path);
+
     hashtable_unlock(&modname_table);
     return name_info;
 }

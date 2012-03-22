@@ -134,11 +134,13 @@ enum {
     PRINT_SYMBOL_FIRST         = 0x0080,
     PRINT_ALIGN_COLUMNS        = 0x0100,
     PRINT_NOSYMS_OFFSETS       = 0x0200,
+    PRINT_MODULE_ID            = 0x0400,
 
     PRINT_FOR_POSTPROCESS      = (PRINT_FRAME_NUMBERS | PRINT_ABS_ADDRESS |
-                                  PRINT_MODULE_OFFSETS),
+                                  PRINT_MODULE_OFFSETS | PRINT_MODULE_ID),
     PRINT_FOR_LOG              = (PRINT_ABS_ADDRESS | PRINT_MODULE_OFFSETS |
-                                  PRINT_SYMBOL_OFFSETS | PRINT_LINE_OFFSETS),
+                                  PRINT_SYMBOL_OFFSETS | PRINT_LINE_OFFSETS |
+                                  PRINT_MODULE_ID),
 };
 
 /* length of strings identifying module+offset addresses:
@@ -278,7 +280,8 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
 
 void
 symbolized_callstack_print(const symbolized_callstack_t *scs IN,
-                           char *buf, size_t bufsz, size_t *sofar, const char *prefix);
+                           char *buf, size_t bufsz, size_t *sofar,
+                           const char *prefix, bool for_log);
 
 void
 symbolized_callstack_free(symbolized_callstack_t *scs);

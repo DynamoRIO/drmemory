@@ -119,6 +119,40 @@ static uint num_total[ERROR_MAX_VAL];
 struct _suppress_spec_t;
 typedef struct _suppress_spec_t suppress_spec_t;
 
+/* Error report information.  These are not saved like stored_error_t, and are
+ * only alive long enough to print an error report.
+ */
+typedef struct _error_toprint_t {
+    /* Fields common to all errors. */
+    uint errtype;               /* ERROR_* type: unaddr, uninit, etc. */
+    app_loc_t *loc;             /* App location. */
+    app_pc addr;                /* Access or alloc addr. */
+    size_t sz;                  /* Access size or alloc size. */
+
+    /* For unaddrs: */
+    bool write;                 /* Access was a write. */
+
+    /* For unaddrs, uninits, and warnings: */
+    bool report_instruction;    /* Whether to report instr. */
+
+    /* For unaddrs, warnings, and invalid heap args: */
+    bool report_neighbors;      /* Whether to report neighboring heap allocs. */
+
+    /* For unaddrs and uninits: */
+    app_pc container_start;     /* Container start. */
+    app_pc container_end;       /* Container end. */
+
+    /* For warnings and invalid heap args: */
+    const char *msg;            /* Free-form message. */
+
+    /* For invalid heap args: */
+    packed_callstack_t *alloc_pcs; /* Used for mismatched routine reports. */
+
+    /* For leaks: */
+    size_t indirect_size;       /* Size of indirect allocs. */
+    const char *label;          /* Extra label (IGNORED or REACHABLE). */
+} error_toprint_t;
+
 /* Though any one instance of an address can have only one error
  * type, the same address could have multiple via different
  * executions.  Thus we must use a key combining the callstack and
@@ -138,6 +172,14 @@ typedef struct _stored_error_t {
     /* We also keep a linked list so we can iterate in id order */
     struct _stored_error_t *next;
 } stored_error_t;
+
+/* We want to store extra data with each error callstack */
+#define MAX_INSTR_DISASM 96
+typedef struct _error_callstack_t {
+    symbolized_callstack_t scs;
+    char instruction[MAX_INSTR_DISASM];
+    size_t bytes_leaked;
+} error_callstack_t;
 
 #define ERROR_HASH_BITS 8
 hashtable_t error_table;
@@ -221,6 +263,11 @@ report_delayed_thread(thread_id_t tid);
 static void
 report_main_thread(void);
 
+static void
+print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
+                      stored_error_t *err, error_callstack_t *ecs,
+                      bool for_log);
+
 /***************************************************************************
  * suppression list
  */
@@ -266,14 +313,6 @@ static uint supp_num[ERROR_MAX_VAL];
 #ifdef USE_DRSYMS
 static void *suppress_file_lock;
 #endif
-
-/* We want to store extra data with each error callstack */
-#define MAX_INSTR_DISASM 96
-typedef struct _error_callstack_t {
-    symbolized_callstack_t scs;
-    char instruction[MAX_INSTR_DISASM];
-    size_t bytes_leaked;
-} error_callstack_t;
 
 static void
 error_callstack_init(error_callstack_t *ecs)
@@ -1485,7 +1524,7 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix)
 }
 
 static void
-report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
+report_error_from_buffer(file_t f, char *buf, bool add_prefix)
 {
     if (add_prefix) {
         /* we want atomic prints to stderr and for now we pay the cost of
@@ -1525,14 +1564,6 @@ report_error_from_buffer(file_t f, char *buf, app_loc_t *loc, bool add_prefix)
         global_free(newbuf, newsz, HEAPSTAT_CALLSTACK);
     } else
         print_buffer(f, buf);
-
-#ifdef USE_DRSYMS
-    if (f != f_global && f != STDERR) {
-        print_buffer(f_global, buf);
-        /* disassemble to f_global only since racy */
-        f = f_global;
-    }
-#endif
 }
 
 /* caller should hold error_lock */
@@ -1601,7 +1632,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
  */
 static void
 report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
-                 bool invalid_heap_arg)
+                 bool invalid_heap_arg, bool for_log)
 {
     void *drcontext = dr_get_current_drcontext();
     ssize_t len = 0;
@@ -1777,7 +1808,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
              * and avoid this extra work
              */
             packed_callstack_to_symbolized(pcs, &scs);
-            symbolized_callstack_print(&scs, buf, bufsz, sofar, INFO_PFX);
+            symbolized_callstack_print(&scs, buf, bufsz, sofar, INFO_PFX,
+                                       for_log);
             symbolized_callstack_free(&scs);
         } else
             BUFPRINT(buf, bufsz, *sofar, len, NL);
@@ -1809,20 +1841,51 @@ report_symbol_advice(void)
 }
 #endif
 
+/* Prints error reports to their various files:
+ * + stderr: if -results_to_stderr, uses -callstack_style
+ * + f_results: if using drsyms, uses -callstack_style
+ * + f_global: for postprocessing, uses PRINT_FOR_POSTPROCESS
+ * + logfile: if -thread_logs, uses PRINT_FOR_POSTPROCESS
+ */
+static void
+print_error_report(void *drcontext, char *buf, size_t bufsz, bool reporting,
+                   error_toprint_t *etp, stored_error_t *err,
+                   error_callstack_t *ecs)
+{
+#ifdef USE_DRSYMS
+    /* First, if using drsyms, print the report with user's -callstack_style to
+     * f_results and stderr if -results_to_stderr.
+     */
+    if (reporting) {
+        print_error_to_buffer(buf, bufsz, etp, err, ecs, false/*for log*/);
+        report_error_from_buffer(f_results, buf, false);
+        if (options.results_to_stderr) {
+            report_error_from_buffer(STDERR, buf, true);
+        }
+    }
+#endif
+
+    /* Next, print to the log to support postprocessing.  Only print suppressed
+     * errors if -log_suppressed_errors or at higher verbosity.
+     */
+    if (IF_DRSYMS_ELSE((reporting || options.log_suppressed_errors ||
+                        options.verbose >= 2), true)) {
+        print_error_to_buffer(buf, bufsz, etp, err, ecs, true/*for log*/);
+        report_error_from_buffer(f_global, buf, false);
+        if (options.thread_logs) {
+            report_error_from_buffer(LOGFILE_GET(drcontext), buf, false);
+        }
+    }
+}
+
 /* pcs is only used for invalid heap args */
 static void
-report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
-             app_pc container_start, app_pc container_end,
-             const char *msg, dr_mcontext_t *mc,
-             bool report_instruction, bool report_neighbors,
-             packed_callstack_t *pcs)
+report_error(error_toprint_t *etp, dr_mcontext_t *mc)
 {
     void *drcontext = dr_get_current_drcontext();
     tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
     stored_error_t *err;
     bool reporting = false;
-    ssize_t len = 0;
-    size_t sofar = 0;
     suppress_spec_t *spec;
     error_callstack_t ecs;
 
@@ -1852,7 +1915,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         num_throttled_errors++;
         goto report_error_done;
     }
-    err = record_error(type, NULL, loc, mc, false/*no lock */);
+    err = record_error(etp->errtype, NULL, etp->loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {
             if (err->suppressed_by_default)
@@ -1872,16 +1935,16 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
     /* for invalid heap arg, now that we always do our alloc pre-hook in the
      * callee, the first frame is a retaddr and its line should thus be -1
      */
-    if (type == ERROR_INVALID_HEAP_ARG)
+    if (etp->errtype == ERROR_INVALID_HEAP_ARG)
         packed_callstack_first_frame_retaddr(err->pcs);
 
     /* Convert to symbolized so we can compare to suppressions */
     packed_callstack_to_symbolized(err->pcs, &ecs.scs);
 
-    if (report_instruction && loc != NULL && loc->type == APP_LOC_PC) {
-        app_pc cur_pc = loc_to_pc(loc);
+    if (etp->report_instruction &&
+        etp->loc != NULL && etp->loc->type == APP_LOC_PC) {
+        app_pc cur_pc = loc_to_pc(etp->loc);
         if (cur_pc != NULL) {
-            void *drcontext = dr_get_current_drcontext();
             DR_TRY_EXCEPT(drcontext, {
                 int dis_len;
                 disassemble_to_buffer(drcontext, cur_pc, cur_pc, false/*!show pc*/,
@@ -1908,11 +1971,7 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
         }
     }
 
-    /* ensure starts at beginning of line (can be in middle of another log) */
-    if (!options.thread_logs)
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
-
-    reporting = !on_suppression_list(type, &ecs, &spec);
+    reporting = !on_suppression_list(etp->errtype, &ecs, &spec);
     if (!reporting) {
         err->suppressed = true;
         err->suppressed_by_default = spec->is_default;
@@ -1921,18 +1980,42 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
             num_suppressions_matched_default++;
         else
             num_suppressions_matched_user++;
-        num_total[type]--;
-        if (IF_DEBUG_ELSE(options.verbose < 2, true)) {
-            dr_mutex_unlock(error_lock);
-            goto report_error_done;
-        }
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "SUPPRESSED ");
+        num_total[etp->errtype]--;
     } else {
         acquire_error_number(err);
-        report_error_suppression(type, &ecs, err->id);
+        report_error_suppression(etp->errtype, &ecs, err->id);
         num_reported_errors++;
     }
     dr_mutex_unlock(error_lock);
+
+    print_error_report(drcontext, pt->errbuf, pt->errbufsz, reporting, etp, err,
+                       &ecs);
+
+ report_error_done:
+    if (etp->errtype == ERROR_UNADDRESSABLE && reporting && options.pause_at_unaddressable)
+        wait_for_user("pausing at unaddressable access error");
+    else if (etp->errtype == ERROR_UNDEFINED && reporting && options.pause_at_uninitialized)
+        wait_for_user("pausing at uninitialized read error");
+    else if (reporting && options.pause_at_error)
+        wait_for_user("pausing at error");
+
+    symbolized_callstack_free(&ecs.scs);
+}
+
+static void
+print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
+                      stored_error_t *err, error_callstack_t *ecs, bool for_log)
+{
+    ssize_t len = 0;
+    size_t sofar = 0;
+    app_pc addr = etp->addr;
+    app_pc addr_end = etp->addr + etp->sz;
+
+    /* ensure starts at beginning of line (can be in middle of another log) */
+    if (!options.thread_logs)
+        BUFPRINT(buf, bufsz, sofar, len, ""NL);
+    if (err != NULL && err->suppressed)
+        BUFPRINT(buf, bufsz, sofar, len, "SUPPRESSED ");
 
     /* For Linux and ESXi, postprocess.pl will produce the official
      * error numbers (after symbol suppression might remove some errors).
@@ -1941,124 +2024,135 @@ report_error(uint type, app_loc_t *loc, app_pc addr, size_t sz, bool write,
      * also for PR 423750 which will say "Error #n: reading 0xaddr".
      * On Windows for USE_DRSYMS these are the official error numbers.
      */
-    BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "Error #%d: ", err->id);
-    
-    if (type == ERROR_UNADDRESSABLE) {
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "UNADDRESSABLE ACCESS: %s", write ? "writing " : "reading ");
+    if (err != NULL)
+        BUFPRINT(buf, bufsz, sofar, len, "Error #%d: ", err->id);
+
+    if (etp->errtype == ERROR_UNADDRESSABLE) {
+        BUFPRINT(buf, bufsz, sofar, len,
+                 "UNADDRESSABLE ACCESS: %s", etp->write ? "writing " : "reading ");
         if (!options.brief)
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, PFX"-"PFX" ", addr, addr+sz);
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%d byte(s)", sz);
+            BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr_end);
+        BUFPRINT(buf, bufsz, sofar, len, "%d byte(s)", etp->sz);
         /* only report for syscall params or large (string) ops: always if subset */
-        if (!options.brief && container_start != NULL &&
-            (container_end - container_start > 8 || addr > container_start ||
-             addr+sz < container_end || loc->type == APP_LOC_SYSCALL)) {
-            ASSERT(container_end > container_start, "invalid range");
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                     " within "PFX"-"PFX""NL, container_start, container_end);
+        if (!options.brief && etp->container_start != NULL &&
+            (etp->container_end - etp->container_start > 8 ||
+             addr > etp->container_start || addr_end < etp->container_end ||
+             etp->loc->type == APP_LOC_SYSCALL)) {
+            ASSERT(etp->container_end > etp->container_start, "invalid range");
+            BUFPRINT(buf, bufsz, sofar, len, " within "PFX"-"PFX""NL,
+                     etp->container_start, etp->container_end);
         } else
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
-    } else if (type == ERROR_UNDEFINED) {
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "UNINITIALIZED READ: ");
+            BUFPRINT(buf, bufsz, sofar, len, NL);
+    } else if (etp->errtype == ERROR_UNDEFINED) {
+        BUFPRINT(buf, bufsz, sofar, len, "UNINITIALIZED READ: ");
         if (addr < (app_pc)(64*1024)) {
             /* We use a hack to indicate registers.  These addresses should
              * be unadressable, not undefined, if real addresses.
              * FIXME: use dr_loc_t here as well for cleaner multi-type
              */
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
+            BUFPRINT(buf, bufsz, sofar, len,
                      "reading register %s"NL, (addr == (app_pc)REG_EFLAGS) ?
                      "eflags" : get_register_name((reg_id_t)(ptr_uint_t)addr));
         } else {
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "reading ");
+            BUFPRINT(buf, bufsz, sofar, len, "reading ");
             if (!options.brief) {
-                BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, PFX"-"PFX" ",
-                         addr, addr+sz);
+                BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr_end);
             }
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%d byte(s)", sz);
+            BUFPRINT(buf, bufsz, sofar, len, "%d byte(s)", etp->sz);
             /* only report for syscall params or large (string) ops: always if subset */
-            if (container_start != NULL &&
-                (container_end - container_start > 8 || addr > container_start ||
-                 addr+sz < container_end || loc->type == APP_LOC_SYSCALL)) {
-                ASSERT(container_end > container_start, "invalid range");
-                BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                         " within "PFX"-"PFX""NL, container_start, container_end);
+            if (!options.brief && etp->container_start != NULL &&
+                (etp->container_end - etp->container_start > 8 ||
+                 addr > etp->container_start || addr_end < etp->container_end ||
+                 etp->loc->type == APP_LOC_SYSCALL)) {
+                ASSERT(etp->container_end > etp->container_start, "invalid range");
+                BUFPRINT(buf, bufsz, sofar, len, " within "PFX"-"PFX""NL,
+                         etp->container_start, etp->container_end);
             } else
-                BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, ""NL);
+                BUFPRINT(buf, bufsz, sofar, len, ""NL);
         }
-    } else if (type == ERROR_INVALID_HEAP_ARG) {
+    } else if (etp->errtype == ERROR_INVALID_HEAP_ARG) {
         /* Note that on Windows the call stack will likely show libc, since
          * we monitor Rtl inside ntdll
          */
-        ASSERT(msg != NULL, "invalid arg");
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                 "INVALID HEAP ARGUMENT%s", msg);
+        ASSERT(etp->msg != NULL, "invalid arg");
+        BUFPRINT(buf, bufsz, sofar, len,
+                 "INVALID HEAP ARGUMENT%s", etp->msg);
         /* Only print address when reporting neighbors */
-        if (!options.brief && pcs == NULL && report_neighbors)
-            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, " "PFX, addr);
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, NL);
-    } else if (type == ERROR_WARNING) {
-        ASSERT(msg != NULL, "invalid arg");
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sWARNING: %s"NL,
+        if (!options.brief && etp->alloc_pcs == NULL && etp->report_neighbors)
+            BUFPRINT(buf, bufsz, sofar, len, " "PFX, addr);
+        BUFPRINT(buf, bufsz, sofar, len, NL);
+    } else if (etp->errtype == ERROR_WARNING) {
+        ASSERT(etp->msg != NULL, "invalid arg");
+        BUFPRINT(buf, bufsz, sofar, len, "%sWARNING: %s"NL,
                  /* if in log file, distinguish from internal warnings via "REPORTED" */
-                 IF_DRSYMS_ELSE("", "REPORTED "), msg);
+                 (for_log ? "REPORTED " : ""), etp->msg);
+    } else if (etp->errtype >= ERROR_LEAK &&
+               etp->errtype <= ERROR_MAX_VAL) {
+        /* For REACHABLE and IGNORED leak reporting. */
+        /* XXX: Instead of a string label, we should make ERROR_REACHABLE_LEAK
+         * and maybe ERROR_IGNORED_LEAK enums.
+         */
+        if (etp->label != NULL)
+            BUFPRINT(buf, bufsz, sofar, len, etp->label);
+        if (etp->errtype == ERROR_POSSIBLE_LEAK)
+            BUFPRINT(buf, bufsz, sofar, len, "POSSIBLE ");
+        BUFPRINT(buf, bufsz, sofar, len, "LEAK %d ", etp->sz);
+        if (etp->indirect_size > 0 || !options.brief)
+            BUFPRINT(buf, bufsz, sofar, len, "direct ");
+        BUFPRINT(buf, bufsz, sofar, len, "bytes ");
+        if (!options.brief)
+            BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr_end);
+        if (etp->indirect_size > 0 || !options.brief) {
+            BUFPRINT(buf, bufsz, sofar, len,
+                     "+ %d indirect bytes", etp->indirect_size);
+        }
+        BUFPRINT(buf, bufsz, sofar, len, NL);
     } else {
         ASSERT(false, "unknown error type");
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
+        BUFPRINT(buf, bufsz, sofar, len,
                  "UNKNOWN ERROR TYPE: REPORT THIS BUG"NL);
     }
 
-    symbolized_callstack_print(&ecs.scs, pt->errbuf, pt->errbufsz, &sofar, NULL);
+    symbolized_callstack_print(&ecs->scs, buf, bufsz, &sofar, NULL, for_log);
 
-    if (!options.brief) {
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", INFO_PFX);
-        print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, true);
+    /* Print the timestamp for non-leak reports, unless -brief. */
+    if (etp->errtype < ERROR_LEAK && !options.brief) {
+        BUFPRINT(buf, bufsz, sofar, len, "%s", INFO_PFX);
+        print_timestamp_and_thread(buf, bufsz, &sofar, true);
     }
 
-    if (report_neighbors) {
+    if (etp->report_neighbors) {
         /* print auxiliary info about the target address (PR 535568) */
-        report_heap_info(pt->errbuf, pt->errbufsz, &sofar, addr, sz,
-                         type == ERROR_INVALID_HEAP_ARG);
+        report_heap_info(buf, bufsz, &sofar, addr, etp->sz,
+                         etp->errtype == ERROR_INVALID_HEAP_ARG, for_log);
     }
-    if (pcs != NULL) {
+    if (etp->alloc_pcs != NULL) {
         symbolized_callstack_t scs;
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
+        BUFPRINT(buf, bufsz, sofar, len,
                  "%smemory was allocated here:"NL, INFO_PFX);
         /* to get var-align we need to convert to symbolized.
          * if we remove var-align feature, should use direct packed_callstack_print
          * and avoid this extra work
          */
-        packed_callstack_to_symbolized(pcs, &scs);
-        symbolized_callstack_print(&scs, pt->errbuf, pt->errbufsz, &sofar, INFO_PFX);
+        packed_callstack_to_symbolized(etp->alloc_pcs, &scs);
+        symbolized_callstack_print(&scs, buf, bufsz, &sofar, INFO_PFX, for_log);
         symbolized_callstack_free(&scs);
     }
 
-    if (!options.brief && ecs.instruction[0] != '\0') {
-        BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%sinstruction: %s"NL,
-                 INFO_PFX, ecs.instruction);
+    if (!options.brief && ecs->instruction[0] != '\0') {
+        BUFPRINT(buf, bufsz, sofar, len, "%sinstruction: %s"NL,
+                 INFO_PFX, ecs->instruction);
     }
 
-    BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "%s", END_MARKER);
-
-    report_error_from_buffer(IF_DRSYMS_ELSE(reporting ? f_results :
-                                            LOGFILE_GET(drcontext),
-                                            LOGFILE_GET(drcontext)),
-                             pt->errbuf, loc, false);
-#ifdef USE_DRSYMS
-    if (reporting && options.results_to_stderr) {
-        report_error_from_buffer(STDERR,
-                                 pt->errbuf, loc, true);
+    if (!for_log && !options.check_leaks &&
+        (etp->errtype == ERROR_LEAK || etp->errtype == ERROR_POSSIBLE_LEAK)) {
+        BUFPRINT(buf, bufsz, sofar, len,
+                 "   (run with -check_leaks to obtain a callstack)"NL,
+                 (etp->errtype == ERROR_LEAK) ? "check" : "possible");
     }
-#endif
-    
- report_error_done:
-    if (type == ERROR_UNADDRESSABLE && reporting && options.pause_at_unaddressable)
-        wait_for_user("pausing at unaddressable access error");
-    else if (type == ERROR_UNDEFINED && reporting && options.pause_at_uninitialized)
-        wait_for_user("pausing at uninitialized read error");
-    else if (reporting && options.pause_at_error)
-        wait_for_user("pausing at error");
 
-    symbolized_callstack_free(&ecs.scs);
+    if (for_log)
+        BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);
 }
 
 void
@@ -2066,9 +2160,17 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             app_pc container_start, app_pc container_end,
                             dr_mcontext_t *mc)
 {
-    report_error(ERROR_UNADDRESSABLE, loc, addr, sz, write,
-                 container_start, container_end, NULL, mc, true/*include instr*/,
-                 true/*report neighbors*/, NULL);
+    error_toprint_t etp = {0};
+    etp.errtype = ERROR_UNADDRESSABLE;
+    etp.loc = loc;
+    etp.addr = addr;
+    etp.sz = sz;
+    etp.write = write;
+    etp.container_start = container_start;
+    etp.container_end = container_end;
+    etp.report_instruction = true;
+    etp.report_neighbors = true;
+    report_error(&etp, mc);
 }
 
 void
@@ -2076,9 +2178,15 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
                       app_pc container_start, app_pc container_end,
                       dr_mcontext_t *mc)
 {
-    report_error(ERROR_UNDEFINED, loc, addr, sz, false,
-                 container_start, container_end, NULL, mc, true/*include instr*/,
-                 false/*no neighbors*/, NULL);
+    error_toprint_t etp = {0};
+    etp.errtype = ERROR_UNDEFINED;
+    etp.loc = loc;
+    etp.addr = addr;
+    etp.sz = sz;
+    etp.container_start = container_start;
+    etp.container_end = container_end;
+    etp.report_instruction = true;
+    report_error(&etp, mc);
 }
 
 void
@@ -2092,8 +2200,13 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
         if (options.warn_null_ptr)
             report_warning(loc, mc, "free() called with NULL pointer", NULL, 0, false);
     } else {
-        report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL,
-                     msg, mc, false/*no instr*/, true/*neighbors*/, NULL);
+        error_toprint_t etp = {0};
+        etp.errtype = ERROR_INVALID_HEAP_ARG;
+        etp.loc = loc;
+        etp.addr = addr;
+        etp.msg = msg;
+        etp.report_neighbors = true;
+        report_error(&etp, mc);
     }
 }
 
@@ -2101,16 +2214,28 @@ void
 report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
                        const char *msg, packed_callstack_t *pcs)
 {
-    report_error(ERROR_INVALID_HEAP_ARG, loc, addr, 0, false, NULL, NULL,
-                 msg, mc, false/*no instr*/, false/*no neighbors*/, pcs);
+    error_toprint_t etp = {0};
+    etp.errtype = ERROR_INVALID_HEAP_ARG;
+    etp.loc = loc;
+    etp.addr = addr;
+    etp.msg = msg;
+    etp.alloc_pcs = pcs;
+    report_error(&etp, mc);
 }
 
 void
 report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
                app_pc addr, size_t sz, bool report_instruction)
 {
-    report_error(ERROR_WARNING, loc, addr, sz, false, NULL, NULL, msg, mc,
-                 report_instruction, sz > 0/*neighbors*/, NULL);
+    error_toprint_t etp = {0};
+    etp.errtype = ERROR_WARNING;
+    etp.loc = loc;
+    etp.addr = addr;
+    etp.sz = sz;
+    etp.msg = msg;
+    etp.report_instruction = report_instruction;
+    etp.report_neighbors = (sz > 0);
+    report_error(&etp, mc);
 }
 
 /* saves the values of all counts that are modified in report_leak() */
@@ -2177,22 +2302,16 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
      * we then marked as defined to avoid further errors: so only complain
      * if in known malloc regions.
      */
-    ssize_t len = 0;
-    size_t sofar = 0;
-    char *buf, *buf_print;
+    char *buf;
     size_t bufsz;
     void *drcontext = dr_get_current_drcontext();
-    bool suppressed = false;
+    bool reporting = false;
     const char *label = NULL;
     bool locked_malloc = false;
-    bool printed_leading_newline = false;
     stored_error_t *err = NULL;
     uint type;
-#ifdef USE_DRSYMS
-    /* only real and possible leaks go to results.txt */
-    file_t tofile = f_global;
-#endif
     suppress_spec_t *spec;
+    error_toprint_t etp = {0};
     error_callstack_t ecs;
     error_callstack_init(&ecs);
 
@@ -2234,12 +2353,8 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     num_total_leaks++;
 
     /* we need to know the type prior to dup checking */
-    if (label != NULL) {
+    if (label != NULL) {  /* REACHABLE or STILL-ADDRESSABLE */
         type = ERROR_MAX_VAL;
-#ifdef USE_DRSYMS
-        if (reachable && show_reachable)
-            tofile = f_results;
-#endif
     } else if (early && !reachable && options.ignore_early_leaks) {
         /* early reachable are listed as reachable, not ignored */
         label = "IGNORED ";
@@ -2247,10 +2362,8 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         type = ERROR_MAX_VAL;
     } else if (maybe_reachable) {
         type = ERROR_POSSIBLE_LEAK;
-        IF_DRSYMS(tofile = f_results;)
     } else {
         type = ERROR_LEAK;
-        IF_DRSYMS(tofile = f_results;)
     }
 
     /* protect counter updates below */
@@ -2260,17 +2373,17 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
          * top-frame check as for other error suppression.
          * FIXME PR 460923: support matching any prefix
          */
-        if (pcs == NULL) {
+        if (!early && pcs == NULL) {
             locked_malloc = true;
             malloc_lock(); /* unlocked below */
             pcs = malloc_get_client_data(addr);
         }
-        ASSERT(pcs != NULL, "malloc must have callstack");
 
         /* We check dups only for real and possible leaks.
          * We have no way to eliminate dups for !check_leaks.
          */
         if (type < ERROR_MAX_VAL) {
+            ASSERT(pcs != NULL, "malloc must have callstack");
             err = record_error(type, pcs, NULL, NULL, true/*hold lock*/);
             if (err->count > 1) {
                 /* Duplicate */
@@ -2299,16 +2412,22 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             }
         }
 
-        /* Convert to symbolized so we can compare to suppressions */
-        packed_callstack_to_symbolized(pcs, &ecs.scs);
+        /* Convert to symbolized so we can compare to suppressions.  Don't try
+         * to get stacks for early leaks, leave ecs.scs with 0 frames.
+         */
+        if (!early) {
+            ASSERT(pcs != NULL, "non-early allocs must have stacks");
+            packed_callstack_to_symbolized(pcs, &ecs.scs);
+        }
+
         if (locked_malloc)
             malloc_unlock();
 
         /* only real and possible leaks can be suppressed */
         if (type < ERROR_MAX_VAL)
-            suppressed = on_suppression_list(type, &ecs, &spec);
+            reporting = !on_suppression_list(type, &ecs, &spec);
 
-        if (!suppressed && type < ERROR_MAX_VAL) {
+        if (reporting && type < ERROR_MAX_VAL) {
             /* We can have identical leaks across nudges: keep same error #.
              * Multiple nudges are kind of messy wrt leaks: we try to not
              * increment counts or add new leaks that were there in the
@@ -2327,85 +2446,60 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 #endif
                 num_unique[err->errtype]++;
             }
-            printed_leading_newline = true;
-            BUFPRINT(buf, bufsz, sofar, len, NL"Error #%d: ", err->id);
             /* We only count bytes for non-suppressed leaks */
             /* Total size does not distinguish direct from indirect (PR 576032) */
             if (maybe_reachable)
                 num_bytes_possible_leaked += size + indirect_size;
             else
                 num_bytes_leaked += size + indirect_size;
-        }
-    } else if (type < ERROR_MAX_VAL) {
-        /* no dup checking */
-        num_unique[type]++;
-        if (maybe_reachable)
-            num_bytes_possible_leaked += size + indirect_size;
-        else
-            num_bytes_leaked += size + indirect_size;
-    }
-
-    /* ensure starts at beginning of line (can be in middle of another log) */
-    if (!options.thread_logs && !printed_leading_newline)
-        BUFPRINT(buf, bufsz, sofar, len, ""NL);
-    if (label != NULL)
-        BUFPRINT(buf, bufsz, sofar, len, label);
-
-    if (suppressed) {
-        if (err != NULL) {
-            ASSERT(spec != NULL, "invalid local");
+        } else if (type < ERROR_MAX_VAL) {
+            ASSERT(err != NULL && spec != NULL, "invalid local");
+            err->suppressed = true;
+            err->suppressed_by_default = spec->is_default;
             err->suppress_spec = spec;
             if (err->suppress_spec->is_default)
                 num_suppressed_leaks_default++;
             else
                 num_suppressed_leaks_user++;
             err->suppress_spec->bytes_leaked += size + indirect_size;
-            err->suppressed = true;
             num_total[type]--;
+        } else if (reachable && show_reachable) {
+            /* We don't attempt to suppress reachable leaks if the user sets
+             * -show_reachable.
+             */
+            reporting = true;
         }
-        if (IF_DEBUG_ELSE(options.verbose < 2, true)) {
-            dr_mutex_unlock(error_lock);
-            goto report_leak_done;
+    } else if (type < ERROR_MAX_VAL) {
+        /* For -no_check_leaks, we still report leaks without callstacks and
+         * count how many bytes were leaked.  Without callstacks, we can't
+         * de-duplicate, and assume each leak is unique.
+         */
+        num_unique[type]++;
+        if (maybe_reachable)
+            num_bytes_possible_leaked += size + indirect_size;
+        else
+            num_bytes_leaked += size + indirect_size;
+        if (type == ERROR_LEAK ||
+            (type == ERROR_POSSIBLE_LEAK && options.possible_leaks) ||
+            (reachable && show_reachable)) {
+            reporting = true;
         }
-        BUFPRINT(buf, bufsz, sofar, len, "SUPPRESSED ");
-    } else if (maybe_reachable) {
-        if (!options.possible_leaks) {
-            dr_mutex_unlock(error_lock);
-            goto report_leak_done;
-        }
-        BUFPRINT(buf, bufsz, sofar, len, "POSSIBLE ");
     }
-    /* No longer printing out shadow info since it's not relevant for
-     * reachability-based leak scanning
-     */
-    BUFPRINT(buf, bufsz, sofar, len, "LEAK %d ", size);
-    if (indirect_size > 0 || !options.brief)
-        BUFPRINT(buf, bufsz, sofar, len, "direct ");
-    BUFPRINT(buf, bufsz, sofar, len, "bytes ");
-    if (!options.brief)
-        BUFPRINT(buf, bufsz, sofar, len, PFX"-"PFX" ", addr, addr+size);
-    if (indirect_size > 0 || !options.brief)
-        BUFPRINT(buf, bufsz, sofar, len, "+ %d indirect bytes", indirect_size);
-    BUFPRINT(buf, bufsz, sofar, len, NL);
-    buf_print = buf;
-    if ((type == ERROR_LEAK && options.check_leaks) ||
-        (type == ERROR_POSSIBLE_LEAK && options.possible_leaks) ||
-        (reachable && show_reachable)) {
-        ASSERT(pcs != NULL, "malloc must have callstack");
-        symbolized_callstack_print(&ecs.scs, buf, bufsz, &sofar, NULL);
-        BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);
-    } else if (type == ERROR_LEAK || type == ERROR_POSSIBLE_LEAK) {
-        BUFPRINT(buf, bufsz, sofar, len,
-                 "   (run with -check_%sleaks to obtain a callstack)"NL,
-                 (type == ERROR_LEAK) ? "" : "possible_");
-    }
+
+    /* Done modifying err and stats. */
     dr_mutex_unlock(error_lock);
-    report_error_from_buffer(IF_DRSYMS_ELSE(suppressed ? f_global : tofile,
-                                            f_global), buf_print, NULL, false);
-#ifdef USE_DRSYMS
-    if (!suppressed && tofile == f_results && options.results_to_stderr)
-        report_error_from_buffer(STDERR, buf_print, NULL, true);
-#endif
+
+    /* If possible leak checking is off, don't report them, just log them. */
+    if (maybe_reachable && !options.possible_leaks)
+        reporting = false;
+
+    etp.errtype = type;
+    etp.addr = addr;
+    etp.sz = size;
+    etp.indirect_size = indirect_size;
+    etp.label = label;
+
+    print_error_report(drcontext, buf, bufsz, reporting, &etp, err, &ecs);
 
  report_leak_done:
     if (drcontext == NULL || drmgr_get_tls_field(drcontext, tls_idx_report) == NULL)
@@ -2426,7 +2520,7 @@ report_malloc(app_pc start, app_pc end, const char *routine, dr_mcontext_t *mc)
                  "%s "PFX"-"PFX"\n", routine, start, end);
         print_callstack(pt->errbuf, pt->errbufsz, &sofar, mc, false/*no fps*/,
                         NULL, 0, true);
-        report_error_from_buffer(LOGFILE_GET(drcontext), pt->errbuf, NULL, false);
+        report_error_from_buffer(LOGFILE_GET(drcontext), pt->errbuf, false);
     });
 }
 
@@ -2453,7 +2547,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
                  "%s heap region "PFX"-"PFX"\n",
                  add ? "adding" : "removing", start, end);
         print_callstack(buf, bufsz, &sofar, mc, false/*no fps*/, NULL, 0, true);
-        report_error_from_buffer(f_global, buf, NULL, false);
+        report_error_from_buffer(f_global, buf, false);
         if (pt == NULL)
             global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
     });

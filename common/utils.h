@@ -667,7 +667,7 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
  * STRINGS
  */
 
-#define END_MARKER IF_DRSYMS_ELSE("", "\terror end"NL)
+#define END_MARKER "\terror end"NL
 
 /* DR_MAX_OPTIONS_LENGTH is the maximum client options string length that DR
  * will give us.  by making each individual option buffer this long, we won't

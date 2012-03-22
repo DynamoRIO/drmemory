@@ -153,6 +153,9 @@ OPTION_CLIENT_BOOL(client, quiet, false,
 OPTION_CLIENT_BOOL(client, results_to_stderr, true,
                    "Print error reports to stderr in addition to results.txt",
                    "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.")
+OPTION_CLIENT_BOOL(client, log_suppressed_errors, false,
+                   "Log suppressed error reports for postprocessing.",
+                   "Log suppressed error reports for postprocessing.  Enabling this option will increase the logfile size, but will allow users to re-process suppressed reports with alternate suppressions or additional symbols.")
 #endif
 OPTION_CLIENT_BOOL(client, ignore_asserts, false,
                    "Do not abort on debug-build asserts",
@@ -197,6 +200,7 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
               "<li>0x0100 = put fields in aligned columns@@"
               "<li>0x0200 = show symbol and module offset when symbols are"
               " missing@@"
+              "<li>0x0400 = print unique module id@@"
               "</ul>@@")
               /* (when adding, update the max value as well!) */
 

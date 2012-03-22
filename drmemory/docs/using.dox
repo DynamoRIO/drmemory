@@ -465,6 +465,10 @@ on particular source files.  Use the \p -srcfilter option to do this:
 
 The \p -srcfilter option is not available in the Windows version of Dr. Memory.
 
+To get more information on what errors are being suppressed, run with
+\p -log_suppressed_errors.  All suppressed reports will be printed to the global
+logfile.
+
 Dr. Memory comes with a set of default suppressions to avoid known false
 positives in system libraries.  These can be disabled with the option
 -no_default_suppress.
