@@ -34,13 +34,13 @@ gdi.cpp:51
 main
 gdi.cpp:206
 
-Error #3: WARNING: GDI usage error: DC used for select was created by now-dead thread
+Error #3: WARNING: GDI usage error: DC used for select was created by now-exited thread
 test_DC_threads
 gdi.cpp:101
 main
 gdi.cpp:208
 
-Error #4: WARNING: GDI usage error: DC used for select was created by now-dead thread
+Error #4: WARNING: GDI usage error: DC used for select was created by now-exited thread
 test_DC_threads
 gdi.cpp:103
 main

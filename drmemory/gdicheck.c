@@ -44,6 +44,7 @@
 typedef struct _per_dc_t {
     thread_id_t thread;
     bool created; /* else, obtained via Get */
+    bool exited;
     bool dup_null; /* dup of NULL HDC? */
     /* count of non-stock selected objects */
     uint non_stock_selected;
@@ -108,7 +109,7 @@ gdicheck_thread_exit(void *drcontext)
             per_dc_t *pdc = (per_dc_t *) he->payload;
             if (pdc->thread == tid) {
                 /* indicate this DC should not be used */
-                pdc->thread = INVALID_THREAD_ID;
+                pdc->exited = true;
             }
         }
     }
@@ -177,6 +178,7 @@ gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_
     pdc = (per_dc_t *) global_alloc(sizeof(*pdc), HEAPSTAT_HASHTABLE);
     pdc->thread = dr_get_thread_id(dr_get_current_drcontext());
     pdc->created = create;
+    pdc->exited = false;
     pdc->dup_null = dup_null;
     pdc->non_stock_selected = 0;
     if (!hashtable_add(&dc_table, (void *)hdc, (void *)pdc)) {
@@ -210,8 +212,9 @@ gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc)
         pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
         gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
                         "ReleaseDC for DC "PFX" called from different thread %d "
-                        "than the thread %d that called GetDC", hdc, pdc->thread,
-                        dr_get_thread_id(dr_get_current_drcontext()));
+                        "than the%s thread %d that called GetDC", hdc,
+                        dr_get_thread_id(dr_get_current_drcontext()),
+                        pdc->exited ? " now-exited" : "", pdc->thread);
     }
     /* Check: No non-default objects are selected in a DC being deleted */
     if (pdc->non_stock_selected > 0) {
@@ -275,16 +278,20 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          * other thread is dead, in general DC's are supposed to be
          * local objects that are created, used, and then destroyed.
          */
-        if (pdc->dup_null && pdc->thread == INVALID_THREAD_ID) {
+        if (pdc->dup_null && pdc->exited) {
             gdicheck_report(addr, 0, mc, REPORT_PREFIX
-                            "DC "PFX" used for select was created by now-dead thread "
+                            "DC "PFX" used for select was created by now-exited thread %d "
                             "by duplicating NULL, which makes it a thread-private DC",
-                            hdc);
+                            hdc, pdc->thread);
         }
         /* Check: do not operate on a single DC from two different threads
          * XXX: should check on other DC operations beyond selecting
+         * XXX: also, once the creating thread exits we currently don't complain
+         * and assume the DC was transferred to another thread, but we subsequently
+         * don't ensure just one thread operates on it.  see also comment above
+         * questioning how serious this is.
          */
-        else if (pdc->thread != INVALID_THREAD_ID &&
+        else if (!pdc->exited &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
             gdicheck_report(addr, 0, mc, REPORT_PREFIX
                             "DC created by one thread %d and used by another %d",
