@@ -1149,6 +1149,9 @@ report_init(void)
          * we can delay this b/c it's used in a callback and not passed to
          * callstack_init()
          */
+        /* XXX: now that we split leaks off it may be fine to remove all this
+         * but we'll go ahead and pay the overhead to get nicer leak callstacks
+         */
         if (drsym_get_module_debug_kind(app_path, &kind) == DRSYM_SUCCESS &&
             TEST(DRSYM_PECOFF_SYMTAB, kind) &&
             !option_specified.callstack_use_top_fp)
@@ -1588,6 +1591,41 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
 {
     stored_error_t *err = stored_error_create(type);
     if (pcs == NULL) {
+#ifdef WINDOWS
+        if (options.callstack_use_top_fp_selectively) {
+            /* i#844: force a scan in the top frame to handle the all-too-common
+             * leaf function with no frame pointer.
+             * We assume there is no setting of mcontext on this path:
+             * only reading of mcontext.
+             * XXX: perhaps callstack should provide per-callstack flags.
+             * But this works just as well.
+             */
+            if ((!options.shadowing || !options.check_uninitialized) &&
+                (!options.leaks_only || !options.zero_stack)) {
+                /* We don't have definedness info or zeroing so disabling
+                 * top fp will result in risk of stale retaddrs.
+                 * System libs don't normally have leaf funcs w/o frames so
+                 * only do this for the app.
+                 * XXX: this is hacky: the system lib identification, the
+                 * risk of stale frames.  But it's not clear that there's
+                 * a great solution when the app has missing frames and
+                 * we don't have definedness or zeroing.
+                 * XXX i#624: Probably long-term we should add zeroing to light mode.
+                 */
+                if (loc->type == APP_LOC_PC) {
+                    app_pc pc = loc_to_pc(loc);
+                    /* callstack mod table is faster than DR lookup */
+                    const char *modpath = module_lookup_path(pc);
+                    if (modpath != NULL && !text_matches_pattern
+                        (modpath, "*windows?sys*", true/*ignore case*/))
+                        mc->xbp = 0;
+                }
+            } else {
+                /* we have definedness info so scanning is accurate */
+                mc->xbp = 0;
+            }
+        }
+#endif
         packed_callstack_record(&err->pcs, mc, loc);
     } else {
         /* lifetimes differ so we must clone */

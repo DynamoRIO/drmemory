@@ -237,9 +237,7 @@ usp10.dll!ScriptPositionSingleGlyph
 UNINITIALIZED READ
 name=default i#494 (custom data not all initialized)
 system call NtConnectPort parameter #6
-UxTheme.dll!*
-UxTheme.dll!*
-UxTheme.dll!*
+UxTheme.dll!...
 USER32.dll!*
 
 ##################################################

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -260,6 +260,12 @@ callstack_module_unload(void *drcontext, const module_data_t *info);
 
 bool
 is_in_module(byte *pc);
+
+/* Returns the full path of the module that contains pc, or NULL if the pc
+ * is not in a known module.
+ */
+const char *
+module_lookup_path(byte *pc);
 
 /****************************************************************************
  * Symbolized callstacks

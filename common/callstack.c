@@ -808,12 +808,14 @@ is_retaddr(byte *pc)
         STATS_INC(cstack_is_retaddr_backdecode);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
             match = (*(pc - 5) == OP_CALL_DIR ||
-                     /* indirect through reg: 0xff /2 */
-                     (*(pc - 2) == OP_CALL_IND && ((*(pc - 1) >> 3) & 0x7) == 2) ||
-                     /* indirect through reg w/ 1B offs: 0xff /2 offs */
-                     (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) & 0x7) == 2) ||
-                     /* indirect through mem: 0xff /2 + disp */
-                     (*(pc - 6) == OP_CALL_IND && ((*(pc - 5) >> 3) & 0x7) == 2));
+                     /* indirect through reg: 0xff /2 (mod==0) */
+                     (*(pc - 2) == OP_CALL_IND && ((*(pc - 1) >> 3) == 0x02) &&
+                      ((*(pc - 1) & 0x3) != 0x5)) ||
+                     /* indirect through mem: 0xff /2 + disp8 (mod==1) */
+                     (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
+                     /* indirect through mem: 0xff /2 + disp32 (mod==2) */
+                     (*(pc - 6) == OP_CALL_IND &&
+                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)));
         }, { /* EXCEPT */
             match = false;
             /* If we end up with a lot of these we could either cache
@@ -1018,12 +1020,13 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
          (op_is_dword_defined != NULL &&
           (!op_is_dword_defined((byte*)mc->ebp) ||
            !op_is_dword_defined((byte*)mc->ebp + sizeof(void*)))) ||
-         (!safe_read((byte *)mc->ebp, sizeof(appdata), &appdata) ||
-          /* check the very first retaddr since ebp might point at
-           * a misleading stack slot
-           */
-          (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, op_fp_flags) &&
-           !is_retaddr(appdata.retaddr))))) {
+         (mc->ebp != 0 &&
+          (!safe_read((byte *)mc->ebp, sizeof(appdata), &appdata) ||
+           /* check the very first retaddr since ebp might point at
+            * a misleading stack slot
+            */
+           (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, op_fp_flags) &&
+            !is_retaddr(appdata.retaddr)))))) {
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
@@ -1038,6 +1041,9 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             LOG(4, "truncating callstack: can't read "PFX"\n", pc);
             break;
         }
+        /* if we scanned and took the top dword as retaddr, don't use beyond-TOS as FP */
+        if ((reg_t)pc < mc->esp)
+            appdata.next_fp = NULL;
         if (custom_retaddr != NULL) {
             /* Support frames where there's a gap between ebp and retaddr (PR 475715) */
             appdata.retaddr = custom_retaddr;
@@ -1989,6 +1995,14 @@ is_in_module(byte *pc)
         dr_mutex_unlock(modtree_lock);
     }
     return res;
+}
+
+const char *
+module_lookup_path(byte *pc)
+{
+    modname_info_t *name_info;
+    bool found = module_lookup(pc, NULL, NULL, &name_info);
+    return found ? name_info->path : NULL;
 }
 
 /****************************************************************************
