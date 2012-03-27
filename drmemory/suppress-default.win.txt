@@ -306,15 +306,18 @@ RPCRT4.dll!*
 # i#709: bit manip uninit
 # Highly probable bit-level definedness issue, as it is masking all but the low
 # bit in the test instruction.  This is often hit during shutdown.  Different
-# Windows versions reach it through different stacks, and we don't have a
-# reliable way to match it other than that it's reached through ntdll.
-# Hopefully user data won't be passed through ntdll to clbcatq.dll.
+# Windows versions reach it through different stacks, but it's always reached
+# through ntdll.  Unfortunately the ntdll frames are more than 12 frames deep so
+# we just match five clbcatq.dll frames and hope user data doesn't get this deep
+# into the module.
 UNINITIALIZED READ
 name=default i#709
 instruction=test   0x??(%esi) $0x??
-CLBCatQ.DLL!...
-ntdll.dll!*
-ntdll.dll!*
+CLBCatQ.DLL!*
+CLBCatQ.DLL!*
+CLBCatQ.DLL!*
+CLBCatQ.DLL!*
+CLBCatQ.DLL!*
 
 ##################################################
 # i#733: false pos leak from plfCreateLOCALFONT
