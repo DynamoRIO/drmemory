@@ -330,6 +330,7 @@ newtest(hello hello.c)
 newtest(malloc malloc.c)
 newtest(free free.c)
 newtest(registers registers.c)
+newtest(bitfield bitfield.cpp)
 # linux glibc backtrace on hashtable curiosities causing problems:
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason
@@ -390,6 +391,7 @@ if (NOT TOOL_DR_HEAPSTAT)
   if (USE_DRSYMS)
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif (USE_DRSYMS)
+  newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

@@ -1425,6 +1425,65 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
+/* Caller has already checked that "val" is defined */
+static bool
+check_andor_vals(int opc, reg_t val, uint i, bool bitmask_immed)
+{
+    if (options.strict_bitops) {
+        return (opc != OP_or && DWORD2BYTE(val, i) == 0) ||
+            (opc == OP_or && DWORD2BYTE(val, i) == ~0);
+    } else {
+        /* i#849: we relax typical bitfield operations:
+         * + OP_or with a defined value (not enough to just allow non-0 value)
+         *   used to set a bitfield var to a non-const-zero value
+         *   XXX: could put this on fastpath for perf.
+         *   XXX i#489: another sequence used to set is a double xor
+         *   sequence which will require pattern matching.
+         * + OP_and with a constant that has only one sequence of 0's and at
+         *   least a few 1's, used to set a bitfield var to zero
+         */
+        return (opc != OP_or && DWORD2BYTE(val, i) == 0) ||
+            (opc == OP_and && bitmask_immed) ||
+            opc == OP_or;
+    }
+}
+
+static bool
+check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
+{
+    /* For i#849, we're looking for OP_and with a constant that sets a contiguous
+     * sequence of bits to 0 and leaves the rest alone: used to initialize
+     * a bitfield var to zero.
+     * We look for one set of 0's and more than 2 1's (to rule out testing
+     * just one or two bits w/ OP_and instead of OP_test).
+     */
+    bool bitmask_immed = false;
+    if (!options.strict_bitops && opc == OP_and/*no OP_test*/) {
+        uint num_contig_1bits = 0;
+        reg_t curval = immed;
+        bool found_zero = false, last_zero = false;
+        uint i;
+        for (i = 0; i < sz*8; i++) {
+            /* XXX perf: per-byte table lookup would be better though
+             * need logic to stitch bytes together
+             */
+            if (TEST(1, curval)) {
+                num_contig_1bits++;
+                last_zero = false;
+            } else {
+                if (!last_zero && found_zero)
+                    break; /* two sets of zeros */
+                found_zero = true;
+                last_zero = true;
+            }
+            curval = curval >> 1;
+        }
+        if (i == sz*8 && num_contig_1bits > 2)
+            bitmask_immed = true;
+    }
+    return bitmask_immed;
+}
+
 static bool
 check_andor_sources(void *drcontext, instr_t *inst,
                     uint shadow_vals[OPND_SHADOW_ARRAY_LEN])
@@ -1434,20 +1493,28 @@ check_andor_sources(void *drcontext, instr_t *inst,
      * based on 0 or 1 values.
      */
     int opc = instr_get_opcode(inst);
-    reg_t val0, val1;
+    reg_t val0, val1, immed;
     uint i, immed_opnum, nonimmed_opnum;
     bool all_defined = true;
     bool have_vals = (get_cur_src_value(drcontext, inst, 0, &val0) &&
                       get_cur_src_value(drcontext, inst, 1, &val1));
+    bool have_immed = false;
+    bool bitmask_immed = false;
     size_t sz;
     if (opnd_is_immed_int(instr_get_src(inst, 0))) {
         immed_opnum = 0;
         nonimmed_opnum = 1;
+        have_immed = true;
+        immed = val0;
         sz = opnd_size_in_bytes(opnd_get_size(instr_get_src(inst, 1)));
     } else {
         immed_opnum = 1;
         nonimmed_opnum = 0;
         sz = opnd_size_in_bytes(opnd_get_size(instr_get_src(inst, 0)));
+        if (opnd_is_immed_int(instr_get_src(inst, 1))) {
+            have_immed = true;
+            immed = val1;
+        }
         ASSERT(opnd_is_immed_int(instr_get_src(inst, 1)) ||
                sz == opnd_size_in_bytes(opnd_get_size(instr_get_src(inst, 1))),
                "check_andor_sources assumption error");
@@ -1509,11 +1576,16 @@ check_andor_sources(void *drcontext, instr_t *inst,
         return true;
     }
 
+    if (!options.strict_bitops && have_immed)
+        bitmask_immed = check_andor_bitmask_immed(opc, sz, immed);
+
     for (i = 0; i < sz; i++) {
+        LOG(4, "%s: have_vals=%d i=%d def=%d %d val=%d %d\n",
+            __FUNCTION__, have_vals, i, shadow_vals[i], shadow_vals[i+sz],
+            DWORD2BYTE(val1, i), DWORD2BYTE(val0, i));
         if (shadow_vals[i] == SHADOW_UNDEFINED) {
             if (have_vals && shadow_vals[i+sz] == SHADOW_DEFINED &&
-                ((opc != OP_or && DWORD2BYTE(val1, i) == 0) ||
-                 (opc == OP_or && DWORD2BYTE(val1, i) == ~0))) {
+                check_andor_vals(opc, val1, i, bitmask_immed)) {
                 /* The 0/1 byte makes the source undefinedness not matter */
                 shadow_vals[i] = SHADOW_DEFINED;
                 STATS_INC(andor_exception);
@@ -1523,9 +1595,7 @@ check_andor_sources(void *drcontext, instr_t *inst,
         } else {
             ASSERT(shadow_vals[i] == SHADOW_DEFINED, "shadow val inconsistency");
             if (shadow_vals[i+sz] == SHADOW_UNDEFINED) {
-                if (have_vals &&
-                    ((opc != OP_or && DWORD2BYTE(val0, i) == 0) ||
-                     (opc == OP_or && DWORD2BYTE(val0, i) == ~0))) {
+                if (have_vals && check_andor_vals(opc, val0, i, bitmask_immed)) {
                     /* The 0/1 byte makes the source undefinedness not matter */
                     STATS_INC(andor_exception);
                     LOG(3, "0/1 byte %d suppresses undefined and/or source\n", i);
