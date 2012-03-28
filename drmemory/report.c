@@ -1059,7 +1059,6 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
 static bool
 report_in_suppressed_module(uint type, app_loc_t *loc)
 {
-    app_pc pc;
     suppress_spec_t *spec;
     bool suppressed = false;
     const char *preferred_name;
@@ -2026,7 +2025,7 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
      * error type, don't bother taking the stack trace, unless we need to log
      * it.
      */
-    if (have_module_wildcard && !options.log_suppressed_errors) {
+    if (have_module_wildcard IF_DRSYMS(&& !options.log_suppressed_errors)) {
         if (report_in_suppressed_module(etp->errtype, etp->loc)) {
             goto report_error_done;
         }
