@@ -4341,7 +4341,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else {
                 PRE(bb, marker1, INSTR_CREATE_cmp
                     (drcontext, app_val, opnd_create_immed_int
-                     (1, opnd_get_size(app_val))));
+                     (~0, opnd_get_size(app_val))));
             }
             add_jcc_slowpath(drcontext, bb, marker1,
                              check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
