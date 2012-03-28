@@ -2005,6 +2005,15 @@ module_lookup_path(byte *pc)
     return found ? name_info->path : NULL;
 }
 
+/* Exported for i#838, module wildcard suppression. */
+const char *
+module_lookup_preferred_name(byte *pc)
+{
+    modname_info_t *name_info;
+    bool found = module_lookup(pc, NULL, NULL, &name_info);
+    return found ? name_info->name : NULL;
+}
+
 /****************************************************************************
  * Application locations
  */

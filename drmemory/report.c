@@ -309,6 +309,7 @@ struct _suppress_spec_t {
 /* We suppress error type separately (PR 507837) */
 static suppress_spec_t *supp_list[ERROR_MAX_VAL];
 static uint supp_num[ERROR_MAX_VAL];
+static bool have_module_wildcard;
 
 #ifdef USE_DRSYMS
 static void *suppress_file_lock;
@@ -438,6 +439,18 @@ suppress_spec_free(suppress_spec_t *spec)
     global_free(spec, sizeof(*spec), HEAPSTAT_REPORT);
 }
 
+/* Return true if the suppression has a single frame covering an entire module.
+ */
+static bool
+is_module_wildcard(suppress_spec_t *spec)
+{
+    return (spec->instruction == NULL &&
+            spec->num_frames == 1 &&
+            spec->frames[0].is_module &&
+            spec->frames[0].func[0] == '*' &&
+            spec->frames[0].func[1] == '\0');
+}
+
 static suppress_spec_t *
 suppress_spec_finish(suppress_spec_t *spec,
                      const char *orig_start,
@@ -460,6 +473,9 @@ suppress_spec_finish(suppress_spec_t *spec,
     supp_list[spec->type] = spec;
     supp_num[spec->type]++;
     num_suppressions++;
+    if (is_module_wildcard(spec)) {
+        have_module_wildcard = true;
+    }
     return spec;
 }
 
@@ -1035,6 +1051,58 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
     }
     LOG(3, "supp: no match\n");
     return false;
+}
+
+/* Returns true if we have a whole-module suppression of the same type covering
+ * the app pc.  Updates the suppression usage counts if it does.
+ */
+static bool
+report_in_suppressed_module(uint type, app_loc_t *loc)
+{
+    app_pc pc;
+    suppress_spec_t *spec;
+    bool suppressed = false;
+    const char *preferred_name;
+
+    /* We don't handle leaks because they're not usually suppressed with a
+     * single module wildcard and we need to update the suppression with the
+     * number of bytes leaked.
+     */
+    if (type >= ERROR_LEAK)
+        return false;
+    if (loc->type != APP_LOC_PC || !loc->u.addr.valid)
+        return false;
+    /* Not worth checking for it if we don't have one of these suppressions. */
+    if (!have_module_wildcard)
+        return false;
+    preferred_name = module_lookup_preferred_name(loc->u.addr.pc);
+    if (preferred_name == NULL)
+        return false;
+
+    /* We could hook module load and maintain an rb interval tree of which
+     * regions were suppressed to avoid this extra supp_list iteration.
+     */
+    for (spec = supp_list[type]; spec != NULL; spec = spec->next) {
+        if (is_module_wildcard(spec) &&
+            text_matches_pattern(preferred_name, spec->frames[0].modname,
+                                 /*ignore_case=*/IF_WINDOWS_ELSE(true, false))) {
+            suppressed = true;
+            dr_mutex_lock(error_lock);
+            if (spec->is_default)
+                num_suppressions_matched_default++;
+            else
+                num_suppressions_matched_user++;
+            /* spec->count_used and num_unique is supposed to count *unique*
+             * callstacks matching the suppression.  Without taking a callstack,
+             * we can't count that, so we overestimate and assume they are all
+             * unique.
+             */
+            spec->count_used++;
+            dr_mutex_unlock(error_lock);
+            LOG(3, "matched whole module suppression %s\n", spec->name);
+       }
+    }
+    return suppressed;
 }
 
 /***************************************************************************/
@@ -1953,6 +2021,17 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
         num_throttled_errors++;
         goto report_error_done;
     }
+
+    /* i#838: If we have a wildcard suppression covering this module for this
+     * error type, don't bother taking the stack trace, unless we need to log
+     * it.
+     */
+    if (have_module_wildcard && !options.log_suppressed_errors) {
+        if (report_in_suppressed_module(etp->errtype, etp->loc)) {
+            goto report_error_done;
+        }
+    }
+
     err = record_error(etp->errtype, NULL, etp->loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {

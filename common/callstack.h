@@ -267,6 +267,12 @@ is_in_module(byte *pc);
 const char *
 module_lookup_path(byte *pc);
 
+/* Returns the preferred name of the module that contains pc, or NULL if the pc
+ * is not in a known module.
+ */
+const char *
+module_lookup_preferred_name(byte *pc);
+
 /****************************************************************************
  * Symbolized callstacks
  */
