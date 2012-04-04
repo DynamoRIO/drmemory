@@ -1659,6 +1659,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
     stored_error_t *err = stored_error_create(type);
     if (pcs == NULL) {
 #ifdef WINDOWS
+        reg_t save_xbp = mc->xbp;
         if (options.callstack_use_top_fp_selectively) {
             /* i#844: force a scan in the top frame to handle the all-too-common
              * leaf function with no frame pointer.
@@ -1694,6 +1695,10 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
         }
 #endif
         packed_callstack_record(&err->pcs, mc, loc);
+#ifdef WINDOWS
+        if (options.callstack_use_top_fp_selectively && mc->xbp == 0)
+            mc->xbp = save_xbp;
+#endif
     } else {
         /* lifetimes differ so we must clone */
         err->pcs = packed_callstack_clone(pcs);
