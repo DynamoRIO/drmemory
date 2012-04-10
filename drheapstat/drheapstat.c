@@ -936,8 +936,8 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
  * The Windows heap param is INOUT so it can be changed as well.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
-                   app_pc free_routine,
+client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
+                   dr_mcontext_t *mc, app_pc free_routine,
                    void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     return real_base;

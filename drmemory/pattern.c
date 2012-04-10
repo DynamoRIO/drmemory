@@ -500,6 +500,7 @@ pattern_handle_ill_fault(void *drcontext,
     instr_t instr;
     uint   pos;
     ASSERT(options.pattern != 0, "incorrectly called");
+    STATS_INC(num_slowpath_faults);
     /* check if ill-instr is our code */
     if (!pattern_ill_instr_is_instrumented(raw_mc->pc))
         return false;
@@ -530,7 +531,6 @@ pattern_handle_ill_fault(void *drcontext,
     LOG(2, "pattern check ud2a triggerred@"PFX" => skip to "PFX"\n",
         raw_mc->pc, raw_mc->pc + UD2A_LENGTH);
     raw_mc->pc += UD2A_LENGTH;
-    STATS_INC(num_slowpath_faults);
     return true;
 }
 
@@ -666,7 +666,9 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
              redzone++)
             *redzone = options.pattern;
     } else {
-        ASSERT(malloc_is_pre_us(app_base), "unknow malloc region");
+#if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
+        ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
+#endif
     }
 }
 
@@ -713,7 +715,9 @@ pattern_handle_real_free(app_pc base, size_t size, bool delayed)
             memset(base + app_size, 0,
                    real_size - app_size - options.redzone_size);
         } else {
-            ASSERT(malloc_is_pre_us(app_base), "unknow malloc region");
+#if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
+            ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
+#endif
         }
     }
 }
@@ -772,6 +776,7 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
     size_t check_sz;
     /* XXX i#774: for ref of >4 byte, we check the starting 4-byte */
     check_sz = size < 4 ? 2 : 4;
+    addr = (app_pc)ALIGN_BACKWARD(addr, check_sz);
     /* there are several memory opnd, so it should be faster to check
      * before lookup in the rbtree.
      */

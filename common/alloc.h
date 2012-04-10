@@ -284,8 +284,8 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
  * client_data is from client_add_malloc_routine().
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
-                   app_pc free_routine,
+client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
+                   dr_mcontext_t *mc, app_pc free_routine,
                    void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT));
 
 void

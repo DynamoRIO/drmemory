@@ -678,8 +678,8 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
  * The auxarg param is INOUT so it can be changed as well.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc,
-                   app_pc free_routine,
+client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
+                   dr_mcontext_t *mc, app_pc free_routine,
                    void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     report_malloc(base, base+size, "free", mc);
@@ -700,20 +700,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
 #ifdef WINDOWS
         ptr_int_t pass_auxarg;
 #endif
-        size_t real_size;
         uint idx;
         bool full;
         ASSERT(info != NULL, "invalid param");
         dr_mutex_lock(delay_free_lock);
-        /* Store real base and real size: i.e., including redzones (PR 572716) */
-        if (base != real_base) {
-            ASSERT(base - real_base == options.redzone_size, "redzone mismatch");
-            real_size = size + 2*options.redzone_size;
-        } else {
-            /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
-            real_size = size;
-        }
-
         if (real_size > options.delay_frees_maxsz) {
             /* we have to free this one, it's too big */
             LOG(2, "malloc size %d is larger than max delay %d so freeing immediately\n",
@@ -723,7 +713,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, dr_mcontext_t *mc
                 pattern_handle_real_free(base, size, false);
             return real_base;
         }
-
+        /* Store real base and real size: i.e., including redzones (PR 572716) */
         info->delay_free_bytes += real_size;
         if (info->delay_free_bytes > options.delay_frees_maxsz) {
             int head_start = info->delay_free_head;

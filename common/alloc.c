@@ -2735,6 +2735,12 @@ malloc_entry_size(malloc_entry_t *e)
     return (e == NULL ? (size_t)-1 : (e->end - e->start));
 }
 
+static ushort
+malloc_entry_usable_extra(malloc_entry_t *e)
+{
+    return (e == NULL ? 0 : e->usable_extra);
+}
+
 void
 malloc_set_valid(app_pc start, bool valid)
 {
@@ -4054,6 +4060,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         }
     } else {
         app_pc change_base;
+        size_t real_size;
 #ifdef WINDOWS
         ptr_int_t auxarg;
         int auxargnum;
@@ -4087,7 +4094,16 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             size = malloc_entry_size(entry);
             ASSERT((ssize_t)size != -1, "error determining heap block size");
         }
-        LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX" size="PIFX" => "PFX"\n",
+        /* i#858, we obtain the real_size from entry instead of size + redzone */
+        if (base != real_base) {
+            ASSERT(base - real_base == options.redzone_size, "redzone mismatch");
+            real_size = (base - real_base) + size + malloc_entry_usable_extra(entry);
+        } else {
+            /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
+            real_size = size;
+        }
+        LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX
+            " size="PIFX" => "PFX" real size = "PIFX"\n",
             IF_WINDOWS_(heap) base, size, real_base);
 
         ASSERT(routine->set != NULL, "free must be part of set");
@@ -4101,7 +4117,8 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
              * be at top of stack with ebp pointing to its parent frame.
              * developer doesn't need to see explicit free() frame, right?
              */
-            (base, size, real_base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
+            (base, size, real_base, real_size,
+             drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
              drwrap_get_retaddr(wrapcxt), routine->set->client _IF_WINDOWS(&auxarg));
 #ifdef WINDOWS
         if (auxargnum != -1)
