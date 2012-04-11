@@ -562,8 +562,8 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /* added in Windows Vista SP0 */
     {0,"NtAcquireCMFViewOwnership", UNKNOWN, 12, },
-    {0,"NtAlpcAcceptConnectPort", UNKNOWN, 36, },
-    {0,"NtAlpcCancelMessage", UNKNOWN, 12, },
+    {0,"NtAlpcAcceptConnectPort", OK, 36, {{0,sizeof(HANDLE),W}, {3,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {6,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {7,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {8,0,IB}, }},
+    {0,"NtAlpcCancelMessage", OK, 12, {{2,sizeof(ALPC_CONTEXT_ATTRIBUTES),R}, }},
     {0,"NtAlpcConnectPort", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {5,sizeof(SID),R}, {6,-7,WI}, {7,sizeof(ULONG),R|W}, {8,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {9,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {10,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtAlpcCreatePort", OK, 12, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
     {0,"NtAlpcCreatePortSection", OK, 24, {{4,sizeof(HANDLE),W}, {5,sizeof(ULONG),W}, }},
@@ -581,8 +581,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAlpcImpersonateClientOfPort", OK, 12, {{1,sizeof(PORT_MESSAGE), R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
     {0,"NtAlpcOpenSenderProcess", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtAlpcOpenSenderThread", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtAlpcQueryInformation", UNKNOWN, 20, },
-    {0,"NtAlpcQueryInformationMessage", UNKNOWN, 24, },
+    {0,"NtAlpcQueryInformation", OK, 20, {{2,-3,W}, {4,sizeof(ULONG),W}, }},
+    {0,"NtAlpcQueryInformationMessage", OK, 24, {{1,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {3,-4,W}, {5,sizeof(ULONG),W}, }},
     {0,"NtAlpcRevokeSecurityContext", OK, 12, },
     /* FIXME i#98:
      * + #2 should be {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}
@@ -592,7 +592,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      *   but I'm assuming #5 points at size of OUT PORT_MESSAGE
      */
     {0,"NtAlpcSendWaitReceivePort", UNKNOWN, 32, {{4,-5,WI}, {5,sizeof(ULONG),W}, {7,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtAlpcSetInformation", UNKNOWN, 16, },
+    {0,"NtAlpcSetInformation", OK, 16, {{2,-3,R}, }},
     {0,"NtCancelIoFileEx", UNKNOWN, 12, },
     {0,"NtCancelSynchronousIoFile", UNKNOWN, 12, },
     {0,"NtClearAllSavepointsTransaction", UNKNOWN, 4, },

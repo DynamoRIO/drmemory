@@ -9,6 +9,15 @@
  ****************************************************************************
  ****************************************************************************/
 
+typedef struct _ALPC_CONTEXT_ATTRIBUTES
+{
+    PVOID PortContext;
+    PVOID MessageContext;
+    ULONG SequenceNumber;
+    ULONG MessageID;
+    ULONG CallbackID;
+} ALPC_CONTEXT_ATTRIBUTES, *PALPC_CONTEXT_ATTRIBUTES;
+
 typedef struct _ALPC_DATA_VIEW
 {
     ULONG Flags;
@@ -51,3 +60,24 @@ typedef struct _ALPC_MESSAGE_ATTRIBUTES
     ULONG AllocatedAttributes;
     ULONG ValidAttributes;
 } ALPC_MESSAGE_ATTRIBUTES, *PALPC_MESSAGE_ATTRIBUTES;
+
+typedef enum _ALPC_PORT_INFORMATION_CLASS 
+{
+    AlpcBasicInformation,
+    AlpcPortInformation,
+    AlpcAssociateCompletionPortInformation,
+    AlpcConnectedSIDInformation,
+    AlpcServerInformation,
+    AlpcMessageZoneInformation,
+    AlpcRegisterCompletionListInformation,
+    AlpcUnregisterCompletionListInformation,
+    AlpcAdjustCompletionListConcurrencyCountInformation,
+    AlpcRegisterCallbackInformation,
+    AlpcCompletionListRundownInformation
+} ALPC_PORT_INFORMATION_CLASS;
+
+typedef enum _ALPC_MESSAGE_INFORMATION_CLASS 
+{
+    AlpcMessageSidInformation,
+    AlpcMessageTokenModifiedIdInformation
+} ALPC_MESSAGE_INFORMATION_CLASS;

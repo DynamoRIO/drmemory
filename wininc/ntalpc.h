@@ -10,6 +10,26 @@
  ****************************************************************************/
 
 NTSTATUS NTAPI
+NtAlpcAcceptConnectPort(
+    __out PHANDLE                        PortHandle,
+    __in HANDLE                          ConnectionPortHandle,
+    __in ULONG                           Flags,
+    __in POBJECT_ATTRIBUTES              ObjectAttributes,
+    __in PALPC_PORT_ATTRIBUTES           PortAttributes,
+    __in_opt PVOID                       PortContext, // opaque value
+    __in PPORT_MESSAGE                   ConnectionRequest,
+    __inout_opt PALPC_MESSAGE_ATTRIBUTES MessageAttributes,
+    __in BOOLEAN                         AcceptConnection
+    );
+
+NTSTATUS NTAPI
+NtAlpcCancelMessage(
+    __in HANDLE                  PortHandle,
+    __in ULONG                   Flags,
+    __in ALPC_CONTEXT_ATTRIBUTES MessageContext
+    );
+
+NTSTATUS NTAPI
 NtAlpcConnectPort(
     __out PHANDLE                           PortHandle,
     __in PUNICODE_STRING                    PortName,
@@ -125,6 +145,25 @@ NtAlpcOpenSenderThread(
     );
 
 NTSTATUS NTAPI
+NtAlpcQueryInformation(
+    __in HANDLE                      PortHandle,
+    __in ALPC_PORT_INFORMATION_CLASS PortInformationClass,
+    __out_bcount(Length) PVOID       PortInformation,
+    __in ULONG                       Length,
+    __out_opt PULONG                 ReturnLength
+    );
+
+NTSTATUS NTAPI
+NtAlpcQueryInformationMessage(
+    __in HANDLE                         PortHandle,
+    __in PPORT_MESSAGE                  PortMessage,
+    __in ALPC_MESSAGE_INFORMATION_CLASS MessageInformationClass,
+    __out_bcount(Length) PVOID          MessageInformation,
+    __in ULONG                          Length,
+    __out_opt PULONG                    ReturnLength
+    );
+
+NTSTATUS NTAPI
 NtAlpcRevokeSecurityContext(
     __in HANDLE      PortHandle,
     __reserved ULONG Flags,
@@ -141,4 +180,12 @@ NtAlpcSendWaitReceivePort(
     __inout_opt PULONG                      BufferLength,
     __inout_opt PALPC_MESSAGE_ATTRIBUTES    ReceiveMessageAttributes,
     __in_opt PLARGE_INTEGER                 TimeOut
+    );
+
+NTSTATUS NTAPI
+NtAlpcSetInformation(
+    __in HANDLE                      PortHandle
+    __in ALPC_PORT_INFORMATION_CLASS PortInformationClass,
+    __in_bcount(Length) PVOID        PortInformation,
+    __in ULONG                       Length
     );
