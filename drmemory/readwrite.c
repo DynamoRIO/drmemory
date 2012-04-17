@@ -3964,7 +3964,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
             has_mem = true;
 #ifdef TOOL_DR_MEMORY
-        if (opnd_uses_nonignorable_memory(opnd))
+        if (has_mem && opnd_uses_nonignorable_memory(opnd))
             has_noignorable_mem = true;
 #endif
         if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) {
@@ -3984,7 +3984,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
                 has_mem = true;
 #ifdef TOOL_DR_MEMORY
-            if (opnd_uses_nonignorable_memory(opnd))
+            if (has_mem && opnd_uses_nonignorable_memory(opnd))
                 has_noignorable_mem = true;
 #endif
             if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd)))
