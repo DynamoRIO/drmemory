@@ -191,6 +191,15 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst, fastpath_in
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc);
 
+size_t
+instrument_persist_ro_size(void *drcontext, void *perscxt);
+
+bool
+instrument_persist_ro(void *drcontext, void *perscxt, file_t fd);
+
+bool
+instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT);
+
 /***************************************************************************
  * REGISTER SPILLING
  */

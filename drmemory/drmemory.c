@@ -314,14 +314,15 @@ persistence_supported(void)
 }
 
 static size_t
-event_persist_ro_size(void *drcontext, app_pc start, app_pc end, size_t file_offs,
+event_persist_ro_size(void *drcontext, void *perscxt, size_t file_offs,
                       void **user_data OUT)
 {
-    return sizeof(persist_data_t);
+    return sizeof(persist_data_t) +
+        instrument_persist_ro_size(drcontext, perscxt);
 }
 
 static bool
-event_persist_ro(void *drcontext, app_pc start, app_pc end, file_t fd, void *user_data)
+event_persist_ro(void *drcontext, void *perscxt, file_t fd, void *user_data)
 {
     persist_data_t pd = {PCACHE_VERSION, client_base, options.shadowing};
     ASSERT(options.persist_code, "shouldn't get here");
@@ -329,12 +330,14 @@ event_persist_ro(void *drcontext, app_pc start, app_pc end, file_t fd, void *use
         return false;
     if (dr_write_file(fd, &pd, sizeof(pd)) != (ssize_t)sizeof(pd))
         return false;
+    if (!instrument_persist_ro(drcontext, perscxt, fd))
+        return false;
     STATS_INC(pcaches_written);
     return true;
 }
 
 static bool
-event_resurrect_ro(void *drcontext, app_pc start, app_pc end, byte **map INOUT)
+event_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
 {
     persist_data_t *pd = (persist_data_t *) *map;
     *map += sizeof(*pd);
@@ -356,7 +359,8 @@ event_resurrect_ro(void *drcontext, app_pc start, app_pc end, byte **map INOUT)
         STATS_INC(pcaches_mismatch);
         return false;
     }
-    /* FIXME i#769: persist hashtables */
+    if (!instrument_resurrect_ro(drcontext, perscxt, map))
+        return false;
     STATS_INC(pcaches_loaded);
     return true;
 }

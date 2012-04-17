@@ -2946,6 +2946,136 @@ instrument_thread_exit(void *drcontext)
     instru_tls_thread_exit(drcontext);
 }
 
+size_t
+instrument_persist_ro_size(void *drcontext, void *perscxt)
+{
+    size_t sz = 0;
+    if (!INSTRUMENT_MEMREFS())
+        return 0;
+    if (options.shadowing) {
+        LOG(2, "persisting bb table\n");
+        sz += hashtable_persist_size(drcontext, &bb_table, sizeof(bb_saved_info_t),
+                                     perscxt, DR_HASHPERS_REBASE_KEY  |
+                                     DR_HASHPERS_ONLY_IN_RANGE |
+                                     DR_HASHPERS_ONLY_PERSISTED);
+        LOG(2, "persisting xl8 table\n");
+        sz += hashtable_persist_size(drcontext, &xl8_sharing_table, sizeof(uint),
+                                     perscxt, DR_HASHPERS_REBASE_KEY |
+                                     DR_HASHPERS_ONLY_IN_RANGE);
+        LOG(2, "persisting unaddr table\n");
+        sz += hashtable_persist_size(drcontext, &ignore_unaddr_table, sizeof(uint),
+                                     perscxt, DR_HASHPERS_REBASE_KEY |
+                                     DR_HASHPERS_ONLY_IN_RANGE);
+    }
+    LOG(2, "persisting string table\n");
+    sz += hashtable_persist_size(drcontext, &stringop_app2us_table,
+                                 sizeof(stringop_entry_t), perscxt,
+                                 DR_HASHPERS_REBASE_KEY  |
+                                 DR_HASHPERS_ONLY_IN_RANGE | DR_HASHPERS_ONLY_PERSISTED);
+    /* the stringop_us2app_table is composed of heap-allocated entries in
+     * stringop_app2us_table, which will change on resurrection: so rather than
+     * persist we rebuild at resurrect time
+     */
+    return sz;
+}
+
+bool
+instrument_persist_ro(void *drcontext, void *perscxt, file_t fd)
+{
+    bool ok = true;
+    if (!INSTRUMENT_MEMREFS())
+        return ok;
+    if (options.shadowing) {
+        LOG(2, "persisting bb table\n");
+        ok = ok && hashtable_persist(drcontext, &bb_table, sizeof(bb_saved_info_t), fd,
+                                     perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
+                                     DR_HASHPERS_REBASE_KEY | DR_HASHPERS_ONLY_IN_RANGE |
+                                     DR_HASHPERS_ONLY_PERSISTED);
+        LOG(2, "persisting xl8 table\n");
+        /* these two tables don't just contain tags so we can't do ONLY_PERSISTED */
+        ok = ok && hashtable_persist(drcontext, &xl8_sharing_table, sizeof(uint), fd,
+                                     perscxt, DR_HASHPERS_REBASE_KEY |
+                                     DR_HASHPERS_ONLY_IN_RANGE);
+        LOG(2, "persisting unaddr table\n");
+        ok = ok && hashtable_persist(drcontext, &ignore_unaddr_table, sizeof(uint), fd,
+                                     perscxt, DR_HASHPERS_REBASE_KEY |
+                                     DR_HASHPERS_ONLY_IN_RANGE);
+    }
+    LOG(2, "persisting string table\n");
+    ok = ok && hashtable_persist(drcontext, &stringop_app2us_table,
+                                 sizeof(stringop_entry_t), fd, perscxt,
+                                 DR_HASHPERS_PAYLOAD_IS_POINTER | DR_HASHPERS_REBASE_KEY |
+                                 DR_HASHPERS_ONLY_IN_RANGE | DR_HASHPERS_ONLY_PERSISTED);
+    return ok;
+}
+
+static bool
+bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
+{
+    /* last_instr could be changed to last_instr_offs but then we'd need to call
+     * dr_fragment_app_pc(tag) in a few places which doesn't seem worth it
+     */
+    bb_saved_info_t *save = (bb_saved_info_t *) payload;
+    bool ok;
+    save->last_instr = (app_pc) ((ptr_int_t)save->last_instr + shift);
+    ok = hashtable_add(&bb_table, key, payload);
+    if (!ok)
+        wait_for_user("dup");
+    return ok;
+}
+
+static bool
+populate_us2app_table(void)
+{
+    uint i;
+    for (i = 0; i < HASHTABLE_SIZE(stringop_app2us_table.table_bits); i++) {
+        hash_entry_t *he;
+        for (he = stringop_app2us_table.table[i]; he != NULL; he = he->next) {
+            hashtable_add(&stringop_us2app_table, (void *)he->payload, he->key);
+            /* we're going through whole table so we will re-add prior entries */
+        }
+    }
+    return true;
+}
+
+bool
+instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
+{
+    bool ok = true;
+    if (!INSTRUMENT_MEMREFS())
+        return ok;
+    if (options.shadowing) {
+        LOG(2, "resurrecting bb table\n");
+        ok = ok && hashtable_resurrect(drcontext, map, &bb_table, sizeof(bb_saved_info_t),
+                                       perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
+                                       DR_HASHPERS_REBASE_KEY | DR_HASHPERS_CLONE_PAYLOAD,
+                                       bb_save_resurrect_entry);
+        LOG(2, "resurrecting xl8 table\n");
+        ok = ok && hashtable_resurrect(drcontext, map, &xl8_sharing_table, sizeof(uint),
+                                       perscxt, DR_HASHPERS_REBASE_KEY, NULL);
+        LOG(2, "resurrecting unaddr table\n");
+        ok = ok && hashtable_resurrect(drcontext, map, &ignore_unaddr_table, sizeof(uint),
+                                       perscxt, DR_HASHPERS_REBASE_KEY, NULL);
+    }
+    LOG(2, "resurrecting string table\n");
+    ok = ok && hashtable_resurrect(drcontext, map, &stringop_app2us_table,
+                                   sizeof(stringop_entry_t), perscxt,
+                                   DR_HASHPERS_PAYLOAD_IS_POINTER |
+                                   DR_HASHPERS_REBASE_KEY |
+                                   DR_HASHPERS_CLONE_PAYLOAD, NULL);
+    /* the stringop_us2app_table is composed of heap-allocated entries in
+     * stringop_app2us_table, which will change on resurrection: so rather than
+     * persist we rebuild at resurrect time
+     */
+    ok = ok && populate_us2app_table();
+
+    /* FIXME: if a later one fails, we'll abort the pcache load but we'll have entries
+     * added to the earlier tables.  we should invalidate them.
+     */
+    ASSERT(ok, "aborted pcache load leaves tables inconsistent");
+    return ok;
+}
+
 /* PR 525807: try to handle small malloced stacks */
 void
 update_stack_swap_threshold(void *drcontext, int new_threshold)
