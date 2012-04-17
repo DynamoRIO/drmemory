@@ -127,7 +127,7 @@ drmem_options_init(const char *opstr)
 }
 
 /***************************************************************************
- * DYNAMORIO EVENTS
+ * GLOBALS AND STATISTICS
  */
 
 #ifdef WINDOWS
@@ -140,6 +140,7 @@ static app_pc libdr_base, libdr_end;
 static app_pc libdr2_base, libdr2_end;
 static app_pc libdrmem_base, libdrmem_end;
 #endif
+static app_pc client_base;
 app_pc app_base;
 app_pc app_end;
 char app_path[MAXIMUM_PATH];
@@ -152,6 +153,10 @@ char app_path[MAXIMUM_PATH];
  */
 
 uint num_nudges;
+
+static uint pcaches_loaded;
+static uint pcaches_mismatch;
+static uint pcaches_written;
 
 void 
 dump_statistics(void)
@@ -247,6 +252,8 @@ dump_statistics(void)
         dr_fprintf(f_global, "zeroing loop aborts: %6u fault, %6u thresh\n",
                    zero_loop_aborts_fault, zero_loop_aborts_thresh);
     }
+    dr_fprintf(f_global, "pcaches loaded: %3u, base mismatch: %3u, written: %3u\n",
+               pcaches_loaded, pcaches_mismatch, pcaches_written);
 
     heap_dump_stats(f_global);
 
@@ -275,6 +282,88 @@ dump_statistics(void)
     dr_fprintf(f_global, "\n");
 }
 #endif /* STATISTICS */
+
+/***************************************************************************
+ * PERSISTENCE SUPPORT
+ */
+
+#define PCACHE_VERSION 0
+
+typedef struct _persist_data_t {
+    /* version number */
+    uint version;
+    /* we have references into our library that we want to avoid patching
+     * so we require the same base (we set a preferred base and /dynamicbase:no)
+     */
+    app_pc client_base;
+    /* options that affect what we persist */
+    bool shadowing;
+} persist_data_t;
+
+bool
+persistence_supported(void)
+{
+    /* We count on DR to not persist any bbs w/ clean calls in them.
+     * Both light modes and -leaks_only are all persistable so long as the drmem lib
+     * is at the same base.
+     * FIXME i#769: full mode is not yet persistable b/c its lean routines have
+     * absolute return targets and they need patching
+     */
+    return (options.persist_code &&
+            (!options.shadowing || !options.check_uninitialized));
+}
+
+static size_t
+event_persist_ro_size(void *drcontext, app_pc start, app_pc end, size_t file_offs,
+                      void **user_data OUT)
+{
+    return sizeof(persist_data_t);
+}
+
+static bool
+event_persist_ro(void *drcontext, app_pc start, app_pc end, file_t fd, void *user_data)
+{
+    persist_data_t pd = {PCACHE_VERSION, client_base, options.shadowing};
+    ASSERT(options.persist_code, "shouldn't get here");
+    if (!persistence_supported())
+        return false;
+    if (dr_write_file(fd, &pd, sizeof(pd)) != (ssize_t)sizeof(pd))
+        return false;
+    STATS_INC(pcaches_written);
+    return true;
+}
+
+static bool
+event_resurrect_ro(void *drcontext, app_pc start, app_pc end, byte **map INOUT)
+{
+    persist_data_t *pd = (persist_data_t *) *map;
+    *map += sizeof(*pd);
+    if (!persistence_supported())
+        return false;
+    if (pd->version != PCACHE_VERSION) {
+        WARN("WARNING: persisted cache version mismatch\n");
+        STATS_INC(pcaches_mismatch);
+        return false;
+    }
+    if (pd->client_base != client_base) {
+        WARN("WARNING: persisted base="PFX" does not match cur base="PFX"\n",
+             pd->client_base, client_base);
+        STATS_INC(pcaches_mismatch);
+        return false;
+    }
+    if (pd->shadowing != options.shadowing) {
+        WARN("WARNING: persisted cache shadowing mode does not match current mode\n");
+        STATS_INC(pcaches_mismatch);
+        return false;
+    }
+    /* FIXME i#769: persist hashtables */
+    STATS_INC(pcaches_loaded);
+    return true;
+}
+
+/***************************************************************************
+ * DYNAMORIO EVENTS
+ */
 
 static void
 close_file(file_t f)
@@ -1458,6 +1547,13 @@ dr_init(client_id_t id)
 #else
     dr_register_exception_event(event_exception);
 #endif
+    client_base = dr_get_client_base(client_id);
+    if (options.persist_code) {
+        if (!dr_register_persist_ro(event_persist_ro_size,
+                                    event_persist_ro,
+                                    event_resurrect_ro))
+            ASSERT(false, "failed to register persist ro events");
+    }
 
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Memory version %s\n", VERSION_STRING);

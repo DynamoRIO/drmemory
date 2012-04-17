@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -110,6 +110,8 @@ $use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
 $use_debug = 0;
 $use_dr_debug = 0;
 $logdir = "";
+$persist_code = 0;
+$persist_dir = "";
 $perturb_only = 0;
 $perturb = 0;
 $batch = 0; # batch mode: no popups please
@@ -180,6 +182,8 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "gen_suppress_offs!" => \$gen_suppress_offs,
                 "gen_suppress_syms!" => \$gen_suppress_syms,
                 "logdir=s" => \$logdir,
+                "persist_code" => \$persist_code,
+                "persist_dir=s" => \$persist_dir,
                 "perturb_only" => \$perturb_only,
                 "callstack_style=s" => \$callstack_style,
                 # required so perl option parser won't interpret as -perturb_only
@@ -331,6 +335,17 @@ $ops .= " -callstack_style $callstack_style"
     if ($callstack_style ne $default_op_vals{"callstack_style"});
 
 $dr_ops .= ' -no_follow_children' unless ($follow_children);
+
+if ($persist_code) {
+    if ($persist_dir eq '') {
+        $persist_dir = "$logdir/codecache"; # default
+    } else {
+        $persist_dir = &canonicalize_path($persist_dir);
+    }
+    die "-persist_dir $persist_dir is invalid\n" unless (logdir_ok($persist_dir));
+    $dr_ops .= " -persist -persist_dir `$persist_dir`";
+    $ops .= " -persist_code";
+}
 
 if ($aggregate || $just_postprocess) {
     # nothing to deploy

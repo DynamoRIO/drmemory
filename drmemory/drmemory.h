@@ -116,4 +116,7 @@ void
 set_teb_initial_shadow(TEB *teb);
 #endif
 
+bool
+persistence_supported(void);
+
 #endif /* _DRMEMORY_H_ */

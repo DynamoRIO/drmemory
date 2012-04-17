@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -395,7 +395,8 @@ int main(int argc, char *argv[])
      */
     char logdir[MAXIMUM_PATH];
     char suppress[MAXIMUM_PATH];
-    char symcache_dir[MAXIMUM_PATH];
+    char scratch[MAXIMUM_PATH];
+    char persist_dir[MAXIMUM_PATH];
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
@@ -413,6 +414,7 @@ int main(int argc, char *argv[])
     char buf[MAXIMUM_PATH];
     process_id_t pid;
     bool have_logdir = false;
+    bool persisting = false;
 
     time_t start_time, end_time;
 
@@ -492,6 +494,8 @@ int main(int argc, char *argv[])
             NULL_TERMINATE_BUFFER(logdir);
         }
     }
+
+    persist_dir[0] = '\0';
 
     /* parse command line */
     /* FIXME PR 487993: use optionsx.h to construct this parsing code */
@@ -608,16 +612,33 @@ int main(int argc, char *argv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(symcache_dir),
-                            symcache_dir, NULL);
-            NULL_TERMINATE_BUFFER(symcache_dir);
-            if (_access(symcache_dir, 2/*write*/) == -1) {
-                fatal("invalid -symcache_dir: cannot find/write %s", symcache_dir);
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(scratch), scratch, NULL);
+            NULL_TERMINATE_BUFFER(scratch);
+            if (_access(scratch, 2/*write*/) == -1) {
+                fatal("invalid -symcache_dir: cannot find/write %s", scratch);
                 goto error; /* actually won't get here */
             }
-            info("symcache_dir is \"%s\"", symcache_dir);
+            info("symcache_dir is \"%s\"", scratch);
+            /* also parsed by the client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-                     cliops_sofar, len, "-symcache_dir `%s` ", symcache_dir);
+                     cliops_sofar, len, "-symcache_dir `%s` ", scratch);
+        }
+        else if (strcmp(argv[i], "-persist_code") == 0) {
+            BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                     drops_sofar, len, "-persist ");
+            /* also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "-persist_code ");
+            persisting = true;
+        }
+        else if (strcmp(argv[i], "-persist_dir") == 0) {
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            /* make absolute */
+            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(persist_dir),
+                            persist_dir, NULL);
+            NULL_TERMINATE_BUFFER(persist_dir);
+            /* further processed below */
         }
         else if (strcmp(argv[i], "-suppress") == 0) {
             if (i >= argc - 1)
@@ -736,6 +757,22 @@ int main(int argc, char *argv[])
     info("logdir is \"%s\"", logdir);
     BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
              cliops_sofar, len, "-logdir `%s` ", logdir);
+
+    if (persisting) {
+        /* default -persist_dir is not DR's default so we have to set it */
+        if (persist_dir[0] == '\0') { /* not set by user */
+            _snprintf(persist_dir, BUFFER_SIZE_ELEMENTS(persist_dir),
+                      "%s/codecache", logdir);
+            NULL_TERMINATE_BUFFER(persist_dir);
+        }
+        if (_access(persist_dir, 2/*write*/) == -1) {
+            fatal("invalid -persist_dir: cannot find/write %s", persist_dir);
+            goto error; /* actually won't get here */
+        }
+        info("persist_dir is \"%s\"", persist_dir);
+        BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                 drops_sofar, len, "-persist_dir `%s` ", persist_dir);
+    }
 
     errcode = dr_inject_process_create(app_name, app_cmdline, &inject_data);
     if (errcode != 0) {

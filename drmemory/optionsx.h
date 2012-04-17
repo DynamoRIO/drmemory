@@ -450,6 +450,12 @@ OPTION_CLIENT_BOOL(drmemscope, light, false,
 OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, 0, 0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")
+OPTION_CLIENT_BOOL(drmemscope, persist_code, false,
+                   "Cache instrumented code to speed up future runs",
+                   "Cache instrumented code to speed up future runs.  For short-running applications, this can provide a performance boost.  It may not be worth enabling for long-running applications.")
+OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
+                     "Directory for code cache files",
+                     "Destination for code cache files.  When using a unique log directory for each run, symbols will not be shared across runs because the default cache location is inside the log directory.  Use this option to set a shared directory.")
 
 /****************************************************************************
  * Un-documented client options, for developer use only

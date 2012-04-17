@@ -774,6 +774,10 @@ if (NOT USER_SPECIFIED_DynamoRIO_DIR)
   endif ()
 endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 
+# we want a preferred base to avoid patching pcaches
+set(DynamoRIO_SET_PREFERRED_BASE ON)
+set(PREFERRED_BASE 0x73800000)
+
 set(DynamoRIO_REG_COMPATIBILITY ON)
 if (STATIC_DRSYMS)
   set(DynamoRIO_USE_LIBC ON)
@@ -787,12 +791,13 @@ use_DynamoRIO_extension(${client_target} drwrap)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-if (DEBUG_BUILD AND WIN32)
+if (WIN32)
   # annoying to have ASLR and not on module list
+  # plus, now we require the same base for pcache
   get_target_property(cur_flags ${client_target} LINK_FLAGS)
   set_target_properties(${client_target} PROPERTIES
     LINK_FLAGS "${cur_flags} /dynamicbase:no")
-endif (DEBUG_BUILD AND WIN32)
+endif (WIN32)
 if (WIN32 AND USE_DRSYMS)
   configure_DynamoRIO_standalone(${toolname})
   target_link_libraries(${toolname} drinjectlib drconfiglib)
@@ -878,6 +883,7 @@ endif (PERL_TO_EXE)
 
 # support running out of build dir
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
@@ -1145,6 +1151,9 @@ endif (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs\")")
 # CPack seems to ignore empty dirs so add a README file
 install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/README\" \"Default destination for log files.\n\")")
+# ditto for pcaches
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache/README\" \"Default destination for code cache files.\n\")")
 
 # Include DR so user doesn't have to download separately (PR 457417).
 # We don't need docs/, include/, or 64-bit.

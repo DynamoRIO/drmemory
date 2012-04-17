@@ -3973,9 +3973,13 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (bi->first_instr)
         bi->first_instr = false;
     /* We store whether bi->check_ignore_unaddr in our own data struct to avoid
-     * DR having to store translations, so we can recreate deterministically.
+     * DR having to store translations, so we can recreate deterministically
+     * => DR_EMIT_DEFAULT
      */
-    return DR_EMIT_DEFAULT;
+    if (persistence_supported())
+        return DR_EMIT_DEFAULT | DR_EMIT_PERSISTABLE;
+    else
+        return DR_EMIT_DEFAULT;
 }
 
 static dr_emit_flags_t
