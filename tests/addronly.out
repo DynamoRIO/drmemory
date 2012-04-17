@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -23,5 +23,4 @@ all done
 ~~Dr.M~~       2 unique,    21 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+# not listing leaks to support -light

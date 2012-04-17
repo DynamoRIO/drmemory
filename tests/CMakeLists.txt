@@ -75,16 +75,22 @@ function(tobuild name source)
   set_props(${name})
 endfunction(tobuild)
 
+function(append_link_flags target newflags)
+  get_target_property(cur_ldflags ${target} LINK_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_ldflags)
+    set(cur_ldflags "")
+  endif (NOT cur_ldflags)
+  set_target_properties(${target} PROPERTIES
+    LINK_FLAGS "${cur_ldflags} ${newflags}")
+endfunction(append_link_flags)
+
 function(tobuild_lib name source cust_flags cust_link)
   add_library(${name} SHARED ${source})
   set_props(${name})
   get_target_property(cur_flags ${name} COMPILE_FLAGS)
   set_target_properties(${name} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
-  get_target_property(cur_link ${name} LINK_FLAGS)
-  if (NOT cur_link)
-    set(cur_link "")
-  endif (NOT cur_link)
-  set_target_properties(${name} PROPERTIES LINK_FLAGS "${cur_link} ${cust_link}")
+  append_link_flags(${name} "${cust_link}")
 endfunction(tobuild_lib)
 
 # tools for nudge tests
@@ -385,7 +391,7 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
   newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "")
   newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "")
-  newtest_nobuild(addronly free "" "-no_check_uninitialized" "" OFF "")
+  newtest_nobuild(addronly free "" "-light" "" OFF "")
   newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   if (USE_DRSYMS)
@@ -499,6 +505,21 @@ if (NOT TOOL_DR_HEAPSTAT)
   if (UNIX)
     newtest(memalign memalign.c)
   endif (UNIX)
+
+  # persistent cache tests: currently only light mode is supported
+  # XXX: would be nice to ensure pcaches are actually generated and used,
+  # but how?  annotations would be the cleanest way but that requires
+  # a bunch of annotations that are only used for tests.
+  newtest_ex(pcache free.c "" "-light;-persist_code"
+    # do not load any stale pcaches from prior runs, in first run
+    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly")
+  if (WIN32)
+    # we make a separate executable to avoid ASLR
+    append_link_flags(pcache "/dynamicbase:no")
+  endif ()
+  newtest_nobuild(pcache-use pcache "" "-light;-persist_code" "" OFF "addronly")
+  # when running tests in parallel, have to generate pcaches first
+  set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
 
 else (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
