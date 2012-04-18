@@ -383,7 +383,7 @@ gdicheck_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     const char *modname = dr_module_preferred_name(info);
     if (modname != NULL && strcasecmp(modname, "gdi32.dll") == 0) {
-        app_pc addr = (app_pc) dr_get_proc_address(info->start, "SelectObject");
+        app_pc addr = (app_pc) dr_get_proc_address(info->handle, "SelectObject");
         ASSERT(addr != NULL, "can't find gdi32!SelectObject");
         if (addr == NULL || !drwrap_wrap(addr, gdicheck_wrap_pre_SelectObject,
                                          gdicheck_wrap_post_SelectObject))

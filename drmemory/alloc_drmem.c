@@ -200,7 +200,7 @@ alloc_drmem_init(void)
 #ifdef WINDOWS /* for i#689 */
     ASSERT(ntdll_base != NULL, "init ordering problem");
     addr_RtlLeaveCrit = (app_pc)
-        dr_get_proc_address(ntdll_base, "RtlLeaveCriticalSection");
+        dr_get_proc_address((module_handle_t)ntdll_base, "RtlLeaveCriticalSection");
 #endif
 }
 

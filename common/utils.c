@@ -899,7 +899,7 @@ sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
         }
     });
 # else
-    app_pc entry = (app_pc) dr_get_proc_address(info->start, name);
+    app_pc entry = (app_pc) dr_get_proc_address(info->handle, name);
 #  ifdef USE_DRSYMS
     if (entry == NULL) {
         /* Some kernel32 and user32 syscall wrappers are not exported.

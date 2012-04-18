@@ -911,7 +911,7 @@ replace_in_module(const module_data_t *mod, bool add)
     for (i=0; i<REPLACE_NUM; i++) {
         dr_export_info_t info;
         app_pc addr = NULL;
-        if (dr_get_proc_address_ex(mod->start, replace_routine_name[i],
+        if (dr_get_proc_address_ex(mod->handle, replace_routine_name[i],
                                    &info, sizeof(info))) {
             addr = (app_pc) info.address;
             ASSERT(addr != NULL, "can't succeed yet have NULL addr!");

@@ -2168,19 +2168,19 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
 
     if (stri_eq(modname, "ntdll.dll")) {
         app_pc addr_KiCallback = (app_pc)
-            dr_get_proc_address(info->start, "KiUserCallbackDispatcher");
+            dr_get_proc_address(info->handle, "KiUserCallbackDispatcher");
         ASSERT(addr_KiCallback != NULL, "can't find Ki routine");
         if (!drwrap_wrap_ex(addr_KiCallback, alloc_wrap_Ki, NULL, (void*)1, 0))
             ASSERT(false, "failed to wrap");
         if (options.track_allocs) {
             app_pc addr_KiAPC, addr_KiLdrThunk, addr_KiException, addr_KiRaise;
-            addr_KiAPC = (app_pc) dr_get_proc_address(info->start,
+            addr_KiAPC = (app_pc) dr_get_proc_address(info->handle,
                                                       "KiUserApcDispatcher");
-            addr_KiLdrThunk = (app_pc) dr_get_proc_address(info->start,
+            addr_KiLdrThunk = (app_pc) dr_get_proc_address(info->handle,
                                                            "LdrInitializeThunk");
-            addr_KiException = (app_pc) dr_get_proc_address(info->start,
+            addr_KiException = (app_pc) dr_get_proc_address(info->handle,
                                                             "KiUserExceptionDispatcher");
-            addr_KiRaise = (app_pc) dr_get_proc_address(info->start,
+            addr_KiRaise = (app_pc) dr_get_proc_address(info->handle,
                                                         "KiRaiseUserExceptionDispatcher");
             /* Assuming that KiUserCallbackExceptionHandler,
              * KiUserApcExceptionHandler, and the Ki*SystemCall* routines are not

@@ -761,8 +761,7 @@ static int
 syscall_num_from_name(void *drcontext, const module_data_t *info, const char *name,
                       const char *optional_prefix, bool sym_lookup)
 {
-    app_pc entry = (app_pc)
-        dr_get_proc_address(info->start, name);
+    app_pc entry = (app_pc)dr_get_proc_address(info->handle, name);
     int num = -1;
     if (entry != NULL) {
         /* look for partial map (i#730) */
