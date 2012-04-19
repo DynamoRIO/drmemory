@@ -1110,7 +1110,9 @@ handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
          */
         size = PORT_MAXIMUM_MESSAGE_LENGTH;
     } else if (safe_read(start, sizeof(pm), &pm)) {
-        if (pm.u1.s1.DataLength > 0)
+        if (pm.u1.s1.DataLength > 0 ||
+            /* i#865: sometimes data has 0 length */
+            (pm.u1.s1.DataLength == 0 && pm.u1.s1.TotalLength > 0))
             size = pm.u1.s1.TotalLength;
         else
             size = pm.u1.Length;
