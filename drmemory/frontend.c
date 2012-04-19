@@ -764,6 +764,19 @@ int main(int argc, char *argv[])
             _snprintf(persist_dir, BUFFER_SIZE_ELEMENTS(persist_dir),
                       "%s/codecache", logdir);
             NULL_TERMINATE_BUFFER(persist_dir);
+            /* create it if not specified by user.
+             * using dr_ API here since available and perhaps we'll want this
+             * same frontend on linux someday.
+             */
+            if (!dr_directory_exists(persist_dir)) {
+                if (!dr_create_dir(persist_dir)) {
+                    /* check again in case of a race */
+                    if (!dr_directory_exists(persist_dir)) {
+                        fatal("cannot create %s", persist_dir);
+                        goto error; /* actually won't get here */
+                    }
+                }
+            }
         }
         if (_access(persist_dir, 2/*write*/) == -1) {
             fatal("invalid -persist_dir: cannot find/write %s", persist_dir);
