@@ -415,6 +415,7 @@ int main(int argc, char *argv[])
     process_id_t pid;
     bool have_logdir = false;
     bool persisting = false;
+    bool exit0 = false;
 
     time_t start_time, end_time;
 
@@ -654,6 +655,9 @@ int main(int argc, char *argv[])
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "-suppress `%s` ", suppress);
         }
+        else if (strcmp(argv[i], "-exit0") == 0) {
+            exit0 = TRUE;
+        }
         else {
             if (strcmp(argv[i], "-perturb_only") == 0)
                 no_resfile = true;
@@ -848,9 +852,9 @@ int main(int argc, char *argv[])
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
     process_results_file(logdir, pid, app_name);
-    return errcode;
+    return (exit0 ? 0 : errcode);
  error:
     dr_inject_process_exit(inject_data, false);
-    return 1;
+    return (exit0 ? 0 : 1);
 }
 
