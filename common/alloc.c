@@ -1469,21 +1469,23 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         for (i = 0; i < edata->num_possible; i++) {
             const char *name = edata->possible[i].name;
             if (!edata->processed[i] &&
-                /* can't look up wildcard in exports */
-                edata->wildcard_name != NULL &&
                 ((prefix != NULL && strstr(name, prefix) == name) ||
                  (suffix != NULL && strlen(name) >= strlen(suffix) &&
                   strcmp(name + strlen(name) - strlen(suffix), suffix) == 0))) {
+                app_pc pc = NULL;
                 /* XXX: somehow drsym_search_symbols misses msvcrt!malloc
                  * (dbghelp 6.11+ w/ full search does find it but full takes too
                  * long) so we always try an export lookup
                  */
-                app_pc pc = (app_pc) dr_get_proc_address(edata->mod->handle, name);
+                /* can't look up wildcard in exports */
+                if (edata->wildcard_name != NULL)
+                    pc = (app_pc) dr_get_proc_address(edata->mod->handle, name);
                 if (pc != NULL) {
                     LOG(2, "regex didn't match %s but it's an export\n", name);
                     add_to_alloc_set(edata, pc, i);
                 } else {
                     LOG(2, "marking %s as processed since regex didn't match\n", name);
+                    ASSERT(edata->wildcard_name == NULL, "shouldn't get here");
                     edata->processed[i] = true;
 #ifdef USE_DRSYMS
                     if (op_use_symcache)
