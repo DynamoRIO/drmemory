@@ -5369,7 +5369,6 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
     }
 
     if (!translating) {
-        bb_saved_info_t *old;
         /* Add to table so we can restore on slowpath or a fault */
         save = (bb_saved_info_t *) global_alloc(sizeof(*save), HEAPSTAT_PERBB);
         memset(save, 0, sizeof(*save));
@@ -5419,13 +5418,7 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
          * to keep our bb info around in case the semi-flushed bb hits a fault.
          */
         hashtable_lock(&bb_table);
-        old = (bb_saved_info_t *) hashtable_add_replace(&bb_table, tag, (void*)save);
-        if (old != NULL) {
-            ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
-            save->ignore_next_delete = old->ignore_next_delete + 1;
-            global_free(old, sizeof(*old), HEAPSTAT_PERBB);
-            LOG(2, "bb "PFX" duplicated: assuming non-precise flushing\n", tag);
-        }
+        bb_save_add_entry(tag, save);
         hashtable_unlock(&bb_table);
     }
 }

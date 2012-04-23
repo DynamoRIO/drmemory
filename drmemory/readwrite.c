@@ -2953,7 +2953,8 @@ instrument_persist_ro_size(void *drcontext, void *perscxt)
     if (!INSTRUMENT_MEMREFS())
         return 0;
     if (options.shadowing) {
-        LOG(2, "persisting bb table\n");
+        LOG(2, "persisting bb table "PFX"-"PFX"\n", dr_persist_start(perscxt),
+            dr_persist_start(perscxt) + dr_persist_size(perscxt));
         sz += hashtable_persist_size(drcontext, &bb_table, sizeof(bb_saved_info_t),
                                      perscxt, DR_HASHPERS_REBASE_KEY  |
                                      DR_HASHPERS_ONLY_IN_RANGE |
@@ -3009,6 +3010,21 @@ instrument_persist_ro(void *drcontext, void *perscxt, file_t fd)
     return ok;
 }
 
+/* caller should hold bb_table lock */
+void
+bb_save_add_entry(app_pc key, bb_saved_info_t *save)
+{
+    bb_saved_info_t *old = (bb_saved_info_t *)
+        hashtable_add_replace(&bb_table, (void *)key, (void *)save);
+    if (old != NULL) {
+        ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
+        save->ignore_next_delete = old->ignore_next_delete + 1;
+        global_free(old, sizeof(*old), HEAPSTAT_PERBB);
+        LOG(2, "bb "PFX" duplicated: assuming non-precise flushing\n", key);
+    }
+}
+
+/* caller should hold bb_table lock */
 static bool
 bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
 {
@@ -3016,12 +3032,48 @@ bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
      * dr_fragment_app_pc(tag) in a few places which doesn't seem worth it
      */
     bb_saved_info_t *save = (bb_saved_info_t *) payload;
-    bool ok;
     save->last_instr = (app_pc) ((ptr_int_t)save->last_instr + shift);
-    ok = hashtable_add(&bb_table, key, payload);
-    if (!ok)
-        wait_for_user("dup");
-    return ok;
+    bb_save_add_entry((app_pc) key, save);
+    return true;
+}
+
+static bool
+xl8_sharing_resurrect_entry(void *key, void *payload, ptr_int_t shift)
+{
+    /* we can have dups b/c of non-precise flushing on re-loaded modules,
+     * so we use our own callback here to ignore them (perf, not correctness,
+     * on dup entries)
+     */
+    hashtable_add(&xl8_sharing_table, key, payload);
+    return true;
+}
+
+/* caller should hold hashtable lock */
+static void
+stringop_app2us_add_entry(app_pc xl8, stringop_entry_t *entry)
+{
+    stringop_entry_t *old = (stringop_entry_t *)
+        hashtable_add_replace(&stringop_app2us_table, (void *)xl8, (void *)entry);
+    ASSERT(dr_mutex_self_owns(stringop_lock), "caller must hold lock");
+    if (old != NULL) {
+        IF_DEBUG(bool found;)
+            LOG(2, "stringop xl8 "PFX" duplicated at "PFX
+                ": assuming non-precise flushing\n", xl8, old);
+        ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
+        entry->ignore_next_delete = old->ignore_next_delete + 1;
+        global_free(old, sizeof(*old), HEAPSTAT_PERBB);
+        IF_DEBUG(found =)
+            hashtable_remove(&stringop_us2app_table, (void *)old);
+        ASSERT(found, "entry should be in both tables");
+    }
+}
+
+/* caller should hold hashtable lock */
+static bool
+stringop_app2us_resurrect_entry(void *key, void *payload, ptr_int_t shift)
+{
+    stringop_app2us_add_entry((app_pc) key, (stringop_entry_t *) payload);
+    return true;
 }
 
 static bool
@@ -3046,28 +3098,34 @@ instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
         return ok;
     if (options.shadowing) {
         LOG(2, "resurrecting bb table\n");
+        hashtable_lock(&bb_table);
         ok = ok && hashtable_resurrect(drcontext, map, &bb_table, sizeof(bb_saved_info_t),
                                        perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
                                        DR_HASHPERS_REBASE_KEY | DR_HASHPERS_CLONE_PAYLOAD,
                                        bb_save_resurrect_entry);
+        hashtable_unlock(&bb_table);
         LOG(2, "resurrecting xl8 table\n");
         ok = ok && hashtable_resurrect(drcontext, map, &xl8_sharing_table, sizeof(uint),
-                                       perscxt, DR_HASHPERS_REBASE_KEY, NULL);
+                                       perscxt, DR_HASHPERS_REBASE_KEY,
+                                       xl8_sharing_resurrect_entry);
         LOG(2, "resurrecting unaddr table\n");
         ok = ok && hashtable_resurrect(drcontext, map, &ignore_unaddr_table, sizeof(uint),
                                        perscxt, DR_HASHPERS_REBASE_KEY, NULL);
     }
     LOG(2, "resurrecting string table\n");
+    dr_mutex_lock(stringop_lock);
     ok = ok && hashtable_resurrect(drcontext, map, &stringop_app2us_table,
                                    sizeof(stringop_entry_t), perscxt,
                                    DR_HASHPERS_PAYLOAD_IS_POINTER |
                                    DR_HASHPERS_REBASE_KEY |
-                                   DR_HASHPERS_CLONE_PAYLOAD, NULL);
+                                   DR_HASHPERS_CLONE_PAYLOAD,
+                                   stringop_app2us_resurrect_entry);
     /* the stringop_us2app_table is composed of heap-allocated entries in
      * stringop_app2us_table, which will change on resurrection: so rather than
      * persist we rebuild at resurrect time
      */
     ok = ok && populate_us2app_table();
+    dr_mutex_unlock(stringop_lock);
 
     /* FIXME: if a later one fails, we'll abort the pcache load but we'll have entries
      * added to the earlier tables.  we should invalidate them.
@@ -3663,7 +3721,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
     if (!drutil_expand_rep_string_ex(drcontext, bb, &expanded, &string))
         ASSERT(false, "drutil failed");
     if (expanded) {
-        stringop_entry_t *old, *entry;
+        stringop_entry_t *entry;
         app_pc xl8 = instr_get_app_pc(string);
         IF_DEBUG(bool ok;)
         LOG(3, "converting rep string into regular loop\n");
@@ -3706,19 +3764,7 @@ convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
             entry->loop_instr[1] = 0;
             entry->ignore_next_delete = 0;
             dr_mutex_lock(stringop_lock);
-            old = (stringop_entry_t *)
-                hashtable_add_replace(&stringop_app2us_table, xl8, (void *)entry);
-            if (old != NULL) {
-                IF_DEBUG(bool found;)
-                LOG(2, "stringop xl8 "PFX" duplicated at "PFX
-                    ": assuming non-precise flushing\n", xl8, old);
-                ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
-                entry->ignore_next_delete = old->ignore_next_delete + 1;
-                global_free(old, sizeof(*old), HEAPSTAT_PERBB);
-                IF_DEBUG(found =)
-                    hashtable_remove(&stringop_us2app_table, (void *)old);
-                ASSERT(found, "entry should be in both tables");
-            }
+            stringop_app2us_add_entry(xl8, entry);
             IF_DEBUG(ok = )
                 hashtable_add(&stringop_us2app_table, (void *)entry, xl8);
             LOG(2, "adding stringop entry "PFX" for xl8 "PFX"\n",

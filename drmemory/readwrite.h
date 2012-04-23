@@ -200,6 +200,9 @@ instrument_persist_ro(void *drcontext, void *perscxt, file_t fd);
 bool
 instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT);
 
+void
+bb_save_add_entry(app_pc key, bb_saved_info_t *save);
+
 /***************************************************************************
  * REGISTER SPILLING
  */
