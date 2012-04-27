@@ -665,7 +665,8 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
             _IF_WINDOWS(auxarg == NULL ? 0 : *auxarg));
         if (options.pattern != 0) {
             pattern_handle_real_free(pass_to_free /* real_base */,
-                                     info->delay_free_list[idx].real_size, 
+                                     info->delay_free_list[idx].real_size,
+                                     info->delay_free_list[idx].real_size,
                                      true /* delayed */);
         }
     }
@@ -710,7 +711,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 real_size, options.delay_frees_maxsz);
             dr_mutex_unlock(delay_free_lock);
             if (options.pattern != 0)
-                pattern_handle_real_free(base, size, false);
+                pattern_handle_real_free(base, size, real_size, false);
             return real_base;
         }
         /* Store real base and real size: i.e., including redzones (PR 572716) */
@@ -758,7 +759,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 info->delay_free_bytes -= real_size;
                 dr_mutex_unlock(delay_free_lock);
                 if (options.pattern != 0) {
-                    pattern_handle_real_free(base, size, false);
+                    pattern_handle_real_free(base, size, real_size, false);
                 }
                 return real_base;
             }
@@ -821,11 +822,11 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
 
         dr_mutex_unlock(delay_free_lock);
         if (options.pattern != 0)
-            pattern_handle_delayed_free(base, size);
+            pattern_handle_delayed_free(base, size, real_size);
         return pass_to_free;
     }
     if (options.pattern != 0)
-        pattern_handle_real_free(base, size, false);
+        pattern_handle_real_free(base, size, real_size, false);
     return real_base; /* no change */
 }
 

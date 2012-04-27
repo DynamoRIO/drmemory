@@ -942,7 +942,7 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
     }
 }
 
-static void
+static bool
 malloc_iterate_identify_indirect_cb(app_pc start, app_pc end, app_pc real_end,
                                     bool pre_us, uint client_flags,
                                     void *client_data, void *iter_data)
@@ -954,9 +954,10 @@ malloc_iterate_identify_indirect_cb(app_pc start, app_pc end, app_pc real_end,
                  client_flags)) {
         check_reachability_helper(start, end, false, (void *)data);
     }
+    return true;
 }
 
-static void
+static bool
 malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
                   bool pre_us, uint client_flags,
                   void *client_data, void *iter_data)
@@ -995,9 +996,10 @@ malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
         malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
                                  MALLOC_INDIRECTLY_REACHABLE);
     }
+    return true;
 }
 
-static void
+static bool
 malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
                              bool pre_us, uint client_flags,
                              void *client_data, void *iter_data)
@@ -1012,6 +1014,7 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
     IF_DEBUG(node = )
         rb_insert(alloc_tree, start, (end - start), NULL);
     ASSERT(node == NULL, "mallocs should not overlap");
+    return true;
 }
 
 static void

@@ -39,13 +39,17 @@
 # include <signal.h> /* for SIGSEGV */
 #endif
 
+/***************************************************************************
+ * Pattern mode instrumentation functions
+ */
+
 #define MAX_REFS_PER_INSTR 3
 #define PATTERN_SLOT_XAX    SPILL_SLOT_1
 #define PATTERN_SLOT_AFLAGS SPILL_SLOT_2
 #define SWAP_BYTE(x)  ((0x0ff & ((x) >> 8)) | ((0x0ff & (x)) << 8))
 #define PATTERN_REVERSE(x) (SWAP_BYTE(x) | (SWAP_BYTE(x) << 16))
 
-/* we use a redblack tree to keep malloc info */
+/* we can use a redblack tree to keep malloc info */
 static rb_tree_t *pattern_malloc_tree;
 static void *pattern_malloc_tree_rwlock;
 static uint  pattern_reverse;
@@ -564,31 +568,6 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
     return false;
 }
 
-bool
-pattern_addr_in_redzone(byte *addr)
-{
-
-    bool res = false;
-    rb_node_t *node;
-    dr_rwlock_read_lock(pattern_malloc_tree_rwlock);
-    node = rb_in_node(pattern_malloc_tree, addr);
-    if (node != NULL) {
-        byte *start;
-        size_t size;
-        void *data;
-        size_t app_size;
-        rb_node_fields(node, &start, &size, &data);
-        app_size = (size_t)data;
-        ASSERT(app_size + options.redzone_size * 2 <= size,
-               "wrong node information");
-        if (addr <  start + options.redzone_size || 
-            addr >= start + options.redzone_size + app_size)
-            res = true;
-    }
-    dr_rwlock_read_unlock(pattern_malloc_tree_rwlock);
-    return res;
-}
-
 /* In pattern mode, there are several possible ways that segv fault happens
  * - wrong pc
  *   + it is more possible to be a bug, do nothing and return false;
@@ -628,31 +607,207 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc)
     return ours;
 }
 
+
+/***************************************************************************
+ * Memory allocation bookkeeping Functions
+ */
+
+static bool
+pattern_addr_in_malloc_tree(byte *addr, size_t size)
+{
+    rb_node_t *node;
+    bool res = false;
+
+    /* walk the pattern_malloc_tree */
+    dr_rwlock_read_lock(pattern_malloc_tree_rwlock);
+    node = rb_in_node(pattern_malloc_tree, addr);
+    if (node != NULL) {
+        byte *start;
+        void *data;
+        size_t real_size;
+        size_t app_size;
+        rb_node_fields(node, &start, &real_size, &data);
+        app_size = (size_t)data;
+        ASSERT(app_size + options.redzone_size * 2 <= real_size,
+               "wrong node information");
+        if (addr <  start + options.redzone_size || 
+            addr >= start + options.redzone_size + app_size)
+            res = true;
+    }
+    dr_rwlock_read_unlock(pattern_malloc_tree_rwlock);
+    return res;
+}
+
+static void
+pattern_insert_malloc_tree(byte *app_base,  size_t app_size,
+                           byte *real_base, size_t real_size)
+{
+    IF_DEBUG(rb_node_t *node;)
+    dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
+    /* due to padding, the real_size might be larger than 
+     * (app_size + redzone_size*2), which makes the size of 
+     * rear redzone not fixed, so store app_size in rb_tree.
+     */
+    IF_DEBUG(node =) rb_insert(pattern_malloc_tree, real_base,
+                               real_size, (void *)app_size);
+    dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
+    ASSERT(node == NULL, "error in inserting pattern malloc tree");
+}
+
+static void
+pattern_remove_malloc_tree(app_pc app_base, size_t app_size, size_t real_size)
+{
+    rb_node_t *node;
+    void *data;
+    app_pc real_base;
+    size_t size;
+
+    dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
+    node = rb_find(pattern_malloc_tree, app_base - options.redzone_size);
+    if (node != NULL) {
+        rb_node_fields(node, &real_base, &size, &data);
+        ASSERT(app_size  == (size_t)data,
+               "wrong app size in pattern malloc tree");
+        ASSERT(real_base == app_base - options.redzone_size,
+               "wrong real_base in pattern malloc tree");
+        ASSERT(real_size == size &&
+               real_size >= app_size + options.redzone_size * 2,
+               "Wrong real_size in pattern malloc tree");
+        /* XXX i#786: we simply remove the memory here, which can be 
+         * improved by invalidating/removing malloc rbtree instead,
+         * though we still need do the lookup to change the node status.
+         */
+        rb_delete(pattern_malloc_tree, node);
+    }
+    dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
+}
+
+typedef struct _pattern_malloc_iter_data_t {
+    byte *addr;
+    size_t size;
+    bool found;
+} pattern_malloc_iter_data_t;
+
+static bool
+pattern_malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
+                          bool pre_us, uint client_flags,
+                          void *client_data, void *iter_data)
+{
+    pattern_malloc_iter_data_t *data = (pattern_malloc_iter_data_t *) iter_data;
+    ASSERT(iter_data != NULL, "invalid iteration data");
+    ASSERT(start != NULL && start <= end, "invalid params");
+    LOG(4, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
+    ASSERT(!data->found, "the iteration should be short-circuited");
+    if (pre_us)
+        return true;
+    if ((data->addr >= start - options.redzone_size && data->addr < start) ||
+        (data->addr >= end && data->addr < real_end)) {
+        data->found = true;
+        return false;
+    }
+    return true;
+}
+
+static bool
+pattern_addr_in_malloc_table(byte *addr, size_t size)
+{
+    pattern_malloc_iter_data_t iter_data = {addr, size, false};
+    /* walk the hashtable */
+    malloc_iterate(pattern_malloc_iterate_cb, &iter_data);
+    if (iter_data.found)
+        return true;
+    return false;
+}
+
+
+/* If an addr contains pattern value, we check the memory before and after,
+ * and return true if there are enough number of contiguous pattern value.
+ * XXX: the pattern value in the redzone could be clobbered by earlier error,
+ * (see pattern_handle_ill_fault,) which may cause false negative here.
+ * We can put clobber value and looking for it here instead.
+ */
+#define ADDR_PRE_CHECK_SIZE   (options.redzone_size)
+#define ADDR_PRE_CHECK_COUNT  (ADDR_PRE_CHECK_SIZE / sizeof(uint))
+
+static bool
+pattern_addr_pre_check(byte *addr)
+{
+    uint *val;
+    uint match = 0;
+    int i;
+
+    addr = (byte *) ALIGN_BACKWARD(addr, sizeof(uint));
+    /* read memory after addr */
+    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+        /* we check the memory after aligned addr instead of addr 
+         * to handle the case like:
+         * char *p = malloc(3); *(p + 3) = ...;
+         */
+        val = (uint *)addr + 1;
+        for (i = 0; i < ADDR_PRE_CHECK_COUNT; i++) {
+            if (*val != options.pattern)
+                break;
+            val++;
+            match++;
+        }
+    }, { /* EXCEPT */
+    });
+    if (match == ADDR_PRE_CHECK_COUNT)
+        return true;
+    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+        val = (uint *)addr;
+        for (i = 0; i < ADDR_PRE_CHECK_COUNT; i++) {
+            if (*val != options.pattern)
+                break;
+            val--;
+            match++;
+        }
+    }, { /* EXCEPT */
+    });
+    if (match == ADDR_PRE_CHECK_COUNT)
+        return true;
+    return false;
+}
+
+bool
+pattern_addr_in_redzone(byte *addr, size_t size)
+{
+    bool res = false;
+    /* we first do a pre-check to avoid expensive lookup */
+    res  = pattern_addr_pre_check(addr);
+    if (!res)
+        return false;
+    /* expensive walk */
+    LOG(3, "expensive lookup for pattern_addr_in_redzone@"PFX"\n", addr);
+    if (options.pattern_use_malloc_tree)
+        res = pattern_addr_in_malloc_tree(addr, size);
+    else
+        res = pattern_addr_in_malloc_table(addr, size);
+    return res;
+}
+
 void
 pattern_handle_malloc(byte *app_base,  size_t app_size,
                       byte *real_base, size_t real_size)
 {
     ASSERT(options.pattern != 0, "should not be called");
+    ASSERT(ALIGNED(real_base, sizeof(uint)), "real base is unaligned");
+    ASSERT(ALIGNED(real_size, sizeof(uint)), "real size is unaligned");
+
     if ((app_base - real_base) == options.redzone_size) {
         uint *redzone;
-        IF_DEBUG(rb_node_t *node;)
-        dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
-        /* due to padding, the real_size might be larger than 
-         * (app_size + redzone_size*2), which makes the size of 
-         * rear redzone not fixed, so store app_size in rb_tree.
-         */
-        IF_DEBUG(node =) rb_insert(pattern_malloc_tree, real_base,
-                                   real_size, (void *)app_size);
-        dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
-        ASSERT(node == NULL, "error in inserting pattern malloc tree");
-        ASSERT(ALIGNED(real_base, sizeof(uint)), "real base is unaligned");
-        ASSERT(ALIGNED(real_size, sizeof(uint)), "real size is unaligned");
+        if (options.pattern_use_malloc_tree)
+            pattern_insert_malloc_tree(app_base, app_size, real_base, real_size);
+        LOG(2, "set pattern value at "PFX"-"PFX" in redzone\n",
+            real_base, app_base);
         for (redzone = (uint *)real_base; redzone < (uint *)app_base; redzone++)
             *redzone = options.pattern;
         /* the app_size might be unaligned, which will be expanded with padding
          * by allocator. We will fill the padding whenever possible.
          */
-        redzone = (uint *)(app_base + app_size);
+        redzone = (uint *) (app_base + app_size);
+        LOG(2, "set pattern value at "PFX"-"PFX" in redzone\n",
+            redzone, real_base + real_size);
         if (!ALIGNED(redzone, 2)) {
             *redzone = pattern_reverse;
         } else if (!ALIGNED(redzone, 4)) {
@@ -661,6 +816,7 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
              */
             *(ushort *)redzone = (ushort)options.pattern;
         }
+        
         for (redzone = (uint *)ALIGN_FORWARD((app_base + app_size), 4);
              redzone < (uint *)(real_base + real_size);
              redzone++)
@@ -673,47 +829,37 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
 }
 
 void
-pattern_handle_real_free(app_pc base, size_t size, bool delayed)
+pattern_handle_real_free(app_pc base, size_t size,
+                         size_t real_size, bool delayed)
 {
     ASSERT(options.pattern != 0, "should not be called");
-    /* XXX i#786: we should move this part to malloc hanlding if we
-     * properly invalidate rbtree on malloc.
-     */
     if (delayed) {
         /* if delayed, the base and size are real base and size */
         /* removing the pattern to avoid false positive faults. */
+        LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in freed block\n",
+            base, base + size, size);
         memset(base, 0, size);
     } else {
-        /* if !delayed, the base is app base, and the size is app size.
-         * we can ignore the size since our rbtree holds the app_size,
-         * now use passed in size for sanity check.
-         */
-        rb_node_t *node;
-        app_pc real_base;
-        size_t real_size, app_size = 0;
-        void *data;
-
-        dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
-        node = rb_find(pattern_malloc_tree, base - options.redzone_size);
-        if (node != NULL) {
-            rb_node_fields(node, &real_base, &real_size, &data);
-            app_size = (size_t)data;
-            ASSERT(real_base == (base - options.redzone_size) &&
-                   real_size >= (app_size + options.redzone_size * 2) &&
-                   size == app_size,
-                   "error in pattern malloc tree node");
-            /* XXX i#786: we simply remove the memory here, which can be 
-             * improved by invalidating/removing malloc rbtree instead,
-             * though we still need do the lookup to change the node status.
+        if (options.pattern_use_malloc_tree) {
+            /* if !delayed, the base is app base, and the size is app size.
+             * we can ignore the size since our rbtree holds the app_size,
+             * now use passed in size for sanity check.
              */
-            rb_delete(pattern_malloc_tree, node);
+            pattern_remove_malloc_tree(base, size, real_size);
         }
-        dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
         /* if !delayed, only need remove the pattern in redzone */
-        if (node != NULL) {
-            memset(real_base, 0, options.redzone_size);
-            memset(base + app_size, 0,
-                   real_size - app_size - options.redzone_size);
+        if (real_size >= (size + 2 * options.redzone_size)) {
+            IF_DEBUG(uint val;)
+            ASSERT(safe_read(base - options.redzone_size, sizeof(val), &val) &&
+                   val == options.pattern, "wrong free address");
+            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
+                base - options.redzone_size, base, options.redzone_size);
+            memset(base - options.redzone_size, 0, options.redzone_size);
+            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
+                base + size,
+                base + size + (real_size - (size + options.redzone_size)),
+                real_size - (size + options.redzone_size));
+            memset(base + size, 0, real_size - (size + options.redzone_size));
         } else {
 #if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
             ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
@@ -723,38 +869,24 @@ pattern_handle_real_free(app_pc base, size_t size, bool delayed)
 }
 
 void
-pattern_handle_delayed_free(app_pc base, size_t size)
+pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size)
 {
     uint *redzone;
-    app_pc real_base;
-    size_t real_size, app_size = 0;
-    void *data;
-    rb_node_t *node;
-    ASSERT(options.pattern != 0, "should not be called");
 
-    dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
-    node = rb_find(pattern_malloc_tree, base - options.redzone_size);
-    if (node != NULL) {
-        rb_node_fields(node, &real_base, &real_size, &data);
-        app_size = (size_t)data;
-        ASSERT(real_base == (base - options.redzone_size) &&
-               real_size >= (app_size + options.redzone_size * 2) &&
-               (size == 0 || size == app_size), 
-               "error in pattern malloc tree node");
-        /* XXX i#786: we simply remove the memory here, which can be improved
-         * by invalidating/removing malloc rbtree instead, though we still 
-         * need do the lookup to change the node status.
-         */
-        rb_delete(pattern_malloc_tree, node);
-    }
-    dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
+    ASSERT(options.pattern != 0, "should not be called");
+    /* We assume that any invalid free won't come here */
+    ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
+    if (options.pattern_use_malloc_tree)
+        pattern_remove_malloc_tree(base, size, real_size);
     /* We assume the actually alloced block length will be 4-byte aligned,
      * e.g. if size is 2, the allocator will alloc 4 bytes instead,
      * so it is ok to fill 4-byte uint pattern.
      */
     ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
-    for (redzone = (uint *)ALIGN_BACKWARD(base, 4);
-         redzone < (uint *)(base + app_size);
+    LOG(2, "set pattern value at "PFX"-"PFX" in delay-freed block\n",
+        base, base + size);
+    for (redzone = (uint *) ALIGN_BACKWARD(base, 4);
+         redzone < (uint *) (base + size);
          redzone++)
         *redzone = options.pattern;
 }
@@ -774,18 +906,17 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
 {
     uint val;
     size_t check_sz;
-    /* XXX i#774: for ref of >4 byte, we check the starting 4-byte */
-    check_sz = size < 4 ? 2 : 4;
-    addr = (app_pc)ALIGN_BACKWARD(addr, check_sz);
+    /* XXX i#774: for ref of >4 byte, we check the starting 4-byte only */
+    check_sz = (size <= 2) ? 2 : 4;
     /* there are several memory opnd, so it should be faster to check
      * before lookup in the rbtree.
      */
-    if ((safe_read(addr, check_sz, &val) &&
-         ((ushort)val == (ushort)options.pattern ||
-          (ushort)val == (ushort)pattern_reverse) &&
-         (check_sz == 4 ? (val == options.pattern || val == pattern_reverse)
-          : true)) &&
-        (pattern_addr_in_redzone(addr) ||
+    if (safe_read(addr, check_sz, &val) &&
+        ((ushort)val == (ushort)options.pattern ||
+         (ushort)val == (ushort)pattern_reverse) &&
+        (check_sz == 4 ? 
+         (val == options.pattern || val == pattern_reverse)  : true) &&
+        (pattern_addr_in_redzone(addr, size) ||
          overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree
          * nor in delayed free rbtree, in which case we cannot detect. We 
@@ -814,13 +945,18 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
     return true;
 }
 
+/***************************************************************************
+ * Init/exit
+ */
+
 void
 pattern_init(void)
 {
     ASSERT(options.pattern != 0, "should not be called");
-    pattern_malloc_tree = rb_tree_create(NULL);
-    pattern_malloc_tree_rwlock = dr_rwlock_create();
-
+    if (options.pattern_use_malloc_tree) {
+        pattern_malloc_tree = rb_tree_create(NULL);
+        pattern_malloc_tree_rwlock = dr_rwlock_create();
+    }
     note_base = drmgr_reserve_note_range(NOTE_MAX_VALUE);
     ASSERT(note_base != DRMGR_NOTE_NONE, "failed to get note value");
 
@@ -836,6 +972,8 @@ void
 pattern_exit(void)
 {
     ASSERT(options.pattern != 0, "should not be called");
-    dr_rwlock_destroy(pattern_malloc_tree_rwlock);
-    rb_tree_destroy(pattern_malloc_tree);
+    if (options.pattern_use_malloc_tree) {
+        dr_rwlock_destroy(pattern_malloc_tree_rwlock);
+        rb_tree_destroy(pattern_malloc_tree);
+    }
 }

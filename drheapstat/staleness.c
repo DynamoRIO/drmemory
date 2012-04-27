@@ -471,7 +471,7 @@ staleness_free_per_alloc(stale_per_alloc_t *spa)
  * and the periodic sweep then sets the timestamp if an alloc's metadata
  * is set and subsequently clears the metadata.
  */
-static void
+static bool
 alloc_itercb_sweep(app_pc start, app_pc end, app_pc real_end,
                    bool pre_us, uint client_flags,
               void *client_data, void *iter_data)
@@ -485,6 +485,7 @@ alloc_itercb_sweep(app_pc start, app_pc end, app_pc real_end,
         spa->last_access = stamp;
         shadow_set_range(start, end, 0);
     }
+    return true;
 }
 
 void
@@ -538,7 +539,7 @@ staleness_get_snap_last_access(stale_snap_allocs_t *snaps, uint idx)
         return snaps->data.sm.main[idx].last_access;
 }
 
-static void
+static bool
 alloc_itercb_snapshot(app_pc start, app_pc end, app_pc real_end,
                       bool pre_us, uint client_flags,
                       void *client_data, void *iter_data)
@@ -596,6 +597,7 @@ alloc_itercb_snapshot(app_pc start, app_pc end, app_pc real_end,
     LOG(3, "\tadding "PFX"-"PFX" stamp %"INT64_FORMAT"u to snapshot idx %d\n", 
         start, end, spa->last_access, snaps->idx);
     snaps->idx++;
+    return true;
 }
 
 /* The malloc lock is held by caller */

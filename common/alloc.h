@@ -185,8 +185,11 @@ malloc_set_client_flag(app_pc start, uint client_flag);
 bool
 malloc_clear_client_flag(app_pc start, uint client_flag);
 
+/* Iterate malloc entries and call callback function cb on each entry.
+ * The bool returned by cb indicates if the iteration should continue.
+ */
 void
-malloc_iterate(void (*cb)(app_pc start, app_pc end, app_pc real_end,
+malloc_iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
                           bool pre_us, uint client_flags,
                           void *client_data, void *iter_data), void *iter_data);
 

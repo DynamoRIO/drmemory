@@ -592,3 +592,6 @@ OPTION_CLIENT_BOOL(internal, leave_uninit, false,
 OPTION_CLIENT_BOOL(client, leak_scan, true,
                    "Perform leak scan",
                    "Whether to perform the leak scan.  For performance measurement purposes only.")
+OPTION_CLIENT_BOOL(internal, pattern_use_malloc_tree, false,
+                   "Use red-black tree for tracking malloc/free",
+                   "Use red-black tree for tracking malloc/free to reduce the overhead of maintaining the malloc tree on every memory allocation and free, but we have to do expensive hashtable walk to check if an address is in the redzone.")

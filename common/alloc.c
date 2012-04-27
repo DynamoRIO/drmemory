@@ -3041,7 +3041,7 @@ malloc_clear_client_flag(app_pc start, uint client_flag)
 
 static void
 malloc_iterate_internal(bool include_native,
-                        void (*cb)(app_pc start, app_pc end, app_pc real_end,
+                        bool (*cb)(app_pc start, app_pc end, app_pc real_end,
                                    bool pre_us, uint client_flags,
                                    void *client_data, void *iter_data), void *iter_data)
 {
@@ -3058,17 +3058,20 @@ malloc_iterate_internal(bool include_native,
             nxt = he->next;
             if (TEST(MALLOC_VALID, e->flags) &&
                 (include_native || !malloc_entry_is_native(e))) {
-                cb(e->start, e->end, e->end + e->usable_extra,
-                   TEST(MALLOC_PRE_US, e->flags), e->flags,
-                   e->data, iter_data);
+                if (!cb(e->start, e->end, e->end + e->usable_extra,
+                        TEST(MALLOC_PRE_US, e->flags), e->flags,
+                        e->data, iter_data)) {
+                    goto malloc_iterate_done;
+                }
             }
         }
     }
+ malloc_iterate_done:
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
 void
-malloc_iterate(void (*cb)(app_pc start, app_pc end, app_pc real_end,
+malloc_iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
                           bool pre_us, uint client_flags,
                           void *client_data, void *iter_data), void *iter_data)
 {
@@ -4106,7 +4109,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         }
         LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX
             " size="PIFX" => "PFX" real size = "PIFX"\n",
-            IF_WINDOWS_(heap) base, size, real_base);
+            IF_WINDOWS_(heap) base, size, real_base, real_size);
 
         ASSERT(routine->set != NULL, "free must be part of set");
 #ifdef WINDOWS
@@ -4853,7 +4856,7 @@ typedef struct _heap_destroy_info_t {
     byte *end;
 } heap_destroy_info_t;
 
-static void
+static bool
 heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
                      bool pre_us, uint client_flags,
                      void *client_data, void *iter_data)
@@ -4874,6 +4877,7 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
             start, end, info->start, info->end);
         malloc_remove(start);
     }
+    return true;
 }
 
 static void
