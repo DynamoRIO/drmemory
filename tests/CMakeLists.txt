@@ -401,6 +401,9 @@ if (NOT TOOL_DR_HEAPSTAT)
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif (USE_DRSYMS)
   newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
+  # test this option to exercise the realloc handling code.
+  # note that we can't run the realloc test b/c the races will result in unaddrs.
+  newtest_nobuild(malloc_noreplace malloc "" "-no_replace_realloc" "" OFF "malloc")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

@@ -2743,12 +2743,10 @@ malloc_entry_usable_extra(malloc_entry_t *e)
     return (e == NULL ? 0 : e->usable_extra);
 }
 
-void
-malloc_set_valid(app_pc start, bool valid)
+/* caller must hold lock */
+static void
+malloc_entry_set_valid(malloc_entry_t *e, bool valid)
 {
-    malloc_entry_t *e;
-    bool locked_by_me = malloc_lock_if_not_held_by_me();
-    e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
     if (e != NULL) {
         /* cache values for post-event */
         app_pc start = e->start, end = e->end, real_end = e->end + e->usable_extra;
@@ -2791,6 +2789,16 @@ malloc_set_valid(app_pc start, bool valid)
             client_remove_malloc_post(start, end, real_end);
         }
     } /* ok to be NULL: a race where re-used in malloc and then freed already */
+}
+
+void
+malloc_set_valid(app_pc start, bool valid)
+{
+    malloc_entry_t *e;
+    bool locked_by_me = malloc_lock_if_not_held_by_me();
+    e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
+    if (e != NULL)
+        malloc_entry_set_valid(e, valid);
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
@@ -3693,12 +3701,13 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
 /* As part of PR 578892 we must report invalid heap block args to all routines,
  * since we ignore unaddr inside the routines.
  * Caller should check for NULL separately if it's not an invalid arg.
+ * Pass invalid in if known; else block will be looked up in malloc table.
  */
 static bool
-check_valid_heap_block(byte *block, cls_alloc_t *pt, void *wrapcxt,
+check_valid_heap_block(bool known_invalid, byte *block, cls_alloc_t *pt, void *wrapcxt,
                        const char *routine, bool is_free)
 {
-    if (malloc_end(block) == NULL &&
+    if ((known_invalid || malloc_end(block) == NULL) &&
         /* do not report errors when on a heap tangent: there can be LFH blocks
          * or other meta-objects for which we never saw the alloc (i#432)
          */
@@ -4206,7 +4215,7 @@ handle_size_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #endif
     if (redzone_size(routine) > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
-        if (check_valid_heap_block(pt->alloc_base, pt, wrapcxt,
+        if (check_valid_heap_block(false, pt->alloc_base, pt, wrapcxt,
                                    /* FIXME: should have caller invoke and use
                                     * alloc_routine_name?  kernel32 names better
                                     * than Rtl though
@@ -4524,6 +4533,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     bool invalidated = false;
     size_t size = (size_t) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_SIZE(type));
     app_pc base = (app_pc) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_PTR(type));
+    malloc_entry_t *entry;
     if (base == NULL) {
         /* realloc(NULL, size) == malloc(size) (PR 416535) */
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
@@ -4540,8 +4550,11 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         LOG(2, "realloc-pre "PFX" new size %d\n", base, pt->realloc_replace_size);
         return;
     }
-    if (malloc_is_native(base, pt, true)) {
-        malloc_remove((void*)base);
+    malloc_lock();
+    entry = malloc_lookup(base);
+    if (entry != NULL && malloc_entry_is_native_ex(entry, base, pt, true)) {
+        malloc_entry_remove(entry);
+        malloc_unlock();
         return;
     }
 #ifdef WINDOWS
@@ -4551,6 +4564,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #endif
     if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
+        malloc_unlock();
         return;
     }
     set_handling_heap_layer(pt, base, size);
@@ -4559,23 +4573,25 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #endif
     pt->in_realloc = true;
     real_base = pt->alloc_base;
-    if (!check_valid_heap_block(pt->alloc_base, pt, wrapcxt,
+    if (!check_valid_heap_block(entry == NULL, pt->alloc_base, pt, wrapcxt,
                                 routine->name, is_free_routine(type))) {
         pt->expect_lib_to_fail = true;
+        malloc_unlock();
         return;
     }
     if (redzone_size(routine) > 0) {
         ASSERT(redzone_size(routine) >= 4, "redzone < 4 not supported");
-        if (malloc_is_pre_us(pt->alloc_base)) {
+        if (malloc_entry_is_pre_us(entry, false)) {
             /* was allocated before we took control, so no redzone */
-            pt->realloc_old_size =
-                get_alloc_size(IF_WINDOWS_((reg_t)drwrap_get_arg(wrapcxt, 0))
-                               pt->alloc_base, routine);
-            ASSERT(pt->realloc_old_size != -1,
+            /* since we have hashtable, we can use it to retrieve the app size
+             * (see comments in handle_free_pre())
+             */
+            pt->realloc_old_size = malloc_entry_size(entry);
+            ASSERT((ssize_t)pt->realloc_old_size != -1,
                    "error getting pre-us size");
             /* if we wait until post-free to check failure, we'll have
              * races, so we invalidate here: see comments for free */
-            malloc_set_valid(pt->alloc_base, false);
+            malloc_entry_set_valid(entry, false);
             invalidated = true;
             size_in_zone = false;
             LOG(2, "realloc of pre-control "PFX"-"PFX"\n",
@@ -4614,10 +4630,11 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      */
     if (size_in_zone)
         pt->realloc_old_size = *((size_t *)(pt->alloc_base - redzone_size(routine)));
-    else {
-        pt->realloc_old_size =
-            get_alloc_size(IF_WINDOWS_((reg_t)drwrap_get_arg(wrapcxt, 0))
-                           real_base, routine);
+    else if (!invalidated) {
+        /* since we have hashtable, we can use it to retrieve the app size
+         * (see comments in handle_free_pre())
+         */
+        pt->realloc_old_size = malloc_entry_size(entry);
         ASSERT((ssize_t)pt->realloc_old_size != -1, "error determining heap block size");
         pt->realloc_old_size -= redzone_size(routine)*2;
     }
@@ -4628,7 +4645,8 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         IF_WINDOWS_(drwrap_get_arg(wrapcxt, 0))
         pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
     if (options.record_allocs && !invalidated)
-        malloc_set_valid(pt->alloc_base, false);
+        malloc_entry_set_valid(entry, false);
+    malloc_unlock();
 }
 
 static void
@@ -4985,7 +5003,7 @@ handle_userinfo_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     LOG(2, "Rtl*User*Heap "PFX", "PFX", "PFX"\n",
         drwrap_get_arg(wrapcxt, 0), drwrap_get_arg(wrapcxt, 1),
         drwrap_get_arg(wrapcxt, 2));
-    if (check_valid_heap_block(pt->alloc_base, pt, wrapcxt, routine->name, false) &&
+    if (check_valid_heap_block(false, pt->alloc_base, pt, wrapcxt, routine->name, false) &&
         redzone_size(routine) > 0) {
         /* ensure wasn't allocated before we took control (so no redzone) */
         if (pt->alloc_base != NULL &&
@@ -5034,7 +5052,7 @@ handle_validate_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         pt->alloc_base = block; /* in case self-recurses */
         if (block == NULL) {
             ASSERT(false, "RtlValidateHeap on entire heap not supported");
-        } else if (check_valid_heap_block(block, pt, wrapcxt, "HeapValidate",
+        } else if (check_valid_heap_block(false, block, pt, wrapcxt, "HeapValidate",
                                           false)) {
             if (!malloc_is_pre_us(block)) {
                 LOG(2, "RtlValidateHeap: changing "PFX" to "PFX"\n",
