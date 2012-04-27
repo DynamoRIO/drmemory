@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -86,6 +86,11 @@ regtest()
         mov    byte ptr [array],               ah
         mov    byte ptr [array + ecx],         ah
         mov    byte ptr [array + ecx + edx*2], ah
+        /* test i#877: ALU sub-dword shift */
+        add    byte ptr [array],               8 /* fastpath ok */
+        shr    byte ptr [array],               8 /* needs slowpath */
+        add    word ptr [array],               8 /* fastpath ok */
+        shl    word ptr [array],               8 /* needs slowpath */
         /* pushes and pops */
         push  dword ptr [array + ecx + edx*2]
         pop   dword ptr [array + ecx + edx*2]

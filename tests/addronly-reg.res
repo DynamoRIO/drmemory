@@ -21,15 +21,15 @@
 #
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:593
+registers.c:598
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:605
+registers.c:610
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:631
+registers.c:636
 Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:642
+registers.c:647
 %endif
 Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes

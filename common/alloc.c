@@ -4488,7 +4488,7 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                    alloc_routine_entry_t *routine)
 {
     app_pc real_base = (app_pc) mc->eax;
-    size_t pad_size, real_size;
+    size_t pad_size, real_size = 0;
     app_pc app_base = adjust_alloc_result(drcontext, pt, wrapcxt, mc, &pad_size,
                                           &real_size, true, routine);
     bool zeroed = IF_WINDOWS_ELSE(is_rtl_routine(routine->type) ?

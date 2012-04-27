@@ -55,6 +55,20 @@ extern const byte shadow_word_addr_not_bit[4][256];
 
 static uint share_xl8_num_flushes;
 
+#ifdef TOOL_DR_MEMORY
+static bool needs_shadow_op(instr_t *inst);
+
+# ifdef DEBUG
+static void
+print_opnd(void *drcontext, opnd_t op, file_t file, const char *prefix)
+{
+    dr_fprintf(file, "%s", prefix);
+    opnd_disassemble(drcontext, op, file);
+    dr_fprintf(file, "\n");
+}
+# endif
+#endif /* TOOL_DR_MEMORY */
+
 /* Handles segment-based memory references.
  * Assumes that SPILL_SLOT_5 is available if necessary.
  */
@@ -666,6 +680,15 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 }
             }
         }
+
+        /* a sub-dword ALU store that needs shadow op cannot go in fastpath b/c
+         * fastpath doesn't handle both src and dst w/ dynamic sub-dword
+         * alignment (i#877)
+         */
+        if (needs_shadow_op(inst) && mi->store &&
+            opnd_same(mi->dst[0].app, mi->src[0].app) &&
+            opnd_size_in_bytes(opnd_get_size(mi->dst[0].app)) < 4)
+            return false;
 
         /* We only allow 8-byte or 10-byte memop for floats or 16-byte memop for xmm
          * if we do no real propagation
@@ -2629,6 +2652,15 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(!opnd_is_null(dst.shadow) || process_eflags, "shouldn't be called");
     ASSERT(src_opsz > 0 && !opnd_is_null(src.shadow), "shouldn't be called");
     ASSERT(!reg_is_8bit_high(scratch8), "scratch8 must be low8 reg");
+
+    DOLOG(4, {
+        file_t f = LOGFILE_GET(drcontext);
+        print_opnd(drcontext, src.shadow, f, "\tsrc shadow = ");
+        print_opnd(drcontext, dst.shadow, f, "\tdst shadow = ");
+        print_opnd(drcontext, src.offs, f, "\tsrc offs = ");
+        print_opnd(drcontext, dst.offs, f, "\tdst offs = ");
+    });
+
     /* The shadow value to propagate, resulting from combining all sources,
      * is in src.  We now perform any shifting, and then write to dest.
      */
