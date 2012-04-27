@@ -42,6 +42,7 @@
 #include "dr_api.h" /* for the types */
 #include "dr_inject.h"
 #include "dr_config.h"
+#include "frontend.h"
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
@@ -672,7 +673,7 @@ int main(int argc, char *argv[])
         if (i < argc)
             usage("%s", "-nudge does not take an app to run");
         /* could also complain about other client or app specific ops */
-        res = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, 0, INFINITE);
+        res = dr_nudge_pid(nudge_pid, DRMEM_CLIENT_ID, NUDGE_LEAK_SCAN, INFINITE);
         if (res != DR_SUCCESS) {
             fatal("error nudging %d%s", nudge_pid,
                   (res == DR_NUDGE_PID_NOT_INJECTED) ? ": no such Dr. Memory process"

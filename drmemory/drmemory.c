@@ -69,6 +69,7 @@
 #include "perturb.h"
 #include <stddef.h> /* for offsetof */
 #include "pattern.h"
+#include "frontend.h"
 
 #ifdef USE_DRSYMS
 # include "drsyms.h" /* for pre-loading pdbs on Vista */
@@ -1351,11 +1352,9 @@ event_exception(void *drcontext, dr_exception_t *excpt)
 #endif
 
 static void
-event_nudge(void *drcontext, uint64 argument)
+nudge_leak_scan(void *drcontext)
 {
-    /* PR 474554: use nudge/signal for mid-run summary/output
-     * For now we have only one use, so we don't need the argument
-     */
+    /* PR 474554: use nudge/signal for mid-run summary/output */
 #ifdef USE_DRSYMS
     static int nudge_count;
     int local_count = atomic_add32_return_sum(&nudge_count, 1);
@@ -1372,6 +1371,19 @@ event_nudge(void *drcontext, uint64 argument)
     report_summary();
     report_leak_stats_revert();
     ELOGF(0, f_global, "NUDGE\n");
+}
+
+static void
+event_nudge(void *drcontext, uint64 argument)
+{
+    if (argument == NUDGE_LEAK_SCAN)
+        nudge_leak_scan(drcontext);
+    else if (argument == NUDGE_TERMINATE) {
+        /* clean exit (as opposed to parent terminating w/ no cleanup) */
+        ELOGF(0, f_global, "TERMINATION NUDGE\n");
+        dr_exit_process(0);
+        ASSERT(false, "should not reach here");
+    }
 }
 
 static void

@@ -26,6 +26,7 @@
 #include "syscall_os.h"
 #include "syscall_windows.h"
 #include "readwrite.h"
+#include "frontend.h"
 #include <stddef.h> /* offsetof */
 
 #include "../wininc/ndk_dbgktypes.h"
@@ -156,6 +157,7 @@ static int sysnum_CreateUserProcess = -1;
 static int sysnum_DeviceIoControlFile = -1;
 static int sysnum_QuerySystemInformation = -1;
 static int sysnum_SetSystemInformation = -1;
+static int sysnum_TerminateProcess = -1;
 
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
@@ -506,7 +508,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSuspendThread", OK, 8, {{1,sizeof(ULONG),W}, }},
     {0,"NtSystemDebugControl", OK, 24, {{3,-4,W}, {3,-5,WI}, {5,sizeof(ULONG),W}, }},
     {0,"NtTerminateJobObject", OK, 8, },
-    {0,"NtTerminateProcess", OK, 8, },
+    {0,"NtTerminateProcess", OK, 8, {{0,}}, &sysnum_TerminateProcess},
     {0,"NtTerminateThread", OK, 8, },
     {0,"NtTestAlert", OK, 0, },
     /* unlike TraceEvent API routine, syscall takes size+flags as
@@ -1027,6 +1029,30 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 {
+    /* i#544: give child processes a chance for clean exit for leak scan
+     * and option summary and symbol and code cache generation.
+     *
+     * XXX: a child under DR but not DrMem will be left alive: but that's
+     * a risk we can live with.
+     */
+    if (sysnum == sysnum_TerminateProcess && options.soft_kills) {
+        HANDLE proc = (HANDLE) pt->sysarg[0];
+        process_id_t pid = dr_convert_handle_to_pid(proc);
+        if (pid != INVALID_PROCESS_ID && pid != dr_get_process_id()) {
+            dr_config_status_t res =
+                dr_nudge_client_ex(pid, client_id, NUDGE_TERMINATE,
+                                   /*preserve exit code*/pt->sysarg[1]);
+            LOG(1, "TerminateProcess => nudge pid=%d res=%d\n", pid, res);
+            if (res == DR_SUCCESS) {
+                /* skip syscall since target will terminate itself */
+                dr_syscall_set_result(drcontext, 0/*success*/);
+                return false;
+            }
+            /* else failed b/c target not under DR control or maybe some other error:
+             * let syscall go through
+             */
+        }
+    }
     return true; /* execute syscall */
 }
 

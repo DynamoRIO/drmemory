@@ -683,6 +683,7 @@ sub nudge($p) {
         &vmk_nudge_cmd($pid);
     } else {
         my @cmd;
+        # XXX: read drmemory.h to get NUDGE_LEAK_SCAN which we assume here is 0
         if ($is_unix) {
             push @cmd, ("$dr_home/bin32/nudgeunix", "-client", "0", "0");
         } else {
