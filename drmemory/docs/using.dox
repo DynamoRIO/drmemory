@@ -136,8 +136,8 @@ or "-g" for gcc or g++).
 
 On Linux, Dr. Memory supports ELF files with DWARF2 line information.  On
 Windows, Dr. Memory supports PDB debug information (produced by Visual
-Studio).  The Windows release of Dr. Memory does not support symbols for
-applications built with gcc or g++ on Windows.
+Studio) as well as PECOFF files with DWARF2 line information (produced by
+MinGW gcc or g++: see \ref sec_windows_cygwin).
 
 If you want to run your application with stripped libraries or binaries and
 have the unstripped versions in separate locations, you can point at those
