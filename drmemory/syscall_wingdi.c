@@ -1528,8 +1528,17 @@ handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
     if (pre && TEST(SYSARG_WRITE, arg_flags)) {
         check_sysmem(check_type, sysnum, start, size, mc, "LOGFONTW");
     } else {
-        size_t check_sz = MIN(size - offsetof(LOGFONTW, lfFaceName),
-                              sizeof(font->lfFaceName));
+        size_t check_sz;
+        if (size == 0) {
+            /* i#873: existing code passes in 0 for the size, which violates
+             * the MSDN docs, yet the kernel doesn't care and still returns
+             * success.  Thus we don't report as an error and we make
+             * it work.
+             */
+            size = sizeof(LOGFONTW);
+        }
+        check_sz = MIN(size - offsetof(LOGFONTW, lfFaceName),
+                       sizeof(font->lfFaceName));
         ASSERT(size >= offsetof(LOGFONTW, lfFaceName), "invalid size");
         check_sysmem(check_type, sysnum, start,
                      offsetof(LOGFONTW, lfFaceName), mc, "LOGFONTW");
