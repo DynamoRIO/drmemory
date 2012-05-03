@@ -220,6 +220,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "symbol lookups: %6u cached %6u, searches: %6u cached %6u\n",
                symbol_lookups, symbol_lookup_cache_hits,
                symbol_searches, symbol_search_cache_hits);
+    dr_fprintf(f_global, "symbol address lookups: %6u\n", symbol_address_lookups);
 #endif
     dr_fprintf(f_global, "stack swaps: %8u, triggers: %8u\n",
                stack_swaps, stack_swap_triggers);

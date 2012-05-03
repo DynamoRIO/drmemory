@@ -495,6 +495,7 @@ extern uint symbol_lookups;
 extern uint symbol_searches;
 extern uint symbol_lookup_cache_hits;
 extern uint symbol_search_cache_hits;
+extern uint symbol_address_lookups;
 # endif
 bool
 lookup_has_fast_search(const module_data_t *mod);

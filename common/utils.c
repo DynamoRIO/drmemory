@@ -55,6 +55,7 @@ uint symbol_lookups;
 uint symbol_searches;
 uint symbol_lookup_cache_hits;
 uint symbol_search_cache_hits;
+uint symbol_address_lookups;
 # endif
 #endif
 
