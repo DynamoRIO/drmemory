@@ -440,12 +440,12 @@ suppress_spec_free(suppress_spec_t *spec)
 }
 
 /* Return true if the suppression has a single frame covering an entire module.
+ * We can handle single frame expressions that match the current instruction.
  */
 static bool
 is_module_wildcard(suppress_spec_t *spec)
 {
-    return (spec->instruction == NULL &&
-            spec->num_frames == 1 &&
+    return (spec->num_frames == 1 &&
             spec->frames[0].is_module &&
             spec->frames[0].func[0] == '*' &&
             spec->frames[0].func[1] == '\0');
@@ -1057,7 +1057,7 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
  * the app pc.  Updates the suppression usage counts if it does.
  */
 static bool
-report_in_suppressed_module(uint type, app_loc_t *loc)
+report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
 {
     suppress_spec_t *spec;
     bool suppressed = false;
@@ -1084,7 +1084,10 @@ report_in_suppressed_module(uint type, app_loc_t *loc)
     for (spec = supp_list[type]; spec != NULL; spec = spec->next) {
         if (is_module_wildcard(spec) &&
             text_matches_pattern(preferred_name, spec->frames[0].modname,
-                                 /*ignore_case=*/IF_WINDOWS_ELSE(true, false))) {
+                                 /*ignore_case=*/IF_WINDOWS_ELSE(true, false)) &&
+            (spec->instruction == NULL ||
+             text_matches_pattern(instruction, spec->instruction,
+                                  /*ignore_case=*/false))) {
             suppressed = true;
             dr_mutex_lock(error_lock);
             if (spec->is_default)
@@ -2026,42 +2029,9 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
         goto report_error_done;
     }
 
-    /* i#838: If we have a wildcard suppression covering this module for this
-     * error type, don't bother taking the stack trace, unless we need to log
-     * it.
+    /* Disassemble the current instruction if its generally included in a report
+     * of this type.
      */
-    if (have_module_wildcard IF_DRSYMS(&& !options.log_suppressed_errors)) {
-        if (report_in_suppressed_module(etp->errtype, etp->loc)) {
-            goto report_error_done;
-        }
-    }
-
-    err = record_error(etp->errtype, NULL, etp->loc, mc, false/*no lock */);
-    if (err->count > 1) {
-        if (err->suppressed) {
-            if (err->suppressed_by_default)
-                num_suppressions_matched_default++;
-            else
-                num_suppressions_matched_user++;
-        } else {
-            ASSERT(err->id != 0, "duplicate should have id");
-            /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
-            reporting = true;
-        }
-        dr_mutex_unlock(error_lock);
-        goto report_error_done;
-    }
-    ASSERT(err->id == 0, "non-duplicate should not have id");
-
-    /* for invalid heap arg, now that we always do our alloc pre-hook in the
-     * callee, the first frame is a retaddr and its line should thus be -1
-     */
-    if (etp->errtype == ERROR_INVALID_HEAP_ARG)
-        packed_callstack_first_frame_retaddr(err->pcs);
-
-    /* Convert to symbolized so we can compare to suppressions */
-    packed_callstack_to_symbolized(err->pcs, &ecs.scs);
-
     if (etp->report_instruction &&
         etp->loc != NULL && etp->loc->type == APP_LOC_PC) {
         app_pc cur_pc = loc_to_pc(etp->loc);
@@ -2091,6 +2061,42 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
             });
         }
     }
+
+    /* i#838: If we have a wildcard suppression covering this module for this
+     * error type, don't bother taking the stack trace, unless we need to log
+     * it.
+     */
+    if (have_module_wildcard IF_DRSYMS(&& !options.log_suppressed_errors)) {
+        if (report_in_suppressed_module(etp->errtype, etp->loc, ecs.instruction)) {
+            goto report_error_done;
+        }
+    }
+
+    err = record_error(etp->errtype, NULL, etp->loc, mc, false/*no lock */);
+    if (err->count > 1) {
+        if (err->suppressed) {
+            if (err->suppressed_by_default)
+                num_suppressions_matched_default++;
+            else
+                num_suppressions_matched_user++;
+        } else {
+            ASSERT(err->id != 0, "duplicate should have id");
+            /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
+            reporting = true;
+        }
+        dr_mutex_unlock(error_lock);
+        goto report_error_done;
+    }
+    ASSERT(err->id == 0, "non-duplicate should not have id");
+
+    /* for invalid heap arg, now that we always do our alloc pre-hook in the
+     * callee, the first frame is a retaddr and its line should thus be -1
+     */
+    if (etp->errtype == ERROR_INVALID_HEAP_ARG)
+        packed_callstack_first_frame_retaddr(err->pcs);
+
+    /* Convert to symbolized so we can compare to suppressions */
+    packed_callstack_to_symbolized(err->pcs, &ecs.scs);
 
     reporting = !on_suppression_list(etp->errtype, &ecs, &spec);
     if (!reporting) {

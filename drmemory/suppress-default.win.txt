@@ -130,17 +130,15 @@ name=default i#462 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!AesEncrypt
 
-UNADDRESSABLE ACCESS
-name=default i#504 (write beyond TOS)
-instruction=mov    %e?? -> 0xfffffffc(%esp)
-RSAENH.dll!AesEncrypt
-
 # w/o symbols
 UNADDRESSABLE ACCESS
 name=default i#462 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 CRYPTBASE.dll!SystemFunction036
 
+# Typically the function is AesEncrypt, but we don't rely on syms.  Also this
+# happens frequently enough that we can take advantage of the i#838 optimization
+# for whole module suppressions and avoid taking a call stack.
 UNADDRESSABLE ACCESS
 name=default i#504 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
