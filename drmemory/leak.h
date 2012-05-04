@@ -34,7 +34,10 @@ extern uint midchunk_postsize_ptrs;
 extern uint midchunk_postnew_ptrs;
 extern uint midchunk_postinheritance_ptrs;
 extern uint midchunk_string_ptrs;
+# ifdef WINDOWS
+extern uint pointers_encoded;
 extern uint encoded_pointers_scanned;
+# endif
 #endif
 
 /**************************/
@@ -61,6 +64,8 @@ leak_init(bool have_defined_info,
           byte *(*next_defined_dword)(byte *, byte *),
           byte *(*end_of_defined_region)(byte *, byte *),
           bool (*is_register_defined)(void *, reg_id_t));
+void
+leak_exit();
 
 void
 leak_scan_for_leaks(bool at_exit);

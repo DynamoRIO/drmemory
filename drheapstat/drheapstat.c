@@ -2039,7 +2039,10 @@ event_exit(void)
         }
     }
     snapshot_exit();
-    check_for_leaks(true/*at_exit*/);
+    if (options.check_leaks) {
+        check_for_leaks(true/*at_exit*/);
+        leak_exit();
+    }
 
     heap_region_exit();
     alloc_exit(); /* must be before deleting alloc_stack_table */
@@ -2174,9 +2177,6 @@ dr_init(client_id_t client_id)
     alloc_ops.get_padded_size = true;
     alloc_ops.cache_postcall = false;
     alloc_ops.intercept_operators = false;
-#ifdef WINDOWS
-    alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
-#endif
     alloc_ops.conservative = options.conservative;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 

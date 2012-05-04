@@ -21,6 +21,7 @@
  */
 
 #include "dr_api.h"
+#include "drwrap.h"
 #include "drmemory.h"
 #include "utils.h"
 #include "leak.h"
@@ -96,7 +97,10 @@ uint midchunk_postsize_ptrs;
 uint midchunk_postnew_ptrs;
 uint midchunk_postinheritance_ptrs;
 uint midchunk_string_ptrs;
+# ifdef WINDOWS
+uint pointers_encoded;
 uint encoded_pointers_scanned;
+# endif
 #endif
 
 /* FIXME PR 487993: switch to file-private sets of options and option parsing */ 
@@ -119,6 +123,18 @@ static bool (*cb_is_register_defined)(void *, reg_id_t);
 static app_pc rtl_fail_info;
 /* heap chunk pointer stored at offset 0x10, data struct is 0x20 */
 #define RTL_FAIL_INFO_SIZE 0x20
+
+/* We track encoded pointers to avoid false positive leaks (i#153) */
+# define ENCODED_PTR_TABLE_HASH_BITS 6
+/* Key is encoded address.  Value is decoded address minus 1 (since
+ * NULL and -1 are both deliberately encoded).
+ */
+static hashtable_t encoded_ptr_table;
+/* Rtl routines we intercept */
+static app_pc rtl_encode_ptr;
+static app_pc rtl_encode_sysptr;
+static void leak_wrap_pre_encode_ptr(void *wrapcxt, void OUT **user_data);
+static void leak_wrap_post_encode_ptr(void *wrapcxt, void *user_data);
 #endif
 
 void
@@ -157,14 +173,52 @@ leak_init(bool have_defined_info,
         cb_is_register_defined = is_register_defined;
     }
 
-#if defined(WINDOWS) && defined (USE_DRSYMS)
+#ifdef WINDOWS
+    if (op_check_encoded_pointers) {
+        hashtable_init(&encoded_ptr_table, ENCODED_PTR_TABLE_HASH_BITS,
+                       HASH_INTPTR, false/*!strdup*/);
+    }
     mod = dr_lookup_module_by_name("ntdll.dll");
     if (mod != NULL) {
+# ifdef USE_DRSYMS
         rtl_fail_info = lookup_internal_symbol(mod, "RtlpHeapFailureInfo");
         LOG(1, "RtlpHeapFailureInfo is "PFX"\n", rtl_fail_info);
+# endif
+        if (op_check_encoded_pointers) {
+            rtl_encode_ptr = (app_pc)
+                dr_get_proc_address(mod->handle, "RtlEncodePointer");
+            rtl_encode_sysptr = (app_pc)
+                dr_get_proc_address(mod->handle, "RtlEncodeSystemPointer");
+            if ((rtl_encode_ptr != NULL && 
+                 !drwrap_wrap(rtl_encode_ptr, leak_wrap_pre_encode_ptr,
+                              leak_wrap_post_encode_ptr)) ||
+                (rtl_encode_sysptr != NULL &&
+                 !drwrap_wrap(rtl_encode_sysptr, leak_wrap_pre_encode_ptr,
+                              leak_wrap_post_encode_ptr)))
+                ASSERT(false, "failed to wrap encoded ptr routines");
+        }
+
         dr_free_module_data(mod);
     } else
         ASSERT(false, "can't find ntdll");
+#endif
+}
+
+void
+leak_exit(void)
+{
+#ifdef WINDOWS
+    if (op_check_encoded_pointers) {
+        hashtable_delete_with_stats(&encoded_ptr_table, "encoded_ptr");
+        if (rtl_encode_ptr != NULL) {
+            drwrap_unwrap(rtl_encode_ptr, leak_wrap_pre_encode_ptr,
+                          leak_wrap_post_encode_ptr);
+        }
+        if (rtl_encode_sysptr != NULL) {
+            drwrap_unwrap(rtl_encode_sysptr, leak_wrap_pre_encode_ptr,
+                          leak_wrap_post_encode_ptr);
+        }
+    }
 #endif
 }
 
@@ -229,6 +283,65 @@ leak_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end)
     }
 }
 #endif
+
+/***************************************************************************
+ * Handling encoded pointers (i#153)
+ *
+ * XXX: We never delete from our table.  We assume there aren't very
+ * many and that most if not all of them have a lifetime equal to the
+ * process lifetime, since we don't have a good point to delete (we
+ * can't assume a call to RtlDecodePointer means there will be no
+ * further uses, right?).
+ *
+ * Note that there are other cases of pointers being xor-ed with magic
+ * values that do not go through RtlEncodePointer, but our table here
+ * does catch enough to be worthwhile.
+ */
+
+#ifdef WINDOWS
+static void
+leak_wrap_pre_encode_ptr(void *wrapcxt, void OUT **user_data)
+{
+    *user_data = drwrap_get_arg(wrapcxt, 0);
+    ASSERT(op_check_encoded_pointers, "should not be called");
+}
+
+static void
+leak_wrap_post_encode_ptr(void *wrapcxt, void *user_data)
+{
+    byte *encoded = (byte *) drwrap_get_retval(wrapcxt);
+    byte *to_be_encoded = (byte *) user_data;
+    ASSERT(op_check_encoded_pointers, "should not be called");
+    LOG(2, "Encode*Pointer "PFX" => "PFX"\n", to_be_encoded, encoded);
+    STATS_INC(pointers_encoded);
+    /* Add 1 since NULL must be supported */
+    ASSERT(to_be_encoded - 1 != NULL, "invalid ptr to encode");
+    if (to_be_encoded != NULL &&
+        hashtable_lookup(&encoded_ptr_table, (void *)to_be_encoded) != NULL) {
+        /* We see encoded ptrs being passed to RtlEncodePointer which
+         * ends up decoding (so an xor or other reversible operation).
+         * We don't want the reverse in there: in fact we guarantee
+         * not to have it.
+         */
+        LOG(2, "not adding to table since reverse encoding already present\n");
+    } else {
+        hashtable_add(&encoded_ptr_table, (void *)encoded, (void *)(to_be_encoded-1));
+    }
+}
+
+/* Encoded pointer tracking (i#153).  Guarantees that a non-NULL value
+ * returned will always return NULL if passed back through.
+ */
+static byte *
+get_decoded_ptr(byte *encoded)
+{
+    byte *res = hashtable_lookup(&encoded_ptr_table, (void *)encoded);
+    if (res != NULL)
+        return (res + 1);
+    else
+        return NULL;
+}
+#endif /* WINDOWS */
 
 /***************************************************************************
  * Splitting indirectly leaked bytes from direct (PR 576032) 

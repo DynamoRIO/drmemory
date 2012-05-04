@@ -155,7 +155,6 @@ alloc_drmem_init(void)
     alloc_ops.replace_realloc = options.replace_realloc && INSTRUMENT_MEMREFS();
 #ifdef WINDOWS
     alloc_ops.disable_crtdbg = options.disable_crtdbg && INSTRUMENT_MEMREFS();
-    alloc_ops.check_encoded_pointers = options.check_encoded_pointers;
 #endif
     alloc_ops.prefer_msize = options.prefer_msize;
     alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
@@ -207,6 +206,7 @@ alloc_drmem_init(void)
 void
 alloc_drmem_exit(void)
 {
+    leak_exit();
     alloc_exit(); /* must be before deleting alloc_stack_table */
     hashtable_delete_with_stats(&alloc_stack_table, "alloc stack table");
 #ifdef LINUX

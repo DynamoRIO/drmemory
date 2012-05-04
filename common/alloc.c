@@ -187,9 +187,6 @@ int sysnum_UserConnectToServer = -1;
 uint num_mallocs;
 uint num_large_mallocs;
 uint num_frees;
-# ifdef WINDOWS
-uint pointers_encoded;
-# endif
 #endif
 
 #ifdef LINUX
@@ -280,7 +277,6 @@ typedef struct _cls_alloc_t {
     bool malloc_from_realloc;
     bool heap_tangent; /* not a callback but a heap tangent (i#301) */
     HANDLE heap_handle; /* used to identify the Heap of new allocations */
-    byte *to_be_encoded; /* for encoded pointer tracking (i#153) */
 
     bool in_seh; /* track whether handling an exception */
 #endif
@@ -402,7 +398,6 @@ typedef enum {
     RTL_ROUTINE_UNLOCK,
     RTL_ROUTINE_QUERY,
     RTL_ROUTINE_NYI,
-    RTL_ROUTINE_ENCODE_PTR, /* not really for alloc tracking itself: for leaks */
     RTL_ROUTINE_SHUTDOWN,
     RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
 #endif
@@ -712,9 +707,6 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
      * XXX: now that we have online symbols can we replace w/ RtlpHeapIsLocked?
      */
     { "LdrShutdownProcess", RTL_ROUTINE_SHUTDOWN },
-    /* For leak tracking.  XXX: move to leak.c w/ drwrap */
-    { "RtlEncodePointer", RTL_ROUTINE_ENCODE_PTR },
-    { "RtlEncodeSystemPointer", RTL_ROUTINE_ENCODE_PTR },
 };
 #define POSSIBLE_RTL_ROUTINE_NUM \
     (sizeof(possible_rtl_routines)/sizeof(possible_rtl_routines[0]))
@@ -1923,18 +1915,6 @@ static thread_id_t malloc_lock_owner = THREAD_ID_INVALID;
 #define LARGE_MALLOC_MIN_SIZE 12*1024
 static rb_tree_t *large_malloc_tree;
 
-#ifdef WINDOWS
-/* We track encoded pointers to avoid false positive leaks (i#153).
- * XXX: really this should be done in leak.c but wrapping support
- * is all in here.  At some point should switch to using drwrap.
- */
-# define ENCODED_PTR_TABLE_HASH_BITS 6
-/* Key is encoded address.  Value is decoded address minus 1 (since
- * NULL and -1 are both deliberately encoded).
- */
-static hashtable_t encoded_ptr_table;
-#endif
-
 enum {
     MALLOC_VALID  = MALLOC_RESERVED_1,
     MALLOC_PRE_US = MALLOC_RESERVED_2,
@@ -2080,10 +2060,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         if (options.cache_postcall)
             mod_pending_tree = rb_tree_create(NULL);
 #endif
-#ifdef WINDOWS
-        hashtable_init(&encoded_ptr_table, ENCODED_PTR_TABLE_HASH_BITS,
-                       HASH_INTPTR, false/*!strdup*/);
-#endif
     }
 
 #ifdef USE_DRSYMS
@@ -2133,9 +2109,6 @@ alloc_exit(void)
             dr_mutex_destroy(post_call_lock);
             rb_tree_destroy(mod_pending_tree);
         }
-#endif
-#ifdef WINDOWS
-        hashtable_delete_with_stats(&encoded_ptr_table, "encoded_ptr");
 #endif
     }
 
@@ -5094,60 +5067,6 @@ handle_create_actcxt_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt)
     }
 }
 
-/***************************************************************************
- * Handling encoded pointers (i#153) 
- *
- * XXX: We never delete from our table.  We assume there aren't very
- * many and that most if not all of them have a lifetime equal to the
- * process lifetime, since we don't have a good point to delete (we
- * can't assume a call to RtlDecodePointer means there will be no
- * further uses, right?).
- *
- * Note that there are other cases of pointers being xor-ed with magic
- * values that do not go through RtlEncodePointer, but our table here
- * does catch enough to be worthwhile.
- */
-
-static void
-handle_encoded_ptr_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt)
-{
-    pt->to_be_encoded = (byte *) drwrap_get_arg(wrapcxt, 0);
-    ASSERT(options.check_encoded_pointers, "should not be called");
-}
-
-static void
-handle_encoded_ptr_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
-                        dr_mcontext_t *mc)
-{
-    byte *encoded = (byte *) mc->eax;
-    ASSERT(options.check_encoded_pointers, "should not be called");
-    LOG(2, "Encode*Pointer "PFX" => "PFX"\n", pt->to_be_encoded, encoded);
-    STATS_INC(pointers_encoded);
-    /* Add 1 since NULL must be supported */
-    ASSERT(pt->to_be_encoded - 1 != NULL, "invalid ptr to encode");
-    if (pt->to_be_encoded != NULL &&
-        hashtable_lookup(&encoded_ptr_table, (void *)pt->to_be_encoded) != NULL) {
-        /* We see encoded ptrs being passed to RtlEncodePointer which
-         * ends up decoding (so an xor or other reversible operation).
-         * We don't want the reverse in there: in fact we guarantee
-         * not to have it.
-         */
-        LOG(2, "not adding to table since reverse encoding already present\n");
-    } else {
-        hashtable_add(&encoded_ptr_table, (void *)encoded, (void *)(pt->to_be_encoded-1));
-    }
-}
-
-byte *
-get_decoded_ptr(byte *encoded)
-{
-    byte *res = hashtable_lookup(&encoded_ptr_table, (void *)encoded);
-    if (res != NULL)
-        return (res + 1);
-    else
-        return NULL;
-}
-
 #endif /* WINDOWS */
 
 /**************************************************
@@ -5384,10 +5303,6 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         LOG(1, "disabling %s %d\n", routine->name, drwrap_get_arg(wrapcxt, 0));
         drwrap_set_arg(wrapcxt, 0, (void *)(ptr_uint_t)0);
     }
-    else if (type == RTL_ROUTINE_ENCODE_PTR) {
-        if (options.check_encoded_pointers)
-            handle_encoded_ptr_pre(drcontext, pt, wrapcxt);
-    }
 #endif
     else if (type == HEAP_ROUTINE_NOT_HANDLED) {
         /* XXX: once we have the aligned-malloc routines turn this
@@ -5499,9 +5414,6 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         handle_create_post(drcontext, pt, wrapcxt, mc);
     } else if (type == RTL_ROUTINE_DESTROY) {
         handle_destroy_post(drcontext, pt, wrapcxt);
-    } else if (type == RTL_ROUTINE_ENCODE_PTR) {
-        if (options.check_encoded_pointers)
-            handle_encoded_ptr_post(drcontext, pt, wrapcxt, mc);
 #endif
     }
     /* b/c operators no longer have exits (i#674) we must clear here */
