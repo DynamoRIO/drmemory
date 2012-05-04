@@ -165,7 +165,7 @@ typedef struct {
 #endif
 
 /* Options currently all have 0 as default value */
-static alloc_options_t options;
+static alloc_options_t alloc_ops;
 
 #ifdef WINDOWS
 /* system calls we want to intercept */
@@ -749,7 +749,7 @@ struct _alloc_routine_set_t {
     void *client;
     /* For easy cleanup */
     uint refcnt;
-    /* For options.replace_realloc */
+    /* For alloc_ops.replace_realloc */
     byte *realloc_replacement;
     /* For simpler removal on module unload */
     app_pc modbase;
@@ -782,7 +782,7 @@ replace_crtdbg_routine(app_pc pc)
 {
     alloc_routine_entry_t *e;
     bool res = false;
-    if (!options.disable_crtdbg)
+    if (!alloc_ops.disable_crtdbg)
         return false;
     dr_mutex_lock(alloc_routine_lock);
     e = hashtable_lookup(&alloc_routine_table, (void *)pc);
@@ -840,7 +840,7 @@ size_func_in_set(alloc_routine_set_t *set)
         return set->func[RTL_ROUTINE_SIZE];
 #endif
     /* prefer usable to requested unless -prefer_msize */
-    if (options.prefer_msize && set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
+    if (alloc_ops.prefer_msize && set->func[HEAP_ROUTINE_SIZE_REQUESTED] != NULL)
         return set->func[HEAP_ROUTINE_SIZE_REQUESTED];
     else if (set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL)
         return set->func[HEAP_ROUTINE_SIZE_USABLE];
@@ -990,7 +990,7 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     byte *size_func;
     uint found_calls = 0;
     byte **free_list = NULL;
-    ASSERT(options.replace_realloc, "should not get here");
+    ASSERT(alloc_ops.replace_realloc, "should not get here");
     ASSERT(set != NULL, "invalid param");
     /* if no set_size (e.g., ld-linux.so.2) or only usable size (which
      * would lead to unaddrs on memcpy) we arrange to query our
@@ -1231,7 +1231,7 @@ disable_crtdbg(const module_data_t *mod)
 {
     static const int zero = 0;
     int *crtdbg_flag_ptr;
-    if (!options.disable_crtdbg)
+    if (!alloc_ops.disable_crtdbg)
         return;
     /* i#51: we do not want crtdbg checks when our tool is present
      * (the checks overlap, better to have our tool report it than
@@ -1385,7 +1385,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->set = (alloc_routine_set_t *)
             global_alloc(sizeof(*edata->set), HEAPSTAT_HASHTABLE);
         memset(edata->set, 0, sizeof(*edata->set));
-        edata->set->use_redzone = (edata->use_redzone && options.redzone_size > 0);
+        edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
         edata->set->type = edata->set_type;
         edata->set->check_mismatch = true;
@@ -1397,7 +1397,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     LOG(1, "intercepting %s @"PFX" type %d in module %s\n",
         edata->possible[idx].name, pc, edata->possible[idx].type, modname);
 #if defined(WINDOWS) && defined(USE_DRSYMS)
-    if (options.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
+    if (alloc_ops.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
         disable_crtdbg(edata->mod);
 #endif
 }
@@ -1625,7 +1625,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         }
 #endif
     }
-    if (options.replace_realloc && realloc_func_in_set(edata.set) != NULL)
+    if (alloc_ops.replace_realloc && realloc_func_in_set(edata.set) != NULL)
         generate_realloc_replacement(edata.set);
 #ifdef USE_DRSYMS
     if (edata.processed != NULL)
@@ -1638,7 +1638,7 @@ static size_t
 redzone_size(alloc_routine_entry_t *routine)
 {
     return ((routine->set != NULL && routine->set->use_redzone) ? 
-            options.redzone_size : 0);
+            alloc_ops.redzone_size : 0);
 }
 
 /***************************************************************************
@@ -1673,11 +1673,11 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
     alloc_routine_entry_t *size_func = get_size_func(routine);
     /* we avoid calling app size routine for two reasons: performance
      * (i#689 part 2) and correctness to avoid deadlocks (i#795, i#30).
-     * for options.get_padded_size, well, we risk it: removing the
+     * for alloc_ops.get_padded_size, well, we risk it: removing the
      * drwrap lock (i#689 part 1 DRWRAP_NO_FRILLS) helps there b/c we
      * won't be holding a lock when we call here
      */
-    ASSERT(options.get_padded_size, "should not get here");
+    ASSERT(alloc_ops.get_padded_size, "should not get here");
     ASSERT(!malloc_lock_held_by_self(), "should not hold lock here");
 #ifdef WINDOWS
     if (is_rtl_routine(routine->type)) {
@@ -1742,7 +1742,7 @@ static ssize_t
 get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
 {
     ssize_t sz;
-    /* i#30: if options.record_allocs, prefer hashtable to avoid app lock
+    /* i#30: if alloc_ops.record_allocs, prefer hashtable to avoid app lock
      * which can lead to deadlock
      */
     /* This will fail at post-malloc point before we've added to hashtable:
@@ -1875,7 +1875,7 @@ static void
 event_post_call_entry_added(app_pc postcall)
 {
     module_data_t *data = dr_lookup_module(postcall);
-    ASSERT(options.cache_postcall, "shouldn't get here");
+    ASSERT(alloc_ops.cache_postcall, "shouldn't get here");
     if (data != NULL) {
         symcache_add(data, POST_CALL_SYMCACHE_NAME, postcall - data->start);
         dr_free_module_data(data);
@@ -2003,18 +2003,18 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
                                                  alloc_event_bb_insert, &pri_insert))
         ASSERT(false, "drmgr registration failed");
 
-    ASSERT(ops_size <= sizeof(options), "option struct too large");
-    memcpy(&options, ops, ops_size);
-    ASSERT(options.track_allocs || !options.track_heap,
+    ASSERT(ops_size <= sizeof(alloc_ops), "option struct too large");
+    memcpy(&alloc_ops, ops, ops_size);
+    ASSERT(alloc_ops.track_allocs || !alloc_ops.track_heap,
            "track_heap requires track_allocs");
 
     cls_idx_alloc = drmgr_register_cls_field(alloc_context_init, alloc_context_exit);
     ASSERT(cls_idx_alloc > -1, "unable to reserve CLS field");
 
-    if (!options.track_allocs)
-        options.track_heap = false;
+    if (!alloc_ops.track_allocs)
+        alloc_ops.track_heap = false;
 
-    if (options.track_allocs) {
+    if (alloc_ops.track_allocs) {
         hashtable_init_ex(&alloc_routine_table, ALLOC_ROUTINE_TABLE_HASH_BITS,
                           HASH_INTPTR, false/*!str_dup*/, false/*!synch*/,
                           alloc_routine_entry_free, NULL, NULL);
@@ -2025,7 +2025,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         drwrap_set_global_flags(DRWRAP_NO_FRILLS | DRWRAP_FAST_CLEANCALLS);
     }
 
-    if (options.replace_realloc) {
+    if (alloc_ops.replace_realloc) {
         /* we need generated code for our realloc replacements */
         /* b/c we may need to add to this gencode during execution if
          * the app loads a library w/ a "realloc", we keep it read-only
@@ -2042,7 +2042,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
             ASSERT(false, "failed to wrap realloc size");
     }
 
-    if (options.track_allocs) {
+    if (alloc_ops.track_allocs) {
         hashtable_config_t hashconfig;
         hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
                           false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
@@ -2057,13 +2057,13 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
 
         large_malloc_tree = rb_tree_create(NULL);
 #ifdef USE_DRSYMS
-        if (options.cache_postcall)
+        if (alloc_ops.cache_postcall)
             mod_pending_tree = rb_tree_create(NULL);
 #endif
     }
 
 #ifdef USE_DRSYMS
-    if (options.track_allocs && options.cache_postcall) {
+    if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
         post_call_lock = dr_mutex_create();
         if (!drwrap_register_post_call_notify(event_post_call_entry_added))
             ASSERT(false, "drwrap event registration failed");
@@ -2079,7 +2079,7 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
-    if (!options.track_allocs)
+    if (!alloc_ops.track_allocs)
         return;
 
     hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
@@ -2101,18 +2101,18 @@ alloc_exit(void)
         }
     }
 
-    if (options.track_allocs) {
+    if (alloc_ops.track_allocs) {
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
 #ifdef USE_DRSYMS
-        if (options.cache_postcall) {
+        if (alloc_ops.cache_postcall) {
             dr_mutex_destroy(post_call_lock);
             rb_tree_destroy(mod_pending_tree);
         }
 #endif
     }
 
-    if (options.replace_realloc) {
+    if (alloc_ops.replace_realloc) {
         nonheap_free(gencode_start, GENCODE_SIZE, HEAPSTAT_GENCODE);
         dr_mutex_destroy(gencode_lock);
     }
@@ -2147,7 +2147,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
         ASSERT(addr_KiCallback != NULL, "can't find Ki routine");
         if (!drwrap_wrap_ex(addr_KiCallback, alloc_wrap_Ki, NULL, (void*)1, 0))
             ASSERT(false, "failed to wrap");
-        if (options.track_allocs) {
+        if (alloc_ops.track_allocs) {
             app_pc addr_KiAPC, addr_KiLdrThunk, addr_KiException, addr_KiRaise;
             addr_KiAPC = (app_pc) dr_get_proc_address(info->handle,
                                                       "KiUserApcDispatcher");
@@ -2193,7 +2193,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
                    "error finding alloc syscall #");
             
-            if (options.track_heap) {
+            if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
                 find_alloc_routines(info, possible_rtl_routines,
                                     POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL);
@@ -2220,7 +2220,7 @@ alloc_load_symcache_postcall(const module_data_t *info)
 {
     ASSERT(info != NULL, "invalid args");
     ASSERT(dr_mutex_self_owns(post_call_lock), "caller must hold lock");
-    if (options.track_allocs && options.cache_postcall) {
+    if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
         size_t modoffs;
         uint count;
         uint idx;
@@ -2250,7 +2250,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     alloc_find_syscalls(drcontext, info);
 #endif
 
-    if (options.track_heap) {
+    if (alloc_ops.track_heap) {
         const char *modname = dr_module_preferred_name(info);
 #ifdef WINDOWS
         bool no_dbg_routines = false;
@@ -2327,7 +2327,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                                 HEAPSET_LIBC_DBG);
         }
 #endif
-        if (options.intercept_operators) {
+        if (alloc_ops.intercept_operators) {
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
                                           false,
@@ -2356,7 +2356,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 
 #ifdef USE_DRSYMS
-    if (options.track_allocs && options.cache_postcall &&
+    if (alloc_ops.track_allocs && alloc_ops.cache_postcall &&
         symcache_module_is_cached(info)) {
         dr_mutex_lock(post_call_lock);
         if (loaded) {
@@ -2380,7 +2380,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 static void
 alloc_check_pending_module(app_pc pc)
 {
-    if (options.track_allocs && options.cache_postcall) {
+    if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
         rb_node_t *node;
 
         /* avoid lookup on every single bb */
@@ -2410,7 +2410,7 @@ alloc_check_pending_module(app_pc pc)
 void
 alloc_module_unload(void *drcontext, const module_data_t *info)
 {
-    if (options.track_heap) {
+    if (alloc_ops.track_heap) {
         uint i;
         /* Rather than re-looking-up all the symbols, or storing
          * them all in some module-indexed table (we don't even
@@ -2496,9 +2496,9 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
         dr_mutex_unlock(alloc_routine_lock);
     }
 
-    if (options.track_allocs) {
+    if (alloc_ops.track_allocs) {
 #ifdef USE_DRSYMS
-        if (options.cache_postcall) {
+        if (alloc_ops.cache_postcall) {
             rb_node_t *node;
             dr_mutex_lock(post_call_lock);
             node = rb_in_node(mod_pending_tree, info->start);
@@ -2582,8 +2582,8 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     malloc_entry_t *old_e;
     bool locked_by_me;
-    ASSERT((options.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
-           options.record_allocs, 
+    ASSERT((alloc_ops.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
+           alloc_ops.record_allocs, 
            "internal inconsistency on when doing detailed malloc tracking");
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t) 
@@ -3162,7 +3162,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t s
             uint type = (uint) dr_syscall_get_param(drcontext, 4);
             pt->valloc_type = type;
             pt->valloc_commit = false;
-            if (options.track_heap) {
+            if (alloc_ops.track_heap) {
                 if (pt->syscall_this_process && TEST(MEM_COMMIT, type)) {
                     app_pc *base_ptr = (app_pc *) dr_syscall_get_param(drcontext, 1);
                     app_pc base;
@@ -3268,7 +3268,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t s
         LOG(2, "SYS_munmap "PFX"-"PFX"\n", base, base+size);
         client_handle_munmap(base, size, false/*up to caller to determine*/);
         /* if part of heap remove it from list */
-        if (options.track_heap)
+        if (alloc_ops.track_heap)
             heap_region_remove(base, base+size, mc);
     }
 # ifdef DEBUG
@@ -3320,7 +3320,7 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
             TEST(MEM_RESERVE, pt->valloc_type) ? "reserve " : "",
             TEST(MEM_COMMIT, pt->valloc_type) ? "commit " : "",
             pt->in_heap_routine > 0 ? "in-heap " : "");
-        if (options.track_heap) {
+        if (alloc_ops.track_heap) {
             /* if !valloc_commit, we assume it's part of a heap */
             if (pt->valloc_commit) {
                 /* FIXME: really want to test overlap of two regions! */
@@ -3411,7 +3411,7 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sys
             TEST(MEM_RELEASE, pt->valloc_type) ? "release " : "",
             pt->in_heap_routine > 0 ? "in-heap " : "");
         ASSERT(!pt->expect_sys_to_fail, "expected NtFreeVirtualMemory to succeed");
-        if (options.track_heap) {
+        if (alloc_ops.track_heap) {
             /* Are we freeing an entire region? */
             if (((pt->valloc_type == MEM_DECOMMIT && size == 0) ||
                  pt->valloc_type == MEM_RELEASE) &&
@@ -3444,7 +3444,7 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sys
                  */
                 ASSERT(pt->valloc_type == MEM_DECOMMIT ||
                        !is_in_heap_region(base), "heap region tracking bug");
-                if (options.record_allocs) {
+                if (alloc_ops.record_allocs) {
                     malloc_remove(base);
                 }
             }
@@ -3578,7 +3578,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                      * malloc: doesn't matter too much since we don't
                      * really distinguish inside our heap list anyway.
                      */
-                    if (options.track_heap)
+                    if (alloc_ops.track_heap)
                         heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
                 }
             }
@@ -3597,7 +3597,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
             if (!dr_query_memory_ex(base, &info))
                 ASSERT(false, "mem query failed");
             client_handle_munmap_fail(base, size, info.type != DR_MEMTYPE_IMAGE);
-            if (options.track_heap && pt->in_heap_routine > 0)
+            if (alloc_ops.track_heap && pt->in_heap_routine > 0)
                 heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
         }
     } 
@@ -3623,7 +3623,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
             client_handle_mremap(old_base, old_size, new_base, new_size,
                                  info.type == DR_MEMTYPE_IMAGE);
             /* Large realloc may call mremap (PR 488643) */
-            if (options.track_heap && pt->in_heap_routine > 0 &&
+            if (alloc_ops.track_heap && pt->in_heap_routine > 0 &&
                 is_in_heap_region(old_base)) {
                 ASSERT(is_entirely_in_heap_region(old_base, old_base + old_size),
                        "error in large malloc tracking");
@@ -3649,7 +3649,7 @@ static inline app_pc
 get_retaddr_at_entry(dr_mcontext_t *mc)
 {
     app_pc retaddr = NULL;
-    if (options.conservative) {
+    if (alloc_ops.conservative) {
         if (!safe_read((void *)mc->xsp, sizeof(retaddr), &retaddr))
             ASSERT(false, "error reading retaddr at func entry");
     } else
@@ -3708,7 +3708,7 @@ enter_heap_routine(cls_alloc_t *pt, app_pc pc, alloc_routine_entry_t *routine)
      */
     if (pt->in_heap_routine < MAX_HEAP_NESTING) {
         pt->last_alloc_routine[pt->in_heap_routine] = pc;
-        if (!options.conservative)
+        if (!alloc_ops.conservative)
             pt->last_alloc_info[pt->in_heap_routine] = routine;
     } else {
         LOG(0, "WARNING: %s exceeded heap nesting %d >= %d\n",
@@ -3757,7 +3757,7 @@ check_recursive_same_sequence(void *drcontext, cls_alloc_t **pt_caller,
             if (pt->in_heap_routine < MAX_HEAP_NESTING) {
                 tangent = (pt->last_alloc_routine[pt->in_heap_routine-1] != NULL);
                 /* need to get last_routine */
-                if (options.conservative) {
+                if (alloc_ops.conservative) {
                     /* i#708: get a copy from table while holding lock, rather than
                      * using pointer into struct that can be deleted if module
                      * is racily unloaded
@@ -3772,7 +3772,7 @@ check_recursive_same_sequence(void *drcontext, cls_alloc_t **pt_caller,
                     last_routine = (alloc_routine_entry_t *)
                         pt->last_alloc_info[pt->in_heap_routine-1];
                 }
-                if (!options.replace_realloc) {
+                if (!alloc_ops.replace_realloc) {
                     if (last_routine != NULL &&
                         last_routine->type == RTL_ROUTINE_REALLOC &&
                         (routine->type == RTL_ROUTINE_MALLOC ||
@@ -3973,7 +3973,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #ifdef WINDOWS
     HANDLE heap = (type == RTL_ROUTINE_FREE) ? ((HANDLE) drwrap_get_arg(wrapcxt, 0)) : NULL;
 #endif
-    bool size_in_zone = (redzone_size(routine) > 0 && options.size_in_redzone);
+    bool size_in_zone = (redzone_size(routine) > 0 && alloc_ops.size_in_redzone);
     size_t size = 0;
     malloc_entry_t *entry;
 
@@ -4083,7 +4083,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         }
         /* i#858, we obtain the real_size from entry instead of size + redzone */
         if (base != real_base) {
-            ASSERT(base - real_base == options.redzone_size, "redzone mismatch");
+            ASSERT(base - real_base == alloc_ops.redzone_size, "redzone mismatch");
             real_size = (base - real_base) + size + malloc_entry_usable_extra(entry);
         } else {
             /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
@@ -4234,7 +4234,7 @@ handle_size_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                  * malloc_usable_size includes padding which is hard to predict
                  */
                 ASSERT(routine->type == HEAP_ROUTINE_SIZE_USABLE ||
-                       !options.size_in_redzone ||
+                       !alloc_ops.size_in_redzone ||
                        mc->eax == *((size_t *)(pt->alloc_base - redzone_size(routine))),
                        "size mismatch");
 #endif
@@ -4347,7 +4347,7 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
     alloc_routine_entry_t *size_func = get_size_func(routine);
     if (size_func != NULL) {
         real_size = get_alloc_size(IF_WINDOWS_(auxarg) real_base, routine);
-        if (options.get_padded_size && padded_size_out != NULL) {
+        if (alloc_ops.get_padded_size && padded_size_out != NULL) {
             *padded_size_out = get_padded_size(IF_WINDOWS_(auxarg)
                                                real_base, routine);
             if (*padded_size_out == -1) {
@@ -4395,7 +4395,7 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     if (mc->eax != 0) {
         app_pc app_base = (app_pc) mc->eax;
         size_t real_size;
-        bool query_for_size = options.get_padded_size;
+        bool query_for_size = alloc_ops.get_padded_size;
         if (query_for_size) {
             real_size = get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
                                             pt->alloc_size, padded_size_out, routine);
@@ -4419,7 +4419,7 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             app_base - (used_redzone ? redzone_size(routine) : 0),
             app_base - (used_redzone ? redzone_size(routine) : 0) + real_size, real_size);
         if (used_redzone && redzone_size(routine) > 0) {
-            if (options.size_in_redzone) {
+            if (alloc_ops.size_in_redzone) {
                 ASSERT(redzone_size(routine) >= sizeof(size_t), "redzone size too small");
                 /* store the size for our own use */
                 *((size_t *)mc->eax) = pt->alloc_size;
@@ -4480,13 +4480,13 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
     } else {
-        if (options.record_allocs) {
+        if (alloc_ops.record_allocs) {
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              /* if no padded size, use aligned real size */
-                             options.get_padded_size ?
+                             alloc_ops.get_padded_size ?
                              pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
                              zeroed, realloc, mc);
     }
@@ -4502,7 +4502,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 {
     routine_type_t type = routine->type;
     app_pc real_base;
-    bool size_in_zone = redzone_size(routine) > 0 && options.size_in_redzone;
+    bool size_in_zone = redzone_size(routine) > 0 && alloc_ops.size_in_redzone;
     bool invalidated = false;
     size_t size = (size_t) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_SIZE(type));
     app_pc base = (app_pc) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_PTR(type));
@@ -4512,12 +4512,12 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
         client_handle_realloc_null(drwrap_get_retaddr(wrapcxt),
                                    drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR));
-        if (!options.replace_realloc) {
+        if (!alloc_ops.replace_realloc) {
             handle_malloc_pre(drcontext, pt, wrapcxt, routine);
             return;
         }
     }
-    if (options.replace_realloc) {
+    if (alloc_ops.replace_realloc) {
         /* subsequent malloc will clobber alloc_size */
         pt->realloc_replace_size = size;
         LOG(2, "realloc-pre "PFX" new size %d\n", base, pt->realloc_replace_size);
@@ -4617,7 +4617,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         " base="PFX" oldsz="PIFX" newsz="PIFX"\n",
         IF_WINDOWS_(drwrap_get_arg(wrapcxt, 0))
         pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
-    if (options.record_allocs && !invalidated)
+    if (alloc_ops.record_allocs && !invalidated)
         malloc_entry_set_valid(entry, false);
     malloc_unlock();
 }
@@ -4627,7 +4627,7 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     dr_mcontext_t *mc, app_pc post_call,
                     alloc_routine_entry_t *routine)
 {
-    if (options.replace_realloc) {
+    if (alloc_ops.replace_realloc) {
         /* for sz==0 normal to return NULL */
         if (mc->eax == 0 && pt->realloc_replace_size != 0) {
             LOG(2, "realloc-post failure %d %d\n",
@@ -4659,12 +4659,12 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                                               pt->alloc_size != 0, routine);
         app_pc old_end = pt->alloc_base + pt->realloc_old_size;
         /* realloc sometimes calls free, but shouldn't be any conflicts */
-        if (options.record_allocs) {
+        if (alloc_ops.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             malloc_add_common(app_base, app_base + pt->alloc_size,
                               real_base + 
-                              (options.get_padded_size ? pad_size : real_size),
+                              (alloc_ops.get_padded_size ? pad_size : real_size),
                               0, 0, mc, post_call, pt->allocator);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
@@ -4681,7 +4681,7 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
         if (malloc_is_pre_us_ex(pt->alloc_base, true/*check invalid too*/) ||
-            options.record_allocs) {
+            alloc_ops.record_allocs) {
             /* still there, and still pre-us if it was before */
             malloc_set_valid(pt->alloc_base, true);
             LOG(2, "re-instating failed realloc as pre-control "PFX"-"PFX"\n",
@@ -4784,13 +4784,13 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     if (app_base == NULL) {
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
-        if (options.record_allocs) {
+        if (alloc_ops.record_allocs) {
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              /* if no padded size, use aligned real size */
-                             options.get_padded_size ?
+                             alloc_ops.get_padded_size ?
                              pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
                              true/*zeroed*/, false/*!realloc*/, mc);
     }
@@ -5073,7 +5073,7 @@ handle_create_actcxt_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt)
  * SHARED HOOK CODE
  */
 
-/* only used if options.track_heap */
+/* only used if alloc_ops.track_heap */
 static void
 handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     app_pc call_site, app_pc expect, 
@@ -5104,7 +5104,7 @@ alloc_hook(void *wrapcxt, INOUT void **user_data)
     *user_data = drcontext;
 
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
-    ASSERT(options.track_heap, "unknown reason in alloc hook");
+    ASSERT(alloc_ops.track_heap, "unknown reason in alloc hook");
 
     /* if the entry was a jmp* and we didn't see the call prior to it,
      * we did not know the retaddr, so add it now 
@@ -5168,14 +5168,14 @@ alloc_wrap_Ki(void *wrapcxt, void OUT **user_data)
 }
 #endif /* WINDOWS */
 
-/* only used if options.track_heap */
+/* only used if alloc_ops.track_heap */
 static void
 handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     app_pc call_site, app_pc expect, alloc_routine_entry_t *routine)
 {
     routine_type_t type;
     alloc_routine_entry_t routine_local;
-    if (options.conservative) {
+    if (alloc_ops.conservative) {
         /* i#708: get a copy from table while holding lock, rather than using
          * pointer into struct that can be deleted if module is racily unloaded
          */
@@ -5298,7 +5298,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     else if (type == RTL_ROUTINE_CREATE_ACTCXT) {
         handle_create_actcxt_pre(drcontext, pt, wrapcxt);
     }
-    else if (options.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
+    else if (alloc_ops.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
         /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
         LOG(1, "disabling %s %d\n", routine->name, drwrap_get_arg(wrapcxt, 0));
         drwrap_set_arg(wrapcxt, 0, (void *)(ptr_uint_t)0);
@@ -5319,7 +5319,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
 }
 
-/* only used if options.track_heap */
+/* only used if alloc_ops.track_heap */
 static void
 handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                        dr_mcontext_t *mc, app_pc func, app_pc post_call,
@@ -5329,7 +5329,7 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     bool adjusted = false;
     alloc_routine_entry_t routine_local;
 
-    if (options.conservative) {
+    if (alloc_ops.conservative) {
         /* i#708: get a copy from table while holding lock, rather than using
          * pointer into struct that can be deleted if module is racily unloaded
          */
@@ -5420,7 +5420,7 @@ handle_alloc_post_func(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     pt->allocator = 0;
 }
 
-/* only used if options.track_heap */
+/* only used if alloc_ops.track_heap */
 static void
 handle_alloc_post(void *wrapcxt, void *user_data)
 {
@@ -5429,7 +5429,7 @@ handle_alloc_post(void *wrapcxt, void *user_data)
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR);
 
-    ASSERT(options.track_heap, "requires track_heap");
+    ASSERT(alloc_ops.track_heap, "requires track_heap");
     ASSERT(pt->in_heap_routine > 0, "shouldn't be called");
 
     handle_alloc_post_func(drcontext, pt, wrapcxt, mc,
@@ -5474,7 +5474,7 @@ alloc_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
                         bool for_trace, bool translating, OUT void **user_data)
 {
 #ifdef USE_DRSYMS
-    if (options.track_heap) {
+    if (alloc_ops.track_heap) {
         /* We must call this before drwrap checks for post-call instru so we
          * do it during analysis as we only need to check 1st instr anyway
          * b/c elision is turned off (if we move to insert, add "drwrap" as
