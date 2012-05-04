@@ -528,10 +528,15 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         /* OP_ret w/ immed is treated as single pop here: esp
          * adjustment is handled separately (it doesn't read those bytes)
          */
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
-            opnd_get_size(instr_get_src(inst, instr_num_srcs(inst)-1)) != OPSZ_4)
-            return false;
         mi->src[0].app = instr_get_src(inst, instr_num_srcs(inst)-1);
+        /* L4 ret may have this size.  will encode as OPSZ_4 b/c there's
+         * no other data prefix constraint.
+         */
+        if (opnd_get_size(mi->src[0].app) == OPSZ_ret)
+            opnd_set_size(&mi->src[0].app, OPSZ_4);
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
+            opnd_get_size(mi->src[0].app) != OPSZ_4)
+            return false;
         ASSERT(opnd_is_memory_reference(mi->src[0].app), "internal opnd num error");
         if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*/))
             return false;
