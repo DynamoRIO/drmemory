@@ -500,11 +500,14 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
      */ 
     if (options.shadowing) {
         if (new_size > old_size) {
-            shadow_copy_range(old_base, new_base, old_size);
+            if (new_base != old_base)
+                shadow_copy_range(old_base, new_base, old_size);
             shadow_set_range(new_base + old_size, new_base + new_size,
                              SHADOW_UNDEFINED);
-        } else
-            shadow_copy_range(old_base, new_base, new_size);
+        } else {
+            if (new_base != old_base)
+                shadow_copy_range(old_base, new_base, new_size);
+        }
         
         /* If the new region is after the old region, overlap or not, compute how 
          * much of the front of the old region needs to be marked unaddressable
@@ -528,8 +531,15 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
             app_pc start;
             if (new_base + new_size < old_base)     /* no overlap between regions */
                 start = old_base;
-            else                                    /* old & new regions overlap */
+            else {                                  /* old & new regions overlap */
                 start = new_base + new_size;
+                if (MAP_4B_TO_1B) {
+                    /* XXX i#650: granularity won't let us catch an error
+                     * prior to next 4-aligned word in padding
+                     */
+                    start = (app_pc) ALIGN_FORWARD(start, 4);
+                }
+            }
             shadow_set_range(start, old_base + old_size, SHADOW_UNADDRESSABLE);
         }
     }
