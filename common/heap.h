@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -51,8 +51,8 @@ get_libc_base(void);
  * and the "cb_chunk" callback for each malloc block.
  */
 void
-heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
-              void (*cb_chunk)(app_pc,app_pc));
+heap_iterator(void (*cb_region)(app_pc start, app_pc end _IF_WINDOWS(HANDLE handle)),
+              void (*cb_chunk)(app_pc start, app_pc end));
 
 /***************************************************************************
  * HEAP REGION LIST
@@ -62,6 +62,11 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
 extern uint heap_regions;
 #endif
 
+enum {
+    HEAP_PRE_US   = 0x01,
+    HEAP_ARENA    = 0x02,
+};
+
 void
 heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
                  void (*region_remove_cb)(app_pc, app_pc, dr_mcontext_t *mc));
@@ -70,7 +75,7 @@ void
 heap_region_exit(void);
 
 void
-heap_region_add(app_pc start, app_pc end, bool arena, dr_mcontext_t *mc);
+heap_region_add(app_pc start, app_pc end, uint flags, dr_mcontext_t *mc);
 
 bool
 heap_region_remove(app_pc start, app_pc end, dr_mcontext_t *mc);
@@ -87,8 +92,8 @@ is_in_heap_region(app_pc pc);
 bool
 is_entirely_in_heap_region(app_pc start, app_pc end);
 
-bool
-is_in_heap_region_arena(app_pc pc);
+uint
+get_heap_region_flags(app_pc pc);
 
 #ifdef WINDOWS
 bool
@@ -97,10 +102,11 @@ heap_region_set_heap(app_pc pc, HANDLE heap);
 HANDLE
 heap_region_get_heap(app_pc pc);
 
-void
-heap_region_iterate_heap(HANDLE heap, void (*iter_cb)(byte *start, byte *end, void *data),
-                         void *data);
 #endif /* WINDOWS */
 
+void
+heap_region_iterate(bool (*iter_cb)(byte *start, byte *end, uint flags
+                                    _IF_WINDOWS(HANDLE heap), void *data),
+                    void *data);
 
 #endif /* _HEAP_H_ */

@@ -659,21 +659,25 @@ rb_tree_destroy(rb_tree_t *tree)
     global_free(tree, sizeof(*tree), HEAPSTAT_RBTREE);
 }
 
-static void
+static bool
 iterate_helper(rb_tree_t *tree, rb_node_t *node,
-               void (*iter_cb)(rb_node_t *, void *), void *iter_data)
+               bool (*iter_cb)(rb_node_t *, void *), void *iter_data)
 {
     ASSERT(node != NULL && node != NIL(tree) && iter_cb != NULL, "invalid params");
     if (node->left != NIL(tree))
-        iterate_helper(tree, node->left, iter_cb, iter_data);
-    iter_cb(node, iter_data);
+        if (!iterate_helper(tree, node->left, iter_cb, iter_data))
+            return false;
+    if (!iter_cb(node, iter_data))
+        return false;
     if (node->right != NIL(tree))
-        iterate_helper(tree, node->right, iter_cb, iter_data);
+        if (!iterate_helper(tree, node->right, iter_cb, iter_data))
+            return false;
+    return true;
 }
 
 /* Performs an in-order traversal, calling iter_cb on each node. */
 void
-rb_iterate(rb_tree_t *tree, void (*iter_cb)(rb_node_t *, void *), void *iter_data)
+rb_iterate(rb_tree_t *tree, bool (*iter_cb)(rb_node_t *, void *), void *iter_data)
 {
     ASSERT(tree != NULL && iter_cb != NULL, "invalid params");
     if (tree->root != NIL(tree))

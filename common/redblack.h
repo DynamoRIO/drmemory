@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -107,7 +108,7 @@ rb_min_node(rb_tree_t *tree);
 
 /* Performs an in-order traversal, calling iter_cb on each node. */
 void
-rb_iterate(rb_tree_t *tree, void (*iter_cb)(rb_node_t *, void *), void *iter_data);
+rb_iterate(rb_tree_t *tree, bool (*iter_cb)(rb_node_t *, void *), void *iter_data);
 
 #ifdef DEBUG_UNIT_TEST
 void

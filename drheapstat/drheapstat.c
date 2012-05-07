@@ -1425,7 +1425,7 @@ static void
 heap_iter_region(app_pc start, app_pc end _IF_WINDOWS(HANDLE heap))
 {
     client_heap_add(start, end, NULL);
-    heap_region_add(start, end, true/*arena*/, NULL);
+    heap_region_add(start, end, HEAP_PRE_US | HEAP_ARENA, NULL);
 }
 
 static void

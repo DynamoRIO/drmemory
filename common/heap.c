@@ -21,6 +21,8 @@
  */
 
 #include "dr_api.h"
+#include "utils.h"
+#include "heap.h"
 #include "alloc.h"
 #include "redblack.h"
 #ifdef LINUX
@@ -410,7 +412,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
  * We could use a sorted array-based binary tree instead, which
  * might be more efficient for most apps, since we have relatively
  * few insertions and deletions.
- * We store a "bool arena" as our custom field.
+ * We store a "uint flags" as our custom field which identifies
+ * pre-us regions and arenas.
  * An arena is a region used to dole out malloc chunks: versus
  * a single, oversized alloc allocated outside of the main arena.
  */
@@ -419,20 +422,18 @@ static void *heap_lock;
 
 /* Payload stored in each node */
 typedef struct _heap_info_t {
-    bool arena;
+    uint flags;
 #ifdef WINDOWS
     HANDLE heap;
 #endif
 } heap_info_t;
 
-#ifdef WINDOWS
-/* for iterating over all regions of one Heap */
+/* for iterating over all regions */
 typedef struct _heap_iter_t {
-    HANDLE heap;
-    void (*iter_cb)(byte *start, byte *end, void *data);
+    bool (*iter_cb)(byte *start, byte *end, uint flags
+                    _IF_WINDOWS(HANDLE heap), void *data);
     void *cb_data;
 } heap_iter_t;
-#endif
 
 #ifdef STATISTICS
 uint heap_regions;
@@ -469,17 +470,17 @@ heap_region_exit(void)
 }
 
 void
-heap_region_add(app_pc start, app_pc end, bool arena, dr_mcontext_t *mc)
+heap_region_add(app_pc start, app_pc end, uint flags, dr_mcontext_t *mc)
 {
     heap_info_t *info = (heap_info_t *) global_alloc(sizeof(*info), HEAPSTAT_RBTREE);
     IF_DEBUG(rb_node_t *existing;)
     dr_mutex_lock(heap_lock);
     LOG(2, "adding heap region "PFX"-"PFX" %s\n", start, end,
-        arena ? "arena" : "chunk");
+        TEST(HEAP_ARENA, flags) ? "arena" : "chunk");
     STATS_INC(heap_regions);
     if (cb_add != NULL)
         cb_add(start, end, mc);
-    info->arena = arena;
+    info->flags = flags;
     IF_WINDOWS(info->heap = INVALID_HANDLE_VALUE;)
     IF_DEBUG(existing =)
         rb_insert(heap_tree, start, (end - start), (void *) info);
@@ -617,17 +618,17 @@ is_entirely_in_heap_region(app_pc start, app_pc end)
     return res;
 }
 
-bool
-is_in_heap_region_arena(app_pc pc)
+uint
+get_heap_region_flags(app_pc pc)
 {
     rb_node_t *node = NULL;
-    bool res = false;
+    uint res = 0;
     heap_info_t *info;
     dr_mutex_lock(heap_lock);
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         rb_node_fields(node, NULL, NULL, (void **)&info);
-        res = info->arena;
+        res = info->flags;
     }
     dr_mutex_unlock(heap_lock);
     return res;
@@ -694,7 +695,9 @@ heap_region_get_heap(app_pc pc)
     return res;
 }
 
-static void
+#endif /* WINDOWS */
+
+static bool
 rb_iter_cb(rb_node_t *node, void *data)
 {
     heap_iter_t *iter = (heap_iter_t *) data;
@@ -703,19 +706,18 @@ rb_iter_cb(rb_node_t *node, void *data)
     size_t node_size;
     ASSERT(iter != NULL, "invalid iter param");
     rb_node_fields(node, &node_start, &node_size, (void **)&info);
-    if (info->heap == iter->heap)
-        (*iter->iter_cb)(node_start, node_start + node_size, iter->cb_data);
+    return (*iter->iter_cb)(node_start, node_start + node_size, info->flags
+                            _IF_WINDOWS(info->heap), iter->cb_data);
 }
 
 void
-heap_region_iterate_heap(HANDLE heap, void (*iter_cb)(byte *start, byte *end, void *data),
-                         void *data)
+heap_region_iterate(bool (*iter_cb)(byte *start, byte *end, uint flags
+                                    _IF_WINDOWS(HANDLE heap), void *data),
+                    void *data)
 {
     heap_iter_t iter;
-    iter.heap = heap;
     iter.iter_cb = iter_cb;
     iter.cb_data = data;
     rb_iterate(heap_tree, rb_iter_cb, (void *) &iter);
 }
 
-#endif /* WINDOWS */

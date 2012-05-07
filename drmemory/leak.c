@@ -364,7 +364,7 @@ unreach_entry_alloc(void)
     return e;
 }
 
-static void
+static bool
 rb_cleanup_entries(rb_node_t *node, void *iter_data)
 {
     unreach_entry_t *e;
@@ -372,6 +372,7 @@ rb_cleanup_entries(rb_node_t *node, void *iter_data)
     rb_node_fields(node, NULL, NULL, (void*)&e);
     if (e != NULL)
         global_free(e, sizeof(*e), HEAPSTAT_MISC);
+    return true;
 }
 
 /* 

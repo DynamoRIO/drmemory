@@ -399,14 +399,10 @@ event_exit(void)
     if (options.perturb)
         perturb_exit();
 
-    /* heap_region_exit() also checks for memory leaks,
-     * so it must be called before shadow_exit() or alloc_exit().
-     * FIXME: also report leaks from non-heap NtAllocateVirtualMemory?
-     */
-    heap_region_exit();
-
     syscall_exit();
     alloc_drmem_exit();
+    /* must be called after alloc_exit() */
+    heap_region_exit();
     if (options.pattern != 0)
         pattern_exit();
     if (options.shadowing)
@@ -1157,7 +1153,7 @@ static void
 heap_iter_region(app_pc start, app_pc end _IF_WINDOWS(HANDLE heap))
 {
     if (options.track_heap) {
-        heap_region_add(start, end, true/*arena*/, 0);
+        heap_region_add(start, end, HEAP_PRE_US | HEAP_ARENA, 0);
         IF_WINDOWS(heap_region_set_heap(start, heap);)
     } else if (options.shadowing)
         shadow_set_range(start, end, SHADOW_UNDEFINED);

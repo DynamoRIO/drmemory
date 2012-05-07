@@ -626,13 +626,14 @@ client_remove_malloc_routine(void *client_data)
 }
 
 #ifdef DEBUG
-static void
+static bool
 print_free_tree(rb_node_t *node, void *data)
 {
     app_pc start;
     size_t size;
     rb_node_fields(node, &start, &size, NULL);
     LOG(1, "\tfree tree entry: "PFX"-"PFX"\n", start, start+size);
+    return true;
 }
 #endif
 

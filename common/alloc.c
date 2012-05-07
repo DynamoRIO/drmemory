@@ -1820,7 +1820,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
         if (!safe_read((void *)(real_base-2*sizeof(size_t)), sizeof(pad_size), &pad_size))
             ASSERT(false, "unable to access Rtl heap headers");
     }
-    if (!is_in_heap_region_arena(real_base) &&
+    if (!TEST(HEAP_ARENA, get_heap_region_flags(real_base)) &&
         /* There seem to be two extra heap header dwords, the first holding
          * the full size.  pad_size seems to hold the padding amount.
          */
@@ -3202,7 +3202,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t s
                             LOG(2, "Adding unknown heap region "PFX"-"PFX"\n",
                                 alloc_base, alloc_base + alloc_size);
                             heap_region_add(alloc_base, alloc_base + alloc_size,
-                                            true/*new heap*/, mc);
+                                            HEAP_ARENA, mc);
                         }
                     } else {
                         WARN("WARNING: NtAllocateVirtualMemory: error reading param\n");
@@ -3352,7 +3352,7 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
                         LOG(2, "NtAllocateVirtualMemory big heap alloc "PFX"-"PFX"\n",
                             base, base+size);
                         /* there are headers on this one */
-                        heap_region_add(base, base+size, false/*!arena*/, mc);
+                        heap_region_add(base, base+size, 0, mc);
                         /* set Heap if from RtlAllocateHeap */
                         if (pt->in_heap_adjusted > 0 && pt->heap_handle != 0)
                             heap_region_set_heap(base, (HANDLE) pt->heap_handle);
@@ -3362,7 +3362,7 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
                        !TEST(MEM_COMMIT, pt->valloc_type) &&
                        pt->in_heap_routine > 0) {
                 /* we assume this is a new Heap reservation */
-                heap_region_add(base, base+size, true/*arena*/, mc);
+                heap_region_add(base, base+size, HEAP_ARENA, mc);
                 /* set Heap if from RtlAllocateHeap */
                 if (pt->in_heap_adjusted > 0 && pt->heap_handle != 0)
                     heap_region_set_heap(base, (HANDLE) pt->heap_handle);
@@ -3579,7 +3579,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                      * really distinguish inside our heap list anyway.
                      */
                     if (alloc_ops.track_heap)
-                        heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
+                        heap_region_add(base, base+size, HEAP_ARENA/*FIXME:guessing*/, mc);
                 }
             }
         } else {
@@ -3598,7 +3598,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                 ASSERT(false, "mem query failed");
             client_handle_munmap_fail(base, size, info.type != DR_MEMTYPE_IMAGE);
             if (alloc_ops.track_heap && pt->in_heap_routine > 0)
-                heap_region_add(base, base+size, true/*FIXME:guessing*/, mc);
+                heap_region_add(base, base+size, HEAP_ARENA/*FIXME:guessing*/, mc);
         }
     } 
     else if (sysnum == SYS_mremap) {
@@ -3628,8 +3628,8 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                 ASSERT(is_entirely_in_heap_region(old_base, old_base + old_size),
                        "error in large malloc tracking");
                 heap_region_remove(old_base, old_base + old_size, mc);
-                heap_region_add(new_base, new_base + new_size, true/*FIXME:guessing*/,
-                                mc);
+                heap_region_add(new_base, new_base + new_size,
+                                HEAP_ARENA/*FIXME:guessing*/, mc);
             }
         }
     }
@@ -4871,12 +4871,15 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
     return true;
 }
 
-static void
-heap_destroy_segment_iter_cb(byte *start, byte *end, void *data)
+static bool
+heap_destroy_segment_iter_cb(byte *start, byte *end, uint flags
+                             _IF_WINDOWS(HANDLE heap), void *data)
 {
-    HANDLE heap = (HANDLE) data;
+    HANDLE my_heap = (HANDLE) data;
     heap_destroy_info_t info;
-    info.heap = heap;
+    if (heap != my_heap)
+        return true;
+    info.heap = my_heap;
     info.start = start;
     info.end = end;
     LOG(2, "RtlDestroyHeap handle="PFX" segment="PFX"-"PFX"\n", heap, start, end);
@@ -4890,6 +4893,7 @@ heap_destroy_segment_iter_cb(byte *start, byte *end, void *data)
      */
     malloc_iterate_internal(true/*include native and LFH*/,
                             heap_destroy_iter_cb, (void *) &info);
+    return true;
 }
 
 static void
@@ -4917,7 +4921,7 @@ handle_destroy_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      * from RtlDestroyHeap to find all heap segments: but what if
      * RtlDestroyHeap re-uses the memory instead of freeing?
      */
-    heap_region_iterate_heap(heap, heap_destroy_segment_iter_cb, (void *) heap);
+    heap_region_iterate(heap_destroy_segment_iter_cb, (void *) heap);
     /* i#264: client needs to clean up any data related to allocs inside this heap */
     ASSERT(routine->set != NULL, "destroy must be part of set");
     client_handle_heap_destroy(drcontext, heap, routine->set->client);
