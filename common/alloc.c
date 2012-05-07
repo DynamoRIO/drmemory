@@ -134,6 +134,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #include "drmgr.h"
 #include "drwrap.h"
 #include "alloc.h"
+#include "alloc_private.h"
 #include "heap.h"
 #include "callstack.h"
 #include "redblack.h"
@@ -165,7 +166,7 @@ typedef struct {
 #endif
 
 /* Options currently all have 0 as default value */
-static alloc_options_t alloc_ops;
+alloc_options_t alloc_ops;
 
 #ifdef WINDOWS
 /* system calls we want to intercept */
@@ -1908,12 +1909,13 @@ static hashtable_t malloc_table;
  */
 #define THREAD_ID_INVALID ((thread_id_t)0) /* invalid thread id on Linux+Windows */
 static thread_id_t malloc_lock_owner = THREAD_ID_INVALID;
+
 /* PR 525807: to handle malloc-based stacks we need an interval tree
  * for large mallocs.  Putting all mallocs in a tree instead of a table
- * is too expensive (PR 535568).  This is protected by the hashtable lock.
+ * is too expensive (PR 535568).
  */
-#define LARGE_MALLOC_MIN_SIZE 12*1024
 static rb_tree_t *large_malloc_tree;
+static void *large_malloc_lock;
 
 enum {
     MALLOC_VALID  = MALLOC_RESERVED_1,
@@ -2056,6 +2058,7 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
         hashtable_configure(&malloc_table, &hashconfig);
 
         large_malloc_tree = rb_tree_create(NULL);
+        large_malloc_lock = dr_mutex_create();
 #ifdef USE_DRSYMS
         if (alloc_ops.cache_postcall)
             mod_pending_tree = rb_tree_create(NULL);
@@ -2104,6 +2107,7 @@ alloc_exit(void)
     if (alloc_ops.track_allocs) {
         hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
+        dr_mutex_destroy(large_malloc_lock);
 #ifdef USE_DRSYMS
         if (alloc_ops.cache_postcall) {
             dr_mutex_destroy(post_call_lock);
@@ -2614,10 +2618,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     old_e = hashtable_add_replace(&malloc_table, (void *) start, (void *)e);
 
     if (!malloc_entry_is_native(e) && end - start >= LARGE_MALLOC_MIN_SIZE) {
-        IF_DEBUG(rb_node_t *node =)
-            rb_insert(large_malloc_tree, e->start, e->end - e->start, NULL);
-        ASSERT(node == NULL, "error in large malloc tree");
-        STATS_INC(num_large_mallocs);
+        malloc_large_add(e->start, e->end - e->start);
     }
 
     if (!malloc_entry_is_native(e)) { /* don't show internal allocs to client */
@@ -2675,10 +2676,7 @@ malloc_entry_remove(malloc_entry_t *e)
         real_end = e->end + e->usable_extra;
         client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
         if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
-            rb_node_t *node = rb_find(large_malloc_tree, e->start);
-            ASSERT(node != NULL, "error in large malloc tree");
-            if (node != NULL)
-                rb_delete(large_malloc_tree, node);
+            malloc_large_remove(e->start);
         }
     }
     if (hashtable_remove(&malloc_table, e->start)) {
@@ -2743,9 +2741,7 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
                 /* large malloc tree removes and re-adds rather than marking invalid
                  * b/c can recover data from hashtable on failure
                  */
-                IF_DEBUG(rb_node_t *node =)
-                    rb_insert(large_malloc_tree, e->start, e->end - e->start, NULL);
-                ASSERT(node == NULL, "error in large malloc tree");
+                malloc_large_add(e->start, e->end - e->start);
             }
             /* PR 567117: client event with entry in hashtable */
             client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
@@ -2753,10 +2749,7 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
             e->flags &= ~MALLOC_VALID;
             if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
                 /* large malloc tree removes and re-adds rather than marking invalid */
-                rb_node_t *node = rb_find(large_malloc_tree, e->start);
-                ASSERT(node != NULL, "error in large malloc tree");
-                if (node != NULL)
-                    rb_delete(large_malloc_tree, node);
+                malloc_large_remove(e->start);
             }
             /* PR 567117: client event with entry removed from hashtable */
             client_remove_malloc_post(start, end, real_end);
@@ -2773,20 +2766,6 @@ malloc_set_valid(app_pc start, bool valid)
     if (e != NULL)
         malloc_entry_set_valid(e, valid);
     malloc_unlock_if_locked_by_me(locked_by_me);
-}
-
-bool
-malloc_large_lookup(byte *addr, byte **start OUT, size_t *size OUT)
-{
-    bool locked_by_me = malloc_lock_if_not_held_by_me();
-    bool res = false;
-    rb_node_t *node = rb_in_node(large_malloc_tree, addr);
-    if (node != NULL) {
-        rb_node_fields(node, start, size, NULL);
-        res = true;
-    }
-    malloc_unlock_if_locked_by_me(locked_by_me);
-    return res;
 }
 
 static bool
@@ -5506,3 +5485,78 @@ alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst
 #endif
     return DR_EMIT_DEFAULT;
 }
+
+/***************************************************************************
+ * Large malloc tree
+ */
+
+/* PR 525807: to handle malloc-based stacks we need an interval tree
+ * for large mallocs.  Putting all mallocs in a tree instead of a table
+ * is too expensive (PR 535568).
+ */
+
+typedef struct _large_iter_data_t {
+    bool (*cb)(byte *start, size_t size, void *data);
+    void *data;
+} large_iter_data_t;
+
+void
+malloc_large_add(byte *start, size_t size)
+{
+    IF_DEBUG(rb_node_t *node;)
+    ASSERT(size >= LARGE_MALLOC_MIN_SIZE, "not large enough");
+    dr_mutex_lock(large_malloc_lock);
+    IF_DEBUG(node =)
+        rb_insert(large_malloc_tree, start, size, NULL);
+    dr_mutex_unlock(large_malloc_lock);
+    ASSERT(node == NULL, "error in large malloc tree");
+    STATS_INC(num_large_mallocs);
+}
+
+void
+malloc_large_remove(byte *start)
+{
+    rb_node_t *node;
+    dr_mutex_lock(large_malloc_lock);
+    node = rb_find(large_malloc_tree, start);
+    ASSERT(node != NULL, "error in large malloc tree");
+    if (node != NULL)
+        rb_delete(large_malloc_tree, node);
+    dr_mutex_unlock(large_malloc_lock);
+}
+
+bool
+malloc_large_lookup(byte *addr, byte **start OUT, size_t *size OUT)
+{
+    bool res = false;
+    rb_node_t *node;
+    dr_mutex_lock(large_malloc_lock);
+    node = rb_in_node(large_malloc_tree, addr);
+    if (node != NULL) {
+        rb_node_fields(node, start, size, NULL);
+        res = true;
+    }
+    dr_mutex_unlock(large_malloc_lock);
+    return res;
+}
+
+static bool
+malloc_large_iter_cb(rb_node_t *node, void *iter_data)
+{
+    large_iter_data_t *data = (large_iter_data_t *) iter_data;
+    byte *start;
+    size_t size;
+    rb_node_fields(node, &start, &size, NULL);
+    return data->cb(start, size, data->data);
+}
+
+void
+malloc_large_iterate(bool (*iter_cb)(byte *start, size_t size, void *data),
+                     void *iter_data)
+{
+    large_iter_data_t data = {iter_cb, iter_data};
+    dr_mutex_lock(large_malloc_lock);
+    rb_iterate(large_malloc_tree, malloc_large_iter_cb, &data);
+    dr_mutex_unlock(large_malloc_lock);
+}
+
