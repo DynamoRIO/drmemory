@@ -1701,7 +1701,8 @@ static inline bool
 scratch_reg1_is_avail(instr_t *inst, fastpath_info_t *mi, bb_info_t *bi)
 {
     int opc = instr_get_opcode(inst);
-    return (bi->reg1.used && 
+    return (bi->reg1.reg != DR_REG_NULL &&
+            bi->reg1.used && 
              /* ensure neither sharing w/ next nor sharing w/ prev */
             !SHARING_XL8_ADDR_BI(bi) && mi != NULL && !mi->use_shared &&
             /* cmovcc does an aflags restore after the lea, so reg1 needs
@@ -1714,7 +1715,8 @@ static inline bool
 scratch_reg2_is_avail(instr_t *inst, fastpath_info_t *mi, bb_info_t *bi)
 {
     int opc = instr_get_opcode(inst);
-    return (bi->reg2.used &&
+    return (bi->reg2.reg != DR_REG_NULL &&
+            bi->reg2.used &&
             /* we use reg2 for cmovcc */
             !opc_is_cmovcc(opc) && !opc_is_fcmovcc(opc));
 }
@@ -1769,6 +1771,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
              * the flags in eax and not put in tls.
              * Since a lahf followed by a read of eax causes a partial-reg
              * stall that could improve perf noticeably.
+             * However, this would make the state restore more complex.
              */
             /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
              * lock of the bus shows up as a measurable perf hit (PR 553724)
@@ -5129,14 +5132,16 @@ whole_bb_spills_enabled(void)
              * single bb, I don't think we'd gain enough perf to be worth
              * the complexity.
              */
-            options.shadowing);
+            INSTRUMENT_MEMREFS());
 }
 
 void
 fastpath_top_of_bb(void *drcontext, void *tag, instrlist_t *bb, bb_info_t *bi)
 {
     instr_t *inst = instrlist_first(bb);
-    if (inst == NULL || !whole_bb_spills_enabled()) {
+    if (inst == NULL || !whole_bb_spills_enabled() || 
+        /* pattern mode only uses whole-bb for eflags, so no scratch reg picks */
+        options.pattern != 0) {
         bi->eflags_used = false;
         bi->reg1.reg = REG_NULL;
         bi->reg1.used = false;
@@ -5176,8 +5181,10 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
      */
     bi->aflags = get_aflags_and_reg_liveness(inst, live);
     /* Update the dead fields */
-    bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
-    bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
+    if (bi->reg1.reg != DR_REG_NULL)
+        bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
+    if (bi->reg2.reg != DR_REG_NULL)
+        bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
 
     bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
 }
@@ -5287,9 +5294,10 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* Optimization: don't bother to restore if this is not a meaningful read
      * (e.g., xor with self)
      */
-    if (!result_is_always_defined(inst) ||
-        /* if sub-dword then we have to restore for rest of bits */
-        opnd_get_size(instr_get_src(inst, 0)) != OPSZ_4) {
+    if ((bi->reg1.reg != DR_REG_NULL || bi->reg2.reg != DR_REG_NULL) &&
+        (!result_is_always_defined(inst) ||
+         /* if sub-dword then we have to restore for rest of bits */
+         opnd_get_size(instr_get_src(inst, 0)) != OPSZ_4)) {
         /* we don't mark as used: if unused so far, no reason to restore */
         if (instr_reads_from_reg(inst, bi->reg1.reg) ||
             /* if sub-reg is written we need to restore rest */
@@ -5338,8 +5346,10 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
      */
     bi->aflags = get_aflags_and_reg_liveness(next, live);
     /* Update the dead fields */
-    bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
-    bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
+    if (bi->reg1.reg != DR_REG_NULL)
+        bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
+    if (bi->reg2.reg != DR_REG_NULL)
+        bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
     bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
 
     if (instr_writes_to_reg(inst, bi->reg1.reg)) {
@@ -5401,8 +5411,10 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         bi->eflags_used ? "used" : "unused");
     if (added_instru) {
         restore_aflags_if_live(drcontext, bb, last, NULL, bi);
-        insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
-        insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
+        if (bi->reg1.reg != DR_REG_NULL)
+            insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
+        if (bi->reg2.reg != DR_REG_NULL)
+            insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
     }
 
     if (!translating) {

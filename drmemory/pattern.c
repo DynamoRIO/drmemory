@@ -66,11 +66,12 @@ enum {
 };
 
 /* check if the opnd should be instrumented for checks */
-static bool
-pattern_opnd_need_check(opnd_t opnd)
+bool
+pattern_opnd_needs_check(opnd_t opnd)
 {
-    if (!opnd_is_memory_reference(opnd))
-        return false;
+    ASSERT(options.pattern != 0, "should not be called");
+    ASSERT(opnd_is_memory_reference(opnd), "not a memory reference");
+    ASSERT(!options.check_stack_access, "no stack check");
     /* We are only interested in heap objects in pattern mode, 
      * so no absolute address or pc relative address.
      */
@@ -80,10 +81,39 @@ pattern_opnd_need_check(opnd_t opnd)
     if (opnd_is_rel_addr(opnd))
         return false;
 #endif
-    DR_ASSERT(opnd_is_base_disp(opnd));
-    if (opnd_uses_nonignorable_memory(opnd))
-        return true;
-    return false;
+    ASSERT(opnd_is_base_disp(opnd), "not a base disp opnd");
+    return true;
+}
+
+static void
+pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
+{
+    /* xlat accesses memory (xbx, al), which is not a legeal memory operand,
+     * and we use (xbx, xax) to emulate (xbx, al) instead:
+     * save xax; movzx xax, al; ...; restore xax; ...; xlat 
+     */
+    if (pre) {
+        /* we do not rely on whole_bb_spills_enabled to save eax!
+         * for cases like:
+         * aflags save; mov 0 => [mem], mov 1 => eax; xlat;
+         * the value in spill_slot_5 is out-of-date!
+         */
+        spill_reg(drcontext, ilist, app, DR_REG_XAX, 
+                  whole_bb_spills_enabled() ?
+                  /* when whole_bb_spills_enabled, app's xax value is stored
+                   * in SPILL_SLOT_5 in save_aflags_if_live, so are we here
+                   * for consistency.
+                   */
+                  SPILL_SLOT_5 : PATTERN_SLOT_XAX);
+        PRE(ilist, app, INSTR_CREATE_movzx(drcontext,
+                                           opnd_create_reg(DR_REG_XAX),
+                                           opnd_create_reg(DR_REG_AL)));
+    } else {
+        /* restore xax */
+        restore_reg(drcontext, ilist, app, DR_REG_XAX,
+                    whole_bb_spills_enabled() ?
+                    SPILL_SLOT_5 : PATTERN_SLOT_XAX);
+    }
 }
 
 /* Insert the code for pattern check on operand refs.
@@ -104,7 +134,8 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     app_pc pc = instr_get_app_pc(app);
     opnd_t opnd;
 
-    ASSERT(opnd_is_memory_reference(ref), "non-memory-ref opnd is instrumented");
+    ASSERT(opnd_uses_nonignorable_memory(ref),
+           "non-memory-ref opnd is instrumented");
     label = INSTR_CREATE_label(drcontext);
     /* XXX: i#774, we perform 2-byte check for 1/2-byte reference and 4-byte 
      * otherwise, should we do 2 4-byte checks for case like 8-byte reference?
@@ -118,17 +149,8 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
     }
     opnd_set_size(&ref, opsz);
     /* special handling for xlat instr */
-    if (opcode == OP_xlat) {
-        /* XXX: we can avoid save xax if aflag is saved */
-        /* xlat access memory (xbx, al), which is not a legeal memory operand,
-         * and we use (xbx, xax) to emulate (xbx, al) instead:
-         * save xax; movzx xax, al; 
-         */
-        spill_reg(drcontext, ilist, app, DR_REG_XAX, PATTERN_SLOT_XAX);
-        PRE(ilist, app, INSTR_CREATE_movzx(drcontext,
-                                           opnd_create_reg(DR_REG_XAX),
-                                           opnd_create_reg(DR_REG_AL)));
-    }
+    if (opcode == OP_xlat)
+        pattern_handle_xlat(drcontext, ilist, app, true /* pre */);
     /* XXX: i#775, because of using 2-byte pattern for checking, 
      * we currently do not detect some unaligned refs:
      * (a) off-by-one-byte unaligned, and 
@@ -163,106 +185,106 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
         /* label */
         PRE(ilist, app, label);
     }
-    if (opcode == OP_xlat) {
-        /* restore xax 
-         * XXX: we can avoid restore xax if aflags is to be restored.
-         */
-        restore_reg(drcontext, ilist, app, DR_REG_XAX, PATTERN_SLOT_XAX);
+    if (opcode == OP_xlat)
+        pattern_handle_xlat(drcontext, ilist, app, false /* post */);
+}
+
+static void
+pattern_insert_aflags_label(void *drcontext, instrlist_t *ilist, instr_t *where,
+                            bool save, bool with_eax)
+                            
+{
+    instr_t *label = INSTR_CREATE_label(drcontext);
+    ptr_uint_t note = note_base;
+
+    if (save) {
+        if (with_eax)
+            note = note_base + NOTE_SAVE_AFLAGS_WITH_EAX;
+        else
+            note = note_base + NOTE_SAVE_AFLAGS;
+    } else {
+        if (with_eax)
+            note = note_base + NOTE_RESTORE_AFLAGS_WITH_EAX;
+        else
+            note = note_base + NOTE_RESTORE_AFLAGS;
     }
+    instr_set_note(label, (void *)note);
+    PRE(ilist, where, label);
+}
+
+static int
+pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
+                     _IF_DEBUG(int max_num_refs))
+{
+    int i, j, num_refs = 0;
+    opnd_t opnd;
+
+    if (instr_get_opcode(app) == OP_xlat) {
+        /* we use (%xbx, %xax) to emulate xlat's (%xbx, %al) */
+        refs[0] = opnd_create_base_disp(DR_REG_XBX, DR_REG_XAX, 1, 0, OPSZ_1);
+        *use_eax = true;
+        return 1;
+    }
+    /* we do not handle stack access including OP_enter/OP_leave. */
+    ASSERT(!options.check_stack_access, "no stack check");
+    for (i = 0; i < instr_num_srcs(app); i++) {
+        opnd = instr_get_src(app, i);
+        if (opnd_uses_nonignorable_memory(opnd)) {
+            ASSERT(num_refs < max_num_refs, "too many refs per instr");
+            refs[num_refs] = opnd;
+            num_refs++;
+            if (opnd_uses_reg(opnd, DR_REG_XAX))
+                *use_eax = true;
+        }
+    }
+    for (i = 0; i < instr_num_dsts(app); i++) {
+        opnd = instr_get_dst(app, i);
+        if (opnd_uses_nonignorable_memory(opnd)) {
+            for (j = 0; j < num_refs; j++) {
+                /* skip case like ADD [mem], val => [mem] */
+                if (opnd_same(refs[j], opnd))
+                    break;
+            }
+            ASSERT(num_refs < max_num_refs, "too many refs per instr");
+            refs[num_refs] = opnd;
+            num_refs++;
+            if (opnd_uses_reg(opnd, DR_REG_XAX))
+                *use_eax = true;
+        }
+    }
+    return num_refs;
 }
 
 void
-pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app)
+pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
+                         bb_info_t *bi)
 {
-    int num_refs = 0, num_opnds, i;
-    int opcode = instr_get_opcode(app);
-    instr_t *label;
+    int num_refs, i;
     opnd_t refs[MAX_REFS_PER_INSTR];
-    bool restore_eax = false;
+    bool use_eax = false;
 
-    if (opcode == OP_lea || instr_is_prefetch(app)) {
+    if (instr_get_opcode(app) == OP_lea || 
+        instr_is_prefetch(app) ||
+        instr_is_nop(app))
         return;
-    } else if (opcode == OP_xlat) {
-        /* we use (%xbx, %xax) to emulate xlat's (%xbx, %al), which is an illegal
-         * memory reference opnd except xlat.
-         */
-        refs[0] = opnd_create_base_disp(DR_REG_XBX,
-                                        DR_REG_XAX,
-                                        1, 0, OPSZ_2);
-        num_refs = 1;
-        restore_eax = true;
-    } else {
-        /* XXX: i#776, check if any of app's opnds need to be instrumented.
-         * There are some possible optimizations: for example,
-         * we can remember the opnds that we instrumented in the bb, and
-         * keep track of the register updates, so we can avoid inserting checks
-         * for the opnd that being checked earlier.
-         * However, this would add large analysis overhead, which might not 
-         * offset the benefit.
-         * We might want to do it in trace if trace is enabled.
-         */
-        /* XXX: we do not handle OP_enter/OP_leave as we do not check
-         * stack access.
-         */
-        opnd_t opnd;
-        /* check every src opnd if any opnd need instrumentation. */
-        num_opnds = instr_num_srcs(app);
-        for (i = 0; i < num_opnds; i++) {
-            opnd = instr_get_src(app, i);
-            if (pattern_opnd_need_check(opnd)) {
-                ASSERT(num_refs < MAX_REFS_PER_INSTR, 
-                       "Too many refs in an instr");
-                refs[num_refs] = opnd;
-                num_refs++;
-                if (opnd_uses_reg(opnd, DR_REG_XAX))
-                    restore_eax = true;
-            }
-        }
-        /* check every dst opnd if any interested opnd for instrumentation. */
-        num_opnds = instr_num_dsts(app);
-        for (i = 0; i < num_opnds; i++) {
-            opnd = instr_get_dst(app, i);
-            if (pattern_opnd_need_check(opnd)) {
-                int j;
-                for (j = 0; j < num_refs; j++) {
-                    /* for case like ADD [mem], val => [mem] */
-                    if (opnd_same(refs[j], opnd))
-                        break;
-                }
-                if (j == num_refs) {
-                    ASSERT(num_refs < MAX_REFS_PER_INSTR, 
-                           "Too many refs in an instr");
-                    refs[num_refs] = opnd;
-                    num_refs++;
-                    if (opnd_uses_reg(opnd, DR_REG_XAX)) {
-                        ASSERT(opnd_is_memory_reference(opnd), "wrong opnd");
-                        restore_eax = true;
-                    }
-                }
-            }
-        }
-    }
+
+    num_refs = pattern_extract_refs(app, &use_eax, refs
+                                    _IF_DEBUG(MAX_REFS_PER_INSTR));
     if (num_refs == 0)
         return;
-
-    /* here we only insert aflags save/restore labels for optimizations later */
-    /* aflags save label */
-    label = INSTR_CREATE_label(drcontext);
-    if (restore_eax)
-        instr_set_note(label, (void *)(note_base + NOTE_SAVE_AFLAGS_WITH_EAX));
-    else
-        instr_set_note(label, (void *)(note_base + NOTE_SAVE_AFLAGS));
-    PRE(ilist, app, label);
+    mark_eflags_used(drcontext, ilist, bi);
+    bi->added_instru = true;
+    if (!whole_bb_spills_enabled()) {
+        /* aflags save label */
+        pattern_insert_aflags_label(drcontext, ilist, app, true, use_eax);
+    }
     /* pattern check code */
     for (i = 0; i < num_refs; i++)
         pattern_insert_check_code(drcontext, ilist, app, refs[i]);
-    /* aflags restore label */
-    label = INSTR_CREATE_label(drcontext);
-    if (restore_eax)
-        instr_set_note(label, (void *)(note_base + NOTE_RESTORE_AFLAGS_WITH_EAX));
-    else
-        instr_set_note(label, (void *)(note_base + NOTE_RESTORE_AFLAGS));
-    PRE(ilist, app, label);
+    if (!whole_bb_spills_enabled()) {
+        /* aflags restore label */
+        pattern_insert_aflags_label(drcontext, ilist, app, false, use_eax);
+    }
 }
 
 /* Update the arith flag's liveness in a backward scan. */
@@ -522,7 +544,7 @@ pattern_handle_ill_fault(void *drcontext,
         size_t size = 0;
         opnd_t opnd = is_write ? 
             instr_get_dst(&instr, pos) : instr_get_src(&instr, pos);
-        if (!pattern_opnd_need_check(opnd))
+        if (!opnd_uses_nonignorable_memory(opnd))
             continue;
         size = opnd_size_in_bytes(opnd_get_size(opnd));
         pc_to_loc(&loc, mc->pc);

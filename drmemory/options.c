@@ -353,8 +353,6 @@ options_init(const char *opstr)
     if (options.pattern != 0) {
         /* we do not need shadow memory */
         options.shadowing = false;
-        /* we need 1 spill slots for now */
-        options.num_spill_slots = 1;
         /* the size is not stored in redzone */
         options.size_in_redzone = false;
         if (options.redzone_size == 0 ||

@@ -22,13 +22,15 @@
 #ifndef _PATTERN_H_
 #define _PATTERN_H_ 1
 
+#include "fastpath.h"   /* for bb_info_t */
 #include "callstack.h"  /* for app_loc_t */
 
 void
 pattern_init(void);
 
 void
-pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app);
+pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
+                         bb_info_t *bi);
 
 void
 pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist);
@@ -67,5 +69,8 @@ pattern_addr_in_redzone(byte *addr, size_t size);
 bool
 pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
                        dr_mcontext_t *mc, bool is_write);
+
+bool
+pattern_opnd_needs_check(opnd_t opnd);
 
 #endif /* _PATTERN_H_ */

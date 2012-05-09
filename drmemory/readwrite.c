@@ -563,7 +563,10 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     ASSERT(cpt != NULL, "cpt shouldn't be null");
 
-    if (!options.shadowing)
+    if (!INSTRUMENT_MEMREFS())
+        return true;
+
+    if (options.pattern != 0 && !whole_bb_spills_enabled())
         return true;
 
     /* Are we asking DR to translate just pc?  Then return true and ignore regs */
@@ -708,7 +711,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     stringop_entry_t *stringop;
     uint bb_size = 0;
 #ifdef TOOL_DR_MEMORY
-    if (!options.shadowing)
+    if (!INSTRUMENT_MEMREFS())
         return;
 #endif
 
@@ -728,7 +731,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
     }
     hashtable_unlock(&bb_table);
 
-    if (bb_size > 0) {
+    if (options.shadowing && bb_size > 0) {
         /* i#260: remove xl8_sharing_table entries.  We can't
          * decode forward (not always safe) and query every app pc, so we store the
          * bb size and assume bbs are contiguous (no elision) and there are no traces
@@ -1927,6 +1930,9 @@ opnd_uses_nonignorable_memory(opnd_t opnd)
 {
     /* XXX: we could track ebp and try to determine when not used as frame ptr */
     return (opnd_is_memory_reference(opnd) &&
+            /* pattern mode */
+            (options.pattern == 0 ? true : pattern_opnd_needs_check(opnd)) &&
+            /* stack access */
             (options.check_stack_access ||
              !opnd_is_base_disp(opnd) ||
              (reg_to_pointer_sized(opnd_get_base(opnd)) != REG_XSP &&
@@ -2493,6 +2499,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi)
 {
     app_pc decode_pc = instr_shared_slowpath_decode_pc(inst, mi);
+    ASSERT(options.pattern == 0, "No slow path for pattern mode");
     if (decode_pc != NULL) {
         /* Since the clean call instr sequence is quite long we share
          * it among all bbs.  Rather than switch to a clean stack we jmp
@@ -2894,15 +2901,14 @@ instrument_init(void)
 
     if (options.shadowing) {
         gencode_lock = dr_mutex_create();
-
-        hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
-                          false/*!synch*/, bb_table_free_entry, NULL, NULL);
         hashtable_init(&xl8_sharing_table, XL8_SHARING_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
         hashtable_init(&ignore_unaddr_table, IGNORE_UNADDR_HASH_BITS, HASH_INTPTR,
                        false/*!strdup*/);
     }
     stringop_lock = dr_mutex_create();
+    hashtable_init_ex(&bb_table, BB_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
+                      false/*!synch*/, bb_table_free_entry, NULL, NULL);
     hashtable_init_ex(&stringop_app2us_table, STRINGOP_HASH_BITS, HASH_INTPTR,
                       false/*!strdup*/, false/*!synch*/,
                       stringop_free_entry, NULL, NULL);
@@ -2934,11 +2940,11 @@ instrument_exit(void)
 #endif
     if (options.shadowing) {
         dr_mutex_destroy(gencode_lock);
-        hashtable_delete_with_stats(&bb_table, "bb_table");
         hashtable_delete_with_stats(&xl8_sharing_table, "xl8_sharing");
         hashtable_delete_with_stats(&ignore_unaddr_table, "ignore_unaddr");
     }
     dr_mutex_destroy(stringop_lock);
+    hashtable_delete_with_stats(&bb_table, "bb_table");
     hashtable_delete(&stringop_app2us_table);
     hashtable_delete(&stringop_us2app_table);
 #ifdef TOOL_DR_MEMORY
@@ -2970,13 +2976,13 @@ instrument_persist_ro_size(void *drcontext, void *perscxt)
     size_t sz = 0;
     if (!INSTRUMENT_MEMREFS())
         return 0;
+    LOG(2, "persisting bb table "PFX"-"PFX"\n", dr_persist_start(perscxt),
+        dr_persist_start(perscxt) + dr_persist_size(perscxt));
+    sz += hashtable_persist_size(drcontext, &bb_table, sizeof(bb_saved_info_t),
+                                 perscxt, DR_HASHPERS_REBASE_KEY  |
+                                 DR_HASHPERS_ONLY_IN_RANGE |
+                                 DR_HASHPERS_ONLY_PERSISTED);
     if (options.shadowing) {
-        LOG(2, "persisting bb table "PFX"-"PFX"\n", dr_persist_start(perscxt),
-            dr_persist_start(perscxt) + dr_persist_size(perscxt));
-        sz += hashtable_persist_size(drcontext, &bb_table, sizeof(bb_saved_info_t),
-                                     perscxt, DR_HASHPERS_REBASE_KEY  |
-                                     DR_HASHPERS_ONLY_IN_RANGE |
-                                     DR_HASHPERS_ONLY_PERSISTED);
         LOG(2, "persisting xl8 table\n");
         sz += hashtable_persist_size(drcontext, &xl8_sharing_table, sizeof(uint),
                                      perscxt, DR_HASHPERS_REBASE_KEY |
@@ -3004,12 +3010,12 @@ instrument_persist_ro(void *drcontext, void *perscxt, file_t fd)
     bool ok = true;
     if (!INSTRUMENT_MEMREFS())
         return ok;
+    LOG(2, "persisting bb table\n");
+    ok = ok && hashtable_persist(drcontext, &bb_table, sizeof(bb_saved_info_t), fd,
+                                 perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
+                                 DR_HASHPERS_REBASE_KEY | DR_HASHPERS_ONLY_IN_RANGE |
+                                 DR_HASHPERS_ONLY_PERSISTED);
     if (options.shadowing) {
-        LOG(2, "persisting bb table\n");
-        ok = ok && hashtable_persist(drcontext, &bb_table, sizeof(bb_saved_info_t), fd,
-                                     perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
-                                     DR_HASHPERS_REBASE_KEY | DR_HASHPERS_ONLY_IN_RANGE |
-                                     DR_HASHPERS_ONLY_PERSISTED);
         LOG(2, "persisting xl8 table\n");
         /* these two tables don't just contain tags so we can't do ONLY_PERSISTED */
         ok = ok && hashtable_persist(drcontext, &xl8_sharing_table, sizeof(uint), fd,
@@ -3114,14 +3120,14 @@ instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
     bool ok = true;
     if (!INSTRUMENT_MEMREFS())
         return ok;
+    LOG(2, "resurrecting bb table\n");
+    hashtable_lock(&bb_table);
+    ok = ok && hashtable_resurrect(drcontext, map, &bb_table, sizeof(bb_saved_info_t),
+                                   perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
+                                   DR_HASHPERS_REBASE_KEY | DR_HASHPERS_CLONE_PAYLOAD,
+                                   bb_save_resurrect_entry);
+    hashtable_unlock(&bb_table);
     if (options.shadowing) {
-        LOG(2, "resurrecting bb table\n");
-        hashtable_lock(&bb_table);
-        ok = ok && hashtable_resurrect(drcontext, map, &bb_table, sizeof(bb_saved_info_t),
-                                       perscxt, DR_HASHPERS_PAYLOAD_IS_POINTER |
-                                       DR_HASHPERS_REBASE_KEY | DR_HASHPERS_CLONE_PAYLOAD,
-                                       bb_save_resurrect_entry);
-        hashtable_unlock(&bb_table);
         LOG(2, "resurrecting xl8 table\n");
         ok = ok && hashtable_resurrect(drcontext, map, &xl8_sharing_table, sizeof(uint),
                                        perscxt, DR_HASHPERS_REBASE_KEY,
@@ -3864,14 +3870,14 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 #endif
 
 #ifdef TOOL_DR_MEMORY
-    if (options.shadowing)
+    if (INSTRUMENT_MEMREFS())
         fastpath_top_of_bb(drcontext, tag, bb, bi);
 #endif
 
     /* Rather than having DR store translations, it takes less space for us to
      * use the bb table we already have
      */
-    if (options.shadowing) {
+    if (INSTRUMENT_MEMREFS()) {
         if (translating) {
             bb_saved_info_t *save;
             hashtable_lock(&bb_table);
@@ -3972,7 +3978,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     }
 #endif
 
-    if (options.shadowing) {
+    if (INSTRUMENT_MEMREFS()) {
         /* We want to spill AFTER any clean call in case it changes mcontext */
         /* XXX: examine this: how make it more in spirit of drmgr? */
         bi->spill_after = instr_get_prev(inst);
@@ -4003,17 +4009,11 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 #ifdef WINDOWS
     ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
-#ifdef TOOL_DR_MEMORY
-    if (options.pattern != 0) {
-        pattern_instrument_check(drcontext, bb, inst);
-        goto instru_event_bb_insert_done;
-    }
-#endif
-    if (!options.shadowing && !options.leaks_only)
+    if (!INSTRUMENT_MEMREFS() && !options.leaks_only)
         goto instru_event_bb_insert_done;
     if (instr_is_interrupt(inst))
         goto instru_event_bb_insert_done;
-    if (instr_is_nop(inst) &&
+    if (instr_is_nop(inst) && instr_is_prefetch(inst) &&
         /* work around DR bug PR 332257 */
         (instr_get_opcode(inst) != OP_xchg ||
          opnd_same(instr_get_dst(inst, 0), instr_get_dst(inst, 1))))
@@ -4060,10 +4060,14 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         goto instru_event_bb_insert_done;
     
     /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */
-    if (bi->eflags_defined && opc_is_jcc(instr_get_opcode(inst)))
+    if ((options.pattern != 0 ||
+         (options.shadowing && bi->eflags_defined)) &&
+        opc_is_jcc(instr_get_opcode(inst)))
         goto instru_event_bb_insert_done;
     
-    if (options.shadowing &&
+    if (options.pattern != 0) {
+        pattern_instrument_check(drcontext, bb, inst, bi);
+    } else if (options.shadowing &&
         (options.check_uninitialized || has_noignorable_mem)) {
         if (instr_ok_for_instrument_fastpath(inst, &mi, bi)) {
             instrument_fastpath(drcontext, bb, inst, &mi, bi->check_ignore_unaddr);
@@ -4113,7 +4117,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     }
 
     /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
-    if (options.shadowing)
+    if (INSTRUMENT_MEMREFS())
         fastpath_pre_app_instr(drcontext, bb, inst, bi, &mi);
 
     if (mi.appclone != NULL) {
@@ -4184,11 +4188,11 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
 
 #ifdef TOOL_DR_MEMORY
     /* XXX i#777: should do reverse scan during analysis and store info */
-    if (options.pattern != 0)
+    if (options.pattern != 0 && !whole_bb_spills_enabled())
         pattern_instrument_reverse_scan(drcontext, bb);
 #endif
 
-    if (options.shadowing) {
+    if (INSTRUMENT_MEMREFS()) {
         fastpath_bottom_of_bb(drcontext, tag, bb, bi, bi->added_instru, translating,
                               bi->check_ignore_unaddr);
     }
