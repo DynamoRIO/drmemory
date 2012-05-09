@@ -135,6 +135,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #include "drwrap.h"
 #include "alloc.h"
 #include "alloc_private.h"
+#include "alloc_replace.h"
 #include "heap.h"
 #include "callstack.h"
 #include "redblack.h"
@@ -190,11 +191,22 @@ uint num_large_mallocs;
 uint num_frees;
 #endif
 
+/* points at the per-malloc API to use */
+malloc_interface_t malloc_interface;
+
 #ifdef LINUX
-app_pc
-get_brk(void)
+byte *
+get_brk(bool pre_us)
 {
-    return (app_pc) raw_syscall_1arg(SYS_brk, 0);
+    if (pre_us && alloc_ops.replace_malloc)
+        return alloc_replace_orig_brk();
+    return (byte *) raw_syscall_1arg(SYS_brk, 0);
+}
+
+byte *
+set_brk(byte *new_val)
+{
+    return (byte *) raw_syscall_1arg(SYS_brk, (ptr_int_t) new_val);
 }
 #endif
 
@@ -222,6 +234,9 @@ alloc_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst
 
 static bool
 malloc_lock_held_by_self(void);
+
+static void
+malloc_wrap_init(void);
 
 /***************************************************************************
  * PER-THREAD DATA
@@ -325,140 +340,6 @@ typedef enum {
     HEAPSET_RTL,
 #endif
 } heapset_type_t;
-
-typedef enum {
-    /* For Linux and for Cygwin, and for any other allocator connected via
-     * a to-be-implemented API (PR 406756)
-     */
-    /* Typically only one of these size routines is provided */
-    HEAP_ROUTINE_SIZE_USABLE,
-    HEAP_ROUTINE_SIZE_REQUESTED,
-    HEAP_ROUTINE_MALLOC,
-    HEAP_ROUTINE_REALLOC,
-    HEAP_ROUTINE_FREE,
-    /* BSD libc calloc simply calls malloc and then zeroes out
-     * the resulting memory: thus, nothing special for us to watch.
-     * But glibc calloc does its own allocating.
-     */
-    HEAP_ROUTINE_CALLOC,
-    HEAP_ROUTINE_POSIX_MEMALIGN,
-    HEAP_ROUTINE_MEMALIGN,
-    HEAP_ROUTINE_VALLOC,
-    HEAP_ROUTINE_PVALLOC,
-    /* On Windows, we must watch debug operator delete b/c it reads
-     * malloc's headers (i#26).  On both platforms we want to watch
-     * the operators to find mismatches (i#123).
-     */
-    HEAP_ROUTINE_NEW,
-    HEAP_ROUTINE_NEW_ARRAY,
-    HEAP_ROUTINE_DELETE,
-    HEAP_ROUTINE_DELETE_ARRAY,
-    /* Group label for routines that might read heap headers but
-     * need no explicit argument modification
-     */
-    HEAP_ROUTINE_STATS,
-    /* Group label for un-handled routine */
-    HEAP_ROUTINE_NOT_HANDLED,
-    /* Should collapse these two once have aligned-malloc routine support */
-    HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
-#ifdef LINUX
-    HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
-#else
-    /* Debug CRT routines, which take in extra params */
-    HEAP_ROUTINE_SIZE_REQUESTED_DBG,
-    HEAP_ROUTINE_MALLOC_DBG,
-    HEAP_ROUTINE_REALLOC_DBG,
-    HEAP_ROUTINE_FREE_DBG,
-    HEAP_ROUTINE_CALLOC_DBG,
-    /* Free wrapper used in place of real delete or delete[] operators (i#722,i#655) */
-    HEAP_ROUTINE_DebugHeapDelete,
-    /* To avoid debug CRT checks (i#51) */
-    HEAP_ROUTINE_SET_DBG,
-    HEAP_ROUTINE_DBG_NOP,
-    /* FIXME PR 595798: for cygwin allocator we have to track library call */
-    HEAP_ROUTINE_SBRK,
-    HEAP_ROUTINE_LAST = HEAP_ROUTINE_SBRK,
-    /* The primary routines we hook are the Rtl*Heap routines, in addition
-     * to malloc routines in each library since some either do their own
-     * internal parceling (PR 476805) or add padding for debug purposes
-     * which we want to treat as unaddressable (DRi#284)
-     */
-    RTL_ROUTINE_MALLOC,
-    RTL_ROUTINE_REALLOC,
-    RTL_ROUTINE_FREE,
-    RTL_ROUTINE_VALIDATE,
-    RTL_ROUTINE_SIZE,
-    RTL_ROUTINE_CREATE,
-    RTL_ROUTINE_DESTROY,
-    RTL_ROUTINE_GETINFO,
-    RTL_ROUTINE_SETINFO,
-    RTL_ROUTINE_SETFLAGS,
-    RTL_ROUTINE_HEAPINFO,
-    RTL_ROUTINE_CREATE_ACTCXT, /* for csrss-allocated memory: i#352 */
-    RTL_ROUTINE_LOCK,
-    RTL_ROUTINE_UNLOCK,
-    RTL_ROUTINE_QUERY,
-    RTL_ROUTINE_NYI,
-    RTL_ROUTINE_SHUTDOWN,
-    RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
-#endif
-    HEAP_ROUTINE_COUNT,
-} routine_type_t;
-
-static inline bool
-is_size_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_SIZE_USABLE || type == HEAP_ROUTINE_SIZE_REQUESTED
-            IF_WINDOWS(|| type == RTL_ROUTINE_SIZE
-                       || type == HEAP_ROUTINE_SIZE_REQUESTED_DBG));
-}
-
-static inline bool
-is_size_requested_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_SIZE_REQUESTED
-            IF_WINDOWS(|| type == RTL_ROUTINE_SIZE
-                       || type == HEAP_ROUTINE_SIZE_REQUESTED_DBG));
-}
-
-static inline bool
-is_free_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_FREE
-            IF_WINDOWS(|| type == RTL_ROUTINE_FREE || type == HEAP_ROUTINE_FREE_DBG));
-}
-
-static inline bool
-is_malloc_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_MALLOC 
-            IF_WINDOWS(|| type == RTL_ROUTINE_MALLOC|| type == HEAP_ROUTINE_MALLOC_DBG));
-}
-
-static inline bool
-is_realloc_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_REALLOC 
-            IF_WINDOWS(|| type == RTL_ROUTINE_REALLOC|| type == HEAP_ROUTINE_REALLOC_DBG));
-}
-
-static inline bool
-is_calloc_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_CALLOC IF_WINDOWS(|| type == HEAP_ROUTINE_CALLOC_DBG));
-}
-
-static inline bool
-is_new_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_NEW || type == HEAP_ROUTINE_NEW_ARRAY);
-}
-
-static inline bool
-is_delete_routine(routine_type_t type)
-{
-    return (type == HEAP_ROUTINE_DELETE || type == HEAP_ROUTINE_DELETE_ARRAY);
-}
 
 static inline bool
 routine_needs_post_wrap(routine_type_t type, heapset_type_t set_type)
@@ -723,7 +604,7 @@ struct _alloc_routine_set_t;
 typedef struct _alloc_routine_set_t alloc_routine_set_t;
 
 /* Each entry in the alloc_routine_table */
-typedef struct _alloc_routine_entry_t {
+struct _alloc_routine_entry_t {
     app_pc pc;
     routine_type_t type;
     const char *name;
@@ -735,7 +616,7 @@ typedef struct _alloc_routine_entry_t {
      * call site method causes a lot of instrumentation when there's high fan-in)
      */
     bool intercept_post;
-} alloc_routine_entry_t;
+};
 
 /* Set of malloc routines */
 struct _alloc_routine_set_t {
@@ -1202,27 +1083,11 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
     IF_DEBUG(is_new = )
         hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
     ASSERT(is_new, "alloc entry should not already exist");
-#ifdef WINDOWS
-    if (e->type == HEAP_ROUTINE_DBG_NOP) {
-        /* cdecl so no args to clean up.
-         * we can't just insert a generated ret b/c our slowpath
-         * assumes the raw bits are persistent.
-         */
-        if (!drwrap_replace(pc, (app_pc)replaced_nop_routine, false))
-            ASSERT(false, "failed to replace dbg-nop");
-    } else {
-#endif
-        /* there could be a race on unload where passing e is unsafe but
-         * we live w/ it
-         * XXX: for -conservative we should do a lookup
-         */
-        if (!drwrap_wrap_ex(pc, alloc_hook,
-                            e->intercept_post ? handle_alloc_post : NULL, (void *)e,
-                            DRWRAP_UNWIND_ON_EXCEPTION))
-            ASSERT(false, "failed to wrap alloc routine");
-#ifdef WINDOWS
-    }
-#endif
+    /* there could be a race on unload where passing e is unsafe but
+     * we live w/ it
+     * XXX: for -conservative we should do a lookup
+     */
+    malloc_interface.malloc_intercept(pc, type, e);
     return e;
 }
 
@@ -1642,6 +1507,51 @@ redzone_size(alloc_routine_entry_t *routine)
             alloc_ops.redzone_size : 0);
 }
 
+/* XXX i#882: make this static once malloc replacement replaces operators */
+void
+/* XXX: if we split the wrapping from the routine identification we'll
+ * have to figure out how to separate alloc_routine_entry_t: currently an
+ * opaque type in alloc_private.h
+ */
+malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+{
+#ifdef WINDOWS
+    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+        /* cdecl so no args to clean up.
+         * we can't just insert a generated ret b/c our slowpath
+         * assumes the raw bits are persistent.
+         */
+        if (!drwrap_replace(pc, (app_pc)replaced_nop_routine, false))
+            ASSERT(false, "failed to replace dbg-nop");
+    } else {
+#endif
+        if (!drwrap_wrap_ex(pc, alloc_hook,
+                            e->intercept_post ? handle_alloc_post : NULL,
+                            (void *)e, DRWRAP_UNWIND_ON_EXCEPTION))
+            ASSERT(false, "failed to wrap alloc routine");
+#ifdef WINDOWS
+    }
+#endif
+}
+
+/* XXX i#882: make this static once malloc replacement replaces operators */
+void
+malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+{
+#ifdef WINDOWS
+    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+        if (!drwrap_replace(pc, NULL/*remove*/, true))
+            ASSERT(false, "failed to unreplace dbg-nop");
+    } else {
+#endif
+        if (!drwrap_unwrap(pc, alloc_hook,
+                           e->intercept_post ? handle_alloc_post : NULL))
+            ASSERT(false, "failed to unwrap alloc routine");
+#ifdef WINDOWS
+    }
+#endif
+}
+
 /***************************************************************************
  * MALLOC SIZE
  */
@@ -1935,8 +1845,6 @@ enum {
     /* We ignore Rtl*Heap-internal allocs */
     MALLOC_RTL_INTERNAL        = MALLOC_RESERVED_6,
     /* The rest are reserved for future use */
-    MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
-                                    MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
 };
 
 /* We could save space by storing this in the redzone, if big enough,
@@ -2072,6 +1980,12 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
             ASSERT(false, "drwrap event registration failed");
     }
 #endif
+
+    /* set up the per-malloc API */
+    if (alloc_ops.replace_malloc)
+        alloc_replace_init();
+    else
+        malloc_wrap_init();
 }
 
 void
@@ -2084,6 +1998,9 @@ alloc_exit(void)
     uint i;
     if (!alloc_ops.track_allocs)
         return;
+
+    if (alloc_ops.replace_malloc)
+        alloc_replace_exit();
 
     hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
     dr_mutex_destroy(alloc_routine_lock);
@@ -2466,18 +2383,9 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         e->set->realloc_replacement = NULL;
                         dr_mutex_unlock(gencode_lock);
                     }
-#ifdef WINDOWS
-                    if (e->type == HEAP_ROUTINE_DBG_NOP) {
-                        if (!drwrap_replace(e->pc, NULL/*remove*/, true))
-                            ASSERT(false, "failed to unreplace dbg-nop");
-                    } else {
-#endif
-                        if (!drwrap_unwrap(e->pc, alloc_hook,
-                                           e->intercept_post ? handle_alloc_post : NULL))
-                            ASSERT(false, "failed to unwrap alloc routine");
-#ifdef WINDOWS
-                    }
-#endif
+
+                    malloc_interface.malloc_unintercept(e->pc, e->type, e);
+
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);
 
@@ -2524,6 +2432,94 @@ alloc_fragment_delete(void *dc/*may be NULL*/, void *tag)
     return;
 }
 
+/***************************************************************************
+ * Per-malloc API routing
+ */
+
+void
+malloc_lock(void)
+{
+    malloc_interface.malloc_lock();
+}
+
+void
+malloc_unlock(void)
+{
+    malloc_interface.malloc_unlock();
+}
+
+app_pc
+malloc_end(app_pc start)
+{
+    return malloc_interface.malloc_end(start);
+}
+
+void
+malloc_add(app_pc start, app_pc end, app_pc real_end, bool pre_us,
+           uint client_flags, dr_mcontext_t *mc, app_pc post_call)
+{
+    malloc_interface.malloc_add(start, end, real_end, pre_us,
+                                    client_flags, mc, post_call);
+}
+
+bool
+malloc_is_pre_us(app_pc start)
+{
+    return malloc_interface.malloc_is_pre_us(start);
+}
+
+bool
+malloc_is_pre_us_ex(app_pc start, bool ok_if_invalid)
+{
+    return malloc_interface.malloc_is_pre_us_ex(start, ok_if_invalid);
+}
+
+ssize_t
+malloc_size(app_pc start)
+{
+    return malloc_interface.malloc_size(start);
+}
+
+ssize_t
+malloc_size_invalid_only(app_pc start)
+{
+    return malloc_interface.malloc_size_invalid_only(start);
+}
+
+void *
+malloc_get_client_data(app_pc start)
+{
+    return malloc_interface.malloc_get_client_data(start);
+}
+
+uint
+malloc_get_client_flags(app_pc start)
+{
+    return malloc_interface.malloc_get_client_flags(start);
+}
+
+bool
+malloc_set_client_flag(app_pc start, uint client_flag)
+{
+    return malloc_interface.malloc_set_client_flag(start, client_flag);
+}
+
+bool
+malloc_clear_client_flag(app_pc start, uint client_flag)
+{
+    return malloc_interface.malloc_clear_client_flag(start, client_flag);
+}
+
+void
+malloc_iterate(malloc_iter_cb_t cb, void *iter_data)
+{
+    malloc_interface.malloc_iterate(cb, iter_data);
+}
+
+/***************************************************************************
+ * Per-malloc API for wrapping
+ */
+
 /* We need to support our malloc routines being called either on their
  * own or from within malloc_iterate(), so we need self-recursion support
  * of one level.  We do not need general recursion support.
@@ -2540,8 +2536,8 @@ malloc_lock_held_by_self(void)
     return (dr_get_thread_id(drcontext) == malloc_lock_owner);
 }
 
-void
-malloc_lock(void)
+static void
+malloc_wrap__lock(void)
 {
     void *drcontext = dr_get_current_drcontext();
     hashtable_lock(&malloc_table);
@@ -2549,8 +2545,8 @@ malloc_lock(void)
         malloc_lock_owner = dr_get_thread_id(drcontext);
 }
 
-void
-malloc_unlock(void)
+static void
+malloc_wrap__unlock(void)
 {
     malloc_lock_owner = THREAD_ID_INVALID;
     hashtable_unlock(&malloc_table);
@@ -2647,9 +2643,9 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     });
 }
 
-void
-malloc_add(app_pc start, app_pc end, app_pc real_end,
-           bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
+static void
+malloc_wrap__add(app_pc start, app_pc end, app_pc real_end,
+                 bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
 {
     malloc_add_common(start, end, real_end, pre_us ? MALLOC_PRE_US : 0,
                       client_flags, mc, post_call, 0);
@@ -2691,7 +2687,8 @@ malloc_entry_remove(malloc_entry_t *e)
     }
 }
 
-void
+#ifdef WINDOWS
+static void
 malloc_remove(app_pc start)
 {
     malloc_entry_t *e;
@@ -2701,6 +2698,7 @@ malloc_remove(app_pc start)
         malloc_entry_remove(e);
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
+#endif
 
 static size_t
 malloc_entry_size(malloc_entry_t *e)
@@ -2757,7 +2755,7 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
     } /* ok to be NULL: a race where re-used in malloc and then freed already */
 }
 
-void
+static void
 malloc_set_valid(app_pc start, bool valid)
 {
     malloc_entry_t *e;
@@ -2824,8 +2822,8 @@ malloc_alloc_type_name(uint flags)
     }
 }
 
-bool
-malloc_is_pre_us_ex(app_pc start, bool ok_if_invalid)
+static bool
+malloc_wrap__is_pre_us_ex(app_pc start, bool ok_if_invalid)
 {
     bool res = false;
     malloc_entry_t *e;
@@ -2837,8 +2835,8 @@ malloc_is_pre_us_ex(app_pc start, bool ok_if_invalid)
     return res;
 }
 
-bool
-malloc_is_pre_us(app_pc start)
+static bool
+malloc_wrap__is_pre_us(app_pc start)
 {
     return malloc_is_pre_us_ex(start, false/*only valid*/);
 }
@@ -2902,8 +2900,8 @@ malloc_entry_exists_racy_nolock(app_pc start)
 }
 #endif
 
-app_pc
-malloc_end(app_pc start)
+static app_pc
+malloc_wrap__end(app_pc start)
 {
     app_pc end = NULL;
     malloc_entry_t *e;
@@ -2916,8 +2914,8 @@ malloc_end(app_pc start)
 }
 
 /* Returns -1 on failure */
-ssize_t
-malloc_size(app_pc start)
+static ssize_t
+malloc_wrap__size(app_pc start)
 {
     ssize_t sz = -1;
     malloc_entry_t *e;
@@ -2930,8 +2928,8 @@ malloc_size(app_pc start)
 }
 
 /* Returns -1 on failure.  Only looks at invalid malloc regions. */
-ssize_t
-malloc_size_invalid_only(app_pc start)
+static ssize_t
+malloc_wrap__size_invalid_only(app_pc start)
 {
     ssize_t sz = -1;
     malloc_entry_t *e;
@@ -2943,8 +2941,8 @@ malloc_size_invalid_only(app_pc start)
     return sz;
 }
 
-void *
-malloc_get_client_data(app_pc start)
+static void *
+malloc_wrap__get_client_data(app_pc start)
 {
     void *res = NULL;
     malloc_entry_t *e;
@@ -2956,8 +2954,8 @@ malloc_get_client_data(app_pc start)
     return res;
 }
 
-uint
-malloc_get_client_flags(app_pc start)
+static uint
+malloc_wrap__get_client_flags(app_pc start)
 {
     uint res = 0;
     malloc_entry_t *e;
@@ -2969,8 +2967,8 @@ malloc_get_client_flags(app_pc start)
     return res;
 }
 
-bool
-malloc_set_client_flag(app_pc start, uint client_flag)
+static bool
+malloc_wrap__set_client_flag(app_pc start, uint client_flag)
 {
     malloc_entry_t *e;
     bool found = false;
@@ -2984,8 +2982,8 @@ malloc_set_client_flag(app_pc start, uint client_flag)
     return found;
 }
 
-bool
-malloc_clear_client_flag(app_pc start, uint client_flag)
+static bool
+malloc_wrap__clear_client_flag(app_pc start, uint client_flag)
 {
     malloc_entry_t *e;
     bool found = false;
@@ -3000,10 +2998,7 @@ malloc_clear_client_flag(app_pc start, uint client_flag)
 }
 
 static void
-malloc_iterate_internal(bool include_native,
-                        bool (*cb)(app_pc start, app_pc end, app_pc real_end,
-                                   bool pre_us, uint client_flags,
-                                   void *client_data, void *iter_data), void *iter_data)
+malloc_iterate_internal(bool include_native, malloc_iter_cb_t cb, void *iter_data)
 {
     uint i;
     /* we do support being called while malloc lock is held but caller should
@@ -3030,10 +3025,8 @@ malloc_iterate_internal(bool include_native,
     malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
-void
-malloc_iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
-                          bool pre_us, uint client_flags,
-                          void *client_data, void *iter_data), void *iter_data)
+static void
+malloc_wrap__iterate(malloc_iter_cb_t cb, void *iter_data)
 {
     malloc_iterate_internal(false, cb, iter_data);
 }
@@ -3058,6 +3051,26 @@ alloc_in_heap_routine(void *drcontext)
      */
     cls_alloc_t *pt = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
     return pt->in_heap_routine > 0;
+}
+
+static void
+malloc_wrap_init(void)
+{
+    malloc_interface.malloc_lock = malloc_wrap__lock;
+    malloc_interface.malloc_unlock = malloc_wrap__unlock;
+    malloc_interface.malloc_end = malloc_wrap__end;
+    malloc_interface.malloc_add = malloc_wrap__add;
+    malloc_interface.malloc_is_pre_us = malloc_wrap__is_pre_us;
+    malloc_interface.malloc_is_pre_us_ex = malloc_wrap__is_pre_us_ex;
+    malloc_interface.malloc_size = malloc_wrap__size;
+    malloc_interface.malloc_size_invalid_only = malloc_wrap__size_invalid_only;
+    malloc_interface.malloc_get_client_data = malloc_wrap__get_client_data;
+    malloc_interface.malloc_get_client_flags = malloc_wrap__get_client_flags;
+    malloc_interface.malloc_set_client_flag = malloc_wrap__set_client_flag;
+    malloc_interface.malloc_clear_client_flag = malloc_wrap__clear_client_flag;
+    malloc_interface.malloc_iterate = malloc_wrap__iterate;
+    malloc_interface.malloc_intercept = malloc_wrap__intercept;
+    malloc_interface.malloc_unintercept = malloc_wrap__unintercept;
 }
 
 /*
@@ -5506,6 +5519,7 @@ malloc_large_add(byte *start, size_t size)
     IF_DEBUG(rb_node_t *node;)
     ASSERT(size >= LARGE_MALLOC_MIN_SIZE, "not large enough");
     dr_mutex_lock(large_malloc_lock);
+    LOG(2, "large malloc add "PFX"-"PFX"\n", start, start+ size);
     IF_DEBUG(node =)
         rb_insert(large_malloc_tree, start, size, NULL);
     dr_mutex_unlock(large_malloc_lock);
@@ -5518,6 +5532,7 @@ malloc_large_remove(byte *start)
 {
     rb_node_t *node;
     dr_mutex_lock(large_malloc_lock);
+    LOG(2, "large malloc remove "PFX"\n", start);
     node = rb_find(large_malloc_tree, start);
     ASSERT(node != NULL, "error in large malloc tree");
     if (node != NULL)

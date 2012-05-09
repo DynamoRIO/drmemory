@@ -625,6 +625,7 @@ if (TOOL_DR_HEAPSTAT)
     drheapstat/staleness.c
     common/alloc.c
     common/alloc_unopt.c
+    common/alloc_replace.c
     common/heap.c
     common/callstack.c
     common/utils.c
@@ -654,6 +655,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/pattern.c
     common/alloc.c
     common/alloc_unopt.c
+    common/alloc_replace.c
     common/heap.c
     common/callstack.c
     drmemory/alloc_drmem.c

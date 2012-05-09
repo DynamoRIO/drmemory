@@ -375,6 +375,15 @@ options_init(const char *opstr)
         options.check_alignment    = false;
         if (options.leaks_only)
             usage_error("-leaks_only cannot be used with pattern mode", "");
+        if (options.replace_malloc) {
+            /* XXX i#879: we need a custom malloc w/ no headers */
+            usage_error("pattern mode incompatible with replacing malloc", "");
+        }
+    }
+    if (options.replace_malloc) {
+        options.replace_realloc = false; /* no need for it */
+        /* whole header is in redzone, but supports redzone being smaller than header */
+        options.size_in_redzone = false;
     }
     if (!options.count_leaks) {
         options.check_leaks_on_destroy = false;

@@ -1,0 +1,65 @@
+/* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/***************************************************************************
+ * alloc_replace.h: Dr. Memory heap tracking internal header
+ */
+
+#ifndef _ALLOC_REPLACE_H_
+#define _ALLOC_REPLACE_H_ 1
+
+/***************************************************************************
+ * app-facing interface
+ */
+
+void *
+replace_malloc(size_t size);
+
+void *
+replace_calloc(size_t nmemb, size_t size);
+
+void *
+replace_realloc(void *ptr, size_t size);
+
+void
+replace_free(void *ptr);
+
+size_t
+replace_malloc_usable_size(void *ptr);
+
+/***************************************************************************
+ * drmem-facing interface
+ */
+
+void
+alloc_replace_init();
+
+void
+alloc_replace_exit();
+
+#ifdef LINUX
+byte *
+alloc_replace_orig_brk();
+#endif
+
+/* rest is in malloc_interface_t */
+
+#endif /* _ALLOC_REPLACE_H_ */

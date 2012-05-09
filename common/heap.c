@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -97,7 +97,7 @@ get_heap_start(void)
 {
     static app_pc heap_start; /* cached value */
     if (heap_start == NULL) {
-        app_pc cur_brk = get_brk();
+        app_pc cur_brk = get_brk(true/*pre-us*/);
         dr_mem_info_t info;
         const char *appnm = dr_get_application_name();
         /* Locate the heap */
@@ -107,7 +107,10 @@ get_heap_start(void)
         }
         ASSERT(!dr_memory_is_dr_internal(info.base_pc), "heap location error");
         ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
-        ASSERT(info.base_pc + info.size == cur_brk, "heap location error");
+        /* we no longer assert that these are equal b/c -replace_malloc
+         * has extended the brk already
+         */
+        ASSERT(info.base_pc + info.size >= cur_brk, "heap location error");
         heap_start = info.base_pc;
 
         /* workaround for PR 618178 where /proc/maps is wrong on suse
@@ -343,7 +346,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
      * and the 2 lower bits of the size marking mmap and prev-in-use.
      * FIXME: also support PHKmalloc (though mainly used in BSD libc).
      */
-    app_pc cur_brk = get_brk();
+    app_pc cur_brk = get_brk(true/*pre-us*/);
     app_pc heap_start, pc;
     size_t sz;
 

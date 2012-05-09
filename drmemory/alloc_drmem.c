@@ -164,6 +164,11 @@ alloc_drmem_init(void)
      */
     alloc_ops.intercept_operators = INSTRUMENT_MEMREFS();
     alloc_ops.conservative = options.conservative;
+    /* replace vs wrap */
+    alloc_ops.replace_malloc = options.replace_malloc;
+    alloc_ops.external_headers = (options.pattern != 0);
+    alloc_ops.delay_frees = options.delay_frees;
+    alloc_ops.delay_frees_maxsz = options.delay_frees_maxsz;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
@@ -560,7 +565,7 @@ client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
     pc_to_loc(&loc, pc);
 #ifdef LINUX
     LOG(1, "heap allocation failed on sz="PIFX"!  heap="PFX"-"PFX"\n",
-        sz, get_heap_start(), get_brk());
+        sz, get_heap_start(), get_brk(false/*want full extent*/));
 # ifdef STATISTICS
     LOG(1, "\tdelayed=%u\n",  delayed_free_bytes);
     /* FIXME: if delayed frees really are a problem, should we free
@@ -699,7 +704,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
     if (options.shadowing)
         shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
 
-    if (INSTRUMENT_MEMREFS() && options.delay_frees > 0) {
+    if (INSTRUMENT_MEMREFS() && !options.replace_malloc && options.delay_frees > 0) {
         /* PR 406762: delay frees to catch more errors.  We put
          * this to-be-freed memory in a delay FIFO and leave it as
          * unaddressable.  One the FIFO fills up we substitute the
@@ -841,6 +846,20 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
     return real_base; /* no change */
 }
 
+void *
+client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call)
+{
+    ASSERT(options.replace_malloc, "should not be called");
+    /* replace malloc callstack with free callstack */
+    if (options.delay_frees_stack) {
+        packed_callstack_t *pcs = (packed_callstack_t *) cur_data;
+        ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
+        shared_callstack_free(pcs);
+        return (void *) get_shared_callstack(NULL, mc, post_call);
+    }
+    return cur_data;
+}
+
 #ifdef WINDOWS
 /* i#264: client needs to clean up any data related to allocs inside this heap */
 void
@@ -887,6 +906,7 @@ overlaps_delayed_free(byte *start, byte *end,
     rb_node_t *node;
     if (options.delay_frees == 0)
         return false;
+    /* XXX i#794: query allocator for options.replace_malloc */
     dr_mutex_lock(delay_free_lock);
     LOG(3, "overlaps_delayed_free "PFX"-"PFX"\n", start, end);
     DOLOG(3, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
@@ -1069,6 +1089,7 @@ client_handle_cbret(void *drcontext)
 void
 client_handle_callback(void *drcontext)
 {
+    LOG(2, "Entering windows callback handler\n");
     syscall_handle_callback(drcontext);
 }
 
@@ -2259,4 +2280,3 @@ check_reachability(bool at_exit)
         return;
     leak_scan_for_leaks(at_exit);
 }
-

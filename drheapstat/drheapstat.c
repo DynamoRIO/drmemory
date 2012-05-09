@@ -342,6 +342,13 @@ client_malloc_data_free(void *data)
     /* nothing to do since we persist our callstacks in alloc_stack_table */
 }
 
+void *
+client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call)
+{
+    /* nothing to do since we persist our callstacks in alloc_stack_table */
+    return cur_data;
+}
+
 static void
 get_buffer(void *drcontext, char **buf/*OUT*/, size_t *bufsz/*OUT*/)
 {

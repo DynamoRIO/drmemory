@@ -272,6 +272,7 @@ get_raw_tls_value(uint offset);
  * other opcode value too. 
  */
 #define CMP_IMMED_OPCODE 0x81
+#define RET_NOIMM_OPCODE 0xc3
 
 /* Avoid selfmod mangling for our "meta-instructions that can fault" (xref PR 472190).
  * Things would work without this (just lower performance, but on selfmod only)

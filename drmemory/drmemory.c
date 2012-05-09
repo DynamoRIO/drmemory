@@ -779,7 +779,7 @@ memory_walk(void)
      */
     dr_mem_info_t info;
     app_pc pc = NULL, end;
-    app_pc cur_brk = get_brk();
+    app_pc cur_brk = get_brk(true/*pre-us*/);
     app_pc pc_to_add;
     uint type = 0;
     LOG(2, "brk="PFX"\n", cur_brk);
@@ -842,6 +842,11 @@ memory_walk(void)
                 pc_to_add = libdr2_end;
                 type = SHADOW_DEFINED;
             }
+        } else if (options.replace_malloc &&
+                   /* base won't be b/c it will be pre-us heap */
+                   alloc_replace_in_cur_arena(info.base_pc + info.size - 1)) {
+            /* ignore replace-heap: leave unaddressable */
+            LOG(2, "  => replacement heap\n");
         } else if (info.type == DR_MEMTYPE_DATA) {
             if (end == cur_brk) {
                 /* this is the heap */

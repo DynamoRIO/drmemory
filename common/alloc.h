@@ -65,6 +65,14 @@ typedef struct _alloc_options_t {
      * to worry about racy module unloads
      */
     bool conservative;
+
+    /* replace instead of wrap existing? */
+    bool replace_malloc;
+    /* only used with -replace_malloc: */
+    bool external_headers; /* headers in hashtable instead of inside redzone */
+    uint delay_frees;
+    uint delay_frees_maxsz;
+
     /* Add new options here */
 } alloc_options_t;
 
@@ -82,7 +90,13 @@ enum {
     MALLOC_RESERVED_6 = 0x0200,
     MALLOC_RESERVED_7 = 0x0400,
     MALLOC_RESERVED_8 = 0x0800,
+    MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
+                                    MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
 };
+
+typedef bool (*malloc_iter_cb_t)(app_pc start, app_pc end, app_pc real_end,
+                                 bool pre_us, uint client_flags,
+                                 void *client_data, void *iter_data);
 
 /* system/lib calls we want to intercept */
 #ifdef WINDOWS
@@ -141,12 +155,6 @@ void
 malloc_add(app_pc start, app_pc end, app_pc real_end,
            bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call);
 
-void
-malloc_remove(app_pc start);
-
-void
-malloc_set_valid(app_pc start, bool valid);
-
 /* Looks up mallocs in the "large malloc table" (for mallocs used as stacks) */
 bool
 malloc_large_lookup(byte *addr, byte **start OUT, size_t *size OUT);
@@ -184,15 +192,16 @@ malloc_clear_client_flag(app_pc start, uint client_flag);
  * The bool returned by cb indicates if the iteration should continue.
  */
 void
-malloc_iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
-                          bool pre_us, uint client_flags,
-                          void *client_data, void *iter_data), void *iter_data);
+malloc_iterate(malloc_iter_cb_t cb, void *iter_data);
 
 typedef size_t (*alloc_size_func_t)(void *);
 
 #ifdef LINUX
-app_pc
-get_brk(void);
+byte *
+get_brk(bool pre_us);
+
+byte *
+set_brk(byte *new_val);
 
 /* this is libc's version */
 extern alloc_size_func_t malloc_usable_size;
@@ -213,15 +222,34 @@ bool
 alloc_in_heap_routine(void *drcontext);
 
 /***************************************************************************
+ * ALLOC REPLACEMENT
+ */
+
+bool
+alloc_entering_replace_routine(app_pc pc);
+
+bool
+alloc_replace_in_cur_arena(byte *addr);
+
+/***************************************************************************
  * CLIENT CALLBACKS
  */
 
+/* called for each live malloc chunk at process exit */
 void                                                             
 client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
                        void *client_data);
 
+/* called when malloc chunk data is being free so user data can also be freed */
 void
 client_malloc_data_free(void *data);
+
+/* called when a malloc is being moved to a free list.  the stored user
+ * data is replaced with the return value.
+ * only called when replacing rather than wrapping malloc.
+ */
+void *
+client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call);
 
 /* A lock is held around the call to this routine.
  * The return value is stored as the client data.

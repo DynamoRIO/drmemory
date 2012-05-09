@@ -36,7 +36,7 @@
  * REACHABILITY-BASED LEAK DETECTION
  */
 
-/* We claim 3 of the malloc table's client flags */
+/* We claim 4 of the malloc table's client flags */
 enum {
     MALLOC_IGNORE_LEAK  = MALLOC_CLIENT_1,
     MALLOC_REACHABLE    = MALLOC_CLIENT_2,

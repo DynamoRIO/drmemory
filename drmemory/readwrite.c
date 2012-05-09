@@ -2429,7 +2429,10 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                     * post-xl8 pc.
                     */
                    (options.repstr_to_loop && opc == OP_loop &&
-                    xl8 == decode_next_pc(drcontext, loc_to_pc(&loc))),
+                    xl8 == decode_next_pc(drcontext, loc_to_pc(&loc))) ||
+                   /* for native ret we changed pc */
+                   (options.replace_malloc && opc == OP_ret &&
+                    alloc_entering_replace_routine(xl8)),
                    "xl8 doesn't match");
         }
     });
@@ -2461,6 +2464,21 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi)
         return mi->bb->fake_xl8;
     else if (instr_get_app_pc(inst) == instr_get_raw_bits(inst))
         return instr_get_app_pc(inst);
+    else if (instr_is_return(inst) && options.replace_malloc &&
+             alloc_entering_replace_routine(instr_get_app_pc(inst))) {
+        /* drwrap_replace_native() uses a generated ret.
+         * if we don't do anything here, we'll use its raw bits
+         * as the decode pc, yet they're temporary and we'll
+         * have trouble.
+         * XXX: this could happen w/ any generated instr: how can we tell
+         * raw bits are temporary vs a hook trampoline?
+         * XXX: drwrap_replace_native() can't set xl8 to a fake ret
+         * b/c of DR's constraints on xl8 being within original bb bounds!
+         */
+        static byte ret_to_decode[1] = {RET_NOIMM_OPCODE};
+        return (app_pc) &ret_to_decode;
+    }
+
     return NULL;
 }
 
@@ -4146,7 +4164,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     }
     
  instru_event_bb_insert_done:
-    if (bi->first_instr)
+    if (bi->first_instr && instr_ok_to_mangle(inst))
         bi->first_instr = false;
     /* We store whether bi->check_ignore_unaddr in our own data struct to avoid
      * DR having to store translations, so we can recreate deterministically
