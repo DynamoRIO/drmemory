@@ -795,10 +795,6 @@ bool
 pattern_addr_in_redzone(byte *addr, size_t size)
 {
     bool res = false;
-    /* we first do a pre-check to avoid expensive lookup */
-    res  = pattern_addr_pre_check(addr);
-    if (!res)
-        return false;
     /* expensive walk */
     LOG(3, "expensive lookup for pattern_addr_in_redzone@"PFX"\n", addr);
     if (options.pattern_use_malloc_tree)
@@ -938,6 +934,11 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          (ushort)val == (ushort)pattern_reverse) &&
         (check_sz == 4 ? 
          (val == options.pattern || val == pattern_reverse)  : true) &&
+        /* we first do a pre-check to avoid expensive lookup
+         * XXX: we might miss the use-after-free error that accessing
+         * a freed pre-us block with smaller-than-redzone size.
+         */
+        pattern_addr_pre_check(addr) &&
         (pattern_addr_in_redzone(addr, size) ||
          overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree
