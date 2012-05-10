@@ -1040,6 +1040,8 @@ if (WIN32)
     install(FILES
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll
+      # frontend now imports from DR (i#885)
+      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe
       DESTINATION "${INSTALL_BIN}"
       PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
