@@ -392,8 +392,8 @@ if (NOT TOOL_DR_HEAPSTAT)
   # FIXME: we should set up a suite like DR uses.  For now hand-picking
   # a few to run w/ options.
   newtest_nobuild(leaks-only malloc "" "-leaks_only" "" OFF "")
-  newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "")
-  newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "")
+  newtest_nobuild(slowpath registers "" "-no_fastpath" "" OFF "registers")
+  newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
   newtest_nobuild(addronly free "" "-light" "" OFF "")
   newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
