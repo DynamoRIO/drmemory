@@ -963,10 +963,7 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          * we reach here which means safe_read works and
          * it is in redzone or delayed free, so not worth the overhead.
          */
-        if (check_sz == 4)
-            *(uint *)addr = 0;
-        else
-            *(ushort *)addr = 0;
+        memset(addr, 0, size);
         return false;
     }
     return true;

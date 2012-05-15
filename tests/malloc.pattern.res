@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -19,20 +19,16 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-# FIXME: for instr "inc 0x00000080(%eax) -> 0x00000080(%eax)"
-# shadow mode reports "reading 1 byte(s)" error
-# while pattern mode reports "writing 1 byte(s)" error.
+# This is malloc.res minus leaks and uninits with updated error number.
+Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+malloc.c:96
+Error #2: INVALID HEAP ARGUMENT
+malloc.c:163
 %if WINDOWS
-Error #1: UNADDRESSABLE ACCESS:
-registers.c:598
-Error #2: UNADDRESSABLE ACCESS:
-registers.c:610
+Error #3: WARNING: heap allocation failed
+malloc.c:175
+Error #4: UNADDRESSABLE ACCESS: reading 4 byte(s)
+malloc.c:183
+Error #5: INVALID HEAP ARGUMENT
+malloc.c:185
 %endif
-%if UNIX
-Error #1: UNADDRESSABLE ACCESS:
-registers.c:636
-Error #2: UNADDRESSABLE ACCESS:
-registers.c:647
-%endif
-Error #3: LEAK 15 direct bytes + 0 indirect bytes
-Error #4: LEAK 15 direct bytes + 0 indirect bytes

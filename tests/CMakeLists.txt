@@ -529,6 +529,10 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(pcache-use pcache "" "-light;-persist_code" "" OFF "addronly")
   # when running tests in parallel, have to generate pcaches first
   set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
+  # pattern mode testing.
+  newtest_nobuild(free.pattern free "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "addronly")
+  newtest_nobuild(malloc.pattern malloc "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "")
+  newtest_nobuild(registers-pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
 
 else (NOT TOOL_DR_HEAPSTAT)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
