@@ -245,6 +245,8 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
                 if (opnd_same(refs[j], opnd))
                     break;
             }
+            if (j < num_refs)
+                continue;
             ASSERT(num_refs < max_num_refs, "too many refs per instr");
             refs[num_refs] = opnd;
             num_refs++;
@@ -745,11 +747,13 @@ pattern_addr_in_malloc_table(byte *addr, size_t size)
 /* If an addr contains pattern value, we check the memory before and after,
  * and return true if there are enough number of contiguous pattern value.
  * XXX: the pattern value in the redzone could be clobbered by earlier error,
- * (see pattern_handle_ill_fault,) which may cause false negative here.
- * We can put clobber value and looking for it here instead.
+ * (see pattern_handle_ill_fault,) which may cause false negative here,
+ * e.g. test case registers.
+ * Now we return true if see more than half are pattern values.
  */
 #define ADDR_PRE_CHECK_SIZE   (options.redzone_size)
 #define ADDR_PRE_CHECK_COUNT  (ADDR_PRE_CHECK_SIZE / sizeof(uint))
+#define ADDR_PRE_CHECK_THRESHOLD (ADDR_PRE_CHECK_COUNT/2)
 
 static bool
 pattern_addr_pre_check(byte *addr)
@@ -774,7 +778,7 @@ pattern_addr_pre_check(byte *addr)
         }
     }, { /* EXCEPT */
     });
-    if (match == ADDR_PRE_CHECK_COUNT)
+    if (match > ADDR_PRE_CHECK_THRESHOLD)
         return true;
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
         val = (uint *)addr;
@@ -786,7 +790,7 @@ pattern_addr_pre_check(byte *addr)
         }
     }, { /* EXCEPT */
     });
-    if (match == ADDR_PRE_CHECK_COUNT)
+    if (match > ADDR_PRE_CHECK_THRESHOLD)
         return true;
     return false;
 }
