@@ -37,7 +37,8 @@ all done
 %endif
 %if WINDOWS
 # extra unaddrs from code to avoid app crash on win7
-~~Dr.M~~       2 unique,    22 total unaddressable access(es)
+# pattern-addr-pre-check skips the repeated report of error #3
+~~Dr.M~~       2 unique,    21 total unaddressable access(es)
 %endif
 %if WINDOWS
 # we have an extra test for invalid heap params
