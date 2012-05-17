@@ -193,13 +193,22 @@ insert_add_to_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
  * Returns a LIVE_ constant for each register in live[]
  */
 static uint
-get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
+get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
+                            bool aflags_only)
 {
     uint res = 0;
     uint merge;
-    int r;
+    int r, r_start, r_end;
     bool aflags_known = false;
-    for (r = 0; r < NUM_LIVENESS_REGS; r++)
+    if (aflags_only) {
+        /* for aflags_only, we only care about XAX. */
+        r_start = DR_REG_XAX - REG_START;
+        r_end   = r_start + 1;
+    } else {
+        r_start = 0;
+        r_end   = NUM_LIVENESS_REGS;
+    }
+    for (r = r_start; r < r_end; r++)
         live[r] = LIVE_UNKNOWN;
     while (inst != NULL) {
         /* aflags */
@@ -223,8 +232,8 @@ get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS])
         if (instr_is_cti(inst))
             break;
         /* liveness */
-        for (r = 0; r < NUM_LIVENESS_REGS; r++) {
-            reg_id_t reg = r + REG_START_32;
+        for (r = r_start; r < r_end; r++) {
+            reg_id_t reg = r + REG_START;
             if (live[r] == LIVE_UNKNOWN) {
                 if (instr_reads_from_reg(inst, reg)) {
                     live[r] = LIVE_LIVE;
@@ -1430,7 +1439,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     int local_slot[] = {SPILL_SLOT_4, SPILL_SLOT_5};
     int local_idx = 0;
     IF_DEBUG(const int local_idx_max = sizeof(local_slot)/sizeof(local_slot[0]);)
-    mi->aflags = get_aflags_and_reg_liveness(inst, live);
+    mi->aflags = get_aflags_and_reg_liveness(inst, live, false/* regs too */);
 
     ASSERT((whole_bb_spills_enabled() && mi->bb->reg1.reg != REG_NULL) ||
            (!whole_bb_spills_enabled() && mi->bb->reg1.reg == REG_NULL),
@@ -1442,7 +1451,7 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     if (mi->eax.used) {
         /* caller wants us to ignore eax and eflags */
     } else if (!whole_bb_spills_enabled() && mi->aflags != EFLAGS_WRITE_6) {
-        mi->eax.reg = REG_EAX;
+        mi->eax.reg = DR_REG_XAX;
         mi->eax.used = true;
         mi->eax.dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
         /* Ensure we don't use eax for another scratch reg */
@@ -5179,14 +5188,14 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
      * XXX i#777: should do reverse walk during analysis phase and store results
      * in bit array in new note fields
      */
-    bi->aflags = get_aflags_and_reg_liveness(inst, live);
+    bi->aflags = get_aflags_and_reg_liveness(inst, live, options.pattern != 0);
     /* Update the dead fields */
     if (bi->reg1.reg != DR_REG_NULL)
         bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
     if (bi->reg2.reg != DR_REG_NULL)
         bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
 
-    bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
+    bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
 }
 
 bool
@@ -5344,15 +5353,15 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     /* We updated reg*.dead in fastpath_pre_instrument() but here we want
      * liveness post-app-instr
      */
-    bi->aflags = get_aflags_and_reg_liveness(next, live);
+    bi->aflags = get_aflags_and_reg_liveness(next, live, options.pattern != 0);
     /* Update the dead fields */
     if (bi->reg1.reg != DR_REG_NULL)
         bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
     if (bi->reg2.reg != DR_REG_NULL)
         bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
-    bi->eax_dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
+    bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
 
-    if (instr_writes_to_reg(inst, bi->reg1.reg)) {
+    if (bi->reg1.reg != DR_REG_NULL && instr_writes_to_reg(inst, bi->reg1.reg)) {
         if (!bi->reg1.dead) {
             bi->reg1.used = true;
             insert_spill_global(drcontext, bb, next, &bi->reg1, true/*save*/);
@@ -5377,7 +5386,8 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
         }
     }
-    if (instr_writes_to_reg(inst, bi->reg2.reg) && !bi->reg2.dead) {
+    if (bi->reg2.reg != DR_REG_NULL &&
+        instr_writes_to_reg(inst, bi->reg2.reg) && !bi->reg2.dead) {
         bi->reg2.used = true;
         insert_spill_global(drcontext, bb, next, &bi->reg2, true/*save*/);
     }

@@ -35,7 +35,13 @@ enum {
     LIVE_LIVE,
     LIVE_DEAD,
 };
-#define NUM_LIVENESS_REGS 8
+#ifdef X64
+# define NUM_LIVENESS_REGS 16
+# define REG_START     REG_START_64
+#else
+# define NUM_LIVENESS_REGS 8
+# define REG_START     REG_START_32
+#endif
 
 typedef struct _scratch_reg_info_t {
     reg_id_t reg;
