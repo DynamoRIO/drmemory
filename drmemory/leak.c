@@ -993,7 +993,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
              pc < defined_end && pc + 4 <= defined_end; pc += 4) {
             if (skip_heap) {
                 /* Skip heap regions */
-                if (heap_region_bounds(pc, NULL, &chunk_end) &&
+                if (heap_region_bounds(pc, NULL, &chunk_end, NULL) &&
                     chunk_end != NULL) {
                     pc = chunk_end - 4; /* let loop inc bump by 4 */
                     ASSERT(ALIGNED(pc, 4), "heap region end not aligned to 4!");

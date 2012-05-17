@@ -84,7 +84,8 @@ bool
 heap_region_adjust(app_pc base, app_pc new_end);
 
 bool
-heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/, app_pc *end_out/*OPTIONAL*/);
+heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/,
+                   app_pc *end_out/*OPTIONAL*/, uint *flags_out/*OPTIONAL*/);
 
 bool
 is_in_heap_region(app_pc pc);

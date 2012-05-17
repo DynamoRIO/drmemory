@@ -849,15 +849,17 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
 void *
 client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call)
 {
+    packed_callstack_t *pcs = (packed_callstack_t *) cur_data;
     ASSERT(options.replace_malloc, "should not be called");
+    ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
+    shared_callstack_free(pcs);
     /* replace malloc callstack with free callstack */
     if (options.delay_frees_stack) {
-        packed_callstack_t *pcs = (packed_callstack_t *) cur_data;
-        ASSERT(pcs != NULL || !options.count_leaks, "malloc data must exist");
-        shared_callstack_free(pcs);
         return (void *) get_shared_callstack(NULL, mc, post_call);
+    } else {
+        /* XXX: could keep the malloc callstack and report that, if labeled properly */
+        return NULL;
     }
-    return cur_data;
 }
 
 #ifdef WINDOWS
@@ -906,7 +908,11 @@ overlaps_delayed_free(byte *start, byte *end,
     rb_node_t *node;
     if (options.delay_frees == 0)
         return false;
-    /* XXX i#794: query allocator for options.replace_malloc */
+    if (options.replace_malloc) {
+        /* replacement allocator is tracking all delayed frees, not us */
+        return alloc_replace_overlaps_delayed_free(start, end, free_start, free_end,
+                                                   (void **)pcs);
+    }
     dr_mutex_lock(delay_free_lock);
     LOG(3, "overlaps_delayed_free "PFX"-"PFX"\n", start, end);
     DOLOG(3, { rb_iterate(delay_free_tree, print_free_tree, NULL); });

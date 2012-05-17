@@ -3324,7 +3324,7 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
                     client_handle_mmap(drcontext, base, size, true/*anon*/);
                 } else {
                     byte *heap_base, *heap_end;
-                    if (heap_region_bounds(base - 1, &heap_base, &heap_end) &&
+                    if (heap_region_bounds(base - 1, &heap_base, &heap_end, NULL) &&
                         /* do not extend adjacent if this is really for a different
                          * Heap (i#520)
                          */
@@ -3411,7 +3411,7 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sys
                 /* all these separate lookups are racy */
                 app_pc heap_end = NULL;
                 bool found;
-                heap_region_bounds(base, NULL, &heap_end);
+                heap_region_bounds(base, NULL, &heap_end, NULL);
                 if (size == 0)
                     size = allocation_size(base, NULL);
                 found = heap_region_remove(base, base+size, mc);

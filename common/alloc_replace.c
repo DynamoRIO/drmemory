@@ -171,7 +171,6 @@ typedef struct _free_header_t {
 /* a normal free list can be LIFO, but for more effective delayed frees
  * we want FIFO.  FIFO-per-bucket-size is sufficient.
  */
-/* FIXME i#794: add rbtree and query routine for overlapping delayed free */
 static free_header_t *free_list_front[NUM_FREE_LISTS];
 static free_header_t *free_list_last[NUM_FREE_LISTS];
 
@@ -265,8 +264,10 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
     byte *map = mmap(NULL, commit_size, PROT_READ | PROT_WRITE,
                      MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     /* yeah libc returns -1 but this will work w/ syscall too */
-    if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE)
+    if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE) {
+        LOG(2, "os_large_alloc FAILED with return value "PFX"\n", map);
         return NULL;
+    }
     return map;
 #else
     /* FIXME i#794: Windows NYI */
@@ -533,7 +534,8 @@ find_free_list_entry(heapsz_t request_size, heapsz_t aligned_size)
         delayed_chunks--;
         ASSERT(delayed_bytes >= head->alloc_size, "delay bytes counter off");
         delayed_bytes -= head->alloc_size;
-        client_malloc_data_free(head->user_data);
+        if (head->user_data != NULL)
+            client_malloc_data_free(head->user_data);
         head->flags &= ~CHUNK_FREED;
     }
     return head;
@@ -712,7 +714,8 @@ replace_free_common(void *ptr, void *drcontext, dr_mcontext_t *mc, app_pc caller
     client_remove_malloc_pre((byte *)ptr, (byte *)ptr + head->request_size,
                              (byte *)ptr + head->alloc_size, head->user_data);
     if (TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
-        client_malloc_data_free(head->user_data);
+        if (head->user_data != NULL)
+            client_malloc_data_free(head->user_data);
         head->user_data = NULL;
     } else
         head->user_data = client_malloc_data_to_free_list(head->user_data, mc, caller);
@@ -765,7 +768,7 @@ alloc_large_iter_cb(byte *start, size_t size, void *iter_data)
 }
 
 static bool
-alloc_iter_own_arena(byte *start, byte *end, uint flags
+alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
                      _IF_WINDOWS(HANDLE heap), void *iter_data)
 {
     alloc_iter_data_t *data = (alloc_iter_data_t *) iter_data;
@@ -775,9 +778,12 @@ alloc_iter_own_arena(byte *start, byte *end, uint flags
     if (TEST(HEAP_PRE_US, flags) || !TEST(HEAP_ARENA, flags))
         return true;
 
-    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, end);
-    cur = start + alloc_ops.redzone_size + header_beyond_redzone;
-    while (cur < end) {
+    LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, iter_arena_start, iter_arena_end);
+    cur = iter_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
+    /* the current arena may not have any chunk at all and thus no CHUNK_ARENA_FINAL */
+    if (iter_arena_start == arena_start)
+        iter_arena_end = arena_next;
+    while (cur < iter_arena_end) {
         head = header_from_ptr(cur);
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
             (head + 1), (byte *)(head + 1) + head->alloc_size);
@@ -793,6 +799,7 @@ alloc_iter_own_arena(byte *start, byte *end, uint flags
             break;
         cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
     }
+    ASSERT(cur < iter_arena_end || iter_arena_start == arena_start, "invalid iter");
     return true;
 }
 
@@ -811,8 +818,13 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 
     LOG(2, "%s\n", __FUNCTION__);
 
+    ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
+
     heap_region_iterate(alloc_iter_own_arena, &data);
 
+    /* our mmapped chunks should be in heap region tree too but it's easier
+     * to get the headers from the large malloc tree
+     */
     malloc_large_iterate(alloc_large_iter_cb, &data);
 
     /* XXX: should add hashtable_iterate() to drcontainers */
@@ -832,11 +844,93 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     }
 }
 
+bool
+alloc_replace_overlaps_delayed_free(byte *start, byte *end,
+                                    byte **free_start OUT,
+                                    byte **free_end OUT,
+                                    void **client_data OUT)
+{
+    /* Maintaining an rbtree is expensive, particularly b/c in order to keep
+     * freed blocks in there until actual re-alloc we need to have rbtree
+     * operations on every free and every malloc.
+     * Since this query should only be when reporting an unaddr, we go ahead
+     * do an expensive lookup, avoiding any maintenance on malloc or free.
+     *
+     * XXX: pattern mode may need a more performant lookup
+     *
+     * XXX: Note that this is not a true overlap of [start,end) and instead only
+     * looks up start for now.  But, it's pretty unlikely to have the start be before
+     * a heap arena and still overlap a free chunk.  For the large malloc lookup, it
+     * will fall through to heap arena for non-mmap, and mmap has similar arg about
+     * being unlikely to overlap w/o overlapping start.  But if we want to we could
+     * add a heap_region_overlaps() routine.
+     */
+    byte *found_start = NULL;
+    chunk_header_t *found_head = NULL;
+    byte *found_arena_start, *found_arena_end;
+    uint flags;
+    size_t size;
+    if (malloc_large_lookup(start, &found_arena_start, &size)) {
+        found_head = header_from_ptr(found_arena_start);
+        found_start = found_arena_start;
+        ASSERT(found_arena_start + size == found_start + found_head->request_size,
+               "inconsistent");
+    } else if (heap_region_bounds(start, &found_arena_start, &found_arena_end, &flags)) {
+        if (TEST(HEAP_PRE_US, flags)) {
+            /* walk pre-us table */
+            uint i;
+            for (i = 0; i < HASHTABLE_SIZE(pre_us_table.table_bits); i++) {
+                /* see notes in alloc_iterate() about no lock */
+                hash_entry_t *he;
+                for (he = pre_us_table.table[i]; he != NULL; he = he->next) {
+                    chunk_header_t *head = (chunk_header_t *) he->payload;
+                    byte *chunk_start = he->key;
+                    if (start < chunk_start + head->request_size && end >= chunk_start) {
+                        found_head = head;
+                        found_start = chunk_start;
+                    }
+                }
+                if (found_head != NULL)
+                    break;
+            }
+        } else if (TEST(HEAP_ARENA, flags)) {
+            /* walk arena */
+            /* XXX: make a shared internal iterator for this? */
+            byte *cur = found_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
+            while (cur < found_arena_end) {
+                byte *chunk_start;
+                chunk_header_t *head = header_from_ptr(cur);
+                chunk_start = (byte *)(head + 1);
+                if (start < chunk_start + head->request_size && end >= chunk_start) {
+                    found_head = head;
+                    found_start = chunk_start;
+                    break;
+                }
+                /* don't try to walk over un-allocated extra space at end of arena */
+                if (TEST(CHUNK_ARENA_FINAL, head->flags))
+                    break;
+                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
+            }
+        } else
+            ASSERT(false, "large lookup should have found it");
+    }
+    if (found_head != NULL && TEST(CHUNK_FREED, found_head->flags)) {
+        if (free_start != NULL)
+            *free_start = found_start;
+        if (free_end != NULL)
+            *free_end = found_start + found_head->request_size;
+        if (client_data != NULL)
+            *client_data = found_head->user_data;
+        return true;
+    } else
+        return false;
+}
+
 /***************************************************************************
  * app-facing interface
  */
 
-void *
+static void *
 replace_malloc(size_t size)
 {
     void *res;
@@ -852,7 +946,7 @@ replace_malloc(size_t size)
     return res;
 }
 
-void *
+static void *
 replace_calloc(size_t nmemb, size_t size)
 {
     void *drcontext = enter_client_code();
@@ -868,7 +962,7 @@ replace_calloc(size_t nmemb, size_t size)
     return (void *) res;
 }
 
-void *
+static void *
 replace_realloc(void *ptr, size_t size)
 {
     void *drcontext = enter_client_code();
@@ -919,7 +1013,7 @@ replace_realloc(void *ptr, size_t size)
     return res;
 }
 
-void
+static void
 replace_free(void *ptr)
 {
     void *drcontext = enter_client_code();
@@ -930,7 +1024,7 @@ replace_free(void *ptr)
     exit_client_code(drcontext);
 }
 
-size_t
+static size_t
 replace_malloc_usable_size(void *ptr)
 {
     void *drcontext = enter_client_code();
@@ -1250,7 +1344,8 @@ free_user_data_at_exit(app_pc start, app_pc end, app_pc real_end,
 {
     if (!pre_us) {
         chunk_header_t *head = header_from_ptr(start);
-        client_malloc_data_free(head->user_data);
+        if (head->user_data != NULL)
+            client_malloc_data_free(head->user_data);
     }
     return true; /* keep iterating */
 }

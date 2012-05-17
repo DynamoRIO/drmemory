@@ -571,9 +571,11 @@ heap_region_adjust(app_pc start, app_pc new_end)
 }
 
 bool
-heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/, app_pc *end_out/*OPTIONAL*/)
+heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/,
+                   app_pc *end_out/*OPTIONAL*/, uint *flags_out/*OPTIONAL*/)
 {
     rb_node_t *node = NULL;
+    heap_info_t *info;
     app_pc node_start;
     size_t node_size;
     bool res = false;
@@ -581,11 +583,13 @@ heap_region_bounds(app_pc pc, app_pc *start_out/*OPTIONAL*/, app_pc *end_out/*OP
     node = rb_in_node(heap_tree, pc);
     if (node != NULL) {
         res = true;
-        rb_node_fields(node, &node_start, &node_size, NULL);
+        rb_node_fields(node, &node_start, &node_size, (void **)&info);
         if (start_out != NULL)
             *start_out = node_start;
         if (end_out != NULL)
             *end_out = node_start + node_size;
+        if (flags_out != NULL)
+            *flags_out = info->flags;
     }
     dr_mutex_unlock(heap_lock);
     return res;

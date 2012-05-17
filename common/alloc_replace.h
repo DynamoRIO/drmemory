@@ -26,29 +26,6 @@
 #ifndef _ALLOC_REPLACE_H_
 #define _ALLOC_REPLACE_H_ 1
 
-/***************************************************************************
- * app-facing interface
- */
-
-void *
-replace_malloc(size_t size);
-
-void *
-replace_calloc(size_t nmemb, size_t size);
-
-void *
-replace_realloc(void *ptr, size_t size);
-
-void
-replace_free(void *ptr);
-
-size_t
-replace_malloc_usable_size(void *ptr);
-
-/***************************************************************************
- * drmem-facing interface
- */
-
 void
 alloc_replace_init();
 

@@ -231,6 +231,12 @@ alloc_entering_replace_routine(app_pc pc);
 bool
 alloc_replace_in_cur_arena(byte *addr);
 
+bool
+alloc_replace_overlaps_delayed_free(byte *start, byte *end,
+                                    byte **free_start OUT,
+                                    byte **free_end OUT,
+                                    void **client_data OUT);
+
 /***************************************************************************
  * CLIENT CALLBACKS
  */
