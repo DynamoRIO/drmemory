@@ -994,6 +994,7 @@ get_highest_user_address(void)
  */
 
 #ifdef LINUX
+/* XXX: these are too repetitive: should share, or better yet do i#199 */
 ptr_int_t
 raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 {
@@ -1012,11 +1013,59 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 }
 
 ptr_int_t
+raw_syscall_2args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2)
+{
+    /* FIXME i#199: should DR provide a general raw_syscall interface? */
+    ptr_int_t res;
+# ifdef X64
+    ASSERT(false, "NYI");
+# endif
+    __asm("pusha");
+    /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
+     * clobbering pic register for 32-bit
+     */
+    __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
+    __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
+    __asm("int $0x80");
+    __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+    __asm("popa");
+    return res;
+}
+
+ptr_int_t
+raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
+                  ptr_int_t arg4)
+{
+    /* FIXME i#199: should DR provide a general raw_syscall interface? */
+    ptr_int_t res;
+# ifdef X64
+    ASSERT(false, "NYI");
+# endif
+    __asm("pusha");
+    /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
+     * clobbering pic register for 32-bit
+     */
+    __asm("mov %0, %%"ASM_SYSARG4 : : "g"(arg4));
+    __asm("mov %0, %%"ASM_SYSARG3 : : "g"(arg3));
+    __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
+    __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
+    __asm("int $0x80");
+    __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+    __asm("popa");
+    return res;
+}
+
+ptr_int_t
 raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
                   ptr_int_t arg4, ptr_int_t arg5)
 {
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
+# ifdef X64
+    ASSERT(false, "NYI");
+# endif
     __asm("pusha");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
@@ -1028,6 +1077,37 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     __asm("int $0x80");
+    __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+    __asm("popa");
+    return res;
+}
+
+ptr_int_t
+raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
+                  ptr_int_t arg4, ptr_int_t arg5, ptr_int_t arg6)
+{
+    /* FIXME i#199: should DR provide a general raw_syscall interface? */
+    ptr_int_t res;
+# ifdef X64
+    ASSERT(false, "NYI");
+# endif
+    __asm("pusha");
+    /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
+     * clobbering pic register for 32-bit
+     */
+    __asm("mov %0, %%"ASM_SYSARG5 : : "g"(arg5));
+    __asm("mov %0, %%"ASM_SYSARG4 : : "g"(arg4));
+    __asm("mov %0, %%"ASM_SYSARG3 : : "g"(arg3));
+    __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
+    __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
+    /* arg6 is ebp and the params are de-refed via ebp.
+     * XXX: fragile b/c could change in optimized build
+     */
+    __asm("push %ebp");
+    __asm("mov %0, %%"ASM_SYSARG6 : : "g"(arg6));
+    __asm("int $0x80");
+    __asm("pop %ebp");
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
     __asm("popa");
     return res;

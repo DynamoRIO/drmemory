@@ -603,8 +603,19 @@ ptr_int_t
 raw_syscall_1arg(uint sysnum, ptr_int_t arg);
 
 ptr_int_t
+raw_syscall_2args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2);
+
+ptr_int_t
+raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
+                  ptr_int_t arg4);
+
+ptr_int_t
 raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
                   ptr_int_t arg4, ptr_int_t arg5);
+
+ptr_int_t
+raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
+                  ptr_int_t arg4, ptr_int_t arg5, ptr_int_t arg6);
 #endif
 
 /***************************************************************************

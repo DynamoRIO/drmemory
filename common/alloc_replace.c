@@ -80,7 +80,7 @@
 #include <string.h> /* memcpy */
 
 #ifdef LINUX
-/* FIXME DRi#199: use syscall and notify DR instead of using libc */
+# include "sysnum_linux.h"
 # define __USE_GNU /* for mremap */
 # include <sys/mman.h>
 #endif
@@ -254,16 +254,13 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
     /* FIXME DRi#199: how notify DR about app mem alloc?
      * provide general raw_syscall() interface,
      * or dr_mmap_as_app() or sthg.
-     * for now using libc call...
+     * for now using our own raw syscall...
      */
     ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
 #ifdef LINUX
-    /* N.B.: mmap uses too many args for sysenter so we avoid the DR
-     * post-vsyscall hook in this particular case
-     */
-    byte *map = mmap(NULL, commit_size, PROT_READ | PROT_WRITE,
-                     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    /* yeah libc returns -1 but this will work w/ syscall too */
+    byte *map = (byte *) raw_syscall_6args
+        (IF_X64_ELSE(SYS_mmap, SYS_mmap2), (ptr_int_t)NULL, commit_size,
+         PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE) {
         LOG(2, "os_large_alloc FAILED with return value "PFX"\n", map);
         return NULL;
@@ -282,7 +279,8 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size)
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
 #ifdef LINUX
-    byte *newmap = mremap(map, cur_commit_size, new_commit_size, 0/*can't move*/);
+    byte *newmap = (byte *) raw_syscall_4args
+        (SYS_mremap, (ptr_int_t)map, cur_commit_size, new_commit_size, 0/*can't move*/);
     if ((ptr_int_t)newmap < 0 && (ptr_int_t)newmap > -PAGE_SIZE)
         return false;
     return true;
@@ -299,7 +297,7 @@ os_large_free(byte *map, size_t map_size)
     int success;
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
-    success = munmap(map, map_size);
+    success = (int) raw_syscall_2args(SYS_munmap, (ptr_int_t)map, map_size);
     return (success == 0);
 #else
     /* FIXME i#794: Windows NYI */
