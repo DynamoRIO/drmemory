@@ -2516,6 +2516,9 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi)
          * raw bits are temporary vs a hook trampoline?
          * XXX: drwrap_replace_native() can't set xl8 to a fake ret
          * b/c of DR's constraints on xl8 being within original bb bounds!
+         * XXX: what we should do if there are more of these that are
+         * non-mangled is to use the cache pc by having this routine
+         * return an opnd that would be either INTPTR or instr.
          */
         static byte ret_to_decode[1] = {RET_NOIMM_OPCODE};
         return (app_pc) &ret_to_decode;

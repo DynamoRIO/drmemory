@@ -1157,8 +1157,9 @@ alloc_entering_replace_routine(app_pc pc)
 }
 
 static void *
-func_interceptor(routine_type_t type)
+func_interceptor(routine_type_t type, uint *stack_adjust OUT)
 {
+    *stack_adjust = 0; /* no stdcall yet: that's i#893 for RTL */
     if (is_malloc_routine(type))
         return (void *) replace_malloc;
     else if (is_calloc_routine(type))
@@ -1176,9 +1177,10 @@ func_interceptor(routine_type_t type)
 static void
 malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
-    void *interceptor = func_interceptor(type);
+    uint stack_adjust = 0;
+    void *interceptor = func_interceptor(type, &stack_adjust);
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, interceptor, false))
+        if (!drwrap_replace_native(pc, interceptor, stack_adjust, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
         /* else wrap: operators in particular.
@@ -1195,9 +1197,10 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
 static void
 malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
-    void *interceptor = func_interceptor(type);
+    uint stack_adjust = 0;
+    void *interceptor = func_interceptor(type, &stack_adjust);
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, NULL, true))
+        if (!drwrap_replace_native(pc, NULL, stack_adjust, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
         malloc_wrap__unintercept(pc, type, e);
