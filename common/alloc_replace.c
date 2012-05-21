@@ -57,9 +57,9 @@
  *  | request sz|     |   redzone size   | request size |   |   redzone size   |
  *  | app chunk | pad | redzone | header | app chunk    |pad| redzone | header |
  *                                                                             ^
- *                                                                 arena_next _|
+ *                                                                 next_chunk _|
  *
- * + arena_next always has a redzone + header space (if co-located, i.e.,
+ * + arena->next_chunk always has a redzone + header space (if co-located, i.e.,
  *   !alloc_ops.external_headers) to its left
  * + free lists are kept in buckets by size.  larger is preferred over
  *   searching.  final bucket is var-sized and is always searched.
@@ -92,7 +92,7 @@
 #define CHUNK_ALIGNMENT 8
 #define CHUNK_MIN_SIZE  8
 #define CHUNK_MIN_MMAP  128*1024
-/* initial commit has to hold at least one non-mmap chunk */
+/* initial commit on linux has to hold at least one non-mmap chunk */
 #define ARENA_INITIAL_COMMIT  CHUNK_MIN_MMAP
 #define ARENA_INITIAL_SIZE  4*1024*1024
 
@@ -112,9 +112,7 @@ enum {
     CHUNK_MMAP        = MALLOC_RESERVED_2,
     /* MALLOC_RESERVED_{3,4} are used for types */
     CHUNK_PRE_US      = MALLOC_RESERVED_5,
-    /* to support iteration */
-    CHUNK_ARENA_FINAL = MALLOC_RESERVED_6,
-    /* MALLOC_RESERVED_7 could be used to indicate presence of prev
+    /* MALLOC_RESERVED_6 could be used to indicate presence of prev
      * free chunk for coalescing
      */
 };
@@ -186,16 +184,33 @@ static byte *pre_us_brk;
 static byte *cur_brk;
 #endif
 
-/* these describe the current heap arena */
-static byte *arena_start;
-/* the end of reserved memory in the current heap arena */
-static byte *arena_next;
-static byte *arena_commit_end;
-static byte *arena_reserve_end;
-/* the furthest chunk in the current heap arena */
-static chunk_header_t *last_chunk;
+/* header at the top of each arena (an "arena" for this code is a contiguous
+ * piece of memory parceled out into individual malloc "chunks")
+ */
+typedef struct _arena_header_t {
+    byte *next_chunk;
+    byte *commit_end;
+    byte *reserve_end;
+#ifdef WINDOWS
+    uint flags;
+    uint magic;
+    void *lock;
+#endif
+} arena_header_t;
 
-/* For handling pre-us mallocs for non-earlist injection or delayed/attach
+#ifdef WINDOWS
+/* pick a flag that can't be passed on the Heap level to identify whether
+ * a Heap or a regular arena
+ */
+# define HEAP_IS_WINHEAP HEAP_ZERO_MEMORY
+/* flags that we support being passed to HeapCreate */
+# define HEAP_CREATE_POSSIBLE_FLAGS 0x40005
+#endif
+
+/* Linux current arena, or Windows default Heap */
+static arena_header_t *cur_arena;
+
+/* For handling pre-us mallocs for non-earliest injection or delayed/attach
  * instrumentation.  Contains chunk_header_t entries.
  * We assume this table is only added to at init and only removed from
  * at exit time and thus needs no external lock.
@@ -402,54 +417,79 @@ is_live_alloc(void *ptr, chunk_header_t *head)
     }
 }
 
-static bool
-arena_extend(heapsz_t add_size)
+/* assumes caller initialized commit_end and reserve_end fields */
+static void
+arena_init(arena_header_t *arena _IF_WINDOWS(arena_header_t *parent))
+{
+    /* need to start with a redzone */
+    arena->next_chunk = (byte *)arena + sizeof(*arena) +
+        alloc_ops.redzone_size + header_beyond_redzone;
+#ifdef WINDOWS
+    arena->magic = HEADER_MAGIC;
+    if (parent != NULL) {
+        arena->flags = parent->flags;
+        arena->lock = parent->lock;
+    } else {
+        arena->flags = 0;
+        arena->lock = NULL;
+    }
+#endif
+}
+
+/* either extends arena in-place and returns it, or allocates a new arena
+ * and returns that.  returns NULL on failure to do either.
+ */
+static arena_header_t *
+arena_extend(arena_header_t *arena, heapsz_t add_size)
 {
     heapsz_t aligned_add = (heapsz_t) ALIGN_FORWARD(add_size, PAGE_SIZE);
+    arena_header_t *new_arena;
 #ifdef LINUX
-    if (arena_commit_end == cur_brk) {
+    if (arena->commit_end == cur_brk) {
         byte *new_brk = set_brk(cur_brk + aligned_add);
         if (new_brk >= cur_brk + add_size) {
             LOG(2, "\tincreased brk from "PFX" to "PFX"\n", cur_brk, new_brk);
             cur_brk = new_brk;
-            arena_commit_end = new_brk;
-            heap_region_adjust(arena_start, new_brk);
-            return true;
+            arena->commit_end = new_brk;
+            heap_region_adjust((byte *)arena, new_brk);
+            return arena;
         } else
             LOG(1, "brk cannot expand: switching to mmap\n");
     } else
 #else
-    if (arena_commit_end + aligned_add <= arena_reserve_end)
+    if (arena->commit_end + aligned_add <= arena->reserve_end)
 #endif
     { /* here to not confuse brace matching */
-        size_t cur_size = arena_commit_end - arena_start;
+        size_t cur_size = arena->commit_end - (byte *)arena;
         size_t new_size = cur_size + aligned_add;
-        if (os_large_alloc_extend(arena_start, cur_size, new_size)) {
-            arena_commit_end = arena_start + new_size;
+        if (os_large_alloc_extend((byte *)arena, cur_size, new_size)) {
+            arena->commit_end = (byte *)arena + new_size;
 #ifdef LINUX /* windows already added whole reservation */
-            heap_region_adjust(arena_start, arena_start + new_size);
+            heap_region_adjust((byte *)arena, (byte *)arena + new_size);
 #endif
-            return true;
+            return arena;
         }
     }
-    /* XXX: add stranded space at end of arena to free list: but have to
-     * update last_chunk properly
-     */
-    LOG(1, "cur arena "PFX"-"PFX" out of space: creating new one\n",
-        arena_start, arena_reserve_end);
-    arena_start = os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE);
-    if (arena_start == NULL)
-        return false;
-#ifdef LINUX
-    arena_commit_end = arena_start + ARENA_INITIAL_SIZE;
-#else
-    arena_commit_end = arena_start + ARENA_INITIAL_COMMIT;
+#ifdef WINDOWS
+    if (!TEST(HEAP_GROWABLE, arena->flags))
+        return NULL;
 #endif
-    arena_reserve_end = arena_start + ARENA_INITIAL_SIZE;
-    heap_region_add(arena_start, arena_reserve_end, HEAP_ARENA, NULL);
-    /* need to start with a redzone */
-    arena_next = arena_start + alloc_ops.redzone_size + header_beyond_redzone;
-    return true;
+    /* XXX: add stranded space at end of arena to free list */
+    LOG(1, "cur arena "PFX"-"PFX" out of space: creating new one\n",
+        (byte *)arena, arena->reserve_end);
+    new_arena = (arena_header_t *)
+        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE);
+    if (new_arena == NULL)
+        return NULL;
+#ifdef LINUX
+    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+#else
+    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_COMMIT;
+#endif
+    new_arena->reserve_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+    heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
+    arena_init(new_arena _IF_WINDOWS(arena));
+    return new_arena;
 }
 
 static chunk_header_t *
@@ -548,8 +588,8 @@ find_free_list_entry(heapsz_t request_size, heapsz_t aligned_size)
 }
 
 static byte *
-replace_alloc_common(size_t request_size, bool zeroed, bool realloc,
-                     void *drcontext, dr_mcontext_t *mc, app_pc caller)
+replace_alloc_common(arena_header_t *arena, size_t request_size, bool zeroed,
+                     bool realloc, void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     heapsz_t aligned_size;
     byte *res = NULL;
@@ -599,25 +639,21 @@ replace_alloc_common(size_t request_size, bool zeroed, bool realloc,
     /* if no free list entry, get new memory */
     if (head == NULL) {
         heapsz_t add_size = aligned_size + alloc_ops.redzone_size + header_beyond_redzone;
-        if (arena_next + add_size > arena_commit_end) {
-            if (!arena_extend(add_size)) {
+        if (arena->next_chunk + add_size > arena->commit_end) {
+            arena = arena_extend(arena, add_size);
+            if (arena == NULL) {
                 client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
                 return NULL;
             }
         }
-        /* remember that arena_next always has a redzone preceding it */
-        head = (chunk_header_t *) (arena_next - HEADER_SIZE);
+        /* remember that arena->next_chunk always has a redzone preceding it */
+        head = (chunk_header_t *) (arena->next_chunk - HEADER_SIZE);
         LOG(2, "\tcarving out new chunk @"PFX"\n", head);
         head->alloc_size = aligned_size;
         head->magic = HEADER_MAGIC;
         head->user_data = NULL; /* b/c we pass the old to client */
         head->flags = 0;
-        arena_next += add_size;
-        /* ensure we know where to stop when iterating */
-        if (last_chunk != NULL)
-            last_chunk->flags &= ~CHUNK_ARENA_FINAL;
-        head->flags |= CHUNK_ARENA_FINAL;
-        last_chunk = head;
+        arena->next_chunk += add_size;
     }
 
     /* head->alloc_size, head->magic, and head->flags (except type) are already set */
@@ -780,16 +816,14 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     alloc_iter_data_t *data = (alloc_iter_data_t *) iter_data;
     chunk_header_t *head;
     byte *cur;
+    arena_header_t *arena = (arena_header_t *) iter_arena_start;
 
     if (TEST(HEAP_PRE_US, flags) || !TEST(HEAP_ARENA, flags))
         return true;
 
     LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, iter_arena_start, iter_arena_end);
     cur = iter_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
-    /* the current arena may not have any chunk at all and thus no CHUNK_ARENA_FINAL */
-    if (iter_arena_start == arena_start)
-        iter_arena_end = arena_next;
-    while (cur < iter_arena_end) {
+    while (cur < arena->next_chunk) {
         head = header_from_ptr(cur);
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
             (head + 1), (byte *)(head + 1) + head->alloc_size);
@@ -800,12 +834,8 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
                           head->user_data, data->data))
                 return false;
         }
-        /* don't try to walk over un-allocated extra space at end of arena */
-        if (TEST(CHUNK_ARENA_FINAL, head->flags))
-            break;
         cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
     }
-    ASSERT(cur < iter_arena_end || iter_arena_start == arena_start, "invalid iter");
     return true;
 }
 
@@ -903,7 +933,8 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
             /* walk arena */
             /* XXX: make a shared internal iterator for this? */
             byte *cur = found_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
-            while (cur < found_arena_end) {
+            arena_header_t *arena = (arena_header_t *) found_arena_start;
+            while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
                 chunk_start = (byte *)(head + 1);
@@ -912,9 +943,6 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
                     found_start = chunk_start;
                     break;
                 }
-                /* don't try to walk over un-allocated extra space at end of arena */
-                if (TEST(CHUNK_ARENA_FINAL, head->flags))
-                    break;
                 cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
             }
         } else
@@ -945,7 +973,8 @@ replace_malloc(size_t size)
     /* XXX: should we make mc a debug-only param for perf? */
     initialize_mcontext_for_report(&mc);
     LOG(2, "replace_malloc %d\n", size);
-    res = (void *) replace_alloc_common(size, false/*!zeroed*/, false/*!realloc*/,
+    res = (void *) replace_alloc_common(cur_arena, size, false/*!zeroed*/,
+                                        false/*!realloc*/,
                                         drcontext, &mc, (app_pc)replace_malloc);
     LOG(2, "\treplace_malloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext);
@@ -960,7 +989,7 @@ replace_calloc(size_t nmemb, size_t size)
     dr_mcontext_t mc;
     initialize_mcontext_for_report(&mc);
     LOG(2, "replace_calloc %d %d\n", nmemb, size);
-    res = replace_alloc_common(nmemb * size, true/*zeroed*/, false/*!realloc*/,
+    res = replace_alloc_common(cur_arena, nmemb * size, true/*zeroed*/, false/*!realloc*/,
                                drcontext, &mc, (app_pc)replace_calloc);
     memset(res, 0, nmemb*size);
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
@@ -979,7 +1008,8 @@ replace_realloc(void *ptr, size_t size)
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
     if (ptr == NULL) {
         client_handle_realloc_null((app_pc)replace_realloc, &mc);
-        res = (void *) replace_alloc_common(size, false/*!zeroed*/, true/*realloc*/,
+        res = (void *) replace_alloc_common(cur_arena, size, false/*!zeroed*/,
+                                            true/*realloc*/,
                                             drcontext, &mc, (app_pc)replace_realloc);
     } else if (size == 0) {
         replace_free_common(ptr, drcontext, &mc, (app_pc)replace_realloc);
@@ -1006,7 +1036,8 @@ replace_realloc(void *ptr, size_t size)
         } else {
             /* XXX: use mremap for mmapped alloc! */
             /* XXX: if final chunk in arena, extend in-place */
-            res = (void *) replace_alloc_common(size, false/*!zeroed*/, true/*realloc*/,
+            res = (void *) replace_alloc_common(cur_arena, size, false/*!zeroed*/,
+                                                true/*realloc*/,
                                                 drcontext, &mc, (app_pc)replace_realloc);
             if (res != NULL) {
                 memcpy(res, ptr, head->request_size);
@@ -1076,7 +1107,7 @@ bool
 alloc_replace_in_cur_arena(byte *addr)
 {
     ASSERT(alloc_ops.replace_malloc, "shouldn't call");
-    return (addr >= arena_start && addr < arena_reserve_end);
+    return (addr >= (byte *)cur_arena && addr < cur_arena->reserve_end);
 }
 
 bool
@@ -1272,7 +1303,9 @@ alloc_replace_init(void)
     ASSERT(sizeof(free_header_t) <=
            (alloc_ops.external_headers ? 0 : sizeof(chunk_header_t)) + CHUNK_MIN_SIZE,
            "min size too small");
+    /* we could pad but it's simpler to have struct already have right size */
     ASSERT(ALIGNED(sizeof(chunk_header_t), CHUNK_ALIGNMENT), "alignment off");
+    ASSERT(ALIGNED(sizeof(arena_header_t), CHUNK_ALIGNMENT), "alignment off");
 
     ASSERT(CHUNK_MIN_MMAP >= LARGE_MALLOC_MIN_SIZE,
            "we rely on mmapped chunks being in large malloc table");
@@ -1295,22 +1328,22 @@ alloc_replace_init(void)
      */
     cur_brk = get_brk(false);
     pre_us_brk = cur_brk;
-    arena_start = pre_us_brk;
+    cur_arena = (arena_header_t *) pre_us_brk;
     cur_brk = set_brk(cur_brk + PAGE_SIZE);
-    arena_commit_end = cur_brk;
-    arena_reserve_end = arena_commit_end;
     /* XXX: for delayed instru we will need to handle this; for now we assert */
-    ASSERT(cur_brk > arena_start, "failed to increase brk at init");
+    ASSERT(cur_brk > (byte *)cur_arena, "failed to increase brk at init");
+    cur_arena->commit_end = cur_brk;
+    cur_arena->reserve_end = cur_arena->commit_end;
     LOG(2, "heap orig brk="PFX"\n", pre_us_brk);
 #else
-    arena_start = os_large_alloc(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE);
-    ASSERT(arena_start != NULL, "can't allocate initial heap: fatal");
-    arena_commit_end = arena_start + ARENA_INITIAL_COMMIT;
-    arena_reserve_end = arena_start + ARENA_INITIAL_SIZE;
+    cur_arena = (arena_header_t *)
+        os_large_alloc(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE);
+    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
+    cur_arena->commit_end = (byte *)cur_arena + ARENA_INITIAL_COMMIT;
+    cur_arena->reserve_end = (byte *)cur_arena + ARENA_INITIAL_SIZE;
 #endif
-    heap_region_add(arena_start, arena_reserve_end, HEAP_ARENA, NULL);
-    /* need to start with a redzone */
-    arena_next = arena_start + alloc_ops.redzone_size + header_beyond_redzone;
+    heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
+    arena_init(cur_arena _IF_WINDOWS(NULL));
 
     /* set up pointers for per-malloc API */
     malloc_interface.malloc_lock = malloc_replace__lock;
