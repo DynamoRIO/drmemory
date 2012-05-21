@@ -166,11 +166,13 @@ typedef struct _free_header_t {
     byte *chunk; /* only used for alloc_ops.external_headers */
 } free_header_t;
 
-/* a normal free list can be LIFO, but for more effective delayed frees
- * we want FIFO.  FIFO-per-bucket-size is sufficient.
- */
-static free_header_t *free_list_front[NUM_FREE_LISTS];
-static free_header_t *free_list_last[NUM_FREE_LISTS];
+typedef struct _free_lists_t {
+    /* a normal free list can be LIFO, but for more effective delayed frees
+     * we want FIFO.  FIFO-per-bucket-size is sufficient.
+     */
+    free_header_t *front[NUM_FREE_LISTS];
+    free_header_t *last[NUM_FREE_LISTS];
+} free_lists_t;
 
 /* counters for delayed frees.  protected by malloc lock. */
 static uint delayed_chunks;
@@ -188,14 +190,17 @@ static byte *cur_brk;
  * piece of memory parceled out into individual malloc "chunks")
  */
 typedef struct _arena_header_t {
+    byte *start_chunk;
     byte *next_chunk;
     byte *commit_end;
     byte *reserve_end;
+    free_lists_t *free_list;
 #ifdef WINDOWS
     uint flags;
     uint magic;
     void *lock;
 #endif
+    /* for main arena of each Heap, we inline free_lists_t here */
 } arena_header_t;
 
 #ifdef WINDOWS
@@ -419,11 +424,23 @@ is_live_alloc(void *ptr, chunk_header_t *head)
 
 /* assumes caller initialized commit_end and reserve_end fields */
 static void
-arena_init(arena_header_t *arena _IF_WINDOWS(arena_header_t *parent))
+arena_init(arena_header_t *arena, arena_header_t *parent)
 {
+    size_t header_size = sizeof(*arena);
+    if (parent != NULL)
+        arena->free_list = parent->free_list;
+    else {
+        /* to avoid complications of storing and freeing DR heap we inline these
+         * in the main arena's header
+         */
+        arena->free_list = (free_lists_t *) ((byte *)arena + header_size);
+        header_size += sizeof(*arena->free_list);
+    }
     /* need to start with a redzone */
-    arena->next_chunk = (byte *)arena + sizeof(*arena) +
+    arena->start_chunk = (byte *)arena +
+        ALIGN_FORWARD(header_size, CHUNK_ALIGNMENT) +
         alloc_ops.redzone_size + header_beyond_redzone;
+    arena->next_chunk = arena->start_chunk;
 #ifdef WINDOWS
     arena->magic = HEADER_MAGIC;
     if (parent != NULL) {
@@ -488,36 +505,36 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
 #endif
     new_arena->reserve_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
     heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
-    arena_init(new_arena _IF_WINDOWS(arena));
+    arena_init(new_arena, arena);
     return new_arena;
 }
 
 static chunk_header_t *
-search_free_list_bucket(heapsz_t aligned_size, uint bucket)
+search_free_list_bucket(free_lists_t *free_list, heapsz_t aligned_size, uint bucket)
 {
     /* search for large enough chunk */
     free_header_t *cur, *prev;
     chunk_header_t *head = NULL;
     ASSERT(dr_recurlock_self_owns(allocator_lock), "caller must hold lock");
     ASSERT(bucket < NUM_FREE_LISTS, "invalid param");
-    for (cur = free_list_front[bucket], prev = NULL;
+    for (cur = free_list->front[bucket], prev = NULL;
          cur != NULL && cur->head.alloc_size < aligned_size;
          prev = cur, cur = cur->next)
         ; /* nothing */
     if (cur != NULL) {
         if (prev == NULL)
-            free_list_front[bucket] = cur->next;
+            free_list->front[bucket] = cur->next;
         else
             prev->next = cur->next;
-        if (cur == free_list_last[bucket])
-            free_list_last[bucket] = prev;
+        if (cur == free_list->last[bucket])
+            free_list->last[bucket] = prev;
         head = (chunk_header_t *) cur;
     }
     return head;
 }
 
 static chunk_header_t *
-find_free_list_entry(heapsz_t request_size, heapsz_t aligned_size)
+find_free_list_entry(free_lists_t *free_list, heapsz_t request_size, heapsz_t aligned_size)
 {
     chunk_header_t *head = NULL;
     uint bucket;
@@ -536,13 +553,13 @@ find_free_list_entry(heapsz_t request_size, heapsz_t aligned_size)
          bucket < NUM_FREE_LISTS - 1 && aligned_size > free_list_sizes[bucket];
          bucket++)
         ; /* nothing */
-    if (free_list_front[bucket] == NULL && bucket > 0 &&
+    if (free_list->front[bucket] == NULL && bucket > 0 &&
         aligned_size < free_list_sizes[bucket]) {
         /* next-bigger is not avail: search maybe-big-enough bucket before
          * possibly going to even bigger buckets
          */
         bucket--;
-        head = search_free_list_bucket(aligned_size, bucket);
+        head = search_free_list_bucket(free_list, aligned_size, bucket);
         if (head == NULL)
             bucket++;
     }
@@ -551,25 +568,25 @@ find_free_list_entry(heapsz_t request_size, heapsz_t aligned_size)
      * delaying a ton of allocs of a certain size and never re-using
      * them for pathological app alloc sequences
      */
-    if (head == NULL && free_list_front[bucket] == NULL &&
+    if (head == NULL && free_list->front[bucket] == NULL &&
         (delayed_chunks >= 2*alloc_ops.delay_frees ||
          delayed_bytes >= 2*alloc_ops.delay_frees_maxsz)) {
         LOG(2, "\tallocating from larger bucket size to reduce delayed frees\n");
-        while (bucket < NUM_FREE_LISTS - 1 && free_list_front[bucket] == NULL)
+        while (bucket < NUM_FREE_LISTS - 1 && free_list->front[bucket] == NULL)
             bucket++;
     }
 
-    if (head == NULL && free_list_front[bucket] != NULL) {
+    if (head == NULL && free_list->front[bucket] != NULL) {
         if (bucket == NUM_FREE_LISTS - 1) {
             /* var-size bucket: have to search */
-            head = search_free_list_bucket(aligned_size, bucket);
+            head = search_free_list_bucket(free_list, aligned_size, bucket);
         } else {
             /* guaranteed to be big enough so take from front */
             ASSERT(aligned_size <= free_list_sizes[bucket], "logic error");
-            head = (chunk_header_t *) free_list_front[bucket];
-            free_list_front[bucket] = free_list_front[bucket]->next;
-            if (head == (chunk_header_t *) free_list_last[bucket])
-                free_list_last[bucket] = free_list_front[bucket];
+            head = (chunk_header_t *) free_list->front[bucket];
+            free_list->front[bucket] = free_list->front[bucket]->next;
+            if (head == (chunk_header_t *) free_list->last[bucket])
+                free_list->last[bucket] = free_list->front[bucket];
         }
     }
 
@@ -633,7 +650,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool zeroed,
         heap_region_add(map, map + map_size, 0, mc);
     } else {
         /* look for free list entry */
-        head = find_free_list_entry(request_size, aligned_size);
+        head = find_free_list_entry(arena->free_list, request_size, aligned_size);
     }
 
     /* if no free list entry, get new memory */
@@ -681,7 +698,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool zeroed,
 }
 
 static void
-replace_free_common(void *ptr, void *drcontext, dr_mcontext_t *mc, app_pc caller)
+replace_free_common(arena_header_t *arena, void *ptr, void *drcontext,
+                    dr_mcontext_t *mc, app_pc caller)
 {
     chunk_header_t *head = header_from_ptr(ptr);
     free_header_t *cur;
@@ -732,12 +750,12 @@ replace_free_common(void *ptr, void *drcontext, dr_mcontext_t *mc, app_pc caller
 
         /* add to the end for delayed free FIFO */
         cur->next = NULL;
-        if (free_list_last[bucket] == NULL) {
-            ASSERT(free_list_front[bucket] == NULL, "inconsistent free list");
-            free_list_front[bucket] = cur;
+        if (arena->free_list->last[bucket] == NULL) {
+            ASSERT(arena->free_list->front[bucket] == NULL, "inconsistent free list");
+            arena->free_list->front[bucket] = cur;
         } else
-            free_list_last[bucket]->next = cur;
-        free_list_last[bucket] = cur;
+            arena->free_list->last[bucket]->next = cur;
+        arena->free_list->last[bucket] = cur;
 
         delayed_chunks++;
         delayed_bytes += head->alloc_size;
@@ -798,7 +816,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         res = (void *) replace_alloc_common(cur_arena, size, zeroed, true/*realloc*/,
                                             drcontext, mc, caller);
     } else if (size == 0) {
-        replace_free_common(ptr, drcontext, mc, caller);
+        replace_free_common(arena, ptr, drcontext, mc, caller);
     } else if (!is_live_alloc(ptr, head)) {
         client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                 /* XXX: we might be replacing RtlReallocateHeap or
@@ -828,7 +846,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                                                 true/*realloc*/, drcontext, mc, caller);
             if (res != NULL) {
                 memcpy(res, ptr, head->request_size);
-                replace_free_common(ptr, drcontext, mc, caller);
+                replace_free_common(arena, ptr, drcontext, mc, caller);
             }
         }
     }
@@ -885,7 +903,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         return true;
 
     LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, iter_arena_start, iter_arena_end);
-    cur = iter_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
+    cur = arena->start_chunk;
     while (cur < arena->next_chunk) {
         head = header_from_ptr(cur);
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
@@ -995,8 +1013,8 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
         } else if (TEST(HEAP_ARENA, flags)) {
             /* walk arena */
             /* XXX: make a shared internal iterator for this? */
-            byte *cur = found_arena_start + alloc_ops.redzone_size + header_beyond_redzone;
             arena_header_t *arena = (arena_header_t *) found_arena_start;
+            byte *cur = arena->start_chunk;
             while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
@@ -1083,7 +1101,7 @@ replace_free(void *ptr)
     dr_mcontext_t mc;
     initialize_mcontext_for_report(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
-    replace_free_common(ptr, drcontext, &mc, (app_pc)replace_free);
+    replace_free_common(cur_arena, ptr, drcontext, &mc, (app_pc)replace_free);
     exit_client_code(drcontext);
 }
 
@@ -1325,7 +1343,6 @@ alloc_replace_init(void)
            "min size too small");
     /* we could pad but it's simpler to have struct already have right size */
     ASSERT(ALIGNED(sizeof(chunk_header_t), CHUNK_ALIGNMENT), "alignment off");
-    ASSERT(ALIGNED(sizeof(arena_header_t), CHUNK_ALIGNMENT), "alignment off");
 
     ASSERT(CHUNK_MIN_MMAP >= LARGE_MALLOC_MIN_SIZE,
            "we rely on mmapped chunks being in large malloc table");
@@ -1363,7 +1380,7 @@ alloc_replace_init(void)
     cur_arena->reserve_end = (byte *)cur_arena + ARENA_INITIAL_SIZE;
 #endif
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
-    arena_init(cur_arena _IF_WINDOWS(NULL));
+    arena_init(cur_arena, NULL);
 
     /* set up pointers for per-malloc API */
     malloc_interface.malloc_lock = malloc_replace__lock;
