@@ -592,6 +592,13 @@ get_windows_version(void);
 
 app_pc
 get_highest_user_address(void);
+
+/* set *base to preferred value, or NULL for none */
+bool
+virtual_alloc(void **base, size_t size, uint memtype, uint prot);
+
+bool
+virtual_free(void *base);
 #endif /* WINDOWS */
 
 /***************************************************************************

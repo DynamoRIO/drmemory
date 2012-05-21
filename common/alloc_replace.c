@@ -256,23 +256,32 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
      * or dr_mmap_as_app() or sthg.
      * for now using our own raw syscall...
      */
-    ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
 #ifdef LINUX
     byte *map = (byte *) raw_syscall_6args
         (IF_X64_ELSE(SYS_mmap, SYS_mmap2), (ptr_int_t)NULL, commit_size,
          PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
     if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE) {
         LOG(2, "os_large_alloc FAILED with return value "PFX"\n", map);
         return NULL;
     }
     return map;
 #else
-    /* FIXME i#794: Windows NYI */
+    byte *loc = NULL;
+    ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(reserve_size, PAGE_SIZE), "must align to at least page size");
-    return NULL;
+    ASSERT(reserve_size >= commit_size, "must reserve more than commit");
+    if (!virtual_alloc(&loc, reserve_size, MEM_RESERVE, PAGE_NOACCESS))
+        return NULL;
+    if (!virtual_alloc(&loc, commit_size, MEM_COMMIT, PAGE_READWRITE)) {
+        virtual_free(loc);
+        return NULL;
+    }
+    return loc;
 #endif
 }
 
+/* For Windows, up to caller to ensure new_commit_size <= previously reserved size */
 static bool
 os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size)
 {
@@ -285,11 +294,11 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size)
         return false;
     return true;
 #else
-    /* FIXME i#794: Windows NYI */
-    return false;
+    return virtual_alloc(&map, new_commit_size, MEM_COMMIT, PAGE_READWRITE);
 #endif
 }
 
+/* For Windows, map_size is ignored and the whole allocation is freed */
 static bool
 os_large_free(byte *map, size_t map_size)
 {
@@ -300,8 +309,7 @@ os_large_free(byte *map, size_t map_size)
     success = (int) raw_syscall_2args(SYS_munmap, (ptr_int_t)map, map_size);
     return (success == 0);
 #else
-    /* FIXME i#794: Windows NYI */
-    return false;
+    return virtual_free(map);
 #endif
 }
 

@@ -681,6 +681,17 @@ GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
 
 GET_NTDLL(NtClose, (IN HANDLE Handle));
 
+GET_NTDLL(NtAllocateVirtualMemory, (IN HANDLE ProcessHandle,
+                                    IN OUT PVOID *BaseAddress,
+                                    IN ULONG ZeroBits,
+                                    IN OUT PULONG AllocationSize,
+                                    IN ULONG AllocationType,
+                                    IN ULONG Protect));
+
+GET_NTDLL(NtFreeVirtualMemory, (IN HANDLE ProcessHandle,
+                                IN OUT PVOID *BaseAddress,
+                                IN OUT PULONG FreeSize,
+                                IN ULONG FreeType));
 
 TEB *
 get_TEB(void)
@@ -987,6 +998,29 @@ get_highest_user_address(void)
     }
     return highest_user_address;
 }
+
+bool
+virtual_alloc(void **base, size_t size, uint memtype, uint prot)
+{
+    NTSTATUS res;
+    SIZE_T actual_size = size;
+    ASSERT(base != NULL && ALIGNED(*base, PAGE_SIZE), "base not page-aligned");
+    res = NtAllocateVirtualMemory(NT_CURRENT_PROCESS, base, 0, &actual_size,
+                                  memtype, prot);
+    LOG(2, "%s size=%d => "PFX" "PIFX"\n", __FUNCTION__, size, *base, res);
+    return NT_SUCCESS(res);
+}
+
+bool
+virtual_free(void *base)
+{
+    NTSTATUS res;
+    SIZE_T size = 0; /* must be 0 for MEM_RELEASE */
+    res = NtFreeVirtualMemory(NT_CURRENT_PROCESS, &base, &size, MEM_RELEASE);
+    LOG(2, "%s => "PIFX"\n", __FUNCTION__, res);
+    return NT_SUCCESS(res);
+}
+
 #endif /* WINDOWS */
 
 /***************************************************************************
