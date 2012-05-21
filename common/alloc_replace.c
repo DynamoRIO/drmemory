@@ -786,6 +786,69 @@ replace_free_common(void *ptr, void *drcontext, dr_mcontext_t *mc, app_pc caller
     dr_recurlock_unlock(allocator_lock);
 }
 
+static byte *
+replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
+                       bool zeroed, bool in_place_only,
+                       void *drcontext, dr_mcontext_t *mc, app_pc caller)
+{
+    byte *res = NULL;
+    chunk_header_t *head = header_from_ptr(ptr);
+    if (ptr == NULL) {
+        client_handle_realloc_null(caller, mc);
+        res = (void *) replace_alloc_common(cur_arena, size, zeroed, true/*realloc*/,
+                                            drcontext, mc, caller);
+    } else if (size == 0) {
+        replace_free_common(ptr, drcontext, mc, caller);
+    } else if (!is_live_alloc(ptr, head)) {
+        client_invalid_heap_arg(caller, (byte *)ptr, mc,
+                                /* XXX: we might be replacing RtlReallocateHeap or
+                                 * _realloc_dbg but it's not worth trying to
+                                 * store the exact name
+                                 */
+                                "realloc", false/*!free*/);
+    } else {
+        if (head->alloc_size >= size && !TEST(CHUNK_PRE_US, head->flags)) {
+            /* XXX: if shrinking a lot, should free and re-malloc to save space */
+            client_handle_realloc(drcontext, (byte *)ptr, head->request_size,
+                                  (byte *)ptr, size,
+                                  /* XXX: real_base is regular base for us => no pattern */
+                                  (byte *)ptr, mc);
+            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
+                malloc_large_remove(ptr);
+            if (head->request_size < size && zeroed)
+                memset(ptr + head->request_size, 0, size - head->request_size);
+            head->request_size = size;
+            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
+                malloc_large_add(ptr, head->request_size);
+            res = ptr;
+        } else if (!in_place_only) {
+            /* XXX: use mremap for mmapped alloc! */
+            /* XXX: if final chunk in arena, extend in-place */
+            res = (void *) replace_alloc_common(cur_arena, size, zeroed,
+                                                true/*realloc*/, drcontext, mc, caller);
+            if (res != NULL) {
+                memcpy(res, ptr, head->request_size);
+                replace_free_common(ptr, drcontext, mc, caller);
+            }
+        }
+    }
+    return res;
+}
+
+static size_t
+replace_size_common(arena_header_t *arena, byte *ptr,
+                    void *drcontext, dr_mcontext_t *mc, app_pc caller)
+{
+    chunk_header_t *head = header_from_ptr(ptr);
+    if (!is_live_alloc(ptr, head)) {
+        client_invalid_heap_arg(caller, (byte *)ptr, mc,
+                                IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
+                                false/*!free*/);
+        return 0;
+    }
+    return head->request_size; /* we do not allow using padding */
+}
+
 /***************************************************************************
  * iterator
  */
@@ -1003,48 +1066,11 @@ replace_realloc(void *ptr, size_t size)
     void *drcontext = enter_client_code();
     void *res = NULL;
     dr_mcontext_t mc;
-    chunk_header_t *head = header_from_ptr(ptr);
     initialize_mcontext_for_report(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
-    if (ptr == NULL) {
-        client_handle_realloc_null((app_pc)replace_realloc, &mc);
-        res = (void *) replace_alloc_common(cur_arena, size, false/*!zeroed*/,
-                                            true/*realloc*/,
-                                            drcontext, &mc, (app_pc)replace_realloc);
-    } else if (size == 0) {
-        replace_free_common(ptr, drcontext, &mc, (app_pc)replace_realloc);
-    } else if (!is_live_alloc(ptr, head)) {
-        client_invalid_heap_arg((app_pc)replace_realloc, (byte *)ptr, &mc,
-                                /* XXX: we might be replacing RtlReallocateHeap or
-                                 * _realloc_dbg but it's not worth trying to
-                                 * store the exact name
-                                 */
-                                "realloc", false/*!free*/);
-    } else {
-        if (head->alloc_size >= size && !TEST(CHUNK_PRE_US, head->flags)) {
-            /* XXX: if shrinking a lot, should free and re-malloc to save space */
-            client_handle_realloc(drcontext, (byte *)ptr, head->request_size,
-                                  (byte *)ptr, size,
-                                  /* XXX: real_base is regular base for us => no pattern */
-                                  (byte *)ptr, &mc);
-            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
-                malloc_large_remove(ptr);
-            head->request_size = size;
-            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
-                malloc_large_add(ptr, head->request_size);
-            res = ptr;
-        } else {
-            /* XXX: use mremap for mmapped alloc! */
-            /* XXX: if final chunk in arena, extend in-place */
-            res = (void *) replace_alloc_common(cur_arena, size, false/*!zeroed*/,
-                                                true/*realloc*/,
-                                                drcontext, &mc, (app_pc)replace_realloc);
-            if (res != NULL) {
-                memcpy(res, ptr, head->request_size);
-                replace_free_common(ptr, drcontext, &mc, (app_pc)replace_realloc);
-            }
-        }
-    }
+    res = replace_realloc_common(cur_arena, ptr, size, false/*!zeroed*/,
+                                 false/*!in-place only*/,
+                                 drcontext, &mc, (app_pc)replace_realloc);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext);
     return res;
@@ -1065,18 +1091,12 @@ static size_t
 replace_malloc_usable_size(void *ptr)
 {
     void *drcontext = enter_client_code();
-    chunk_header_t *head = header_from_ptr(ptr);
     size_t res;
     dr_mcontext_t mc;
     initialize_mcontext_for_report(&mc);
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
-    if (!is_live_alloc(ptr, head)) {
-        client_invalid_heap_arg((app_pc)replace_malloc_usable_size, (byte *)ptr, &mc,
-                                IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
-                                false/*!free*/);
-        return 0;
-    }
-    res = head->request_size; /* we do not allow using padding */
+    res = replace_size_common(cur_arena, ptr, drcontext, &mc,
+                              (app_pc)replace_malloc_usable_size);
     LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
     exit_client_code(drcontext);
     return res;
