@@ -598,3 +598,6 @@ OPTION_CLIENT_BOOL(internal, pattern_use_malloc_tree, false,
 OPTION_CLIENT_BOOL(internal, replace_malloc, false,
                    "Replace malloc rather than wrapping existing routines",
                    "Replace malloc with custom routines rather than wrapping existing routines.  Replacing is more efficient but can be less transparent.")
+OPTION_CLIENT_SCOPE(internal, pattern_max_2byte_faults, int, 0x1000, -1, INT_MAX,
+                    "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only",
+                    "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only. 0 means do not use 2-byte checks, and negative value means always use 2-byte checks")

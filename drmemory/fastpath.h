@@ -148,6 +148,14 @@ struct _bb_info_t {
     int shared_disp_implicit; /* implicit disp from orig memop (push/pop) */
     /* filled in during analysis and insert phases */
     bool check_ignore_unaddr;
+    /* style of instrumentation:
+     * too many false alarms for app like bzip2 using 2byte-check (i#750),
+     * in which case, we switch to 4byte-checks-only mode.
+     */
+    bool pattern_4byte_check_only;
+#ifdef DEBUG
+    bool pattern_4byte_check_field_set;
+#endif
     bool first_instr;
     bool added_instru;
     /* for calculating size of bb */
@@ -174,6 +182,10 @@ typedef struct _bb_saved_info_t {
     bool eflags_saved:1;
     /* For PR 578892, to avoid DR having to store translations */
     bool check_ignore_unaddr:1;
+    /* store style of instru rather than ask DR to store xl8.
+     * XXX DRi#772: could add flush callback and avoid this save
+     */
+    bool pattern_4byte_check_only:1;
     /* we store the size and assume bbs are contiguous so we can free (i#260) */
     ushort bb_size;
     app_pc last_instr;

@@ -5456,6 +5456,10 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         save->check_ignore_unaddr = check_ignore_unaddr;
         /* i#826: share_xl8_max_diff can change, save it. */
         save->share_xl8_max_diff = bi->share_xl8_max_diff;
+        /* store style of instru rather than ask DR to store xl8.
+         * XXX DRi#772: could add flush callback and avoid this save
+         */
+        save->pattern_4byte_check_only = bi->pattern_4byte_check_only;
 
         /* we store the size and assume bbs are contiguous so we can free (i#260) */
         ASSERT(bi->first_app_pc != NULL, "first instr should have app pc");

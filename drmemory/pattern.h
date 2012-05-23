@@ -26,11 +26,8 @@
 #include "callstack.h"  /* for app_loc_t */
 
 void
-pattern_init(void);
-
-void
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
-                         bb_info_t *bi);
+                         bb_info_t *bi, bool translating);
 
 void
 pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist);
@@ -39,7 +36,7 @@ bool
 pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc);
 
 bool
-pattern_handle_ill_fault(void *drcontext, dr_mcontext_t *raw_mc, 
+pattern_handle_ill_fault(void *drcontext, dr_mcontext_t *raw_mc,
                          dr_mcontext_t *mc);
 
 void

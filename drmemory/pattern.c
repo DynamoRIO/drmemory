@@ -43,6 +43,7 @@
  * Pattern mode instrumentation functions
  */
 
+#define MAX_NUM_CHECKS_PER_REF 4
 #define MAX_REFS_PER_INSTR 3
 #define PATTERN_SLOT_XAX    SPILL_SLOT_1
 #define PATTERN_SLOT_AFLAGS SPILL_SLOT_2
@@ -53,8 +54,11 @@
 static rb_tree_t *pattern_malloc_tree;
 static void *pattern_malloc_tree_rwlock;
 static uint  pattern_reverse;
+static bool  pattern_4byte_check_only = false;
+static void *flush_lock;
 
 static ptr_uint_t note_base;
+static int num_2byte_faults = 0;
 
 enum {
     NOTE_NULL = 0,
@@ -125,67 +129,146 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
  * must be updated too.
  */
 static void
-pattern_insert_check_code(void *drcontext, instrlist_t *ilist, 
-                          instr_t *app, opnd_t ref)
+pattern_insert_cmp_jne_ud2a(void *drcontext, instrlist_t *ilist, instr_t *app,
+                            opnd_t ref, opnd_t pattern)
 {
-    opnd_size_t opsz, size = opnd_get_size(ref);
     instr_t *label;
-    int opcode = instr_get_opcode(app);
     app_pc pc = instr_get_app_pc(app);
-    opnd_t opnd;
 
-    ASSERT(opnd_uses_nonignorable_memory(ref),
-           "non-memory-ref opnd is instrumented");
     label = INSTR_CREATE_label(drcontext);
-    /* XXX: i#774, we perform 2-byte check for 1/2-byte reference and 4-byte 
-     * otherwise, should we do 2 4-byte checks for case like 8-byte reference?
-     */
-    if (size > OPSZ_2) {
-        opsz = OPSZ_4;
-        opnd = OPND_CREATE_INT32(options.pattern);
-    } else {
-        opsz = OPSZ_2;
-        opnd = OPND_CREATE_INT16((short)options.pattern);
-    }
-    opnd_set_size(&ref, opsz);
-    /* special handling for xlat instr */
-    if (opcode == OP_xlat)
-        pattern_handle_xlat(drcontext, ilist, app, true /* pre */);
-    /* XXX: i#775, because of using 2-byte pattern for checking, 
-     * we currently do not detect some unaligned refs:
-     * (a) off-by-one-byte unaligned, and 
-     * (b) two-byte at begin/end of the redzone.
-     * We can add off-by-one-byte checks for (a).
-     * We can add more checks for (b), but it add complexity,
-     * not only the instrumentation, but also the fault handling.
-     */
     /* cmp ref, pattern */
-    PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, opnd), pc));
+    PREXL8M(ilist, app,
+            INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, pattern), pc));
     /* jne label */
     PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
                                            opnd_create_instr(label)));
     /* we assume that the pattern seen is rare enough, so we use ud2a to
-     * cause an illegal exception to handle.
+     * cause an illegal exception if match.
      */
     PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
     /* label */
     PRE(ilist, app, label);
-    /* insert check for unaligned one-byte access */
-    if (size == OPSZ_1) {
-        opnd  = OPND_CREATE_INT16((short)pattern_reverse);
-        label = INSTR_CREATE_label(drcontext);
-        /* cmp ref, pattern_reverse */
-        PREXL8M(ilist, app,
-                INSTR_XL8(INSTR_CREATE_cmp(drcontext, ref, opnd), pc));
-        /* jne label */
-        PRE(ilist, app, INSTR_CREATE_jcc_short(drcontext, OP_jne_short,
-                                               opnd_create_instr(label)));
-        /* use ud2a to cause an illegal exception if match. */
-        PREXL8M(ilist, app, INSTR_XL8(INSTR_CREATE_ud2a(drcontext), pc));
-        /* label */
-        PRE(ilist, app, label);
+}
+
+static int
+pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
+                           _IF_DEBUG(int max_refs /* size for both arrays */))
+{
+    opnd_size_t ref_size;
+    
+    ASSERT(max_refs >= 4 /* the max refs we might fill in */,
+           "refs/opnds array is too small");
+    /* refs[0] holds the actual app's memory reference opnd */
+    ASSERT(opnd_is_base_disp(refs[0]), "wrong app's memory reference");
+    /* XXX i#774: we perform 2-byte check for 1-byte or 2-byte reference and
+     * 4-byte check for others.
+     * Should we do something like 2 4-byte checks for 8-byte reference?
+     */
+    /* XXX i#881: detect access boundary of the redzone in pattern mode */
+    ref_size = opnd_get_size(refs[0]);
+    if (ref_size > OPSZ_2) {
+        /* cmp [ref], pattern */
+        opnd_set_size(&refs[0], OPSZ_4);
+        opnds[0] = OPND_CREATE_INT32(options.pattern);
+        return 1;
     }
-    if (opcode == OP_xlat)
+
+    if (ref_size == OPSZ_2) {
+        if (!bi->pattern_4byte_check_only) {
+            /* cmp [ref], pattern */
+            opnds[0] = OPND_CREATE_INT16((short)options.pattern);
+            return 1;
+        } else { /* 4byte_check_only mode */
+            /* for a 2-byte ref, we assume it is aligned and
+             * insert two 4-byte checks on [mem] and [mem-2].
+             */
+            /* cmp [ref], pattern */
+            opnd_set_size(&refs[0], OPSZ_4);
+            opnds[0] = OPND_CREATE_INT32(options.pattern);
+            if (opnd_get_disp(refs[0]) < INT_MIN + 2) {
+                /* In the case of wraparound, we give up the check on [mem-2],
+                 * so there are possible false negatives on accessing the last
+                 * 2 bytes of the redzone.
+                 */
+                return 1;
+            }
+            /* cmp [ref-2], pattern */
+            refs[1]  = refs[0];
+            opnd_set_disp(&refs[1], opnd_get_disp(refs[0]) - 2);
+            opnds[1] = opnds[0];
+            return 2;
+        }
+    }
+
+    /* XXX i#811: because of using 2-byte pattern for checking,
+     * we currently do not detect some boundary refs, e.g.
+     * a single byte reference at the end of the redzone.
+     */
+    if (ref_size == OPSZ_1) {
+        if (!bi->pattern_4byte_check_only) {
+            /* cmp [ref], pattern */
+            opnd_set_size(&refs[0], OPSZ_2);
+            opnds[0] = OPND_CREATE_INT16((short)options.pattern);
+            /* cmp [ref], pattern_reverse */
+            refs[1]  = refs[0];
+            opnds[1] = OPND_CREATE_INT16((short)pattern_reverse);
+            return 2;
+        } else { /* 4byte_check_only mode */
+            /* for a 1-byte ref, we do not assume it is aligned and
+             * insert 4 4-byte checks on [mem] and [mem-2] with
+             * pattern and pattern_reverse.
+             * It is possible to insert 3 4-byte checks on [mem], [mem-1],
+             * and [mem-2] with pattern, but it will have false negative
+             * in the malloc test case.
+             */
+            /* cmp [ref], pattern */
+            opnd_set_size(&refs[0], OPSZ_4);
+            opnds[0] = OPND_CREATE_INT32(options.pattern);
+            /* cmp [ref], pattern_reverse */
+            refs[1]  = refs[0];
+            opnds[1] = OPND_CREATE_INT32(pattern_reverse);
+            if (opnd_get_disp(refs[0]) < INT_MIN + 2) {
+                /* In the case of wraparound, we give up the check on [mem-2]
+                 * possible false negative on accessing the last 2-byte of
+                 * the redzone.
+                 */
+                return 2;
+            }
+            /* cmp [ref - 2], pattern */
+            refs[2]  = refs[0];
+            opnd_set_disp(&refs[1], opnd_get_disp(refs[0]) - 2);
+            opnds[2] = opnds[0];
+            /* cmp [ref - 2], pattern_reverse */
+            refs[3]  = refs[2];
+            opnds[3] = opnds[1];
+            return 4;
+        }
+    }
+    return -1;
+}
+
+static void
+pattern_insert_check_code(void *drcontext, instrlist_t *ilist, 
+                          instr_t *app, opnd_t ref, bb_info_t *bi)
+{
+    opnd_t refs[MAX_NUM_CHECKS_PER_REF], opnds[MAX_NUM_CHECKS_PER_REF];
+    int num_checks, i;
+
+    ASSERT(opnd_uses_nonignorable_memory(ref),
+           "non-memory-ref opnd is instrumented");
+    /* special handling for xlat instr */
+    if (instr_get_opcode(app) == OP_xlat)
+        pattern_handle_xlat(drcontext, ilist, app, true /* pre */);
+
+    refs[0] = ref;
+    num_checks = pattern_create_check_opnds(bi, refs, opnds
+                                            _IF_DEBUG(MAX_NUM_CHECKS_PER_REF));
+    ASSERT(num_checks > 0 && num_checks <= MAX_NUM_CHECKS_PER_REF,
+           "Wrong number of checks created");
+    for (i = 0; i < num_checks; i++)
+        pattern_insert_cmp_jne_ud2a(drcontext, ilist, app, refs[i], opnds[i]);
+
+    if (instr_get_opcode(app) == OP_xlat)
         pattern_handle_xlat(drcontext, ilist, app, false /* post */);
 }
 
@@ -259,7 +342,7 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
 
 void
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
-                         bb_info_t *bi)
+                         bb_info_t *bi, bool translating)
 {
     int num_refs, i;
     opnd_t refs[MAX_REFS_PER_INSTR];
@@ -274,6 +357,12 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                                     _IF_DEBUG(MAX_REFS_PER_INSTR));
     if (num_refs == 0)
         return;
+    if (!translating)
+        bi->pattern_4byte_check_only = pattern_4byte_check_only;
+    else {
+        ASSERT(bi->pattern_4byte_check_field_set,
+               "pattern_4byte_check_only is not initialized");
+    }
     mark_eflags_used(drcontext, ilist, bi);
     bi->added_instru = true;
     if (!whole_bb_spills_enabled()) {
@@ -282,7 +371,7 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
     }
     /* pattern check code */
     for (i = 0; i < num_refs; i++)
-        pattern_insert_check_code(drcontext, ilist, app, refs[i]);
+        pattern_insert_check_code(drcontext, ilist, app, refs[i], bi);
     if (!whole_bb_spills_enabled()) {
         /* aflags restore label */
         pattern_insert_aflags_label(drcontext, ilist, app, false, use_eax);
@@ -517,6 +606,21 @@ pattern_ill_instr_is_instrumented(byte *pc)
     return true;
 }
 
+/* switch to 4-byte-check only mode */
+static void
+pattern_switch_instrumentation_style(void)
+{
+    if (num_2byte_faults >= options.pattern_max_2byte_faults &&
+        dr_mutex_trylock(&flush_lock) /* to avoid flush storm */) {
+        if (num_2byte_faults >= options.pattern_max_2byte_faults) {
+            pattern_4byte_check_only = true;
+            num_2byte_faults = 0;
+            dr_delay_flush_region(0, (size_t)-1, 0, NULL);
+        }
+        dr_mutex_unlock(flush_lock);
+    }
+}
+
 bool
 pattern_handle_ill_fault(void *drcontext,
                          dr_mcontext_t *raw_mc,
@@ -549,6 +653,10 @@ pattern_handle_ill_fault(void *drcontext,
         if (!opnd_uses_nonignorable_memory(opnd))
             continue;
         size = opnd_size_in_bytes(opnd_get_size(opnd));
+        if (size <= 2) {
+            /* it is ok to have racy update here */
+            num_2byte_faults++;
+        }
         pc_to_loc(&loc, mc->pc);
         pattern_handle_mem_ref(&loc, addr, size, mc, is_write);
     }
@@ -559,6 +667,12 @@ pattern_handle_ill_fault(void *drcontext,
     LOG(2, "pattern check ud2a triggerred@"PFX" => skip to "PFX"\n",
         raw_mc->pc, raw_mc->pc + UD2A_LENGTH);
     raw_mc->pc += UD2A_LENGTH;
+
+    if (options.pattern_max_2byte_faults > 0 &&
+        num_2byte_faults >= options.pattern_max_2byte_faults) {
+        /* 2-byte checks caused too many faults, switch instrumentation style */
+        pattern_switch_instrumentation_style();
+    }
     return true;
 }
 
@@ -720,7 +834,7 @@ pattern_malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
     pattern_malloc_iter_data_t *data = (pattern_malloc_iter_data_t *) iter_data;
     ASSERT(iter_data != NULL, "invalid iteration data");
     ASSERT(start != NULL && start <= end, "invalid params");
-    LOG(4, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
+    LOG(3, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
     ASSERT(!data->found, "the iteration should be short-circuited");
     if (pre_us)
         return true;
@@ -765,7 +879,7 @@ pattern_addr_pre_check(byte *addr)
     addr = (byte *) ALIGN_BACKWARD(addr, sizeof(uint));
     /* read memory after addr */
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        /* we check the memory after aligned addr instead of addr 
+        /* we check the memory after aligned addr instead of addr
          * to handle the case like:
          * char *p = malloc(3); *(p + 3) = ...;
          */
@@ -800,7 +914,7 @@ pattern_addr_in_redzone(byte *addr, size_t size)
 {
     bool res = false;
     /* expensive walk */
-    LOG(3, "expensive lookup for pattern_addr_in_redzone@"PFX"\n", addr);
+    LOG(2, "expensive lookup for pattern_addr_in_redzone@"PFX"\n", addr);
     if (options.pattern_use_malloc_tree)
         res = pattern_addr_in_malloc_tree(addr, size);
     else
@@ -990,6 +1104,10 @@ pattern_init(void)
      * to check both aligned and unaligned access.
      */
     pattern_reverse = PATTERN_REVERSE(options.pattern);
+    /* do we use 4-byte checks only */
+    if (options.pattern_max_2byte_faults == 0)
+        pattern_4byte_check_only = true;
+    flush_lock = dr_mutex_create();
 }
 
 void
@@ -1000,4 +1118,5 @@ pattern_exit(void)
         dr_rwlock_destroy(pattern_malloc_tree_rwlock);
         rb_tree_destroy(pattern_malloc_tree);
     }
+    dr_mutex_destroy(flush_lock);
 }

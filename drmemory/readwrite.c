@@ -3924,6 +3924,11 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
             ASSERT(save != NULL, "missing bb info");
             if (save->check_ignore_unaddr)
                 bi->check_ignore_unaddr = true;
+            /* setting this pattern field here is sort of abstraction violation,
+             * but more efficient.
+             */
+            bi->pattern_4byte_check_only = save->pattern_4byte_check_only;
+            IF_DEBUG(bi->pattern_4byte_check_field_set = true);
             bi->share_xl8_max_diff = save->share_xl8_max_diff;
             hashtable_unlock(&bb_table);
         } else {
@@ -4070,7 +4075,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         if (has_mem && opnd_uses_nonignorable_memory(opnd))
             has_noignorable_mem = true;
 #endif
-        if (options.pattern == 0 /* pattern mode does not care gpr */&&
+        if (options.pattern == 0 /* pattern mode does not care about gpr */&&
             opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) {
             has_gpr = true;
             /* written to => no longer known to be addressable,
@@ -4091,7 +4096,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             if (has_mem && opnd_uses_nonignorable_memory(opnd))
                 has_noignorable_mem = true;
 #endif
-            if (options.pattern == 0 /* pattern mode does not care gpr */&&
+            if (options.pattern == 0 /* pattern mode does not care about gpr */&&
                 opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd)))
                 has_gpr = true;
         }
@@ -4107,7 +4112,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         goto instru_event_bb_insert_done;
     
     if (options.pattern != 0 && has_noignorable_mem) {
-        pattern_instrument_check(drcontext, bb, inst, bi);
+        pattern_instrument_check(drcontext, bb, inst, bi, translating);
     } else if (options.shadowing &&
         (options.check_uninitialized || has_noignorable_mem)) {
         if (instr_ok_for_instrument_fastpath(inst, &mi, bi)) {
