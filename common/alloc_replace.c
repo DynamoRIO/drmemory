@@ -197,6 +197,8 @@ typedef struct _arena_header_t {
     uint flags;
 #ifdef WINDOWS
     uint magic;
+    /* we need to iterate arenas belonging to one (non-default) Heap */
+    struct _arena_header_t *next_arena;
 #endif
     /* for main arena of each Heap, we inline free_lists_t here */
 } arena_header_t;
@@ -208,6 +210,7 @@ typedef struct _arena_header_t {
 # define ARENA_MAIN HEAP_ZERO_MEMORY
 /* flags that we support being passed to HeapCreate */
 # define HEAP_CREATE_POSSIBLE_FLAGS 0x40005
+static HANDLE process_heap;
 #else
 # define ARENA_MAIN 0x0001
 #endif
@@ -268,8 +271,17 @@ initialize_mcontext_for_report(dr_mcontext_t *mc)
     mc->xbp = 0;
 }
 
+#ifdef WINDOWS
+static inline uint
+arena_page_prot(uint flags)
+{
+    return TEST(HEAP_CREATE_ENABLE_EXECUTE, flags) ?
+        PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+}
+#endif
+
 static byte *
-os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
+os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(uint prot))
 {
     /* FIXME DRi#199: how notify DR about app mem alloc?
      * provide general raw_syscall() interface,
@@ -293,7 +305,7 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
     ASSERT(reserve_size >= commit_size, "must reserve more than commit");
     if (!virtual_alloc(&loc, reserve_size, MEM_RESERVE, PAGE_NOACCESS))
         return NULL;
-    if (!virtual_alloc(&loc, commit_size, MEM_COMMIT, PAGE_READWRITE)) {
+    if (!virtual_alloc(&loc, commit_size, MEM_COMMIT, prot)) {
         virtual_free(loc);
         return NULL;
     }
@@ -303,7 +315,8 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size))
 
 /* For Windows, up to caller to ensure new_commit_size <= previously reserved size */
 static bool
-os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size)
+os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
+                      _IF_WINDOWS(uint prot))
 {
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
@@ -314,7 +327,7 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size)
         return false;
     return true;
 #else
-    return virtual_alloc(&map, new_commit_size, MEM_COMMIT, PAGE_READWRITE);
+    return virtual_alloc(&map, new_commit_size, MEM_COMMIT, prot);
 #endif
 }
 
@@ -422,6 +435,16 @@ is_live_alloc(void *ptr, chunk_header_t *head)
     }
 }
 
+/* returns NULL if an invalid ptr, but will return a freed chunk */
+static inline chunk_header_t *
+header_from_ptr_include_pre_us(void *ptr)
+{
+    chunk_header_t *head = header_from_ptr(ptr);
+    if (!is_valid_chunk(ptr, head))
+        head = hashtable_lookup(&pre_us_table, (void *)ptr);
+    return head;
+}
+
 /* assumes caller initialized commit_end and reserve_end fields */
 static void
 arena_init(arena_header_t *arena, arena_header_t *parent)
@@ -447,7 +470,23 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     arena->next_chunk = arena->start_chunk;
 #ifdef WINDOWS
     arena->magic = HEADER_MAGIC;
+    arena->next_arena = NULL;
+    if (parent != NULL) {
+        ASSERT(parent->next_arena == NULL, "should only append to end");
+        parent->next_arena = arena;
+    }
 #endif
+}
+
+static void
+arena_free(arena_header_t *arena)
+{
+    if (TEST(ARENA_MAIN, arena->flags))
+        dr_recurlock_destroy(arena->lock);
+#ifdef LINUX
+    if (arena->reserve_end != cur_brk)
+#endif
+        os_large_free((byte *)arena, arena->reserve_end - (byte *)arena);
 }
 
 /* either extends arena in-place and returns it, or allocates a new arena
@@ -476,7 +515,8 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
     { /* here to not confuse brace matching */
         size_t cur_size = arena->commit_end - (byte *)arena;
         size_t new_size = cur_size + aligned_add;
-        if (os_large_alloc_extend((byte *)arena, cur_size, new_size)) {
+        if (os_large_alloc_extend((byte *)arena, cur_size, new_size
+                                  _IF_WINDOWS(arena_page_prot(arena->flags)))) {
             arena->commit_end = (byte *)arena + new_size;
 #ifdef LINUX /* windows already added whole reservation */
             heap_region_adjust((byte *)arena, (byte *)arena + new_size);
@@ -492,7 +532,8 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
     LOG(1, "cur arena "PFX"-"PFX" out of space: creating new one\n",
         (byte *)arena, arena->reserve_end);
     new_arena = (arena_header_t *)
-        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE);
+        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE
+                       _IF_WINDOWS(arena_page_prot(arena->flags)));
     if (new_arena == NULL)
         return NULL;
 #ifdef LINUX
@@ -602,7 +643,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 }
 
 static byte *
-replace_alloc_common(arena_header_t *arena, size_t request_size, bool lock, bool zeroed,
+replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, bool zeroed,
                      bool realloc, void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     heapsz_t aligned_size;
@@ -622,7 +663,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool lock, bool
         aligned_size = CHUNK_MIN_SIZE;
 
     /* XXX: use per-thread free lists to avoid lock in common case */
-    if (lock)
+    if (synch)
         dr_recurlock_lock(arena->lock);
 
     /* for large requests we do direct mmap with own redzones.
@@ -633,7 +674,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool lock, bool
         size_t map_size = (size_t)
             ALIGN_FORWARD(aligned_size + alloc_ops.redzone_size*2 +
                           header_beyond_redzone, PAGE_SIZE);
-        byte *map = os_large_alloc(map_size _IF_WINDOWS(map_size));
+        byte *map = os_large_alloc(map_size _IF_WINDOWS(map_size)
+                                   _IF_WINDOWS(arena_page_prot(arena->flags)));
         LOG(2, "\tlarge alloc %d => mmap\n", request_size);
         if (map == NULL) {
             client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
@@ -690,14 +732,14 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool lock, bool
     if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
         malloc_large_add(res, request_size);
 
-    if (lock)
+    if (synch)
         dr_recurlock_unlock(arena->lock);
 
     return res;
 }
 
-static void
-replace_free_common(arena_header_t *arena, void *ptr, bool lock, void *drcontext,
+static bool
+replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontext,
                     dr_mcontext_t *mc, app_pc caller)
 {
     chunk_header_t *head = header_from_ptr(ptr);
@@ -722,6 +764,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool lock, void *drcontext
              * to delay pre-us frees.  If we do that we may need an
              * external table lock.
              */
+            return true;
         } else {
             client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                     /* XXX: we might be replacing RtlHeapFree or
@@ -729,11 +772,11 @@ replace_free_common(arena_header_t *arena, void *ptr, bool lock, void *drcontext
                                      * store the exact name
                                      */
                                     "free", true/*free*/);
+            return false;
         }
-        return;
     }
 
-    if (lock)
+    if (synch)
         dr_recurlock_lock(arena->lock);
 
     if (!TEST(CHUNK_MMAP, head->flags))
@@ -801,8 +844,9 @@ replace_free_common(arena_header_t *arena, void *ptr, bool lock, void *drcontext
             ASSERT(false, "munmap failed");
     }
 
-    if (lock)
+    if (synch)
         dr_recurlock_unlock(arena->lock);
+    return true;
 }
 
 static byte *
@@ -854,6 +898,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     return res;
 }
 
+/* returns -1 on failure */
 static size_t
 replace_size_common(arena_header_t *arena, byte *ptr,
                     void *drcontext, dr_mcontext_t *mc, app_pc caller)
@@ -863,7 +908,7 @@ replace_size_common(arena_header_t *arena, byte *ptr,
         client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                 IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
                                 false/*!free*/);
-        return 0;
+        return (size_t)-1;
     }
     return head->request_size; /* we do not allow using padding */
 }
@@ -1117,6 +1162,8 @@ replace_malloc_usable_size(void *ptr)
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
     res = replace_size_common(cur_arena, ptr, drcontext, &mc,
                               (app_pc)replace_malloc_usable_size);
+    if (res == (size_t)-1)
+        res = 0; /* 0 on failure */
     LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
     exit_client_code(drcontext);
     return res;
@@ -1129,6 +1176,345 @@ replace_malloc_usable_size(void *ptr)
  */
 
 /* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
+
+#ifdef WINDOWS
+/***************************************************************************
+ * Windows RTL Heap API
+ */
+
+/* XXX: are the BOOL return values really NTSTATUS? */
+
+/* returns NULL if not a valid Heap handle */
+static arena_header_t *
+heap_to_arena(HANDLE heap)
+{
+    arena_header_t *arena = (arena_header_t *) heap;
+    if (heap == process_heap)
+        return cur_arena;
+#ifdef USE_DRSYMS
+    ASSERT(heap != get_private_heap_handle(), "app using private heap");
+#endif
+    /* XXX: do safe_read?  xref is_valid_chunk perf hit */
+    if (arena != NULL &&
+        arena->magic == HEADER_MAGIC &&
+        TEST(ARENA_MAIN, arena->flags))
+        return arena;
+    else
+        return NULL;
+}
+
+static HANDLE WINAPI
+replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
+                      size_t commit_sz, void *lock, void *params)
+{
+    arena_header_t *new_arena = NULL;
+    void *drcontext = enter_client_code();
+    LOG(2, "%s\n", __FUNCTION__);
+    if (lock != NULL || params != NULL || base != NULL) {
+        /* as of win7, CreateHeap always passes NULL for these 3 */
+        ASSERT(false, "NYI params to RtlCreateHeap");
+        /* we continue on and ignore params for release build */
+    }
+    flags &= ~(HEAP_CREATE_POSSIBLE_FLAGS);
+    if (reserve_sz == 0) {
+        flags |= HEAP_GROWABLE;
+        reserve_sz = ARENA_INITIAL_SIZE;
+    } else /* XXX: is max really non-page-aligned?  we align it */
+        reserve_sz = ALIGN_FORWARD(reserve_sz, PAGE_SIZE);
+    commit_sz = ALIGN_FORWARD(commit_sz, PAGE_SIZE);
+    new_arena = (arena_header_t *)
+        os_large_alloc(commit_sz, reserve_sz, arena_page_prot(flags));
+    if (new_arena != NULL) {
+        new_arena->commit_end = (byte *)new_arena + commit_sz;
+        new_arena->reserve_end = (byte *)new_arena + reserve_sz;
+        heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
+        /* this will create the lock even if TEST(HEAP_NO_SERIALIZE, flags) */
+        arena_init(new_arena, NULL);
+        new_arena->flags |= (flags & HEAP_CREATE_POSSIBLE_FLAGS);
+    }
+    exit_client_code(drcontext);
+    return (HANDLE) new_arena;    
+}
+
+static BOOL WINAPI
+replace_RtlDestroyHeap(HANDLE heap)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    BOOL res = FALSE;
+    dr_mcontext_t mc;
+    initialize_mcontext_for_report(&mc);
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL && heap != process_heap) {
+        arena_header_t *a, *next_a;
+        chunk_header_t *head;
+        byte *cur;
+        for (a = arena; a != NULL; a = next_a) {
+            next_a = a->next_arena;
+            cur = a->start_chunk;
+            while (cur < a->next_chunk) {
+                head = header_from_ptr(cur);
+                if (!TEST(CHUNK_FREED, head->flags)) {
+                    /* XXX: like mmaps for large allocs, we assume the OS
+                     * re-using the memory won't be immediate, so we go w/
+                     * a simple no-delay policy on the frees
+                     */
+                    byte *start = (byte *)(head + 1);
+                    client_handle_free(start, head->request_size,
+                                       start, head->alloc_size,
+                                       &mc, (app_pc)replace_RtlDestroyHeap,
+                                       head->user_data _IF_WINDOWS(heap));
+                }
+                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
+            }
+            arena_free(a);
+        }
+        res = TRUE;
+    }
+    exit_client_code(drcontext);
+    return res;
+}
+
+static void
+handle_Rtl_alloc_failure(arena_header_t *arena, ULONG flags)
+{
+    if (TEST(HEAP_GENERATE_EXCEPTIONS, arena->flags) ||
+        TEST(HEAP_GENERATE_EXCEPTIONS, flags)) {
+        ASSERT(false, "HEAP_GENERATE_EXCEPTIONS NYI");
+        /* FIXME: need to set windows error code and call RtlRaiseException or sthg */
+        /* FIXME: for invalid params or heap corruption, raise STATUS_ACCESS_VIOLATION;
+         * for OOM, raise STATUS_NO_MEMORY.  need caller to tell us which it is!
+         */
+    }
+}
+
+static void * WINAPI
+replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    initialize_mcontext_for_report(&mc);
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL) {
+        res = replace_alloc_common(arena, size,
+                                   !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                                   !TEST(HEAP_NO_SERIALIZE, flags),
+                                   TEST(HEAP_ZERO_MEMORY, flags),
+                                   false/*!realloc*/, drcontext,
+                                   &mc, (app_pc)replace_RtlAllocateHeap);
+    }
+    exit_client_code(drcontext);
+    if (res == NULL)
+        handle_Rtl_alloc_failure(arena, flags);
+    return res;
+}
+
+static void * WINAPI
+replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    void *res = NULL;
+    dr_mcontext_t mc;
+    initialize_mcontext_for_report(&mc);
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL) {
+        res = replace_realloc_common(arena, ptr, size,
+                                     !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                                     !TEST(HEAP_NO_SERIALIZE, flags),
+                                     TEST(HEAP_ZERO_MEMORY, flags),
+                                     TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags), drcontext,
+                                     &mc, (app_pc)replace_RtlReAllocateHeap);
+    }
+    exit_client_code(drcontext);
+    if (res == NULL)
+        handle_Rtl_alloc_failure(arena, flags);
+    return res;
+}
+
+static BOOL WINAPI
+replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    BOOL res = FALSE;
+    dr_mcontext_t mc;
+    initialize_mcontext_for_report(&mc);
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL) {
+        bool ok = replace_free_common(arena, ptr,
+                                       !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                                       !TEST(HEAP_NO_SERIALIZE, flags),
+                                       drcontext, &mc, (app_pc)replace_RtlFreeHeap);
+        res = !!ok; /* convert from bool to BOOL */
+    }
+    exit_client_code(drcontext);
+    return res;
+}
+
+static SIZE_T WINAPI
+replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    SIZE_T res = (SIZE_T) -1;
+    dr_mcontext_t mc;
+    initialize_mcontext_for_report(&mc);
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL) {
+        res = replace_size_common(arena, ptr, drcontext,
+                                  &mc, (app_pc)replace_RtlSizeHeap);
+    }
+    exit_client_code(drcontext);
+    return res;
+}
+
+/* FIXME i#893: allowing the app to hold a lock we'll wait for in our
+ * code that needs to return to a cache fragment is unsafe b/c a flusher
+ * could hold the lock as the app.
+ * We need to refactor all the code here to interpret the initial
+ * code that acquires locks, and only then go native (for perf).
+ * Alternatively we could ignore per-Heap locks and use one single
+ * global lock but that may not be performant enough.
+ * There may be more complex schemes to handle this but none I've come up
+ * with are appealing so far.
+ */
+static BOOL WINAPI
+replace_RtlLockHeap(HANDLE heap)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    BOOL res = FALSE;
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL) {
+        /* we only grab this DR lock as the app
+         * XXX DRi#779: this can trigger asserts about no DR locks held during
+         * synchall.  we'll need a special marker for DR locks used as the
+         * app or sthg.
+         */
+        dr_recurlock_lock(arena->lock);
+        res = TRUE;
+    }
+    exit_client_code(drcontext);
+    return res;
+}
+
+static BOOL WINAPI
+replace_RtlUnlockHeap(HANDLE heap)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = heap_to_arena(heap);
+    BOOL res = FALSE;
+    LOG(2, "%s\n", __FUNCTION__);
+    if (arena != NULL && dr_recurlock_self_owns(arena->lock)) {
+        dr_recurlock_unlock(arena->lock);
+        res = TRUE;
+    }
+    exit_client_code(drcontext);
+    return res;
+}
+
+static BOOL WINAPI
+replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_RtlSetHeapInformation(HANDLE HeapHandle,
+                              HEAP_INFORMATION_CLASS HeapInformationClass,
+                              PVOID HeapInformation, SIZE_T HeapInformationLength)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_RtlQueryHeapInformation(HANDLE HeapHandle,
+                                HEAP_INFORMATION_CLASS HeapInformationClass,
+                                PVOID HeapInformation OPTIONAL,
+                                SIZE_T HeapInformationLength OPTIONAL,
+                                PSIZE_T ReturnLength OPTIONAL)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static SIZE_T WINAPI
+replace_RtlCompactHeap(HANDLE Heap, ULONG Flags)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static ULONG WINAPI
+replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
+{
+    ASSERT(false, "NYI");
+    return 0;
+}
+
+static BOOL WINAPI
+replace_RtlWalkHeap(HANDLE HeapHandle, PVOID HeapEntry)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_RtlEnumProcessHeaps(PVOID /*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
+                            PVOID lParam)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg0(void)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg1(void *arg1)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg2(void *arg1, void *arg2)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+static BOOL WINAPI
+replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
+{
+    ASSERT(false, "NYI");
+    return TRUE;
+}
+
+#endif /* WINDOWS */
 
 /***************************************************************************
  * drmem-facing interface
@@ -1156,29 +1542,103 @@ alloc_entering_replace_routine(app_pc pc)
     return drwrap_is_replaced_native(pc);
 }
 
-static void *
-func_interceptor(routine_type_t type, uint *stack_adjust OUT)
+static bool
+func_interceptor(routine_type_t type, void **routine OUT, uint *stack OUT)
 {
-    *stack_adjust = 0; /* no stdcall yet: that's i#893 for RTL */
+#ifdef WINDOWS
+    if (is_rtl_routine(type)) {
+        switch (type) {
+        case RTL_ROUTINE_MALLOC:
+            *routine = (void *) replace_RtlAllocateHeap;
+            *stack = sizeof(void*) * 3;
+            return true;
+        case RTL_ROUTINE_REALLOC:
+            *routine = (void *) replace_RtlReAllocateHeap;
+            *stack = sizeof(void*) * 4;
+            return true;
+        case RTL_ROUTINE_FREE:
+            *routine = (void *) replace_RtlFreeHeap;
+            *stack = sizeof(void*) * 3;
+            return true;
+        case RTL_ROUTINE_SIZE:
+            *routine = (void *) replace_RtlSizeHeap;
+            *stack = sizeof(void*) * 3;
+            return true;
+        case RTL_ROUTINE_CREATE:
+            *routine = (void *) replace_RtlCreateHeap;
+            *stack = sizeof(void*) * 6;
+            return true;
+        case RTL_ROUTINE_DESTROY:
+            *routine = (void *) replace_RtlDestroyHeap;
+            *stack = sizeof(void*) * 1;
+            return true;
+        case RTL_ROUTINE_LOCK:
+            *routine = (void *) replace_RtlLockHeap;
+            *stack = sizeof(void*) * 1;
+            return true;
+        case RTL_ROUTINE_UNLOCK:
+            *routine = (void *) replace_RtlUnlockHeap;
+            *stack = sizeof(void*) * 1;
+            return true;
+        case RTL_ROUTINE_HEAPINFO:
+            *routine = (void *) replace_RtlSetHeapInformation;
+            *stack = sizeof(void*) * 4;
+            return true;
+        /* XXX: NYI.  Warn or assert if we hit them? */
+        case RTL_ROUTINE_GETINFO:
+            *routine = (void *) replace_ignore_arg5;
+            *stack = sizeof(void*) * 5;
+            return true;
+        case RTL_ROUTINE_SETINFO:
+            *routine = (void *) replace_ignore_arg4;
+            *stack = sizeof(void*) * 4;
+            return true;
+        case RTL_ROUTINE_SETFLAGS:
+            *routine = (void *) replace_ignore_arg5;
+            *stack = sizeof(void*) * 5;
+            return true;
+        /* FIXME i#893: we need to split up RTL_ROUTINE_QUERY, along with replacing
+         * other routines not currently wrapped.  We don't need special
+         * fast sym lookup or to treat as heap layers so we should do drwrap
+         * calls from here rather than adding to alloc.c's list, and suppress
+         * alloc.c wrapping.
+         */
+        /* note that replacing malloc does NOT eliminate the need to
+         * wrap LdrShutdownProcess b/c it calls RtlpHeapIsLocked,
+         * unless we wanted to treat pre-us Heap header as addressable
+         */
+        default:
+            *routine = NULL; /* wrap it */
+            return true;
+        }
+    }
+#endif
+    /* nothing below here is stdcall */
+    *stack = 0;
     if (is_malloc_routine(type))
-        return (void *) replace_malloc;
+        *routine = (void *) replace_malloc;
     else if (is_calloc_routine(type))
-        return (void *) replace_calloc;
+        *routine = (void *) replace_calloc;
     else if (is_realloc_routine(type))
-        return (void *) replace_realloc;
+        *routine = (void *) replace_realloc;
     else if (is_free_routine(type))
-        return (void *) replace_free;
+        *routine = (void *) replace_free;
     else if (is_size_routine(type))
-        return (void *) replace_malloc_usable_size;
+        *routine = (void *) replace_malloc_usable_size;
     else
-        return NULL;
+        *routine = NULL; /* but go ahead and wrap */
+    return true;
 }
 
 static void
 malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
+    void *interceptor = NULL;
     uint stack_adjust = 0;
-    void *interceptor = func_interceptor(type, &stack_adjust);
+    if (!func_interceptor(type, &interceptor, &stack_adjust)) {
+        /* we'll replace it ourselves elsewhere: alloc.c should ignore it */
+        return;
+    }
     if (interceptor != NULL) {
         if (!drwrap_replace_native(pc, interceptor, stack_adjust, false))
             ASSERT(false, "failed to replace alloc routine");
@@ -1197,8 +1657,12 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
 static void
 malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
+    void *interceptor = NULL;
     uint stack_adjust = 0;
-    void *interceptor = func_interceptor(type, &stack_adjust);
+    if (!func_interceptor(type, &interceptor, &stack_adjust)) {
+        /* we'll un-replace it ourselves elsewhere: alloc.c should ignore it */
+        return;
+    }
     if (interceptor != NULL) {
         if (!drwrap_replace_native(pc, NULL, stack_adjust, true))
             ASSERT(false, "failed to un-replace alloc routine");
@@ -1247,8 +1711,8 @@ malloc_replace__is_pre_us(app_pc start)
 static app_pc
 malloc_replace__end(app_pc start)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_live_alloc(start, head))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    if (head == NULL || TEST(CHUNK_FREED, head->flags))
         return NULL;
     else
         return start + head->request_size;
@@ -1258,13 +1722,14 @@ malloc_replace__end(app_pc start)
 static ssize_t
 malloc_replace__size(app_pc start)
 {
-    chunk_header_t *head = header_from_ptr(start);
+    chunk_header_t *head;
     /* avoid crashing when drmem does neighbor discovery queries.
      * see comment under is_valid_chunk() on why TRY isn't up there.
      */
     ssize_t res = -1;
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        if (is_live_alloc(start, head))
+        head = header_from_ptr_include_pre_us(start);
+        if (head != NULL && !TEST(CHUNK_FREED, head->flags))
             res = head->request_size;
     }, { /* EXCEPT */
         res = -1;
@@ -1275,8 +1740,8 @@ malloc_replace__size(app_pc start)
 static ssize_t
 malloc_replace__size_invalid_only(app_pc start)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_valid_chunk(start, head) || !TEST(CHUNK_FREED, head->flags))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    if (head == NULL || !TEST(CHUNK_FREED, head->flags))
         return -1;
     else
         return head->request_size;
@@ -1285,8 +1750,11 @@ malloc_replace__size_invalid_only(app_pc start)
 static void *
 malloc_replace__get_client_data(app_pc start)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_valid_chunk(start, head))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    /* following alloc.c's lead and not failing on a freed chunk.
+     * ditto on routines below.  not sure if anyone relies on that though.
+     */
+    if (head == NULL)
         return NULL;
     return head->user_data;
 }
@@ -1294,8 +1762,8 @@ malloc_replace__get_client_data(app_pc start)
 static uint
 malloc_replace__get_client_flags(app_pc start)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_valid_chunk(start, head))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    if (head == NULL)
         return 0;
     return (head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS);
 }
@@ -1303,8 +1771,8 @@ malloc_replace__get_client_flags(app_pc start)
 static bool
 malloc_replace__set_client_flag(app_pc start, uint client_flag)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_valid_chunk(start, head))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    if (head == NULL)
         return false;
     head->flags |= (client_flag & MALLOC_POSSIBLE_CLIENT_FLAGS);
     return true;
@@ -1313,8 +1781,8 @@ malloc_replace__set_client_flag(app_pc start, uint client_flag)
 static bool
 malloc_replace__clear_client_flag(app_pc start, uint client_flag)
 {
-    chunk_header_t *head = header_from_ptr(start);
-    if (!is_valid_chunk(start, head))
+    chunk_header_t *head = header_from_ptr_include_pre_us(start);
+    if (head == NULL)
         return false;
     head->flags &= ~(client_flag & MALLOC_POSSIBLE_CLIENT_FLAGS);
     return true;
@@ -1377,10 +1845,11 @@ alloc_replace_init(void)
     LOG(2, "heap orig brk="PFX"\n", pre_us_brk);
 #else
     cur_arena = (arena_header_t *)
-        os_large_alloc(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE);
+        os_large_alloc(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, arena_page_prot(0));
     ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
     cur_arena->commit_end = (byte *)cur_arena + ARENA_INITIAL_COMMIT;
     cur_arena->reserve_end = (byte *)cur_arena + ARENA_INITIAL_SIZE;
+    process_heap = get_app_PEB()->ProcessHeap;
 #endif
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);
@@ -1407,14 +1876,10 @@ static bool
 free_arena_at_exit(byte *start, byte *end, uint flags
                    _IF_WINDOWS(HANDLE heap), void *iter_data)
 {
+    LOG(2, "%s: "PFX"-"PFX" "PIFX"\n", __FUNCTION__, start, end, flags);
     if (TEST(HEAP_ARENA, flags) && !TEST(HEAP_PRE_US, flags)) {
         arena_header_t *arena = (arena_header_t *) start;
-        if (TEST(ARENA_MAIN, arena->flags))
-            dr_recurlock_destroy(arena->lock);
-#ifdef LINUX
-        if (end != cur_brk)
-#endif
-            os_large_free(start, end - start);
+        arena_free(arena);
     }
     return true;
 }

@@ -111,6 +111,14 @@ typedef enum {
     HEAP_ROUTINE_COUNT,
 } routine_type_t;
 
+#ifdef WINDOWS
+static inline bool
+is_rtl_routine(routine_type_t type)
+{
+    return (type > HEAP_ROUTINE_LAST && type <= RTL_ROUTINE_LAST);
+}
+#endif
+
 static inline bool
 is_size_routine(routine_type_t type)
 {

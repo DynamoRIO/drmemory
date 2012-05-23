@@ -593,12 +593,7 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
 #define POSSIBLE_RTL_ROUTINE_NUM \
     (sizeof(possible_rtl_routines)/sizeof(possible_rtl_routines[0]))
 
-static bool
-is_rtl_routine(routine_type_t type)
-{
-    return (type > HEAP_ROUTINE_LAST && type <= RTL_ROUTINE_LAST);
-}
-#endif
+#endif /* WINDOWS */
 
 struct _alloc_routine_set_t;
 typedef struct _alloc_routine_set_t alloc_routine_set_t;
