@@ -576,7 +576,10 @@ OPTION_CLIENT_BOOL(internal, disable_crtdbg, true,
 
 OPTION_CLIENT_BOOL(internal, zero_stack, true,
                    "When detecting leaks but not keeping definedness info, zero old stack frames",
-                   "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values")
+                   "When detecting leaks but not keeping definedness info, zero old stack frames in order to avoid false negatives from stale stack values.  This is potentially unsafe.")
+OPTION_CLIENT_BOOL(internal, zero_retaddr, true,
+                   "Zero stale return addresses for better callstacks",
+                   "Zero stale return addresses for better callstacks.  When enabled, zeroing is performed in all modes of Dr. Memory.  This is theoretically potentially unsafe.  If your application does not work correctly because of this option please let us know.")
 
 #ifdef SYSCALL_DRIVER
 OPTION_CLIENT_BOOL(internal, syscall_driver, false,

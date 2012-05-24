@@ -4108,7 +4108,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */
     if ((options.pattern != 0 ||
          (options.shadowing && bi->eflags_defined)) &&
-        opc_is_jcc(instr_get_opcode(inst)))
+        opc_is_jcc(opc))
         goto instru_event_bb_insert_done;
     
     if (options.pattern != 0 && has_noignorable_mem) {
@@ -4160,6 +4160,10 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             }
         }
         bi->added_instru = true;
+    }
+    if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized &&
+        instr_is_return(inst)) {
+        dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
     }
 
     /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
