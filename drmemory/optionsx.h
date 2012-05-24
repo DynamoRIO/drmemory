@@ -601,3 +601,6 @@ OPTION_CLIENT_BOOL(internal, replace_malloc, false,
 OPTION_CLIENT_SCOPE(internal, pattern_max_2byte_faults, int, 0x1000, -1, INT_MAX,
                     "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only",
                     "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only. 0 means do not use 2-byte checks, and negative value means always use 2-byte checks")
+OPTION_CLIENT(internal, callstack_dump_stack, uint, 0, 0, 512*1024,
+              "How much of the stack to dump to the logfile",
+              "How much of the stack to dump to the logfile prior to each callstack walk.  Debug-build only.")

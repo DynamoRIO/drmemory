@@ -52,6 +52,9 @@ static const char *op_truncate_below;
 static const char *op_modname_hide;
 static const char *op_srcfile_prefix;
 static const char *op_srcfile_hide;
+#ifdef DEBUG
+static uint op_callstack_dump_stack;
+#endif
 
 #define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
 
@@ -275,7 +278,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_truncate_below,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix)
+               const char *callstack_srcfile_prefix
+               _IF_DEBUG(uint callstack_dump_stack))
 {
     tls_idx_callstack = drmgr_register_tls_field();
     ASSERT(tls_idx_callstack > -1, "unable to reserve TLS slot");
@@ -292,6 +296,9 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_modname_hide = callstack_modname_hide;
     op_srcfile_hide = callstack_srcfile_hide;
     op_srcfile_prefix = callstack_srcfile_prefix;
+#ifdef DEBUG
+    op_callstack_dump_stack = callstack_dump_stack;
+#endif
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
@@ -472,6 +479,31 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
     }
     dr_free_module_data(data);
     return res;
+}
+#endif
+
+#ifdef DEBUG
+static void
+dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t amount,
+               app_pc pc)
+{
+    byte *xsp = (byte *) mc->xsp;
+    LOG(1, "callstack stack pc="PFX" xsp="PFX" xbp="PFX":\n", pc, mc->xsp, mc->xbp);
+    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+        while (xsp < (byte *)mc->xsp + amount && xsp < pt->stack_lowest_frame) {
+            void *val = *(void **)xsp;
+            char buf[128];
+            size_t sofar = 0;
+            ssize_t len;
+            BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                     "\t"PFX"  "PFX, xsp, val);
+            IF_DRSYMS(print_symbol(val, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);)
+            LOG(1, "%s\n", buf);
+            xsp += sizeof(void*);
+        }
+    }, { /* EXCEPT */
+        LOG(1, "<"PFX "unreadable => aborting>\n", xsp);
+    });
 }
 #endif
 
@@ -1003,7 +1035,13 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
            (buf == NULL && sofar == NULL && pcs != NULL),
            "print_callstack: can't pass buf and pcs");
 
-    /* lock the buffer used by find_next_fp */
+#ifdef DEBUG
+    if (mc != NULL && op_callstack_dump_stack > 0)
+        dump_app_stack(drcontext, pt, mc, op_callstack_dump_stack,
+                       (pcs == NULL ? NULL : PCS_FRAME_LOC(pcs, 0).addr));
+#endif
+
+   /* lock the buffer used by find_next_fp */
     if (buf != NULL)
         dr_mutex_lock(page_buf_lock);
 

@@ -29,6 +29,7 @@
 
 #include "dr_api.h"
 #include "crypto.h"
+#include "utils.h"
 
 /****************************************************************************
  * Application locations
@@ -192,7 +193,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *frame_truncate_below,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix);
+               const char *callstack_srcfile_prefix
+               _IF_DEBUG(uint callstack_dump_stack));
 
 void
 callstack_exit(void);

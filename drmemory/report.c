@@ -1258,7 +1258,7 @@ report_init(void)
 #else
                    NULL, NULL, NULL, NULL
 #endif
-                   );
+                   _IF_DEBUG(options.callstack_dump_stack));
 
 #ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();
