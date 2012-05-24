@@ -36,6 +36,10 @@
 
 /* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8
+#ifdef WINDOWS
+/* i#892: the pad size read from malloc chunk header includes the size of header */
+# define MALLOC_HEADER_SIZE     8
+#endif /* WINDOWS */
 
 typedef struct _alloc_options_t {
     bool track_allocs;

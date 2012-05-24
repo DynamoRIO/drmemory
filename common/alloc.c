@@ -1683,6 +1683,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
     ssize_t result;
     ushort pad_size;
     ssize_t req_size;
+    IF_DEBUG(byte delta);
 # ifdef X64
 #  error NYI
 # endif
@@ -1693,7 +1694,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
          * we know how to parse the header for correct padded size.
          */
         /* XXX i#789: need test on win7sp0 to check if we need skip sp0 too */
-        || running_on_Win7SP1_or_later() 
+        || running_on_Win7SP1_or_later()
 # endif
         ) {
         if (size_func == NULL ||
@@ -1721,10 +1722,18 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
             !safe_read((void *)(heap+HEAP_MAGIC_OFFS), sizeof(dw2), &dw2))
             ASSERT(false, "unable to access Rtl heap headers");
         pad_size = (ushort) (dw1 ^ dw2);
+        IF_DEBUG(delta = (byte)(dw2 & 0xff));
     } else {
         /* Rtl heap headers: blocksize/8 is 1st 16 bits of header */
+        IF_DEBUG(size_t dw2;)
         if (!safe_read((void *)(real_base-2*sizeof(size_t)), sizeof(pad_size), &pad_size))
             ASSERT(false, "unable to access Rtl heap headers");
+        ASSERT(safe_read((void *)(real_base - sizeof(size_t)), sizeof(dw2), &dw2),
+               "unable to access Rtl heap headers");
+        /* i#892-c#9: the requested size difference is in the 3rd byte of the 2nd
+         * header dword.
+         */
+        IF_DEBUG(delta = (byte)((dw2 >> 16) & 0xff));
     }
     if (!TEST(HEAP_ARENA, get_heap_region_flags(real_base)) &&
         /* There seem to be two extra heap header dwords, the first holding
@@ -1740,7 +1749,15 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
 # endif
         ASSERT(result - pad_size == req_size, "Rtl large heap invalid assumption");
     } else {
-        result = pad_size << 3;
+        /* i#892: the size (pad_size << 3) get from header includes the size of
+         * malloc header.
+         */
+        result = (pad_size << 3) - MALLOC_HEADER_SIZE;
+# ifdef TOOL_DR_MEMORY
+        /* FIXME i#363/i#789: some heap case we don't know how to read headers */
+        /* sanity check for the size difference between real and request */
+        ASSERT(delta >= MALLOC_HEADER_SIZE, "wrong size from header");
+# endif
         req_size = get_alloc_size(heap, real_base, routine);
         if (result < req_size || result - req_size > 64*1024) {
             /* FIXME i#363: some heap case we don't know how to read headers for.
@@ -1748,7 +1765,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
              * for now we bail.
              */
             result = ALIGN_FORWARD(req_size, MALLOC_CHUNK_ALIGNMENT);
-        }            
+        }
     }
     return result;
 #endif /* LINUX -> WINDOWS */
