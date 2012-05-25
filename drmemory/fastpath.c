@@ -1086,7 +1086,7 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
     } else
         pc = loc_to_pc(loc);
     nxt_pc = pc + inst_sz;
-    xl8_sharing_cnt = (uint) hashtable_lookup(&xl8_sharing_table, pc);
+    xl8_sharing_cnt = (uint)(ptr_uint_t) hashtable_lookup(&xl8_sharing_table, pc);
     if (xl8_sharing_cnt > 0) {
         STATS_INC(xl8_shared_slowpath_count);
         ASSERT(!opnd_is_null(memop), "error in xl8 sharing");
@@ -1102,7 +1102,8 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
              * repeatedly: only flush if it's actually due to addr sharing
              */
             hashtable_add_replace(&xl8_sharing_table, pc,
-                                  (void *) (2*options.share_xl8_max_slow));
+                                  (void *)(ptr_uint_t)
+                                  (2*options.share_xl8_max_slow));
             /* We don't need a synchronous flush: go w/ most performant.
              * dr_delay_flush_region() doesn't do any unlinking, so if in
              * a loop we'll repeatedly flush => performance problem!
@@ -1144,7 +1145,8 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
         } else {
             xl8_sharing_cnt++;
             /* We don't care about races: threshold is low enough we won't overflow */
-            hashtable_add_replace(&xl8_sharing_table, pc, (void *) xl8_sharing_cnt);
+            hashtable_add_replace(&xl8_sharing_table, pc,
+                                  (void *)(ptr_uint_t) xl8_sharing_cnt);
         }
     } else if (!translated && !opnd_is_null(memop)) {
         LOG(3, "slow_path_xl8_sharing: adding entry "PFX"\n", pc);
@@ -1240,7 +1242,8 @@ should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
     if (!should_share_addr_helper(cur))
         return false;
     /* Don't share if we had too many slowpaths in the past */
-    if ((uint) hashtable_lookup(&xl8_sharing_table, instr_get_app_pc(nxt)) >
+    if ((uint)(ptr_uint_t)
+        hashtable_lookup(&xl8_sharing_table, instr_get_app_pc(nxt)) >
         options.share_xl8_max_slow)
         return false;
     /* If the base+index are written to, do not share since no longer static.
@@ -1931,7 +1934,9 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
                 INSTR_CREATE_movzx(drcontext, opnd_create_reg(base), shadow_op));
         }
         mark_eflags_used(drcontext, bb, mi->bb);
-        disp += (int)
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_defined);
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_defined);
+        disp += (int)(ptr_int_t)
             ((sz == 1) ? shadow_byte_defined : shadow_word_defined);
         /* look up in series of 4 tables, one for each offset */
         PRE(bb, inst,
@@ -2394,6 +2399,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     reg_id_t reg1_8h = REG_NULL;
     reg_id_t reg2_8h = reg_32_to_8h(reg2);
     reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8(reg3);
+    uint disp;
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
     if (need_offs || zero_rest_of_offs)
         reg1_8h = reg_32_to_8h(reg1);
@@ -2484,9 +2490,11 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     /* Index into table: no collisions and no tag storage since full size */
     /* Storing displacement, so add table result to app addr */
+    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
+    disp = (uint)(ptr_uint_t)shadow_table;
     PRE(bb, inst,
         INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), opnd_create_base_disp
-                         (REG_NULL, reg2, 4, (uint)shadow_table, OPSZ_PTR)));
+                         (REG_NULL, reg2, 4, disp, OPSZ_PTR)));
 
     if (get_value) {
         /* load value from shadow table to reg1 */
@@ -2883,12 +2891,15 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
 
             if (instr_get_opcode(inst) == OP_movsx) {
                 reg_id_t reg32 = reg_to_pointer_sized(opnd_get_reg(opreg1));
+                int disp;
                 PRE(bb, inst, INSTR_CREATE_movzx
                     (drcontext, opnd_create_reg(reg32), opreg1));
+                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_2_to_dword);
+                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_4_to_dword);
+                disp = (int)(ptr_int_t)((src_opsz == 1) ?
+                                        shadow_2_to_dword : shadow_4_to_dword);
                 PRE(bb, inst, INSTR_CREATE_mov_ld
-                    (drcontext, opreg1, OPND_CREATE_MEM8
-                     (reg32, (int)((src_opsz == 1) ?
-                                   shadow_2_to_dword : shadow_4_to_dword))));
+                    (drcontext, opreg1, OPND_CREATE_MEM8(reg32, disp)));
             }
 
             /* Write result */
@@ -4128,16 +4139,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             jcc_not_unaddr = OP_jne;
             mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
         } else if (mi->mem2mem && !mi->check_definedness) {
+            int disp;
             /* if we don't need the 3rd reg for the main mem lookup (i.e., word-sized
              * (and word-aligned) mem2mem), go ahead and propagate.
              * XXX i#164: add a reg "claimed" field to enforce us owning reg3
              */
             ASSERT(mi->memsz == 4, "only word-sized mem2mem prop supported");
             /* Check for unaddressability via table lookup */
+            ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_dword_is_addr_not_bit);
+            disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext,
-                                 OPND_CREATE_MEM8(mi->reg3.reg,
-                                                  (int)shadow_dword_is_addr_not_bit),
+                                 OPND_CREATE_MEM8(mi->reg3.reg, disp),
                                  OPND_CREATE_INT8(1)));
             mi->src[0].shadow = opnd_create_reg(mi->reg3_8);
             /* shouldn't be other srcs */
@@ -4485,14 +4498,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 INSTR_CREATE_cmp(drcontext, mi->src[0].shadow,
                                  OPND_CREATE_INT8((char)SHADOW_DWORD_UNADDRESSABLE)));
         } else if (options.loads_use_table && mi->memsz <= 4) {
+            int disp;
             /* Check for unaddressability via table lookup */
             if (mi->memsz < 4 && mi->need_offs) {
                 /* PR 503782: check just the bytes referenced.  We've zeroed the
                  * rest of mi->memoffs and in 8h position it's doing x256 already.
                  */
-                int disp = (int) ((mi->memsz == 1) ? shadow_byte_addr_not_bit :
-                                  shadow_word_addr_not_bit);
                 reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
+                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_addr_not_bit);
+                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_addr_not_bit);
+                disp = (int)(ptr_int_t) ((mi->memsz == 1) ?
+                                         shadow_byte_addr_not_bit :
+                                         shadow_word_addr_not_bit);
                 ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
@@ -4500,10 +4517,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                            1, disp, OPSZ_1),
                                      OPND_CREATE_INT8(1)));
             } else {
+                ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_dword_is_addr_not_bit);
+                disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
                 PRE(bb, inst,
                     INSTR_CREATE_cmp(drcontext,
-                                     OPND_CREATE_MEM8(mi->reg2.reg,
-                                                      (int)shadow_dword_is_addr_not_bit),
+                                     OPND_CREATE_MEM8(mi->reg2.reg, disp),
                                      OPND_CREATE_INT8(1)));
             }
         } else {
@@ -4611,9 +4629,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     /* PR 503782: check just the bytes referenced.  We've zeroed the
                      * rest of mi->memoffs and in 8h position it's doing x256 already.
                      */
-                    int disp = (int) ((mi->memsz == 1) ? shadow_byte_addr_not_bit :
-                                      shadow_word_addr_not_bit);
+                    int disp;
                     reg_id_t idx = reg_to_pointer_sized(opnd_get_reg(mi->memoffs));
+                    ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_byte_addr_not_bit);
+                    ASSERT_TRUNCATE(disp, int, (ptr_int_t)shadow_word_addr_not_bit);
+                    disp = (int)(ptr_int_t) ((mi->memsz == 1) ?
+                                             shadow_byte_addr_not_bit :
+                                             shadow_word_addr_not_bit);
                     ASSERT(mi->zero_rest_of_offs, "table lookup requires zeroing");
                     PRE(bb, inst,
                         INSTR_CREATE_cmp(drcontext,
@@ -4621,9 +4643,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                                1, disp, OPSZ_1),
                                          OPND_CREATE_INT8(1)));
                 } else {
+                    int disp;
+                    ASSERT_TRUNCATE(disp, int,
+                                    (ptr_int_t)shadow_dword_is_addr_not_bit);
+                    disp = (int)(ptr_int_t)shadow_dword_is_addr_not_bit;
                     PRE(bb, inst,
                         INSTR_CREATE_cmp(drcontext, OPND_CREATE_MEM8
-                                         (scratch, (int)shadow_dword_is_addr_not_bit),
+                                         (scratch, disp),
                                          OPND_CREATE_INT8(1)));
                 }
                 /* we only check for 1 unaddr shadow so only check if haven't already */
@@ -4876,12 +4902,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     PRE(bb, inst, fastpath_restore);
 #ifdef STATISTICS
     if (options.statistics) {
+        int disp;
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)&push4_fastpath);
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)&pop4_fastpath);
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)&write4_fastpath);
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)&read4_fastpath);
+        disp = (int)(ptr_int_t)(mi->pushpop ?
+                                (mi->store ? &push4_fastpath  : &pop4_fastpath) :
+                                (mi->store ? &write4_fastpath : &read4_fastpath));
         PRE(bb, inst,
-            INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32
-                             (REG_NULL, (int)(mi->pushpop ? (mi->store ? &push4_fastpath :
-                                                             &pop4_fastpath) :
-                                              (mi->store ? &write4_fastpath :
-                                               &read4_fastpath)))));
+            INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32(REG_NULL, disp)));
         mark_eflags_used(drcontext, bb, mi->bb);
     }
 #endif

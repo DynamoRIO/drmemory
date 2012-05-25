@@ -67,6 +67,26 @@ uint alloc_stack_count;
 app_pc addr_RtlLeaveCrit; /* for i#689 */
 #endif
 
+#ifdef X64
+# define Xax Rax
+# define Xbx Rbx
+# define Xcx Rcx
+# define Xdx Rdx
+# define Xsp Rsp
+# define Xbp Rbp
+# define Xsi Rsi
+# define Xdi Rdi
+#else
+# define Xax Eax
+# define Xbx Ebx
+# define Xcx Ecx
+# define Xdx Edx
+# define Xsp Esp
+# define Xbp Ebp
+# define Xsi Esi
+# define Xdi Edi
+#endif
+
 /***************************************************************************
  * DELAYED-FREE LIST
  */
@@ -1085,7 +1105,7 @@ client_handle_cbret(void *drcontext)
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);
-    sp = (byte *) mc.esp;
+    sp = (byte *) mc.xsp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
         sp, pt->pre_callback_esp);
     for (; sp < pt->pre_callback_esp; sp++)
@@ -1107,7 +1127,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
      * on the same thread stack.  FIXME: check those assumptions by checking
      * default stack bounds.
      */
-    app_pc sp = (app_pc) mc->esp;
+    app_pc sp = (app_pc) mc->xsp;
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
@@ -1126,7 +1146,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
             sp += 4; /* 4 bytes map to one so skip to next */
         else
             sp++;
-        if (sp - (byte *) mc->esp >= TYPICAL_STACK_MIN_SIZE) {
+        if (sp - (byte *) mc->xsp >= TYPICAL_STACK_MIN_SIZE) {
             ASSERT(false, "kernel-placed data on stack too large: error?");
             break; /* abort */
         }
@@ -1134,7 +1154,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
     
     LOG(2, "Ki routine "PFX": marked stack "PFX"-"PFX" as defined\n",
-        pc, mc->esp, sp);
+        pc, mc->xsp, sp);
 
     /* We do want to set the parent's for callback, so tls field is correct
      * since this is prior to client_handle_callback()
@@ -1181,36 +1201,36 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
         if (cxt != NULL) {
             /* FIXME: what if the syscall fails? */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
-                register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Esp));
+                register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Xsp));
 # ifndef X64
-                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
+                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Xbp));
 # endif
             }
             if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt->ContextFlags)) {
-                register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Eax));
-                register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Ecx));
-                register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Edx));
-                register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Ebx));
+                register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Xax));
+                register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Xcx));
+                register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Xdx));
+                register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Xbx));
 # ifdef X64
-                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Ebp));
+                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Xbp));
 # endif
-                register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Esi));
-                register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Edi));
+                register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Xsi));
+                register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Xdi));
             }
             /* Mark stack AFTER reading cxt since cxt may be on stack! */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
-                if (cxt->Esp < mc.esp) {
-                    if (mc.esp - cxt->Esp < options.stack_swap_threshold) {
-                        shadow_set_range((byte *) cxt->Esp, (byte *) mc.esp,
+                if (cxt->Xsp < mc.xsp) {
+                    if (mc.xsp - cxt->Xsp < options.stack_swap_threshold) {
+                        shadow_set_range((byte *) cxt->Xsp, (byte *) mc.xsp,
                                          SHADOW_UNDEFINED);
                         LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
-                            cxt->Esp, mc.esp);
+                            cxt->Xsp, mc.xsp);
                     }
-                } else if (cxt->Esp - mc.esp < options.stack_swap_threshold) {
-                    shadow_set_range((byte *) mc.esp, (byte *) cxt->Esp,
+                } else if (cxt->Xsp - mc.xsp < options.stack_swap_threshold) {
+                    shadow_set_range((byte *) mc.xsp, (byte *) cxt->Xsp,
                                      SHADOW_UNADDRESSABLE);
                     LOG(2, "NtContinue: marked stack "PFX"-"PFX" as unaddressable\n",
-                        mc.esp, cxt->Esp);
+                        mc.xsp, cxt->Xsp);
                 }
             }
         }

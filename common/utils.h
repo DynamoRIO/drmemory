@@ -49,7 +49,7 @@
 
 #ifdef X64
 # define IF_X64(x) x
-# define IF_X86_32(x) x
+# define IF_X86_32(x)
 #else
 # define IF_X64(x) 
 # define IF_X86_32(x) x
@@ -141,6 +141,24 @@
 #define sscanf  DO_NOT_USE_sscanf_directly_see_issue_344
 
 #define INVALID_THREAD_ID 0
+
+#define ASSERT_NOT_IMPLEMENTED() ASSERT(false, "Not Yet Implemented")
+
+#define CHECK_TRUNCATE_RANGE_uint(val)   ((val) >= 0 && (val) <= UINT_MAX)
+#define CHECK_TRUNCATE_RANGE_int(val)    ((val) <= INT_MAX && ((int64)(val)) >= INT_MIN)
+#ifdef WINDOWS
+# define CHECK_TRUNCATE_RANGE_ULONG(val) CHECK_TRUNCATE_RANGE_uint(val)
+#endif
+#define ASSERT_TRUNCATE_TYPE(var, type) ASSERT(sizeof(var) == sizeof(type), \
+                                               "mismatch "#var" and "#type)
+/* check no precision lose on typecast from val to var.
+ * var = (type) val; should always be preceded by a call to ASSERT_TRUNCATE
+ */
+#define ASSERT_TRUNCATE(var, type, val) do {        \
+    ASSERT_TRUNCATE_TYPE(var, type);                \
+    ASSERT(CHECK_TRUNCATE_RANGE_##type(val),        \
+           "truncating value to ("#type")"#var);    \
+} while (0)
 
 /* globals that affect NOTIFY* and *LOG* macros */
 extern bool op_print_stderr;

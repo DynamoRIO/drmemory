@@ -349,10 +349,10 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
 void
 print_mcontext(file_t f, dr_mcontext_t *mc)
 {
-    dr_fprintf(f, "\teax="PFX", ebx="PFX", ecx="PFX", edx="PFX"\n"
-               "\tesi="PFX", edi="PFX", ebp="PFX", esp="PFX"\n",
-               mc->eax, mc->ebx, mc->ecx, mc->edx,
-               mc->esi, mc->edi, mc->ebp, mc->esp);
+    dr_fprintf(f, "\txax="PFX", xbx="PFX", xcx="PFX", xdx="PFX"\n"
+               "\txsi="PFX", xdi="PFX", xbp="PFX", xsp="PFX"\n",
+               mc->xax, mc->xbx, mc->xcx, mc->xdx,
+               mc->xsi, mc->xdi, mc->xbp, mc->xsp);
 }
 #endif
 
@@ -696,7 +696,11 @@ GET_NTDLL(NtFreeVirtualMemory, (IN HANDLE ProcessHandle,
 TEB *
 get_TEB(void)
 {
+#ifdef X64
+    return (TEB *) __readgsqword(offsetof(TEB, Self));
+#else
     return (TEB *) __readfsdword(offsetof(TEB, Self));
+#endif
 }
 
 TEB *
@@ -1003,7 +1007,9 @@ bool
 virtual_alloc(void **base, size_t size, uint memtype, uint prot)
 {
     NTSTATUS res;
-    SIZE_T actual_size = size;
+    ULONG actual_size;
+    ASSERT_TRUNCATE(actual_size, ULONG, size);
+    actual_size = (ULONG)size;
     ASSERT(base != NULL && ALIGNED(*base, PAGE_SIZE), "base not page-aligned");
     res = NtAllocateVirtualMemory(NT_CURRENT_PROCESS, base, 0, &actual_size,
                                   memtype, prot);
@@ -1015,7 +1021,7 @@ bool
 virtual_free(void *base)
 {
     NTSTATUS res;
-    SIZE_T size = 0; /* must be 0 for MEM_RELEASE */
+    ULONG size = 0; /* must be 0 for MEM_RELEASE */
     res = NtFreeVirtualMemory(NT_CURRENT_PROCESS, &base, &size, MEM_RELEASE);
     LOG(2, "%s => "PIFX"\n", __FUNCTION__, res);
     return NT_SUCCESS(res);
@@ -1034,7 +1040,7 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 {
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
-    __asm("pushl %"ASM_SYSARG1);
+    __asm("push %"ASM_SYSARG1);
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1042,7 +1048,7 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     __asm("int $0x80");
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
-    __asm("popl %"ASM_SYSARG1);
+    __asm("pop %"ASM_SYSARG1);
     return res;
 }
 
@@ -1052,9 +1058,11 @@ raw_syscall_2args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2)
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
-    ASSERT(false, "NYI");
-# endif
+    __asm("push %"ASM_SYSARG2);
+    __asm("push %"ASM_SYSARG1);
+# else
     __asm("pusha");
+# endif
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1063,7 +1071,12 @@ raw_syscall_2args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2)
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     __asm("int $0x80");
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+# ifdef X64
+    __asm("pop %"ASM_SYSARG1);
+    __asm("pop %"ASM_SYSARG2);
+# else
     __asm("popa");
+# endif
     return res;
 }
 
@@ -1074,9 +1087,13 @@ raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
-    ASSERT(false, "NYI");
-# endif
+    __asm("push %"ASM_SYSARG4);
+    __asm("push %"ASM_SYSARG3);
+    __asm("push %"ASM_SYSARG2);
+    __asm("push %"ASM_SYSARG1);
+# else
     __asm("pusha");
+# endif
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1087,7 +1104,14 @@ raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     __asm("int $0x80");
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+# ifdef X64
+    __asm("pop %"ASM_SYSARG1);
+    __asm("pop %"ASM_SYSARG2);
+    __asm("pop %"ASM_SYSARG3);
+    __asm("pop %"ASM_SYSARG4);
+# else
     __asm("popa");
+#endif
     return res;
 }
 
@@ -1098,9 +1122,14 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
-    ASSERT(false, "NYI");
-# endif
+    __asm("push %"ASM_SYSARG5);
+    __asm("push %"ASM_SYSARG4);
+    __asm("push %"ASM_SYSARG3);
+    __asm("push %"ASM_SYSARG2);
+    __asm("push %"ASM_SYSARG1);
+# else
     __asm("pusha");
+# endif
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1112,7 +1141,15 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     __asm("int $0x80");
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+# ifdef X64
+    __asm("pop %"ASM_SYSARG1);
+    __asm("pop %"ASM_SYSARG2);
+    __asm("pop %"ASM_SYSARG3);
+    __asm("pop %"ASM_SYSARG4);
+    __asm("pop %"ASM_SYSARG5);
+# else
     __asm("popa");
+# endif
     return res;
 }
 
@@ -1123,9 +1160,14 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
-    ASSERT(false, "NYI");
-# endif
+    __asm("push %"ASM_SYSARG5);
+    __asm("push %"ASM_SYSARG4);
+    __asm("push %"ASM_SYSARG3);
+    __asm("push %"ASM_SYSARG2);
+    __asm("push %"ASM_SYSARG1);
+#else
     __asm("pusha");
+#endif
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1135,15 +1177,23 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
     __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    /* arg6 is ebp and the params are de-refed via ebp.
+    /* arg6 is ebp and the params are de-refed via ebp in 32-bit.
      * XXX: fragile b/c could change in optimized build
      */
-    __asm("push %ebp");
+    __asm("push %"ASM_SYSARG6);
     __asm("mov %0, %%"ASM_SYSARG6 : : "g"(arg6));
     __asm("int $0x80");
-    __asm("pop %ebp");
+    __asm("pop %"ASM_SYSARG6);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
+#ifdef X64
+    __asm("pop %"ASM_SYSARG1);
+    __asm("pop %"ASM_SYSARG2);
+    __asm("pop %"ASM_SYSARG3);
+    __asm("pop %"ASM_SYSARG4);
+    __asm("pop %"ASM_SYSARG5);
+#else
     __asm("popa");
+#endif
     return res;
 }
 #endif
@@ -1181,7 +1231,10 @@ static void
 heap_usage_inc(heapstat_t type, size_t size)
 {
     uint usage;
-    ATOMIC_ADD32(heap_usage[type], size);
+    uint delta;
+    ASSERT_TRUNCATE(delta, uint, size);
+    delta = (uint)size;
+    ATOMIC_ADD32(heap_usage[type], delta);
     /* racy: if a problem in practice we can switch to per-thread stats */
     usage = heap_usage[type];
     if (usage > heap_max[type])
@@ -1192,7 +1245,10 @@ heap_usage_inc(heapstat_t type, size_t size)
 static void
 heap_usage_dec(heapstat_t type, size_t size)
 {
-    ATOMIC_ADD32(heap_usage[type], -(ssize_t)size);
+    int delta;
+    ASSERT_TRUNCATE(delta, int, size);
+    delta = (int)size;
+    ATOMIC_ADD32(heap_usage[type], -delta);
     ATOMIC_DEC32(heap_count[type]);
 }
 

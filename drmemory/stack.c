@@ -335,8 +335,8 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
     STATS_INC(adjust_esp_executions);
     dr_get_mcontext(drcontext, &mc);
     if (type == ESP_ADJUST_ABSOLUTE) {
-        LOG(3, "esp adjust absolute esp="PFX" => "PFX"\n", mc.esp, val);
-        delta = val - mc.esp;
+        LOG(3, "esp adjust absolute esp="PFX" => "PFX"\n", mc.xsp, val);
+        delta = val - mc.xsp;
         /* Treat as a stack swap (vs ebp->esp, etc.) if a large change */
         if ((delta > options.stack_swap_threshold ||
              delta < -options.stack_swap_threshold) &&
@@ -345,9 +345,9 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
             return;
         }
     } else if (type == ESP_ADJUST_AND) {
-        ptr_int_t newval = mc.esp & val;
-        delta = newval - mc.esp;
-        LOG(3, "esp adjust and esp="PFX" delta=%d\n", mc.esp, delta);
+        ptr_int_t newval = mc.xsp & val;
+        delta = newval - mc.xsp;
+        LOG(3, "esp adjust and esp="PFX" delta=%d\n", mc.xsp, delta);
         if ((delta > options.stack_swap_threshold ||
              delta < -options.stack_swap_threshold) &&
             check_stack_swap((byte *)mc.xsp, (byte *)newval)) {
@@ -364,8 +364,8 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
                 delta);
         }
         if (type == ESP_ADJUST_RET_IMMED)
-            mc.esp += 4; /* pop of retaddr happens first */
-        LOG(3, "esp adjust relative esp="PFX" delta=%d\n", mc.esp, delta);
+            mc.xsp += 4; /* pop of retaddr happens first */
+        LOG(3, "esp adjust relative esp="PFX" delta=%d\n", mc.xsp, delta);
     }
     if (delta != 0) {
         if (!shadow_xsp) {
@@ -374,11 +374,11 @@ handle_esp_adjust(esp_adjust_t type, reg_t val/*either relative delta, or absolu
                  * pointers from misleading our leak scan (PR 520916).
                  * yes, I realize it may not be perfectly transparent.
                  */
-                memset((app_pc)(mc.esp + delta), 0, -delta);
+                memset((app_pc)(mc.xsp + delta), 0, -delta);
             }
         } else {
-            shadow_set_range((app_pc) (delta > 0 ? mc.esp : (mc.esp + delta)),
-                             (app_pc) (delta > 0 ? (mc.esp + delta) : mc.esp),
+            shadow_set_range((app_pc) (delta > 0 ? mc.xsp : (mc.xsp + delta)),
+                             (app_pc) (delta > 0 ? (mc.xsp + delta) : mc.xsp),
                              delta > 0 ? SHADOW_UNADDRESSABLE : SHADOW_UNDEFINED);
         }
     }
@@ -835,11 +835,13 @@ insert_zeroing_loop(void *drcontext, instrlist_t *bb, instr_t *inst,
 #ifdef STATISTICS
         if (options.statistics) {
             instr_t *nostat = INSTR_CREATE_label(drcontext);
+            int disp;
             PRE(bb, inst,
                 INSTR_CREATE_jcc(drcontext, OP_jb_short, opnd_create_instr(nostat)));
+            ASSERT_TRUNCATE(disp, int, (ptr_int_t)&zero_loop_aborts_thresh);
+            disp = (int)(ptr_int_t)&zero_loop_aborts_thresh;
             PRE(bb, inst,
-                INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32
-                                 (REG_NULL, (int)&zero_loop_aborts_thresh)));
+                INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32(REG_NULL, disp)));
             PRE(bb, inst,
                 INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(retaddr)));
             PRE(bb, inst, nostat);
@@ -1534,9 +1536,11 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     PRE(bb, NULL, loop_done);
 #ifdef STATISTICS
     if (options.statistics) {
+        int disp;
+        ASSERT_TRUNCATE(disp, int, (ptr_int_t)&adjust_esp_fastpath);
+        disp = (int)(ptr_int_t)&adjust_esp_fastpath;
         PRE(bb, NULL,
-            INSTR_CREATE_inc(drcontext,
-                             OPND_CREATE_MEM32(REG_NULL, (int)&adjust_esp_fastpath)));
+            INSTR_CREATE_inc(drcontext, OPND_CREATE_MEM32(REG_NULL, disp)));
     }
 #endif
     PRE(bb, NULL, INSTR_CREATE_jmp_short(drcontext, opnd_create_instr(restore)));

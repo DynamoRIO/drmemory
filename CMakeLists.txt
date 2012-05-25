@@ -251,15 +251,20 @@ if (WIN32)
   endif (OFF)
 endif (WIN32)
 
-# Dr. Memory only supports 32-bit today
-set(SUPPORT_64BIT OFF)
+# i#889: Dr. Memory pattern mode supports 64-bit
+# FIXME i#111, i#217: 64-bit is only supported in pattern mode
+set(SUPPORT_64BIT ON)
 if (CMAKE_C_SIZEOF_DATA_PTR EQUAL 8 OR CMAKE_CXX_SIZEOF_DATA_PTR EQUAL 8)
   if (NOT SUPPORT_64BIT)
     message(FATAL_ERROR "64-bit not supported (on Linux, set CFLAGS=-m32 CXXFLAGS=-m32)")
   endif (NOT SUPPORT_64BIT)
   set(X64 ON)
+  set(LIB_ARCH "lib64")
+  set(BIN_ARCH "bin64")
 else()
   set(X64 OFF)
+  set(LIB_ARCH "lib32")
+  set(BIN_ARCH "bin32")
 endif ()
 
 if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
@@ -437,13 +442,8 @@ if (USE_DRSYMS)
     set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin")
   endif (X64)
 else (USE_DRSYMS)
-  if (X64)
-    set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin64")
-    set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin64")
-  else (X64)
-    set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin32")
-    set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin32")
-  endif (X64)
+  set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/${BIN_ARCH}")
+  set(BUILD_BIN "${BUILD_BIN_PREFIX}/${BIN_ARCH}")
 endif (USE_DRSYMS)
 if (DEBUG_BUILD)
   set(build_type "debug")
@@ -554,12 +554,12 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
     set(LIB_EXT "dll")
     set(LIB_PFX "")
   endif (UNIX)
-  if (EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drwrap.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drutil.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}")
+  if (EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drwrap.${LIB_EXT}" OR
+      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drutil.${LIB_EXT}" OR
+      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}")
     message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic extensions: please re-build with static extension libraries")
   endif ()
-  if (STATIC_DRSYMS AND EXISTS "${DynamoRIO_DIR}/../ext/lib32/${build_type}/${LIB_PFX}drsyms.${LIB_EXT}")
+  if (STATIC_DRSYMS AND EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drsyms.${LIB_EXT}")
     message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic drsyms: please re-build with static drsyms")
   endif ()
 
@@ -836,7 +836,7 @@ else (UNIX)
 endif (UNIX)
 set_property(SOURCE common/alloc_unopt.c APPEND PROPERTY COMPILE_FLAGS "${DISABLE_OPTS}")
 
-# Though the swf file isn't an executable it is in bin32 because it isn't 
+# Though the swf file isn't an executable it is in ${BIN_ARCH} because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
 if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
   add_custom_target(vistool ALL DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf")
@@ -903,20 +903,20 @@ if (WIN32)
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll" COPYONLY)
   if (USER_SPECIFIED_DynamoRIO_DIR)
     # already built so we can copy at config time
-    configure_file("${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+    configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/drconfiglib.dll"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfiglib.dll" COPYONLY)
-    configure_file("${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+    configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll" COPYONLY)
     if (USE_DRSYMS)
-      configure_file("${DynamoRIO_DIR}/../bin32/drconfig.exe"
+      configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe" COPYONLY)
       if (NOT STATIC_DRSYMS)
         # symquery needs drsyms.dll in same dir
-        configure_file("${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
+        configure_file("${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
           "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drsyms.dll" COPYONLY)
       endif (NOT STATIC_DRSYMS)
       # symquery needs dynamorio.dll in same dir
-      configure_file("${DynamoRIO_DIR}/../lib32/${build_type}/dynamorio.dll"
+      configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
         "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dynamorio.dll" COPYONLY)
     endif (USE_DRSYMS)
   else (USER_SPECIFIED_DynamoRIO_DIR)
@@ -926,20 +926,20 @@ if (WIN32)
     add_custom_target(drconfiglib_copy_tgt ALL DEPENDS "${drconfiglib_copy}")
     add_custom_command(OUTPUT "${drconfiglib_copy}" DEPENDS drconfiglib
       COMMAND ${CMAKE_COMMAND}
-      ARGS -E copy "${DynamoRIO_DIR}/../lib32/drconfiglib.dll"
+      ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/drconfiglib.dll"
       "${drconfiglib_copy}" VERBATIM)
     set(drinjectlib_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drinjectlib.dll")
     add_custom_target(drinjectlib_copy_tgt ALL DEPENDS "${drinjectlib_copy}")
     add_custom_command(OUTPUT "${drinjectlib_copy}" DEPENDS drinjectlib
       COMMAND ${CMAKE_COMMAND}
-      ARGS -E copy "${DynamoRIO_DIR}/../lib32/drinjectlib.dll"
+      ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/drinjectlib.dll"
       "${drinjectlib_copy}" VERBATIM)
     if (USE_DRSYMS)
       set(drconfigexe_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig.exe")
       add_custom_target(drconfigexe_copy_tgt ALL DEPENDS "${drconfigexe_copy}")
       add_custom_command(OUTPUT "${drconfigexe_copy}" DEPENDS drconfig
         COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig.exe"
+        ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe"
         "${drconfigexe_copy}" VERBATIM)
       if (NOT STATIC_DRSYMS)
         # symquery needs drsyms.dll in same dir
@@ -947,7 +947,7 @@ if (WIN32)
         add_custom_target(drsymsdll_copy_tgt ALL DEPENDS "${drsymsdll_copy}")
         add_custom_command(OUTPUT "${drsymsdll_copy}" DEPENDS drsyms
           COMMAND ${CMAKE_COMMAND}
-          ARGS -E copy "${DynamoRIO_DIR}/../ext/lib32/${build_type}/drsyms.dll"
+          ARGS -E copy "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/drsyms.dll"
         "${drsymsdll_copy}" VERBATIM)
       endif (NOT STATIC_DRSYMS)
       # symquery needs dynamorio.dll in same dir
@@ -955,7 +955,7 @@ if (WIN32)
       add_custom_target(drdll_copy_tgt ALL DEPENDS "${drdll_copy}")
       add_custom_command(OUTPUT "${drdll_copy}" DEPENDS dynamorio
         COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy "${DynamoRIO_DIR}/../lib32/${build_type}/dynamorio.dll"
+        ARGS -E copy "${DynamoRIO_DIR}/../${LIB_ARCH}/${build_type}/dynamorio.dll"
         "${drdll_copy}" VERBATIM)
     endif (USE_DRSYMS)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
@@ -967,14 +967,14 @@ if (WIN32)
 else (WIN32)
   if (USER_SPECIFIED_DynamoRIO_DIR)
     # already built so we can copy at config time
-    configure_file("${DynamoRIO_DIR}/../bin32/drconfig"
+    configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig" COPYONLY)
   else (USER_SPECIFIED_DynamoRIO_DIR)
     set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig")
     add_custom_target(drconfig_copy_tgt ALL DEPENDS "${drconfig_copy}")
     add_custom_command(OUTPUT "${drconfig_copy}" 
       COMMAND ${CMAKE_COMMAND}
-      ARGS -E copy "${DynamoRIO_DIR}/../bin32/drconfig"
+      ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig"
       "${drconfig_copy}" VERBATIM)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (NOT TOOL_DR_HEAPSTAT)
@@ -1067,7 +1067,7 @@ else (USE_DRSYMS)
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 endif (USE_DRSYMS)
-# We put "helper" files inside bin32/ so only top-level script is visible
+# We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install(FILES
     ${script_aux}
@@ -1127,7 +1127,7 @@ if (NOT PERL_TO_EXE AND NOT USE_DRSYMS)
     # cmake -E create_symlink not supported
     if (USE_DRSYMS) # disabled by above: leaving for example of how to make .bat
       file(WRITE "${PROJECT_BINARY_DIR}/symlink/${toolname}.bat"
-        "\"%~dp0..\\drmemory\\bin32\\drmemory.exe\" %*\n")
+        "\"%~dp0..\\drmemory\\${BIN_ARCH}\\drmemory.exe\" %*\n")
     else (USE_DRSYMS)
       file(WRITE "${PROJECT_BINARY_DIR}/symlink/${toolname}.pl"
         "#!/usr/bin/perl\nuse File::Basename;\n(\$nm,\$mypath,\$sfx) = fileparse(\$0);\nexec(\"\$mypath/../${toolname}/bin/${toolname}.pl\", @ARGV);\n")
@@ -1176,27 +1176,27 @@ if (UNIX)
   # CPack seems to ignore empty dirs so add a README file
   install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/logs/README\" \"Default destination for DynamoRIO log files.\n\")")
   if (DEBUG_BUILD)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug\")")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)")
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
     # Include both .debug files.  These have version #s so we glob.
-    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/debug/\" COPYONLY)\nendforeach()")
+    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)\nendforeach()")
     # ext dir is currently empty but we need it to avoid drrun error (i#427)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/debug\")")
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug\")")
     # CPack seems to ignore empty dirs so add a README file
-    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/debug/README\" \"Currently empty.\n\")")
+    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README\" \"Currently empty.\n\")")
   else (DEBUG_BUILD)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release\")")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../lib32/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)")
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
     # Include both .debug files.  These have version #s so we glob.
     # Note that addr2line/gdb will still find the 1.x.debug since the name is
     # stored in the library.
-    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../lib32/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/lib32/release/\" COPYONLY)\nendforeach()")
+    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)\nendforeach()")
     # ext dir is currently empty but we need it to avoid drrun error (i#427)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/release\")")
+    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release\")")
     # CPack seems to ignore empty dirs so add a README file
-    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/lib32/release/README\" \"Currently empty.\n\")")
+    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README\" \"Currently empty.\n\")")
   endif (DEBUG_BUILD)
 endif (UNIX)
 
@@ -1212,21 +1212,21 @@ install(CODE "configure_file(\"${DR_LICENSE_DIR}/License.txt\" \"\${CMAKE_INSTAL
 install(CODE "configure_file(\"${DR_LICENSE_DIR}/ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
 # rather whan whole README, which talks about running samples, etc.:
 install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
-# on Windows we don't need all the bin32/ tools, and they take up space
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32\")")
+# on Windows we don't need all the ${BIN_ARCH}/ tools, and they take up space
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
 if (UNIX)
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drrun\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/nudgeunix\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
 else (UNIX)
   if (NOT USE_DRSYMS)
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drconfig.exe\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drinject.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drinject.exe\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drrun.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drrun.exe\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinject.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinject.exe\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun.exe\" COPYONLY)")
   endif (NOT USE_DRSYMS)
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drconfiglib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drconfiglib.dll\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/drinjectlib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/drinjectlib.dll\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/DRcontrol.exe\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../bin32/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/bin32/DRview.exe\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfiglib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfiglib.dll\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinjectlib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinjectlib.dll\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
 endif (UNIX)
 
 ###########################################################################
@@ -1293,9 +1293,9 @@ if (WIN32)
   # not supplying it.
   if (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # install to drmemory exports dir
-    install(DIRECTORY "${DynamoRIO_DIR}/../lib32"
+    install(DIRECTORY "${DynamoRIO_DIR}/../${LIB_ARCH}"
       DESTINATION "${DR_install_dir}")
-    install(DIRECTORY "${DynamoRIO_DIR}/../ext/lib32"
+    install(DIRECTORY "${DynamoRIO_DIR}/../ext/${LIB_ARCH}"
       DESTINATION "${DR_install_dir}/ext")
     install(DIRECTORY "${DynamoRIO_DIR}/../logs"
       DESTINATION "${DR_install_dir}")
@@ -1304,13 +1304,13 @@ if (WIN32)
     # so we only copy for package target
     if (DEBUG_BUILD)
       set(CPACK_INSTALLED_DIRECTORIES 
-        "${DynamoRIO_DIR}/../lib32;${DR_install_dir}/lib32"
-        "${DynamoRIO_DIR}/../ext/lib32;${DR_install_dir}/ext/lib32"
+        "${DynamoRIO_DIR}/../${LIB_ARCH};${DR_install_dir}/${LIB_ARCH}"
+        "${DynamoRIO_DIR}/../ext/${LIB_ARCH};${DR_install_dir}/ext/${LIB_ARCH}"
         "${DynamoRIO_DIR}/../logs;${DR_install_dir}/logs")
     else (DEBUG_BUILD)
       set(CPACK_INSTALLED_DIRECTORIES 
-        "${DynamoRIO_DIR}/../lib32/release;${DR_install_dir}/lib32/release"
-        "${DynamoRIO_DIR}/../ext/lib32/release;${DR_install_dir}/ext/lib32/release")
+        "${DynamoRIO_DIR}/../${LIB_ARCH}/release;${DR_install_dir}/${LIB_ARCH}/release"
+        "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/release;${DR_install_dir}/ext/${LIB_ARCH}/release")
     endif (DEBUG_BUILD)
   endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 endif (WIN32)

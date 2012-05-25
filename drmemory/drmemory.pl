@@ -76,15 +76,32 @@ if ($is_vmk || $vs_vmk) {
     &vmk_init() if ($is_vmk);
 }
 
-$perl2exe = (-e "$scriptpath/bin32/postprocess.exe") ? 1 : 0;
+$bin_arch = "bin32";
+$lib_arch = "lib32";
+if (`uname -m` =~ /x86_64/) {
+    # experimental support for 64-bit
+    for ($i = 0; $i <= $#ARGV; $i++) {
+        # not using map() b/c want to stop at --
+        last if ($ARGV[$i] =~ /^--$/);
+    }
+    $i++;
+    $progpath = &canonicalize_path($ARGV[$i]);
+    $progpath = &find_on_path($progpath) if (! -e $progpath);
+    if (`file $progpath 2>&1` =~ /64-bit/) {
+        $bin_arch = "bin64";
+        $lib_arch = "lib64";
+    }
+}
+
+$perl2exe = (-e "$scriptpath/$bin_arch/postprocess.exe") ? 1 : 0;
 # when using perl->exe we do not have a drmemory/bin subdir
 $drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
 # handle the top-level bin symlink being dereferenced (PR 527580)
-$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/bin32");
+$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/$bin_arch");
 $default_home = $symlink_deref ? "$scriptpath/../drmemory" : "$scriptpath/../";
 $default_home = abs_path($default_home);
 $default_home = &canonicalize_path($default_home);
-$bindir = "bin/bin32";
+$bindir = "bin/$bin_arch";
 
 $drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
 $drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
@@ -227,7 +244,7 @@ if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
 }
 $libdir = ($use_debug) ? "debug" : "release";
 
-if (!$use_dr_debug && ! -e "$dr_home/lib32/release/$drlibname") {
+if (!$use_dr_debug && ! -e "$dr_home/$lib_arch/release/$drlibname") {
     $use_dr_debug = 1;
     print "$prefix WARNING: using debug DynamoRIO since release not found\n"
         unless ($user_ops =~ /-quiet/);
@@ -247,8 +264,8 @@ if ($use_vmtree && !$skip_postprocess) {
 }
 
 if (!($aggregate || $just_postprocess)) {
-    die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"
-        if (! -e "$dr_home/lib32/$dr_libdir/$drlibname");
+    die "$drlibname not found in $dr_home/$lib_arch/$dr_libdir\n$usage\n"
+        if (! -e "$dr_home/$lib_arch/$dr_libdir/$drlibname");
 }
 # even for post-run symbols, need drmem lib for replaced routine symbols    
 die "$drmemlibname not found in $drmemory_home/$bindir/$libdir\n$usage\n"
@@ -292,7 +309,9 @@ if ($aggregate) {
     # real executable, so must prefix scripts with shell or perl.
     die "application $apppath not found\n$usage\n" unless (-e $apppath);
     # warn if 64-bit (i#33); swallow stderr if file cmd doesn't exist on Cygwin
-    die "64-bit applications not yet supported\n" if (`file $apppath 2>&1` =~ /64-bit/);
+    if (`file $apppath 2>&1` =~ /64-bit/) {
+        print "64-bit application experimental support\n";
+    }
     push @appcmdline, &vmk_app_pre_args(\@ARGV) if ($is_vmk);
     push @appcmdline, @ARGV;
 }
@@ -350,7 +369,7 @@ if ($persist_code) {
 if ($aggregate || $just_postprocess) {
     # nothing to deploy
 } elsif ($is_unix) {
-    my $drrun = "$dr_home/bin32/drrun";
+    my $drrun = "$dr_home/$bin_arch/drrun";
     if ($is_vmk) {
         $ops = &vmk_tool_ops($apppath, $ops);
         $def_dr_ops = &vmk_dr_ops($apppath, $def_dr_ops);
@@ -365,7 +384,7 @@ if ($aggregate || $just_postprocess) {
         splice @appcmdline, 1, 0, "$dr_debug" if ($dr_debug ne '');
     }
 } else {
-    $drrun = "$dr_home/bin32/drrun.exe";
+    $drrun = "$dr_home/$bin_arch/drrun.exe";
     
     # PR 485412: pass in addresses of statically-included libc routines for
     # replacement.  We only support this for native Windows since we'd need
@@ -444,7 +463,7 @@ if ($is_unix) {
     # use exec to keep the same pid (PR 459481)
     if ($ENV{'SHELL'} =~ /\/ash/) {
         # PR 470752: ash forks on exec!  so we bypass the drrun script
-        $ENV{'LD_LIBRARY_PATH'} = "$dr_home/lib32/$dr_libdir:$ENV{'LD_LIBRARY_PATH'}";
+        $ENV{'LD_LIBRARY_PATH'} = "$dr_home/$lib_arch/$dr_libdir:$ENV{'LD_LIBRARY_PATH'}";
         $ENV{'LD_PRELOAD'} = "libdynamorio.so libdrpreload.so";
         $ENV{'DYNAMORIO_LOGDIR'} = (-d "$drmemory_home/logs") ?
             "$drmemory_home/logs" : $ENV{'PWD'};
@@ -685,9 +704,9 @@ sub nudge($p) {
         my @cmd;
         # XXX: read drmemory.h to get NUDGE_LEAK_SCAN which we assume here is 0
         if ($is_unix) {
-            push @cmd, ("$dr_home/bin32/nudgeunix", "-client", "0", "0");
+            push @cmd, ("$dr_home/$bin_arch/nudgeunix", "-client", "0", "0");
         } else {
-            push @cmd, ("$dr_home/bin32/DRcontrol.exe", "-client_nudge", "0");
+            push @cmd, ("$dr_home/$bin_arch/DRcontrol.exe", "-client_nudge", "0");
         }
         push @cmd, ("-pid", "$pid");
         exec(@cmd); # array to handle spaces in paths

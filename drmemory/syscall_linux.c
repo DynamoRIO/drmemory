@@ -218,6 +218,7 @@ union ioctl_data {
     struct ipmi_recv recv;
 };
 
+#ifndef X64 /* FIXME i#889: not called in 64-bit */
 static size_t
 safe_strnlen(const char *str, size_t max)
 {
@@ -231,6 +232,7 @@ safe_strnlen(const char *str, size_t max)
         s++;
     return (s - str);
 }
+#endif
 
 /***************************************************************************
  * SYSTEM CALLS FOR LINUX
@@ -253,6 +255,10 @@ safe_strnlen(const char *str, size_t max)
 #define CSTRING (SYSARG_TYPE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 syscall_info_t syscall_info[] = {
+#ifdef X64 /* FIXME i#889: NYI for 64-bit */
+    {0,"read", OK, 3,{{1,-2,W},{1,RET,W},}},
+    {1,"write", OK, 3,{{1,-2,R},}},
+#else
     {0,"restart_syscall", OK, 0,},
     {1,"exit", OK, 1,},
     {2,"fork", OK, 0,},
@@ -597,6 +603,7 @@ syscall_info_t syscall_info[] = {
     {330,"dup3", OK, 3,},
     {331,"pipe2", OK, 2, /* FIXME 0,sizeof(int),U, */},
     {332,"inotify_init1", OK, 1,},
+#endif /* X64 */
 };
 #undef OK
 #undef UNKNOWN
@@ -1555,6 +1562,7 @@ handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 #undef MARK_WRITE
 }
 
+#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
 /* struct sockaddr is large but the meaningful portions vary by family */
 static void
 check_sockaddr(byte *ptr, socklen_t socklen, uint memcheck_flags, dr_mcontext_t *mc,
@@ -2233,6 +2241,7 @@ handle_post_ipc(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
         break;
     }
 }
+#endif
 
 /* handles both select and pselect6 */
 static void
@@ -2520,7 +2529,10 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
         break;
     }
     case SYS_fcntl:
-    case SYS_fcntl64: {
+#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
+    case SYS_fcntl64: 
+#endif
+        {
         /* 3rd arg is sometimes required.  Note that SYS_open has a similar
          * situation but we don't yet bother to special-case b/c glibc passes
          * a constant 0 as mode if no O_CREAT: yet fcntl glibc routine
@@ -2541,12 +2553,14 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     case SYS_ioctl: 
         handle_pre_ioctl(drcontext, &mc); 
         break;
+#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
     case SYS_socketcall: 
         handle_pre_socketcall(drcontext, pt, &mc); 
         break;
     case SYS_ipc: 
         handle_pre_ipc(drcontext, &mc); 
         break;
+#endif
     case SYS_select: /* fall-through */
     case SYS_pselect6:
         handle_pre_select(drcontext, &mc, sysnum);
@@ -2647,12 +2661,14 @@ os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     case SYS_ioctl: 
         handle_post_ioctl(drcontext, pt, &mc); 
         break;
+#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
     case SYS_socketcall: 
         handle_post_socketcall(drcontext, pt, &mc); 
         break;
     case SYS_ipc: 
         handle_post_ipc(drcontext, pt, &mc); 
         break;
+#endif
     case SYS_prctl:
         handle_post_prctl(drcontext, pt, &mc);
         break;
@@ -2709,7 +2725,8 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
 bool
 os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
 {
-    if (sysnum == SYS_mmap || sysnum == SYS_mmap2 || sysnum == SYS_mremap)
+    if (sysnum == SYS_mmap || IF_X86_32(sysnum == SYS_mmap2 ||)
+        sysnum == SYS_mremap)
         return (res >= 0 || res < -PAGE_SIZE);
     else
         return (res >= 0);

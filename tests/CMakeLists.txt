@@ -332,6 +332,9 @@ function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess 
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
+if (NOT X64)
+# FIXME i#111, i#217: 64-bit is only supported in pattern mode
+# Leaving indentation as-is to avoid code churn
 newtest(hello hello.c)
 newtest(malloc malloc.c)
 newtest(free free.c)
@@ -557,3 +560,9 @@ newtest_nobuild(nudge run_in_bg_tgt
 newtest(leakcycle leakcycle.cpp)
 
 add_subdirectory(app_suite)
+
+else (NOT X64)
+  # pattern mode testing.
+  newtest_ex(free.pattern free.c "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "addronly")
+  newtest(malloc.pattern malloc.c "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "")
+endif (NOT X64)

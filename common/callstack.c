@@ -1017,7 +1017,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_callstack));
     int num = num_frames_printed;   /* PR 475453 - wrong call stack depths */
     ssize_t len = 0;
-    ptr_uint_t *pc = (mc == NULL ? NULL : (ptr_uint_t *) mc->ebp);
+    ptr_uint_t *pc = (mc == NULL ? NULL : (ptr_uint_t *) mc->xbp);
     size_t prev_sofar = 0;
     struct {
         app_pc next_fp;
@@ -1047,21 +1047,21 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
 
     if (mc != NULL) {
         LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
-               mc->ebp, mc->esp,
-               (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->ebp));
+               mc->xbp, mc->xsp,
+               (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->xbp));
     }
-    if (mc != NULL && mc->esp != 0 &&
-        (!ALIGNED(mc->ebp, sizeof(void*)) ||
-         mc->ebp < mc->esp || 
-         mc->ebp - mc->esp > op_stack_swap_threshold ||
+    if (mc != NULL && mc->xsp != 0 &&
+        (!ALIGNED(mc->xbp, sizeof(void*)) ||
+         mc->xbp < mc->xsp || 
+         mc->xbp - mc->xsp > op_stack_swap_threshold ||
          (op_ignore_xbp != NULL &&
           op_ignore_xbp(drcontext, mc)) ||
          /* avoid stale fp,ra pair (i#640) */
          (op_is_dword_defined != NULL &&
-          (!op_is_dword_defined((byte*)mc->ebp) ||
-           !op_is_dword_defined((byte*)mc->ebp + sizeof(void*)))) ||
-         (mc->ebp != 0 &&
-          (!safe_read((byte *)mc->ebp, sizeof(appdata), &appdata) ||
+          (!op_is_dword_defined((byte*)mc->xbp) ||
+           !op_is_dword_defined((byte*)mc->xbp + sizeof(void*)))) ||
+         (mc->xbp != 0 &&
+          (!safe_read((byte *)mc->xbp, sizeof(appdata), &appdata) ||
            /* check the very first retaddr since ebp might point at
             * a misleading stack slot
             */
@@ -1071,7 +1071,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
         LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
-        pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->esp, true/*top frame*/,
+        pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
                                          &custom_retaddr);
         scanned = true;
     }
@@ -1082,7 +1082,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             break;
         }
         /* if we scanned and took the top dword as retaddr, don't use beyond-TOS as FP */
-        if ((reg_t)pc < mc->esp)
+        if ((reg_t)pc < mc->xsp)
             appdata.next_fp = NULL;
         if (custom_retaddr != NULL) {
             /* Support frames where there's a gap between ebp and retaddr (PR 475715) */
@@ -1134,7 +1134,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  * Start over w/ top of stack to avoid skipping a frame (i#521).
                  */
                 LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
-                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->esp, true/*top frame*/,
+                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
                                                  &custom_retaddr);
                 scanned = true;
                 first_iter = false; /* don't loop */

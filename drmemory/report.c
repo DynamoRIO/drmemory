@@ -1555,7 +1555,8 @@ report_thread_exit(void *drcontext)
         /* we don't assert that it existed b/c we may have removed earlier
          * if this thread hit an error
          */
-        hashtable_remove(&thread_table, (void *)dr_get_thread_id(drcontext));
+        hashtable_remove(&thread_table,
+                         (void *)(ptr_int_t)dr_get_thread_id(drcontext));
         dr_mutex_unlock(thread_table_lock);
     }
 
@@ -2661,7 +2662,7 @@ report_heap_region(bool add, app_pc start, app_pc end, dr_mcontext_t *mc)
         size_t bufsz;
         void *drcontext = dr_get_current_drcontext();
         tls_report_t *pt = (tls_report_t *)
-            (drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_report);
+            ((drcontext == NULL) ? NULL : drmgr_get_tls_field(drcontext, tls_idx_report));
         if (pt == NULL) {
             /* at init time no pt yet */
             bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
@@ -2727,7 +2728,7 @@ report_child_thread(void *drcontext, thread_id_t child)
              */
             packed_callstack_record(&pcs, &mc, NULL);
             dr_mutex_lock(thread_table_lock);
-            hashtable_add(&thread_table, (void *)child, (void *)pcs);
+            hashtable_add(&thread_table, (void *)(ptr_int_t)child, (void *)pcs);
             dr_mutex_unlock(thread_table_lock);
         }
     }
@@ -2740,7 +2741,8 @@ report_delayed_thread(thread_id_t tid)
     packed_callstack_t *pcs;
     ASSERT(options.show_threads && !options.show_all_threads, "incorrect usage");
     dr_mutex_lock(thread_table_lock);
-    pcs = (packed_callstack_t *) hashtable_lookup(&thread_table, (void *)tid);
+    pcs = (packed_callstack_t *)
+        hashtable_lookup(&thread_table, (void *)(ptr_int_t)tid);
     if (pcs != NULL) {
         void *drcontext = dr_get_current_drcontext();
         ssize_t len = 0;
@@ -2756,7 +2758,7 @@ report_delayed_thread(thread_id_t tid)
         print_buffer(LOGFILE_GET(drcontext), buf);
         global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
         /* we only need to report once */
-        hashtable_remove(&thread_table, (void *)tid);
+        hashtable_remove(&thread_table, (void *)(ptr_int_t)tid);
     } else if (tid == main_thread && !main_thread_printed) {
         report_main_thread();
         main_thread_printed = true;

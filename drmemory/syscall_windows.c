@@ -994,7 +994,7 @@ syscall_lookup(int num)
 static reg_t *
 get_sysparam_base(dr_mcontext_t *mc)
 {
-    reg_t *base = (reg_t *) mc->edx;
+    reg_t *base = (reg_t *) mc->xdx;
     if (is_using_sysenter())
         base += 2;
     return base;
@@ -1180,7 +1180,8 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
                       app_pc start, uint size)
 {
 #if !defined(_X86_) || defined(X64)
-# error CONTEXT read handler is not yet implemented on non-x86
+    ASSERT_NOT_IMPLEMENTED();
+    return true;
 #else /* defined(_X86_) */
     uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* The 'cxt' pointer will only be used for retrieving pointers

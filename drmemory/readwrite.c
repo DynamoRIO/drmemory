@@ -598,16 +598,16 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
             /* Use drcontext's shadow, not executing thread's shadow! (PR 475211) */
             ptr_uint_t regval;
             if (save->eflags_saved) {
-                IF_DEBUG(ptr_uint_t orig_flags = info->mcontext->eflags;)
+                IF_DEBUG(ptr_uint_t orig_flags = info->mcontext->xflags;)
                 uint sahf;
                 regval = get_thread_tls_value(drcontext, SPILL_SLOT_EFLAGS_EAX);
                 sahf = (regval & 0xff00) >> 8;
-                info->mcontext->eflags &= ~0xff;
-                info->mcontext->eflags |= sahf;
+                info->mcontext->xflags &= ~0xff;
+                info->mcontext->xflags |= sahf;
                 if (TEST(1, regval)) /* from "seto al" */
-                    info->mcontext->eflags |= EFLAGS_OF;
+                    info->mcontext->xflags |= EFLAGS_OF;
                 LOG(2, "translated eflags from "PFX" to "PFX"\n",
-                    orig_flags, info->mcontext->eflags);
+                    orig_flags, info->mcontext->xflags);
             }
             /* Restore whole-bb spilled registers (PR 489221).  Note that
              * now we're closer to being able to restore app state at any
@@ -1884,29 +1884,29 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     uint shadow_vals[4];
     int i;
     LOG(3, "medium_path movs4 "PFX" src="PFX" %d%d%d%d dst="PFX" %d%d%d%d\n",
-        loc_to_pc(loc), mc->esi,
-        shadow_get_byte((app_pc)mc->esi), shadow_get_byte((app_pc)mc->esi+1),
-        shadow_get_byte((app_pc)mc->esi+2), shadow_get_byte((app_pc)mc->esi+3),
-        mc->edi, shadow_get_byte((app_pc)mc->edi), shadow_get_byte((app_pc)mc->edi+1),
-        shadow_get_byte((app_pc)mc->edi+2), shadow_get_byte((app_pc)mc->edi+3));
+        loc_to_pc(loc), mc->xsi,
+        shadow_get_byte((app_pc)mc->xsi), shadow_get_byte((app_pc)mc->xsi+1),
+        shadow_get_byte((app_pc)mc->xsi+2), shadow_get_byte((app_pc)mc->xsi+3),
+        mc->xdi, shadow_get_byte((app_pc)mc->xdi), shadow_get_byte((app_pc)mc->xdi+1),
+        shadow_get_byte((app_pc)mc->xdi+2), shadow_get_byte((app_pc)mc->xdi+3));
 #ifdef STATISTICS
-    if (!ALIGNED(mc->esi, 4))
+    if (!ALIGNED(mc->xsi, 4))
         STATS_INC(movs4_src_unaligned);
-    if (!ALIGNED(mc->edi, 4))
+    if (!ALIGNED(mc->xdi, 4))
         STATS_INC(movs4_dst_unaligned);
-    if (shadow_get_byte((app_pc)mc->esi) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->esi+1) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->esi+2) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->esi+3) != SHADOW_DEFINED)
+    if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+1) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+2) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+3) != SHADOW_DEFINED)
         STATS_INC(movs4_src_undef);
 #endif
     STATS_INC(medpath_executions);
 
     if (!options.check_uninitialized) {
         if ((!options.check_alignment ||
-             (ALIGNED(mc->esi, 4) && ALIGNED(mc->edi, 4))) &&
-            shadow_get_byte((app_pc)mc->esi) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->edi) != SHADOW_UNADDRESSABLE) {
+             (ALIGNED(mc->xsi, 4) && ALIGNED(mc->xdi, 4))) &&
+            shadow_get_byte((app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
             STATS_INC(movs4_med_fast);
             return;
         }
@@ -1930,22 +1930,22 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     if (is_shadow_register_defined(get_shadow_register(REG_ESI)) &&
         is_shadow_register_defined(get_shadow_register(REG_EDI)) &&
         get_shadow_eflags() == SHADOW_DEFINED) {
-        uint src0 = shadow_get_byte((app_pc)mc->esi+0);
-        uint src1 = shadow_get_byte((app_pc)mc->esi+1);
-        uint src2 = shadow_get_byte((app_pc)mc->esi+2);
-        uint src3 = shadow_get_byte((app_pc)mc->esi+3);
+        uint src0 = shadow_get_byte((app_pc)mc->xsi+0);
+        uint src1 = shadow_get_byte((app_pc)mc->xsi+1);
+        uint src2 = shadow_get_byte((app_pc)mc->xsi+2);
+        uint src3 = shadow_get_byte((app_pc)mc->xsi+3);
         if ((src0 == SHADOW_DEFINED || src0 == SHADOW_UNDEFINED) &&
             (src1 == SHADOW_DEFINED || src1 == SHADOW_UNDEFINED) &&
             (src2 == SHADOW_DEFINED || src2 == SHADOW_UNDEFINED) &&
             (src3 == SHADOW_DEFINED || src3 == SHADOW_UNDEFINED) &&
-            shadow_get_byte((app_pc)mc->edi+0) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->edi+1) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->edi+2) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->edi+3) != SHADOW_UNADDRESSABLE) {
-            shadow_set_byte((app_pc)mc->edi+0, src0);
-            shadow_set_byte((app_pc)mc->edi+1, src1);
-            shadow_set_byte((app_pc)mc->edi+2, src2);
-            shadow_set_byte((app_pc)mc->edi+3, src3);
+            shadow_get_byte((app_pc)mc->xdi+0) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->xdi+1) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->xdi+2) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->xdi+3) != SHADOW_UNADDRESSABLE) {
+            shadow_set_byte((app_pc)mc->xdi+0, src0);
+            shadow_set_byte((app_pc)mc->xdi+1, src1);
+            shadow_set_byte((app_pc)mc->xdi+2, src2);
+            shadow_set_byte((app_pc)mc->xdi+3, src3);
             STATS_INC(movs4_med_fast);
             return;
         }
@@ -3311,7 +3311,7 @@ loc_to_print(app_loc_t *loc)
         return loc->u.addr.valid ? loc->u.addr.pc : NULL;
     } else {
         ASSERT(loc->type == APP_LOC_SYSCALL, "unknown type");
-        return (app_pc) loc->u.syscall.sysnum;
+        return (app_pc)(ptr_uint_t) loc->u.syscall.sysnum;
     }
 }
 
@@ -3353,8 +3353,8 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
                "no support yet for addr16 string operations!");
         if (opc == OP_rep_stos || opc == OP_rep_lods) {
             /* store from al/ax/eax into es:edi; load from es:esi into al/ax/eax */
-            get_stringop_range(opc == OP_rep_stos ? mc->edi : mc->esi,
-                               mc->ecx, mc->eflags, sz, &addr, &end);
+            get_stringop_range(opc == OP_rep_stos ? mc->xdi : mc->xsi,
+                               mc->xcx, mc->xflags, sz, &addr, &end);
             LOG(3, "rep %s "PFX"-"PFX"\n", opc == OP_rep_stos ? "stos" : "lods",
                 addr, end);
             flags |= (sz == 1 ? MEMREF_SINGLE_BYTE :
@@ -3362,7 +3362,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
             sz = end - addr;
         } else if (opc == OP_rep_movs) {
             /* move from ds:esi to es:edi */
-            LOG(3, "rep movs "PFX" "PFX" "PIFX"\n", mc->edi, mc->esi, mc->ecx);
+            LOG(3, "rep movs "PFX" "PFX" "PIFX"\n", mc->xdi, mc->xsi, mc->xcx);
             /* FIXME: if checking definedness of sources, really
              * should do read+write in lockstep, since an earlier
              * write could make a later read ok; for now we punt on
@@ -3372,18 +3372,24 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
              * but do nothing if undefined, and then go through dest copying
              * from source in lockstep.
              */
-            get_stringop_range(mc->esi, mc->ecx, mc->eflags, sz, &addr, &end);
+            get_stringop_range(mc->xsi, mc->xcx, mc->xflags, sz, &addr, &end);
             if (!TEST(MEMREF_WRITE, flags)) {
                 flags &= ~MEMREF_USE_VALUES;
             } else {
                 ASSERT(shadow_vals != NULL, "assuming have shadow if marked write");
                 flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
+#ifdef X64
+                ASSERT_NOT_IMPLEMENTED();
+#else
                 shadow_vals[0] = (uint) addr;
-                get_stringop_range(mc->edi, mc->ecx, mc->eflags, sz, &addr, &end);
+                get_stringop_range(mc->xdi, mc->xcx, mc->xflags, sz, &addr, &end);
                 if (TEST(MEMREF_CHECK_DEFINEDNESS, flags) &&
+                    /* i#889: a simple type cast for 64-bit build */
                     end > (app_pc)shadow_vals[0] &&
+                    /* i#889: a simple type cast for 64-bit build */
                     addr < ((app_pc)shadow_vals[0]) + (end - addr))
                     ELOG(0, "WARNING: rep movs overlap while checking definedness not fully supported!\n");
+#endif
             }
             sz = end - addr;
         } else if (opc == OP_rep_scas || opc == OP_repne_scas) {
@@ -3391,23 +3397,23 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
             /* we can't just do post-instr check since we want to warn of
              * unaddressable refs prior to their occurrence, so we emulate
              * FIXME: we aren't aggregating errors in adjacent bytes */
-            LOG(3, "rep scas @"PFX" "PFX" "PIFX"\n", loc_to_print(loc), mc->edi, mc->ecx);
-            while (mc->ecx != 0) { /* note the != instead of > */
+            LOG(3, "rep scas @"PFX" "PFX" "PIFX"\n", loc_to_print(loc), mc->xdi, mc->xcx);
+            while (mc->xcx != 0) { /* note the != instead of > */
                 uint val;
                 bool eq;
-                handle_mem_ref(flags, loc, (app_pc)mc->edi, sz, mc, shadow_vals);
+                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc, shadow_vals);
                 /* remember that our notion of unaddressable is not real so we have
                  * to check with the OS to see if this will fault
                  */
                 ASSERT(sz <= sizeof(uint), "internal error");
-                if (safe_read((void *)mc->edi, sz, &val)) {
+                if (safe_read((void *)mc->xdi, sz, &val)) {
                     /* Assume the real instr will fault here.
                      * FIXME: if the instr gets resumed our check won't re-execute! */
                     break; 
                 }
-                eq = stringop_equal(val, mc->eax, sz);
-                mc->edi += (TEST(EFLAGS_DF, mc->eflags) ? -1 : 1) * sz;
-                mc->ecx--;
+                eq = stringop_equal(val, mc->xax, sz);
+                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xcx--;
                 if ((opc == OP_rep_scas && !eq) ||
                     (opc == OP_repne_scas && eq))
                     break;
@@ -3419,26 +3425,26 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
             if (reg_overlap(opnd_get_base(opnd), REG_EDI))
                 return true; /* we check both when passed esi base */
             LOG(3, "rep cmps @"PFX" "PFX" "PFX" "PIFX"\n",
-                loc_to_print(loc), mc->edi, mc->esi, mc->ecx);
-            while (mc->ecx != 0) { /* note the != instead of > */
+                loc_to_print(loc), mc->xdi, mc->xsi, mc->xcx);
+            while (mc->xcx != 0) { /* note the != instead of > */
                 uint val1, val2;
                 bool eq;
-                handle_mem_ref(flags, loc, (app_pc)mc->esi, sz, mc, shadow_vals);
-                handle_mem_ref(flags, loc, (app_pc)mc->edi, sz, mc, shadow_vals);
+                handle_mem_ref(flags, loc, (app_pc)mc->xsi, sz, mc, shadow_vals);
+                handle_mem_ref(flags, loc, (app_pc)mc->xdi, sz, mc, shadow_vals);
                 /* remember that our notion of unaddressable is not real so we have
                  * to check with the OS to see if this will fault
                  */
                 ASSERT(sz <= sizeof(uint), "internal error");
-                if (!safe_read((void *)mc->esi, sz, &val1) ||
-                    !safe_read((void *)mc->edi, sz, &val2)) {
+                if (!safe_read((void *)mc->xsi, sz, &val1) ||
+                    !safe_read((void *)mc->xdi, sz, &val2)) {
                     /* Assume the real instr will fault here.
                      * FIXME: if the instr gets resumed our check won't re-execute! */
                     break; 
                 }
                 eq = stringop_equal(val1, val2, sz);
-                mc->edi += (TEST(EFLAGS_DF, mc->eflags) ? -1 : 1) * sz;
-                mc->esi += (TEST(EFLAGS_DF, mc->eflags) ? -1 : 1) * sz;
-                mc->ecx--;
+                mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xsi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
+                mc->xcx--;
                 if ((opc == OP_rep_cmps && !eq) ||
                     (opc == OP_repne_cmps && eq))
                     break;
@@ -3543,11 +3549,11 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                  */
                 bool addr_on_stack = false;
                 if (stack_base == NULL)
-                    stack_size = allocation_size((app_pc)mc->esp, &stack_base);
+                    stack_size = allocation_size((app_pc)mc->xsp, &stack_base);
                 LOG(4, "comparing %08x %08x %08x %08x\n",
-                    addr+i, stack_base, stack_base+stack_size, mc->esp);
+                    addr+i, stack_base, stack_base+stack_size, mc->xsp);
                 if (addr+i >= stack_base && addr+i < stack_base+stack_size &&
-                    addr+i < (app_pc)mc->esp)
+                    addr+i < (app_pc)mc->xsp)
                     addr_on_stack = true;
                 if (!check_unaddressable_exceptions(is_write, loc,
                                                     addr + i, sz, addr_on_stack, mc)) {
@@ -3660,7 +3666,11 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
             if (TEST(MEMREF_MOVS, flags)) {
                 ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
                 ASSERT(memref_idx(flags, i) == i, "internal movs error");
+#ifdef X64
+                ASSERT_NOT_IMPLEMENTED();
+#else
                 newval = shadow_get_byte(((app_pc)shadow_vals[0]) + i);
+#endif
             } else {
                 newval = TEST(MEMREF_USE_VALUES, flags) ?
                     shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED;

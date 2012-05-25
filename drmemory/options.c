@@ -121,7 +121,9 @@ option_error(const char *whichop, const char *msg)
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
             NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name,             \
-                             bool_string[(int)defval], short);          \
+                             bool_string[(ptr_int_t)defval], short);    \
+            ASSERT((ptr_int_t)defval == 0 || (ptr_int_t)defval == 1,    \
+                   "defval must be true/false");                        \
         } else if (TYPE_HAS_RANGE_##type)                               \
             NOTIFY_NO_PREFIX("  -%-28s [%6s]  %s"NL, #name" <int>", #defval, short); \
         else                                                            \
