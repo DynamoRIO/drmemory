@@ -167,6 +167,16 @@ obj_is_bitmap(HGDIOBJ obj)
     return ((ptr_uint_t)obj & GDI_HANDLE_TYPE_MASK) == GDI_OBJECT_TYPE_BITMAP;
 }
 
+static inline bool
+obj_is_drawing_object(HGDIOBJ obj)
+{
+    ptr_uint_t type = ((ptr_uint_t)obj & GDI_HANDLE_TYPE_MASK);
+    return (type == GDI_OBJECT_TYPE_BRUSH ||
+            type == GDI_OBJECT_TYPE_DIRECTDRAW ||
+            type == GDI_OBJECT_TYPE_PEN ||
+            type == GDI_OBJECT_TYPE_EXTPEN);
+}
+
 void
 gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_t *mc)
 {
@@ -242,9 +252,15 @@ gdicheck_obj_free(HANDLE obj, uint sysnum, dr_mcontext_t *mc)
         HDC hdc = hashtable_lookup(&selected_table, (void *)obj);
         if (hdc != NULL) {
             per_dc_t *pdc;
-            /* Check: an HGDIOBJ being deleted is selected in any DC */
-            gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
-                            "deleting an object "PFX" that is selected into DC", obj);
+            /* Check: an HGDIOBJ being deleted is selected in any DC
+             * While Petzold says not to delete any GDI object while it's selected,
+             * MSDN explicitly says it's only bad to delete a pen or brush (i#899).
+             */
+            if (obj_is_drawing_object(obj)) {
+                gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
+                                "deleting a drawing object "PFX
+                                " that is selected into DC", obj);
+            }
             /* XXX: could be a race: but threads aren't supposed to share GDI objs.
              * One solution is for hashtable_remove() to return the key.
              */

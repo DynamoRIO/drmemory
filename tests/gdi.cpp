@@ -155,7 +155,7 @@ test_DC_objdel(void)
     assert(mybm != NULL);
     orig = SelectObject(dupdc, mybm);
     assert(orig != NULL);
-    DeleteObject(mybm); // error raised
+    DeleteObject(mybm); // no error raised since not a drawing object (i#899)
     SelectObject(dupdc, orig);
     DeleteDC(dupdc);
     ReleaseDC(NULL, mydc);

@@ -59,26 +59,19 @@ system call NtUserCallOneParam.RELEASEDC
 thread_release
 gdi.cpp:83
 
-Error #8: WARNING: GDI usage error: deleting an object that is selected into DC
+Error #8: WARNING: GDI usage error: deleting a drawing object that is selected into DC
 test_DC_objdel
 gdi.cpp:148
 main
 gdi.cpp:210
 
-Error #9: WARNING: GDI usage error: deleting an object that is selected into DC
-system call NtGdiDeleteObjectApp
-test_DC_objdel
-gdi.cpp:158
-main
-gdi.cpp:210
-
-Error #10: WARNING: GDI usage error: same bitmap selected into two different DC's and
+Error #9: WARNING: GDI usage error: same bitmap selected into two different DC's and
 test_DC_bitmap
 gdi.cpp:179
 main
 gdi.cpp:212
 
-Error #11: WARNING: GDI usage error: DC that contains selected object being deleted
+Error #10: WARNING: GDI usage error: DC that contains selected object being deleted
 system call NtGdiDeleteObjectApp
 GDI32.dll!DeleteDC
 test_DC_bitmap
@@ -86,13 +79,13 @@ gdi.cpp:181
 main
 gdi.cpp:212
 
-Error #12: WARNING: GDI usage error: DC that contains selected object being deleted
+Error #11: WARNING: GDI usage error: DC that contains selected object being deleted
 test_DC_select
 gdi.cpp:198
 main
 gdi.cpp:214
 
-Error #13: WARNING: GDI usage error: deleting an object that is selected into DC
+Error #12: WARNING: GDI usage error: deleting a drawing object that is selected into DC
 test_DC_select
 gdi.cpp:199
 main

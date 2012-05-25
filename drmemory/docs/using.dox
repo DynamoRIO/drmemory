@@ -761,8 +761,9 @@ Error #15: WARNING: GDI usage error: DC 0x2d011230 that contains selected object
 
 Note that some of these GDI usage errors are best programming practices and
 may not result in detrimental behavior in actual usage on more recent
-versions of Windows.  Detection of these errors can be disabled with the \p
--no_check_gdi runtime option.
+versions of Windows, while others are more serious.
+Detection of these errors can be disabled with the \p -no_check_gdi runtime
+option.
 
 ****************************************************************************
 ****************************************************************************
