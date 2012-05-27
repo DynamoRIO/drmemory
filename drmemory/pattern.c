@@ -1077,7 +1077,10 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          * we reach here which means safe_read works and
          * it is in redzone or delayed free, so not worth the overhead.
          */
-        memset(addr, 0, size);
+        /* i#902: it is only safe to set one byte here since the memory
+         * [addr, addr + size] might be partial buffer underflow.
+         */
+        *(byte *)addr = 0;
         return false;
     }
     return true;
