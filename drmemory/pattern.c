@@ -611,7 +611,7 @@ static void
 pattern_switch_instrumentation_style(void)
 {
     if (num_2byte_faults >= options.pattern_max_2byte_faults &&
-        dr_mutex_trylock(&flush_lock) /* to avoid flush storm */) {
+        dr_mutex_trylock(flush_lock) /* to avoid flush storm */) {
         if (num_2byte_faults >= options.pattern_max_2byte_faults) {
             pattern_4byte_check_only = true;
             num_2byte_faults = 0;
