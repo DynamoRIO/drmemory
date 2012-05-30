@@ -1752,7 +1752,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     if (bi->aflags != EFLAGS_WRITE_6) {
         /* slot 5 won't be used for 3rd reg (that's 4) and is ok for temp use */
         si.slot = SPILL_SLOT_5;
-        if (eax_dead) {
+        if (eax_dead || bi->aflags_where == AFLAGS_IN_EAX) {
             si.reg = REG_NULL;
         } else {
             si.reg = REG_EAX;
@@ -1776,26 +1776,46 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
             si.global = false; /* to enable the save */
         }
         insert_save_aflags(drcontext, bb, inst, &si, bi->aflags);
-        if (!eax_dead) {
-            /* now restore eax and save eflags to the spill slot */
-            /* FIXME optimization: if eax isn't used by any app instrs
-             * between here and the next eflags restore, we can just keep
-             * the flags in eax and not put in tls.
-             * Since a lahf followed by a read of eax causes a partial-reg
-             * stall that could improve perf noticeably.
-             * However, this would make the state restore more complex.
-             */
+        /* optimization: 
+         * We keep the flags in eax if eax is not used in any app instrs later.
+         * XXX: we can be more aggressive to keep the flags in eax if it is
+         * not used in app instr between here and the next eflags restore.
+         * Since a lahf followed by a read of eax causes a partial-reg
+         * stall that could improve perf noticeably.
+         * However, this would make the state restore more complex.
+         */
+        if (bi->aflags_where == AFLAGS_UNKNOWN) {
+#ifdef TOOL_DR_MEMORY
+            if (!xax_is_used_subsequently(inst) && options.pattern != 0) {
+                /* To keep aflags in %eax, we need a permanent TLS store for
+                 * storing app's %eax value. Current implementation uses SLOT 5,
+                 * which is used for third register spill and temporary eax
+                 * spill on aflags saving. So this optimization is only applied
+                 * in pattern mode. 
+                 * XXX: to apply this optimization in shadow mode, we should use
+                 * a permanent TLS slot, and make sure neither spill reg1 nor
+                 * reg2 uses %eax.
+                 */
+                /* - eax is not used by app later in bb
+                 * - eax is holding aflags
+                 * - app's eax is in tls slot from now on
+                 */
+                bi->aflags_where = AFLAGS_IN_EAX;
+            } else
+#endif
+                bi->aflags_where = AFLAGS_IN_TLS;
+        }
+        if (bi->aflags_where == AFLAGS_IN_EAX)
+            return;
+        /* save aflags into tls */
+        PRE(bb, inst, INSTR_CREATE_mov_st
+            (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX),
+             opnd_create_reg(REG_EAX)));
+        if (!eax_dead) { /* restore eax  */
             /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
              * lock of the bus shows up as a measurable perf hit (PR 553724)
              */
-            PRE(bb, inst, INSTR_CREATE_mov_st
-                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX),
-                 opnd_create_reg(REG_EAX)));
             insert_spill_or_restore(drcontext, bb, inst, &si, false/*restore*/, false);
-        } else {
-            PRE(bb, inst, INSTR_CREATE_mov_st
-                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX),
-                 opnd_create_reg(REG_EAX)));
         }
     }
 }
@@ -1810,35 +1830,41 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     scratch_reg_info_t si;
     if (!bi->eflags_used)
         return;
-    /* eflags is not sitting in eax: it's always in tls */
+    ASSERT(bi->aflags_where == AFLAGS_IN_TLS ||
+           bi->aflags_where == AFLAGS_IN_EAX,
+           "bi->aflags_where is not set");
     si.reg = REG_EAX;
     si.xchg = REG_NULL;
     si.slot = SPILL_SLOT_EFLAGS_EAX;
     si.used = true;
     si.dead = false;
     si.global = false; /* to enable the restore */
-    if (bi->eax_dead ||
-        (bi->reg1.reg == REG_EAX && scratch_reg1_is_avail(inst, mi, bi)) ||
-        (bi->reg2.reg == REG_EAX && scratch_reg2_is_avail(inst, mi, bi))) {
-        insert_spill_or_restore(drcontext, bb, inst, &si, false/*restore*/, false);
-        /* we do NOT want the eax-restore at the end of insert_restore_aflags() */
-        si.reg = REG_NULL;
-    } else {
+    if (bi->aflags_where == AFLAGS_IN_TLS) {
+        if (bi->eax_dead ||
+            (bi->reg1.reg == REG_EAX && scratch_reg1_is_avail(inst, mi, bi)) ||
+            (bi->reg2.reg == REG_EAX && scratch_reg2_is_avail(inst, mi, bi))) {
+            insert_spill_or_restore(drcontext, bb, inst, &si, false/*restore*/, false);
+            /* we do NOT want the eax-restore at the end of insert_restore_aflags() */
+            si.reg = REG_NULL;
+        } else {
+            si.slot = SPILL_SLOT_5;
+            /* See notes in save_aflags_if_live on sharing impacting reg1 being scratch */
+            if (scratch_reg1_is_avail(inst, mi, bi))
+                si.xchg = bi->reg1.reg;
+            else if (scratch_reg2_is_avail(inst, mi, bi))
+                si.xchg = bi->reg2.reg;
+            ASSERT(si.xchg != REG_EAX, "xchg w/ self is not a save");
+            /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
+             * lock of the bus shows up as a measurable perf hit (PR 553724)
+             */
+            insert_spill_or_restore(drcontext, bb, inst, &si, true/*save*/, false);
+            PRE(bb, inst, INSTR_CREATE_mov_ld
+                (drcontext, opnd_create_reg(REG_EAX),
+                 spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX)));
+            /* we DO want the eax-restore at the end of insert_restore_aflags() */
+        }
+    } else { /* AFLAGS_IN_EAX */
         si.slot = SPILL_SLOT_5;
-        /* See notes in save_aflags_if_live on sharing impacting reg1 being scratch */
-        if (scratch_reg1_is_avail(inst, mi, bi))
-            si.xchg = bi->reg1.reg;
-        else if (scratch_reg2_is_avail(inst, mi, bi))
-            si.xchg = bi->reg2.reg;
-        ASSERT(si.xchg != REG_EAX, "xchg w/ self is not a save");
-        /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
-         * lock of the bus shows up as a measurable perf hit (PR 553724)
-         */
-        insert_spill_or_restore(drcontext, bb, inst, &si, true/*save*/, false);
-        PRE(bb, inst, INSTR_CREATE_mov_ld
-            (drcontext, opnd_create_reg(REG_EAX),
-             spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX)));
-        /* we DO want the eax-restore at the end of insert_restore_aflags() */
     }
     insert_restore_aflags(drcontext, bb, inst, &si, bi->aflags);
     /* avoid re-restoring.  FIXME: do this for insert_spill_global too? */
@@ -5474,6 +5500,7 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         else
             save->scratch2 = REG_NULL;
         save->eflags_saved = bi->eflags_used;
+        save->aflags_in_eax = (bi->aflags_where == AFLAGS_IN_EAX);
         /* We store the pc of the last instr, since everything is restored
          * already (and NOT present in our tls slots) if have a fault in that
          * instr: unless it's a transformed repstr, in which case the final

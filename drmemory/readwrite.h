@@ -327,6 +327,10 @@ opc_is_fcmovcc(uint opc);
 bool
 opc_2nd_dst_is_extension(uint opc);
 
+/* is xax is used after inst (including inst) */
+bool
+xax_is_used_subsequently(instr_t *inst);
+
 uint
 adjust_memop_push_offs(instr_t *inst);
 

@@ -35,6 +35,11 @@ enum {
     LIVE_LIVE,
     LIVE_DEAD,
 };
+enum {
+    AFLAGS_UNKNOWN = 0,
+    AFLAGS_IN_TLS,
+    AFLAGS_IN_EAX,
+};
 #ifdef X64
 # define NUM_LIVENESS_REGS 16
 # define REG_START     REG_START_64
@@ -131,6 +136,7 @@ typedef struct _fastpath_info_t {
 struct _bb_info_t {
     /* whole-bb spilling (PR 489221) */
     int aflags;
+    int aflags_where;
     bool eax_dead;
     bool eflags_used;
     bool is_repstr_to_loop;
@@ -179,6 +185,7 @@ typedef struct _bb_saved_info_t {
     reg_id_t scratch2;
     /* This is used to handle non-precise flushing */
     byte ignore_next_delete;
+    bool aflags_in_eax:1;
     bool eflags_saved:1;
     /* For PR 578892, to avoid DR having to store translations */
     bool check_ignore_unaddr:1;

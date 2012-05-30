@@ -600,7 +600,8 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
             if (save->eflags_saved) {
                 IF_DEBUG(ptr_uint_t orig_flags = info->mcontext->xflags;)
                 uint sahf;
-                regval = get_thread_tls_value(drcontext, SPILL_SLOT_EFLAGS_EAX);
+                regval = save->aflags_in_eax ? info->raw_mcontext->xax : 
+                    get_thread_tls_value(drcontext, SPILL_SLOT_EFLAGS_EAX);
                 sahf = (regval & 0xff00) >> 8;
                 info->mcontext->xflags &= ~0xff;
                 info->mcontext->xflags |= sahf;
@@ -625,6 +626,12 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
                 LOG(2, "restoring per-bb %s to "PFX"\n",
                     get_register_name(save->scratch2), regval);
                 reg_set_value(save->scratch2, info->mcontext, regval);
+            }
+            if (save->aflags_in_eax) {
+                regval = get_thread_tls_value(drcontext, SPILL_SLOT_5);
+                LOG(2, "restoring %s to "PFX"\n",
+                    get_register_name(DR_REG_XAX), regval);
+                reg_set_value(DR_REG_XAX, info->mcontext, regval);
             }
         }
     }
@@ -985,6 +992,17 @@ instr_mem_or_gpr_dsts(instr_t *inst)
         }
     }
     return res;
+}
+
+bool
+xax_is_used_subsequently(instr_t *inst)
+{
+    while (inst != NULL) {
+        if (instr_uses_reg(inst, DR_REG_XAX))
+            return true;
+        inst = instr_get_next(inst);
+    }
+    return false;
 }
 
 #ifdef TOOL_DR_MEMORY
