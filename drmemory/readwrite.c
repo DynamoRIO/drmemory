@@ -4033,13 +4033,14 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
 
-    if (bi->first_instr && bi->is_repstr_to_loop && options.pattern == 0) {
+    if (bi->first_instr && bi->is_repstr_to_loop) {
         /* if xcx is 0 we'll skip ahead and will restore the whole-bb regs
          * at the bottom of the bb so make sure we save first.
          * this is a case of internal control flow messing up code that
          * was taking advantage of the simplicity of linear block code!
          */
-        if (whole_bb_spills_enabled()) {
+        if (whole_bb_spills_enabled() &&
+            !(options.pattern != 0 && options.pattern_opt_repstr)) {
             mark_scratch_reg_used(drcontext, bb, bi, &bi->reg1);
             mark_scratch_reg_used(drcontext, bb, bi, &bi->reg2);
             mark_eflags_used(drcontext, bb, bi);
