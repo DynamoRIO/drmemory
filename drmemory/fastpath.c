@@ -192,7 +192,7 @@ insert_add_to_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
  *
  * Returns a LIVE_ constant for each register in live[]
  */
-static uint
+uint
 get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
                             bool aflags_only)
 {

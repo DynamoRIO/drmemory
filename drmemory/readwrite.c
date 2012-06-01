@@ -887,6 +887,12 @@ opc_is_stringop(uint opc)
             opc == OP_cmps || opc == OP_scas || opc == OP_scas);
 }
 
+bool
+opc_is_loopcc(uint opc)
+{
+    return (opc == OP_loop || opc == OP_loope || opc == OP_loopne);
+}
+
 static bool
 opc_is_loop(uint opc)
 {
@@ -4027,7 +4033,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
 
-    if (bi->first_instr && bi->is_repstr_to_loop) {
+    if (bi->first_instr && bi->is_repstr_to_loop && options.pattern == 0) {
         /* if xcx is 0 we'll skip ahead and will restore the whole-bb regs
          * at the bottom of the bb so make sure we save first.
          * this is a case of internal control flow messing up code that
@@ -4140,7 +4146,12 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         goto instru_event_bb_insert_done;
     
     if (options.pattern != 0 && has_noignorable_mem) {
-        pattern_instrument_check(drcontext, bb, inst, bi, translating);
+        if (!(bi->is_repstr_to_loop && options.pattern_opt_repstr)) {
+            /* aggressive optimization of repstr for pattern mode will
+             * be handled separatly in pattern_instrument_repstr
+             */
+            pattern_instrument_check(drcontext, bb, inst, bi, translating);
+        }
     } else if (options.shadowing &&
         (options.check_uninitialized || has_noignorable_mem)) {
         if (instr_ok_for_instrument_fastpath(inst, &mi, bi)) {
@@ -4268,6 +4279,9 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
     /* XXX i#777: should do reverse scan during analysis and store info */
     if (options.pattern != 0 && !whole_bb_spills_enabled())
         pattern_instrument_reverse_scan(drcontext, bb);
+    if (options.pattern != 0 && options.pattern_opt_repstr &&
+        bi->is_repstr_to_loop)
+        pattern_instrument_repstr(drcontext, bb, bi, translating);
 #endif
 
     if (INSTRUMENT_MEMREFS()) {

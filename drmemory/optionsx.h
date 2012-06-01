@@ -607,3 +607,6 @@ OPTION_CLIENT_SCOPE(internal, pattern_max_2byte_faults, int, 0x1000, -1, INT_MAX
 OPTION_CLIENT(internal, callstack_dump_stack, uint, 0, 0, 512*1024,
               "How much of the stack to dump to the logfile",
               "How much of the stack to dump to the logfile prior to each callstack walk.  Debug-build only.")
+OPTION_CLIENT_BOOL(internal, pattern_opt_repstr, false,
+                   "For pattern mode, optimize each loop expanded from a rep string instruction",
+                   "For pattern mode, optimize each loop expanded from a rep string instruction by using an inner loop to avoid unnecessary aflags save/restore.")

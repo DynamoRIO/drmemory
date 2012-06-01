@@ -323,6 +323,9 @@ opc_is_cmovcc(uint opc);
 bool
 opc_is_fcmovcc(uint opc);
 
+bool
+opc_is_loopcc(uint opc);
+
 /* can 2nd dst be treated as simply an extension of the 1st */
 bool
 opc_2nd_dst_is_extension(uint opc);

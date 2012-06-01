@@ -282,6 +282,10 @@ void
 insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                       scratch_reg_info_t *si, int aflags);
 
+uint
+get_aflags_and_reg_liveness(instr_t *inst, int live[NUM_LIVENESS_REGS],
+                            bool aflags_only);
+
 void
 restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, bb_info_t *bi);

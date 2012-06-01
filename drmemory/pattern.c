@@ -340,23 +340,24 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
     return num_refs;
 }
 
-void
+instr_t *
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                          bb_info_t *bi, bool translating)
 {
     int num_refs, i;
     opnd_t refs[MAX_REFS_PER_INSTR];
     bool use_eax = false;
+    instr_t *label;
 
     if (instr_get_opcode(app) == OP_lea || 
         instr_is_prefetch(app) ||
         instr_is_nop(app))
-        return;
+        return NULL;
 
     num_refs = pattern_extract_refs(app, &use_eax, refs
                                     _IF_DEBUG(MAX_REFS_PER_INSTR));
     if (num_refs == 0)
-        return;
+        return NULL;
     if (!translating)
         bi->pattern_4byte_check_only = pattern_4byte_check_only;
     else {
@@ -370,12 +371,153 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
         pattern_insert_aflags_label(drcontext, ilist, app, true, use_eax);
     }
     /* pattern check code */
+    label = INSTR_CREATE_label(drcontext);
+    PRE(ilist, app, label);
     for (i = 0; i < num_refs; i++)
         pattern_insert_check_code(drcontext, ilist, app, refs[i], bi);
     if (!whole_bb_spills_enabled()) {
         /* aflags restore label */
         pattern_insert_aflags_label(drcontext, ilist, app, false, use_eax);
     }
+    return label;
+}
+
+/* An aggressive optimization to optimize the loop expanded from rep string
+ * by introducing an inner loop to avoid the unncessary aflags save/restore.
+ * XXX: adding a loop inside bb violates DR's bb constraints:
+ * - a non-meta cbr must end the block
+ *   we insert a fake non-meta jmp instead
+ * - violates assumptions in many parts of DR: non-precise flushing,
+ *   signal delivery, trace building, etc.. 
+ *   + We add translation to all the related instructions to make sure the 
+ *   translation for signal delivery work.
+ *   + For non-precise flush, we have to wait till the exit of the bb,
+ *   which is similar to not expanding rep-string.
+ *   + Such loop optimization should NOT be applied in a trace.
+ * 
+ * The optimization relies on how drutil (a DynamoRIO extension) expands 
+ * a rep string into a loop, the loop should look exactly the same as below:
+ *    rep movs
+ * =>
+ *    jecxz  zero
+ *    jmp    iter
+ *  zero:
+ *    mov    $0x00000001 -> %ecx 
+ *    jmp    pre_loop
+ *  iter:
+ *    movs   %ds:(%esi) %esi %edi -> %es:(%edi) %esi %edi
+ *  pre_loop:
+ *    loop
+ *
+ * The instrumented code would be something like:
+ *    jecxz  zero
+ *    jmp    iter
+ *  zero:
+ *    jmp    post_loop
+ *  iter:
+ *    # save aflags if necessary
+ *    # first iteration check
+ *  check:
+ *    cmp %ds:(%esi) $pattern
+ *    ...
+ *    cmp %es:(%edi) $pattern
+ *    ...
+ *    movs   %ds:(%esi) %esi %edi -> %es:(%edi) %esi %edi
+ *  pre_loop:
+ *    loop check
+ *    # restore aflags if necessary
+ *  post_loop:
+ *    jmp    next_pc
+ * The transformation is only performed at instru2instru phase to
+ * avoid confusing other passes.
+ */
+void
+pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
+                          bb_info_t *bi, bool translating)
+{
+    instr_t *jecxz = NULL, *jmp_iter = NULL, *mov_1 = NULL, *jmp_skip = NULL;
+    instr_t *stringop = NULL, *loop = NULL, *post_loop, *instr, *jmp;
+    instr_t *check = NULL;
+    app_pc next_pc;
+    int live[NUM_LIVENESS_REGS];
+
+    ASSERT(bi->is_repstr_to_loop && options.pattern_opt_repstr,
+           "should not be here");
+    /* find all instr */
+    instr = instrlist_first(ilist);
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            instr_get_opcode(instr) == OP_jecxz) {
+            jecxz = instr;
+            break;
+        }
+    }
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            instr_get_opcode(instr) == OP_jmp_short) {
+            jmp_iter = instr;
+            break;
+        }
+    }
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            instr_get_opcode(instr) == OP_mov_imm) {
+            mov_1 = instr;
+            break;
+        }
+    }
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            instr_get_opcode(instr) == OP_jmp) {
+            jmp_skip = instr;
+            break;
+        }
+    }
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            opc_is_stringop(instr_get_opcode(instr))) {
+            stringop = instr;
+            break;
+        }
+    }
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) &&
+            opc_is_loopcc(instr_get_opcode(instr))) {
+            loop = instr;
+            break;
+        }
+    }
+    ASSERT(jecxz != NULL && jmp_iter != NULL && mov_1 != NULL &&
+           jmp_skip != NULL && stringop != NULL && loop != NULL,
+           "wrong rep sring to loop code");
+    ASSERT(loop == instrlist_last(ilist), "wrong last instr in loop");
+    /* adjust jeczx target */
+    instr_set_target(jecxz, opnd_create_instr(jmp_skip));
+    /* remove mov_1 */
+    instrlist_remove(ilist, mov_1);
+    instr_destroy(drcontext, mov_1);
+    /* adjust jmp_skip target */
+    post_loop = INSTR_CREATE_label(drcontext);
+    instr_set_target(jmp_skip, opnd_create_instr(post_loop));
+    /* insert checks */
+    bi->aflags = get_aflags_and_reg_liveness(stringop, live, true);
+    bi->spill_after = instr_get_prev(stringop);
+    check = pattern_instrument_check
+        (drcontext, ilist, stringop, bi, translating);
+    ASSERT(check != NULL, "check label must not be NULL");
+    /* set loop target to check */
+    instr_set_target(loop, opnd_create_instr(check));
+    instr_set_ok_to_mangle(loop, false);
+    /* post_loop */
+    PRE(ilist, NULL, post_loop);
+    next_pc = instr_get_app_pc(stringop) + 
+        instr_length(drcontext, stringop) + 1 /* rep prefix */;
+    /* restore aflags before post_loop if necessary */
+    restore_aflags_if_live(drcontext, ilist, post_loop, NULL, bi);
+    /* jmp next_pc */
+    jmp = INSTR_XL8(INSTR_CREATE_jmp(drcontext, opnd_create_pc(next_pc)),
+                    instr_get_app_pc(loop));
+    PREXL8(ilist, NULL, jmp);
 }
 
 /* Update the arith flag's liveness in a backward scan. */

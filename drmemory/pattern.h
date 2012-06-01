@@ -25,12 +25,16 @@
 #include "fastpath.h"   /* for bb_info_t */
 #include "callstack.h"  /* for app_loc_t */
 
-void
+instr_t *
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                          bb_info_t *bi, bool translating);
 
 void
 pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist);
+
+void
+pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
+                          bb_info_t *bi, bool translating);
 
 bool
 pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc);
