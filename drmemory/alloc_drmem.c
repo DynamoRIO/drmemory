@@ -2189,7 +2189,8 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
 #endif
     if (is_ok_unaddressable_pattern(write, loc, addr, sz, mc)) {
         return true;
-    } else if (options.define_unknown_regions && !addr_in_heap &&
+    } else if (options.shadowing &&
+               options.define_unknown_regions && !addr_in_heap &&
                (!options.check_stack_bounds || !addr_on_stack)
                /* i#579: leave kernel regions as unaddr */
                IF_WINDOWS(&& addr < get_highest_user_address())) {
