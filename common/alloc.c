@@ -853,17 +853,39 @@ replace_realloc_size_post(void *wrapcxt, void *user_data)
     drwrap_set_mcontext(wrapcxt);
 }
 
+#ifdef X64
+static byte *
+generate_jmp_ind_stub(void *drcontext, app_pc tgt_pc, byte *epc)
+{
+    instr_t *instr;
+    /* assuming %rax is dead, mov pc => %rax; jmp %rax */
+    ASSERT(tgt_pc != NULL, "wrong target pc for call stub");
+    instr = INSTR_CREATE_mov_imm(drcontext,
+                                 opnd_create_reg(DR_REG_XAX),
+                                 OPND_CREATE_INTPTR(tgt_pc));
+    epc = instr_encode(drcontext, instr, epc);
+    instr_destroy(drcontext, instr);
+    instr = INSTR_CREATE_jmp_ind(drcontext, opnd_create_reg(DR_REG_XAX));
+    epc = instr_encode(drcontext, instr, epc);
+    instr_destroy(drcontext, instr);
+    return epc;
+}
+#endif
+
 static void
 generate_realloc_replacement(alloc_routine_set_t *set)
 {
     void *drcontext = dr_get_current_drcontext();
-    byte *epc_start, *dpc, *epc;
+    byte *epc_start, *dpc, *epc, *func_start;
     bool success = true;
     instr_t inst;
     alloc_routine_entry_t *set_malloc = malloc_func_in_set(set);
     alloc_routine_entry_t *set_size = size_func_in_set(set);
     alloc_routine_entry_t *set_free = free_func_in_set(set);
     alloc_routine_entry_t *set_realloc = realloc_func_in_set(set);
+#ifdef X64
+    byte *malloc_stub_pc, *size_stub_pc, *free_stub_pc;
+#endif
     byte *size_func;
     uint found_calls = 0;
     byte **free_list = NULL;
@@ -912,12 +934,24 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         epc_start = gencode_cur;
     epc = epc_start;
 
+#ifdef X64
+    /* create stubs for indirect jumps */
+    malloc_stub_pc = epc;
+    epc = generate_jmp_ind_stub(drcontext, set_malloc->pc, epc);
+    size_stub_pc = epc;
+    epc = generate_jmp_ind_stub(drcontext, size_func, epc);
+    free_stub_pc = epc;
+    epc = generate_jmp_ind_stub(drcontext, set_free->pc, epc);
+#endif
+    func_start = epc;
+
+
     instr_init(drcontext, &inst);
     do {
         instr_reset(drcontext, &inst);
         dpc = decode(drcontext, dpc, &inst);
         ASSERT(dpc != NULL, "invalid instr in realloc template");
-        if (epc == epc_start && instr_get_opcode(&inst) == OP_jmp) {
+        if (epc == func_start && instr_get_opcode(&inst) == OP_jmp) {
             /* skip jmp in ILT */
             ASSERT(opnd_is_pc(instr_get_target(&inst)), "decoded jmp should have pc tgt");
             dpc = opnd_get_pc(instr_get_target(&inst));
@@ -926,24 +960,25 @@ generate_realloc_replacement(alloc_routine_set_t *set)
         /* XXX: for x64 we will have to consider reachability */
         if (instr_get_opcode(&inst) == OP_call) {
             opnd_t tgt = instr_get_target(&inst);
-            app_pc pc;
+            app_pc pc, tgt_pc;
             found_calls++;
             ASSERT(opnd_is_pc(tgt), "invalid call");
             pc = opnd_get_pc(tgt);
             if (pc == (app_pc) marker_malloc
                 IF_WINDOWS(|| pc == (app_pc) marker_malloc_dbg
                            || pc == (app_pc) marker_RtlAllocateHeap))
-                instr_set_target(&inst, opnd_create_pc(set_malloc->pc));
+                tgt_pc = IF_X64_ELSE(malloc_stub_pc, set_malloc->pc);
             else if (pc == (app_pc) marker_size
                      IF_WINDOWS(|| pc == (app_pc) marker_size_dbg
                                 || pc == (app_pc) marker_RtlSizeHeap))
-                instr_set_target(&inst, opnd_create_pc(size_func));
+                tgt_pc = IF_X64_ELSE(size_stub_pc, size_func);
             else if (pc == (app_pc) marker_free
                      IF_WINDOWS(|| pc == (app_pc) marker_free_dbg
                                 || pc == (app_pc) marker_RtlFreeHeap))
-                instr_set_target(&inst, opnd_create_pc(set_free->pc));
+                tgt_pc = IF_X64_ELSE(free_stub_pc, set_free->pc);
             else /* force re-encode */
-                instr_set_target(&inst, tgt);
+                tgt_pc = pc;
+            instr_set_target(&inst, opnd_create_pc(tgt_pc));
         }
         epc = instr_encode(drcontext, &inst, epc);
         ASSERT(epc != NULL, "failed to encode realloc template");
@@ -972,10 +1007,10 @@ generate_realloc_replacement(alloc_routine_set_t *set)
     dr_mutex_unlock(gencode_lock);
 
     if (success) {
-        set->realloc_replacement = epc_start;
+        set->realloc_replacement = func_start;
         if (!drwrap_replace(set_realloc->pc, set->realloc_replacement, false))
             ASSERT(false, "failed to replace realloc");
-        LOG(1, "replacement realloc @"PFX"\n", epc_start);
+        LOG(1, "replacement realloc @"PFX"\n", func_start);
     } else {
         /* if we fail consequences are races and non-delayed-frees: not fatal */
         LOG(1, "WARNING: replacement realloc failed\n");

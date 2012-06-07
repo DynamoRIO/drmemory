@@ -158,6 +158,8 @@ extern hashtable_t xl8_sharing_table;
 /* alloca handling in fastpath (i#91) */
 extern hashtable_t ignore_unaddr_table;
 
+extern reg_id_t seg_tls;
+
 bool
 opnd_uses_nonignorable_memory(opnd_t opnd);
 

@@ -25,6 +25,14 @@
 #include "fastpath.h"   /* for bb_info_t */
 #include "callstack.h"  /* for app_loc_t */
 
+/* default pattern value if user does not specify any. */
+/* NOTE: the selection of pattern value may affect performance greatly.
+ * A popular value used by a program (e.g. 0, ASCII) should not be used as
+ * pattern value, as it may trigger a lot of illegal instruction exceptions
+ * and expensive lookups.
+ */
+#define DEFAULT_PATTERN 0xf1fd
+
 instr_t *
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                          bb_info_t *bi, bool translating);

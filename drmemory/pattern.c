@@ -169,7 +169,7 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
     if (ref_size > OPSZ_2) {
         /* cmp [ref], pattern */
         opnd_set_size(&refs[0], OPSZ_4);
-        opnds[0] = OPND_CREATE_INT32(options.pattern);
+        opnds[0] = OPND_CREATE_INT32((int)options.pattern);
         return 1;
     }
 
@@ -184,7 +184,7 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
              */
             /* cmp [ref], pattern */
             opnd_set_size(&refs[0], OPSZ_4);
-            opnds[0] = OPND_CREATE_INT32(options.pattern);
+            opnds[0] = OPND_CREATE_INT32((int)options.pattern);
             if (opnd_get_disp(refs[0]) < INT_MIN + 2) {
                 /* In the case of wraparound, we give up the check on [mem-2],
                  * so there are possible false negatives on accessing the last
@@ -223,10 +223,10 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
              */
             /* cmp [ref], pattern */
             opnd_set_size(&refs[0], OPSZ_4);
-            opnds[0] = OPND_CREATE_INT32(options.pattern);
+            opnds[0] = OPND_CREATE_INT32((int)options.pattern);
             /* cmp [ref], pattern_reverse */
             refs[1]  = refs[0];
-            opnds[1] = OPND_CREATE_INT32(pattern_reverse);
+            opnds[1] = OPND_CREATE_INT32((int)pattern_reverse);
             if (opnd_get_disp(refs[0]) < INT_MIN + 2) {
                 /* In the case of wraparound, we give up the check on [mem-2]
                  * possible false negative on accessing the last 2-byte of

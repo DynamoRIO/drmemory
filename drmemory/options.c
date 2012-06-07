@@ -349,6 +349,11 @@ options_init(const char *opstr)
     if (options.light) {
         /* we can switch to pattern mode later */
         options.check_uninitialized = false;
+# ifdef X64
+        /* in 64-bit, default light mode is the pattern mode */
+        if (!option_specified.pattern)
+            options.pattern = DEFAULT_PATTERN;
+# endif
         if (!option_specified.count_leaks)
             options.count_leaks = false;
     }

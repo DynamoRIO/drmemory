@@ -208,6 +208,7 @@ enum {
     SPILL_EFLAGS_NUM,
 };
 #define SPILL_REG3_REG   REG_ECX
+reg_id_t seg_tls;
 
 int
 spill_reg3_slot(bool eflags_dead, bool eax_dead, bool r1_dead, bool r2_dead)
@@ -300,7 +301,7 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
     }
     if (opnd_is_far_base_disp(op) &&
         opnd_get_index(op) == REG_NULL &&
-        opnd_get_segment(op) == SEG_FS) {
+        opnd_get_segment(op) == seg_tls) {
         uint offs = opnd_get_disp(op);
         if (offs >= offs_min_own && offs <= offs_max_own)
             return true;
@@ -386,15 +387,14 @@ get_own_seg_base(void)
 static void
 instru_tls_init(void)
 {
-    reg_id_t seg;
     IF_DEBUG(bool ok =)
-        dr_raw_tls_calloc(&seg, &tls_instru_base, NUM_TLS_SLOTS, 0);
+        dr_raw_tls_calloc(&seg_tls, &tls_instru_base, NUM_TLS_SLOTS, 0);
     LOG(2, "TLS spill base: "PIFX"\n", tls_instru_base);
     tls_idx_instru = drmgr_register_tls_field();
     ASSERT(NUM_TLS_SLOTS > 0, "NUM_TLS_SLOTS should be > 0");
     ASSERT(tls_idx_instru > -1, "failed to reserve TLS slot");
     ASSERT(ok, "fatal error: unable to reserve tls slots");
-    ASSERT(seg == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
+    ASSERT(seg_tls == IF_X64_ELSE(SEG_GS, SEG_FS), "unexpected tls segment");
 }
 
 static void
@@ -465,7 +465,7 @@ opnd_create_own_spill_slot(uint index)
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     return opnd_create_far_base_disp_ex
         /* must use 0 scale to match what DR decodes for opnd_same */
-        (SEG_FS, REG_NULL, REG_NULL, 0,
+        (seg_tls, REG_NULL, REG_NULL, 0,
          tls_instru_base + (NUM_INSTRU_TLS_SLOTS + index)*sizeof(ptr_uint_t), OPSZ_PTR,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
@@ -3691,6 +3691,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 ASSERT(TEST(MEMREF_USE_VALUES, flags), "internal movs error");
                 ASSERT(memref_idx(flags, i) == i, "internal movs error");
 #ifdef X64
+                newval = 0;
                 ASSERT_NOT_IMPLEMENTED();
 #else
                 newval = shadow_get_byte(((app_pc)shadow_vals[0]) + i);

@@ -1040,15 +1040,25 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 {
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
+# ifdef X64
+    __asm("push %rcx");
+# endif
     __asm("push %"ASM_SYSARG1);
+    /* in 64-bit release build 
+     * rdi is used for the first function arg and syscall arg
+     * we must first get the sysnum into eax, then mov arg into rdi.
+     */
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg));
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    __asm("int $0x80");
+    __asm(ASM_SYSCALL);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
     __asm("pop %"ASM_SYSARG1);
+# ifdef X64
+    __asm("pop %rcx");
+# endif
     return res;
 }
 
@@ -1058,22 +1068,29 @@ raw_syscall_2args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2)
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
+    /* %rcx is used to store the return %rip in syscall */
+    __asm("push %rcx");
     __asm("push %"ASM_SYSARG2);
     __asm("push %"ASM_SYSARG1);
 # else
     __asm("pusha");
 # endif
+    /* in 64-bit release build 
+     * rdi is used for the first function arg and syscall arg
+     * we must first get the sysnum into eax, then mov arg into rdi.
+     */
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
     __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    __asm("int $0x80");
+    __asm(ASM_SYSCALL);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
 # ifdef X64
     __asm("pop %"ASM_SYSARG1);
     __asm("pop %"ASM_SYSARG2);
+    __asm("pop %rcx");
 # else
     __asm("popa");
 # endif
@@ -1087,6 +1104,7 @@ raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
+    __asm("push %rcx");
     __asm("push %"ASM_SYSARG4);
     __asm("push %"ASM_SYSARG3);
     __asm("push %"ASM_SYSARG2);
@@ -1094,6 +1112,11 @@ raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
 # else
     __asm("pusha");
 # endif
+    /* in 64-bit release build 
+     * rdi is used for the first function arg and syscall arg
+     * we must first get the sysnum into eax, then mov arg into rdi.
+     */
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1101,14 +1124,14 @@ raw_syscall_4args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%"ASM_SYSARG3 : : "g"(arg3));
     __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    __asm("int $0x80");
+    __asm(ASM_SYSCALL);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
 # ifdef X64
     __asm("pop %"ASM_SYSARG1);
     __asm("pop %"ASM_SYSARG2);
     __asm("pop %"ASM_SYSARG3);
     __asm("pop %"ASM_SYSARG4);
+    __asm("pop %rcx");
 # else
     __asm("popa");
 #endif
@@ -1122,6 +1145,7 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
+    __asm("push %rcx");
     __asm("push %"ASM_SYSARG5);
     __asm("push %"ASM_SYSARG4);
     __asm("push %"ASM_SYSARG3);
@@ -1130,6 +1154,11 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
 # else
     __asm("pusha");
 # endif
+    /* in 64-bit release build 
+     * rdi is used for the first function arg and syscall arg
+     * we must first get the sysnum into eax, then mov arg into rdi.
+     */
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1138,8 +1167,7 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%"ASM_SYSARG3 : : "g"(arg3));
     __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    __asm("int $0x80");
+    __asm(ASM_SYSCALL);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
 # ifdef X64
     __asm("pop %"ASM_SYSARG1);
@@ -1147,6 +1175,7 @@ raw_syscall_5args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("pop %"ASM_SYSARG3);
     __asm("pop %"ASM_SYSARG4);
     __asm("pop %"ASM_SYSARG5);
+    __asm("pop %rcx");
 # else
     __asm("popa");
 # endif
@@ -1160,6 +1189,7 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
 # ifdef X64
+    __asm("push %rcx");
     __asm("push %"ASM_SYSARG5);
     __asm("push %"ASM_SYSARG4);
     __asm("push %"ASM_SYSARG3);
@@ -1168,6 +1198,11 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
 #else
     __asm("pusha");
 #endif
+    /* in 64-bit release build 
+     * rdi is used for the first function arg and syscall arg
+     * we must first get the sysnum into eax, then mov arg into rdi.
+     */
+    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
      * clobbering pic register for 32-bit
      */
@@ -1176,13 +1211,12 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("mov %0, %%"ASM_SYSARG3 : : "g"(arg3));
     __asm("mov %0, %%"ASM_SYSARG2 : : "g"(arg2));
     __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg1));
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
     /* arg6 is ebp and the params are de-refed via ebp in 32-bit.
      * XXX: fragile b/c could change in optimized build
      */
     __asm("push %"ASM_SYSARG6);
     __asm("mov %0, %%"ASM_SYSARG6 : : "g"(arg6));
-    __asm("int $0x80");
+    __asm(ASM_SYSCALL);
     __asm("pop %"ASM_SYSARG6);
     __asm("mov %%"ASM_XAX", %0" : "=m"(res));
 #ifdef X64
@@ -1191,6 +1225,7 @@ raw_syscall_6args(uint sysnum, ptr_int_t arg1, ptr_int_t arg2, ptr_int_t arg3,
     __asm("pop %"ASM_SYSARG3);
     __asm("pop %"ASM_SYSARG4);
     __asm("pop %"ASM_SYSARG5);
+    __asm("pop %rcx");
 #else
     __asm("popa");
 #endif

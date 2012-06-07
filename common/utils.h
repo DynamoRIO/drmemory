@@ -432,6 +432,10 @@ extern int tls_idx_util;
 #  define ASM_SYSARG4 "r10"
 #  define ASM_SYSARG5 "r8"
 #  define ASM_SYSARG6 "r9"
+/* int 0x80 returns different value from syscall in x64.
+ * For example, brk(0) returns 0xfffffffffffffff2 using int 0x80
+ */
+#  define ASM_SYSCALL "syscall"
 # else
 #  define ASM_XAX "eax"
 #  define ASM_XSP "esp"
@@ -442,6 +446,7 @@ extern int tls_idx_util;
 #  define ASM_SYSARG4 "esi"
 #  define ASM_SYSARG5 "edi"
 #  define ASM_SYSARG6 "ebp"
+#  define ASM_SYSCALL "int $0x80"
 # endif
 #endif
 

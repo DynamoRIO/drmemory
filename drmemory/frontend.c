@@ -56,6 +56,14 @@
 #define BUFFER_LAST_ELEMENT(buf)    buf[BUFFER_SIZE_ELEMENTS(buf) - 1]
 #define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
 
+#ifdef X64
+# define LIB_ARCH "lib64"
+# define BIN_ARCH "bin64"
+#else
+# define LIB_ARCH "lib32"
+# define BIN_ARCH "bin"
+#endif
+
 /* -shared_slowpath requires -disable_traces
  * freeing stringop data also requires -disable_traces (i#391)
  * to save space we use -bb_single_restore_prefix
@@ -713,14 +721,14 @@ int main(int argc, char *argv[])
         goto error; /* actually won't get here */
     }
     _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
-              "%s/lib32/%s/dynamorio.dll", dr_root,
+              "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root,
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
     if (_access(buf, 4/*read*/) == -1) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
-                      "%s/lib32/%s/dynamorio.dll", dr_root, "debug");
+                      "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root, "debug");
             NULL_TERMINATE_BUFFER(buf);
             if (_access(buf, 4/*read*/) == -1) {
                 fatal("cannot find DynamoRIO library %s", buf);
@@ -733,13 +741,13 @@ int main(int argc, char *argv[])
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
     _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
-              "%s/bin/%s/drmemorylib.dll", drmem_root,
+              "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root,
               use_drmem_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(client_path);
     if (_access(client_path, 4/*read*/) == -1) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
-                      "%s/bin/%s/drmemorylib.dll", drmem_root, "debug");
+                      "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root, "debug");
             NULL_TERMINATE_BUFFER(client_path);
             if (_access(client_path, 4/*read*/) == -1) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);

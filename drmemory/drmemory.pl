@@ -309,8 +309,8 @@ if ($aggregate) {
     # real executable, so must prefix scripts with shell or perl.
     die "application $apppath not found\n$usage\n" unless (-e $apppath);
     # warn if 64-bit (i#33); swallow stderr if file cmd doesn't exist on Cygwin
-    if (`file $apppath 2>&1` =~ /64-bit/) {
-        print "64-bit application experimental support\n";
+    if ($user_ops !~ /-quiet/ && $use_debug && `file $apppath 2>&1` =~ /64-bit/) {
+        print "64-bit application experimental support\n"
     }
     push @appcmdline, &vmk_app_pre_args(\@ARGV) if ($is_vmk);
     push @appcmdline, @ARGV;

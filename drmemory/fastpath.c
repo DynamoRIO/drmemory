@@ -83,7 +83,7 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
             opnd_set_size(&opnd, OPSZ_lea);
             PRE(bb, inst,
                 INSTR_CREATE_lea(drcontext, opnd_create_reg(dst), opnd));
-        } else if (opnd_get_segment(opnd) == SEG_FS
+        } else if (opnd_get_segment(opnd) == seg_tls
                    IF_LINUX(||opnd_get_segment(opnd) == SEG_GS)) {
             /* convert to linear address. */
 #if THREAD_PRIVATE
@@ -128,7 +128,7 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* dynamically get teb->self */
             PRE(bb, inst,
                 INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(tmp_reg),
-                                    opnd_create_far_base_disp(SEG_FS, REG_NULL, REG_NULL,
+                                    opnd_create_far_base_disp(seg_tls, REG_NULL, REG_NULL,
                                                               0, offsetof(TEB, Self),
                                                               OPSZ_PTR)));
             PRE(bb, inst,
@@ -430,7 +430,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
 
     if (opc == OP_push || opc == OP_push_imm || opc == OP_call || opc == OP_call_ind) {
         /* all have dst0=esp, dst1=(esp), src0=imm/reg/pc/mem, src1=esp */
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_dst(inst, 1)) != OPSZ_4)
             return false;
         if (opc == OP_push_imm || opc == OP_call) {
@@ -469,7 +469,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
     } else if (opc == OP_pushf) {
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_dst(inst, 1)) != OPSZ_4)
             return false;
         mi->dst[0].app = instr_get_dst(inst, 1);
@@ -479,7 +479,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         mi->pushpop = true;
         return true;
     } else if (opc == OP_pop) {
-        if (opnd_get_reg(instr_get_dst(inst, 1)) != REG_ESP ||
+        if (opnd_get_reg(instr_get_dst(inst, 1)) != DR_REG_XSP ||
             opnd_get_size(instr_get_src(inst, 1)) != OPSZ_4)
             return false;
         mi->dst[0].app = instr_get_dst(inst, 0);
@@ -502,7 +502,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         }
     } else if (opc == OP_popf) {
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(instr_get_src(inst, 1)) != OPSZ_4)
             return false;
         mi->src[0].app = instr_get_src(inst, 1);
@@ -513,8 +513,8 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         return true;
     } else if (opc == OP_leave) {
         /* both a reg-reg move and a pop */
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
-            opnd_get_reg(instr_get_dst(inst, 1)) != REG_EBP ||
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
+            opnd_get_reg(instr_get_dst(inst, 1)) != DR_REG_XBP ||
             opnd_get_size(instr_get_src(inst, 2)) != OPSZ_4)
             return false;
         /* pop into ebp */
@@ -543,7 +543,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
          */
         if (opnd_get_size(mi->src[0].app) == OPSZ_ret)
             opnd_set_size(&mi->src[0].app, OPSZ_4);
-        if (opnd_get_reg(instr_get_dst(inst, 0)) != REG_ESP ||
+        if (opnd_get_reg(instr_get_dst(inst, 0)) != DR_REG_XSP ||
             opnd_get_size(mi->src[0].app) != OPSZ_4)
             return false;
         ASSERT(opnd_is_memory_reference(mi->src[0].app), "internal opnd num error");
@@ -1386,14 +1386,14 @@ pick_scratch_reg_helper(fastpath_info_t *mi, scratch_reg_info_t *si,
      * and we need the speed.
      */
     if (nxt_dead < NUM_LIVENESS_REGS &&
-        (!only_abcd || nxt_dead <= REG_EBX - REG_START_32) &&
-        !opnd_uses_reg(no_overlap1, REG_START_32 + nxt_dead) &&
-        !opnd_uses_reg(no_overlap2, REG_START_32 + nxt_dead) &&
+        (!only_abcd || nxt_dead <= DR_REG_XBX - REG_START) &&
+        !opnd_uses_reg(no_overlap1, REG_START + nxt_dead) &&
+        !opnd_uses_reg(no_overlap2, REG_START + nxt_dead) &&
         /* do not pick local reg that overlaps w/ whole-bb reg */
-        REG_START_32 + nxt_dead != mi->bb->reg1.reg &&
-        REG_START_32 + nxt_dead != mi->bb->reg2.reg) {
+        REG_START + nxt_dead != mi->bb->reg1.reg &&
+        REG_START + nxt_dead != mi->bb->reg2.reg) {
         /* we can use it directly */
-        si->reg = REG_START_32 + nxt_dead;
+        si->reg = REG_START + nxt_dead;
         si->xchg = REG_NULL;
         si->dead = true;
         STATS_INC(reg_dead);
@@ -1402,16 +1402,16 @@ pick_scratch_reg_helper(fastpath_info_t *mi, scratch_reg_info_t *si,
                /* FIXME OPT: if we split the spills up we could use xchg for
                 * reg2 or reg3 even if not for reg1
                 */
-               !opnd_uses_reg(no_overlap1, REG_START_32 + nxt_dead) &&
-               !opnd_uses_reg(no_overlap2, REG_START_32 + nxt_dead) &&
+               !opnd_uses_reg(no_overlap1, REG_START + nxt_dead) &&
+               !opnd_uses_reg(no_overlap2, REG_START + nxt_dead) &&
                !opnd_uses_reg(no_overlap1, fixed) &&
                !opnd_uses_reg(no_overlap2, fixed) &&
                /* do not pick local reg that overlaps w/ whole-bb reg */
-               REG_START_32 + nxt_dead != mi->bb->reg1.reg &&
-               REG_START_32 + nxt_dead != mi->bb->reg2.reg) {
+               REG_START + nxt_dead != mi->bb->reg1.reg &&
+               REG_START + nxt_dead != mi->bb->reg2.reg) {
         /* pick fixed reg and xchg for it */
         si->reg = fixed;
-        si->xchg = REG_START_32 + nxt_dead;
+        si->xchg = REG_START + nxt_dead;
         si->dead = false;
         STATS_INC(reg_xchg);
         live[nxt_dead] = LIVE_LIVE;
@@ -1449,17 +1449,17 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
            "whole_bb_spills_enabled() should correspond to reg1,reg2 being set");
 
     /* don't pick esp since it can't be an index register */
-    live[REG_ESP - REG_START_32] = LIVE_LIVE;
+    live[DR_REG_XSP - REG_START] = LIVE_LIVE;
 
     if (mi->eax.used) {
         /* caller wants us to ignore eax and eflags */
     } else if (!whole_bb_spills_enabled() && mi->aflags != EFLAGS_WRITE_6) {
         mi->eax.reg = DR_REG_XAX;
         mi->eax.used = true;
-        mi->eax.dead = (live[REG_EAX - REG_START_32] == LIVE_DEAD);
+        mi->eax.dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
         /* Ensure we don't use eax for another scratch reg */
         if (mi->eax.dead) {
-            live[REG_EAX - REG_START_32] = LIVE_LIVE;
+            live[DR_REG_XAX - REG_START] = LIVE_LIVE;
             STATS_INC(reg_dead);
         } else
             STATS_INC(reg_spill);
@@ -1480,38 +1480,38 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     mi->reg3.used = false; /* set later */
 
     if (need3) {
-        if (reg3_must_be_ecx && mi->bb->reg1.reg == REG_ECX) {
+        if (reg3_must_be_ecx && mi->bb->reg1.reg == DR_REG_XCX) {
             mi->reg3 = mi->bb->reg1;
-            mi->reg3.dead = (live[mi->reg3.reg - REG_START_32] == LIVE_DEAD);
-        } else if (reg3_must_be_ecx && mi->bb->reg2.reg == REG_ECX) {
+            mi->reg3.dead = (live[mi->reg3.reg - REG_START] == LIVE_DEAD);
+        } else if (reg3_must_be_ecx && mi->bb->reg2.reg == DR_REG_XCX) {
             mi->reg3 = mi->bb->reg2;
-            mi->reg3.dead = (live[mi->reg3.reg - REG_START_32] == LIVE_DEAD);
+            mi->reg3.dead = (live[mi->reg3.reg - REG_START] == LIVE_DEAD);
         } else if (reg3_must_be_ecx && only_abcd) {
             /* instrument_fastpath requires reg3 to be ecx since we have
              * to use cl for OP_shl var op.
              */
-            mi->reg3.reg = REG_ECX;
-            mi->reg3.dead = (live[mi->reg3.reg - REG_START_32] == LIVE_DEAD);
+            mi->reg3.reg = DR_REG_XCX;
+            mi->reg3.dead = (live[mi->reg3.reg - REG_START] == LIVE_DEAD);
             mi->reg3.global = false;
             /* Ensure we don't use for another scratch reg */
-            live[mi->reg3.reg - REG_START_32] = LIVE_LIVE;
+            live[mi->reg3.reg - REG_START] = LIVE_LIVE;
             if (!mi->reg3.dead) {
                 for (nxt_dead = 0; nxt_dead < NUM_LIVENESS_REGS; nxt_dead++) {
                     if (live[nxt_dead] == LIVE_DEAD)
                         break;
                 }
                 if (nxt_dead < NUM_LIVENESS_REGS &&
-                    !opnd_uses_reg(no_overlap1, REG_START_32 + nxt_dead) &&
-                    !opnd_uses_reg(no_overlap2, REG_START_32 + nxt_dead) &&
+                    !opnd_uses_reg(no_overlap1, REG_START + nxt_dead) &&
+                    !opnd_uses_reg(no_overlap2, REG_START + nxt_dead) &&
                     !opnd_uses_reg(no_overlap1, mi->reg3.reg) &&
                     !opnd_uses_reg(no_overlap2, mi->reg3.reg) &&
                     /* we can't xchg with what we'll use for reg1 or reg2 */
-                    REG_START_32 + nxt_dead != REG_EDX &&
-                    REG_START_32 + nxt_dead != REG_EBX &&
+                    REG_START + nxt_dead != DR_REG_XDX &&
+                    REG_START + nxt_dead != DR_REG_XBX &&
                     /* do not pick local reg that overlaps w/ whole-bb reg */
-                    REG_START_32 + nxt_dead != mi->bb->reg1.reg &&
-                    REG_START_32 + nxt_dead != mi->bb->reg2.reg) {
-                    mi->reg3.xchg = REG_START_32 + nxt_dead;
+                    REG_START + nxt_dead != mi->bb->reg1.reg &&
+                    REG_START + nxt_dead != mi->bb->reg2.reg) {
+                    mi->reg3.xchg = REG_START + nxt_dead;
                     live[nxt_dead] = LIVE_LIVE;
                     STATS_INC(reg_xchg);
                 } else {
@@ -1525,11 +1525,13 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
                 STATS_INC(reg_dead);
         } else {
             pick_scratch_reg_helper(mi, &mi->reg3, live, only_abcd,
-                                    (mi->bb->reg1.reg == REG_ECX ?
-                                     ((mi->bb->reg2.reg == REG_EDX) ? REG_EBX : REG_EDX) :
-                                     ((mi->bb->reg2.reg == REG_ECX) ?
-                                      ((mi->bb->reg1.reg == REG_EDX) ? REG_EBX : REG_EDX)
-                                      : REG_ECX)),
+                                    (mi->bb->reg1.reg == DR_REG_XCX ?
+                                     ((mi->bb->reg2.reg == DR_REG_XDX) ?
+                                      DR_REG_XBX : DR_REG_XDX) :
+                                     ((mi->bb->reg2.reg == DR_REG_XCX) ?
+                                      ((mi->bb->reg1.reg == DR_REG_XDX) ?
+                                       DR_REG_XBX : DR_REG_XDX)
+                                      : DR_REG_XCX)),
                                     spill_reg3_slot(mi->aflags == EFLAGS_WRITE_6,
                                                     !mi->eax.used || mi->eax.dead,
                                                     /* later we'll update these */
@@ -1548,20 +1550,22 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
         mi->reg3.reg = REG_NULL;
 
     if (mi->bb->reg1.reg != REG_NULL &&
-        (!need3 || !reg3_must_be_ecx || mi->bb->reg1.reg != REG_ECX) &&
+        (!need3 || !reg3_must_be_ecx || mi->bb->reg1.reg != DR_REG_XCX) &&
         /* we only need to check for overlap for xchg (since messes up
          * app values) so we ignore no_overlap*
          */
-        (!mi->eax.used || mi->bb->reg1.reg != REG_EAX)) {
+        (!mi->eax.used || mi->bb->reg1.reg != DR_REG_XAX)) {
         /* Use whole-bb spilled reg (PR 489221) */
         mi->reg1 = mi->bb->reg1;
-        mi->reg1.dead = (live[mi->reg1.reg - REG_START_32] == LIVE_DEAD);
+        mi->reg1.dead = (live[mi->reg1.reg - REG_START] == LIVE_DEAD);
     } else {
         /* Pick primary scratch reg */
         ASSERT(local_idx < local_idx_max, "local slot overflow");
         pick_scratch_reg_helper(mi, &mi->reg1, live, only_abcd,
-                                (need3 && mi->reg3.reg == REG_EDX) ? REG_ECX :
-                                ((mi->bb->reg2.reg == REG_EDX) ? REG_EBX : REG_EDX),
+                                (need3 && mi->reg3.reg == DR_REG_XDX) ?
+                                DR_REG_XCX : 
+                                ((mi->bb->reg2.reg == DR_REG_XDX) ?
+                                 DR_REG_XBX : DR_REG_XDX),
                                 /* if whole-bb ecx is in slot 1 or 2, use 3rd slot */
                                 (mi->bb->reg1.reg == REG_NULL) ? SPILL_SLOT_1 :
                                 local_slot[local_idx++], no_overlap1, no_overlap2);
@@ -1569,18 +1573,20 @@ pick_scratch_regs(instr_t *inst, fastpath_info_t *mi, bool only_abcd, bool need3
     
 
     if (mi->bb->reg2.reg != REG_NULL &&
-        (!need3 || !reg3_must_be_ecx || mi->bb->reg2.reg != REG_ECX) &&
-        (!mi->eax.used || mi->bb->reg2.reg != REG_EAX)) {
+        (!need3 || !reg3_must_be_ecx || mi->bb->reg2.reg != DR_REG_XCX) &&
+        (!mi->eax.used || mi->bb->reg2.reg != DR_REG_XAX)) {
         /* Use whole-bb spilled reg (PR 489221) */
         mi->reg2 = mi->bb->reg2;
-        mi->reg2.dead = (live[mi->reg2.reg - REG_START_32] == LIVE_DEAD);
+        mi->reg2.dead = (live[mi->reg2.reg - REG_START] == LIVE_DEAD);
     } else {
         /* Pick secondary scratch reg */
         ASSERT(local_idx < local_idx_max, "local slot overflow");
         pick_scratch_reg_helper(mi, &mi->reg2, live, only_abcd,
-                                mi->reg1.reg == REG_EBX ?
-                                ((need3 && mi->reg3.reg == REG_EDX) ? REG_ECX : REG_EDX) :
-                                ((need3 && mi->reg3.reg == REG_EBX) ? REG_ECX : REG_EBX),
+                                mi->reg1.reg == DR_REG_XBX ?
+                                ((need3 && mi->reg3.reg == DR_REG_XDX) ?
+                                 DR_REG_XCX : DR_REG_XDX) :
+                                ((need3 && mi->reg3.reg == DR_REG_XBX) ?
+                                 DR_REG_XCX : DR_REG_XBX),
                                 /* if whole-bb ecx is in slot 1 or 2, use 3rd slot */
                                 (mi->bb->reg2.reg == REG_NULL) ? SPILL_SLOT_2 :
                                 local_slot[local_idx++], no_overlap1, no_overlap2);
@@ -1691,7 +1697,7 @@ insert_save_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
                    scratch_reg_info_t *si, int aflags)
 {
     if (si->reg != REG_NULL) {
-        ASSERT(si->reg == REG_EAX, "must use eax for aflags");
+        ASSERT(si->reg == DR_REG_XAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, true/*save*/, false);
     }
     insert_save_aflags_nospill(drcontext, bb, inst, aflags != EFLAGS_WRITE_OF);
@@ -1704,7 +1710,7 @@ insert_restore_aflags(void *drcontext, instrlist_t *bb, instr_t *inst,
     insert_restore_aflags_nospill(drcontext, bb, inst,
                                   aflags != EFLAGS_WRITE_OF);
     if (si->reg != REG_NULL) {
-        ASSERT(si->reg == REG_EAX, "must use eax for aflags");
+        ASSERT(si->reg == DR_REG_XAX, "must use eax for aflags");
         insert_spill_or_restore(drcontext, bb, inst, si, false/*restore*/, false);
     }
 }
@@ -1745,8 +1751,8 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
      * 463053) but we consider that too pathological to bother.
      */
     bool eax_dead = bi->eax_dead ||
-        (bi->reg1.reg == REG_EAX && scratch_reg1_is_avail(inst, mi, bi)) ||
-        (bi->reg2.reg == REG_EAX && scratch_reg2_is_avail(inst, mi, bi));
+        (bi->reg1.reg == DR_REG_XAX && scratch_reg1_is_avail(inst, mi, bi)) ||
+        (bi->reg2.reg == DR_REG_XAX && scratch_reg2_is_avail(inst, mi, bi));
     if (!bi->eflags_used)
         return;
     if (bi->aflags != EFLAGS_WRITE_6) {
@@ -1755,7 +1761,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (eax_dead || bi->aflags_where == AFLAGS_IN_EAX) {
             si.reg = REG_NULL;
         } else {
-            si.reg = REG_EAX;
+            si.reg = DR_REG_XAX;
             /* reg1 is used for xl8 sharing so check whether shared_memop is set
              * == share w/ next.  it's cleared prior to post-app-write aflags save
              * so we use mi->use_shared to detect share w/ prev.
@@ -1770,7 +1776,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                 si.xchg = bi->reg2.reg;
             else
                 si.xchg = REG_NULL;
-            ASSERT(si.xchg != REG_EAX, "xchg w/ self is not a save");
+            ASSERT(si.xchg != DR_REG_XAX, "xchg w/ self is not a save");
             si.used = true;
             si.dead = false;
             si.global = false; /* to enable the save */
@@ -1810,7 +1816,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* save aflags into tls */
         PRE(bb, inst, INSTR_CREATE_mov_st
             (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX),
-             opnd_create_reg(REG_EAX)));
+             opnd_create_reg(DR_REG_XAX)));
         if (!eax_dead) { /* restore eax  */
             /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
              * lock of the bus shows up as a measurable perf hit (PR 553724)
@@ -1833,7 +1839,7 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(bi->aflags_where == AFLAGS_IN_TLS ||
            bi->aflags_where == AFLAGS_IN_EAX,
            "bi->aflags_where is not set");
-    si.reg = REG_EAX;
+    si.reg  = DR_REG_XAX;
     si.xchg = REG_NULL;
     si.slot = SPILL_SLOT_EFLAGS_EAX;
     si.used = true;
@@ -1841,11 +1847,11 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
     si.global = false; /* to enable the restore */
     if (bi->aflags_where == AFLAGS_IN_TLS) {
         if (bi->eax_dead ||
-            (bi->reg1.reg == REG_EAX && scratch_reg1_is_avail(inst, mi, bi)) ||
-            (bi->reg2.reg == REG_EAX && scratch_reg2_is_avail(inst, mi, bi))) {
+            (bi->reg1.reg == DR_REG_XAX && scratch_reg1_is_avail(inst, mi, bi)) ||
+            (bi->reg2.reg == DR_REG_XAX && scratch_reg2_is_avail(inst, mi, bi))) {
             insert_spill_or_restore(drcontext, bb, inst, &si, false/*restore*/, false);
             /* we do NOT want the eax-restore at the end of insert_restore_aflags() */
-            si.reg = REG_NULL;
+            si.reg = DR_REG_NULL;
         } else {
             si.slot = SPILL_SLOT_5;
             /* See notes in save_aflags_if_live on sharing impacting reg1 being scratch */
@@ -1853,13 +1859,13 @@ restore_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                 si.xchg = bi->reg1.reg;
             else if (scratch_reg2_is_avail(inst, mi, bi))
                 si.xchg = bi->reg2.reg;
-            ASSERT(si.xchg != REG_EAX, "xchg w/ self is not a save");
+            ASSERT(si.xchg != DR_REG_XAX, "xchg w/ self is not a save");
             /* I used to use xchg to avoid needing two instrs, but xchg w/ mem's
              * lock of the bus shows up as a measurable perf hit (PR 553724)
              */
             insert_spill_or_restore(drcontext, bb, inst, &si, true/*save*/, false);
             PRE(bb, inst, INSTR_CREATE_mov_ld
-                (drcontext, opnd_create_reg(REG_EAX),
+                (drcontext, opnd_create_reg(DR_REG_XAX),
                  spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX)));
             /* we DO want the eax-restore at the end of insert_restore_aflags() */
         }
@@ -2228,7 +2234,7 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
     reg_id_t index = opnd_get_index(memop);
     if (base != REG_NULL) {
         /* if we've previously checked, and hasn't been written to, skip check */
-        if (!mi->bb->addressable[reg_to_pointer_sized(base) - REG_EAX]) {
+        if (!mi->bb->addressable[reg_to_pointer_sized(base) - DR_REG_XAX]) {
             ASSERT(reg_get_size(base) == OPSZ_4, "internal base size error");
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext,
@@ -2243,13 +2249,13 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
-            mi->bb->addressable[reg_to_pointer_sized(base) - REG_EAX] = true;
+            mi->bb->addressable[reg_to_pointer_sized(base) - DR_REG_XAX] = true;
         } else
             STATS_INC(addressable_checks_elided);
     }
     if (index != REG_NULL) {
         /* if we've previously checked, and hasn't been written to, skip check */
-        if (!mi->bb->addressable[reg_to_pointer_sized(index) - REG_EAX]) {
+        if (!mi->bb->addressable[reg_to_pointer_sized(index) - DR_REG_XAX]) {
             ASSERT(reg_get_size(index) == OPSZ_4, "internal index size error");
             PRE(bb, inst,
                 INSTR_CREATE_cmp(drcontext,
@@ -2262,7 +2268,7 @@ add_addressing_register_checks(void *drcontext, instrlist_t *bb, instr_t *inst,
                               instr_needs_all_srcs_and_vals(inst) ||
                               (mi->memsz < 4 && !opnd_is_null(mi->src[1].app))) ?
                              OP_jne : OP_jne_short, mi);
-            mi->bb->addressable[reg_to_pointer_sized(index) - REG_EAX] = true;
+            mi->bb->addressable[reg_to_pointer_sized(index) - DR_REG_XAX] = true;
         } else
             STATS_INC(addressable_checks_elided);
     }
@@ -2827,13 +2833,13 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             /* For dynamic shift amount we must use %cl (implicit opnd) */
             memoffs = mi->memoffs;
             ASSERT(opnd_is_reg(mi->memoffs), "offs invalid opnd");
-            ASSERT(!opnd_uses_reg(dst.shadow, REG_ECX) &&
-                   !opnd_uses_reg(src.shadow, REG_ECX) &&
-                   !opnd_uses_reg(mi->memoffs, REG_ECX),
+            ASSERT(!opnd_uses_reg(dst.shadow, DR_REG_XCX) &&
+                   !opnd_uses_reg(src.shadow, DR_REG_XCX) &&
+                   !opnd_uses_reg(mi->memoffs, DR_REG_XCX),
                    "internal scratch reg error");
             if (scratch8 != REG_CL) {
                 PRE(bb, inst,
-                    INSTR_CREATE_xchg(drcontext, opnd_create_reg(REG_ECX),
+                    INSTR_CREATE_xchg(drcontext, opnd_create_reg(DR_REG_XCX),
                                       opnd_create_reg(reg_to_pointer_sized(scratch8))));
                 if (opnd_is_reg(mi->memoffs) &&
                     reg_to_pointer_sized(opnd_get_reg(mi->memoffs)) ==
@@ -3187,7 +3193,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
         if (!opnd_is_immed_int(mi->memoffs) && scratch8 != REG_CL) {
             PRE(bb, inst,
-                INSTR_CREATE_xchg(drcontext, opnd_create_reg(REG_ECX),
+                INSTR_CREATE_xchg(drcontext, opnd_create_reg(DR_REG_XCX),
                                   opnd_create_reg(reg_to_pointer_sized(scratch8))));
         }
     }
@@ -3406,7 +3412,7 @@ restore_mcontext_on_shadow_fault(void *drcontext,
             int offs = opnd_get_disp(src);
             IF_DEBUG(opnd_t flag_slot = spill_slot_opnd(drcontext, SPILL_SLOT_EFLAGS_EAX);)
             ASSERT(opnd_get_index(src) == REG_NULL, "unknown tls");
-            ASSERT(opnd_get_segment(src) == SEG_FS, "unknown tls");
+            ASSERT(opnd_get_segment(src) == seg_tls, "unknown tls");
             ASSERT(opnd_is_reg(instr_get_dst(&inst, 0)), "unknown tls");
             /* We read directly from the tls slot regardless of whether ours or
              * DR's: no easy way to translate to DR spill slot # and use C
@@ -5065,7 +5071,7 @@ pick_bb_scratch_regs_helper(opnd_t opnd, int uses[NUM_LIVENESS_REGS])
     for (j = 0; j < opnd_num_regs_used(opnd); j++) {
         reg_id_t reg = opnd_get_reg_used(opnd, j);
         if (reg_is_gpr(reg)) {
-            int idx = reg_to_pointer_sized(reg) - REG_START_32;
+            int idx = reg_to_pointer_sized(reg) - REG_START;
             ASSERT(idx >= 0 && idx < NUM_LIVENESS_REGS, "reg enum error");
             uses[idx]++;
             if (opnd_is_memory_reference(opnd))
@@ -5113,35 +5119,35 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     /* Too risky to use esp: if no alt sig stk (ESXi) or on Windows can't
      * handle fault
      */
-    uses[REG_ESP - REG_START_32] = INT_MAX;
+    uses[DR_REG_XSP - REG_START] = INT_MAX;
     /* Future work PR 492073: If esi/edi/ebp are among the least-used, xchg
      * w/ cx/dx/bx and swap in each app instr.  Have to ensure results in
      * legal instrs (if app uses sub-dword, or certain addressing modes).
      */
-    uses[REG_EBP - REG_START_32] = INT_MAX;
-    uses[REG_ESI - REG_START_32] = INT_MAX;
-    uses[REG_EDI - REG_START_32] = INT_MAX;
+    uses[DR_REG_XBP - REG_START] = INT_MAX;
+    uses[DR_REG_XSI - REG_START] = INT_MAX;
+    uses[DR_REG_XDI - REG_START] = INT_MAX;
     for (i = 0; i < NUM_LIVENESS_REGS; i++) {
         if (uses[i] < uses_least) {
             uses_second = uses_least;
             bi->reg2.reg = bi->reg1.reg;
             uses_least = uses[i];
-            bi->reg1.reg = REG_START_32 + i;
+            bi->reg1.reg = REG_START + i;
         } else if (uses[i] < uses_second) {
             uses_second = uses[i];
-            bi->reg2.reg = REG_START_32 + i;
+            bi->reg2.reg = REG_START + i;
         }
     }
     /* For PR 493257 (share shadow translations) we do NOT want reg1 to be
      * eax, so we can save eflags w/o clobbering shared shadow addr in reg1
      */
-    if (bi->reg1.reg == REG_EAX) {
+    if (bi->reg1.reg == DR_REG_XAX) {
         scratch_reg_info_t tmp = bi->reg1;
-        ASSERT(bi->reg2.reg != REG_EAX, "reg2 shouldn't be eax");
+        ASSERT(bi->reg2.reg != DR_REG_XAX, "reg2 shouldn't be eax");
         bi->reg1 = bi->reg2;
         bi->reg2 = tmp;
     }
-    ASSERT(bi->reg1.reg <= REG_EBX, "NYI non-a/b/c/d reg");
+    ASSERT(bi->reg1.reg <= DR_REG_XBX, "NYI non-a/b/c/d reg");
     bi->reg1.slot = SPILL_SLOT_1;
     /* Dead-across-whole-bb is rare so we don't bother to support xchg */
     bi->reg1.xchg = REG_NULL;
@@ -5149,7 +5155,7 @@ pick_bb_scratch_regs(instr_t *inst, bb_info_t *bi)
     bi->reg1.dead = false;
     bi->reg1.used = false; /* will be set once used */
     bi->reg1.global = true;
-    ASSERT(bi->reg2.reg <= REG_EBX, "NYI non-a/b/c/d reg");
+    ASSERT(bi->reg2.reg <= DR_REG_XBX, "NYI non-a/b/c/d reg");
     ASSERT(bi->reg1.reg != bi->reg2.reg, "reg conflict");
     bi->reg2.slot = SPILL_SLOT_2;
     bi->reg2.xchg = REG_NULL;
@@ -5247,9 +5253,9 @@ fastpath_pre_instrument(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info
     bi->aflags = get_aflags_and_reg_liveness(inst, live, options.pattern != 0);
     /* Update the dead fields */
     if (bi->reg1.reg != DR_REG_NULL)
-        bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
+        bi->reg1.dead = (live[bi->reg1.reg - REG_START] == LIVE_DEAD);
     if (bi->reg2.reg != DR_REG_NULL)
-        bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
+        bi->reg2.dead = (live[bi->reg2.reg - REG_START] == LIVE_DEAD);
 
     bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
 }
@@ -5412,9 +5418,9 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
     bi->aflags = get_aflags_and_reg_liveness(next, live, options.pattern != 0);
     /* Update the dead fields */
     if (bi->reg1.reg != DR_REG_NULL)
-        bi->reg1.dead = (live[bi->reg1.reg - REG_START_32] == LIVE_DEAD);
+        bi->reg1.dead = (live[bi->reg1.reg - REG_START] == LIVE_DEAD);
     if (bi->reg2.reg != DR_REG_NULL)
-        bi->reg2.dead = (live[bi->reg2.reg - REG_START_32] == LIVE_DEAD);
+        bi->reg2.dead = (live[bi->reg2.reg - REG_START] == LIVE_DEAD);
     bi->eax_dead = (live[DR_REG_XAX - REG_START] == LIVE_DEAD);
 
     if (bi->reg1.reg != DR_REG_NULL && instr_writes_to_reg(inst, bi->reg1.reg)) {

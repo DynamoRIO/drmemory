@@ -563,6 +563,6 @@ add_subdirectory(app_suite)
 
 else (NOT X64)
   # pattern mode testing.
-  newtest_ex(free.pattern free.c "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "addronly")
-  newtest(malloc.pattern malloc.c "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "")
+  newtest_ex(free.pattern free.c "" "-light" "" OFF "addronly")
+  newtest_ex(malloc.pattern malloc.c "" "-light" "" OFF "")
 endif (NOT X64)
