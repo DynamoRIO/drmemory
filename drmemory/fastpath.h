@@ -132,6 +132,30 @@ typedef struct _fastpath_info_t {
     int num_to_propagate;
 } fastpath_info_t;
 
+/* data structure for pattern_opt_elide_overlap optimization */
+typedef enum {
+    ELIDE_REG_COVER_STATUS_NONE,
+    ELIDE_REG_COVER_STATUS_LEFT,
+    ELIDE_REG_COVER_STATUS_BOTH,
+} elide_reg_cover_status_t;
+
+/* information of instrumented check */
+typedef struct _elide_ref_check_info_t {
+    int disp; /* disp of the ref [base + disp] */
+    instr_t *start; /* start of the instrumented code for future removal. */
+    instr_t *end;   /* end of the instrumented code for future removal. */
+} elide_ref_check_info_t;
+
+/* Possible check coverage for memory references via a particular base reg.
+ * It stores at most two checks' information in sorted order, so we can
+ * check if any new checks overlap with existing checks.
+ */
+typedef struct _elide_reg_cover_info_t {
+    elide_reg_cover_status_t status;
+    elide_ref_check_info_t left;
+    elide_ref_check_info_t right;
+} elide_reg_cover_info_t;
+
 /* Share inter-instruction info across whole bb */
 struct _bb_info_t {
     /* whole-bb spilling (PR 489221) */
@@ -177,6 +201,8 @@ struct _bb_info_t {
     app_pc fake_xl8_override_pc;
     /* i#826: share_xl8_max_diff changes over time, so save it. */
     uint share_xl8_max_diff;
+    /* possible check coverage for memory references via reg */
+    elide_reg_cover_info_t reg_cover[NUM_LIVENESS_REGS];
 };
 
 /* Info per bb we need to save in order to restore app state */

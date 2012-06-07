@@ -610,3 +610,6 @@ OPTION_CLIENT(internal, callstack_dump_stack, uint, 0, 0, 512*1024,
 OPTION_CLIENT_BOOL(internal, pattern_opt_repstr, false,
                    "For pattern mode, optimize each loop expanded from a rep string instruction",
                    "For pattern mode, optimize each loop expanded from a rep string instruction by using an inner loop to avoid unnecessary aflags save/restore.")
+OPTION_CLIENT_BOOL(internal, pattern_opt_elide_overlap, false,
+                   "For pattern mode, remove redundant checks",
+                   "For pattern mode, remove redundant checks if they overlap with other existing checks. This can result in not reporting an error in favor of reporting another error whose memory reference is adjacent. Thus, this gives up the property of reporting any particular error before it happens: a minor tradeoff in favor of performance.")

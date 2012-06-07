@@ -340,6 +340,197 @@ pattern_extract_refs(instr_t *app, bool *use_eax, opnd_t *refs
     return num_refs;
 }
 
+/* remove the instrumented check instructions between start and end */
+static void
+pattern_remove_check(void *drcontext, instrlist_t *ilist,
+                     instr_t *start, instr_t *end)
+{
+    instr_t *instr, *next;
+    ASSERT(start != NULL && instr_is_label(start) &&
+           end != NULL   && instr_is_label(end),
+           "missing start/end label");
+    for (instr = start; instr != end; instr = next) {
+        next = instr_get_next(instr);
+        instrlist_remove(ilist, instr);
+        instr_destroy(drcontext, instr);
+    }
+    ASSERT(instr == end, "wrong end label");
+    instrlist_remove(ilist, end);
+    instr_destroy(drcontext, end);
+}
+
+/* invalidate stored check info that its base reg is overwritten by the app */
+static void
+pattern_opt_elide_overlap_update_regs(instr_t *app, bb_info_t *bi)
+{
+    int i;
+    elide_reg_cover_info_t *reg_cover = bi->reg_cover;
+    for (i = 0; i < NUM_LIVENESS_REGS; i++) {
+        if (reg_cover[i].status != ELIDE_REG_COVER_STATUS_NONE &&
+            instr_writes_to_reg(app, REG_START + i)) {
+            /* the base reg is overwritten, invalidate it */
+            reg_cover[i].status = ELIDE_REG_COVER_STATUS_NONE;
+        }
+    }
+}
+
+/* check if we can skip instrumenting the checks for refs */
+static bool
+pattern_opt_elide_overlap_ignore_refs(bb_info_t *bi, int num_refs, opnd_t *refs)
+{
+    elide_reg_cover_info_t *reg_cover;
+    reg_id_t base;
+    int disp;
+
+    ASSERT(options.pattern_opt_elide_overlap, "should not be called");
+    if (num_refs == 0)
+        return true;
+    if (num_refs > 1)
+        return false;
+    /* only care about [base + disp] refs */
+    if (!opnd_is_near_base_disp(refs[0]) ||
+        opnd_get_index(refs[0]) != DR_REG_NULL)
+        return false;
+
+    base = opnd_get_base(refs[0]);
+    disp = opnd_get_disp(refs[0]);
+    if (!IF_X64_ELSE(reg_is_64bit(base), reg_is_32bit(base))) {
+        ASSERT(false, "wrong base register");
+        return false;
+    }
+    reg_cover = &bi->reg_cover[base - REG_START];
+    if (reg_cover->status == ELIDE_REG_COVER_STATUS_NONE) {
+        /* no previous check */
+        return false;
+    } else if (reg_cover->status == ELIDE_REG_COVER_STATUS_LEFT &&
+               reg_cover->left.disp == disp) {
+        /* the same ref as the left. */
+        /* XXX: we ignore the size difference. */
+        return true;
+    } else if (reg_cover->status == ELIDE_REG_COVER_STATUS_BOTH &&
+               (reg_cover->left.disp  == disp ||
+                reg_cover->right.disp == disp)) {
+        /* the same ref as the right. */
+        /* XXX: we ignore the size difference. */
+        return true;
+    } else if (reg_cover->status == ELIDE_REG_COVER_STATUS_BOTH &&
+               (reg_cover->right.disp - reg_cover->left.disp) <=
+               options.redzone_size &&
+               disp > reg_cover->left.disp && disp < reg_cover->right.disp) {
+        /* check if in between */
+        return true;
+    }
+    return false;
+}
+
+/* optimize the checks by removing un-necessary checks, 
+ * The heuristic is that if there are two checks closer to each other
+ * than redzone size, there are no checks needed in between.
+ */
+/* it returns the check info, and the caller stores the instr bounds so
+ * it can be removed later
+ */
+static elide_ref_check_info_t *
+pattern_opt_elide_overlap_update_checks(void *drcontext, bb_info_t *bi,
+                                        instrlist_t *ilist, int num_refs,
+                                        opnd_t *refs)
+{
+    elide_reg_cover_info_t *reg_cover;
+    reg_id_t base;
+    int disp;
+
+    /* the case not handled */
+    if (num_refs != 1 || !opnd_is_near_base_disp(refs[0]) ||
+        opnd_get_index(refs[0]) != DR_REG_NULL)
+        return NULL;
+
+    base = opnd_get_base(refs[0]);
+    disp = opnd_get_disp(refs[0]);
+    if (!IF_X64_ELSE(reg_is_64bit(base), reg_is_32bit(base))) {
+        ASSERT(false, "wrong base register");
+        return NULL;
+    }
+
+    reg_cover = &bi->reg_cover[base - REG_START];
+    if (reg_cover->status == ELIDE_REG_COVER_STATUS_NONE) {
+        /* the first check, simply add at left */
+        reg_cover->status = ELIDE_REG_COVER_STATUS_LEFT;
+        reg_cover->left.disp = disp;
+        return &reg_cover->left;
+    } else if (reg_cover->status == ELIDE_REG_COVER_STATUS_LEFT) {
+        /* the second check, add in sorted order */
+        reg_cover->status = ELIDE_REG_COVER_STATUS_BOTH;
+        ASSERT(disp != reg_cover->left.disp, "ref should be ignored");
+        if (disp > reg_cover->left.disp) { /* add to right */
+            reg_cover->right.disp = disp;
+            return &reg_cover->right;
+        } else { /* add to left */
+            reg_cover->right = reg_cover->left;
+            reg_cover->left.disp = disp;
+            return &reg_cover->left;
+        }
+    }
+    /* two already, replace one */
+    ASSERT(reg_cover->status == ELIDE_REG_COVER_STATUS_BOTH,
+           "wrong elide cover status");
+    ASSERT((reg_cover->right.disp - reg_cover->left.disp) > 0,
+           "wrong order of checks");
+    if (disp < reg_cover->left.disp) {
+        /* on the left */
+        if ((reg_cover->right.disp - disp) <= options.redzone_size) {
+            /* remove the left one's instrumentation */
+            pattern_remove_check(drcontext, ilist, 
+                                 reg_cover->left.start, reg_cover->left.end);
+        } else {
+            /* move the left one to right */
+            reg_cover->right = reg_cover->left;
+        }
+        reg_cover->left.disp = disp;
+        return &reg_cover->left;
+    } else if (disp > reg_cover->right.disp) {
+        /* on the right */
+        if ((disp - reg_cover->left.disp) <= options.redzone_size) {
+            /* remove the right one's instrumentation*/
+            pattern_remove_check(drcontext, ilist,
+                                 reg_cover->right.start, reg_cover->right.end);
+        } else {
+            /* move the right one to left */
+            reg_cover->left = reg_cover->right;
+        }
+        reg_cover->right.disp = disp;
+        return &reg_cover->right;
+    } else {
+        /* in between */
+        ASSERT(disp > reg_cover->left.disp && disp < reg_cover->right.disp,
+               "wrong order of reg_covers");
+        ASSERT((reg_cover->right.disp - reg_cover->left.disp) > options.redzone_size,
+               "ref should be ignored");
+        if ((disp - reg_cover->left.disp) >= (reg_cover->right.disp - disp)) {
+            if ((disp - reg_cover->left.disp) <= options.redzone_size) {
+                /* the large gap is smaller than the redzone size */
+                reg_cover->right.disp = disp;
+                return &reg_cover->right;
+            } else {
+                /* pick the small gap. */
+                reg_cover->left.disp = disp;
+                return &reg_cover->left;
+            }
+        } else {
+            if ((reg_cover->right.disp - disp) <= options.redzone_size) {
+                /* the large gap is smaller than the redzone size */
+                reg_cover->left.disp = disp;
+                return &reg_cover->left;
+            } else {
+                /* pick the small gap. */
+                reg_cover->right.disp = disp;
+                return &reg_cover->right;
+            }
+        }
+    }
+    ASSERT(false, "should not reach here");
+    return NULL;
+}
+
 instr_t *
 pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
                          bb_info_t *bi, bool translating)
@@ -348,8 +539,13 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
     opnd_t refs[MAX_REFS_PER_INSTR];
     bool use_eax = false;
     instr_t *label;
+    elide_ref_check_info_t *check = NULL;
 
-    if (instr_get_opcode(app) == OP_lea || 
+    ASSERT(options.pattern != 0, "should not be called");
+    if (options.pattern_opt_elide_overlap)
+        pattern_opt_elide_overlap_update_regs(app, bi);
+
+    if (instr_get_opcode(app) == OP_lea ||
         instr_is_prefetch(app) ||
         instr_is_nop(app))
         return NULL;
@@ -364,6 +560,12 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
         ASSERT(bi->pattern_4byte_check_field_set,
                "pattern_4byte_check_only is not initialized");
     }
+    if (options.pattern_opt_elide_overlap) {
+        if (pattern_opt_elide_overlap_ignore_refs(bi, num_refs, refs))
+            return NULL;
+        check = pattern_opt_elide_overlap_update_checks
+            (drcontext, bi, ilist, num_refs, refs);
+    }
     mark_eflags_used(drcontext, ilist, bi);
     bi->added_instru = true;
     if (!whole_bb_spills_enabled()) {
@@ -373,8 +575,17 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
     /* pattern check code */
     label = INSTR_CREATE_label(drcontext);
     PRE(ilist, app, label);
-    for (i = 0; i < num_refs; i++)
+    for (i = 0; i < num_refs; i++) {
+        if (check != NULL) {
+            check->start = INSTR_CREATE_label(drcontext);
+            PRE(ilist, app, check->start);
+        }
         pattern_insert_check_code(drcontext, ilist, app, refs[i], bi);
+        if (check != NULL) {
+            check->end = INSTR_CREATE_label(drcontext);
+            PRE(ilist, app, check->end);
+        }
+    }
     if (!whole_bb_spills_enabled()) {
         /* aflags restore label */
         pattern_insert_aflags_label(drcontext, ilist, app, false, use_eax);
