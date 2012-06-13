@@ -849,6 +849,13 @@ opc_is_in_syscall_wrapper(uint opc)
 {
     return (opc == OP_mov_imm || opc == OP_lea || opc == OP_xor /*wow64*/ ||
             opc == OP_int || opc == OP_call_ind ||
+            /* 64-bit Windows:
+             * ntdll!NtMapViewOfSection:
+             * 77941590 4c8bd1          mov     r10,rcx
+             * 77941593 b825000000      mov     eax,25h
+             * 77941598 0f05            syscall
+             */
+            IF_X64(opc == OP_mov_ld ||)
             /* w/ DR Ki hooks before dr_init we have to walk over the
              * native_exec_syscall hooks */
             opc == OP_jmp);

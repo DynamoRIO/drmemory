@@ -399,7 +399,21 @@ if (WIN32)
   # It is redistributable: "you can distribute the DLL with your application".
   # 6.3+ works, 5.2 does not, haven't tested in between.
   # WINDDK/3790.1830/bin/x86/dbghelp.dll is 6.3.
-  if (EXISTS "${DDK_ROOT}/bin/x86/dbghelp.dll")
+  if (X64)
+    # FIXME i#908: it seems cmake has trouble to lookup dbghelp.dll in
+    # 64-bit directory, so we just explicitly check several possible locations
+    # WinDDK/7600.16385.1/tools/tracing/amd64
+    # Microsoft Visual Studio 9.0/Common7/IDE\Remote Debugger/x64
+    if (EXISTS "${DDK_ROOT}/tools/tracing/amd64/dbghelp.dll")
+      set(DBGHELP_DLL "${DDK_ROOT}/tools/tracing/amd64/dbghelp.dll")
+    elseif (EXISTS "$ENV{PROGRAMW6432}/Debugging Tools for Windows/dbghelp.dll")
+      set(DBGHELP_DLL "$ENV{PROGRAMW6432}/Debugging Tools for Windows/dbghelp.dll")
+    elseif (EXISTS "$ENV{PROGRAMW6432}/Microsoft Visual Studio 9.0/Common7/IDE/Remote Debugger/x64/dbghelp.dll")
+      set(DBGHELP_DLL "$ENV{PROGRAMW6432}/Microsoft Visual Studio 9.0/Common7/IDE/Remote Debugger/x64/dbghelp.dll")
+    else ()
+      message(FATAL_ERROR "dbghelp.dll required and not found")
+    endif ()
+  elseif (EXISTS "${DDK_ROOT}/bin/x86/dbghelp.dll")
     set(DBGHELP_DLL "${DDK_ROOT}/bin/x86/dbghelp.dll")
   else ()
     file(GLOB dbghelp_hint "$ENV{PROGRAMFILES}/Debugging Tools for Windows/dbghelp.dll")

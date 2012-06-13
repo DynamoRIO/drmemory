@@ -1720,7 +1720,11 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
     ssize_t req_size;
     IF_DEBUG(byte delta);
 # ifdef X64
-    ASSERT_NOT_IMPLEMENTED();
+    /* FIXME i#906: need to investigate the header format in 64-bit windows
+     * to get actual padded size.
+     */
+    return ALIGN_FORWARD(get_alloc_size(auxarg, real_base, routine),
+                         MALLOC_CHUNK_ALIGNMENT);
 # endif
     if (!is_rtl_routine(routine->type) || auxarg == 0/*invalid heap for Rtl*/
 # ifdef TOOL_DR_MEMORY

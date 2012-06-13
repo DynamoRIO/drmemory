@@ -207,7 +207,7 @@ enum {
     SPILL_EFLAGS_6_EAX,
     SPILL_EFLAGS_NUM,
 };
-#define SPILL_REG3_REG   REG_ECX
+#define SPILL_REG3_REG   DR_REG_XCX
 reg_id_t seg_tls;
 
 int
@@ -803,7 +803,7 @@ instrument_fragment_delete(void *drcontext/*may be NULL*/, void *tag)
 static bool
 reg_is_caller_saved(reg_id_t reg)
 {
-    return (reg == REG_EAX || reg == REG_EDX || reg == REG_ECX);
+    return (reg == DR_REG_XAX || reg == DR_REG_XDX || reg == DR_REG_XCX);
 }
 #endif
 
@@ -1064,7 +1064,7 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
     bool push = opc_is_push(opc);
     bool pop = opc_is_pop(opc);
     bool pushpop = false; /* is mem ref on stack for push/pop */
-    if (opnd_uses_reg(opnd, REG_ESP) || opc == OP_leave/*(ebp) not (esp)*/) {
+    if (opnd_uses_reg(opnd, DR_REG_XSP) || opc == OP_leave/*(ebp) not (esp)*/) {
         if (write && push && opnd_is_base_disp(opnd)) {
             uint extra_push_sz = adjust_memop_push_offs(inst);
             pushpop = true;
@@ -1081,7 +1081,7 @@ adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_s
                  * before the adjust instead of after: FIXME we'll report
                  * errors in both in the wrong order.
                  */
-                ASSERT(opnd_get_base(opnd) == REG_EBP, "OP_leave opnd wrong");
+                ASSERT(opnd_get_base(opnd) == DR_REG_XBP, "OP_leave opnd wrong");
             }
             /* OP_ret w/ immed is treated as single pop here; its esp
              * adjustment is handled separately, as it doesn't read those bytes.
@@ -1107,7 +1107,7 @@ always_check_definedness(instr_t *inst, int opnum)
     return ((opc == OP_leave && opnum == 0) /* ebp */ ||
             /* count of loop is important: check it */
             (opc_is_stringop_loop(opc) && opnd_is_reg(instr_get_src(inst, opnum)) &&
-             reg_overlap(opnd_get_reg(instr_get_src(inst, opnum)), REG_ECX)) ||
+             reg_overlap(opnd_get_reg(instr_get_src(inst, opnum)), DR_REG_XCX)) ||
             /* the comparison operands only: the others are moves */
             (opc == OP_cmpxchg && opnum > 0/*dst, eax*/) ||
             (opc == OP_cmpxchg8b && opnum <= 2/*memop, eax, edx*/) ||
@@ -1256,14 +1256,14 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
         static const byte RAWMEMCHR_PATTERN_NONMOVES[5] = {0xbf, 0xff, 0xfe, 0xfe, 0xfe};
         ASSERT(sizeof(RAWMEMCHR_PATTERN_NONMOVES) <= BUFFER_SIZE_BYTES(buf),
                "buf too small");
-        if (reg == REG_ECX &&
+        if (reg == DR_REG_XCX &&
             instr_get_opcode(inst) == OP_xor &&
             safe_read(pc - sizeof(RAWMEMCHR_PATTERN_NONMOVES),
                       sizeof(RAWMEMCHR_PATTERN_NONMOVES), buf) &&
             memcmp(buf, RAWMEMCHR_PATTERN_NONMOVES,
                    sizeof(RAWMEMCHR_PATTERN_NONMOVES)) == 0) {
             LOG(3, "suppressing positive from glibc rawmemchr pattern\n");
-            register_shadow_set_dword(REG_ECX, SHADOW_DWORD_DEFINED);
+            register_shadow_set_dword(DR_REG_XCX, SHADOW_DWORD_DEFINED);
             STATS_INC(rawmemchr_exception);
             res = true;
         } 
@@ -1277,7 +1277,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
              instr_get_opcode(inst) == OP_jnb_short) &&
             safe_read(pc - sizeof(RAWMEMCHR_PATTERN), sizeof(RAWMEMCHR_PATTERN), buf) &&
             memcmp(buf, RAWMEMCHR_PATTERN, sizeof(RAWMEMCHR_PATTERN)) == 0) {
-            uint val = get_shadow_register(REG_ECX);
+            uint val = get_shadow_register(DR_REG_XCX);
             /* We want to only allow the end of the search to be suppressed,
              * to avoid suppressing a real positive.  We assume going in
              * forward direction (there is no rawmemrchr).
@@ -1366,9 +1366,9 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
          memcmp(buf, STRRCHR_PATTERN_2, sizeof(STRRCHR_PATTERN_2)) == 0)) {
         uint val;
         if (memcmp(buf, STRRCHR_PATTERN_2, sizeof(STRRCHR_PATTERN_2)) == 0)
-            val = get_shadow_register(REG_EDX);
+            val = get_shadow_register(DR_REG_XDX);
         else
-            val = get_shadow_register(REG_EDI);
+            val = get_shadow_register(DR_REG_XDI);
         if ((val & 0x3) == 0) {
             LOG(3, "suppressing positive from glibc strrchr pattern\n");
             set_shadow_eflags(SHADOW_DWORD_DEFINED);
@@ -1618,9 +1618,9 @@ check_andor_sources(void *drcontext, instr_t *inst,
      */
     if (opc != OP_or && sz == 4 &&
         opnd_is_reg(instr_get_src(inst, nonimmed_opnum)) &&
-        (opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == REG_EAX ||
-         opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == REG_ECX ||
-         opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == REG_EDX) &&
+        (opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == DR_REG_XAX ||
+         opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == DR_REG_XCX ||
+         opnd_get_reg(instr_get_src(inst, nonimmed_opnum)) == DR_REG_XDX) &&
         opnd_is_immed_int(instr_get_src(inst, immed_opnum)) &&
         (opnd_get_immed_int(instr_get_src(inst, immed_opnum)) == 0x81010100 ||
          opnd_get_immed_int(instr_get_src(inst, immed_opnum)) == 0x80808080 ||
@@ -1732,14 +1732,16 @@ integrate_register_shadow(instr_t *inst, int opnum,
      * reg, when that dest should only depend on the memref (since on
      * reported error we set addressing register to defined).
      */
-    if ((pushpop && reg_overlap(reg, REG_ESP)) ||
-        ((opc == OP_leave || opc == OP_enter) && reg_overlap(reg, REG_EBP)))
+    if ((pushpop && reg_overlap(reg, DR_REG_XSP)) ||
+        ((opc == OP_leave || opc == OP_enter) && reg_overlap(reg, DR_REG_XBP)))
         return;
 
     switch (opc) {
+#ifndef X64
         case OP_pusha:
             shift = regsz*(reg_to_pointer_sized(reg) - REG_EAX);
             break;
+#endif
         default:
             shift = shadow_val_source_shift(inst, opc, opnum, regsz);
             break;
@@ -1784,16 +1786,17 @@ assign_register_shadow(instr_t *inst, int opnum,
      * We also have to shift dsts that do NOT simply go into the lowest slot.
      */
     if (opc_is_stringop(opc)) {
-        if (reg_overlap(reg, REG_EDI) || reg_overlap(reg, REG_ESI) ||
-            reg_overlap(reg, REG_ECX))
+        if (reg_overlap(reg, DR_REG_XDI) || reg_overlap(reg, DR_REG_XSI) ||
+            reg_overlap(reg, DR_REG_XCX))
             return;
-    } else if ((pushpop && reg_overlap(reg, REG_ESP)) ||
-               ((opc == OP_leave || opc == OP_enter) && reg_overlap(reg, REG_EBP))) {
+    } else if ((pushpop && reg_overlap(reg, DR_REG_XSP)) ||
+               ((opc == OP_leave || opc == OP_enter) &&
+                reg_overlap(reg, DR_REG_XBP))) {
         return;
     } else {
         switch (opc) {
             case OP_popa:
-                shift = (reg_to_pointer_sized(reg) - REG_EAX);
+                shift = (reg_to_pointer_sized(reg) - DR_REG_XAX);
                 break;
             case OP_xchg:
             case OP_xadd:
@@ -1935,10 +1938,12 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
             return;
         }
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc, 
-                       opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
+                       opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
+                                                 REG_NULL, 0, 0, OPSZ_4),
                        4, mc, shadow_vals);
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
-                       opnd_create_far_base_disp(SEG_ES, REG_EDI, REG_NULL, 0, 0, OPSZ_4),
+                       opnd_create_far_base_disp(SEG_ES, DR_REG_XDI
+                                                 , REG_NULL, 0, 0, OPSZ_4),
                        4, mc, shadow_vals);
         return;
     }
@@ -1951,8 +1956,8 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
      * i#i#237.
      */
     /* XXX: assuming SEG_DS and SEG_ES are flat+full */
-    if (is_shadow_register_defined(get_shadow_register(REG_ESI)) &&
-        is_shadow_register_defined(get_shadow_register(REG_EDI)) &&
+    if (is_shadow_register_defined(get_shadow_register(DR_REG_XSI)) &&
+        is_shadow_register_defined(get_shadow_register(DR_REG_XDI)) &&
         get_shadow_eflags() == SHADOW_DEFINED) {
         uint src0 = shadow_get_byte((app_pc)mc->xsi+0);
         uint src1 = shadow_get_byte((app_pc)mc->xsi+1);
@@ -1976,12 +1981,14 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     }
 
     check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
-                   opnd_create_far_base_disp(SEG_DS, REG_ESI, REG_NULL, 0, 0, OPSZ_4),
+                   opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
+                                             REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);
     for (i = 0; i < 4; i++)
         shadow_vals[i] = combine_shadows(shadow_vals[i], get_shadow_eflags());
     check_mem_opnd(OP_movs, MEMREF_WRITE | MEMREF_USE_VALUES, loc,
-                   opnd_create_far_base_disp(SEG_ES, REG_EDI, REG_NULL, 0, 0, OPSZ_4),
+                   opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
+                                             REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);
 }
 
@@ -2022,7 +2029,7 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
             /* special case: we pretend the sysenter instr itself does the
              * ret that is hidden by DR.
              */
-            opnd = OPND_CREATE_MEM32(REG_ESP, 0);
+            opnd = OPND_CREATE_MEM32(DR_REG_XSP, 0);
 #else
             ASSERT(false, "sysenter has no sources");
             opnd = opnd_create_null();
@@ -2283,7 +2290,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             /* special case: we pretend the sysenter instr itself does the
              * ret that is hidden by DR.
              */
-            opnd = OPND_CREATE_MEM32(REG_ESP, 0);
+            opnd = OPND_CREATE_MEM32(DR_REG_XSP, 0);
 #else
             ASSERT(false, "sysenter has no sources");
 #endif
@@ -2617,17 +2624,17 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 } 
             }
             ASSERT(s1->slot == SPILL_SLOT_1 && s2->slot == SPILL_SLOT_2, "slot error");
-            r1 = (s1->dead ? (s1->reg - REG_EAX + SPILL_REG_EAX_DEAD) :
+            r1 = (s1->dead ? (s1->reg - DR_REG_XAX + SPILL_REG_EAX_DEAD) :
                   ((!s1->used || s1->xchg != REG_NULL) ? SPILL_REG_NONE :
-                   (s1->reg - REG_EAX + SPILL_REG_EAX)));
-            r2 = (s2->dead ? (s2->reg - REG_EAX + SPILL_REG_EAX_DEAD) :
+                   (s1->reg - DR_REG_XAX + SPILL_REG_EAX)));
+            r2 = (s2->dead ? (s2->reg - DR_REG_XAX + SPILL_REG_EAX_DEAD) :
                   ((!s2->used || s2->xchg != REG_NULL) ? SPILL_REG_NONE :
-                   (s2->reg - REG_EAX + SPILL_REG_EAX)));
+                   (s2->reg - DR_REG_XAX + SPILL_REG_EAX)));
             if (whole_bb_spills_enabled()) {
                 /* reg3 just like 1 and 2: can be any reg */
-                r3 = (s3->dead ? (s3->reg - REG_EAX + SPILL_REG_EAX_DEAD) :
+                r3 = (s3->dead ? (s3->reg - DR_REG_XAX + SPILL_REG_EAX_DEAD) :
                       ((!s3->used || s3->xchg != REG_NULL) ? SPILL_REG_NONE :
-                       (s3->reg - REG_EAX + SPILL_REG_EAX)));
+                       (s3->reg - DR_REG_XAX + SPILL_REG_EAX)));
             } else {
                 /* if reg3 is dead we do not need to restore */
                 r3 = ((!s3->used || s3->dead || s3->xchg != REG_NULL) ?
@@ -2713,11 +2720,11 @@ shared_slowpath_spill(void *drcontext, instrlist_t *ilist, int type, int slot)
     if (type >= SPILL_REG_EAX && type <= SPILL_REG_EBX) {
         PRE(ilist, NULL, INSTR_CREATE_xchg
             (drcontext, spill_slot_opnd(drcontext, slot),
-             opnd_create_reg(REG_EAX + (type - SPILL_REG_EAX))));
+             opnd_create_reg(DR_REG_XAX + (type - SPILL_REG_EAX))));
     } else if (type >= SPILL_REG_EAX_DEAD && type <= SPILL_REG_EBX_DEAD) {
         PRE(ilist, NULL, INSTR_CREATE_mov_st
             (drcontext, spill_slot_opnd(drcontext, slot),
-             opnd_create_reg(REG_EAX + (type - SPILL_REG_EAX_DEAD))));
+             opnd_create_reg(DR_REG_XAX + (type - SPILL_REG_EAX_DEAD))));
     } /* else param was put straight in tls slot */
 }
 
@@ -2773,7 +2780,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                         PRE(ilist, NULL, INSTR_CREATE_sahf(drcontext));
                         if (ef == SPILL_EFLAGS_6_EAX ||
                             ef == SPILL_EFLAGS_5_EAX) {
-                            restore_reg(drcontext, ilist, NULL, REG_EAX,
+                            restore_reg(drcontext, ilist, NULL, DR_REG_XAX,
                                         SPILL_SLOT_EFLAGS_EAX);
                         }
                     }
@@ -2797,12 +2804,14 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                         if (r1 >= SPILL_REG_EAX && r1 <= SPILL_REG_EBX) {
                             PRE(ilist, NULL, INSTR_CREATE_mov_imm
                                 (drcontext,
-                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX)),
+                                 opnd_create_reg(DR_REG_XAX +
+                                                 (r1 - SPILL_REG_EAX)),
                                  OPND_CREATE_INT32(0)));
                         } else if (r1 >= SPILL_REG_EAX_DEAD && r1 <= SPILL_REG_EBX_DEAD) {
                             PRE(ilist, NULL, INSTR_CREATE_mov_imm
                                 (drcontext,
-                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX_DEAD)),
+                                 opnd_create_reg(DR_REG_XAX +
+                                                 (r1 - SPILL_REG_EAX_DEAD)),
                                  OPND_CREATE_INT32(0)));
                         } else {
                             PRE(ilist, NULL, INSTR_CREATE_mov_st
@@ -2837,7 +2846,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                          * slots 1 & 2)
                          */
                         if (r2 >= SPILL_REG_EAX && r2 <= SPILL_REG_EBX) {
-                            regtgt = REG_EAX + (r2 - SPILL_REG_EAX);
+                            regtgt = DR_REG_XAX + (r2 - SPILL_REG_EAX);
                             PRE(ilist, NULL,
                                 INSTR_CREATE_xchg
                                 (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_2),
@@ -2853,7 +2862,8 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                             PRE(ilist, NULL,
                                 INSTR_CREATE_xchg
                                 (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX))));
+                                 opnd_create_reg(DR_REG_XAX +
+                                                 (r1 - SPILL_REG_EAX))));
                         } else if (r1 >= SPILL_REG_EAX_DEAD && r1 <= SPILL_REG_EBX_DEAD) {
                             /* for PR 493257 we need to restore shared addr.
                              * should we split up if many bbs don't need this?
@@ -2861,7 +2871,8 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                             PRE(ilist, NULL,
                                 INSTR_CREATE_mov_ld
                                 (drcontext,
-                                 opnd_create_reg(REG_EAX + (r1 - SPILL_REG_EAX_DEAD)),
+                                 opnd_create_reg(DR_REG_XAX +
+                                                 (r1 - SPILL_REG_EAX_DEAD)),
                                  spill_slot_opnd(drcontext, SPILL_SLOT_1)));
                         }
                         if (tgt_in_reg) {
@@ -3446,7 +3457,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
         } else if (opc == OP_rep_cmps || opc == OP_repne_cmps) {
             /* compare ds:esi to es:edi */
             /* FIXME: we aren't aggregating errors in adjacent bytes */
-            if (reg_overlap(opnd_get_base(opnd), REG_EDI))
+            if (reg_overlap(opnd_get_base(opnd), DR_REG_XDI))
                 return true; /* we check both when passed esi base */
             LOG(3, "rep cmps @"PFX" "PFX" "PFX" "PIFX"\n",
                 loc_to_print(loc), mc->xdi, mc->xsi, mc->xcx);
@@ -4118,7 +4129,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
              */
             if (!(opc_is_push(opc) || (opc_is_pop(opc) && i > 0))) {
                 bi->addressable[reg_to_pointer_sized(opnd_get_reg(opnd)) -
-                               REG_EAX] = false;
+                                DR_REG_XAX] = false;
             }
         }
     }
