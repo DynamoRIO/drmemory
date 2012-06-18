@@ -1457,6 +1457,7 @@ sub get_mod_path($module_name, $modpath_ref)
     
     my $modname = $module;
     my $fullpath = "";
+    my $nondbg_fullpath = "";
     my $tryagain = 1;
     my $found = 0;
 
@@ -1465,6 +1466,7 @@ sub get_mod_path($module_name, $modpath_ref)
         foreach $path (@libsearch) {
             if (-f "$path/$modname") {
                 $fullpath = "$path/$modname";
+                $nondbg_fullpath = $fullpath if ($nondbg_fullpath eq "");
             } elsif ($path =~ "^/usr/lib/debug") {
                 # Really we should read the debuglink section but for now we
                 # just do this kind of mapping via glob:
@@ -1497,6 +1499,7 @@ sub get_mod_path($module_name, $modpath_ref)
                     $modname .= ".debug";
                     last;
                 }
+                print "NO DBG INFO \"$path/$modname\"\n";#NOCHECKIN
             }
         }
     }
@@ -1504,10 +1507,11 @@ sub get_mod_path($module_name, $modpath_ref)
     my $set_path_msg = ($is_vmk) ? 
         "set DRMEMORY_LIB_PATH and/or VMTREE env vars\n" :
         "set DRMEMORY_LIB_PATH env var\n";
-    if ($fullpath eq "") {
+    if ($nondbg_fullpath eq "") {
         print "WARNING: module $module not found: ".$set_path_msg;
     } elsif ($modname =~ /.debug$/ && !($fullpath =~ /.debug$/)) {
         print "WARNING: can't find .debug file for $module: ".$set_path_msg;
+        $fullpath = $nondbg_fullpath;
     } elsif (!$found) {
         print "WARNING: can't find debug info for $module: ".$set_path_msg;
     } else {

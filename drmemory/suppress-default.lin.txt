@@ -84,6 +84,18 @@ ld-linux.so.2!_dl_open
 libdl.so.2!dlopen_doit
 ld-linux.so.2!_dl_catch_error
 
+# On FC16 addr2line does not crash and subsequent frames
+# do not match those above.
+UNINITIALIZED READ
+name=default (ld-linux strchr)
+ld-linux.so.2!strchr
+ld-linux.so.2!*
+
+UNINITIALIZED READ
+name=default (ld-linux strlen)
+ld-linux.so.2!strlen
+ld-linux.so.2!*
+
 ##########
 # i#79: with more recent versions of the loader we see both uninit and
 # unaddr with stacks like these.  XXX: track down and verify whether real
