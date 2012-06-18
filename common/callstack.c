@@ -345,8 +345,9 @@ callstack_thread_init(void *drcontext)
 #ifdef WINDOWS
     if (get_TEB() != NULL) {
         pt->stack_lowest_frame = get_TEB()->StackBase;
-    } 
+    } else
 #endif
+        pt->stack_lowest_frame = NULL;
 }
 
 void
@@ -1215,8 +1216,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         BUFPRINT(buf, bufsz, *sofar, len,
                  FP_PREFIX"<call stack frame ptr "PFX" unreadable>"NL, pc);
     }
-    if (pt != NULL && lowest_frame > pt->stack_lowest_frame)
+    if (pt != NULL && lowest_frame > pt->stack_lowest_frame) {
         pt->stack_lowest_frame = lowest_frame;
+        LOG(4, "set lowest frame to "PFX"\n", lowest_frame);
+    }
 
     if (buf != NULL) {
         buf[bufsz-2] = '\n';
