@@ -299,11 +299,20 @@ if (UNIX)
 else (UNIX)
   # FIXME: fix warnings and up to /W4
   set(WARN "/W2 /WX")
-  # default from cmake has /W3 so remove to avoid warning about overriding
-  foreach (var CMAKE_C_FLAGS;CMAKE_CXX_FLAGS;
-      CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER};
-      CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
-    string(REGEX REPLACE "/W[0-9]" "" ${var} "${${var}}")
+  # update flags for our types and Debug (tests always use Debug).
+  # ok to double-update b/c these are are regex-replace.
+  foreach (config ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES} Debug)
+    string(TOUPPER "${config}" config_upper)
+    foreach (var CMAKE_C_FLAGS;CMAKE_CXX_FLAGS;
+        CMAKE_C_FLAGS_${config_upper};
+        CMAKE_CXX_FLAGS_${config_upper})
+      # default from cmake has /W3 so remove to avoid warning about overriding
+      string(REGEX REPLACE "/W[0-9]" "" ${var} "${${var}}")
+      # /GZ requires RTC runtime support which we don't want (i#925)
+      string(REGEX REPLACE "/GZ" "" ${var} "${${var}}")
+      # avoid warnings (i#925)
+      string(REGEX REPLACE "/GX" "/EHsc" ${var} "${${var}}")
+    endforeach ()
   endforeach ()
   # disable stack protection: "unresolved external symbol ___security_cookie"
   set(CL_CFLAGS "/GS-")
