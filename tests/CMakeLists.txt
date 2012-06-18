@@ -162,7 +162,7 @@ else (UNIX)
   # though the app's output looks normal, Dr. Memory only reports
   # a bunch of ininit accesses by NtContinue.  Disabling /MDd for now.
   # Also, /MTd results in the debug heap code throwing an exception
-  # when malloc.exe does free(0x1234).
+  # when malloc.exe does free(0x1230).
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
   # But for cygwin to find operators we need /MD (until we have online
   # syms)

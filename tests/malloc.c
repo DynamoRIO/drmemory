@@ -160,7 +160,7 @@ main()
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
     if (setjmp(mark) == 0)
-        free((void *)0x1234);
+        free((void *)0x1230); /* i#916: addr must be 0x10 aligned */
     printf("invalid free\n");
 
 #if 0 /* avoiding double free b/c glibc reports it and aborts */
