@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -277,6 +277,44 @@ shadow_bitlevel_addr(void)
     /* FIXME: if we do impl xl8 sharing should rename this routine */
     ASSERT(false, "should not get here");
     return NULL;
+}
+
+/* XXX: share near-identical code in drmemory/shadow.c.  The plan is to
+ * merge this 8B-to-1B shadow implementation into the forthcoming
+ * Umbra Extension.
+ */
+void
+shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
+                            reg_id_t addr_reg, reg_id_t scratch_reg)
+{
+    uint disp;
+    /* Shadow table stores displacement so we want copy of whole addr */
+    PRE(bb, inst, INSTR_CREATE_mov_ld
+        (drcontext, opnd_create_reg(scratch_reg), opnd_create_reg(addr_reg)));
+    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
+     * saves us from having to clear the lower bits here via OP_and or sthg (PR
+     * 553724).
+     */
+    PRE(bb, inst, INSTR_CREATE_shr
+        (drcontext, opnd_create_reg(scratch_reg), OPND_CREATE_INT8(16)));
+
+    /* Instead of finding the uint array index we go straight to the single
+     * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
+     * If sub-dword but not aligned we go ahead and get shadow byte for
+     * containing dword.
+     */
+    PRE(bb, inst, INSTR_CREATE_shr
+        (drcontext, opnd_create_reg(addr_reg),
+         /* Staleness has 1 shadow byte per 8 app bytes */
+         OPND_CREATE_INT8(3)));
+
+    /* Index into table: no collisions and no tag storage since full size */
+    /* Storing displacement, so add table result to app addr */
+    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
+    disp = (uint)(ptr_uint_t)shadow_table;
+    PRE(bb, inst, INSTR_CREATE_add
+        (drcontext, opnd_create_reg(addr_reg), opnd_create_base_disp
+         (REG_NULL, scratch_reg, 4, disp, OPSZ_PTR)));
 }
 
 /***************************************************************************

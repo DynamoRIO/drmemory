@@ -41,8 +41,7 @@
 # include <stddef.h> /* for offsetof */
 #endif
 
-/* Shadow state for 4GB address space (hiding the real types) */
-extern uint **shadow_table[];
+/* Shadow value lookup tables */
 #ifdef TOOL_DR_MEMORY
 extern const byte shadow_dword_is_addr_not_bit[256];
 extern const byte shadow_2_to_dword[256];
@@ -2431,16 +2430,12 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
     reg_id_t reg1_8h = REG_NULL;
     reg_id_t reg2_8h = reg_32_to_8h(reg2);
     reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8(reg3);
-    uint disp;
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
     if (need_offs || zero_rest_of_offs)
         reg1_8h = reg_32_to_8h(reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg2);
     mark_eflags_used(drcontext, bb, mi->bb);
-    /* Shadow table stores displacement so we want copy of whole addr */
-    PRE(bb, inst,
-        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(reg2), opnd_create_reg(reg1)));
     ASSERT(mi->memsz <= 4 || !need_offs, "unsupported fastpath memsz");
 #ifdef TOOL_DR_MEMORY
     if (check_alignment && mi->memsz > 1) {
@@ -2456,7 +2451,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          * PR 624474: we handle OPSZ_10 fld on fastpath if 16-byte aligned
          */
         PRE(bb, inst,
-            INSTR_CREATE_test(drcontext, opnd_create_reg(reg_32_to_8(reg2)),
+            INSTR_CREATE_test(drcontext, opnd_create_reg(reg_32_to_8(reg1)),
                               OPND_CREATE_INT8(mi->memsz == 4 ? 0x3 :
                                                (mi->memsz == 8 ? 0x3 :
                                                 ((mi->memsz == 16 || mi->memsz == 10) ?
@@ -2500,33 +2495,11 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         PRE(bb, inst,
             INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg3),
-                               opnd_create_reg(reg_32_to_16(reg2))));
+                               opnd_create_reg(reg_32_to_16(reg1))));
     }
 
-    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
-     * saves us from having to clear the lower bits here via OP_and or sthg (PR
-     * 553724).
-     */
-    PRE(bb, inst,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg2), OPND_CREATE_INT8(16)));
-
-    /* Instead of finding the uint array index we go straight to the single
-     * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
-     * If sub-dword but not aligned we go ahead and get shadow byte for
-     * containing dword.
-     */
-    PRE(bb, inst,
-        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg1),
-                         /* Staleness has 1 shadow byte per 8 app bytes */
-                         OPND_CREATE_INT8(IF_DRMEM_ELSE(2, 3))));
-
-    /* Index into table: no collisions and no tag storage since full size */
-    /* Storing displacement, so add table result to app addr */
-    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
-    disp = (uint)(ptr_uint_t)shadow_table;
-    PRE(bb, inst,
-        INSTR_CREATE_add(drcontext, opnd_create_reg(reg1), opnd_create_base_disp
-                         (REG_NULL, reg2, 4, disp, OPSZ_PTR)));
+    /* translate app address in r1 to shadow address in r1 */
+    shadow_gen_translation_addr(drcontext, bb, inst, reg1, reg2);
 
     if (get_value) {
         /* load value from shadow table to reg1 */

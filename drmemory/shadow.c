@@ -809,6 +809,47 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
     return NULL;
 }
 
+/* Caller does a lea or equivalent:
+ *   0x4d1cd047  8d 8e 84 00 00 00    lea    0x00000084(%esi) -> %ecx
+ * And this routine adds:
+ *   0x4d1cd04d  8b d1                mov    %ecx -> %edx
+ *   0x4d1cd04f  c1 ea 10             shr    $0x00000010 %edx -> %edx
+ *   0x4d1cd052  c1 e9 02             shr    $0x00000002 %ecx -> %ecx
+ *   0x4d1cd055  03 0c 95 40 26 96 73 add    0x73962640(,%edx,4) %ecx -> %ecx
+ * And now the shadow addr is in %ecx.
+ */
+void
+shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
+                            reg_id_t addr_reg, reg_id_t scratch_reg)
+{
+    uint disp;
+    /* Shadow table stores displacement so we want copy of whole addr */
+    PRE(bb, inst, INSTR_CREATE_mov_ld
+        (drcontext, opnd_create_reg(scratch_reg), opnd_create_reg(addr_reg)));
+    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
+     * saves us from having to clear the lower bits here via OP_and or sthg (PR
+     * 553724).
+     */
+    PRE(bb, inst, INSTR_CREATE_shr
+        (drcontext, opnd_create_reg(scratch_reg), OPND_CREATE_INT8(16)));
+
+    /* Instead of finding the uint array index we go straight to the single
+     * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
+     * If sub-dword but not aligned we go ahead and get shadow byte for
+     * containing dword.
+     */
+    PRE(bb, inst, INSTR_CREATE_shr
+        (drcontext, opnd_create_reg(addr_reg), OPND_CREATE_INT8(2)));
+
+    /* Index into table: no collisions and no tag storage since full size */
+    /* Storing displacement, so add table result to app addr */
+    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
+    disp = (uint)(ptr_uint_t)shadow_table;
+    PRE(bb, inst, INSTR_CREATE_add
+        (drcontext, opnd_create_reg(addr_reg), opnd_create_base_disp
+         (REG_NULL, scratch_reg, 4, disp, OPSZ_PTR)));
+}
+
 /***************************************************************************
  * TABLES
  *

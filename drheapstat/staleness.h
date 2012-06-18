@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -45,10 +46,6 @@ slow_path_for_staleness(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 
 bool
 instr_uses_memory_we_track(instr_t *inst);
-
-/* Returns a pointer to an always-bitlevel shadow block */
-byte *
-shadow_bitlevel_addr(void);
 
 /***************************************************************************
  * for drheapstat only, not drmemory files 

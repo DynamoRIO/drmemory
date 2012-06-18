@@ -205,6 +205,21 @@ shadow_next_dword(app_pc start, app_pc end, uint expect);
 app_pc
 shadow_prev_dword(app_pc start, app_pc end, uint expect);
 
+/* Caller should place application address in addr_reg.
+ * drutil_insert_get_mem_addr() can be used to obtain the address
+ * from an application memory operand.
+ * On return, the shadow address will be in addr_reg.
+ *
+ * The returned address is the address of the shadow byte containing
+ * the shadow value for the application address.  It is up to the
+ * caller to locate the value within that byte when using sub-byte
+ * mappings, and to handle further bytes referenced in a memory
+ * reference larger than one byte.
+ */
+void
+shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
+                            reg_id_t addr_reg, reg_id_t scratch_reg);
+
 /***************************************************************************
  * SHADOWING THE GPR REGISTERS
  */
