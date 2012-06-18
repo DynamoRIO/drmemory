@@ -40,7 +40,7 @@
 # include "sysnum_linux.h"
 # include <errno.h>
 # define _GNU_SOURCE /* for sched.h */
-# include <sched.h>  /* for CLONE_VM */
+# include <linux/sched.h>  /* for CLONE_VM */
 # include <sys/time.h>
 # include <signal.h> /* for SIGSEGV */
 #endif
@@ -1150,7 +1150,7 @@ create_shared_code(void)
 {
     void *drcontext = dr_get_current_drcontext();
     byte *pc;
-    bool ok;
+    IF_DEBUG(bool ok;)
     instrlist_t *ilist = instrlist_create(drcontext);
 
     shared_code_region = (byte *)
@@ -1177,8 +1177,9 @@ create_shared_code(void)
     instrlist_clear_and_destroy(drcontext, ilist);
 
     /* now mark as +rx (non-writable) */
-    ok = dr_memory_protect(shared_code_region, SHARED_CODE_SIZE,
-                           DR_MEMPROT_READ|DR_MEMPROT_EXEC);
+    IF_DEBUG(ok = )
+        dr_memory_protect(shared_code_region, SHARED_CODE_SIZE,
+                          DR_MEMPROT_READ|DR_MEMPROT_EXEC);
     ASSERT(ok, "-w failed on shared routines gencode");
 
     DOLOG(2, {
@@ -1457,21 +1458,24 @@ open_logfile(const char *name, bool pid_log, int which_thread)
 {
     file_t f;
     char logname[MAXIMUM_PATH];
-    int len;
+    IF_DEBUG(int len;)
     uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
-                          "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
+                        "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
     } else if (which_thread >= 0) {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
-                          "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
+                        "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
                           which_thread, dr_get_thread_id(dr_get_current_drcontext()));
         /* have DR close on fork so we don't have to track and iterate */
         extra_flags |= DR_FILE_CLOSE_ON_FORK;
     } else {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
-                          "%s%c%s", logsubdir, DIRSEP, name);
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
+                        "%s%c%s", logsubdir, DIRSEP, name);
     }
     ASSERT(len > 0, "logfile name buffer max reached");
     NULL_TERMINATE_BUFFER(logname);
@@ -1728,19 +1732,23 @@ event_fork(void *drcontext)
      */
     if (dr_file_seek(f_parent_callstack, 0, DR_SEEK_SET)) {
         int64 curpos = 0;
-        ssize_t sz;
+        IF_DEBUG(ssize_t sz;)
         LOG(1, "copying parent callstacks "INT64_FORMAT_STRING" bytes\n", pt->filepos);
         while (curpos + sizeof(buf) <= pt->filepos) {
-            sz = dr_read_file(f_parent_callstack, buf, sizeof(buf));
+            IF_DEBUG(sz = )
+                dr_read_file(f_parent_callstack, buf, sizeof(buf));
             ASSERT(sz == sizeof(buf), "error reading parent callstack data");
-            sz = dr_write_file(f_callstack, buf, sizeof(buf));
+            IF_DEBUG(sz = )
+                dr_write_file(f_callstack, buf, sizeof(buf));
             ASSERT(sz == sizeof(buf), "error writing parent callstack data");
             curpos += sizeof(buf);
         }
         ASSERT(pt->filepos - curpos < sizeof(buf), "buf calc error");
-        sz = dr_read_file(f_parent_callstack, buf, pt->filepos - curpos);
+        IF_DEBUG(sz = )
+            dr_read_file(f_parent_callstack, buf, pt->filepos - curpos);
         ASSERT(sz == pt->filepos - curpos, "error reading parent callstack data");
-        sz = dr_write_file(f_callstack, buf, pt->filepos - curpos);
+        IF_DEBUG(sz = )
+            dr_write_file(f_callstack, buf, pt->filepos - curpos);
         ASSERT(sz == pt->filepos - curpos, "error writing parent callstack data");
     } else
         LOG(0, "ERROR: unable to copy parent callstack file\n");

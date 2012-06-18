@@ -189,7 +189,9 @@ handle_push_addressable(app_loc_t *loc, app_pc addr, app_pc start_addr,
     if (options.check_push) {
         byte *stack_start;
         size_t stack_size;
+#if defined(STATISTICS) || defined(DEBUG)
         bool is_heap = false;
+#endif
         /* we want to do two things:
          * 1) mark beyond-TOS as unaddressable
          * 2) make sure -stack_swap_threshold is small enough: malloc-based
@@ -197,7 +199,9 @@ handle_push_addressable(app_loc_t *loc, app_pc addr, app_pc start_addr,
          *    handles a too-small threshold.
          */
         if (is_in_heap_region(addr)) {
+#if defined(STATISTICS) || defined(DEBUG)
             is_heap = true;
+#endif
             LOG(1, "WARNING: "PFX" is treating heap memory "PFX" as a stack!\n",
                 loc_to_print(loc), addr);
         } else {
@@ -895,7 +899,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     opnd_t arg;
     instr_t *retaddr;
     fastpath_info_t mi;
-    bool negate = false, absolute = false;
+    bool negate = false;
     bool eflags_live;
     esp_adjust_t type = get_esp_adjust_type(opc);
     reg_id_t reg_mod;
@@ -922,13 +926,12 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else if (opc == OP_mov_st || opc == OP_mov_ld ||
                opc == OP_leave || opc == OP_lea ||
                opc_is_cmovcc(opc)) {
-        absolute = true;
+        /* absolute */
     } else if (opc == OP_xchg) {
-        absolute = true;
         if (opnd_is_reg(arg) && opnd_uses_reg(arg, REG_ESP))
             arg = instr_get_src(inst, 1);
     } else if (opc == OP_and && opnd_is_immed_int(arg)) {
-        absolute = true;
+        /* absolute */
     } else {
         return instrument_esp_adjust_slowpath(drcontext, bb, inst, bi, shadow_xsp);
     }

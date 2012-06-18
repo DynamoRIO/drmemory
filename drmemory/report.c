@@ -210,10 +210,10 @@ stored_error_create(uint type)
 void
 stored_error_free(stored_error_t *err)
 {
-    uint ref;
     ASSERT(err != NULL, "invalid arg");
     if (err->pcs != NULL) {
-        ref = packed_callstack_free(err->pcs);
+        IF_DEBUG(uint ref = )
+            packed_callstack_free(err->pcs);
         ASSERT(ref == 0, "invalid ref count");
     }
     global_free(err, sizeof(*err), HEAPSTAT_REPORT);

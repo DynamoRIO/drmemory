@@ -78,14 +78,15 @@ create_shadow_block(bool special)
 {
     shadow_block_t *block;
     if (special) {
-        bool ok;
+        IF_DEBUG(bool ok;)
         block = (shadow_block_t *)
             nonheap_alloc(SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ|DR_MEMPROT_WRITE,
                           HEAPSTAT_SHADOW);
         memset(block, 1, sizeof(*block));
         if (!options.stale_blind_store) {
             /* We will never write to the special */
-            ok = dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
+            IF_DEBUG(ok = )
+                dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
             ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
         }
     } else {

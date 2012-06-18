@@ -399,9 +399,10 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
         });
         STATS_INC(alloc_stack_count);
     } else {
-        uint count;
+        IF_DEBUG(uint count;)
         if (existing_data == NULL) {    /* PR 533755 */
-            count = packed_callstack_free(pcs);
+            IF_DEBUG(count = )
+                packed_callstack_free(pcs);
             ASSERT(count == 0, "refcount should be 0");
         }
         else
@@ -736,9 +737,9 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
         app_pc pass_to_free = NULL;
 #ifdef WINDOWS
         ptr_int_t pass_auxarg;
+        bool full;
 #endif
         uint idx;
-        bool full;
         ASSERT(info != NULL, "invalid param");
         dr_mutex_lock(delay_free_lock);
         if (real_size > options.delay_frees_maxsz) {
@@ -807,7 +808,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
             real_base, real_base + real_size, real_size, base != real_base);
 
         if (DELAY_FREE_FULL(info)) {
-            full = true;
+            IF_WINDOWS(full = true;)
             if (pass_to_free == NULL) {
                 pass_to_free = next_to_free(info, info->delay_free_head
                                             _IF_WINDOWS(&pass_auxarg),
@@ -823,7 +824,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 info->delay_free_fill, real_base, real_base + real_size
                 _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
             ASSERT(info->delay_free_fill <= options.delay_frees - 1, "internal error");
-            full = false;
+            IF_WINDOWS(full = false;)
             idx = info->delay_free_fill;
             info->delay_free_fill++;
             /* Rather than try to engineer a return, we continue on w/

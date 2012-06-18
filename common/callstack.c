@@ -1769,14 +1769,14 @@ add_new_module(void *drcontext, const module_data_t *info)
 {
     modname_info_t *name_info;
     const char *name;
-    static bool has_noname = false;
+    IF_DEBUG(static bool has_noname = false;)
     size_t sz;
     name = dr_module_preferred_name(info);
     if (name == NULL) {
         name = "";
         /* if multiple w/o names, we lose data */
         ASSERT(!has_noname, "multiple modules w/o name: may lose data");
-        has_noname = true;
+        IF_DEBUG(has_noname = true;)
     }
 
     hashtable_lock(&modname_table);

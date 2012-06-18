@@ -785,7 +785,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
     app_pc start;
     ptr_uint_t size;
     uint num_args;
-    int i, last_param = -1, res;
+    int i, last_param = -1;
     char idmsg[32];
 
     LOG(2, "processing pre system call #"PIFX" %s\n", sysnum, sysinfo->name);
@@ -846,8 +846,9 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
              */
             if (!skip) {
                 /* indicate which syscall arg (i#510) */
-                res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
-                                  sysinfo->arg[i].param);
+                IF_DEBUG(int res = )
+                    dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
+                                sysinfo->arg[i].param);
                 ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg),
                        "message buffer too small");
                 NULL_TERMINATE_BUFFER(idmsg);
@@ -866,9 +867,10 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 {
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     app_pc start;
-    ptr_uint_t size, last_size;
+    ptr_uint_t size, last_size = 0;
     uint num_args;
-    int i, last_param = -1, res;
+    int i, last_param = -1;
+    IF_DEBUG(int res;)
     char idmsg[32];
 #ifdef WINDOWS
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -907,8 +909,9 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, false/*!pre*/, start,
                                sysnum, mc);
         /* indicate which syscall arg (i#510) */
-        res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
-                          sysinfo->arg[i].param);
+        IF_DEBUG(res = )
+            dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
+                        sysinfo->arg[i].param);
         ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
         NULL_TERMINATE_BUFFER(idmsg);
 

@@ -32,7 +32,7 @@
 #include "heap.h" /* get_ntdll_base */
 #ifdef LINUX
 # include "sysnum_linux.h"
-# include <sched.h> /* CLONE_VM */
+# include <linux/sched.h> /* CLONE_VM */
 #endif
 
 enum {

@@ -1556,7 +1556,7 @@ check_andor_sources(void *drcontext, instr_t *inst,
      * based on 0 or 1 values.
      */
     int opc = instr_get_opcode(inst);
-    reg_t val0, val1, immed;
+    reg_t val0, val1, immed = 0;
     uint i, immed_opnum, nonimmed_opnum;
     bool all_defined = true;
     bool have_vals = (get_cur_src_value(drcontext, inst, 0, &val0) &&
@@ -2091,8 +2091,8 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     bool check_srcs_after;
     bool always_defined;
     opnd_t memop = opnd_create_null();
-#endif
     size_t instr_sz;
+#endif
     app_loc_t loc;
 
 #if defined(STATISTICS) && defined(TOOL_DR_MEMORY)
@@ -2172,7 +2172,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 #endif /* TOOL_DR_MEMORY */
 
     instr_init(drcontext, &inst);
+#ifdef TOOL_DR_MEMORY
     instr_sz = decode(drcontext, decode_pc, &inst) - decode_pc;
+#else
+    decode(drcontext, decode_pc, &inst);
+#endif
     ASSERT(instr_valid(&inst), "invalid instr");
     opc = instr_get_opcode(&inst);
 
@@ -2904,7 +2908,7 @@ instrument_init(void)
 #ifdef TOOL_DR_MEMORY
     void *drcontext = dr_get_current_drcontext();
     byte *pc;
-    bool ok;
+    IF_DEBUG(bool ok;)
     instrlist_t *ilist;
 #endif
 
@@ -2957,8 +2961,9 @@ instrument_init(void)
         instrlist_clear_and_destroy(drcontext, ilist);
 
         /* now mark as +rx (non-writable) */
-        ok = dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
-                               DR_MEMPROT_READ|DR_MEMPROT_EXEC);
+        IF_DEBUG(ok = )
+            dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
+                              DR_MEMPROT_READ|DR_MEMPROT_EXEC);
         ASSERT(ok, "-w failed on shared routines gencode");
 
         DOLOG(2, {
@@ -3236,7 +3241,7 @@ instrument_resurrect_ro(void *drcontext, void *perscxt, byte **map INOUT)
 void
 update_stack_swap_threshold(void *drcontext, int new_threshold)
 {
-    bool ok;
+    IF_DEBUG(bool ok;)
     if (stack_swap_threshold_fixed) {
         /* If user specifies a threshold we disable our dynamic adjustments */
         return;
@@ -3247,8 +3252,9 @@ update_stack_swap_threshold(void *drcontext, int new_threshold)
     if (dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
                           DR_MEMPROT_READ|DR_MEMPROT_WRITE|DR_MEMPROT_EXEC)) {
         esp_fastpath_update_swap_threshold(drcontext, new_threshold);
-        ok = dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
-                               DR_MEMPROT_READ|DR_MEMPROT_EXEC);
+        IF_DEBUG(ok = )
+            dr_memory_protect(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
+                              DR_MEMPROT_READ|DR_MEMPROT_EXEC);
         ASSERT(ok, "-w failed on shared routines gencode");
         options.stack_swap_threshold = new_threshold;
     } else

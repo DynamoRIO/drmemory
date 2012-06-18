@@ -59,7 +59,16 @@
 #include <sys/timex.h> /* struct timex */
 #include <linux/utsname.h> /* struct new_utsname */
 #include <sched.h> /* struct sched_param */
-#include <signal.h> /* siginfo_t */
+
+/* Avoid conflicts w/ DR's REG_* enum w/ more recent distros
+ * by directly getting siginfo_t instead of including "<signal.h>".
+ * Xref DRi#34.  We could instead update to use DR_REG_* and unset
+ * DynamoRIO_REG_COMPATIBILITY.
+ */
+#define __need_siginfo_t
+#define __need_sigevent_t
+#include <bits/siginfo.h>
+
 #include <linux/capability.h> /* cap_user_header_t */
 /* capability.h conflicts with and is superset of these:
  * #include <sys/ustat.h> (struct ustat)
@@ -70,7 +79,11 @@
 #include <time.h> /* struct itimerspec */
 #include <errno.h> /* for EBADF */
 #include <linux/sysctl.h> /* struct __sysctl_args */
+
+/* block bits/stat.h which is included from fcntl.h on FC16 (glibc 2.14) */
+#define _BITS_STAT_H	1
 #include <fcntl.h> /* F_GETFD, etc. */
+
 #include <asm/ldt.h> /* struct user_desc */
 #include <linux/futex.h>
 #include <linux/mman.h> /* MREMAP_FIXED */
@@ -106,7 +119,17 @@
 #include <linux/cdrom.h>
 #include <linux/cyclades.h>
 #include <linux/fs.h>
-#include <linux/ext2_fs.h>
+
+/* i#911: linux/ext2_fs.h references a now-removed type umode_t in
+ * FC16 (in flux apparently) so we define on our own:
+ */
+#ifndef EXT2_IOC_GETFLAGS
+# define EXT2_IOC_GETFLAGS               FS_IOC_GETFLAGS
+# define EXT2_IOC_SETFLAGS               FS_IOC_SETFLAGS
+# define EXT2_IOC_GETVERSION             FS_IOC_GETVERSION
+# define EXT2_IOC_SETVERSION             FS_IOC_SETVERSION
+#endif
+
 #include <linux/fd.h>
 #include <linux/hdreg.h>
 #include <linux/if.h>
@@ -122,7 +145,10 @@
 #endif
 #include <linux/netrom.h>
 #include <linux/scc.h>
-#include <linux/smb_fs.h>
+
+/* i#911: linux/smb_fs.h is missing on FC16 so we define on our own */
+#define SMB_IOC_GETMOUNTUID             _IOR('u', 1, __kernel_old_uid_t)
+
 #include <linux/sockios.h>
 #include <linux/route.h>
 #include <linux/if_arp.h>

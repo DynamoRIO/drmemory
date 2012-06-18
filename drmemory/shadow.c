@@ -267,7 +267,7 @@ val_to_special(uint val)
 static shadow_block_t *
 create_special_block(uint dwordval)
 {
-    bool ok;
+    IF_DEBUG(bool ok;)
     shadow_block_t *block = (shadow_block_t *)
         nonheap_alloc(SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ|DR_MEMPROT_WRITE,
                       HEAPSTAT_SHADOW);
@@ -280,7 +280,8 @@ create_special_block(uint dwordval)
            SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
     block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
     memset(block, dwordval, sizeof(*block));
-    ok = dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
+    IF_DEBUG(ok = )
+        dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
     ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
     return block;
 }

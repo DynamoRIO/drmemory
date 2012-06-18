@@ -21,6 +21,12 @@
 
 cmake_minimum_required(VERSION 2.6)
 
+include(CheckCCompilerFlag)
+
+if (UNIX)
+  CHECK_C_COMPILER_FLAG("-Wno-unused-but-set-variable" nounused_avail)
+endif(UNIX)
+
 # tests are always built w/o optimizations and with symbols,
 # regardless of DrMem library settings
 set(CMAKE_BUILD_TYPE "Debug")
@@ -55,6 +61,16 @@ if (WIN32)
   endif (NOT GCC)
 endif (WIN32)
 
+function(append_compile_flags target newflags)
+  get_target_property(cur_flags ${target} COMPILE_FLAGS)
+  # cmake should add an APPEND option
+  if (NOT cur_flags)
+    set(cur_flags "")
+  endif (NOT cur_flags)
+  set_target_properties(${target} PROPERTIES
+    COMPILE_FLAGS "${cur_flags} ${newflags}")
+endfunction(append_compile_flags)
+
 function(set_props target)
   if (UNIX)
     set(defs "-DLINUX")
@@ -68,6 +84,11 @@ function(set_props target)
     set(defs "${defs} -DVMX86_SERVER")
   endif (VMKERNEL)
   set_target_properties(${target} PROPERTIES COMPILE_FLAGS "${defs}")
+  # enough tests need this (malloc, free, registers, cs2bug, float, etc.)
+  # that we add to all tests
+  if (nounused_avail)
+    append_compile_flags(${target} "-Wno-unused-but-set-variable")
+  endif (nounused_avail)
 endfunction(set_props)
 
 function(tobuild name source)

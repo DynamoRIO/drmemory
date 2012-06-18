@@ -444,21 +444,24 @@ open_logfile(const char *name, bool pid_log, int which_thread)
 {
     file_t f;
     char logname[MAXIMUM_PATH];
-    int len;
+    IF_DEBUG(int len;)
     uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
-                          "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
+                        "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
     } else if (which_thread >= 0) {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
-                          "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
-                          which_thread, dr_get_thread_id(dr_get_current_drcontext()));
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
+                        "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
+                        which_thread, dr_get_thread_id(dr_get_current_drcontext()));
         /* have DR close on fork so we don't have to track and iterate */
         extra_flags |= DR_FILE_CLOSE_ON_FORK;
     } else {
-        len = dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
-                          "%s%c%s", logsubdir, DIRSEP, name);
+        IF_DEBUG(len = )
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
+                        "%s%c%s", logsubdir, DIRSEP, name);
     }
     ASSERT(len > 0, "logfile name buffer max reached");
     NULL_TERMINATE_BUFFER(logname);
@@ -659,19 +662,14 @@ mmap_walk(app_pc start, size_t size,
 #else /* WINDOWS */
     dr_mem_info_t info;
     module_data_t *data;
-    app_pc pc, module_start, module_end;
-    bool image;
+    app_pc pc, module_end;
     ASSERT(options.shadowing, "shadowing disabled");
 
     /* we assume that only a module will have multiple pieces with different prots */
     data = dr_lookup_module(start);
     if (data != NULL) {
-        image = true;
-        module_start = data->start;
         module_end = data->end;
     } else {
-        image = false;
-        module_start = start;
         module_end = start + PAGE_SIZE;
     }
     dr_free_module_data(data);

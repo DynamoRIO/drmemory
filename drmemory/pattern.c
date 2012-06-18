@@ -646,7 +646,8 @@ void
 pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
                           bb_info_t *bi, bool translating)
 {
-    instr_t *jecxz = NULL, *jmp_iter = NULL, *mov_1 = NULL, *jmp_skip = NULL;
+    instr_t *jecxz = NULL, *mov_1 = NULL, *jmp_skip = NULL;
+    IF_DEBUG(instr_t *jmp_iter = NULL;)
     instr_t *stringop = NULL, *loop = NULL, *post_loop, *instr, *jmp;
     instr_t *check = NULL;
     app_pc next_pc;
@@ -666,7 +667,7 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     for (; instr != NULL; instr = instr_get_next(instr)) {
         if (instr_ok_to_mangle(instr) &&
             instr_get_opcode(instr) == OP_jmp_short) {
-            jmp_iter = instr;
+            IF_DEBUG(jmp_iter = instr;)
             break;
         }
     }
