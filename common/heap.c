@@ -371,7 +371,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         ASSERT(!TEST(2, sz), "mmap chunk shouldn't be in middle of heap");
         sz &= ~3;
         LOG(3, "  heap chunk "PFX"-"PFX"\n", pc, pc+sz);
-        if (pc + sz >= cur_brk) {
+        if (POINTER_OVERFLOW_ON_ADD(pc, sz) || pc + sz >= cur_brk) {
             /* malloc_usable_size() will crash trying to read next chunk's
              * prev size field so just quit now
              */

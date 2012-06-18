@@ -424,6 +424,7 @@ extern int tls_idx_util;
 #ifdef LINUX
 # ifdef X64
 #  define ASM_XAX "rax"
+#  define ASM_XDX "rdx"
 #  define ASM_XSP "rsp"
 #  define ASM_SEG "gs"
 #  define ASM_SYSARG1 "rdi"
@@ -438,6 +439,7 @@ extern int tls_idx_util;
 #  define ASM_SYSCALL "syscall"
 # else
 #  define ASM_XAX "eax"
+#  define ASM_XDX "edx"
 #  define ASM_XSP "esp"
 #  define ASM_SEG "fs"
 #  define ASM_SYSARG1 "ebx"

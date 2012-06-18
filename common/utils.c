@@ -1042,6 +1042,7 @@ virtual_free(void *base)
 
 #ifdef LINUX
 /* XXX: these are too repetitive: should share, or better yet do i#199 */
+DO_NOT_OPTIMIZE
 ptr_int_t
 raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 {
@@ -1050,19 +1051,23 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 # ifdef X64
     __asm("push %rcx");
 # endif
-    __asm("push %"ASM_SYSARG1);
-    /* in 64-bit release build 
-     * rdi is used for the first function arg and syscall arg
-     * we must first get the sysnum into eax, then mov arg into rdi.
+    /* i#918: move to xdx b/c gcc does not do the right thing if we push
+     * (it doesn't adjust the arg refs when not using a frame ptr)
      */
-    __asm("mov %0, %%eax" : : "g"(sysnum) : "eax");
-    /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
-     * clobbering pic register for 32-bit
-     */
-    __asm("mov %0, %%"ASM_SYSARG1 : : "g"(arg));
-    __asm(ASM_SYSCALL);
-    __asm("mov %%"ASM_XAX", %0" : "=m"(res));
-    __asm("pop %"ASM_SYSARG1);
+    __asm("mov %%"ASM_SYSARG1",%%"ASM_XDX" ;"
+          /* in 64-bit release build
+           * rdi is used for the first function arg and syscall arg
+           * we must first get the sysnum into eax, then mov arg into rdi.
+           */
+          "mov %1, %%eax;"
+          /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
+           * clobbering pic register for 32-bit
+           */
+          "mov %2, %%"ASM_SYSARG1";"
+          ASM_SYSCALL";"
+          "mov %%"ASM_XAX", %0;"
+          "mov %%"ASM_XDX",%%"ASM_SYSARG1 :
+          "=m"(res) : "g"(sysnum), "g"(arg) : "eax");
 # ifdef X64
     __asm("pop %rcx");
 # endif
