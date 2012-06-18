@@ -933,7 +933,7 @@ sub parse_error($arr_ref, $err_str)
                 if ($process_free_cstack) {
                     my @symlines = lookup_addr(\%free);
                     my ($err_str_ref, $err_cstack_ref) =
-                        generate_callstack(\%error, \@symlines);
+                        generate_callstack(\%free, \@symlines);
                     my $aux_cstack = ${$err_str_ref};
                     $aux_cstack =~ s/^/Note: /msg;
                     $error{"aux_info"} .= $aux_cstack;
@@ -966,7 +966,7 @@ sub parse_error($arr_ref, $err_str)
     if ($process_free_cstack) {
         my @symlines = lookup_addr(\%free);
         my ($err_str_ref, $err_cstack_ref) =
-            generate_callstack(\%error, \@symlines);
+            generate_callstack(\%free, \@symlines);
         my $aux_cstack = ${$err_str_ref};
         $aux_cstack =~ s/^/Note: /msg;
         $error{"aux_info"} .= $aux_cstack;
