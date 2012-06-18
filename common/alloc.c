@@ -280,6 +280,14 @@ typedef struct _cls_alloc_t {
     app_pc alloc_being_freed; /* handles post-pre-free actions */
     /* record which outer layer was used to allocate (i#123) */
     uint allocator;
+    /* present the outer layer as the top of the allocation call stack,
+     * regardless of how many inner layers we went through (i#913)
+     */
+    app_pc outer_retaddr;
+    reg_t outer_xbp;
+    reg_t outer_xsp;
+    reg_t xbp_tmp;
+    reg_t xsp_tmp;
 #ifdef WINDOWS
     /* avoid deliberate mismatches from _DebugHeapDelete<*> being used instead of
      * operator delete* (i#722,i#655)
@@ -3700,6 +3708,59 @@ get_retaddr_at_entry(dr_mcontext_t *mc)
     return retaddr;
 }
 
+static inline void
+record_mc_for_client(cls_alloc_t *pt, void *wrapcxt)
+{
+    /* Present the outer layer as the top of the allocation call stack,
+     * regardless of how many inner layers we went through (i#913).
+     * XXX: before we rarely needed mc on pre-hooks: now that we need it
+     * on many perhaps should move to main hook and pass through?
+     * XXX: this can't go in set_handling_heap_layer() b/c we currently
+     * pass operators through and don't handle until malloc/free!
+     */
+    dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR);
+    pt->outer_xsp = mc->xsp;
+    pt->outer_xbp = mc->xbp;
+    pt->outer_retaddr = drwrap_get_retaddr(wrapcxt);
+    LOG(3, "\t@ level=%d recorded xsp="PFX" xbp="PFX" ra="PFX"\n",
+        pt->in_heap_routine, pt->outer_xsp, pt->outer_xbp, pt->outer_retaddr);
+}
+
+/* Returns the top frame pc to pass to the client and temporarily sets
+ * the mc fields so that callstacks appear to end at the outer heap
+ * layer (i#913).
+ * Call restore_mc_for_client() afterward to restore the mc.
+ */
+static inline app_pc
+set_mc_for_client(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc, app_pc post_call)
+{
+    if (pt->allocator != 0) {
+        pt->xsp_tmp = mc->xsp;
+        pt->xbp_tmp = mc->xbp;
+        mc->xsp = pt->outer_xsp;
+        mc->xbp = pt->outer_xbp;
+        /* XXX i#639: we'd like to have the outer heap routine itself
+         * on the callstack.  However, doing so here can result in missing the
+         * caller frame (i#913).  What we want is to be able to pass multiple
+         * pre-set pcs to the callstack walker, not just the top.
+         */
+        return pt->outer_retaddr;
+    } else if (post_call != NULL)
+        return post_call;
+    else
+        return drwrap_get_retaddr(wrapcxt);
+}
+
+/* Call after calling set_mc_for_client() and then invoking a client routine */
+static inline void
+restore_mc_for_client(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc)
+{
+    if (pt->allocator != 0) {
+        mc->xsp = pt->xsp_tmp;
+        mc->xbp = pt->xbp_tmp;
+    }
+}
+
 /* RtlAllocateHeap(HANDLE heap, ULONG flags, ULONG size) */
 /* void *malloc(size_t size) */
 #define ARGNUM_MALLOC_SIZE(type) (IF_WINDOWS((type == RTL_ROUTINE_MALLOC) ? 2 :) 0)
@@ -3919,8 +3980,10 @@ set_auxarg(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
  * FREE
  */
 
+/* Records allocator as well as the outer layer for reporting any error (i#913) */
 static void
-record_allocator(void *drcontext, cls_alloc_t *pt, alloc_routine_entry_t *routine)
+record_allocator(void *drcontext, cls_alloc_t *pt, alloc_routine_entry_t *routine,
+                 void *wrapcxt)
 {
     /* just record outer layer: leave adjusting to malloc (i#123).
      * XXX: we assume none of the "fake" outer layers like LdrShutdownProcess
@@ -3937,15 +4000,18 @@ record_allocator(void *drcontext, cls_alloc_t *pt, alloc_routine_entry_t *routin
         pt->ignore_next_mismatch = false; /* just in case */
 #endif
         LOG(3, "alloc type: %x\n", pt->allocator);
+
+        record_mc_for_client(pt, wrapcxt);
     }
 }
 
 /* i#123: report mismatch in free/delete/delete[]
  * Caller must hold malloc lock
+ * Also records the outer layer for reporting any error (i#913)
  */
 static bool
-handle_free_check_mismatch(void *drcontext, void *wrapcxt, alloc_routine_entry_t *routine,
-                           malloc_entry_t *entry)
+handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
+                           alloc_routine_entry_t *routine, malloc_entry_t *entry)
 {
     /* XXX: safe_read */
 #ifdef WINDOWS
@@ -3958,6 +4024,12 @@ handle_free_check_mismatch(void *drcontext, void *wrapcxt, alloc_routine_entry_t
     uint free_type = malloc_allocator_type(routine);
     LOG(3, "alloc/free match test: alloc %x vs free %x %s\n",
         alloc_type, free_type, routine->name);
+
+    /* A convenient place to record outermost layer (even if not handled: we want
+     * operator delete) on free
+     */
+    record_mc_for_client(pt, wrapcxt);
+
     if (entry == NULL && alloc_type == MALLOC_ALLOCATOR_UNKNOWN) {
         /* try 4 bytes back, in case this is an array w/ size passed to delete */
         alloc_type = malloc_alloc_type(base - sizeof(int));
@@ -4057,12 +4129,15 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         return;
     }
     if (pt->in_heap_routine == 1/*alread incremented, so outer*/) {
+        /* N.B.: should be called even if not reporting mismatches as it also
+         * records the outer layer (i#913)
+         */
 #ifdef WINDOWS
         if (pt->ignore_next_mismatch)
             pt->ignore_next_mismatch = false;
         else
 #endif
-            handle_free_check_mismatch(drcontext, wrapcxt, routine, entry);
+            handle_free_check_mismatch(drcontext, pt, wrapcxt, routine, entry);
     } 
 #ifdef WINDOWS
     else if (pt->ignore_next_mismatch)
@@ -4095,6 +4170,9 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         ptr_int_t auxarg;
         int auxargnum;
 #endif
+        app_pc top_pc;
+        dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR);
+
         pt->expect_lib_to_fail = false;
         if (redzone_size(routine) > 0) {
             ASSERT(redzone_size(routine) >= sizeof(size_t),
@@ -4142,14 +4220,16 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                      (type == HEAP_ROUTINE_FREE_DBG) ? 1 : -1);
         auxarg = (ptr_int_t) (auxargnum == -1 ? NULL : drwrap_get_arg(wrapcxt, auxargnum));
 #endif
+
+        top_pc = set_mc_for_client(pt, wrapcxt, mc, NULL);
         change_base = client_handle_free
             /* if we pass routine->pc, we can miss a frame b/c call_site may
              * be at top of stack with ebp pointing to its parent frame.
              * developer doesn't need to see explicit free() frame, right?
              */
-            (base, size, real_base, real_size,
-             drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
-             drwrap_get_retaddr(wrapcxt), routine->set->client _IF_WINDOWS(&auxarg));
+            (base, size, real_base, real_size, mc, top_pc,
+             routine->set->client _IF_WINDOWS(&auxarg));
+        restore_mc_for_client(pt, wrapcxt, mc);
 #ifdef WINDOWS
         if (auxargnum != -1)
             drwrap_set_arg(wrapcxt, auxargnum, (void *)auxarg);
@@ -4524,8 +4604,10 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
     } else {
         if (alloc_ops.record_allocs) {
+            app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              0, 0, mc, post_call, pt->allocator);
+                              0, 0, mc, top_pc, pt->allocator);
+            restore_mc_for_client(pt, wrapcxt, mc);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              /* if no padded size, use aligned real size */
@@ -4705,10 +4787,12 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         if (alloc_ops.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
+            app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
             malloc_add_common(app_base, app_base + pt->alloc_size,
                               real_base + 
                               (alloc_ops.get_padded_size ? pad_size : real_size),
-                              0, 0, mc, post_call, pt->allocator);
+                              0, 0, mc, top_pc, pt->allocator);
+            restore_mc_for_client(pt, wrapcxt, mc);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
                  * as pre-us since we did not put a redzone on it
@@ -5064,6 +5148,7 @@ handle_validate_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                                       redzone_size(routine))) {
         return;
     }
+    set_handling_heap_layer(pt, base, 0);
     if (redzone_size(routine) > 0) {
         /* BOOLEAN NTAPI RtlValidateHeap(HANDLE Heap, ULONG Flags, PVOID Block)
          * Block is optional
@@ -5264,18 +5349,23 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     /* i#123: check for mismatches.  Because of placement new and other
      * complications, new and delete are non-adjusting layers: we just
      * do mismatch checks.
+     * N.B.: record_allocator() should be called even if not reporting
+     * mismatches as it also records the outer layer (i#913)
      */
     if (is_new_routine(type) ||
         is_malloc_routine(type) ||
         is_realloc_routine(type) ||
         is_calloc_routine(type)) {
-        record_allocator(drcontext, pt, routine);
+        record_allocator(drcontext, pt, routine, wrapcxt);
     } else if (is_delete_routine(type) ||
                is_free_routine(type)) {
         if (pt->in_heap_routine == 0) {
             if (is_delete_routine(type)) {
                 /* free() checked in handle_free_pre */
-                handle_free_check_mismatch(drcontext, wrapcxt, routine, NULL);
+                /* N.B.: should be called even if not reporting mismatches as it also
+                 * records the outer layer (i#913)
+                 */
+                handle_free_check_mismatch(drcontext, pt, wrapcxt, routine, NULL);
 #ifdef WINDOWS
                 pt->ignore_next_mismatch = false; /* just in case */
 #endif
