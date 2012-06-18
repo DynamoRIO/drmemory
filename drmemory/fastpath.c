@@ -4980,7 +4980,40 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     PRE(bb, inst,
                         INSTR_CREATE_jcc(drcontext, OP_je,
                                          opnd_create_instr(check_ignore_resume)));
+                } else if (!mi->store && !opnd_is_null(mi->dst[0].shadow)) {
+                    /* follow slowpath's lead and propagate defined.
+                     * we only propagate to a register here: mem2mem is handled
+                     * via check_ignore_resume.  and in fact we can't write to
+                     * shadow_table here b/c shadow fault handling code won't
+                     * recognize this sequence.
+                     * xref i#922.
+                     *
+                     * XXX: ideally we'd go back to the main code and just have
+                     * the src be SHADOW_DEFINED, but it's not general enough:
+                     * we'd have to pay in indirection, or have a dup copy.
+                     */
+                    instr_t *not_inheap = INSTR_CREATE_label(drcontext);
+                    ASSERT(opnd_is_reg(mi->dst[0].app), "should be marked store");
+                    PRE(bb, inst,
+                        INSTR_CREATE_jcc(drcontext, OP_jne_short,
+                                         opnd_create_instr(not_inheap)));
+                    PRE(bb, inst,
+                        INSTR_CREATE_mov_imm(drcontext, mi->dst[0].shadow,
+                                             shadow_immed(mi->memsz, SHADOW_DEFINED)));
+                    if (!opnd_is_null(mi->dst[1].shadow)) {
+                        ASSERT(opnd_is_reg(mi->dst[1].app), "2nd dst must be reg");
+                        PRE(bb, inst,
+                            INSTR_CREATE_mov_imm(drcontext, mi->dst[1].shadow,
+                                                 shadow_immed(mi->memsz, SHADOW_DEFINED)));
+                    }
+                    PRE(bb, inst,
+                        INSTR_CREATE_jmp_short(drcontext,
+                                               opnd_create_instr(fastpath_restore)));
+                    PRE(bb, inst, not_inheap);
                 } else {
+                    /* just skip check.  we don't want to mark memory as defined
+                     * b/c that would lead to false negatives.
+                     */
                     PRE(bb, inst,
                         INSTR_CREATE_jcc(drcontext, OP_je_short,
                                          opnd_create_instr(fastpath_restore)));

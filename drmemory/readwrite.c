@@ -1193,35 +1193,6 @@ result_is_always_defined(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
-# ifdef WINDOWS
-static bool
-is_low_frag_alloc_pattern(void *drcontext, app_pc pc, dr_mcontext_t *mc)
-{
-    /* i#337: RtlpLowFragHeapAllocFromContext appears to have a true uninit bug.
-     * Previously we've handled it with a suppression, but that requires
-     * symbolizing the entire stack, which is more expensive.  This uninit has
-     * been seen occuring on at least 4 different instructions, so we don't use
-     * instruction pattern matching.  Instead we check if we're in a heap
-     * routine and at least two frames deep in ntdll.
-     * FIXME i#884: Remove this when we have more efficient suppressions.
-     */
-    app_pc retaddr;
-    if (!options.replace_malloc && alloc_in_heap_routine(drcontext)) {
-        if (pc >= ntdll_base && pc <= ntdll_end &&
-            /* XXX: Hacky one-level callstack walk.  Works for
-             * RtlpLowFragHeapAllocFromContext, and if it doesn't the
-             * suppression will catch it later.
-             */
-            safe_read((void*)(mc->xbp + sizeof(reg_t)),
-                      sizeof(retaddr), &retaddr) &&
-            retaddr >= ntdll_base && retaddr <= ntdll_end) {
-            return true;
-        }
-    }
-    return false;
-}
-# endif /* WINDOWS */
-
 /* All current non-syscall uses already have inst decoded so we require it
  * for efficiency
  */
@@ -1381,9 +1352,6 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     /* For future undefined exceptions, follow the pattern of
      * is_ok_unaddressable_pattern in alloc_drmem.c.
      */
-    if (!res) {
-        res = is_low_frag_alloc_pattern(drcontext, pc, mc);
-    }
 #endif
 
     return res;
