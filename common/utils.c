@@ -1048,9 +1048,6 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
 {
     /* FIXME i#199: should DR provide a general raw_syscall interface? */
     ptr_int_t res;
-# ifdef X64
-    __asm("push %rcx");
-# endif
     /* i#918: move to xdx b/c gcc does not do the right thing if we push
      * (it doesn't adjust the arg refs when not using a frame ptr)
      */
@@ -1061,16 +1058,23 @@ raw_syscall_1arg(uint sysnum, ptr_int_t arg)
            */
           "mov %1, %%eax;"
           /* we do not mark as clobbering ASM_SYSARG1 to avoid error about
-           * clobbering pic register for 32-bit
+           * clobbering pic register for 32-bit.
            */
           "mov %2, %%"ASM_SYSARG1";"
+# ifdef X64
+          /* according to Intel manual, rcx is used to save the rip of the
+           * instruction following SYSCALL for later return, so we have to
+           * save rcx before executing the syscall.
+           */
+          "push %%rcx;"
+# endif
           ASM_SYSCALL";"
+# ifdef X64
+          "pop %%rcx;"
+# endif
           "mov %%"ASM_XAX", %0;"
           "mov %%"ASM_XDX",%%"ASM_SYSARG1 :
           "=m"(res) : "g"(sysnum), "g"(arg) : "eax");
-# ifdef X64
-    __asm("pop %rcx");
-# endif
     return res;
 }
 
