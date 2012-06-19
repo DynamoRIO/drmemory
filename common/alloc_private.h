@@ -92,6 +92,9 @@ typedef enum {
     RTL_ROUTINE_MALLOC,
     RTL_ROUTINE_REALLOC,
     RTL_ROUTINE_FREE,
+# ifdef X64
+    RTL_ROUTINE_FREE_UNICODESTRING,
+# endif
     RTL_ROUTINE_VALIDATE,
     RTL_ROUTINE_SIZE,
     RTL_ROUTINE_CREATE,
@@ -139,7 +142,9 @@ static inline bool
 is_free_routine(routine_type_t type)
 {
     return (type == HEAP_ROUTINE_FREE
-            IF_WINDOWS(|| type == RTL_ROUTINE_FREE || type == HEAP_ROUTINE_FREE_DBG));
+            IF_WINDOWS(|| type == RTL_ROUTINE_FREE
+                       || type == HEAP_ROUTINE_FREE_DBG
+                       IF_X64(|| type == RTL_ROUTINE_FREE_UNICODESTRING)));
 }
 
 static inline bool

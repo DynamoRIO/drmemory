@@ -553,6 +553,12 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlAllocateHeap", RTL_ROUTINE_MALLOC },
     { "RtlReAllocateHeap", RTL_ROUTINE_REALLOC },
     { "RtlFreeHeap", RTL_ROUTINE_FREE },
+# ifdef X64
+    /* i#907: RtlFreeUnicodeString calls to NtdllpFreeStringRoutine directly,
+     * so we treat RtlFreeUnicodeString as a heap routine.
+     */
+    { "RtlFreeUnicodeString", RTL_ROUTINE_FREE_UNICODESTRING},
+# endif
     { "RtlValidateHeap", RTL_ROUTINE_VALIDATE },
     { "RtlCreateHeap", RTL_ROUTINE_CREATE },
     { "RtlDestroyHeap", RTL_ROUTINE_DESTROY },
@@ -4030,6 +4036,11 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      */
     record_mc_for_client(pt, wrapcxt);
 
+#if defined(WINDOWS) && defined(X64)
+    /* no mismatch check for RtlFreeUnicodeString */
+    if (type == RTL_ROUTINE_FREE_UNICODESTRING)
+        return true;
+#endif
     if (entry == NULL && alloc_type == MALLOC_ALLOCATOR_UNKNOWN) {
         /* try 4 bytes back, in case this is an array w/ size passed to delete */
         alloc_type = malloc_alloc_type(base - sizeof(int));
@@ -4083,8 +4094,11 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #if defined(WINDOWS) || defined(DEBUG)
     routine_type_t type = routine->type;
 #endif
-    app_pc base = (app_pc) drwrap_get_arg(wrapcxt, ARGNUM_FREE_PTR(type));
-    app_pc real_base = base;
+#if defined(WINDOWS) && defined(X64)
+    IF_DEBUG(bool valid = true);
+#endif
+    void *arg = drwrap_get_arg(wrapcxt, ARGNUM_FREE_PTR(type));
+    app_pc base, real_base;
 #ifdef WINDOWS
     HANDLE heap = (type == RTL_ROUTINE_FREE) ? ((HANDLE) drwrap_get_arg(wrapcxt, 0)) : NULL;
 #endif
@@ -4092,6 +4106,29 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     size_t size = 0;
     malloc_entry_t *entry;
 
+#if defined(WINDOWS) && defined(X64)
+    /* i#907: RtlFreeUnicodeString calls to NtdllpFreeStringRoutine directly, 
+     * so we treat RtlFreeUnicodeString as an alloc routine.
+     * However, the memory to be freed is pointed at by arg->Buffer
+     */
+    if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
+        UNICODE_STRING uni_str;
+        if (safe_read(arg, sizeof(uni_str), &uni_str)) {
+            base = (app_pc)uni_str.Buffer;
+        } else {
+            /* if fail to read, we have no way to know the real Buffer,
+             * so we assume arg is an invalid pointer and use it for
+             * reporting invalid free error.
+             */
+            IF_DEBUG(valid = false);
+            base = (app_pc)arg;
+        }
+    } else 
+        base = (app_pc)arg;
+#else
+    base = (app_pc)arg;
+#endif
+    real_base = base;
     pt->alloc_being_freed = base;
 
     if (check_recursive_same_sequence(drcontext, &pt, routine, (ptr_int_t) base,
@@ -4123,6 +4160,14 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      */
     malloc_lock();
     entry = malloc_lookup(base);
+#if defined(WINDOWS) && defined(X64) && defined(DEBUG)
+    if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL && !valid) {
+        /* if it is RtlFreeUnicodeString and the arg is not valid,
+         * double check it is not in the malloc table.
+         */
+        ASSERT(entry == NULL, "arg should be invalid");
+    }
+#endif
     if (entry != NULL && malloc_entry_is_native_ex(entry, base, pt, false)) {
         malloc_entry_remove(entry);
         malloc_unlock();
@@ -4138,7 +4183,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         else
 #endif
             handle_free_check_mismatch(drcontext, pt, wrapcxt, routine, entry);
-    } 
+    }
 #ifdef WINDOWS
     else if (pt->ignore_next_mismatch)
         pt->ignore_next_mismatch = false;
@@ -4181,6 +4226,13 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                 /* was allocated before we took control, so no redzone */
                 size_in_zone = false;
                 LOG(2, "free of pre-control "PFX"-"PFX"\n", base, base+size);
+#if defined(WINDOWS) && defined(X64)
+            } else if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
+                DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)real_base;
+                }, { /* EXCEPT */
+                });
+#endif
             } else {
                 drwrap_set_arg(wrapcxt, ARGNUM_FREE_PTR(type), (void *)real_base);
             }
@@ -4237,6 +4289,14 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         if (change_base != real_base) {
             LOG(2, "free-pre client %d changing base from "PFX" to "PFX"\n",
                 type, real_base, change_base);
+#if defined(WINDOWS) && defined(X64)
+            if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
+                DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)real_base;
+                }, { /* EXCEPT */
+                });
+            } else
+#endif
             drwrap_set_arg(wrapcxt, ARGNUM_FREE_PTR(type), (void *)change_base);
             /* for set_handling_heap_layer for recursion check.
              * we assume has redzone: doesn't matter, just has to match the
