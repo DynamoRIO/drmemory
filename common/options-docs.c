@@ -28,6 +28,9 @@
  * - Replace @@ with a newline
  */
 
+/* We deliberately add a newline between each list item to work around
+ * bugs in doxygen 1.7.0+ (i#920, https://bugzilla.gnome.org/show_bug.cgi?id=678436)
+ */
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
 \\if SCOPE_IS_PUBLIC_##scope \
 \\if TYPE_IS_BOOL_##type \
@@ -45,7 +48,7 @@
    @!br@%@!i@%default: defval (minimum: min, maximum: max)@!/i@% @@\
    @!br@%long @@\
 \\endif \
-\\endif
+\\endif @@
 #define OPTION_FRONT OPTION_CLIENT
 #include "optionsx.h"
 #undef OPTION_CLIENT
