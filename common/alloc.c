@@ -4095,7 +4095,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     routine_type_t type = routine->type;
 #endif
 #if defined(WINDOWS) && defined(X64)
-    IF_DEBUG(bool valid = true);
+    IF_DEBUG(bool valid = true;)
 #endif
     void *arg = drwrap_get_arg(wrapcxt, ARGNUM_FREE_PTR(type));
     app_pc base, real_base;

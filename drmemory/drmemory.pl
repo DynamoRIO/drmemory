@@ -78,6 +78,8 @@ if ($is_vmk || $vs_vmk) {
 
 $bin_arch = "bin32";
 $lib_arch = "lib32";
+$bindir = "bin/bin32";
+
 if (`uname -m` =~ /x86_64/) {
     # experimental support for 64-bit
     for ($i = 0; $i <= $#ARGV; $i++) {
@@ -90,6 +92,7 @@ if (`uname -m` =~ /x86_64/) {
     if (`file $progpath 2>&1` =~ /64-bit/) {
         $bin_arch = "bin64";
         $lib_arch = "lib64";
+        $bindir = "bin64/bin64";
     }
 }
 
@@ -101,7 +104,6 @@ $symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/$bin_arch");
 $default_home = $symlink_deref ? "$scriptpath/../drmemory" : "$scriptpath/../";
 $default_home = abs_path($default_home);
 $default_home = &canonicalize_path($default_home);
-$bindir = "bin/$bin_arch";
 
 $drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
 $drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";

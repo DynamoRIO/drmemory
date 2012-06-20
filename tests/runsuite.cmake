@@ -164,6 +164,18 @@ foreach (tool ${tools})
       ${DR_entry}
       CMAKE_BUILD_TYPE:STRING=Release
       " OFF ON "") # we do run some release tests in short suite
+    if ("${tool}" MATCHES "MEMORY")
+      testbuild_ex("${name}-dbg-64" ON "
+         ${tool}
+         ${DR_entry}
+         CMAKE_BUILD_TYPE:STRING=Debug
+         " OFF ON "")
+      testbuild_ex("${name}-rel-64" ON "
+         ${tool}
+         ${DR_entry}
+         CMAKE_BUILD_TYPE:STRING=Release
+         " OFF ON "")
+    endif ("${tool}" MATCHES "MEMORY")
   endif (NOT arg_vmk_only)
   if (UNIX)
     if (arg_vmk_only OR arg_test_vmk)

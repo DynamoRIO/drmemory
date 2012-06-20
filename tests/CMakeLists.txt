@@ -124,9 +124,14 @@ endif (WIN32)
 
 # For more portable testing (PR 544430):
 # 1) use relative dirs within parent build dir
+if (X64)
+  set(BIN_ARCH "bin64")
+else ()
+  set(BIN_ARCH "bin")
+endif ()
 if (USE_DRSYMS AND TOOL_DR_MEMORY)
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/bin")
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${BIN_ARCH}")
 else (USE_DRSYMS AND TOOL_DR_MEMORY)
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}")
@@ -301,6 +306,11 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
     set(resbase "${test}") 
     string(REGEX REPLACE "_FLAKY$" "" resbase "${resbase}")
   endif ("${resbase}" STREQUAL "")
+  if (X64)
+    set(TOOL_BIN "bin64")
+  else (X64)
+    set(TOOL_BIN "bin32")
+  endif (X64)
   add_test(${test} ${CMAKE_COMMAND}
     -D cmd:STRING=${cmd}
     -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
@@ -309,7 +319,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
     -D USE_DRSYMS:BOOL=${USE_DRSYMS}
-    -D toolbindir:STRING=${DR_param_pattern}/../bin32
+    -D toolbindir:STRING=${DR_param_pattern}/../${TOOL_BIN}
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
