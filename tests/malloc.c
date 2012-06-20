@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -208,7 +208,7 @@ main()
         p = malloc(8); /* static so no leak */
         free(p);
         if (0xfff - ((int)(size_t)p & 0xfff) < 512) /* truncation ok in cast */
-            p = malloc(0xfff - ((int)(size_t)p & 0xfff));
+            p = calloc(1, 0xfff - ((int)(size_t)p & 0xfff)); /* calloc for i#927 */
         else
             p = NULL; /* prevent from pointing where p1 will be (i#340) */
     }
@@ -216,15 +216,15 @@ main()
     /* error: both leaked, though one points to other neither is reachable
      * once p1 goes out of scope, so one direct and one indirect leak
      */
-    p1 = malloc(42);
+    p1 = calloc(1, 42); /* calloc for i#927 */
     *((void**)p1) = malloc(17);
 
     /* not a leak: still reachable through persistent pointer p2 */
-    p2 = malloc(8);
+    p2 = calloc(1, 8); /* calloc for i#927 */
     *((void**)p2) = malloc(19);
 
     /* PR 513954: app-added size field not a leak */
-    p3 = malloc(24);
+    p3 = calloc(1, 24); /* calloc for i#927 */
     *((size_t*)p3) = 24;
     p3 = (void *) (((char*)p3) + 8); /* align to 8 so matches malloc alignment */
 
