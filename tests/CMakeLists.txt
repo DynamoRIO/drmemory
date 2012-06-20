@@ -124,13 +124,13 @@ endif (WIN32)
 
 # For more portable testing (PR 544430):
 # 1) use relative dirs within parent build dir
-if (USE_DRSYMS)
+if (USE_DRSYMS AND TOOL_DR_MEMORY)
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/bin")
-else (USE_DRSYMS)
+else (USE_DRSYMS AND TOOL_DR_MEMORY)
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}")
-endif (USE_DRSYMS)
+endif (USE_DRSYMS AND TOOL_DR_MEMORY)
 # 2) parameterize dirs outside of build dir
 set(src_param_pattern "{DRMEMORY_CTEST_SRC_DIR}")
 set(DR_param_pattern "{DRMEMORY_CTEST_DR_DIR}")
@@ -148,15 +148,15 @@ endfunction (get_relative_location)
 if (UNIX)
   set(cmd_shell ${bin_relative}/${toolname}.pl)
 else (UNIX)
-  if (PERL_TO_EXE OR USE_DRSYMS)
+  if (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
     set(cmd_shell ${bin_relative}/${toolname}.exe)
-  else (PERL_TO_EXE OR USE_DRSYMS)
+  else (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
     find_program(PERL perl)
     if (NOT PERL)
       message(FATAL_ERROR "cannot find perl.exe")
     endif (NOT PERL)
     set(cmd_shell ${PERL} ${bin_relative}/${toolname}.pl)
-  endif (PERL_TO_EXE OR USE_DRSYMS)
+  endif (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
 
   # FIXME PR 406287: with /MDd, the app somehow gets an exception, and
   # though the app's output looks normal, Dr. Memory only reports
@@ -212,9 +212,9 @@ else (WIN32)
   set(default_dr_ops "-dumpcore_mask 0")
 endif (WIN32)
 set(cmd_base ${cmd_shell} ${dbg_args} -dr ${DR_param_pattern}/..)
-if (NOT TOOL_DR_HEAPSTAT)
+if (TOOL_DR_MEMORY)
   set(cmd_base ${cmd_base} -batch)
-endif (NOT TOOL_DR_HEAPSTAT)
+endif (TOOL_DR_MEMORY)
 # there's no easy way to set a cmake or env var for running
 # from build dir to make runtest.cmake have a relative path so we
 # copy to build dir
@@ -387,9 +387,9 @@ if (UNIX)
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
-  if (NOT TOOL_DR_HEAPSTAT)
+  if (TOOL_DR_MEMORY)
     newtest(procterm procterm.c)
-  endif (NOT TOOL_DR_HEAPSTAT)
+  endif (TOOL_DR_MEMORY)
 endif (UNIX)
 
 if (UNIX)
@@ -408,7 +408,7 @@ if (WIN32)
   newtest_nobuild(unloadMTd unload "${unloadlibMTd_path}" "" "" OFF "unload")
 endif (WIN32)
 
-if (NOT TOOL_DR_HEAPSTAT)
+if (TOOL_DR_MEMORY)
   # PR 525807: test malloc stacks
   newtest(varstack varstack.c)
 
@@ -558,7 +558,7 @@ if (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(malloc.pattern malloc "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "")
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
 
-else (NOT TOOL_DR_HEAPSTAT)
+else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
 
   newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF "")
@@ -567,7 +567,7 @@ else (NOT TOOL_DR_HEAPSTAT)
   newtest_nobuild(dump malloc "" "-dump" "" OFF "")
 
   set(nudge_test_args "")
-endif (NOT TOOL_DR_HEAPSTAT)
+endif (TOOL_DR_MEMORY)
 
 # nudge test: runs infloop in background and runtest.cmake nudges it
 tobuild(infloop infloop.c)

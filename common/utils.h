@@ -168,7 +168,9 @@ extern bool op_pause_via_loop;
 extern bool op_ignore_asserts;
 extern file_t f_global;
 #ifdef USE_DRSYMS
+# ifdef TOOL_DR_MEMORY
 extern file_t f_results;
+# endif
 extern bool op_use_symcache;
 #endif
 
@@ -228,7 +230,7 @@ print_prefix_to_console(void);
 #define NOTIFY_ERROR(...) do { \
     IF_NOT_DRSYMS(ELOG(0, "FATAL ERROR: ")); \
     NOTIFY(__VA_ARGS__); \
-    IF_DRSYMS(ELOGF(0, f_results, __VA_ARGS__)); \
+    IF_DRSYMS(IF_DRMEM(ELOGF(0, f_results, __VA_ARGS__))); \
     if (USE_MSGBOX) \
         IF_WINDOWS(dr_messagebox(__VA_ARGS__)); \
 } while (0)
