@@ -86,6 +86,8 @@ regtest()
         mov    byte ptr [array],               ah
         mov    byte ptr [array + ecx],         ah
         mov    byte ptr [array + ecx + edx*2], ah
+        /* get flags on stack before ALU tests change them */
+        pushfd
         /* test i#877: ALU sub-dword shift */
         add    byte ptr [array],               8 /* fastpath ok */
         shr    byte ptr [array],               8 /* needs slowpath */
@@ -99,7 +101,6 @@ regtest()
         /* ensure regs haven't changed by storing copy on stack
          * (since act of comparing + printing will touch regs)
          */
-        pushfd
         pushad
         mov   pusha_base, esp
     }
@@ -140,6 +141,7 @@ regtest()
     asm("mov   %%ah, %0" : "=g"(array));
     asm("mov   %ah, 37(%ecx)");
     asm("mov   %ah, 37(%ecx,%edx,2)");
+    asm("pushfl"); /* get flags for checks below, before cmp changes them */
     /* PR 425240: cmp of sub-dword */
     asm("cmp   %ah, 37(%ecx)");
     /* pushes and pops */
@@ -150,7 +152,6 @@ regtest()
     /* ensure regs haven't changed by storing copy on stack
      * (since act of comparing + printing will touch regs)
      */
-    asm("pushfl");
     asm("pushal");
     asm("mov   %%esp, %0" : "=m"(pusha_base) :);
     /* gcc is reserving stack space up front and then clobbering the
@@ -618,6 +619,10 @@ addronly_test(void)
         inc   edx
         jmp   foo2 /* end bb */
       foo2:
+
+        /* Undo modifications to avoid RtlHeap crash (i#924) */
+        dec   byte ptr [eax+124]
+        dec   byte ptr [eax+128]
 
         popad
     }

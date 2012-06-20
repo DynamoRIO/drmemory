@@ -289,6 +289,7 @@ else ()
     ERROR_VARIABLE cmd_err
     OUTPUT_VARIABLE cmd_out
     TIMEOUT ${TIMEOUT_APP})
+  message("STDOUT: ${cmd_out}\nSTDERR: ${cmd_err}\n")
   # combine out and err
   set(cmd_err "${cmd_out}${cmd_err}")
   if (cmd_result)

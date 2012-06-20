@@ -1266,6 +1266,19 @@ event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 {
     instru_info_t *ii = (instru_info_t *) user_data;
     DOLOG(3, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
+#ifdef USE_DRSYMS
+    DOLOG(3, {
+        char buf[128];
+        size_t sofar = 0;
+        ssize_t len;
+        if (!translating) {
+            BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                     "new basic block @"PFX" ==", tag);
+            print_symbol(tag, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+            LOG(1, "%s\n", buf);
+        }
+    });
+#endif
     if (options.staleness)
         fastpath_top_of_bb(drcontext, tag, bb, &ii->bi);
     return DR_EMIT_DEFAULT;
