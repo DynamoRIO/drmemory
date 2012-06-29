@@ -674,6 +674,37 @@ addronly_test(void)
     printf("after addronly test!\n");
 }
 
+/* Tests weird nops with memory operands. */
+void
+nop_test(void)
+{
+#ifdef WINDOWS
+    __asm {
+        pushad;
+        xor eax, eax;
+        /* Can't figure out how to convince cl.exe to encode the long nop with a
+         * memory operand, so we just emit the raw bytes.  Should be easier with
+         * cross-os asm file support.
+         *
+         * 0f 1f 84 00 00 00 00 00  nop 0x00000000(%eax,%eax,1)
+         */
+        _emit 0x0f;
+        _emit 0x1f;
+        _emit 0x84;
+        _emit 0x00;
+        _emit 0x00;
+        _emit 0x00;
+        _emit 0x00;
+        _emit 0x00;
+        popad;
+    }
+#else
+    /* FIXME: Skipping Linux for now, we'll get the coverage when cross-os asm
+     * support lands.
+     */
+#endif
+}
+
 int
 main()
 {
@@ -704,6 +735,8 @@ main()
     float_test();
 
     addronly_test();
+
+    nop_test();
 
     return 0;
 }

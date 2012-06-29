@@ -4078,10 +4078,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         goto instru_event_bb_insert_done;
     if (instr_is_interrupt(inst))
         goto instru_event_bb_insert_done;
-    if (instr_is_nop(inst) && instr_is_prefetch(inst) &&
-        /* work around DR bug PR 332257 */
-        (instr_get_opcode(inst) != OP_xchg ||
-         opnd_same(instr_get_dst(inst, 0), instr_get_dst(inst, 1))))
+    if (instr_is_nop(inst))
+        goto instru_event_bb_insert_done;
+    if (options.pattern != 0 && instr_is_prefetch(inst))
         goto instru_event_bb_insert_done;
     
     /* if there are no gpr or mem operands, we can ignore it */
