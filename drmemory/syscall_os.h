@@ -153,8 +153,9 @@ enum {
     SYSINFO_IMM32_DLL           = 0x00000004,
     /* Return value indicates failure only when zero */
     SYSINFO_RET_ZERO_FAIL       = 0x00000008,
-    /* Return value of STATUS_BUFFER_TOO_SMALL (i#486) or
-     * STATUS_BUFFER_OVERFLOW (i#531) writes final arg but no others.
+    /* Return value of STATUS_BUFFER_TOO_SMALL (i#486),
+     * STATUS_BUFFER_OVERFLOW (i#531), or STATUS_INFO_LENGTH_MISMATCH
+     * (i#932) writes final arg but no others.
      * If it turns out some syscalls distinguish between the two ret values
      * we can split the flag up but seems safer to combine.
      */

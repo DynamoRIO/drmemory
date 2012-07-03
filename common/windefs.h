@@ -1042,6 +1042,10 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
  * been written to the buffer."
  */
 #define STATUS_BUFFER_TOO_SMALL          ((NTSTATUS)0xC0000023L)
+/* "The specified information record length does not match the length that is
+ * required for the specified information class."
+ */
+#define STATUS_INFO_LENGTH_MISMATCH      ((NTSTATUS)0xC0000004L)
 
 typedef struct _SYSTEM_BASIC_INFORMATION {
     ULONG   Unknown;

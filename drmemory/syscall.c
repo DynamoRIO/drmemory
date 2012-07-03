@@ -896,10 +896,11 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         ASSERT(!TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags),
                "inlined bool should always be read, not write");
 #ifdef WINDOWS
-        /* i#486, i#531: for too-small buffer, only last param written */
+        /* i#486, i#531, i#932: for too-small buffer, only last param written */
         if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, sysinfo->flags) &&
             (result == STATUS_BUFFER_TOO_SMALL ||
-             result == STATUS_BUFFER_OVERFLOW) &&
+             result == STATUS_BUFFER_OVERFLOW ||
+             result == STATUS_INFO_LENGTH_MISMATCH) &&
             i+1 < num_args &&
             !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;

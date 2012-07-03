@@ -405,10 +405,10 @@ static syscall_info_t syscall_ntdll_info[] = {
      * .Length of the UNICODE_STRING as well as returned in the param:
      */
     {0,"NtQuerySymbolicLinkObject", OK, 12, {{1,sizeof(UNICODE_STRING),W|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(ULONG),W}, }},
-    {0,"NtQuerySystemEnvironmentValue", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
+    {0,"NtQuerySystemEnvironmentValue", OK|SYSINFO_RET_SMALL_WRITE_LAST, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
     {0,"NtQuerySystemEnvironmentValueEx", OK, 20, },
     /* One info class reads data, which is special-cased */
-    {0,"NtQuerySystemInformation", OK, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }, &sysnum_QuerySystemInformation},
+    {0,"NtQuerySystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }, &sysnum_QuerySystemInformation},
     {0,"NtQuerySystemTime", OK, 4, {{0,sizeof(LARGE_INTEGER),W}, }},
     {0,"NtQueryTimer", OK|SYSINFO_RET_SMALL_WRITE_LAST, 20, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtQueryTimerResolution", OK, 12, {{0,sizeof(ULONG),W}, {1,sizeof(ULONG),W}, {2,sizeof(ULONG),W}, }},
@@ -557,7 +557,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtWow64CsrGetProcessId", UNKNOWN, 0, },
     {0,"NtWow64DebuggerCall", UNKNOWN, 20, },
     /* args seem to be identical to NtQuerySystemInformation */
-    {0,"NtWow64GetNativeSystemInformation", OK, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
+    {0,"NtWow64GetNativeSystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, 16, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
     {0,"NtWow64QueryInformationProcess64", UNKNOWN, 20, },
     {0,"NtWow64ReadVirtualMemory64", UNKNOWN, 28, },
     {0,"NtWow64QueryVirtualMemory64", UNKNOWN, 32, },
@@ -1086,11 +1086,12 @@ os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
     if (info != NULL) {
         if (TEST(SYSINFO_RET_ZERO_FAIL, info->flags))
             return (res != 0);
-        /* i#486: syscalls that return the capacity needed in an OUT param
-         * will still write to it when returning STATUS_BUFFER_TOO_SMALL
+        /* i#486, i#932: syscalls that return the capacity needed in an OUT
+         * param will still write to it when returning STATUS_BUFFER_TOO_SMALL
          */
         if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, info->flags) &&
-            res == STATUS_BUFFER_TOO_SMALL)
+            (res == STATUS_BUFFER_TOO_SMALL ||
+             res == STATUS_INFO_LENGTH_MISMATCH))
             return true;
     }
     if (res == STATUS_BUFFER_OVERFLOW) {
@@ -1775,6 +1776,11 @@ handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall
                          sysnum, buf.Buffer, buf.SizeOfBuf, mc, "Buffer");
         }
     }
+    /* i#932: The kernel always writes the size needed info ReturnLength, even
+     * on error.  However, for some classes of info, Nebbet claims this value
+     * may be zero.  For DrMemory, we can handle this with
+     * SYSINFO_RET_SMALL_WRITE_LAST.
+     */
     return true;
 }
 
