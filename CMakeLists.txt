@@ -756,6 +756,10 @@ set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
 
 ##################################################
 
+# new set_property() doesn't want -D but our cpp invocation above does
+string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
+string(REGEX REPLACE "-D" "" DR_DEFINES_NO_D "${DR_DEFINES}")
+
 option(BUILD_TOOL_TESTS "build Dr. Memory/Dr. Heapstat tests" ON)
 if (BUILD_TOOL_TESTS)
   # configure tests before configure_DynamoRIO_client or
@@ -829,9 +833,6 @@ set(scripts ${toolname}.pl postprocess.pl)
 if (USE_DRSYMS)
   set(srcs ${srcs} common/symcache.c)
 endif (USE_DRSYMS)
-
-# new set_property() doesn't want -D but our cpp invocation above does
-string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   # front-end needs to be name drmemory.exe and thus has drmemory.pdb, so

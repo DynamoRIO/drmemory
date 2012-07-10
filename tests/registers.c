@@ -20,165 +20,62 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef ASM_CODE_ONLY /* C code ***********************************************/
+
 #include <stdio.h>
 #include <stdlib.h>
 
 typedef unsigned char byte;
 
-static int reg_eflags;
-static int reg_eax;
-static int reg_ebx;
-static int reg_ecx;
-static int reg_edx;
-static int reg_edi;
-static int reg_esi;
-static int reg_ebp;
-static int reg_esp;
-static byte *pusha_base;
+#ifdef LINUX
+# include <stdint.h>
+typedef intptr_t reg_t;
+#else
+# include <windows.h>
+typedef INT_PTR reg_t;
+#endif
+
+typedef struct _gpr_t {
+    reg_t xflags;
+    reg_t xax;
+    reg_t xcx;
+    reg_t xdx;
+    reg_t xbx;
+    reg_t xsp;
+    reg_t xbp;
+    reg_t xsi;
+    reg_t xdi;
+} gpr_t;
 
 static int array[128];
 
-static void check_reg(byte *pusha_base, int pre_val, int offs)
+/* asm routines
+ * FIXME i#934: convert the rest of the inlined asm to cross-platform asm
+ */
+void float_test_asm(double *zero);
+void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post);
+
+static void check_reg(reg_t pre, reg_t post, const char *name)
 {
-    if (*(int *)(pusha_base+offs) != pre_val) {
-        printf("mismatch %d: 0x%08x vs 0x%08x\n",
-               offs, *(int *)(pusha_base+offs), pre_val);
+    if (pre != post) {
+        printf("mismatch %s: 0x%08x vs 0x%08x\n", name, pre, post);
     }
 }
 
 static void
-regtest()
+regtest(void)
 {
+    static gpr_t gpr_pre, gpr_post;
     printf("before regtest!\n"); /* using ! as workaround for i#625 */
-#ifdef WINDOWS
-    /* XXX i#403: add asm_defines.asm and write cross-os asm */
-    __asm {
-        pushfd
-        pop   eax   /* note: reg_eax = 0 and eax gets zero from array[*] */
-        /* values we can recognize, but stay under array[128] */
-        mov   ecx, 37
-        mov   edx, 7
-        mov   reg_eflags, eax
-        mov   reg_ecx, ecx
-        mov   reg_edx, edx
-        mov   reg_ebx, ebx
-        mov   reg_esp, esp
-        mov   reg_ebp, ebp
-        mov   reg_esi, esi
-        mov   reg_edi, edi
-        /* loads */
-        mov   eax, dword ptr [array]
-        mov   eax, dword ptr [array + ecx]
-        mov   eax, dword ptr [array + ecx + edx*2]
-        mov   ax,   word ptr [array]
-        mov   ax,   word ptr [array + ecx]
-        mov   ax,   word ptr [array + ecx + edx*2]
-        mov   ah,   byte ptr [array]
-        mov   ah,   byte ptr [array + ecx]
-        mov   ah,   byte ptr [array + ecx + edx*2]
-        /* stores */
-        mov   dword ptr [array],               eax
-        mov   dword ptr [array + ecx],         eax
-        mov   dword ptr [array + ecx + edx*2], eax
-        mov    word ptr [array],               ax
-        mov    word ptr [array + ecx],         ax
-        mov    word ptr [array + ecx + edx*2], ax
-        mov    byte ptr [array],               ah
-        mov    byte ptr [array + ecx],         ah
-        mov    byte ptr [array + ecx + edx*2], ah
-        /* get flags on stack before ALU tests change them */
-        pushfd
-        /* test i#877: ALU sub-dword shift */
-        add    byte ptr [array],               8 /* fastpath ok */
-        shr    byte ptr [array],               8 /* needs slowpath */
-        add    word ptr [array],               8 /* fastpath ok */
-        shl    word ptr [array],               8 /* needs slowpath */
-        /* pushes and pops */
-        push  dword ptr [array + ecx + edx*2]
-        pop   dword ptr [array + ecx + edx*2]
-        enter 0, 0
-        leave
-        /* ensure regs haven't changed by storing copy on stack
-         * (since act of comparing + printing will touch regs)
-         */
-        pushad
-        mov   pusha_base, esp
-    }
-#else
-    asm("pushfl");
-    asm("pop   %eax");
-    /* values we can recognize, but stay under array[128] */
-    /* FIXME: gave up trying to duplicate Windows side in gcc inline asm,
-     * so putting array address into ecx and using 37 as offset.
-     */
-    asm("mov   %0, %%ecx" : : "g"(&array) : "ecx");
-    asm("mov   $7, %edx");
-    asm("mov   %%eax, %0" : "=m"(reg_eflags) :);
-    asm("mov   %%ecx, %0" : "=m"(reg_ecx) :);
-    asm("mov   %%edx, %0" : "=m"(reg_edx) :);
-    asm("mov   %%ebx, %0" : "=m"(reg_ebx) :);
-    asm("mov   %%esp, %0" : "=m"(reg_esp) :);
-    asm("mov   %%ebp, %0" : "=m"(reg_ebp) :);
-    asm("mov   %%esi, %0" : "=m"(reg_esi) :);
-    asm("mov   %%edi, %0" : "=m"(reg_edi) :);
-    /* loads */
-    asm("mov   %0, %%eax" : : "m"(array[0]) : "eax");
-    asm("mov   37(%ecx), %eax");
-    asm("mov   37(%ecx,%edx,2), %eax");
-    asm("mov   %0, %%ax" : : "m"(array[0]) : "ax");
-    asm("mov   37(%ecx), %ax");
-    asm("mov   37(%ecx,%edx,2), %ax");
-    asm("mov   %0, %%ah" : : "m"(array[0]) : "ah");
-    asm("mov   37(%ecx), %ah");
-    asm("mov   37(%ecx,%edx,2), %ah");
-    /* stores */
-    asm("mov   %%eax, %0" : "=g"(array));
-    asm("mov   %eax, 37(%ecx)");
-    asm("mov   %eax, 37(%ecx,%edx,2)");
-    asm("mov   %%ax, %0" : "=g"(array));
-    asm("mov   %ax, 37(%ecx)");
-    asm("mov   %ax, 37(%ecx,%edx,2)");
-    asm("mov   %%ah, %0" : "=g"(array));
-    asm("mov   %ah, 37(%ecx)");
-    asm("mov   %ah, 37(%ecx,%edx,2)");
-    asm("pushfl"); /* get flags for checks below, before cmp changes them */
-    /* PR 425240: cmp of sub-dword */
-    asm("cmp   %ah, 37(%ecx)");
-    /* pushes and pops */
-    asm("pushl  37(%ecx,%edx,2)");
-    asm("popl   37(%ecx,%edx,2)");
-    asm("enter $0, $0");
-    asm("leave");
-    /* ensure regs haven't changed by storing copy on stack
-     * (since act of comparing + printing will touch regs)
-     */
-    asm("pushal");
-    asm("mov   %%esp, %0" : "=m"(pusha_base) :);
-    /* gcc is reserving stack space up front and then clobbering the
-     * pusha slots, so make sure to get new slots
-     */
-    asm("sub   $12, %esp");
-#endif
-    check_reg(pusha_base, reg_edi,  0);
-    check_reg(pusha_base, reg_esi,  4);
-    check_reg(pusha_base, reg_ebp,  8);
-    /* pushf prior to pusha added 4 to esp */
-    check_reg(pusha_base, reg_esp-4, 12);
-    check_reg(pusha_base, reg_ebx, 16);
-    check_reg(pusha_base, reg_edx, 20);
-    check_reg(pusha_base, reg_ecx, 24);
-    check_reg(pusha_base, reg_eax, 28);
-    check_reg(pusha_base, reg_eflags, 32);
-#ifdef WINDOWS
-    __asm {
-        popad
-        pop   eax
-    }
-#else
-    asm("add   $12, %esp");
-    asm("popal");
-    asm("pop %eax");
-#endif
+    regtest_asm(array, &gpr_pre, &gpr_post);
+    check_reg(gpr_pre.xdi, gpr_post.xdi, "xdi");
+    check_reg(gpr_pre.xsi, gpr_post.xsi, "xsi");
+    check_reg(gpr_pre.xbp, gpr_post.xbp, "xbp");
+    check_reg(gpr_pre.xsp, gpr_post.xsp, "xsp");
+    check_reg(gpr_pre.xbx, gpr_post.xbx, "xbx");
+    check_reg(gpr_pre.xdx, gpr_post.xdx, "xdx");
+    check_reg(gpr_pre.xcx, gpr_post.xcx, "xcx");
+    check_reg(gpr_pre.xax, gpr_post.xax, "xax");
     printf("after regtest!\n");
 }
 
@@ -191,8 +88,8 @@ subdword_test(void)
     char *undef = (char *) malloc(128);
     int val;
     printf("before subdword test!\n");
+    /* FIXME i#934: convert to cross-platform asm routine */
 #ifdef WINDOWS
-    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
         /* loads */
         mov   eax, 0
@@ -245,8 +142,8 @@ repstr_test(void)
             a1[i] = 0;
     }
     printf("before repstr test!\n");
+    /* FIXME i#934: convert to cross-platform asm routine */
 #ifdef WINDOWS
-    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
         mov   esi, a1
         mov   edi, a2
@@ -302,8 +199,8 @@ eflags_test(void)
 {
     char *undef = (char *) malloc(16);
     printf("before eflags test!\n");
+    /* FIXME i#934: convert to cross-platform asm routine */
 #ifdef WINDOWS
-    /* if this gets any longer should use asm_defines.asm and write cross-os asm */
     __asm {
         mov   edi, undef
         mov   ecx, dword ptr [4 + edi]
@@ -423,14 +320,7 @@ float_test(void)
 {
     double val = 0.;
     /* test cvttsd2si (i#258, i#259, DRi#371) */
-#ifdef WINDOWS
-    __asm {
-        cvttsd2si  eax, dword ptr [val]
-    }
-#else
-    asm("mov   %0, %%ecx" : : "g"(&val) : "ecx");
-    asm("cvttsd2si  (%ecx), %eax");
-#endif
+    float_test_asm(&val);
 }
 
 void
@@ -699,7 +589,7 @@ nop_test(void)
         popad;
     }
 #else
-    /* FIXME: Skipping Linux for now, we'll get the coverage when cross-os asm
+    /* FIXME i#934: Skipping Linux for now, we'll get the coverage when cross-os asm
      * support lands.
      */
 #endif
@@ -740,3 +630,99 @@ main()
 
     return 0;
 }
+
+#else /* asm code *************************************************************/
+#include "cpp2asm_defines.h"
+START_FILE
+
+#define FUNCNAME regtest_asm
+/* void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XCX, ARG2
+        mov      REG_XDX, ARG3
+        /* save callee-saved regs */
+        push     REG_XDI
+        push     REG_XSI
+        mov      REG_XSI, REG_XCX /* gpr_pre */
+        mov      REG_XDI, REG_XDX /* gpr_post */
+        mov      REG_XCX, REG_XAX /* array */
+        pushfd
+        pop      REG_XAX   /* note: reg_eax = 0 and eax gets zero from array[*] */
+        /* values we can recognize, but stay under array[128] */
+        mov      edx,     7
+        mov      PTRSZ [REG_XSI + 0*ARG_SZ /*xflags*/], REG_XAX
+        mov      PTRSZ [REG_XSI + 1*ARG_SZ /* xax  */], 0
+        mov      PTRSZ [REG_XSI + 2*ARG_SZ /* xcx  */], REG_XCX
+        mov      PTRSZ [REG_XSI + 3*ARG_SZ /* xdx  */], REG_XDX
+        mov      PTRSZ [REG_XSI + 4*ARG_SZ /* xbx  */], REG_XBX
+        mov      PTRSZ [REG_XSI + 5*ARG_SZ /* xsp  */], REG_XSP
+        mov      PTRSZ [REG_XSI + 6*ARG_SZ /* xbp  */], REG_XBP
+        mov      PTRSZ [REG_XSI + 7*ARG_SZ /* xsi  */], REG_XSI
+        mov      PTRSZ [REG_XSI + 8*ARG_SZ /* xdi  */], REG_XDI
+        /* loads */
+        mov      eax, DWORD [REG_XCX]
+        mov      eax, DWORD [REG_XCX + 37]
+        mov      eax, DWORD [REG_XCX + 37 + REG_XDX*2]
+        mov      ax,   WORD [REG_XCX]
+        mov      ax,   WORD [REG_XCX + 37]
+        mov      ax,   WORD [REG_XCX + 37 + REG_XDX*2]
+        mov      ah,   BYTE [REG_XCX]
+        mov      ah,   BYTE [REG_XCX + 37]
+        mov      ah,   BYTE [REG_XCX + 37 + REG_XDX*2]
+        /* stores */
+        mov      DWORD [REG_XCX], eax
+        mov      DWORD [REG_XCX + 37], eax
+        mov      DWORD [REG_XCX + 37 + REG_XDX*2], eax
+        mov       WORD [REG_XCX], ax
+        mov       WORD [REG_XCX + 37], ax
+        mov       WORD [REG_XCX + 37 + REG_XDX*2], ax
+        mov       BYTE [REG_XCX], ah
+        mov       BYTE [REG_XCX + 37], ah
+        mov       BYTE [REG_XCX + 37 + REG_XDX*2], ah
+        /* get flags on stack before ALU tests change them */
+        pushfd
+        /* test i#877: ALU sub-dword shift */
+        add      BYTE [REG_XCX], 8 /* fastpath ok */
+        shr      BYTE [REG_XCX], 8 /* needs slowpath */
+        add      WORD [REG_XCX], 8 /* fastpath ok */
+        shl      WORD [REG_XCX], 8 /* needs slowpath */
+        /* pushes and pops */
+        push     DWORD [REG_XCX + 37 + REG_XDX*2]
+        pop      DWORD [REG_XCX + 37 + REG_XDX*2]
+        enter    0, 0
+        leave
+        /* ensure regs haven't changed by storing copy in post_reg
+         * (since act of comparing + printing will touch regs)
+         */
+        mov      PTRSZ [REG_XDI + 1*ARG_SZ /* xax  */], REG_XAX
+        pop      REG_XAX
+        mov      PTRSZ [REG_XDI + 0*ARG_SZ /*xflags*/], REG_XAX
+        mov      PTRSZ [REG_XDI + 2*ARG_SZ /* xcx  */], REG_XCX
+        mov      PTRSZ [REG_XDI + 3*ARG_SZ /* xdx  */], REG_XDX
+        mov      PTRSZ [REG_XDI + 4*ARG_SZ /* xbx  */], REG_XBX
+        mov      PTRSZ [REG_XDI + 5*ARG_SZ /* xsp  */], REG_XSP
+        mov      PTRSZ [REG_XDI + 6*ARG_SZ /* xbp  */], REG_XBP
+        mov      PTRSZ [REG_XDI + 7*ARG_SZ /* xsi  */], REG_XSI
+        mov      PTRSZ [REG_XDI + 8*ARG_SZ /* xdi  */], REG_XDI
+        /* restore callee-saved regs */
+        pop      REG_XSI
+        pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME float_test_asm
+/* void float_test_asm(double *zero); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        cvttsd2si eax, QWORD [REG_XAX]
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+END_FILE
+#endif
