@@ -188,17 +188,6 @@ on_vista_or_later(void)
 }
 
 static bool
-on_xp32(void)
-{
-    OSVERSIONINFO version;
-    version.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    return (GetVersionEx(&version) &&
-            version.dwPlatformId == VER_PLATFORM_WIN32_NT && 
-            version.dwMajorVersion == 5 &&
-            version.dwMinorVersion == 1);
-}
-
-static bool
 is_graphical_app(const char *exe)
 {
     /* reads the PE headers to see whether the given image is a graphical app */
@@ -449,13 +438,11 @@ int main(int argc, char *argv[])
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
-    if (on_xp32()) {
-        /* FIXME i#699: early injection crashes the child on xp32.
-         * We work around it here.  Should remove this once the real bug is fixed.
-         */
-        BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
-                 drops_sofar, len, "-no_early_inject ");
-    }
+    /* FIXME i#699: early injection crashes the child on 32-bit or on wow64 vista+.
+     * We work around it here.  Should remove this once the real bug is fixed.
+     */
+    BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+             drops_sofar, len, "-no_early_inject ");
 
     /* default logdir */
     if (strstr(drmem_root, "Program Files") != NULL) {

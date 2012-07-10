@@ -19,5 +19,5 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: LEAK 42 direct bytes + 0 indirect bytes
-procterm.c:33
-procterm.c:72
+procterm.c:36
+procterm.c:76

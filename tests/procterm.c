@@ -27,6 +27,9 @@
 /* we use a file for IPC.  this means we can't run this test twice in parallel. */
 #define TEMP_FILE "tmp-procterm.txt"
 
+#define SLEEP_PER_ATTEMPT 100
+#define MAX_ATTEMPTS 100 /* @ 100ms each => 10 seconds */
+
 static void *
 allocate_something(void)
 {
@@ -51,10 +54,11 @@ main(int argc, char** argv)
                            NULL, NULL, &si, &pi)) 
             fprintf(stderr, "ERROR on CreateProcess\n"); 
         else {
-            int status;
+            int status, count = 0;
             /* wait for child to allocate its memory */
-            while (_access(TEMP_FILE, 4/*read*/) == -1) {
-                Sleep(100);
+            while (count < MAX_ATTEMPTS && _access(TEMP_FILE, 4/*read*/) == -1) {
+                Sleep(SLEEP_PER_ATTEMPT);
+                count++;
             }
             TerminateProcess(pi.hProcess, 42);
             WaitForSingleObject(pi.hProcess, INFINITE);
