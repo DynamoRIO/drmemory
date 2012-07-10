@@ -23,7 +23,8 @@ if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # for output dir name control
   cmake_minimum_required(VERSION 2.8.2)
 else ()
-  cmake_minimum_required(VERSION 2.6)
+  # for cmake bug #8639 (asm support broken)
+  cmake_minimum_required(VERSION 2.6.4)
 endif ()
 
 # like DR, we collapse VS generator into one config since
@@ -614,6 +615,86 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   # Build from our local copy of the sources, coming from an svn external: i#74.
   set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
   message(STATUS "Building DynamoRIO from local sources ${DynamoRIO_DIR}")
+
+  # DR clobbers the global cflags, so we save and then restore them
+  foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
+    if ("${config}" STREQUAL "")
+      set(config_upper "")
+    else ("${config}" STREQUAL "")
+      string(TOUPPER "_${config}" config_upper)
+    endif ("${config}" STREQUAL "")
+    foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
+      set(ORIG_${var} "${${var}}")
+    endforeach (var)
+  endforeach (config)
+
+  # We include DynamoRIO as a subdir here to make it easy to use the
+  # DynamoRIOConfig.cmake at configure time: however, that also means we have
+  # potential conflicts in CMake's global option and target space.
+  # Ideally, DynamoRIO would prefix all its options and targets with "DR_"
+  # or something.  For now we live w/ the ugliness.
+  # (An alternative would be to use the ExternalProject feature: but
+  # then we don't have DynamoRIOConfig.cmake at config time and we'd
+  # either need a parent build project or to hack our find_package().)
+
+  # it seems that we must set these in the cache for the subproj to see them:
+  set(BUILD_DOCS OFF CACHE BOOL "DynamoRIO option: build client samples")
+  set(BUILD_SAMPLES OFF CACHE BOOL "DynamoRIO option: build documentation")
+  # our local DR build matches our own build type
+  if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+    set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
+    set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
+  endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
+  # for efficiency, have all our extensions be static.  we have the same
+  # LGPL license as drutil and drwrap so it works out.
+  set(DR_EXT_DRWRAP_STATIC ON CACHE BOOL "static drwrap")
+  set(DR_EXT_DRUTIL_STATIC ON CACHE BOOL "static drutil")
+  set(DR_EXT_DRMGR_STATIC ON CACHE BOOL "static drmgr")
+  if (STATIC_DRSYMS)
+    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
+    # libc use.  If we end up needing late kernel32 use for early
+    # injection we may want to go back to dynamic drsyms (and delayed
+    # dr_enable_console_printing()).
+    set(DR_EXT_DRSYMS_STATIC ON CACHE BOOL "static drsyms")
+  endif (STATIC_DRSYMS)
+
+  # we do not want DR install
+  set(DO_DR_INSTALL OFF)
+
+  add_subdirectory(dynamorio)
+
+  # don't show DR options in drmem cmake list
+  # to really hide we should mark as INTERNAL but not worth it since would
+  # have to do for all of DR's many options.
+  # see comment above about DR prefixing its options.
+  mark_as_advanced(BUILD_CORE BUILD_DOCS BUILD_SAMPLES BUILD_EXT BUILD_TESTS
+      BUILD_TOOLS DEBUG INTERNAL)
+
+  # do not import dynamorio lib target: we'd end up w/ duplicate
+  # dynamorio targets
+  set(DynamoRIO_INTERNAL ON)
+  # our included DynamoRIO project will set DynamoRIO_SOURCE_DIR in cache
+  # for us so we'll get proper include dirs for extensions.
+
+  find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
+  if (NOT DynamoRIO_FOUND OR
+      # make sure it didn't go find some other pre-built version after
+      # seeing that the local one is somehow not suitable
+      NOT "${DynamoRIO_CONFIG}" STREQUAL "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
+    message(FATAL_ERROR "Local DynamoRIO mis-configured")
+  endif ()
+
+  # Restore global flags
+  foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
+    if ("${config}" STREQUAL "")
+      set(config_upper "")
+    else ("${config}" STREQUAL "")
+      string(TOUPPER "_${config}" config_upper)
+    endif ("${config}" STREQUAL "")
+    foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
+      set(${var} "${ORIG_${var}}")
+    endforeach (var)
+  endforeach (config)
 endif (USER_SPECIFIED_DynamoRIO_DIR)
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
@@ -644,6 +725,34 @@ if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
     string(REGEX REPLACE "/debug" "" ${var} "${${var}}")
   endforeach ()
 endif (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
+
+##################################################
+# assembly support
+
+# set up assembly support and CMAKE_CPP
+include(${DynamoRIO_DIR}/cpp2asm_support.cmake)
+if (UNIX)
+  if (NOT CMAKE_ASM_SUPPORTS_INTEL_SYNTAX)
+    message(FATAL_ERROR "${CMAKE_ASM_COMPILER} does not support required flags")
+  endif (NOT CMAKE_ASM_SUPPORTS_INTEL_SYNTAX)
+endif (UNIX)
+# for cpp2asm_defines.h
+include_directories(${DynamoRIO_DIR})
+
+# XXX: even if we went to a configure.h, we wouldn't have the DR platform
+# defines there unless we duplicated them.
+if (UNIX)
+  set(DEFINES ${DEFINES} -DASSEMBLE_WITH_GAS)
+else (UNIX)
+  set(DEFINES ${DEFINES} -DASSEMBLE_WITH_MASM)
+endif (UNIX)
+get_DynamoRIO_defines(DR_DEFINES OFF)
+# We need defines to be a list to pass as separate args to custom command.
+# We assume none have spaces inside them which seems reasonable.
+string(REPLACE " " ";" DR_DEFINES "${DR_DEFINES}")
+set(asm_defs ${DR_DEFINES} ${DEFINES} -I "${DynamoRIO_DIR}")
+
+set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
 
 ##################################################
 
@@ -750,69 +859,6 @@ if (WIN32)
   set_source_files_properties(tools/winsyms.c PROPERTIES
     COMPILE_FLAGS "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
 endif (WIN32)
-
-##################################################
-# below here the cflags, etc. may be clobbered by DR, so be sure
-# to add any other subdirs above here
-
-if (NOT USER_SPECIFIED_DynamoRIO_DIR)
-  # Build from our local copy of the sources, coming from an svn external: i#74.
-  # We include DynamoRIO as a subdir here to make it easy to use the
-  # DynamoRIOConfig.cmake at configure time: however, that also means we have
-  # potential conflicts in CMake's global option and target space.
-  # Ideally, DynamoRIO would prefix all its options and targets with "DR_"
-  # or something.  For now we live w/ the ugliness.
-  # (An alternative would be to use the ExternalProject feature: but
-  # then we don't have DynamoRIOConfig.cmake at config time and we'd
-  # either need a parent build project or to hack our find_package().)
-
-  # it seems that we must set these in the cache for the subproj to see them:
-  set(BUILD_DOCS OFF CACHE BOOL "DynamoRIO option: build client samples")
-  set(BUILD_SAMPLES OFF CACHE BOOL "DynamoRIO option: build documentation")
-  # our local DR build matches our own build type
-  if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
-    set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
-    set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
-  endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
-  # for efficiency, have all our extensions be static.  we have the same
-  # LGPL license as drutil and drwrap so it works out.
-  set(DR_EXT_DRWRAP_STATIC ON CACHE BOOL "static drwrap")
-  set(DR_EXT_DRUTIL_STATIC ON CACHE BOOL "static drutil")
-  set(DR_EXT_DRMGR_STATIC ON CACHE BOOL "static drmgr")
-  if (STATIC_DRSYMS)
-    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
-    # libc use.  If we end up needing late kernel32 use for early
-    # injection we may want to go back to dynamic drsyms (and delayed
-    # dr_enable_console_printing()).
-    set(DR_EXT_DRSYMS_STATIC ON CACHE BOOL "static drsyms")
-  endif (STATIC_DRSYMS)
-
-  # we do not want DR install
-  set(DO_DR_INSTALL OFF)
-
-  add_subdirectory(dynamorio)
-
-  # don't show DR options in drmem cmake list
-  # to really hide we should mark as INTERNAL but not worth it since would
-  # have to do for all of DR's many options.
-  # see comment above about DR prefixing its options.
-  mark_as_advanced(BUILD_CORE BUILD_DOCS BUILD_SAMPLES BUILD_EXT BUILD_TESTS
-      BUILD_TOOLS DEBUG INTERNAL)
-
-  # do not import dynamorio lib target: we'd end up w/ duplicate
-  # dynamorio targets
-  set(DynamoRIO_INTERNAL ON)
-  # our included DynamoRIO project will set DynamoRIO_SOURCE_DIR in cache
-  # for us so we'll get proper include dirs for extensions.
-
-  find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
-  if (NOT DynamoRIO_FOUND OR
-      # make sure it didn't go find some other pre-built version after
-      # seeing that the local one is somehow not suitable
-      NOT "${DynamoRIO_CONFIG}" STREQUAL "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
-    message(FATAL_ERROR "Local DynamoRIO mis-configured")
-  endif ()
-endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 
 # we want a preferred base to avoid patching pcaches
 set(DynamoRIO_SET_PREFERRED_BASE ON)

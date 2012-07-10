@@ -1041,7 +1041,10 @@ virtual_free(void *base)
  */
 
 #ifdef LINUX
-/* XXX: these are too repetitive: should share, or better yet do i#199 */
+/* XXX: these are too repetitive: should share, or better yet do i#199.
+ * Or, now that we have asm support (i#403), switch to raw asm for these
+ * (xref i#918 where on 64-bit these are problematic).
+ */
 DO_NOT_OPTIMIZE
 ptr_int_t
 raw_syscall_1arg(uint sysnum, ptr_int_t arg)
