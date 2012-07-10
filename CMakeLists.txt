@@ -751,6 +751,8 @@ get_DynamoRIO_defines(DR_DEFINES OFF)
 # We assume none have spaces inside them which seems reasonable.
 string(REPLACE " " ";" DR_DEFINES "${DR_DEFINES}")
 set(asm_defs ${DR_DEFINES} ${DEFINES} -I "${DynamoRIO_DIR}")
+add_asm_target(common/asm_utils.asm asm_utils_src asm_utils_tgt ""
+  "${asm_defs}" "${asm_deps}")
 
 set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
 
@@ -779,6 +781,7 @@ if (TOOL_DR_HEAPSTAT)
     common/heap.c
     common/callstack.c
     common/utils.c
+    ${asm_utils_src}
     common/redblack.c
     common/crypto.c
     # For leak checking we need stack.c but it pulls in the inter-dependent
@@ -815,6 +818,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/leak.c
     drmemory/perturb.c
     common/utils.c
+    ${asm_utils_src}
     common/redblack.c
     common/crypto.c)
   if (UNIX)
@@ -848,6 +852,10 @@ add_library(${client_target} SHARED ${srcs})
 set_target_properties(${client_target} PROPERTIES
   VERSION ${TOOL_VERSION_NUMBER})
 set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  # ensure race-free parallel builds
+  add_dependencies(${client_target} ${asm_utils_tgt})
+endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
 
 if (WIN32)
   # our addr2line for Windows

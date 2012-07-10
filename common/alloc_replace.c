@@ -74,6 +74,7 @@
 #include "dr_api.h"
 #include "drwrap.h"
 #include "utils.h"
+#include "asm_utils.h"
 #include "alloc.h"
 #include "alloc_private.h"
 #include "heap.h"
@@ -256,20 +257,13 @@ exit_client_code(void *drcontext)
     dr_switch_to_app_state(drcontext);
 }
 
-static void
-initialize_mcontext_for_report(dr_mcontext_t *mc)
-{
-    /* assumption: we only need xsp and xbp initialized */
-    mc->size = sizeof(*mc);
-    mc->flags = DR_MC_CONTROL | DR_MC_INTEGER;
-    /* FIXME i#794: add asm support and asm routine to get xsp and xbp:
-     *   get_stack_registers(&mc->xsp, &mc->xbp);
-     * I don't see any cl intrinsic to get xbp (gcc has one): if there were
-     * could assume these routines don't have FPO and set xsp=xbp
-     */
-    mc->xsp = 0;
-    mc->xbp = 0;
-}
+/* This must be inlined to get an xsp that's in the call chain */
+#define INITIALIZE_MCONTEXT_FOR_REPORT(mc) do {            \
+    /* assumption: we only need xsp and xbp initialized */ \
+    (mc)->size = sizeof(*(mc));                            \
+    (mc)->flags = DR_MC_CONTROL | DR_MC_INTEGER;           \
+    get_stack_registers(&(mc)->xsp, &(mc)->xbp);           \
+} while (0)
 
 #ifdef WINDOWS
 static inline uint
@@ -1098,7 +1092,7 @@ replace_malloc(size_t size)
     void *drcontext = enter_client_code();
     dr_mcontext_t mc;
     /* XXX: should we make mc a debug-only param for perf? */
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
     res = (void *) replace_alloc_common(cur_arena, size, true/*lock*/, false/*!zeroed*/,
                                         false/*!realloc*/,
@@ -1114,7 +1108,7 @@ replace_calloc(size_t nmemb, size_t size)
     void *drcontext = enter_client_code();
     byte *res;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_calloc %d %d\n", nmemb, size);
     res = replace_alloc_common(cur_arena, nmemb * size, true/*lock*/, true/*zeroed*/,
                                false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc);
@@ -1130,7 +1124,7 @@ replace_realloc(void *ptr, size_t size)
     void *drcontext = enter_client_code();
     void *res = NULL;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
     res = replace_realloc_common(cur_arena, ptr, size, true/*lock*/, false/*!zeroed*/,
                                  false/*!in-place only*/,
@@ -1145,7 +1139,7 @@ replace_free(void *ptr)
 {
     void *drcontext = enter_client_code();
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
     replace_free_common(cur_arena, ptr, true/*lock*/, drcontext,
                         &mc, (app_pc)replace_free);
@@ -1158,7 +1152,7 @@ replace_malloc_usable_size(void *ptr)
     void *drcontext = enter_client_code();
     size_t res;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
     res = replace_size_common(cur_arena, ptr, drcontext, &mc,
                               (app_pc)replace_malloc_usable_size);
@@ -1243,7 +1237,7 @@ replace_RtlDestroyHeap(HANDLE heap)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL && heap != process_heap) {
         arena_header_t *a, *next_a;
@@ -1295,7 +1289,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     arena_header_t *arena = heap_to_arena(heap);
     void *res = NULL;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
         res = replace_alloc_common(arena, size,
@@ -1318,7 +1312,7 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     arena_header_t *arena = heap_to_arena(heap);
     void *res = NULL;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
         res = replace_realloc_common(arena, ptr, size,
@@ -1341,7 +1335,7 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
         bool ok = replace_free_common(arena, ptr,
@@ -1361,7 +1355,7 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     arena_header_t *arena = heap_to_arena(heap);
     SIZE_T res = (SIZE_T) -1;
     dr_mcontext_t mc;
-    initialize_mcontext_for_report(&mc);
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
         res = replace_size_common(arena, ptr, drcontext,
