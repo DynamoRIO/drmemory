@@ -643,6 +643,10 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     heapsz_t aligned_size;
     byte *res = NULL;
     chunk_header_t *head = NULL;
+    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
+     * the heap routine (for i#639 we'll need to pass 2 known top frames)
+     */
+    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
     if (request_size > UINT_MAX) {
         /* rather than have larger headers for 64-bit we just don't support
@@ -739,6 +743,10 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
     chunk_header_t *head = header_from_ptr(ptr);
     free_header_t *cur;
     uint bucket;
+    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
+     * the heap routine (for i#639 we'll need to pass 2 known top frames)
+     */
+    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
     if (!is_live_alloc(ptr, head)) { /* including NULL */
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -850,6 +858,10 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
 {
     byte *res = NULL;
     chunk_header_t *head = header_from_ptr(ptr);
+    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
+     * the heap routine (for i#639 we'll need to pass 2 known top frames)
+     */
+    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (ptr == NULL) {
         client_handle_realloc_null(caller, mc);
         res = (void *) replace_alloc_common(cur_arena, size, lock, zeroed, true/*realloc*/,
@@ -898,6 +910,10 @@ replace_size_common(arena_header_t *arena, byte *ptr,
                     void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     chunk_header_t *head = header_from_ptr(ptr);
+    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
+     * the heap routine (for i#639 we'll need to pass 2 known top frames)
+     */
+    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (!is_live_alloc(ptr, head)) {
         client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                 IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
