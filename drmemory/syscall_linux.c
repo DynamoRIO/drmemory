@@ -32,6 +32,7 @@
 #include "heap.h"
 #include "stack.h"
 #include "report.h"
+#include "asm_utils.h"
 
 #include <stddef.h> /* for offsetof */
 
@@ -2009,7 +2010,7 @@ ipc_sem_len(int semid)
     union semun ctlarg;
     ctlarg.buf = &ds;
     /* FIXME PR 519781: not tested! */
-    if (raw_syscall_5args(SYS_ipc, SEMCTL, semid, 0, IPC_STAT, (ptr_int_t)&ctlarg) < 0)
+    if (raw_syscall(SYS_ipc, 5, SEMCTL, semid, 0, IPC_STAT, (ptr_int_t)&ctlarg) < 0)
         return 0;
     else
         return ds.sem_nsems;

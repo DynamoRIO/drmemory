@@ -283,8 +283,8 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(u
      * for now using our own raw syscall...
      */
 #ifdef LINUX
-    byte *map = (byte *) raw_syscall_6args
-        (IF_X64_ELSE(SYS_mmap, SYS_mmap2), (ptr_int_t)NULL, commit_size,
+    byte *map = (byte *) raw_syscall
+        (IF_X64_ELSE(SYS_mmap, SYS_mmap2), 6, (ptr_int_t)NULL, commit_size,
          PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
     if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE) {
@@ -315,8 +315,8 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
 #ifdef LINUX
-    byte *newmap = (byte *) raw_syscall_4args
-        (SYS_mremap, (ptr_int_t)map, cur_commit_size, new_commit_size, 0/*can't move*/);
+    byte *newmap = (byte *) raw_syscall
+        (SYS_mremap, 4, (ptr_int_t)map, cur_commit_size, new_commit_size, 0/*can't move*/);
     if ((ptr_int_t)newmap < 0 && (ptr_int_t)newmap > -PAGE_SIZE)
         return false;
     return true;
@@ -333,7 +333,7 @@ os_large_free(byte *map, size_t map_size)
     int success;
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
-    success = (int) raw_syscall_2args(SYS_munmap, (ptr_int_t)map, map_size);
+    success = (int) raw_syscall(SYS_munmap, 2, (ptr_int_t)map, map_size);
     return (success == 0);
 #else
     return virtual_free(map);
@@ -675,7 +675,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
                           header_beyond_redzone, PAGE_SIZE);
         byte *map = os_large_alloc(map_size _IF_WINDOWS(map_size)
                                    _IF_WINDOWS(arena_page_prot(arena->flags)));
-        LOG(2, "\tlarge alloc %d => mmap\n", request_size);
+        LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
         if (map == NULL) {
             client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
             return NULL;

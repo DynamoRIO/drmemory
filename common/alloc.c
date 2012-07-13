@@ -151,6 +151,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #  include "drsyms.h"
 # endif
 #endif
+#include "asm_utils.h"
 #include <string.h>
 
 #define DR_MC_GPR (DR_MC_INTEGER | DR_MC_CONTROL)
@@ -200,13 +201,13 @@ get_brk(bool pre_us)
 {
     if (pre_us && alloc_ops.replace_malloc)
         return alloc_replace_orig_brk();
-    return (byte *) raw_syscall_1arg(SYS_brk, 0);
+    return (byte *) raw_syscall(SYS_brk, 1, 0);
 }
 
 byte *
 set_brk(byte *new_val)
 {
-    return (byte *) raw_syscall_1arg(SYS_brk, (ptr_int_t) new_val);
+    return (byte *) raw_syscall(SYS_brk, 1, (ptr_int_t) new_val);
 }
 #endif
 

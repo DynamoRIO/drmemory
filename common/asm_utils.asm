@@ -19,6 +19,38 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+/* **********************************************************
+ * Portions Copyright (c) 2001-2010 VMware, Inc.  All rights reserved.
+ * ***********************************************************/
+/*
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ * 
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ * 
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ * 
+ * * Neither the name of VMware, Inc. nor the names of its contributors may be
+ *   used to endorse or promote products derived from this software without
+ *   specific prior written permission.
+ * 
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL VMWARE, INC. OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ */
+
+
 /***************************************************************************
  * assembly utilities for which there are no intrinsics
  */
@@ -51,6 +83,94 @@ GLOBAL_LABEL(FUNCNAME:)
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
+
+
+#ifdef LINUX
+/* Straight from DynamoRIO as a faster fix than continually tweaking the
+ * C routines raw_syscall_N_args() since i#199 has complex issues and is
+ * non-trivial to put in place.
+ * XXX: if we remove this and use an export from DR instead, we can remove
+ * the DR license statement from the top of this file.
+ */
+/* to avoid libc wrappers we roll our own syscall here
+ * hardcoded to use int 0x80 for 32-bit -- FIXME: use something like do_syscall
+ * and syscall for 64-bit.
+ * signature: raw_syscall(sysnum, num_args, arg1, arg2, ...)
+ */
+        DECLARE_FUNC(raw_syscall)
+GLOBAL_LABEL(raw_syscall:)
+        /* x64 kernel doesn't clobber all the callee-saved registers */
+        push     REG_XBX
+# ifdef X64
+        /* reverse order so we don't clobber earlier args */
+        mov      REG_XBX, ARG2 /* put num_args where we can reference it longer */
+        mov      rax, ARG1 /* sysnum: only need eax, but need rax to use ARG1 (or movzx) */
+        cmp      REG_XBX, 0
+        je       syscall_ready
+        mov      ARG1, ARG3
+        cmp      REG_XBX, 1
+        je       syscall_ready
+        mov      ARG2, ARG4
+        cmp      REG_XBX, 2
+        je       syscall_ready
+        mov      ARG3, ARG5
+        cmp      REG_XBX, 3
+        je       syscall_ready
+        mov      ARG4, ARG6
+        cmp      REG_XBX, 4
+        je       syscall_ready
+        mov      ARG5, [2*ARG_SZ + REG_XSP] /* arg7: above xbx and retaddr */
+        cmp      REG_XBX, 5
+        je       syscall_ready
+        mov      ARG6, [3*ARG_SZ + REG_XSP] /* arg8: above arg7, xbx, retaddr */
+syscall_ready:
+        mov      r10, rcx
+        syscall
+# else
+        push     REG_XBP
+        push     REG_XSI
+        push     REG_XDI
+        /* add 16 to skip the 4 pushes 
+         * FIXME: rather than this dispatch, could have separate routines 
+         * for each #args, or could just blindly read upward on the stack. 
+         * for dispatch, if assume size of mov instr can do single ind jmp */
+        mov      ecx, [16+ 8 + esp] /* num_args */
+        cmp      ecx, 0
+        je       syscall_0args
+        cmp      ecx, 1
+        je       syscall_1args
+        cmp      ecx, 2
+        je       syscall_2args
+        cmp      ecx, 3
+        je       syscall_3args
+        cmp      ecx, 4
+        je       syscall_4args
+        cmp      ecx, 5
+        je       syscall_5args
+        mov      ebp, [16+32 + esp] /* arg6 */
+syscall_5args:
+        mov      edi, [16+28 + esp] /* arg5 */
+syscall_4args:
+        mov      esi, [16+24 + esp] /* arg4 */
+syscall_3args:
+        mov      edx, [16+20 + esp] /* arg3 */
+syscall_2args:
+        mov      ecx, [16+16 + esp] /* arg2 */
+syscall_1args:
+        mov      ebx, [16+12 + esp] /* arg1 */
+syscall_0args:
+        mov      eax, [16+ 4 + esp] /* sysnum */
+        /* PR 254280: we assume int$80 is ok even for LOL64 */
+        int      HEX(80)
+        pop      REG_XDI
+        pop      REG_XSI
+        pop      REG_XBP
+# endif /* X64 */
+        pop      REG_XBX
+        /* return val is in eax for us */
+        ret
+        END_FUNC(raw_syscall)
+#endif /* LINUX */
 
 
 END_FILE

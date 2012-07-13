@@ -27,4 +27,9 @@
 void
 get_stack_registers(reg_t *xsp OUT, reg_t *xbp OUT);
 
+#ifdef LINUX
+ptr_int_t
+raw_syscall(uint sysnum, uint num_args, ...);
+#endif
+
 #endif /* _ASM_UTILS_H_ */
