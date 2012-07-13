@@ -488,23 +488,16 @@ mark_indirect(reachability_data_t *data, byte *ptr_parent, byte *ptr_child,
 
 /***************************************************************************/
 
-/* PR 570839: this is a perf hit so we avoid dr_safe_read() on
- * Windows, which makes a syscall.  No races since world is suspended,
- * but we should do a cached query in case app made part of heap
- * unreadable: or better use try/except for windows and linux which is
- * what we do.
+/* PR 570839: this is a perf hit so we need to avoid a syscall
+ * or ideally any setjmp overhead, which we can now do w/ DR's
+ * fast dr_safe_read().  I measured and DR's safe_read_asm()
+ * does seem to outperform try/except even for a single 4-byte
+ * read.
  */
 static inline bool
 leak_safe_read_heap(void *base, void **var)
 {
-    /* XXX perf: move to callers and pass in drcontext */
-    void *drcontext = dr_get_current_drcontext();
-    DR_TRY_EXCEPT(drcontext, {
-        *var = *((void **)base);
-    }, { /* EXCEPT */
-        return false;
-    });
-    return true;
+    return safe_read(base, sizeof(void*), var);
 }
 
 /* Helper for PR 484544.  Do not export: assumes world is suspended! */

@@ -131,28 +131,18 @@ drmemory_abort(void)
 bool
 safe_read(void *base, size_t size, void *out_buf)
 {
-    /* DR now provides dr_safe_read so we don't need to call
-     * NtReadVirtualMemory anymore; plus this works on Linux too.
-     */
-#ifdef WINDOWS
-    /* For all of our uses, a failure is rare, so we do not want
-     * to pay the cost of the syscall (i#265).
+    /* DR's dr_safe_read() is now faster than try/except.
+     * History: this routine pre-dates dr_safe_read() itself, and
+     * even once that was available it was too slow on Windows
+     * as it involved an NtReadVirtualMemory syscall.
+     * For all of our uses, a failure is rare, so we would rather
+     * have low overhead on non-failure and have no syscall or
+     * setjmp overhead (i#265).
      * Xref the same problem with leak_safe_read_heap (PR 570839).
-     * XXX: perf: have caller pass in drcontext
      */
-    bool res = true;
-    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        memcpy(out_buf, base, size);
-    }, { /* EXCEPT */
-        res = false;
-    });
-    return res;
-#else
-    /* dr_safe_read() uses try/except */
     size_t bytes_read = 0;
     return (dr_safe_read(base, size, out_buf, &bytes_read) &&
             bytes_read == size);
-#endif
 }
 
 /* if returns false, calls instr_free() on inst first */

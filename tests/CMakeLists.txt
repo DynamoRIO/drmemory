@@ -456,10 +456,13 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   # test this option to exercise the realloc handling code.
   # note that we can't run the realloc test b/c the races will result in unaddrs.
-  newtest_nobuild(malloc_noreplace malloc "" "-no_replace_realloc" "" OFF "malloc")
+  newtest_nobuild(noreplace_realloc malloc "" "-no_replace_realloc" "" OFF "malloc")
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
+  if (UNIX) # XXX i#794: get working on windows
+    newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
+  endif (UNIX)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

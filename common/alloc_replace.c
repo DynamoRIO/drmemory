@@ -404,17 +404,18 @@ is_valid_chunk(void *ptr, chunk_header_t *head)
         /* XXX i#879: need to look in delay free rbtree too */
         return head != NULL;
     } else {
-        /* XXX: we don't want to crash de-referencing head, but
-         * a TRY here has a noticeable perf hit!  live w/ risk of app
-         * crashing our allocator?  have a top-level crash handler
-         * that bails out w/ an error report about invalid arg?
-         * note that we do have a TRY in malloc_replace_size() (b/c rest of
-         * drmem passes us bad pointers during neighbor discovery)
-         * which should be removed if we put a TRY here.
+        /* Unlike a regular malloc library, we cannot afford to crash on
+         * a bogus arg from the app b/c Dr. Memory is supposed to detect
+         * invalid args and crashes.  We use DR's new, fast dr_safe_read()
+         * (via safe_read()) to have low overhead yet stability.
+         * An alternative might be a top-level crash handler
+         * that bails out w/ an error report about invalid args.
          */
+        ushort magic;
         return (ptr != NULL &&
                 ALIGNED(ptr, CHUNK_ALIGNMENT) &&
-                head->magic == HEADER_MAGIC);
+                safe_read(&head->magic, sizeof(magic), &magic) &&
+                magic == HEADER_MAGIC);
     }
 }
 
@@ -1733,17 +1734,10 @@ static ssize_t
 malloc_replace__size(app_pc start)
 {
     chunk_header_t *head;
-    /* avoid crashing when drmem does neighbor discovery queries.
-     * see comment under is_valid_chunk() on why TRY isn't up there.
-     */
     ssize_t res = -1;
-    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-        head = header_from_ptr_include_pre_us(start);
-        if (head != NULL && !TEST(CHUNK_FREED, head->flags))
-            res = head->request_size;
-    }, { /* EXCEPT */
-        res = -1;
-    });
+    head = header_from_ptr_include_pre_us(start);
+    if (head != NULL && !TEST(CHUNK_FREED, head->flags))
+        res = head->request_size;
     return res;
 }
 
