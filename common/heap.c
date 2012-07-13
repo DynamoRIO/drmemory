@@ -105,13 +105,20 @@ get_heap_start(void)
             ASSERT(false, "cannot find heap region");
             return NULL;
         }
-        ASSERT(!dr_memory_is_dr_internal(info.base_pc), "heap location error");
-        ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
-        /* we no longer assert that these are equal b/c -replace_malloc
-         * has extended the brk already
-         */
-        ASSERT(info.base_pc + info.size >= cur_brk, "heap location error");
-        heap_start = info.base_pc;
+        if (info.base_pc + info.size <= cur_brk ||
+            /* if absolutely no heap, whole thing will show up as free to DR */
+            info.type != DR_MEMTYPE_DATA) {
+            /* Heap is empty */
+            heap_start = cur_brk;
+        } else {
+            ASSERT(!dr_memory_is_dr_internal(info.base_pc), "heap location error");
+            ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
+            /* we no longer assert that these are equal b/c -replace_malloc
+             * has extended the brk already
+             */
+            ASSERT(info.base_pc + info.size >= cur_brk, "heap location error");
+            heap_start = info.base_pc;
+        }
 
         /* workaround for PR 618178 where /proc/maps is wrong on suse
          * and lists last 2 pages of executable as heap!
@@ -354,7 +361,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     pc = heap_start;
 
     LOG(1, "\nwalking heap from "PFX" to "PFX"\n", heap_start, cur_brk);
-    if (cb_region != NULL)
+    if (cb_region != NULL && cur_brk > heap_start)
         cb_region(heap_start, cur_brk);
     while (pc < cur_brk) {
         app_pc user_start = pc + sizeof(sz)*2;

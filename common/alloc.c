@@ -3695,8 +3695,13 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
          * until sub-allocated, though we do want the bounds for suppressing
          * header accesses by malloc code.
          */
+        byte *heap_start = get_heap_start();
         LOG(2, "SYS_brk "PFX" => "PFX"\n", pt->sbrk, result);
-        heap_region_adjust(get_heap_start(), (app_pc) result);
+        if (!is_in_heap_region(heap_start) && (byte *)result > heap_start) {
+            /* no heap prior to this point */
+            heap_region_add(heap_start, (byte *) result, HEAP_ARENA, 0);
+        } else
+            heap_region_adjust(heap_start, (byte *) result);
     }
 #endif /* WINDOWS */
     client_post_syscall(drcontext, sysnum, sysarg);
