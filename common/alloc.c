@@ -4298,7 +4298,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #if defined(WINDOWS) && defined(X64)
             if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
                 DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)real_base;
+                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)change_base;
                 }, { /* EXCEPT */
                 });
             } else
