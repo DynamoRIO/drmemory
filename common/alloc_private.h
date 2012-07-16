@@ -33,6 +33,16 @@ extern alloc_options_t alloc_ops;
  */
 
 typedef enum {
+    HEAPSET_LIBC,
+    HEAPSET_CPP,
+#ifdef WINDOWS
+    HEAPSET_LIBC_DBG,
+    HEAPSET_CPP_DBG,
+    HEAPSET_RTL,
+#endif
+} heapset_type_t;
+
+typedef enum {
     /* For Linux and for Cygwin, and for any other allocator connected via
      * a to-be-implemented API (PR 406756)
      */
@@ -203,6 +213,9 @@ typedef struct _malloc_interface_t {
     void (*malloc_iterate)(malloc_iter_cb_t cb, void *iter_data);
     void (*malloc_intercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
     void (*malloc_unintercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
+    /* For storing data per malloc routine set.  The pc is one routine from the set. */
+    void * (*malloc_set_init)(heapset_type_t type, app_pc pc);
+    void (*malloc_set_exit)(heapset_type_t type, app_pc pc, void *user_data);
 } malloc_interface_t;
 
 extern malloc_interface_t malloc_interface;
@@ -213,6 +226,9 @@ malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 
 void
 malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
+
+void *
+alloc_routine_set_get_user_data(alloc_routine_entry_t *e);
 
 /***************************************************************************
  * Large malloc tree

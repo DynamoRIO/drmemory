@@ -209,6 +209,8 @@ typedef struct _arena_header_t {
  * a Heap or a regular arena
  */
 # define ARENA_MAIN HEAP_ZERO_MEMORY
+/* another non-Heap flag to identify libc-default Heaps (i#939) */
+# define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY
 /* flags that we support being passed to HeapCreate:
  * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE
  */
@@ -1153,16 +1155,49 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
  * app-facing interface
  */
 
+static arena_header_t *
+arena_for_libc_alloc(void *drcontext)
+{
+#ifdef WINDOWS
+    /* i#939: we need to wrap the libc alloc routines, but at that outer
+     * point we don't know what Heap they'll pass to the Rtl routines.
+     * Thus we ourselves create a single Heap per libc alloc routine set
+     * and we pass it in drwrap's data slot.
+     * We can't use our default heap (cur_arena) b/c we need a private
+     * Heap for each library that we can destroy when it unloads.
+     *
+     * XXX: this is not purely transparent and makes some assumptions
+     * about there only being one Heap per libc set, a libc set's
+     * lifetime never exceeding its library, and a libc set never
+     * destroying its own Heap (which remains empty in our impl unless
+     * a non-libc-set routine uses that Heap) before its library exits.
+     * But, it's not clear that we can do any better.
+     */
+    arena_header_t *arena;
+    alloc_routine_entry_t *e = (alloc_routine_entry_t *)
+        dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_DATA_SLOT);
+    ASSERT(e != NULL, "invalid stored arg");
+    arena = (arena_header_t *) alloc_routine_set_get_user_data(e);
+    ASSERT(arena != NULL && TEST(ARENA_LIBC_DEFAULT, arena->flags),
+           "invalid per-set arena");
+    return arena;
+#else
+    /* we assume that pre-us (which doesn't use cur_arena) is detected later */
+    return cur_arena;
+#endif
+}
+
 static void *
 replace_malloc(size_t size)
 {
     void *res;
     void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     /* XXX: should we make mc a debug-only param for perf? */
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
-    res = (void *) replace_alloc_common(cur_arena, size, true/*lock*/, false/*!zeroed*/,
+    res = (void *) replace_alloc_common(arena, size, true/*lock*/, false/*!zeroed*/,
                                         false/*!realloc*/,
                                         drcontext, &mc, (app_pc)replace_malloc);
     LOG(2, "\treplace_malloc %d => "PFX"\n", size, res);
@@ -1174,11 +1209,12 @@ static void *
 replace_calloc(size_t nmemb, size_t size)
 {
     void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     byte *res;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_calloc %d %d\n", nmemb, size);
-    res = replace_alloc_common(cur_arena, nmemb * size, true/*lock*/, true/*zeroed*/,
+    res = replace_alloc_common(arena, nmemb * size, true/*lock*/, true/*zeroed*/,
                                false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc);
     memset(res, 0, nmemb*size);
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
@@ -1190,11 +1226,12 @@ static void *
 replace_realloc(void *ptr, size_t size)
 {
     void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
-    res = replace_realloc_common(cur_arena, ptr, size, true/*lock*/, false/*!zeroed*/,
+    res = replace_realloc_common(arena, ptr, size, true/*lock*/, false/*!zeroed*/,
                                  false/*!in-place only*/,
                                  drcontext, &mc, (app_pc)replace_realloc);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
@@ -1206,10 +1243,11 @@ static void
 replace_free(void *ptr)
 {
     void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
-    replace_free_common(cur_arena, ptr, true/*lock*/, drcontext,
+    replace_free_common(arena, ptr, true/*lock*/, drcontext,
                         &mc, (app_pc)replace_free);
     exit_client_code(drcontext);
 }
@@ -1219,16 +1257,11 @@ replace_malloc_usable_size(void *ptr)
 {
     void *drcontext = enter_client_code();
     size_t res;
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
-    /* FIXME i#939: cur_arena is our default heap.
-     * this may be called from a dll that has made its own Heap.
-     * e.g., _msize in libc calls "HeapSize(_crtheap, 0, pblock)".
-     * Ditto for all the other routines above using cur_arena on Windows.
-     */
-    /* we assume that pre-us (which doesn't use cur_arena) is detected later */
-    res = replace_size_common(cur_arena, ptr, drcontext, &mc,
+    res = replace_size_common(arena, ptr, drcontext, &mc,
                               (app_pc)replace_malloc_usable_size);
     if (res == (size_t)-1)
         res = 0; /* 0 on failure */
@@ -1251,6 +1284,60 @@ replace_malloc_usable_size(void *ptr)
  */
 
 /* XXX: are the BOOL return values really NTSTATUS? */
+
+/* Forwards */
+static BOOL WINAPI
+replace_RtlDestroyHeap(HANDLE heap);
+
+
+static arena_header_t *
+create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
+{
+    arena_header_t *new_arena = (arena_header_t *)
+        os_large_alloc(commit_sz, reserve_sz, arena_page_prot(flags));
+    if (new_arena != NULL) {
+        LOG(2, "%s commit="PIFX" reserve="PIFX" flags="PIFX" => "PFX"\n",
+            __FUNCTION__, commit_sz, reserve_sz, flags, new_arena);
+        new_arena->commit_end = (byte *)new_arena + commit_sz;
+        new_arena->reserve_end = (byte *)new_arena + reserve_sz;
+        heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
+        /* this will create the lock even if TEST(HEAP_NO_SERIALIZE, flags) */
+        arena_init(new_arena, NULL);
+        new_arena->flags |= (flags & HEAP_CREATE_POSSIBLE_FLAGS);
+    }
+    return new_arena;
+}
+
+static void
+destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
+{
+    arena_header_t *a, *next_a;
+    chunk_header_t *head;
+    LOG(2, "%s heap="PFX"\n", __FUNCTION__, arena);
+    for (a = arena; a != NULL; a = next_a) {
+        next_a = a->next_arena;
+        if (free_chunks) {
+            byte *cur = a->start_chunk;
+            while (cur < a->next_chunk) {
+                head = header_from_ptr(cur);
+                if (!TEST(CHUNK_FREED, head->flags)) {
+                    /* XXX: like mmaps for large allocs, we assume the OS
+                     * re-using the memory won't be immediate, so we go w/
+                     * a simple no-delay policy on the frees
+                     */
+                    byte *start = (byte *)(head + 1);
+                    client_handle_free(start, head->request_size,
+                                       start, head->alloc_size,
+                                       mc, (app_pc)replace_RtlDestroyHeap,
+                                       head->user_data _IF_WINDOWS((HANDLE)arena));
+                }
+                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
+            }
+        }
+        heap_region_remove((byte *)a, a->reserve_end, mc);
+        arena_free(a);
+    }
+}
 
 /* returns NULL if not a valid Heap handle */
 static arena_header_t *
@@ -1295,16 +1382,7 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
     commit_sz = ALIGN_FORWARD(commit_sz, PAGE_SIZE);
     if (commit_sz == 0)
         commit_sz = PAGE_SIZE;
-    new_arena = (arena_header_t *)
-        os_large_alloc(commit_sz, reserve_sz, arena_page_prot(flags));
-    if (new_arena != NULL) {
-        new_arena->commit_end = (byte *)new_arena + commit_sz;
-        new_arena->reserve_end = (byte *)new_arena + reserve_sz;
-        heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
-        /* this will create the lock even if TEST(HEAP_NO_SERIALIZE, flags) */
-        arena_init(new_arena, NULL);
-        new_arena->flags |= (flags & HEAP_CREATE_POSSIBLE_FLAGS);
-    }
+    new_arena = (arena_header_t *) create_Rtl_heap(commit_sz, reserve_sz, flags);
     LOG(2, "  => "PFX"\n", new_arena);
     exit_client_code(drcontext);
     return (HANDLE) new_arena;    
@@ -1320,30 +1398,7 @@ replace_RtlDestroyHeap(HANDLE heap)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, heap);
     if (arena != NULL && heap != process_heap) {
-        arena_header_t *a, *next_a;
-        chunk_header_t *head;
-        byte *cur;
-        for (a = arena; a != NULL; a = next_a) {
-            next_a = a->next_arena;
-            cur = a->start_chunk;
-            while (cur < a->next_chunk) {
-                head = header_from_ptr(cur);
-                if (!TEST(CHUNK_FREED, head->flags)) {
-                    /* XXX: like mmaps for large allocs, we assume the OS
-                     * re-using the memory won't be immediate, so we go w/
-                     * a simple no-delay policy on the frees
-                     */
-                    byte *start = (byte *)(head + 1);
-                    client_handle_free(start, head->request_size,
-                                       start, head->alloc_size,
-                                       &mc, (app_pc)replace_RtlDestroyHeap,
-                                       head->user_data _IF_WINDOWS(heap));
-                }
-                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
-            }
-            heap_region_remove((byte *)a, a->reserve_end, &mc);
-            arena_free(a);
-        }
+        destroy_Rtl_heap(arena, &mc, true/*free indiv chunks*/);
         res = TRUE;
     }
     exit_client_code(drcontext);
@@ -1723,7 +1778,9 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
         return;
     }
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, interceptor, stack_adjust, false))
+        /* optimization: only pass where needed, for Windows libc */
+        void *user_data = IF_WINDOWS_ELSE(is_rtl_routine(type) ? NULL : (void *) e, NULL);
+        if (!drwrap_replace_native(pc, interceptor, stack_adjust, user_data, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
         /* else wrap: operators in particular.
@@ -1747,11 +1804,48 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
         return;
     }
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, NULL, stack_adjust, true))
+        if (!drwrap_replace_native(pc, NULL, stack_adjust, NULL, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
         malloc_wrap__unintercept(pc, type, e);
     }
+}
+
+static void *
+malloc_replace__set_init(heapset_type_t type, app_pc pc)
+{
+#ifdef WINDOWS
+    if (type != HEAPSET_RTL) {
+        /* Create the Heap for this libc alloc routine set (i#939) */
+        arena_header_t *arena = (arena_header_t *)
+            create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+        LOG(2, "new default Heap for libc set @"PFX" is "PFX"\n", pc, arena);
+        arena->flags |= ARENA_LIBC_DEFAULT;
+        return arena;
+    }
+#endif
+    return NULL;
+}
+
+static void
+malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data)
+{
+#ifdef WINDOWS
+    if (type != HEAPSET_RTL) {
+        /* Destroy the Heap for this libc alloc routine set (i#939) */
+        arena_header_t *arena = (arena_header_t *) user_data;
+        ASSERT(arena != NULL, "stored Heap disappeared?");
+        LOG(2, "destroying default Heap "PFX" for libc set @"PFX"\n", arena, pc);
+        /* i#939: we assume the Heap used by a libc routine set is not destroyed
+         * mid-run (pool-style) and is simply torn down at the end without any
+         * desire to free the individual chunks.
+         * XXX if we do free indiv chunks, we have no mcxt: should be rare, but
+         * can imagine an app bug involving memory freed when a
+         * library w/ libc routine unloads
+         */
+        destroy_Rtl_heap(arena, NULL, false/*do not free indiv chunks*/);
+    }
+#endif
 }
 
 static void
@@ -1946,6 +2040,8 @@ alloc_replace_init(void)
     malloc_interface.malloc_iterate = malloc_replace__iterate;
     malloc_interface.malloc_intercept = malloc_replace__intercept;
     malloc_interface.malloc_unintercept = malloc_replace__unintercept;
+    malloc_interface.malloc_set_init = malloc_replace__set_init;
+    malloc_interface.malloc_set_exit = malloc_replace__set_exit;
 }
 
 static bool
@@ -1955,7 +2051,11 @@ free_arena_at_exit(byte *start, byte *end, uint flags
     LOG(2, "%s: "PFX"-"PFX" "PIFX"\n", __FUNCTION__, start, end, flags);
     if (TEST(HEAP_ARENA, flags) && !TEST(HEAP_PRE_US, flags)) {
         arena_header_t *arena = (arena_header_t *) start;
-        arena_free(arena);
+#ifdef WINDOWS
+        /* freed when libc routine set exits */
+        if (!TEST(ARENA_LIBC_DEFAULT, arena->flags))
+#endif
+            arena_free(arena);
     }
     return true;
 }

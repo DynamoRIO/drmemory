@@ -340,16 +340,6 @@ alloc_context_exit(void *drcontext, bool thread_exit)
 static hashtable_t alloc_routine_table;
 static void *alloc_routine_lock; /* protects alloc_routine_table */
 
-typedef enum {
-    HEAPSET_LIBC,
-    HEAPSET_CPP,
-#ifdef WINDOWS
-    HEAPSET_LIBC_DBG,
-    HEAPSET_CPP_DBG,
-    HEAPSET_RTL,
-#endif
-} heapset_type_t;
-
 static inline bool
 routine_needs_post_wrap(routine_type_t type, heapset_type_t set_type)
 {
@@ -647,7 +637,16 @@ struct _alloc_routine_set_t {
     app_pc modbase;
     /* For i#643 */
     bool check_mismatch;
+    /* For i#939, let wrap/replace store a field per malloc set */
+    void *user_data;
 };
+
+void *
+alloc_routine_set_get_user_data(alloc_routine_entry_t *e)
+{
+    ASSERT(e != NULL, "invalid param");
+    return e->set->user_data;
+}
 
 /* The set for the dynamic libc lib */
 static alloc_routine_set_t *set_dyn_libc;
@@ -662,6 +661,7 @@ alloc_routine_entry_free(void *p)
         e->set->refcnt--;
         if (e->set->refcnt == 0) {
             client_remove_malloc_routine(e->set->client);
+            malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data);
             global_free(e->set, sizeof(*e->set), HEAPSTAT_HASHTABLE);
         }
     }
@@ -1298,6 +1298,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         memset(edata->set, 0, sizeof(*edata->set));
         edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
+        edata->set->user_data = malloc_interface.malloc_set_init(edata->set_type, pc);
         edata->set->type = edata->set_type;
         edata->set->check_mismatch = true;
     }
@@ -3097,6 +3098,18 @@ malloc_wrap__iterate(malloc_iter_cb_t cb, void *iter_data)
     malloc_iterate_internal(false, cb, iter_data);
 }
 
+static void *
+malloc_wrap__set_init(heapset_type_t type, app_pc pc)
+{
+    return NULL;
+}
+
+static void
+malloc_wrap__set_exit(heapset_type_t type, app_pc pc, void *user_data)
+{
+    /* nothing */
+}
+
 #ifdef WINDOWS
 bool
 alloc_in_create(void *drcontext)
@@ -3137,6 +3150,8 @@ malloc_wrap_init(void)
     malloc_interface.malloc_iterate = malloc_wrap__iterate;
     malloc_interface.malloc_intercept = malloc_wrap__intercept;
     malloc_interface.malloc_unintercept = malloc_wrap__unintercept;
+    malloc_interface.malloc_set_init = malloc_wrap__set_init;
+    malloc_interface.malloc_set_exit = malloc_wrap__set_exit;
 }
 
 /*
