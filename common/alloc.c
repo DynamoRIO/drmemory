@@ -405,6 +405,12 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "realloc_impl", HEAP_ROUTINE_REALLOC }, 
     { "free_impl", HEAP_ROUTINE_FREE },
     { "calloc_impl", HEAP_ROUTINE_CALLOC },
+    /* for VS2010 I see this (but no other _*_impl: looking at the crt
+     * sources confirms it), as well as a layer of _*_crt routines
+     * that just call _impl: perhaps replacing the prior _base
+     * versions
+     */
+    { "_calloc_impl", HEAP_ROUTINE_CALLOC },
     /* for cygwin */
     { "sbrk", HEAP_ROUTINE_SBRK },
     /* FIXME PR 595802: _recalloc, _aligned_offset_malloc, etc. */
