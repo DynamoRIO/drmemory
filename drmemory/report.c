@@ -1786,7 +1786,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                  * inaccurate adjacent malloc info: only print if accurate
                  */
                 if (next_start >= addr+sz) {
-                    if (next_start - addr+sz < 8) {
+                    if (next_start - addr+sz < 8 && next_start > addr+sz) {
                         BUFPRINT(buf, bufsz, *sofar, len,
                                  "%srefers to %d byte(s) before next malloc"NL,
                                  INFO_PFX, next_start - addr+sz-1);

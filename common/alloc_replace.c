@@ -209,7 +209,9 @@ typedef struct _arena_header_t {
  * a Heap or a regular arena
  */
 # define ARENA_MAIN HEAP_ZERO_MEMORY
-/* flags that we support being passed to HeapCreate */
+/* flags that we support being passed to HeapCreate:
+ * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE
+ */
 # define HEAP_CREATE_POSSIBLE_FLAGS 0x40005
 static HANDLE process_heap;
 #else
@@ -419,15 +421,44 @@ is_valid_chunk(void *ptr, chunk_header_t *head)
     }
 }
 
-static bool
-is_live_alloc(void *ptr, chunk_header_t *head)
+/* This is called on every free, so keep it efficient.
+ * However, esp on Windows, we must pay the overhead to avoid crashes
+ * from callers causing us to mix our free lists across Heaps.
+ *
+ * Up to caller to check for large allocs, which are not inside arenas!
+ * (Yes, this means that on Windows the app can pass any Heap it likes: so
+ * far that hasn't been an issue but one could imagine a Heap flag that
+ * needs to apply to a large alloc free or size query.)
+ */
+static inline bool
+ptr_is_in_arena(byte *ptr, arena_header_t *arena)
 {
+#ifdef WINDOWS
+    arena_header_t *a;
+    for (a = arena; a != NULL; a = a->next_arena) {
+        if (ptr >= a->start_chunk && ptr < a->commit_end)
+            return true;
+    }
+    return false;
+#else
+    return (ptr >= arena->start_chunk && ptr < arena->commit_end);
+#endif
+}
+
+/* Returns true iff ptr is a live alloc inside arena */
+static bool
+is_live_alloc(void *ptr, arena_header_t *arena, chunk_header_t *head)
+{
+    bool live = false;
     if (alloc_ops.external_headers) {
-        return head != NULL;
+        live = (head != NULL);
     } else {
-        return (is_valid_chunk(ptr, head) &&
+        live = (is_valid_chunk(ptr, head) &&
                 !TEST(CHUNK_FREED, head->flags));
     }
+    return (live &&
+            /* large allocs are their own arenas */
+            (TEST(CHUNK_MMAP, head->flags) || ptr_is_in_arena(ptr, arena)));
 }
 
 /* returns NULL if an invalid ptr, but will return a freed chunk */
@@ -473,6 +504,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 #endif
 }
 
+/* up to caller to call heap_region_remove() as we can't call it here
+ * b/c we're invoked from heap_region_iterate()
+ */
 static void
 arena_free(arena_header_t *arena)
 {
@@ -737,6 +771,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     return res;
 }
 
+/* Up to caller to verify that ptr is inside arena */
 static bool
 replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontext,
                     dr_mcontext_t *mc, app_pc caller)
@@ -749,7 +784,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
      */
     caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
-    if (!is_live_alloc(ptr, head)) { /* including NULL */
+    if (!is_live_alloc(ptr, arena, head)) { /* including NULL */
         /* w/o early inject, or w/ delayed instru, there are allocs in place
          * before we took over
          */
@@ -865,17 +900,27 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (ptr == NULL) {
         client_handle_realloc_null(caller, mc);
-        res = (void *) replace_alloc_common(cur_arena, size, lock, zeroed, true/*realloc*/,
+        res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
                                             drcontext, mc, caller);
     } else if (size == 0) {
         replace_free_common(arena, ptr, lock, drcontext, mc, caller);
-    } else if (!is_live_alloc(ptr, head)) {
-        client_invalid_heap_arg(caller, (byte *)ptr, mc,
-                                /* XXX: we might be replacing RtlReallocateHeap or
-                                 * _realloc_dbg but it's not worth trying to
-                                 * store the exact name
-                                 */
-                                "realloc", false/*!free*/);
+    } else if (!is_live_alloc(ptr, arena, head)) {
+        /* w/o early inject, or w/ delayed instru, there are allocs in place
+         * before we took over
+         */
+        head = hashtable_lookup(&pre_us_table, (void *)ptr);
+        if (head != NULL && !TEST(CHUNK_FREED, head->flags)) {
+            /* XXX: we should invoke app's free(): see comments in replace_free_common */
+            res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
+                                                drcontext, mc, caller);
+        } else {
+            client_invalid_heap_arg(caller, (byte *)ptr, mc,
+                                    /* XXX: we might be replacing RtlReallocateHeap or
+                                     * _realloc_dbg but it's not worth trying to
+                                     * store the exact name
+                                     */
+                                    "realloc", false/*!free*/);
+        }
     } else {
         if (head->alloc_size >= size && !TEST(CHUNK_PRE_US, head->flags)) {
             /* XXX: if shrinking a lot, should free and re-malloc to save space */
@@ -894,7 +939,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         } else if (!in_place_only) {
             /* XXX: use mremap for mmapped alloc! */
             /* XXX: if final chunk in arena, extend in-place */
-            res = (void *) replace_alloc_common(cur_arena, size, lock, zeroed,
+            res = (void *) replace_alloc_common(arena, size, lock, zeroed,
                                                 true/*realloc*/, drcontext, mc, caller);
             if (res != NULL) {
                 memcpy(res, ptr, head->request_size);
@@ -915,11 +960,17 @@ replace_size_common(arena_header_t *arena, byte *ptr,
      * the heap routine (for i#639 we'll need to pass 2 known top frames)
      */
     caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
-    if (!is_live_alloc(ptr, head)) {
-        client_invalid_heap_arg(caller, (byte *)ptr, mc,
-                                IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
-                                false/*!free*/);
-        return (size_t)-1;
+    if (!is_live_alloc(ptr, arena, head)) {
+        /* w/o early inject, or w/ delayed instru, there are allocs in place
+         * before we took over
+         */
+        head = hashtable_lookup(&pre_us_table, (void *)ptr);
+        if (head == NULL || TEST(CHUNK_FREED, head->flags)) {
+            client_invalid_heap_arg(caller, (byte *)ptr, mc,
+                                    IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
+                                    false/*!free*/);
+            return (size_t)-1;
+        }
     }
     return head->request_size; /* we do not allow using padding */
 }
@@ -1171,6 +1222,12 @@ replace_malloc_usable_size(void *ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
+    /* FIXME i#939: cur_arena is our default heap.
+     * this may be called from a dll that has made its own Heap.
+     * e.g., _msize in libc calls "HeapSize(_crtheap, 0, pblock)".
+     * Ditto for all the other routines above using cur_arena on Windows.
+     */
+    /* we assume that pre-us (which doesn't use cur_arena) is detected later */
     res = replace_size_common(cur_arena, ptr, drcontext, &mc,
                               (app_pc)replace_malloc_usable_size);
     if (res == (size_t)-1)
@@ -1200,14 +1257,17 @@ static arena_header_t *
 heap_to_arena(HANDLE heap)
 {
     arena_header_t *arena = (arena_header_t *) heap;
+    uint magic;
+    /* we assume that pre-us will be detected and handled later */
     if (heap == process_heap)
         return cur_arena;
 #ifdef USE_DRSYMS
     ASSERT(heap != get_private_heap_handle(), "app using private heap");
 #endif
-    /* XXX: do safe_read?  xref is_valid_chunk perf hit */
     if (arena != NULL &&
-        arena->magic == HEADER_MAGIC &&
+        safe_read(&arena->magic, sizeof(magic), &magic) &&
+        magic == HEADER_MAGIC &&
+        /* XXX: safe_read flags too?  magic passed though */
         TEST(ARENA_MAIN, arena->flags))
         return arena;
     else
@@ -1233,6 +1293,8 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
     } else /* XXX: is max really non-page-aligned?  we align it */
         reserve_sz = ALIGN_FORWARD(reserve_sz, PAGE_SIZE);
     commit_sz = ALIGN_FORWARD(commit_sz, PAGE_SIZE);
+    if (commit_sz == 0)
+        commit_sz = PAGE_SIZE;
     new_arena = (arena_header_t *)
         os_large_alloc(commit_sz, reserve_sz, arena_page_prot(flags));
     if (new_arena != NULL) {
@@ -1243,6 +1305,7 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
         arena_init(new_arena, NULL);
         new_arena->flags |= (flags & HEAP_CREATE_POSSIBLE_FLAGS);
     }
+    LOG(2, "  => "PFX"\n", new_arena);
     exit_client_code(drcontext);
     return (HANDLE) new_arena;    
 }
@@ -1255,7 +1318,7 @@ replace_RtlDestroyHeap(HANDLE heap)
     BOOL res = FALSE;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX"\n", __FUNCTION__, heap);
     if (arena != NULL && heap != process_heap) {
         arena_header_t *a, *next_a;
         chunk_header_t *head;
@@ -1278,6 +1341,7 @@ replace_RtlDestroyHeap(HANDLE heap)
                 }
                 cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
             }
+            heap_region_remove((byte *)a, a->reserve_end, &mc);
             arena_free(a);
         }
         res = TRUE;
@@ -1289,10 +1353,13 @@ replace_RtlDestroyHeap(HANDLE heap)
 static void
 handle_Rtl_alloc_failure(arena_header_t *arena, ULONG flags)
 {
-    if (TEST(HEAP_GENERATE_EXCEPTIONS, arena->flags) ||
+    if ((arena != NULL && TEST(HEAP_GENERATE_EXCEPTIONS, arena->flags)) ||
         TEST(HEAP_GENERATE_EXCEPTIONS, flags)) {
         ASSERT(false, "HEAP_GENERATE_EXCEPTIONS NYI");
-        /* FIXME: need to set windows error code and call RtlRaiseException or sthg */
+        /* FIXME: need to set windows error code and call RtlRaiseException or sthg
+         * But, have to be careful: will it work calling it natively or will
+         * we need to dr_redirect_execution() to get the call interpreted?
+         */
         /* FIXME: for invalid params or heap corruption, raise STATUS_ACCESS_VIOLATION;
          * for OOM, raise STATUS_NO_MEMORY.  need caller to tell us which it is!
          */
@@ -1307,7 +1374,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX" flags="PIFX" size="PIFX"\n", __FUNCTION__, heap, flags, size);
     if (arena != NULL) {
         res = replace_alloc_common(arena, size,
                                    !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
@@ -1330,7 +1397,8 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX" size="PIFX"\n",
+        __FUNCTION__, heap, flags, ptr, size);
     if (arena != NULL) {
         res = replace_realloc_common(arena, ptr, size,
                                      !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
@@ -1353,7 +1421,7 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     BOOL res = FALSE;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s\n", __FUNCTION__);
+    LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
     if (arena != NULL) {
         bool ok = replace_free_common(arena, ptr,
                                        !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
@@ -1387,9 +1455,7 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
  * could hold the lock as the app.
  * We need to refactor all the code here to interpret the initial
  * code that acquires locks, and only then go native (for perf).
- * Alternatively we could ignore per-Heap locks and use one single
- * global lock but that may not be performant enough.
- * There may be more complex schemes to handle this but none I've come up
+ * There are more complex schemes to handle this but none I've come up
  * with are appealing so far.
  */
 static BOOL WINAPI
@@ -1405,7 +1471,9 @@ replace_RtlLockHeap(HANDLE heap)
          * synchall.  we'll need a special marker for DR locks used as the
          * app or sthg.
          */
+#if 0 /* FIXME i#893, DRi#779: unsafe so not acquiring for now */
         dr_recurlock_lock(arena->lock);
+#endif
         res = TRUE;
     }
     exit_client_code(drcontext);
@@ -1419,10 +1487,14 @@ replace_RtlUnlockHeap(HANDLE heap)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
+#if 0 /* FIXME i#893, DRi#779: unsafe so not acquiring for now */
     if (arena != NULL && dr_recurlock_self_owns(arena->lock)) {
         dr_recurlock_unlock(arena->lock);
         res = TRUE;
     }
+#else
+    res = (arena != NULL);
+#endif
     exit_client_code(drcontext);
     return res;
 }
@@ -1439,7 +1511,7 @@ replace_RtlSetHeapInformation(HANDLE HeapHandle,
                               HEAP_INFORMATION_CLASS HeapInformationClass,
                               PVOID HeapInformation, SIZE_T HeapInformationLength)
 {
-    ASSERT(false, "NYI");
+    /* FIXME: NYI.  No assert in order to get replace_malloc test going. */
     return TRUE;
 }
 

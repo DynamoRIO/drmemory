@@ -1020,7 +1020,7 @@ virtual_free(void *base)
     NTSTATUS res;
     ULONG size = 0; /* must be 0 for MEM_RELEASE */
     res = NtFreeVirtualMemory(NT_CURRENT_PROCESS, &base, &size, MEM_RELEASE);
-    LOG(2, "%s => "PIFX"\n", __FUNCTION__, res);
+    LOG(2, "%s "PFX" => "PIFX"\n", __FUNCTION__, base, res);
     return NT_SUCCESS(res);
 }
 
