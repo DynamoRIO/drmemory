@@ -460,9 +460,7 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
-  if (UNIX) # XXX i#794: get working on windows
-    newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
-  endif (UNIX)
+  newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

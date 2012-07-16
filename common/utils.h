@@ -587,6 +587,9 @@ get_tid_from_handle(HANDLE h);
 TEB *
 get_TEB_from_tid(thread_id_t tid);
 
+void
+set_app_error_code(void *drcontext, uint val);
+
 PEB *
 get_app_PEB(void);
 

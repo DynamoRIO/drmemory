@@ -891,7 +891,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
 
 static byte *
 replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
-                       bool lock, bool zeroed, bool in_place_only,
+                       bool lock, bool zeroed, bool in_place_only, bool allow_null,
                        void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     byte *res = NULL;
@@ -901,9 +901,14 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
      */
     caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (ptr == NULL) {
-        client_handle_realloc_null(caller, mc);
-        res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
-                                            drcontext, mc, caller);
+        if (allow_null) {
+            client_handle_realloc_null(caller, mc);
+            res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
+                                                drcontext, mc, caller);
+        } else {
+            client_handle_alloc_failure(size, zeroed, true/*realloc*/, caller, mc);
+            res = NULL;
+        }
     } else if (size == 0) {
         replace_free_common(arena, ptr, lock, drcontext, mc, caller);
     } else if (!is_live_alloc(ptr, arena, head)) {
@@ -1232,7 +1237,7 @@ replace_realloc(void *ptr, size_t size)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
     res = replace_realloc_common(arena, ptr, size, true/*lock*/, false/*!zeroed*/,
-                                 false/*!in-place only*/,
+                                 false/*!in-place only*/, true/*allow null*/,
                                  drcontext, &mc, (app_pc)replace_realloc);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext);
@@ -1385,6 +1390,12 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
     new_arena = (arena_header_t *) create_Rtl_heap(commit_sz, reserve_sz, flags);
     LOG(2, "  => "PFX"\n", new_arena);
     exit_client_code(drcontext);
+    if (new_arena == NULL) {
+        /* XXX: most of our errors are invalid params so that's all we set.
+         * We deliberately wait until in app mode to make this more efficient.
+         */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    }
     return (HANDLE) new_arena;    
 }
 
@@ -1402,16 +1413,24 @@ replace_RtlDestroyHeap(HANDLE heap)
         res = TRUE;
     }
     exit_client_code(drcontext);
+    if (!res) {
+        /* XXX: for now blindly seting the one errno.
+         * We deliberately wait until in app mode to make this more efficient.
+         */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    }
     return res;
 }
 
 static void
-handle_Rtl_alloc_failure(arena_header_t *arena, ULONG flags)
+handle_Rtl_alloc_failure(void *drcontext, arena_header_t *arena, ULONG flags)
 {
+    /* N.B.: neither HeapAlloc nor HeapReAlloc set the last error */
+
     if ((arena != NULL && TEST(HEAP_GENERATE_EXCEPTIONS, arena->flags)) ||
         TEST(HEAP_GENERATE_EXCEPTIONS, flags)) {
         ASSERT(false, "HEAP_GENERATE_EXCEPTIONS NYI");
-        /* FIXME: need to set windows error code and call RtlRaiseException or sthg
+        /* FIXME: need to call RtlRaiseException or sthg
          * But, have to be careful: will it work calling it natively or will
          * we need to dr_redirect_execution() to get the call interpreted?
          */
@@ -1440,7 +1459,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     }
     exit_client_code(drcontext);
     if (res == NULL)
-        handle_Rtl_alloc_failure(arena, flags);
+        handle_Rtl_alloc_failure(drcontext, arena, flags);
     return res;
 }
 
@@ -1455,16 +1474,18 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX" size="PIFX"\n",
         __FUNCTION__, heap, flags, ptr, size);
     if (arena != NULL) {
+        /* unlike libc realloc(), HeapReAlloc fails when ptr==NULL */
         res = replace_realloc_common(arena, ptr, size,
                                      !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                                      !TEST(HEAP_NO_SERIALIZE, flags),
                                      TEST(HEAP_ZERO_MEMORY, flags),
-                                     TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags), drcontext,
+                                     TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags),
+                                     false/*fail on null*/, drcontext,
                                      &mc, (app_pc)replace_RtlReAllocateHeap);
     }
     exit_client_code(drcontext);
     if (res == NULL)
-        handle_Rtl_alloc_failure(arena, flags);
+        handle_Rtl_alloc_failure(drcontext, arena, flags);
     return res;
 }
 
@@ -1485,6 +1506,12 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
         res = !!ok; /* convert from bool to BOOL */
     }
     exit_client_code(drcontext);
+    if (!res) {
+        /* XXX: all our errors are invalid params so that's all we set.
+         * We deliberately wait until in app mode to make this more efficient.
+         */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    }
     return res;
 }
 
@@ -1502,6 +1529,12 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
                                   &mc, (app_pc)replace_RtlSizeHeap);
     }
     exit_client_code(drcontext);
+    if (!res) {
+        /* XXX: all our errors are invalid params so that's all we set.
+         * We deliberately wait until in app mode to make this more efficient.
+         */
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    }
     return res;
 }
 

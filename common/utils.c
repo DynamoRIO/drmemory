@@ -748,6 +748,21 @@ get_TEB_from_tid(thread_id_t tid)
     return teb;
 }
 
+void
+set_app_error_code(void *drcontext, uint val)
+{
+    TEB *teb;
+    bool swapped = false;
+    if (!dr_using_app_state(drcontext)) {
+        swapped = true;
+        dr_switch_to_app_state(drcontext);
+    }
+    teb = get_TEB();
+    teb->LastErrorValue = val;
+    if (swapped)
+        dr_switch_to_dr_state(drcontext);
+}
+
 static uint
 getpid(void)
 {
