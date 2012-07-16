@@ -242,7 +242,7 @@ static hashtable_t pre_us_table;
  * utility routines
  */
 
-static void *
+static inline void *
 enter_client_code(void)
 {
     void *drcontext = dr_get_current_drcontext();
@@ -250,15 +250,26 @@ enter_client_code(void)
      * switch to the private peb/teb to avoid asserts in symbol
      * routines.
      * XXX: is it safe to do away w/ this and relax the asserts?
+     * if perf becomes an issue we could do a lazy swap on symbol
+     * queries (and hope no other private lib calls occur).
+     *
+     * On Linux we don't need to swap b/c we (and our priv libs) won't
+     * examine the selectors or descriptors: -mangle_app_seg ensures
+     * we don't need to swap.  Which is good b/c a swap involves a
+     * system call which kills performance: i#941.
      */
+#ifdef WINDOWS
     dr_switch_to_dr_state(drcontext);
+#endif
     return drcontext;
 }
 
 static void
 exit_client_code(void *drcontext)
 {
+#if WINDOWS
     dr_switch_to_app_state(drcontext);
+#endif
 }
 
 /* This must be inlined to get an xsp that's in the call chain */
