@@ -143,6 +143,13 @@ POSSIBLE LEAK
 name=default (ld-linux stores index+1)
 ld-linux.so.2!_dl_allocate_tls
 
+# in Ubuntu 11.11 with no debug symbols this shows up as:
+POSSIBLE LEAK
+name=default (ld-linux stores index+1)
+ld-linux.so.2!_dl_mcount
+ld-linux.so.2!_dl_allocate_tls_storage
+libpthread.so.0!allocate_stack
+
 ##################################################
 # i#717: eglibc loader seems to have a one time leak
 # FIXME i#720: If we believe this is a one time leak we should limit it to only
