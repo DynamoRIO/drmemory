@@ -1174,42 +1174,6 @@ pattern_remove_malloc_tree(app_pc app_base, size_t app_size, size_t real_size)
     dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
 }
 
-typedef struct _pattern_malloc_iter_data_t {
-    byte *addr;
-    size_t size;
-    bool found;
-} pattern_malloc_iter_data_t;
-
-static bool
-pattern_malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
-                          bool pre_us, uint client_flags,
-                          void *client_data, void *iter_data)
-{
-    pattern_malloc_iter_data_t *data = (pattern_malloc_iter_data_t *) iter_data;
-    ASSERT(iter_data != NULL, "invalid iteration data");
-    ASSERT(start != NULL && start <= end, "invalid params");
-    LOG(3, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
-    ASSERT(!data->found, "the iteration should be short-circuited");
-    if (pre_us)
-        return true;
-    if ((data->addr >= start - options.redzone_size && data->addr < start) ||
-        (data->addr >= end && data->addr < real_end)) {
-        data->found = true;
-        return false;
-    }
-    return true;
-}
-
-static bool
-pattern_addr_in_malloc_table(byte *addr, size_t size)
-{
-    pattern_malloc_iter_data_t iter_data = {addr, size, false};
-    /* walk the hashtable */
-    malloc_iterate(pattern_malloc_iterate_cb, &iter_data);
-    if (iter_data.found)
-        return true;
-    return false;
-}
 
 
 /* If an addr contains pattern value, we check the memory before and after,
@@ -1263,16 +1227,14 @@ pattern_addr_pre_check(byte *addr)
     return false;
 }
 
-bool
+static bool
 pattern_addr_in_redzone(byte *addr, size_t size)
 {
     bool res = false;
-    /* expensive walk */
-    LOG(2, "expensive lookup for pattern_addr_in_redzone@"PFX"\n", addr);
     if (options.pattern_use_malloc_tree)
         res = pattern_addr_in_malloc_tree(addr, size);
     else
-        res = pattern_addr_in_malloc_table(addr, size);
+        res = region_in_redzone(addr, size, NULL, NULL, NULL, NULL, NULL);
     return res;
 }
 
@@ -1306,7 +1268,7 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
              */
             *(ushort *)redzone = (ushort)options.pattern;
         }
-        
+
         for (redzone = (uint *)ALIGN_FORWARD((app_base + app_size), 4);
              redzone < (uint *)(real_base + real_size);
              redzone++)

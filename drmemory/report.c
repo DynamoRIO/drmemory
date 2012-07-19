@@ -145,8 +145,8 @@ typedef struct _error_toprint_t {
     /* For warnings and invalid heap args: */
     const char *msg;            /* Free-form message. */
 
-    /* For invalid heap args: */
-    packed_callstack_t *alloc_pcs; /* Used for mismatched routine reports. */
+    /* For invalid heap args and track_origins_unaddr: */
+    packed_callstack_t *alloc_pcs; /* For reporting alloc routine callstacks. */
 
     /* For leaks: */
     size_t indirect_size;       /* Size of indirect allocs. */
@@ -2256,8 +2256,12 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
     }
     if (etp->alloc_pcs != NULL) {
         symbolized_callstack_t scs;
-        BUFPRINT(buf, bufsz, sofar, len,
-                 "%smemory was allocated here:"NL, INFO_PFX);
+        if (etp->errtype == ERROR_UNADDRESSABLE && etp->msg != NULL)
+            BUFPRINT(buf, bufsz, sofar, len, "%s", etp->msg);
+        else {
+            BUFPRINT(buf, bufsz, sofar, len,
+                     "%smemory was allocated here:"NL, INFO_PFX);
+        }
         /* to get var-align we need to convert to symbolized.
          * if we remove var-align feature, should use direct packed_callstack_print
          * and avoid this extra work
@@ -2283,12 +2287,15 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         BUFPRINT(buf, bufsz, sofar, len, "%s", END_MARKER);
 }
 
+#define UNADDR_MSG_SZ 0x100
 void
 report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                             app_pc container_start, app_pc container_end,
                             dr_mcontext_t *mc)
 {
     error_toprint_t etp = {0};
+    app_pc redzone_start, app_start, app_end;
+    char buf[UNADDR_MSG_SZ];
     etp.errtype = ERROR_UNADDRESSABLE;
     etp.loc = loc;
     etp.addr = addr;
@@ -2298,6 +2305,28 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
     etp.container_end = container_end;
     etp.report_instruction = true;
     etp.report_neighbors = true;
+    etp.alloc_pcs = NULL;
+    if (options.track_origins_unaddr && options.redzone_size > 0 &&
+        region_in_redzone(addr, sz, &etp.alloc_pcs,
+                          &app_start, &app_end, &redzone_start, NULL) &&
+        /* XXX: we really have no idea whether this came from an uninit var that
+         * points at redzone_start b/c of the fill we did, or whether it's an
+         * overflow/underflow instead. So we only report possible origins 
+         * if it points to redzone_start, which may miss some origin reports,
+         * but also fewer wrong origin reports.
+         */
+        redzone_start == addr) {
+        ssize_t len = 0;
+        size_t sofar = 0;
+        ASSERT(etp.alloc_pcs != NULL, "alloc_pcs must not be NULL");
+        BUFPRINT(buf, UNADDR_MSG_SZ, sofar, len,
+                 "%sthe unaddressable error may have been caused by using"
+                 " an uninitialized"NL, INFO_PFX);
+        BUFPRINT(buf, UNADDR_MSG_SZ, sofar, len,
+                 "%svariable from memory "PFX"-"PFX" allocated here:"NL,
+                 INFO_PFX, app_start, app_end);
+        etp.msg = buf;
+    }
     report_error(&etp, mc);
 }
 

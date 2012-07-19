@@ -613,3 +613,6 @@ OPTION_CLIENT_BOOL(internal, pattern_opt_repstr, false,
 OPTION_CLIENT_BOOL(internal, pattern_opt_elide_overlap, false,
                    "For pattern mode, remove redundant checks",
                    "For pattern mode, remove redundant checks if they overlap with other existing checks. This can result in not reporting an error in favor of reporting another error whose memory reference is adjacent. Thus, this gives up the property of reporting any particular error before it happens: a minor tradeoff in favor of performance.")
+OPTION_CLIENT_BOOL(internal, track_origins_unaddr, false,
+                   "Report possible origins of unaddressable errors caused by using uninitialized variables as pointers",
+                   "Report possible origins of unaddressable errors caused by using uninitialized variables as pointers by reporting the alloc context of the memory being referenced by uninitialized pointers. This can result in additional overhead.")

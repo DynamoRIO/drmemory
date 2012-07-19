@@ -73,9 +73,6 @@ pattern_handle_realloc(app_pc old_base, size_t old_size,
                        app_pc new_base, size_t new_size, app_pc new_real_base);
 
 bool
-pattern_addr_in_redzone(byte *addr, size_t size);
-
-bool
 pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,
                        dr_mcontext_t *mc, bool is_write);
 

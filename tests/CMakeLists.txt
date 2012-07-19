@@ -583,10 +583,13 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(pcache-use pcache "" "-light;-persist_code" "" OFF "addronly")
   # when running tests in parallel, have to generate pcaches first
   set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
+  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" "" OFF "")
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-pattern;0xf1fd;-no_count_leaks" "" OFF "")
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
+  newtest_nobuild(track_origins.pattern track_origins "" "-pattern;0xf1fd;-no_count_leaks;-track_origins_unaddr"
+    "" OFF "track_origins")
 
 else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
@@ -616,4 +619,6 @@ else (NOT X64)
   # pattern mode testing.
   newtest_ex(free.pattern free.c "" "-light" "" OFF "addronly")
   newtest_ex(malloc.pattern malloc.c "" "-light" "" OFF "")
+  newtest_ex(track_origins.pattern track_origins.c "" "-pattern;0xf1fd;-no_count_leaks;-track_origins_unaddr"
+    "" OFF "track_origins")
 endif (NOT X64)

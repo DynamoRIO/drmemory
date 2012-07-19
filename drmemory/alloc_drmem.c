@@ -423,7 +423,7 @@ void *
 client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
                       void *existing_data, dr_mcontext_t *mc, app_pc post_call)
 {
-    if (!options.count_leaks)
+    if (!options.count_leaks && !options.track_origins_unaddr)
         return NULL;
     return (void *)
         get_shared_callstack((packed_callstack_t *)existing_data, mc, post_call);
@@ -497,6 +497,18 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
      * mark as defined and to leave as unaddressable and to mark as
      * defined here (xref PR 531619).
      */
+    if (!zeroed && options.track_origins_unaddr && base != real_base) {
+        byte **ptr;
+        LOG(2, "set value "PFX" at "PFX"-"PFX" in allocated block\n",
+            real_base, base, base + size);
+        /* Must set before pattern_handle_malloc, so it is ok to overflow 
+         * to the redzone after the block.
+         * In pattern mode, the redzone will be overwriten by pattern
+         * value later in pattern_handle_malloc.
+         */
+        for (ptr = (byte **)base; ptr < (byte **)(base + size); ptr++)
+            *ptr = real_base;
+    }
     if (options.shadowing) {
         uint val = zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED;
         shadow_set_range(base, base + size, val);
@@ -2310,3 +2322,114 @@ check_reachability(bool at_exit)
         return;
     leak_scan_for_leaks(at_exit);
 }
+
+/***************************************************************************
+ * malloc table iterate data 
+ */
+
+typedef struct _malloc_iter_data_t {
+    /* query [addr..addr + size) */
+    byte *addr;
+    size_t size;
+    /* alloc block info if found */
+    app_pc start;
+    app_pc end;
+    app_pc real_end;
+    packed_callstack_t *alloc_pcs;
+    bool   pre_us;
+    /* found block in malloc table */
+    bool found;
+} malloc_iter_data_t;
+
+/***************************************************************************/
+
+/* iterate callback for finding block overlapping with [addr, addr + size) */
+static bool
+malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
+                  bool pre_us, uint client_flags,
+                  void *client_data, void *iter_data)
+{
+    malloc_iter_data_t *data = (malloc_iter_data_t *) iter_data;
+    ASSERT(iter_data != NULL, "invalid iteration data");
+    ASSERT(start != NULL && start <= end, "invalid params");
+    LOG(4, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
+    ASSERT(!data->found, "the iteration should be short-circuited");
+    if (data->addr < real_end &&
+        (data->addr + data->size) > (pre_us ?
+                                     start :
+                                     (start - options.redzone_size))) {
+        data->start     = start;
+        data->end       = end;
+        data->real_end  = real_end;
+        data->alloc_pcs = (packed_callstack_t *) client_data;
+        data->pre_us    = pre_us;
+        data->found     = true;
+        return false; /* stop iteration */
+    }
+    return true; /* continue iteration */
+}
+
+/* XXX: this could be used in report_heap_info() in report.c when we don't have
+ * shadow info, to find overlapping malloc, and it could be adapted to find
+ * the nearest neighbor.
+ */
+static bool
+region_overlap_with_malloc_block(malloc_iter_data_t *iter_data)
+{
+    ASSERT(iter_data != NULL, "invalid iteration data");
+    /* expensive hashtable walk */
+    LOG(2, "expensive lookup for region_overlap_with_malloc_block@["
+        PFX".."PFX")\n", iter_data->addr, iter_data->addr + iter_data->size);
+    malloc_iterate(malloc_iterate_cb, iter_data);
+    return iter_data->found;
+}
+
+/* check if region [addr, addr + size) overlaps with any malloc redzone,
+ * - if overlaps, return true and fill all the passed in parameters,
+ * - otherwise, return false and NO parameters is filled.
+ */
+bool
+region_in_redzone(byte *addr, size_t size,
+                  packed_callstack_t **alloc_pcs OUT,
+                  app_pc *app_start OUT,
+                  app_pc *app_end OUT,
+                  app_pc *redzone_start OUT,
+                  app_pc *redzone_end OUT)
+{
+    malloc_iter_data_t iter_data = {addr, size, NULL, NULL, NULL, false, false};
+    if (region_overlap_with_malloc_block(&iter_data)) {
+        if (iter_data.pre_us)
+            return false; /* pre_us */
+        /* in head redzone */
+        if (addr <  iter_data.start &&
+            addr + size > iter_data.start - options.redzone_size) {
+            if (app_start != NULL)
+                *app_start = iter_data.start;
+            if (app_end != NULL)
+                *app_end = iter_data.end;
+            if (redzone_start != NULL)
+                *redzone_start = iter_data.start - options.redzone_size;
+            if (redzone_end != NULL)
+                *redzone_end = iter_data.start;
+            if (alloc_pcs != NULL)
+                *alloc_pcs = iter_data.alloc_pcs;
+            return true;
+        }
+        /* in tail redzone */
+        if (addr < iter_data.real_end && addr + size > iter_data.end) {
+            if (app_start != NULL)
+                *app_start = iter_data.start;
+            if (app_end != NULL)
+                *app_end = iter_data.end;
+            if (redzone_start != NULL)
+                *redzone_start = iter_data.end;
+            if (redzone_end != NULL)
+                *redzone_end = iter_data.real_end;
+            if (alloc_pcs != NULL)
+                *alloc_pcs = iter_data.alloc_pcs;
+            return true;
+        }
+    }
+    return false;
+}
+

@@ -71,4 +71,16 @@ bool
 is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
                   bool *now_addressable OUT);
 
+/* check if region [addr, addr + size) overlaps with any malloc redzone,
+ * - if overlaps, return true and fill all the passed in parameters,
+ * - otherwise, return false and NO parameters is filled.
+ */
+bool
+region_in_redzone(byte *addr, size_t size,
+                  packed_callstack_t **alloc_pcs OUT,
+                  app_pc *app_start OUT,
+                  app_pc *app_end OUT,
+                  app_pc *redzone_start OUT,
+                  app_pc *redzone_end OUT);
+
 #endif /* _ALLOC_DRMEM_H_ */
