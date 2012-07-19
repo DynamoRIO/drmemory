@@ -852,7 +852,11 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
 {
     uint i;
     const int *sysnums;
-    bool wow64 = is_wow64_process();
+    /* FIXME i#945: we expect the #s and args of 64-bit windows syscall match
+     * wow64, but we have not verified there's no number shifting or arg shifting
+     * in the wow64 marshaling layer.
+     */
+    bool wow64 = IF_X64_ELSE(true, is_wow64_process());
     dr_os_version_info_t info = {sizeof(info),};
     if (!dr_get_os_version(&info)) {
         ASSERT(false, "unable to get version");
