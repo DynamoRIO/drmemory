@@ -458,7 +458,9 @@ ptr_is_in_arena(byte *ptr, arena_header_t *arena)
 #endif
 }
 
-/* Returns true iff ptr is a live alloc inside arena */
+/* Returns true iff ptr is a live alloc inside arena.  Thus, will return
+ * false for pre-us allocs from other arenas.
+ */
 static bool
 is_live_alloc(void *ptr, arena_header_t *arena, chunk_header_t *head)
 {
@@ -517,8 +519,8 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 #endif
 }
 
-/* up to caller to call heap_region_remove() as we can't call it here
- * b/c we're invoked from heap_region_iterate()
+/* up to caller to call heap_region_remove() before calling here,
+ * as we can't call it here b/c we're invoked from heap_region_iterate()
  */
 static void
 arena_free(arena_header_t *arena)
@@ -928,49 +930,49 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             client_handle_alloc_failure(size, zeroed, true/*realloc*/, caller, mc);
             res = NULL;
         }
+        return res;
     } else if (size == 0) {
         replace_free_common(arena, ptr, lock, drcontext, mc, caller);
+        return NULL;
     } else if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
          * before we took over
          */
         head = hashtable_lookup(&pre_us_table, (void *)ptr);
-        if (head != NULL && !TEST(CHUNK_FREED, head->flags)) {
-            /* XXX: we should invoke app's free(): see comments in replace_free_common */
-            res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
-                                                drcontext, mc, caller);
-        } else {
+        if (head == NULL || TEST(CHUNK_FREED, head->flags)) {
             client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                     /* XXX: we might be replacing RtlReallocateHeap or
                                      * _realloc_dbg but it's not worth trying to
                                      * store the exact name
                                      */
                                     "realloc", false/*!free*/);
+            return NULL;
         }
-    } else {
-        if (head->alloc_size >= size && !TEST(CHUNK_PRE_US, head->flags)) {
-            /* XXX: if shrinking a lot, should free and re-malloc to save space */
-            client_handle_realloc(drcontext, (byte *)ptr, head->request_size,
-                                  (byte *)ptr, size,
-                                  /* XXX: real_base is regular base for us => no pattern */
-                                  (byte *)ptr, mc);
-            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
-                malloc_large_remove(ptr);
-            if (head->request_size < size && zeroed)
-                memset(ptr + head->request_size, 0, size - head->request_size);
-            head->request_size = size;
-            if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
-                malloc_large_add(ptr, head->request_size);
-            res = ptr;
-        } else if (!in_place_only) {
-            /* XXX: use mremap for mmapped alloc! */
-            /* XXX: if final chunk in arena, extend in-place */
-            res = (void *) replace_alloc_common(arena, size, lock, zeroed,
-                                                true/*realloc*/, drcontext, mc, caller);
-            if (res != NULL) {
-                memcpy(res, ptr, head->request_size);
-                replace_free_common(arena, ptr, lock, drcontext, mc, caller);
-            }
+    }
+    /* if we reach here, this is a regular realloc */
+    ASSERT(head != NULL, "should return before here");
+    if (head->alloc_size >= size && !TEST(CHUNK_PRE_US, head->flags)) {
+        /* XXX: if shrinking a lot, should free and re-malloc to save space */
+        client_handle_realloc(drcontext, (byte *)ptr, head->request_size,
+                              (byte *)ptr, size,
+                              /* XXX: real_base is regular base for us => no pattern */
+                              (byte *)ptr, mc);
+        if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
+            malloc_large_remove(ptr);
+        if (head->request_size < size && zeroed)
+            memset(ptr + head->request_size, 0, size - head->request_size);
+        head->request_size = size;
+        if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
+            malloc_large_add(ptr, head->request_size);
+        res = ptr;
+    } else if (!in_place_only) {
+        /* XXX: use mremap for mmapped alloc! */
+        /* XXX: if final chunk in arena, extend in-place */
+        res = (void *) replace_alloc_common(arena, size, lock, zeroed,
+                                            true/*realloc*/, drcontext, mc, caller);
+        if (res != NULL) {
+            memcpy(res, ptr, head->request_size);
+            replace_free_common(arena, ptr, lock, drcontext, mc, caller);
         }
     }
     return res;
@@ -1206,7 +1208,7 @@ arena_for_libc_alloc(void *drcontext)
            "invalid per-set arena");
     return arena;
 #else
-    /* we assume that pre-us (which doesn't use cur_arena) is detected later */
+    /* we assume that pre-us (which doesn't use cur_arena) is checked by caller */
     return cur_arena;
 #endif
 }
@@ -1369,7 +1371,7 @@ heap_to_arena(HANDLE heap)
 {
     arena_header_t *arena = (arena_header_t *) heap;
     uint magic;
-    /* we assume that pre-us will be detected and handled later */
+    /* we assume that pre-us will be detected and handled by caller */
     if (heap == process_heap)
         return cur_arena;
 #ifdef USE_DRSYMS
