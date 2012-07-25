@@ -677,8 +677,10 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
         delayed_chunks--;
         ASSERT(delayed_bytes >= head->alloc_size, "delay bytes counter off");
         delayed_bytes -= head->alloc_size;
-        if (head->user_data != NULL)
+        if (head->user_data != NULL) {
             client_malloc_data_free(head->user_data);
+            head->user_data = NULL;
+        }
         head->flags &= ~CHUNK_FREED;
     }
     return head;
