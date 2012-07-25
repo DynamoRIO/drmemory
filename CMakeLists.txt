@@ -751,6 +751,7 @@ get_DynamoRIO_defines(DR_DEFINES OFF)
 # We assume none have spaces inside them which seems reasonable.
 string(REPLACE " " ";" DR_DEFINES "${DR_DEFINES}")
 set(asm_defs ${DR_DEFINES} ${DEFINES} -I "${DynamoRIO_DIR}")
+
 add_asm_target(common/asm_utils.asm asm_utils_src asm_utils_tgt ""
   "${asm_defs}" "${asm_deps}")
 
@@ -927,7 +928,14 @@ if (UNIX)
 else (UNIX)
   set(DISABLE_OPTS "/Od")
 endif (UNIX)
-set_property(SOURCE common/alloc_unopt.c APPEND PROPERTY COMPILE_FLAGS "${DISABLE_OPTS}")
+# XXX: if we require cmake 2.8.6 we can use APPEND_STRING.
+# Or we could redo all our flags to be lists and use APPEND.
+get_source_file_property(cur_flags common/alloc_unopt.c COMPILE_FLAGS)
+if (NOT cur_flags)
+  set(cur_flags "")
+endif (NOT cur_flags)
+set_property(SOURCE common/alloc_unopt.c
+  PROPERTY COMPILE_FLAGS "${cur_flags} ${DISABLE_OPTS}")
 
 # Though the swf file isn't an executable it is in ${BIN_ARCH} because it isn't 
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
