@@ -155,6 +155,7 @@ my $just_postprocess = 0;
 my $postprocess_apppath = "";
 my $follow_children = 1;
 my $callstack_style = $default_op_vals{"callstack_style"};
+my $replace_malloc = 0;
 my @suppfiles = ();
 
 # PR 527650: perl GetOptions negation prefix is -no or -no-
@@ -205,6 +206,7 @@ if (!GetOptions("dr=s" => \$dr_home,
                 "persist_dir=s" => \$persist_dir,
                 "perturb_only" => \$perturb_only,
                 "callstack_style=s" => \$callstack_style,
+                "replace_malloc" => \$replace_malloc,
                 # required so perl option parser won't interpret as -perturb_only
                 "perturb" => \$perturb)) {
     die $usage;
@@ -352,6 +354,7 @@ $ops .= " -no_gen_suppress_offs" unless ($gen_suppress_offs);
 $ops .= " -no_gen_suppress_syms" unless ($gen_suppress_syms);
 $ops .= " -perturb_only" if ($perturb_only);
 $ops .= " -perturb" if ($perturb);
+$ops .= " -replace_malloc" if ($replace_malloc);
 $ops .= " -callstack_style $callstack_style"
     if ($callstack_style ne $default_op_vals{"callstack_style"});
 
@@ -609,6 +612,7 @@ sub post_process()
     push @postcmd, "-batch" if ($batch);
     push @postcmd, ("-drmemdir", "$libdir");
     push @postcmd, ("-callstack_style", "$callstack_style");
+    push @postcmd, ("-replace_malloc") if ($replace_malloc);
     if ($aggregate || $just_postprocess) {
         push @postcmd, ("-aggregate", @ARGV);
     }

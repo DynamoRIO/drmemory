@@ -384,8 +384,9 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
         app_loc_t loc;
         pc_to_loc(&loc, post_call);
         packed_callstack_record(&pcs, mc, &loc);
-        /* our malloc and free callstacks use post-call as the top frame */
-        packed_callstack_first_frame_retaddr(pcs);
+        /* our malloc and free callstacks use post-call as the top frame when wrapping */
+        if (!options.replace_malloc)
+            packed_callstack_first_frame_retaddr(pcs);
     }
     /* XXX i#246: store last malloc callstack outside of hashtable,
      * and only add to hashtable on next malloc, so that if freed

@@ -890,9 +890,16 @@ set_target_properties(${client_target} PROPERTIES
 if (WIN32)
   # annoying to have ASLR and not on module list
   # plus, now we require the same base for pcache
+  set(new_flags "/dynamicbase:no")
+  if (NOT DEFINED GENERATE_PDBS OR GENERATE_PDBS)
+    set(new_flags "${new_flags} /debug")
+  endif ()
   get_target_property(cur_flags ${client_target} LINK_FLAGS)
+  if (NOT cur_flags)
+    set(cur_flags "")
+  endif (NOT cur_flags)
   set_target_properties(${client_target} PROPERTIES
-    LINK_FLAGS "${cur_flags} /dynamicbase:no")
+    LINK_FLAGS "${cur_flags} ${new_flags}")
 endif (WIN32)
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   configure_DynamoRIO_standalone(${toolname})

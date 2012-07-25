@@ -1664,7 +1664,13 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
     if (pcs == NULL) {
 #ifdef WINDOWS
         reg_t save_xbp = mc->xbp;
-        if (options.callstack_use_top_fp_selectively) {
+        if (options.callstack_use_top_fp_selectively &&
+            /* for -replace_malloc invalid args and leaks we have our own
+             * malloc routine as the top frame (i#639).  we ensure it has ebp.
+             */
+            (!options.replace_malloc ||
+             (type != ERROR_INVALID_HEAP_ARG && type != ERROR_LEAK &&
+              type != ERROR_POSSIBLE_LEAK))) {
             /* i#844: force a scan in the top frame to handle the all-too-common
              * leaf function with no frame pointer.
              * We assume there is no setting of mcontext on this path:
@@ -2092,8 +2098,9 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
 
     /* for invalid heap arg, now that we always do our alloc pre-hook in the
      * callee, the first frame is a retaddr and its line should thus be -1
+     * (except for -replace_malloc)
      */
-    if (etp->errtype == ERROR_INVALID_HEAP_ARG)
+    if (!options.replace_malloc && etp->errtype == ERROR_INVALID_HEAP_ARG)
         packed_callstack_first_frame_retaddr(err->pcs);
 
     /* Convert to symbolized so we can compare to suppressions */

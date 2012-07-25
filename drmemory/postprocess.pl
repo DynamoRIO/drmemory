@@ -167,6 +167,7 @@ $post_suppressed_errors_user = 0;
 $post_suppressed_leaks_default = 0;
 $post_suppressed_leaks_user = 0;
 $leaks_only = 0; # right now this also means Dr. Heapstat
+$replace_malloc = 0;
 
 # what error types to report
 $report_unaddr = 0;
@@ -194,6 +195,7 @@ if (!GetOptions("p=s" => \$prefix,
                 "no_sys_paths" => \$no_sys_paths,
                 "aggregate" => \$aggregate,
                 "callstack_style=s" => \$callstack_style,
+                "replace_malloc" => \$replace_malloc,
                 "leaks_only" => \$leaks_only)) {
     die $usage;
 }
@@ -704,8 +706,8 @@ sub process_one_error($raw_error_lines_array_ref)
         $error_cache{$err_str}{"type"} = $error{"type"};
         $errnum-- if ($error{"type"} =~ /REACHABLE LEAK/);
         $error_cache{$err_str}{"numbytes"} = $error{"numbytes"};
-        # first frame is a retaddr for invalid heap arg
-        my $first_retaddr = ($error{"type"} =~ /INVALID HEAP/);
+        # first frame is a retaddr for invalid heap arg when wrapping malloc
+        my $first_retaddr = ($error{"type"} =~ /INVALID HEAP/) && !$replace_malloc;
         my @symlines = lookup_addr(\%error, $first_retaddr);
         my ($err_str_ref, $err_cstack_ref) = generate_error_info(\%error, \@symlines);
         my $is_default;
@@ -931,8 +933,8 @@ sub parse_error($arr_ref, $err_str)
                 }
             } else {
                 if ($process_free_cstack) {
-                    # top frame is retaddr for free/malloc
-                    my @symlines = lookup_addr(\%free, 1);
+                    # top frame is retaddr for free/malloc when wrapping malloc
+                    my @symlines = lookup_addr(\%free, !$replace_malloc);
                     my ($err_str_ref, $err_cstack_ref) =
                         generate_callstack(\%free, \@symlines);
                     my $aux_cstack = ${$err_str_ref};
@@ -965,8 +967,8 @@ sub parse_error($arr_ref, $err_str)
         }
     }
     if ($process_free_cstack) {
-        # top frame is retaddr for free/malloc
-        my @symlines = lookup_addr(\%free, 1);
+        # top frame is retaddr for free/malloc when wrapping malloc
+        my @symlines = lookup_addr(\%free, !$replace_malloc);
         my ($err_str_ref, $err_cstack_ref) =
             generate_callstack(\%free, \@symlines);
         my $aux_cstack = ${$err_str_ref};

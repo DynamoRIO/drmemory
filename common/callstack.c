@@ -399,9 +399,9 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
     STATS_INC(symbol_address_lookups);
     symres = drsym_lookup_address(modpath, modoffs, sym, DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-        LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX")\n",
+        LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX") kind="PIFX"\n",
             modpath, modoffs, sym->name, modoffs - sym->start_offs,
-            sym->start_offs, sym->end_offs);
+            sym->start_offs, sym->end_offs, sym->debug_kind);
         if (sym->name_available_size >= sym->name_size) {
             DO_ONCE({ 
                 WARN("WARNING: at least one function name longer than max: %s\n",
