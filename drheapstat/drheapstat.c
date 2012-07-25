@@ -1644,6 +1644,9 @@ event_timer(void *drcontext, dr_mcontext_t *mcontext)
     if (alarm_clock) {
         timestamp_last_snapshot = dr_get_milliseconds();
         /* must hold malloc lock first */
+        /* FIXME i#949: may need to use a special allocator option to have
+         * a global malloc lock for -replace_malloc
+         */
         malloc_lock();
         take_snapshot();
         malloc_unlock();

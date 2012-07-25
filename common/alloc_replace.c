@@ -114,7 +114,7 @@ enum {
     /* MALLOC_RESERVED_{3,4} are used for types */
     CHUNK_PRE_US      = MALLOC_RESERVED_5,
     /* MALLOC_RESERVED_6 could be used to indicate presence of prev
-     * free chunk for coalescing
+     * free chunk for coalescing (i#948)
      */
 };
 
@@ -290,6 +290,27 @@ exit_client_code(void *drcontext, bool in_app_mode)
 #endif
 
     drwrap_replace_native_fini(drcontext);
+}
+
+
+/* i#900: we need to mark an app lock acquisition as a safe spot.
+ * This is made possible by drwrap_replace_native() using a continuation
+ * strategy rather than returning to the code cache.
+ * N.B.: no DR lock can be held by the caller!
+ */
+static void
+app_heap_lock(void *drcontext, void *recur_lock)
+{
+    dr_mark_safe_to_suspend(drcontext, true/*enter safe region*/);
+    dr_recurlock_lock(recur_lock);
+    dr_mark_safe_to_suspend(drcontext, false/*exit safe region*/);
+}
+
+static void
+app_heap_unlock(void *drcontext, void *recur_lock)
+{
+    /* Nothing special, just for symmetry */
+    dr_recurlock_unlock(recur_lock);
 }
 
 /* This must be inlined to get an xsp that's in the call chain */
@@ -518,6 +539,11 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     } else {
         arena->flags = ARENA_MAIN;
         arena->lock = dr_recurlock_create();
+        /* We only grab this DR lock as the app and we mark it with
+         * dr_recurlock_mark_as_app(), as well as using dr_mark_safe_to_suspend(),
+         * to ensure proper DR behavior
+         */
+        dr_recurlock_mark_as_app(arena->lock);
         /* to avoid complications of storing and freeing DR heap we inline these
          * in the main arena's header
          */
@@ -733,13 +759,9 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     if (aligned_size < CHUNK_MIN_SIZE)
         aligned_size = CHUNK_MIN_SIZE;
 
-    /* XXX: use per-thread free lists to avoid lock in common case */
-    /* FIXME DRi#779: we need to mark this lock acquisition as a safe spot.
-     * This is made possible by drwrap_replace_native() using a continuation
-     * strategy rather than returning to the code cache.
-     */
+    /* XXX i#948: use per-thread free lists to avoid lock in common case */
     if (synch)
-        dr_recurlock_lock(arena->lock);
+        app_heap_lock(drcontext, arena->lock);
 
     /* for large requests we do direct mmap with own redzones.
      * we use the large malloc table to track them for iteration.
@@ -811,7 +833,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
         STATS_INC(num_mallocs);
 
     if (synch)
-        dr_recurlock_unlock(arena->lock);
+        app_heap_unlock(drcontext, arena->lock);
 
     return res;
 }
@@ -856,7 +878,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
     }
 
     if (synch)
-        dr_recurlock_lock(arena->lock);
+        app_heap_lock(drcontext, arena->lock);
 
     if (!TEST(CHUNK_MMAP, head->flags))
         head->flags |= CHUNK_FREED;
@@ -882,7 +904,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
         delayed_chunks++;
         delayed_bytes += head->alloc_size;
 
-        /* XXX: could add more sophisticated features like coalescing adjacent
+        /* XXX i#948: could add more sophisticated features like coalescing adjacent
          * free entries which we may actually need for apps with corner-case
          * alloc patterns.  We may also want to implement negative sbrk to
          * give memory back.
@@ -926,7 +948,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
     STATS_INC(num_frees);
 
     if (synch)
-        dr_recurlock_unlock(arena->lock);
+        app_heap_unlock(drcontext, arena->lock);
     return true;
 }
 
@@ -1592,14 +1614,11 @@ replace_RtlLockHeap(HANDLE heap)
     BOOL res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
-        /* we only grab this DR lock as the app
-         * XXX DRi#779: this can trigger asserts about no DR locks held during
-         * synchall.  we'll need a special marker for DR locks used as the
-         * app or sthg.
+        /* We only grab this DR lock as the app and we mark it with
+         * dr_recurlock_mark_as_app(), as well as using dr_mark_safe_to_suspend(),
+         * to ensure proper DR behavior
          */
-#if 0 /* FIXME i#893, DRi#779: unsafe so not acquiring for now */
-        dr_recurlock_lock(arena->lock);
-#endif
+        app_heap_lock(drcontext, arena->lock);
         res = TRUE;
     }
     exit_client_code(drcontext, false/*need swap*/);
@@ -1613,14 +1632,10 @@ replace_RtlUnlockHeap(HANDLE heap)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
-#if 0 /* FIXME i#893, DRi#779: unsafe so not acquiring for now */
     if (arena != NULL && dr_recurlock_self_owns(arena->lock)) {
-        dr_recurlock_unlock(arena->lock);
+        app_heap_unlock(drcontext, arena->lock);
         res = TRUE;
     }
-#else
-    res = (arena != NULL);
-#endif
     exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
@@ -2066,6 +2081,10 @@ malloc_replace__iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
 static void
 malloc_replace__lock(void)
 {
+    /* FIXME i#949: we can't mark safe to suspend here (in app_heap_lock())
+     * b/c it's called from clean calls, etc.  Currently this is unsafe
+     * and can deadlock.
+     */
     dr_recurlock_lock(cur_arena->lock);
 }
 

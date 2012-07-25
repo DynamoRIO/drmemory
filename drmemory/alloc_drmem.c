@@ -45,6 +45,9 @@
  * This table should only be accessed while holding the lock for
  * malloc_table (via malloc_lock()), which makes the coordinated
  * operations with malloc_table atomic.
+ *
+ * FIXME i#949: for -replace_malloc a global lock is not always held
+ * so we need our own locks
  */
 #define ASTACK_TABLE_HASH_BITS 8
 static hashtable_t alloc_stack_table;
