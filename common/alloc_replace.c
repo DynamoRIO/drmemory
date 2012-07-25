@@ -698,7 +698,11 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
      */
     caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
-    if (request_size > UINT_MAX) {
+    if (request_size > UINT_MAX ||
+        /* catch overflow in chunk or mmap alignment: no need to support really
+         * large sizes within a page of UINT_MAX (i#944)
+         */
+        ALIGN_FORWARD(request_size, PAGE_SIZE) < request_size) {
         /* rather than have larger headers for 64-bit we just don't support
          * enormous allocations
          */
@@ -707,6 +711,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     }
 
     aligned_size = ALIGN_FORWARD(request_size, CHUNK_ALIGNMENT);
+    ASSERT(aligned_size >= request_size, "overflow should have been caught");
     if (aligned_size < CHUNK_MIN_SIZE)
         aligned_size = CHUNK_MIN_SIZE;
 
@@ -724,6 +729,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
                           header_beyond_redzone, PAGE_SIZE);
         byte *map = os_large_alloc(map_size _IF_WINDOWS(map_size)
                                    _IF_WINDOWS(arena_page_prot(arena->flags)));
+        ASSERT(map_size >= aligned_size, "overflow should have been caught");
         LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
         if (map == NULL) {
             client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
