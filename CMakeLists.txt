@@ -752,10 +752,10 @@ get_DynamoRIO_defines(DR_DEFINES OFF)
 string(REPLACE " " ";" DR_DEFINES "${DR_DEFINES}")
 set(asm_defs ${DR_DEFINES} ${DEFINES} -I "${DynamoRIO_DIR}")
 
+set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
+
 add_asm_target(common/asm_utils.asm asm_utils_src asm_utils_tgt ""
   "${asm_defs}" "${asm_deps}")
-
-set(asm_deps "${DynamoRIO_DIR}/cpp2asm_defines.h")
 
 ##################################################
 

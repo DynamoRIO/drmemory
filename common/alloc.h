@@ -396,4 +396,12 @@ client_add_malloc_routine(app_pc pc);
 void
 client_remove_malloc_routine(void *client_data);
 
+/* Called when data is being placed on the app stack */
+void
+client_stack_alloc(byte *start, byte *end, bool defined);
+
+/* Called when data is being removed from the app stack */
+void
+client_stack_dealloc(byte *start, byte *end);
+
 #endif /* _ALLOC_H_ */

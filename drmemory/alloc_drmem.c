@@ -1195,6 +1195,20 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 }
 #endif /* WINDOWS */
 
+void
+client_stack_alloc(byte *start, byte *end, bool defined)
+{
+    if (options.shadowing && (options.check_uninitialized || options.check_stack_bounds))
+        shadow_set_range(start, end, defined ? SHADOW_DEFINED : SHADOW_UNDEFINED);
+}
+
+void
+client_stack_dealloc(byte *start, byte *end)
+{
+    if (options.shadowing && (options.check_uninitialized || options.check_stack_bounds))
+        shadow_set_range(start, end, SHADOW_UNADDRESSABLE);
+}
+
 /***************************************************************************
  * SIGNALS
  */

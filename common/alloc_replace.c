@@ -246,6 +246,19 @@ static inline void *
 enter_client_code(void)
 {
     void *drcontext = dr_get_current_drcontext();
+
+    /* For our callstack walk we need the frame ptr of our replacement
+     * functions to be marked defined.  By using our replace xbp we
+     * have the malloc frame in the callstack (i#639).
+     * Note that we do not want to, say, pass in the mcontext and
+     * mark defined through get_stack_registers()'s xsp, as that
+     * will mark a bunch of uninitialized slots on the stack.
+     */
+    byte *final_app_xsp = (byte *)
+        dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_SP_SLOT);
+    client_stack_alloc((byte *)final_app_xsp - sizeof(void*), (byte *)final_app_xsp,
+                       true/*defined*/);
+
     /* while we are using the app's stack and registers, we need to
      * switch to the private peb/teb to avoid asserts in symbol
      * routines.
@@ -265,11 +278,18 @@ enter_client_code(void)
 }
 
 static void
-exit_client_code(void *drcontext)
+exit_client_code(void *drcontext, bool in_app_mode)
 {
+    byte *final_app_xsp = (byte *)
+        dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_SP_SLOT);
+    client_stack_dealloc((byte *)final_app_xsp - sizeof(void*), (byte *)final_app_xsp);
+
 #if WINDOWS
-    dr_switch_to_app_state(drcontext);
+    if (!in_app_mode)
+        dr_switch_to_app_state(drcontext);
 #endif
+
+    drwrap_replace_native_fini(drcontext);
 }
 
 /* This must be inlined to get an xsp that's in the call chain */
@@ -695,10 +715,6 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     heapsz_t aligned_size;
     byte *res = NULL;
     chunk_header_t *head = NULL;
-    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
-     * the heap routine (for i#639 we'll need to pass 2 known top frames)
-     */
-    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
     if (request_size > UINT_MAX ||
         /* catch overflow in chunk or mmap alignment: no need to support really
@@ -718,6 +734,10 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
         aligned_size = CHUNK_MIN_SIZE;
 
     /* XXX: use per-thread free lists to avoid lock in common case */
+    /* FIXME DRi#779: we need to mark this lock acquisition as a safe spot.
+     * This is made possible by drwrap_replace_native() using a continuation
+     * strategy rather than returning to the code cache.
+     */
     if (synch)
         dr_recurlock_lock(arena->lock);
 
@@ -787,6 +807,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
 
     if (head->request_size >= LARGE_MALLOC_MIN_SIZE)
         malloc_large_add(res, request_size);
+    else
+        STATS_INC(num_mallocs);
 
     if (synch)
         dr_recurlock_unlock(arena->lock);
@@ -802,10 +824,6 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
     chunk_header_t *head = header_from_ptr(ptr);
     free_header_t *cur;
     uint bucket;
-    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
-     * the heap routine (for i#639 we'll need to pass 2 known top frames)
-     */
-    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
 
     if (!is_live_alloc(ptr, arena, head)) { /* including NULL */
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -905,6 +923,8 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
             ASSERT(false, "munmap failed");
     }
 
+    STATS_INC(num_frees);
+
     if (synch)
         dr_recurlock_unlock(arena->lock);
     return true;
@@ -917,10 +937,6 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
 {
     byte *res = NULL;
     chunk_header_t *head = header_from_ptr(ptr);
-    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
-     * the heap routine (for i#639 we'll need to pass 2 known top frames)
-     */
-    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (ptr == NULL) {
         if (allow_null) {
             client_handle_realloc_null(caller, mc);
@@ -984,10 +1000,6 @@ replace_size_common(arena_header_t *arena, byte *ptr,
                     void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     chunk_header_t *head = header_from_ptr(ptr);
-    /* XXX i#935: we have to start at the replaced app retaddr so we can't include
-     * the heap routine (for i#639 we'll need to pass 2 known top frames)
-     */
-    caller = (app_pc) dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_RETADDR_SLOT);
     if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
          * before we took over
@@ -1220,14 +1232,13 @@ replace_malloc(size_t size)
     void *drcontext = enter_client_code();
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
-    /* XXX: should we make mc a debug-only param for perf? */
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc %d\n", size);
     res = (void *) replace_alloc_common(arena, size, true/*lock*/, false/*!zeroed*/,
                                         false/*!realloc*/,
                                         drcontext, &mc, (app_pc)replace_malloc);
     LOG(2, "\treplace_malloc %d => "PFX"\n", size, res);
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
@@ -1244,7 +1255,7 @@ replace_calloc(size_t nmemb, size_t size)
                                false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc);
     memset(res, 0, nmemb*size);
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return (void *) res;
 }
 
@@ -1261,7 +1272,7 @@ replace_realloc(void *ptr, size_t size)
                                  false/*!in-place only*/, true/*allow null*/,
                                  drcontext, &mc, (app_pc)replace_realloc);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
@@ -1275,7 +1286,7 @@ replace_free(void *ptr)
     LOG(2, "replace_free "PFX"\n", ptr);
     replace_free_common(arena, ptr, true/*lock*/, drcontext,
                         &mc, (app_pc)replace_free);
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static size_t
@@ -1292,7 +1303,7 @@ replace_malloc_usable_size(void *ptr)
     if (res == (size_t)-1)
         res = 0; /* 0 on failure */
     LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
@@ -1410,13 +1421,14 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
         commit_sz = PAGE_SIZE;
     new_arena = (arena_header_t *) create_Rtl_heap(commit_sz, reserve_sz, flags);
     LOG(2, "  => "PFX"\n", new_arena);
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (new_arena == NULL) {
         /* XXX: most of our errors are invalid params so that's all we set.
          * We deliberately wait until in app mode to make this more efficient.
          */
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
     }
+    exit_client_code(drcontext, true/*already swapped*/);
     return (HANDLE) new_arena;    
 }
 
@@ -1433,13 +1445,14 @@ replace_RtlDestroyHeap(HANDLE heap)
         destroy_Rtl_heap(arena, &mc, true/*free indiv chunks*/);
         res = TRUE;
     }
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (!res) {
         /* XXX: for now blindly seting the one errno.
          * We deliberately wait until in app mode to make this more efficient.
          */
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
     }
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
@@ -1478,9 +1491,10 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
                                    false/*!realloc*/, drcontext,
                                    &mc, (app_pc)replace_RtlAllocateHeap);
     }
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (res == NULL)
         handle_Rtl_alloc_failure(drcontext, arena, flags);
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
@@ -1504,9 +1518,10 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
                                      false/*fail on null*/, drcontext,
                                      &mc, (app_pc)replace_RtlReAllocateHeap);
     }
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (res == NULL)
         handle_Rtl_alloc_failure(drcontext, arena, flags);
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
@@ -1526,13 +1541,14 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
                                        drcontext, &mc, (app_pc)replace_RtlFreeHeap);
         res = !!ok; /* convert from bool to BOOL */
     }
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (!res) {
         /* XXX: all our errors are invalid params so that's all we set.
          * We deliberately wait until in app mode to make this more efficient.
          */
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
     }
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
@@ -1549,13 +1565,14 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
         res = replace_size_common(arena, ptr, drcontext,
                                   &mc, (app_pc)replace_RtlSizeHeap);
     }
-    exit_client_code(drcontext);
+    dr_switch_to_app_state(drcontext);
     if (!res) {
         /* XXX: all our errors are invalid params so that's all we set.
          * We deliberately wait until in app mode to make this more efficient.
          */
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
     }
+    exit_client_code(drcontext, true/*already swapped*/);
     return res;
 }
 
@@ -1585,7 +1602,7 @@ replace_RtlLockHeap(HANDLE heap)
 #endif
         res = TRUE;
     }
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
@@ -1604,14 +1621,16 @@ replace_RtlUnlockHeap(HANDLE heap)
 #else
     res = (arena != NULL);
 #endif
-    exit_client_code(drcontext);
+    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
 static BOOL WINAPI
 replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
@@ -1620,7 +1639,9 @@ replace_RtlSetHeapInformation(HANDLE HeapHandle,
                               HEAP_INFORMATION_CLASS HeapInformationClass,
                               PVOID HeapInformation, SIZE_T HeapInformationLength)
 {
+    void *drcontext = enter_client_code();
     /* FIXME: NYI.  No assert in order to get replace_malloc test going. */
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
@@ -1631,28 +1652,36 @@ replace_RtlQueryHeapInformation(HANDLE HeapHandle,
                                 SIZE_T HeapInformationLength OPTIONAL,
                                 PSIZE_T ReturnLength OPTIONAL)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static SIZE_T WINAPI
 replace_RtlCompactHeap(HANDLE Heap, ULONG Flags)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static ULONG WINAPI
 replace_RtlGetProcessHeaps(ULONG count, HANDLE *heaps)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return 0;
 }
 
 static BOOL WINAPI
 replace_RtlWalkHeap(HANDLE HeapHandle, PVOID HeapEntry)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
@@ -1660,49 +1689,63 @@ static BOOL WINAPI
 replace_RtlEnumProcessHeaps(PVOID /*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerationRoutine,
                             PVOID lParam)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg0(void)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg1(void *arg1)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg2(void *arg1, void *arg2)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 
 static BOOL WINAPI
 replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
 {
+    void *drcontext = enter_client_code();
     ASSERT(false, "NYI");
+    exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
 

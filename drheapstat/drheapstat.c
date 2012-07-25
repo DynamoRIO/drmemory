@@ -1042,6 +1042,16 @@ client_handle_continue(void *drcontext, dr_mcontext_t *mc)
 #endif /* WINDOWS */
 
 void
+client_stack_alloc(byte *start, byte *end, bool defined)
+{
+}
+
+void
+client_stack_dealloc(byte *start, byte *end)
+{
+}
+
+void
 client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
 }

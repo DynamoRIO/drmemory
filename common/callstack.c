@@ -1071,7 +1071,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
-        LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
+        LOG(4, "find_next_fp b/c starting w/ non-fp ebp "PFX" (def=%d %d)\n", mc->xbp,
+            op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp),
+            op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp +
+                                                                  sizeof(void*)));
         pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
                                          &custom_retaddr);
         scanned = true;

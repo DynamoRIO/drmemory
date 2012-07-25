@@ -73,6 +73,10 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG2
         mov      PTRSZ [REG_XCX], REG_XBP
         mov      REG_XCX, REG_XSP
+        /* The caller may not use push to call us: it may allocate its
+         * max frame up front.  However, all current uses are from functions
+         * with large frames themselves, so our removals here are not a problem.
+         */
 #if defined(X64) && defined(WINDOWS)
         add      REG_XCX, 32 + ARG_SZ   /* remove frame space + retaddr */
 #elif !defined(X64)
