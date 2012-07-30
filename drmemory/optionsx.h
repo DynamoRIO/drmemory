@@ -209,7 +209,7 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
 /* _REPEATABLE would take too much capacity and too much option string space to
  * specify more than one or two.
  */
-OPTION_CLIENT_STRING(client, callstack_truncate_below, "main,wmain,WinMain,wWinMain",
+OPTION_CLIENT_STRING(client, callstack_truncate_below, "main,wmain,WinMain,wWinMain,*RtlUserThreadStart,_threadstartex",
                      ",-separated list of function names at which to truncate callstacks",
                      "Callstacks will be truncated at any frame that matches any of these ,-separated function names.  The function names can contain * or ? wildcards.")
 OPTION_CLIENT_STRING(client, callstack_modname_hide, "*.exe,*drmemory*",
