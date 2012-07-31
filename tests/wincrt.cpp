@@ -44,7 +44,10 @@ oob_read_test(void)
     use(foo-1); 
     use(foo-30);
     use(foo-37);
+#ifdef _DEBUG
+    /* i#763: test crtdbg redzone */
     use(foo-41);
+#endif
     free(foo);
     free(pre);
 }
