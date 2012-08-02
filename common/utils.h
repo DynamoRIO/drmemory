@@ -115,6 +115,13 @@
 # endif
 # define DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", off) )
 # define END_DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", on) )
+/* START_PACKED_STRUCTURE can't be used after typedef (b/c MSVC compiler
+ * has bug where it accepts #pragma but not __pragma there) and thus the 
+ * struct have to be typedef-ed in two steps.
+ * see example struct _packed_frame_t at common/callstack.c 
+ */
+# define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
+# define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
 #else /* LINUX */
 # define inline __inline__
 # define INLINE_FORCED inline
@@ -124,6 +131,8 @@
 #   define DO_NOT_OPTIMIZE /* nothing */
 # endif
 # define END_DO_NOT_OPTIMIZE /* nothing */
+# define START_PACKED_STRUCTURE /* nothing */
+# define END_PACKED_STRUCTURE __attribute__ ((__packed__))
 #endif
 #define INLINE_ONCE inline
 

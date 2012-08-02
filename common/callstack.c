@@ -99,7 +99,9 @@ typedef union {
 } frame_loc_t;
 
 /* Packed binary callstack */
-typedef struct _packed_frame_t {
+/* i#954: using packed data structure so we can use memcmp for comparison */
+START_PACKED_STRUCTURE
+struct _packed_frame_t {
     frame_loc_t loc;
     /* Modules can move around, with the same module being at two
      * different locations, so we must store both the name (which is a
@@ -117,7 +119,8 @@ typedef struct _packed_frame_t {
      * For non-module addresses, we use index MAX_MODNAMES_STORED.
      */
     uint modname_idx : 8;
-} packed_frame_t;
+} END_PACKED_STRUCTURE;
+typedef struct _packed_frame_t packed_frame_t;
 
 /* Hashtable entry is the master entry.  modname_array and full frame field
  * point at same entry.
@@ -143,14 +146,17 @@ typedef struct _modname_info_t {
 /* When the number of modules hits the max for our 8-bit index we
  * have to switch to these frames
  */
-typedef struct _full_frame_t {
+/* i#954: using packed data structure so we can use memcmp for comparison */
+START_PACKED_STRUCTURE
+struct _full_frame_t {
     frame_loc_t loc;
     size_t modoffs;
     /* For syscalls, we use MODNAME_INFO_SYSCALL and store the syscall # in modoffs.
      * For non-module addresses, we use NULL.
      */
     modname_info_t *modname;
-} full_frame_t;
+} END_PACKED_STRUCTURE;
+typedef struct _full_frame_t full_frame_t;
 
 /* used to indicate syscall for full_frame_t (NULL indicates not in a module) */
 static const modname_info_t MODNAME_INFO_SYSCALL;
