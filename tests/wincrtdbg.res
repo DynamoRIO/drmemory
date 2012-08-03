@@ -28,10 +28,16 @@ wincrt.cpp:43
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:44
 Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:45
+wincrt.cpp:47
 Error #6: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:46
+wincrt.cpp:48
 Error #7: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:49
 Error #8: UNADDRESSABLE ACCESS: writing 1 byte(s)
 wincrt.cpp:99
+%OPTIONAL # -replace_malloc, due to corrupting its header
+: INVALID HEAP ARGUMENT to free()
+wincrt.cpp:100
+: LEAK
+wincrt.cpp:98
+%ENDOPTIONAL

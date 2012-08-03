@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,9 +27,11 @@ Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:43
 Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
 wincrt.cpp:44
-Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:45
-Error #6: UNADDRESSABLE ACCESS: reading 1 byte(s)
-wincrt.cpp:46
-Error #7: UNADDRESSABLE ACCESS: writing 1 byte(s)
+: UNADDRESSABLE ACCESS: writing 1 byte(s)
 wincrt.cpp:99
+%OPTIONAL # -replace_malloc, due to corrupting its header
+: INVALID HEAP ARGUMENT to free()
+wincrt.cpp:100
+: LEAK
+wincrt.cpp:98
+%ENDOPTIONAL

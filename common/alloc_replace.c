@@ -52,10 +52,11 @@
  * Design:
  * + for !alloc_ops.external_headers, header sits inside redzone;
  *   for alloc_ops.external_headers, header is in a hashtable
- * + redzones are shared among adjacent allocs:
+ * + redzones are shared among adjacent allocs and are centered to
+ *   reduce the likelihood of corruption from over/underflow:
  *
  *  | request sz|     |   redzone size   | request size |   |   redzone size   |
- *  | app chunk | pad | redzone | header | app chunk    |pad| redzone | header |
+ *  | app chunk | pad |rz/2| header |rz/2| app chunk    |pad|rz/2| header /rz/2|
  *                                                                             ^
  *                                                                 next_chunk _|
  *
@@ -67,8 +68,10 @@
  *   (though worse alloc re-use), and searches start at the front and
  *   take the first fit.
  *   we can add fancier algorithms in the future.
- * + for alloc_ops.external_headers, free list entries are allocated
- *   externally and point at their heap chunks
+ * + for alloc_ops.external_headers, free list entries use headers that
+ *   are co-located with the chunk headers
+ * + for !alloc_ops.external_headers, free list entry headers begin where
+ *   regular headers begin, in the middle of the redzone.
  */
 
 #include "dr_api.h"
@@ -128,6 +131,7 @@ enum {
  * as compact as is reasonable.
  */
 typedef struct _chunk_header_t {
+    void *user_data;
     /* if we wanted to save space we could hand out sizes only equal to the buckets
      * and remove one of these.  we'd use a separate header for the largest bucket
      * that had the alloc_size.
@@ -135,6 +139,10 @@ typedef struct _chunk_header_t {
     heapsz_t request_size;
     heapsz_t alloc_size;
     ushort flags;
+    /* Put magic last for a greater chance of surviving underflow, esp when our
+     * header has no redzone buffer (when redzone_size <= HEADER_SIZE, which
+     * unfortunately is true by default as both are 16 for 32-bit).
+     */
     ushort magic;
 #ifdef X64
     /* compiler will add anyawy: just making explicit.  we need the header
@@ -144,13 +152,14 @@ typedef struct _chunk_header_t {
      */
     uint pad;
 #endif
-    void *user_data;
 } chunk_header_t;
 
 #define HEADER_SIZE sizeof(chunk_header_t)
 
 /* if redzone is too small, header sticks beyond it */
 static heapsz_t header_beyond_redzone;
+/* we place header in the middle */
+static heapsz_t redzone_beyond_header;
 
 /* free list header for both regular and var-size chunk.  each chunk
  * is at least 8 bytes so we can fit both the next pointer and the
@@ -433,9 +442,21 @@ header_from_ptr(void *ptr)
     } else {
         if ((ptr_uint_t)ptr < HEADER_SIZE)
             return NULL;
-        else
-            return (chunk_header_t *) ((byte *)ptr - HEADER_SIZE);
+        else {
+            return (chunk_header_t *) ((byte *)ptr - redzone_beyond_header - HEADER_SIZE);
+        }
     }
+}
+
+static inline byte *
+ptr_from_header(chunk_header_t *head)
+{
+    if (alloc_ops.external_headers) {
+        /* XXX i#879: hashtable lookup */
+        ASSERT(false, "NYI");
+        return NULL;
+    } else
+        return (byte *)head + redzone_beyond_header + HEADER_SIZE;
 }
 
 /* Pass in result of header_from_ptr() as 2nd arg, but don't de-reference it!
@@ -468,6 +489,12 @@ is_valid_chunk(void *ptr, chunk_header_t *head)
          * that bails out w/ an error report about invalid args.
          */
         ushort magic;
+        /* App heap corruption can touch our magic field (deliberately
+         * nearest the app alloc), causing us to report as an invalid
+         * heap arg (after reporting the unaddr access) and later as a
+         * leak, which doesn't seem ideal: but it's hard to do better.
+         * Xref i#950.
+         */
         return (ptr != NULL &&
                 ALIGNED(ptr, CHUNK_ALIGNMENT) &&
                 safe_read(&head->magic, sizeof(magic), &magic) &&
@@ -661,6 +688,9 @@ search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucke
             arena->free_list->last[bucket] = prev;
         head = (chunk_header_t *) cur;
     }
+    LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
+        arena, bucket, arena->free_list->front[bucket],
+        arena->free_list->last[bucket]);
     return head;
 }
 
@@ -721,6 +751,9 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             arena->free_list->front[bucket] = arena->free_list->front[bucket]->next;
             if (head == (chunk_header_t *) arena->free_list->last[bucket])
                 arena->free_list->last[bucket] = arena->free_list->front[bucket];
+            LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
+                arena, bucket, arena->free_list->front[bucket],
+                arena->free_list->last[bucket]);
         }
     }
 
@@ -787,7 +820,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
         }
         ASSERT(!alloc_ops.external_headers, "NYI");
         head = (chunk_header_t *) (map + alloc_ops.redzone_size +
-                                   header_beyond_redzone - HEADER_SIZE);
+                                   header_beyond_redzone - redzone_beyond_header -
+                                   HEADER_SIZE);
         head->flags |= CHUNK_MMAP;
         head->magic = HEADER_MAGIC;
         head->alloc_size = map_size - alloc_ops.redzone_size*2 - header_beyond_redzone;
@@ -808,8 +842,10 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
             }
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
-        head = (chunk_header_t *) (arena->next_chunk - HEADER_SIZE);
-        LOG(2, "\tcarving out new chunk @"PFX"\n", head);
+        head = (chunk_header_t *)
+            (arena->next_chunk - redzone_beyond_header - HEADER_SIZE);
+        LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
+            arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
         head->alloc_size = aligned_size;
         head->magic = HEADER_MAGIC;
         head->user_data = NULL; /* b/c we pass the old to client */
@@ -824,7 +860,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
      * XXX i#882: replace operators.
      * Need to move the MALLOC_ALLOCATOR_* defines to alloc_private.h.
      */
-    res = (byte *)(head + 1);
+    res = ptr_from_header(head);
     LOG(2, "\treplace_alloc_common request=%d, alloc=%d => "PFX"\n",
         head->request_size, head->alloc_size, res);
 
@@ -906,6 +942,9 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
         } else
             arena->free_list->last[bucket]->next = cur;
         arena->free_list->last[bucket] = cur;
+        LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
+            arena, bucket, arena->free_list->front[bucket],
+            arena->free_list->last[bucket]);
 
         delayed_chunks++;
         delayed_bytes += head->alloc_size;
@@ -1083,9 +1122,9 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     while (cur < arena->next_chunk) {
         head = header_from_ptr(cur);
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
-            (head + 1), (byte *)(head + 1) + head->alloc_size);
+            ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
-            byte *start = (byte *)(head + 1);
+            byte *start = ptr_from_header(head);
             if (!data->cb(start, start + head->request_size, start + head->alloc_size,
                           false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                           head->user_data, data->data))
@@ -1194,7 +1233,7 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
             while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
-                chunk_start = (byte *)(head + 1);
+                chunk_start = ptr_from_header(head);
                 if (start < chunk_start + head->request_size && end >= chunk_start) {
                     found_head = head;
                     found_start = chunk_start;
@@ -1390,7 +1429,7 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
                      * re-using the memory won't be immediate, so we go w/
                      * a simple no-delay policy on the frees
                      */
-                    byte *start = (byte *)(head + 1);
+                    byte *start = ptr_from_header(head);
                     client_handle_free(start, head->request_size,
                                        start, head->alloc_size,
                                        mc, (app_pc)replace_RtlDestroyHeap,
@@ -2116,8 +2155,14 @@ alloc_replace_init(void)
 
     ASSERT(ALIGNED(alloc_ops.redzone_size, CHUNK_ALIGNMENT), "redzone alignment off");
 
-    if (alloc_ops.redzone_size < HEADER_SIZE)
+    if (alloc_ops.redzone_size < HEADER_SIZE) {
         header_beyond_redzone = HEADER_SIZE - alloc_ops.redzone_size;
+        redzone_beyond_header = 0;
+    } else {
+        redzone_beyond_header = (alloc_ops.redzone_size - HEADER_SIZE)/2;
+        ASSERT(redzone_beyond_header*2 + HEADER_SIZE <= alloc_ops.redzone_size,
+               "redzone or header size not aligned properly");
+    }
 
     hashtable_init(&pre_us_table, PRE_US_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 

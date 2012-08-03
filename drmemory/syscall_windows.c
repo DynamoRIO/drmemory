@@ -2603,7 +2603,8 @@ syscall_diagnostics(void *drcontext, int sysnum)
     if (strcmp(sysinfo->name, "NtQueryValueKey") == 0) {
         UNICODE_STRING *us = (UNICODE_STRING *) pt->sysarg[1];
         DR_TRY_EXCEPT(drcontext, {
-            LOG(2, "NtQueryValueKey %S => ", (us == NULL) ? L"" : us->Buffer);
+            LOG(2, "NtQueryValueKey %S => ", (us == NULL || us->Buffer == NULL) ?
+                L"" : us->Buffer);
         }, { /* EXCEPT */
         });
         if (pt->sysarg[2] == KeyValuePartialInformation) {

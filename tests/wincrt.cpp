@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -42,10 +42,10 @@ oob_read_test(void)
     use(foo+25);
     use(foo+8); 
     use(foo-1); 
-    use(foo-30);
-    use(foo-37);
 #ifdef _DEBUG
     /* i#763: test crtdbg redzone */
+    use(foo-30);
+    use(foo-37);
     use(foo-41);
 #endif
     free(foo);
