@@ -643,7 +643,10 @@ search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucke
     /* search for large enough chunk */
     free_header_t *cur, *prev;
     chunk_header_t *head = NULL;
+#ifdef LINUX
+    /* On Windows we have HEAP_NO_SERIALIZE.  Not worth passing the flags in. */
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
+#endif
     ASSERT(bucket < NUM_FREE_LISTS, "invalid param");
     for (cur = arena->free_list->front[bucket], prev = NULL;
          cur != NULL && cur->head.alloc_size < aligned_size;
@@ -666,7 +669,10 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 {
     chunk_header_t *head = NULL;
     uint bucket;
+#ifdef LINUX
+    /* On Windows we have HEAP_NO_SERIALIZE.  Not worth passing the flags in. */
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
+#endif
 
     /* don't use free list unless we hit max delay */
     if (delayed_chunks < alloc_ops.delay_frees &&
@@ -1714,7 +1720,7 @@ static BOOL WINAPI
 replace_ignore_arg0(void)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
@@ -1723,7 +1729,7 @@ static BOOL WINAPI
 replace_ignore_arg1(void *arg1)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
@@ -1732,7 +1738,7 @@ static BOOL WINAPI
 replace_ignore_arg2(void *arg1, void *arg2)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
@@ -1741,7 +1747,7 @@ static BOOL WINAPI
 replace_ignore_arg3(void *arg1, void *arg2, void *arg3)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
@@ -1750,7 +1756,7 @@ static BOOL WINAPI
 replace_ignore_arg4(void *arg1, void *arg2, void *arg3, void *arg4)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
@@ -1759,7 +1765,7 @@ static BOOL WINAPI
 replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    LOG(2, "%s: ignoring\n", __FUNCTION__);
     exit_client_code(drcontext, false/*need swap*/);
     return TRUE;
 }
