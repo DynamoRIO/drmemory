@@ -70,6 +70,9 @@
 #include <stddef.h> /* for offsetof */
 #include "pattern.h"
 #include "frontend.h"
+#ifdef WINDOWS
+# include "handlecheck.h"
+#endif /* WINDOWS */
 
 #ifdef USE_DRSYMS
 # include "drsyms.h" /* for pre-loading pdbs on Vista */
@@ -247,6 +250,10 @@ dump_statistics(void)
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,
                midchunk_postinheritance_ptrs, midchunk_string_ptrs);
+#ifdef WINDOWS
+    if (options.check_handle_leaks)
+        handlecheck_dump_statistics();
+#endif
     if (options.perturb) {
         perturb_dump_statistics();
     }

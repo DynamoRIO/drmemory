@@ -968,7 +968,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
     }
 }
 
-static syscall_info_t *
+syscall_info_t *
 get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt)
 {
     syscall_info_t *sysinfo = syscall_lookup(*sysnum);
@@ -1105,7 +1105,7 @@ event_post_syscall(void *drcontext, int sysnum)
 #endif
 
     handle_post_alloc_syscall(drcontext, sysnum, &mc, pt->sysarg, SYSCALL_NUM_ARG_STORE);
-    os_shared_post_syscall(drcontext, pt, sysnum);
+    os_shared_post_syscall(drcontext, pt, sysnum _IF_WINDOWS(&mc));
     if (auxlib_known_syscall(sysnum))
         auxlib_shared_post_syscall(drcontext, sysnum, &mc);
 

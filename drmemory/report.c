@@ -1998,16 +1998,45 @@ print_error_report(void *drcontext, char *buf, size_t bufsz, bool reporting,
     }
 }
 
+static char *
+report_alloc_buf(void *drcontext, size_t *bufsz)
+{
+    char *buf;
+    if (drcontext == NULL ||
+        drmgr_get_tls_field(drcontext, tls_idx_report) == NULL) {
+        /* at exit time, thread already cleaned up */
+        *bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
+        buf = (char *) global_alloc(*bufsz, HEAPSTAT_CALLSTACK);
+    } else {
+        tls_report_t *pt = (tls_report_t *)
+            drmgr_get_tls_field(drcontext, tls_idx_report);
+        buf = pt->errbuf;
+        *bufsz = pt->errbufsz;
+    }
+    buf[0] = '\0';
+    return buf;
+}
+
+static void
+report_free_buf(void *drcontext, char *buf, size_t bufsz)
+{
+    if (drcontext == NULL ||
+        drmgr_get_tls_field(drcontext, tls_idx_report) == NULL) {
+        global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
+    }
+}
+
 /* pcs is only used for invalid heap args */
 static void
-report_error(error_toprint_t *etp, dr_mcontext_t *mc)
+report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
 {
     void *drcontext = dr_get_current_drcontext();
-    tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
     stored_error_t *err;
     bool reporting = false;
     suppress_spec_t *spec;
     error_callstack_t ecs;
+    char  *errbuf;
+    size_t errbufsz;
 
 #ifdef USE_DRSYMS
     /* we do not want to use dbghelp at init time b/c that's too early so we
@@ -2079,7 +2108,7 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
         }
     }
 
-    err = record_error(etp->errtype, NULL, etp->loc, mc, false/*no lock */);
+    err = record_error(etp->errtype, pcs, etp->loc, mc, false/*no lock */);
     if (err->count > 1) {
         if (err->suppressed) {
             if (err->suppressed_by_default)
@@ -2123,8 +2152,9 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc)
     }
     dr_mutex_unlock(error_lock);
 
-    print_error_report(drcontext, pt->errbuf, pt->errbufsz, reporting, etp, err,
-                       &ecs);
+    errbuf = report_alloc_buf(drcontext, &errbufsz);
+    print_error_report(drcontext, errbuf, errbufsz, reporting, etp, err, &ecs);
+    report_free_buf(drcontext, errbuf, errbufsz);
 
  report_error_done:
     if (etp->errtype == ERROR_UNADDRESSABLE && reporting && options.pause_at_unaddressable)
@@ -2334,7 +2364,7 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                  INFO_PFX, app_start, app_end);
         etp.msg = buf;
     }
-    report_error(&etp, mc);
+    report_error(&etp, mc, NULL);
 }
 
 void
@@ -2350,7 +2380,7 @@ report_undefined_read(app_loc_t *loc, app_pc addr, size_t sz,
     etp.container_start = container_start;
     etp.container_end = container_end;
     etp.report_instruction = true;
-    report_error(&etp, mc);
+    report_error(&etp, mc, NULL);
 }
 
 void
@@ -2370,7 +2400,7 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
         etp.addr = addr;
         etp.msg = msg;
         etp.report_neighbors = true;
-        report_error(&etp, mc);
+        report_error(&etp, mc, NULL);
     }
 }
 
@@ -2384,7 +2414,7 @@ report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
     etp.addr = addr;
     etp.msg = msg;
     etp.alloc_pcs = pcs;
-    report_error(&etp, mc);
+    report_error(&etp, mc, NULL);
 }
 
 void
@@ -2399,7 +2429,7 @@ report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
     etp.msg = msg;
     etp.report_instruction = report_instruction;
     etp.report_neighbors = (sz > 0);
-    report_error(&etp, mc);
+    report_error(&etp, mc, NULL);
 }
 
 /* saves the values of all counts that are modified in report_leak() */
@@ -2504,16 +2534,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         num_throttled_leaks++;
         return;
     }
-    if (drcontext == NULL || drmgr_get_tls_field(drcontext, tls_idx_report) == NULL) {
-        /* at exit time thread already cleaned up */
-        bufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size();
-        buf = (char *) global_alloc(bufsz, HEAPSTAT_CALLSTACK);
-    } else {
-        tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
-        buf = pt->errbuf;
-        bufsz = pt->errbufsz;
-    }
-    buf[0] = '\0';
+    buf = report_alloc_buf(drcontext, &bufsz);
     num_total_leaks++;
 
     /* we need to know the type prior to dup checking */
@@ -2666,8 +2687,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     print_error_report(drcontext, buf, bufsz, reporting, &etp, err, &ecs);
 
  report_leak_done:
-    if (drcontext == NULL || drmgr_get_tls_field(drcontext, tls_idx_report) == NULL)
-        global_free(buf, bufsz, HEAPSTAT_CALLSTACK);
+    report_free_buf(drcontext, buf, bufsz);
     symbolized_callstack_free(&ecs.scs);
 }
 
@@ -2807,3 +2827,19 @@ report_main_thread(void)
 {
     ELOG(0, "\nNEW THREAD: main thread %d\n\n", main_thread);
 }
+
+#ifdef WINDOWS
+void
+report_handle_leak(void *drcontext, const char *msg,
+                   app_loc_t *loc, packed_callstack_t *pcs)
+{
+    error_toprint_t etp = {0};
+    /* FIXME i#947: add ability to suppress warning via label or msg-prefix
+     * FIXME i#953: change warning to an error type instead.
+     */
+    etp.errtype = ERROR_WARNING;
+    etp.msg = msg;
+    etp.loc = loc;
+    report_error(&etp, NULL, pcs);
+}
+#endif /* WINDOWS */

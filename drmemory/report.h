@@ -103,4 +103,10 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix);
 void
 report_child_thread(void *drcontext, thread_id_t child);
 
+#if WINDOWS
+void
+report_handle_leak(void *drcontext, const char *msg,
+                   app_loc_t *loc, packed_callstack_t *pcs);
+#endif
+
 #endif /* _REPORT_H_ */

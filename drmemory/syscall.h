@@ -72,7 +72,7 @@ check_syscall_gateway(instr_t *inst);
  * setup in use.  FIXME: is entire KUSER_SHARED_DATA page defined?
  */
 # define VSYSCALL_SIZE 5
-#endif
+#endif /* WINDOWS */
 
 byte *
 vsyscall_pc(void *drcontext, byte *entry);

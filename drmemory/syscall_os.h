@@ -253,7 +253,8 @@ bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
 
 void
-os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
+os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum
+                       _IF_WINDOWS(dr_mcontext_t *mc));
 
 /* for memory shadowing checks */
 bool
@@ -291,4 +292,6 @@ int
 os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name);
 #endif
 
+syscall_info_t *
+get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt);
 #endif /* _SYSCALL_OS_H_ */

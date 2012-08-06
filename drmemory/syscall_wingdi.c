@@ -31,6 +31,7 @@
 #include "readwrite.h"
 #include "shadow.h"
 #include <stddef.h> /* offsetof */
+#include "handlecheck.h"
 
 /* for NtGdi* syscalls */
 #include <wingdi.h> /* usually from windows.h; required by winddi.h + ENUMLOGFONTEXDVW */
@@ -109,12 +110,12 @@ static int sysnum_UserTrackMouseEvent = -1;
 static int sysnum_UserCreateWindowStation = -1;
 static int sysnum_UserLoadKeyboardLayoutEx = -1;
 
-/* used for GDI checks */
+/* used for GDI/Handle checks */
 static int sysnum_UserGetDC = -1;
+static int sysnum_UserReleaseDC = -1;
 static int sysnum_UserGetDCEx = -1;
 static int sysnum_UserGetWindowDC = -1;
 static int sysnum_UserBeginPaint = -1;
-static int sysnum_UserReleaseDC = -1;
 static int sysnum_UserEndPaint = -1;
 
 /* forward decl so "extern" */
@@ -797,12 +798,15 @@ static int sysnum_GdiDoPalette = -1;
 static int sysnum_GdiExtTextOutW = -1;
 static int sysnum_GdiOpenDCW = -1;
 
-/* used for GDI checks */
+/* used for GDI/Handle checks */
 static int sysnum_GdiGetDCforBitmap = -1;
 static int sysnum_GdiDdGetDC = -1;
 static int sysnum_GdiCreateMetafileDC = -1;
+static int sysnum_GdiCreateBitmap = -1;
 static int sysnum_GdiCreateCompatibleDC = -1;
 static int sysnum_GdiDeleteObjectApp = -1;
+static int sysnum_GdiCreateCompatibleBitmap = -1;
+static int sysnum_GdiCreatePen = -1;
 
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
@@ -1040,7 +1044,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiSelectBitmap", OK|SYSINFO_RET_ZERO_FAIL, 8, },
     {0,"NtGdiSelectFont", OK|SYSINFO_RET_ZERO_FAIL, 8, },
     {0,"NtGdiExtSelectClipRgn", OK, 12, },
-    {0,"NtGdiCreatePen", OK|SYSINFO_RET_ZERO_FAIL, 16, },
+    {0,"NtGdiCreatePen", OK|SYSINFO_RET_ZERO_FAIL, 16, {{0,},}, &sysnum_GdiCreatePen},
     {0,"NtGdiBitBlt", OK, 44, },
     {0,"NtGdiTileBitBlt", OK, 28, {{1,sizeof(RECTL),R,}, {3,sizeof(RECTL),R,}, {4,sizeof(POINTL),R,}, }},
     {0,"NtGdiTransparentBlt", OK, 44, },
@@ -1055,7 +1059,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiPolyPatBlt", OK, 20, {{2,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(POLYPATBLT)}, }},
     {0,"NtGdiUnrealizeObject", OK, 4, },
     {0,"NtGdiGetStockObject", OK, 4, },
-    {0,"NtGdiCreateCompatibleBitmap", OK|SYSINFO_RET_ZERO_FAIL, 12, },
+    {0,"NtGdiCreateCompatibleBitmap", OK|SYSINFO_RET_ZERO_FAIL, 12, {{0,}, }, &sysnum_GdiCreateCompatibleBitmap},
     {0,"NtGdiCreateBitmapFromDxSurface", OK|SYSINFO_RET_ZERO_FAIL, 20, },
     {0,"NtGdiBeginGdiRendering", OK, 8, },
     {0,"NtGdiEndGdiRendering", OK, 12, {{2,sizeof(BOOL),W,}, }},
@@ -1066,7 +1070,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetDeviceCapsAll", OK, 8, {{1,sizeof(DEVCAPS),W,}, }},
     {0,"NtGdiStretchBlt", OK, 48, },
     {0,"NtGdiSetBrushOrg", OK, 16, {{3,sizeof(POINT),W,}, }},
-    {0,"NtGdiCreateBitmap", OK|SYSINFO_RET_ZERO_FAIL, 20, {{4,sizeof(BYTE),R,}, }},
+    {0,"NtGdiCreateBitmap", OK|SYSINFO_RET_ZERO_FAIL, 20, {{4,sizeof(BYTE),R,}, }, &sysnum_GdiCreateBitmap},
     {0,"NtGdiCreateHalftonePalette", OK, 4, },
     {0,"NtGdiRestoreDC", OK, 8, },
     {0,"NtGdiExcludeClipRect", OK, 20, },
@@ -2462,6 +2466,34 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     return true;
 }
 
+/***************************************************************************
+ * handle check related system call routines
+ */
+static void
+syscall_check_gdi_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
+                         dr_mcontext_t *mc)
+{
+    HANDLE handle;
+    if (sysnum == sysnum_GdiCreatePen ||
+        sysnum == sysnum_UserGetDC ||
+        sysnum == sysnum_GdiCreateCompatibleDC ||
+        sysnum == sysnum_GdiCreateCompatibleBitmap ||
+        sysnum == sysnum_GdiCreateBitmap) {
+        /* handle creation */
+        /* add more system calls handling here */
+        handle = (HANDLE) dr_syscall_get_result(drcontext);
+        handlecheck_create_handle(drcontext, handle, HANDLE_TYPE_GDI,
+                                  sysnum, NULL, mc);
+    } else if (sysnum == sysnum_GdiDeleteObjectApp ||
+               sysnum == sysnum_UserReleaseDC) {
+        /* handle delete */
+        /* add more system calls handling here */
+        handle = (HANDLE) pt->sysarg[0];
+        handlecheck_delete_handle(drcontext, handle, HANDLE_TYPE_GDI,
+                                  sysnum, NULL, mc);
+    }
+}
+
 bool
 wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                        dr_mcontext_t *mc)
@@ -2469,9 +2501,10 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     /* handlers here do not check for success so we check up front */
     if (!pre) {
         syscall_info_t *sysinfo = syscall_lookup(sysnum);
-        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext))) {
+        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
             return true;
-        }
+        else if (options.check_handle_leaks)
+            syscall_check_gdi_handle(drcontext, pt, sysnum, mc);
     }
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);

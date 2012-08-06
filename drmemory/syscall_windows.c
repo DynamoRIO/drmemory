@@ -28,6 +28,7 @@
 #include "readwrite.h"
 #include "frontend.h"
 #include <stddef.h> /* offsetof */
+#include "handlecheck.h"
 
 #include "../wininc/ndk_dbgktypes.h"
 #include "../wininc/ndk_iotypes.h"
@@ -159,6 +160,9 @@ static int sysnum_QuerySystemInformation = -1;
 static int sysnum_SetSystemInformation = -1;
 static int sysnum_TerminateProcess = -1;
 
+/* for handle checks */
+static int sysnum_NtClose = -1;
+
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
  * FIXME i#99: my windows syscall data is missing 3 types of information:
@@ -232,7 +236,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCancelIoFile", OK, 8, {{1,sizeof(IO_STATUS_BLOCK),W}, }},
     {0,"NtCancelTimer", OK, 8, {{1,sizeof(BOOLEAN),W}, }},
     {0,"NtClearEvent", OK, 4, },
-    {0,"NtClose", OK, 4, },
+    {0,"NtClose", OK, 4, {{0,}}, &sysnum_NtClose},
     {0,"NtCloseObjectAuditAlarm", OK, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,0,IB}, }},
     {0,"NtCompactKeys", OK, 8, },
     {0,"NtCompareTokens", OK, 12, {{2,sizeof(BOOLEAN),W}, }},
@@ -840,6 +844,23 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     }
 }
 
+/***************************************************************************
+ * handle check related system call routines
+ */
+static void
+syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
+                            dr_mcontext_t *mc)
+{
+    if (sysnum == sysnum_NtClose) {
+        /* handle close */
+        handlecheck_delete_handle(drcontext, (HANDLE) pt->sysarg[0],
+                                  HANDLE_TYPE_KERNEL, sysnum, NULL, mc);
+    } else {
+        /* handle creation */
+        /* add more system calls handling here */
+    }
+}
+
 /* uses tables and other sources not available to sysnum_from_name() */
 int
 os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
@@ -926,11 +947,16 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
 
     hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
     syscall_wingdi_init(drcontext, ntdll_base, &info);
+    if (options.check_handle_leaks)
+        handlecheck_init();
 }
 
 void
 syscall_os_exit(void)
 {
+    /* must be called before systable delete */
+    if (options.check_handle_leaks)
+        handlecheck_exit();
     hashtable_delete(&systable);
     hashtable_delete(&sysnum_table);
 #ifdef STATISTICS
@@ -1061,7 +1087,8 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
 }
 
 void
-os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
+                       dr_mcontext_t *mc)
 {
     /* FIXME PR 456501: watch CreateProcess, CreateProcessEx, and
      * CreateUserProcess.  Convert process handle to pid and section
@@ -1080,6 +1107,12 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
             else
                 WARN("WARNING: unable to determine child thread it\n");
         }
+    }
+    /* for handle leak checks */
+    if (options.check_handle_leaks) {
+        syscall_info_t *info = get_sysinfo(&sysnum, pt);
+        if (os_syscall_succeeded(sysnum, info, dr_syscall_get_result(drcontext)))
+            syscall_check_kernel_handle(drcontext, pt, sysnum, mc);
     }
 }
 

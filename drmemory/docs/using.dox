@@ -765,6 +765,19 @@ versions of Windows, while others are more serious.
 Detection of these errors can be disabled with the \p -no_check_gdi runtime
 option.
 
+Dr. Memory also identifies common errors of handle usage in Windows and
+reports these errors as warnings. For Example:
+
+\code
+Error #1: WARNING: Handle usage error: GDI Handle 0xfd011e11 is created but not closed:
+# 0 system call NtGdiCreateCompatibleDC
+# 1 test_gdi_handles                                  [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:36]
+# 2 main                                              [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:57]
+\endcode
+
+Detection of these errors can be disabled with the \p -no_check_handle runtime option.
+
+
 ****************************************************************************
 ****************************************************************************
 */
