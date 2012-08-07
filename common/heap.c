@@ -216,16 +216,65 @@ get_libc_base(void)
  */
 
 #ifdef WINDOWS
+# ifdef X64
+/* The actual convert from rtl_process_heap_entry_t to PROCESS_HEAP_ENTRY
+ * is something like below:
+ *   heap_entry->lpData = rtl_heap_entry->lpData;
+ *   heap_entry->cbData = (DWORD)rtl_heap_entry->cbData;
+ *   heap_entry->cbOverhead = rtl_heap_entry->cbOverhead;
+ *   heap_entry->iRegionIndex = rtl_heap_entry->iRegionIndex;
+ *   if (!TEST(rtl_heap_entry->flags, 1)) {
+ *       // jmp 7fe`fda6321f
+ *       ...
+ *   } else if (TEST(rtl_heap_entry->flags, 2)) {
+ *       // jmp 7fe`fda63263 
+ *       if (TEST(rtl_heap_entry->flags, 0x100)) {
+ *           heap_entry->wFlags = 0;
+ *       } else {
+ *           heap_entry->wFlags = 2;
+ *           heap_entry->Region = NULL;
+ *       }
+ *   } else {
+ *       heap_entry->wFlags = 1;
+ *       heap_entry.Region = rtl_heap_entry.Region;
+ *   }
+ * the major different between the two is the size of cbData,
+ * the rtl_process_heap_entry_t.flags doe not exactsly match with
+ * PROCESS_HEAP_ENTRY.wFlags, but close enough since we only care
+ * about 1 (== PROCESS_HEAP_REGION).
+ */
+typedef struct _rtl_process_heap_entry_t {
+    PVOID lpData;
+    reg_t cbData;
+    BYTE cbOverhead;
+    BYTE iRegionIndex;
+    WORD wFlags;
+    union {
+        struct {
+            HANDLE hMem;
+            DWORD dwReserved[ 3 ];
+        } Block;
+        struct {
+            DWORD dwCommittedSize;
+            DWORD dwUnCommittedSize;
+            LPVOID lpFirstBlock;
+            LPVOID lpLastBlock;
+        } Region;
+    } DUMMYUNIONNAME;
+} rtl_process_heap_entry_t;
+# else
+typedef PROCESS_HEAP_ENTRY rtl_process_heap_entry_t;
+# endif
 GET_NTDLL(RtlLockHeap, (IN HANDLE Heap));
 GET_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
 GET_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
                                OUT HANDLE *Heaps));
 GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
-                        OUT PROCESS_HEAP_ENTRY *Info));
+                        OUT rtl_process_heap_entry_t *Info));
 GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
                         IN ULONG flags,
                         IN PVOID ptr));
-#endif
+#endif /* WINDOWS */
 
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena
  * and the "cb_chunk" callback for each malloc block.
@@ -241,7 +290,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
      */
     uint cap_heaps = 10;
     byte **heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
-    PROCESS_HEAP_ENTRY heap_info;
+    rtl_process_heap_entry_t heap_info;
     uint i;
     uint num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
     LOG(2, "walking %d heaps\n", num_heaps);
