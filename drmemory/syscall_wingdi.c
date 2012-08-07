@@ -2456,9 +2456,6 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                      (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
                      mc, "DRIVER_INFO_2W");
-    } else if (options.check_gdi) {
-        HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-        gdicheck_dc_alloc(hdc, true/*Create not Get*/, false, sysnum, mc);
     }
     check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                  (byte *) pt->sysarg[num_pump], sizeof(PUMDHPDEV *),
@@ -2466,45 +2463,15 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     return true;
 }
 
-/***************************************************************************
- * handle check related system call routines
- */
-static void
-syscall_check_gdi_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
-                         dr_mcontext_t *mc)
-{
-    HANDLE handle;
-    if (sysnum == sysnum_GdiCreatePen ||
-        sysnum == sysnum_UserGetDC ||
-        sysnum == sysnum_GdiCreateCompatibleDC ||
-        sysnum == sysnum_GdiCreateCompatibleBitmap ||
-        sysnum == sysnum_GdiCreateBitmap) {
-        /* handle creation */
-        /* add more system calls handling here */
-        handle = (HANDLE) dr_syscall_get_result(drcontext);
-        handlecheck_create_handle(drcontext, handle, HANDLE_TYPE_GDI,
-                                  sysnum, NULL, mc);
-    } else if (sysnum == sysnum_GdiDeleteObjectApp ||
-               sysnum == sysnum_UserReleaseDC) {
-        /* handle delete */
-        /* add more system calls handling here */
-        handle = (HANDLE) pt->sysarg[0];
-        handlecheck_delete_handle(drcontext, handle, HANDLE_TYPE_GDI,
-                                  sysnum, NULL, mc);
-    }
-}
-
 bool
-wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                       dr_mcontext_t *mc)
+wingdi_shadow_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
+                              dr_mcontext_t *mc)
 {
     /* handlers here do not check for success so we check up front */
     if (!pre) {
         syscall_info_t *sysinfo = syscall_lookup(sysnum);
         if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
             return true;
-        else if (options.check_handle_leaks)
-            syscall_check_gdi_handle(drcontext, pt, sysnum, mc);
     }
     if (sysnum == sysnum_UserSystemParametersInfo) {
         return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
@@ -2564,46 +2531,97 @@ wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     } else if (sysnum == sysnum_GdiOpenDCW) {
         return handle_GdiOpenDCW(pre, drcontext, sysnum, pt, mc);
     } 
+    return true; /* execute syscall */
+}
 
-    /* Syscalls that are only examined for GDI checks (there are some GDI
-     * checks above as well in syscalls that also need other processing)
-     */
-    if (options.check_gdi) {
-        if (sysnum == sysnum_UserGetDC || sysnum == sysnum_UserGetDCEx ||
-            sysnum == sysnum_UserGetWindowDC || sysnum == sysnum_UserBeginPaint ||
-            sysnum == sysnum_GdiGetDCforBitmap || sysnum == sysnum_GdiDdGetDC) {
-            if (!pre) {
-                HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-                gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
-                if (sysnum == sysnum_UserBeginPaint) {
-                    /* we store the hdc for access in EndPaint */
-                    pt->paintDC = hdc;
-                }
+/***************************************************************************
+ * General (non-shadow/memory checking) system call handling
+ */
+
+/* Caller should call regardless of whether syscall was successful */
+static void
+syscall_check_gdi_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
+                         dr_mcontext_t *mc)
+{
+    HANDLE handle;
+    if (sysnum == sysnum_GdiCreatePen ||
+        sysnum == sysnum_UserGetDC ||
+        sysnum == sysnum_GdiCreateCompatibleDC ||
+        sysnum == sysnum_GdiCreateCompatibleBitmap ||
+        sysnum == sysnum_GdiCreateBitmap) {
+        /* handle creation */
+        /* add more system calls handling here */
+        handle = (HANDLE) dr_syscall_get_result(drcontext);
+        handlecheck_create_handle(drcontext, handle, HANDLE_TYPE_GDI,
+                                  sysnum, NULL, mc);
+    } else if (sysnum == sysnum_GdiDeleteObjectApp ||
+               sysnum == sysnum_UserReleaseDC) {
+        /* handle delete */
+        /* add more system calls handling here */
+        handle = (HANDLE) pt->sysarg[0];
+        handlecheck_delete_handle(drcontext, handle, HANDLE_TYPE_GDI,
+                                  sysnum, NULL, mc);
+    }
+}
+
+/* Caller should check for success and only call if syscall is successful (for !pre) */
+static void
+syscall_check_gdi(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
+                  dr_mcontext_t *mc)
+{
+    ASSERT(options.check_gdi, "shouldn't be called");
+    if (sysnum == sysnum_UserGetDC || sysnum == sysnum_UserGetDCEx ||
+        sysnum == sysnum_UserGetWindowDC || sysnum == sysnum_UserBeginPaint ||
+        sysnum == sysnum_GdiGetDCforBitmap || sysnum == sysnum_GdiDdGetDC) {
+        if (!pre) {
+            HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+            gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
+            if (sysnum == sysnum_UserBeginPaint) {
+                /* we store the hdc for access in EndPaint */
+                pt->paintDC = hdc;
             }
-        } else if (sysnum == sysnum_GdiCreateMetafileDC ||
-                   sysnum == sysnum_GdiCreateCompatibleDC) {
-            if (!pre) {
-                HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-                gdicheck_dc_alloc(hdc, true/*Create not Get*/,
-                                  (sysnum == sysnum_GdiCreateCompatibleDC &&
-                                   pt->sysarg[0] == 0),
-                                  sysnum, mc);
-            }
-        } else if (sysnum == sysnum_UserReleaseDC || sysnum == sysnum_UserEndPaint) {
-            if (pre) {
-                HDC hdc;
-                if (sysnum == sysnum_UserReleaseDC)
-                    hdc = (HDC)pt->sysarg[0];
-                else {
-                    hdc = pt->paintDC;
-                    pt->paintDC = NULL;
-                }
-                gdicheck_dc_free(hdc, false/*Get not Create*/, sysnum, mc);
-            }
-        } else if (sysnum == sysnum_GdiDeleteObjectApp) {
-            if (pre)
-                gdicheck_obj_free((HANDLE)pt->sysarg[0], sysnum, mc);
         }
+    } else if (sysnum == sysnum_GdiCreateMetafileDC ||
+               sysnum == sysnum_GdiCreateCompatibleDC ||
+               sysnum == sysnum_GdiOpenDCW) {
+        if (!pre) {
+            HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+            gdicheck_dc_alloc(hdc, true/*Create not Get*/,
+                              (sysnum == sysnum_GdiCreateCompatibleDC &&
+                               pt->sysarg[0] == 0),
+                              sysnum, mc);
+        }
+    } else if (sysnum == sysnum_UserReleaseDC || sysnum == sysnum_UserEndPaint) {
+        if (pre) {
+            HDC hdc;
+            if (sysnum == sysnum_UserReleaseDC)
+                hdc = (HDC)pt->sysarg[0];
+            else {
+                hdc = pt->paintDC;
+                pt->paintDC = NULL;
+            }
+            gdicheck_dc_free(hdc, false/*Get not Create*/, sysnum, mc);
+        }
+    } else if (sysnum == sysnum_GdiDeleteObjectApp) {
+        if (pre)
+            gdicheck_obj_free((HANDLE)pt->sysarg[0], sysnum, mc);
+    }
+}
+
+bool
+wingdi_shared_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
+                              dr_mcontext_t *mc)
+{
+    /* handlers here do not check for success so we check up front */
+    if (!pre) {
+        syscall_info_t *sysinfo = syscall_lookup(sysnum);
+        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
+            return true;
+        else if (options.check_handle_leaks)
+            syscall_check_gdi_handle(drcontext, pt, sysnum, mc);
+    }
+    if (options.check_gdi) {
+        syscall_check_gdi(pre, drcontext, sysnum, pt, mc);
     }
 
     return true; /* execute syscall */

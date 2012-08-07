@@ -41,8 +41,12 @@
 #include "../wininc/ntalpctyp.h"
 
 extern bool
-wingdi_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                       dr_mcontext_t *mc);
+wingdi_shared_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
+                              dr_mcontext_t *mc);
+
+extern bool
+wingdi_shadow_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
+                              dr_mcontext_t *mc);
 
 extern bool
 wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
@@ -53,6 +57,10 @@ bool
 handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
                 byte *start, size_t size, uint arg_flags, wchar_t *safe,
                 bool check_addr);
+
+static void
+syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
+                            dr_mcontext_t *mc);
 
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
@@ -844,23 +852,6 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     }
 }
 
-/***************************************************************************
- * handle check related system call routines
- */
-static void
-syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
-                            dr_mcontext_t *mc)
-{
-    if (sysnum == sysnum_NtClose) {
-        /* handle close */
-        handlecheck_delete_handle(drcontext, (HANDLE) pt->sysarg[0],
-                                  HANDLE_TYPE_KERNEL, sysnum, NULL, mc);
-    } else {
-        /* handle creation */
-        /* add more system calls handling here */
-    }
-}
-
 /* uses tables and other sources not available to sysnum_from_name() */
 int
 os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
@@ -1057,7 +1048,8 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 }
 
 bool
-os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
+                      dr_mcontext_t *mc)
 {
     /* i#544: give child processes a chance for clean exit for leak scan
      * and option summary and symbol and code cache generation.
@@ -1083,7 +1075,7 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
              */
         }
     }
-    return true; /* execute syscall */
+    return wingdi_shared_process_syscall(true/*pre*/, drcontext, sysnum, pt, mc);
 }
 
 void
@@ -1114,6 +1106,7 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
         if (os_syscall_succeeded(sysnum, info, dr_syscall_get_result(drcontext)))
             syscall_check_kernel_handle(drcontext, pt, sysnum, mc);
     }
+    wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc);
 }
 
 bool
@@ -1148,6 +1141,24 @@ os_syscall_get_name(uint num)
     /* not bothering to keep data outside of table */
     return NULL;
 #endif
+}
+
+/***************************************************************************
+ * handle check related system call routines
+ */
+
+static void
+syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
+                            dr_mcontext_t *mc)
+{
+    if (sysnum == sysnum_NtClose) {
+        /* handle close */
+        handlecheck_delete_handle(drcontext, (HANDLE) pt->sysarg[0],
+                                  HANDLE_TYPE_KERNEL, sysnum, NULL, mc);
+    } else {
+        /* handle creation */
+        /* add more system calls handling here */
+    }
 }
 
 /***************************************************************************
@@ -2616,7 +2627,7 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     else if (sysnum == sysnum_QuerySystemInformation)
         return handle_QuerySystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
     else
-        return wingdi_process_syscall(true/*pre*/, drcontext, sysnum, pt, &mc);
+        return wingdi_shadow_process_syscall(true/*pre*/, drcontext, sysnum, pt, &mc);
 }
 
 #ifdef DEBUG
@@ -2700,7 +2711,7 @@ os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     else if (sysnum == sysnum_QuerySystemInformation)
         handle_QuerySystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
     else
-        wingdi_process_syscall(false/*!pre*/, drcontext, sysnum, pt, &mc);
+        wingdi_shadow_process_syscall(false/*!pre*/, drcontext, sysnum, pt, &mc);
     DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
 }
 

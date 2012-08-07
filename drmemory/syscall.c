@@ -1032,21 +1032,27 @@ event_pre_syscall(void *drcontext, int sysnum)
         LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
     }
 
+    /* acquire expanded sysnum for os_shared_pre_syscall() in addition to
+     * shadow checks
+     */
+    sysinfo = get_sysinfo(&sysnum, pt);
+    DOLOG(SYSCALL_VERBOSE, {
+        if (sysinfo != NULL && SYSNUM_HAS_SECONDARY(sysnum)) {
+            LOG(SYSCALL_VERBOSE, "system call #"PIFX"."PIFX" %s\n",
+                SYSNUM_PRIMARY(sysnum), SYSNUM_SECONDARY(sysnum),
+                get_syscall_name(sysnum));
+        }
+    });
+
     /* give os-specific-code chance to do non-shadow processing */
-    res = os_shared_pre_syscall(drcontext, pt, sysnum);
+    res = os_shared_pre_syscall(drcontext, pt, sysnum _IF_WINDOWS(&mc));
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
 
     /* FIXME: i#750 need enable system call parameter checks in pattern mode. */
     if (options.shadowing) {
         bool known = false;
-        sysinfo = get_sysinfo(&sysnum, pt);
         if (sysinfo != NULL) {
-            if (SYSNUM_HAS_SECONDARY(sysnum)) {
-                LOG(SYSCALL_VERBOSE, "system call #"PIFX"."PIFX" %s\n",
-                    SYSNUM_PRIMARY(sysnum), SYSNUM_SECONDARY(sysnum),
-                    get_syscall_name(sysnum));
-            }
             known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
             process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
             res = os_shadow_pre_syscall(drcontext, pt, sysnum) && res;

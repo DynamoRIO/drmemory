@@ -250,7 +250,8 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
 
 /* for tasks unrelated to shadowing that are common to all tools */
 bool
-os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
+os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum
+                      _IF_WINDOWS(dr_mcontext_t *mc));
 
 void
 os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum
