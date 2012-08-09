@@ -260,7 +260,7 @@ typedef struct _rtl_process_heap_entry_t {
             LPVOID lpFirstBlock;
             LPVOID lpLastBlock;
         } Region;
-    } DUMMYUNIONNAME;
+    };
 } rtl_process_heap_entry_t;
 # else
 typedef PROCESS_HEAP_ENTRY rtl_process_heap_entry_t;
