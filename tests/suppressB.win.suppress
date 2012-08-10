@@ -26,7 +26,7 @@
 UNINITIALIZED READ
 name=not in a module
 <not in a module>
-suppress.exe!test
+suppress.exe!non_module_test
 
 UNINITIALIZED READ
 name=syscall
@@ -39,7 +39,7 @@ suppress.exe!syscall_test
 UNINITIALIZED READ
 name=not in a module
 *
-suppress.exe!run_some_again
+suppress.exe!non_module_test
 
 UNINITIALIZED READ
 name=syscall

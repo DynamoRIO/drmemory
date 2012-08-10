@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -26,7 +26,7 @@
 UNINITIALIZED READ
 name=not in a module
 <not in a module>
-suppress!test
+suppress!non_module_test
 
 UNINITIALIZED READ
 name=syscall

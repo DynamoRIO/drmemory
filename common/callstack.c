@@ -849,9 +849,15 @@ is_retaddr(byte *pc)
         STATS_INC(cstack_is_retaddr_backdecode);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
             match = (*(pc - 5) == OP_CALL_DIR ||
-                     /* indirect through reg: 0xff /2 (mod==0) */
-                     (*(pc - 2) == OP_CALL_IND && ((*(pc - 1) >> 3) == 0x02) &&
-                      ((*(pc - 1) & 0x3) != 0x5)) ||
+                     (*(pc - 2) == OP_CALL_IND &&
+                      /* indirect through mem: 0xff /2 (mod==0) 
+                       *   => top 5 bits are 0x02, and rule out disp32 (rm==0x5)
+                       */
+                      ((((*(pc - 1) >> 3) == 0x02) && ((*(pc - 1) & 0x3) != 0x5)) ||
+                       /* indirect through reg: 0xff /2 (mod==3) 
+                        *   => top 5 bits are 0xd0 (0x3 << 3 | 0x2)
+                        */
+                       ((*(pc - 1) & 0xf8) == 0xd0))) ||
                      /* indirect through mem: 0xff /2 + disp8 (mod==1) */
                      (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
                      /* indirect through mem: 0xff /2 + disp32 (mod==2) */
@@ -1091,6 +1097,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             LOG(4, "truncating callstack: can't read "PFX"\n", pc);
             break;
         }
+        LOG(4, "print_callstack: pc="PFX" => FP="PFX", RA="PFX"\n",
+            pc, appdata.next_fp, appdata.retaddr);
         /* if we scanned and took the top dword as retaddr, don't use beyond-TOS as FP */
         if ((reg_t)pc < mc->xsp)
             appdata.next_fp = NULL;
@@ -1143,7 +1151,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  * other purposes but it happens to point to higher on the stack.
                  * Start over w/ top of stack to avoid skipping a frame (i#521).
                  */
-                LOG(4, "find_next_fp b/c starting w/ non-fp ebp\n");
+                LOG(4, "find_next_fp "PFX" b/c starting w/ non-fp ebp "PFX"\n",
+                    mc->xsp, mc->xbp);
                 pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
                                                  &custom_retaddr);
                 scanned = true;
@@ -1205,7 +1214,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  (scanned || TEST(FP_CHECK_RETADDR_PRE_SCAN, op_fp_flags)) &&
                  !is_retaddr(appdata.retaddr))) {
                 if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, op_fp_flags)) {
-                    LOG(4, "find_next_fp b/c hit bad non-zero fp\n");
+                    LOG(4, "find_next_fp "PFX" b/c hit bad non-zero fp "PFX"\n",
+                        ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
                     pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
                                                      false/*!top*/, NULL);
                     scanned = true;
