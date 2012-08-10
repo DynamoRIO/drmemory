@@ -69,6 +69,11 @@ typedef enum {
     HEAP_ROUTINE_NEW_ARRAY,
     HEAP_ROUTINE_DELETE,
     HEAP_ROUTINE_DELETE_ARRAY,
+    /* Malloc replacement needs to distinguish these */
+    HEAP_ROUTINE_NEW_NOTHROW,
+    HEAP_ROUTINE_NEW_ARRAY_NOTHROW,
+    HEAP_ROUTINE_DELETE_NOTHROW,
+    HEAP_ROUTINE_DELETE_ARRAY_NOTHROW,
     /* Group label for routines that might read heap headers but
      * need no explicit argument modification
      */
@@ -122,6 +127,7 @@ typedef enum {
     RTL_ROUTINE_LAST = RTL_ROUTINE_SHUTDOWN,
 #endif
     HEAP_ROUTINE_COUNT,
+    HEAP_ROUTINE_INVALID,
 } routine_type_t;
 
 #ifdef WINDOWS
@@ -180,13 +186,94 @@ is_calloc_routine(routine_type_t type)
 static inline bool
 is_new_routine(routine_type_t type)
 {
-    return (type == HEAP_ROUTINE_NEW || type == HEAP_ROUTINE_NEW_ARRAY);
+    return (type == HEAP_ROUTINE_NEW || type == HEAP_ROUTINE_NEW_ARRAY ||
+            type == HEAP_ROUTINE_NEW_NOTHROW || type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW);
 }
 
 static inline bool
 is_delete_routine(routine_type_t type)
 {
-    return (type == HEAP_ROUTINE_DELETE || type == HEAP_ROUTINE_DELETE_ARRAY);
+    return (type == HEAP_ROUTINE_DELETE || type == HEAP_ROUTINE_DELETE_ARRAY ||
+            type == HEAP_ROUTINE_DELETE_NOTHROW ||
+            type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW);
+}
+
+static inline bool
+is_operator_nothrow_routine(routine_type_t type)
+{
+    return (type == HEAP_ROUTINE_NEW_NOTHROW ||
+            type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW ||
+            type == HEAP_ROUTINE_DELETE_NOTHROW ||
+            type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW);
+}
+
+static inline routine_type_t
+convert_operator_to_nothrow(routine_type_t type)
+{
+    switch (type) {
+    case HEAP_ROUTINE_NEW: return HEAP_ROUTINE_NEW_NOTHROW;
+    case HEAP_ROUTINE_NEW_ARRAY: return HEAP_ROUTINE_NEW_ARRAY_NOTHROW;
+    case HEAP_ROUTINE_DELETE: return HEAP_ROUTINE_DELETE_NOTHROW;
+    case HEAP_ROUTINE_DELETE_ARRAY: return HEAP_ROUTINE_DELETE_ARRAY_NOTHROW;
+    default: ASSERT(false, "not an (non-nothrow) operator type");
+    }
+    return type; /* fail gracefully */
+}
+
+/***************************************************************************
+ * Allocation types
+ */
+
+enum {
+    /* These are to distinguish whether from malloc, new, or new[] (i#123).
+     * 4 states using MALLOC_RESERVED_3 and MALLOC_RESERVED_4.
+     * XXX: I tried also distinguishing HeapAlloc/RtlAllocateHeap
+     * but I hit a lot of false positives w/ even a small test app
+     * where free() would free: did not investigate.
+     *
+     * XXX: we could report mismatches on operator regular vs nothrow
+     * but it doesn't seem worth it.
+     */
+    /* N.B.: MALLOC_RESERVED_[1-2] and MALLOC_RESERVED_[5-8] are defined in
+     * alloc.c for wrapping and alloc_replace.c for replacing
+     */
+    MALLOC_ALLOCATOR_FLAGS     = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+    MALLOC_ALLOCATOR_UNKNOWN   = 0x0,
+    MALLOC_ALLOCATOR_MALLOC    = MALLOC_RESERVED_3,
+    MALLOC_ALLOCATOR_NEW       = MALLOC_RESERVED_4,
+    MALLOC_ALLOCATOR_NEW_ARRAY = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+};
+
+static inline const char *
+malloc_alloc_type_name(uint flags)
+{
+    if (flags == MALLOC_ALLOCATOR_NEW) /* yes, == not TEST */
+        return "operator new";
+    else if (flags == MALLOC_ALLOCATOR_NEW_ARRAY)
+        return "operator new[]";
+    else {
+        /* We could store the actual name ("HeapAlloc", "calloc", _malloc_dbg",
+         * "memalign", etc.) but that would cost too much memory to keep per
+         * malloc, and this should be clear enough for most users.
+         */
+        return "malloc";
+    }
+}
+
+static inline const char *
+malloc_free_type_name(uint flags)
+{
+    if (flags == MALLOC_ALLOCATOR_NEW) /* yes, == not TEST */
+        return "operator delete";
+    else if (flags == MALLOC_ALLOCATOR_NEW_ARRAY)
+        return "operator delete[]";
+    else {
+        /* We could store the actual name ("HeapAlloc", "calloc", _malloc_dbg",
+         * "memalign", etc.) but that would cost too much memory to keep per
+         * malloc, and this should be clear enough for most users.
+         */
+        return "free";
+    }
 }
 
 /***************************************************************************

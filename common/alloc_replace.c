@@ -111,6 +111,7 @@ static const uint free_list_sizes[] = {
 };
 #define NUM_FREE_LISTS (sizeof(free_list_sizes)/sizeof(free_list_sizes[0]))
 
+/* Values stored in chunk header flags */
 enum {
     CHUNK_FREED       = MALLOC_RESERVED_1,
     CHUNK_MMAP        = MALLOC_RESERVED_2,
@@ -356,6 +357,7 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(u
         LOG(2, "os_large_alloc FAILED with return value "PFX"\n", map);
         return NULL;
     }
+    LOG(3, "%s commit="PIFX" => "PFX"\n", __FUNCTION__, commit_size, map);
     return map;
 #else
     byte *loc = NULL;
@@ -368,6 +370,8 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(u
         virtual_free(loc);
         return NULL;
     }
+    LOG(3, "%s commit="PIFX" reserve="PIFX" prot="PIFX" => "PFX"\n",
+        __FUNCTION__, commit_size, reserve_size, prot, loc);
     return loc;
 #endif
 }
@@ -399,8 +403,10 @@ os_large_free(byte *map, size_t map_size)
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
     success = (int) raw_syscall(SYS_munmap, 2, (ptr_int_t)map, map_size);
+    LOG(3, "%s "PFX" size="PIFX" => %d\n", map, map_size, success);
     return (success == 0);
 #else
+    LOG(3, "%s "PFX" size="PIFX"\n", map, map_size);
     return virtual_free(map);
 #endif
 }
@@ -775,11 +781,13 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 
 static byte *
 replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, bool zeroed,
-                     bool realloc, void *drcontext, dr_mcontext_t *mc, app_pc caller)
+                     bool realloc, void *drcontext, dr_mcontext_t *mc, app_pc caller,
+                     uint alloc_type)
 {
     heapsz_t aligned_size;
     byte *res = NULL;
     chunk_header_t *head = NULL;
+    ASSERT((alloc_type & ~(MALLOC_ALLOCATOR_FLAGS)) == 0, "invalid type flags");
 
     if (request_size > UINT_MAX ||
         /* catch overflow in chunk or mmap alignment: no need to support really
@@ -816,7 +824,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
         LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
         if (map == NULL) {
             client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
-            return NULL;
+            goto replace_alloc_common_done;
         }
         ASSERT(!alloc_ops.external_headers, "NYI");
         head = (chunk_header_t *) (map + alloc_ops.redzone_size +
@@ -838,7 +846,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
             arena = arena_extend(arena, add_size);
             if (arena == NULL) {
                 client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
-                return NULL;
+                goto replace_alloc_common_done;
             }
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
@@ -856,10 +864,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     /* head->alloc_size, head->magic, and head->flags (except type) are already set */
     ASSERT(head->magic == HEADER_MAGIC, "corrupted header");
     head->request_size = request_size;
-    /* FIXME i#794: need to pass in TLS to get type since still wrapping.
-     * XXX i#882: replace operators.
-     * Need to move the MALLOC_ALLOCATOR_* defines to alloc_private.h.
-     */
+    head->flags |= alloc_type;
     res = ptr_from_header(head);
     LOG(2, "\treplace_alloc_common request=%d, alloc=%d => "PFX"\n",
         head->request_size, head->alloc_size, res);
@@ -874,16 +879,32 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     else
         STATS_INC(num_mallocs);
 
+ replace_alloc_common_done:
     if (synch)
         app_heap_unlock(drcontext, arena->lock);
 
     return res;
 }
 
+static void
+check_type_match(void *ptr, chunk_header_t *head, uint free_type,
+                 dr_mcontext_t *mc, app_pc caller)
+{
+    uint alloc_type = (head->flags & MALLOC_ALLOCATOR_FLAGS);
+    ASSERT((free_type & ~(MALLOC_ALLOCATOR_FLAGS)) == 0, "invalid type flags");
+    if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
+        alloc_type != free_type) {
+        client_mismatched_heap(caller, (byte *)ptr, mc,
+                               malloc_alloc_type_name(alloc_type),
+                               malloc_free_type_name(free_type),
+                               head->user_data);
+    }
+}
+
 /* Up to caller to verify that ptr is inside arena */
 static bool
 replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontext,
-                    dr_mcontext_t *mc, app_pc caller)
+                    dr_mcontext_t *mc, app_pc caller, uint free_type)
 {
     chunk_header_t *head = header_from_ptr(ptr);
     free_header_t *cur;
@@ -907,8 +928,22 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
              * to delay pre-us frees.  If we do that we may need an
              * external table lock.
              */
+            /* We do not report mismatches on pre-us allocs: we never saw the alloc! */
             return true;
         } else {
+            /* try to report mismatches on common invalid ptr cases */
+            byte *p = (byte *) ptr;
+            /* try 4 bytes back, in case this is an array w/ size passed to delete */
+            head = header_from_ptr(p - sizeof(int));
+            if (is_live_alloc(p - sizeof(int), arena, head))
+                check_type_match(p - sizeof(int), head, free_type, mc, caller);
+            else {
+                /* try 4 bytes in, in case this is a non-array passed to delete[] */
+                head = header_from_ptr(p + sizeof(int));
+                if (is_live_alloc(p + sizeof(int), arena, head))
+                    check_type_match(p + sizeof(int), head, free_type, mc, caller);
+            }
+
             client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                     /* XXX: we might be replacing RtlHeapFree or
                                      * _free_dbg but it's not worth trying to
@@ -921,6 +956,8 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
 
     if (synch)
         app_heap_lock(drcontext, arena->lock);
+
+    check_type_match(ptr, head, free_type, mc, caller);
 
     if (!TEST(CHUNK_MMAP, head->flags))
         head->flags |= CHUNK_FREED;
@@ -985,6 +1022,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, void *drcontex
         byte *map = (byte *)ptr - alloc_ops.redzone_size - header_beyond_redzone;
         size_t map_size = head->alloc_size + alloc_ops.redzone_size*2 +
             header_beyond_redzone;
+        LOG(2, "\tlarge alloc %d freed => munmap @"PFX"\n", head->request_size, map);
         heap_region_remove(map, map + map_size, mc);
         if (!os_large_free(map, map_size))
             ASSERT(false, "munmap failed");
@@ -1008,14 +1046,16 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         if (allow_null) {
             client_handle_realloc_null(caller, mc);
             res = (void *) replace_alloc_common(arena, size, lock, zeroed, true/*realloc*/,
-                                                drcontext, mc, caller);
+                                                drcontext, mc, caller,
+                                                MALLOC_ALLOCATOR_MALLOC);
         } else {
             client_handle_alloc_failure(size, zeroed, true/*realloc*/, caller, mc);
             res = NULL;
         }
         return res;
     } else if (size == 0) {
-        replace_free_common(arena, ptr, lock, drcontext, mc, caller);
+        replace_free_common(arena, ptr, lock, drcontext, mc, caller,
+                            MALLOC_ALLOCATOR_MALLOC);
         return NULL;
     } else if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -1052,10 +1092,12 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size, lock, zeroed,
-                                            true/*realloc*/, drcontext, mc, caller);
+                                            true/*realloc*/, drcontext, mc, caller,
+                                            MALLOC_ALLOCATOR_MALLOC);
         if (res != NULL) {
             memcpy(res, ptr, head->request_size);
-            replace_free_common(arena, ptr, lock, drcontext, mc, caller);
+            replace_free_common(arena, ptr, lock, drcontext, mc, caller,
+                                MALLOC_ALLOCATOR_MALLOC);
         }
     }
     return res;
@@ -1303,7 +1345,8 @@ replace_malloc(size_t size)
     LOG(2, "replace_malloc %d\n", size);
     res = (void *) replace_alloc_common(arena, size, true/*lock*/, false/*!zeroed*/,
                                         false/*!realloc*/,
-                                        drcontext, &mc, (app_pc)replace_malloc);
+                                        drcontext, &mc, (app_pc)replace_malloc,
+                                        MALLOC_ALLOCATOR_MALLOC);
     LOG(2, "\treplace_malloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return res;
@@ -1319,7 +1362,8 @@ replace_calloc(size_t nmemb, size_t size)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_calloc %d %d\n", nmemb, size);
     res = replace_alloc_common(arena, nmemb * size, true/*lock*/, true/*zeroed*/,
-                               false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc);
+                               false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc,
+                               MALLOC_ALLOCATOR_MALLOC);
     memset(res, 0, nmemb*size);
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
     exit_client_code(drcontext, false/*need swap*/);
@@ -1352,7 +1396,7 @@ replace_free(void *ptr)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_free "PFX"\n", ptr);
     replace_free_common(arena, ptr, true/*lock*/, drcontext,
-                        &mc, (app_pc)replace_free);
+                        &mc, (app_pc)replace_free, MALLOC_ALLOCATOR_MALLOC);
     exit_client_code(drcontext, false/*need swap*/);
 }
 
@@ -1374,11 +1418,107 @@ replace_malloc_usable_size(void *ptr)
     return res;
 }
 
-/* XXX i#882: replace operator new/delete known to be non-placement to
+/* i#882: replace operator new/delete known to be non-placement to
  * avoid wrap cost and to support redzones on debug CRT.
  * We will also be able to pass in the allocation type rather than
  * reading it from CLS.
  */
+static inline void *
+replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type, app_pc caller)
+{
+    void *res;
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_operator_new size=%d abort_on_oom=%d type=%d\n",
+        size, abort_on_oom, alloc_type);
+    res = (void *) replace_alloc_common(arena, size, true/*lock*/, false/*!zeroed*/,
+                                        false/*!realloc*/,
+                                        drcontext, &mc, caller, alloc_type);
+    LOG(2, "\treplace_operator_new %d => "PFX"\n", size, res);
+    if (abort_on_oom && res == NULL) {
+        /* XXX i#957: we should throw a C++ exception but for now we just abort */
+        ELOGF(0, f_global, "ABORTING ON OOM\n");
+        dr_exit_process(1);
+        ASSERT(false, "should not reach here");
+    }
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+static void *
+replace_operator_new(size_t size)
+{
+    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW,
+                                       (app_pc)replace_operator_new);
+}
+
+static void *
+replace_operator_new_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
+{
+    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW,
+                                       (app_pc)replace_operator_new_nothrow);
+}
+
+/* we need separate array versions for type mismatch detection (NYI) */
+static void *
+replace_operator_new_array(size_t size)
+{
+    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW_ARRAY,
+                                       (app_pc)replace_operator_new_array);
+}
+
+static void *
+replace_operator_new_array_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
+{
+    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW_ARRAY,
+                                       (app_pc)replace_operator_new_array_nothrow);
+}
+
+static inline void
+replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller)
+{
+    void *drcontext = enter_client_code();
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "replace_operator_delete "PFX"\n", ptr);
+    replace_free_common(arena, ptr, true/*lock*/, drcontext,
+                        &mc, caller, alloc_type);
+    exit_client_code(drcontext, false/*need swap*/);
+}
+
+/* We do not bother to report mismatches on nothrow vs regular so we
+ * don't need to distinguish nothrow vs regular delete
+ */
+static void
+replace_operator_delete(void *ptr)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+                                   (app_pc)replace_operator_delete);
+}
+
+static void
+replace_operator_delete_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+                                   (app_pc)replace_operator_delete);
+}
+
+static void
+replace_operator_delete_array(void *ptr)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
+                                   (app_pc)replace_operator_delete_array);
+}
+
+static void
+replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
+                                   (app_pc)replace_operator_delete_array_nothrow);
+}
 
 /* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
 
@@ -1556,7 +1696,8 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
                                    !TEST(HEAP_NO_SERIALIZE, flags),
                                    TEST(HEAP_ZERO_MEMORY, flags),
                                    false/*!realloc*/, drcontext,
-                                   &mc, (app_pc)replace_RtlAllocateHeap);
+                                   &mc, (app_pc)replace_RtlAllocateHeap,
+                                   MALLOC_ALLOCATOR_MALLOC);
     }
     dr_switch_to_app_state(drcontext);
     if (res == NULL)
@@ -1603,9 +1744,10 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
     if (arena != NULL) {
         bool ok = replace_free_common(arena, ptr,
-                                       !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
-                                       !TEST(HEAP_NO_SERIALIZE, flags),
-                                       drcontext, &mc, (app_pc)replace_RtlFreeHeap);
+                                      !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                                      !TEST(HEAP_NO_SERIALIZE, flags),
+                                      drcontext, &mc, (app_pc)replace_RtlFreeHeap,
+                                      MALLOC_ALLOCATOR_MALLOC);
         res = !!ok; /* convert from bool to BOOL */
     }
     dr_switch_to_app_state(drcontext);
@@ -1920,6 +2062,22 @@ func_interceptor(routine_type_t type, void **routine OUT, uint *stack OUT)
         *routine = (void *) replace_free;
     else if (is_size_routine(type))
         *routine = (void *) replace_malloc_usable_size;
+    else if (type == HEAP_ROUTINE_NEW)
+        *routine = (void *) replace_operator_new;
+    else if (type == HEAP_ROUTINE_NEW_ARRAY)
+        *routine = (void *) replace_operator_new_array;
+    else if (type == HEAP_ROUTINE_NEW_NOTHROW)
+        *routine = (void *) replace_operator_new_nothrow;
+    else if (type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW)
+        *routine = (void *) replace_operator_new_array_nothrow;
+    else if (type == HEAP_ROUTINE_DELETE)
+        *routine = (void *) replace_operator_delete;
+    else if (type == HEAP_ROUTINE_DELETE_ARRAY)
+        *routine = (void *) replace_operator_delete_array;
+    else if (type == HEAP_ROUTINE_DELETE_NOTHROW)
+        *routine = (void *) replace_operator_delete_nothrow;
+    else if (type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW)
+        *routine = (void *) replace_operator_delete_array_nothrow;
     else
         *routine = NULL; /* but go ahead and wrap */
     return true;
@@ -1940,9 +2098,7 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
         if (!drwrap_replace_native(pc, interceptor, stack_adjust, user_data, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
-        /* else wrap: operators in particular.
-         * XXX i#882: replace operators. 
-         */
+        /* else wrap */
         /* FIXME i#794: Windows NYI: want to replace
          * create/destroy/validate/etc., along with all other
          * heap-related routines currenly not intercepted, w/ nops

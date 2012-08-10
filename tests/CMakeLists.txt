@@ -394,6 +394,7 @@ newtest(bitfield bitfield.cpp)
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason
 newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF "")
+newtest(operators operators.cpp)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -460,7 +461,10 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
+  # test malloc replacement
   newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
+  # FIXME i#964: enable once sharing Heaps
+  #newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)

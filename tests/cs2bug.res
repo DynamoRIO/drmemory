@@ -40,9 +40,11 @@ cs2bug.cpp:178
 cs2bug.cpp:183
 memory was allocated here:
 cs2bug.cpp:181
+%OPTIONAL # only when wrapping
 : UNINITIALIZED READ
 cs2bug.cpp:99
 cs2bug.cpp:186
+%ENDOPTIONAL
 : INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
 cs2bug.cpp:186
 memory was allocated here:

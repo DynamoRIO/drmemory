@@ -419,6 +419,8 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
 #define POSSIBLE_LIBC_ROUTINE_NUM \
     (sizeof(possible_libc_routines)/sizeof(possible_libc_routines[0]))
 
+#define OPERATOR_ENTRIES 4 /* new, new[], delete, delete[] */
+
 static const possible_alloc_routine_t possible_cpp_routines[] = {
 #ifdef USE_DRSYMS
     /* XXX: currently drsyms does NOT include function params, which is what
@@ -430,10 +432,23 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     /* XXX i#633: do we need to handle this?
      * cs2bug!`operator new'::`6'::`dynamic atexit destructor for 'nomem'' ( void )
      */
+    /* We distinguish HEAP_ROUTINE_*_NOTHROW, as well as placement new, after
+     * we look these symbols up 
+     */
     { "operator new",      HEAP_ROUTINE_NEW },
     { "operator new[]",    HEAP_ROUTINE_NEW_ARRAY },
     { "operator delete",   HEAP_ROUTINE_DELETE },
     { "operator delete[]", HEAP_ROUTINE_DELETE_ARRAY },
+    /* These are the names we store in the symcache to distinguish from regular
+     * operators for i#882.
+     * This means we are storing something different from the actual symbol names.
+     * We assume that these 4 (== OPERATOR_ENTRIE) entries immediately
+     * follow the 4 above!
+     */
+    { "operator new nothrow",      HEAP_ROUTINE_NEW_NOTHROW },
+    { "operator new[] nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
+    { "operator delete nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
+    { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 #else
     /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
      * the standard Itanium ABI/VS manglings for the standard operators.
@@ -448,17 +463,17 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     /* operator new[](unsigned int) */
     { "_Znaj",                HEAP_ROUTINE_NEW_ARRAY },
     /* operator new(unsigned int, std::nothrow_t const&) */
-    { "_ZnwjRKSt9nothrow_t",  HEAP_ROUTINE_NEW },
+    { "_ZnwjRKSt9nothrow_t",  HEAP_ROUTINE_NEW_NOTHROW },
     /* operator new[](unsigned int, std::nothrow_t const&) */
-    { "_ZnajRKSt9nothrow_t",  HEAP_ROUTINE_NEW_ARRAY },
+    { "_ZnajRKSt9nothrow_t",  HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
     /* operator delete(void*) */
     { "_ZdlPv",               HEAP_ROUTINE_DELETE },
     /* operator delete[](void*) */
     { "_ZdaPv",               HEAP_ROUTINE_DELETE_ARRAY },
     /* operator delete(void*, std::nothrow_t const&) */
-    { "_ZdlPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE },
+    { "_ZdlPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_NOTHROW },
     /* operator delete[](void*, std::nothrow_t const&) */
-    { "_ZdaPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_ARRAY },
+    { "_ZdaPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 # else
     /* operator new(unsigned int) */
     { "??2@YAPAXI@Z",       HEAP_ROUTINE_NEW },
@@ -472,6 +487,7 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "??3@YAXPAX@Z",       HEAP_ROUTINE_DELETE },
     /* operator delete[](void *) */
     { "??_V@YAXPAX@Z",      HEAP_ROUTINE_DELETE_ARRAY },
+    /* XXX: we don't support nothrow operators w/o USE_DRSYMS */
 # endif
 #endif /* USE_DRSYMS */
 };
@@ -1266,6 +1282,100 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
 }
 #endif
 
+#ifdef USE_DRSYMS
+/* Given a generic operator type and its location in a module, checks its
+ * args and converts to a corresponding nothrow operator type or to
+ * HEAP_ROUTINE_INVALID if a placement operator.
+ */
+static routine_type_t
+distinguish_operator_type(routine_type_t generic_type,  const char *name,
+                          const module_data_t *mod, size_t modoffs)
+{
+    size_t bufsz = 256; /* even w/ class names, should be big enough for most operators */
+    char *buf;
+    drsym_func_type_t *func_type;
+    drsym_error_t err;
+    routine_type_t specific_type = generic_type;
+    const char *modname = dr_module_preferred_name(mod);
+    if (modname == NULL)
+        modname = "<noname>";
+
+    ASSERT((is_new_routine(generic_type) || is_delete_routine(generic_type)) &&
+           !is_operator_nothrow_routine(generic_type),
+           "incoming type must be non-nothrow operator");
+
+    buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+    do {
+        err = drsym_get_func_type(mod->full_path, modoffs, buf, bufsz, &func_type);
+        if (err != DRSYM_ERROR_NOMEM)
+            break;
+        global_free(buf, bufsz, HEAPSTAT_MISC);
+        bufsz *= 2;
+        buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+    } while (true);
+
+    LOG(2, "%s in %s @"PFX" generic type=%d => drsyms res=%d, %d args\n",
+        name, modname, mod->start + modoffs, generic_type, err, func_type->num_args);
+
+    if (err != DRSYM_SUCCESS) {
+        WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
+             name, modname, mod->start + modoffs);
+        specific_type = generic_type;
+    } else if (func_type->num_args == 1) {
+        /* standard type: operator new(unsigned int) or operator delete(void *) */
+        specific_type = generic_type;
+    } else if (func_type->num_args == 2) {
+        bool known = false;
+        if (func_type->arg_types[1]->kind == DRSYM_TYPE_PTR) {
+            drsym_ptr_type_t *arg_type = (drsym_ptr_type_t *) func_type->arg_types[1];
+            LOG(3, "operator %s 2nd arg is pointer to kind=%d size=%d\n",
+                name, arg_type->elt_type->kind, arg_type->elt_type->size);
+            if (arg_type->elt_type->kind == DRSYM_TYPE_COMPOUND &&
+                strcmp(((drsym_compound_type_t *)arg_type->elt_type)->name,
+                       "std::nothrow_t") == 0) {
+                /* This is nothrow new or delete */
+                ASSERT(((drsym_compound_type_t *)arg_type->elt_type)->num_fields == 0,
+                       "std::nothrow_t should not have any fields");
+                specific_type = convert_operator_to_nothrow(generic_type);
+                known = true;
+                LOG(2, "operator %s in %s @"PFX" assumed to be nothrow\n",
+                    name, modname, mod->start + modoffs);
+            } else if (arg_type->elt_type->kind == DRSYM_TYPE_VOID ||
+                       arg_type->elt_type->kind == DRSYM_TYPE_INT) {
+                /* We assume that this is placement new or delete.
+                 * Usually it will be "void *" but we want to allow "char *"
+                 * or other int pointers.
+                 * If the app has some other version we won't support it.
+                 * In the future we could support annotations to
+                 * tell us about it.
+                 */
+                specific_type = HEAP_ROUTINE_INVALID;
+                known = true;
+                LOG(2, "%s in %s @"PFX" assumed to be placement\n",
+                    name, modname, mod->start + modoffs);
+            }
+        }
+        if (!known) {
+            /* We do rule out (non-std::nothrow_t) struct or class pointers
+             * as not being placement.
+             */
+            WARN("WARNING: unknown 2-arg overload of %s in %s @"PFX"\n",
+                 name, modname, mod->start + modoffs);
+            specific_type = generic_type;
+        }
+    } else {
+        /* MSVC++ has 3-arg and 4-arg operators which we assume
+         * are all non-placement non-nothrow:
+         *   operator new(unsigned int, _HeapManager*, int)
+         *   operator new(unsigned int,int,char const *,int)
+         */
+        specific_type = generic_type;
+    }
+    global_free(buf, bufsz, HEAPSTAT_MISC);
+    return specific_type;
+}
+#endif
+
 /* for passing data to sym callback, and simpler to use for
  * non-USE_DRSYMS as well
  */
@@ -1327,7 +1437,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
 static bool
 enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
 {
-    uint i;
+    uint i, add_idx;
     set_enum_data_t *edata = (set_enum_data_t *) data;
     ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
     LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
@@ -1351,6 +1461,7 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
              (strstr(name, edata->possible[i].name) == name &&
               strlen(name) == len + 2 &&
               name[len] == '(' && name[len+1] == ')'))) {
+            add_idx = i;
 #ifdef WINDOWS
             if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
                 /* look for partial map (i#730) */
@@ -1359,8 +1470,32 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
                     (edata->mod->start, edata->mod->end, modoffs);
             }
 #endif
+            if (is_new_routine(edata->possible[i].type) ||
+                is_delete_routine(edata->possible[i].type)) {
+                /* Distinguish placement and nothrow new and delete.
+                 * XXX DRi#860: once we add linux USE_DRSYMS we'll need linux
+                 * drsyms param info!
+                 * FIXME i#607 part D: this won't work for mingw/cygwin, nor for
+                 * msvcp*.dll which doesn't have type info in its pdbs!
+                 */
+                routine_type_t op_type = distinguish_operator_type
+                    (edata->possible[i].type, edata->possible[i].name, edata->mod,
+                     modoffs);
+                if (op_type == HEAP_ROUTINE_INVALID)
+                    modoffs = 0; /* skip */
+                else if (op_type != edata->possible[i].type) {
+                    /* Convert to nothrow.  add_to_alloc_set() takes an index into
+                     * the possible array so we point at the corresponding nothrow
+                     * entry in that array.
+                     */
+                    ASSERT(i < OPERATOR_ENTRIES, "possible_cpp_routines was reordered!");
+                    add_idx += OPERATOR_ENTRIES;
+                    ASSERT(edata->possible[add_idx].type == op_type,
+                           "possible_cpp_routines types don't match assumptions");
+                }
+            }
             if (modoffs != 0)
-                add_to_alloc_set(edata, edata->mod->start + modoffs, i);
+                add_to_alloc_set(edata, edata->mod->start + modoffs, add_idx);
             break;
         }
     }
@@ -1452,7 +1587,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                  * has any (already assuming that elsewhere).  If not in
                  * symcache we do wildcard search below.  We also assume all
                  * function overloads are present but w/o function parameter
-                 * names.
+                 * names.  We use special names for the overloads we want
+                 * to distinguish (currently, nothrow).
                  */
                 for (idx = 0, count = 1;
                      idx < count && symcache_lookup(mod, possible[i].name,
@@ -1501,9 +1637,23 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
     for (i = 0; i < num_possible; i++) {
         app_pc pc;
+        const char *name = possible[i].name;
         if (edata.processed != NULL && edata.processed[i])
             continue;
-        pc = lookup_symbol_or_export(mod, possible[i].name);
+#ifdef USE_DRSYMS
+        if (is_operator_nothrow_routine(possible[i].type)) {
+            /* The name doesn't match the real symbol so we take the
+             * name from the non-nothrow entry which we assume is prior.
+             * However, since we're using the umangled name with no
+             * parameters, we're only going to find the very first operator
+             * with a singletone query like this, so this is sort of silly:
+             * we rely on the symcache and find_alloc_regex() calls above.
+             */
+            ASSERT(i >= OPERATOR_ENTRIES, "possible_cpp_routines was reordered!");
+            name = possible[i - OPERATOR_ENTRIES].name;
+        }
+#endif
+        pc = lookup_symbol_or_export(mod, name);
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
 #ifdef LINUX
         /* PR 604274: sometimes undefined symbol has a value pointing at PLT:
@@ -1903,17 +2053,7 @@ static void *large_malloc_lock;
 enum {
     MALLOC_VALID  = MALLOC_RESERVED_1,
     MALLOC_PRE_US = MALLOC_RESERVED_2,
-    /* These are to distinguish whether from malloc, new, or new[] (i#123).
-     * 4 states using MALLOC_RESERVED_3 and MALLOC_RESERVED_4.
-     * XXX: I tried also distinguishing HeapAlloc/RtlAllocateHeap
-     * but I hit a lot of false positives w/ even a small test app
-     * where free() would free: did not investigate.
-     */
-    MALLOC_ALLOCATOR_FLAGS     = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
-    MALLOC_ALLOCATOR_UNKNOWN   = 0x0,
-    MALLOC_ALLOCATOR_MALLOC    = MALLOC_RESERVED_3,
-    MALLOC_ALLOCATOR_NEW       = MALLOC_RESERVED_4,
-    MALLOC_ALLOCATOR_NEW_ARRAY = (MALLOC_RESERVED_3 | MALLOC_RESERVED_4),
+    /* MALLOC_ALLOCATOR_FLAGS use (MALLOC_RESERVED_3 | MALLOC_RESERVED_4) */
     MALLOC_ALLOCATOR_CHECKED   = MALLOC_RESERVED_5,
     /* We ignore Rtl*Heap-internal allocs */
     MALLOC_RTL_INTERNAL        = MALLOC_RESERVED_6,
@@ -2877,22 +3017,6 @@ malloc_alloc_type(byte *start)
         res = malloc_alloc_entry_type(e);
     malloc_unlock_if_locked_by_me(locked_by_me);
     return res;
-}
-
-static const char *
-malloc_alloc_type_name(uint flags)
-{
-    if (flags == MALLOC_ALLOCATOR_NEW) /* yes, == not TEST */
-        return "operator new";
-    else if (flags == MALLOC_ALLOCATOR_NEW_ARRAY)
-        return "operator new[]";
-    else {
-        /* We could store the actual name ("HeapAlloc", "calloc", _malloc_dbg",
-         * "memalign", etc.) but that would cost too much memory to keep per
-         * malloc, and this should be clear enough for most users.
-         */
-        return "malloc";
-    }
 }
 
 static bool
