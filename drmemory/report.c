@@ -1945,11 +1945,11 @@ report_symbol_advice(void)
 {
     drsym_debug_kind_t kind;
     drsym_error_t res = drsym_get_module_debug_kind(app_path, &kind);
-    if (!TESTANY(DRSYM_DWARF_LINE|DRSYM_PDB, kind)) {
+    if (res != DRSYM_SUCCESS || !TESTANY(DRSYM_DWARF_LINE|DRSYM_PDB, kind)) {
         ELOGF(0, f_results, NL);
         NOTIFY_COND(true, f_results,
                     "WARNING: application is missing line number information."NL);
-        if (TEST(DRSYM_PECOFF_SYMTAB, kind)) {
+        if (res == DRSYM_SUCCESS && TEST(DRSYM_PECOFF_SYMTAB, kind)) {
             NOTIFY_COND(true, f_results,
                   "Re-compile with the -ggdb flag to include DWARF2 line numbers."NL);
         }

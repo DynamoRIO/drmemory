@@ -43,6 +43,9 @@ get_ntdll_base(void);
 app_pc
 get_libc_base(void);
 
+app_pc
+get_libcpp_base(void);
+
 /***************************************************************************
  * HEAP WALK
  */

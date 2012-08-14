@@ -201,6 +201,35 @@ get_libc_base(void)
     return libc_base;
 }
 
+app_pc
+get_libcpp_base(void)
+{
+    static app_pc libcpp_base; /* cached value */
+    if (libcpp_base == NULL) {
+        dr_module_iterator_t *iter;
+        module_data_t *data;
+        iter = dr_module_iterator_start();
+        while (dr_module_iterator_hasnext(iter)) {
+            const char *modname;
+            data = dr_module_iterator_next(iter);
+            modname = dr_module_preferred_name(data);
+            if (modname != NULL) {
+                if (text_matches_pattern(modname,
+                                         IF_WINDOWS_ELSE("msvcp*", "libstdc++.*"),
+                                         IF_WINDOWS_ELSE(true, false))) {
+                        libcpp_base = data->start;
+                }
+            }
+            dr_free_module_data(data);
+            /* Just take first, in unlikely case there are multiple */
+            if (libcpp_base != NULL)
+                break;
+        }
+        dr_module_iterator_stop(iter);
+    }
+    return libcpp_base;
+}
+
 /***************************************************************************
  * HEAP WALK
  *

@@ -449,6 +449,10 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "operator new[] nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
     { "operator delete nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
     { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
+    /* This is the name we store in the symcache for i#722.
+     * This means we are storing something different from the actual symbol names.
+     */
+    { "std::_DebugHeapDelete<>", HEAP_ROUTINE_DebugHeapDelete },
 #else
     /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
      * the standard Itanium ABI/VS manglings for the standard operators.
@@ -548,10 +552,6 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP },
     { "_CrtDbgBreak", HEAP_ROUTINE_DBG_NOP },
-    /* This is the name we store in the symcache for i#722.
-     * This means we are storing something different from the actual symbol names.
-     */
-    { "std::_DebugHeapDelete<>", HEAP_ROUTINE_DebugHeapDelete },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
 #define POSSIBLE_CRTDBG_ROUTINE_NUM \
@@ -1230,9 +1230,10 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
     instr_init(drcontext, &inst);
     LOG(3, "%s: decoding "PFX"\n", __FUNCTION__, npc);
     do {
+        app_pc tgt = NULL;
         instr_reset(drcontext, &inst);
         pc = npc;
-        DODEBUG({
+        DOLOG(3, {
             disassemble_with_info(drcontext, pc, LOGFILE_GET(drcontext),
                                   true/*pc*/, true/*bytes*/);
         });
@@ -1254,13 +1255,18 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
              * call/jmp to this module's free().
              */
             opnd_t op = instr_get_target(&inst);
-            app_pc tgt;
             ASSERT(opnd_is_pc(op), "must be pc");
             tgt = opnd_get_pc(op);
-            LOG(3, "%s: found direct call/jmp to "PFX"\n", __FUNCTION__, tgt);
+        } else if (instr_get_opcode(&inst) == OP_call_ind) {
+            opnd_t op = instr_get_target(&inst);
+            if (opnd_is_abs_addr(op))
+                safe_read((app_pc) opnd_get_addr(op), sizeof(tgt), &tgt);
+        }
+        if (tgt != NULL) {
+            LOG(3, "%s: found cti to "PFX"\n", __FUNCTION__, tgt);
             ASSERT(dr_mutex_self_owns(alloc_routine_lock), "caller must hold lock");
             if (hashtable_lookup(&alloc_routine_table, (void *)tgt) != NULL) {
-                LOG(2, "%s: found direct call/jmp to free? "PFX"\n", __FUNCTION__, tgt);
+                LOG(2, "%s: found cti to free? "PFX"\n", __FUNCTION__, tgt);
                 modoffs = pc - mod_start;
                 found = true;
                 break;
@@ -1512,9 +1518,11 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
     uint i;
     bool full = false;
 #ifdef WINDOWS
-    if (edata->mod->start == get_libc_base()) {
-        /* The _calloc_impl in msvcr*.dll is private */
-        LOG(2, "%s: doing full symbol lookup for libc\n", __FUNCTION__);
+    if (edata->mod->start == get_libc_base() ||
+        edata->mod->start == get_libcpp_base()) {
+        /* The _calloc_impl in msvcr*.dll is private (i#960) */
+        /* The std::_DebugHeapDelete<> (i#722) in msvcp*.dll is private (i#607 part C) */
+        LOG(2, "%s: doing full symbol lookup for libc/libc++\n", __FUNCTION__);
         full = true;
     }
 #endif
@@ -1625,21 +1633,21 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                     find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
                     find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
                     find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
-# ifdef WINDOWS
-                    /* wrapper in place of real delete or delete[] operators
-                     * (i#722,i#655)
-                     */
-                    edata.wildcard_name = "std::_DebugHeapDelete<>";
-                    find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
-                                     /* no export lookups so pass NULL */
-                                     NULL, NULL);
-                    edata.wildcard_name = NULL;
-# endif
                 }
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
                 find_alloc_regex(&edata, "operator new*", "operator new", NULL);
                 find_alloc_regex(&edata, "operator delete*", "operator delete", NULL);
+# ifdef WINDOWS
+                /* wrapper in place of real delete or delete[] operators
+                 * (i#722,i#655)
+                 */
+                edata.wildcard_name = "std::_DebugHeapDelete<>";
+                find_alloc_regex(&edata, "std::_DebugHeapDelete<*>",
+                                 /* no export lookups so pass NULL */
+                                 NULL, NULL);
+                edata.wildcard_name = NULL;
+# endif
             }
         }
     }
@@ -2403,19 +2411,31 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              strcmp(modname, "dynamorio.dll") == 0))
             return;
 
-        /* i#606: no support for /MDd b/c need private pdb to intercept
-         * heap routines, and can't see inside LFH chunks allocated before
-         * we were injected
+#ifdef WINDOWS
+        /* XXX i#607: no support for /MDd unless we have private pdb
+         * to intercept heap routines.  For now we give a fatal error.
+         * The plan is to add both fallback support for no syms and automated
+         * support to get syms.
+         *
+         * XXX i#607 part C: once we remove the fatal error we need to disable
+         * mismatch detection within msvcp*d.dll b/c we won't be able to
+         * locate std::_DebugHeapDelete<*> for i#722.
          */
         if (modname != NULL &&
             /* match msvcrtd.dll and msvcrNN.dll */
             text_matches_pattern(modname, "msvcr*d.dll", true/*ignore case*/)) {
-            NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL not supported. "
-                         "Please rebuild your application with either the Release "
-                         "build (/MD or /MT) or static Debug library (/MTd)."
-                         "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."NL);
-            dr_abort();
+            drsym_debug_kind_t kind;
+            drsym_error_t res = drsym_get_module_debug_kind(info->full_path, &kind);
+            if (res != DRSYM_SUCCESS || !TEST(DRSYM_PDB, kind)) {
+                NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL (without "
+                             "its symbols) is not supported. "
+                             "Please rebuild your application with either the Release "
+                             "build (/MD or /MT) or static Debug library (/MTd). "
+                             "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."NL);
+                dr_abort();
+            }
         }
+#endif
 
         dr_mutex_lock(alloc_routine_lock);
 #ifdef WINDOWS
@@ -2443,7 +2463,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             /* optimization: assume no other dbg routines if no _malloc_dbg */
             no_dbg_routines = true;
         }
-# endif
+#endif
         set_libc = find_alloc_routines(info, possible_libc_routines,
                                        POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
                                        false, HEAPSET_LIBC);
@@ -2471,14 +2491,18 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         }
 #endif
         if (alloc_ops.intercept_operators) {
+            bool is_dbg = !no_dbg_routines;
+            /* we assume we only hit i#26 where op delete reads heap
+             * headers when _malloc_dbg is present in same lib, for
+             * static debug msvcp.  for dynamic we check by name.
+             */
+            if (!is_dbg && modname != NULL &&
+                text_matches_pattern(modname, "msvcp*d.dll", true/*ignore case*/))
+                is_dbg = true;
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
                                           false,
-                                          /* we assume we only hit i#26 where op delete
-                                           * reads heap headers when _malloc_dbg
-                                           * is present in same lib
-                                           */
-                                          IF_WINDOWS(!no_dbg_routines ? HEAPSET_CPP_DBG :)
+                                          IF_WINDOWS(is_dbg ? HEAPSET_CPP_DBG :)
                                           HEAPSET_CPP);
         }
         if (set_cpp != NULL) {
