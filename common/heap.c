@@ -27,7 +27,10 @@
 #include "redblack.h"
 #ifdef LINUX
 # include <string.h> /* strncmp */
+#else
+# include "../wininc/crtdbg.h"
 #endif
+#include <limits.h>
 
 /***************************************************************************
  * UTILS
@@ -274,6 +277,9 @@ GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
 GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
                         IN ULONG flags,
                         IN PVOID ptr));
+
+# define DBGCRT_PRE_REDZONE_SIZE sizeof(_CrtMemBlockHeader)
+# define DBGCRT_POST_REDZONE_SIZE nNoMansLandSize
 #endif /* WINDOWS */
 
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena
@@ -293,6 +299,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     rtl_process_heap_entry_t heap_info;
     uint i;
     uint num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
+    HANDLE process_heap = get_process_heap_handle();
     LOG(2, "walking %d heaps\n", num_heaps);
     if (num_heaps > cap_heaps) {
         global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
@@ -304,6 +311,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     for (i = 0; i < num_heaps; i++) {
         size_t size, commit_size, sub_size;
         app_pc base, sub_base;
+        byte *chunk_start, *chunk_end;
         LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
 # ifdef USE_DRSYMS
         if (heaps[i] == (byte *) get_private_heap_handle()) {
@@ -375,6 +383,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
                              heap_info.cbOverhead)));
             if (bad_chunk)
                 continue;
+            if (cb_chunk == NULL)
+                continue;
             /* Seems like I should be able to ignore all but PROCESS_HEAP_REGION,
              * but that's not the case.  I also thought I might need to walk
              * the Region.lpFirstBlock for PROCESS_HEAP_REGION using
@@ -385,11 +395,33 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
             /* I'm skipping wFlags==0 if can't get valid size as I've seen such
              * regions given out in later mallocs
              */
+            chunk_start = (byte *) heap_info.lpData;
+            chunk_end = chunk_start + heap_info.cbData;
             if (sz != -1 && (heap_info.wFlags > 0 || sz == heap_info.cbData)) {
-                if (cb_chunk != NULL) {
-                    cb_chunk((app_pc)heap_info.lpData,
-                             (app_pc)heap_info.lpData + heap_info.cbData);
+                /* i#607: is this a dbgcrt heap?  If so, these Rtl heap objects have
+                 * dbgcrt redzones around them, and later libc-level operations will
+                 * point inside the dbgcrt header at the app data.  If we had symbols
+                 * we could look up _crtheap to identify the Heap.  For now we rule
+                 * out the default heap and we check whether the header "looks like"
+                 * the dbgcrt header.  Earlier injection would avoid this problem.
+                 */
+                if (heaps[i] != process_heap &&
+                    heap_info.cbData >= DBGCRT_PRE_REDZONE_SIZE +
+                    DBGCRT_POST_REDZONE_SIZE) {
+                    _CrtMemBlockHeader *head = (_CrtMemBlockHeader *) heap_info.lpData;
+                    /* Check several fields.  Unlikely to match for random chunk. */
+                    if (heap_info.cbData == head->nDataSize +
+                        DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE &&
+                        _BLOCK_TYPE_IS_VALID(head->nBlockUse) &&
+                        head->nLine < USHRT_MAX) {
+                        /* Skip the dbgcrt header */
+                        chunk_start += DBGCRT_PRE_REDZONE_SIZE;
+                        chunk_end -= DBGCRT_POST_REDZONE_SIZE;
+                        LOG(2, "  skipping dbgcrt header => "PFX"-"PFX"\n",
+                            chunk_start, chunk_end);
+                    }
                 }
+                cb_chunk(chunk_start, chunk_end);
             }
         }
         RtlUnlockHeap(heaps[i]);

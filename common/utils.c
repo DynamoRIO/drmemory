@@ -808,6 +808,12 @@ get_private_heap_handle(void)
 }
 #endif /* DEBUG */
 
+HANDLE
+get_process_heap_handle(void)
+{
+    return (HANDLE) get_app_PEB()->ProcessHeap;
+}
+
 bool
 is_current_process(HANDLE h)
 {

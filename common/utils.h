@@ -602,6 +602,9 @@ set_app_error_code(void *drcontext, uint val);
 PEB *
 get_app_PEB(void);
 
+HANDLE
+get_process_heap_handle(void);
+
 bool
 is_current_process(HANDLE h);
 
