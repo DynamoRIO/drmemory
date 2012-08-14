@@ -2285,10 +2285,14 @@ static uint
 malloc_allocator_type(alloc_routine_entry_t *routine)
 {
     if (routine->type == HEAP_ROUTINE_NEW ||
-        routine->type == HEAP_ROUTINE_DELETE)
+        routine->type == HEAP_ROUTINE_NEW_NOTHROW ||
+        routine->type == HEAP_ROUTINE_DELETE ||
+        routine->type == HEAP_ROUTINE_DELETE_NOTHROW)
         return MALLOC_ALLOCATOR_NEW;
     else if (routine->type == HEAP_ROUTINE_NEW_ARRAY ||
-             routine->type == HEAP_ROUTINE_DELETE_ARRAY)
+             routine->type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW ||
+             routine->type == HEAP_ROUTINE_DELETE_ARRAY ||
+             routine->type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW)
         return MALLOC_ALLOCATOR_NEW_ARRAY;
     else
         return MALLOC_ALLOCATOR_MALLOC;
