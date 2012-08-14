@@ -381,14 +381,29 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
             /* some heaps have multiple regions.  not bothering to check
              * commit vs reserve on sub-regions.
              */
-            if ((app_pc)heap_info.lpData < sub_base ||
-                (app_pc)heap_info.lpData >= sub_base+sub_size) {
+            if (((app_pc)heap_info.lpData < sub_base ||
+                 (app_pc)heap_info.lpData >= sub_base+sub_size) &&
+                /* XXX: some of these have wFlags==0x100 and some point at free
+                 * regions or memory occupied by something else (like our own
+                 * replace_malloc arenas: i#961).  We should figure out what 0x100
+                 * really means.  For now, requiring non-zero cbData.
+                 */
+                heap_info.cbData > 0) {
                 /* a new region or large block inside this heap */
-                sub_size = allocation_size((app_pc)heap_info.lpData, &sub_base);
-                if (cb_region != NULL)
-                    cb_region(sub_base, sub_base+sub_size, heaps[i]);
-                LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
-                    sub_base, sub_base+sub_size, heaps[i]);
+                byte *new_base;
+                size_t new_size;
+                new_size = allocation_size((app_pc)heap_info.lpData, &new_base);
+                if (new_base == NULL) {
+                    LOG(2, "free region "PFX"-"PFX" for heap @"PFX"\n",
+                        heap_info.lpData, (byte *)heap_info.lpData + new_size, heaps[i]);
+                } else {
+                    sub_base = new_base;
+                    sub_size = new_size;
+                    if (cb_region != NULL)
+                        cb_region(sub_base, sub_base+sub_size, heaps[i]);
+                    LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
+                        sub_base, sub_base+sub_size, heaps[i]);
+                }
             }
             /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista.
              * Yet a TRY/EXCEPT around RtlSizeHeap is not enough:
