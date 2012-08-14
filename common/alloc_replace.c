@@ -218,9 +218,9 @@ typedef struct _arena_header_t {
 /* pick a flag that can't be passed on the Heap level to identify whether
  * a Heap or a regular arena
  */
-# define ARENA_MAIN HEAP_ZERO_MEMORY
+# define ARENA_MAIN HEAP_ZERO_MEMORY  /* 0x8 */
 /* another non-Heap flag to identify libc-default Heaps (i#939) */
-# define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY
+# define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY /* 0x10 */
 /* flags that we support being passed to HeapCreate:
  * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE
  */
@@ -1428,6 +1428,10 @@ replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type, app
 {
     void *res;
     void *drcontext = enter_client_code();
+    /* b/c we replace at the operator level and we don't analyze the
+     * replaced operator to see which libc it's using we have to assume
+     * our stored default is ok (xref i#964, i#939)
+     */
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
@@ -2127,26 +2131,36 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
 }
 
 static void *
-malloc_replace__set_init(heapset_type_t type, app_pc pc)
+malloc_replace__set_init(heapset_type_t type, app_pc pc, void *libc_data)
 {
 #ifdef WINDOWS
-    if (type != HEAPSET_RTL) {
+    if (type == HEAPSET_RTL) {
+        return NULL;
+    } else if (libc_data != NULL) {
+        /* dbg crt and regular crt and cpp routines share a Heap (i#964) */
+        LOG(2, "shared default Heap for libc set type=%d @"PFX" is "PFX"\n",
+            type, pc, libc_data);
+        return libc_data;
+    } else {
         /* Create the Heap for this libc alloc routine set (i#939) */
         arena_header_t *arena = (arena_header_t *)
             create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
-        LOG(2, "new default Heap for libc set @"PFX" is "PFX"\n", pc, arena);
+        LOG(2, "new default Heap for libc set type=%d @"PFX" is "PFX"\n",
+            type, pc, arena);
         arena->flags |= ARENA_LIBC_DEFAULT;
         return arena;
     }
+    /* cpp set does not need its own Heap (i#964) */
 #endif
     return NULL;
 }
 
 static void
-malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data)
+malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data,
+                         void *libc_data)
 {
 #ifdef WINDOWS
-    if (type != HEAPSET_RTL) {
+    if ((type != HEAPSET_RTL && libc_data == NULL) || type == HEAPSET_LIBC) {
         /* Destroy the Heap for this libc alloc routine set (i#939) */
         arena_header_t *arena = (arena_header_t *) user_data;
         ASSERT(arena != NULL, "stored Heap disappeared?");

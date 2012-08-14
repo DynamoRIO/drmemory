@@ -300,9 +300,14 @@ typedef struct _malloc_interface_t {
     void (*malloc_iterate)(malloc_iter_cb_t cb, void *iter_data);
     void (*malloc_intercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
     void (*malloc_unintercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
-    /* For storing data per malloc routine set.  The pc is one routine from the set. */
-    void * (*malloc_set_init)(heapset_type_t type, app_pc pc);
-    void (*malloc_set_exit)(heapset_type_t type, app_pc pc, void *user_data);
+    /* For storing data per malloc routine set.  The pc is one routine from the set.
+     * When type == HEAPSET_LIBC_DBG, libc_data points at the data (returned from an
+     * earlier call) for the corresponding HEAPSET_LIBC for that module.
+     * HEAPSET_LIBC is guaranteed to be called before HEAPSET_LIBC_DBG.
+     */
+    void * (*malloc_set_init)(heapset_type_t type, app_pc pc, void *libc_data);
+    void (*malloc_set_exit)(heapset_type_t type, app_pc pc, void *user_data,
+                            void *libc_data);
 } malloc_interface_t;
 
 extern malloc_interface_t malloc_interface;

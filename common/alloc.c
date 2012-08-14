@@ -661,6 +661,8 @@ struct _alloc_routine_set_t {
     bool check_mismatch;
     /* For i#939, let wrap/replace store a field per malloc set */
     void *user_data;
+    /* For i#964 we connect crt and dbgcrt */
+    struct _alloc_routine_set_t *set_libc;
 };
 
 void *
@@ -683,7 +685,9 @@ alloc_routine_entry_free(void *p)
         e->set->refcnt--;
         if (e->set->refcnt == 0) {
             client_remove_malloc_routine(e->set->client);
-            malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data);
+            malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data,
+                                             e->set->set_libc == NULL ? NULL :
+                                             e->set->set_libc->user_data);
             global_free(e->set, sizeof(*e->set), HEAPSTAT_HASHTABLE);
         }
     }
@@ -1395,6 +1399,8 @@ typedef struct _set_enum_data_t {
     /* if a wildcard lookup */
     const char *wildcard_name;
     const module_data_t *mod;
+    /* points at libc set, for pairing up dbgcrt and crt */
+    alloc_routine_set_t *set_libc;
 } set_enum_data_t;
 
 static void
@@ -1420,9 +1426,12 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         memset(edata->set, 0, sizeof(*edata->set));
         edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
-        edata->set->user_data = malloc_interface.malloc_set_init(edata->set_type, pc);
+        edata->set->user_data = malloc_interface.malloc_set_init
+            (edata->set_type, pc,
+             edata->set_libc == NULL ? NULL : edata->set_libc->user_data);
         edata->set->type = edata->set_type;
         edata->set->check_mismatch = true;
+        edata->set->set_libc = edata->set_libc;
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
                       edata->set, edata->mod->start, modname);
@@ -1565,7 +1574,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 static alloc_routine_set_t *
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
                     uint num_possible, bool use_redzone, bool expect_all,
-                    heapset_type_t type)
+                    heapset_type_t type, alloc_routine_set_t *set_libc)
 {
     set_enum_data_t edata;
     uint i;
@@ -1580,6 +1589,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.mod = mod;
     edata.processed = NULL;
     edata.wildcard_name = NULL;
+    edata.set_libc = set_libc;
 #ifdef USE_DRSYMS
     /* Symbol lookup is expensive for large apps so we batch some
      * requests together using regex symbol lookup, which cuts the
@@ -2347,7 +2357,8 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
                 find_alloc_routines(info, possible_rtl_routines,
-                                    POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL);
+                                    POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL,
+                                    NULL);
                 dr_mutex_unlock(alloc_routine_lock);
             }
         }
@@ -2466,7 +2477,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
         set_libc = find_alloc_routines(info, possible_libc_routines,
                                        POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
-                                       false, HEAPSET_LIBC);
+                                       false, HEAPSET_LIBC, NULL);
         if (info->start == get_libc_base()) {
             if (set_dyn_libc != NULL)
                 WARN("WARNING: two libcs found");
@@ -2485,12 +2496,20 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
          * it here.
          */
         if (!no_dbg_routines) {
-            find_alloc_routines(info, possible_crtdbg_routines,
-                                POSSIBLE_CRTDBG_ROUTINE_NUM, false, false,
-                                HEAPSET_LIBC_DBG);
+            alloc_routine_set_t *set_dbgcrt =
+                find_alloc_routines(info, possible_crtdbg_routines,
+                                    POSSIBLE_CRTDBG_ROUTINE_NUM, false, false,
+                                    HEAPSET_LIBC_DBG, set_libc);
+            /* XXX i#967: not sure this is right: some malloc calls,
+             * or operator new, might use shared libc?
+             */
+            if (set_libc == NULL)
+                set_libc = set_dbgcrt;
         }
 #endif
         if (alloc_ops.intercept_operators) {
+            alloc_routine_set_t *corresponding_libc = set_libc;
+#ifdef WINDOWS
             bool is_dbg = !no_dbg_routines;
             /* we assume we only hit i#26 where op delete reads heap
              * headers when _malloc_dbg is present in same lib, for
@@ -2499,11 +2518,20 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             if (!is_dbg && modname != NULL &&
                 text_matches_pattern(modname, "msvcp*d.dll", true/*ignore case*/))
                 is_dbg = true;
+#endif
+            /* Assume that a C++ library w/o a local libc calls into the
+             * shared libc.
+             * XXX i#967: this may not be the right thing: to be sure we'd
+             * have to disasm the library's operator new to find the malloc
+             * set it calls into.
+             */
+            if (corresponding_libc == NULL)
+                corresponding_libc = set_dyn_libc;
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
                                           false,
                                           IF_WINDOWS(is_dbg ? HEAPSET_CPP_DBG :)
-                                          HEAPSET_CPP);
+                                          HEAPSET_CPP, corresponding_libc);
         }
         if (set_cpp != NULL) {
             /* for static, use corresponding libc for size.
@@ -3262,13 +3290,13 @@ malloc_wrap__iterate(malloc_iter_cb_t cb, void *iter_data)
 }
 
 static void *
-malloc_wrap__set_init(heapset_type_t type, app_pc pc)
+malloc_wrap__set_init(heapset_type_t type, app_pc pc, void *libc_data)
 {
     return NULL;
 }
 
 static void
-malloc_wrap__set_exit(heapset_type_t type, app_pc pc, void *user_data)
+malloc_wrap__set_exit(heapset_type_t type, app_pc pc, void *user_data, void *libc_data)
 {
     /* nothing */
 }
@@ -4662,6 +4690,14 @@ handle_malloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 #endif
     if (check_recursive_same_sequence(drcontext, &pt, routine, pt->alloc_size,
                                       size - redzone_size(routine)*2)) {
+#ifdef WINDOWS
+        DOLOG(2, {
+            /* Heap passed in is useful to know */
+            if (is_rtl_routine(type))
+                LOG(2, "Rtl Heap="PFX", flags="PIFX"\n",
+                    drwrap_get_arg(wrapcxt, 0), pt->alloc_flags);
+        });
+#endif
         return;
     }
     set_handling_heap_layer(pt, NULL, size);

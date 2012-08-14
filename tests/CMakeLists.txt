@@ -463,8 +463,7 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   # test malloc replacement
   newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
-  # FIXME i#964: enable once sharing Heaps
-  #newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
+  newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
