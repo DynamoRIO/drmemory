@@ -398,7 +398,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "independent_comalloc", HEAP_ROUTINE_NOT_HANDLED },
     /* FIXME PR 406323: memalign, valloc, pvalloc, etc. */
 #ifdef WINDOWS
-    /* the _impl versions are sometimes called directly 
+    /* the _impl versions are sometimes called directly (i#31)
      * XXX: there are also _base versions but they always call _impl?
      */
     { "malloc_impl", HEAP_ROUTINE_MALLOC },
@@ -408,7 +408,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     /* for VS2010 I see this (but no other _*_impl: looking at the crt
      * sources confirms it), as well as a layer of _*_crt routines
      * that just call _impl: perhaps replacing the prior _base
-     * versions
+     * versions (i#940)
      */
     { "_calloc_impl", HEAP_ROUTINE_CALLOC },
     /* for cygwin */
@@ -526,7 +526,7 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_calloc_dbg", HEAP_ROUTINE_CALLOC_DBG },
     /* _nh_malloc_dbg is called directly by debug operator new (i#500) */
     { "_nh_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
-    /* the _impl versions are sometimes called directly 
+    /* the _impl versions are sometimes called directly (i#31, i#606)
      * XXX: there are also _base versions but they always call _impl?
      */
     { "_malloc_dbg_impl", HEAP_ROUTINE_MALLOC_DBG },
@@ -1510,7 +1510,16 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
                  const char *prefix, const char *suffix)
 {
     uint i;
-    if (lookup_all_symbols(edata->mod, regex, enumerate_set_syms_cb, (void *)edata)) {
+    bool full = false;
+#ifdef WINDOWS
+    if (edata->mod->start == get_libc_base()) {
+        /* The _calloc_impl in msvcr*.dll is private */
+        LOG(2, "%s: doing full symbol lookup for libc\n", __FUNCTION__);
+        full = true;
+    }
+#endif
+    if (lookup_all_symbols(edata->mod, regex, full,
+                           enumerate_set_syms_cb, (void *)edata)) {
         for (i = 0; i < edata->num_possible; i++) {
             const char *name = edata->possible[i].name;
             if (!edata->processed[i] &&

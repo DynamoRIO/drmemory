@@ -263,7 +263,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
     /* We rely on drsym_init() having been called during init */
-    if (full) {
+    if (full && callback == NULL) {
         /* A SymSearch full search is slower than SymFromName */
         symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs,
                                      DRSYM_DEMANGLE);
@@ -272,7 +272,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
          * drsym_enumerate_symbols() (i#313)
          */
         modoffs = 0;
-        symres = drsym_search_symbols(mod->full_path, sym_with_mod, false,
+        symres = drsym_search_symbols(mod->full_path, sym_with_mod, full,
                                       callback == NULL ? search_syms_cb : callback,
                                       callback == NULL ? &modoffs : data);
         if (symres == DRSYM_ERROR_NOT_IMPLEMENTED) {
@@ -328,10 +328,10 @@ lookup_internal_symbol(const module_data_t *mod, const char *symname)
  * bump SYMCACHE_VERSION and add symcache checks.
  */
 bool
-lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
+lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
                    drsym_enumerate_cb callback, void *data)
 {
-    return (lookup_symbol_common(mod, sym_pattern, false, callback, data) != NULL);
+    return (lookup_symbol_common(mod, sym_pattern, full, callback, data) != NULL);
 }
 #endif
 

@@ -180,8 +180,8 @@ get_libc_base(void)
                      * we want the latter, as the former is only there b/c of a small
                      * number of imports from the latter.
                      */
-                    if (libc_base != NULL ||
-                        text_matches_pattern(modname, "msvcrt.dll", true))
+                    if (libc_base == NULL ||
+                        !text_matches_pattern(modname, "msvcrt.dll", true))
 #endif
                         libc_base = data->start;
                 }

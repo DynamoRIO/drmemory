@@ -877,7 +877,8 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
 static void
 find_syms_regex(sym_enum_data_t *edata, const char *regex)
 {
-    if (!lookup_all_symbols(edata->mod, regex, enumerate_syms_cb, (void *)edata))
+    if (!lookup_all_symbols(edata->mod, regex, false/*!full*/,
+                            enumerate_syms_cb, (void *)edata))
         LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
 }
 #endif /* USE_DRSYMS */
@@ -1004,7 +1005,8 @@ replace_in_module(const module_data_t *mod, bool add)
 # endif
         } else {
             /* better to do just one walk */
-            if (!lookup_all_symbols(edata.mod, "", enumerate_syms_cb, (void *)&edata))
+            if (!lookup_all_symbols(edata.mod, "", false/*!full*/,
+                                    enumerate_syms_cb, (void *)&edata))
                 LOG(2, "WARNING: failed to look up symbols to replace\n");
         }
     }

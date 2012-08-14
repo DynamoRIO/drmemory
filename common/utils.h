@@ -548,7 +548,7 @@ lookup_internal_symbol(const module_data_t *mod, const char *symname);
  * bump SYMCACHE_VERSION and add symcache checks.
  */
 bool
-lookup_all_symbols(const module_data_t *mod, const char *sym_pattern,
+lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
                    bool (*callback)(const char *name, size_t modoffs, void *data),
                    void *data);
 #endif

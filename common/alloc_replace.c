@@ -403,10 +403,10 @@ os_large_free(byte *map, size_t map_size)
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
     success = (int) raw_syscall(SYS_munmap, 2, (ptr_int_t)map, map_size);
-    LOG(3, "%s "PFX" size="PIFX" => %d\n", map, map_size, success);
+    LOG(3, "%s "PFX" size="PIFX" => %d\n",  __FUNCTION__, map, map_size, success);
     return (success == 0);
 #else
-    LOG(3, "%s "PFX" size="PIFX"\n", map, map_size);
+    LOG(3, "%s "PFX" size="PIFX"\n", __FUNCTION__, map, map_size);
     return virtual_free(map);
 #endif
 }
@@ -1590,6 +1590,7 @@ heap_to_arena(HANDLE heap)
     arena_header_t *arena = (arena_header_t *) heap;
     uint magic;
     /* we assume that pre-us will be detected and handled by caller */
+    /* FIXME i#959: handle additional pre-us Heaps from dlls before we took over */
     if (heap == process_heap)
         return cur_arena;
 #ifdef USE_DRSYMS
@@ -1689,7 +1690,8 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s heap="PFX" flags="PIFX" size="PIFX"\n", __FUNCTION__, heap, flags, size);
+    LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" size="PIFX"\n",
+        __FUNCTION__, heap, arena, flags, size);
     if (arena != NULL) {
         res = replace_alloc_common(arena, size,
                                    !TEST(HEAP_NO_SERIALIZE, arena->flags) &&
@@ -1714,8 +1716,8 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX" size="PIFX"\n",
-        __FUNCTION__, heap, flags, ptr, size);
+    LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" ptr="PFX" size="PIFX"\n",
+        __FUNCTION__, heap, arena, flags, ptr, size);
     if (arena != NULL) {
         /* unlike libc realloc(), HeapReAlloc fails when ptr==NULL */
         res = replace_realloc_common(arena, ptr, size,
