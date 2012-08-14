@@ -4385,13 +4385,11 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         if (pt->in_realloc) {
             /* when realloc calls free we've already invalidated the heap */
             ASSERT(pt->in_heap_routine > 1, "realloc calling free inconsistent");
-        } else {
+        } else if (!check_valid_heap_block(true/*invalid*/, base, pt, wrapcxt,
+                                           translate_routine_name(routine->name),
+                                           true/*is free()*/)) {
             pt->expect_lib_to_fail = true;
-            /* call_site for call;jmp will be jmp, so retaddr better even if post-call */
-            client_invalid_heap_arg(drwrap_get_retaddr(wrapcxt),
-                                    base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
-                                    translate_routine_name(routine->name), true);
-        }
+        } /* else, probably LFH free which we should ignore */
     } else {
         app_pc change_base;
         size_t real_size;
