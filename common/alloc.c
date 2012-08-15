@@ -1402,6 +1402,7 @@ typedef struct _set_enum_data_t {
     uint num_possible;
     bool *processed;
     bool use_redzone;
+    bool check_mismatch;
     /* if a wildcard lookup */
     const char *wildcard_name;
     const module_data_t *mod;
@@ -1436,7 +1437,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
             (edata->set_type, pc,
              edata->set_libc == NULL ? NULL : edata->set_libc->user_data);
         edata->set->type = edata->set_type;
-        edata->set->check_mismatch = true;
+        edata->set->check_mismatch = edata->check_mismatch;
         edata->set->set_libc = edata->set_libc;
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
@@ -1579,8 +1580,8 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 /* caller must hold alloc routine lock */
 static alloc_routine_set_t *
 find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *possible,
-                    uint num_possible, bool use_redzone, bool expect_all,
-                    heapset_type_t type, alloc_routine_set_t *set_libc)
+                    uint num_possible, bool use_redzone, bool check_mismatch,
+                    bool expect_all, heapset_type_t type, alloc_routine_set_t *set_libc)
 {
     set_enum_data_t edata;
     uint i;
@@ -1592,6 +1593,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.possible = possible;
     edata.num_possible = num_possible;
     edata.use_redzone = use_redzone;
+    edata.check_mismatch = check_mismatch;
     edata.mod = mod;
     edata.processed = NULL;
     edata.wildcard_name = NULL;
@@ -2369,8 +2371,9 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
                 find_alloc_routines(info, possible_rtl_routines,
-                                    POSSIBLE_RTL_ROUTINE_NUM, true, false, HEAPSET_RTL,
-                                    NULL);
+                                    POSSIBLE_RTL_ROUTINE_NUM, true/*redzone*/,
+                                    true/*mismatch*/, false/*may not see all*/,
+                                    HEAPSET_RTL, NULL);
                 dr_mutex_unlock(alloc_routine_lock);
             }
         }
@@ -2413,12 +2416,30 @@ alloc_load_symcache_postcall(const module_data_t *info)
 }
 #endif
 
+#ifdef WINDOWS
+static bool
+module_has_pdb(const module_data_t *info)
+{
+# ifdef USE_DRSYMS
+    drsym_debug_kind_t kind;
+    drsym_error_t res = drsym_get_module_debug_kind(info->full_path, &kind);
+    return (res == DRSYM_SUCCESS && TEST(DRSYM_PDB, kind));
+# else
+    return false;
+# endif
+}
+#endif
+
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     alloc_routine_set_t *set_libc;
     alloc_routine_set_t *set_cpp = NULL;
     bool use_redzone = true;
+#ifdef WINDOWS
+    /* i#607 part C: is msvcp*d.dll present, yet we do not have symbols? */
+    bool dbgcpp = false, dbgcpp_nosyms = false;
+#endif
 
 #ifdef WINDOWS
     alloc_find_syscalls(drcontext, info);
@@ -2435,29 +2456,41 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             return;
 
 #ifdef WINDOWS
-        /* XXX i#607: no support for /MDd unless we have private pdb
-         * to intercept heap routines.  For now we give a fatal error.
-         * The plan is to add both fallback support for no syms and automated
-         * support to get syms.  Part A support is in place but we still need
-         * part C (see comment below).
-         *
-         * XXX i#607 part C: once we remove the fatal error we need to disable
-         * mismatch detection within msvcp*d.dll b/c we won't be able to
-         * locate std::_DebugHeapDelete<*> for i#722.
-         */
+        /* match msvcrtd.dll and msvcrNNd.dll */
         if (modname != NULL &&
-            /* match msvcrtd.dll and msvcrNN.dll */
             text_matches_pattern(modname, "msvcr*d.dll", true/*ignore case*/)) {
-            drsym_debug_kind_t kind;
-            drsym_error_t res = drsym_get_module_debug_kind(info->full_path, &kind);
-            if (res != DRSYM_SUCCESS || !TEST(DRSYM_PDB, kind)) {
-                dbgcrt_nosyms = true;
-                NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL (without "
-                             "its symbols) is not supported. "
-                             "Please rebuild your application with either the Release "
-                             "build (/MD or /MT) or static Debug library (/MTd). "
-                             "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."NL);
-                dr_abort();
+            if (!module_has_pdb(info)) {
+                if (alloc_ops.replace_malloc) {
+                    /* FIXME i#607 part A for replacing: we don't yet have the
+                     * nosyms fallback in place
+                     */
+                    NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL "
+                                 "(without its symbols) is not supported. "
+                                 "Please rebuild your application with either the Release "
+                                 "build (/MD or /MT) or static Debug library (/MTd). "
+                                 "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."
+                                 NL);
+                    dr_abort();
+                } else {
+                    /* i#607 part A: we need pdb symbols for dbgcrt in order to intercept
+                     * all allocations.  If we don't have them we have a fallback but it
+                     * may have false negatives.
+                     * XXX i#143: add automated symbol retrieval
+                     */
+                    dbgcrt_nosyms = true;
+                }
+            }
+        } else if (modname != NULL &&
+                   text_matches_pattern(modname, "msvcp*d.dll", true/*ignore case*/)) {
+            dbgcpp = true;
+            if (!module_has_pdb(info)) {
+                /* i#607 part C: w/o symbols we have to disable
+                 * mismatch detection within msvcp*d.dll b/c we won't be able to
+                 * locate std::_DebugHeapDelete<*> for i#722.
+                 */
+                dbgcpp_nosyms = true;
+                WARN("WARNING: no symbols for %s so disabling mismatch detection\n",
+                     modname);
             }
         }
 #endif
@@ -2491,7 +2524,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
         set_libc = find_alloc_routines(info, possible_libc_routines,
                                        POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
-                                       false, HEAPSET_LIBC, NULL);
+                                       true/*mismatch*/, false/*!expect all*/,
+                                       HEAPSET_LIBC, NULL);
         if (info->start == get_libc_base(NULL)) {
             if (set_dyn_libc != NULL)
                 WARN("WARNING: two libcs found");
@@ -2512,7 +2546,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         if (!no_dbg_routines) {
             alloc_routine_set_t *set_dbgcrt =
                 find_alloc_routines(info, possible_crtdbg_routines,
-                                    POSSIBLE_CRTDBG_ROUTINE_NUM, false, false,
+                                    POSSIBLE_CRTDBG_ROUTINE_NUM, false/*no redzone*/,
+                                    true/*mismatch*/, false/*!expect all*/,
                                     HEAPSET_LIBC_DBG, set_libc);
             /* XXX i#967: not sure this is right: some malloc calls,
              * or operator new, might use shared libc?
@@ -2524,14 +2559,11 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         if (alloc_ops.intercept_operators) {
             alloc_routine_set_t *corresponding_libc = set_libc;
 #ifdef WINDOWS
-            bool is_dbg = !no_dbg_routines;
             /* we assume we only hit i#26 where op delete reads heap
              * headers when _malloc_dbg is present in same lib, for
              * static debug msvcp.  for dynamic we check by name.
              */
-            if (!is_dbg && modname != NULL &&
-                text_matches_pattern(modname, "msvcp*d.dll", true/*ignore case*/))
-                is_dbg = true;
+            bool is_dbg = (!no_dbg_routines || dbgcpp);
 #endif
             /* Assume that a C++ library w/o a local libc calls into the
              * shared libc.
@@ -2543,7 +2575,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                 corresponding_libc = set_dyn_libc;
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
-                                          false,
+                                          IF_WINDOWS_ELSE(!dbgcpp_nosyms, true),
+                                          false/*!expect all*/,
                                           IF_WINDOWS(is_dbg ? HEAPSET_CPP_DBG :)
                                           HEAPSET_CPP, corresponding_libc);
         }
@@ -4235,7 +4268,12 @@ record_allocator(void *drcontext, cls_alloc_t *pt, alloc_routine_entry_t *routin
      */
     if (pt->in_heap_routine == 0/*always for new, and called pre-enter for malloc*/ &&
         pt->allocator == 0) {
-        pt->allocator = malloc_allocator_type(routine);
+        if (routine->set->check_mismatch)
+            pt->allocator = malloc_allocator_type(routine);
+        else {
+            LOG(3, "unable to detect mismatches so not recording alloc type\n");
+            pt->allocator = MALLOC_ALLOCATOR_UNKNOWN;
+        }
 #ifdef WINDOWS
         pt->ignore_next_mismatch = false; /* just in case */
 #endif

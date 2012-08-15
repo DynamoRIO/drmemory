@@ -144,8 +144,9 @@ have the unstripped versions in separate locations, you can point at those
 locations using the \p DRMEMORY_LIB_PATH environment variable, which is a
 colon-separated list of directories.
 
-On Windows, the debug DLL C library (specified with the "/MDd" flag) is
-currently not supported.  Instead, build your application with either the
+On Windows, while the debug DLL C library (specified with the "/MDd" flag) is
+supported, its use requires Dr. Memory to disable some of its error
+detection.  We recommend building your application with either the
 release DLL ("/MD") or the release or debug static library ("/MT" or
 "/MTd"), although "/MTd" is not recommended (see below).  When using Visual
 Studio, the release library can be selected from Visual Studio's

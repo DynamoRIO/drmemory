@@ -179,9 +179,7 @@ else (UNIX)
     set(cmd_shell ${PERL} ${bin_relative}/${toolname}.pl)
   endif (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
 
-  # FIXME PR 406287: with /MDd, the app somehow gets an exception, and
-  # though the app's output looks normal, Dr. Memory only reports
-  # a bunch of ininit accesses by NtContinue.  Disabling /MDd for now.
+  # XXX i#143: we now support /MDd but need symbols for full support.
   # Also, /MTd results in the debug heap code throwing an exception
   # when malloc.exe does free(0x1230).
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
@@ -541,10 +539,11 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
       # C++ tests with other libc configs
-      # for /MTd, we skip the destructor mismatches, as they end up raising
+      # for /MTd and /MDd, we skip the destructor mismatches, as they end up raising
       # heap assertions that we can't recover from
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
+      newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
     endif (USE_DRSYMS)
 
     if (GCC)
