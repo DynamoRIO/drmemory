@@ -87,6 +87,8 @@ enum {
      * regardless of the buffer pointer value.
      */
     SYSARG_NO_WRITE_IF_COUNT_0 = 0x00000100,
+    /* for handle check */
+    SYSARG_IS_HANDLE           = 0x00000200,
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for
@@ -168,6 +170,13 @@ enum {
      * Any other argument fields in the initial entry are ignored.
      */
     SYSINFO_SECONDARY_TABLE     = 0x00000020,
+    /* System call deletes handle */
+    SYSINFO_DELETE_HANDLE       = 0x00000040,
+    /* System call creates handle
+     * we assume that no syscall both returns and has OUT arg,
+     * so using the same flag for both cases.
+     */
+    SYSINFO_CREATE_HANDLE       = 0x00000080,
 };
 
 #ifdef WINDOWS
@@ -295,4 +304,8 @@ os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
 
 syscall_info_t *
 get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt);
+
+bool
+sysarg_invalid(syscall_arg_t *arg);
+
 #endif /* _SYSCALL_OS_H_ */

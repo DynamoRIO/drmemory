@@ -646,7 +646,7 @@ check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
     }
 }
 
-static inline bool
+bool
 sysarg_invalid(syscall_arg_t *arg)
 {
     return (arg->param == 0 && arg->size == 0 && arg->flags == 0);

@@ -58,9 +58,8 @@ handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
                 byte *start, size_t size, uint arg_flags, wchar_t *safe,
                 bool check_addr);
 
-static void
-syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
-                            dr_mcontext_t *mc);
+static int
+syscall_get_handle_type(syscall_info_t *sysinfo);
 
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
@@ -168,9 +167,6 @@ static int sysnum_QuerySystemInformation = -1;
 static int sysnum_SetSystemInformation = -1;
 static int sysnum_TerminateProcess = -1;
 
-/* for handle checks */
-static int sysnum_NtClose = -1;
-
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
  * FIXME i#99: my windows syscall data is missing 3 types of information:
@@ -217,7 +213,7 @@ static int sysnum_NtClose = -1;
 #define RET (SYSARG_POST_SIZE_RETVAL)
 static syscall_info_t syscall_ntdll_info[] = {
     /* Base set from Windows NT, Windows 2000, and Windows XP */
-    {0,"NtAcceptConnectPort", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {3,0,IB}, {4,sizeof(PORT_VIEW),R|W}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, }},
+    {0,"NtAcceptConnectPort", OK|SYSINFO_CREATE_HANDLE, 24, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {3,0,IB}, {4,sizeof(PORT_VIEW),R|W}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, }},
     {0,"NtAccessCheck", OK, 32, {{0,sizeof(SECURITY_DESCRIPTOR),R|CT,SYSARG_TYPE_SECURITY_DESCRIPTOR}, {3,sizeof(GENERIC_MAPPING),R}, {4,sizeof(PRIVILEGE_SET),W}, {5,sizeof(ULONG),R}, {6,sizeof(ACCESS_MASK),W}, {7,sizeof(BOOLEAN),W}, }},
     {0,"NtAccessCheckAndAuditAlarm", OK, 44, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(SECURITY_DESCRIPTOR),R|CT,SYSARG_TYPE_SECURITY_DESCRIPTOR}, {6,sizeof(GENERIC_MAPPING),R}, {7,0,IB}, {8,sizeof(ACCESS_MASK),W}, {9,sizeof(BOOLEAN),W}, {10,sizeof(BOOLEAN),W}, }},
     {0,"NtAccessCheckByType", OK, 44, {{0,sizeof(SECURITY_DESCRIPTOR),R|CT,SYSARG_TYPE_SECURITY_DESCRIPTOR}, {1,sizeof(SID),R}, {4,sizeof(OBJECT_TYPE_LIST),R}, {6,sizeof(GENERIC_MAPPING),R}, {7,sizeof(PRIVILEGE_SET),R}, {8,sizeof(ULONG),R}, {9,sizeof(ACCESS_MASK),W}, {10,sizeof(ULONG),W}, }},
@@ -244,7 +240,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtCancelIoFile", OK, 8, {{1,sizeof(IO_STATUS_BLOCK),W}, }},
     {0,"NtCancelTimer", OK, 8, {{1,sizeof(BOOLEAN),W}, }},
     {0,"NtClearEvent", OK, 4, },
-    {0,"NtClose", OK, 4, {{0,}}, &sysnum_NtClose},
+    {0,"NtClose", OK|SYSINFO_DELETE_HANDLE, 4, {{0,}, }},
     {0,"NtCloseObjectAuditAlarm", OK, 12, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,0,IB}, }},
     {0,"NtCompactKeys", OK, 8, },
     {0,"NtCompareTokens", OK, 12, {{2,sizeof(BOOLEAN),W}, }},
@@ -255,36 +251,36 @@ static syscall_info_t syscall_ntdll_info[] = {
      * capacity/size on IN can easily have capacity be larger than IN size:
      * xref i#494.  Be on the lookout for other false positives.
      */
-    {0,"NtConnectPort", OK, 32, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(REMOTE_PORT_VIEW),W}, {5,sizeof(ULONG),W}, {6,-7,R|WI}, {7,sizeof(ULONG),R|W}, }},
+    {0,"NtConnectPort", OK|SYSINFO_CREATE_HANDLE, 32, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(REMOTE_PORT_VIEW),W}, {5,sizeof(ULONG),W}, {6,-7,R|WI}, {7,sizeof(ULONG),R|W}, }},
     {0,"NtContinue", OK, 8, {{0,sizeof(CONTEXT),R|CT,SYSARG_TYPE_CONTEXT}, {1,0,IB}, }},
-    {0,"NtCreateChannel", OK, 8, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateDebugObject", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, }},
-    {0,"NtCreateDirectoryObject", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateEvent", OK, 20, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,0,IB}, }},
-    {0,"NtCreateEventPair", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateFile", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {4,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtCreateIoCompletion", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateJobObject", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateChannel", OK|SYSINFO_CREATE_HANDLE, 8, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateDebugObject", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, }},
+    {0,"NtCreateDirectoryObject", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateEvent", OK|SYSINFO_CREATE_HANDLE, 20, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,0,IB}, }},
+    {0,"NtCreateEventPair", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateFile", OK|SYSINFO_CREATE_HANDLE, 44, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {4,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtCreateIoCompletion", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateJobObject", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtCreateJobSet", OK, 12, {{1,sizeof(JOB_SET_ARRAY),R}, }},
-    {0,"NtCreateKey", OK, 28, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {6,sizeof(ULONG),W}, }},
-    {0,"NtCreateKeyedEvent", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateMailslotFile", OK, 32, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {7,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtCreateMutant", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, }},
-    {0,"NtCreateNamedPipeFile", OK, 56, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {7,0,IB}, {8,0,IB}, {9,0,IB}, {13,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtCreateKey", OK|SYSINFO_CREATE_HANDLE, 28, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {6,sizeof(ULONG),W}, }},
+    {0,"NtCreateKeyedEvent", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateMailslotFile", OK|SYSINFO_CREATE_HANDLE, 32, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {7,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtCreateMutant", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, }},
+    {0,"NtCreateNamedPipeFile", OK|SYSINFO_CREATE_HANDLE, 56, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, {7,0,IB}, {8,0,IB}, {9,0,IB}, {13,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtCreatePagingFile", OK, 16, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(ULARGE_INTEGER),R}, {2,sizeof(ULARGE_INTEGER),R}, }},
-    {0,"NtCreatePort", OK, 20, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateProcess", OK, 32, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,0,IB}, }},
-    {0,"NtCreateProcessEx", OK, 36, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateProfile", OK, 36, {{0,sizeof(HANDLE),W}, {5,sizeof(ULONG),R}, }},
-    {0,"NtCreateSection", OK, 28, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtCreateSemaphore", OK, 20, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateSymbolicLinkObject", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtCreateThread", OK, 32, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(CLIENT_ID),W}, {5,sizeof(CONTEXT),R|CT,SYSARG_TYPE_CONTEXT}, {6,sizeof(USER_STACK),R}, {7,0,IB}, }, &sysnum_CreateThread},
-    {0,"NtCreateThreadEx", OK, 44, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, 6,0,IB /*rest handled manually*/, }, &sysnum_CreateThreadEx},
-    {0,"NtCreateTimer", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtCreateToken", OK, 52, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(LUID),R}, {5,sizeof(LARGE_INTEGER),R}, {6,sizeof(TOKEN_USER),R}, {7,sizeof(TOKEN_GROUPS),R}, {8,sizeof(TOKEN_PRIVILEGES),R}, {9,sizeof(TOKEN_OWNER),R}, {10,sizeof(TOKEN_PRIMARY_GROUP),R}, {11,sizeof(TOKEN_DEFAULT_DACL),R}, {12,sizeof(TOKEN_SOURCE),R}, }},
-    {0,"NtCreateUserProcess", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(HANDLE),W}, {4,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is in/out but not completely known*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }, &sysnum_CreateUserProcess},
-    {0,"NtCreateWaitablePort", OK, 20, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreatePort", OK|SYSINFO_CREATE_HANDLE, 20, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateProcess", OK|SYSINFO_CREATE_HANDLE, 32, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,0,IB}, }},
+    {0,"NtCreateProcessEx", OK|SYSINFO_CREATE_HANDLE, 36, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateProfile", OK|SYSINFO_CREATE_HANDLE, 36, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {5,sizeof(ULONG),R}, }},
+    {0,"NtCreateSection", OK|SYSINFO_CREATE_HANDLE, 28, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtCreateSemaphore", OK|SYSINFO_CREATE_HANDLE, 20, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateSymbolicLinkObject", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
+    {0,"NtCreateThread", OK|SYSINFO_CREATE_HANDLE, 32, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(CLIENT_ID),W}, {5,sizeof(CONTEXT),R|CT,SYSARG_TYPE_CONTEXT}, {6,sizeof(USER_STACK),R}, {7,0,IB}, }, &sysnum_CreateThread},
+    {0,"NtCreateThreadEx", OK|SYSINFO_CREATE_HANDLE, 44, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, 6,0,IB /*rest handled manually*/, }, &sysnum_CreateThreadEx},
+    {0,"NtCreateTimer", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtCreateTok|SYSINFO_CREATE_HANDLEen", OK, 52, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(LUID),R}, {5,sizeof(LARGE_INTEGER),R}, {6,sizeof(TOKEN_USER),R}, {7,sizeof(TOKEN_GROUPS),R}, {8,sizeof(TOKEN_PRIVILEGES),R}, {9,sizeof(TOKEN_OWNER),R}, {10,sizeof(TOKEN_PRIMARY_GROUP),R}, {11,sizeof(TOKEN_DEFAULT_DACL),R}, {12,sizeof(TOKEN_SOURCE),R}, }},
+    {0,"NtCreateUserProcess", OK|SYSINFO_CREATE_HANDLE, 44, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {4,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {7,0,IB}, {8,sizeof(RTL_USER_PROCESS_PARAMETERS),R}, /*XXX i#98: arg 9 is in/out but not completely known*/ 10,sizeof(create_proc_thread_info_t),R/*rest handled manually*/, }, &sysnum_CreateUserProcess},
+    {0,"NtCreateWaitablePort", OK|SYSINFO_CREATE_HANDLE, 20, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtDebugActiveProcess", OK, 8, },
     {0,"NtDebugContinue", OK, 12, {{1,sizeof(CLIENT_ID),R}, }},
     {0,"NtDelayExecution", OK, 8, {{0,0,IB}, {1,sizeof(LARGE_INTEGER),R}, }},
@@ -297,15 +293,15 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtDeleteValueKey", OK, 8, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
     {0,"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, /*param6 handled manually*/ {8,-9,W}, }, &sysnum_DeviceIoControlFile},
     {0,"NtDisplayString", OK, 4, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtDuplicateObject", OK, 28, {{3,sizeof(HANDLE),W}, }},
-    {0,"NtDuplicateToken", OK, 24, {{2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, {5,sizeof(HANDLE),W}, }},
+    {0,"NtDuplicateObject", OK|SYSINFO_CREATE_HANDLE, 28, {{3,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
+    {0,"NtDuplicateToken", OK|SYSINFO_CREATE_HANDLE, 24, {{2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,0,IB}, {5,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
     {0,"NtEnumerateBootEntries", OK, 8, },
     {0,"NtEnumerateDriverEntries", OK, 8, },
     {0,"NtEnumerateKey", OK, 24, {{3,-4,W}, {3,-5,WI}, {5,sizeof(ULONG),W}, }},
     {0,"NtEnumerateSystemEnvironmentValuesEx", OK, 12, },
     {0,"NtEnumerateValueKey", OK, 24, {{3,-4,W}, {3,-5,WI}, {5,sizeof(ULONG),W}, }},
     {0,"NtExtendSection", OK, 8, {{1,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtFilterToken", OK, 24, {{2,sizeof(TOKEN_GROUPS),R}, {3,sizeof(TOKEN_PRIVILEGES),R}, {4,sizeof(TOKEN_GROUPS),R}, {5,sizeof(HANDLE),W}, }},
+    {0,"NtFilterToken", OK|SYSINFO_CREATE_HANDLE, 24, {{2,sizeof(TOKEN_GROUPS),R}, {3,sizeof(TOKEN_PRIVILEGES),R}, {4,sizeof(TOKEN_GROUPS),R}, {5,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
     {0,"NtFindAtom", OK, 12, {{0,-1,R}, {2,sizeof(USHORT),W}, }},
     {0,"NtFlushBuffersFile", OK, 8, {{1,sizeof(IO_STATUS_BLOCK),W}, }},
     {0,"NtFlushInstructionCache", OK, 12, },
@@ -349,28 +345,28 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtNotifyChangeDirectoryFile", OK, 36, {{4,sizeof(IO_STATUS_BLOCK),W}, {5,sizeof(FILE_NOTIFY_INFORMATION),W}, {8,0,IB}, }},
     {0,"NtNotifyChangeKey", OK, 40, {{4,sizeof(IO_STATUS_BLOCK),W}, {6,0,IB}, {9,0,IB}, }},
     {0,"NtNotifyChangeMultipleKeys", OK, 48, {{2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {6,sizeof(IO_STATUS_BLOCK),W}, {8,0,IB}, {11,0,IB}, }},
-    {0,"NtOpenChannel", OK, 8, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenDirectoryObject", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenEvent", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenEventPair", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenFile", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, }},
-    {0,"NtOpenIoCompletion", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenJobObject", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenKey", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenKeyEx", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenKeyedEvent", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenMutant", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenChannel", OK|SYSINFO_CREATE_HANDLE, 8, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenDirectoryObject", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenEvent", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenEventPair", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenFile", OK|SYSINFO_CREATE_HANDLE, 24, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(IO_STATUS_BLOCK),W}, }},
+    {0,"NtOpenIoCompletion", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenJobObject", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenKey", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenKeyEx", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenKeyedEvent", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenMutant", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtOpenObjectAuditAlarm", OK, 48, {{0,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {1,sizeof(PVOID),R}, {2,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {3,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {4,sizeof(SECURITY_DESCRIPTOR),R|CT,SYSARG_TYPE_SECURITY_DESCRIPTOR}, {8,sizeof(PRIVILEGE_SET),R}, {9,0,IB}, {10,0,IB}, {11,sizeof(BOOLEAN),W}, }},
-    {0,"NtOpenProcess", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(CLIENT_ID),R}, }},
-    {0,"NtOpenProcessToken", OK, 12, {{2,sizeof(HANDLE),W}, }},
-    {0,"NtOpenProcessTokenEx", OK, 16, {{3,sizeof(HANDLE),W}, }},
-    {0,"NtOpenSection", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenSemaphore", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenSymbolicLinkObject", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtOpenThread", OK, 16, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(CLIENT_ID),R}, }},
-    {0,"NtOpenThreadToken", OK, 16, {{2,0,IB}, {3,sizeof(HANDLE),W}, }},
-    {0,"NtOpenThreadTokenEx", OK, 20, {{2,0,IB}, {4,sizeof(HANDLE),W}, }},
-    {0,"NtOpenTimer", OK, 12, {{0,sizeof(HANDLE),W}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenProcess", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(CLIENT_ID),R}, }},
+    {0,"NtOpenProcessToken", OK|SYSINFO_CREATE_HANDLE, 12, {{2,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
+    {0,"NtOpenProcessTokenEx", OK|SYSINFO_CREATE_HANDLE, 16, {{3,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
+    {0,"NtOpenSection", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenSemaphore", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenSymbolicLinkObject", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtOpenThread", OK|SYSINFO_CREATE_HANDLE, 16, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(CLIENT_ID),R}, }},
+    {0,"NtOpenThreadToken", OK|SYSINFO_CREATE_HANDLE, 16, {{2,0,IB}, {3,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
+    {0,"NtOpenThreadTokenEx", OK|SYSINFO_CREATE_HANDLE, 20, {{2,0,IB}, {4,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
+    {0,"NtOpenTimer", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtPlugPlayControl", OK, 16, {{1,-2,W}, }},
     {0,"NtPowerInformation", OK, 20, {{3,-4,W}, }},
     {0,"NtPrivilegeCheck", OK, 12, {{1,sizeof(PRIVILEGE_SET),R}, {2,sizeof(BOOLEAN),W}, }},
@@ -468,7 +464,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSaveKey", OK, 8, },
     {0,"NtSaveKeyEx", OK, 12, },
     {0,"NtSaveMergedKeys", OK, 12, },
-    {0,"NtSecureConnectPort", OK, 36, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(SID),R}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, {6,sizeof(ULONG),W}, {7,-8,R|WI}, {8,sizeof(ULONG),R|W}, }},
+    {0,"NtSecureConnectPort", OK|SYSINFO_CREATE_HANDLE, 36, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(SECURITY_QUALITY_OF_SERVICE),R|CT,SYSARG_TYPE_SECURITY_QOS}, {3,sizeof(PORT_VIEW),R|W}, {4,sizeof(SID),R}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, {6,sizeof(ULONG),W}, {7,-8,R|WI}, {8,sizeof(ULONG),R|W}, }},
     {0,"NtSendWaitReplyChannel", OK, 16, {{3,sizeof(CHANNEL_MESSAGE),W}, }},
     {0,"NtSetBootEntryOrder", OK, 8, },
     {0,"NtSetBootOptions", OK, 8, {{0,sizeof(BOOT_OPTIONS),R}, }},
@@ -540,8 +536,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtW32Call", OK, 20, {{3,-4,WI/*FIXME: de-ref w/o corresponding R to check definedness: but not enough info to understand exactly what's going on here*/}, {4,sizeof(ULONG),W}, }},
     {0,"NtWaitForDebugEvent", OK, 16, {{1,0,IB}, {2,sizeof(LARGE_INTEGER),R}, {3,sizeof(DBGUI_WAIT_STATE_CHANGE),W}, }},
     {0,"NtWaitForKeyedEvent", OK, 16, {{2,0,IB}, {3,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtWaitForMultipleObjects", OK, 20, {{1,sizeof(HANDLE),R}, {3,0,IB}, {4,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtWaitForMultipleObjects32", OK, 20, {{1,sizeof(HANDLE),R}, {3,0,IB}, {4,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtWaitForMultipleObjects", OK, 20, {{1,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_READ}, {3,0,IB}, {4,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtWaitForMultipleObjects32", OK, 20, {{1,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_READ}, {3,0,IB}, {4,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtWaitForSingleObject", OK, 12, {{1,0,IB}, {2,sizeof(LARGE_INTEGER),R}, }},
     {0,"NtWaitHighEventPair", OK, 4, },
     {0,"NtWaitLowEventPair", OK, 4, },
@@ -576,12 +572,12 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /* added in Windows Vista SP0 */
     {0,"NtAcquireCMFViewOwnership", UNKNOWN, 12, },
-    {0,"NtAlpcAcceptConnectPort", OK, 36, {{0,sizeof(HANDLE),W}, {3,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {6,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {7,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {8,0,IB}, }},
+    {0,"NtAlpcAcceptConnectPort", OK|SYSINFO_CREATE_HANDLE, 36, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {3,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {4,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {6,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {7,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {8,0,IB}, }},
     {0,"NtAlpcCancelMessage", OK, 12, {{2,sizeof(ALPC_CONTEXT_ATTRIBUTES),R}, }},
-    {0,"NtAlpcConnectPort", OK, 44, {{0,sizeof(HANDLE),W}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {5,sizeof(SID),R}, {6,-7,WI}, {7,sizeof(ULONG),R|W}, {8,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {9,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {10,sizeof(LARGE_INTEGER),R}, }},
-    {0,"NtAlpcCreatePort", OK, 12, {{0,sizeof(HANDLE),W}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
-    {0,"NtAlpcCreatePortSection", OK, 24, {{4,sizeof(HANDLE),W}, {5,sizeof(ULONG),W}, }},
-    {0,"NtAlpcCreateResourceReserve", OK, 16, {{3,sizeof(HANDLE),W}, }},
+    {0,"NtAlpcConnectPort", OK|SYSINFO_CREATE_HANDLE, 44, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, {2,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {3,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, {5,sizeof(SID),R}, {6,-7,WI}, {7,sizeof(ULONG),R|W}, {8,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {9,sizeof(ALPC_MESSAGE_ATTRIBUTES),R|W}, {10,sizeof(LARGE_INTEGER),R}, }},
+    {0,"NtAlpcCreatePort", OK|SYSINFO_CREATE_HANDLE, 12, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, {2,sizeof(ALPC_PORT_ATTRIBUTES),R|CT,SYSARG_TYPE_ALPC_PORT_ATTRIBUTES}, }},
+    {0,"NtAlpcCreatePortSection", OK|SYSINFO_CREATE_HANDLE, 24, {{4,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {5,sizeof(ULONG),W}, }},
+    {0,"NtAlpcCreateResourceReserve", OK|SYSINFO_CREATE_HANDLE, 16, {{3,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, }},
     {0,"NtAlpcCreateSectionView", OK, 12, {{2,sizeof(ALPC_DATA_VIEW),R|W}, }},
     {0,"NtAlpcCreateSecurityContext", OK, 12, {{2,sizeof(ALPC_SECURITY_ATTRIBUTES),R|W|CT,SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES}, }},
     {0,"NtAlpcDeletePortSection", OK, 12, },
@@ -593,8 +589,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtAlpcDeleteSecurityContext", OK, 12, },
     {0,"NtAlpcDisconnectPort", OK, 8, },
     {0,"NtAlpcImpersonateClientOfPort", OK, 12, {{1,sizeof(PORT_MESSAGE), R|CT,SYSARG_TYPE_PORT_MESSAGE}, }},
-    {0,"NtAlpcOpenSenderProcess", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
-    {0,"NtAlpcOpenSenderThread", OK, 24, {{0,sizeof(HANDLE),W}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtAlpcOpenSenderProcess", OK|SYSINFO_CREATE_HANDLE, 24, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
+    {0,"NtAlpcOpenSenderThread", OK|SYSINFO_CREATE_HANDLE, 24, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {5,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtAlpcQueryInformation", OK, 20, {{2,-3,W}, {4,sizeof(ULONG),W}, }},
     {0,"NtAlpcQueryInformationMessage", OK, 24, {{1,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {3,-4,W}, {5,sizeof(ULONG),W}, }},
     {0,"NtAlpcRevokeSecurityContext", OK, 12, },
@@ -1102,9 +1098,53 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
     }
     /* for handle leak checks */
     if (options.check_handle_leaks) {
-        syscall_info_t *info = get_sysinfo(&sysnum, pt);
-        if (os_syscall_succeeded(sysnum, info, dr_syscall_get_result(drcontext)))
-            syscall_check_kernel_handle(drcontext, pt, sysnum, mc);
+        syscall_info_t *sysinfo = get_sysinfo(&sysnum, pt);
+        reg_t res = dr_syscall_get_result(drcontext);
+        if (sysinfo != NULL &&
+            TESTANY(SYSINFO_CREATE_HANDLE | SYSINFO_DELETE_HANDLE,
+                    sysinfo->flags) &&
+            os_syscall_succeeded(sysnum, sysinfo, res)) {
+            int type = syscall_get_handle_type(sysinfo);
+            /* handle delete */
+            if (TEST(SYSINFO_DELETE_HANDLE, sysinfo->flags)) {
+                /* assuming the handle to be deleted is at the first arg */
+                /* XXX: cannot use sysarg_invalid to check if the sysarg
+                 * is valid, because it might be {0,} in syscall_info.
+                 * Alternative solution is to add inlined arg type flags.
+                 */
+                handlecheck_delete_handle(drcontext, (HANDLE)pt->sysarg[0],
+                                           type, sysnum, NULL, mc);
+            }
+            /* handle create
+             * we assume that no syscall both returns and has OUT arg,
+             * so first walk the arg, and get return if no handle in arg.
+             */
+            if (TEST(SYSINFO_CREATE_HANDLE, sysinfo->flags)) {
+                HANDLE handle;
+                bool handle_in_arg = false;
+                int i, num_args = sysinfo->args_size / sizeof(reg_t);
+                for (i = 0; i < num_args; i++) {
+                    if (sysarg_invalid(&sysinfo->arg[i]))
+                        break;
+                    if (TESTALL(SYSARG_IS_HANDLE|SYSARG_WRITE,
+                                sysinfo->arg[i].flags) &&
+                        safe_read((void *)pt->sysarg[i],
+                                  sizeof(HANDLE), &handle)) {
+                        /* assuming any handle arg written by the syscall is
+                         * newly created.
+                         */
+                        handlecheck_create_handle(drcontext, handle, type,
+                                                  sysnum, NULL, mc);
+                        handle_in_arg = true;
+                    }
+                }
+                if (!handle_in_arg) {
+                    /* handle is in return */
+                    handlecheck_create_handle(drcontext, (HANDLE)res, type,
+                                              sysnum, NULL, mc);
+                }
+            }
+        }
     }
     wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc);
 }
@@ -1147,18 +1187,16 @@ os_syscall_get_name(uint num)
  * handle check related system call routines
  */
 
-static void
-syscall_check_kernel_handle(void *drcontext, cls_syscall_t *pt, int sysnum,
-                            dr_mcontext_t *mc)
+static int
+syscall_get_handle_type(syscall_info_t *sysinfo)
 {
-    if (sysnum == sysnum_NtClose) {
-        /* handle close */
-        handlecheck_delete_handle(drcontext, (HANDLE) pt->sysarg[0],
-                                  HANDLE_TYPE_KERNEL, sysnum, NULL, mc);
-    } else {
-        /* handle creation */
-        /* add more system calls handling here */
-    }
+    if (sysinfo >= &syscall_user32_info[0] &&
+        sysinfo <= &syscall_user32_info[num_user32_syscalls()-1])
+        return HANDLE_TYPE_USER;
+    if (sysinfo >= &syscall_gdi32_info[0] &&
+        sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])
+        return HANDLE_TYPE_GDI;
+    return HANDLE_TYPE_KERNEL;
 }
 
 /***************************************************************************
