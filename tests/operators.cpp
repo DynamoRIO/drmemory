@@ -28,13 +28,11 @@
 #include "stdlib.h"
 #include "limits.h"
 
+// Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff
+# define SIZE_OOM 0x7fffffff
 #ifdef LINUX
-// We don't run OOM on Linux w/ the Windows size
-# define SIZE_OOM 0xffffffff
 # define IF_LINUX_ELSE(x,y) x
 #else
-// Windows compiler complains if the size is over 0x7fffffff
-# define SIZE_OOM 0x7fffffff
 # define IF_LINUX_ELSE(x,y) y
 #endif
 
@@ -49,7 +47,9 @@ public:
 
 class enormous {
 public:
+    // i#972: char[SIZE_OOM] is the static limit but won't run OOM in Linux
     char buf[SIZE_OOM];
+    char buf2[SIZE_OOM];
 };
 
 static void
@@ -80,7 +80,8 @@ test_nothrow()
     else
         delete e;
 
-    char *p = new (std::nothrow) char[SIZE_OOM];
+    IF_LINUX_ELSE(int, char) *p =
+        new (std::nothrow) IF_LINUX_ELSE(int, char)[SIZE_OOM];
     if (p == NULL)
         std::cout << "new[] returned NULL" << std::endl;
     else

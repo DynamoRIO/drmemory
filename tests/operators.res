@@ -21,6 +21,6 @@
 : WARNING: heap allocation failed
 operators.cpp:77
 : WARNING: heap allocation failed
-operators.cpp:83
+operators.cpp:84
 : WARNING: heap allocation failed
-operators.cpp:100
+operators.cpp:101
