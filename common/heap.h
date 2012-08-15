@@ -41,7 +41,10 @@ get_ntdll_base(void);
 #endif
 
 app_pc
-get_libc_base(void);
+get_libc_base(app_pc *libc_end OUT);
+
+bool
+pc_is_in_libc(app_pc pc);
 
 app_pc
 get_libcpp_base(void);

@@ -147,6 +147,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 # include <sys/mman.h>
 #else
 # include "windefs.h"
+# include "../wininc/crtdbg.h"
 # ifdef USE_DRSYMS
 #  include "drsyms.h"
 # endif
@@ -194,6 +195,11 @@ uint num_frees;
 
 /* points at the per-malloc API to use */
 malloc_interface_t malloc_interface;
+
+#ifdef WINDOWS
+/* i#607 part A: is msvcr*d.dll present, yet we do not have symbols? */
+static bool dbgcrt_nosyms;
+#endif
 
 #ifdef LINUX
 byte *
@@ -1527,7 +1533,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
     uint i;
     bool full = false;
 #ifdef WINDOWS
-    if (edata->mod->start == get_libc_base() ||
+    if (edata->mod->start == get_libc_base(NULL) ||
         edata->mod->start == get_libcpp_base()) {
         /* The _calloc_impl in msvcr*.dll is private (i#960) */
         /* The std::_DebugHeapDelete<> (i#722) in msvcp*.dll is private (i#607 part C) */
@@ -1714,7 +1720,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
         if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
-            mod->start == get_libc_base()) {
+            mod->start == get_libc_base(NULL)) {
             ASSERT(pc != NULL, "no malloc_usable_size in libc!");
             malloc_usable_size = (size_t(*)(void *)) pc;
         }
@@ -2084,6 +2090,8 @@ enum {
     MALLOC_ALLOCATOR_CHECKED   = MALLOC_RESERVED_5,
     /* We ignore Rtl*Heap-internal allocs */
     MALLOC_RTL_INTERNAL        = MALLOC_RESERVED_6,
+    /* i#607 part A: try to handle msvc*d.dll w/o syms */
+    MALLOC_LIBC_INTERNAL_ALLOC = MALLOC_RESERVED_7,
     /* The rest are reserved for future use */
 };
 
@@ -2430,7 +2438,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         /* XXX i#607: no support for /MDd unless we have private pdb
          * to intercept heap routines.  For now we give a fatal error.
          * The plan is to add both fallback support for no syms and automated
-         * support to get syms.
+         * support to get syms.  Part A support is in place but we still need
+         * part C (see comment below).
          *
          * XXX i#607 part C: once we remove the fatal error we need to disable
          * mismatch detection within msvcp*d.dll b/c we won't be able to
@@ -2442,6 +2451,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             drsym_debug_kind_t kind;
             drsym_error_t res = drsym_get_module_debug_kind(info->full_path, &kind);
             if (res != DRSYM_SUCCESS || !TEST(DRSYM_PDB, kind)) {
+                dbgcrt_nosyms = true;
                 NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL (without "
                              "its symbols) is not supported. "
                              "Please rebuild your application with either the Release "
@@ -2482,7 +2492,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         set_libc = find_alloc_routines(info, possible_libc_routines,
                                        POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
                                        false, HEAPSET_LIBC, NULL);
-        if (info->start == get_libc_base()) {
+        if (info->start == get_libc_base(NULL)) {
             if (set_dyn_libc != NULL)
                 WARN("WARNING: two libcs found");
             set_dyn_libc = set_libc;
@@ -3050,6 +3060,14 @@ malloc_entry_is_pre_us(malloc_entry_t *e, bool ok_if_invalid)
     return (TEST(MALLOC_PRE_US, e->flags) &&
             (TEST(MALLOC_VALID, e->flags) || ok_if_invalid));
 }
+
+#ifdef WINDOWS
+static bool
+malloc_entry_is_libc_internal(malloc_entry_t *e)
+{
+    return TEST(MALLOC_LIBC_INTERNAL_ALLOC, e->flags);
+}
+#endif
 
 /* if alloc has already been checked, returns 0.
  * if not, returns type, and then marks allocation as having been checked.
@@ -4281,7 +4299,7 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
          * solution is to simply not report mismatches when the outer layer is
          * in msvcr*.dll and we're dealing with [] vs non-[].
          */
-        if (routine->set->modbase == get_libc_base() &&
+        if (routine->set->modbase == get_libc_base(NULL) &&
             alloc_type != MALLOC_ALLOCATOR_MALLOC &&
             free_type != MALLOC_ALLOCATOR_MALLOC) {
             LOG(2, "ignoring operator mismatch b/c msvcr* is outer layer\n");
@@ -4384,7 +4402,16 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         ASSERT(entry == NULL, "arg should be invalid");
     }
 #endif
-    if (entry != NULL && malloc_entry_is_native_ex(entry, base, pt, false)) {
+    if (entry != NULL &&
+        (malloc_entry_is_native_ex(entry, base, pt, false)
+#ifdef WINDOWS
+         /* i#607 part A: if we missed the libc-layer alloc, we have to ignore the
+          * libc-layer free b/c it's too late to add our redzone.
+          * XXX: for now we do not check in all other query routines like size.
+          */
+         || (malloc_entry_is_libc_internal(entry) && !is_rtl_routine(routine->type))
+#endif
+         )) {
         malloc_entry_remove(entry);
         malloc_unlock();
         return;
@@ -4853,6 +4880,46 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
 }
 
+#ifdef WINDOWS
+static void
+check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
+                           alloc_routine_entry_t *routine, app_pc top_pc,
+                           byte *app_base, size_t app_size)
+{
+    /* i#607 part A: try to identify missing internal calls to
+     * allocators when we have no symbols.  We'll reach the Rtl layer
+     * w/o seeing any libc layer, yet our retaddr will be in libc.
+     * Our solution is to add an entry for the requested alloc inside the
+     * dbgcrt redzone so we can recognize it when we see the libc free.
+     */
+    LOG(3, "%s: dbgcrt_nosyms=%d, rtl=%d, ra="PFX", in libc=%d, level %d==%d?\n",
+        __FUNCTION__, dbgcrt_nosyms, is_rtl_routine(routine->type),
+        drwrap_get_retaddr(wrapcxt), pc_is_in_libc(drwrap_get_retaddr(wrapcxt)),
+        pt->in_heap_routine, pt->in_heap_adjusted);
+    if (dbgcrt_nosyms && is_rtl_routine(routine->type) &&
+        pc_is_in_libc(drwrap_get_retaddr(wrapcxt)) &&
+        pt->in_heap_routine == pt->in_heap_adjusted) {
+        LOG(2, "missed libc layer so marking as such\n");
+        /* XXX: we're assuming this is a dbgcrt block but there's no way
+         * to verify like we do during heap iteration (i#607 part B)
+         * b/c the fields are all uninit at this point
+         */
+        if (app_size >= DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE) {
+            /* Skip the dbgcrt header */
+            byte *inner_start = app_base + DBGCRT_PRE_REDZONE_SIZE;
+            byte *inner_end = inner_start + app_size -
+                (DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE);
+            LOG(2, "adding entry for dbgcrt inner alloc "PFX"-"PFX"\n",
+                inner_start, inner_end);
+            malloc_add_common(inner_start, inner_end, inner_end,
+                              MALLOC_LIBC_INTERNAL_ALLOC, 0, mc, top_pc, pt->allocator);
+        } else {
+            WARN("WARNING: dbgcrt missed libc layer detected, but alloc too small");
+        }
+    }
+}
+#endif
+
 static void
 handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
                      app_pc pc, dr_mcontext_t *mc)
@@ -4887,6 +4954,10 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     } else {
         if (alloc_ops.record_allocs) {
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
+#ifdef WINDOWS
+            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
+                                       app_base, pt->alloc_size);
+#endif
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, top_pc, pt->allocator);
             restore_mc_for_client(pt, wrapcxt, mc);
@@ -5070,6 +5141,10 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
+#ifdef WINDOWS
+            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
+                                       app_base, pt->alloc_size);
+#endif
             malloc_add_common(app_base, app_base + pt->alloc_size,
                               real_base + 
                               (alloc_ops.get_padded_size ? pad_size : real_size),
@@ -5194,6 +5269,10 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
         if (alloc_ops.record_allocs) {
+#ifdef WINDOWS
+            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, post_call,
+                                       app_base, pt->alloc_size);
+#endif
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               0, 0, mc, post_call, pt->allocator);
         }

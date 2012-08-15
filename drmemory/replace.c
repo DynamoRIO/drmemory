@@ -898,7 +898,7 @@ replace_in_module(const module_data_t *mod, bool add)
      * since there's no global namespace.
      */
     int i;
-    app_pc libc = get_libc_base();
+    app_pc libc = get_libc_base(NULL);
     void *drcontext = dr_get_current_drcontext();
 #ifdef USE_DRSYMS
     sym_enum_data_t edata = {add, {0,}, mod};

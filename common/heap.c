@@ -163,9 +163,9 @@ get_ntdll_base(void)
  * C runtime library names include "msvcr71.dll", "msvcrt.dll", "msvcrt20.dll".
  */
 app_pc
-get_libc_base(void)
+get_libc_base(app_pc *libc_end_out OUT)
 {
-    static app_pc libc_base; /* cached value */
+    static app_pc libc_base, libc_end; /* cached values */
     if (libc_base == NULL) {
         dr_module_iterator_t *iter;
         module_data_t *data;
@@ -184,9 +184,13 @@ get_libc_base(void)
                      * number of imports from the latter.
                      */
                     if (libc_base == NULL ||
-                        !text_matches_pattern(modname, "msvcrt.dll", true))
+                        !text_matches_pattern(modname, "msvcrt.dll", true)) {
 #endif
                         libc_base = data->start;
+                        libc_end = data->end;
+#ifdef WINDOWS
+                    }
+#endif
                 }
             }
             dr_free_module_data(data);
@@ -198,7 +202,17 @@ get_libc_base(void)
         }
         dr_module_iterator_stop(iter);
     }
+    if (libc_end_out != NULL)
+        *libc_end_out = libc_end;
     return libc_base;
+}
+
+bool
+pc_is_in_libc(app_pc pc)
+{
+    app_pc end;
+    app_pc start = get_libc_base(&end);
+    return (pc >= start && pc < end);
 }
 
 app_pc
@@ -306,9 +320,6 @@ GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
 GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
                         IN ULONG flags,
                         IN PVOID ptr));
-
-# define DBGCRT_PRE_REDZONE_SIZE sizeof(_CrtMemBlockHeader)
-# define DBGCRT_POST_REDZONE_SIZE nNoMansLandSize
 #endif /* WINDOWS */
 
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena

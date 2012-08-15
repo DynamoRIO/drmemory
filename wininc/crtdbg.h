@@ -59,4 +59,8 @@ typedef struct _CrtMemBlockHeader
          */
 } _CrtMemBlockHeader;
 
+/* our definitions */
+#define DBGCRT_PRE_REDZONE_SIZE sizeof(_CrtMemBlockHeader)
+#define DBGCRT_POST_REDZONE_SIZE nNoMansLandSize
+
 #endif /* _CRTDBG_H_ */

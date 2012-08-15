@@ -596,3 +596,13 @@ name=default i#817c: __onexitinit possible leak in CRT
 *!__onexitinit
 ...
 *!_CRT_INIT
+
+##################################################
+# i#607 part A: w/o symbols in msvcr*d.dll we don't intercept
+# an internal alloc routine and thus when wrapping we report
+# its touches of heap headers.
+
+UNADDRESSABLE ACCESS
+name=default i#607 msvcr*d.dll w/o syms
+MSVCR*D.dll!...
+MSVCR*D.dll!initptd
