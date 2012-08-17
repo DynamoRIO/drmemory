@@ -553,7 +553,8 @@ if (TOOL_DR_MEMORY)
     endif (GCC)
 
     newtest(gdi gdi.cpp)
-    newtest_ex(handle handle.cpp "" "-check_handle_leaks" "" OFF "")
+    # the handle leaks also cause memory leak, so we use light to avoid leak report.
+    newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks" "" OFF "")
   endif (WIN32)
 
   # FIXME i#657: realloc is flaky on the Windows bots.

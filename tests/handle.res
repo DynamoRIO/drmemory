@@ -19,33 +19,46 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 %OUT_OF_ORDER
+# the handle leak is reported by iterating a hashtable, which has non-det order,
+# so use OUT_OF_ORDER instead
 Error #1: WARNING: Handle usage error:
-system call NtUserGetDC
-main
-handle.cpp:57
-
 Error #2: WARNING: Handle usage error:
-system call NtGdiCreatePen
-test_gdi_handles
-handle.cpp:38
-main
-handle.cpp:57
-
 Error #3: WARNING: Handle usage error:
-system call NtGdiCreateCompatibleBitmap
-test_gdi_handles
-handle.cpp:42
-main
-handle.cpp:57
-
 Error #4: WARNING: Handle usage error:
-system call NtGdiCreateCompatibleDC
-test_gdi_handles
-handle.cpp:36
-main
-handle.cpp:57
-
 Error #5: WARNING: Handle usage error:
+Error #6: WARNING: Handle usage error:
+Error #7: WARNING: Handle usage error:
+Error #8: WARNING: Handle usage error:
+
+system call NtUserGetDC
+system call NtGdiCreatePen
+system call NtGdiCreateCompatibleBitmap
+system call NtGdiCreateCompatibleDC
 system call NtGdiCreateBitmap
+system call NtCreateThreadEx
+system call NtCreateFile
+system call NtOpenFile
+
+
+test_file_handles
+test_file_handles
+test_gdi_handles
+test_gdi_handles
+test_gdi_handles
+test_thread_handles
+# NtGdiCreateBitmap and NtUserGetDC did not have test_gdi_handles on callstack
+
 main
-handle.cpp:57
+main
+main
+main
+main
+main
+main
+main
+
+_beginthreadex
+CreateFileW
+CreateFileA
+FindFirstFileA
+

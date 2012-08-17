@@ -27,6 +27,10 @@
 
 #include <windows.h>
 #include <assert.h>
+#include <stdio.h>
+#include <process.h> /* for _beginthreadex */
+#include <tchar.h>   /* for tchar */
+#include <strsafe.h> /* for Str* */
 
 static void
 test_gdi_handles(bool close)
@@ -50,11 +54,84 @@ test_gdi_handles(bool close)
     }
 }
 
+static unsigned int WINAPI
+thread_func(void *arg)
+{
+    // do nothing
+    return 0;
+}
+
+static void
+test_thread_handles(bool close)
+{
+    unsigned int tid;
+    HANDLE thread;
+    thread = (HANDLE) _beginthreadex(NULL, 0, thread_func, NULL, 0, &tid);
+    WaitForSingleObject(thread, INFINITE);
+    if (close)
+        CloseHandle(thread);
+}
+
+static void
+test_file_handles(bool close)
+{
+    // the files' handles
+    HANDLE hFile;
+    HANDLE hFind;
+    // filenames, the file is not there...
+    TCHAR buf[MAX_PATH];
+    DWORD size;
+    WIN32_FIND_DATA ffd;
+    bool  create_file_tested = false;
+   
+    size = GetCurrentDirectory(MAX_PATH, buf);
+    // check size
+    if (size == 0) {
+        printf("fail to get current directory\n");
+        return;
+    }
+    // append 
+    StringCchCat(buf, MAX_PATH, TEXT("\\*"));
+    // find the first file in the directory.
+    hFind = FindFirstFile(buf, &ffd);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        printf("fail to find the first file\n");
+        return;
+    }
+    // find all the files in the directory
+    do {
+        if (!create_file_tested &&
+            !(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            hFile = CreateFile(ffd.cFileName, 0, 0, NULL, OPEN_EXISTING,
+                               FILE_ATTRIBUTE_NORMAL, NULL);
+            create_file_tested = true;
+            if (hFile == INVALID_HANDLE_VALUE) {
+                printf("fail to open the file %s\n", ffd.cFileName);
+                return;
+            }
+            if (close)
+                CloseHandle(hFile);
+        }
+    } while (FindNextFile(hFind, &ffd) != 0);
+    if (GetLastError() != ERROR_NO_MORE_FILES) {
+        printf("fail to find the next file\n");
+        return;
+    }
+    if (close)
+        FindClose(hFind);
+}
+
 int
 main()
 {
+    printf("test gdi handles\n");
     test_gdi_handles(true);   // create and close
     test_gdi_handles(false);  // create but not close, error raised
-
+    printf("test file handles\n");
+    test_file_handles(true);
+    test_file_handles(false);
+    printf("test thread handles\n");
+    test_thread_handles(true);
+    test_thread_handles(false);
     return 0;
 }
