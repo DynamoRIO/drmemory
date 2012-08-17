@@ -1127,15 +1127,20 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
                     if (sysarg_invalid(&sysinfo->arg[i]))
                         break;
                     if (TESTALL(SYSARG_IS_HANDLE|SYSARG_WRITE,
-                                sysinfo->arg[i].flags) &&
-                        safe_read((void *)pt->sysarg[i],
-                                  sizeof(HANDLE), &handle)) {
-                        /* assuming any handle arg written by the syscall is
-                         * newly created.
-                         */
-                        handlecheck_create_handle(drcontext, handle, type,
-                                                  sysnum, NULL, mc);
+                                sysinfo->arg[i].flags)) {
                         handle_in_arg = true;
+                        if (safe_read((void *)pt->sysarg[sysinfo->arg[i].param],
+                                      sizeof(HANDLE), &handle)) {
+                            /* assuming any handle arg written by the syscall is
+                             * newly created.
+                             */
+                            handlecheck_create_handle(drcontext, handle, type,
+                                                      sysnum, NULL, mc);
+                        } else {
+                            LOG(SYSCALL_VERBOSE,
+                                "fail to read handle from syscall %d %s",
+                                sysnum, sysinfo->name);
+                        }
                     }
                 }
                 if (!handle_in_arg) {
