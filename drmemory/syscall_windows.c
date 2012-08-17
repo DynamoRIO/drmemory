@@ -721,6 +721,8 @@ extern syscall_info_t syscall_user32_info[];
 extern size_t num_user32_syscalls(void);
 extern syscall_info_t syscall_gdi32_info[];
 extern size_t num_gdi32_syscalls(void);
+extern syscall_info_t syscall_usercall_info[];
+extern size_t num_usercall_syscalls(void);
 
 #undef OK
 #undef UNKNOWN
@@ -1195,8 +1197,10 @@ os_syscall_get_name(uint num)
 static int
 syscall_get_handle_type(syscall_info_t *sysinfo)
 {
-    if (sysinfo >= &syscall_user32_info[0] &&
-        sysinfo <= &syscall_user32_info[num_user32_syscalls()-1])
+    if ((sysinfo >= &syscall_user32_info[0] &&
+         sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
+        (sysinfo >= &syscall_usercall_info[0] &&
+         sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
         return HANDLE_TYPE_USER;
     if (sysinfo >= &syscall_gdi32_info[0] &&
         sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])

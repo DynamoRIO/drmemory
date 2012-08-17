@@ -521,7 +521,7 @@ static const int win2k_usercall_nums[] = {
 };
 
 /* Secondary system calls for NtUserCall{No,One,Two}Param */
-static syscall_info_t syscall_usercall_info[] = {
+syscall_info_t syscall_usercall_info[] = {
     {0,"NtUserCallNoParam.CREATEMENU", OK, 4, },
     {0,"NtUserCallNoParam.CREATEMENUPOPUP", OK, 4, },
     {0,"NtUserCallNoParam.DISABLEPROCWNDGHSTING", OK, 4, },
@@ -662,6 +662,12 @@ static syscall_info_t syscall_usercall_info[] = {
 };
 #define NUM_USERCALL_SYSCALLS \
     (sizeof(syscall_usercall_info)/sizeof(syscall_usercall_info[0]))
+
+size_t
+num_usercall_syscalls(void)
+{
+    return NUM_USERCALL_SYSCALLS;
+}
 
 void
 syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver)
