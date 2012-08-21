@@ -550,14 +550,21 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
      * and may suppress other errors we might want to see: but the
      * alternative is to completely replace _dbg (see i#51 notes below).
      */
-    { "_CrtDbgReport", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgReport", HEAP_ROUTINE_DBG_NOP_FALSE },
     /* I've seen two instances of _CrtDbgReportW but usually both end up
      * calling _CrtDbgReportWV so ok to replace just one
      */
-    { "_CrtDbgReportW", HEAP_ROUTINE_DBG_NOP },
-    { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP },
-    { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP },
-    { "_CrtDbgBreak", HEAP_ROUTINE_DBG_NOP },
+    { "_CrtDbgReportW", HEAP_ROUTINE_DBG_NOP_FALSE },
+    { "_CrtDbgReportV", HEAP_ROUTINE_DBG_NOP_FALSE },
+    { "_CrtDbgReportWV", HEAP_ROUTINE_DBG_NOP_FALSE },
+    { "_CrtDbgBreak", HEAP_ROUTINE_DBG_NOP_FALSE },
+    /* We avoid perf problems (i#977) by turning this check into a nop.
+     * Note that this mostly obviates the need to nop _CrtDbgReport*.
+     * XXX: there are some non-assert uses of this.  If we ever find
+     * a problem with those, we may want to instead nop out RtlValidateHeap,
+     * but that may have its own non-debug-check uses.
+     */
+    { "_CrtIsValidHeapPointer", HEAP_ROUTINE_DBG_NOP_TRUE },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
 #define POSSIBLE_CRTDBG_ROUTINE_NUM \
@@ -710,7 +717,8 @@ replace_crtdbg_routine(app_pc pc)
         return false;
     dr_mutex_lock(alloc_routine_lock);
     e = hashtable_lookup(&alloc_routine_table, (void *)pc);
-    if (e != NULL && e->type == HEAP_ROUTINE_DBG_NOP)
+    if (e != NULL &&
+        (e->type == HEAP_ROUTINE_DBG_NOP_FALSE || e->type == HEAP_ROUTINE_DBG_NOP_TRUE))
         res = true;
     dr_mutex_unlock(alloc_routine_lock);
     return res;
@@ -1072,9 +1080,15 @@ generate_realloc_replacement(alloc_routine_set_t *set)
 #ifdef WINDOWS
 /* we replace app _CrtDbgReport* with this routine */
 static ptr_int_t
-replaced_nop_routine(void)
+replaced_nop_false_routine(void)
 {
     return 0;
+}
+
+static ptr_int_t
+replaced_nop_true_routine(void)
+{
+    return 1;
 }
 #endif
 
@@ -1753,12 +1767,16 @@ void
 malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
 #ifdef WINDOWS
-    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+    if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE) {
         /* cdecl so no args to clean up.
          * we can't just insert a generated ret b/c our slowpath
          * assumes the raw bits are persistent.
          */
-        if (!drwrap_replace(pc, (app_pc)replaced_nop_routine, false))
+        if (!drwrap_replace(pc, (app_pc)replaced_nop_false_routine, false))
+            ASSERT(false, "failed to replace dbg-nop");
+    } else if (e->type == HEAP_ROUTINE_DBG_NOP_TRUE) {
+        /* see above */
+        if (!drwrap_replace(pc, (app_pc)replaced_nop_true_routine, false))
             ASSERT(false, "failed to replace dbg-nop");
     } else {
 #endif
@@ -1776,7 +1794,8 @@ void
 malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
 #ifdef WINDOWS
-    if (e->type == HEAP_ROUTINE_DBG_NOP) {
+    if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE ||
+        e->type == HEAP_ROUTINE_DBG_NOP_TRUE) {
         if (!drwrap_replace(pc, NULL/*remove*/, true))
             ASSERT(false, "failed to unreplace dbg-nop");
     } else {

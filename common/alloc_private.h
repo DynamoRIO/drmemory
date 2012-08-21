@@ -95,7 +95,8 @@ typedef enum {
     HEAP_ROUTINE_DebugHeapDelete,
     /* To avoid debug CRT checks (i#51) */
     HEAP_ROUTINE_SET_DBG,
-    HEAP_ROUTINE_DBG_NOP,
+    HEAP_ROUTINE_DBG_NOP_FALSE,
+    HEAP_ROUTINE_DBG_NOP_TRUE,
     /* FIXME PR 595798: for cygwin allocator we have to track library call */
     HEAP_ROUTINE_SBRK,
     HEAP_ROUTINE_LAST = HEAP_ROUTINE_SBRK,
