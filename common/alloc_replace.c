@@ -76,6 +76,7 @@
 
 #include "dr_api.h"
 #include "drwrap.h"
+#include "drmgr.h"
 #include "utils.h"
 #include "asm_utils.h"
 #include "alloc.h"
@@ -892,7 +893,8 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
 {
     uint alloc_type = (head->flags & MALLOC_ALLOCATOR_FLAGS);
     ASSERT((free_type & ~(MALLOC_ALLOCATOR_FLAGS)) == 0, "invalid type flags");
-    if (alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
+    if ((alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
+         free_type != MALLOC_ALLOCATOR_UNKNOWN) &&
         alloc_type != free_type) {
         client_mismatched_heap(caller, (byte *)ptr, mc,
                                malloc_alloc_type_name(alloc_type),
@@ -1418,6 +1420,12 @@ replace_malloc_usable_size(void *ptr)
     return res;
 }
 
+/* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
+
+/***************************************************************************
+ * Operators
+ */
+
 /* i#882: replace operator new/delete known to be non-placement to
  * avoid wrap cost and to support redzones on debug CRT.
  * We will also be able to pass in the allocation type rather than
@@ -1524,7 +1532,20 @@ replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
                                    (app_pc)replace_operator_delete_array_nothrow);
 }
 
-/* XXX i#94: replace mallopt(), mallinfo(), valloc(), memalign(), etc. */
+#ifdef WINDOWS
+static void
+replace_operator_combined_delete(void *ptr)
+{
+    /* See i#722 for background, and i#965.
+     * This routine is called for both delete and delete[] so we must disable
+     * mismatch checking.
+     * XXX: it would be nice to check malloc vs delete*
+     */
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_UNKNOWN,
+                                   (app_pc)replace_operator_combined_delete);
+}
+#endif /* WINDOWS */
 
 #ifdef WINDOWS
 /***************************************************************************
@@ -1986,8 +2007,11 @@ alloc_entering_replace_routine(app_pc pc)
 }
 
 static bool
-func_interceptor(routine_type_t type, void **routine OUT, uint *stack OUT)
+func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
+                 uint *stack OUT)
 {
+    /* almost everything is at the callee entry */
+    *at_entry = true;
 #ifdef WINDOWS
     if (is_rtl_routine(type)) {
         switch (type) {
@@ -2084,6 +2108,15 @@ func_interceptor(routine_type_t type, void **routine OUT, uint *stack OUT)
         *routine = (void *) replace_operator_delete_nothrow;
     else if (type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW)
         *routine = (void *) replace_operator_delete_array_nothrow;
+#ifdef WINDOWS
+    else if (type == HEAP_ROUTINE_DebugHeapDelete) {
+        *routine = (void *) replace_operator_combined_delete;
+        /* i#965: we must replace at the call site, but drwrap now handles that
+         * and saves us a lot of work
+         */
+        *at_entry = false;
+    }
+#endif
     else
         *routine = NULL; /* but go ahead and wrap */
     return true;
@@ -2093,15 +2126,17 @@ static void
 malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
     void *interceptor = NULL;
+    bool at_entry = true;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, &interceptor, &stack_adjust)) {
+    if (!func_interceptor(type, &interceptor, &at_entry, &stack_adjust)) {
         /* we'll replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
     if (interceptor != NULL) {
         /* optimization: only pass where needed, for Windows libc */
         void *user_data = IF_WINDOWS_ELSE(is_rtl_routine(type) ? NULL : (void *) e, NULL);
-        if (!drwrap_replace_native(pc, interceptor, stack_adjust, user_data, false))
+        if (!drwrap_replace_native(pc, interceptor, at_entry, stack_adjust,
+                                   user_data, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
         /* else wrap */
@@ -2117,13 +2152,14 @@ static void
 malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 {
     void *interceptor = NULL;
+    bool at_entry;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, &interceptor, &stack_adjust)) {
+    if (!func_interceptor(type, &interceptor, &at_entry, &stack_adjust)) {
         /* we'll un-replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
     if (interceptor != NULL) {
-        if (!drwrap_replace_native(pc, NULL, stack_adjust, NULL, true))
+        if (!drwrap_replace_native(pc, NULL, at_entry, stack_adjust, NULL, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
         malloc_wrap__unintercept(pc, type, e);

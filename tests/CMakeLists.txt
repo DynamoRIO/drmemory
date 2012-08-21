@@ -459,7 +459,7 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
-  # test malloc replacement
+  # test malloc replacement (additional tests are below)
   newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
   newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
 
@@ -544,6 +544,7 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+      newtest_nobuild(replace_cs2bugMTd cs2bugMTd "" "-replace_malloc" "" OFF "cs2bugMTd")
     endif (USE_DRSYMS)
 
     if (GCC)

@@ -229,7 +229,8 @@ enum {
      * 4 states using MALLOC_RESERVED_3 and MALLOC_RESERVED_4.
      * XXX: I tried also distinguishing HeapAlloc/RtlAllocateHeap
      * but I hit a lot of false positives w/ even a small test app
-     * where free() would free: did not investigate.
+     * where free() would free: did not investigate (for one thing,
+     * HeapAlloc just forwards to RtlAllocateHeap).
      *
      * XXX: we could report mismatches on operator regular vs nothrow
      * but it doesn't seem worth it.

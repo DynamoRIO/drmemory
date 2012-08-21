@@ -2498,51 +2498,70 @@ slow_path(app_pc pc, app_pc decode_pc)
     return slow_path_with_mc(drcontext, pc, decode_pc, &mc);
 }
 
-static app_pc
-instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi)
+/* Returns whether a single pc can be used for app reporting and
+ * decoding of the app instr (or, whether a separate decode pc can be
+ * used b/c there's fixup code for the pc to report in the slowpath).
+ * The OUT param is either an immed int opnd or an instr opnd that can be
+ * used as an intpr opnd for decoding.
+ */
+static bool
+instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi, opnd_t *decode_pc_opnd)
 {
-    if (!options.shared_slowpath)
-        return NULL;
-    if (mi->bb->fake_xl8_override_instr == inst)
-        return mi->bb->fake_xl8_override_pc;
-    else if (mi->bb->fake_xl8 != NULL)
-        return mi->bb->fake_xl8;
-    else if (instr_get_app_pc(inst) == instr_get_raw_bits(inst))
-        return instr_get_app_pc(inst);
-    else if (instr_is_return(inst) && options.replace_malloc &&
-             alloc_entering_replace_routine(instr_get_app_pc(inst))) {
-        /* drwrap_replace_native() uses a generated ret.
-         * if we don't do anything here, we'll use its raw bits
-         * as the decode pc, yet they're temporary and we'll
-         * have trouble.
-         * XXX: this could happen w/ any generated instr: how can we tell
-         * raw bits are temporary vs a hook trampoline?
-         * XXX: drwrap_replace_native() can't set xl8 to a fake ret
-         * b/c of DR's constraints on xl8 being within original bb bounds!
-         * XXX: what we should do if there are more of these that are
-         * non-mangled is to use the cache pc by having this routine
-         * return an opnd that would be either INTPTR or instr.
-         */
-        static byte ret_to_decode[1] = {RET_NOIMM_OPCODE};
-        return (app_pc) &ret_to_decode;
+    app_pc pc = instr_get_app_pc(inst);
+    app_pc decode_pc = dr_app_pc_for_decoding(pc);
+    if (!options.shared_slowpath) {
+        *decode_pc_opnd = OPND_CREATE_INTPTR(decode_pc);
+        return false;
     }
-
-    return NULL;
+    if (mi->bb->fake_xl8_override_instr == inst) {
+        *decode_pc_opnd = OPND_CREATE_INTPTR(mi->bb->fake_xl8_override_pc);
+        return true;
+    } else if (mi->bb->fake_xl8 != NULL) {
+        *decode_pc_opnd = OPND_CREATE_INTPTR(mi->bb->fake_xl8);
+        return true;
+    } else if (pc != decode_pc) {
+        /* We have to handle DR trampolines so we pass in a separate pc to
+         * decode from
+         */
+        *decode_pc_opnd = OPND_CREATE_INTPTR(decode_pc);
+        return false;
+    } else if (pc == instr_get_raw_bits(inst)) {
+        /* If it matches the raw bits we know we only need one pc */
+        *decode_pc_opnd = OPND_CREATE_INTPTR(pc);
+        return true;
+    } else {
+        if (options.replace_malloc && alloc_entering_replace_routine(pc)) {
+            /* drwrap_replace_native() emulates a push for call site
+             * replacement via generated instrs whose app pcs do not match
+             * their code cache forms.
+             */
+        } else {
+            LOG(1, "unknown generated app instr");
+            /* To try and handle any generated app2app we point at the
+             * cache instr.  We'll have to construct fake instrs to point
+             * at if we end up encountering any mangled instrs.
+             */
+        }
+        ASSERT(!instr_is_cti(inst), "assuming non-mangled");
+        *decode_pc_opnd = opnd_create_instr(inst);
+        return false;
+    }
 }
 
 bool
 instr_can_use_shared_slowpath(instr_t *inst, fastpath_info_t *mi)
 {
-    return (instr_shared_slowpath_decode_pc(inst, mi) != NULL);
+    opnd_t ignore;
+    return instr_shared_slowpath_decode_pc(inst, mi, &ignore);
 }
 
 void
 instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     fastpath_info_t *mi)
 {
-    app_pc decode_pc = instr_shared_slowpath_decode_pc(inst, mi);
+    opnd_t decode_pc_opnd;
     ASSERT(options.pattern == 0, "No slow path for pattern mode");
-    if (decode_pc != NULL) {
+    if (instr_shared_slowpath_decode_pc(inst, mi, &decode_pc_opnd)) {
         /* Since the clean call instr sequence is quite long we share
          * it among all bbs.  Rather than switch to a clean stack we jmp
          * there and jmp back.  Since we don't nest we can get away
@@ -2560,7 +2579,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_mov_imm(drcontext,
                                      spill_slot_opnd(drcontext, SPILL_SLOT_1),
-                                     OPND_CREATE_INTPTR(decode_pc)));
+                                     decode_pc_opnd));
             /* FIXME: this hardcoded address will be wrong if this
              * fragment is shifted, or copied into a trace is created =>
              * requires -disable_traces (or registering for trace event)
@@ -2648,7 +2667,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                          (r1 == SPILL_REG_NONE) ?
                                          spill_slot_opnd(drcontext, SPILL_SLOT_1) :
                                          opnd_create_reg(s1->reg),
-                                         OPND_CREATE_INTPTR(decode_pc)));
+                                         decode_pc_opnd));
                 PRE(bb, inst,
                     INSTR_CREATE_mov_imm(drcontext, 
                                          (r2 == SPILL_REG_NONE) ?
@@ -2660,19 +2679,17 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
         PRE(bb, inst, appinst);
     } else {
+        app_pc pc = instr_get_app_pc(inst);
         if (mi != NULL) {
             /* We assume caller did a restore */
         }
-        /* We have to handle DR trampolines so we pass in a separate pc to
-         * decode from */
-        if (instr_get_app_pc(inst) != instr_get_raw_bits(inst)) {
-            LOG(1, "INFO: app "PFX" vs decode "PFX"\n",
-                instr_get_app_pc(inst), instr_get_raw_bits(inst));
+        if (!opnd_same(OPND_CREATE_INTPTR(pc), decode_pc_opnd)) {
+            LOG(1, "INFO: app "PFX" has separate decode pc\n", pc);
         }
         dr_insert_clean_call(drcontext, bb, inst,
                              (void *) slow_path, false, 2,
-                             OPND_CREATE_INTPTR(instr_get_app_pc(inst)),
-                             OPND_CREATE_INTPTR(instr_get_raw_bits(inst)));
+                             OPND_CREATE_INTPTR(pc),
+                             decode_pc_opnd);
     }
 }
 

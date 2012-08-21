@@ -32,7 +32,7 @@
 #include "callstack.h"
 
 /* priority of the analysis + insert routines */
-#define DRMGR_PRIORITY_INSERT_ALLOC 130
+#define DRMGR_PRIORITY_INSERT_ALLOC  2020
 
 /* All mallocs we've seen align to 8.  If this is changed, update malloc_hash(). */
 #define MALLOC_CHUNK_ALIGNMENT 8
