@@ -6037,6 +6037,8 @@ handle_alloc_post(void *wrapcxt, void *user_data)
         IF_DEBUG(ok = )
             drmgr_pop_cls(drcontext);
         ASSERT(ok, "drmgr cls stack pop failed: tangent tracking error!");
+        /* Re-enter prior context (xref i#981) */
+        client_entering_heap_routine();
     }
 #endif
 }
