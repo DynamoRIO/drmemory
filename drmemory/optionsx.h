@@ -359,6 +359,9 @@ OPTION_CLIENT_BOOL(drmemscope, use_symcache_postcall, true,
 OPTION_CLIENT_BOOL(drmemscope, preload_symbols, false,
                    "Preload debug symbols on module load",
                    "Preload debug symbols on module load.  Debug symbols cannot be loaded during leak reporting on Vista, so this option is on by default on Vista.  This option may cause excess memory usage from unneeded debugging symbols.")
+OPTION_CLIENT_BOOL(drmemscope, skip_msvc_importers, true,
+                   "Do not search for alloc routines in modules that import from msvc*",
+                   "Do not search for alloc routines in modules that import from msvc*")
 # endif /* WINDOWS */
 #else
 OPTION_CLIENT_BOOL(drmemscope, summary, false,

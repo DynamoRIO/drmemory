@@ -641,6 +641,9 @@ virtual_alloc(void **base, size_t size, uint memtype, uint prot);
 
 bool
 virtual_free(void *base);
+
+bool
+module_imports_from_msvc(const module_data_t *mod);
 #endif /* WINDOWS */
 
 /***************************************************************************

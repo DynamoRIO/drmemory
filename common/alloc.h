@@ -77,6 +77,8 @@ typedef struct _alloc_options_t {
     uint delay_frees;
     uint delay_frees_maxsz;
 
+    bool skip_msvc_importers;
+
     /* Add new options here */
 } alloc_options_t;
 

@@ -455,10 +455,12 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
     { "operator new[] nothrow",    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
     { "operator delete nothrow",   HEAP_ROUTINE_DELETE_NOTHROW },
     { "operator delete[] nothrow", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
+# ifdef WINDOWS
     /* This is the name we store in the symcache for i#722.
      * This means we are storing something different from the actual symbol names.
      */
     { "std::_DebugHeapDelete<>", HEAP_ROUTINE_DebugHeapDelete },
+# endif
 #else
     /* Until we have drsyms on Linux/Cygwin for enumeration, we look up
      * the standard Itanium ABI/VS manglings for the standard operators.
@@ -1665,6 +1667,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                     find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
                     find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
                     find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
+                    /* _CrtIsValidHeapPointer will be found w/ individual query.
+                     * It's an export in any case.
+                     */
                 }
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
@@ -2459,20 +2464,43 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     /* i#607 part C: is msvcp*d.dll present, yet we do not have symbols? */
     bool dbgcpp = false, dbgcpp_nosyms = false;
 #endif
+    bool search_syms = true, search_libc_syms = true;
+    const char *modname = dr_module_preferred_name(info);
 
 #ifdef WINDOWS
     alloc_find_syscalls(drcontext, info);
 #endif
 
-    if (alloc_ops.track_heap) {
-        const char *modname = dr_module_preferred_name(info);
+    if (modname != NULL &&
+        (strcmp(modname, "drmemorylib.dll") == 0 ||
+         strcmp(modname, "dynamorio.dll") == 0))
+        search_syms = false;
+
+#ifdef WINDOWS
+    if (alloc_ops.skip_msvc_importers && search_syms &&
+        module_imports_from_msvc(info) &&
+        (modname == NULL ||
+         !text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/))) {
+        /* i#963: assume there are no static libc routines if the module
+         * imports from dynamic libc (unless it's dynamic C++ lib).
+         * Note that we'll still pay the cost of loading the module for
+         * string routine replacement, but we'll save in time and dbghelp
+         * data structure space by not looking up all the alloc syms.
+         * Also note that malloc, etc. still show up in the syms b/c they're
+         * stub routines for IAT import.
+         * XXX: Should we look through the imports and see whether malloc
+         * is there?
+         */
+        LOG(1, "module %s imports from msvc* so not searching inside it\n",
+            modname == NULL ? "" : modname);
+        search_libc_syms = false;
+    }
+#endif
+
+    if (alloc_ops.track_heap && search_syms) {
 #ifdef WINDOWS
         bool no_dbg_routines = false;
 #endif
-        if (modname != NULL && 
-            (strcmp(modname, "drmemorylib.dll") == 0 ||
-             strcmp(modname, "dynamorio.dll") == 0))
-            return;
 
 #ifdef WINDOWS
         /* match msvcrtd.dll and msvcrNNd.dll */
@@ -2516,7 +2544,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 
         dr_mutex_lock(alloc_routine_lock);
 #ifdef WINDOWS
-        if (lookup_symbol_or_export(info, "_malloc_dbg") != NULL) {
+        if (search_libc_syms && lookup_symbol_or_export(info, "_malloc_dbg") != NULL) {
             if (modname == NULL ||
                 !text_matches_pattern(modname, "msvcrt.dll", true/*ignore case*/)) {
                 /* i#500: debug operator new calls either malloc, which calls
@@ -2541,14 +2569,16 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
             no_dbg_routines = true;
         }
 #endif
-        set_libc = find_alloc_routines(info, possible_libc_routines,
-                                       POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
-                                       true/*mismatch*/, false/*!expect all*/,
-                                       HEAPSET_LIBC, NULL);
-        if (info->start == get_libc_base(NULL)) {
-            if (set_dyn_libc != NULL)
-                WARN("WARNING: two libcs found");
-            set_dyn_libc = set_libc;
+        if (search_libc_syms) {
+            set_libc = find_alloc_routines(info, possible_libc_routines,
+                                           POSSIBLE_LIBC_ROUTINE_NUM, use_redzone,
+                                           true/*mismatch*/, false/*!expect all*/,
+                                           HEAPSET_LIBC, NULL);
+            if (info->start == get_libc_base(NULL)) {
+                if (set_dyn_libc != NULL)
+                    WARN("WARNING: two libcs found");
+                set_dyn_libc = set_libc;
+            }
         }
 #ifdef WINDOWS
         /* i#26: msvcrtdbg adds its own redzone that contains a debugging
@@ -2562,7 +2592,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
          * but we now watch it in general so we don't need to special-case
          * it here.
          */
-        if (!no_dbg_routines) {
+        if (search_libc_syms && !no_dbg_routines) {
             alloc_routine_set_t *set_dbgcrt =
                 find_alloc_routines(info, possible_crtdbg_routines,
                                     POSSIBLE_CRTDBG_ROUTINE_NUM, false/*no redzone*/,
@@ -2592,6 +2622,13 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              */
             if (corresponding_libc == NULL)
                 corresponding_libc = set_dyn_libc;
+#ifdef WINDOWS
+            /* Even if the module imports from msvcp*.dll it can still have
+             * template instantiations in it of std::_DebugHeapDelete.
+             * Plus, we need to intercept the local operator stubs in order
+             * to properly do heap mismatch checks.
+             */
+#endif
             set_cpp = find_alloc_routines(info, possible_cpp_routines,
                                           POSSIBLE_CPP_ROUTINE_NUM, use_redzone,
                                           IF_WINDOWS_ELSE(!dbgcpp_nosyms, true),

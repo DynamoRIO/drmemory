@@ -904,6 +904,23 @@ replace_in_module(const module_data_t *mod, bool add)
     sym_enum_data_t edata = {add, {0,}, mod};
     bool missing_entry = false;
 #endif
+#ifdef WINDOWS
+    const char *modname = dr_module_preferred_name(mod);
+    if (options.skip_msvc_importers &&
+        module_imports_from_msvc(mod) &&
+        (modname == NULL ||
+         !text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/))) {
+        /* i#963: assume there are no static libc routines if the module
+         * imports from dynamic libc (unless it's dynamic C++ lib).
+         * XXX: We'll miss some non-libc custom routine: but those may be
+         * unlikely to have the optimizations that cause false positives.
+         * XXX: Look through imported funcs?
+         */
+        LOG(2, "module %s imports from msvc* so not searching inside it\n",
+            modname == NULL ? "" : modname);
+        return;
+    }
+#endif
     ASSERT(options.replace_libc, "should not be called if op not on");
     /* step 1: find and replace symbols in exports 
      * if we find an export we can't mark as processed b/c

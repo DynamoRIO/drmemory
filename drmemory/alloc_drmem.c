@@ -192,6 +192,9 @@ alloc_drmem_init(void)
     alloc_ops.external_headers = (options.pattern != 0);
     alloc_ops.delay_frees = options.delay_frees;
     alloc_ops.delay_frees_maxsz = options.delay_frees_maxsz;
+#ifdef WINDOWS
+    alloc_ops.skip_msvc_importers = options.skip_msvc_importers;
+#endif
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
