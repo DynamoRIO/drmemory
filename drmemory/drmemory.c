@@ -1426,6 +1426,12 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     alloc_module_load(drcontext, info, loaded);
     if (options.perturb_only)
         perturb_module_load(drcontext, info, loaded);
+#ifdef USE_DRSYMS
+    /* Free resources.  Many modules will never need symbol queries again b/c
+     * they won't show up in any callstack later.  Xref i#982.
+     */
+    drsym_free_resources(info->full_path);
+#endif
 #ifdef STATISTICS
     print_timestamp_elapsed_to_file(f_global, "post-module-load ");
 #endif
@@ -1445,6 +1451,8 @@ event_module_unload(void *drcontext, const module_data_t *info)
 #ifdef USE_DRSYMS
     if (options.use_symcache)
         symcache_module_unload(drcontext, info);
+    /* Free resources.  Xref i#982. */
+    drsym_free_resources(info->full_path);
 #endif
 }
 

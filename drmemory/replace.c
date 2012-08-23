@@ -883,7 +883,9 @@ find_syms_regex(sym_enum_data_t *edata, const char *regex)
 }
 #endif /* USE_DRSYMS */
 
-
+/* XXX: better to walk hashtable on remove, like alloc.c does, instead of
+ * re-doing all these symbol queries
+ */
 static void
 replace_in_module(const module_data_t *mod, bool add)
 {
