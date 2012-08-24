@@ -145,13 +145,13 @@ if (X64)
 else ()
   set(BIN_ARCH "bin")
 endif ()
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${BIN_ARCH}")
-else (USE_DRSYMS AND TOOL_DR_MEMORY)
+else ()
   file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}")
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif ()
 # 2) parameterize dirs outside of build dir
 set(src_param_pattern "{DRMEMORY_CTEST_SRC_DIR}")
 set(DR_param_pattern "{DRMEMORY_CTEST_DR_DIR}")
@@ -514,10 +514,11 @@ if (TOOL_DR_MEMORY)
 
   set(nudge_test_args "")
 
-  if (UNIX)
+  # FIXME i#446: no support yet for post-process w/ drsyms
+  if (UNIX AND NOT USE_DRSYMS)
     # test -skip_results + -results (PR 575481)
     newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
-  endif (UNIX)
+  endif ()
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready

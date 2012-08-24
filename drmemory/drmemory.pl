@@ -233,6 +233,9 @@ die "$usage\n" unless ($#ARGV >= 0 || $nudge_pid ne "");
 die "$usage\n" if ($skip_postprocess && $just_postprocess); # mut exclusive
 die "$usage\n" if ($postprocess_apppath ne '' && !$just_postprocess);
 
+die "Not supported with drsyms"
+    if ($use_drsyms && ($aggregate || $skip_postprocess || $just_postprocess));
+
 $dr_home = &canonicalize_path($dr_home);
 $drmemory_home = &canonicalize_path($drmemory_home);
 for ($i = 0; $i <= $#suppfiles; $i++) {
@@ -367,7 +370,7 @@ if ($persist_code) {
         $persist_dir = &canonicalize_path($persist_dir);
     }
     die "-persist_dir $persist_dir is invalid\n" unless (logdir_ok($persist_dir));
-    $dr_ops .= " -persist -persist_dir `$persist_dir`";
+    $dr_ops = "-persist -persist_dir `$persist_dir` " . $dr_ops;
     $ops .= " -persist_code";
 }
 
@@ -443,12 +446,12 @@ if ($aggregate || $just_postprocess) {
 
 # PR 425335: we must run the app in the foreground (in case takes stdin)
 # so we run the rest of our script sideline
-if (!$is_unix && !$is_cygwin_perl) {
+if (!$use_drsyms && !$is_unix && !$is_cygwin_perl) {
     # pp-produced .exe crashes on exit from child of fork
     $using_threads = 1;
     eval "use threads ()";
     $child = threads->create(\&post_process);
-} else {
+} elsif (!$use_drsyms) {
     $using_threads = 0;
     unless (fork()) {
         # PR 511242: Ctrl-C on an app launched with drmemory.pl should only

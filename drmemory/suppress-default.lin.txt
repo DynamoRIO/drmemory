@@ -50,7 +50,7 @@ name=default (python malloc)
 # or on FC12 I see ".L259" and ".L202"!
 UNINITIALIZED READ
 name=default (ld-linux real bug)
-ld-linux.so.2!*
+ld-linux.so.2!...
 ld-linux.so.2!dl_open_worker
 ld-linux.so.2!_dl_catch_error
 
@@ -141,7 +141,7 @@ ld-linux.so.2!allocate_and_init
 # with no debug symbols this shows up as:
 POSSIBLE LEAK
 name=default (ld-linux stores index+1)
-ld-linux.so.2!_dl_allocate_tls
+ld-linux.so.2!*_dl_allocate_tls
 
 # in Ubuntu 11.11 with no debug symbols this shows up as:
 POSSIBLE LEAK

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -52,3 +52,10 @@
 #undef OPTION_CLIENT
 
 #undef OPTION_FRONT
+
+/* Also indicate whether using drsyms */
+#ifdef USE_DRSYMS
+$use_drsyms = 1;
+#else
+$use_drsyms = 1;
+#endif

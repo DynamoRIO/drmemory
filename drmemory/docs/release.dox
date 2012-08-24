@@ -60,8 +60,14 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between version 1.4.7 and 1.4.6 include:
+ - Added online symbols for Linux, which enables -results_to_stderr.  The
+   -aggregate and -skip_results post-processing features are temporarily
+   disabled until a future release adds them for both Windows and Linux.
+ - Added support for the Microsoft Visual Studio dynamic debug C library
  - Added -log_suppressed_errors option
- - Added Windows kernel handle usage checks
+ - Support wildcards in instruction lines in suppressions
+ - Improved callstack walking
+ - Eliminated most false positives with bitwise operations
  - Various bug fixes
 
 The changes between version 1.4.6 and 1.4.5 include:

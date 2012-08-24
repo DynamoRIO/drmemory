@@ -85,6 +85,10 @@ if (CHECK_WITH_MD5)
   set(DEFINES ${DEFINES} -DCHECK_WITH_MD5)
 endif (CHECK_WITH_MD5)
 option(STATIC_DRSYMS "use static drsyms library" ON)
+if (UNIX AND NOT STATIC_DRSYMS)
+  # we could support dynamic but we'd have to copy libdrsym.so
+  message(FATAL_ERROR "non-static drsyms not supported for Linux")
+endif ()
 
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
@@ -210,14 +214,14 @@ set(DEFINES ${DEFINES}
   -DVERSION_NUMBER=${TOOL_VERSION_NUMBER}
   -DVERSION_STRING="${TOOL_VERSION_NUMBER}")
 
-if (WIN32)
-  # i#44/PR 243532: online symbol access
-  option(USE_DRSYMS "use drsyms DR Extension online symbols instead of post-processing"
-    ${DRSYMS_DEFAULT})
-  if (USE_DRSYMS)
-    set(DEFINES ${DEFINES} -DUSE_DRSYMS)
-  endif (USE_DRSYMS)
+# i#44/PR 243532: online symbol access
+option(USE_DRSYMS "use drsyms DR Extension online symbols instead of post-processing"
+  ${DRSYMS_DEFAULT})
+if (USE_DRSYMS)
+  set(DEFINES ${DEFINES} -DUSE_DRSYMS)
+endif (USE_DRSYMS)
 
+if (WIN32)
   # With the new drinjectlib-based front end we do not use perl or perl2exe
   # at all on Windows (xref i#265/PR 486139)
   if (OFF) # disabling
@@ -446,7 +450,10 @@ endif (WIN32)
 # except minus the toolname prefix dir.
 # The CPack NSIS interface requires a bin/ dir, so for the Windows package
 # we prefix bin/
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+# XXX: should clean all this up and normalize across platforms now
+# that we have drsyms on Linux and once we're sure we don't need to
+# support the old layout.
+if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set(INSTALL_BIN_PREFIX ".")
   set(BUILD_BIN_PREFIX ".")
 elseif (PERL_TO_EXE)
@@ -468,8 +475,8 @@ else (PERL_TO_EXE)
     set(INSTALL_BIN_PREFIX "${toolname}/bin")
     set(BUILD_BIN_PREFIX "bin")
   endif (X64)
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   # For NSIS we have everything in top-level bin/
   # Once we have x64 we'll need to address: fix CPack?
   if (X64)
@@ -479,10 +486,10 @@ if (USE_DRSYMS AND TOOL_DR_MEMORY)
     set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin")
     set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin")
   endif (X64)
-else (USE_DRSYMS AND TOOL_DR_MEMORY)
+else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/${BIN_ARCH}")
   set(BUILD_BIN "${BUILD_BIN_PREFIX}/${BIN_ARCH}")
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 if (DEBUG_BUILD)
   set(build_type "debug")
 else (DEBUG_BUILD)
@@ -834,7 +841,10 @@ else (TOOL_DR_HEAPSTAT)
     endif (SYSCALL_DRIVER)
   endif (UNIX)
 endif (TOOL_DR_HEAPSTAT)
-set(scripts ${toolname}.pl postprocess.pl)
+set(scripts ${toolname}.pl)
+if (NOT USE_DRSYMS)
+  set(scripts ${scripts} postprocess.pl)
+endif (NOT USE_DRSYMS)
 
 if (USE_DRSYMS)
   set(srcs ${srcs} common/symcache.c)
@@ -909,9 +919,10 @@ if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
     VERSION ${TOOL_VERSION_NUMBER})
   set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-if (WIN32)
+if (USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
-
+endif (USE_DRSYMS)
+if (WIN32)
   # we have to link with ntdll AFTER any libcmt.lib from configure_DynamoRIO_client
   # or use_DynamoRIO_extension (w/ static libs)
   target_link_libraries(${client_target} ntdll)
@@ -993,7 +1004,7 @@ endif (PERL_TO_EXE)
 # support running out of build dir
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
-if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
   if (NOT USE_DRSYMS)
@@ -1003,7 +1014,7 @@ if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
   endif (NOT USE_DRSYMS)
   set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl"
     "${options_for_perl}")
-endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+endif ()
 if (WIN32)
   # copy for winsyms and symquery
   configure_file("${DBGHELP_DLL}"

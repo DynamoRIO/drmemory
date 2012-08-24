@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -36,6 +36,6 @@ starting
 ~~ ERRORS FOUND:
 # On exit error report.  We don't get this on Windows because we use DRkill to
 # end infloop.exe.
-%if UNIX
+%if NOSYMS
 ~~ ERRORS FOUND:
 %endif

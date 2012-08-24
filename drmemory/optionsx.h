@@ -112,7 +112,8 @@ OPTION_FRONT_BOOL(script, v, false,
                   "Display verbose information in the "TOOLNAME" front end",
                   "Display verbose information in the "TOOLNAME" front end")
 
-#ifdef TOOL_DR_MEMORY
+/* FIXME i#614, i#446: add support for aggregate and post-process w/ USE_DRSYMS */
+#if defined(LINUX) && defined(TOOL_DR_MEMORY) && !defined(USE_DRSYMS)
 OPTION_FRONT_BOOL(front, skip_results, false,
                   "No results during run: use -results afterward",
                   "Do not produce results while running the application.  This can reduce resource usage if the symbol files for the application are large.  To obtain the results, after the application run is finished, use the -results option in a separate step.")
@@ -130,7 +131,7 @@ OPTION_FRONT_BOOL(front, use_vmtree, true,
                   "Use VMTREE and VMBLD env vars to locate symbols",
                   "See \\ref sec_setup_syms.")
 # endif
-#endif /* TOOL_DR_MEMORY */
+#endif /* LINUX + TOOL_DR_MEMORY + !USE_DRSYMS */
 
 /****************************************************************************
  * Public client options

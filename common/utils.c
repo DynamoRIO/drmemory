@@ -168,7 +168,7 @@ lookup_has_fast_search(const module_data_t *mod)
 {
     drsym_debug_kind_t kind;
     drsym_error_t res = drsym_get_module_debug_kind(mod->full_path, &kind);
-    return TEST(DRSYM_PDB, kind);
+    return res == DRSYM_SUCCESS && TEST(DRSYM_PDB, kind);
 }
 
 /* default cb used when we want first match */
@@ -220,7 +220,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
 # define MAX_SYM_WITH_MOD_LEN 256
     char sym_with_mod[MAX_SYM_WITH_MOD_LEN];
     size_t modoffs;
-    int len;
+    IF_DEBUG(int len;)
     drsym_error_t symres;
     char *fname = NULL, *c;
 
@@ -252,13 +252,16 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     /* now get rid of extension */
     for (; c > fname && *c != '.'; c--)
         ; /* nothing */
-
-    ASSERT(c - fname < BUFFER_SIZE_ELEMENTS(sym_with_mod), "sizes way off");
-    len = dr_snprintf(sym_with_mod, c - fname, "%s", fname);
-    ASSERT(len == -1, "error printing modname!symname");
-    len = dr_snprintf(sym_with_mod + (c - fname),
-                      BUFFER_SIZE_ELEMENTS(sym_with_mod) - (c - fname),
-                      "!%s", sym_pattern);
+    if (c > fname) {
+        ASSERT(c - fname < BUFFER_SIZE_ELEMENTS(sym_with_mod), "sizes way off");
+        IF_DEBUG(len = )
+            dr_snprintf(sym_with_mod, c - fname, "%s", fname);
+        ASSERT(len == -1, "error printing modname!symname");
+    }
+    IF_DEBUG(len = )
+        dr_snprintf(sym_with_mod + (c - fname),
+                    BUFFER_SIZE_ELEMENTS(sym_with_mod) - (c - fname),
+                    "!%s", sym_pattern);
     ASSERT(len > 0, "error printing modname!symname");
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
@@ -272,10 +275,12 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
          * drsym_enumerate_symbols() (i#313)
          */
         modoffs = 0;
+# ifdef WINDOWS
         symres = drsym_search_symbols(mod->full_path, sym_with_mod, full,
                                       callback == NULL ? search_syms_cb : callback,
                                       callback == NULL ? &modoffs : data);
         if (symres == DRSYM_ERROR_NOT_IMPLEMENTED) {
+# endif
             /* ELF or PECOFF where regex search is NYI
              * XXX: better for caller to do single walk though: should we
              * return failure and have caller call back with "" and its own
@@ -289,7 +294,9 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
             symres = drsym_enumerate_symbols(mod->full_path, search_syms_regex_cb,
                                              (void *) sr, DRSYM_DEMANGLE);
             global_free(sr, sizeof(*sr), HEAPSTAT_MISC);
+# ifdef WINDOWS
         }
+# endif
     }
     LOG(2, "sym lookup of %s in %s => %d "PFX"\n", sym_with_mod, mod->full_path,
         symres, modoffs);
@@ -1311,7 +1318,7 @@ utils_init(void)
 #endif
 
 #ifdef USE_DRSYMS
-    if (drsym_init(NULL) != DRSYM_SUCCESS) {
+    if (drsym_init(IF_WINDOWS_ELSE(NULL, 0)) != DRSYM_SUCCESS) {
         LOG(1, "WARNING: unable to initialize symbol translation\n");
     }
 #endif

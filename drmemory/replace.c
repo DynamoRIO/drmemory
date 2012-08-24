@@ -812,7 +812,7 @@ enumerate_syms_cb(const char *name, size_t modoffs, void *data)
      * Linear walk isn't much slower now, but will become worse
      * as we add more routines.
      */
-    i = (uint) hashtable_lookup(&replace_name_table, (void *)name);
+    i = (uint)(ptr_uint_t) hashtable_lookup(&replace_name_table, (void *)name);
     if (i == 0)
         return true; /* keep iterating */
 

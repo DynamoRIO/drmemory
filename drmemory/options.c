@@ -33,6 +33,7 @@
 #include "options.h"
 #include "shadow.h"
 #include "pattern.h"
+#include <string.h>
 
 #undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 

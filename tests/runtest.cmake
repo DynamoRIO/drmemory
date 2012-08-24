@@ -261,7 +261,7 @@ if ("${cmd}" MATCHES "run_in_bg")
   endif (kill_result)
 
   # wait for end-of-run summary from postprocess
-  if (UNIX AND NOT TOOL_DR_HEAPSTAT)
+  if (UNIX AND NOT TOOL_DR_HEAPSTAT AND NOT USE_DRSYMS)
     set(lookfor "for details\\)\n.*Details: ")
     file(READ "${out}" output)
     set(iters 0)

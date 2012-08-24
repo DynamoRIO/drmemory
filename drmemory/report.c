@@ -575,7 +575,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
                         const char *line_in, size_t line_len, int brace_line)
 {
     suppress_frame_t *frame;
-    bool has_symbols = false;
+    IF_NOT_DRSYMS(bool has_symbols = false;)
     const char *line;
     bool skip_supp = false;
 
@@ -608,13 +608,13 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
              * frames within one callstack.  If there are no wildcards in the
              * frames, we could unmangle here (requires DRi#545).
              */
-            has_symbols = true;
+            IF_NOT_DRSYMS(has_symbols = true;)
             frame->is_module = true;
             frame->modname = drmem_strdup("*", HEAPSTAT_REPORT);
             frame->func = drmem_strdup(line + strlen("fun:"), HEAPSTAT_REPORT);
         } else if (strstr(line, "obj:") == line) {
             /* Valgrind format obj:mod => mod!* */
-            has_symbols = true;
+            IF_NOT_DRSYMS(has_symbols = true;)
             frame->is_module = true;
             frame->modname = drmem_strdup(line + strlen("obj:"), HEAPSTAT_REPORT);
             frame->func = drmem_strdup("*", HEAPSTAT_REPORT);
@@ -655,7 +655,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     } else if (strchr(line, '!') != NULL && line[0] != '<') {
         /* note that we can't exclude any + ("operator+") or < (templates) */
         const char *bang = strchr(line, '!');
-        has_symbols = true;
+        IF_NOT_DRSYMS(has_symbols = true;)
         frame->is_module = true;
         frame->modname = drmem_strndup(line, bang - line, HEAPSTAT_REPORT);
         if (strstr(bang + 1, "...") == bang + 1) {
@@ -1628,7 +1628,7 @@ report_error_from_buffer(file_t f, char *buf, bool add_prefix)
                 p = nl + nlsz;
             }
         }
-#ifdef USE_DRSYMS
+#if defined(USE_DRSYMS) && defined(WINDOWS)
         /* XXX DRi#556: console output not showing up on win7 for 64-bit apps! */
         if (f == STDERR && IN_CMD)
             print_to_cmd(newbuf);

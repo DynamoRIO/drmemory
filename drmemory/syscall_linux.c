@@ -2447,6 +2447,7 @@ handle_post_prctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 static void
 handle_pre_execve(void *drcontext)
 {
+#ifndef USE_DRSYMS
     /* PR 453867: tell postprocess.pl to watch for new logdir and
      * fork a new copy.
      * FIXME: what if syscall fails?  Punting on that for now.
@@ -2463,6 +2464,7 @@ handle_pre_execve(void *drcontext)
         NULL_TERMINATE_BUFFER(logdir);
         ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
     }
+#endif
 }
 
 /* for tasks unrelated to shadowing that are common to all tools */
@@ -2501,12 +2503,14 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
         /* else, fall through */
     }
     case SYS_fork: {
+#ifndef USE_DRSYMS
         /* PR 453867: tell postprocess.pl to not exit until it sees a message
          * from the child starting up.
          */
         process_id_t child = dr_syscall_get_result(drcontext);
         if (child != 0)
             ELOGF(0, f_fork, "FORK child=%d\n", child);
+#endif
         break;
     }
     }

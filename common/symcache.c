@@ -34,6 +34,7 @@
 #include "symcache.h"
 #include "drmgr.h"
 #include "utils.h"
+#include <string.h>
 
 #undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
@@ -321,7 +322,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         WARN("WARNING: symbol cache file is corrupted\n");
         goto symcache_read_symfile_done;
     }
-    if (sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d", &offs) != 1 ||
+    if (sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d", (uint *)&offs) != 1 ||
         /* neither forward nor backward compatible */
         offs != SYMCACHE_VERSION) {
         WARN("WARNING: symbol cache file has wrong version\n");
@@ -397,9 +398,10 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         } else {
             next_line = newline + 1;
         }
-        if (sscanf(line, "%"MAX_SYMLEN_MINUS_1_STR"[^,],0x%x", symbol, &offs) == 2) {
+        if (sscanf(line, "%"MAX_SYMLEN_MINUS_1_STR"[^,],0x%x", symbol,
+                   (uint *)&offs) == 2) {
             symcache_symbol_add(modname, symtable, symbol, offs);
-        } else if (symbol[0] != '\0' && sscanf(line, ",0x%x", &offs) == 1) {
+        } else if (symbol[0] != '\0' && sscanf(line, ",0x%x", (uint *)&offs) == 1) {
             /* duplicate entries are allowed to not list the symbol, to save
              * space in the file (mainly for post-call caching i#669)
              */

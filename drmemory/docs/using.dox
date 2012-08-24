@@ -279,6 +279,7 @@ this command:
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\DRCONFIG_PATH -quiet -unreg myapp
 </tt>
 
+\if ISSUE_614
 ********************
 \subsection sec_aggregate Aggregating Results From Multiple Processes
 
@@ -297,6 +298,7 @@ the log directories as sub-directories to aggregate all of them:
 </tt>
 
 Currently the \p -aggregate option is not available on Windows.
+\endif
 
 ********************
 \subsection sec_daemon Applications That Do Not Exit
@@ -314,6 +316,7 @@ actions:
 <tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -nudge processid
 </tt>
 
+\if ISSUE_446
 ********************
 \subsection sec_twostep Post-Run Symbol Processing
 
@@ -338,6 +341,7 @@ executable is not located at the same path as when it was executed with \p
 along with the \p -results parameter.
 
 The \p -skip_results option is not currently available on Windows.
+\endif
 
 ********************
 \subsection sec_syslib_syms System Library Symbols

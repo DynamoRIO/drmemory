@@ -140,6 +140,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #include "callstack.h"
 #include "redblack.h"
 #ifdef USE_DRSYMS
+# include "drsyms.h"
 # include "symcache.h"
 #endif
 #ifdef LINUX
@@ -148,9 +149,6 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #else
 # include "windefs.h"
 # include "../wininc/crtdbg.h"
-# ifdef USE_DRSYMS
-#  include "drsyms.h"
-# endif
 #endif
 #include "asm_utils.h"
 #include <string.h>
@@ -1347,7 +1345,8 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     } while (true);
 
     LOG(2, "%s in %s @"PFX" generic type=%d => drsyms res=%d, %d args\n",
-        name, modname, mod->start + modoffs, generic_type, err, func_type->num_args);
+        name, modname, mod->start + modoffs, generic_type, err,
+        err == DRSYM_SUCCESS ? func_type->num_args : -1);
 
     if (err != DRSYM_SUCCESS) {
         WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
@@ -1492,13 +1491,13 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
         if ((edata->wildcard_name != NULL &&
              strcmp(edata->possible[i].name, edata->wildcard_name) == 0) ||
             (edata->wildcard_name == NULL &&
-             strcmp(name, edata->possible[i].name) == 0 ||
-             /* Deal with PECOFF/ELF having "()" at end.
-              * XXX: would be much nicer for drsyms to provide consistent format!
-              */
-             (strstr(name, edata->possible[i].name) == name &&
-              strlen(name) == len + 2 &&
-              name[len] == '(' && name[len+1] == ')'))) {
+             (strcmp(name, edata->possible[i].name) == 0 ||
+              /* Deal with PECOFF/ELF having "()" at end.
+               * XXX: would be much nicer for drsyms to provide consistent format!
+               */
+              (strstr(name, edata->possible[i].name) == name &&
+               strlen(name) == len + 2 &&
+               name[len] == '(' && name[len+1] == ')')))) {
             add_idx = i;
 #ifdef WINDOWS
             if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
@@ -1620,7 +1619,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
      * total lookup time in half.  i#315.
      */
     if (possible == possible_libc_routines ||
-        possible == possible_crtdbg_routines ||
+        IF_WINDOWS(possible == possible_crtdbg_routines ||)
         possible == possible_cpp_routines) {
         bool all_processed = true;
         edata.processed = (bool *)
@@ -1662,6 +1661,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                     find_alloc_regex(&edata, "*alloc", NULL, "alloc");
                     find_alloc_regex(&edata, "*_impl", NULL, "_impl");
                 }
+# ifdef WINDOWS
             } else if (possible == possible_crtdbg_routines) {
                 if (has_fast_search) { /* else faster to do indiv lookups */
                     find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
@@ -1671,6 +1671,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                      * It's an export in any case.
                      */
                 }
+# endif
             } else if (possible == possible_cpp_routines) {
                 /* regardless of fast search we want to find all overloads */
                 find_alloc_regex(&edata, "operator new*", "operator new", NULL);
@@ -2425,7 +2426,6 @@ alloc_load_symcache_postcall(const module_data_t *info)
         size_t modoffs;
         uint count;
         uint idx;
-        uint i;
         ASSERT(symcache_module_is_cached(info), "must have symcache");
         for (idx = 0, count = 1;
              idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,

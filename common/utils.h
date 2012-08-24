@@ -202,7 +202,7 @@ extern bool op_use_symcache;
  * bundle into one buffer anyway: but that exceeds dr_messagebox's
  * buffer size).
  */
-#ifdef USE_DRSYMS
+#if defined(WIN32) && defined(USE_DRSYMS)
 # define IN_CMD (dr_using_console())
 # define USE_MSGBOX (op_print_stderr && IN_CMD)
 #else

@@ -393,7 +393,6 @@ static void
 lookup_func_and_line(symbolized_frame_t *frame OUT,
                      modname_info_t *name_info IN, size_t modoffs)
 {
-    ssize_t len = 0;
     drsym_error_t symres;
     drsym_info_t *sym;
     const char *modpath = name_info->path;

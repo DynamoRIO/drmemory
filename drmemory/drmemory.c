@@ -76,6 +76,7 @@
 
 #ifdef USE_DRSYMS
 # include "drsyms.h" /* for pre-loading pdbs on Vista */
+# include "symcache.h"
 #endif
 
 char logsubdir[MAXIMUM_PATH];
@@ -1364,7 +1365,8 @@ nudge_leak_scan(void *drcontext)
     /* PR 474554: use nudge/signal for mid-run summary/output */
 #ifdef USE_DRSYMS
     static int nudge_count;
-    int local_count = atomic_add32_return_sum(&nudge_count, 1);
+    IF_DEBUG(int local_count =)
+        atomic_add32_return_sum(&nudge_count, 1);
     LOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
 #endif
 #ifdef STATISTICS
@@ -1542,7 +1544,7 @@ dr_init(client_id_t id)
     utils_init();
 
     /* now that we know whether -quiet, print basic info */
-#ifdef USE_DRSYMS
+#if defined(WIN32) && defined(USE_DRSYMS)
     dr_enable_console_printing();
 #endif
     if (options.summary)

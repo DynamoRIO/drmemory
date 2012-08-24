@@ -176,7 +176,7 @@ main(int argc, char *argv[])
             /* kind of a hack: assumes i hasn't changed and that -s/-a is last option */
             for (; i < argc; i++) {
                 if (addr2sym) {
-                    if (sscanf(argv[i], "%x", &modoffs) == 1)
+                    if (sscanf(argv[i], "%x", (uint *)&modoffs) == 1)
                         lookup_address(dll, modoffs);
                     else
                         printf("ERROR: unknown input %s\n", argv[i]);
@@ -198,7 +198,8 @@ main(int argc, char *argv[])
             /* Ensure we support spaces in paths by using ; to split.
              * Since ; separates PATH, no Windows dll will have ; in its name.
              */
-            if (sscanf(line, "%"MAX_PATH_STR"[^;];%x", (char *)&modpath, &modoffs) == 2) {
+            if (sscanf(line, "%"MAX_PATH_STR"[^;];%x", (char *)&modpath,
+                       (uint *)&modoffs) == 2) {
                 lookup_address(modpath, modoffs);
                 fflush(stdout); /* ensure flush in case piped */
             } else if (verbose)
@@ -248,12 +249,13 @@ lookup_address(const char *dllpath, size_t modoffs)
         if (sym->name_available_size >= sym->name_size)
             printf("WARNING: function name longer than max: %s\n", sym->name);
         if (show_func)
-            printf("%s+0x%x\n", sym->name, (modoffs - sym->start_offs));
+            printf("%s+0x%x\n", sym->name, (uint)(modoffs - sym->start_offs));
 
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
             printf("??:0\n");
         } else {
-            printf("%s:%"INT64_FORMAT"u+0x%x\n", sym->file, sym->line, sym->line_offs);
+            printf("%s:%"INT64_FORMAT"u+0x%x\n", sym->file, sym->line,
+                   (uint)sym->line_offs);
         }
     } else {
         if (verbose)
@@ -272,7 +274,7 @@ lookup_symbol(const char *dllpath, const char *sym)
         get_and_print_debug_kind(dllpath);
     symres = drsym_lookup_symbol(dllpath, sym, &modoffs, DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-        printf("+0x%x\n", modoffs);
+        printf("+0x%x\n", (uint)modoffs);
     } else {
         if (verbose)
             printf("drsym error %d looking up \"%s\" in \"%s\"\n", symres, sym, dllpath);
@@ -286,7 +288,7 @@ search_cb(const char *name, size_t modoffs, void *data)
 {
     const char *match = (const char *) data;
     if (match == NULL || strcmp(name, match) == 0)
-        printf("%s +0x%x\n", name, modoffs);
+        printf("%s +0x%x\n", name, (uint)modoffs);
     return true; /* keep iterating */
 }
 
