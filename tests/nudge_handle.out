@@ -1,0 +1,33 @@
+# **********************************************************
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# **********************************************************
+#
+# Dr. Memory: the memory debugger
+#
+# This library is free software; you can redistribute it and/or
+# modify it under the terms of the GNU Lesser General Public
+# License as published by the Free Software Foundation; 
+# version 2.1 of the License, and no later version.
+#
+# This library is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# Library General Public License for more details.
+#
+# You should have received a copy of the GNU Lesser General Public
+# License along with this library; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+#
+starting
+# On Windows, the prefixes for messages from the nudge handle use ~~TID~~
+# prefixes due to the injected thread. Just match the trailing tildes.
+# First nudge error report.
+~~ ERRORS FOUND:
+~~       0 unique,     0 total invalid heap argument(s)
+~~       1 unique,     1 total warning(s)
+# Second nudge error report.  We don't match the output of it, just that it was
+# here.
+~~ ERRORS FOUND:
+# On exit error report.  We don't get this on Windows because we use DRkill to
+# end infloop.exe.

@@ -616,6 +616,12 @@ get_relative_location(infloop infloop_path)
 newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
   "${nudge_test_args}--;${infloop_path}" "" OFF "")
+if (TOOL_DR_MEMORY AND WIN32)
+    set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
+    newtest_nobuild(nudge_handle run_in_bg_tgt
+      "-out;./nudge-handle-out"
+      "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")
+endif (TOOL_DR_MEMORY AND WIN32)
 
 newtest(leakcycle leakcycle.cpp)
 

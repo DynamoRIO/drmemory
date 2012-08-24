@@ -1375,10 +1375,16 @@ nudge_leak_scan(void *drcontext)
     STATS_INC(num_nudges);
     if (options.perturb_only)
         return;
-    report_leak_stats_checkpoint();
-    check_reachability(false/*!at exit*/);
-    report_summary();
-    report_leak_stats_revert();
+#ifdef WINDOWS
+    if (options.check_handle_leaks)
+        handlecheck_nudge(drcontext);
+#endif
+    if (options.count_leaks || options.check_leaks || options.leak_scan) {
+        report_leak_stats_checkpoint();
+        check_reachability(false/*!at exit*/);
+        report_summary();
+        report_leak_stats_revert();
+    }
     ELOGF(0, f_global, "NUDGE\n");
 }
 

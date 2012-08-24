@@ -110,6 +110,8 @@ main()
 #ifdef LINUX
     intercept_signal(SIGTERM, signal_handler);
 #else
+    /* for nudge handle leak test */
+    HANDLE hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);
 #endif
 

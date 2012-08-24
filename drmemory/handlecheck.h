@@ -52,4 +52,7 @@ void
 handlecheck_dump_statistics(void);
 #endif /* STATISTICS */
 
+void
+handlecheck_nudge(void *drcontext);
+
 #endif /* _HANDLECHECK_H_ */

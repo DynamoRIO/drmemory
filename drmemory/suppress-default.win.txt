@@ -606,3 +606,19 @@ UNADDRESSABLE ACCESS
 name=default i#607 msvcr*d.dll w/o syms
 MSVCR*D.dll!...
 MSVCR*D.dll!initptd
+
+##################################################
+# i#988 suppressing handle leaks from system dll
+
+# from nudge_handle test
+WARNING: Handle usage error: Kernel Handle
+name=default i#988 system dll handle leaks
+system call NtOpenKey
+KERNELBASE.dll!OpenRegKey
+...
+KERNELBASE.dll!GetNLSVersionEx
+...
+*!__crtLCMapStringA
+*!setSBUpLow
+*!_setmbcp_nolock
+

@@ -238,3 +238,9 @@ handlecheck_dump_statistics(void)
                num_handle_add, num_handle_remove);
 }
 #endif /* STATISTICS */
+
+void
+handlecheck_nudge(void *drcontext)
+{
+    handlecheck_iterate_handles();
+}
