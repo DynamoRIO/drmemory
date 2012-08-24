@@ -31,59 +31,78 @@
 
 #define EXPANDSTR(x) #x
 #define STRINGIFY(x) EXPANDSTR(x)
-#define MAX_PATH_STR STRINGIFY(MAX_PATH)
+#define MAX_PATH_STR STRINGIFY(MAXIMUM_PATH)
 
 #define TEST(mask, var) (((mask) & (var)) != 0)
 #define TESTANY TEST
 #define TESTALL(mask, var) (((mask) & (var)) == (mask))
 
+#ifdef WINDOWS
+# define IF_WINDOWS_ELSE(x, y) x
+#else
+# define IF_WINDOWS_ELSE(x, y) y
+# define _stricmp strcasecmp
+#endif
+
 /* forward decls */
 static void lookup_address(const char *dllpath, size_t modoffs);
 static void lookup_symbol(const char *dllpath, const char *sym);
 static void enumerate_symbols(const char *dllpath, const char *match,
-                              BOOL search, BOOL searchall);
+                              bool search, bool searchall);
 
 /* options */
-#define USAGE "Usage:\n\
+#define USAGE_PRE "Usage:\n\
 Look up addresses for one module:\n\
   %s -e <module> [-f] [-v] -a [<address relative to module base> ...]\n\
 Look up addresses for multiple modules:\n\
   %s [-f] [-v] -q <pairs of [module_path;address relative to module base] on stdin>\n\
 Look up exact symbols for one module:\n\
-  %s -e <module> [-v] [--enum] -s [<symbol1> <symbol2> ...]\n\
-Look up symbols matching wildcard patterns (glob-style: *,?) for one module:\n\
+  %s -e <module> [-v] [--enum] -s [<symbol1> <symbol2> ...]\n"
+
+#ifdef WINDOWS
+# define USAGE_MID \
+"Look up symbols matching wildcard patterns (glob-style: *,?) for one module:\n\
   %s -e <module> [-v] --search -s [<symbol1> <symbol2> ...]\n\
 Look up private symbols matching wildcard patterns (glob-style: *,?) for one module:\n\
-  %s -e <module> [-v] --searchall -s [<symbol1> <symbol2> ...]\n\
-List all symbols in a module:\n\
+  %s -e <module> [-v] --searchall -s [<symbol1> <symbol2> ...]\n"
+#else
+# define USAGE_MID "%.0s%.0s"
+#endif
+
+#define USAGE_POST \
+"List all symbols in a module:\n\
   %s -e <module> [-v] --list\n\
 Optional parameters:\n\
   -f = show function name\n\
   -v = verbose\n\
   --enum = look up via external enum rather than drsyms-internal enum\n"
-#define PRINT_USAGE(mypath) printf(USAGE, mypath, mypath, mypath, mypath, mypath, mypath)
 
-static BOOL show_func;
-static BOOL verbose;
+#define PRINT_USAGE(mypath) do {\
+    printf(USAGE_PRE, mypath, mypath, mypath);\
+    printf(USAGE_MID, mypath, mypath);\
+    printf(USAGE_POST, mypath);\
+} while (0)
+
+static bool show_func;
+static bool verbose;
 
 int
 main(int argc, char *argv[])
 {
     char *dll = NULL;
-    char *sym;
     int i;
     /* module + address per line */
-    char line[MAX_PATH*2];
+    char line[MAXIMUM_PATH*2];
     size_t modoffs;
 
     /* options that can be local vars */
-    BOOL addr2sym = FALSE;
-    BOOL addr2sym_multi = FALSE;
-    BOOL sym2addr = FALSE;
-    BOOL enumerate = FALSE;
-    BOOL enumerate_all = FALSE;
-    BOOL search = FALSE;
-    BOOL searchall = FALSE;
+    bool addr2sym = false;
+    bool addr2sym_multi = false;
+    bool sym2addr = false;
+    bool enumerate = false;
+    bool enumerate_all = false;
+    bool search = false;
+    bool searchall = false;
 
     for (i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "-e") == 0) {
@@ -93,14 +112,20 @@ main(int argc, char *argv[])
             }
             i++;
             dll = argv[i];
-            if (_access(dll, 4/*read*/) == -1) {
+            if (
+#ifdef WINDOWS
+                _access(dll, 4/*read*/) == -1
+#else
+                !dr_file_exists(dll)
+#endif
+                ) {
                 printf("ERROR: invalid path %s\n", dll);
                 return 1;
             }
         } else if (_stricmp(argv[i], "-f") == 0) {
-            show_func = TRUE;
+            show_func = true;
         } else if (_stricmp(argv[i], "-v") == 0) {
-            verbose = TRUE;
+            verbose = true;
         } else if (_stricmp(argv[i], "-a") == 0 ||
                    _stricmp(argv[i], "-s") == 0) {
             if (i+1 >= argc) {
@@ -108,23 +133,23 @@ main(int argc, char *argv[])
                 return 1;
             }
             if (_stricmp(argv[i], "-a") == 0)
-                addr2sym = TRUE;
+                addr2sym = true;
             else
-                sym2addr = TRUE;
+                sym2addr = true;
             i++;
             /* rest of args read below */
             break;
         } else if (_stricmp(argv[i], "-q") == 0) {
-            addr2sym_multi = TRUE;
+            addr2sym_multi = true;
         } else if (_stricmp(argv[i], "--enum") == 0) {
-            enumerate = TRUE;
+            enumerate = true;
         } else if (_stricmp(argv[i], "--list") == 0) {
-            enumerate_all = TRUE;
+            enumerate_all = true;
         } else if (_stricmp(argv[i], "--search") == 0) {
-            search = TRUE;
+            search = true;
         } else if (_stricmp(argv[i], "--searchall") == 0) {
-            search = TRUE;
-            searchall = TRUE;
+            search = true;
+            searchall = true;
         } else {
             PRINT_USAGE(argv[0]);
             return 1;
@@ -139,7 +164,7 @@ main(int argc, char *argv[])
 
     dr_standalone_init();
 
-    if (drsym_init(NULL) != DRSYM_SUCCESS) {
+    if (drsym_init(IF_WINDOWS_ELSE(NULL, 0)) != DRSYM_SUCCESS) {
         printf("ERROR: unable to initialize symbol library\n");
         return 1;
     }
@@ -151,7 +176,7 @@ main(int argc, char *argv[])
             /* kind of a hack: assumes i hasn't changed and that -s/-a is last option */
             for (; i < argc; i++) {
                 if (addr2sym) {
-                    if (sscanf(argv[i], "%I32x", &modoffs) == 1)
+                    if (sscanf(argv[i], "%x", &modoffs) == 1)
                         lookup_address(dll, modoffs);
                     else
                         printf("ERROR: unknown input %s\n", argv[i]);
@@ -163,7 +188,7 @@ main(int argc, char *argv[])
         }
     } else {
         while (!feof(stdin)) {
-            char modpath[MAX_PATH];
+            char modpath[MAXIMUM_PATH];
             if (fgets(line, sizeof(line), stdin) == NULL ||
                 /* when postprocess.pl closes the pipe, fgets is not
                  * returning, so using an alternative eof code
@@ -173,7 +198,7 @@ main(int argc, char *argv[])
             /* Ensure we support spaces in paths by using ; to split.
              * Since ; separates PATH, no Windows dll will have ; in its name.
              */
-            if (sscanf(line, "%"MAX_PATH_STR"[^;];%I32x", &modpath, &modoffs) == 2) {
+            if (sscanf(line, "%"MAX_PATH_STR"[^;];%x", (char *)&modpath, &modoffs) == 2) {
                 lookup_address(modpath, modoffs);
                 fflush(stdout); /* ensure flush in case piped */
             } else if (verbose)
@@ -210,7 +235,6 @@ get_and_print_debug_kind(const char *dllpath)
 static void
 lookup_address(const char *dllpath, size_t modoffs)
 {
-    ssize_t len = 0;
     drsym_error_t symres;
     drsym_info_t *sym;
     char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
@@ -267,15 +291,21 @@ search_cb(const char *name, size_t modoffs, void *data)
 }
 
 static void
-enumerate_symbols(const char *dllpath, const char *match, BOOL search, BOOL searchall)
+enumerate_symbols(const char *dllpath, const char *match, bool search, bool searchall)
 {
     drsym_error_t symres;
     if (verbose)
         get_and_print_debug_kind(dllpath);
+#ifdef WINDOWS
     if (search)
         symres = drsym_search_symbols(dllpath, match, searchall, search_cb, NULL);
-    else
-        symres = drsym_enumerate_symbols(dllpath, search_cb, (void *)match, 0);
+    else {
+#endif
+        symres = drsym_enumerate_symbols(dllpath, search_cb, (void *)match,
+                                         DRSYM_DEMANGLE);
+#ifdef WINDOWS
+    }
+#endif
     if (symres != DRSYM_SUCCESS && verbose)
         printf("search/enum error %d\n", symres);
 }

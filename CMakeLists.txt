@@ -959,12 +959,10 @@ if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
     VERBATIM)
 endif (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
 
-if (WIN32)
-  # symbol query tool
-  add_executable(symquery tools/symquery.c)
-  configure_DynamoRIO_standalone(symquery)
-  use_DynamoRIO_extension(symquery drsyms)
-endif (WIN32)
+# symbol query tool
+add_executable(symquery tools/symquery.c)
+configure_DynamoRIO_standalone(symquery)
+use_DynamoRIO_extension(symquery drsyms)
 
 # should go into a configure.h if we get enough of these
 set(script_aux "")
