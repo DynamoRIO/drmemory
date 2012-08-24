@@ -2087,8 +2087,13 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
             if (pre)
                 CHECK_ADDR((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
             else {
-                check_sockaddr((byte*)info.Address, i, MEMREF_WRITE, mc, sysnum,
-                               "AFD_RECV_INFO_UDP.Address");
+                /* XXX i#410: This API is asynch and info.Address is an
+                 * outparam, so its possible that none of this data is written
+                 * yet.  We conservatively assume the whole thing is written,
+                 * rather than using check_sockaddr(), which will try to look at
+                 * the unwritten sa_family field.
+                 */
+                MARK_WRITE((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
             }
         } else
             WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength\n");
