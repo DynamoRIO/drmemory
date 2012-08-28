@@ -120,7 +120,7 @@ gdicheck_thread_exit(void *drcontext)
  * DC CHECKS
  */
 
-#define REPORT_PREFIX "GDI usage error: "
+#define REPORT_PREFIX "" /* We used to need this when reported as WARNING */
 #define REPORT_MAX_SZ 512
 
 static void
@@ -146,7 +146,7 @@ gdicheck_report(app_pc addr, uint sysnum, dr_mcontext_t *mc, const char *msg, ..
     ASSERT(len > 0, "GDI report exceeds buffer size");
     NULL_TERMINATE_BUFFER(buf);
     va_end(ap);
-    report_warning(&loc, mc, buf, NULL, 0, false);
+    report_gdi_error(&loc, mc, buf);
 }
 
 static inline bool

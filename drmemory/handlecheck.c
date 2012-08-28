@@ -113,8 +113,7 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
             handle_create_info_t *hci = (handle_create_info_t *) entry->payload;
             next = entry->next;
             dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                        "Handle usage error: %s Handle "PFX
-                        " was opened but not closed:", name, handle);
+                        "%s Handle "PFX" was opened but not closed:", name, handle);
             report_handle_leak(drcontext, msg, &hci->loc, hci->pcs);
         }
     }
@@ -153,7 +152,7 @@ handlecheck_exit(void)
 {
     ASSERT(options.check_handle_leaks, "incorrectly called");
     handlecheck_iterate_handles();
-    hashtable_delete_with_stats(&kernel_handle_table, "Kerneal Handle Table");
+    hashtable_delete_with_stats(&kernel_handle_table, "Kernel Handle Table");
     hashtable_delete_with_stats(&gdi_handle_table,    "GDI Handle table");
     hashtable_delete_with_stats(&user_handle_table,   "USER Handle table");
 }

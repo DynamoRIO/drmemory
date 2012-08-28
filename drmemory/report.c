@@ -86,6 +86,10 @@ enum {
     ERROR_UNADDRESSABLE,
     ERROR_UNDEFINED,
     ERROR_INVALID_HEAP_ARG,
+#ifdef WINDOWS
+    ERROR_GDI_USAGE,
+    ERROR_HANDLE_LEAK,
+#endif
     ERROR_WARNING,
     ERROR_LEAK,
     ERROR_POSSIBLE_LEAK,
@@ -96,6 +100,10 @@ static const char *const error_name[] = {
     "unaddressable access(es)",
     "uninitialized access(es)",
     "invalid heap argument(s)",
+#ifdef WINDOWS
+    "GDI usage error(s)",
+    "handle leak(s)",
+#endif
     "warning(s)",
     "leak(s)",    
     "possible leak(s)",    
@@ -105,6 +113,10 @@ static const char *const suppress_name[] = {
     "UNADDRESSABLE ACCESS",
     "UNINITIALIZED READ",
     "INVALID HEAP ARGUMENT",
+#ifdef WINDOWS
+    "GDI USAGE ERROR",
+    "HANDLE LEAK",
+#endif
     "WARNING",
     "LEAK",    
     "POSSIBLE LEAK",    
@@ -1450,6 +1462,10 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
         } else if (((i != ERROR_UNADDRESSABLE && i != ERROR_UNDEFINED) ||
                     !options.leaks_only) &&
                    (i != ERROR_INVALID_HEAP_ARG || options.check_invalid_frees) &&
+#ifdef WINDOWS
+                   (i != ERROR_GDI_USAGE || options.check_gdi) &&
+                   (i != ERROR_HANDLE_LEAK || options.check_handle_leaks) &&
+#endif
                    (i != ERROR_UNDEFINED || options.check_uninitialized)) {
             NOTIFY_COND(notify, f, "  %5d unique, %5d total %s"NL,
                         num_unique[i], num_total[i], error_name[i]);
@@ -2254,6 +2270,13 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         BUFPRINT(buf, bufsz, sofar, len, "%sWARNING: %s"NL,
                  /* if in log file, distinguish from internal warnings via "REPORTED" */
                  (for_log ? "REPORTED " : ""), etp->msg);
+#ifdef WINDOWS
+    } else if (etp->errtype == ERROR_GDI_USAGE ||
+               etp->errtype == ERROR_HANDLE_LEAK) {
+        ASSERT(etp->msg != NULL, "invalid arg");
+        BUFPRINT(buf, bufsz, sofar, len, "%s: %s"NL,
+                 suppress_name[etp->errtype], etp->msg);
+#endif
     } else if (etp->errtype >= ERROR_LEAK &&
                etp->errtype <= ERROR_MAX_VAL) {
         /* For REACHABLE and IGNORED leak reporting. */
@@ -2420,20 +2443,44 @@ report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
     report_error(&etp, mc, NULL);
 }
 
-void
-report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
-               app_pc addr, size_t sz, bool report_instruction)
+static void
+report_misc_error(uint errtype, app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+                  app_pc addr, size_t sz, bool report_instruction,
+                  packed_callstack_t *pcs)
 {
     error_toprint_t etp = {0};
-    etp.errtype = ERROR_WARNING;
+    etp.errtype = errtype;
     etp.loc = loc;
     etp.addr = addr;
     etp.sz = sz;
     etp.msg = msg;
     etp.report_instruction = report_instruction;
     etp.report_neighbors = (sz > 0);
-    report_error(&etp, mc, NULL);
+    report_error(&etp, mc, pcs);
 }
+
+/* FIXME i#947: add ability to suppress warning via label or msg-prefix */
+void
+report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+               app_pc addr, size_t sz, bool report_instruction)
+{
+    report_misc_error(ERROR_WARNING, loc, mc, msg, addr, sz, report_instruction, NULL);
+}
+
+#ifdef WINDOWS
+void
+report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg)
+{
+    report_misc_error(ERROR_GDI_USAGE, loc, mc, msg, NULL, 0, false, NULL);
+}
+
+void
+report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
+                   packed_callstack_t *pcs)
+{
+    report_misc_error(ERROR_HANDLE_LEAK, loc, NULL, msg, NULL, 0, false, pcs);
+}
+#endif
 
 /* saves the values of all counts that are modified in report_leak() */
 void
@@ -2830,19 +2877,3 @@ report_main_thread(void)
 {
     ELOG(0, "\nNEW THREAD: main thread %d\n\n", main_thread);
 }
-
-#ifdef WINDOWS
-void
-report_handle_leak(void *drcontext, const char *msg,
-                   app_loc_t *loc, packed_callstack_t *pcs)
-{
-    error_toprint_t etp = {0};
-    /* FIXME i#947: add ability to suppress warning via label or msg-prefix
-     * FIXME i#953: change warning to an error type instead.
-     */
-    etp.errtype = ERROR_WARNING;
-    etp.msg = msg;
-    etp.loc = loc;
-    report_error(&etp, NULL, pcs);
-}
-#endif /* WINDOWS */

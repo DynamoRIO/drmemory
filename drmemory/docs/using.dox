@@ -36,6 +36,7 @@ following sub-sections:
   - \ref sec_uninit
   - \ref sec_invarg
   - \ref sec_leaks
+  - \ref sec_gdi
   - \ref sec_warning
 
 See also the full reference of Dr. Memory's runtime options:
@@ -493,7 +494,8 @@ strlen in the C library.
 
 Dr. Memory provides a "light" mode that detects fewer errors in order to
 gain performance.  It does not detect uninitialized reads nor leaks.  It
-does detect unaddressable accesses, invalid heap arguments, and warnings.
+does detect unaddressable accesses, invalid heap arguments, GDI usage
+errors, and warnings.
 Use the runtime option \p -light to use light mode.
 
 To add leak checking to light mode, add the option \p -count_leaks after
@@ -735,26 +737,13 @@ of the allocation will not be reported on a mismatch.
 INCLUDEFILE leaks.dox.sub
 
 ********************
-\subsection sec_warning Warning
+\subsection sec_gdi GDI Usage Errors
 
-Dr. Memory reports warnings about unusual memory-related conditions that an
-application developer might like to know about.  For example:
-
-\code
-Error #12: WARNING: heap allocation failed
-@0:00:01.500 in thread 3748
-# 0 suppress.exe!warning_test1                       [e:\derek\drmemory\git\src\tests\suppress.c:179]
-# 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:282]
-# 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
-# 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
-# 4 KERNEL32.dll!BaseProcessStart                   
-\endcode
-
-Dr. Memory also identifies common errors in using the Windows GDI API and
-reports these errors as warnings.  For example:
+On Windows, Dr. Memory identifies common errors in using the Windows GDI
+API.  For example:
 
 \code
-Error #15: WARNING: GDI usage error: DC 0x2d011230 that contains selected object being deleted
+Error #15: GDI Usage Error: DC 0x2d011230 that contains selected object being deleted
 # 0 system call NtGdiDeleteObjectApp                            
 # 1 GDI32.dll!DeleteDC                                                        +0x11     (0x76b458c5 <GDI32.dll+0x158c5>)
 # 2 chrome.dll!skia::BitmapPlatformDevice::BitmapPlatformDeviceData::ReleaseBitmapDC [c:\src\chromium\src\skia\ext\bitmap_platform_device_win.cc:58]
@@ -770,18 +759,39 @@ versions of Windows, while others are more serious.
 Detection of these errors can be disabled with the \p -no_check_gdi runtime
 option.
 
-Dr. Memory also identifies common errors of handle usage in Windows and
-reports these errors as warnings. For Example:
+\if HANDLE_LEAKS_ENABLED
+********************
+\subsection sec_handle Handle Leak
+
+Dr. Memory identifies Windows handles that are left open and reports them
+as handle leaks.  The type of handle (kernel, user, or GDI) is listed along
+with the callstack where it was opened.  For Example:
 
 \code
-Error #1: WARNING: Handle usage error: GDI Handle 0xfd011e11 is created but not closed:
+Error #1: Handle Leak: GDI Handle 0xfd011e11 is created but not closed:
 # 0 system call NtGdiCreateCompatibleDC
 # 1 test_gdi_handles                                  [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:36]
 # 2 main                                              [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:57]
 \endcode
 
 Detection of these errors can be disabled with the \p -no_check_handle runtime option.
+\endif
 
+********************
+\subsection sec_warning Warning
+
+Dr. Memory reports warnings about unusual memory-related conditions that an
+application developer might like to know about.  For example:
+
+\code
+Error #12: WARNING: heap allocation failed
+@0:00:01.500 in thread 3748
+# 0 suppress.exe!warning_test1                       [e:\derek\drmemory\git\src\tests\suppress.c:179]
+# 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:282]
+# 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
+# 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
+# 4 KERNEL32.dll!BaseProcessStart                   
+\endcode
 
 ****************************************************************************
 ****************************************************************************

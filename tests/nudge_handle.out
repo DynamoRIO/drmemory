@@ -25,7 +25,9 @@ starting
 # First nudge error report.
 ~~ ERRORS FOUND:
 ~~       0 unique,     0 total invalid heap argument(s)
-~~       1 unique,     1 total warning(s)
+~~       0 unique,     0 total GDI usage error(s)
+~~       1 unique,     1 total handle leak(s)
+~~       0 unique,     0 total warning(s)
 # Second nudge error report.  We don't match the output of it, just that it was
 # here.
 ~~ ERRORS FOUND:

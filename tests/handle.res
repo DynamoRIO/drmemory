@@ -21,14 +21,14 @@
 %OUT_OF_ORDER
 # the handle leak is reported by iterating a hashtable, which has non-det order,
 # so use OUT_OF_ORDER instead
-Error #1: WARNING: Handle usage error:
-Error #2: WARNING: Handle usage error:
-Error #3: WARNING: Handle usage error:
-Error #4: WARNING: Handle usage error:
-Error #5: WARNING: Handle usage error:
-Error #6: WARNING: Handle usage error:
-Error #7: WARNING: Handle usage error:
-Error #8: WARNING: Handle usage error:
+Error #1: HANDLE LEAK:
+Error #2: HANDLE LEAK:
+Error #3: HANDLE LEAK:
+Error #4: HANDLE LEAK:
+Error #5: HANDLE LEAK:
+Error #6: HANDLE LEAK:
+Error #7: HANDLE LEAK:
+Error #8: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen

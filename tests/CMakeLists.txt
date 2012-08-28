@@ -554,7 +554,7 @@ if (TOOL_DR_MEMORY)
       newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "" "" "" cs2bug)
     endif (GCC)
 
-    newtest(gdi gdi.cpp)
+    newtest_ex(gdi gdi.cpp "" "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress" "" OFF "")
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
     newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks" "" OFF "")
   endif (WIN32)

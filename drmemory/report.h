@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -71,6 +71,15 @@ void
 report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
                app_pc addr, size_t sz, bool report_instruction);
 
+#ifdef WINDOWS
+void
+report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg);
+
+void
+report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
+                   packed_callstack_t *pcs);
+#endif
+
 /* saves the values of all counts that are modified in report_leak() */
 void
 report_leak_stats_checkpoint(void);
@@ -102,11 +111,5 @@ print_timestamp_elapsed_to_file(file_t f, const char *prefix);
 
 void
 report_child_thread(void *drcontext, thread_id_t child);
-
-#if WINDOWS
-void
-report_handle_leak(void *drcontext, const char *msg,
-                   app_loc_t *loc, packed_callstack_t *pcs);
-#endif
 
 #endif /* _REPORT_H_ */

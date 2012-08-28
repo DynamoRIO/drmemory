@@ -200,6 +200,19 @@ test_DC_select(void)
     ReleaseDC(NULL, mydc);
 }
 
+static void
+test_suppress(void)
+{
+    // duplicate of test_objdel but suppressed
+    HPEN mypen = CreatePen(PS_SOLID,  0xab,RGB(0xab,0xcd,0xef));
+    assert(mypen != NULL);
+    HDC mydc = GetDC(NULL);
+    assert(mydc != NULL);
+    HGDIOBJ orig = SelectObject(mydc, mypen);
+    DeleteObject(mypen); // error raised
+    SelectObject(mydc, orig);
+}
+
 int
 main()
 {
@@ -212,6 +225,8 @@ main()
     test_DC_bitmap();
 
     test_DC_select();
+
+    test_suppress();
 
     return 0;
 }

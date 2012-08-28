@@ -59,7 +59,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between version 1.4.7 and 1.4.6 include:
+The changes between version 1.5.0 and 1.4.6 include:
+ - Compatibility change: GDI usage errors are no longer of type WARNING
+   but have their own type GDI USAGE ERROR.  This affects any existing
+   suppressions.
  - Added online symbols for Linux, which enables -results_to_stderr.  The
    -aggregate and -skip_results post-processing features are temporarily
    disabled until a future release adds them for both Windows and Linux.
