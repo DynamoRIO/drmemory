@@ -1176,17 +1176,17 @@ else (WIN32)
     ${CMAKE_CURRENT_SOURCE_DIR}/README
     DESTINATION ".")
 endif (WIN32)
-if (USE_DRSYMS AND TOOL_DR_MEMORY)
+if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-else (USE_DRSYMS AND TOOL_DR_MEMORY)
+else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   install(FILES
     ${script_main}
     DESTINATION "${INSTALL_BIN_PREFIX}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
-endif (USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
   install(FILES
@@ -1234,7 +1234,7 @@ install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
 
 # FIXME: support multi-tool package for Windows perl2exe by creating
 # batch file: for now assuming single-tool when perl2exe
-if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   # b/c there's no way to change permissions other than an install rule,
   # and b/c the $ and @ uses make it hard to configure_file, and
   # I can find no way to generate a symlink at install time, we generate
@@ -1268,7 +1268,7 @@ if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
 
   # create top-level html file that redirects
   install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/docs/${toolname}.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../${toolname}/docs/html/index.html\\\">\n</head><body></body>\")")
-endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
 
 # create empty logs dir for release package
 # be sure to escape ",$ since evaluated at install time not configure time
@@ -1452,12 +1452,12 @@ set(CPACK_PACKAGE_INSTALL_DIRECTORY "${toolname_cap_spc}")
 set(CPACK_PACKAGE_INSTALL_REGISTRY_KEY "${toolname_cap_spc}")
 set(CPACK_PACKAGE_RELOCATABLE "true")
 set(CPACK_NSIS_MODIFY_PATH ON)
-if (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
+if (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   # CMake hardcodes bin/ for desktop links (CMake bug #7828) so
   # we rearranged our dirs since we really need one.
   set(CPACK_PACKAGE_EXECUTABLES "${toolname}" "${toolname_cap_spc} (drag your app here)")
   set(CPACK_CREATE_DESKTOP_LINKS "${toolname}")
-endif (PERL_TO_EXE OR USE_DRSYMS AND TOOL_DR_MEMORY)
+endif (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 set(CPACK_NSIS_MENU_LINKS 
   # We automatically get an entry for ${toolname}.exe since it's in the
   # CPACK_PACKAGE_EXECUTABLES list, even though we don't want one.
