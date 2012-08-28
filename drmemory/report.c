@@ -1203,6 +1203,13 @@ report_init(void)
     /* callstack.c wants these as null-separated, double-null-terminated */
     convert_commas_to_nulls(options.callstack_truncate_below,
                             BUFFER_SIZE_ELEMENTS(options.callstack_truncate_below));
+    if (options.callstack_exe_hide && dr_get_application_name() != NULL) {
+        size_t len = strlen(options.callstack_modname_hide);
+        dr_snprintf(options.callstack_modname_hide + len,
+                    BUFFER_SIZE_ELEMENTS(options.callstack_modname_hide) - len,
+                    ",%s",  dr_get_application_name());
+        NULL_TERMINATE_BUFFER(options.callstack_modname_hide);
+    }
     convert_commas_to_nulls(options.callstack_modname_hide,
                             BUFFER_SIZE_ELEMENTS(options.callstack_modname_hide));
     convert_commas_to_nulls(options.callstack_srcfile_hide,

@@ -213,9 +213,12 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
 OPTION_CLIENT_STRING(client, callstack_truncate_below, "main,wmain,WinMain,wWinMain,*RtlUserThreadStart,_threadstartex",
                      ",-separated list of function names at which to truncate callstacks",
                      "Callstacks will be truncated at any frame that matches any of these ,-separated function names.  The function names can contain * or ? wildcards.")
-OPTION_CLIENT_STRING(client, callstack_modname_hide, "*.exe,*drmemory*",
+OPTION_CLIENT_STRING(client, callstack_modname_hide, "*drmemory*",
                      ",-separated list of module names to hide in callstack frames",
                      "Callstack frames will not list module names matching any of these ,-separated patterns.  The names can contain * or ? wildcards.  The module name will be displayed whenever the function name is uknown, however.  The module name will only be hidden for error display purposes: it will still be included when considering suppressions, and it will be included in the generated suppression callstacks.")
+OPTION_CLIENT_BOOL(client, callstack_exe_hide, true,
+                   "Whether to omit the executable name from callstack frames",
+                   "Callstack frames will not list the executable name.  The executable name will be displayed whenever the function name is uknown, however.  The executable name will only be hidden for error display purposes: it will still be included when considering suppressions, and it will be included in the generated suppression callstacks.")
 OPTION_CLIENT_STRING(client, callstack_srcfile_hide, "",
                      ",-separated list of source file paths to hide in callstack frames",
                      "Callstack frames will not list source file paths matching any of these ,-separated patterns.  The paths can contain * or ? wildcards.")

@@ -305,7 +305,7 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   if (TOOL_DR_HEAPSTAT)
     # XXX: this works manually but doesn't seem to get through ctest: but
     # the test is passing so not taking the time to figure it out
-    set(postcmd "${cmd_base};-view_leaks;-callstack_modname_hide '';-callstack_style 0x21;-x;${exepath};-profdir")
+    set(postcmd "${cmd_base};-view_leaks;-no_callstack_exe_hide;-callstack_modname_hide '';-callstack_style 0x21;-x;${exepath};-profdir")
   else (TOOL_DR_HEAPSTAT)
     if (postprocess)
       # test -skip_results + -results (PR 575481)
@@ -490,7 +490,7 @@ if (TOOL_DR_MEMORY)
   # test multiple supp files (i#574)
   if (USE_DRSYMS)
     newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB};-callstack_modname_hide;;"
+      "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
       "" OFF "")
   else (USE_DRSYMS)
     newtest_nobuild(suppress suppress ""
@@ -504,9 +504,9 @@ if (TOOL_DR_MEMORY)
   # suppress output files
   if (USE_DRSYMS)
     newtest_nobuild(suppress-genoffs suppress ""
-      "-no_gen_suppress_syms;-callstack_modname_hide;;" "" OFF "")
+      "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
     newtest_nobuild(suppress-gensyms suppress ""
-      "-no_gen_suppress_offs;-callstack_modname_hide;;" "" OFF "")
+      "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
   else (USE_DRSYMS)
     newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
     newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")

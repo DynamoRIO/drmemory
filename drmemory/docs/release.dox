@@ -67,6 +67,7 @@ The changes between version 1.4.7 and 1.4.6 include:
  - Added -log_suppressed_errors option
  - Support wildcards in instruction lines in suppressions
  - Improved callstack walking
+ - Added -callstack_exe_hide
  - Eliminated most false positives with bitwise operations
  - Various bug fixes
 
