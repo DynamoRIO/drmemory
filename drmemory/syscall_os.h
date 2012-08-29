@@ -36,6 +36,10 @@ extern int cls_idx_syscall;
 typedef struct _cls_syscall_t {
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+    /* The size computed by SYSARG_SIZE_IN_FIELD is saved here across the
+     * syscall.  We only support one such parameter per syscall.
+     */
+    ssize_t sysarg_size_from_field;
 
     /* for comparing memory across unknown system calls */
     app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
@@ -97,8 +101,8 @@ enum {
     /* <available>            = -100, */
     /* used in repeated syscall_arg_t entry for post-syscall size */
     SYSARG_POST_SIZE_RETVAL   = -101,
-    /* size is stored as a field of size 4 bytes with an offset
-     * given by syscall_arg_t.misc
+    /* Size is stored as a field of size 4 bytes with an offset given by
+     * syscall_arg_t.misc.  Can only be used by one arg per syscall.
      */
     SYSARG_SIZE_IN_FIELD      = -102,
 
@@ -139,7 +143,7 @@ typedef struct _syscall_arg_t {
      * Currently used for:
      * - SYSARG_COMPLEX_TYPE: holds SYSARG_TYPE_* enum value
      * - SYSARG_SIZE_IN_ELEMENTS: holds size of array entry
-     * - SYSARG_SIZE_FIELD: holds offset of 4-byte size field
+     * - SYSARG_SIZE_IN_FIELD: holds offset of 4-byte size field
      */
     int misc;
 } syscall_arg_t;

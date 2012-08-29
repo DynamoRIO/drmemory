@@ -727,21 +727,35 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
             size = dr_syscall_get_result(drcontext);
         }
     } else if (arg->size == SYSARG_SIZE_IN_FIELD) {
-        /* 4-byte size field in struct */
-        uint sz;
-        byte *field = start + arg->misc/*offs of size field */;
-        if (start != NULL) {
-            /* by using this flag, os-specific code gives up first access rights
-             * (i.e., to skip this check, don't use this flag)
-             */
-            if (pre) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             field, sizeof(sz), mc, NULL);
+        if (pre) {
+            /* 4-byte size field in struct */
+            uint sz;
+            byte *field = start + arg->misc/*offs of size field */;
+            if (start != NULL) {
+                /* by using this flag, os-specific code gives up first access
+                 * rights (i.e., to skip this check, don't use this flag)
+                 */
+                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, field,
+                             sizeof(sz), mc, NULL);
+                if (safe_read(field, sizeof(sz), &sz))
+                    size = sz;
+                else
+                    WARN("WARNING: cannot read struct size field\n");
             }
-            if (safe_read(field, sizeof(sz), &sz))
-                size = sz;
-            else
-                WARN("WARNING: cannot read struct size field\n");
+            /* Even if we failed to get the size, initialize this for
+             * post-syscall checks.
+             */
+            ASSERT(pt->sysarg_size_from_field == -1,
+                   "SYSARG_SIZE_IN_FIELD on more than one syscall");
+            pt->sysarg_size_from_field = size;
+        } else {
+            /* i#992: The kernel can overwrite these struct fields during the
+             * syscall, so we save them in the pre-syscall event and use them
+             * post-syscall.
+             */
+            ASSERT(pt->sysarg_size_from_field != -1,
+                   "sysarg_size_from_field not initialized");
+            size = pt->sysarg_size_from_field;
         }
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
@@ -1036,6 +1050,7 @@ event_pre_syscall(void *drcontext, int sysnum)
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
         LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
     }
+    pt->sysarg_size_from_field = -1;
 
     /* acquire expanded sysnum for os_shared_pre_syscall() in addition to
      * shadow checks
