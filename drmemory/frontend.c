@@ -86,7 +86,8 @@ static bool results_to_stderr = true;
 static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
 static bool top_stats;
-static bool fetch_symbols;
+static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
+static bool fetch_crt_syms_only = true;
 
 enum {
     /* _NT_SYMBOL_PATH typically has a local path and a URL. */
@@ -449,6 +450,37 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
     return got_pdbs;
 }
 
+/* Return true if we should fetch this symbol file.  Modifies modpath to make it
+ * a long path and assumes it is MAXIMUM_PATH bytes long.
+ */
+static bool
+should_fetch_symbols(const char *system_root, char *modpath)
+{
+    bool r;
+    string_replace_character(modpath, '\n', '\0');  /* Trailing newline. */
+    /* Convert to a long path to compare with $SystemRoot.  These paths are
+     * already absolute, but some of them, like sophos-detoured.dll, are
+     * 8.3 style paths.
+     */
+    if (GetLongPathName(modpath, modpath, MAXIMUM_PATH) == 0) {
+        warn("GetLongPathName failed: %d", GetLastError());
+    }
+    /* We only fetch pdbs for system libraries.  Everything else was
+     * probably built on the user's machine, so if the pdbs aren't there,
+     * attempting to fetch them will be futile.
+     */
+    r = (_strnicmp(system_root, modpath, strlen(system_root)) == 0);
+    /* By default, we only fetch CRT symbols. */
+    if (r && fetch_crt_syms_only) {
+        const char *basename;
+        basename = strrchr(modpath, '\\');  /* GetLongPathName uses \ only. */
+        basename = (basename == NULL ? modpath : basename + 1);
+        r = (_strnicmp("msvc", basename, 4) == 0);
+    }
+    info("%s: modpath %s => %d\n", __FUNCTION__, modpath, r);
+    return r;
+}
+
 static void
 fetch_missing_symbols(const char *logdir, const char *resfile)
 {
@@ -493,7 +525,7 @@ fetch_missing_symbols(const char *logdir, const char *resfile)
      */
     num_files = 0;
     while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
-        if (_strnicmp(system_root, line, strlen(system_root)) == 0)
+        if (should_fetch_symbols(system_root, line))
             num_files++;
     }
     fseek(stream, 0, SEEK_SET);  /* Back to beginning. */
@@ -514,19 +546,7 @@ fetch_missing_symbols(const char *logdir, const char *resfile)
     cur_file = 0;
     files_fetched = 0;
     while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
-        string_replace_character(line, '\n', '\0');  /* Trailing newline. */
-        /* Convert to a long path to compare with $SystemRoot.  These paths are
-         * already absolute, but some of them, like sophos-detoured.dll, are
-         * 8.3 style paths.
-         */
-        if (GetLongPathName(line, line, BUFFER_SIZE_ELEMENTS(line)) == 0) {
-            warn("GetLongPathName failed: %d", GetLastError());
-        }
-        /* We only fetch pdbs for system libraries.  Everything else was
-         * probably built on the user's machine, so if the pdbs aren't there,
-         * attempting to fetch them will be futile.
-         */
-        if (_strnicmp(system_root, line, strlen(system_root)) == 0) {
+        if (should_fetch_symbols(system_root, line)) {
             cur_file++;
             sym_info("[%d/%d] Fetching symbols for %s",
                      cur_file, num_files, line);
@@ -650,7 +670,7 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     }
 
     /* We provide an option to allow the user to turn this feature off. */
-    if (fetch_symbols) {
+    if (fetch_symbols || fetch_crt_syms_only) {
         info("fetching symbols");
         fetch_missing_symbols(logdir, resfile);
     } else {
@@ -822,10 +842,12 @@ int main(int argc, char *argv[])
         }
         else if (strcmp(argv[i], "-fetch_symbols") == 0) {
             fetch_symbols = true;
+            fetch_crt_syms_only = false;
             continue;
         }
         else if (strcmp(argv[i], "-no_fetch_symbols") == 0) {
             fetch_symbols = false;
+            fetch_crt_syms_only = false;
             continue;
         }
         else if (strcmp(argv[i], "-top_stats") == 0) {
