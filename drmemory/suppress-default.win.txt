@@ -610,13 +610,10 @@ MSVCR*D.dll!initptd
 ##################################################
 # i#988 suppressing handle leaks from system dll
 
-# from nudge_handle test
-HANDLE LEAK
-name=default i#988 system dll handle leaks
+# i#988 c#1 c#3 from nudge_handle test
+HANDLE LEAK: Kernel Handle
+name=default i#988 c#1 NtOpenKey
 system call NtOpenKey
-KERNELBASE.dll!OpenRegKey
-...
-KERNELBASE.dll!GetNLSVersionEx
 ...
 *!__crtLCMapStringA
 *!setSBUpLow

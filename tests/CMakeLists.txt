@@ -556,7 +556,10 @@ if (TOOL_DR_MEMORY)
 
     newtest_ex(gdi gdi.cpp "" "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress" "" OFF "")
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
-    newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks" "" OFF "")
+    # FIXME i#672: some handle is created with deep call stack, so we increase
+    # the max frames for suppression. In long term, we should implement
+    # i#672, i.e. separate max frames per error type, to solve this problem.
+    newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks;-callstack_max_frames;100" "" OFF "")
   endif (WIN32)
 
   # FIXME i#657: realloc is flaky on the Windows bots.
