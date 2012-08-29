@@ -444,6 +444,15 @@ if (WIN32)
     endif ()
   endif ()
 
+  file(GLOB symsrv_hint "$ENV{PROGRAMFILES}/Debugging Tools for Windows/symsrv.dll")
+  find_file(SYMSRV_DLL symsrv.dll HINTS "${symsrv_hint}"
+    DOC "location of symsrv.dll from recent Debugging Tools for Windows")
+  if (SYMSRV_DLL-NOTFOUND OR NOT EXISTS "${SYMSRV_DLL}")
+    message(FATAL_ERROR "symsrv.dll required and not found")
+  else ()
+    message(STATUS "Using ${SYMSRV_DLL}")
+  endif ()
+
 endif (WIN32)
 
 # To run out of build dir we put libs and scripts in dirs that match install layout
@@ -856,6 +865,7 @@ if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set(client_target "${toolname}lib")
   # assuming only DrMem for now
   add_executable(${toolname} drmemory/frontend.c)
+  target_link_libraries(${toolname} dbghelp)
 else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set(client_target ${toolname})
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
@@ -1019,6 +1029,11 @@ if (WIN32)
   # copy for winsyms and symquery
   configure_file("${DBGHELP_DLL}"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll" COPYONLY)
+  # Copy symsrv.dll so we can fetch files from the frontend.
+  configure_file("${SYMSRV_DLL}"
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN}/symsrv.dll" COPYONLY)
+  # Create symsrv.yes to avoid the EULA dialog.
+  file(WRITE "${PROJECT_BINARY_DIR}/${BUILD_BIN}/symsrv.yes" "")
   if (USER_SPECIFIED_DynamoRIO_DIR)
     # already built so we can copy at config time
     configure_file("${DynamoRIO_DIR}/../${LIB_ARCH}/drconfiglib.dll"
@@ -1081,6 +1096,7 @@ if (WIN32)
     # above copy is for winsyms and symquery, this is for drmemorylib
     configure_file("${DBGHELP_DLL}"
       "${PROJECT_BINARY_DIR}/${BUILD_LIB}/dbghelp.dll" COPYONLY)
+    # We don't need to copy symsrv.dll because only the frontend uses it.
   endif (USE_DRSYMS)
 else (WIN32)
   if (USER_SPECIFIED_DynamoRIO_DIR)
@@ -1146,9 +1162,13 @@ if (WIN32)
     WORLD_READ WORLD_EXECUTE)
   install(FILES
     ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/symsrv.dll
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
+  install(FILES
+    ${PROJECT_BINARY_DIR}/${BUILD_BIN}/symsrv.yes
+    DESTINATION "${INSTALL_BIN}")
   if (USE_DRSYMS)
     install(FILES
       ${PROJECT_BINARY_DIR}/${BUILD_BIN}/dbghelp.dll

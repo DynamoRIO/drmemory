@@ -26,6 +26,7 @@
 
 #include "dr_api.h"
 #include "drmgr.h"
+#include "callstack.h"
 #include "utils.h"
 #ifdef USE_DRSYMS
 # include "drsyms.h"
@@ -241,6 +242,12 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         STATS_INC(symbol_lookups); /* not total, rather un-cached */
     } else
         STATS_INC(symbol_searches);
+
+    /* Now that we know this is a symcache miss, check if the module has
+     * symbols and warn if it doesn't.  DrMemory also uses this to fetch
+     * missing symbols at the end of the run.
+     */
+    module_check_for_symbols(mod->full_path);
 
     for (c = mod->full_path; *c != '\0'; c++) {
         if (*c == DIRSEP IF_WINDOWS(|| *c == '\\'))

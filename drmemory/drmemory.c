@@ -84,6 +84,7 @@ char logsubdir[MAXIMUM_PATH];
 file_t f_fork = INVALID_FILE;
 #else
 file_t f_results;
+file_t f_missing_symbols;
 file_t f_suppress;
 #endif
 static uint num_threads;
@@ -441,6 +442,7 @@ event_exit(void)
     close_file(f_fork);
 #else
     close_file(f_results);
+    close_file(f_missing_symbols);
     close_file(f_suppress);
 #endif
     dr_fprintf(f_global, "LOG END\n");
@@ -1275,6 +1277,7 @@ create_global_logfile(void)
 #ifdef USE_DRSYMS
     if (!options.perturb_only) {
         f_results = open_logfile("results.txt", false, -1);
+        f_missing_symbols = open_logfile("missing_symbols.txt", false, -1);
         print_version(f_results, true);
         if (options.resfile == dr_get_process_id()) {
             /* notify front-end of results path */

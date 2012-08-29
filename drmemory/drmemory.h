@@ -71,6 +71,7 @@ extern char logsubdir[MAXIMUM_PATH];
 #ifdef USE_DRSYMS
 extern file_t f_results;
 extern file_t f_suppress;
+extern file_t f_missing_symbols;
 #else
 extern file_t f_fork;
 #endif

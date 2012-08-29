@@ -193,7 +193,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *frame_truncate_below,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix
+               const char *callstack_srcfile_prefix,
+               void (*missing_syms_cb)(const char *)
                _IF_DEBUG(uint callstack_dump_stack));
 
 void
@@ -274,6 +275,18 @@ module_lookup_path(byte *pc);
  */
 const char *
 module_lookup_preferred_name(byte *pc);
+
+/* Warns once about modules that don't have symbols, and records them in a
+ * logfile so they can be fetched at the end of execution.
+ *
+ * Call this after making a real symbol query on the module.  We can't do this
+ * from the module load event because it forces dbghelp to load the module.
+ * Loading all modules would defeat the purpose of the symcache and hurt startup
+ * performance.  This way we only fetch modules that were actually needed to
+ * symbolize callstacks or to prime the symbol cache.
+ */
+void
+module_check_for_symbols(const char *modpath);
 
 /****************************************************************************
  * Symbolized callstacks

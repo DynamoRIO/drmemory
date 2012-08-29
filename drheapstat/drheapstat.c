@@ -2206,7 +2206,7 @@ dr_init(client_id_t client_id)
                     */
                    NULL,
                    IF_WINDOWS_ELSE(is_in_seh_unwind, NULL),
-                   NULL, NULL, NULL, NULL _IF_DEBUG(0));
+                   NULL, NULL, NULL, NULL, NULL _IF_DEBUG(0));
     heap_region_init(client_heap_add, client_heap_remove);
     /* We keep callstacks around forever and only free when we delete
      * the alloc_stack_table, so no refcounts

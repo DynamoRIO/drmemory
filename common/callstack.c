@@ -52,6 +52,7 @@ static const char *op_truncate_below;
 static const char *op_modname_hide;
 static const char *op_srcfile_prefix;
 static const char *op_srcfile_hide;
+static void (*op_missing_syms_cb)(const char *);
 #ifdef DEBUG
 static uint op_callstack_dump_stack;
 #endif
@@ -137,10 +138,8 @@ typedef struct _modname_info_t {
     uint id;
     /* i#589: don't show module! for executable or other modules */
     bool hide_modname;
-#ifdef DEBUG
     /* Avoid repeated warnings about symbols */
     bool warned_no_syms;
-#endif
 } modname_info_t;
 
 /* When the number of modules hits the max for our 8-bit index we
@@ -260,6 +259,9 @@ module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **na
 static void
 modname_info_free(void *p);
 
+static void
+warn_no_symbols(modname_info_t *name_info);
+
 /***************************************************************************/
 
 size_t
@@ -284,7 +286,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_truncate_below,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix
+               const char *callstack_srcfile_prefix,
+               void (*missing_syms_cb)(const char *)
                _IF_DEBUG(uint callstack_dump_stack))
 {
     tls_idx_callstack = drmgr_register_tls_field();
@@ -302,6 +305,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_modname_hide = callstack_modname_hide;
     op_srcfile_hide = callstack_srcfile_hide;
     op_srcfile_prefix = callstack_srcfile_prefix;
+    op_missing_syms_cb = missing_syms_cb;
 #ifdef DEBUG
     op_callstack_dump_stack = callstack_dump_stack;
 #endif
@@ -428,14 +432,10 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
             frame->line = sym->line;
             frame->lineoffs = sym->line_offs;
         }
-    } else {
-# ifdef DEBUG
-        /* only warn once (or twice w/ races) */
-        if (!name_info->warned_no_syms) {
-            name_info->warned_no_syms = true;
-            WARN("WARNING: unable to load symbols for %s\n", modpath);
-        }
-# endif
+    }
+
+    if (!frame->has_symbols) {
+        warn_no_symbols(name_info);
     }
 }
 
@@ -1816,9 +1816,7 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->hide_modname =
             (op_modname_hide != NULL &&
              text_matches_any_pattern(name_info->name, op_modname_hide, IGNORE_FILE_CASE));
-#ifdef DEBUG
         name_info->warned_no_syms = false;
-#endif
         hashtable_add(&modname_table, (void*)name_info->path, (void*)name_info);
         /* We need an entry for every 16M of module size */
         sz = info->end - info->start;
@@ -2074,6 +2072,43 @@ module_lookup_preferred_name(byte *pc)
     modname_info_t *name_info;
     bool found = module_lookup(pc, NULL, NULL, &name_info);
     return found ? name_info->name : NULL;
+}
+
+/* Warn once (or twice with races) about modules that don't have symbols, and
+ * log them so we can fetch symbols at the end of the run.
+ */
+static void
+warn_no_symbols(modname_info_t *name_info)
+{
+    if (!name_info->warned_no_syms) {
+        name_info->warned_no_syms = true;
+        WARN("WARNING: unable to load symbols for %s\n", name_info->path);
+        if (op_missing_syms_cb != NULL) {
+            op_missing_syms_cb(name_info->path);
+        }
+    }
+}
+
+void
+module_check_for_symbols(const char *modpath)
+{
+    drsym_debug_kind_t kind;
+    modname_info_t *name_info;
+
+    hashtable_lock(&modname_table);
+    name_info = (modname_info_t *) hashtable_lookup(&modname_table,
+                                                    (void *)modpath);
+    /* The lookup can fail on ntdll lookups during dr_init, because we haven't
+     * hit the initial module load events yet.  That's OK, we'll probably catch
+     * those modules later.
+     */
+    if (name_info != NULL) {
+        drsym_error_t res = drsym_get_module_debug_kind(modpath, &kind);
+        if (res != DRSYM_SUCCESS || !TEST(DRSYM_SYMBOLS, kind)) {
+            warn_no_symbols(name_info);
+        }
+    }
+    hashtable_unlock(&modname_table);
 }
 
 /****************************************************************************

@@ -1192,6 +1192,14 @@ callstack_ignore_initial_xbp(void *drcontext, dr_mcontext_t *mc)
         return false;
 }
 
+static void
+missing_syms_cb(const char *modpath)
+{
+#ifdef USE_DRSYMS
+    dr_fprintf(f_missing_symbols, "%s\n", modpath);
+#endif
+}
+
 void
 report_init(void)
 {
@@ -1273,10 +1281,11 @@ report_init(void)
                    (options.callstack_srcfile_hide[0] == '\0') ? NULL :
                    options.callstack_srcfile_hide,
                    (options.callstack_srcfile_prefix[0] == '\0') ? NULL :
-                   options.callstack_srcfile_prefix
+                   options.callstack_srcfile_prefix,
 #else
-                   NULL, NULL, NULL, NULL
+                   NULL, NULL, NULL, NULL,
 #endif
+                   missing_syms_cb
                    _IF_DEBUG(options.callstack_dump_stack));
 
 #ifdef USE_DRSYMS
