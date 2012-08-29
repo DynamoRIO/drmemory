@@ -336,6 +336,9 @@ if (!logdir_ok($logdir)) {
     # last choice is cur dir.  canonicalize in case running w/ cygwin perl.
     $logdir = &canonicalize_path(&cwd()) unless (logdir_ok($logdir));
 }
+# Default dir is created at install/config time but if user specifies
+# a new base logdir we need to create the subdir.
+mkdir "$logdir/dynamorio" if (! -d "$logdir/dynamorio");
 
 if ($is_unix) {
     $app_is_win32 = 0;
@@ -387,7 +390,10 @@ if ($aggregate || $just_postprocess) {
     } else {
         @appcmdline = ("$drrun", "-dr_home", "$dr_home",
                        "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
-                       "0", "$ops", "-ops", "$def_dr_ops $dr_ops",
+                       "0", "$ops",
+                       # put DR logs inside drmem logdir (i#874)
+                       "-logdir", "$logdir/dynamorio",
+                       "-ops", "$def_dr_ops $dr_ops",
                        @appcmdline);
         splice @appcmdline, 1, 0, "$dr_debug" if ($dr_debug ne '');
     }

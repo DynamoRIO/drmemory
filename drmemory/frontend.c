@@ -719,6 +719,7 @@ int main(int argc, char *argv[])
     bool have_logdir = false;
     bool persisting = false;
     bool exit0 = false;
+    bool dr_logdir_specified = false;
 
     time_t start_time, end_time;
 
@@ -906,6 +907,11 @@ int main(int argc, char *argv[])
         else if (strcmp(argv[i], "-dr_ops") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
+            /* Slight risk of some other option containing "-logdir " but
+             * -dr_ops is really only be used by Dr. Memory developers anyway.
+             */
+            if (strstr(argv[i+1], "-logdir ") != NULL)
+                dr_logdir_specified = true;
             BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                      drops_sofar, len, "%s ", argv[++i]);
         }
@@ -1074,6 +1080,30 @@ int main(int argc, char *argv[])
     info("logdir is \"%s\"", logdir);
     BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
              cliops_sofar, len, "-logdir `%s` ", logdir);
+
+    /* Put DR logs inside drmem logdir (i#874).
+     * XXX DRi#886: if deployment API let us set the default logdir
+     * we'd prefer that to avoid adding to option string length
+     * for every run.
+     */
+    if (!dr_logdir_specified) { /* don't override user-specified DR logdir */
+        _snprintf(scratch, BUFFER_SIZE_ELEMENTS(scratch), "%s/dynamorio", logdir);
+        NULL_TERMINATE_BUFFER(scratch);
+        /* Default dir is created at install/config time but if user specifies
+         * a new base logdir we need to create the subdir.
+         */
+        if (!dr_directory_exists(scratch)) {
+            if (!dr_create_dir(scratch)) {
+                /* check again in case of a race */
+                if (!dr_directory_exists(scratch)) {
+                    fatal("cannot create %s", scratch);
+                    goto error; /* actually won't get here */
+                }
+            }
+        }
+        BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                 drops_sofar, len, "-logdir `%s` ", scratch);
+    }
 
     if (persisting) {
         /* default -persist_dir is not DR's default so we have to set it */

@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -90,7 +91,7 @@ these options to Dr. Memory:
 
 and provide the resulting
 <tt>&lt;appname&gt;.exe.&lt;pid&gt;.00000000.ldmp</tt> file from the
-<tt>&lt;installpath&gt;/dynamorio/logs/</tt> directory.  The ldmp should
+<tt>&lt;installpath&gt;/drmemory/logs/dynamorio/</tt> directory.  The ldmp should
 compress nicely.
 
 Additionally, if the run is pretty short, run with the "-verbose 2" option

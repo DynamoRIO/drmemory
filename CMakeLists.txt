@@ -1014,6 +1014,7 @@ endif (PERL_TO_EXE)
 # support running out of build dir
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
+file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
 if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
@@ -1298,6 +1299,9 @@ install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/README\" \"
 # ditto for pcaches
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache\")")
 install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache/README\" \"Default destination for code cache files.\n\")")
+# ditto for DR logdir
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/dynamorio\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache/README\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
 
 # Include DR so user doesn't have to download separately (PR 457417).
 # We don't need docs/, include/, or 64-bit.
@@ -1312,9 +1316,6 @@ if (UNIX)
   # (filed as http://www.itk.org/Bug/view.php?id=10096).
   # So, since we're bundling a particular version anyway, we just take the .so
   # file itself and discard all the version-named files
-  install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/logs\")")
-  # CPack seems to ignore empty dirs so add a README file
-  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/logs/README\" \"Default destination for DynamoRIO log files.\n\")")
   if (DEBUG_BUILD)
     install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
@@ -1437,16 +1438,13 @@ if (WIN32)
       DESTINATION "${DR_install_dir}")
     install(DIRECTORY "${DynamoRIO_DIR}/../ext/${LIB_ARCH}"
       DESTINATION "${DR_install_dir}/ext")
-    install(DIRECTORY "${DynamoRIO_DIR}/../logs"
-      DESTINATION "${DR_install_dir}")
   else (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # don't take time and space copying: user can pass same dr to frontend,
     # so we only copy for package target
     if (DEBUG_BUILD)
       set(CPACK_INSTALLED_DIRECTORIES 
         "${DynamoRIO_DIR}/../${LIB_ARCH};${DR_install_dir}/${LIB_ARCH}"
-        "${DynamoRIO_DIR}/../ext/${LIB_ARCH};${DR_install_dir}/ext/${LIB_ARCH}"
-        "${DynamoRIO_DIR}/../logs;${DR_install_dir}/logs")
+        "${DynamoRIO_DIR}/../ext/${LIB_ARCH};${DR_install_dir}/ext/${LIB_ARCH}")
     else (DEBUG_BUILD)
       set(CPACK_INSTALLED_DIRECTORIES 
         "${DynamoRIO_DIR}/../${LIB_ARCH}/release;${DR_install_dir}/${LIB_ARCH}/release"
