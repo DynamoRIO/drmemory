@@ -86,6 +86,7 @@ static bool results_to_stderr = true;
 static bool batch; /* no popups */
 static bool no_resfile; /* no results file expected */
 static bool top_stats;
+static bool fetch_symbols;
 
 enum {
     /* _NT_SYMBOL_PATH typically has a local path and a URL. */
@@ -648,7 +649,13 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
         }
     }
 
-    fetch_missing_symbols(logdir, resfile);
+    /* We provide an option to allow the user to turn this feature off. */
+    if (fetch_symbols) {
+        info("fetching symbols");
+        fetch_missing_symbols(logdir, resfile);
+    } else {
+        info("skipping symbol fetching");
+    }
 }
 
 int main(int argc, char *argv[])
@@ -811,6 +818,14 @@ int main(int argc, char *argv[])
         }
         else if (strcmp(argv[i], "-batch") == 0) {
             batch = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-fetch_symbols") == 0) {
+            fetch_symbols = true;
+            continue;
+        }
+        else if (strcmp(argv[i], "-no_fetch_symbols") == 0) {
+            fetch_symbols = false;
             continue;
         }
         else if (strcmp(argv[i], "-top_stats") == 0) {

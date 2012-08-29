@@ -98,6 +98,9 @@ OPTION_FRONT_STRING(front, srcfilter, "",
 OPTION_FRONT_BOOL(front, top_stats, false,
                   "Show time taken and memory usage of whole process",
                   "Primarily for use by developers of the tool.  Shows time taken and memory usage of the whole process at the end of the run")
+OPTION_FRONT_BOOL(front, fetch_symbols, false,
+                  "Fetch missing symbol files at the end of the run",
+                  "Fetch missing symbol files at the end of the run")
 # endif
 #endif /* TOOL_DR_MEMORY */
 OPTION_FRONT_BOOL(front, follow_children, true,
