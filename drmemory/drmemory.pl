@@ -213,7 +213,7 @@ if (!GetOptions("dr=s" => \$dr_home,
 }
 
 if ($version) {
-    print "Dr. Memory version @VERSION_NUMBER@ -- build @BUILD_NUMBER@\n";
+    print "Dr. Memory version @TOOL_VERSION_NUMBER@ -- build @TOOL_BUILD_NUMBER@\n";
     exit 0;
 }
 # Restore negation prefixes
