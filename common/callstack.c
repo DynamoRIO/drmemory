@@ -188,6 +188,7 @@ struct _packed_callstack_t {
 /* Hashtable that stores name info.  We never remove entries. */
 #define MODNAME_TABLE_HASH_BITS 8
 static hashtable_t modname_table;
+static bool modname_table_initialized;
 
 /* Array mapping index to name for use with packed_frame_t.
  * Points at same modname_info_t as hashtable entry.
@@ -312,6 +313,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
+    modname_table_initialized = true;
     modtree_lock = dr_mutex_create();
     module_tree = rb_tree_create(NULL);
 
@@ -2094,6 +2096,10 @@ module_check_for_symbols(const char *modpath)
 {
     drsym_debug_kind_t kind;
     modname_info_t *name_info;
+
+    if (!modname_table_initialized) {
+        return;  /* Happens for perturb_only. */
+    }
 
     hashtable_lock(&modname_table);
     name_info = (modname_info_t *) hashtable_lookup(&modname_table,
