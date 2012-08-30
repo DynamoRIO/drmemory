@@ -41,6 +41,10 @@ typedef struct _handle_create_info_t {
     packed_callstack_t *pcs;
 } handle_create_info_t;
 
+#define HANDLE_VERBOSE_1 1
+#define HANDLE_VERBOSE_2 2
+#define HANDLE_VERBOSE_3 3
+
 /* Table of handle entries: [handle, hci]
  * there are multiple handle namespaces: kernel object, gdi object, user object,
  * and they are disjoint, so we have different hashtables for each type.
@@ -50,6 +54,15 @@ static hashtable_t kernel_handle_table;
 static hashtable_t gdi_handle_table;
 static hashtable_t user_handle_table;
 
+static handle_create_info_t *
+handle_create_info_clone(handle_create_info_t *src)
+{
+    handle_create_info_t *dst;
+    dst = global_alloc(sizeof(*src), HEAPSTAT_CALLSTACK);
+    *dst = *src;
+    packed_callstack_add_ref(dst->pcs);
+    return dst;
+}
 
 static handle_create_info_t *
 handle_create_info_alloc(int sysnum, app_pc pc, dr_mcontext_t *mc)
@@ -73,6 +86,7 @@ handle_create_info_free(handle_create_info_t *hci)
     global_free(hci, sizeof(*hci), HEAPSTAT_CALLSTACK);
 }
 
+/* the caller must hold hashtable lock */
 static bool
 handlecheck_handle_add(hashtable_t *table, HANDLE handle,
                        handle_create_info_t *hci)
@@ -83,18 +97,28 @@ handlecheck_handle_add(hashtable_t *table, HANDLE handle,
     res = hashtable_add_replace(table, (void *)handle, (void *)hci);
     if (res != NULL) {
         handle_create_info_free(res);
-        LOG(1, "Error: duplicated handle in handle table");
+        LOG(HANDLE_VERBOSE_1, "Error: duplicated handle in handle table\n");
         return false;
     }
     return true;
 }
 
+/* the caller must hold hashtable lock */
 static bool
-handlecheck_handle_remove(hashtable_t *table, HANDLE handle)
+handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
+                          handle_create_info_t **hci OUT)
 {
     bool res;
 
     STATS_INC(num_handle_remove);
+    if (hci != NULL) {
+        handle_create_info_t *info;
+        info = hashtable_lookup(table, (void *)handle);
+        if (info != NULL)
+            *hci = handle_create_info_clone(info);
+        else 
+            *hci = NULL;
+    }
     res = hashtable_remove(table, (void *)handle);
     return res;
 }
@@ -124,12 +148,38 @@ static void
 handlecheck_iterate_handles(void)
 {
     void *drcontext = dr_get_current_drcontext();
-    LOG(3, "iterating kernel handle table");
+    LOG(HANDLE_VERBOSE_3, "iterating kernel handle table");
     handlecheck_iterate_handle_table(drcontext, &kernel_handle_table, "Kernel");
-    LOG(3, "iterating gdi handle table");
+    LOG(HANDLE_VERBOSE_3, "iterating gdi handle table");
     handlecheck_iterate_handle_table(drcontext, &gdi_handle_table, "GDI");
-    LOG(3, "iterating user handle table");
+    LOG(HANDLE_VERBOSE_3, "iterating user handle table");
     handlecheck_iterate_handle_table(drcontext, &user_handle_table, "USER");
+}
+
+static inline hashtable_t *
+handlecheck_get_handle_table(int type
+                             _IF_DEBUG(void *handle)
+                             _IF_DEBUG(const char *msg))
+{
+    hashtable_t *table;
+    switch (type) {
+    case HANDLE_TYPE_KERNEL:
+        LOG(HANDLE_VERBOSE_2, "kernel handle "PFX" is %s\n", handle, msg);
+        table = &kernel_handle_table;
+        break;
+    case HANDLE_TYPE_GDI:
+        LOG(HANDLE_VERBOSE_2, "gdi handle "PFX" is %s\n", handle, msg);
+        table = &gdi_handle_table;
+        break;
+    case HANDLE_TYPE_USER:
+        LOG(HANDLE_VERBOSE_2, "user handle "PFX" is %s\n", handle, msg);
+        table = &user_handle_table;
+        break;
+    default:
+        table = &kernel_handle_table; /* for release build */
+        ASSERT(false, "wrong handle type for creation");
+    }
+    return table;
 }
 
 void
@@ -137,13 +187,13 @@ handlecheck_init(void)
 {
     ASSERT(options.check_handle_leaks, "incorrectly called");
     hashtable_init_ex(&kernel_handle_table, HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
-                      false/*!str_dup*/, true/*synch*/,
+                      false/*!str_dup*/, false/*!synch*/,
                       handle_create_info_free, NULL, NULL);
     hashtable_init_ex(&gdi_handle_table, HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
-                      false/*!str_dup*/, true/*synch*/,
+                      false/*!str_dup*/, false/*!synch*/,
                       handle_create_info_free, NULL, NULL);
     hashtable_init_ex(&user_handle_table, HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
-                      false/*!str_dup*/, true/*synch*/,
+                      false/*!str_dup*/, false/*!synch*/,
                       handle_create_info_free, NULL, NULL);
 }
 
@@ -165,68 +215,86 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
     hashtable_t *table;
 
     if (handle == INVALID_HANDLE_VALUE) {
-        LOG(1, "WARNING: application created an invalid handle");
+        LOG(HANDLE_VERBOSE_1, "WARNING: application created an invalid handle\n");
         return;
     }
-    switch (type) {
-    case HANDLE_TYPE_KERNEL:
-        LOG(2, "kernel handle "PFX" is created\n", (void *)handle);
-        table = &kernel_handle_table;
-        break;
-    case HANDLE_TYPE_GDI:
-        LOG(2, "gdi handle "PFX" is created\n", (void *)handle);
-        table = &gdi_handle_table;
-        break;
-    case HANDLE_TYPE_USER:
-        LOG(2, "user handle "PFX" is created\n", (void *)handle);
-        table = &user_handle_table;
-        break;
-    default:
-        ASSERT(false, "wrong handle type for creation");
+    if (handle == (HANDLE)0) {
+        LOG(HANDLE_VERBOSE_1, "WARNING: handle value is 0\n");
     }
-
+    table = handlecheck_get_handle_table(type
+                                         _IF_DEBUG((void *)handle)
+                                         _IF_DEBUG("created"));
+    ASSERT(table != NULL, "fail to get handle table");
     hci = handle_create_info_alloc(sysnum, pc, mc);;
-    DOLOG(3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
+    DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
+    hashtable_lock(table);
     if (!handlecheck_handle_add(table, handle, hci)) {
-        LOG(1, "WARNING: fail to add handle "PFX"\n", handle);
+        LOG(HANDLE_VERBOSE_1, "WARNING: fail to add handle "PFX"\n", handle);
     }
+    hashtable_unlock(table);
 }
 
-void
+void *
 handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
                           int sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     hashtable_t *table;
+    handle_create_info_t *hci;
 
     if (handle == INVALID_HANDLE_VALUE) {
-        LOG(1, "WARNING: invalid handle to delete");
+        LOG(HANDLE_VERBOSE_1, "WARNING: invalid handle to delete\n");
+        return NULL;
+    }
+    table = handlecheck_get_handle_table(type
+                                         _IF_DEBUG((void *)handle)
+                                         _IF_DEBUG("deleted"));
+    ASSERT(table != NULL, "fail to get handle table");
+    DOLOG(HANDLE_VERBOSE_3, { report_callstack(drcontext, mc); });
+    hashtable_lock(table);
+    if (!handlecheck_handle_remove(table, handle, &hci)) {
+        LOG(HANDLE_VERBOSE_1, "WARNING: fail to remove handle "PFX"\n", handle);
+    }
+    hashtable_unlock(table);
+    return (void *)hci;
+}
+
+void
+handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
+                                       int type, void *handle_info,
+                                       bool success)
+{
+    handle_create_info_t *hci;
+    hashtable_t *table;
+
+    if (handle_info == NULL) {
+        if (success) {
+            LOG(HANDLE_VERBOSE_1,
+                "WARNING: delete handle succeeded unexpectedly");
+        } else {
+            LOG(HANDLE_VERBOSE_1,
+                "WARNING: no handle info for adding back\n");
+        }
         return;
     }
-    switch (type) {
-    case HANDLE_TYPE_KERNEL:
-        LOG(2, "kernel handle "PFX" is deleted\n", (void *)handle);
-        table = &kernel_handle_table;
-        break;
-    case HANDLE_TYPE_GDI:
-        LOG(2, "gdi handle "PFX" is deleted\n", (void *)handle);
-        table = &gdi_handle_table;
-        break;
-    case HANDLE_TYPE_USER:
-        LOG(2, "user handle "PFX" is deleted\n", (void *)handle);
-        table = &user_handle_table;
-        break;
-    default:
-        ASSERT(false, "wrong handle type for deletion");
-    }
-
-    DOLOG(3, {
-        handle_create_info_t *hci = handle_create_info_alloc(sysnum, pc, mc);
-        packed_callstack_log(hci->pcs, INVALID_FILE);
+    hci = (handle_create_info_t *)handle_info;
+    if (success) {
+        /* closed handle successfully, free the handle info now */
         handle_create_info_free(hci);
-    });
-    if (!handlecheck_handle_remove(table, handle)) {
-        LOG(1, "WARNING: fail to remove handle "PFX"\n", handle);
+        return;
     }
+    /* failed to delete handle, add handle back */
+    ASSERT(handle != INVALID_HANDLE_VALUE, "add back invalid handle value");
+    table = handlecheck_get_handle_table(type
+                                         _IF_DEBUG((void *)handle)
+                                         _IF_DEBUG("added back"));
+    ASSERT(table != NULL, "fail to get handle table");
+    DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
+    hashtable_lock(table);
+    if (!handlecheck_handle_add(table, handle, hci)) {
+        LOG(HANDLE_VERBOSE_1,
+            "WARNING: failed to add handle "PFX" back\n", handle);
+    }
+    hashtable_unlock(table);
 }
 
 #ifdef STATISTICS

@@ -57,7 +57,16 @@ test_gdi_handles(bool close)
 static unsigned int WINAPI
 thread_func(void *arg)
 {
-    // do nothing
+    int i;
+    HANDLE hEvent;
+    for (i = 0; i < 10; i++) {
+        hEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
+        if (hEvent == NULL) {
+            printf("fail to create event\n");
+            return 0;
+        }
+        CloseHandle(hEvent);
+    }
     return 0;
 }
 
@@ -67,6 +76,7 @@ test_thread_handles(bool close)
     unsigned int tid;
     HANDLE thread;
     thread = (HANDLE) _beginthreadex(NULL, 0, thread_func, NULL, 0, &tid);
+    thread_func(NULL);
     WaitForSingleObject(thread, INFINITE);
     if (close)
         CloseHandle(thread);

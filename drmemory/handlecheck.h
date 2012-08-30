@@ -43,9 +43,14 @@ void
 handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
                           int sysnum, app_pc pc, dr_mcontext_t *mc);
 
-void
+void *
 handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
                           int sysnum, app_pc pc, dr_mcontext_t *mc);
+
+void
+handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
+                                       int type, void *handle_info,
+                                       bool success);
 
 #ifdef STATISTICS
 void

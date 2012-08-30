@@ -1073,6 +1073,24 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
              */
         }
     }
+    if (options.check_handle_leaks) {
+        syscall_info_t *sysinfo = get_sysinfo(&sysnum, pt);
+        if (sysinfo != NULL && TEST(SYSINFO_DELETE_HANDLE, sysinfo->flags)) {
+            /* assuming the handle to be deleted is at the first arg */
+            /* XXX: cannot use sysarg_invalid to check if the sysarg
+             * is valid, because it might be {0,} in syscall_info.
+             * Alternative solution is to add inlined arg type flags.
+             */
+            /* i#974: multiple threads may create/delete handles in parallel,
+             * so we remove the handle from table at pre-syscall by simply
+             * assuming the syscall will success, and add it back if fail.
+             */
+            pt->handle_info =
+                handlecheck_delete_handle(drcontext, (HANDLE)pt->sysarg[0],
+                                          syscall_get_handle_type(sysinfo),
+                                          sysnum, NULL, mc);
+        }
+    }
     return wingdi_shared_process_syscall(true/*pre*/, drcontext, sysnum, pt, mc);
 }
 
@@ -1104,27 +1122,24 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
         reg_t res = dr_syscall_get_result(drcontext);
         if (sysinfo != NULL &&
             TESTANY(SYSINFO_CREATE_HANDLE | SYSINFO_DELETE_HANDLE,
-                    sysinfo->flags) &&
-            os_syscall_succeeded(sysnum, sysinfo, res)) {
+                    sysinfo->flags)) {
             int type = syscall_get_handle_type(sysinfo);
-            /* handle delete */
+            bool success = os_syscall_succeeded(sysnum, sysinfo, res);
             if (TEST(SYSINFO_DELETE_HANDLE, sysinfo->flags)) {
-                /* assuming the handle to be deleted is at the first arg */
-                /* XXX: cannot use sysarg_invalid to check if the sysarg
-                 * is valid, because it might be {0,} in syscall_info.
-                 * Alternative solution is to add inlined arg type flags.
-                 */
-                handlecheck_delete_handle(drcontext, (HANDLE)pt->sysarg[0],
-                                           type, sysnum, NULL, mc);
-            }
-            /* handle create
-             * we assume that no syscall both returns and has OUT arg,
-             * so first walk the arg, and get return if no handle in arg.
-             */
-            if (TEST(SYSINFO_CREATE_HANDLE, sysinfo->flags)) {
+                handlecheck_delete_handle_post_syscall(drcontext,
+                                                       (HANDLE)pt->sysarg[0],
+                                                       type,
+                                                       pt->handle_info,
+                                                       success);
+                pt->handle_info = NULL;
+            } else if (TEST(SYSINFO_CREATE_HANDLE, sysinfo->flags) && success) {
                 HANDLE handle;
                 bool handle_in_arg = false;
                 int i, num_args = sysinfo->args_size / sizeof(reg_t);
+                /* handle create
+                 * we assume that no syscall both returns and has OUT arg,
+                 * so first walk the arg, and get return if no handle in arg.
+                 */
                 for (i = 0; i < num_args; i++) {
                     if (sysarg_invalid(&sysinfo->arg[i]))
                         break;
@@ -1133,8 +1148,8 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
                         handle_in_arg = true;
                         if (safe_read((void *)pt->sysarg[sysinfo->arg[i].param],
                                       sizeof(HANDLE), &handle)) {
-                            /* assuming any handle arg written by the syscall is
-                             * newly created.
+                            /* assuming any handle arg written by the syscall
+                             * is newly created.
                              */
                             handlecheck_create_handle(drcontext, handle, type,
                                                       sysnum, NULL, mc);
@@ -1147,6 +1162,9 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
                 }
                 if (!handle_in_arg) {
                     /* handle is in return */
+                    /* XXX: should all syscalls that directly return handle be
+                     * SYSINFO_RET_ZERO_FAIL?
+                     */
                     handlecheck_create_handle(drcontext, (HANDLE)res, type,
                                               sysnum, NULL, mc);
                 }

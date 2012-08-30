@@ -54,6 +54,8 @@ typedef struct _cls_syscall_t {
 #ifdef WINDOWS
     /* for GDI checks (i#752) */
     HDC paintDC;
+    /* for handle leak checks (i#974) */
+    void *handle_info;
 #endif
 } cls_syscall_t;
 
