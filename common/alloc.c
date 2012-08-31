@@ -369,7 +369,7 @@ typedef struct _possible_alloc_routine_t {
 } possible_alloc_routine_t;
 
 static const possible_alloc_routine_t possible_libc_routines[] = {
-    /* when routines are added here, add to the regex list in
+    /* when non-exported routines are added here, add to the regex list in
      * find_alloc_routines() to reduce # symbol lookups (i#315)
      */
     { "malloc_usable_size", HEAP_ROUTINE_SIZE_USABLE },
@@ -563,8 +563,14 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
      * XXX: there are some non-assert uses of this.  If we ever find
      * a problem with those, we may want to instead nop out RtlValidateHeap,
      * but that may have its own non-debug-check uses.
+     * This is an export.
      */
     { "_CrtIsValidHeapPointer", HEAP_ROUTINE_DBG_NOP_TRUE },
+    /* We avoid perf problems w/ heap header accesses by treating
+     * as a heap header (it directly calls _nh_malloc_dbg: i#997).
+     * This is an export.
+     */
+    { "_getptd", HEAP_ROUTINE_GETPTD },
     /* FIXME PR 595802: _recalloc_dbg, _aligned_offset_malloc_dbg, etc. */
 };
 #define POSSIBLE_CRTDBG_ROUTINE_NUM \
@@ -1667,8 +1673,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                     find_alloc_regex(&edata, "*_dbg", NULL, "_dbg");
                     find_alloc_regex(&edata, "*_dbg_impl", NULL, "_dbg_impl");
                     find_alloc_regex(&edata, "_CrtDbg*", "_CrtDbg", NULL);
-                    /* _CrtIsValidHeapPointer will be found w/ individual query.
-                     * It's an export in any case.
+                    /* Exports not covered by the above will be found by
+                     * individual query.
                      */
                 }
 # endif
@@ -1695,6 +1701,16 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         const char *name = possible[i].name;
         if (edata.processed != NULL && edata.processed[i])
             continue;
+#ifdef WINDOWS
+        /* i#997: only count _getptd as a heap layer if we have no _nh_malloc_dbg.
+         * For /MTd we assume that if we can find _getptd we can find _nh_malloc_dbg.
+         */
+        if (!dbgcrt_nosyms && possible[i].type == HEAP_ROUTINE_GETPTD) {
+            if (edata.processed != NULL)
+                edata.processed[i] = true;
+            continue;
+        }
+#endif
 #ifdef USE_DRSYMS
         if (is_operator_nothrow_routine(possible[i].type)) {
             /* The name doesn't match the real symbol so we take the
@@ -4993,13 +5009,16 @@ check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
      * Our solution is to add an entry for the requested alloc inside the
      * dbgcrt redzone so we can recognize it when we see the libc free.
      */
-    LOG(3, "%s: dbgcrt_nosyms=%d, rtl=%d, ra="PFX", in libc=%d, level %d==%d?\n",
+    LOG(3, "%s: dbgcrt_nosyms=%d, rtl=%d, ra="PFX", in libc=%d, level=%d adj=%d\n",
         __FUNCTION__, dbgcrt_nosyms, is_rtl_routine(routine->type),
         drwrap_get_retaddr(wrapcxt), pc_is_in_libc(drwrap_get_retaddr(wrapcxt)),
         pt->in_heap_routine, pt->in_heap_adjusted);
     if (dbgcrt_nosyms && is_rtl_routine(routine->type) &&
         pc_is_in_libc(drwrap_get_retaddr(wrapcxt)) &&
-        pt->in_heap_routine == pt->in_heap_adjusted) {
+        /* We've already decremented and if Rtl was the outer adjusted should be 0
+         * although in_heap_routine may not be (if inside _getptd for i#997, e.g.).
+         */
+        pt->in_heap_adjusted == 0) {
         LOG(2, "missed libc layer so marking as such\n");
         /* XXX: we're assuming this is a dbgcrt block but there's no way
          * to verify like we do during heap iteration (i#607 part B)
