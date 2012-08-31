@@ -3419,7 +3419,9 @@ malloc_iterate_internal(bool include_native, malloc_iter_cb_t cb, void *iter_dat
             if (TEST(MALLOC_VALID, e->flags) &&
                 (include_native || !malloc_entry_is_native(e))) {
                 if (!cb(e->start, e->end, e->end + e->usable_extra,
-                        TEST(MALLOC_PRE_US, e->flags), e->flags,
+                        TEST(MALLOC_PRE_US, e->flags),
+                        include_native ? e->flags :
+                        (e->flags & MALLOC_POSSIBLE_CLIENT_FLAGS),
                         e->data, iter_data)) {
                     goto malloc_iterate_done;
                 }
@@ -5481,7 +5483,8 @@ heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
          * we also call a special cb for individual handling.
          * additionally, client_remove_malloc_*() will be called by malloc_remove().
          */
-        client_remove_malloc_on_destroy(info->heap, start, end);
+        if (!TEST(MALLOC_RTL_INTERNAL, client_flags))
+            client_remove_malloc_on_destroy(info->heap, start, end);
         /* yes the iteration can handle this.  this involves another lookup but
          * that's ok: RtlDestroyHeap is rare.
          */
