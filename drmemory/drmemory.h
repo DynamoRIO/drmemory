@@ -42,6 +42,9 @@ enum {
 #endif
     DRMGR_PRIORITY_APP2APP_ANNOTATE = -100,
 #if 0
+    DRMGR_PRIORITY_INSERT_CLS       =    0, /* from drmgr.h */
+#endif
+#if 0
     /* we need our alloc wrapping to go before main instru, so that it
      * has access to restored app registers
      */
@@ -58,6 +61,7 @@ enum {
     DRMGR_PRIORITY_INSERT_ANNOTATE  = 2000,
     DRMGR_PRIORITY_INSERT_PERTURB   = 2010,
 #if 0
+    /* we need our alloc wrapping to go after CLS tracking */
     DRMGR_PRIORITY_INSERT_ALLOC     = 2020, /* from alloc.h */
 #endif
 };

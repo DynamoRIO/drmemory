@@ -357,14 +357,17 @@ client_handle_heap_destroy(void *drcontext, HANDLE heap, void *client_data);
 void
 client_remove_malloc_on_destroy(HANDLE heap, byte *start, byte *end);
 
+/* called BEFORE drmgr has popped the child context */
 void
 client_handle_cbret(void *drcontext);
 
+/* called AFTER drmgr has pushed a new context */
 void
 client_handle_callback(void *drcontext);
 
+/* for is_cb, called AFTER drmgr has pushed a new context */
 void
-client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc);
+client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb);
 
 void
 client_handle_exception(void *drcontext, dr_mcontext_t *mc);

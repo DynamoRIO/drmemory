@@ -1026,7 +1026,7 @@ client_handle_callback(void *drcontext)
 }
 
 void
-client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
+client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
 {
 }
 

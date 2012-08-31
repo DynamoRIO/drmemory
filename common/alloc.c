@@ -2183,7 +2183,9 @@ void
 alloc_init(alloc_options_t *ops, size_t ops_size)
 {
     drmgr_priority_t pri_insert = {sizeof(pri_insert), "drmemory.alloc.insert",
-                                   NULL, NULL, DRMGR_PRIORITY_INSERT_ALLOC};
+                                   /* must go after CLS tracking */
+                                   NULL, DRMGR_PRIORITY_NAME_CLS,
+                                   DRMGR_PRIORITY_INSERT_ALLOC};
     if (!drmgr_register_bb_instrumentation_event(alloc_event_bb_analysis,
                                                  alloc_event_bb_insert, &pri_insert))
         ASSERT(false, "drmgr registration failed");
@@ -5735,7 +5737,7 @@ alloc_wrap_exception(void *wrapcxt, void OUT **user_data)
     LOG(2, "Exception in app\n");
     pt->in_seh = true;
     client_handle_exception(drcontext, mc);
-    client_handle_Ki(drcontext, drwrap_get_func(wrapcxt), mc);
+    client_handle_Ki(drcontext, drwrap_get_func(wrapcxt), mc, false/*!cb*/);
 }
 
 static void
@@ -5744,13 +5746,14 @@ alloc_wrap_Ki(void *wrapcxt, void OUT **user_data)
     app_pc pc = drwrap_get_func(wrapcxt);
     void *drcontext = dr_get_current_drcontext();
     dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR); /* don't need xmm */
+    bool is_cb = (bool) *user_data;
     ASSERT(pc != NULL, "alloc_hook: pc is NULL!");
     /* our per-thread data is private per callback so we're already handling
      * cbs (though we don't expect callbacks to interrupt heap routines).
      * we handle exceptions interrupting heap routines here.
      */
-    client_handle_Ki(drcontext, pc, mc);
-    if (*user_data /* means it's a callback */)
+    client_handle_Ki(drcontext, pc, mc, is_cb);
+    if (is_cb)
         client_handle_callback(drcontext);
 }
 #endif /* WINDOWS */

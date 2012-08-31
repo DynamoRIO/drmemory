@@ -42,6 +42,7 @@ typedef struct _cls_drmem_t {
     app_pc prev_sigaltstack; /* used on syscall failure */
     size_t prev_sigaltsize;  /* used on syscall failure */
 # else
+    app_pc pre_callback_esp;
     /* for heap seh accesses (i#689) */
     RTL_CRITICAL_SECTION *heap_critsec;
 # endif
@@ -56,9 +57,6 @@ extern int cls_idx_drmem;
 /* Per-thread data shared across callbacks */
 typedef struct _tls_drmem_t {
 #ifdef WINDOWS
-# ifdef TOOL_DR_MEMORY
-    app_pc pre_callback_esp;
-# endif
     /* since we can't get TEB via syscall for some threads (i#442) */
     TEB *teb;
 #else

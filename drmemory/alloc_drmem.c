@@ -1116,21 +1116,24 @@ client_handle_cbret(void *drcontext)
 {
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
-    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
+    cls_drmem_t *cpt_parent = (cls_drmem_t *)
+        drmgr_get_parent_cls_field(drcontext, cls_idx_drmem);
+    if (cpt_parent == NULL) /* DR took over in middle of callback */
+        return;
     if (!options.shadowing)
         return;
     syscall_handle_cbret(drcontext);
 
-    /* we use a TLS, not CLS, slot to get the parent callback context esp value */
     if (!options.check_stack_bounds)
         return;
+
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
     dr_get_mcontext(drcontext, &mc);
     sp = (byte *) mc.xsp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
-        sp, pt->pre_callback_esp);
-    for (; sp < pt->pre_callback_esp; sp++)
+        sp, cpt_parent->pre_callback_esp);
+    for (; sp < cpt_parent->pre_callback_esp; sp++)
         shadow_set_byte(sp, SHADOW_UNADDRESSABLE);
 }
 
@@ -1142,9 +1145,8 @@ client_handle_callback(void *drcontext)
 }
 
 void
-client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
+client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
 {
-    tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
     /* The kernel has placed some data on the stack.  We assume we're
      * on the same thread stack.  FIXME: check those assumptions by checking
      * default stack bounds.
@@ -1155,6 +1157,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     app_pc stop_esp = NULL;
     if (!options.shadowing || !options.check_stack_bounds)
         return;
+
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
@@ -1178,10 +1181,15 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc)
     LOG(2, "Ki routine "PFX": marked stack "PFX"-"PFX" as defined\n",
         pc, mc->xsp, sp);
 
-    /* We do want to set the parent's for callback, so tls field is correct
-     * since this is prior to client_handle_callback()
-     */
-    pt->pre_callback_esp = sp;
+    if (is_cb) {
+        /* drmgr already pushed a new context */
+        cls_drmem_t *cpt_parent = (cls_drmem_t *)
+            drmgr_get_parent_cls_field(drcontext, cls_idx_drmem);
+        ASSERT(cpt_parent != NULL, "drmgr should have pushed context already");
+        if (cpt_parent == NULL)
+            return; /* don't crash in release build  */
+        cpt_parent->pre_callback_esp = sp;
+    }
 }
 
 void
