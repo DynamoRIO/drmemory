@@ -644,7 +644,11 @@ syscall_info_t syscall_usercall_info[] = {
 
     {0,"NtUserCallTwoParam.CHANGEWNDMSGFILTER", UNKNOWN, 12, },
     {0,"NtUserCallTwoParam.GETCURSORPOS", OK, 12, {{0,sizeof(POINTL),W},}/*other param is hardcoded as 0x1*/},
-    {0,"NtUserCallTwoParam.GETHDEVNAME", UNKNOWN, 12, },
+    /* XXX i#996: not 100% sure there's not more nuanced behavior to
+     * this syscall.  First param looks like flags and 3rd looks like
+     * size of buffer.
+     */
+    {0,"NtUserCallTwoParam.GETHDEVNAME", OK, 12, {{1,-2,W},}},
     {0,"NtUserCallTwoParam.INITANSIOEM", OK, 12, {{1,0,W|CT,SYSARG_TYPE_CSTRING_WIDE},}},
     {0,"NtUserCallTwoParam.NLSSENDIMENOTIFY", UNKNOWN, 12, },
     {0,"NtUserCallTwoParam.REGISTERGHSTWND", UNKNOWN, 12, },
