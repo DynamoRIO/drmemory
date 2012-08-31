@@ -2937,7 +2937,7 @@ malloc_lock_held_by_self(void)
 }
 
 static void
-malloc_wrap__lock(void)
+malloc_lock_internal(void)
 {
     void *drcontext = dr_get_current_drcontext();
     hashtable_lock(&malloc_table);
@@ -2946,7 +2946,7 @@ malloc_wrap__lock(void)
 }
 
 static void
-malloc_wrap__unlock(void)
+malloc_unlock_internal(void)
 {
     malloc_lock_owner = THREAD_ID_INVALID;
     hashtable_unlock(&malloc_table);
@@ -2957,7 +2957,7 @@ malloc_lock_if_not_held_by_me(void)
 {
     if (malloc_lock_held_by_self())
         return false;
-    malloc_lock();
+    malloc_lock_internal();
     return true;
 }
 
@@ -2965,7 +2965,20 @@ static void
 malloc_unlock_if_locked_by_me(bool by_me)
 {
     if (by_me)
-        malloc_unlock();
+        malloc_unlock_internal();
+}
+
+static void
+malloc_wrap__lock(void)
+{
+    /* For external calls we can't store the result so we look up in unlock */
+    malloc_lock_if_not_held_by_me();
+}
+
+static void
+malloc_wrap__unlock(void)
+{
+    malloc_unlock_if_locked_by_me(malloc_lock_held_by_self());
 }
 
 /* If a client needs the real (usable) end, for pre_us mallocs the client can't
