@@ -64,3 +64,19 @@ TEST(OleTest, CoCreateInstance) {
 
     CoUninitialize();
 }
+
+TEST(OleTest, CoCreateGuid) {
+    HRESULT hr = CoInitialize(NULL);
+    ASSERT_TRUE(SUCCEEDED(hr));
+
+    GUID my_guid;
+    /* i#511: Reads from my_guid to seed the PRNG. */
+    hr = CoCreateGuid(&my_guid);
+    ASSERT_TRUE(SUCCEEDED(hr));
+
+    GUID zero_guid;
+    memset(&zero_guid, 0, sizeof(zero_guid));
+    ASSERT_NE(memcmp(&my_guid, &zero_guid, sizeof(my_guid)), 0);
+
+    CoUninitialize();
+}

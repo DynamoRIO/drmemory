@@ -43,11 +43,15 @@
 #include "utils.h"
 #include "heap.h"
 #include "drmemory.h"
+#include "shadow.h"
 #ifdef USE_DRSYMS
 # include "symcache.h"
 #endif
 #ifdef LINUX
 # include <unistd.h> /* size_t */
+#endif
+#ifdef WINDOWS
+# include <rpc.h> /* RPC_STATUS */
 #endif
 #ifdef USE_DRSYMS
 # include "drsyms.h"
@@ -883,6 +887,41 @@ find_syms_regex(sym_enum_data_t *edata, const char *regex)
 }
 #endif /* USE_DRSYMS */
 
+#ifdef WINDOWS
+/* i#511: Save UuidCreate's outparam so we can mark it as defined in the post
+ * callback.
+ *
+ * RPC_STATUS UuidCreate(UUID __RPC_FAR *Uuid);
+ */
+static void
+wrap_UuidCreate_pre(void *wrapcxt, OUT void **user_data)
+{
+    /* Save arg to mark as initialized afterwards. */
+    *user_data = drwrap_get_arg(wrapcxt, 0);
+}
+
+static void
+wrap_UuidCreate_post(void *wrapcxt, void *user_data)
+{
+    app_pc cur;
+    app_pc start = user_data;
+    RPC_STATUS status;
+
+    ASSERT(options.check_uninitialized, "invalid shadow mode");
+    if (wrapcxt == NULL)
+        return;  /* Do nothing on unwind. */
+    /* Check for success.  It's not clear if the output is written on other
+     * status codes.
+     */
+    status = (RPC_STATUS) drwrap_get_retval(wrapcxt);
+    if (status != RPC_S_OK && status != RPC_S_UUID_LOCAL_ONLY)
+        return;
+    /* Mark the outparam as defined. */
+    shadow_set_non_matching_range(start, sizeof(GUID), SHADOW_DEFINED,
+                                  SHADOW_UNADDRESSABLE);
+}
+#endif
+
 /* XXX: better to walk hashtable on remove, like alloc.c does, instead of
  * re-doing all these symbol queries
  */
@@ -908,6 +947,21 @@ replace_in_module(const module_data_t *mod, bool add)
 #endif
 #ifdef WINDOWS
     const char *modname = dr_module_preferred_name(mod);
+    /* i#511: Wrap UuidCreate in rpcrt4.dll. */
+    if (options.check_uninitialized &&
+        text_matches_pattern("rpcrt4.dll", modname, true/*ignore case */)) {
+        generic_func_t fn = dr_get_proc_address(mod->handle, "UuidCreate");
+        if (fn != NULL) {
+            if (add) {
+                drwrap_wrap((app_pc)fn, wrap_UuidCreate_pre,
+                            wrap_UuidCreate_post);
+            } else {
+                drwrap_unwrap((app_pc)fn, wrap_UuidCreate_pre,
+                              wrap_UuidCreate_post);
+            }
+        }
+    }
+
     if (options.skip_msvc_importers &&
         module_imports_from_msvc(mod) &&
         (modname == NULL ||

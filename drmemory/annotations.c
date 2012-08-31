@@ -64,25 +64,13 @@ handle_make_mem_defined_if_addressable(vg_client_request_t *request)
 #ifdef TOOL_DR_MEMORY
     app_pc start = (app_pc)request->args[0];
     ptr_uint_t len = request->args[1];
-    app_pc end = start + len;
-    app_pc cur;
 
     /* No-op if we're not tracking definedness. */
     if (!options.shadowing || !options.check_uninitialized)
         return 1;
 
-    LOG(2, "Marking addressable bytes in range "PFX"-"PFX" as defined \n",
-        start, end);
-
-    /* XXX: We could try to be clever for perf, but these annotations are rare,
-     * so we go byte by byte.
-     */
-    for (cur = start; cur != end; cur++) {
-        uint shadow = shadow_get_byte(cur);
-        if (shadow != SHADOW_UNADDRESSABLE) {
-            shadow_set_byte(cur, SHADOW_DEFINED);
-        }
-    }
+    shadow_set_non_matching_range(start, len, SHADOW_DEFINED,
+                                  SHADOW_UNADDRESSABLE);
 #endif
 
     /* XXX: Not sure what the proper return code is for this request, and most

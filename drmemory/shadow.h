@@ -174,6 +174,12 @@ shadow_set_range(app_pc start, app_pc end, uint val);
 void
 shadow_copy_range(app_pc old_start, app_pc new_start, size_t size);
 
+/* Sets the shadow value for the range [start, start+size) for shadow values
+ * that don't match val_not.
+ */
+void
+shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not);
+
 /* Compares every byte in [start, start+size) to expect.
  * start must be 16-byte aligned.
  * Stops and returns the pc of the first non-matching value.

@@ -608,6 +608,26 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
     }
 }
 
+void
+shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not)
+{
+    app_pc end = start + size;
+    app_pc cur;
+
+    ASSERT(!MAP_4B_TO_1B, "invalid shadow mode");
+    LOG(2, "Marking non-%s bytes in range "PFX"-"PFX" as %s\n",
+        shadow_name[val_not], start, end, shadow_name[val]);
+    /* XXX: We could try to be clever for perf, but these calls are rare, so we
+     * go byte by byte.
+     */
+    for (cur = start; cur != end; cur++) {
+        uint shadow = shadow_get_byte(cur);
+        if (shadow != val_not) {
+            shadow_set_byte(cur, val);
+        }
+    }
+}
+
 static uint dqword_to_val(uint dqword)
 {
     if (dqword == SHADOW_DQWORD_UNADDRESSABLE)
