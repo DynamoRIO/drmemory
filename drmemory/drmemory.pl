@@ -127,6 +127,7 @@ $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
     "$default_home/../dynamorio" : "$default_home/dynamorio";
 $use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
 $use_debug = 0;
+$use_debug_force = 0;
 $use_dr_debug = 0;
 $logdir = "";
 $persist_code = 0;
@@ -245,11 +246,21 @@ $logdir = &canonicalize_path($logdir);
 
 if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
     $use_debug = 1;
+    # set var for warning after 64-bit check
+    $use_debug_force = 1;
+}
+$libdir = ($use_debug) ? "debug" : "release";
+if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname") {
+    if ($bin_arch eq 'bin64') {
+        die "$prefix This Dr. Memory release does not support 64-bit applications.\n".
+            "$prefix Please recompile with -m32.\n";
+    }
+}
+if ($use_debug_force) {
     # try to avoid warning for devs running from build dir
     print "$prefix WARNING: using debug Dr. Memory since release not found\n"
         unless ($user_ops =~ /-quiet/ || -e "$drmemory_home/CMakeCache.txt");
 }
-$libdir = ($use_debug) ? "debug" : "release";
 
 if (!$use_dr_debug && ! -e "$dr_home/$lib_arch/release/$drlibname") {
     $use_dr_debug = 1;

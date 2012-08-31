@@ -67,6 +67,8 @@ The changes between version 1.5.0 and 1.4.6 include:
    -aggregate and -skip_results post-processing features are temporarily
    disabled until a future release adds them for both Windows and Linux.
  - Added support for the Microsoft Visual Studio dynamic debug C library
+ - Added automated retrieval of certain system library debug files
+   at the end of a run for better error reports in future runs.
  - Added -log_suppressed_errors option
  - Support wildcards in instruction lines in suppressions
  - Improved callstack walking

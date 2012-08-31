@@ -1411,6 +1411,17 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     /* measure module processing time: mostly symbols (xref i#313) */
     print_timestamp_elapsed_to_file(f_global, "pre-module-load ");
 #endif
+#ifdef WINDOWS
+    /* FIXME i#38, i#197, i#1002: we don't fully support cygwin yet.
+     * Better to bail up front than have a ton of false positives and
+     * die halfway through execution or have truncated output.
+     */
+    if (text_matches_pattern(info->full_path, "*cygwin1.dll", true/*!case*/)) {
+        NOTIFY_ERROR("WARNING: Cygwin applications are not fully supported in the "
+                     "current Dr. Memory release.  Please re-compile with MinGW."NL);
+        dr_abort();
+    }
+#endif
 #ifdef USE_DRSYMS
     /* must be before alloc_module_load */
     if (options.use_symcache)
