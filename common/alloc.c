@@ -2447,9 +2447,14 @@ static bool
 module_has_pdb(const module_data_t *info)
 {
 # ifdef USE_DRSYMS
-    drsym_debug_kind_t kind;
-    drsym_error_t res = drsym_get_module_debug_kind(info->full_path, &kind);
-    return (res == DRSYM_SUCCESS && TEST(DRSYM_PDB, kind));
+    /* Our notion of whether we have symbols must match symcache
+     * b/c us thinking we have symbols and symcache having negative
+     * entries is a disaster (i#973).
+     */
+    if (op_use_symcache && symcache_module_is_cached(info))
+        return symcache_module_has_debug_info(info);
+    else
+        return module_has_debug_info(info);
 # else
     return false;
 # endif

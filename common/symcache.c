@@ -23,6 +23,10 @@
  * symcache.c: cache symbol name lookups
  */
 
+#ifndef USE_DRSYMS
+# error requires USE_DRSYMS
+#endif
+
 #ifdef LINUX
 /* avoid depending on __isoc99_sscanf */
 # define _GNU_SOURCE 1
@@ -33,6 +37,7 @@
 #include "dr_api.h"
 #include "symcache.h"
 #include "drmgr.h"
+#include "drsyms.h"
 #include "utils.h"
 #include <string.h>
 
@@ -62,7 +67,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 7
+#define SYMCACHE_VERSION 8
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -111,6 +116,7 @@ typedef struct _mod_cache_t {
 #else
     /* XXX: may want more consistency checks */
 #endif
+    bool has_debug_info; /* do we have DWARF/PECOFF/PDB symbols? */
 } mod_cache_t;
 
 /* Entry in the per-module table */
@@ -245,6 +251,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
     BUFFERED_WRITE(f, buf, bsz, sofar, len, UINT64_FORMAT_STRING"\n",
                    modcache->module_file_size);
 #endif
+    BUFFERED_WRITE(f, buf, bsz, sofar, len, "%u\n", modcache->has_debug_info);
     for (i = 0; i < HASHTABLE_SIZE(symtable->table_bits); i++) {
         hash_entry_t *he;
         for (he = symtable->table[i]; he != NULL; he = he->next) {
@@ -287,6 +294,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 #define MAX_SYMLEN_MINUS_1 255
 #define MAX_SYMLEN_MINUS_1_STR STRINGIFY(MAX_SYMLEN_MINUS_1)
 
+/* Sets modcache->has_debug_info */
 static bool
 symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t *modcache)
 {
@@ -305,7 +313,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
     symcache_get_filename(modname, symfile, BUFFER_SIZE_ELEMENTS(symfile));
     f = dr_open_file(symfile, DR_FILE_READ);
     if (f == INVALID_FILE)
-        return res;
+        goto symcache_read_symfile_done;
     LOG(2, "processing symbol cache file for %s\n", modname);
     /* we avoid having to do our own buffering by just mapping the whole file */
     ok = dr_file_size(f, &map_size);
@@ -389,6 +397,28 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
     line = strchr(line, '\n');
     if (line != NULL)
         line++;
+    if (line != NULL) {
+        uint has_debug_info;
+        if (sscanf(line, "%u", &has_debug_info) != 1) {
+            WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
+            goto symcache_read_symfile_done;
+        }
+        if (has_debug_info) {
+            /* We assume that the current availability of debug info doesn't matter */
+            modcache->has_debug_info = true;
+        } else {
+            /* We delay the costly check for symbols until we've read the symcache
+             * b/c if its entry indicates symbols we don't need to look
+             */
+            if (module_has_debug_info(mod)) {
+                LOG(1, "module now has debug info: %s symbol cache is stale\n", modname);
+                goto symcache_read_symfile_done;
+            }
+        }
+    }
+    line = strchr(line, '\n');
+    if (line != NULL)
+        line++;
 
     symbol[0] = '\0';
     for (; line != NULL && line < ((char *)map) + map_size; line = next_line) {
@@ -424,6 +454,9 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         dr_unmap_file(map, actual_size);
     if (f != INVALID_FILE)
         dr_close_file(f);
+    if (!res)
+        modcache->has_debug_info = module_has_debug_info(mod);
+
     return res;
 }
 
@@ -553,25 +586,39 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     dr_mutex_unlock(symcache_lock);
 }
 
-void
-symcache_module_unload(void *drcontext, const module_data_t *mod)
+static bool
+symcache_module_save_common(const module_data_t *mod, bool remove)
 {
     mod_cache_t *modcache;
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
-        return; /* don't support caching */
+        return false; /* don't support caching */
     ASSERT(initialized, "symcache was not initialized");
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache != NULL) {
         symcache_write_symfile(modname, modcache);
-        hashtable_remove(&symcache_table, (void *)mod->full_path);
+        if (remove)
+            hashtable_remove(&symcache_table, (void *)mod->full_path);
     }
     dr_mutex_unlock(symcache_lock);
+    return true;
 }
 
 bool
-symcache_module_is_cached(const module_data_t *mod)
+symcache_module_save_symcache(const module_data_t *mod)
+{
+    return symcache_module_save_common(mod, false/*keep*/);
+}
+
+void
+symcache_module_unload(void *drcontext, const module_data_t *mod)
+{
+    symcache_module_save_common(mod, true/*remove*/);
+}
+
+static bool
+symcache_module_has_data(const module_data_t *mod, bool require_syms)
 {
     mod_cache_t *modcache;
     bool res = false;
@@ -582,9 +629,21 @@ symcache_module_is_cached(const module_data_t *mod)
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache != NULL)
-        res = modcache->table.entries > 0;
+        res = (modcache->table.entries > 0 && (!require_syms || modcache->has_debug_info));
     dr_mutex_unlock(symcache_lock);
     return res;
+}
+
+bool
+symcache_module_is_cached(const module_data_t *mod)
+{
+    return symcache_module_has_data(mod, false/*don't need syms*/);
+}
+
+bool
+symcache_module_has_debug_info(const module_data_t *mod)
+{
+    return symcache_module_has_data(mod, true/*need syms*/);
 }
 
 /* If an entry already exists and is 0, replaces it; else adds a new

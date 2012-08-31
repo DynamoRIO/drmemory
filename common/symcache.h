@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -41,6 +41,12 @@ symcache_module_unload(void *drcontext, const module_data_t *mod);
 
 bool
 symcache_module_is_cached(const module_data_t *mod);
+
+bool
+symcache_module_save_symcache(const module_data_t *mod);
+
+bool
+symcache_module_has_debug_info(const module_data_t *mod);
 
 /* If an entry already exists and is 0, replaces it; else adds a new
  * offset for that symbol.

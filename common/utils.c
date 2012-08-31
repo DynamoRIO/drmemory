@@ -347,7 +347,16 @@ lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
 {
     return (lookup_symbol_common(mod, sym_pattern, full, callback, data) != NULL);
 }
-#endif
+
+bool
+module_has_debug_info(const module_data_t *mod)
+{
+    /* Since we don't care whether line #s are avail we don't need
+     * to call the slower drsym_get_module_debug_kind()
+     */
+    return (drsym_module_has_symbols(mod->full_path) == DRSYM_SUCCESS);
+}
+#endif /* USE_DRSYMS */
 
 #ifdef DEBUG
 void

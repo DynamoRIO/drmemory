@@ -1438,6 +1438,9 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (options.perturb_only)
         perturb_module_load(drcontext, info, loaded);
 #ifdef USE_DRSYMS
+    /* Write out the symcache in case we crash or sthg before an at-exit write */
+    if (options.use_symcache)
+        symcache_module_save_symcache(info);
     /* Free resources.  Many modules will never need symbol queries again b/c
      * they won't show up in any callstack later.  Xref i#982.
      */

@@ -551,6 +551,9 @@ bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
                    bool (*callback)(const char *name, size_t modoffs, void *data),
                    void *data);
+
+bool
+module_has_debug_info(const module_data_t *mod);
 #endif
 
 #ifdef DEBUG
