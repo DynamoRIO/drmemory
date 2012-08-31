@@ -1992,7 +1992,10 @@ sub is_line_start_of_suppression($line)
     my ($line) = @_;
     foreach $type (@err_type_keys) {
         if ($line =~ /^($type)/ ||
-             # i#282: support Tool:Type
+            # support Windows-only errors
+            $line =~ /^(GDI USAGE ERROR)/ ||
+            $line =~ /^(HANDLE LEAK)/ ||
+            # i#282: support Tool:Type
             $line =~ /^Dr.Memory:($type)/) {
             return $1;
         }
