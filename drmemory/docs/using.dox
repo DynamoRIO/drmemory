@@ -131,6 +131,10 @@ The first step is to unzip or untar the Dr. Memory package.
 ********************
 \subsection sec_app_prep Prepare Your Application
 
+Currently, Dr. Memory only supports 32-bit applications, so be sure to
+compile your target application as 32-bit (e.g., "-m32" for gcc; 32-bit is
+the default for Visual Studio).
+
 In order to obtain line number information, compile your target
 application with debugging information enabled (e.g., "/Zi" for cl.exe
 or "-g" for gcc or g++).
