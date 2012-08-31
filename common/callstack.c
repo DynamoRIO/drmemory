@@ -442,7 +442,8 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
 }
 
 bool
-print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
+print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
+             bool use_custom_flags, uint custom_flags)
 {
     bool res;
     ssize_t len = 0;
@@ -450,6 +451,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
     drsym_info_t *sym;
     char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
     module_data_t *data;
+    uint flags = use_custom_flags ? custom_flags : op_print_flags;
     const char *modname;
     data = dr_lookup_module(addr);
     if (data == NULL)
@@ -475,7 +477,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar)
         }
         /* I like having +0x%x to show offs within func but we'll match addr2line */
         BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
-        if (TEST(PRINT_SYMBOL_OFFSETS, op_print_flags)) {
+        if (TEST(PRINT_SYMBOL_OFFSETS, flags)) {
             /* no assert for any of these bufprints: for just printing we'll truncate */
             BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "+"PIFX,
                                addr - data->start - sym->start_offs);
@@ -505,7 +507,7 @@ dump_app_stack(void *drcontext, tls_callstack_t *pt, dr_mcontext_t *mc, size_t a
             ssize_t len;
             BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                      "\t"PFX"  "PFX, xsp, val);
-            IF_DRSYMS(print_symbol(val, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);)
+            IF_DRSYMS(print_symbol(val, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);)
             LOG(1, "%s\n", buf);
             xsp += sizeof(void*);
         }
@@ -879,7 +881,7 @@ is_retaddr(byte *pc)
             ssize_t len;
             BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                      "is_retaddr %d: "PFX" == ", match, pc);
-            print_symbol(pc, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+            print_symbol(pc, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar, false, 0);
             LOG(1, "%s\n", buf);
         });
 #endif

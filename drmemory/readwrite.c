@@ -3931,7 +3931,8 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
         if (!translating) {
             BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
                      "new basic block @"PFX" ==", tag);
-            print_symbol(tag, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+            print_symbol(tag, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar,
+                         true, PRINT_SYMBOL_OFFSETS);
             LOG(1, "%s\n", buf);
         }
     });

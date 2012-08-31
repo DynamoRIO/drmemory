@@ -351,7 +351,8 @@ print_callstack_to_file(void *drcontext, dr_mcontext_t *mc, app_pc pc, file_t f)
 
 #ifdef USE_DRSYMS
 bool
-print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar);
+print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
+             bool use_custom_flags, uint custom_flags);
 #endif
 
 #endif /* _CALLSTACK_H_ */
