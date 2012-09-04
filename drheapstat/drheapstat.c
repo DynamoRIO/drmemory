@@ -1355,7 +1355,8 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
         /* any new spill must be after the alloc instru */
         ii->bi.spill_after = instr_get_prev(inst);
         /* we zero for leaks, and staleness does not care about xsp */
-        instrument_esp_adjust(drcontext, bb, inst, &ii->bi, false/*zero not shadow*/);
+        instrument_esp_adjust(drcontext, bb, inst, &ii->bi,
+                              SP_ADJUST_ACTION_ZERO);
         ii->bi.added_instru = true;
     }
 

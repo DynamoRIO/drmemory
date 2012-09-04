@@ -46,8 +46,15 @@ extern uint zero_loop_aborts_thresh;
  */
 #define TYPICAL_STACK_MIN_SIZE (32*1024)
 
-bool
-needs_esp_adjust(instr_t *inst, bool shadow_xsp/*else, zero*/);
+/* Indicates what action to take on SP adjustments.  Different from esp_adjust_t
+ * in stack.c, which is about what kind of adjustment is being made by the app.
+ */
+typedef enum {
+    SP_ADJUST_ACTION_SHADOW,   /* Mark new memory undef and old memory unaddr. */
+    SP_ADJUST_ACTION_DEFINED,  /* Mark new memory defined and old memory unaddr. */
+    SP_ADJUST_ACTION_FASTPATH_MAX = SP_ADJUST_ACTION_DEFINED,
+    SP_ADJUST_ACTION_ZERO      /* Zero the stack on SP decrease. */
+} sp_adjust_action_t;
 
 app_pc
 generate_shared_esp_slowpath(void *drcontext, instrlist_t *ilist, app_pc pc);
@@ -63,7 +70,7 @@ instr_writes_esp(instr_t *inst);
  */
 bool
 instrument_esp_adjust(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi,
-                      bool shadow_xsp/*else, zero*/);
+                      sp_adjust_action_t sp_action);
 
 void
 check_stack_size_vs_threshold(void *drcontext, size_t stack_size);

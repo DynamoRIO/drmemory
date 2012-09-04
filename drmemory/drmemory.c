@@ -1448,6 +1448,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     alloc_module_load(drcontext, info, loaded);
     if (options.perturb_only)
         perturb_module_load(drcontext, info, loaded);
+    readwrite_module_load(drcontext, info, loaded);
 #ifdef USE_DRSYMS
     /* Write out the symcache in case we crash or sthg before an at-exit write */
     if (options.use_symcache)
@@ -1468,6 +1469,7 @@ event_module_unload(void *drcontext, const module_data_t *info)
     LOG(1, "unloading module %s "PFX"-"PFX"\n",
         dr_module_preferred_name(info) == NULL ? "<null>" :
         dr_module_preferred_name(info), info->start, info->end);
+    readwrite_module_unload(drcontext, info);
     if (!options.perturb_only)
         callstack_module_unload(drcontext, info);
     if (INSTRUMENT_MEMREFS())

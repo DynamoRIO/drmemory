@@ -171,6 +171,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 static dr_emit_flags_t
 instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
                               bool for_trace, bool translating, void *user_data);
+
+static bool
+should_mark_stack_frames_defined(app_pc pc);
 #endif /* TOOL_DR_MEMORY */
 
 /***************************************************************************
@@ -4191,13 +4194,19 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         if (shadow_xsp || zero_stack) {
             /* any new spill must be after the fastpath instru */
             bi->spill_after = instr_get_prev(inst);
-            if (instrument_esp_adjust(drcontext, bb, inst, bi, shadow_xsp)) {
-                /* instru clobbered reg1 so no sharing across it */
-                bi->shared_memop = opnd_create_null();
+            if (shadow_xsp) {
+                sp_adjust_action_t sp_action = SP_ADJUST_ACTION_SHADOW;
+                if (should_mark_stack_frames_defined(pc)) {
+                    sp_action = SP_ADJUST_ACTION_DEFINED;
+                }
+                if (instrument_esp_adjust(drcontext, bb, inst, bi, sp_action)) {
+                    /* instru clobbered reg1 so no sharing across it */
+                    bi->shared_memop = opnd_create_null();
+                }
             }
-            if (shadow_xsp && zero_stack) {
+            if (zero_stack) {
                 /* w/o definedness info we need to zero as well to find leaks */
-                instrument_esp_adjust(drcontext, bb, inst, bi, false/*zero*/);
+                instrument_esp_adjust(drcontext, bb, inst, bi, SP_ADJUST_ACTION_ZERO);
             }
         }
         bi->added_instru = true;
@@ -4296,6 +4305,59 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
 
     thread_free(drcontext, bi, sizeof(*bi), HEAPSTAT_PERBB);
     return DR_EMIT_DEFAULT;
+}
+
+/***************************************************************************
+ * Module bounds
+ *
+ * i#412: Mark stack frames as defined in rsaenh.dll to avoid false positives
+ * during random number generation.
+ *
+ * We assume that there are no concurrent rsaenh.dll loads, but there may be
+ * other threads in the bb event.  To make sure they never observe any wide
+ * intervals such as [0, old_end) during unload, we set the base to POINTER_MAX.
+ * This means that no matter the order of updates, the reader will always
+ * observe the old rsaenh.dll interval or an empty interval.
+ *
+ * XXX: Between ntdll, msvcr*, msvcp*, and rsaenh, we have a lot of dlls whose
+ * bounds we cache.  Refactor this into a modbounds.c module.
+ */
+
+#ifdef WINDOWS
+static app_pc rsaenh_base = (app_pc) POINTER_MAX;
+static app_pc rsaenh_end = NULL;
+#endif /* WINDOWS */
+
+void
+readwrite_module_load(void *drcontext, const module_data_t *mod, bool loaded)
+{
+#ifdef WINDOWS
+    if (_stricmp("rsaenh.dll", dr_module_preferred_name(mod)) == 0) {
+        rsaenh_base = mod->start;
+        rsaenh_end = mod->end;
+    }
+#endif /* WINDOWS */
+}
+
+void
+readwrite_module_unload(void *drcontext, const module_data_t *mod)
+{
+#ifdef WINDOWS
+    if (_stricmp("rsaenh.dll", dr_module_preferred_name(mod)) == 0) {
+        rsaenh_base = (app_pc) POINTER_MAX;
+        rsaenh_end = NULL;
+    }
+#endif /* WINDOWS */
+}
+
+static bool
+should_mark_stack_frames_defined(app_pc pc)
+{
+#ifdef WINDOWS
+    return (pc >= rsaenh_base && pc < rsaenh_end);
+#else
+    return false;
+#endif
 }
 
 #endif /* TOOL_DR_MEMORY */
