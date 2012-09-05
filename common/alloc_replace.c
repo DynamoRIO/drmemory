@@ -869,6 +869,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     res = ptr_from_header(head);
     LOG(2, "\treplace_alloc_common flags="PIFX" request=%d, alloc=%d => "PFX"\n",
         head->flags, head->request_size, head->alloc_size, res);
+    if (zeroed)
+        memset(res, 0, request_size);
 
     ASSERT(head->alloc_size >= request_size, "chunk too small");
 
@@ -1368,7 +1370,6 @@ replace_calloc(size_t nmemb, size_t size)
     res = replace_alloc_common(arena, nmemb * size, true/*lock*/, true/*zeroed*/,
                                false/*!realloc*/, drcontext, &mc, (app_pc)replace_calloc,
                                MALLOC_ALLOCATOR_MALLOC);
-    memset(res, 0, nmemb*size);
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return (void *) res;
