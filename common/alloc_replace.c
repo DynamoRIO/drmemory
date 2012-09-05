@@ -775,7 +775,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             client_malloc_data_free(head->user_data);
             head->user_data = NULL;
         }
-        head->flags &= ~CHUNK_FREED;
+        head->flags &= ~(CHUNK_FREED | MALLOC_ALLOCATOR_FLAGS);
     }
     return head;
 }
@@ -867,8 +867,8 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
     head->request_size = request_size;
     head->flags |= alloc_type;
     res = ptr_from_header(head);
-    LOG(2, "\treplace_alloc_common request=%d, alloc=%d => "PFX"\n",
-        head->request_size, head->alloc_size, res);
+    LOG(2, "\treplace_alloc_common flags="PIFX" request=%d, alloc=%d => "PFX"\n",
+        head->flags, head->request_size, head->alloc_size, res);
 
     ASSERT(head->alloc_size >= request_size, "chunk too small");
 
@@ -892,6 +892,8 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
                  dr_mcontext_t *mc, app_pc caller)
 {
     uint alloc_type = (head->flags & MALLOC_ALLOCATOR_FLAGS);
+    LOG(3, "\tcheck_type_match: alloc flags="PIFX" vs free="PIFX"\n",
+        head->flags, free_type);
     ASSERT((free_type & ~(MALLOC_ALLOCATOR_FLAGS)) == 0, "invalid type flags");
     if ((alloc_type != MALLOC_ALLOCATOR_UNKNOWN &&
          free_type != MALLOC_ALLOCATOR_UNKNOWN) &&
