@@ -3190,7 +3190,7 @@ add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                              !opnd_is_null(mi->dst[1].shadow));
     }
     if (!opnd_is_null(mi->dst[1].shadow)) {
-        add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
+        add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[1],
                              src, src_opsz, dst_opsz, scratch8, si8,
                              nowrite_target, process_eflags, alu_uncombined,
                              false/*we assume ok to clobber src*/);

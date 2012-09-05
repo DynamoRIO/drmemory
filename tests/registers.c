@@ -595,6 +595,19 @@ nop_test(void)
 #endif
 }
 
+void
+multi_dst_test(void)
+{
+    /* try to avoid divide-by-zero by initializing our uninit */
+    int *x = (int *) calloc(1, sizeof(int));
+    free(x);
+    x = (int *) malloc(sizeof(int));
+    /* we trust this will have an idiv (i#1010) w/o needing to go to asm */
+    if (100 / (*x + 1) > 100)
+        *x = 4;
+    free(x);
+}
+
 int
 main()
 {
@@ -627,6 +640,8 @@ main()
     addronly_test();
 
     nop_test();
+
+    multi_dst_test();
 
     return 0;
 }
