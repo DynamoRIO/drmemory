@@ -94,7 +94,10 @@
     REPLACE_DEF(wcsncmp, NULL)     \
     REPLACE_DEF(wmemcmp, NULL)     \
     REPLACE_DEF(wcschr, NULL)      \
-    REPLACE_DEF(wcsrchr, NULL)
+    REPLACE_DEF(wcsrchr, NULL)     \
+    REPLACE_DEF(strcasecmp, NULL)  \
+    REPLACE_DEF(strncasecmp, NULL) \
+    REPLACE_DEF(stpcpy, NULL)
 
 /* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
  * wcsncat, wmemmove.
@@ -128,6 +131,12 @@ typedef struct _sym_enum_data_t {
 #define REPLACE_NAME_TABLE_HASH_BITS 6
 static hashtable_t replace_name_table;
 #endif
+
+static int
+replace_tolower_ascii(int c);
+
+/* for locale-specific tolower() for str{,n}casecmp */
+static int (*app_tolower)(int) = replace_tolower_ascii;
 
 /***************************************************************************
  * The replacements themselves.
@@ -439,6 +448,65 @@ replace_strcmp(const char *str1, const char *str2)
     return 0;
 }
 
+/* used by replace_str{,n}casecmp when we can't find a locale-aware version */
+IN_REPLACE_SECTION static int
+replace_tolower_ascii(int c)
+{
+    if (c >= 'A' && c <= 'Z')
+        return (c - ('A' - 'a'));
+    return c;
+}
+
+IN_REPLACE_SECTION int
+replace_strcasecmp(const char *str1, const char *str2)
+{
+    register const unsigned char *s1 = (const unsigned char *) str1;
+    register const unsigned char *s2 = (const unsigned char *) str2;
+    while (1) {
+        register unsigned char l1 = (unsigned char) app_tolower(*s1);
+        register unsigned char l2 = (unsigned char) app_tolower(*s2);
+        if (l1 == '\0') {
+            if (l2 == '\0')
+                return 0;
+            return -1;
+        }
+        if (l2 == '\0')
+            return 1;
+        if (l1 < l2)
+            return -1;
+        if (l1 > l2)
+            return 1;
+        s1++;
+        s2++;
+    }
+    return 0;
+}
+
+IN_REPLACE_SECTION int
+replace_strncasecmp(const char *str1, const char *str2, size_t size)
+{
+    register const unsigned char *s1 = (const unsigned char *) str1;
+    register const unsigned char *s2 = (const unsigned char *) str2;
+    while (size-- > 0) { /* loop will terminate before underflow */
+        register unsigned char l1 = (unsigned char) app_tolower(*s1);
+        register unsigned char l2 = (unsigned char) app_tolower(*s2);
+        if (l1 == '\0') {
+            if (l2 == '\0')
+                return 0;
+            return -1;
+        }
+        if (l2 == '\0')
+            return 1;
+        if (l1 < l2)
+            return -1;
+        if (l1 > l2)
+            return 1;
+        s1++;
+        s2++;
+    }
+    return 0;
+}
+
 IN_REPLACE_SECTION int
 replace_wcscmp(const wchar_t *s1, const wchar_t *s2)
 {
@@ -486,6 +554,17 @@ replace_strncpy(char *dst, const char *src, size_t size)
         size--;
     }
     return dst;
+}
+
+IN_REPLACE_SECTION char *
+replace_stpcpy(char *dst, const char *src)
+{
+    register const char *s = (char *) src;
+    register char *d = (char *) dst;
+    while (*s != '\0')
+        *d++ = *s++;
+    *d = '\0';
+    return d;
 }
 
 IN_REPLACE_SECTION char *
@@ -1010,6 +1089,17 @@ replace_in_module(const module_data_t *mod, bool add)
         LOG(2, "module %s imports from msvc* so not searching inside it\n",
             modname == NULL ? "" : modname);
         return;
+    }
+#else
+    if (mod->start == libc_base) {
+        /* prefer locale-aware tolower from libc to our English version (i#181) */
+        generic_func_t func = dr_get_proc_address(mod->handle, "tolower");
+        if (func != NULL) {
+            if (add)
+                app_tolower = (int (*)(int)) func;
+            else
+                app_tolower = replace_tolower_ascii;
+        }
     }
 #endif
     ASSERT(options.replace_libc, "should not be called if op not on");

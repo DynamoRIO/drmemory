@@ -20,6 +20,7 @@
  */
 
 #include "gtest/gtest.h"
+#include <locale.h>
 
 TEST(StringTests, Memmove) {
     const char input[128] = "0123456789abcdefg";  // strlen(input) = 17.
@@ -79,3 +80,56 @@ TEST(StringTests, wcsrchr) {
     ASSERT_TRUE(found == NULL);
     delete [] w;
 }
+
+#ifdef LINUX
+TEST(StringTests, strcasecmp) {
+    char *s = new char[3];
+    s[0] = 'a';
+    s[1] = 'B';
+    s[2] = '\0';
+    int res = strcasecmp(s, "Ab");
+    ASSERT_EQ(res, 0);
+    res = strcasecmp(s, "ab");
+    ASSERT_EQ(res, 0);
+    res = strcasecmp(s, "abc");
+    ASSERT_EQ(res, -1);
+    delete [] s;
+
+    // Test locale-specific tolower()
+    char *prior_locale = setlocale(LC_ALL, NULL);
+    char *locale = setlocale(LC_ALL, "deutsch");
+    ASSERT_STREQ(locale, "deutsch");
+
+    ASSERT_EQ(tolower('\xd6'), tolower('\xf6'));
+
+    // XXX: this fails natively!  Presumably b/c the ifunc for the optimized
+    // strcasecmp hardcodes the locale set at startup.
+    res = strcasecmp("\xd6", "\xf6"); // 0xd6==0n214=Ö, 0xf6=0n246=ö
+    ASSERT_EQ(res, 0);
+    locale = setlocale(LC_ALL, prior_locale);
+    ASSERT_STREQ(locale, prior_locale);
+}
+
+TEST(StringTests, strncasecmp) {
+    char *s = new char[3];
+    s[0] = 'a';
+    s[1] = 'B';
+    s[2] = '\0';
+    int res = strncasecmp(s, "Abcde", 1);
+    ASSERT_EQ(res, 0);
+    res = strncasecmp(s, "ab", 5);
+    ASSERT_EQ(res, 0);
+    res = strncasecmp(s, "abc", 3);
+    ASSERT_EQ(res, -1);
+    delete [] s;
+}
+
+TEST(StringTests, stpcpy) {
+    char buf[64];
+    char *cur = buf;
+    cur = stpcpy(cur, "first");
+    cur = stpcpy(cur, "second");
+    cur = stpcpy(cur, "third");
+    ASSERT_STREQ(buf, "firstsecondthird");
+}
+#endif /* LINUX */
