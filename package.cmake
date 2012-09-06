@@ -106,7 +106,7 @@ set(base_cache "
 # version is optional
 if (arg_version)
   set(base_cache "${base_cache}
-    VERSION_NUMBER:STRING=${arg_version}")
+    TOOL_VERSION_NUMBER:STRING=${arg_version}")
 endif (arg_version)
 
 # the build dir names here must match those in tests/runsuite.cmake to
