@@ -73,8 +73,8 @@
     REPLACE_DEF(memchr, NULL)      \
     IF_LINUX(REPLACE_DEF(memrchr, NULL)) \
     IF_LINUX(REPLACE_DEF(rawmemchr, NULL)) \
-    REPLACE_DEF(strchr, NULL)      \
-    REPLACE_DEF(strrchr, NULL)     \
+    REPLACE_DEF(strchr, "wcschr")  \
+    REPLACE_DEF(strrchr, "wcsrchr")\
     IF_LINUX(REPLACE_DEF(strchrnul, NULL)) \
     REPLACE_DEF(strlen, "wcslen")  \
     REPLACE_DEF(strcmp, "wcscmp")  \
@@ -92,9 +92,11 @@
     REPLACE_DEF(wcslen, NULL)      \
     REPLACE_DEF(wcscmp, NULL)      \
     REPLACE_DEF(wcsncmp, NULL)     \
-    REPLACE_DEF(wmemcmp, NULL)
+    REPLACE_DEF(wmemcmp, NULL)     \
+    REPLACE_DEF(wcschr, NULL)      \
+    REPLACE_DEF(wcsrchr, NULL)
 
-/* TODO(timurrrr): add wrappers for wcschr, wcsrchr, wcscpy, wcsncpy, wcscat,
+/* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
  * wcsncat, wmemmove.
  */
 
@@ -287,6 +289,22 @@ replace_strchr(const char *str, int find)
     return NULL;
 }
 
+IN_REPLACE_SECTION wchar_t *
+replace_wcschr(const wchar_t *str, int find)
+{
+    register const wchar_t *s = str;
+    register wchar_t c = (wchar_t) find;
+    /* be sure to match the terminating 0 instead of failing (i#275) */
+    while (true) {
+        if (*s == c)
+            return (wchar_t *) s;
+        if (*s == L'\0')
+            return NULL;
+        s++;
+    }
+    return NULL;
+}
+
 IN_REPLACE_SECTION char *
 replace_strrchr(const char *str, int find)
 {
@@ -302,6 +320,23 @@ replace_strrchr(const char *str, int find)
         s++;
     }
     return (char *) last;
+}
+
+IN_REPLACE_SECTION wchar_t *
+replace_wcsrchr(const wchar_t *str, int find)
+{
+    register const wchar_t *s = str;
+    register wchar_t c = (wchar_t) find;
+    const wchar_t *last = NULL;
+    /* be sure to match the terminating 0 instead of failing (i#275) */
+    while (true) {
+        if (*s == c)
+            last = s;
+        if (*s == L'\0')
+            break;
+        s++;
+    }
+    return (wchar_t *) last;
 }
 
 #ifdef LINUX

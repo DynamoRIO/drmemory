@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -48,4 +48,34 @@ TEST(StringTests, Memmove) {
     // Overlapping copy backwards, different alignment.
     EXPECT_EQ(tmp+3, memmove(tmp+3, tmp+6, strlen(tmp) + 1 - 6));
     EXPECT_STREQ("0126789abcdefg", tmp);
+}
+
+TEST(StringTests, wcschr) {
+    // Try to stress sub-malloc-chunk alloc
+    wchar_t *w = new wchar_t[3];
+    w[0] = L'a';
+    w[1] = L'b';
+    w[2] = L'\0';
+    wchar_t *found = wcschr(w, L'b');
+    ASSERT_TRUE(found == w + 1);
+    found = wcschr(w, L'\0');
+    ASSERT_TRUE(found == w + 2);
+    found = wcschr(w, L'x');
+    ASSERT_TRUE(found == NULL);
+    delete [] w;
+}
+
+TEST(StringTests, wcsrchr) {
+    // Try to stress sub-malloc-chunk alloc
+    wchar_t *w = new wchar_t[3];
+    w[0] = L'a';
+    w[1] = L'b';
+    w[2] = L'\0';
+    wchar_t *found = wcsrchr(w, L'b');
+    ASSERT_TRUE(found == w + 1);
+    found = wcsrchr(w, L'\0');
+    ASSERT_TRUE(found == w + 2);
+    found = wcsrchr(w, L'x');
+    ASSERT_TRUE(found == NULL);
+    delete [] w;
 }
