@@ -646,6 +646,7 @@ endif (TOOL_DR_MEMORY AND WIN32)
 newtest(leakcycle leakcycle.cpp)
 
 add_subdirectory(app_suite)
+newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")
 
 else (NOT X64)
   # pattern mode testing.

@@ -46,6 +46,12 @@ add_executable(app_suite_tests
                "${GTEST_ROOT}/src/gtest_main.cc")
 
 if (UNIX)
+  append_compile_flags(app_suite_tests "-DLINUX")
+else (UNIX)
+  append_compile_flags(app_suite_tests "-DWIN32")
+endif (UNIX)
+
+if (UNIX)
   # googletest requires -lpthread on Linux unless we define GTEST_HAS_PTHREAD=0
   # but we'll likely write some pthread tests anyways.
   find_package(Threads REQUIRED)
