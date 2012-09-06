@@ -253,7 +253,8 @@ set(cmd_script -P "./runtest.cmake")
 # whether to run the front-end with -results after the app is run.
 # The resbase arg support specifying a different .res and .out name
 # to use.
-function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
+function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resbase
+    ignore_exit_code)
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
@@ -337,9 +338,15 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
+    -D ignore_exit_code:BOOL=${ignore_exit_code}
     # runtest.cmake will add the -profdir arg
     -D postcmd:STRING=${postcmd}
     ${cmd_script})
+endfunction(newtest_nobuild_ex)
+
+function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
+  newtest_nobuild_ex(${test} ${exe} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    ${postprocess} "${resbase}" OFF)
 endfunction(newtest_nobuild)
 
 function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase)
@@ -462,6 +469,9 @@ if (TOOL_DR_MEMORY)
   # test malloc replacement (additional tests are below)
   newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
   newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
+  newtest_nobuild_ex(replace_operators operators "" "-replace_malloc" "" OFF "operators"
+    # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
+    ON)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -546,6 +556,13 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_nobuild(replace_cs2bugMTd cs2bugMTd "" "-replace_malloc" "" OFF "cs2bugMTd")
+
+      # Test i#607 part D
+      newtest_custbuild(operatorsMDd operators.cpp "/MDd" operators)
+      newtest_nobuild_ex(replace_operatorsMDd operatorsMDd ""
+        # FIXME i#1004: -skip_msvc_importers breaks -replace_malloc so disable for now
+        "-replace_malloc;-no_skip_msvc_importers"
+        "" OFF "operators" ON)
     endif (USE_DRSYMS)
 
     if (GCC)

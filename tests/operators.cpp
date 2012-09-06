@@ -55,8 +55,11 @@ public:
 static void
 test_placement()
 {
-    int *p = (int *) malloc(sizeof(hasdtr));
+    int *p = (int *) calloc(1, sizeof(hasdtr));
     hasdtr *placed = new (p) hasdtr;
+    placed->y = 4;
+    if (((hasdtr *)p)->y != placed->y)
+        std::cout << "placement new not honored" << std::endl;
     // Cannot call placement delete (only for language-internal use, e.g.,
     // if constructor fails) so we must invoke destructor directly.
     placed->~hasdtr();

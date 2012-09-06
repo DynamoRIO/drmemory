@@ -19,8 +19,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 : WARNING: heap allocation failed
-operators.cpp:77
+operators.cpp:80
 : WARNING: heap allocation failed
-operators.cpp:84
+operators.cpp:87
 : WARNING: heap allocation failed
-operators.cpp:101
+operators.cpp:104

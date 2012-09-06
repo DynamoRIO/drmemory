@@ -344,6 +344,32 @@ alloc_context_exit(void *drcontext, bool thread_exit)
 static hashtable_t alloc_routine_table;
 static void *alloc_routine_lock; /* protects alloc_routine_table */
 
+/* Itanium ABI manglings */
+/* operator new(unsigned int) */
+#define MANGLED_NAME_NEW                    "_Znwj"
+/* operator new[](unsigned int) */
+#define MANGLED_NAME_NEW_ARRAY              "_Znaj"
+/* operator new(unsigned int, std::nothrow_t const&) */
+#define MANGLED_NAME_NEW_NOTHROW            "_ZnwjRKSt9nothrow_t"
+/* operator new[](unsigned int, std::nothrow_t const&) */
+#define MANGLED_NAME_NEW_ARRAY_NOTHROW      "_ZnajRKSt9nothrow_t"
+/* operator new(std::size_t, void* __p) */
+#define MANGLED_NAME_NEW_PLACEMENT          "_ZnwjPv"
+/* operator new[](std::size_t, void* __p) */
+#define MANGLED_NAME_NEW_ARRAY_PLACEMENT    "_ZnajPv"
+/* operator delete(void*) */
+#define MANGLED_NAME_DELETE                 "_ZdlPv"
+/* operator delete[](void*) */
+#define MANGLED_NAME_DELETE_ARRAY           "_ZdaPv"
+/* operator delete(void*, std::nothrow_t const&) */
+#define MANGLED_NAME_DELETE_NOTHROW         "_ZdlPvRKSt9nothrow_t"
+/* operator delete[](void*, std::nothrow_t const&) */
+#define MANGLED_NAME_DELETE_ARRAY_NOTHROW   "_ZdaPvRKSt9nothrow_t"
+/* operator delete(void*, void*) */
+#define MANGLED_NAME_DELETE_PLACEMENT       "_ZdlPvS_"
+/* operator delete[](void*, void*) */
+#define MANGLED_NAME_DELETE_ARRAY_PLACEMENT "_ZdaPvS_"
+
 static inline bool
 routine_needs_post_wrap(routine_type_t type, heapset_type_t set_type)
 {
@@ -468,27 +494,19 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
      * these manglings.
      */
 # ifdef LINUX
-    /* operator new(unsigned int) */
-    { "_Znwj",                HEAP_ROUTINE_NEW },
-    /* operator new[](unsigned int) */
-    { "_Znaj",                HEAP_ROUTINE_NEW_ARRAY },
-    /* operator new(unsigned int, std::nothrow_t const&) */
-    { "_ZnwjRKSt9nothrow_t",  HEAP_ROUTINE_NEW_NOTHROW },
-    /* operator new[](unsigned int, std::nothrow_t const&) */
-    { "_ZnajRKSt9nothrow_t",  HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
-    /* operator delete(void*) */
-    { "_ZdlPv",               HEAP_ROUTINE_DELETE },
-    /* operator delete[](void*) */
-    { "_ZdaPv",               HEAP_ROUTINE_DELETE_ARRAY },
-    /* operator delete(void*, std::nothrow_t const&) */
-    { "_ZdlPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_NOTHROW },
-    /* operator delete[](void*, std::nothrow_t const&) */
-    { "_ZdaPvRKSt9nothrow_t", HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
+    { MANGLED_NAME_NEW,                  HEAP_ROUTINE_NEW },
+    { MANGLED_NAME_NEW_ARRAY,            HEAP_ROUTINE_NEW_ARRAY },
+    { MANGLED_NAME_NEW_NOTHROW,          HEAP_ROUTINE_NEW_NOTHROW },
+    { MANGLED_NAME_NEW_ARRAY_NOTHROW,    HEAP_ROUTINE_NEW_ARRAY_NOTHROW },
+    { MANGLED_NAME_DELETE,               HEAP_ROUTINE_DELETE },
+    { MANGLED_NAME_DELETE_ARRAY,         HEAP_ROUTINE_DELETE_ARRAY },
+    { MANGLED_NAME_DELETE_NOTHROW,       HEAP_ROUTINE_DELETE_NOTHROW },
+    { MANGLED_NAME_DELETE_ARRAY_NOTHROW, HEAP_ROUTINE_DELETE_ARRAY_NOTHROW },
 # else
     /* operator new(unsigned int) */
     { "??2@YAPAXI@Z",       HEAP_ROUTINE_NEW },
     /* operator new(unsigned int,int,char const *,int) */
-    { "_??2@YAPAXIHPBDH@Z", HEAP_ROUTINE_NEW },
+    { "??2@YAPAXIHPBDH@Z",  HEAP_ROUTINE_NEW },
     /* operator new[](unsigned int) */
     { "??_U@YAPAXI@Z",      HEAP_ROUTINE_NEW_ARRAY },
     /* operator new[](unsigned int,int,char const *,int) */
@@ -510,18 +528,21 @@ translate_routine_name(const char *name)
 #ifndef USE_DRSYMS
     /* temporary until we have online syms */
     /* could add to table but doesn't seem worth adding a whole new field */
-    if (strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXI@Z", "_Znwj")) == 0 ||
-        strcmp(name, IF_WINDOWS_ELSE("_??2@YAPAXIHPBDH@Z", "_ZnwjRKSt9nothrow_t")) == 0)
+    if (strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXI@Z", MANGLED_NAME_NEW)) == 0 ||
+        strcmp(name, IF_WINDOWS_ELSE("??2@YAPAXIHPBDH@Z",
+                                     MANGLED_NAME_NEW_NOTHROW)) == 0)
         return "operator new";
-    else if (strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXI@Z", "_Znaj")) == 0 ||
+    else if (strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXI@Z",
+                                          MANGLED_NAME_NEW_ARRAY)) == 0 ||
              strcmp(name, IF_WINDOWS_ELSE("??_U@YAPAXIHPBDH@Z",
-                                          "_ZnwjRKSt9nothrow_t")) == 0)
+                                           MANGLED_NAME_NEW_ARRAY_NOTHROW)) == 0)
         return "operator new[]";
-    if (strcmp(name, IF_WINDOWS_ELSE("??3@YAXPAX@Z", "_ZdlPv")) == 0
-        IF_LINUX(|| strcmp(name, "_ZdlPvRKSt9nothrow_t") == 0))
+    if (strcmp(name, IF_WINDOWS_ELSE("??3@YAXPAX@Z", MANGLED_NAME_DELETE)) == 0
+        IF_LINUX(|| strcmp(name, MANGLED_NAME_DELETE_NOTHROW) == 0))
         return "operator delete";
-    else if (strcmp(name, IF_WINDOWS_ELSE("??_V@YAXPAX@Z", "_ZdaPv")) == 0
-             IF_LINUX(|| strcmp(name, "_ZdaPvRKSt9nothrow_t") == 0))
+    else if (strcmp(name, IF_WINDOWS_ELSE("??_V@YAXPAX@Z",
+                                          MANGLED_NAME_DELETE_ARRAY)) == 0
+             IF_LINUX(|| strcmp(name,  MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0))
         return "operator delete[]";
 #endif
     return name;
@@ -1321,6 +1342,152 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
 #ifdef USE_DRSYMS
 /* Given a generic operator type and its location in a module, checks its
  * args and converts to a corresponding nothrow operator type or to
+ * HEAP_ROUTINE_INVALID if a placement operator.  Returns true if successful.
+ */
+static bool
+distinguish_operator_no_argtypes(routine_type_t generic_type,
+                                 routine_type_t *specific_type OUT,
+                                 const char *name, const module_data_t *mod,
+                                 size_t modoffs)
+{
+    bool known = false;
+    /* XXX DRi#860: we don't yet have any types for Linux or Mingw so we fall
+     * back to looking at the mangled form.  We also come here if we don't
+     * have arg types despite having the pdb (for system pdbs like msvcp*.dll)
+     * or for non-standard arg types.  Regardless of how we got here, we first
+     * try to look at the mangled name.
+     */
+    drsym_debug_kind_t kind;
+    drsym_error_t res = drsym_get_module_debug_kind(mod->full_path, &kind);
+    ASSERT(specific_type != NULL, "invalid param");
+    *specific_type = generic_type;
+    if (res == DRSYM_SUCCESS && !TEST(DRSYM_PDB, kind)) {
+        /* We can't get mangled names for PDBs, and there's no existing interface
+         * to walk exports, so we fall back to decoding below.  Else, we continue.
+         */
+        drsym_error_t symres;
+        drsym_info_t *sym;
+#       define MAX_MANGLED_OPERATOR 64
+        char sbuf[sizeof(*sym) + MAX_MANGLED_OPERATOR];
+        sym = (drsym_info_t *) sbuf;
+        sym->struct_size = sizeof(*sym);
+        sym->name_size = MAX_MANGLED_OPERATOR;
+        ASSERT(strlen(MANGLED_NAME_DELETE_ARRAY_NOTHROW) < MAX_MANGLED_OPERATOR,
+               "need more space for mangled name lookup");
+        /* XXX: share this sequence with callstack.c */
+        STATS_INC(symbol_address_lookups);
+        symres = drsym_lookup_address(mod->full_path, modoffs, sym, DRSYM_LEAVE_MANGLED);
+        LOG(3, "looking at mangled name for %s\n", name);
+        if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
+            /* We don't care if sym->name_available_size >= sym->name_size b/c
+             * that means the name is too long for anything we're looking for.
+             */
+            /* Could make an array to shorten this code but then have to assume
+             * things about type enum sequence and not clear it's cleaner
+             */
+            if (generic_type == HEAP_ROUTINE_NEW) {
+                if (strcmp(sym->name, MANGLED_NAME_NEW) == 0) {
+                    *specific_type = generic_type;
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_NEW_NOTHROW) == 0) {
+                    *specific_type = convert_operator_to_nothrow(generic_type);
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_NEW_PLACEMENT) == 0) {
+                    *specific_type = HEAP_ROUTINE_INVALID;
+                    known = true;
+                }
+            } else if (generic_type == HEAP_ROUTINE_NEW_ARRAY) {
+                if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY) == 0) {
+                    *specific_type = generic_type;
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY_NOTHROW) == 0) {
+                    *specific_type = convert_operator_to_nothrow(generic_type);
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY_PLACEMENT) == 0) {
+                    *specific_type = HEAP_ROUTINE_INVALID;
+                    known = true;
+                }
+            } else if (generic_type == HEAP_ROUTINE_DELETE) {
+                if (strcmp(sym->name, MANGLED_NAME_DELETE) == 0) {
+                    *specific_type = generic_type;
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_NOTHROW) == 0) {
+                    *specific_type = convert_operator_to_nothrow(generic_type);
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_PLACEMENT) == 0) {
+                    *specific_type = HEAP_ROUTINE_INVALID;
+                    known = true;
+                }
+            } else if (generic_type == HEAP_ROUTINE_DELETE_ARRAY) {
+                if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY) == 0) {
+                    *specific_type = generic_type;
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0) {
+                    *specific_type = convert_operator_to_nothrow(generic_type);
+                    known = true;
+                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY_PLACEMENT) == 0) {
+                    *specific_type = HEAP_ROUTINE_INVALID;
+                    known = true;
+                }
+            }
+            LOG(3, "\tmangled name is %s => known=%d type=%d\n",
+                sym->name, known, *specific_type);
+        }
+    }
+    if (!known) {
+        /* Note that both g++ and MSVS inline both nothrow and placement operators.
+         * Thus, if we don't have symbols, we're probably fine as we want to ignore
+         * placement and we can ignore the outer layer of nothrow if it just wraps
+         * exception handling around the regular operator.
+         * But, if we do have symbols but no arg types, we need to distinguish.
+         * The strategy is to decode and if we see no call then assume it's
+         * placement (which should just return its arg).
+         * We'll give up on nothrow: but it's low-risk b/c it only comes into
+         * play if we run out of memory.  Plus -replace_malloc doesn't throw
+         * an exception yet anyway.
+         */
+        void *drcontext = dr_get_current_drcontext();
+        instr_t inst;
+        app_pc pc = mod->start + modoffs;
+        instr_init(drcontext, &inst);
+        /* XXX: in general when decoding we want to wait for the module to be relocated
+         * and thus we want DRi#884 or to delay our symbol searches via our
+         * mod_pending_tree.  But in this case, we only care about the opcodes, which
+         * shouldn't be affected by relocations.
+         */
+        LOG(3, "decoding %s @"PFX" looking for placement operator\n", name, pc);
+        ASSERT(drcontext != NULL, "must have DC");
+        do {
+            instr_reset(drcontext, &inst);
+            if (!safe_decode(drcontext, pc, &inst, &pc)) {
+                LOG(3, "\tfailed to decode "PFX"\n", pc);
+                break;
+            }
+            if (pc == NULL || !instr_valid(&inst))
+                break;
+            if (instr_is_return(&inst)) {
+                /* We hit a return w/ no cti first: we assume it's placement */
+                LOG(2, "%s is straight-line: looks like a placement operator\n", name);
+                *specific_type = HEAP_ROUTINE_INVALID;
+                known = true;
+                break;
+            }
+            if (instr_is_cti(&inst)) {
+                /* While we're not really sure whether nothrow, we're pretty sure
+                 * it's not placement so we mark as known to avoid the warning msg.
+                 */
+                LOG(2, "%s is not straight-line so not a placement operator\n", name);
+                known = true;
+                break;
+            }
+        } while (true);
+        instr_free(drcontext, &inst);
+    }
+    return known;
+}
+
+/* Given a generic operator type and its location in a module, checks its
+ * args and converts to a corresponding nothrow operator type or to
  * HEAP_ROUTINE_INVALID if a placement operator.
  */
 static routine_type_t
@@ -1333,6 +1500,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     drsym_error_t err;
     routine_type_t specific_type = generic_type;
     const char *modname = dr_module_preferred_name(mod);
+    bool known = false;
     if (modname == NULL)
         modname = "<noname>";
 
@@ -1355,14 +1523,12 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
         err == DRSYM_SUCCESS ? func_type->num_args : -1);
 
     if (err != DRSYM_SUCCESS) {
-        WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
-             name, modname, mod->start + modoffs);
-        specific_type = generic_type;
+        /* Fall through to no-arg-type handling below */
     } else if (func_type->num_args == 1) {
         /* standard type: operator new(unsigned int) or operator delete(void *) */
         specific_type = generic_type;
+        known = true;
     } else if (func_type->num_args == 2) {
-        bool known = false;
         if (func_type->arg_types[1]->kind == DRSYM_TYPE_PTR) {
             drsym_ptr_type_t *arg_type = (drsym_ptr_type_t *) func_type->arg_types[1];
             LOG(3, "operator %s 2nd arg is pointer to kind=%d size=%d\n",
@@ -1407,6 +1573,24 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
          *   operator new(unsigned int,int,char const *,int)
          */
         specific_type = generic_type;
+        known = true;
+    }
+    if (!known) {
+        /* XXX DRi#860: drsyms does not yet provide arg types for Linux/Mingw.
+         * We don't just check for DRSYM_ERROR_NOT_IMPLEMENTED b/c we may have
+         * symbols but no types (e.g., for system pdbs like msvcp*.dll: xref
+         * i#607 part D) or we may encounter a weird overload.
+         */
+        known = distinguish_operator_no_argtypes(generic_type, &specific_type,
+                                                 name, mod, modoffs);
+        if (known) {
+            LOG(2, "%s in %s @"PFX" determined to be type=%d\n",
+                name, modname, mod->start + modoffs, specific_type);
+        } else {
+            WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
+                 name, modname, mod->start + modoffs);
+            specific_type = generic_type;
+        }
     }
     global_free(buf, bufsz, HEAPSTAT_MISC);
     return specific_type;
@@ -1515,12 +1699,7 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
 #endif
             if (is_new_routine(edata->possible[i].type) ||
                 is_delete_routine(edata->possible[i].type)) {
-                /* Distinguish placement and nothrow new and delete.
-                 * XXX DRi#860: once we add linux USE_DRSYMS we'll need linux
-                 * drsyms param info!
-                 * FIXME i#607 part D: this won't work for mingw/cygwin, nor for
-                 * msvcp*.dll which doesn't have type info in its pdbs!
-                 */
+                /* Distinguish placement and nothrow new and delete. */
                 routine_type_t op_type = distinguish_operator_type
                     (edata->possible[i].type, edata->possible[i].name, edata->mod,
                      modoffs);

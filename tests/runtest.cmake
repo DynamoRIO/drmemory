@@ -31,6 +31,8 @@
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
 # * CMAKE_SYSTEM_VERSION
+# * ignore_exit_code = whether to consider non-zero exit code of test
+#     process to be a test failure
 #
 # these allow for parameterization for more portable tests (PR 544430)
 # env vars will override; else passed-in default settings will be used:
@@ -292,9 +294,9 @@ else ()
   message("STDOUT: ${cmd_out}\nSTDERR: ${cmd_err}\n")
   # combine out and err
   set(cmd_err "${cmd_out}${cmd_err}")
-  if (cmd_result)
+  if (cmd_result AND NOT ignore_exit_code)
     message(FATAL_ERROR "*** ${cmd} failed (${cmd_result}): ${cmd_err}***\n")
-  endif (cmd_result)
+  endif ()
 endif ()
 
 ##################################################
