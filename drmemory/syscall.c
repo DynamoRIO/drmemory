@@ -808,8 +808,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
     char idmsg[32];
 
     LOG(2, "processing pre system call #"PIFX" %s\n", sysnum, sysinfo->name);
-    num_args = IF_WINDOWS_ELSE(sysinfo->args_size/sizeof(reg_t),
-                               sysinfo->args_size);
+    num_args = sysinfo->arg_count;
     /* Treat all parameters as IN.
      * There are no inlined OUT params anyway: have to at least set
      * to NULL, unless truly ignored based on another parameter.
@@ -902,7 +901,7 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
         LOG(SYSCALL_VERBOSE, PIFX, sysnum);
     LOG(SYSCALL_VERBOSE, " %s res="PIFX"\n",
         sysinfo->name, dr_syscall_get_result(drcontext));
-    num_args = SYSINFO_NUM_ARGS(sysinfo);
+    num_args = sysinfo->arg_count;
     for (i=0; i<num_args; i++) {
         LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x "PFX"\n",
             sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags,
@@ -994,7 +993,7 @@ get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt)
     if (sysinfo != NULL) {
         if (TEST(SYSINFO_SECONDARY_TABLE, sysinfo->flags)) {
             uint code;
-            ASSERT(SYSINFO_NUM_ARGS(sysinfo) >= 1, "at least 1 arg for code");
+            ASSERT(sysinfo->arg_count >= 1, "at least 1 arg for code");
             code = pt->sysarg[sysinfo->arg[0].param];
             /* encode a new sysnum */
             ASSERT((uint)*sysnum <= SYSNUM_MAX_PRIMARY, "sysnum too large");

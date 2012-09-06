@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -320,5 +320,5 @@ while (<STDIN>) {
         }
     }
     $toprint = '{' . $toprint . '}' if ($toprint ne '');
-    printf("%d, %s},\n", $argnum*4, $toprint);
+    printf("%d, %s},\n", $argnum, $toprint);
 }

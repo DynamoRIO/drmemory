@@ -196,14 +196,11 @@ enum {
 
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
-#define SYSINFO_NUM_ARGS(info) \
-    IF_WINDOWS_ELSE((info)->args_size/sizeof(reg_t), (info)->args_size)
-
 typedef struct _syscall_info_t {
     int num; /* system call number: filled in dynamically */
     const char *name;
     uint flags; /* SYSINFO_ flags */
-    int args_size; /* for Windows: total size of args; for Linux: arg count */
+    int arg_count;
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];
     /* For custom handling w/o separate number lookup.
