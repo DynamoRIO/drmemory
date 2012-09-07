@@ -97,8 +97,16 @@ TEST(StringTests, strcasecmp) {
 
     // Test locale-specific tolower()
     char *prior_locale = setlocale(LC_ALL, NULL);
-    char *locale = setlocale(LC_ALL, "deutsch");
-    ASSERT_STREQ(locale, "deutsch");
+    // Not all machines have targeted langs like "deutsch" so going for
+    // iso88591* but even that is not always installed so perhaps we
+    // should skip the test?  But we want to know if the test is working.
+    char *locale = setlocale(LC_ALL, "en_US.iso88591");
+    if (locale != NULL) {
+        ASSERT_STREQ(locale, "en_US.iso88591");
+    } else {
+        locale = setlocale(LC_ALL, "en_US.iso885915");
+        ASSERT_STREQ(locale, "en_US.iso885915");
+    }
 
     ASSERT_EQ(tolower('\xd6'), tolower('\xf6'));
 
