@@ -41,6 +41,7 @@ set(arg_drmem_only OFF) # do not include Dr. Heapstat
 set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
 set(arg_use_nmake OFF) # use nmake even if gnu make is present
+set(arg_cpackappend "")# string to append to CPackConfig.cmake before packaging
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
@@ -63,6 +64,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   endif ()
   if (${arg} MATCHES "^cacheappend=")
     string(REGEX REPLACE "^cacheappend=" "" arg_cacheappend "${arg}")
+  endif ()
+  if (${arg} MATCHES "^cpackappend=")
+    string(REGEX REPLACE "^cpackappend=" "" arg_cpackappend "${arg}")
   endif ()
   if (${arg} MATCHES "^drmem_only" OR
       ${arg} MATCHES "^drmemory_only")
@@ -136,6 +140,14 @@ testbuild_ex("drmemory-${name_sfx}release-32" OFF "
 testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
   CMAKE_BUILD_TYPE:STRING=Debug
   " OFF ON "")
+
+if (arg_cpackappend)
+  # ${last_package_build_dir} is a global var set in parent scope by
+  # testbuild_ex to communicate with runsuite_common_post.  We use it to access
+  # the CPackConfig.cmake file.
+  file(APPEND "${last_package_build_dir}/CPackConfig.cmake"
+    "\n${arg_cpackappend}\n")
+endif ()
 
 set(build_package ON)
 include("${runsuite_include_path}/runsuite_common_post.cmake")
