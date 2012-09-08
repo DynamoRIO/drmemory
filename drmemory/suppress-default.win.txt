@@ -611,7 +611,7 @@ MSVCR*D.dll!initptd
 # i#988 suppressing handle leaks from system dll
 
 # i#988 c#1 c#3 from nudge_handle test
-HANDLE LEAK: Kernel Handle
+HANDLE LEAK
 name=default i#988 c#1 NtOpenKey
 system call NtOpenKey
 ...
@@ -619,3 +619,21 @@ system call NtOpenKey
 *!setSBUpLow
 *!_setmbcp_nolock
 
+# i#988-c#2 for windows creation and destroy
+HANDLE LEAK
+name=default i#988 c#2 NtConnectPort 
+system call NtConnectPort
+...
+USER32.dll!CreateWindowEx?
+
+HANDLE LEAK
+name=default i#988 c#2 NtGdiCreateSolidBrush
+system call NtGdiCreateSolidBrush
+...
+USER32.dll!CreateWindowEx?
+
+HANDLE LEAK
+name=default i#988 c#2 NtGdiCreatePatternBrushInternal
+system call NtGdiCreatePatternBrushInternal
+...
+USER32.dll!CreateWindowEx?

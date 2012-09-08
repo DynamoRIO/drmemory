@@ -29,6 +29,7 @@ Error #5: HANDLE LEAK:
 Error #6: HANDLE LEAK:
 Error #7: HANDLE LEAK:
 Error #8: HANDLE LEAK:
+Error #9: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
@@ -38,7 +39,7 @@ system call NtGdiCreateBitmap
 system call NtCreateThreadEx
 system call NtCreateFile
 system call NtOpenFile
-
+system call NtUserCreateWindowEx
 
 test_file_handles
 test_file_handles
@@ -46,8 +47,10 @@ test_gdi_handles
 test_gdi_handles
 test_gdi_handles
 test_thread_handles
+test_window_handles
 # NtGdiCreateBitmap and NtUserGetDC did not have test_gdi_handles on callstack
 
+main
 main
 main
 main
@@ -61,4 +64,4 @@ _beginthreadex
 CreateFileW
 CreateFileA
 FindFirstFileA
-
+CreateWindowExA

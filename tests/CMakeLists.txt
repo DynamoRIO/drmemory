@@ -654,7 +654,4 @@ else (NOT X64)
   newtest_ex(malloc.pattern malloc.c "" "-light" "" OFF "")
   newtest_ex(track_origins.pattern track_origins.c "" "-pattern;0xf1fd;-no_count_leaks;-track_origins_unaddr"
     "" OFF "track_origins")
-  if (WIN32)
-    newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks" "" OFF "")
-  endif (WIN32)
 endif (NOT X64)

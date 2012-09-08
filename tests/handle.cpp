@@ -131,6 +131,29 @@ test_file_handles(bool close)
         FindClose(hFind);
 }
 
+void
+test_window_handles(bool close)
+{
+    HWND hWnd;
+    hWnd = CreateWindowEx(0L,                           // ExStyle
+                          "Button",                     // class name
+                          "Main Window",                // window name
+                          WS_OVERLAPPEDWINDOW,          // style
+                          CW_USEDEFAULT, CW_USEDEFAULT, // pos
+                          CW_USEDEFAULT, CW_USEDEFAULT, // size
+                          (HWND) NULL,                  // no parent
+                          (HMENU) NULL,                 // calls menu
+                          (HINSTANCE) NULL,
+                          NULL);
+    if (!hWnd) {
+        printf("fail to create window\n");
+        return;
+    }
+    if (close) {
+        DestroyWindow(hWnd);
+    }
+}
+
 int
 main()
 {
@@ -143,5 +166,8 @@ main()
     printf("test thread handles\n");
     test_thread_handles(true);
     test_thread_handles(false);
+    printf("test window handles\n");
+    test_window_handles(true);
+    test_window_handles(false);
     return 0;
 }
