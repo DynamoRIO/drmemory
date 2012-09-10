@@ -95,6 +95,8 @@ enum {
     SYSARG_NO_WRITE_IF_COUNT_0 = 0x00000100,
     /* for handle check */
     SYSARG_IS_HANDLE           = 0x00000200,
+    /* i#502-c#5 the arg should be ignored if the next arg is null */
+    SYSARG_IGNORE_IF_NEXT_NULL = 0x00000400,
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for

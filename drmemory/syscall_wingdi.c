@@ -1096,7 +1096,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiHfontCreate", OK, 5, {{0,sizeof(EXTLOGFONTW),R,}, }},
 #endif
     {0,"NtGdiSetFontEnumeration", OK, 1, },
-    {0,"NtGdiEnumFonts", OK, 8, {{4,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {6,sizeof(ULONG),R|W,}, {7,-6,WI,}, }},
+    {0,"NtGdiEnumFonts", OK, 8, {{4,-3,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(wchar_t)}, {6,sizeof(ULONG),R|W|SYSARG_IGNORE_IF_NEXT_NULL,}, {7,-6,WI,}, }},
     {0,"NtGdiQueryFonts", OK, 3, {{0,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, {2,sizeof(LARGE_INTEGER),W,}, }},
     {0,"NtGdiGetCharSet", OK, 1, },
     {0,"NtGdiEnableEudc", OK, 1, },

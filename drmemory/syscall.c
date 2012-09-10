@@ -857,7 +857,15 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
             bool skip = os_handle_pre_syscall_arg_access(sysnum, mc, i,
                                                          &sysinfo->arg[i],
                                                          start, size);
-
+            /* i#502-c#5 some arg should be ignored if next is NULL */
+            if (!skip &&
+                TESTALL(SYSARG_READ | SYSARG_IGNORE_IF_NEXT_NULL,
+                        sysinfo->arg[i].flags) &&
+                (app_pc)dr_syscall_get_param(drcontext, sysinfo->arg[i+1].param)
+                == NULL) {
+                ASSERT(i+1 < sysinfo->arg_count, "sysarg index out of bound");
+                skip = true;
+            }
             /* pass syscall # as pc for reporting purposes */
             /* we treat in-out read-and-write as simply read, since if
              * not defined we'll report and then mark as defined anyway.

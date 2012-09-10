@@ -213,6 +213,28 @@ test_suppress(void)
     SelectObject(mydc, orig);
 }
 
+int CALLBACK
+EnumFontFamExProc(const LOGFONT *lpelfe,
+                  const TEXTMETRIC *lpntme,
+                  DWORD FontType,
+                  LPARAM lParam)
+{
+    return 0; /* stop enumeration */
+}
+
+static void
+test_EnumFont()
+{
+    HDC mydc = GetDC(NULL);
+    LOGFONT logfont;
+    /* test i#502 */
+    logfont.lfCharSet = DEFAULT_CHARSET;
+    logfont.lfFaceName[0] = '\0';
+    logfont.lfPitchAndFamily = 0;
+    EnumFontFamiliesEx(mydc, &logfont, EnumFontFamExProc, NULL, 0);
+    ReleaseDC(NULL, mydc);
+}
+
 int
 main()
 {
@@ -227,6 +249,8 @@ main()
     test_DC_select();
 
     test_suppress();
+
+    test_EnumFont();
 
     return 0;
 }
