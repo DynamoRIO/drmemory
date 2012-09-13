@@ -48,9 +48,9 @@ main()
 
     /* Ensure we report this as a freed access (PR 572716) */
     {
-        char *x = malloc(8);
+        char *x = malloc(64);
         free(x);
-        *(x+1) = 0;
+        *(x+32) = 0xe; /* i#924-c#4: avoid corrupting free_list */
     }
 
     printf("all done\n");
