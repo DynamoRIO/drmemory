@@ -775,6 +775,22 @@ add_asm_target(common/asm_utils.asm asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
+if (WIN32)
+  set(FLAG_DISABLE_FPO "/Oy-")
+else (WIN32)
+  set(FLAG_DISABLE_FPO "-fno-omit-frame-pointer")
+endif (WIN32)
+
+function(append_src_compile_flags srcfile new_flags)
+  get_source_file_property(cur_flags ${srcfile} COMPILE_FLAGS)
+  # XXX: if we require cmake 2.8.6 we can simply use APPEND_STRING
+  if (NOT cur_flags)
+    set(cur_flags "")
+  endif (NOT cur_flags)
+  set_source_files_properties(${srcfile} PROPERTIES
+    COMPILE_FLAGS "${cur_flags} ${new_flags}")
+endfunction(append_src_compile_flags)
+
 # new set_property() doesn't want -D but our cpp invocation above does
 string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 string(REGEX REPLACE "-D" "" DR_DEFINES_NO_D "${DR_DEFINES}")
@@ -878,6 +894,10 @@ if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
   # ensure race-free parallel builds
   add_dependencies(${client_target} ${asm_utils_tgt})
 endif ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+
+# We require frames in our replacement routines in order to reliably include
+# the allocator routines in the callstack for i#639.  Xref i#958.
+append_src_compile_flags(common/alloc_replace.c ${FLAG_DISABLE_FPO})
 
 if (WIN32)
   # our addr2line for Windows
