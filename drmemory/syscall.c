@@ -745,17 +745,13 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
             /* Even if we failed to get the size, initialize this for
              * post-syscall checks.
              */
-            ASSERT(pt->sysarg_size_from_field == -1,
-                   "SYSARG_SIZE_IN_FIELD on more than one syscall");
-            pt->sysarg_size_from_field = size;
+            store_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD, size);
         } else {
             /* i#992: The kernel can overwrite these struct fields during the
              * syscall, so we save them in the pre-syscall event and use them
              * post-syscall.
              */
-            ASSERT(pt->sysarg_size_from_field != -1,
-                   "sysarg_size_from_field not initialized");
-            size = pt->sysarg_size_from_field;
+            size = release_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD);
         }
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
@@ -1057,7 +1053,12 @@ event_pre_syscall(void *drcontext, int sysnum)
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
         LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
     }
-    pt->sysarg_size_from_field = -1;
+    DODEBUG({
+        /* release_extra_info() calls can be bypassed if syscalls or safe reads
+         * fail so we always clear up front
+         */
+        memset(pt->extra_inuse, 0, sizeof(pt->extra_inuse));
+    });
 
     /* acquire expanded sysnum for os_shared_pre_syscall() in addition to
      * shadow checks
@@ -1331,3 +1332,32 @@ syscall_handle_cbret(void *drcontext)
         driver_handle_cbret(drcontext);
 #endif
 }
+
+/***************************************************************************
+ * EXTRA_INFO SLOT USAGE
+ */
+
+void
+store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value)
+{
+    ASSERT(index <= EXTRA_INFO_MAX, "index too high");
+    DODEBUG({
+        ASSERT(!pt->extra_inuse[index], "sysarg extra info conflict");
+        pt->extra_inuse[index] = true;
+    });
+    pt->extra_info[index] = value;
+}
+
+ptr_int_t
+release_extra_info(cls_syscall_t *pt, int index)
+{
+    ptr_int_t value;
+    ASSERT(index <= EXTRA_INFO_MAX, "index too high");
+    value = pt->extra_info[index];
+    DODEBUG({
+        ASSERT(pt->extra_inuse[index], "sysarg extra info used improperly");
+        pt->extra_inuse[index] = false;
+    });
+    return value;
+}
+

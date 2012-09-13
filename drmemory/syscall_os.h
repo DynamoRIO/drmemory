@@ -31,15 +31,32 @@
 
 #define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
 
+/* extra_info slot usage */
+enum {
+    /* The size computed by SYSARG_SIZE_IN_FIELD is saved here across the
+     * syscall.  We only support one such parameter per syscall.
+     */
+    EXTRA_INFO_SIZE_FROM_FIELD,
+#ifdef LINUX
+    EXTRA_INFO_SOCKADDR,
+    EXTRA_INFO_MSG_CONTROL,
+    EXTRA_INFO_MSG_CONTROLLEN,
+#endif
+    EXTRA_INFO_MAX,
+};
+
 extern int cls_idx_syscall;
 
 typedef struct _cls_syscall_t {
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
-    /* The size computed by SYSARG_SIZE_IN_FIELD is saved here across the
-     * syscall.  We only support one such parameter per syscall.
-     */
-    ssize_t sysarg_size_from_field;
+
+    /* for recording additional info for particular arg types */
+    ptr_int_t extra_info[EXTRA_INFO_MAX];
+#ifdef DEBUG
+    /* We should be able to statically share extra_info[].  This helps find errors. */
+    bool extra_inuse[SYSCALL_NUM_ARG_STORE];
+#endif
 
     /* for comparing memory across unknown system calls */
     app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
@@ -127,9 +144,12 @@ enum {
     SYSARG_TYPE_CLSMENUNAME             = 11,
     SYSARG_TYPE_MENUITEMINFOW           = 12,
     SYSARG_TYPE_UNICODE_STRING_NOLEN    = 13,
-    SYSARG_TYPE_CSTRING                 = 14,
+    SYSARG_TYPE_CSTRING                 = 14, /* Linux too */
     SYSARG_TYPE_ALPC_PORT_ATTRIBUTES    = 15,
     SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES= 16,
+    /* These are Linux-specific */
+    SYSARG_TYPE_SOCKADDR                = 17,
+    SYSARG_TYPE_MSGHDR                  = 18,
 };
 
 /* We encode the actual size of a write, if it can differ from the
@@ -312,5 +332,11 @@ get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt);
 
 bool
 sysarg_invalid(syscall_arg_t *arg);
+
+void
+store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value);
+
+ptr_int_t
+release_extra_info(cls_syscall_t *pt, int index);
 
 #endif /* _SYSCALL_OS_H_ */

@@ -110,6 +110,10 @@
 #include <linux/un.h>
 #include <linux/netlink.h>
 
+#ifndef SYS_ACCEPT4
+# define SYS_ACCEPT4 18
+#endif
+
 /* ioctl */
 #include <sys/ioctl.h>
 #include <asm/ioctls.h>
@@ -245,7 +249,6 @@ union ioctl_data {
     struct ipmi_recv recv;
 };
 
-#ifndef X64 /* FIXME i#889: not called in 64-bit */
 static size_t
 safe_strnlen(const char *str, size_t max)
 {
@@ -259,7 +262,6 @@ safe_strnlen(const char *str, size_t max)
         s++;
     return (s - str);
 }
-#endif
 
 /***************************************************************************
  * SYSTEM CALLS FOR LINUX
@@ -308,6 +310,7 @@ static hashtable_t systable;
 #define UNKNOWN false
 #define W (SYSARG_WRITE)
 #define R (SYSARG_READ)
+#define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
 #define CT (SYSARG_COMPLEX_TYPE)
 #define CSTRING (SYSARG_TYPE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
@@ -661,21 +664,21 @@ syscall_info_t syscall_info[] = {
     {PACKNUM(29,-1),"shmget", UNKNOWN, 0, },
     {PACKNUM(30,-1),"shmat", UNKNOWN, 0, },
     {PACKNUM(31,-1),"shmctl", UNKNOWN, 0, },
-    {PACKNUM(41,-1),"socket", UNKNOWN, 0, },
-    {PACKNUM(42,-1),"connect", UNKNOWN, 0, },
-    {PACKNUM(43,-1),"accept", UNKNOWN, 0, },
-    {PACKNUM(44,-1),"sendto", UNKNOWN, 0, },
-    {PACKNUM(45,-1),"recvfrom", UNKNOWN, 0, },
-    {PACKNUM(46,-1),"sendmsg", UNKNOWN, 0, },
-    {PACKNUM(47,-1),"recvmsg", UNKNOWN, 0, },
-    {PACKNUM(48,-1),"shutdown", UNKNOWN, 0, },
-    {PACKNUM(49,-1),"bind", UNKNOWN, 0, },
-    {PACKNUM(50,-1),"listen", UNKNOWN, 0, },
-    {PACKNUM(51,-1),"getsockname", UNKNOWN, 0, },
-    {PACKNUM(52,-1),"getpeername", UNKNOWN, 0, },
-    {PACKNUM(53,-1),"socketpair", UNKNOWN, 0, },
-    {PACKNUM(54,-1),"setsockopt", UNKNOWN, 0, },
-    {PACKNUM(55,-1),"getsockopt", UNKNOWN, 0, },
+    {PACKNUM(41,-1),"socket", OK, 3, },
+    {PACKNUM(42,-1),"connect", OK, 3, {{1,-2,R|CT,SYSARG_TYPE_SOCKADDR}, }},
+    {PACKNUM(43,-1),"accept", OK, 3, {{1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},{2,sizeof(int),W}, }},
+    {PACKNUM(44,-1),"sendto", OK, 6, {{1,-2,R},{4,-5,R|CT,SYSARG_TYPE_SOCKADDR}, }},
+    {PACKNUM(45,-1),"recvfrom", OK, 6, {{1,-2,W},{4,-5,WI|CT,SYSARG_TYPE_SOCKADDR}, }},
+    {PACKNUM(46,-1),"sendmsg", OK, 3, {{1,sizeof(struct msghdr),R|CT,SYSARG_TYPE_MSGHDR}, }},
+    {PACKNUM(47,-1),"recvmsg", OK, 3, {{1,sizeof(struct msghdr),W|CT,SYSARG_TYPE_MSGHDR}, }},
+    {PACKNUM(48,-1),"shutdown", OK, 2, },
+    {PACKNUM(49,-1),"bind", OK, 3, {{1,-2,R|CT,SYSARG_TYPE_SOCKADDR}, }},
+    {PACKNUM(50,-1),"listen", OK, 2, },
+    {PACKNUM(51,-1),"getsockname", OK, 3, {{1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},{2,sizeof(int),W}, }},
+    {PACKNUM(52,-1),"getpeername", OK, 3, {{1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},{2,sizeof(int),W}, }},
+    {PACKNUM(53,-1),"socketpair", OK, 4, {{3,2*sizeof(int),W}, }},
+    {PACKNUM(54,-1),"setsockopt", OK, 5, {{3,-4,R}, }},
+    {PACKNUM(55,-1),"getsockopt", OK, 5, {{3,-4,WI},{4,sizeof(socklen_t),W}, }},
     {PACKNUM(64,-1),"semget", UNKNOWN, 0, },
     {PACKNUM(65,-1),"semop", UNKNOWN, 0, },
     {PACKNUM(66,-1),"semctl", UNKNOWN, 0, },
@@ -700,12 +703,13 @@ syscall_info_t syscall_info[] = {
     {PACKNUM(220,-1),"semtimedop", UNKNOWN, 0, },
     {PACKNUM(236,-1),"vserver", UNKNOWN, 0, },
     {PACKNUM(262,-1),"newfstatat", UNKNOWN, 0, },
-    {PACKNUM(288,-1),"paccept", UNKNOWN, 0, },
+    {PACKNUM(288,-1),"paccept", OK, 4, {{1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},{2,sizeof(int),W}, }}, /* == accept4 */
 };
 #undef OK
 #undef UNKNOWN
 #undef W
 #undef R
+#undef WI
 #undef CT
 #undef CSTRING
 #undef RET
@@ -837,6 +841,10 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
         check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
     }
 }
+
+/***************************************************************************
+ * PER-SYSCALL HANDLING
+ */
 
 static void
 handle_clone(void *drcontext, dr_mcontext_t *mc)
@@ -1672,16 +1680,28 @@ handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 #undef MARK_WRITE
 }
 
-#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
 /* struct sockaddr is large but the meaningful portions vary by family */
+/* it's up to the caller to check the whole struct for addressability on writes */
 static void
-check_sockaddr(byte *ptr, socklen_t socklen, uint memcheck_flags, dr_mcontext_t *mc,
-               const char *id)
+check_sockaddr(cls_syscall_t *pt, byte *ptr, socklen_t socklen, uint memcheck_flags,
+               dr_mcontext_t *mc, const char *id, int sysnum)
 {
     struct sockaddr *sa = (struct sockaddr *) ptr;
     sa_family_t family;
+
+    /* If not enough space kernel writes space needed, so we need to adjust
+     * to the passed-in size by storing it in pre-syscall.
+     */
+    if (TEST(MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
+        store_extra_info(pt, EXTRA_INFO_SOCKADDR, socklen);
+    } else if (TEST(MEMREF_WRITE, memcheck_flags)) {
+        socklen_t pre_len = (socklen_t) release_extra_info(pt, EXTRA_INFO_SOCKADDR);
+        if (socklen > pre_len)
+            socklen = pre_len;
+    }    
+
     if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sa->sa_family, sizeof(sa->sa_family), mc, id);
     }
     if (!safe_read(&sa->sa_family, sizeof(family), &family))
@@ -1692,36 +1712,36 @@ check_sockaddr(byte *ptr, socklen_t socklen, uint memcheck_flags, dr_mcontext_t 
         struct sockaddr_un *sun = (struct sockaddr_un *) sa;
         size_t len = safe_strnlen(sun->sun_path, (socklen < sizeof(*sun)) ?
                                   socklen : sizeof(*sun)) + 1;
-        check_sysmem(memcheck_flags, SYS_socketcall, (app_pc) sun->sun_path, len, mc, id);
+        check_sysmem(memcheck_flags, sysnum, (app_pc) sun->sun_path, len, mc, id);
         break;
     }
     case AF_INET: {
         struct sockaddr_in *sin = (struct sockaddr_in *) sa;
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin->sin_port, sizeof(sin->sin_port), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), mc, id);
         break;
     }
     case AF_INET6: {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id), mc, id);
         break;
     }
     case AF_NETLINK: {
         struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &snl->nl_pad, sizeof(snl->nl_pad), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &snl->nl_pid, sizeof(snl->nl_pid), mc, id);
-        check_sysmem(memcheck_flags, SYS_socketcall,
+        check_sysmem(memcheck_flags, sysnum,
                      (app_pc) &snl->nl_groups, sizeof(snl->nl_groups), mc, id);
         break;
     }
@@ -1766,6 +1786,101 @@ check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
     }
 }
 
+/* checks entire struct so caller need do nothing */
+static void
+check_msghdr(void *drcontext, cls_syscall_t *pt, byte *ptr, size_t len,
+             uint memcheck_flags, dr_mcontext_t *mc, int sysnum)
+{
+    bool sendmsg = TEST(MEMREF_CHECK_DEFINEDNESS, memcheck_flags); /* else, recvmsg */
+    struct msghdr *msg = (struct msghdr *) ptr;
+    byte *ptr1, *ptr2;
+    size_t val_socklen;
+    if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
+        /* pre-syscall */
+        size_t len = sendmsg ? sizeof(struct msghdr) :
+            /* msg_flags is an out param */
+            offsetof(struct msghdr, msg_flags);
+        LOG(3, "\tmsg="PFX", name="PFX", iov="PFX", control="PFX"\n",
+            msg, msg->msg_name, msg->msg_iov, msg->msg_control);/*unsafe reads*/
+        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
+                     (app_pc)msg, len, mc,
+                     sendmsg ? "sendmsg msg" : "recvmsg msg");
+        if (!sendmsg) {
+            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
+                         (app_pc)&msg->msg_flags, sizeof(msg->msg_flags), mc,
+                         "recvmsg msg_flags");
+        }
+        if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
+            safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
+            ptr2 != NULL) {
+            if (sendmsg) {
+                check_sockaddr(pt, ptr2, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
+                               "sendmsg addr", sysnum);
+            } else {
+                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
+                             ptr2, val_socklen, mc, "recvmsg addr");
+            }
+        }
+        if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &ptr1) &&
+            safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
+            ptr1 != NULL) {
+            check_iov((struct iovec *) ptr1, len, 0,
+                      memcheck_flags, sysnum, mc,
+                      sendmsg ? "sendmsg iov" : "recvmsg iov");
+        }
+        if (safe_read(&msg->msg_control, sizeof(msg->msg_control), &ptr2) &&
+            safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen),
+                      &val_socklen)) {
+            store_extra_info(pt, EXTRA_INFO_MSG_CONTROL, (ptr_int_t) ptr2);
+            store_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN, val_socklen);
+            if (ptr2 != NULL) {
+                check_sysmem(memcheck_flags, sysnum, ptr2, val_socklen, mc,
+                             sendmsg ? "sendmsg msg_control" : "recvmsg msg_control");
+            }
+        } else {
+            store_extra_info(pt, EXTRA_INFO_MSG_CONTROL, 0);
+            store_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN, 0);
+        }
+    } else {
+        /* post-syscall: thus must be recvmsg */
+        ptr_int_t result = dr_syscall_get_result(drcontext);
+        struct iovec *iov;
+        size_t len;
+        /* we saved this in pre-syscall */
+        void *pre_control = (void *) release_extra_info(pt, EXTRA_INFO_MSG_CONTROL);
+        size_t pre_controllen = (size_t) release_extra_info[EXTRA_INFO_MSG_CONTROLLEN);
+        ASSERT(!sendmsg, "logic error"); /* currently axiomatic but just in case */
+        check_sysmem(MEMREF_WRITE, sysnum, (app_pc)&msg->msg_flags,
+                     sizeof(msg->msg_flags), mc, "recvmsg msg_flags");
+        if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &iov) &&
+            safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
+            iov != NULL) {
+            check_iov(iov, len, result, MEMREF_WRITE, sysnum, mc, "recvmsg iov");
+        }
+        if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
+            safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
+            ptr2 != NULL) {
+            check_sockaddr(pt, (app_pc)ptr2, val_socklen, MEMREF_WRITE, mc,
+                           "recvmsg addr", sysnum);
+        }
+        /* re-read to see size returned by kernel */
+        if (safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen), &val_socklen)) {
+            /* Not sure what kernel does on truncation so being safe */
+            size_t len = (val_socklen <= pre_controllen) ? val_socklen : pre_controllen;
+            check_sysmem(MEMREF_WRITE, sysnum,
+                         (app_pc)&msg->msg_controllen, sizeof(msg->msg_controllen),
+                         mc, "recvmsg msg_controllen");
+            if (pre_control != NULL && len > 0) {
+                check_sysmem(MEMREF_WRITE, sysnum,
+                             (app_pc)pt->sysarg[3]/*msg_control*/, len, mc,
+                             "recvmsg msg_control");
+            } else
+                ASSERT(len == 0, "msg w/ no data can't have non-zero len!");
+        }
+    }
+}
+
+#ifndef X64 /* XXX i#1013: for mixed-mode we'll need to indirect SYS_socketcall, etc. */
 static void
 handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 {
@@ -1805,7 +1920,8 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* whole thing should be addressable, but only part must be defined */
             check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
                          ptr1, val_socklen, mc, id);
-            check_sockaddr(ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc, id);
+            check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc, id,
+                           SYS_socketcall);
         }
         break;
     case SYS_SHUTDOWN:
@@ -1821,9 +1937,7 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
         id = (id == NULL) ? "getsockname" : id;
     case SYS_GETPEERNAME:
         id = (id == NULL) ? "getpeername" : id;
-#if 0 /* not in my defines */
     case SYS_ACCEPT4:
-#endif
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
                      (app_pc) arg, 3*sizeof(ptr_uint_t), mc, id);
         if (safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
@@ -1889,8 +2003,8 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
                          ptr1, val_socklen, mc, 
                          (request == SYS_SENDTO) ? "sendto addr" : "recvfrom addr");
             if (request == SYS_SENDTO) {
-                check_sockaddr(ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
-                               "sendto addrlen");
+                check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
+                               "sendto addrlen", SYS_socketcall);
             }
         }
         break;
@@ -1925,48 +2039,10 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
                      (app_pc) arg, 3*sizeof(ptr_uint_t), mc,
                      (request == SYS_SENDMSG) ? "sendmsg args" : "recvmsg args");
         if (safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
-            size_t len = (request == SYS_SENDMSG) ? sizeof(struct msghdr) :
-                /* msg_flags is an out param */
-                offsetof(struct msghdr, msg_flags);
-            struct msghdr *msg = (struct msghdr *) ptr1;
-            LOG(3, "\tmsg="PFX", name="PFX", iov="PFX", control="PFX"\n",
-                msg, msg->msg_name, msg->msg_iov, msg->msg_control);/*unsafe reads*/
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                         (app_pc)msg, len, mc,
-                         (request == SYS_SENDMSG) ? "sendmsg msg" : "recvmsg msg");
-            pt->sysarg[2] = (ptr_int_t) msg;
-            if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
-                safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
-                ptr2 != NULL) {
-                if (request == SYS_SENDMSG) {
-                    check_sockaddr(ptr2, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
-                                   "sendmsg addr");
-                } else {
-                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                                 ptr2, val_socklen, mc, "recvmsg addr");
-                }
-            }
-            if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &ptr1) &&
-                safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
-                ptr1 != NULL) {
-                check_iov((struct iovec *) ptr1, len, 0,
-                          (request == SYS_SENDMSG) ? MEMREF_CHECK_DEFINEDNESS :
-                          MEMREF_CHECK_ADDRESSABLE, SYS_socketcall, mc,
-                          (request == SYS_SENDMSG) ? "sendmsg iov" : "recvmsg iov");
-            }
-            if (safe_read(&msg->msg_control, sizeof(msg->msg_control), &ptr2) &&
-                safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen),
-                          &val_socklen)) {
-                pt->sysarg[3] = (ptr_int_t) ptr2;
-                pt->sysarg[4] = val_socklen;
-                if (ptr2 != NULL) {
-                    check_sysmem((request == SYS_SENDMSG) ? MEMREF_CHECK_DEFINEDNESS :
-                                 MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                                 ptr2, val_socklen, mc,
-                                 (request == SYS_SENDMSG) ? "sendmsg msg_control" :
-                                 "recvmsg msg_control");
-                }
-            }
+            pt->sysarg[2] = (ptr_int_t) ptr1; /* struct msghdr* */
+            check_msghdr(drcontext, pt, ptr1, sizeof(struct msghdr),
+                         (request == SYS_SENDMSG) ? MEMREF_CHECK_DEFINEDNESS :
+                         MEMREF_CHECK_ADDRESSABLE, mc, SYS_socketcall);
         }
         break;
     default:
@@ -2002,9 +2078,8 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
-            /* If not enough space kernel writes space needed */
-            size_t len = (val_socklen <= pt->sysarg[3]) ? val_socklen : pt->sysarg[3];
-            check_sockaddr((app_pc)pt->sysarg[2], len, MEMREF_WRITE, mc, id);
+            check_sockaddr(pt, (app_pc)pt->sysarg[2], val_socklen, MEMREF_WRITE, mc, id,
+                           SYS_socketcall);
         }
         break;
     case SYS_RECV:
@@ -2030,9 +2105,8 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
-            /* If not enough space kernel writes space needed */
-            size_t len = (val_socklen <= pt->sysarg[3]) ? val_socklen : pt->sysarg[3];
-            check_sockaddr((app_pc)pt->sysarg[2], len, MEMREF_WRITE, mc, "recvfrom addr");
+            check_sockaddr(pt, (app_pc)pt->sysarg[2], val_socklen, MEMREF_WRITE, mc,
+                           "recvfrom addr", SYS_socketcall);
         }
         break;
     case SYS_GETSOCKOPT:
@@ -2047,39 +2121,9 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
         }
         break;
     case SYS_RECVMSG: {
-        struct msghdr *msg = (struct msghdr *) pt->sysarg[2];
-        if (msg != NULL) { /* if NULL, error on safe_read in pre */
-            struct iovec *iov;
-            size_t len;
-            check_sysmem(MEMREF_WRITE, SYS_socketcall, (app_pc)&msg->msg_flags,
-                         sizeof(msg->msg_flags), mc, "recvmsg msg_flags");
-            if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &iov) &&
-                safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
-                iov != NULL) {
-                check_iov(iov, len, result, MEMREF_WRITE, SYS_socketcall, mc,
-                          "recvmsg iov");
-            }
-            if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
-                safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
-                ptr2 != NULL) {
-                check_sockaddr((app_pc)ptr2, val_socklen, MEMREF_WRITE, mc,
-                               "recvfrom addr");
-            }
-            /* re-read to see size returned by kernel */
-            if (safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen),
-                          &val_socklen)) {
-                /* Not sure what kernel does on truncation so being safe */
-                size_t len = (val_socklen <= pt->sysarg[4]) ? val_socklen : pt->sysarg[4];
-                check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                             (app_pc)&msg->msg_controllen, sizeof(msg->msg_controllen),
-                             mc, "recvmsg msg_controllen");
-                if (pt->sysarg[3]/*msg_control*/ != 0 && len > 0) {
-                    check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                                 (app_pc)pt->sysarg[3]/*msg_control*/, len, mc,
-                                 "recvmsg msg_control");
-                } else
-                    ASSERT(len == 0, "msg w/ no data can't have non-zero len!");
-            }
+        if (pt->sysarg[2] != 0) { /* if 0, error on safe_read in pre */
+            check_msghdr(drcontext, pt, (byte *) pt->sysarg[2], sizeof(struct msghdr),
+                         MEMREF_WRITE, mc, SYS_socketcall);
         }
         break;
     }
@@ -2351,7 +2395,7 @@ handle_post_ipc(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
         break;
     }
 }
-#endif
+#endif /* !X64 */
 
 /* handles both select and pselect6 */
 static void
@@ -2667,9 +2711,10 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     case SYS_ioctl: 
         handle_pre_ioctl(drcontext, &mc); 
         break;
-#ifndef X64 /* FIXME i#889: NYI for 64-bit yet */
+#ifndef X64
+    /* XXX i#1013: for mixed-mode we'll need is_sysnum() for access to these */
     case SYS_socketcall: 
-        handle_pre_socketcall(drcontext, pt, &mc); 
+        handle_pre_socketcall(drcontext, pt, &mc);
         break;
     case SYS_ipc: 
         handle_pre_ipc(drcontext, &mc); 
@@ -2789,6 +2834,10 @@ os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
     };
 }
 
+/***************************************************************************
+ * SHADOW PER-ARG-TYPE HANDLING
+ */
+
 static bool
 handle_cstring_access(bool pre, int sysnum, dr_mcontext_t *mc,
                       uint arg_num,
@@ -2799,6 +2848,33 @@ handle_cstring_access(bool pre, int sysnum, dr_mcontext_t *mc,
                           NULL,
                           /* let normal check ensure full size is addressable */
                           false);
+}
+
+static bool
+handle_sockaddr_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                       uint arg_num, const syscall_arg_t *arg_info,
+                       app_pc start, uint size)
+{
+    void *drcontext = dr_get_current_drcontext();
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    check_sockaddr(pt, start, (socklen_t) size, check_type, mc, NULL, sysnum);
+    if (check_type == MEMREF_CHECK_DEFINEDNESS)
+        return true; /* whole struct not defined */
+    else
+        return false; /* do check whole struct for addressability */
+}
+
+static bool
+handle_msghdr_access(bool pre, int sysnum, dr_mcontext_t *mc,
+                       uint arg_num, const syscall_arg_t *arg_info,
+                       app_pc start, uint size)
+{
+    void *drcontext = dr_get_current_drcontext();
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
+    check_msghdr(drcontext, pt, start, (socklen_t) size, check_type, mc, sysnum);
+    return true; /* check_msghdr checks whole struct */
 }
 
 bool
@@ -2814,6 +2890,12 @@ os_handle_syscall_arg_access(bool pre,
     case SYSARG_TYPE_CSTRING:
         return handle_cstring_access(pre, sysnum, mc, arg_num,
                                      arg_info, start, size);
+    case SYSARG_TYPE_SOCKADDR:
+        return handle_sockaddr_access(pre, sysnum, mc, arg_num,
+                                      arg_info, start, size);
+    case SYSARG_TYPE_MSGHDR:
+        return handle_msghdr_access(pre, sysnum, mc, arg_num,
+                                    arg_info, start, size);
     }
     return false;
 }
@@ -2835,6 +2917,10 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
     return os_handle_syscall_arg_access(false/*!pre*/, sysnum, mc, arg_num,
                                         arg_info, start, size);
 }
+
+/***************************************************************************
+ * TOP_LEVEL
+ */
 
 bool
 os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
