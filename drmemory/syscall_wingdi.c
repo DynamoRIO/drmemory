@@ -139,7 +139,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserBuildNameList", OK, 4, {{2,-1,W,}, {2,-3,WI,}, {3,sizeof(ULONG),W,}, }},
     {0,"NtUserBuildPropList", OK, 4, {{1,-2,W,}, {1,-3,WI,}, {3,sizeof(DWORD),W,}, }},
     {0,"NtUserCalcMenuBar", OK, 5, },
-    /* FIXME i#389: NtUserCall* take in a code and perform a variety of tasks */
+    /* i#389: NtUserCall* take in a code and perform a variety of tasks */
     {0,"NtUserCallHwnd", OK|SYSINFO_SECONDARY_TABLE, 2, {{1,}}, (int*)syscall_usercall_info},
     {0,"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, 2, {{1,}}, (int*)syscall_usercall_info},
     {0,"NtUserCallHwndOpt", OK|SYSINFO_SECONDARY_TABLE, 2, {{1,}}, (int*)syscall_usercall_info},

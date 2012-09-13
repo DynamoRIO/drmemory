@@ -150,6 +150,7 @@ enum {
     /* These are Linux-specific */
     SYSARG_TYPE_SOCKADDR                = 17,
     SYSARG_TYPE_MSGHDR                  = 18,
+    SYSARG_TYPE_MSGBUF                  = 19,
 };
 
 /* We encode the actual size of a write, if it can differ from the
@@ -232,8 +233,6 @@ typedef struct _syscall_info_t {
      */
     int *num_out;
 } syscall_info_t;
-
-extern syscall_info_t syscall_info[];
 
 #define SYSARG_CHECK_TYPE(flags, pre) \
     ((pre) ? (TEST(SYSARG_READ, (flags)) ? \
