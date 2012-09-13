@@ -92,7 +92,7 @@ TEST(StringTests, strcasecmp) {
     res = strcasecmp(s, "ab");
     ASSERT_EQ(res, 0);
     res = strcasecmp(s, "abc");
-    ASSERT_EQ(res, -1);
+    ASSERT_LT(res, 0);
     delete [] s;
 
     // Test locale-specific tolower()
@@ -130,7 +130,7 @@ TEST(StringTests, strncasecmp) {
     res = strncasecmp(s, "ab", 5);
     ASSERT_EQ(res, 0);
     res = strncasecmp(s, "abc", 3);
-    ASSERT_EQ(res, -1);
+    ASSERT_LT(res, 0);
     delete [] s;
 }
 
