@@ -88,7 +88,7 @@ test_basic()
     /* on xp64x2cpu vm, w/ VS2005 SP1, heap assert fires: detects
      * the overflow if do a[3], so doing a[4], which is not detected.
      */
-    a[4] = 12;
+    a[4] = a[4];
     if (setjmp(mark) == 0)
         delete a; /* also a mismatch */
 }

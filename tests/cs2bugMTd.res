@@ -21,7 +21,7 @@
 #
 : UNINITIALIZED READ
 cs2bug.cpp:83
-: UNADDRESSABLE ACCESS: writing 4 byte(s)
+: UNADDRESSABLE ACCESS: reading 4 byte(s)
 cs2bug.cpp:91
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
 cs2bug.cpp:93
