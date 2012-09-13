@@ -110,10 +110,12 @@ TEST(StringTests, strcasecmp) {
 
     ASSERT_EQ(tolower('\xd6'), tolower('\xf6'));
 
+# ifdef TOOL_DR_MEMORY
     // XXX: this fails natively!  Presumably b/c the ifunc for the optimized
     // strcasecmp hardcodes the locale set at startup.
     res = strcasecmp("\xd6", "\xf6"); // 0xd6==0n214=Ö, 0xf6=0n246=ö
     ASSERT_EQ(res, 0);
+# endif
     locale = setlocale(LC_ALL, prior_locale);
     ASSERT_STREQ(locale, prior_locale);
 }

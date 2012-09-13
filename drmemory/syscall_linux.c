@@ -1850,7 +1850,7 @@ check_msghdr(void *drcontext, cls_syscall_t *pt, byte *ptr, size_t len,
         size_t len;
         /* we saved this in pre-syscall */
         void *pre_control = (void *) release_extra_info(pt, EXTRA_INFO_MSG_CONTROL);
-        size_t pre_controllen = (size_t) release_extra_info[EXTRA_INFO_MSG_CONTROLLEN);
+        size_t pre_controllen = (size_t) release_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN);
         ASSERT(!sendmsg, "logic error"); /* currently axiomatic but just in case */
         check_sysmem(MEMREF_WRITE, sysnum, (app_pc)&msg->msg_flags,
                      sizeof(msg->msg_flags), mc, "recvmsg msg_flags");
@@ -1951,8 +1951,8 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             pt->sysarg[2] = (ptr_int_t) ptr1;
             pt->sysarg[3] = val_socklen;
             if (ptr1 != NULL) { /* ok to be NULL for SYS_ACCEPT at least */
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                             ptr1, val_socklen, mc, id);
+                check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_ADDRESSABLE, mc, id,
+                               SYS_socketcall);
             }
         }
         break;
@@ -2073,9 +2073,7 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
         id = (id == NULL) ? "getsockname" : id;
     case SYS_GETPEERNAME:
         id = (id == NULL) ? "getpeername" : id;
-#if 0 /* not in my defines */
     case SYS_ACCEPT4:
-#endif
         if (pt->sysarg[3]/*pre-addrlen*/ > 0 && pt->sysarg[2]/*sockaddr*/ != 0 &&
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
