@@ -104,6 +104,7 @@ endif (NOT PERL)
 # select(undef, undef, undef, X) sleeps for X seconds where X can be non-int. 
 set(SLEEP_SHORT ${PERL} -e "select(undef, undef, undef, 0.1)")
 set(TIMEOUT_SHORT "100")  # *0.1 = 10 seconds
+set(TIMEOUT_SHORT_APP "200")  # *0.1 = 20 seconds
 set(SLEEP_LONG ${PERL} -e "select(undef, undef, undef, 2)")
 set(TIMEOUT_APP "120")
 
@@ -158,7 +159,7 @@ if ("${cmd}" MATCHES "run_in_bg")
     execute_process(COMMAND ${SLEEP_SHORT})
     file(READ "${out}" output)
     math(EXPR iters "${iters} + 1")
-    if ("${iters}" STREQUAL "${TIMEOUT_SHORT}")
+    if ("${iters}" STREQUAL "${TIMEOUT_SHORT_APP}")
       message(FATAL_ERROR "Timed out waiting for app to start")
     endif ()
   endwhile()
@@ -253,7 +254,8 @@ if ("${cmd}" MATCHES "run_in_bg")
     # combine out and err
     set(kill_err "${kill_out}${kill_err}")
   else (UNIX)
-    execute_process(COMMAND "${toolbindir}/DRkill.exe" -exe "${exename}"
+    # we can't kill by name b/c we have multiple tests using infloop.exe (i#1024)
+    execute_process(COMMAND "${toolbindir}/DRkill.exe" -pid "${pid}"
       RESULT_VARIABLE kill_result
       ERROR_VARIABLE kill_err
       OUTPUT_QUIET) # prints "killing process ..."
