@@ -59,10 +59,6 @@ static uint op_callstack_dump_stack;
 
 #define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
 
-/* PR 454536: to avoid races we read a page all at once */
-static void *page_buf_lock;
-static char page_buf[PAGE_SIZE];
-
 #ifdef WINDOWS
 # define FP_PREFIX ""
 #else
@@ -81,6 +77,7 @@ uint cstack_is_retaddr_unreadable;
 typedef struct _tls_callstack_t {
     char *errbuf; /* buffer for atomic writes to global logfile */
     size_t errbufsz;
+    byte *page_buf; /* buffer for app stack safe read */
     app_pc stack_lowest_frame; /* optimization for recording callstacks */
 } tls_callstack_t;
 
@@ -310,7 +307,6 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
 #ifdef DEBUG
     op_callstack_dump_stack = callstack_dump_stack;
 #endif
-    page_buf_lock = dr_mutex_create();
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
     modname_table_initialized = true;
@@ -326,8 +322,6 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
 void
 callstack_exit(void)
 {
-    dr_mutex_destroy(page_buf_lock);
-
     hashtable_delete(&modname_table);
 
     dr_mutex_lock(modtree_lock);
@@ -354,6 +348,8 @@ callstack_thread_init(void *drcontext)
      */
     pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size() * 2;
     pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_CALLSTACK);
+    /* We take the space hit to avoid serializing all mallocs just for callstacks */
+    pt->page_buf = (byte *) thread_alloc(drcontext, PAGE_SIZE, HEAPSTAT_CALLSTACK);
 #ifdef WINDOWS
     if (get_TEB() != NULL) {
         pt->stack_lowest_frame = get_TEB()->StackBase;
@@ -368,6 +364,7 @@ callstack_thread_exit(void *drcontext)
     tls_callstack_t *pt = (tls_callstack_t *)
         drmgr_get_tls_field(drcontext, tls_idx_callstack);
     thread_free(drcontext, (void *) pt->errbuf, pt->errbufsz, HEAPSTAT_CALLSTACK);
+    thread_free(drcontext, (void *) pt->page_buf, PAGE_SIZE, HEAPSTAT_CALLSTACK);
     drmgr_set_tls_field(drcontext, tls_idx_callstack, NULL);
     thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
@@ -890,10 +887,11 @@ is_retaddr(byte *pc)
         return true;
 }
 
-/* caller must hold page_buf_lock */
 static app_pc
 find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
 {
+    byte *page_buf = pt->page_buf;
+    ASSERT(page_buf != NULL, "thread's page_buf is not initialized");
     /* Heuristic: scan stack for retaddr, or fp + retaddr pair */
     ASSERT(fp != NULL, "internal callstack-finding error");
     /* PR 416281: word-align fp so page assumptions hold */
@@ -957,9 +955,12 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
             /* Retrieve next page if slot1 will touch it */
             if ((app_pc)ALIGN_BACKWARD(sp + ret_offs, PAGE_SIZE) != buf_pg) {
                 buf_pg = (app_pc) ALIGN_BACKWARD(sp + ret_offs, PAGE_SIZE);
-                if (!safe_read(buf_pg, PAGE_SIZE, page_buf))
+                if (!safe_read(buf_pg, PAGE_SIZE, page_buf)) {
+                    LOG(4, "find_next_fp: returning NULL b/c couldn't read next page\n");
                     break;
+                }
             }
+            LOG(5, "find_next_fp: considering sp="PFX"\n", sp);
             if (TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) && !fp_defined)
                 continue;
             if (op_is_dword_defined != NULL &&
@@ -1019,7 +1020,8 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                 match = false;
             }
         }
-    }
+    } else
+        LOG(4, "find_next_fp: returning NULL b/c couldn't read stack page\n");
     return NULL;
 }
 
@@ -1056,10 +1058,6 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         dump_app_stack(drcontext, pt, mc, op_callstack_dump_stack,
                        (pcs == NULL ? NULL : PCS_FRAME_LOC(pcs, 0).addr));
 #endif
-
-   /* lock the buffer used by find_next_fp */
-    if (buf != NULL)
-        dr_mutex_lock(page_buf_lock);
 
     if (mc != NULL) {
         LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
@@ -1246,7 +1244,6 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     if (buf != NULL) {
         buf[bufsz-2] = '\n';
         buf[bufsz-1] = '\0';
-        dr_mutex_unlock(page_buf_lock);
     }
 }
 

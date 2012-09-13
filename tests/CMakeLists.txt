@@ -579,14 +579,9 @@ if (TOOL_DR_MEMORY)
     newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks;-callstack_max_frames;100" "" OFF "")
   endif (WIN32)
 
-  # FIXME i#657: realloc is flaky on the Windows bots.
-  set(realloc "realloc")
-  if (WIN32)
-    set(realloc "realloc_FLAKY")
-  endif ()
-  newtest(${realloc} realloc.c)
+  newtest(realloc realloc.c)
   if (UNIX)
-    target_link_libraries(${realloc} pthread)
+    target_link_libraries(realloc pthread)
   endif (UNIX)
 
   newtest(annotations annotations.c)
