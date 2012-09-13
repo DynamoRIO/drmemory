@@ -346,13 +346,13 @@ endfunction(newtest_nobuild_ex)
 
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   newtest_nobuild_ex(${test} ${exe} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    ${postprocess} "${resbase}" OFF)
+    "${postprocess}" "${resbase}" OFF)
 endfunction(newtest_nobuild)
 
 function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase)
   tobuild(${test} ${source})
   newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    ${postprocess} "${resbase}")
+    "${postprocess}" "${resbase}")
 endfunction(newtest_ex)
 
 function(newtest test source)
