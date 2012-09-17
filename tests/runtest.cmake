@@ -406,7 +406,7 @@ foreach (line ${lines})
     # line, since %ANYLINE can insert a paren at the beginning of the line.
     # FIXME PR 470723: add Dr. Heapstat-specific tests
     if (NOT TOOL_DR_HEAPSTAT OR
-        NOT "${line}" MATCHES "^~~")
+        NOT "${line}" MATCHES "~~")
       strip_trailing_newline_regex(line "${line}")
       set(msg "stderr failed to match \"${line}\"")
       # try to find what was meant to match
