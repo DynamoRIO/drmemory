@@ -1031,8 +1031,9 @@ get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
     return shadow_get_byte(get_sysparam_addr(argnum, mc));
 }
 
+/* check syscall params in pre-syscall only */
 void
-check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
+check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
 {
     /* indicate which syscall arg (i#510) */
     char idmsg[32];
@@ -1041,8 +1042,9 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
     ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
     NULL_TERMINATE_BUFFER(idmsg);
 
-    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                 get_sysparam_addr(argnum, mc), argsz, mc, idmsg);
+    check_sysmem(CHECK_UNINITS() ?
+                 MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE,
+                 sysnum, get_sysparam_addr(argnum, mc), argsz, mc, idmsg);
 }
 
 bool

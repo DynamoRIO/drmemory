@@ -3790,6 +3790,7 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 {
 #ifdef TOOL_DR_MEMORY
     uint shadow = (reg == REG_EFLAGS) ? get_shadow_eflags() : get_shadow_register(reg);
+    ASSERT(CHECK_UNINITS(), "shouldn't be called");
     if (!is_shadow_register_defined(shadow)) {
         if (!check_undefined_reg_exceptions(drcontext, loc, reg, mc, inst)) {
             /* FIXME: report which bytes within reg via container params? */

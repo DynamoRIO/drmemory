@@ -2144,10 +2144,10 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
 
     /* table entry only checked uiAction for definedness */
     if (uses_uiParam && pre)
-        check_sysparam_defined(sysnum, 1, mc, sizeof(reg_t));
+        check_sysparam(sysnum, 1, mc, sizeof(reg_t));
     if (sz > 0 || uses_pvParam) { /* pvParam is used */
         if (pre)
-            check_sysparam_defined(sysnum, 2, mc, sizeof(reg_t));
+            check_sysparam(sysnum, 2, mc, sizeof(reg_t));
         if (get && sz > 0) {
             check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum, 
                          pvParam, sz, mc, "pvParam");
@@ -2155,7 +2155,7 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, pvParam, sz, mc, "pvParam");
     }
     if (!get && pre) /* fWinIni used for all SET codes */
-        check_sysparam_defined(sysnum, 3, mc, sizeof(reg_t));
+        check_sysparam(sysnum, 3, mc, sizeof(reg_t));
 
     return true;
 }
@@ -2450,7 +2450,7 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     uint num_pump = 6;
     if (running_on_Vista_or_later()) {
         if (pre)
-            check_sysparam_defined(sysnum, 7, mc, sizeof(reg_t));
+            check_sysparam(sysnum, 7, mc, sizeof(reg_t));
         num_driver = 6;
         num_pump = 7;
     }

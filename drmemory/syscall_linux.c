@@ -812,8 +812,9 @@ get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
     }
 }
 
+/* check syscall params in pre-syscall only */
 void
-check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
+check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
 {
     void *drcontext = dr_get_current_drcontext();
     reg_id_t reg = sysparam_reg(sysnum, argnum);
@@ -834,10 +835,10 @@ check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz
         reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
-        check_sysmem(options.shadowing ? 
+        check_sysmem(CHECK_UNINITS() ?
                      MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE,
                      sysnum, (app_pc)mc->xsp, argsz, mc, idmsg);
-    } else if (options.shadowing){
+    } else if (CHECK_UNINITS()){
         app_loc_t loc;
         syscall_to_loc(&loc, sysnum, idmsg);
         check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
@@ -861,7 +862,7 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
      */
     if (TEST(CLONE_PARENT_SETTID, flags)) {
         pid_t *ptid = (pid_t *) dr_syscall_get_param(drcontext, 2);
-        check_sysparam_defined(SYS_clone, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_clone, 2, mc, sizeof(reg_t));
         if (ptid != NULL) {
             check_sysmem(MEMREF_WRITE, SYS_clone,
                          (app_pc) ptid, sizeof(*ptid), mc, NULL);
@@ -875,7 +876,7 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
         typedef struct user_desc user_desc_t;
 #endif
         user_desc_t *tls = (user_desc_t *) dr_syscall_get_param(drcontext, 3);
-        check_sysparam_defined(SYS_clone, 3, mc, sizeof(reg_t));
+        check_sysparam(SYS_clone, 3, mc, sizeof(reg_t));
         if (tls != NULL) {
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_clone,
                          (app_pc) tls, sizeof(*tls), mc, NULL);
@@ -888,7 +889,7 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
          * this address so we should complain.
          */
         pid_t *ptid = (pid_t *) dr_syscall_get_param(drcontext, 4);
-        check_sysparam_defined(SYS_clone, 4, mc, sizeof(reg_t));
+        check_sysparam(SYS_clone, 4, mc, sizeof(reg_t));
         if (ptid != NULL) {
             check_sysmem(MEMREF_WRITE, SYS_clone,
                          (app_pc) ptid, sizeof(*ptid), mc, NULL);
@@ -2174,13 +2175,13 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     /* strip out the version flag or-ed in by libc */
     cmd &= (~IPC_64);
     if (pre) {
-        check_sysparam_defined(sysnum, argnum_semid, mc, sizeof(reg_t));
-        check_sysparam_defined(sysnum, argnum_semid + 2/*cmd*/, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_semid, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_semid + 2/*cmd*/, mc, sizeof(reg_t));
     }
     switch (cmd) {
     case IPC_SET:
         if (pre) {
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (app_pc) arg.buf,
                          sizeof(struct semid_ds), mc, "semctl.IPC_SET");
         }
@@ -2188,7 +2189,7 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case IPC_STAT:
     case SEM_STAT:
         if (pre)
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) arg.buf, sizeof(struct semid_ds), mc,
                      (cmd == IPC_STAT) ? "semctl.IPC_STAT" : "semctl.SEM_STAT");
@@ -2198,7 +2199,7 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case IPC_INFO:
     case SEM_INFO:
         if (pre)
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) arg.__buf, sizeof(struct seminfo), mc,
                      (cmd == IPC_INFO) ? "semctl.IPC_INFO" : "semctl.SEM_INFO");
@@ -2207,7 +2208,7 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
         /* we must query to get the length of arg.array */
         uint semlen = ipc_sem_len(semid);
         if (pre)
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) arg.array, semlen*sizeof(short), mc, "semctl.GETALL");
         break;
@@ -2216,7 +2217,7 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
         if (pre) {
             /* we must query to get the length of arg.array */
             uint semlen = ipc_sem_len(semid);
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (app_pc) arg.array,
                          semlen*sizeof(short), mc, "semctl.SETALL");
         }
@@ -2227,12 +2228,12 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case GETPID:
     case GETVAL:
         if (pre)
-            check_sysparam_defined(sysnum, argnum_semid + 1/*semnum*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 1/*semnum*/, mc, sizeof(reg_t));
         break;
     case SETVAL:
         if (pre) {
-            check_sysparam_defined(sysnum, argnum_semid + 1/*semnun*/, mc, sizeof(reg_t));
-            check_sysparam_defined(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 1/*semnun*/, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
         }
         break;
     default:
@@ -2256,15 +2257,15 @@ handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     if (!pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
     if (pre) {
-        check_sysparam_defined(sysnum, argnum_msqid, mc, sizeof(reg_t));
-        check_sysparam_defined(sysnum, argnum_cmd, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_msqid, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_cmd, mc, sizeof(reg_t));
     }
     switch (cmd) {
     case IPC_INFO:
     case MSG_INFO: {
         struct msginfo *buf = (struct msginfo *) ptr;
         if (pre)
-            check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
         /* not all fields are set but we simplify */
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) buf, sizeof(*buf), mc,
@@ -2275,7 +2276,7 @@ handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case MSG_STAT: {
         struct msqid_ds *buf = (struct msqid_ds *) ptr;
         if (pre)
-            check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) buf, sizeof(*buf), mc,
                      (cmd == IPC_STAT) ?  "msgctl ipc_stat" : "msgctl msg_stat");
@@ -2285,7 +2286,7 @@ handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
         if (pre) {
             struct msqid_ds *buf = (struct msqid_ds *) ptr;
             if (pre)
-                check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+                check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
             /* not all fields are read but we simplify */
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                          (app_pc) buf, sizeof(*buf), mc, "msgctl ipc_set");
@@ -2315,15 +2316,15 @@ handle_shmctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     if (!pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
     if (pre) {
-        check_sysparam_defined(sysnum, argnum_shmid, mc, sizeof(reg_t));
-        check_sysparam_defined(sysnum, argnum_cmd, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_shmid, mc, sizeof(reg_t));
+        check_sysparam(sysnum, argnum_cmd, mc, sizeof(reg_t));
     }
     switch (cmd) {
     case IPC_INFO:
     case SHM_INFO: {
         struct shminfo *buf = (struct shminfo *) ptr;
         if (pre)
-            check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
         /* not all fields are set but we simplify */
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) buf, sizeof(*buf), mc,  "shmctl ipc_info");
@@ -2333,7 +2334,7 @@ handle_shmctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case SHM_STAT: {
         struct shmid_ds *buf = (struct shmid_ds *) ptr;
         if (pre)
-            check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
                      (app_pc) buf, sizeof(*buf), mc,
                      (cmd == IPC_STAT) ? "shmctl ipc_stat" : "shmctl shm_stat");
@@ -2342,7 +2343,7 @@ handle_shmctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case IPC_SET: {
         struct shmid_ds *buf = (struct shmid_ds *) ptr;
         if (pre)
-            check_sysparam_defined(sysnum, argnum_buf, mc, sizeof(reg_t));
+            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
         /* not all fields are read but we simplify */
         check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_CHECK_DEFINEDNESS, sysnum,
                      (app_pc) buf, sizeof(*buf), mc, "shmctl ipc_set");
@@ -2395,22 +2396,22 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
         /* int semtimedop(int semid, struct sembuf *sops, unsigned nsops,
          *                struct timespec *timeout)
          */
-        check_sysparam_defined(SYS_ipc, 5, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 5, mc, sizeof(reg_t));
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_ipc,
                      (app_pc) arg5, sizeof(struct timespec), mc, "semtimedop");
         /* fall-through */
     case SEMOP:
         /* int semop(int semid, struct sembuf *sops, unsigned nsops) */
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 4, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
         check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_ipc,
                      (app_pc) ptr, arg2*sizeof(struct sembuf), mc, "semop");
         break;
     case SEMGET: /* nothing */
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 3, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t));
         break;
     case SEMCTL: {
         /* int semctl(int semid, int semnum, int cmd, ...) */
@@ -2419,10 +2420,10 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
     }
     case MSGSND: {
         /* int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg) */
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
-        check_sysparam_defined(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
-        check_sysparam_defined(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
+        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
+        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
         check_msgbuf(true/*pre*/, drcontext, (byte *) ptr, arg2,
                      MEMREF_CHECK_DEFINEDNESS, mc, SYS_ipc);
         break;
@@ -2431,37 +2432,37 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
         /* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp,
          *                int msgflg)
          */
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
-        check_sysparam_defined(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
-        check_sysparam_defined(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
-        check_sysparam_defined(SYS_ipc, 5, mc, sizeof(reg_t)); /* msgtyp */
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
+        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
+        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
+        check_sysparam(SYS_ipc, 5, mc, sizeof(reg_t)); /* msgtyp */
         check_msgbuf(true/*pre*/, drcontext, (byte *) ptr, arg2,
                      MEMREF_CHECK_ADDRESSABLE, mc, SYS_ipc);
         break;
     }
     case MSGGET:
         /* int msgget(key_t key, int msgflg) */
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
         break;
     case MSGCTL: {
         handle_msgctl(true/*pre*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
         break;
     }
     case SHMAT:
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 4, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
         /* FIXME: this should be treated as a new mmap by DR? */
         break;
     case SHMDT:
-        check_sysparam_defined(SYS_ipc, 4, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
         break;
     case SHMGET:
-        check_sysparam_defined(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam_defined(SYS_ipc, 3, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
+        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t));
         break;
     case SHMCTL: {
         handle_shmctl(true/*pre*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
@@ -2617,7 +2618,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     case PR_SET_TIMERSLACK:
     case PR_CAPBSET_READ:
     case PR_CAPBSET_DROP:
-        check_sysparam_defined(SYS_prctl, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
         break;
     case PR_GET_PDEATHSIG:
     case PR_GET_UNALIGN:
@@ -2625,7 +2626,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     case PR_GET_FPEXC:
     case PR_GET_TSC:
     case PR_GET_ENDIAN:
-        check_sysparam_defined(SYS_prctl, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
         check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_prctl,
                      (app_pc) arg1, sizeof(int), mc, NULL);
         break;
@@ -2639,7 +2640,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
         break;
     case PR_SET_NAME:
     case PR_GET_NAME:
-        check_sysparam_defined(SYS_prctl, 1, mc, sizeof(reg_t));
+        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
         check_sysmem((request == PR_GET_NAME) ? MEMREF_CHECK_ADDRESSABLE :
                      MEMREF_CHECK_DEFINEDNESS, SYS_prctl,
                      (app_pc) arg1, PRCTL_NAME_SZ, mc, NULL);
@@ -2780,7 +2781,7 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
         /* 5th arg is conditionally valid */
         int flags = (int) dr_syscall_get_param(drcontext, 3);
         if (TEST(MREMAP_FIXED, flags))
-            check_sysparam_defined(sysnum, 4, &mc, sizeof(reg_t));
+            check_sysparam(sysnum, 4, &mc, sizeof(reg_t));
         break;
     }
     case SYS_open: {
@@ -2790,7 +2791,7 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
          */
         int flags = (int) dr_syscall_get_param(drcontext, 1);
         if (TEST(O_CREAT, flags))
-            check_sysparam_defined(sysnum, 2, &mc, sizeof(reg_t));
+            check_sysparam(sysnum, 2, &mc, sizeof(reg_t));
         break;
     }
     case SYS_fcntl:
@@ -2812,7 +2813,7 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
             && cmd != F_GETSIG && cmd != F_GETLEASE
 #endif
             )
-            check_sysparam_defined(sysnum, 2, &mc, sizeof(reg_t));
+            check_sysparam(sysnum, 2, &mc, sizeof(reg_t));
         }
         break;
     case SYS_ioctl: 
@@ -2892,15 +2893,15 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
         } else if (op == FUTEX_WAIT) {
             struct timespec *timeout = (struct timespec *)
                 dr_syscall_get_param(drcontext, 3);
-            check_sysparam_defined(sysnum, 3, &mc, sizeof(reg_t));
+            check_sysparam(sysnum, 3, &mc, sizeof(reg_t));
             if (timeout != NULL) {
                 check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                              (app_pc) timeout, sizeof(*timeout), &mc, NULL);
             }
         } else if (op == FUTEX_REQUEUE || op == FUTEX_CMP_REQUEUE) {
-            check_sysparam_defined(sysnum, 4, &mc, sizeof(reg_t));
+            check_sysparam(sysnum, 4, &mc, sizeof(reg_t));
             if (op == FUTEX_CMP_REQUEUE)
-                check_sysparam_defined(sysnum, 5, &mc, sizeof(reg_t));
+                check_sysparam(sysnum, 5, &mc, sizeof(reg_t));
             check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
                          (app_pc) dr_syscall_get_param(drcontext, 4),
                          sizeof(uint), &mc, NULL);

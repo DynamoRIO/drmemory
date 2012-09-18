@@ -234,14 +234,22 @@ auxlib_known_syscall(int sysnum)
     return (auxlib_syscall_name(sysnum) != NULL);
 }
 
+/* checking syscall param in pre-syscall only.
+ * params in memory slots have to be treated as normal param handling
+ * and won't be handled by this routine.
+ */
 static void
-auxlib_check_sysparam_defined(void *drcontext, uint sysnum, uint argnum,
-                              dr_mcontext_t *mc, size_t argsz)
+auxlib_check_sysparam(void *drcontext, uint sysnum, uint argnum,
+                      dr_mcontext_t *mc, size_t argsz)
 {
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    cls_syscall_t *cpt;
     app_loc_t loc;
-    reg_id_t reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
+    reg_id_t reg;
+    if (CHECK_UNINITS())
+        return;
     ASSERT(options.shadowing, "shadowing disabled");
+    cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
     syscall_to_loc(&loc, sysnum, NULL);
     check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
 }
@@ -299,7 +307,7 @@ auxlib_shadow_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         return true;
     ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
     for (i=0; i<sysauxlib_num_reg_params(drcontext, cpt->sysaux_params); i++)
-        auxlib_check_sysparam_defined(drcontext, sysnum, i, mc, sizeof(reg_t));
+        auxlib_check_sysparam(drcontext, sysnum, i, mc, sizeof(reg_t));
     for (i=0; i<sysauxlib_num_mem_params(drcontext, cpt->sysaux_params); i++) {
         byte *start;
         size_t len_in, len_out;
@@ -815,7 +823,7 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
             /* BOOLEAN is only 1 byte so ok if only lsb is defined */
             argsz = 1;
         }
-        check_sysparam_defined(sysnum, i, mc, argsz);
+        check_sysparam(sysnum, i, mc, argsz);
     }
     for (i=0; i<num_args; i++) {
         LOG(SYSCALL_VERBOSE, "\t  pre considering arg %d %d %x\n", sysinfo->arg[i].param,

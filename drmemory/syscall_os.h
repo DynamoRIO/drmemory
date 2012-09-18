@@ -278,8 +278,9 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded);
 uint
 get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc);
 
+/* check syscall param at pre-syscall only */
 void
-check_sysparam_defined(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz);
+check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz);
 
 /* for tasks unrelated to shadowing that are common to all tools */
 bool

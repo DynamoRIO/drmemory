@@ -73,5 +73,9 @@ usage_error(const char *msg, const char *submsg);
 # define ZERO_STACK() (options.zero_stack && options.check_leaks)
 #endif
 #define INSTRUMENT_MEMREFS() (options.shadowing || options.pattern != 0)
+/* this macro is added later and is not the only way to control uninit checks,
+ * options.check_uninitialized is often used inside a shadowing check too.
+ */
+#define CHECK_UNINITS() (options.shadowing && options.check_uninitialized)
 
 #endif /* _OPTIONS_H_ */
