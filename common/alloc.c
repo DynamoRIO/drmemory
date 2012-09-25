@@ -1278,6 +1278,7 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
     byte *pc, *npc = mod_start + modoffs;
     instr_t inst;
     bool found = false;
+    uint num_calls = 0;
     instr_init(drcontext, &inst);
     LOG(3, "%s: decoding "PFX"\n", __FUNCTION__, npc);
     do {
@@ -1309,6 +1310,9 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
             ASSERT(opnd_is_pc(op), "must be pc");
             tgt = opnd_get_pc(op);
         } else if (instr_get_opcode(&inst) == OP_call_ind) {
+            /* When std:_DebugHeapDelete is in another module w/o static libc,
+             * the call to libc's free is indirect (part of i#607 part C).
+             */
             opnd_t op = instr_get_target(&inst);
             if (opnd_is_abs_addr(op))
                 safe_read((app_pc) opnd_get_addr(op), sizeof(tgt), &tgt);
@@ -1316,13 +1320,23 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
         if (tgt != NULL) {
             LOG(3, "%s: found cti to "PFX"\n", __FUNCTION__, tgt);
             ASSERT(dr_mutex_self_owns(alloc_routine_lock), "caller must hold lock");
-            if (hashtable_lookup(&alloc_routine_table, (void *)tgt) != NULL) {
+            if (hashtable_lookup(&alloc_routine_table, (void *)tgt) != NULL ||
+                /* i#1031: we may not have processed libc yet.  Doing so at
+                 * process init won't solve potential issues w/ a later-loaded
+                 * lib depending on a still-not-yet-processed libc (if app doesn't
+                 * use libc), so we assume that any 2nd call (1st is to destructor)
+                 * to libc is a call to free.  Even if there are 2 destructor call
+                 * instances, no destructor should live in libc.
+                 */
+                (num_calls > 0 && pc_is_in_libc(tgt) && !pc_is_in_libc(mod_start))) {
                 LOG(2, "%s: found cti to free? "PFX"\n", __FUNCTION__, tgt);
                 modoffs = pc - mod_start;
                 found = true;
                 break;
             }
         }
+        if (instr_is_call(&inst))
+            num_calls++;
         /* Should find before ret and within one page (this is a short routine) */
     } while (!instr_is_return(&inst) && npc - (mod_start + modoffs) < PAGE_SIZE);
     instr_free(drcontext, &inst);
