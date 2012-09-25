@@ -362,6 +362,7 @@ sub post_process()
         open(PIDF, "< $pid_file") || die "Can't open $pid_file: $!\n";
         $procid = <PIDF>;
         chomp $procid;
+        $procid =~ s/\r//;
         close(PIDF);
         unlink $pid_file if (!$external_pid_file);
         die "Malformed $pid_file: \"$procid\"\n" unless ($procid =~ /^\d+$/);
