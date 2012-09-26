@@ -1,0 +1,328 @@
+/* **********************************************************
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/* Conventions:
+ * + We use \verbatim b/c it nicely highlights command lines, but
+ *   because aliases aren't expanded in \verbatim (or \code), we have
+ *   a pre-processing pass that replaces them.  We used to use
+ *   \par<tt>...</tt> to get aliases expanded but it doesn't look
+ *   as nice.  Note that \if is NOT supported by the script so
+ *   use it outside the \verbatim.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_types Error Types Reported by Dr. Memory
+
+Each error found by Dr. Memory is listed in the \p results.txt file (see
+\ref sec_results).  The error report includes an error number, the type of
+error, the address and size of the memory access in question (if applicable
+to the error type), a timestamp and thread identifier indicating when and
+where the error was detected, and a callstack of the application at the
+point of the error.  The thread identifier can be correlated with the
+function of a particular thread by locating the thread creation callstack
+in the \p global.pid.log file in the same directory as the \p results.txt
+file.
+
+The \p -brief option can be used to request simpler and in some cases
+easier to read (i.e., more suited to novices) error reports that hide STL
+and CRT paths, simplify source paths for the executable by removing the
+path containing the executable itself, and omit absolute addresses,
+thread timestamps, and instruction disassembly.
+
+The following sections describe each type of error.  Leaks are described
+in \ref page_leaks.
+
+  - \subpage page_unaddr
+  - \subpage page_uninit
+  - \subpage page_invarg
+  - \subpage page_leaks
+  - \subpage page_gdi
+  - \subpage page_warning
+
+********************
+\page page_unaddr Unaddressable Access
+
+Dr. Memory considers any read or write of a memory location that was not
+allocated as an "unaddressable access".  An allocation is:
+
+ - A call to mmap (or mremap) (or Windows equivalents VirtualAlloc or
+   MapViewOfFile) outside of a heap or stack region.
+ - A call to malloc (or calloc or realloc, or Windows equivalents
+   HeapAlloc or HeapReAlloc or the Local or Global versions) inside of a 
+   heap region
+ - An extension of the stack in a stack region, either via raw instructions
+   or via alloca.
+
+An unaddressable access is an access to an invalid memory address.
+Examples include a buffer overflow, reading off the end of an array,
+reading or writing to memory that has been freed (often referred to as
+a "use-after-free" error), reading beyond the top of the stack, etc.
+
+The heap allocator may pad the size requested by the application.  The
+padded region beyond what the application asked for is considered
+unaddressable by Dr. Memory.
+
+Consider this example code:
+\code
+char *x = malloc(8);
+char c = *(x+8);
+\endcode
+
+Here is a diagram of the resulting heap allocation:
+\htmlonly
+<table cellspacing=0 cellpadding=10 border=0>
+<tr><td align="right">malloc header:</td>
+    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr>
+<tr><td align="right">x:            </td>
+    <td bgcolor="#a7d588" width=50>uninitialized</td></tr>
+<tr><td align="right">x + 8:        </td>
+    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr></td></tr>
+</table>
+\endhtmlonly
+
+Dr. Memory will report an unaddressable access error on the second line of
+the example code, because <tt>x+8</tt> is not an addressable location.
+
+When an unaddressable access occurs in a heap region, Dr. Memory attempts
+to provide additional information about nearby valid allocations and
+whether the target address is inside a region that has been freed.  For
+example, here is a sample error report:
+
+\code
+Error #1: UNADDRESSABLE ACCESS: reading 0x000a720b-0x000a720c 1 byte(s)
+# 0 main                            [e:\derek\drmemory\git\src\tests\malloc.c:96]
+Note: @0:00:01.500 in thread 3808
+Note: refers to 1 byte(s) beyond last valid byte in prior malloc
+Note: prev lower malloc:  0x000a7208-0x000a720b
+Note: instruction: mov    0x03(%edx) -> %al
+\endcode
+
+Note how the "prev lower malloc" ends at 0x000a720b just before the invalid
+address, indicating a read that went one byte too far, as indicated.
+
+Here is another example, using the \p -delay_frees_stack option to obtain
+the callstack of the freed memory:
+
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
+# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: @0:00:02.141 in thread 3024
+Note: next higher malloc: 0x001338e8-0x00133938
+Note: prev lower malloc:  0x001337e8-0x00133820
+Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
+Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: instruction: mov    (%eax) -> %eax
+\endcode
+
+The \p -brief option provides less information but may be easier to read:
+
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
+# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
+# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+Note: refers to memory that was freed here:
+Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
+Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
+\endcode
+
+The \p callstack_style option can be used to customize how callstacks are
+printed out.  Here is another style for the same callstack (without -brief):
+
+\code
+Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
+# 0 unaddr_test1 (0x0040130b <suppress.exe+0x130b>)
+    e:\derek\drmemory\git\src\tests\suppress.c:110
+# 1 test (0x0040112d <suppress.exe+0x112d>)
+    e:\derek\drmemory\git\src\tests\suppress.c:269
+# 2 main (0x0040107e <suppress.exe+0x107e>)
+    e:\derek\drmemory\git\src\tests\suppress.c:297
+Note: @0:00:01.453 in thread 4088
+Note: next higher malloc: 0x001338e8-0x00133938
+Note: prev lower malloc:  0x001337e8-0x00133820
+Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
+Note: # 0 test (0x00401121 <suppress.exe+0x1121>)
+Note:     e:\derek\drmemory\git\src\tests\suppress.c:269
+Note: # 1 main (0x0040107e <suppress.exe+0x107e>)
+Note:     e:\derek\drmemory\git\src\tests\suppress.c:297
+Note: instruction: mov    (%eax) -> %eax
+\endcode
+
+In this case Dr. Memory is able to report that the target address is inside
+a malloc area that has been freed and has not been re-allocated since.
+
+This additional information, and the addresses accessed, only apply to the
+first error with that callstack that Dr. Memory sees.  Any subsequent
+errors with the same callstack will increment the duplicate count for that
+error <em>but further individual information about each duplicate is not
+provided</em>.
+
+********************
+\page page_uninit Uninitialized Read
+
+If the application reads from addressable memory that has not been written
+to since it was allocated, Dr. Memory reports an "uninitialized read"
+error.  In order to avoid false positives, Dr. Memory does not report the
+use of uninitialized memory until something "meaningful" is done with that
+memory, such as a comparison or conditional branch or passing it to a
+system call.  Variables or fields smaller than a word are often initialized
+without their containing word (variables and fields are typically
+word-aligned) being initialized.  When these variables or fields are then
+copied, the uninitialized portion of each word is technically being read as
+an uninitialized value, but reporting such reads as errors would result in
+far too many errors.
+
+When passing data structures to a system call, if the structure is
+initialized field-by-field then padding bytes may be left uninitialized.
+Dr. Memory will report errors on these as it does not know whether the
+kernel or a receipient on the other end might read it.  To avoid these
+errors, memset the entire structure, or use a Dr. Memory error suppression
+(see \ref page_suppress) to ignore the error.
+
+Here is an example of an uninitialized read error:
+
+\code
+Error #2: UNINITIALIZED READ: reading 0xffbae108-0xffbae114 12 byte(s) within 0xffbae100-0xffbae114
+Elapsed time = 0:00:00.214 in thread 19298
+system call socketcall setsockopt args
+    <system call>
+0x08049a65 <my-socket-test+0x1a65> my-socket-test!main
+    ??:0
+0x0092dbb6 <libc.so.6+0x16bb6> libc.so.6<nosyms>!__libc_start_main
+    ??:0
+0x080489b1 <my-socket-test+0x9b1> my-socket-test!_start
+    ??:0
+\endcode
+
+When only part of a larger region is uninitialized, Dr. Memory reports the
+containing range to make it easier to track down the problem.  This
+typically happens with buffers or structures passed to system calls.  Note
+also in this example how Dr. Memory reports which part of the socketcall
+system call checks discovered this error.
+
+********************
+\page page_invarg Invalid Heap Argument
+
+Whenever a pointer that does not refer to a valid malloc region is passed
+to free() or other malloc-related routines, Dr. Memory reports an "invalid
+heap argument" error.  Here the problem is immediately apparent as
+0x00001234 is not a valid heap address at all:
+
+\code
+Error #4: INVALID HEAP ARGUMENT: free 0x00001234
+Elapsed time = 0:00:00.180 in thread 21848
+# 0 malloc!main                                     [/home/bruening/drmemory/git/src/tests/malloc.c:164]
+# 1 libc.so.6!__libc_start_main                     [/build/buildd/eglibc-2.11.1/csu/libc-start.c:226]
+# 2 malloc!_start                                  
+\endcode
+
+Another common example of an invalid argument is a mismatch in calling
+free() versus operator delete versus operator delete[].  This will be
+reported as:
+
+\code
+Error #4: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
+# 0 test_mismatch                   [cs2bug.cpp:122]
+# 1 main                            [cs2bug.cpp:139]
+Note: memory was allocated here:
+Note: # 0 test_mismatch                   [cs2bug.cpp:121]
+Note: # 1 main                            [cs2bug.cpp:139]
+\endcode
+
+For code compiled with Visual Studio, detecting such mismatches relies on
+having debug information.  Certain Visual Studio optimizations can also
+preclude the ability to detect mismatches when using a static C library, so
+using either a Debug build of your application or linking to the dynamic C
+library may be required to identify these bugs.  Also note that if leak
+counting is completely disabled via \p -no-count_leaks then the callstack
+of the allocation will not be reported on a mismatch.
+
+********************
+\page page_leaks Memory Leaks
+
+INCLUDEFILE leaks.dox.sub
+
+********************
+\page page_gdi GDI Usage Errors
+
+On Windows, Dr. Memory identifies common errors in using the Windows GDI
+API.  For example:
+
+\code
+Error #15: GDI Usage Error: DC 0x2d011230 that contains selected object being deleted
+# 0 system call NtGdiDeleteObjectApp                            
+# 1 GDI32.dll!DeleteDC                                                        +0x11     (0x76b458c5 <GDI32.dll+0x158c5>)
+# 2 chrome.dll!skia::BitmapPlatformDevice::BitmapPlatformDeviceData::ReleaseBitmapDC [c:\src\chromium\src\skia\ext\bitmap_platform_device_win.cc:58]
+# 3 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
+# 4 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
+# 5 chrome.dll!SkCanvas::internalRestore                                       [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:824]
+# 6 chrome.dll!SkCanvas::~SkCanvas                                             [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:449]
+\endcode
+
+Note that some of these GDI usage errors are best programming practices and
+may not result in detrimental behavior in actual usage on more recent
+versions of Windows, while others are more serious.
+Detection of these errors can be disabled with the \p -no_check_gdi runtime
+option.
+
+\if HANDLE_LEAKS_ENABLED
+********************
+\page page_handle Handle Leak
+
+Dr. Memory identifies Windows handles that are left open and reports them
+as handle leaks.  The type of handle (kernel, user, or GDI) is listed along
+with the callstack where it was opened.  For Example:
+
+\code
+Error #1: Handle Leak: GDI Handle 0xfd011e11 is created but not closed:
+# 0 system call NtGdiCreateCompatibleDC
+# 1 test_gdi_handles                                  [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:36]
+# 2 main                                              [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:57]
+\endcode
+
+Detection of these errors can be disabled with the \p -no_check_handle runtime option.
+\endif
+
+********************
+\page page_warning Warning
+
+Dr. Memory reports warnings about unusual memory-related conditions that an
+application developer might like to know about.  For example:
+
+\code
+Error #12: WARNING: heap allocation failed
+@0:00:01.500 in thread 3748
+# 0 suppress.exe!warning_test1                       [e:\derek\drmemory\git\src\tests\suppress.c:179]
+# 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:282]
+# 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
+# 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
+# 4 KERNEL32.dll!BaseProcessStart                   
+\endcode
+
+****************************************************************************
+****************************************************************************
+*/

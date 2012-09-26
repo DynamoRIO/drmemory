@@ -39,24 +39,39 @@ hardware.  Dr. Memory currently targets 32-bit applications only.
 This document describes how to use Dr. Memory.  It is divided into the
 following sections:
 
-- \subpage page_using
-  <br>How to set up and use Dr. Memory.
+- \ref page_install
+  <br>How to install Dr. Memory onto your computer.
+
+- \ref page_prep
+  <br>Preparing your application to run under Dr. Memory.
+
+- \ref page_running
+  <br>How to run your application under Dr. Memory.
 
 \if VMX86_SERVER
 - \subpage page_ESXi
   <br>Additional instructions when running on ESXi.
 \endif
 
-- \subpage page_options
-  <br>Reference for Dr. Memory's runtime options.
+- \ref page_types
+  <br>Details on the types of errors reported by Dr. Memory.
 
-- \subpage page_help
+- \ref page_reports
+  <br>Suppressing and understanding error reports.
 
-- \subpage page_release_notes
+- \ref page_light
+  <br>A lighter-weight mode for faster execution.
+
+- \ref page_options
+  <br>Dr. Memory Runtime Option Reference
+
+- \ref page_help
+
+- \ref page_release_notes
   <br>Release notes for this release, including current limitations and
   changes since prior releases.
 
-- \subpage page_license
+- \ref page_license
 
 See the Dr. Memory project homepage at http://code.google.com/p/drmemory/
 for source code and the latest release.

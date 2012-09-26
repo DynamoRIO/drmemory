@@ -1,0 +1,49 @@
+/* **********************************************************
+ * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/* Conventions:
+ * + We use \verbatim b/c it nicely highlights command lines, but
+ *   because aliases aren't expanded in \verbatim (or \code), we have
+ *   a pre-processing pass that replaces them.  We used to use
+ *   \par<tt>...</tt> to get aliases expanded but it doesn't look
+ *   as nice.  Note that \if is NOT supported by the script so
+ *   use it outside the \verbatim.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_light Light Mode
+
+Dr. Memory provides a "light" mode that detects fewer errors in order to
+gain performance.  It does not detect uninitialized reads nor leaks.  It
+does detect unaddressable accesses, invalid heap arguments, GDI usage
+errors, and warnings.
+Use the runtime option \p -light to use light mode.
+
+To add leak checking to light mode, add the option \p -count_leaks after
+the \p -light option.  This will identify all error types except
+uninitialized reads.
+
+****************************************************************************
+****************************************************************************
+*/

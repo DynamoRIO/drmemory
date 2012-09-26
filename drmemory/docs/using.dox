@@ -20,225 +20,277 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+/* Conventions:
+ * + We use \verbatim b/c it nicely highlights command lines, but
+ *   because aliases aren't expanded in \verbatim (or \code), we have
+ *   a pre-processing pass that replaces them.  We used to use
+ *   \par<tt>...</tt> to get aliases expanded but it doesn't look
+ *   as nice.  Note that \if is NOT supported by the script so
+ *   use it outside the \verbatim.
+ */
+
 /**
 ***************************************************************************
 ***************************************************************************
-\page page_using Using Dr. Memory
+\page page_install Installing Dr. Memory
 
-This section gives an overview of how to use Dr. Memory, divided into the
-following sub-sections:
+Select your platform for instructions on how to install Dr. Memory onto
+your computer:
 
- - \ref sec_linux
- - \ref sec_windows
- - \ref sec_running
- - \ref sec_errors
-  - \ref sec_unaddr
-  - \ref sec_uninit
-  - \ref sec_invarg
-  - \ref sec_leaks
-  - \ref sec_gdi
-  - \ref sec_warning
-
-See also the full reference of Dr. Memory's runtime options:
- - \ref page_options
-
-\if VMX86_SERVER
-When running on ESXi, see the additional instructions for setup and running
-of Dr. Memory:
- - \ref page_ESXi
-\endif
+ - \subpage page_install_linux
+ - \subpage page_install_windows
 
 ***************************************************************************
-\htmlonly
-<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td></td></tr></table></td></tr></table></td></tr></table>
-\endhtmlonly
-\section sec_linux Setup on Linux
-
-This section describes requirements, setup instructions, and other concerns
-prior to running Dr. Memory on Linux.
+\page page_install_linux Installing on Linux
 
 ********************
-\subsection sec_linux_utils Utilities
+\section sec_linux_utils System Requirements
 
-Ensure your Linux machine has the following utilities installed:
+Ensure your Linux machine has perl installed, as it is used for the current
+front-end to Dr. Memory.
 
- - perl
- - objdump
- - addr2line
+********************
+\section sec_linux_install Installing
+
+Download the \p .tar.gz version of Dr. Memory.  Untar the package into a
+directory of your choice:
+
+\verbatim
+tar xzf DrMemory-Linux-X.X.X-X.tar.gz
+\endverbatim
+
+Now either place the \p bin subdirectory of the Dr. Memory directory
+structure on your PATH, or invoke Dr. Memory via its full path.
 
 ***************************************************************************
-\htmlonly
-<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td></td></tr></table></td></tr></table></td></tr></table>
-\endhtmlonly
-\section sec_windows Setup on Windows
-
-This section describes requirements, setup instructions, and other concerns
-prior to running Dr. Memory on Windows.
-
-Please note that Dr. Memory does not yet have full support for the Windows
-graphical system calls, leading to extra false positives, particularly on
-Windows Vista and Windows 7.  Future releases will eliminate these; for
-now, suppression files can be used.
+\page page_install_windows Installing on Windows
 
 ********************
-\subsection sec_windows_utils Utilities
+\section sec_windows_system System Install
 
-Dr. Memory displays results using \p notepad by default.  If it is not on
-the PATH a message pointing to the file containing the results will be
-displayed.  The option \p -batch can be used to disable the launch of \p
-notepad at application exit.
+Download the \p .exe version of Dr. Memory.  Run the downloaded file to
+launch the installer.  We recommend selecting the checkbox "Add to system
+path for current user" to simplify use of the tool.  You can also elect to
+place a Dr. Memory icon on the desktop if you would like to run your
+applications under Dr. Memory by dragging and dropping.
 
 ********************
-\subsection sec_windows_cygwin Dr. Memory and MinGW or Cygwin
+\section sec_windows_local Local Install
 
-Dr. Memory supports applications compiled with the MinGW gcc or g++
+Download the \p .zip version of Dr. Memory.  Extract the files from the \p
+.zip archive into a directory of your choice.  Now either place the \p bin
+subdirectory of the Dr. Memory directory structure on your PATH, or invoke
+Dr. Memory via its full path.
+
+***************************************************************************
+\page page_prep Preparing Your Application
+
+First we give cross-plaform guidelines for how to build your application,
+before giving specific compiler parameters for each platform.
+
+Currently, Dr. Memory only supports 32-bit applications, so be sure to
+compile your target application as 32-bit.
+
+In order to obtain line number information, compile your target
+application with debugging information enabled.
+On Linux, Dr. Memory supports ELF files with DWARF2 line information.  On
+Windows, Dr. Memory supports PDB debug information (produced by Visual
+Studio) as well as PECOFF files with DWARF2 line information (produced by
+MinGW gcc).
+
+You'll get better callstacks in error reports if you disable inlining.
+Dr. Memory should be able to determine callstacks in the presence of frame
+pointer optimizations (FPO) in most cases, but if you see strange
+callstacks in an optimized application consider disabling FPO.
+
+If your application links with a static library that was built with frame
+pointer optimizations and you observe missing frames on your callstacks,
+try running with the Dr. Memory runtime option \p -no_callstack_use_top_fp.
+This will add some additional overhead on malloc-intensive applications,
+but should eliminate skipped frames.
+
+********************
+\section sec_prep_linux Linux
+
+Ensure your Linux installation is able to build 32-bit applications.  On
+64-bit Ubuntu you will want these packages:
+
+\verbatim
+sudo apt-get install ia32-libs g++-multilib
+\endverbatim
+
+Dr. Memory currently only supports DWARF2 line information, not stabs, but
+DWARF2 is the default for modern versions of \p gcc.
+
+Here is a sample command line for compiling your application that combines
+all of the above recommendations:
+
+\verbatim
+g++ -m32 -g -fno-inline -fno-omit-frame-pointer myfile1.cpp myfile2.cpp -o myapp
+\endverbatim
+
+********************
+\section sec_prep_windows Windows Visual Studio
+
+Visual Studio builds 32-bit applications by default, so no action is
+required on that front.
+
+To include debug information, use the \p /Zi flag to the Visual Studio
+compiler.  From the IDE, Press Alt-F7 to bring up the configuration
+properties of your build target. Under "Configuration Properties | C/C++ |
+General", the "Debug Information Format" entry should say "Program Database
+(/Zi)".
+
+**********
+\subsection sec_prep_win_libc Release C Library Recommended
+
+While the debug C library (specified with the \p /MDd or \p /MTd flags) is
+supported, its use requires Dr. Memory to disable some of its error
+detection.  The debug C library also prevents Dr. Memory from controlling
+the redzone size it places around heap allocations.  The debug C heap
+checks will mostly be disabled as they overlap and can conflict with
+Dr. Memory's checks.  It is recommended that the release version of the
+heap routines be used.  Additionally, when using static debug versions of
+msvcrt (the \p /MTd flag), if your application does not have symbols then
+Dr. Memory will not be able to identify and avoid conflicts with the C
+library's own heap debugging facilities, which may lead to false positives
+and/or false negatives.  Be sure to build with debugging information
+included.
+
+Thus, we recommend building your application with either the release DLL
+(\p /MD) or the release static (\p /MT) C library.  From the Visual Studio
+IDE, the release library can be selected from Visual Studio's configuration
+dialog (press Alt-F7 to bring it up) under the "Configuration Properties |
+C/C++ | Code Generation | Runtime Library" settings.  Change
+"Multi-threaded Debug DLL (/MDd)" to "Multi-threaded DLL (/MD)".
+
+If your application is C++, another step is necessary when using /MD to
+avoid the C++ Debug DLL: under "Configuration Properties | C/C++ |
+Preprocessor", remove "_DEBUG" from the list of "Preprocessor Definitions".
+It probably says "WIN32;_DEBUG;_CONSOLE" by default. Change it to
+"WIN32;_CONSOLE".
+
+**********
+\subsection sec_prep_win_rtc Disable Runtime Checks
+
+The Visual Studio compiler's \p /RTC1 flag can prevent Dr. Memory from
+reporting uninitialized reads of local variables, and the \p /RTC1 checks
+for uninitialized reads themselves may not catch everything that Dr. Memory
+finds.  However, \p /RTC1 does perform additional stack checks that
+Dr. Memory does not, so for best results, your application should be run
+under Dr. Memory without \p /RTC1, and run natively with \p /RTC1.
+
+In the Visual Studio IDE, press Alt-F7 and then under "Configuration
+Properties | C/C++ | Code Generation" ensure "Basic Runtime Checks" says
+"Default".
+
+**********
+\subsection sec_prep_win_sum Parameter Summary
+
+To disable inlining, use the \p /Ob0 parameter.  In the Visual Studio IDE,
+press Alt-F7 and then under "Configuration Properties | C/C++ |
+Optimization" ensure "Inline Function Expansion" says "Disabled (/Ob0)".
+
+To disable frame pointer optimization, use the \p Oy- parameter.  In the
+Visual Studio IDE, press Alt-F7 and then under "Configuration Properties |
+C/C++ | Optimization" ensure "Omit Frame Pointers" says "No (/Oy-)".
+
+Here is a sample command line for Visual Studio:
+
+\verbatim
+cl /Zi /MT /EHsc /Oy- /Ob0 /Femyapp.exe *.cpp
+\endverbatim
+
+********************
+\section sec_prep_mingw Windows MinGW
+
+Dr. Memory supports 32-bit applications compiled with the MinGW gcc or g++
 compilers, but will only provide line number information if DWARF2
 debugging information is present.  The default for MinGW gcc prior to
 version 4.3 is to use the stabs format, which is not supported by
-Dr. Memory.  Pass the -ggdb option to gcc to generate DWARF2 format
+Dr. Memory.  Pass the \p -ggdb option to gcc to generate DWARF2 format
 instead.
 
-For MinGW C++ applications, Dr. Memory also requires the use of static
-libstdc++ libraries.  Pass "-static-libgcc -static-libstdc++" to g++ to
-request this.  Since these static libraries contain frame pointer
-optimizations, we recommend passing the "-no_callstack_use_top_fp" runtime
-option to Dr. Memory.  This option is also discussed below.  Dr. Memory
-attempts to automatically use this setting when it executes an application
-built with MinGW.
+You install the MinGW compiler in a Cygwin installation by running the
+Cygwin installer (\p setup.exe), searching for "mingw", opening Devel, and
+installing \p mingw-gcc-g++.  Alternatively, MinGW can be installed on its
+own.
 
-Currently there is no support for applications built with Cygwin gcc.
+For MinGW C++ applications, we recommending building with static libstdc++
+libraries.  Pass <tt>-static-libgcc -static-libstdc++</tt> to g++ to
+request this.  These static libraries contain frame pointer optimizations
+but Dr. Memory automatically enables the \p -no_callstack_use_top_fp
+runtime option for MinGW applications.
+
+Here is a sample command line for MinGW:
+
+\verbatim
+i686-pc-mingw32-g++.exe -static-libgcc -static-libstdc++ -ggdb -o myapp.exe myfile1.cpp myfile2.cpp
+\endverbatim
+
+********************
+\section sec_prep_cygwin Windows Cygwin: Not Supported
+
+Currently there is no support for applications built with Cygwin gcc or g++.
 
 The regular Dr. Memory build can be executed just fine from a Cygwin
 shell when targeting non-Cygwin applications.
 
 ***************************************************************************
-\htmlonly
-<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td></td></tr></table></td></tr></table></td></tr></table>
-\endhtmlonly
-\section sec_running Running Dr. Memory
+\page page_running Running Dr. Memory
 
-The first step is to unzip or untar the Dr. Memory package.
+Once you have installed Dr. Memory and built your application properly, the
+next step is to execute it on your workload of choice under Dr. memory.
 
 ********************
-\subsection sec_app_prep Prepare Your Application
-
-Currently, Dr. Memory only supports 32-bit applications, so be sure to
-compile your target application as 32-bit (e.g., "-m32" for gcc; 32-bit is
-the default for Visual Studio).
-
-In order to obtain line number information, compile your target
-application with debugging information enabled (e.g., "/Zi" for cl.exe
-or "-g" for gcc or g++).
-
-On Linux, Dr. Memory supports ELF files with DWARF2 line information.  On
-Windows, Dr. Memory supports PDB debug information (produced by Visual
-Studio) as well as PECOFF files with DWARF2 line information (produced by
-MinGW gcc or g++: see \ref sec_windows_cygwin).
-
-If you want to run your application with stripped libraries or binaries and
-have the unstripped versions in separate locations, you can point at those
-locations using the \p DRMEMORY_LIB_PATH environment variable, which is a
-colon-separated list of directories.
-
-On Windows, while the debug DLL C library (specified with the "/MDd" flag) is
-supported, its use requires Dr. Memory to disable some of its error
-detection.  We recommend building your application with either the
-release DLL ("/MD") or the release or debug static library ("/MT" or
-"/MTd"), although "/MTd" is not recommended (see below).  When using Visual
-Studio, the release library can be selected from Visual Studio's
-configuration dialog (press Alt-F7 to bring it up) under the C/C++ | Code
-Generation | Runtime Library settings.  Change "Multi-threaded Debug DLL
-(/MDd)" to "Multi-threaded DLL (/MD)".  If your application is C++, another
-step is necessary when using /MD to avoid the C++ Debug DLL:
-under Configuration Properties | C/C++ | Preprocessor, remove
-"_DEBUG" from the list of "Preprocessor Definitions".
-
-On Windows, when using debug versions of the C library (when building with
-the "/MTd" flag ("/MDd" is not supported at all), you will not be able to
-control the redzone size.  The debug heap checks will mostly be disabled as
-they overlap and can conflict with Dr. Memory's checks.  It is recommended
-that the release version of the heap routines be used.  Additionally, when
-using static debug versions of msvcrt (the "/MTd" flag), if your
-application does not have symbols then Dr. Memory will not be able to
-identify and avoid conflicts with msvcrt's own heap debugging facilities,
-which may lead to false positives and/or false negatives.  Be sure to build
-with debugging information included.
-
-You'll get better callstacks in error reports if you disable inlining.  For
-cl.exe, "/Ob0", or for gcc or g++, "-fno-inline".  Dr. Memory should be
-able to determine callstacks in the presence of frame pointer optimizations
-(FPO) in most cases, but if you see strange callstacks in an optimized
-application consider disabling FPO: for cl.exe, "/Oy-"; for gcc or g++,
-"-fno-omit-frame-pointer".
-
-If your application links with a static library that was built with frame
-pointer optimizations and you observe missing frames on your callstacks,
-try running with the option "-no_callstack_use_top_fp".  This will add some
-additional overhead on malloc-intensive applications, but should eliminate
-skipped frames.
-
-The Visual Studio compiler's /RTC1 flag can prevent Dr. Memory from
-reporting uninitialized reads of local variables, and the /RTC1 checks for
-uninitialized reads themselves may not catch everything that Dr. Memory
-finds.  However, /RTC1 does perform additional stack checks that Dr. Memory
-does not, so for best results, your application should be run under
-Dr. Memory without /RTC1, and run natively with /RTC1.
-
-********************
-\subsection sec_invocation Invoking Dr. Memory
+\section sec_invocation Invoking Dr. Memory
 
 Run your application as you normally would from a command prompt (on
 Windows, either the \p cmd shell or a Cygwin prompt), with \p \FRONT_END
 and "--" prefixed to the command line (the "--" separates any arguments to
 Dr. Memory from the application being run).
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -- \if WINDOWS c:/path/to/my/app \else /path/to/my/app \endif args to my app
-</tt>
+On Windows:
+\verbatim
+drmemory.exe -- c:/path/to/my/app args to my app
+\endverbatim
 
-\if WINDOWS
-On Windows, if you used the installer and checked the box to add \p
-\FRONT_END to your PATH, you can simply type into your shell:
+On Linux:
+\verbatim
+drmemory.pl -- /path/to/my/app args to my app
+\endverbatim
 
-\par
-<tt>\FRONT_END -- c:/path/to/my/app args to my app
-</tt>
+Examples throughout the rest of the documentation will be use one platform,
+but can readily be adapted to the other by changing the front-end (\p
+drmemory.exe or \p drmemory.pl) and the path style.
 
-You can also drag-and-drop your application onto \p \FRONT_END in 
+If as part of \ref page_install you did not add Dr. Memory to your path,
+you'll need to specify the full path to Dr. Memory.
+
+On Windows, you can also drag-and-drop your application onto \p drmemory.exe in 
 Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
 installation.
-
-\endif
 
 When running scripts it is best to explicitly invoke the interpreter rather
 than invoking the script directly.  For example:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -- /usr/bin/perl ./myscript.pl
-</tt>
+\verbatim
+drmemory.pl -- /usr/bin/perl ./myscript.pl
+\endverbatim
 
 ********************
-\subsection sec_results Examining the Results
+\section sec_results Examining the Results
 
 Dr. Memory's results are written to a file called \p results.txt inside a
 subdirectory created for each invocation of Dr. Memory, inside Dr. Memory's
 log directory.  The log directory by default is the \p logs subdirectory of
 the unpacked installation, or the Dr. Memory directory inside your profile
-directory when Dr. Memory is installed into Program Files on Windows.  It can be
+directory when Dr. Memory is installed into <tt>Program Files</tt> on Windows.  It can be
 changed with the \p -logdir option:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -logdir \if WINDOWS c:/logs \else /tmp/drmem \endif -- myapp
-</tt>
+\verbatim
+drmemory.exe -logdir c:/logs -- c:/path/to/my/app
+\endverbatim
 
 When an application is executed under Dr. Memory's control, it creates a
 subdirectory in the base log directory named
@@ -252,41 +304,47 @@ own result directories and files, but these will not be automatically
 displayed.  The option \p -batch can be used to disable the launch of \p
 notepad at application exit.
 
-For full details on the errors reported by Dr. Memory, see \ref sec_errors.
+For full details on each type of error reported by Dr. Memory, see \ref page_types.
 
 If you would like to attach a debugger at the point an error is first
 detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
 options (see \ref page_options).
 
 ********************
-\subsection sec_children Controlling Child Processes
+\section sec_children Controlling Child Processes
 
 By default, Dr. Memory monitors all child processes.  To disable this
 behavior and not monitor any children, use this option:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -no_follow_children
-</tt>
+\verbatim
+drmemory.exe -no_follow_children -- c:/path/to/my/app
+\endverbatim
 
-To follow all children except certain applications, run this command with
-the executable name of each application you do not wish to monitor, prior
-to running Dr. Memory with default options:
+On Windows, to follow all children except certain applications, run this
+command with the executable name of each application you do not wish to
+monitor, prior to running Dr. Memory with default options:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\DRCONFIG_PATH -quiet -reg myapp -norun
-</tt>
+\verbatim
+drconfig.exe -quiet -reg <myapp> -norun
+\endverbatim
+
+Where "myapp" is the basename of your executable (i.e., the file name
+without any directories).
+
+The \p drconfig.exe tool is in the same directory as \p drmemory.exe and is
+only available on Windows in the current release.
 
 This \p -norun request is permanent and affects all subsequent Dr. Memory
 executions by the user that issued the \p -norun request.  To undo it, use
 this command:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\DRCONFIG_PATH -quiet -unreg myapp
-</tt>
+\verbatim
+drconfig.exe -quiet -unreg <myapp>
+\endverbatim
 
 \if ISSUE_614
 ********************
-\subsection sec_aggregate Aggregating Results From Multiple Processes
+\section sec_aggregate Aggregating Results From Multiple Processes
 
 Dr. Memory supports aggregating results from multiple log directories,
 whether from multiple processes of a multi-process application or from
@@ -294,19 +352,19 @@ multiple runs of the same application.  Simply use the \p -aggregate option
 and supply the list of log directories, or a single directory containing
 the log directories as sub-directories to aggregate all of them:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000 
-</tt>
+\verbatim
+drmemory.pl -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000 
+\endverbatim
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -aggregate /parent/logdir/
-</tt>
+\verbatim
+drmemory.pl -aggregate /parent/logdir/
+\endverbatim
 
 Currently the \p -aggregate option is not available on Windows.
 \endif
 
 ********************
-\subsection sec_daemon Applications That Do Not Exit
+\section sec_daemon Applications That Do Not Exit
 
 While Dr. Memory updates the \p results.txt file as the application runs,
 it does not perform leak checking or produce a summary of errors until the
@@ -317,13 +375,13 @@ Run \p \FRONT_END with the \p -nudge option and the process identifier of
 the application in order to request leak checking and other end-of-run
 actions:
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -nudge processid
-</tt>
+\verbatim
+drmemory.exe -nudge <processid>
+\endverbatim
 
 \if ISSUE_446
 ********************
-\subsection sec_twostep Post-Run Symbol Processing
+\section sec_twostep Post-Run Symbol Processing
 
 Some applications have very large symbol files.  To reduce resource usage
 during an application run, symbol processing can be disabled while the
@@ -332,13 +390,13 @@ application executes and instead be performed after the run.  Use the \p
 Dr. Memory with the \p -results option and the log directory created during
 the run (which contains the raw data):
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -skip_results -- myapp myargs
-</tt>
+\verbatim
+drmemory.pl -skip_results -- myapp myargs
+\endverbatim
 
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -results DrMemory-myapp.9876.000
-</tt>
+\verbatim
+drmemory.pl -results DrMemory-myapp.9876.000
+\endverbatim
 
 If \p -results is invoked on a different machine where the application
 executable is not located at the same path as when it was executed with \p
@@ -347,455 +405,6 @@ along with the \p -results parameter.
 
 The \p -skip_results option is not currently available on Windows.
 \endif
-
-********************
-\subsection sec_syslib_syms System Library Symbols
-
-On Linux, Dr. Memory will look in the default debug directories for symbols
-for a library: a <tt>.debug</tt> subdirectory of the library's directory or
-in <tt>/usr/lib/debug</tt>.
-
-On Windows, the <tt>_NT_SYMBOL_PATH</tt> environment variable is honored by
-Dr. Memory as a local cache of \p pdb files.  However, Dr. Memory does not
-support symbol store paths (those that contain \p srv).
-
-********************
-\subsection sec_suppress Suppressing Errors
-
-Dr. Memory generates a file named \p suppress.txt alongside the \p
-results.txt file.  To suppress errors from being reported in future runs,
-edit this file to contain just the errors you wish to suppress.  Then pass
-the file to \p \FRONT_END with the -suppress option:
-
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -suppress \if WINDOWS c:/suppress-custom.txt \else /tmp/suppress-custom.txt \endif -- myapp
-</tt>
-
-The suppress.txt generated by Dr. Memory will contain suppression information
-only for those errors that weren't suppressed using the -suppress option.  For
-each error reported in suppress.txt, there will be two types of call stacks,
-one showing \p <module+offset> type frames and the other \p module!function
-type frames.  The offset in \p <module+offset> must be a lower-case hexadecimal
-constant (e.g., \p 0x4af) and is the offset from the start of the module.
-Either type of call stack can be used and it is enough if one
-of those two is specified.   The \p module!function are more general and
-more robust across different versions of a module.
-
-In order to simplify writing suppressions, callstacks support "*" and "?"
-wildcards in either the module or function name (or offset for \p
-<module+offset>).  A "*" matches any number of characters of any kind.  A
-"?" matches a single character of any kind.  C++ functions should be in
-their unmangled form.  If a literal "*" is desired, a "?" should usually be
-used instead to avoid the "*" wildcard expansion.
-
-To match any frame at all, use a single "*".  To match any module but not
-any non-module (and thus not match a system call or non-module code, such
-as generated code), use "*!*".
-
-Callstacks automatically employ prefix matching.  Prefix matching
-means that the callstack in the suppression file is considered a match if
-it matches the top of any actual callstack during a run.  This allows
-specifying only the first few frames of a callstack and have it match any
-callstack whose first frames match those frames, regardless of subsequent
-frames.
-
-A final type of wildcard frame is supported: "...".  A callstack frame
-consisting of the string "..." matches zero or more frames in the
-callstack.
-
-As a variation on the "..." ellipsis frame, "module!..." matches one or
-more frames in a given module.  Importantly, it will not match zero frames
-like a plain ellipsis.  This form is most useful for suppressing reports
-through system libraries that are missing symbols, because oftentimes such
-reports can be identified by the way they call back and forth across system
-library boundaries.
-
-Suppression files can have empty lines and comment lines (begining with #).
-There should be no leading white space for the actual suppression information.
-Suppressions should not end with "...", which is unnecessary due to the implicit
-prefix matching.
-
-A suppression can be given an identifier with a \p name= line after
-the error type line.  Suppressions that were matched are printed in the
-results file with a count of how many unique callstacks were matched.
-Duplicate callstacks are not included.  Here is an example:
-
-\code
-LEAK
-name=bug #456 (deliberately leaked object)
-mylib.dll!LeakMe
-mylib.dll!*
-\endcode
-
-On Windows, for unaddressable accesses and uninitialized reads, a
-suppression can be further restricted by the actual instruction involved.
-The instruction is printed out in an error report in a \p Note: field.  For
-example:
-\code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
-...
-Note: instruction: mov    (%eax) -> %eax
-\endcode
-
-A suppression can contain an \p instruction= line after the error type line
-which will be matched against this note field.  It can contain wildcards.
-The \p instruction= line is currently ignored on Linux.  Here is
-an example:
-
-\code
-UNINITIALIZED READ
-name=bug #123 (deliberate uninitialized read to generate random number)
-instruction=test   * $0x00000?00
-myranlib.dll!GenRanHelper*
-myranlib.dll!GenRan*
-\endcode
-
-For users with existing Valgrind Memcheck suppression files, Dr. Memory
-supports Valgrind-style suppressions, but not with mangled C++ symbols.
-On Linux, a script called \p valgrind2drmemory.pl is provided in the bin
-directory that can be used to convert a legacy Valgrind suppression file to
-the Dr. Memory format.  It uses heuristics to convert mangled C++ symbols
-that contain wildcards and may not succeed on complex types (it prints a
-warning for those it fails on).  Use it like this:
-
-\code
-bin/valgrind2drmemory.pl /path/to/old-supp-file /path/to/new-drmem-towrite
-\endcode
-
-The Dr. Memory suppression format is more powerful then the Valgrind format
-and matches the Windows module!function standards used by other tools.  We
-recommend converting to the Dr. Memory format from a legacy format.
-
-Another method of ignoring errors is to filter the reported errors to focus
-on particular source files.  Use the \p -srcfilter option to do this:
-
-\par
-<tt>~/DrMemory-\PLATFORM-\TOOL_VERSION-1/\FRONT_END_PATH -srcfilter hello.c -- ./hello
-</tt>
-
-The \p -srcfilter option is not available in the Windows version of Dr. Memory.
-
-To get more information on what errors are being suppressed, run with
-\p -log_suppressed_errors.  All suppressed reports will be printed to the global
-logfile.
-
-Dr. Memory comes with a set of default suppressions to avoid known false
-positives in system libraries.  These can be disabled with the option
--no_default_suppress.
-
-********************
-\subsection sec_replace Replaced Routines
-
-Dr. Memory replaces several string and memory routines in the C library,
-executable, and other libraries, in order to avoid false positives from
-extremely-optimized versions of these routines.  So if an application
-expects a crash inside a routine like \p strlen, do not be alarmed if it
-shows up as \p replace_strlen in the Dr. Memory library rather than \p
-strlen in the C library.
-
-********************
-\subsection sec_light Light Mode
-
-Dr. Memory provides a "light" mode that detects fewer errors in order to
-gain performance.  It does not detect uninitialized reads nor leaks.  It
-does detect unaddressable accesses, invalid heap arguments, GDI usage
-errors, and warnings.
-Use the runtime option \p -light to use light mode.
-
-To add leak checking to light mode, add the option \p -count_leaks after
-the \p -light option.  This will identify all error types except
-uninitialized reads.
-
-***************************************************************************
-\htmlonly
-<table width=100% bgcolor="#000000" cellspacing=0 cellpadding=2 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td><table width=100% bgcolor="#0000C0" cellspacing=0 cellpadding=1 border=0>
-  <tr><td></td></tr></table></td></tr></table></td></tr></table>
-\endhtmlonly
-\section sec_errors Error Types Reported by Dr. Memory
-
-Each error found by Dr. Memory is listed in the \p results.txt file (see
-\ref sec_results).  The error report includes an error number, the type of
-error, the address and size of the memory access in question (if applicable
-to the error type), a timestamp and thread identifier indicating when and
-where the error was detected, and a callstack of the application at the
-point of the error.  The thread identifier can be correlated with the
-function of a particular thread by locating the thread creation callstack
-in the \p global.pid.log file in the same directory as the \p results.txt
-file.
-
-The \p -brief option can be used to request simpler and in some cases
-easier to read (i.e., more suited to novices) error reports that hide STL
-and CRT paths, simplify source paths for the executable by removing the
-path containing the executable itself, and omit absolute addresses,
-thread timestamps, and instruction disassembly.
-
-The following subsections describe each type of error.  Leaks are described
-in \ref sec_leaks.
-
-********************
-\subsection sec_unaddr Unaddressable Access
-
-Dr. Memory considers any read or write of a memory location that was not
-allocated as an "unaddressable access".  An allocation is:
-
- - A call to mmap (or mremap) (or Windows equivalents VirtualAlloc or
-   MapViewOfFile) outside of a heap or stack region.
- - A call to malloc (or calloc or realloc, or Windows equivalents
-   HeapAlloc or HeapReAlloc or the Local or Global versions) inside of a 
-   heap region
- - An extension of the stack in a stack region, either via raw instructions
-   or via alloca.
-
-An unaddressable access is an access to an invalid memory address.
-Examples include a buffer overflow, reading off the end of an array,
-reading or writing to memory that has been freed (often referred to as
-a "use-after-free" error), reading beyond the top of the stack, etc.
-
-The heap allocator may pad the size requested by the application.  The
-padded region beyond what the application asked for is considered
-unaddressable by Dr. Memory.
-
-Consider this example code:
-\code
-char *x = malloc(8);
-char c = *(x+8);
-\endcode
-
-Here is a diagram of the resulting heap allocation:
-\htmlonly
-<table cellspacing=0 cellpadding=10 border=0>
-<tr><td align="right">malloc header:</td>
-    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr>
-<tr><td align="right">x:            </td>
-    <td bgcolor="#a7d588" width=50>uninitialized</td></tr>
-<tr><td align="right">x + 8:        </td>
-    <td bgcolor="#fcd6a5" width=50>unaddressable</td></tr></td></tr>
-</table>
-\endhtmlonly
-
-Dr. Memory will report an unaddressable access error on the second line of
-the example code, because <tt>x+8</tt> is not an addressable location.
-
-When an unaddressable access occurs in a heap region, Dr. Memory attempts
-to provide additional information about nearby valid allocations and
-whether the target address is inside a region that has been freed.  For
-example, here is a sample error report:
-
-\code
-Error #1: UNADDRESSABLE ACCESS: reading 0x000a720b-0x000a720c 1 byte(s)
-# 0 main                            [e:\derek\drmemory\git\src\tests\malloc.c:96]
-Note: @0:00:01.500 in thread 3808
-Note: refers to 1 byte(s) beyond last valid byte in prior malloc
-Note: prev lower malloc:  0x000a7208-0x000a720b
-Note: instruction: mov    0x03(%edx) -> %al
-\endcode
-
-Note how the "prev lower malloc" ends at 0x000a720b just before the invalid
-address, indicating a read that went one byte too far, as indicated.
-
-Here is another example, using the \p -delay_frees_stack option to obtain
-the callstack of the freed memory:
-
-\code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
-# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
-# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
-# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
-Note: @0:00:02.141 in thread 3024
-Note: next higher malloc: 0x001338e8-0x00133938
-Note: prev lower malloc:  0x001337e8-0x00133820
-Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
-Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
-Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
-Note: instruction: mov    (%eax) -> %eax
-\endcode
-
-The \p -brief option provides less information but may be easier to read:
-
-\code
-Error #8: UNADDRESSABLE ACCESS: reading 4 byte(s)
-# 0 unaddr_test1                    [e:\derek\drmemory\git\src\tests\suppress.c:110]
-# 1 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
-# 2 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
-Note: refers to memory that was freed here:
-Note: # 0 test                            [e:\derek\drmemory\git\src\tests\suppress.c:269]
-Note: # 1 main                            [e:\derek\drmemory\git\src\tests\suppress.c:297]
-\endcode
-
-The \p callstack_style option can be used to customize how callstacks are
-printed out.  Here is another style for the same callstack (without -brief):
-
-\code
-Error #8: UNADDRESSABLE ACCESS: reading 0x001338a8-0x001338ac 4 byte(s)
-# 0 unaddr_test1 (0x0040130b <suppress.exe+0x130b>)
-    e:\derek\drmemory\git\src\tests\suppress.c:110
-# 1 test (0x0040112d <suppress.exe+0x112d>)
-    e:\derek\drmemory\git\src\tests\suppress.c:269
-# 2 main (0x0040107e <suppress.exe+0x107e>)
-    e:\derek\drmemory\git\src\tests\suppress.c:297
-Note: @0:00:01.453 in thread 4088
-Note: next higher malloc: 0x001338e8-0x00133938
-Note: prev lower malloc:  0x001337e8-0x00133820
-Note: 0x001338a8-0x001338ac overlaps memory 0x001338a8-0x001338c4 that was freed here:
-Note: # 0 test (0x00401121 <suppress.exe+0x1121>)
-Note:     e:\derek\drmemory\git\src\tests\suppress.c:269
-Note: # 1 main (0x0040107e <suppress.exe+0x107e>)
-Note:     e:\derek\drmemory\git\src\tests\suppress.c:297
-Note: instruction: mov    (%eax) -> %eax
-\endcode
-
-In this case Dr. Memory is able to report that the target address is inside
-a malloc area that has been freed and has not been re-allocated since.
-
-This additional information, and the addresses accessed, only apply to the
-first error with that callstack that Dr. Memory sees.  Any subsequent
-errors with the same callstack will increment the duplicate count for that
-error <em>but further individual information about each duplicate is not
-provided</em>.
-
-********************
-\subsection sec_uninit Uninitialized Read
-
-If the application reads from addressable memory that has not been written
-to since it was allocated, Dr. Memory reports an "uninitialized read"
-error.  In order to avoid false positives, Dr. Memory does not report the
-use of uninitialized memory until something "meaningful" is done with that
-memory, such as a comparison or conditional branch or passing it to a
-system call.  Variables or fields smaller than a word are often initialized
-without their containing word (variables and fields are typically
-word-aligned) being initialized.  When these variables or fields are then
-copied, the uninitialized portion of each word is technically being read as
-an uninitialized value, but reporting such reads as errors would result in
-far too many errors.
-
-When passing data structures to a system call, if the structure is
-initialized field-by-field then padding bytes may be left uninitialized.
-Dr. Memory will report errors on these as it does not know whether the
-kernel or a receipient on the other end might read it.  To avoid these
-errors, memset the entire structure, or use a Dr. Memory error suppression
-(see \ref sec_suppress) to ignore the error.
-
-Here is an example of an uninitialized read error:
-
-\code
-Error #2: UNINITIALIZED READ: reading 0xffbae108-0xffbae114 12 byte(s) within 0xffbae100-0xffbae114
-Elapsed time = 0:00:00.214 in thread 19298
-system call socketcall setsockopt args
-    <system call>
-0x08049a65 <my-socket-test+0x1a65> my-socket-test!main
-    ??:0
-0x0092dbb6 <libc.so.6+0x16bb6> libc.so.6<nosyms>!__libc_start_main
-    ??:0
-0x080489b1 <my-socket-test+0x9b1> my-socket-test!_start
-    ??:0
-\endcode
-
-When only part of a larger region is uninitialized, Dr. Memory reports the
-containing range to make it easier to track down the problem.  This
-typically happens with buffers or structures passed to system calls.  Note
-also in this example how Dr. Memory reports which part of the socketcall
-system call checks discovered this error.
-
-********************
-\subsection sec_invarg Invalid Heap Argument
-
-Whenever a pointer that does not refer to a valid malloc region is passed
-to free() or other malloc-related routines, Dr. Memory reports an "invalid
-heap argument" error.  Here the problem is immediately apparent as
-0x00001234 is not a valid heap address at all:
-
-\code
-Error #4: INVALID HEAP ARGUMENT: free 0x00001234
-Elapsed time = 0:00:00.180 in thread 21848
-# 0 malloc!main                                     [/home/bruening/drmemory/git/src/tests/malloc.c:164]
-# 1 libc.so.6!__libc_start_main                     [/build/buildd/eglibc-2.11.1/csu/libc-start.c:226]
-# 2 malloc!_start                                  
-\endcode
-
-Another common example of an invalid argument is a mismatch in calling
-free() versus operator delete versus operator delete[].  This will be
-reported as:
-
-\code
-Error #4: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
-# 0 test_mismatch                   [cs2bug.cpp:122]
-# 1 main                            [cs2bug.cpp:139]
-Note: memory was allocated here:
-Note: # 0 test_mismatch                   [cs2bug.cpp:121]
-Note: # 1 main                            [cs2bug.cpp:139]
-\endcode
-
-For code compiled with Visual Studio, detecting such mismatches relies on
-having debug information.  Certain Visual Studio optimizations can also
-preclude the ability to detect mismatches when using a static C library, so
-using either a Debug build of your application or linking to the dynamic C
-library may be required to identify these bugs.  Also note that if leak
-counting is completely disabled via \p -no-count_leaks then the callstack
-of the allocation will not be reported on a mismatch.
-
-********************
-\subsection sec_leaks Memory Leaks
-
-INCLUDEFILE leaks.dox.sub
-
-********************
-\subsection sec_gdi GDI Usage Errors
-
-On Windows, Dr. Memory identifies common errors in using the Windows GDI
-API.  For example:
-
-\code
-Error #15: GDI Usage Error: DC 0x2d011230 that contains selected object being deleted
-# 0 system call NtGdiDeleteObjectApp                            
-# 1 GDI32.dll!DeleteDC                                                        +0x11     (0x76b458c5 <GDI32.dll+0x158c5>)
-# 2 chrome.dll!skia::BitmapPlatformDevice::BitmapPlatformDeviceData::ReleaseBitmapDC [c:\src\chromium\src\skia\ext\bitmap_platform_device_win.cc:58]
-# 3 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
-# 4 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
-# 5 chrome.dll!SkCanvas::internalRestore                                       [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:824]
-# 6 chrome.dll!SkCanvas::~SkCanvas                                             [c:\src\chromium\src\third_party\skia\src\core\skcanvas.cpp:449]
-\endcode
-
-Note that some of these GDI usage errors are best programming practices and
-may not result in detrimental behavior in actual usage on more recent
-versions of Windows, while others are more serious.
-Detection of these errors can be disabled with the \p -no_check_gdi runtime
-option.
-
-\if HANDLE_LEAKS_ENABLED
-********************
-\subsection sec_handle Handle Leak
-
-Dr. Memory identifies Windows handles that are left open and reports them
-as handle leaks.  The type of handle (kernel, user, or GDI) is listed along
-with the callstack where it was opened.  For Example:
-
-\code
-Error #1: Handle Leak: GDI Handle 0xfd011e11 is created but not closed:
-# 0 system call NtGdiCreateCompatibleDC
-# 1 test_gdi_handles                                  [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:36]
-# 2 main                                              [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:57]
-\endcode
-
-Detection of these errors can be disabled with the \p -no_check_handle runtime option.
-\endif
-
-********************
-\subsection sec_warning Warning
-
-Dr. Memory reports warnings about unusual memory-related conditions that an
-application developer might like to know about.  For example:
-
-\code
-Error #12: WARNING: heap allocation failed
-@0:00:01.500 in thread 3748
-# 0 suppress.exe!warning_test1                       [e:\derek\drmemory\git\src\tests\suppress.c:179]
-# 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:282]
-# 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
-# 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
-# 4 KERNEL32.dll!BaseProcessStart                   
-\endcode
 
 ****************************************************************************
 ****************************************************************************

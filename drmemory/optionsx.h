@@ -291,10 +291,10 @@ OPTION_CLIENT_BOOL(client, show_reachable, false,
                    "Whether to list reachable allocations when leak checking.  Requires -check_leaks.")
 OPTION_CLIENT_STRING_REPEATABLE(client, suppress, "",
                      "File containing errors to suppress",
-                     "File containing errors to suppress.  May be repeated.  See \\ref sec_suppress.")
+                     "File containing errors to suppress.  May be repeated.  See \\ref page_suppress.")
 OPTION_CLIENT_BOOL(client, default_suppress, true,
                    "Use the set of default suppressions",
-                   "Use the set of default suppressions that come with "TOOLNAME".  See \\ref sec_suppress.")
+                   "Use the set of default suppressions that come with "TOOLNAME".  See \\ref page_suppress.")
 OPTION_CLIENT_BOOL(client, gen_suppress_offs, true,
                    "Generate mod+offs suppressions in the output suppress file",
                    "Generate mod+offs suppressions in addition to mod!sym suppressions in the output suppress file")

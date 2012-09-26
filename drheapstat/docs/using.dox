@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -292,7 +293,7 @@ script with these options:
 </tt>
 
 ********************
-\subsection sec_suppress Suppressing Errors
+\subsection page_suppress Suppressing Errors
 
 Dr. Heapstat generates a file named \p suppress.txt alongside the \p
 results.txt file.  To suppress leaks from being reported in future runs,

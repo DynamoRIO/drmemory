@@ -103,8 +103,11 @@ WARN_LOGFILE           =
 #---------------------------------------------------------------------------
 # configuration options related to the input files
 #---------------------------------------------------------------------------
-INPUT                  = .
-FILE_PATTERNS          = *.dox
+# We do not use *.dox so we can control the order and still have
+# top-level pages:
+INPUT                  = using.dox \
+                         options-docs.dox release.dox main.dox
+FILE_PATTERNS          = 
 RECURSIVE              = NO
 EXCLUDE                = 
 EXCLUDE_SYMLINKS       = NO

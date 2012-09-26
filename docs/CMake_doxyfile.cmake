@@ -62,6 +62,7 @@
 # * toolname_cap_spc
 # * doxygen_ver
 # * DynamoRIO_DIR
+# * TOOL_DR_MEMORY
 
 set(outdir "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(optionsdir "${options_for_docs}" PATH)
@@ -96,6 +97,11 @@ file(READ "${srcdir_orig}/options-base.dox.in" opsfile)
 string(REGEX REPLACE "REPLACEME" "${ops}" opsfile "${opsfile}")
 file(WRITE "${optionsdir_orig}/options-docs.dox" "${opsfile}")
 
+function (replace_aliases out in)
+  string(REGEX REPLACE "drmemory" "${toolname}" in "${in}")
+  set(${out} ${in} PARENT_SCOPE)
+endfunction (replace_aliases)
+
 # Include mechanism: we copy all .dox files from srcdir into outdir
 # and expand ^INCLUDEFILE
 file(GLOB dox_files "${srcdir_orig}/*.dox")
@@ -114,12 +120,14 @@ foreach (dox ${dox_files} ${dox_files2})
     # escape backslashes
     string(REGEX REPLACE "\\\\" "\\\\\\\\" subst "${subst}")
     string(REGEX REPLACE "${inc}" "\n${subst}" contents "${contents}")
+    replace_aliases(contents "${contents}")
   endforeach (inc)
   # We assume Dr. Memory is the starting point for all tools
   string(REGEX REPLACE "Dr. Memory" "${toolname_cap_spc}" contents "${contents}")
   # Replace prefix
   string(REGEX REPLACE " " "" toolname_cap "${toolname_cap_spc}")
   string(REGEX REPLACE "Dr.Memory" "${toolname_cap}" contents "${contents}")
+  replace_aliases(contents "${contents}")
   get_filename_component(doxbasename "${dox}" NAME)
   file(WRITE "${outdir_orig}/${doxbasename}" "${contents}")
 endforeach (dox)
@@ -190,6 +198,11 @@ if (WIN32)
     "(ENABLED_SECTIONS[ \t]*=)"
     "\\1 WINDOWS" string "${string}")
 endif (WIN32)
+
+if (TOOL_DR_MEMORY)
+  string(REGEX REPLACE
+    "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")
+endif (TOOL_DR_MEMORY)
 
 file(WRITE ${outfile} "${string}")
 

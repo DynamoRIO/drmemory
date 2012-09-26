@@ -100,6 +100,7 @@ add_custom_command(
        -Dtoolname_cap_spc=${toolname_cap_spc}
        -Ddoxygen_ver=${DOXYGEN_VERSION}
        -DDynamoRIO_DIR=${DynamoRIO_DIR}
+       -DTOOL_DR_MEMORY=${TOOL_DR_MEMORY}
        -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
   VERBATIM # recommended: p260
   )
