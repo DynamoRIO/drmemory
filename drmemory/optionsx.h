@@ -460,7 +460,14 @@ OPTION_CLIENT_SCOPE(drmemscope, perturb_seed, uint, 0, 0, UINT_MAX,
                     "To reproduce the random delays added by -perturb, pass the seed from the logfile from the target run to this option.  There may still be non-determinism in the rest of the system, however.")
 OPTION_CLIENT_BOOL(drmemscope, light, false,
                    "Enables a lightweight mode that detects only critical errors",
-                   "This option enables a lightweight mode that detects only critical errors.  Currently these include only unaddressable accesses.")
+                   "This option enables a lightweight mode that detects unaddressable accesses, free/delete/delete[] mismatches, and GDI API usage errors in Windows, but not uninitialized reads or memory leaks.")
+/* We know this is logically a little weird to have -light be shadow and
+ * -unaddr_only be pattern, but from the outside we're pretending that
+ * shadow-based light and pattern-based light are the same.
+ */
+OPTION_CLIENT_BOOL(drmemscope, unaddr_only, false,
+                   "Enables a lightweight mode that detects only unaddressable errors",
+                   "This option enables a lightweight mode that only detects critical errors of unaddressable accesses on heap data.  This option cannot be used with 'light' or 'check_uninitialized'.")
 OPTION_CLIENT_SCOPE(drmemscope, pattern, uint, 0, 0, USHRT_MAX,
                     "Enables pattern mode. A non-zero 2-byte value must be provided",
                     "Use sentinels to detect accesses on unaddressable regions around allocated heap objects.  When this option is enabled, checks for uninitialized read errors will be disabled.")

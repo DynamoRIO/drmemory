@@ -350,13 +350,22 @@ options_init(const char *opstr)
     if (options.light) {
         /* we can switch to pattern mode later */
         options.check_uninitialized = false;
-# ifdef X64
-        /* in 64-bit, default light mode is the pattern mode */
-        if (!option_specified.pattern)
-            options.pattern = DEFAULT_PATTERN;
-# endif
         if (!option_specified.count_leaks)
             options.count_leaks = false;
+    }
+    if (options.unaddr_only) {
+        if (!option_specified.pattern)
+            options.pattern = DEFAULT_PATTERN;
+        if (!option_specified.count_leaks)
+            options.count_leaks = false;
+        if (!option_specified.check_delete_mismatch)
+            options.check_delete_mismatch = false;
+# ifdef WINDOWS
+        if (!option_specified.check_handle_leaks)
+            options.check_handle_leaks = false;
+        if (!option_specified.check_gdi)
+            options.check_gdi = false;
+# endif
     }
     if (options.pattern != 0) {
         /* we do not need shadow memory */
