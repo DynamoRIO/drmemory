@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -72,6 +72,9 @@ add_custom_command(
   -I${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_docs}"
   VERBATIM)
 
+include(${DynamoRIO_DIR}/docs_doxyutils.cmake)
+check_doxygen_version(${DOXYGEN_EXECUTABLE} "${DOXYGEN_VERSION}" DOXYGEN_VERSION)
+
 set(doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 add_custom_command(
   OUTPUT ${doxyfile}
@@ -95,20 +98,9 @@ add_custom_command(
        -Doptions_for_docs=${options_for_docs}
        -Dtoolname=${toolname}
        -Dtoolname_cap_spc=${toolname_cap_spc}
+       -Ddoxygen_ver=${DOXYGEN_VERSION}
+       -DDynamoRIO_DIR=${DynamoRIO_DIR}
        -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
-  VERBATIM # recommended: p260
-  )
-
-set(footer ${CMAKE_CURRENT_BINARY_DIR}/footer.html)
-add_custom_command(
-  OUTPUT ${footer}
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/footer.html
-          ${CMAKE_CURRENT_SOURCE_DIR}/CMake_footer.cmake
-  COMMAND ${CMAKE_COMMAND}
-  # Be sure to put a space after -D for 1st arg at least
-  ARGS -D srcdir=${CMAKE_CURRENT_SOURCE_DIR} -Doutfile=${footer}
-       -Dversion_number=${TOOL_VERSION_NUMBER}
-       -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_footer.cmake
   VERBATIM # recommended: p260
   )
 
@@ -116,17 +108,23 @@ set(docsgen ${CMAKE_CURRENT_BINARY_DIR}/html/index.html)
 add_custom_command(
   OUTPUT ${docsgen} # among other files
   DEPENDS ${dox_files} ${dox_files_gen} ${sub_files} ${in_files} ${imgs}
-          ${CMAKE_CURRENT_SOURCE_DIR}/header.html
-          ${CMAKE_CURRENT_SOURCE_DIR}/htmlstyle.css
           ${footer}
           ${doxyfile}
-          ${CMAKE_CURRENT_SOURCE_DIR}/CMake_rundoxygen.cmake
+          ${DynamoRIO_DIR}/docs_rundoxygen.cmake
   # We want doxygen to fail if it has warnings like "can't find header
   # files" so we run it through a script
   COMMAND ${CMAKE_COMMAND}
   # Be sure to put a space after -D for 1st arg at least
   ARGS -D DOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
-       -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake_rundoxygen.cmake
+       -Ddoxygen_ver=${DOXYGEN_VERSION}
+       -Dversion_number=${TOOL_VERSION_NUMBER}
+       -Dmodule_string_long="Modules" # N/A
+       -Dmodule_string_short="Module" # N/A
+       -Dhome_url="http://www.drmemory.org"
+       -Dhome_title="Dr. Memory Home Page"
+       # XXX: once we have a logo (in progress), put it here
+       -Dlogo_imgfile="favicon.png"
+       -P ${DynamoRIO_DIR}/docs_rundoxygen.cmake
   VERBATIM # recommended: p260
   )
 set_directory_properties(PROPERTIES
@@ -137,6 +135,14 @@ add_custom_target(htmldocs ALL
           ${footer}
           ${docsgen}
   )
+
+# XXX: once we have a logo (in progress), put it here
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.png
+  ${CMAKE_CURRENT_BINARY_DIR}/html/favicon.png
+  COPYONLY)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
+  ${CMAKE_CURRENT_BINARY_DIR}/html/favicon.ico
+  COPYONLY)
 
 # FIXME: generate pdf: check for epstopdf and latex first
 
@@ -155,4 +161,7 @@ install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/favicon.png
   DESTINATION "${toolname}/docs/html"
   )
-
+install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
+  DESTINATION "${toolname}/docs/html"
+  )

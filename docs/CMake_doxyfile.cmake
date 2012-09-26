@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -60,6 +60,8 @@
 # * options_for_docs
 # * toolname
 # * toolname_cap_spc
+# * doxygen_ver
+# * DynamoRIO_DIR
 
 set(outdir "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(optionsdir "${options_for_docs}" PATH)
@@ -70,36 +72,14 @@ set(optionsdir_orig "${optionsdir}")
 set(commondir_orig "${commondir}")
 set(outdir_orig "${outdir}")
 
-file(READ ${commondir}/Doxyfile.in string)
+include("${DynamoRIO_DIR}/docs_doxyutils.cmake")
+set(input_paths srcdir srcdir2 outdir optionsdir commondir)
+doxygen_path_xform(${DOXYGEN_EXECUTABLE} "${input_paths}")
 
-string(REGEX MATCH "cygwin" is_cygwin "${DOXYGEN_EXECUTABLE}")
-if (is_cygwin)
-  # cygwin doxygen cannot handle mixed paths!
-  #    *** E:/cygwin/bin/doxygen.exe failed: ***
-  #    Failed to open temporary file
-  #    /d/derek/opensource/dynamorio/build/api/docs/D:/derek/opensource/dynamorio/build/api/docs/doxygen_objdb_3156.tmp
-  # we're using native windows cmake, so
-  #   file(TO_CMAKE_PATH) => mixed, file(TO_NATIVE_PATH) => windows
-  # thus we invoke cygpath, but after we've read in API.doxy so we can
-  # now clobber srcdir w/ a cygwin path.
-  find_program(CYGPATH cygpath)
-  if (NOT CYGPATH)
-    message(FATAL_ERROR "cannot find cygpath: thus cannot use cygwin doxygen")
-  endif (NOT CYGPATH)
-  set(input_paths srcdir srcdir2 outdir optionsdir commondir)
-  foreach (var ${input_paths})
-    execute_process(COMMAND
-      ${CYGPATH} -u "${${var}}"
-      RESULT_VARIABLE cygpath_result
-      ERROR_VARIABLE cygpath_err
-      OUTPUT_VARIABLE ${var}
-      )
-    if (cygpath_result OR cygpath_err)
-      message(FATAL_ERROR "*** ${CYGPATH} failed: ***\n${cygpath_err}")
-    endif (cygpath_result OR cygpath_err)
-    string(REGEX REPLACE "[\r\n]" "" ${var} "${${var}}")
-  endforeach (var)
-endif (is_cygwin)
+configure_file(${commondir_orig}/Doxyfile.in ${outfile} COPY_ONLY)
+process_doxyfile(${outfile} ${DOXYGEN_EXECUTABLE} ${doxygen_ver})
+
+file(READ ${outfile} string)
 
 # Be sure to quote ${string} to avoid interpretation (semicolons removed, etc.)
 
@@ -158,12 +138,6 @@ string(REGEX REPLACE
 string(REGEX REPLACE
   "(IMAGE_PATH *= )\\."
   "\\1\"${commondir}\" \"${srcdir}\" " string "${string}")
-string(REGEX REPLACE
-  "(header.html)"
-  "\"${commondir}/\\1\"" string "${string}")
-string(REGEX REPLACE
-  "(htmlstyle.css)"
-  "\"${commondir}/\\1\"" string "${string}")
 
 string(REGEX REPLACE
   # if I don't quote ${string}, then this works: [^$]*$
