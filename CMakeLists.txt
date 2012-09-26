@@ -560,15 +560,6 @@ add_custom_command(
 # are directory-local
 
 ##################################################
-
-find_package(Doxygen)
-if (NOT DOXYGEN_FOUND)
-  message("doxygen is required to build the documentation")
-else ()
-  add_subdirectory(docs)
-endif ()
-
-##################################################
 # find DynamoRIO so tests has its path, but don't include it or run
 # its configure commands to avoid changing cflags:
 
@@ -741,6 +732,16 @@ if (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
     string(REGEX REPLACE "/debug" "" ${var} "${${var}}")
   endforeach ()
 endif (DEFINED GENERATE_PDBS AND NOT GENERATE_PDBS)
+
+##################################################
+# now that we have ${DynamoRIO_DIR} we can configure docs
+
+find_package(Doxygen)
+if (NOT DOXYGEN_FOUND)
+  message("doxygen is required to build the documentation")
+else ()
+  add_subdirectory(docs)
+endif ()
 
 ##################################################
 # assembly support
