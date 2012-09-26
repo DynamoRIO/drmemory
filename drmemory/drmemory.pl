@@ -76,38 +76,6 @@ if ($is_vmk || $vs_vmk) {
     &vmk_init() if ($is_vmk);
 }
 
-$bin_arch = "bin32";
-$lib_arch = "lib32";
-$bindir = "bin/bin32";
-
-if (`uname -m` =~ /x86_64/) {
-    # experimental support for 64-bit
-    for ($i = 0; $i <= $#ARGV; $i++) {
-        # not using map() b/c want to stop at --
-        last if ($ARGV[$i] =~ /^--$/);
-    }
-    $i++;
-    $progpath = &canonicalize_path($ARGV[$i]);
-    $progpath = &find_on_path($progpath) if (! -e $progpath);
-    if (`file $progpath 2>&1` =~ /64-bit/) {
-        $bin_arch = "bin64";
-        $lib_arch = "lib64";
-        $bindir = "bin64/bin64";
-    }
-}
-
-$perl2exe = (-e "$scriptpath/$bin_arch/postprocess.exe") ? 1 : 0;
-# when using perl->exe we do not have a drmemory/bin subdir
-$drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
-# handle the top-level bin symlink being dereferenced (PR 527580)
-$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/$bin_arch");
-$default_home = $symlink_deref ? "$scriptpath/../drmemory" : "$scriptpath/../";
-$default_home = abs_path($default_home);
-$default_home = &canonicalize_path($default_home);
-
-$drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
-$drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
-
 # We include client option usage here and pass them through (PR 478146)
 $options_usage = "";
 # Since we compile this script on Windows simpler to use a dynamic include rather
@@ -121,10 +89,8 @@ $usage = "usage: $0 [options] -- <executable> [args ...]\noptions:\n$options_usa
 
 $verbose = 0;
 $version = 0;
-$drmemory_home = $default_home;
-# normally we're packaged with a DR release laid out in "dynamorio":
-$dr_home = ($drmem_bin_subdir || $symlink_deref) ?
-    "$default_home/../dynamorio" : "$default_home/dynamorio";
+$drmemory_home = "";
+$dr_home = "";
 $use_vmtree = ($vs_vmk && &vmk_expect_vmtree());
 $use_debug = 0;
 $use_debug_force = 0;
@@ -236,6 +202,41 @@ die "$usage\n" if ($postprocess_apppath ne '' && !$just_postprocess);
 
 die "Not supported with drsyms"
     if ($use_drsyms && ($aggregate || $skip_postprocess || $just_postprocess));
+
+# Now that we know the app to run, get its arch
+$bin_arch = "bin32";
+$lib_arch = "lib32";
+$bindir = "bin/bin32";
+
+if (`uname -m` =~ /x86_64/) {
+    # experimental support for 64-bit
+    $progpath = &canonicalize_path($ARGV[0]);
+    $progpath = &find_on_path($progpath) if (! -e $progpath);
+    if (`file $progpath 2>&1` =~ /64-bit/) {
+        $bin_arch = "bin64";
+        $lib_arch = "lib64";
+        $bindir = "bin64/bin64";
+    }
+}
+
+$perl2exe = (-e "$scriptpath/$bin_arch/postprocess.exe") ? 1 : 0;
+# when using perl->exe we do not have a drmemory/bin subdir
+$drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
+# handle the top-level bin symlink being dereferenced (PR 527580)
+$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/$bin_arch");
+$default_home = $symlink_deref ? "$scriptpath/../drmemory" : "$scriptpath/../";
+$default_home = abs_path($default_home);
+$default_home = &canonicalize_path($default_home);
+
+$drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
+$drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
+
+$drmemory_home = $default_home if ($drmemory_home eq '');
+# normally we're packaged with a DR release laid out in "dynamorio":
+if ($dr_home eq '') {
+    $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
+        "$default_home/../dynamorio" : "$default_home/dynamorio";
+}
 
 $dr_home = &canonicalize_path($dr_home);
 $drmemory_home = &canonicalize_path($drmemory_home);

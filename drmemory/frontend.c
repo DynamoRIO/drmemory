@@ -211,33 +211,62 @@ on_vista_or_later(void)
             version.dwMinorVersion >= 0);
 }
 
-static bool
-is_graphical_app(const char *exe)
+/* On failure returns INVALID_HANDLE_VALUE.
+ * On success returns a file handle which must be closed via CloseHandle()
+ * by the caller.
+ */
+static HANDLE
+read_nt_headers(const char *exe, IMAGE_NT_HEADERS *nt)
 {
-    /* reads the PE headers to see whether the given image is a graphical app */
     HANDLE f;
     DWORD offs;
     DWORD read;
     IMAGE_DOS_HEADER dos;
-    IMAGE_NT_HEADERS nt;
-    bool res = false; /* err on side of console */
     f = CreateFile(exe, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE)
-        return res;
+        goto read_nt_headers_error;
     if (!ReadFile(f, &dos, sizeof(dos), &read, NULL) ||
         read != sizeof(dos) ||
         dos.e_magic != IMAGE_DOS_SIGNATURE)
-        goto is_graphical_app_done;
+        goto read_nt_headers_error;
     offs = SetFilePointer(f, dos.e_lfanew, NULL, FILE_BEGIN);
     if (offs == INVALID_SET_FILE_POINTER)
-        goto is_graphical_app_done;
-    if (!ReadFile(f, &nt, sizeof(nt), &read, NULL) ||
-        read != sizeof(nt) ||
-        nt.Signature != IMAGE_NT_SIGNATURE)
-        goto is_graphical_app_done;
+        goto read_nt_headers_error;
+    if (!ReadFile(f, nt, sizeof(*nt), &read, NULL) ||
+        read != sizeof(*nt) ||
+        nt->Signature != IMAGE_NT_SIGNATURE)
+        goto read_nt_headers_error;
+    return f;
+ read_nt_headers_error:
+    if (f != INVALID_HANDLE_VALUE)
+        CloseHandle(f);
+    return INVALID_HANDLE_VALUE;
+}
+
+static bool
+is_graphical_app(const char *exe)
+{
+    /* reads the PE headers to see whether the given image is a graphical app */
+    bool res = false; /* err on side of console */
+    IMAGE_NT_HEADERS nt;
+    HANDLE f = read_nt_headers(exe, &nt);
+    if (f == INVALID_HANDLE_VALUE)
+        return res;
     res = (nt.OptionalHeader.Subsystem == IMAGE_SUBSYSTEM_WINDOWS_GUI);
- is_graphical_app_done:
+    CloseHandle(f);
+    return res;
+}
+
+static bool
+is_64bit_app(const char *exe)
+{
+    bool res = false;
+    IMAGE_NT_HEADERS nt;
+    HANDLE f = read_nt_headers(exe, &nt);
+    if (f == INVALID_HANDLE_VALUE)
+        return res;
+    res = (nt.OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR64_MAGIC);
     CloseHandle(f);
     return res;
 }
@@ -1025,6 +1054,18 @@ int main(int argc, char *argv[])
     NULL_TERMINATE_BUFFER(app_cmdline);
     assert(c - app_cmdline < BUFFER_SIZE_ELEMENTS(app_cmdline));
     info("app cmdline: %s", app_cmdline);
+
+#ifndef X64
+    /* Currently our builds and test suite are all single-arch and we don't
+     * have a 64-bit build in the release package, so for a 32-bit frontend
+     * we supply this useful message up front.  Once we do add 64-bit we'll
+     * want to solve i#1037 and then get rid of or modify this message.
+     */
+    if (is_64bit_app(app_name)) {
+        fatal("This Dr. Memory release does not support 64-bit applications.");
+        goto error; /* actually won't get here */
+    }
+#endif
 
     if (_access(dr_root, 4/*read*/) == -1) {
         fatal("invalid -dr_root %s", dr_root);
