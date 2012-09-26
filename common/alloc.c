@@ -2696,7 +2696,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (alloc_ops.skip_msvc_importers && search_syms &&
         module_imports_from_msvc(info) &&
         (modname == NULL ||
-         !text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/))) {
+         (!text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/) &&
+          !text_matches_pattern(modname, "msvcr*.dll", true/*ignore case*/)))) {
         /* i#963: assume there are no static libc routines if the module
          * imports from dynamic libc (unless it's dynamic C++ lib).
          * Note that we'll still pay the cost of loading the module for
@@ -2864,7 +2865,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                 set_cpp->func[HEAP_ROUTINE_SIZE_REQUESTED] =
                     cpp_libc->func[HEAP_ROUTINE_SIZE_REQUESTED];
             } else
-                WARN("WARNING: no libc found for cpp");
+                WARN("WARNING: no libc found for cpp\n");
         }
         dr_mutex_unlock(alloc_routine_lock);
     }

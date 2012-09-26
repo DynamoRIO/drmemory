@@ -201,6 +201,7 @@ get_libc_base(app_pc *libc_end_out OUT)
 #endif
         }
         dr_module_iterator_stop(iter);
+        LOG(2, "libc is "PFX"-"PFX"\n", libc_base, libc_end);
     }
     if (libc_end_out != NULL)
         *libc_end_out = libc_end;
