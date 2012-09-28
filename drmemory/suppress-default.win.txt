@@ -637,3 +637,16 @@ name=default i#988 c#2 NtGdiCreatePatternBrushInternal
 system call NtGdiCreatePatternBrushInternal
 ...
 USER32.dll!CreateWindowEx?
+
+##################################################
+# i#: real bug where MSVCR80D!DebuggerProbe fails to initialize 3 of the 6
+# exception arg slots it allocates.  The top MSVCR80D.dll frame is
+# DebuggerProbe but that's not exported.
+
+UNINITIALIZED READ
+system call NtRaiseException EXCEPTION_RECORD.ExceptionInformation
+ntdll.dll!RtlRaiseException
+KERNEL32.dll!RaiseException
+MSVCR80D.dll!*
+MSVCR80D.dll!*
+MSVCR80D.dll!*

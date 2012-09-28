@@ -1306,7 +1306,7 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
     const CONTEXT *cxt = (CONTEXT *)start;
     DWORD context_flags;
     check_sysmem(check_type, sysnum, start, sizeof(context_flags),
-                 mc, NULL);
+                 mc, "CONTEXT.ContextFlags");
     if (!safe_read((void*)&cxt->ContextFlags, sizeof(context_flags),
                    &context_flags)) {
         /* if safe_read fails due to CONTEXT being unaddr, the preceding
@@ -1336,12 +1336,12 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
 #define CONTEXT_NUM_DEBUG_REGS 6
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
-                     mc, NULL);
+                     mc, "CONTEXT.DrX");
     }
     if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
-                     mc, NULL);
+                     mc, "CONTEXT.FloatSave");
     }
     /* Segment registers are 16-bits each but stored with 16-bit gaps
      * so we can't use sizeof(cxt->Seg*s);
@@ -1349,13 +1349,13 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
 #define SIZE_SEGMENT_REG 2
     if (TESTALL(CONTEXT_SEGMENTS, context_flags)) {
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegGs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegGs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegGs");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegFs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegFs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegFs");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegEs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegEs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegEs");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegDs");
     }
     if (TESTALL(CONTEXT_INTEGER, context_flags) &&
         sysnum != sysnum_CreateThread) {
@@ -1365,7 +1365,7 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
 #define CONTEXT_NUM_INT_REGS 6
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
-                     mc, NULL);
+                     mc, "CONTEXT.Exx");
     }
     if (TESTALL(CONTEXT_CONTROL, context_flags)) {
         if (sysnum != sysnum_CreateThread) {
@@ -1374,23 +1374,23 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
              */
             check_sysmem(check_type, sysnum,
                          (app_pc)&cxt->Ebp, sizeof(DWORD),
-                         mc, NULL);
+                         mc, "CONTEXT.Ebp");
         }
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Eip, sizeof(cxt->Eip), mc, NULL);
+                     (app_pc)&cxt->Eip, sizeof(cxt->Eip), mc, "CONTEXT.Eip");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Esp, sizeof(cxt->Esp), mc, NULL);
+                     (app_pc)&cxt->Esp, sizeof(cxt->Esp), mc, "CONTEXT.Esp");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), mc, NULL);
+                     (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), mc, "CONTEXT.Eflags");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegCs");
         check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, mc, NULL);
+                     (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegSs");
     }
     if (TESTALL(CONTEXT_EXTENDED_REGISTERS, context_flags)) {
         check_sysmem(check_type, sysnum,
                      (app_pc)&cxt->ExtendedRegisters,
-                     sizeof(cxt->ExtendedRegisters), mc, NULL);
+                     sizeof(cxt->ExtendedRegisters), mc, "CONTEXT.ExtendedRegisters");
     }
     return true;
 #endif
@@ -1412,14 +1412,14 @@ handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
      */
     check_sysmem(check_type, sysnum,
                  start, sizeof(*er) - sizeof(er->ExceptionInformation),
-                 mc, NULL);
+                 mc, "EXCEPTION_RECORD");
     ASSERT(sizeof(num_params) == sizeof(er->NumberParameters), "");
     if (safe_read((void*)&er->NumberParameters, sizeof(num_params),
                   &num_params)) {
         check_sysmem(check_type, sysnum,
                      (app_pc)er->ExceptionInformation,
                      num_params * sizeof(er->ExceptionInformation[0]),
-                     mc, NULL);
+                     mc, "EXCEPTION_RECORD.ExceptionInformation");
     }
     return true;
 }

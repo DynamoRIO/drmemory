@@ -1057,6 +1057,7 @@ event_pre_syscall(void *drcontext, int sysnum)
      * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
      * params will hit unreadable page: should use TRY/EXCEPT
      */
+    LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", mc.xsp);
     for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
         LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
