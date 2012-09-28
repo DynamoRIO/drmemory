@@ -113,6 +113,7 @@ extern int sysnum_vfree;
 extern int sysnum_cbret;
 extern int sysnum_continue;
 extern int sysnum_setcontext;
+extern int sysnum_RaiseException;
 #endif
 
 #ifdef STATISTICS

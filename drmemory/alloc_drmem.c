@@ -1225,12 +1225,36 @@ client_stack_dealloc(byte *start, byte *end)
 }
 
 /***************************************************************************
- * SIGNALS
+ * SIGNALS AND SYSTEM CALLS
  */
+
+#ifdef WINDOWS
+static void
+adjust_stack_to_context(dr_mcontext_t *mc, reg_t cxt_xsp _IF_DEBUG(const char *prefix))
+{
+    if (cxt_xsp < mc->xsp) {
+        if (mc->xsp - cxt_xsp < options.stack_swap_threshold) {
+            shadow_set_range((byte *) cxt_xsp, (byte *) mc->xsp, SHADOW_UNDEFINED);
+            LOG(2, "%s: marked stack "PFX"-"PFX" as undefined\n",
+                prefix, cxt_xsp, mc->xsp);
+        } else
+            LOG(2, "%s: assuming stack swap "PFX" => "PFX"\n", prefix, mc->xsp, cxt_xsp);
+    } else if (cxt_xsp - mc->xsp < options.stack_swap_threshold) {
+        shadow_set_range((byte *) mc->xsp, (byte *) cxt_xsp, SHADOW_UNADDRESSABLE);
+        LOG(2, "%s: marked stack "PFX"-"PFX" as unaddressable\n",
+            prefix, mc->xsp, cxt_xsp);
+    } else
+        LOG(2, "%s: assuming stack swap "PFX" => "PFX"\n", prefix, mc->xsp, cxt_xsp);
+}
+#endif
 
 void
 client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
 {
+#ifdef WINDOWS
+    DWORD cxt_flags;
+    reg_t cxt_xsp;
+#endif
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -1242,15 +1266,17 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
         return;
     if (sysnum == sysnum_continue) {
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
-        if (cxt != NULL) {
+        if (cxt != NULL &&
+            safe_read(&cxt->ContextFlags, sizeof(cxt_flags), &cxt_flags) &&
+            safe_read(&cxt->Xsp, sizeof(cxt_xsp), &cxt_xsp)) {
             /* FIXME: what if the syscall fails? */
-            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
+            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {
                 register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Xsp));
 # ifndef X64
                 register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Xbp));
 # endif
             }
-            if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt->ContextFlags)) {
+            if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt_flags)) {
                 register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Xax));
                 register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Xcx));
                 register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Xdx));
@@ -1262,21 +1288,11 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
                 register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Xdi));
             }
             /* Mark stack AFTER reading cxt since cxt may be on stack! */
-            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt->ContextFlags)) {
-                if (cxt->Xsp < mc.xsp) {
-                    if (mc.xsp - cxt->Xsp < options.stack_swap_threshold) {
-                        shadow_set_range((byte *) cxt->Xsp, (byte *) mc.xsp,
-                                         SHADOW_UNDEFINED);
-                        LOG(2, "NtContinue: marked stack "PFX"-"PFX" as undefined\n",
-                            cxt->Xsp, mc.xsp);
-                    }
-                } else if (cxt->Xsp - mc.xsp < options.stack_swap_threshold) {
-                    shadow_set_range((byte *) mc.xsp, (byte *) cxt->Xsp,
-                                     SHADOW_UNADDRESSABLE);
-                    LOG(2, "NtContinue: marked stack "PFX"-"PFX" as unaddressable\n",
-                        mc.xsp, cxt->Xsp);
-                }
+            if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {
+                adjust_stack_to_context(&mc, cxt_xsp _IF_DEBUG("NtContinue"));
             }
+        } else {
+            WARN("WARNING: NtContinue: failed to adjust stack\n");
         }
     } else if (sysnum == sysnum_setcontext) {
         /* FIXME PR 575434: we need to know whether the thread is in this
@@ -1285,6 +1301,21 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
          * shadow values.
          */
         ASSERT(false, "NtSetContextThread NYI");
+    } else if (sysnum == sysnum_RaiseException) {
+        /* i#87: the kernel will place the args to KiUserExceptionDispatcher on
+         * the stack at the stack pointer in the CONTEXT, not the current stack
+         * pointer.
+         */
+        CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 1);
+        if (cxt != NULL &&
+            safe_read(&cxt->ContextFlags, sizeof(cxt_flags), &cxt_flags) &&
+            TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags) &&
+            safe_read(&cxt->Xsp, sizeof(cxt_xsp), &cxt_xsp)) {
+            /* FIXME: what if the syscall fails? */
+            adjust_stack_to_context(&mc, cxt_xsp _IF_DEBUG("NtRaiseException"));
+        } else {
+            WARN("WARNING: NtRaiseException: failed to adjust stack\n");
+        }
     }
 #else
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);

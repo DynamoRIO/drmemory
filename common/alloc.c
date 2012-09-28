@@ -179,6 +179,7 @@ int sysnum_vfree = -1;
 int sysnum_cbret = -1;
 int sysnum_continue = -1;
 int sysnum_setcontext = -1;
+int sysnum_RaiseException = -1;
 int sysnum_UserConnectToServer = -1;
 #endif
 
@@ -2603,6 +2604,8 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             sysnum_mapcmf = sysnum_from_name(drcontext, info, "NtMapCMFModule");
             ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
                    "error finding alloc syscall #");
+            sysnum_RaiseException = sysnum_from_name(drcontext, info, "NtRaiseException");
+            ASSERT(sysnum_RaiseException != -1, "error finding alloc syscall #");
             
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
@@ -3710,6 +3713,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     if (sysnum == sysnum_mmap || sysnum == sysnum_munmap ||
         sysnum == sysnum_valloc || sysnum == sysnum_vfree ||
         sysnum == sysnum_cbret || sysnum == sysnum_continue ||
+        sysnum == sysnum_RaiseException ||
         sysnum == sysnum_setcontext || sysnum == sysnum_mapcmf ||
         sysnum == sysnum_UserConnectToServer) {
         return true;
