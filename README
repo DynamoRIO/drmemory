@@ -34,14 +34,34 @@ memory leaks, and access to un-reserved thread local storage slots (on
 Windows).
 
 Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
-currently targets 32-bit Windows, Linux, and ESXi only.
+currently targets 32-bit Windows and Linux.  64-bit is coming soon.
 
 ===========================================================================
 How do I use Dr. Memory?
 
+Build your application with debug information and then run it under
+Dr. Memory.  Errors found are printed to the screen, and a summary is shown
+at the end of the run.
+
+--------------------------------------------------
+Quick start for Linux:
+
+1) g++ -m32 -g -fno-inline -fno-omit-frame-pointer *.cpp -o myapp
+2) bin/drmemory.pl -- ./myapp args_to_myapp
+
+--------------------------------------------------
+Quick start for Windows:
+
+1) cl /Zi /MT /EHsc /Oy- /Ob0 /Femyapp.exe *.cpp
+2) bin\drmemory.exe -- myapp.exe args_to_my_app
+
+===========================================================================
+Full Documentation
+
 If you are viewing this file, you have already successfully unpacked the
 Dr. Memory distribution archive.  To view the documention, point your web
-browser at the drmemory/docs/html/index.html file.
+browser at the drmemory/docs/html/index.html file, or online at
+http://drmemory.org/docs/.
 
 ===========================================================================
 Contact
