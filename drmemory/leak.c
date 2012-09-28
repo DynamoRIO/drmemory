@@ -1185,6 +1185,7 @@ leak_scan_for_leaks(bool at_exit)
     uint num_threads = 0, i;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     reachability_data_t data;
+    void *my_drcontext = dr_get_current_drcontext();
 #ifdef DEBUG
     static bool called_at_exit;
     if (at_exit) {
@@ -1196,6 +1197,11 @@ leak_scan_for_leaks(bool at_exit)
     LOG(1, "checking leaks via reachability analysis\n");
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
+
+    /* i#1016: ensure the thread performing the leak scan is in DR state,
+     * which should be the case regardless of whether at exit or a nudge.
+     */
+    ASSERT(!dr_using_app_state(my_drcontext), "state error");
 
     /* Strategy: First walk non-heap memory that is defined to find reachable
      * heap blocks.  (Ideally we would skip memory that has not been modified
@@ -1227,7 +1233,7 @@ leak_scan_for_leaks(bool at_exit)
         was_app_state = (bool *) global_alloc((num_threads+1)*sizeof(bool), HEAPSTAT_MISC);
         for (i = 0; i < num_threads; i++)
             prepare_thread_for_scan(drcontexts[i], &was_app_state[i]);
-        prepare_thread_for_scan(dr_get_current_drcontext(), &was_app_state[num_threads]);
+        prepare_thread_for_scan(my_drcontext, &was_app_state[num_threads]);
     }
 
     memset(&data, 0, sizeof(data));
@@ -1245,7 +1251,6 @@ leak_scan_for_leaks(bool at_exit)
 
     if (!at_exit || !op_have_defined_info) {
         /* Walk the thread's registers.  We rely on mcontext field ordering here. */
-        void *my_drcontext = dr_get_current_drcontext();
         for (i = 0; i < num_threads; i++) {
             LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(drcontexts[i]));
             dr_get_mcontext(drcontexts[i], &mc);
@@ -1297,7 +1302,7 @@ leak_scan_for_leaks(bool at_exit)
             restore_thread_after_scan(drcontexts[i], was_app_state[i]);
     }
     if (was_app_state != NULL) {
-        restore_thread_after_scan(dr_get_current_drcontext(), was_app_state[num_threads]);
+        restore_thread_after_scan(my_drcontext, was_app_state[num_threads]);
         global_free(was_app_state, (num_threads+1)*sizeof(bool), HEAPSTAT_MISC);
     }
 
