@@ -1195,7 +1195,7 @@ os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
         /* Data is filled in so consider success (i#358) */
         return true;
     }
-    return (res >= 0);
+    return NT_SUCCESS(res);
 }
 
 /* provides name if known when not in syscall_lookup(num) */
