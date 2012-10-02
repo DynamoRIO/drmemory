@@ -608,10 +608,12 @@ static const possible_alloc_routine_t possible_rtl_routines[] = {
     { "RtlReAllocateHeap", RTL_ROUTINE_REALLOC },
     { "RtlFreeHeap", RTL_ROUTINE_FREE },
 # ifdef X64
-    /* i#907: RtlFreeUnicodeString calls to NtdllpFreeStringRoutine directly,
-     * so we treat RtlFreeUnicodeString as a heap routine.
+    /* i#1032: In 64-bit Windows 7, NtdllpFreeStringRoutine, is pointed
+     * at by RtlFreeStringRoutine, is directly called from many places to free
+     * the string allocated via RTL heap routines, so it should be treated as
+     * a heap routine.
      */
-    { "RtlFreeUnicodeString", RTL_ROUTINE_FREE_UNICODESTRING},
+    { "RtlFreeStringRoutine", RTL_ROUTINE_FREE_STRING },
 # endif
     { "RtlValidateHeap", RTL_ROUTINE_VALIDATE },
     { "RtlCreateHeap", RTL_ROUTINE_CREATE },
@@ -1704,14 +1706,14 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
                strlen(name) == len + 2 &&
                name[len] == '(' && name[len+1] == ')')))) {
             add_idx = i;
-#ifdef WINDOWS
+# ifdef WINDOWS
             if (edata->possible[i].type == HEAP_ROUTINE_DebugHeapDelete &&
                 /* look for partial map (i#730) */
                 modoffs < edata->mod->end - edata->mod->start) {
                 modoffs = find_debug_delete_interception
                     (edata->mod->start, edata->mod->end, modoffs);
             }
-#endif
+# endif
             if (is_new_routine(edata->possible[i].type) ||
                 is_delete_routine(edata->possible[i].type)) {
                 /* Distinguish placement and nothrow new and delete. */
@@ -1748,7 +1750,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 {
     uint i;
     bool full = false;
-#ifdef WINDOWS
+# ifdef WINDOWS
     if (edata->mod->start == get_libc_base(NULL) ||
         edata->mod->start == get_libcpp_base()) {
         /* The _calloc_impl in msvcr*.dll is private (i#960) */
@@ -1756,7 +1758,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
         LOG(2, "%s: doing full symbol lookup for libc/libc++\n", __FUNCTION__);
         full = true;
     }
-#endif
+# endif
     if (lookup_all_symbols(edata->mod, regex, full,
                            enumerate_set_syms_cb, (void *)edata)) {
         for (i = 0; i < edata->num_possible; i++) {
@@ -1780,16 +1782,86 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
                     LOG(2, "marking %s as processed since regex didn't match\n", name);
                     ASSERT(edata->wildcard_name == NULL, "shouldn't get here");
                     edata->processed[i] = true;
-#ifdef USE_DRSYMS
                     if (op_use_symcache)
                         symcache_add(edata->mod, edata->possible[i].name, 0);
-#endif
                 }
             }
         }
     } else
         LOG(2, "WARNING: failed to look up symbols: %s\n", regex);
 }
+
+# if defined(WINDOWS) && defined(X64)
+static app_pc
+find_RtlFreeStringRoutine(const module_data_t *mod)
+{
+    /* i#995-c#3, RtlFreeStringRoutine is not an exported routine
+     * but a pointer pointing to NtdllpFreeStringRoutine,
+     * which may free memory by directly calling RtlpFreeHeap.
+     * We find it by decoding RtlFreeOemString:
+     *
+     * On Win7-x64
+     * ntdll!RtlFreeOemString:
+     * 7721db30 4883ec28        sub     rsp,28h
+     * 7721db34 488b4908        mov     rcx,qword ptr [rcx+8]
+     * 7721db38 4885c9          test    rcx,rcx
+     * 7721db3b 7406            je      ntdll!RtlFreeOemString+0x13 (00000000`7721db43)
+     * 7721db3d ff15d5990200    call    qword ptr [ntdll!RtlFreeStringRoutine (00000000`77247518)]
+     * 7721db43 4883c428        add     rsp,28h
+     * 7721db47 c3              ret
+     *
+     * On WinXP-x64
+     * ntdll32!RtlFreeOemString:
+     * 7d65e0ac 8bff             mov     edi,edi
+     * 7d65e0ae 55               push    ebp
+     * 7d65e0af 8bec             mov     ebp,esp
+     * 7d65e0b1 8b4508           mov     eax,[ebp+0x8]
+     * 7d65e0b4 8b4004           mov     eax,[eax+0x4]
+     * 7d65e0b7 85c0             test    eax,eax
+     * 7d65e0b9 7407             jz      ntdll32!RtlFreeOemString+0x16 (7d65e0c2)
+     * 7d65e0bb 50               push    eax
+     * 7d65e0bc ff15bcf9617d call dword ptr [ntdll32!RtlFreeStringRoutine (7d61f9bc)]
+     * 7d65e0c2 5d               pop     ebp
+     * 7d65e0c3 c20400           ret     0x4
+     */
+    void *drcontext = dr_get_current_drcontext();
+    instr_t instr;
+    opnd_t opnd;
+    int i, opc;
+    app_pc pc;
+    pc = (app_pc)dr_get_proc_address(mod->handle, "RtlFreeOemString");
+    if (pc == NULL) {
+        ASSERT(false, "fail to find RtlFreeOemString");
+        return NULL;
+    }
+    instr_init(drcontext, &instr);
+    for (i = 0; i < 20 /* we decode no more than 20 instrs */; i++) {
+        instr_reset(drcontext, &instr);
+        pc = decode(drcontext, pc, &instr);
+        opc = instr_get_opcode(&instr);
+        if (pc == NULL || opc == OP_call_ind || opc == OP_ret)
+            break;
+    }
+
+    if (opc != OP_call_ind) {
+        WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
+        instr_free(drcontext, &instr);
+        return NULL;
+    }
+
+    opnd = instr_get_target(&instr);
+    instr_free(drcontext, &instr);
+    if ((opnd_is_abs_addr(opnd) || opnd_is_rel_addr(opnd)) &&
+        safe_read((void *)opnd_get_addr(opnd), sizeof(pc), &pc)) {
+        LOG(2, "find RtlFreeStringRoutine "PFX
+            " and RtlpFreeStringRoutine "PFX"\n", opnd_get_addr(opnd), pc);
+    } else {
+        pc = NULL;
+        WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
+    }
+    return pc;
+}
+# endif /* WINDOWS && X64 */
 #endif /* USE_DRSYMS */
 
 /* caller must hold alloc routine lock */
@@ -1904,7 +1976,16 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 edata.processed[i] = true;
             continue;
         }
-#endif
+# ifdef X64
+        if (possible == possible_rtl_routines &&
+            possible[i].type == RTL_ROUTINE_FREE_STRING) {
+            /* i#1032 add NtdllFreeStringRoutine as heap routine */
+            pc = find_RtlFreeStringRoutine(edata.mod);
+            if (pc != NULL)
+                add_to_alloc_set(&edata, pc, i);
+        }
+# endif /* X64 */
+#endif /* WINDOWS */
 #ifdef USE_DRSYMS
         if (is_operator_nothrow_routine(possible[i].type)) {
             /* The name doesn't match the real symbol so we take the
@@ -4601,8 +4682,8 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     record_mc_for_client(pt, wrapcxt);
 
 #if defined(WINDOWS) && defined(X64)
-    /* no mismatch check for RtlFreeUnicodeString */
-    if (type == RTL_ROUTINE_FREE_UNICODESTRING)
+    /* no mismatch check for RtlFreeStringRoutine */
+    if (type == RTL_ROUTINE_FREE_STRING)
         return true;
 #endif
     if (entry == NULL && alloc_type == MALLOC_ALLOCATOR_UNKNOWN) {
@@ -4670,28 +4751,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     size_t size = 0;
     malloc_entry_t *entry;
 
-#if defined(WINDOWS) && defined(X64)
-    /* i#907: RtlFreeUnicodeString calls to NtdllpFreeStringRoutine directly, 
-     * so we treat RtlFreeUnicodeString as an alloc routine.
-     * However, the memory to be freed is pointed at by arg->Buffer
-     */
-    if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
-        UNICODE_STRING uni_str;
-        if (safe_read(arg, sizeof(uni_str), &uni_str)) {
-            base = (app_pc)uni_str.Buffer;
-        } else {
-            /* if fail to read, we have no way to know the real Buffer,
-             * so we assume arg is an invalid pointer and use it for
-             * reporting invalid free error.
-             */
-            IF_DEBUG(valid = false);
-            base = (app_pc)arg;
-        }
-    } else 
-        base = (app_pc)arg;
-#else
     base = (app_pc)arg;
-#endif
     real_base = base;
     pt->alloc_being_freed = base;
 
@@ -4724,14 +4784,6 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      */
     malloc_lock();
     entry = malloc_lookup(base);
-#if defined(WINDOWS) && defined(X64) && defined(DEBUG)
-    if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL && !valid) {
-        /* if it is RtlFreeUnicodeString and the arg is not valid,
-         * double check it is not in the malloc table.
-         */
-        ASSERT(entry == NULL, "arg should be invalid");
-    }
-#endif
     if (entry != NULL &&
         (malloc_entry_is_native_ex(entry, base, pt, false)
 #ifdef WINDOWS
@@ -4797,13 +4849,6 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                 /* was allocated before we took control, so no redzone */
                 size_in_zone = false;
                 LOG(2, "free of pre-control "PFX"-"PFX"\n", base, base+size);
-#if defined(WINDOWS) && defined(X64)
-            } else if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
-                DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)real_base;
-                }, { /* EXCEPT */
-                });
-#endif
             } else {
                 drwrap_set_arg(wrapcxt, ARGNUM_FREE_PTR(type), (void *)real_base);
             }
@@ -4860,14 +4905,6 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         if (change_base != real_base) {
             LOG(2, "free-pre client %d changing base from "PFX" to "PFX"\n",
                 type, real_base, change_base);
-#if defined(WINDOWS) && defined(X64)
-            if (type == RTL_ROUTINE_FREE_UNICODESTRING && arg != NULL) {
-                DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-                    ((UNICODE_STRING *)arg)->Buffer = (PWSTR)change_base;
-                }, { /* EXCEPT */
-                });
-            } else
-#endif
             drwrap_set_arg(wrapcxt, ARGNUM_FREE_PTR(type), (void *)change_base);
             /* for set_handling_heap_layer for recursion check.
              * we assume has redzone: doesn't matter, just has to match the

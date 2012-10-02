@@ -111,7 +111,11 @@ typedef enum {
     RTL_ROUTINE_REALLOC,
     RTL_ROUTINE_FREE,
 # ifdef X64
-    RTL_ROUTINE_FREE_UNICODESTRING,
+    /* i#995-c#3, RtlFreeStringRoutine is a pointer pointing to
+     * NtdllpFreeStringRoutine, which may free memory by directly
+     * calling RtlpFreeHeap.
+     */
+    RTL_ROUTINE_FREE_STRING,
 # endif
     RTL_ROUTINE_VALIDATE,
     RTL_ROUTINE_SIZE,
@@ -163,7 +167,7 @@ is_free_routine(routine_type_t type)
     return (type == HEAP_ROUTINE_FREE
             IF_WINDOWS(|| type == RTL_ROUTINE_FREE
                        || type == HEAP_ROUTINE_FREE_DBG
-                       IF_X64(|| type == RTL_ROUTINE_FREE_UNICODESTRING)));
+                       IF_X64(|| type == RTL_ROUTINE_FREE_STRING)));
 }
 
 static inline bool

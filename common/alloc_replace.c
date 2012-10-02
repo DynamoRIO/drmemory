@@ -2067,6 +2067,15 @@ func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
             *routine = (void *) replace_ignore_arg5;
             *stack = sizeof(void*) * 5;
             return true;
+# ifdef X64
+        /* FIXME i#995-c#3: we need replace NtdllpFreeStringRoutine in win-x64,
+         * which takes the first arg as the ptr to be freed.
+         */
+        case RTL_ROUTINE_FREE_STRING:
+            ASSERT(false, "replace RtlFreeStringRoutine NYI");
+            *routine = NULL; /* wrapping instead though it probably won't work */
+            return true;
+#endif
         /* FIXME i#893: we need to split up RTL_ROUTINE_QUERY, along with replacing
          * other routines not currently wrapped.  We don't need special
          * fast sym lookup or to treat as heap layers so we should do drwrap
