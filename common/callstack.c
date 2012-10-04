@@ -1198,7 +1198,11 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             /* appdata.next_fp is candidate */
             bool out_of_range =
                 (appdata.next_fp < (app_pc)pc ||
-                 (appdata.next_fp - (app_pc)pc) >= op_stack_swap_threshold);
+                 /* i#1042: 0xffffffff`ffffffff - 0x00000000`00aaf1e0 >= 0x20000
+                  * return false, so we cast it to ptr_uint_t.
+                  */
+                 (ptr_uint_t)(appdata.next_fp - (app_pc)pc) >=
+                 op_stack_swap_threshold);
             app_pc next_fp = appdata.next_fp;
             if (!out_of_range &&
                 !safe_read((byte *)next_fp, sizeof(appdata), &appdata)) {
