@@ -649,4 +649,8 @@ else (NOT X64)
   newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "")
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
     "" OFF "track_origins")
+  if (WIN32)
+    # FIXME i#672: see earlier comment on # callstack frames
+    newtest_ex(handle handle.cpp "" "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100" "" OFF "")
+  endif (WIN32)
 endif (NOT X64)
