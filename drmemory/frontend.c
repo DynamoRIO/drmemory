@@ -737,7 +737,7 @@ int main(int argc, char *argv[])
 
     char *app_name;
     char full_app_name[MAXIMUM_PATH];
-    char app_cmdline[MAX_APP_CMDLINE];
+    char **app_argv;
 
     int errcode;
     void *inject_data;
@@ -1032,7 +1032,7 @@ int main(int argc, char *argv[])
 
     if (i >= argc)
         usage("%s", "no app specified");
-    app_name = argv[i++];
+    app_name = argv[i];
     get_full_path(app_name, full_app_name, BUFFER_SIZE_ELEMENTS(full_app_name));
     if (full_app_name[0] != '\0')
         app_name = full_app_name;
@@ -1044,16 +1044,18 @@ int main(int argc, char *argv[])
      * it's easier to construct than to call GetCommandLine() and then
      * remove our own args.
      */
-    c = app_cmdline;
-    c += _snprintf(c, BUFFER_SIZE_ELEMENTS(app_cmdline) - (c - app_cmdline),
-                   "\"%s\"", app_name);
-    for (; i < argc; i++) {
-        c += _snprintf(c, BUFFER_SIZE_ELEMENTS(app_cmdline) - (c - app_cmdline),
-                       " \"%s\"", argv[i]);
+    app_argv = &argv[i];
+    if (verbose) {
+        int j;
+        c = buf;
+        for (j = 0; app_argv[j] != NULL; j++) {
+            c += _snprintf(c, BUFFER_SIZE_ELEMENTS(buf) - (c - buf),
+                           "\"%s\" ", app_argv[j]);
+        }
+        NULL_TERMINATE_BUFFER(buf);
+        assert(c - buf < BUFFER_SIZE_ELEMENTS(buf));
+        info("app cmdline: %s", buf);
     }
-    NULL_TERMINATE_BUFFER(app_cmdline);
-    assert(c - app_cmdline < BUFFER_SIZE_ELEMENTS(app_cmdline));
-    info("app cmdline: %s", app_cmdline);
 
 #ifndef X64
     /* Currently our builds and test suite are all single-arch and we don't
@@ -1178,18 +1180,18 @@ int main(int argc, char *argv[])
     /* Set _NT_SYMBOL_PATH for the app. */
     set_symbol_search_path(logdir);
 
-    errcode = dr_inject_process_create(app_name, app_cmdline, &inject_data);
+    errcode = dr_inject_process_create(app_name, app_argv, &inject_data);
     if (errcode != 0) {
-        int sofar = _snprintf(app_cmdline, BUFFER_SIZE_ELEMENTS(app_cmdline), 
+        int sofar = _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
                               "failed to create process for \"%s\": ", app_name);
         if (sofar > 0) {
             FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                           NULL, errcode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                          (LPTSTR) app_cmdline + sofar,
-                          BUFFER_SIZE_ELEMENTS(app_cmdline) - sofar*sizeof(char), NULL);
+                          (LPTSTR) buf + sofar,
+                          BUFFER_SIZE_ELEMENTS(buf) - sofar*sizeof(char), NULL);
         }
-        NULL_TERMINATE_BUFFER(app_cmdline);
-        fatal("%s", app_cmdline);
+        NULL_TERMINATE_BUFFER(buf);
+        fatal("%s", buf);
         goto error; /* actually won't get here */
     }
 
