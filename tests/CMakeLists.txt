@@ -395,6 +395,10 @@ newtest(malloc malloc.c)
 newtest(free free.c)
 newtest(registers registers.c)
 newtest(bitfield bitfield.cpp)
+if (WIN32)
+  # i#489: building /GL results in a double-xor sequence
+  newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
+endif (WIN32)
 # linux glibc backtrace on hashtable curiosities causing problems:
 # * making syscalls => hit sysenter hook
 # * w/ -sysenter_is_int80 => calls abort() for some reason

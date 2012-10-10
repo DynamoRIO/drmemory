@@ -401,10 +401,12 @@ extern int tls_idx_util;
 # define STATS_INC(stat) ATOMIC_INC32(stat)
 # define STATS_DEC(stat) ATOMIC_DEC32(stat)
 # define STATS_ADD(stat, val) ATOMIC_ADD32(stat, val)
+# define DOSTATS(x) x
 #else
 # define STATS_INC(stat) /* nothing */
 # define STATS_DEC(stat) /* nothing */
 # define STATS_ADD(stat, val) /* nothing */
+# define DOSTATS(x) /* nothing */
 #endif
 
 #define PRE instrlist_meta_preinsert

@@ -115,6 +115,8 @@ extern uint rawmemchr_exception;
 extern uint strmem_unaddr_exception;
 extern uint strrchr_exception;
 extern uint andor_exception;
+extern uint bitfield_const_exception;
+extern uint bitfield_xor_exception;
 extern uint loader_DRlib_exception;
 extern uint cppexcept_DRlib_exception;
 extern uint reg_dead;

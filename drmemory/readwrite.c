@@ -123,6 +123,8 @@ uint rawmemchr_exception;
 uint strmem_unaddr_exception;
 uint strrchr_exception;
 uint andor_exception;
+uint bitfield_const_exception;
+uint bitfield_xor_exception;
 uint loader_DRlib_exception;
 uint cppexcept_DRlib_exception;
 uint heap_func_ref_ignored;
@@ -174,6 +176,9 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
 
 static bool
 should_mark_stack_frames_defined(app_pc pc);
+
+static void
+register_shadow_mark_defined(reg_id_t reg);
 #endif /* TOOL_DR_MEMORY */
 
 /***************************************************************************
@@ -1459,13 +1464,91 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
 }
 
 #ifdef TOOL_DR_MEMORY
+/* i#489: handle the "mov C->B, xor A->B, and D->B, xor B->C" sequence
+ * used by optimizing compilers (cl /GL in particular) to set a sequence of
+ * bits within a word to a given non-constant value.
+ * We don't want to spend the time scanning for this pattern up front in
+ * the bb events b/c of overhead and extra complexity of passing data
+ * to the instrumentation code (or of an app2app xform).  We leverage
+ * the fact that OP_and w/ undef srcs comes to slowpath (just like i#849
+ * relies on it).  It's painful to go backward though (we'd have to walk
+ * the bb table to find start of bb) so we just look for "and D->B, xor B->C"
+ * and mark B and C defined which is a reasonable compromise.
+ */
+static bool
+check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
+                   uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
+                   size_t sz, app_pc next_pc)
+{
+    bool matches = false;
+    instr_t xor;
+    ASSERT(instr_get_opcode(inst) == OP_and, "caller should check");
+    if (options.strict_bitops) /* not worth separate option */
+        return false;
+    instr_init(drcontext, &xor);
+    if (safe_decode(drcontext, next_pc, &xor, NULL) &&
+        instr_valid(&xor) && instr_get_opcode(&xor) == OP_xor) {
+        /* While someone could construct an L4 OP_and where src0==dst0 (or
+         * with 30 sources, for that matter), it won't encode, so we go ahead
+         * and assume it matches the canonical form.
+         */
+        opnd_t and_src = instr_get_src(inst, 0);
+        opnd_t and_dst = instr_get_dst(inst, 0);
+        opnd_t xor_src = instr_get_src(&xor, 0);
+        opnd_t xor_dst = instr_get_dst(&xor, 0);
+        if (opnd_same(xor_src, and_dst) &&
+            /* Rule out: 1) nop; 2) xor where B and C are not completely separate */
+            !opnd_share_reg(xor_dst, xor_src) &&
+            /* Rule out OP_and's operands affecting base/index of xor (so we can
+             * rely on opnd_compute_address() below), or D==C.
+             */
+            ((opnd_is_memory_reference(xor_dst) &&
+              opnd_is_memory_reference(and_src)) ||
+             !opnd_share_reg(xor_dst, and_src)) &&
+            ((opnd_is_memory_reference(xor_dst) &&
+              opnd_is_memory_reference(and_dst)) ||
+             !opnd_share_reg(xor_dst, and_dst))) {
+            int i;
+            /* XXX: in debug build try to go backward and verify the prior mov,xor
+             * instrs to find out whether any other patterns match this tail end.
+             */
+            matches = true;
+            STATS_INC(bitfield_xor_exception);
+            /* Caller already collapsed the 2nd src so we just set bottom indices */
+            for (i = 0; i < sz; i++) {
+                if (shadow_vals[i] == SHADOW_UNDEFINED)
+                    shadow_vals[i] = SHADOW_DEFINED;
+            }
+            /* Eflags will be marked defined since shadow_vals is all defined */
+            /* Now we need to set the xor dst */
+            if (opnd_is_reg(xor_dst))
+                register_shadow_mark_defined(opnd_get_reg(xor_dst));
+            else {
+                ASSERT(opnd_is_memory_reference(xor_dst), "invalid xor dst");
+                /* No need for adjust_memop: not a push or pop */
+                /* We checked above that xor_dst does not use any regs in OP_and opnds */
+                shadow_set_non_matching_range(opnd_compute_address(xor_dst, mc),
+                                              opnd_get_size(xor_dst), SHADOW_DEFINED,
+                                              SHADOW_UNADDRESSABLE);
+            }
+        }
+    }
+    instr_free(drcontext, &xor);
+    return matches;
+}
+
 /* Caller has already checked that "val" is defined */
 static bool
 check_andor_vals(int opc, reg_t val, uint i, bool bitmask_immed)
 {
     if (options.strict_bitops) {
-        return (opc != OP_or && DWORD2BYTE(val, i) == 0) ||
-            (opc == OP_or && DWORD2BYTE(val, i) == ~0);
+        bool def = ((opc != OP_or && DWORD2BYTE(val, i) == 0) ||
+                    (opc == OP_or && DWORD2BYTE(val, i) == ~0));
+        DOSTATS({
+            if (def)
+                STATS_INC(bitfield_const_exception);
+        });
+        return def;
     } else {
         /* i#849: we relax typical bitfield operations:
          * + OP_or with a defined value (not enough to just allow non-0 value)
@@ -1512,15 +1595,18 @@ check_andor_bitmask_immed(int opc, size_t sz, reg_t immed)
             }
             curval = curval >> 1;
         }
-        if (i == sz*8 && num_contig_1bits > 2)
+        if (i == sz*8 && num_contig_1bits > 2) {
+            STATS_INC(bitfield_const_exception);
             bitmask_immed = true;
+        }
     }
     return bitmask_immed;
 }
 
 static bool
-check_andor_sources(void *drcontext, instr_t *inst,
-                    uint shadow_vals[OPND_SHADOW_ARRAY_LEN])
+check_andor_sources(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
+                    uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
+                    app_pc next_pc)
 {
     /* The two sources have been laid out side-by-side in shadow_vals.
      * We need to combine, with special rules that suppress undefinedness
@@ -1535,6 +1621,8 @@ check_andor_sources(void *drcontext, instr_t *inst,
     bool have_immed = false;
     bool bitmask_immed = false;
     size_t sz;
+    ASSERT(instr_needs_all_srcs_and_vals(inst) &&
+           (opc == OP_and || opc == OP_test || opc == OP_or), "must be OP_{and,test,or}");
     if (opnd_is_immed_int(instr_get_src(inst, 0))) {
         immed_opnum = 0;
         nonimmed_opnum = 1;
@@ -1643,6 +1731,10 @@ check_andor_sources(void *drcontext, instr_t *inst,
         /* Throw out the 2nd source vals now that we've integrated */
         shadow_vals[i+sz] = SHADOW_DEFINED;
     }
+
+    if (opc == OP_and)
+        all_defined = check_xor_bitfield(drcontext, mc, inst, shadow_vals, sz, next_pc);
+
     return all_defined;
 }
 
@@ -2387,7 +2479,8 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     if (check_srcs_after && !check_definedness/*avoid recursing after goto below*/) {
         /* turn back on for dsts */
         check_definedness = instr_check_definedness(&inst);
-        if (!check_andor_sources(drcontext, &inst, shadow_vals) &&
+        if (!check_andor_sources(drcontext, mc, &inst, shadow_vals,
+                                 decode_pc + instr_sz) &&
             check_definedness) {
             /* We do not bother to suppress reporting the particular bytes that
              * may have been "defined" due to 0/1 in the other operand since
