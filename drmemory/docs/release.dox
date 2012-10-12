@@ -70,6 +70,7 @@ The changes between version 1.5.0 and 1.4.6 include:
  - Added automated retrieval of certain system library debug files
    at the end of a run for better error reports in future runs.
  - Added -log_suppressed_errors option
+ - Added -show_duplicates option
  - Support wildcards in instruction lines in suppressions
  - Improved callstack walking
  - Added -callstack_exe_hide

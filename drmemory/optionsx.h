@@ -343,6 +343,9 @@ OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
 OPTION_CLIENT_SCOPE(drmemscope, report_leak_max, int, 10000, -1, INT_MAX,
                     "Maximum leaks to report (-1=no limit)",
                     "Maximum leaks to report (-1=no limit).")
+OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
+                   "Print details on each duplicate error",
+                   "Print details on each duplicate error rather than only showing unique error details")
 #ifdef USE_DRSYMS
 OPTION_CLIENT_BOOL(drmemscope, batch, false,
                    "Do not invoke notepad at the end",

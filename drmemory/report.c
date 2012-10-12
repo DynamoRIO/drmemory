@@ -2148,10 +2148,12 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
             /* We want -pause_at_un* to pause at dups so we consider it "reporting" */
             reporting = true;
         }
-        dr_mutex_unlock(error_lock);
-        goto report_error_done;
+        if (!options.show_duplicates) {
+            dr_mutex_unlock(error_lock);
+            goto report_error_done;
+        }
     }
-    ASSERT(err->id == 0, "non-duplicate should not have id");
+    ASSERT(options.show_duplicates || err->id == 0, "non-duplicate should not have id");
 
     /* for invalid heap arg, now that we always do our alloc pre-hook in the
      * callee, the first frame is a retaddr and its line should thus be -1
@@ -2163,20 +2165,22 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     /* Convert to symbolized so we can compare to suppressions */
     packed_callstack_to_symbolized(err->pcs, &ecs.scs);
 
-    reporting = !on_suppression_list(etp->errtype, &ecs, &spec);
-    if (!reporting) {
-        err->suppressed = true;
-        err->suppressed_by_default = spec->is_default;
-        err->suppress_spec = spec;
-        if (err->suppress_spec->is_default)
-            num_suppressions_matched_default++;
-        else
-            num_suppressions_matched_user++;
-        num_total[etp->errtype]--;
-    } else {
-        acquire_error_number(err);
-        report_error_suppression(etp->errtype, &ecs, err->id);
-        num_reported_errors++;
+    if (err->count == 1) {
+        reporting = !on_suppression_list(etp->errtype, &ecs, &spec);
+        if (!reporting) {
+            err->suppressed = true;
+            err->suppressed_by_default = spec->is_default;
+            err->suppress_spec = spec;
+            if (err->suppress_spec->is_default)
+                num_suppressions_matched_default++;
+            else
+                num_suppressions_matched_user++;
+            num_total[etp->errtype]--;
+        } else {
+            acquire_error_number(err);
+            report_error_suppression(etp->errtype, &ecs, err->id);
+            num_reported_errors++;
+        }
     }
     dr_mutex_unlock(error_lock);
 
