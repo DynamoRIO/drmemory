@@ -454,6 +454,9 @@ if ($aggregate || $just_postprocess) {
     @appcmdline = (@deploycmdline, @appcmdline);
 }
 
+# i#1045: avoid glibc malloc checks aborting the app and confusing the user
+$ENV{'MALLOC_CHECK_'} = "0";
+
 $procid = $$;
 
 if ($aggregate || $just_postprocess) {

@@ -284,6 +284,7 @@ if ("${cmd}" MATCHES "run_in_bg")
 else ()
   if (UNIX)
     # avoid fatal warnings on our deliberate errors
+    # (we now set this in drmemory.pl but leaving here as a failsafe)
     set(ENV{MALLOC_CHECK_} "0")
   endif (UNIX)
   # XXX: if wrong option passed, this hangs and I never figured out why:
