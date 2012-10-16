@@ -1707,6 +1707,11 @@ packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2])
                          PCS_FRAME_SZ(pcs)*pcs->num_frames, crc);
 }
 
+uint
+packed_callstack_num_frames(packed_callstack_t *pcs)
+{
+    return pcs->num_frames;
+}
 
 /***************************************************************************
  * SYMBOLIZED CALLSTACKS

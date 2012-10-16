@@ -253,6 +253,9 @@ packed_callstack_md5(packed_callstack_t *pcs, byte digest[MD5_RAW_BYTES]);
 void
 packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2]);
 
+uint
+packed_callstack_num_frames(packed_callstack_t *pcs);
+
 /* The user must call this from a DR dr_register_module_load_event() event */
 void
 callstack_module_load(void *drcontext, const module_data_t *info, bool loaded);

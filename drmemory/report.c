@@ -1695,6 +1695,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
     stored_error_t *err = stored_error_create(type);
     if (pcs == NULL) {
         reg_t save_xbp = mc->xbp;
+        bool zeroed_xbp = false;
         if (options.callstack_use_top_fp_selectively &&
             /* for -replace_malloc invalid args and leaks we have our own
              * malloc routine as the top frame (i#639).  we ensure it has ebp.
@@ -1726,8 +1727,10 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                     /* callstack mod table is faster than DR lookup */
                     const char *modpath = module_lookup_path(pc);
                     if (modpath != NULL && !text_matches_pattern
-                        (modpath, "*windows?sys*", true/*ignore case*/))
+                        (modpath, "*windows?sys*", true/*ignore case*/)) {
+                        zeroed_xbp = true;
                         mc->xbp = 0;
+                    }
                 }
             } else {
                 /* we have definedness info so scanning is accurate */
@@ -1735,8 +1738,16 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
             }
         }
         packed_callstack_record(&err->pcs, mc, loc);
-        if (options.callstack_use_top_fp_selectively && mc->xbp == 0)
+        if (zeroed_xbp) {
             mc->xbp = save_xbp;
+            /* i#1049: scan may not have been far enough so re-try w/ ebp */
+            if (packed_callstack_num_frames(err->pcs) <= 1) {
+                IF_DEBUG(uint ref = )
+                    packed_callstack_free(err->pcs);
+                ASSERT(ref == 0, "invalid ref count");
+                packed_callstack_record(&err->pcs, mc, loc);
+            }
+        }
     } else {
         /* lifetimes differ so we must clone */
         err->pcs = packed_callstack_clone(pcs);
