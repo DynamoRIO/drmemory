@@ -2757,7 +2757,7 @@ module_has_pdb(const module_data_t *info)
 void
 alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-    alloc_routine_set_t *set_libc;
+    alloc_routine_set_t *set_libc = NULL;
     alloc_routine_set_t *set_cpp = NULL;
     bool use_redzone = true;
 #ifdef WINDOWS
