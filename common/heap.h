@@ -71,6 +71,7 @@ extern uint heap_regions;
 enum {
     HEAP_PRE_US   = 0x01,
     HEAP_ARENA    = 0x02,
+    HEAP_MMAP     = 0x04,
 };
 
 void

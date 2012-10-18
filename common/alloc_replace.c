@@ -834,7 +834,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, bool synch, boo
         head->flags |= CHUNK_MMAP;
         head->magic = HEADER_MAGIC;
         head->alloc_size = map_size - alloc_ops.redzone_size*2 - header_beyond_redzone;
-        heap_region_add(map, map + map_size, 0, mc);
+        heap_region_add(map, map + map_size, HEAP_MMAP, mc);
     } else {
         /* look for free list entry */
         head = find_free_list_entry(arena, request_size, aligned_size);
@@ -1141,19 +1141,6 @@ typedef struct _alloc_iter_data_t {
 } alloc_iter_data_t;
 
 static bool
-alloc_large_iter_cb(byte *start, size_t size, void *iter_data)
-{
-    alloc_iter_data_t *data = (alloc_iter_data_t *) iter_data;
-    chunk_header_t *head = header_from_ptr(start);
-    if (TEST(CHUNK_MMAP, head->flags)) {
-        return data->cb(start, start + head->request_size, start + head->alloc_size, false,
-                        head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS, head->user_data,
-                        data->data);
-    } /* else already covered in main heap walk */
-    return true;
-}
-
-static bool
 alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
                      _IF_WINDOWS(HANDLE heap), void *iter_data)
 {
@@ -1161,6 +1148,20 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     chunk_header_t *head;
     byte *cur;
     arena_header_t *arena = (arena_header_t *) iter_arena_start;
+
+    /* We use the HEAP_MMAP flag to find our mmapped chunks.  We can't easily
+     * use the large malloc tree b/c it has pre_us allocs too (i#1051).
+     */
+    if (TEST(HEAP_MMAP, flags)) {
+        byte *start = iter_arena_start;
+        chunk_header_t *head = header_from_ptr(start);
+        ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
+        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + head->request_size);
+        if (!data->cb(start, start + head->request_size, start + head->alloc_size,
+                      false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
+                      head->user_data, data->data))
+            return false;
+    }
 
     if (TEST(HEAP_PRE_US, flags) || !TEST(HEAP_ARENA, flags))
         return true;
@@ -1190,8 +1191,9 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     /* Strategy:
      * + can iterate arenas via heap rbtree
      *   - each arena of ours can be walked straight through
+     *   - for mmap chunks, we can't use the large_malloc_tree b/c it has
+     *     pre-us, so we store a new flag in heap regions: HEAP_MMAP (i#1051)
      * + ignore pre-us arenas and instead iterate pre_us_table
-     * + for large mallocs can iterate the large_malloc_tree
      */
     alloc_iter_data_t data = {only_live, cb, iter_data};
     uint i;
@@ -1200,13 +1202,10 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 
     ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
 
+    LOG(3, "%s: iterating heap regions\n", __FUNCTION__);
     heap_region_iterate(alloc_iter_own_arena, &data);
 
-    /* our mmapped chunks should be in heap region tree too but it's easier
-     * to get the headers from the large malloc tree
-     */
-    malloc_large_iterate(alloc_large_iter_cb, &data);
-
+    LOG(3, "%s: iterating pre-us allocs\n", __FUNCTION__);
     /* XXX: should add hashtable_iterate() to drcontainers */
     for (i = 0; i < HASHTABLE_SIZE(pre_us_table.table_bits); i++) {
         /* we do NOT support removal while iterating.  we don't even hold a lock. */
@@ -1215,6 +1214,8 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
             chunk_header_t *head = (chunk_header_t *) he->payload;
             byte *start = he->key;
             if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
+                LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
+                    start, start + head->request_size, start + head->alloc_size);
                 if (!cb(start, start + head->request_size, start + head->alloc_size,
                         true/*pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                         head->user_data, iter_data))
@@ -2242,6 +2243,7 @@ malloc_replace__add(app_pc start, app_pc end, app_pc real_end,
     ASSERT(pre_us, "malloc add from outside must be pre_us");
     IF_DEBUG(new_entry =)
         hashtable_add(&pre_us_table, (void *)start, (void *)head);
+    LOG(3, "new pre-us alloc "PFX"-"PFX"-"PFX"\n", start, end, real_end);
     ASSERT(new_entry, "should be no pre-us dups");
     notify_client_alloc(false/*no handle: caller can do that on its own*/,
                         NULL, start, head, mc,
