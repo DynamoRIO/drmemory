@@ -638,6 +638,30 @@ system call NtGdiCreatePatternBrushInternal
 ...
 USER32.dll!CreateWindowEx?
 
+HANDLE LEAK
+name=default i#988 c#6 NtCreateIoCompletion
+system call NtCreateIoCompletion
+...
+ntdll.dll!TpAllocWork
+
+HANDLE LEAK
+name=default i#988 c#6 NtDuplicateObject
+system call NtDuplicateObject  
+...
+ntdll.dll!TpAllocWork
+
+HANDLE LEAK
+name=default i#988 c#6 NtCreateKeyedEvent 
+system call NtCreateKeyedEvent 
+...
+ntdll.dll!TpAllocWork
+
+HANDLE LEAK
+name=default i#988 c#6 NtCreateWorkerFactory
+system call NtCreateWorkerFactory
+...
+ntdll.dll!TpAllocWork
+
 ##################################################
 # i#: real bug where MSVCR80D!DebuggerProbe fails to initialize 3 of the 6
 # exception arg slots it allocates.  The top MSVCR80D.dll frame is
