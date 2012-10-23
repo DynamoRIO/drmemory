@@ -44,6 +44,15 @@ typedef enum {
     APP_LOC_REGISTER,
 } app_loc_type_t;
 
+/* An error in a system call has the syscall number and an
+ * additional string describing which parameter (PR 525269).
+ */
+typedef struct {
+    uint sysnum;
+    /* syscalls store a string identifying param (PR 525269) */
+    const char *syscall_aux;
+} syscall_loc_t;
+
 /* Structure to represent a location within an application such as
  * an instruction's program counter or a system call number
  */
@@ -58,13 +67,7 @@ typedef struct _app_loc_t {
             bool valid;
             app_pc pc;
         } addr;
-        /* An error in a system call has the syscall number and an
-         * additional string describing which parameter (PR 525269).
-         */
-        struct { 
-            uint sysnum;
-            const char *syscall_aux;
-        } syscall;
+        syscall_loc_t syscall;
     } u;
 } app_loc_t;
 

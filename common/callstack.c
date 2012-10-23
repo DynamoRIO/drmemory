@@ -92,8 +92,12 @@ static int tls_idx_callstack = -1;
 
 typedef union {
     app_pc addr;
-    /* syscalls store a string identifying param (PR 525269) */
-    const char *syscall_aux;
+    /* We need space for more than a 24-bit syscall number (size of modoffs)
+     * and for a string identifying the param (PR 525269).  We just can't
+     * fit that inline easily, and since syscalls are rare enough, we
+     * have a pointer to out-of-line storage.
+     */
+    syscall_loc_t *sysloc;
 } frame_loc_t;
 
 /* Packed binary callstack */
@@ -113,7 +117,8 @@ struct _packed_frame_t {
      * hashtable holds the index of the first such entry.
      */
     uint modoffs : 24;
-    /* For syscalls, we use index 0 and store syscall # in modoffs.
+    /* For syscalls, we use index 0.  We do not store the syscall #
+     * (it won't fit in modoffs) but rely on loc.sysloc.
      * For non-module addresses, we use index MAX_MODNAMES_STORED.
      */
     uint modname_idx : 8;
@@ -147,7 +152,7 @@ START_PACKED_STRUCTURE
 struct _full_frame_t {
     frame_loc_t loc;
     size_t modoffs;
-    /* For syscalls, we use MODNAME_INFO_SYSCALL and store the syscall # in modoffs.
+    /* For syscalls, we use MODNAME_INFO_SYSCALL and loc.sysloc.
      * For non-module addresses, we use NULL.
      */
     modname_info_t *modname;
@@ -168,6 +173,8 @@ struct _packed_callstack_t {
     bool is_packed:1;
     /* whether first frame is a retaddr (in which case we subtract 1 when printing line) */
     bool first_is_retaddr:1;
+    /* whether first frame is a syscall (invariant: later frames never are) */
+    bool first_is_syscall:1;
     union {
         packed_frame_t *packed;
         full_frame_t *full;
@@ -1342,21 +1349,22 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
     }
     if (loc != NULL) {
         if (loc->type == APP_LOC_SYSCALL) {
-            /* For syscalls, we use index 0 and store the syscall # in modoffs */
-            /* Store the syscall aux identifier in the addr field (PR 525269).
-             * It's supposed to be a string literal and so we can clone it
+            /* For syscalls, we use index 0 and external storage.
+             * We copy from loc.  The syscall aux identifier (PR 525269)
+             * is supposed to be a string literal and so we can clone it
              * and compare it by just using its address.
              */
+            pcs->first_is_syscall = true;
             if (pcs->is_packed) {
-                pcs->frames.packed[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
                 pcs->frames.packed[0].modname_idx = 0;
-                ASSERT(loc->u.syscall.sysnum < MAX_MODOFFS_STORED,
-                       "sysnum too large to fit in packed_frame_t.modoffs");
-                pcs->frames.packed[0].modoffs = loc->u.syscall.sysnum;
+                pcs->frames.packed[0].loc.sysloc = (syscall_loc_t *)
+                    global_alloc(sizeof(syscall_loc_t), HEAPSTAT_CALLSTACK);
+                *pcs->frames.packed[0].loc.sysloc = loc->u.syscall;
             } else {
-                pcs->frames.full[0].loc.syscall_aux = loc->u.syscall.syscall_aux;
                 pcs->frames.full[0].modname = (modname_info_t *) &MODNAME_INFO_SYSCALL;
-                pcs->frames.full[0].modoffs = loc->u.syscall.sysnum;
+                pcs->frames.full[0].loc.sysloc = (syscall_loc_t *)
+                    global_alloc(sizeof(syscall_loc_t), HEAPSTAT_CALLSTACK);
+                *pcs->frames.full[0].loc.sysloc = loc->u.syscall;
             }
             pcs->num_frames++;
         } else {
@@ -1413,12 +1421,18 @@ packed_callstack_frame_modinfo(packed_callstack_t *pcs, uint frame,
     /* modname_idx==0 or modname==NULL is the code for a system call */
     if (!pcs->is_packed) {
         info = pcs->frames.full[frame].modname;
-        if (info == &MODNAME_INFO_SYSCALL)
+        if (info == &MODNAME_INFO_SYSCALL) {
+            ASSERT(frame == 0, "syscall should only be top frame");
+            ASSERT(pcs->first_is_syscall, "flag not set");
             return false;
+        }
         offs = pcs->frames.full[frame].modoffs;
     } else {
-        if (pcs->frames.packed[frame].modname_idx == 0)
+        if (pcs->frames.packed[frame].modname_idx == 0) {
+            ASSERT(frame == 0, "syscall should only be top frame");
+            ASSERT(pcs->first_is_syscall, "flag not set");
             return false;
+        }
         if (pcs->frames.packed[frame].modoffs < MAX_MODOFFS_STORED) {
             /* If module is larger than 16M, we need to adjust offset.
              * The hashtable holds the first index.
@@ -1454,11 +1468,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
         const char *name = "<unknown>";
         frame->loc.type = APP_LOC_SYSCALL;
 
-        /* sysnum is stored in modoffs field */
-        frame->loc.u.syscall.sysnum =
-            (pcs->is_packed ? pcs->frames.packed[idx].modoffs :
-             pcs->frames.full[idx].modoffs);
-        frame->loc.u.syscall.syscall_aux = PCS_FRAME_LOC(pcs, idx).syscall_aux;
+        frame->loc.u.syscall = *(PCS_FRAME_LOC(pcs, idx).sysloc);
 
         /* we print the string now so we can compare to suppressions.
          * we use func since modname is too short in windows.
@@ -1589,6 +1599,10 @@ packed_callstack_free(packed_callstack_t *pcs)
     ASSERT(pcs != NULL, "invalid args");
     refcount = atomic_add32_return_sum((volatile int *)&pcs->refcount, - 1);
     if (refcount == 0) {
+        if (pcs->first_is_syscall) {
+            global_free(PCS_FRAME_LOC(pcs, 0).sysloc, sizeof(syscall_loc_t),
+                        HEAPSTAT_CALLSTACK);
+        }
         if (pcs->is_packed) {
             if (pcs->frames.packed != NULL) {
                 global_free(pcs->frames.packed,
@@ -1624,6 +1638,8 @@ packed_callstack_clone(packed_callstack_t *src)
     dst->refcount = 1;
     dst->num_frames = src->num_frames;
     dst->is_packed = src->is_packed;
+    dst->first_is_retaddr = src->first_is_retaddr;
+    dst->first_is_syscall = src->first_is_syscall;
     if (dst->is_packed) {
         dst->frames.packed = (packed_frame_t *)
             global_alloc(sizeof(*dst->frames.packed) * src->num_frames,
@@ -1637,6 +1653,17 @@ packed_callstack_clone(packed_callstack_t *src)
         memcpy(dst->frames.full, src->frames.full,
                sizeof(*dst->frames.full) * src->num_frames);
     }
+    if (dst->first_is_syscall) {
+        if (dst->is_packed) {
+            dst->frames.packed[0].loc.sysloc = (syscall_loc_t *)
+                global_alloc(sizeof(syscall_loc_t), HEAPSTAT_CALLSTACK);
+        } else {
+            dst->frames.full[0].loc.sysloc = (syscall_loc_t *)
+                global_alloc(sizeof(syscall_loc_t), HEAPSTAT_CALLSTACK);
+        }
+        memcpy(PCS_FRAME_LOC(dst, 0).sysloc, PCS_FRAME_LOC(src, 0).sysloc,
+               sizeof(syscall_loc_t));
+    }
     return dst;
 }
 
@@ -1646,7 +1673,8 @@ packed_callstack_hash(packed_callstack_t *pcs)
     uint hash = 0;
     uint i;
     for (i = 0; i < pcs->num_frames; i++) {
-        hash ^= (ptr_uint_t) PCS_FRAME_LOC(pcs, i).addr;
+        if (!pcs->first_is_syscall || i > 0)
+            hash ^= (ptr_uint_t) PCS_FRAME_LOC(pcs, i).addr;
     }
     return hash;
 }
@@ -1664,27 +1692,34 @@ packed_callstack_cmp(packed_callstack_t *pcs1, packed_callstack_t *pcs2)
         return false;
     if (pcs1->num_frames != pcs2->num_frames)
         return false;
-    if ((pcs1->is_packed && pcs2->is_packed) ||
-        (!pcs1->is_packed && !pcs2->is_packed)) {
+    if (!pcs1->first_is_syscall && !pcs2->first_is_syscall &&
+        ((pcs1->is_packed && pcs2->is_packed) ||
+         (!pcs1->is_packed && !pcs2->is_packed))) {
         return (memcmp(PCS_FRAMES(pcs1), PCS_FRAMES(pcs2),
                        PCS_FRAME_SZ(pcs1)*pcs1->num_frames) == 0);
     }
-    /* one is packed, the other is not, so we have to walk the frames */
+    /* One is packed, the other is not; or, one has a syscall.
+     * We have to walk the frames.
+     */
     for (i = 0; i < pcs1->num_frames; i++) {
         modname_info_t *info1 = NULL, *info2 = NULL;
         size_t offs1 = 0, offs2 = 0;
         bool nonsys1, nonsys2;
-        if (PCS_FRAME_LOC(pcs1, i).addr != PCS_FRAME_LOC(pcs2, i).addr ||
-            PCS_FRAME_LOC(pcs1, i).syscall_aux != PCS_FRAME_LOC(pcs2, i).syscall_aux)
-            return false;
         nonsys1 = packed_callstack_frame_modinfo(pcs1, i, &info1, &offs1);
         nonsys2 = packed_callstack_frame_modinfo(pcs2, i, &info2, &offs2);
         if ((nonsys1 && !nonsys2) || (!nonsys1 && nonsys2))
             return false;
-        if (info1 != info2)
-            return false;
-        if (offs1 != offs2)
-            return false;
+        if (!nonsys1) {
+            return (memcmp(PCS_FRAME_LOC(pcs1, i).sysloc, PCS_FRAME_LOC(pcs2, i).sysloc,
+                           sizeof(syscall_loc_t)) == 0);
+        } else {
+            if (PCS_FRAME_LOC(pcs1, i).addr != PCS_FRAME_LOC(pcs2, i).addr)
+                return false;
+            if (info1 != info2)
+                return false;
+            if (offs1 != offs2)
+                return false;
+        }
     }
     return true;
 }
