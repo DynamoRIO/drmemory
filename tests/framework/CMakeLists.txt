@@ -47,6 +47,7 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
   set(client_name ${test_name}.client)
   add_library(${client_name} SHARED ${src_client})
   set_property(TARGET ${client_name} PROPERTY COMPILE_DEFINITIONS ${arch_defs})
+  # We rely on i#955's "rpath file" to locate the extension on Windows
   set(DynamoRIO_RPATH ON)
   configure_DynamoRIO_client(${client_name})
 
@@ -56,25 +57,6 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
     # (else we'd need a completely separate build for these tests),
     # but cmake gets confused and we have to tell it the two are the same.
     add_dependencies(${client_name} ${ext})
-
-    if (WIN32)
-      get_target_property(extpath drmf_${ext} LOCATION)
-      # See DR notes on locating the client dll.
-      # XXX i#955: we'll need a better solution for 3rd-party extensions
-      # in general and we should eliminate this copy once we have that.
-      if (NOT created_copy_${ext}_target)
-        set(copy_${ext}_stamp "${CMAKE_CURRENT_BINARY_DIR}/copy_${ext}.stamp")
-        add_custom_command(OUTPUT "${copy_${ext}_stamp}"
-          DEPENDS drmf_${ext}
-          COMMAND ${CMAKE_COMMAND} ARGS -E touch "${copy_${ext}_stamp}"
-          COMMAND ${CMAKE_COMMAND} ARGS
-            -E copy ${extpath} ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${ext}.dll
-          VERBATIM)
-        add_custom_target(copy_${ext} DEPENDS "${copy_${ext}_stamp}")
-        set(created_copy_${ext}_target ON PARENT_SCOPE)
-      endif ()
-      add_dependencies(${client_name} copy_${ext})
-    endif (WIN32)
   endforeach (ext)
 
   get_target_property(app_path ${test_name} LOCATION${location_suffix})
