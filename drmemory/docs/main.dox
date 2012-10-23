@@ -71,6 +71,11 @@ following sections:
   <br>Release notes for this release, including current limitations and
   changes since prior releases.
 
+- \ref page_drmf
+  <br>The Dr. Memory Framework, an SDK enabling new tools to be built that
+  leverage Dr. Memory's powerful capabilities for shadowing memory and
+  tracking system calls and memory allocations.
+
 - \ref page_license
 
 See the Dr. Memory project homepage at http://code.google.com/p/drmemory/

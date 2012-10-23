@@ -106,7 +106,8 @@ WARN_LOGFILE           =
 # We do not use *.dox so we can control the order and still have
 # top-level pages:
 INPUT                  = using.dox \
-                         options-docs.dox release.dox main.dox
+                         options-docs.dox release.dox main.dox \
+                         drmf.dox drsyscall.dox
 FILE_PATTERNS          = 
 RECURSIVE              = NO
 EXCLUDE                = 

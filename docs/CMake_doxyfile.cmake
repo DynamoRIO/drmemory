@@ -51,7 +51,7 @@
 
 # inputs:
 # * srcdir
-# * srcdir2
+# * srclist
 # * commondir
 # * outfile
 # * version_number
@@ -68,13 +68,12 @@ set(outdir "${CMAKE_CURRENT_BINARY_DIR}")
 get_filename_component(optionsdir "${options_for_docs}" PATH)
 # store cmake paths prior to cygwin conversion
 set(srcdir_orig "${srcdir}")
-set(srcdir2_orig "${srcdir2}")
 set(optionsdir_orig "${optionsdir}")
 set(commondir_orig "${commondir}")
 set(outdir_orig "${outdir}")
 
 include("${DynamoRIO_DIR}/docs_doxyutils.cmake")
-set(input_paths srcdir srcdir2 outdir optionsdir commondir)
+set(input_paths srcdir outdir optionsdir commondir)
 doxygen_path_xform(${DOXYGEN_EXECUTABLE} "${input_paths}")
 
 configure_file(${commondir_orig}/Doxyfile.in ${outfile} COPY_ONLY)
@@ -105,17 +104,12 @@ endfunction (replace_aliases)
 # Include mechanism: we copy all .dox files from srcdir into outdir
 # and expand ^INCLUDEFILE
 file(GLOB dox_files "${srcdir_orig}/*.dox")
-if (NOT "${srcdir2_orig}" STREQUAL "${srcdir_orig}")
-  file(GLOB dox_files2 "${srcdir2_orig}/*.dox")
-else ()
-  set(dox_files2 "")
-endif ()
-foreach (dox ${dox_files} ${dox_files2})
+foreach (dox ${dox_files} ${srclist})
   file(READ "${dox}" contents)
   string(REGEX MATCHALL "\nINCLUDEFILE [^ \r\n]*" includes "${contents}")
   foreach (inc ${includes})
     string(REGEX REPLACE "\nINCLUDEFILE " "" incfile "${inc}")
-    # no support for including from srcdir2
+    # no support for including from other than srcdir
     file(READ "${srcdir_orig}/${incfile}" subst)
     # escape backslashes
     string(REGEX REPLACE "\\\\" "\\\\\\\\" subst "${subst}")

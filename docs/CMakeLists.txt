@@ -49,7 +49,8 @@
 # OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 # DAMAGE.
 
-file(GLOB dox_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox")
+file(GLOB dox_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox"
+  "${PROJECT_SOURCE_DIR}/*/*.dox")
 file(GLOB dox_files_gen "${PROJECT_BINARY_DIR}/*.dox")
 file(GLOB sub_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.sub")
 file(GLOB in_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.in")
@@ -87,7 +88,7 @@ add_custom_command(
   # script does not inherit any vars so we must pass them all in
   # Be sure to put a space after -D for 1st arg at least
   ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
-       -D srcdir2=${PROJECT_SOURCE_DIR}/${INTERNAL_DIR}/${toolname}/docs
+       -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
        -Doutfile=${doxyfile}
        -Dversion_number=${TOOL_VERSION_NUMBER} 
