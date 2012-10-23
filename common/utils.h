@@ -281,8 +281,11 @@ extern int tls_idx_util;
 } while (0)
 #define ELOGPT(level, pt, ...) \
     ELOGF(level, LOGFILE(pt), __VA_ARGS__)
-#define ELOG(level, ...) \
-    ELOGPT(level, PT_LOOKUP(), __VA_ARGS__)
+#define ELOG(level, ...) do {   \
+    if (op_verbose_level >= (level)) { /* avoid unnec PT_GET */ \
+        ELOGPT(level, PT_LOOKUP(), __VA_ARGS__); \
+    } \
+} while (0)
 /* DR's fprintf has a size limit */
 #define ELOG_LARGE_F(level, f, s) do {   \
     if (op_verbose_level >= (level) && (f) != INVALID_FILE) \
@@ -290,10 +293,11 @@ extern int tls_idx_util;
 } while (0)
 #define ELOG_LARGE_PT(level, pt, s) \
     ELOG_LARGE_F(level, LOGFILE(pt), s)
-#define ELOG_LARGE(level, s) \
-    ELOG_LARGE_PT(level, (dr_get_current_drcontext() == NULL) ? NULL : \
-                  (tls_util_t *)drmgr_get_tls_field(dr_get_current_drcontext(), \
-                                                    tls_idx_util), s)
+#define ELOG_LARGE(level, s) do {   \
+    if (op_verbose_level >= (level)) { /* avoid unnec PT_GET */ \
+        ELOG_LARGE_PT(level, PT_LOOKUP(), s); \
+    } \
+} while (0)
 
 #define WARN(...) ELOGF(0, f_global, __VA_ARGS__)
 

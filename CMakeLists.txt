@@ -560,6 +560,36 @@ add_custom_command(
 # are directory-local
 
 ##################################################
+# utility functions
+
+function (append_property_string type target name value)
+  # XXX: if we require cmake 2.8.6 we can simply use APPEND_STRING
+  get_property(cur ${type} ${target} PROPERTY ${name})
+  if (cur)
+    set(value "${cur} ${value}")
+  endif (cur)
+  set_property(${type} ${target} PROPERTY ${name} "${value}")
+endfunction (append_property_string)
+
+function (set_output_dirs dir)
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${dir}" PARENT_SCOPE)
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${dir}" PARENT_SCOPE)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${dir}" PARENT_SCOPE)
+  if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    # we don't support the Debug and Release subdirs
+    foreach (config ${CMAKE_CONFIGURATION_TYPES})
+      string(TOUPPER "${config}" config_upper)
+      set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper}
+        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+      set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper}
+        "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+      set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper}
+        "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+    endforeach ()
+  endif ()
+endfunction (set_output_dirs)
+
+##################################################
 # find DynamoRIO so tests has its path, but don't include it or run
 # its configure commands to avoid changing cflags:
 
@@ -1160,6 +1190,89 @@ else (WIN32)
 endif (WIN32)
 
 ###########################################################################
+# Dr. Memory Framework (DRMF)
+
+# We decided against putting the extension inside frameworks/, so
+# framework-shared code goes here.  Things that should be global we
+# put into functions for invocation inside extension subdirs.
+
+set(DRMF_BASEDIR "drmf")
+set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
+set(DRMF_INSTALL ${DRMF_BASEDIR})
+set(DRMF_INSTALL_BIN ${DRMF_BASEDIR}/${DRMF_BINBASE})
+set(DRMF_INSTALL_INC ${DRMF_BASEDIR}/include)
+set(framework_dir "${PROJECT_BINARY_DIR}/${DRMF_BASEDIR}")
+set(framework_incdir "${framework_dir}/include")
+set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
+
+# Versioning: we use separate versioning for DRMF from the tool versioning.
+# This is major*100 + minor.
+set(DRMF_VERSION_DEFAULT "0.9.${VERSION_NUMBER_PATCHLEVEL}")
+set(DRMF_VERSION "" CACHE STRING "DRMF version number: leave empty for default")
+if ("${DRMF_VERSION}" STREQUAL "")
+  set(DRMF_VERSION ${DRMF_VERSION_DEFAULT})
+endif()
+message(STATUS "DRMF version number: ${DRMF_VERSION}")
+string(REGEX REPLACE "^([0-9]+)\\..*" "\\1" DRMF_VERSION_MAJOR "${DRMF_VERSION}")
+string(REGEX REPLACE "^[0-9]+\\.([0-9]+)\\..*" "\\1" DRMF_VERSION_MINOR "${DRMF_VERSION}")
+math(EXPR DRMF_VERSION_INTEGER "${DRMF_VERSION_MAJOR}*100 + ${DRMF_VERSION_MINOR}")
+set(DRMF_VERSION_COMPAT 9)                # Oldest compatible version
+set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
+
+configure_file(framework/public.h
+  ${framework_incdir}/drmemory_framework.h)
+include_directories(${framework_incdir})
+
+configure_file(framework/drmf.cmake.in
+  ${framework_dir}/DrMemoryFrameworkConfig.cmake
+  @ONLY)
+foreach (ext drsyscall)
+  file(APPEND ${framework_dir}/DrMemoryFrameworkConfig.cmake "
+set(DynamoRIO_EXT_${ext}_INC \${cwd}/include)
+")
+endforeach (ext)
+configure_file(framework/drmf_version.cmake.in
+  ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
+  @ONLY)
+
+# Export extensions for importing by clients.
+if (X64)
+  set(exported_targets_name "DRMFTarget64")
+else (X64)
+  set(exported_targets_name "DRMFTarget32")
+endif (X64)
+
+# DRi#948: we need to map RelWithDebInfo and RelMinSize to Release
+file(WRITE ${framework_dir}/${exported_targets_name}.cmake "")
+set(exported_targets_append "")
+macro(export_target)
+  export(TARGETS ${ARGV} FILE ${framework_dir}/${exported_targets_name}.cmake
+    APPEND)
+  set(toadd "
+SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
+SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE Release)
+")
+  if (NOT DEBUG_BUILD)
+    file(APPEND ${framework_dir}/${exported_targets_name}.cmake ${toadd})
+  endif (NOT DEBUG_BUILD)
+  # For install we want both debug and release:
+  set(exported_targets_append "${exported_targets_append}${toadd}")
+  set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
+endmacro(export_target)
+
+add_subdirectory(drsyscall)
+
+# XXX: change this to find_package() + use_DynamoRIO_extension(drsyscall)
+include_directories(drsyscall)
+target_link_libraries(${client_target} drsyscall_int)
+
+if (BUILD_TOOL_TESTS)
+  # We want the non-DR-client tests added before DR config, but these client
+  # tests added after:
+  add_subdirectory(tests/framework)
+endif (BUILD_TOOL_TESTS)
+
+###########################################################################
 # installation
 
 if (install_override)
@@ -1390,6 +1503,28 @@ else (UNIX)
   install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
   install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
 endif (UNIX)
+
+# DRMF install rules
+install(FILES ${framework_incdir}/drmemory_framework.h DESTINATION ${DRMF_INSTALL_INC})
+install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
+  ${framework_dir}/DrMemoryFrameworkConfig.cmake
+  DESTINATION ${DRMF_INSTALL})
+# These cover all subdirs
+install(DIRECTORY ${framework_bindir}/
+  DESTINATION ${DRMF_INSTALL_BIN}
+  FILE_PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  WORLD_READ WORLD_EXECUTE
+  FILES_MATCHING
+  PATTERN "*.debug"
+  PATTERN "*.pdb"
+  PATTERN "*_int.pdb" EXCLUDE
+  )
+
+# We must append to this file to avoid cmake_install.cmake's diff from thinking
+# the exports have changed and thus clobbering the other config's files.
+install(CODE "file(APPEND \"${PROJECT_BINARY_DIR}/CMakeFiles/Export/cmake/${exported_targets_name}.cmake\" \"${exported_targets_append}\")")
+# Create the exported targets file
+install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 
 ###########################################################################
 # packaging

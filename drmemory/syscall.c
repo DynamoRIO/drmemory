@@ -21,6 +21,7 @@
  */
 
 #include "dr_api.h"
+#include "drsyscall.h"
 #include "drmemory.h"
 #include "utils.h"
 #include "syscall.h"
@@ -1255,6 +1256,9 @@ syscall_thread_exit(void *drcontext)
 void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 {
+    if (drsys_init(client_id) != DRMF_SUCCESS)
+        ASSERT(false, "drsys failed to init");
+
     cls_idx_syscall = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
     ASSERT(cls_idx_syscall > -1, "unable to reserve CLS field");
 
@@ -1300,6 +1304,9 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 void
 syscall_exit(void)
 {
+    if (drsys_exit() != DRMF_SUCCESS)
+        ASSERT(false, "drsys failed to exit");
+
 #ifdef SYSCALL_DRIVER
     if (options.syscall_driver)
         driver_exit();

@@ -1,0 +1,58 @@
+/* **********************************************************
+ * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+#ifndef _DRMEMORY_FRAMEWORK_H_
+#define _DRMEMORY_FRAMEWORK_H_ 1
+
+/* Dr. Memory Framework shared header */
+
+#include "dr_api.h"
+
+#define EXPANDSTR(x) #x
+#define STRINGIFY(x) EXPANDSTR(x)
+
+/* Version checking.
+ * We provide an oldest-compatible version and a current version.
+ * When we make additions to the API, we increment just the current version.
+ * When we modify any part of the existing API, we increment the
+ * current version, but we also increase the oldest-compatible
+ * version to match the (just-incremented) current version.
+ */
+#define DRMF_VERSION_COMPAT ${DRMF_VERSION_COMPAT}
+#define DRMF_VERSION_CUR ${DRMF_VERSION_CUR}
+#define DRMF_VERSION_USED_VAR    _DRMF_VERSION_USED_
+DR_EXPORT LINK_ONCE int DRMF_VERSION_USED_VAR = ${DRMF_VERSION_CUR};
+#define DRMF_VERSION_USED_NAME    STRINGIFY(DRMF_VERSION_USED_VAR)
+
+
+/** Status codes for the Dr. Memory Framework */
+typedef enum {
+    DRMF_SUCCESS,                  /**< Operation succeeded. */
+    DRMF_ERROR,                    /**< Operation failed. */
+    DRMF_ERROR_INCOMPATIBLE_VERSION,  /**< Operation failed: incompatible version */
+    DRMF_ERROR_INVALID_PARAMETER,  /**< Operation failed: invalid parameter */
+    DRMF_ERROR_INVALID_SIZE,       /**< Operation failed: invalid size */
+    DRMF_ERROR_NOT_IMPLEMENTED,    /**< Operation failed: not yet implemented */
+    DRMF_ERROR_FEATURE_NOT_AVAILABLE, /**< Operation failed: not available */
+    DRMF_ERROR_NOMEM,              /**< Operation failed: not enough memory */
+} drmf_status_t;
+
+#endif /* _DRMEMORY_FRAMEWORK_H_ */
