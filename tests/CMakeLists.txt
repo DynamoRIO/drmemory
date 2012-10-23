@@ -31,21 +31,7 @@ endif(UNIX)
 # regardless of DrMem library settings
 set(CMAKE_BUILD_TYPE "Debug")
 
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${PROJECT_BINARY_DIR}/tests")
-if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  # we don't support the Debug and Release subdirs
-  foreach (config ${CMAKE_CONFIGURATION_TYPES})
-    string(TOUPPER "${config}" config_upper)
-    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper}
-      "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}")
-    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper}
-      "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}")
-    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper}
-      "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
-  endforeach ()
-endif ()
+set_output_dirs("${PROJECT_BINARY_DIR}/tests")
 
 # For their annotations.
 include_directories("../third_party/valgrind")
@@ -646,6 +632,8 @@ newtest(leakcycle leakcycle.cpp)
 
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")
+
+# framework subdir is added at top level after DR setup
 
 else (NOT X64)
   # pattern mode testing.
