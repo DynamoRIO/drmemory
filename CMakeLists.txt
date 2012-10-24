@@ -1269,7 +1269,8 @@ target_link_libraries(${client_target} drsyscall_int)
 if (BUILD_TOOL_TESTS)
   # We want the non-DR-client tests added before DR config, but these client
   # tests added after:
-  add_subdirectory(tests/framework)
+  # FIXME i#1061: disabling until works with non-pre-built-DR
+  #add_subdirectory(tests/framework)
 endif (BUILD_TOOL_TESTS)
 
 ###########################################################################
@@ -1524,7 +1525,8 @@ install(DIRECTORY ${framework_bindir}/
 # the exports have changed and thus clobbering the other config's files.
 install(CODE "file(APPEND \"${PROJECT_BINARY_DIR}/CMakeFiles/Export/cmake/${exported_targets_name}.cmake\" \"${exported_targets_append}\")")
 # Create the exported targets file
-install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
+# FIXME i#1061: disabling until works with non-pre-built-DR
+#install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 
 ###########################################################################
 # packaging
