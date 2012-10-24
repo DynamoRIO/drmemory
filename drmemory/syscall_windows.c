@@ -621,7 +621,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtDeletePrivateNamespace", UNKNOWN, 1, },
     {0,"NtEnumerateTransactionObject", UNKNOWN, 5, },
     {0,"NtFlushInstallUILanguage", UNKNOWN, 2, },
-    {0,"NtFlushProcessWriteBuffers", UNKNOWN, 0, },
+    {0,"NtFlushProcessWriteBuffers", OK, 0, },
     {0,"NtFreezeRegistry", UNKNOWN, 1, },
     {0,"NtFreezeTransactions", UNKNOWN, 2, },
     {0,"NtGetMUIRegistryInfo", UNKNOWN, 3, },
