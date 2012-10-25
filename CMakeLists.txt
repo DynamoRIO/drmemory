@@ -580,11 +580,11 @@ function (set_output_dirs dir)
     foreach (config ${CMAKE_CONFIGURATION_TYPES})
       string(TOUPPER "${config}" config_upper)
       set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_${config_upper}
-        "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+        "${dir}" PARENT_SCOPE)
       set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${config_upper}
-        "${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+        "${dir}" PARENT_SCOPE)
       set(CMAKE_LIBRARY_OUTPUT_DIRECTORY_${config_upper}
-        "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}" PARENT_SCOPE)
+        "${dir}" PARENT_SCOPE)
     endforeach ()
   endif ()
 endfunction (set_output_dirs)
