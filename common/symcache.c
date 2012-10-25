@@ -67,7 +67,7 @@
  * because we include negative entries in the file and make no assumptions
  * that it is a complete record of all lookups we'll need.
  */
-#define SYMCACHE_VERSION 9
+#define SYMCACHE_VERSION 10
 
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
@@ -81,7 +81,7 @@
 /* The number of digits used for the decimal representation of the file size of
  * the symcache file.
  */
-#define SYMCACHE_SIZE_DIGITS 6
+#define SYMCACHE_SIZE_DIGITS 10
 
 #define SYMCACHE_MAX_TMP_TRIES 1000
 
@@ -279,6 +279,8 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         dr_close_file(f);
         dr_delete_file(symfile_tmp);
         return;
+    } else {
+        ASSERT(strlen(buf) <= SYMCACHE_SIZE_DIGITS, "not enough space for file size");
     }
 
     dr_close_file(f);
@@ -350,7 +352,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         uint checksum;
         uint timestamp;
         size_t module_internal_size;
-        if (sscanf(line, " %u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
+        if (sscanf(line, "%u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
                    UINT64_FORMAT_STRING",%u,%u,%lu",
                    &cache_file_size, &module_file_size, &file_version.version,
                    &product_version.version, &checksum, &timestamp,
