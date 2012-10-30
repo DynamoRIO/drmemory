@@ -31,6 +31,7 @@
 #include <process.h> /* for _beginthreadex */
 #include <tchar.h>   /* for tchar */
 #include <strsafe.h> /* for Str* */
+#include <tlhelp32.h>
 
 static void
 test_gdi_handles(bool close)
@@ -154,6 +155,39 @@ test_window_handles(bool close)
     }
 }
 
+void
+test_process_handles(bool close)
+{
+    HANDLE hSnapshot, hProcess;
+    PROCESSENTRY32 pe;
+    BOOL res;
+    hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPALL, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE) {
+        printf("CreateToolhelp32Snapshot failed\n");
+        return;
+    }
+    pe.dwSize = sizeof(pe);
+    for (res = Process32First(hSnapshot, &pe);
+         res;
+         res = Process32Next(hSnapshot, &pe)) {
+        hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe.th32ProcessID);
+        if (hProcess == INVALID_HANDLE_VALUE) {
+            printf("OpenProcess failed\n");
+            return;
+        }
+#ifdef VERBOSE
+        printf("Process %6u: %s\n", pe.th32ProcessID, pe.szExeFile);
+#endif
+        if (hProcess != 0 && pe.th32ProcessID != 0) /* skip system process */
+            break;
+    }
+    
+    if (close) {
+        CloseHandle(hProcess);
+        CloseHandle(hSnapshot);
+    }
+}
+
 int
 main()
 {
@@ -169,5 +203,8 @@ main()
     printf("test window handles\n");
     test_window_handles(true);
     test_window_handles(false);
+    printf("test process handles\n");
+    test_process_handles(true);
+    test_process_handles(false);
     return 0;
 }
