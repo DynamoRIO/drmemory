@@ -918,11 +918,14 @@ replace_all_strlen(bool add, const module_data_t *mod,
  * and strcmp to identify precise targets (i#315).
  */
 static bool
-enumerate_syms_cb(const char *name, size_t modoffs, void *data)
+enumerate_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     uint i;
     sym_enum_data_t *edata = (sym_enum_data_t *) data;
     bool replace = true;
+    const char *name = info->name;
+    size_t modoffs = info->start_offs;
+
     ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
     LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
 

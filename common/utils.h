@@ -26,6 +26,7 @@
 #include "hashtable.h"
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
 #include "drmgr.h"
+#include "drsyms.h"
 
 #include <limits.h>
 
@@ -555,8 +556,7 @@ lookup_internal_symbol(const module_data_t *mod, const char *symname);
  */
 bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
-                   bool (*callback)(const char *name, size_t modoffs, void *data),
-                   void *data);
+                   drsym_enumerate_ex_cb callback, void *data);
 
 bool
 module_has_debug_info(const module_data_t *mod);

@@ -174,18 +174,18 @@ lookup_has_fast_search(const module_data_t *mod)
 
 /* default cb used when we want first match */
 static bool
-search_syms_cb(const char *name, size_t modoffs, void *data)
+search_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     size_t *ans = (size_t *) data;
-    LOG(3, "sym lookup cb: %s @ offs "PIFX"\n", name, modoffs);
+    LOG(3, "sym lookup cb: %s @ offs "PIFX"\n", info->name, info->start_offs);
     ASSERT(ans != NULL, "invalid param");
-    *ans = modoffs;
+    *ans = info->start_offs;
     return false; /* stop iterating: we want first match */
 }
 
 typedef struct _search_regex_t {
     const char *regex;
-    drsym_enumerate_cb orig_cb;
+    drsym_enumerate_ex_cb orig_cb;
     void *orig_data;
 } search_regex_t;
 
@@ -198,22 +198,24 @@ typedef struct _search_regex_t {
  * some central module event code.
  */
 static bool
-search_syms_regex_cb(const char *name, size_t modoffs, void *data)
+search_syms_regex_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     search_regex_t *sr = (search_regex_t *) data;
     const char *sym = strchr(sr->regex, '!');
+    const char *name = info->name;
+
     LOG(3, "%s: comparing %s to pattern %s\n", __FUNCTION__,
         name, sym == NULL ? sr->regex : sym + 1);
     if (sr->regex[0] == '\0' ||
         text_matches_pattern(name, sym == NULL ? sr->regex : sym + 1, false)) {
-        return sr->orig_cb(name, modoffs, sr->orig_data);
+        return sr->orig_cb(info, status, sr->orig_data);
     }
     return true; /* keep iterating */
 }
 
 static app_pc
 lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
-                     bool full, drsym_enumerate_cb callback, void *data)
+                     bool full, drsym_enumerate_ex_cb callback, void *data)
 {
     /* We have to specify the module via "modname!symname".
      * We must use the same modname as in full_path.
@@ -283,9 +285,13 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
          */
         modoffs = 0;
 # ifdef WINDOWS
-        symres = drsym_search_symbols(mod->full_path, sym_with_mod, full,
-                                      callback == NULL ? search_syms_cb : callback,
-                                      callback == NULL ? &modoffs : data);
+        /* i#1050: use drsym_search_symbols_ex to handle cases
+         * where two functions share the same address.
+         */
+        symres = drsym_search_symbols_ex(mod->full_path, sym_with_mod, full,
+                                         callback == NULL ? search_syms_cb : callback,
+                                         sizeof(drsym_info_t),
+                                         callback == NULL ? &modoffs : data);
         if (symres == DRSYM_ERROR_NOT_IMPLEMENTED) {
 # endif
             /* ELF or PECOFF where regex search is NYI
@@ -298,8 +304,10 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
             sr->regex = sym_with_mod;
             sr->orig_cb = callback == NULL ? search_syms_cb : callback;
             sr->orig_data = callback == NULL ? &modoffs : data;
-            symres = drsym_enumerate_symbols(mod->full_path, search_syms_regex_cb,
-                                             (void *) sr, DRSYM_DEMANGLE);
+            symres = drsym_enumerate_symbols_ex(mod->full_path,
+                                                search_syms_regex_cb,
+                                                sizeof(drsym_info_t),
+                                                (void *) sr, DRSYM_DEMANGLE);
             global_free(sr, sizeof(*sr), HEAPSTAT_MISC);
 # ifdef WINDOWS
         }
@@ -343,7 +351,7 @@ lookup_internal_symbol(const module_data_t *mod, const char *symname)
  */
 bool
 lookup_all_symbols(const module_data_t *mod, const char *sym_pattern, bool full,
-                   drsym_enumerate_cb callback, void *data)
+                   drsym_enumerate_ex_cb callback, void *data)
 {
     return (lookup_symbol_common(mod, sym_pattern, full, callback, data) != NULL);
 }

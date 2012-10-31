@@ -1509,7 +1509,7 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
  */
 static routine_type_t
 distinguish_operator_type(routine_type_t generic_type,  const char *name,
-                          const module_data_t *mod, size_t modoffs)
+                          const module_data_t *mod, drsym_info_t *info)
 {
     size_t bufsz = 256; /* even w/ class names, should be big enough for most operators */
     char *buf;
@@ -1527,7 +1527,9 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
 
     buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
     do {
-        err = drsym_get_func_type(mod->full_path, modoffs, buf, bufsz, &func_type);
+        err = drsym_expand_type(mod->full_path, info->type_id, 
+                                2 /* for func_type, arg_type, elt_type */,
+                                buf, bufsz, (drsym_type_t **)&func_type);
         if (err != DRSYM_ERROR_NOMEM)
             break;
         global_free(buf, bufsz, HEAPSTAT_MISC);
@@ -1536,7 +1538,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     } while (true);
 
     LOG(2, "%s in %s @"PFX" generic type=%d => drsyms res=%d, %d args\n",
-        name, modname, mod->start + modoffs, generic_type, err,
+        name, modname, mod->start + info->start_offs, generic_type, err,
         err == DRSYM_SUCCESS ? func_type->num_args : -1);
 
     if (err != DRSYM_SUCCESS) {
@@ -1559,7 +1561,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
                 specific_type = convert_operator_to_nothrow(generic_type);
                 known = true;
                 LOG(2, "operator %s in %s @"PFX" assumed to be nothrow\n",
-                    name, modname, mod->start + modoffs);
+                    name, modname, mod->start + info->start_offs);
             } else if (arg_type->elt_type->kind == DRSYM_TYPE_VOID ||
                        arg_type->elt_type->kind == DRSYM_TYPE_INT) {
                 /* We assume that this is placement new or delete.
@@ -1572,7 +1574,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
                 specific_type = HEAP_ROUTINE_INVALID;
                 known = true;
                 LOG(2, "%s in %s @"PFX" assumed to be placement\n",
-                    name, modname, mod->start + modoffs);
+                    name, modname, mod->start + info->start_offs);
             }
         }
         if (!known) {
@@ -1580,7 +1582,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
              * as not being placement.
              */
             WARN("WARNING: unknown 2-arg overload of %s in %s @"PFX"\n",
-                 name, modname, mod->start + modoffs);
+                 name, modname, mod->start + info->start_offs);
             specific_type = generic_type;
         }
     } else {
@@ -1599,13 +1601,13 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
          * i#607 part D) or we may encounter a weird overload.
          */
         known = distinguish_operator_no_argtypes(generic_type, &specific_type,
-                                                 name, mod, modoffs);
+                                                 name, mod, info->start_offs);
         if (known) {
             LOG(2, "%s in %s @"PFX" determined to be type=%d\n",
-                name, modname, mod->start + modoffs, specific_type);
+                name, modname, mod->start + info->start_offs, specific_type);
         } else {
             WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
-                 name, modname, mod->start + modoffs);
+                 name, modname, mod->start + info->start_offs);
             specific_type = generic_type;
         }
     }
@@ -1679,11 +1681,16 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
  * and strcmp to identify precise targets (i#315).
  */
 static bool
-enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
+enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     uint i, add_idx;
     set_enum_data_t *edata = (set_enum_data_t *) data;
+    const char *name = info->name;
+    size_t modoffs = info->start_offs;
+
     ASSERT(edata != NULL && edata->processed != NULL, "invalid param");
+    ASSERT(status == DRSYM_SUCCESS || status == DRSYM_ERROR_LINE_NOT_AVAILABLE,
+           "drsym operation failed");
     LOG(2, "%s: %s "PIFX"\n", __FUNCTION__, name, modoffs);
     for (i = 0; i < edata->num_possible; i++) {
         /* We do not check !edata->processed[i] b/c we want all copies.
@@ -1719,7 +1726,7 @@ enumerate_set_syms_cb(const char *name, size_t modoffs, void *data)
                 /* Distinguish placement and nothrow new and delete. */
                 routine_type_t op_type = distinguish_operator_type
                     (edata->possible[i].type, edata->possible[i].name, edata->mod,
-                     modoffs);
+                     info);
                 if (op_type == HEAP_ROUTINE_INVALID)
                     modoffs = 0; /* skip */
                 else if (op_type != edata->possible[i].type) {
