@@ -553,10 +553,10 @@ if (TOOL_DR_MEMORY)
     # FIXME: Re-enable when it doesn't break the build.
     #newtest(rtl_memory_zones rtl_memory_zones.c)
     #target_link_libraries(rtl_memory_zones ${ntimp_lib})
-    if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-      # for parallel build correctness we need a target dependence
-      add_dependencies(rtl_memory_zones ntimp_tgt)
-    endif ()
+    #if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    #  # for parallel build correctness we need a target dependence
+    #  add_dependencies(rtl_memory_zones ntimp_tgt)
+    #endif ()
 
     if (USE_DRSYMS) # cygwin build can't see static malloc routines
       newtest_custbuild(wincrtdbg wincrt.cpp "/MTd" "")
