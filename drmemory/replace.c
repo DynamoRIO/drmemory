@@ -1095,7 +1095,8 @@ replace_in_module(const module_data_t *mod, bool add)
     if (options.skip_msvc_importers &&
         module_imports_from_msvc(mod) &&
         (modname == NULL ||
-         !text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/))) {
+         (!text_matches_pattern(modname, "msvcp*.dll", true/*ignore case*/) &&
+          !text_matches_pattern(modname, "msvcr*.dll", true/*ignore case*/)))) {
         /* i#963: assume there are no static libc routines if the module
          * imports from dynamic libc (unless it's dynamic C++ lib).
          * XXX: We'll miss some non-libc custom routine: but those may be

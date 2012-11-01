@@ -275,7 +275,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
 
     /* We rely on drsym_init() having been called during init */
-    if (full && callback == NULL) {
+    if (callback == NULL IF_WINDOWS(&& full)) {
         /* A SymSearch full search is slower than SymFromName */
         symres = drsym_lookup_symbol(mod->full_path, sym_with_mod, &modoffs,
                                      DRSYM_DEMANGLE);

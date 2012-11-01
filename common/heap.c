@@ -161,6 +161,12 @@ get_ntdll_base(void)
 /* On Windows, "msvcp*.dll" is the C++ runtime library, and "msvcr*.dll" is
  * the C runtime library.  Note that "msvcirt.dll" is the IO stream library.
  * C runtime library names include "msvcr71.dll", "msvcrt.dll", "msvcrt20.dll".
+ *
+ * XXX i#1059: this routine is not very reliable for two reasons: first, there
+ * can be multiple libc routines; second, the app can load a libc module after
+ * startup.  We could switch to an interval tree that tracks load and unload
+ * events for pc_is_in_libc() and try to get rid of assumptions that there's
+ * just one libc.
  */
 app_pc
 get_libc_base(app_pc *libc_end_out OUT)
