@@ -2417,8 +2417,12 @@ enum {
     MALLOC_RTL_INTERNAL        = MALLOC_RESERVED_6,
     /* i#607 part A: try to handle msvc*d.dll w/o syms */
     MALLOC_LIBC_INTERNAL_ALLOC = MALLOC_RESERVED_7,
+    MALLOC_CONTAINS_LIBC_ALLOC = MALLOC_RESERVED_8,
     /* The rest are reserved for future use */
 };
+
+#define MALLOC_VISIBLE(flags) \
+    (TEST(MALLOC_VALID, flags) && !TEST(MALLOC_LIBC_INTERNAL_ALLOC, flags))
 
 /* We could save space by storing this in the redzone, if big enough,
  * though we'd have to squash app writes there (on that note we're not
@@ -2589,7 +2593,7 @@ alloc_exit(void)
         hash_entry_t *he;
         for (he = malloc_table.table[i]; he != NULL; he = he->next) {
             malloc_entry_t *e = (malloc_entry_t *) he->payload;
-            if (TEST(MALLOC_VALID, e->flags) && !malloc_entry_is_native(e)) {
+            if (MALLOC_VISIBLE(e->flags) && !malloc_entry_is_native(e)) {
                 client_exit_iter_chunk(e->start, e->end, TEST(MALLOC_PRE_US, e->flags),
                                        e->flags, e->data);
             }
@@ -3373,6 +3377,17 @@ malloc_entry_remove(malloc_entry_t *e)
             malloc_large_remove(e->start);
         }
     }
+#ifdef WINDOWS
+    /* If we were wrong about this containing a missed-alloc inner libc alloc,
+     * we should remove the fake inner entry now (i#1072).
+     * If we were right, the inner entry will already be gone and this will be
+     * a nop.
+     */
+    if (TEST(MALLOC_CONTAINS_LIBC_ALLOC, e->flags)) {
+        ASSERT(e->start + DBGCRT_PRE_REDZONE_SIZE < e->end, "invalid internal alloc");
+        hashtable_remove(&malloc_table, e->start + DBGCRT_PRE_REDZONE_SIZE);
+    }
+#endif
     if (hashtable_remove(&malloc_table, e->start)) {
 #ifdef STATISTICS
         if (!native)
@@ -3468,7 +3483,7 @@ static bool
 malloc_entry_is_pre_us(malloc_entry_t *e, bool ok_if_invalid)
 {
     return (TEST(MALLOC_PRE_US, e->flags) &&
-            (TEST(MALLOC_VALID, e->flags) || ok_if_invalid));
+            (MALLOC_VISIBLE(e->flags) || ok_if_invalid));
 }
 
 #ifdef WINDOWS
@@ -3586,7 +3601,7 @@ static bool
 malloc_entry_exists_racy_nolock(app_pc start)
 {
     malloc_entry_t *e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    return (e != NULL && TEST(MALLOC_VALID, e->flags));
+    return (e != NULL && MALLOC_VISIBLE(e->flags));
 }
 #endif
 
@@ -3597,7 +3612,7 @@ malloc_wrap__end(app_pc start)
     malloc_entry_t *e;
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL && TEST(MALLOC_VALID, e->flags))
+    if (e != NULL && MALLOC_VISIBLE(e->flags))
         end = e->end;
     malloc_unlock_if_locked_by_me(locked_by_me);
     return end;
@@ -3611,7 +3626,7 @@ malloc_wrap__size(app_pc start)
     malloc_entry_t *e;
     bool locked_by_me = malloc_lock_if_not_held_by_me();
     e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL && TEST(MALLOC_VALID, e->flags))
+    if (e != NULL && MALLOC_VISIBLE(e->flags))
         sz = (e->end - start);
     malloc_unlock_if_locked_by_me(locked_by_me);
     return sz;
@@ -3701,7 +3716,7 @@ malloc_iterate_internal(bool include_native, malloc_iter_cb_t cb, void *iter_dat
             malloc_entry_t *e = (malloc_entry_t *) he->payload;
             /* support malloc_remove() while iterating */
             nxt = he->next;
-            if (TEST(MALLOC_VALID, e->flags) &&
+            if (MALLOC_VISIBLE(e->flags) &&
                 (include_native || !malloc_entry_is_native(e))) {
                 if (!cb(e->start, e->end, e->end + e->usable_extra,
                         TEST(MALLOC_PRE_US, e->flags),
@@ -5255,7 +5270,10 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 }
 
 #ifdef WINDOWS
-static void
+/* Returns malloc flags to add to the outer allocation.  Returns 0 if there is
+ * no inner alloc.
+ */
+static uint
 check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
                            alloc_routine_entry_t *routine, app_pc top_pc,
                            byte *app_base, size_t app_size)
@@ -5279,7 +5297,11 @@ check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
         LOG(2, "missed libc layer so marking as such\n");
         /* XXX: we're assuming this is a dbgcrt block but there's no way
          * to verify like we do during heap iteration (i#607 part B)
-         * b/c the fields are all uninit at this point
+         * b/c the fields are all uninit at this point.
+         * In fact we can be wrong for any libc routine that calls
+         * HeapAlloc instead of malloc, which happens with _chsize (i#1072).
+         * What we do is we mark the outer allocation and then remove the
+         * inner when the outer is removed.  Thus we can safely over-label.
          */
         if (app_size >= DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE) {
             /* Skip the dbgcrt header */
@@ -5290,10 +5312,12 @@ check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
                 inner_start, inner_end);
             malloc_add_common(inner_start, inner_end, inner_end,
                               MALLOC_LIBC_INTERNAL_ALLOC, 0, mc, top_pc, pt->allocator);
+            return MALLOC_CONTAINS_LIBC_ALLOC;
         } else {
             WARN("WARNING: dbgcrt missed libc layer detected, but alloc too small");
         }
     }
+    return 0;
 }
 #endif
 
@@ -5331,12 +5355,13 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     } else {
         if (alloc_ops.record_allocs) {
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
+            uint flags = 0;
 #ifdef WINDOWS
-            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
-                                       app_base, pt->alloc_size);
+            flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
+                                                app_base, pt->alloc_size);
 #endif
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              0, 0, mc, top_pc, pt->allocator);
+                              flags, 0, mc, top_pc, pt->allocator);
             restore_mc_for_client(pt, wrapcxt, mc);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
@@ -5518,14 +5543,15 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
+            uint flags = 0;
 #ifdef WINDOWS
-            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
-                                       app_base, pt->alloc_size);
+            flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
+                                                app_base, pt->alloc_size);
 #endif
             malloc_add_common(app_base, app_base + pt->alloc_size,
                               real_base + 
                               (alloc_ops.get_padded_size ? pad_size : real_size),
-                              0, 0, mc, top_pc, pt->allocator);
+                              flags, 0, mc, top_pc, pt->allocator);
             restore_mc_for_client(pt, wrapcxt, mc);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
@@ -5646,12 +5672,13 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
     } else {
         if (alloc_ops.record_allocs) {
+            uint flags = 0;
 #ifdef WINDOWS
-            check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, post_call,
-                                       app_base, pt->alloc_size);
+            flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, post_call,
+                                                app_base, pt->alloc_size);
 #endif
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
-                              0, 0, mc, post_call, pt->allocator);
+                              flags, 0, mc, post_call, pt->allocator);
         }
         client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
                              /* if no padded size, use aligned real size */
