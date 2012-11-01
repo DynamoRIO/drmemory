@@ -33,7 +33,7 @@ else()
 endif ()
 
 set(srcs
-  drsyscall.c
+  drsyscall_drmf.c
   ../framework/version.c
   # add more here
   )
