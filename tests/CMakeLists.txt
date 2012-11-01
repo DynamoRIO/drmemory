@@ -21,6 +21,18 @@
 
 cmake_minimum_required(VERSION 2.6)
 
+# Restore global flags after all configure_DynamoRIO_client() calls.
+foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
+  if ("${config}" STREQUAL "")
+    set(config_upper "")
+  else ("${config}" STREQUAL "")
+    string(TOUPPER "_${config}" config_upper)
+  endif ("${config}" STREQUAL "")
+  foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
+    set(${var} "${SAVE_${var}}")
+  endforeach (var)
+endforeach (config)
+
 include(CheckCCompilerFlag)
 
 if (UNIX)
@@ -35,6 +47,9 @@ set_output_dirs("${PROJECT_BINARY_DIR}/tests")
 
 # For their annotations.
 include_directories("../third_party/valgrind")
+
+# Restore original flags from before configure_DynamoRIO_client plus
+# add_subdirectory(dynamorio) cleared global cflags.
 
 if (WIN32)
   # if MinGW gcc is available, we do some extra tests
@@ -121,7 +136,11 @@ endfunction(tobuild_lib)
 tobuild(run_in_bg_tgt run_in_bg.c)
 set_target_properties(run_in_bg_tgt PROPERTIES OUTPUT_NAME run_in_bg)
 if (WIN32)
-  target_link_libraries(run_in_bg_tgt ntdll)
+  target_link_libraries(run_in_bg_tgt ${ntimp_lib})
+  if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    # for parallel build correctness we need a target dependence
+    add_dependencies(run_in_bg_tgt ntimp_tgt)
+  endif ()
 endif (WIN32)
 
 # For more portable testing (PR 544430):
@@ -533,7 +552,12 @@ if (TOOL_DR_MEMORY)
     newtest(wincrt wincrt.cpp)
     # FIXME: Re-enable when it doesn't break the build.
     #newtest(rtl_memory_zones rtl_memory_zones.c)
-    #target_link_libraries(rtl_memory_zones ntdll)
+    #target_link_libraries(rtl_memory_zones ${ntimp_lib})
+    if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      # for parallel build correctness we need a target dependence
+      add_dependencies(rtl_memory_zones ntimp_tgt)
+    endif ()
+
     if (USE_DRSYMS) # cygwin build can't see static malloc routines
       newtest_custbuild(wincrtdbg wincrt.cpp "/MTd" "")
       newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
@@ -633,7 +657,7 @@ newtest(leakcycle leakcycle.cpp)
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")
 
-# framework subdir is added at top level after DR setup
+# framework subdir is added at top level b/c wants DR cflags
 
 else (NOT X64)
   # pattern mode testing.

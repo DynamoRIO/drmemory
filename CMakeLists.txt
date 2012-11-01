@@ -372,9 +372,10 @@ if (UNIX)
 endif (UNIX)
 
 if (WIN32)
-  # We need to link with ntdll.lib
-  # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var)
-  set(DDK_ROOT "$ENV{DDKROOT}" CACHE PATH "Path to DDK.")
+  # Use convention of DynamoRIO sources: DDKROOT env var (or DDK_ROOT cmake var).
+  # We don't require the DDK as dbghelp and symsrv are in the SDK as well, and
+  # we get ntdll_imports.lib from DR.
+  set(DDK_ROOT "$ENV{DDKROOT}" CACHE PATH "Path to DDK or WDK.")
   if ("${DDK_ROOT}" STREQUAL "")
     # Check default install path
     if (EXISTS "$ENV{SYSTEMDRIVE}/WINDDK/3790.1830/")
@@ -385,68 +386,69 @@ if (WIN32)
       set(DDK_ROOT "$ENV{SYSTEMDRIVE}/WINDDK/7600.16385.1/")
     endif ()
   endif ("${DDK_ROOT}" STREQUAL "")
-  # Note that we want the oldest ntdll.lib for maximum compatibility.
-  # The 2003 DDK (3790.1830) or Vista WDK (6000) both have these paths:
-  if (X64)
-    set(NTDLL_LIB_SUBPATH lib/wnet/amd64)
-  else (X64)
-    # Newer WDK (7600.16385.1) does not have w2k so use wxp: if using
-    # that WDK, won't be able to run on 2K or NT.
-    if (EXISTS "${DDK_ROOT}/lib/w2k/i386")
-      set(NTDLL_LIB_SUBPATH lib/w2k/i386)
-    else (EXISTS "${DDK_ROOT}/lib/w2k/i386")
-      message(STATUS "DDK/WDK is too recent: no support for Windows 2000 or earlier")
-      set(NTDLL_LIB_SUBPATH lib/wxp/i386)
-    endif (EXISTS "${DDK_ROOT}/lib/w2k/i386")
-  endif (X64)
-  # Use find_library() and not find_path() in case on LIB env var or sthg
-  find_library(NTDLL_LIBPATH ntdll.lib HINTS "${DDK_ROOT}/${NTDLL_LIB_SUBPATH}"
-    DOC "Path to ntdll.lib from either 2003 DDK (3790.1830) or Vista WDK (6000)")
-  if (NTDLL_LIBPATH-NOTFOUND OR NOT EXISTS "${NTDLL_LIBPATH}")
-    message(FATAL_ERROR "ntdll.lib not found: required to build")
-  endif (NTDLL_LIBPATH-NOTFOUND OR NOT EXISTS "${NTDLL_LIBPATH}")
-  message(STATUS "Found ntdll.lib: ${NTDLL_LIBPATH}")
-  get_filename_component(NTDLL_LIBPATH "${NTDLL_LIBPATH}" PATH)
-  link_directories(${NTDLL_LIBPATH})
 
   # We can't include directly from DDK b/c the DDK include dir and VS include
   # dirs are incompatible, so we have our own copies of the headers we need.
   include_directories(wininc/psdk wininc/dxsdk)
 
   # We need a newer version of dbghelp.dll than is in system32/ on 2K or XP.
-  # It is redistributable: "you can distribute the DLL with your application".
-  # 6.3+ works, 5.2 does not, haven't tested in between.
+  # The versions that come with Debugging Tools for Windows are redistributable:
+  # "you can distribute the DLL with your application".
+  # The dbghelp.dll that comes in system32/ is not redistributable.
+  # We want 6.3+ for full drsyms features.
+  # 5.2 does not work (it's not just slower w/o SymSearch: it fails).
+  # Haven't tested in between.
   # WINDDK/3790.1830/bin/x86/dbghelp.dll is 6.3.
   if (X64)
-    # FIXME i#908: it seems cmake has trouble to lookup dbghelp.dll in
-    # 64-bit directory, so we just explicitly check several possible locations
-    # WinDDK/7600.16385.1/tools/tracing/amd64
-    # Microsoft Visual Studio 9.0/Common7/IDE\Remote Debugger/x64
-    if (EXISTS "${DDK_ROOT}/tools/tracing/amd64/dbghelp.dll")
-      set(DBGHELP_DLL "${DDK_ROOT}/tools/tracing/amd64/dbghelp.dll")
-    elseif (EXISTS "$ENV{PROGRAMW6432}/Debugging Tools for Windows/dbghelp.dll")
-      set(DBGHELP_DLL "$ENV{PROGRAMW6432}/Debugging Tools for Windows/dbghelp.dll")
-    elseif (EXISTS "$ENV{PROGRAMW6432}/Microsoft Visual Studio 9.0/Common7/IDE/Remote Debugger/x64/dbghelp.dll")
-      set(DBGHELP_DLL "$ENV{PROGRAMW6432}/Microsoft Visual Studio 9.0/Common7/IDE/Remote Debugger/x64/dbghelp.dll")
-    else ()
-      message(FATAL_ERROR "dbghelp.dll required and not found")
-    endif ()
-  elseif (EXISTS "${DDK_ROOT}/bin/x86/dbghelp.dll")
-    set(DBGHELP_DLL "${DDK_ROOT}/bin/x86/dbghelp.dll")
+    set(PROGFILES "$ENV{PROGRAMW6432}") # cmake is 32-bit
+    set(ARCH_SFX "x64")
+    set(DDK_SFX "amd64")
+  else (X64)
+    set(PROGFILES "$ENV{PROGRAMFILES}")
+    set(ARCH_SFX "x86")
+    set(DDK_SFX "i386")
+  endif (X64)
+  # Even the VS2005 copy is 6.5 (despite its headers being < 6.3) so we can
+  # use those as well as the later SDK and standalone DTFW versions.
+  file(GLOB dbghelp_hint
+    "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
+    "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
+    "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll"
+    "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
+    "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
+  # XXX i#908: it seems cmake has trouble to lookup dbghelp.dll in
+  # 64-bit directory, so we just explicitly check several possible locations.
+  # Plus, we don't want system32, but NO_SYSTEM_ENVIRONMENT_PATH also
+  # excludes Program Files, so we avoid find_file() in general.
+  if (dbghelp_hint)
+    list(GET dbghelp_hint 0 dbghelp_default)
   else ()
-    file(GLOB dbghelp_hint "$ENV{PROGRAMFILES}/Debugging Tools for Windows/dbghelp.dll")
-    find_file(DBGHELP_DLL dbghelp.dll HINTS "${dbghelp_hint}"
-      DOC "location of dbghelp.dll from recent Debugging Tools for Windows")
-    if (DBGHELP_DLL-NOTFOUND OR NOT EXISTS "${DBGHELP_DLL}")
-      message(FATAL_ERROR "dbghelp.dll required and not found")
-    else ()
-      message(STATUS "Using ${DBGHELP_DLL}")
-    endif ()
+    set(dbghelp_default "DBGHELP_DLL-NOTFOUND")
+  endif ()
+  set(DBGHELP_DLL "" CACHE STRING
+    "location of dbghelp.dll from recent Debugging Tools for Windows")
+  if ("${DBGHELP_DLL}" STREQUAL "")
+    set(DBGHELP_DLL ${dbghelp_default})
+  endif()
+  if (DBGHELP_DLL-NOTFOUND OR NOT EXISTS "${DBGHELP_DLL}")
+    message(FATAL_ERROR "dbghelp.dll required and not found")
+  else ()
+    message(STATUS "Using ${DBGHELP_DLL}")
   endif ()
 
-  file(GLOB symsrv_hint "$ENV{PROGRAMFILES}/Debugging Tools for Windows/symsrv.dll")
-  find_file(SYMSRV_DLL symsrv.dll HINTS "${symsrv_hint}"
-    DOC "location of symsrv.dll from recent Debugging Tools for Windows")
+  file(GLOB symsrv_hint "${PROGFILES}/Debugging Tools for Windows/symsrv.dll"
+    "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
+    "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
+  if (symsrv_hint)
+    list(GET symsrv_hint 0 symsrv_default)
+  else ()
+    set(symsrv_default "SYMSRV_DLL-NOTFOUND")
+  endif ()
+  set(SYMSRV_DLL "" CACHE STRING
+    "location of symsrv.dll from recent Debugging Tools for Windows")
+  if ("${SYMSRV_DLL}" STREQUAL "")
+    set(SYMSRV_DLL ${symsrv_default})
+  endif()
   if (SYMSRV_DLL-NOTFOUND OR NOT EXISTS "${SYMSRV_DLL}")
     message(FATAL_ERROR "symsrv.dll required and not found")
   else ()
@@ -593,6 +595,21 @@ endfunction (set_output_dirs)
 # find DynamoRIO so tests has its path, but don't include it or run
 # its configure commands to avoid changing cflags:
 
+# DR clobbers the global cflags, so we save and then restore them for
+# our tests (and ourselves for non-pre-built DR).
+# configure_DynamoRIO_client() also does so we do this even for pre-built DR
+# for tests.
+foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
+  if ("${config}" STREQUAL "")
+    set(config_upper "")
+  else ("${config}" STREQUAL "")
+    string(TOUPPER "_${config}" config_upper)
+  endif ("${config}" STREQUAL "")
+  foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
+    set(SAVE_${var} "${${var}}")
+  endforeach (var)
+endforeach (config)
+
 # we write DynamoRIO_DIR to the cache, so on re-interpreting the file later
 # we can't tell whether the user set a value or not. we could
 # use a differently-named var for the user but instead we check vs
@@ -652,18 +669,6 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   # Build from our local copy of the sources, coming from an svn external: i#74.
   set(DynamoRIO_DIR "${LOCAL_DynamoRIO_DIR}" CACHE PATH "Path to DynamoRIO.")
   message(STATUS "Building DynamoRIO from local sources ${DynamoRIO_DIR}")
-
-  # DR clobbers the global cflags, so we save and then restore them
-  foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
-    if ("${config}" STREQUAL "")
-      set(config_upper "")
-    else ("${config}" STREQUAL "")
-      string(TOUPPER "_${config}" config_upper)
-    endif ("${config}" STREQUAL "")
-    foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
-      set(ORIG_${var} "${${var}}")
-    endforeach (var)
-  endforeach (config)
 
   # We include DynamoRIO as a subdir here to make it easy to use the
   # DynamoRIOConfig.cmake at configure time: however, that also means we have
@@ -729,7 +734,7 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
       string(TOUPPER "_${config}" config_upper)
     endif ("${config}" STREQUAL "")
     foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
-      set(${var} "${ORIG_${var}}")
+      set(${var} "${SAVE_${var}}")
     endforeach (var)
   endforeach (config)
 endif (USER_SPECIFIED_DynamoRIO_DIR)
@@ -827,12 +832,6 @@ string(REGEX REPLACE "-D" "" DEFINES_NO_D "${DEFINES}")
 string(REGEX REPLACE "-D" "" DR_DEFINES_NO_D "${DR_DEFINES}")
 
 option(BUILD_TOOL_TESTS "build Dr. Memory/Dr. Heapstat tests" ON)
-if (BUILD_TOOL_TESTS)
-  # configure tests before configure_DynamoRIO_client or
-  # add_subdirectory(dynamorio) clears global cflags
-  enable_testing()
-  add_subdirectory(tests)
-endif (BUILD_TOOL_TESTS)
 
 if (TOOL_DR_HEAPSTAT)
   # Dr. Heapstat
@@ -984,9 +983,25 @@ if (USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (USE_DRSYMS)
 if (WIN32)
+  # We need to link with ntdll.lib which we get from DR
+  if (USER_SPECIFIED_DynamoRIO_DIR)
+    get_target_property(libbase drinjectlib LOCATION)
+    get_filename_component(libpath ${libbase} PATH)
+    set(ntimp_lib "${libpath}/ntdll_imports.lib")
+  else ()
+    # XXX: This relies on knowing where DR puts it.
+    # Long-term we will probably switch to installing the local DR first,
+    # primarily to solve i#1061.
+    set(ntimp_lib "${PROJECT_BINARY_DIR}/dynamorio/core/ntdll_imports.lib")
+    if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+      # for parallel build correctness we need a target dependence
+      add_dependencies(${client_target} ntimp_tgt)
+    endif ()
+  endif ()
+
   # we have to link with ntdll AFTER any libcmt.lib from configure_DynamoRIO_client
   # or use_DynamoRIO_extension (w/ static libs)
-  target_link_libraries(${client_target} ntdll)
+  target_link_libraries(${client_target} ${ntimp_lib})
   # we used to statically link with msvcrt.lib for vc /O2's use of __aulldvrm,
   # and it didn't add any dynamic dependence on libc, except now that we
   # use static extension libraries it does add msvcr*.dll imports!
@@ -1190,6 +1205,18 @@ else (WIN32)
 endif (WIN32)
 
 ###########################################################################
+# Tests
+
+# We need to add_subdirectory after we know where ntdll_imports.lib is.
+# That means we've messed with global things like include dirs already,
+# for configure_DynamoRIO_client(), but having the extension include
+# dirs in there should be harmless to the tests.
+if (BUILD_TOOL_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif (BUILD_TOOL_TESTS)
+
+###########################################################################
 # Dr. Memory Framework (DRMF)
 
 # We decided against putting the extension inside frameworks/, so
@@ -1267,8 +1294,6 @@ include_directories(drsyscall)
 target_link_libraries(${client_target} drsyscall_int)
 
 if (BUILD_TOOL_TESTS)
-  # We want the non-DR-client tests added before DR config, but these client
-  # tests added after:
   # FIXME i#1061: disabling until works with non-pre-built-DR
   #add_subdirectory(tests/framework)
 endif (BUILD_TOOL_TESTS)
