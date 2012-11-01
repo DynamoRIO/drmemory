@@ -118,6 +118,7 @@ static const char * const replace_routine_wide_alt[] = {
 
 
 static app_pc replace_routine_start;
+static size_t replace_routine_size;
 
 #ifdef USE_DRSYMS
 /* for passing data to sym enum callback */
@@ -145,7 +146,7 @@ static int (*app_tolower)(int) = replace_tolower_ascii;
  */
 
 /* To distinguish these routines, we place into a separate page-aligned
- * section.  We assume these will take up no more than one page.
+ * section.
  * We really only use this separate section for debugging purposes, currently.
  * If we later hide client libraries, we should probably move these
  * to a visible library.
@@ -690,6 +691,12 @@ replace_wmemcmp(const wchar_t *s1, const wchar_t *s2, size_t count)
     return 0;
 }
 
+IN_REPLACE_SECTION void
+replace_final_routine(void)
+{
+}
+/* do not add .replace routines below here */
+
 #ifdef LINUX
 asm(".section .text, \"ax\", @progbits");
 asm(".align 0x1000");
@@ -734,12 +741,18 @@ replace_init(void)
         char *s;
 
         /* replace_module_load will be called for each module to populate the hashtable */
-        ASSERT(PAGE_START(get_function_entry((app_pc)replace_memset)) ==
-               PAGE_START(get_function_entry((app_pc)replace_memmove)),
-               "replace_ routines taking up more than one page");
+
         ASSERT(sizeof(int) >= sizeof(wchar_t),
                "wchar_t replacement functions assume wchar_t is not larger than int");
         replace_routine_start = (app_pc)
+            PAGE_START(get_function_entry((app_pc)replace_memset));
+        /* For now we assume the routines are laid out in source file order.
+         * It doesn't matter much because currently they all fit on on page.
+         * XXX i#1069: we could implement a more complex scheme to get the
+         * real bounds of .section.
+         */
+        replace_routine_size =
+            ALIGN_FORWARD(get_function_entry((app_pc)replace_final_routine), PAGE_SIZE) -
             PAGE_START(get_function_entry((app_pc)replace_memset));
         
         /* PR 485412: we support passing in addresses of libc routines to
@@ -1243,7 +1256,7 @@ in_replace_routine(app_pc pc)
 {
     return (options.replace_libc &&
             pc >= replace_routine_start &&
-            pc < replace_routine_start + PAGE_SIZE);
+            pc < replace_routine_start + replace_routine_size);
 }
 
 bool
