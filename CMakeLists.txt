@@ -410,12 +410,17 @@ if (WIN32)
   endif (X64)
   # Even the VS2005 copy is 6.5 (despite its headers being < 6.3) so we can
   # use those as well as the later SDK and standalone DTFW versions.
-  file(GLOB dbghelp_hint
+  set(dbghelp_paths
     "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
     "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
+  if (NOT X64)
+    set(dbghelp_paths ${dbghelp_paths}
+      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll")
+  endif (NOT X64)
+  file(GLOB dbghelp_hint ${dbghelp_paths})
   # XXX i#908: it seems cmake has trouble to lookup dbghelp.dll in
   # 64-bit directory, so we just explicitly check several possible locations.
   # Plus, we don't want system32, but NO_SYSTEM_ENVIRONMENT_PATH also
@@ -436,9 +441,15 @@ if (WIN32)
     message(STATUS "Using ${DBGHELP_DLL}")
   endif ()
 
-  file(GLOB symsrv_hint "${PROGFILES}/Debugging Tools for Windows/symsrv.dll"
+  set(symsrv_paths
+    "${PROGFILES}/Debugging Tools for Windows/symsrv.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
     "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
+  if (NOT X64)
+    set(symsrv_paths ${symsrv_paths}
+      "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll")
+  endif (NOT X64)
+  file(GLOB symsrv_hint ${symsrv_paths})
   if (symsrv_hint)
     list(GET symsrv_hint 0 symsrv_default)
   else ()
