@@ -548,25 +548,24 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtYieldExecution", OK, 0, },
 
     /* added in Windows 2003 */
-    /* FIXME i#98: has two PULONG params.  Is 2nd an INOUT count of 1st array or what? */
-    {0,"NtSetDriverEntryOrder", UNKNOWN, 2, },
+    {0,"NtSetDriverEntryOrder", OK, 2, {{0,-1,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(ULONG)}, }},
 
     /* added in Windows XP64 WOW64 */
     {0,"NtWow64CsrClientConnectToServer", UNKNOWN, 5, },
-    {0,"NtWow64CsrNewThread", UNKNOWN, 0, },
-    {0,"NtWow64CsrIdentifyAlertableThread", UNKNOWN, 0, },
+    {0,"NtWow64CsrNewThread", OK, 0, },
+    {0,"NtWow64CsrIdentifyAlertableThread", OK, 0, },
     {0,"NtWow64CsrClientCallServer", UNKNOWN, 4, },
-    {0,"NtWow64CsrAllocateCaptureBuffer", UNKNOWN, 2, },
-    {0,"NtWow64CsrFreeCaptureBuffer", UNKNOWN, 1, },
+    {0,"NtWow64CsrAllocateCaptureBuffer", OK, 2, },
+    {0,"NtWow64CsrFreeCaptureBuffer", OK, 1, },
     {0,"NtWow64CsrAllocateMessagePointer", UNKNOWN, 3, },
     {0,"NtWow64CsrCaptureMessageBuffer", UNKNOWN, 4, },
     {0,"NtWow64CsrCaptureMessageString", UNKNOWN, 5, },
-    {0,"NtWow64CsrSetPriorityClass", UNKNOWN, 2, },
-    {0,"NtWow64CsrGetProcessId", UNKNOWN, 0, },
-    {0,"NtWow64DebuggerCall", UNKNOWN, 5, },
+    {0,"NtWow64CsrSetPriorityClass", OK, 2, {{1,sizeof(ULONG),R|W}, }},
+    {0,"NtWow64CsrGetProcessId", OK, 0, },
+    {0,"NtWow64DebuggerCall", OK, 5, },
     /* args seem to be identical to NtQuerySystemInformation */
     {0,"NtWow64GetNativeSystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, 4, {{1,-2,W}, {1,-3,WI}, {3,sizeof(ULONG),W}, }},
-    {0,"NtWow64QueryInformationProcess64", UNKNOWN, 5, },
+    {0,"NtWow64QueryInformationProcess64", OK|SYSINFO_RET_SMALL_WRITE_LAST, 5, {{2,-3,W}, {2,-4,WI}, {4,sizeof(ULONG),W}, }},
     {0,"NtWow64ReadVirtualMemory64", UNKNOWN, 7, },
     {0,"NtWow64QueryVirtualMemory64", UNKNOWN, 8, },
 
@@ -690,12 +689,12 @@ static syscall_info_t syscall_ntdll_info[] = {
     /* added in Windows Vista SP1 */
     {0,"NtRenameTransactionManager", UNKNOWN, 2, },
     {0,"NtReplacePartitionUnit", UNKNOWN, 3, },
-    {0,"NtWow64CsrVerifyRegion", UNKNOWN, 2, },
-    {0,"NtWow64WriteVirtualMemory64", UNKNOWN, 7, },
-    {0,"NtWow64CallFunction64", UNKNOWN, 7, },
+    {0,"NtWow64CsrVerifyRegion", OK, 2, },
+    {0,"NtWow64WriteVirtualMemory64", OK, 7, {{6,sizeof(ULONGLONG),W}, }},
+    {0,"NtWow64CallFunction64", OK, 7, {{3,-2,R}, {5,-4,W}, {6,sizeof(ULONG),W}, }},
 
     /* added in Windows 7 */
-    {0,"NtAllocateReserveObject", UNKNOWN, 3, },
+    {0,"NtAllocateReserveObject", OK|SYSINFO_CREATE_HANDLE, 3, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {1,sizeof(OBJECT_ATTRIBUTES),R|CT,SYSARG_TYPE_OBJECT_ATTRIBUTES}, }},
     {0,"NtCreateProfileEx", UNKNOWN, 10, },
     {0,"NtDisableLastKnownGood", UNKNOWN, 0, },
     {0,"NtDrawText", UNKNOWN, 1, },
@@ -709,8 +708,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSetIoCompletionEx", UNKNOWN, 6, },
     {0,"NtSetTimerEx", UNKNOWN, 4, },
     {0,"NtUmsThreadYield", UNKNOWN, 1, },
-    {0,"NtWow64GetCurrentProcessorNumberEx", UNKNOWN, 1, },
-    {0,"NtWow64InterlockedPopEntrySList", UNKNOWN, 1, },
+    {0,"NtWow64GetCurrentProcessorNumberEx", OK, 1, {{0,sizeof(PROCESSOR_NUMBER),W}, }},
+    {0,"NtWow64InterlockedPopEntrySList", OK, 1, {{0,sizeof(SLIST_HEADER),R|W}, }},
 };
 #define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
 
