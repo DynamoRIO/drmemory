@@ -126,9 +126,11 @@ static app_pc rtl_fail_info;
 
 /* We track encoded pointers to avoid false positive leaks (i#153) */
 # define ENCODED_PTR_TABLE_HASH_BITS 6
-/* Key is encoded address.  Value is decoded address minus 1 (since
- * NULL and -1 are both deliberately encoded).
+/* Key is encoded address.  Value is decoded address plus
+ * ENCODED_PTR_SHIFT, which is required because NULL, -1, and 1 (== SIG_IGN:
+ * i#1065) are all deliberately encoded.
  */
+#define ENCODED_PTR_SHIFT 42
 static hashtable_t encoded_ptr_table;
 /* Rtl routines we intercept */
 static app_pc rtl_encode_ptr;
@@ -314,8 +316,8 @@ leak_wrap_post_encode_ptr(void *wrapcxt, void *user_data)
     ASSERT(op_check_encoded_pointers, "should not be called");
     LOG(2, "Encode*Pointer "PFX" => "PFX"\n", to_be_encoded, encoded);
     STATS_INC(pointers_encoded);
-    /* Add 1 since NULL must be supported */
-    ASSERT(to_be_encoded - 1 != NULL, "invalid ptr to encode");
+    /* Shift since NULL must be supported */
+    ASSERT(to_be_encoded - ENCODED_PTR_SHIFT != NULL, "invalid ptr to encode");
     if (to_be_encoded != NULL &&
         hashtable_lookup(&encoded_ptr_table, (void *)to_be_encoded) != NULL) {
         /* We see encoded ptrs being passed to RtlEncodePointer which
@@ -324,8 +326,11 @@ leak_wrap_post_encode_ptr(void *wrapcxt, void *user_data)
          * not to have it.
          */
         LOG(2, "not adding to table since reverse encoding already present\n");
-    } else {
-        hashtable_add(&encoded_ptr_table, (void *)encoded, (void *)(to_be_encoded-1));
+    }
+    /* If we do hit ptr==ENCODED_PTR_SHIFT, just skip in release build */
+    else if (to_be_encoded - ENCODED_PTR_SHIFT != NULL) {
+        hashtable_add(&encoded_ptr_table, (void *)encoded,
+                      (void *)(to_be_encoded - ENCODED_PTR_SHIFT));
     }
 }
 
@@ -337,7 +342,7 @@ get_decoded_ptr(byte *encoded)
 {
     byte *res = hashtable_lookup(&encoded_ptr_table, (void *)encoded);
     if (res != NULL)
-        return (res + 1);
+        return (res + ENCODED_PTR_SHIFT);
     else
         return NULL;
 }
