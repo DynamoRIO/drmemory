@@ -80,5 +80,6 @@ ntdll.dll!RtlInitializeCriticalSection
 
 UNINITIALIZED READ
 name=i#837: deliberate race in test
-racecheck*.exe!DoubleCheckedLocking::UseMe
-racecheck*.exe!DoubleCheckedLocking::Worker3
+# i#1082: Can't match against trailing .exe.
+racecheck*!DoubleCheckedLocking::UseMe
+racecheck*!DoubleCheckedLocking::Worker?
