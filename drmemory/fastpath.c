@@ -3701,14 +3701,25 @@ bool
 event_exception_instrument(void *drcontext, dr_exception_t *excpt)
 {
 # ifdef TOOL_DR_MEMORY
-    if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+    if (options.pattern != 0 &&
+        (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION ||
+         excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION)) {
+        bool guard;
         app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
-        if (options.pattern != 0) {
-            return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext);
-        } else if (ZERO_STACK() &&
-                   excpt->record->ExceptionInformation[0] == 1 /* write */ &&
-                   handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
-                                        excpt->mcontext)) {
+        /* i#1070: pattern mode inserted code may cause one-shot alarm
+         * guard page violation, we need actual target for restoring
+         * the guard page.
+         */
+        guard = excpt->record->ExceptionCode == STATUS_GUARD_PAGE_VIOLATION;
+        return !pattern_handle_segv_fault(drcontext, excpt->raw_mcontext
+                                          _IF_WINDOWS(target)
+                                          _IF_WINDOWS(guard));
+    } else if (excpt->record->ExceptionCode == STATUS_ACCESS_VIOLATION) {
+        app_pc target = (app_pc) excpt->record->ExceptionInformation[1];
+        if (ZERO_STACK() &&
+            excpt->record->ExceptionInformation[0] == 1 /* write */ &&
+            handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
+                                 excpt->mcontext)) {
             return false;
         } else if (options.leaks_only) {
             return true;

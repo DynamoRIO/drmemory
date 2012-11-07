@@ -1070,9 +1070,15 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
  * - instrumented code, i.e. pattern check code
  *   + trigger the segv before app
  *   + skip the check and continue
+ * 
+ * i#1070: this function is also used for guard page violation handling,
+ * in which case, we should restore the guard page if the violation is caused
+ * by us.
  */
 bool
-pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc)
+pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc
+                          _IF_WINDOWS(app_pc target)
+                          _IF_WINDOWS(bool guard))
 {
     bool ours = false;
     instr_t inst, next;
@@ -1088,6 +1094,33 @@ pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc)
     /* check if our own code */
     if (!pattern_segv_instr_is_instrumented(raw_mc->pc, next_pc, &inst, &next))
         goto handle_light_mode_segv_fault_done;
+#ifdef WINDOWS
+    if (guard) {
+        /* violation caused by us, restore the guard page.
+         * XXX: there could be a race here. Because the guard page is a
+         * one-shot alarm, there might be another thread touches that page
+         * without exception before we restore it, and behave incorrectly.
+         */
+        uint prot;
+# ifdef DEBUG /* some sanity checks */
+        bool ok;
+        opnd_t mem  = instr_get_src(&inst, 0);
+        size_t size = opnd_size_in_bytes(opnd_get_size(mem));
+        ASSERT(opnd_uses_nonignorable_memory(mem), "wrong cmp opnd");
+        ASSERT(opnd_compute_address(mem, raw_mc) <= target &&
+               opnd_compute_address(mem, raw_mc) + size > target,
+               "wrong exception address");
+# endif
+        /* get prot of that page */
+        IF_DEBUG(ok = )
+            dr_query_memory((byte *)target, NULL, NULL, &prot);
+        ASSERT(ok, "failed to get prot on guarded page");
+        /* restore GUARD_PAGE */
+        IF_DEBUG(ok = )
+            dr_memory_protect((byte *)target, 1, prot | DR_MEMPROT_GUARD);
+        ASSERT(ok, "failed to restore guard page");
+    }
+#endif
     /* skip pattern check code */
     LOG(2, "pattern check cmp fault@"PFX" => skip to "PFX"\n",
         raw_mc->pc, next_pc + UD2A_LENGTH);

@@ -625,7 +625,6 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
   newtest_nobuild(track_origins.pattern track_origins "" "-unaddr_only;-track_origins_unaddr"
     "" OFF "track_origins")
-
 else (TOOL_DR_MEMORY)
   newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
 
@@ -656,6 +655,7 @@ newtest(leakcycle leakcycle.cpp)
 
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")
+newtest_nobuild(app_suite.pattern app_suite_tests "" "-unaddr_only" "" OFF "")
 
 # framework subdir is added at top level b/c wants DR cflags
 

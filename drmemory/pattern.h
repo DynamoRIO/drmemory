@@ -45,7 +45,9 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
                           bb_info_t *bi, bool translating);
 
 bool
-pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc);
+pattern_handle_segv_fault(void *drcontext, dr_mcontext_t *raw_mc
+                          _IF_WINDOWS(app_pc target)
+                          _IF_WINDOWS(bool guard));
 
 bool
 pattern_handle_ill_fault(void *drcontext, dr_mcontext_t *raw_mc,
