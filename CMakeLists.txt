@@ -401,10 +401,12 @@ if (WIN32)
   # WINDDK/3790.1830/bin/x86/dbghelp.dll is 6.3.
   if (X64)
     set(PROGFILES "$ENV{PROGRAMW6432}") # cmake is 32-bit
+    set(PROGFILES32 "$ENV{PROGRAMFILES}")
     set(ARCH_SFX "x64")
     set(DDK_SFX "amd64")
   else (X64)
     set(PROGFILES "$ENV{PROGRAMFILES}")
+    set(PROGFILES32 "$ENV{PROGRAMFILES}")
     set(ARCH_SFX "x86")
     set(DDK_SFX "i386")
   endif (X64)
@@ -415,7 +417,7 @@ if (WIN32)
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
     "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
   if (NOT X64)
     set(dbghelp_paths ${dbghelp_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll")
@@ -444,7 +446,7 @@ if (WIN32)
   set(symsrv_paths
     "${PROGFILES}/Debugging Tools for Windows/symsrv.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
-    "${PROGFILES}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
   if (NOT X64)
     set(symsrv_paths ${symsrv_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll")
