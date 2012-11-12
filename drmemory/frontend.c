@@ -39,6 +39,19 @@
  *   support for those (PR 243532).
  */
 
+/* For unicode support, we must use wide-char versions of main(), argv[],
+ * and all of the windows library routines like GetEnvironmentVariable(),
+ * _access(), and GetFullPathName().  Yet we must use UTF-8 for the DR
+ * API routines.  We could go two routes: one is to have everything be UTF-16
+ * and only convert before calling DR routines; the other is to have everything
+ * be UTF-8 and convert when calling Windows routines.  We pick the latter
+ * because we expect to port this to Linux.
+ */
+#ifdef WINDOWS
+# define UNICODE
+# define _UNICODE
+#endif
+
 #include "dr_api.h" /* for the types */
 #include "dr_inject.h"
 #include "dr_config.h"
@@ -47,6 +60,32 @@
 #include <dbghelp.h>
 #include <stdio.h>
 #include <time.h>
+
+/* XXX: we may want to share this with DR's libutil/our_tchar.h b/c we'll
+ * want something similar for drdeploy and drinject libs and tools
+ */
+#ifdef WINDOWS
+# include <tchar.h>
+#else
+# define TCHAR char
+# define _tmain main
+# define _tcslen strlen
+# define _tcsstr strstr
+# define _tcscmp strcmp
+# define _tcsnicmp strnicmp
+# define _tcsncpy strncpy
+# define _tcscat_s strcat
+# define _tcsrchr strrchr
+# define _sntprintf snprintf
+# define _ftprintf fprintf
+# define _tfopen fopen
+# define _T(s) s
+#endif
+#ifdef _UNICODE
+# define TSTR_FMT "%S"
+#else
+# define TSTR_FMT "%s"
+#endif
 
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 #define MAX_APP_CMDLINE 4096
@@ -95,6 +134,9 @@ enum {
 };
 
 /* Symbol search path. */
+/* XXX: it may be simpler to have this be TCHAR and avoid extra conversions
+ * if we created BUFPRINT for TCHAR to simplify set_symbol_search_path().
+ */
 static char symsrv_path[MAX_SYMSRV_PATH];
 
 /* URL of the MS symbol server. */
@@ -192,13 +234,43 @@ print_usage(void)
     exit(1);                                                    \
 } while (0)
 
+/* must use dr_snprintf here to support %S converting UTF-16<->UTF-8 */
 #define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
-    len = _snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
+    len = dr_snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
     sofar += (len < 0 ? 0 : len); \
     assert((bufsz) > (sofar)); \
     /* be paranoid: though usually many calls in a row and could delay until end */ \
     (buf)[(bufsz)-1] = '\0';                                 \
 } while (0)
+
+/* always null-terminates */
+static void
+tchar_to_char(const TCHAR *wstr, char *buf, size_t buflen/*# elements*/)
+{
+    int res = WideCharToMultiByte(CP_UTF8, 0, wstr, -1/*null-term*/,
+                                  buf, buflen, NULL, NULL);
+    /* XXX: propagate to caller?  or make fatal error? */
+    assert(res > 0);
+    buf[buflen - 1] = '\0';
+}
+
+/* includes the terminating null */
+static size_t
+tchar_to_char_size_needed(const TCHAR *wstr)
+{
+    return WideCharToMultiByte(CP_UTF8, 0, wstr, -1/*null-term*/, NULL, 0, NULL, NULL);
+}
+
+/* always null-terminates */
+static void
+char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
+{
+    int res = MultiByteToWideChar(CP_UTF8, 0/*=>MB_PRECOMPOSED*/, str, -1/*null-term*/,
+                                  wbuf, wbuflen);
+    /* XXX: propagate to caller?  or make fatal error? */
+    assert(res > 0);
+    wbuf[wbuflen - 1] = L'\0';
+}
 
 static bool
 on_vista_or_later(void)
@@ -222,7 +294,9 @@ read_nt_headers(const char *exe, IMAGE_NT_HEADERS *nt)
     DWORD offs;
     DWORD read;
     IMAGE_DOS_HEADER dos;
-    f = CreateFile(exe, GENERIC_READ, FILE_SHARE_READ,
+    TCHAR wexe[MAXIMUM_PATH];
+    char_to_tchar(exe, wexe, BUFFER_SIZE_ELEMENTS(wexe));
+    f = CreateFile(wexe, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE)
         goto read_nt_headers_error;
@@ -285,6 +359,17 @@ string_replace_character(char *str, char old_char, char new_char)
     }
 }
 
+void
+string_replace_character_wide(TCHAR *str, TCHAR old_char, TCHAR new_char)
+{
+    while (*str != _T('\0')) {
+        if (*str == old_char) {
+            *str = new_char;
+        }
+        str++;
+    }
+}
+
 static bool
 ends_in_exe(const char *s)
 {
@@ -296,35 +381,90 @@ ends_in_exe(const char *s)
             (s[len-1] == 'E' || s[len-1] == 'e'));
 }
 
+static bool
+file_is_writable(char *path)
+{
+    TCHAR wbuf[MAXIMUM_PATH];
+    char_to_tchar(path, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
+    return (_taccess(wbuf, 2/*write*/) == 0);
+}
+
+static bool
+file_is_readable(char *path)
+{
+    TCHAR wbuf[MAXIMUM_PATH];
+    char_to_tchar(path, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
+    return (_taccess(wbuf, 4/*read*/) == 0);
+}
+
+static bool
+get_env_var(const TCHAR *name, char *buf, size_t buflen/*# elements*/)
+{
+    TCHAR wbuf[MAXIMUM_PATH];
+    int len = GetEnvironmentVariable(name, wbuf, BUFFER_SIZE_ELEMENTS(wbuf));
+    if (len > 0) {
+        tchar_to_char(wbuf, buf, buflen);
+        return true;
+    }
+    return false;
+}
+
+/* Takes in UTF-16 and returns UTF-8 when _UNICODE is set */
+static void
+get_absolute_path_wide(const TCHAR *wsrc, char *buf, size_t buflen/*# elements*/)
+{
+    TCHAR wdst[MAXIMUM_PATH];
+    int res = GetFullPathName(wsrc, BUFFER_SIZE_ELEMENTS(wdst), wdst, NULL);
+    assert(res > 0);
+    NULL_TERMINATE_BUFFER(wdst);
+    tchar_to_char(wdst, buf, buflen);
+}
+
+static void
+get_absolute_path(const char *src, char *buf, size_t buflen/*# elements*/)
+{
+    TCHAR wsrc[MAXIMUM_PATH];
+    char_to_tchar(src, wsrc, BUFFER_SIZE_ELEMENTS(wsrc));
+    get_absolute_path_wide(wsrc, buf, buflen);
+}
+
 static void
 get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
 {
-    _searchenv(app, "PATH", buf);
-    buf[buflen - 1] = '\0';
-    if (buf[0] == '\0') {
+    int res;
+    TCHAR wbuf[MAXIMUM_PATH];
+    TCHAR wapp[MAXIMUM_PATH];
+    char_to_tchar(app, wapp, BUFFER_SIZE_ELEMENTS(wapp));
+    _tsearchenv(wapp, _T("PATH"), wbuf);
+    NULL_TERMINATE_BUFFER(wbuf);
+    if (wbuf[0] == _T('\0')) {
         /* may need to append .exe, FIXME : other executable types */
-        char tmp_buf[MAXIMUM_PATH];
-        _snprintf(tmp_buf, BUFFER_SIZE_ELEMENTS(tmp_buf), "%s%s", app, ".exe");
-        buf[buflen - 1] = '\0';
-        _searchenv(tmp_buf, "PATH", buf);
+        TCHAR tmp_buf[MAXIMUM_PATH];
+        _sntprintf(tmp_buf, BUFFER_SIZE_ELEMENTS(tmp_buf), _T("%s%s"), wapp, _T(".exe"));
+        NULL_TERMINATE_BUFFER(wbuf);
+        _tsearchenv(tmp_buf, _T("PATH"), wbuf);
     }
-    if (buf[0] == '\0') {
+    if (wbuf[0] == _T('\0')) {
         /* last try: expand w/ cur dir */
-        GetFullPathName(app, buflen, buf, NULL);
-        buf[buflen - 1] = '\0';
+        GetFullPathName(wapp, BUFFER_SIZE_ELEMENTS(wbuf), wbuf, NULL);
+        NULL_TERMINATE_BUFFER(wbuf);
     }
+    tchar_to_char(wbuf, buf, buflen);
 }
 
 /* i#200/PR 459481: communicate child pid via file */
 static void
 write_pid_to_file(const char *pidfile, process_id_t pid)
 {
-    HANDLE f = CreateFile(pidfile, GENERIC_WRITE, FILE_SHARE_READ,
+    TCHAR wpidfile[MAXIMUM_PATH];
+    HANDLE f;
+    char_to_tchar(pidfile, wpidfile, BUFFER_SIZE_ELEMENTS(wpidfile));
+    f = CreateFile(wpidfile, GENERIC_WRITE, FILE_SHARE_READ,
                           NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
         warn("cannot open %s: %d", pidfile, GetLastError());
     } else {
-        TCHAR pidbuf[16];
+        char pidbuf[16];
         BOOL ok;
         DWORD written;
         _snprintf(pidbuf, BUFFER_SIZE_ELEMENTS(pidbuf), "%d\n", pid);
@@ -349,6 +489,7 @@ static void
 set_symbol_search_path(const char *logdir)
 {
     char app_symsrv_path[MAX_SYMSRV_PATH];
+    TCHAR wapp_symsrv_path[MAX_SYMSRV_PATH];
     char tmp_srv_path[MAX_SYMSRV_PATH];
     char *cur;
     char *end;
@@ -360,8 +501,8 @@ set_symbol_search_path(const char *logdir)
     /* If the user set a non-empty _NT_SYMBOL_PATH, then we use that.
      * Otherwise, we set it to logs/symbols and make sure it exists.
      */
-    if (GetEnvironmentVariable("_NT_SYMBOL_PATH", symsrv_path,
-                               BUFFER_SIZE_ELEMENTS(symsrv_path)) == 0 ||
+    if (get_env_var(_T("_NT_SYMBOL_PATH"), symsrv_path,
+                    BUFFER_SIZE_ELEMENTS(symsrv_path)) == 0 ||
         strlen(symsrv_path) == 0) {
         char pdb_dir[MAXIMUM_PATH];
         _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", logdir);
@@ -414,7 +555,9 @@ set_symbol_search_path(const char *logdir)
     info("using symbol path %s to fetch symbols", symsrv_path);
 
     /* Set _NT_SYMBOL_PATH for dbghelp in the app. */
-    if (!SetEnvironmentVariable("_NT_SYMBOL_PATH", app_symsrv_path)) {
+    char_to_tchar(app_symsrv_path, wapp_symsrv_path,
+                  BUFFER_SIZE_ELEMENTS(wapp_symsrv_path));
+    if (!SetEnvironmentVariable(_T("_NT_SYMBOL_PATH"), wapp_symsrv_path)) {
         warn("SetEnvironmentVariable failed: %d", GetLastError());
     }
 }
@@ -425,6 +568,8 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
     DWORD64 base;
     IMAGEHLP_MODULE64 mod_info;
     BOOL got_pdbs = FALSE;
+    TCHAR wmodpath[MAXIMUM_PATH];
+    char_to_tchar(modpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath));
 
     /* XXX: If we port the C frontend to Linux, we can make this shell out to a
      * bash script that uses apt/yum to install debug info.
@@ -434,11 +579,13 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
      */
 
     /* The SymSrv* API calls are complicated.  It's easier to set the symbol
-     * path to point at a server and rely on SymLoadModule64 to fetch symbols.
+     * path to point at a server and rely on SymLoadModuleEx to fetch symbols.
      */
-    base = SymLoadModule64(proc, NULL, (char *)modpath, NULL, 0, 0);
+
+    /* We must use SymLoadModuleEx as there's no wide version of SymLoadModule64 */
+    base = SymLoadModuleExW(proc, NULL, wmodpath, NULL, 0, 0, NULL, 0);
     if (base == 0) {
-        warn("SymLoadModule64 error: %d", GetLastError());
+        warn("SymLoadModuleEx error: %d", GetLastError());
         return got_pdbs;
     }
 
@@ -468,7 +615,7 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
             break;
         }
     } else {
-        warn("SymGetModuleInfo64 failed: %d", GetLastError());
+        warn("SymGetModuleInfoEx failed: %d", GetLastError());
     }
 
     /* Unload it. */
@@ -483,69 +630,72 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
  * a long path and assumes it is MAXIMUM_PATH bytes long.
  */
 static bool
-should_fetch_symbols(const char *system_root, char *modpath)
+should_fetch_symbols(const TCHAR *system_root, char *modpath)
 {
+    TCHAR wmodpath[MAXIMUM_PATH];
     bool r;
     string_replace_character(modpath, '\n', '\0');  /* Trailing newline. */
     /* Convert to a long path to compare with $SystemRoot.  These paths are
      * already absolute, but some of them, like sophos-detoured.dll, are
      * 8.3 style paths.
      */
-    if (GetLongPathName(modpath, modpath, MAXIMUM_PATH) == 0) {
+    char_to_tchar(modpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath));
+    if (GetLongPathName(wmodpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath)) == 0) {
         warn("GetLongPathName failed: %d", GetLastError());
     }
     /* We only fetch pdbs for system libraries.  Everything else was
      * probably built on the user's machine, so if the pdbs aren't there,
      * attempting to fetch them will be futile.
      */
-    r = (_strnicmp(system_root, modpath, strlen(system_root)) == 0);
+    r = (_tcsnicmp(system_root, wmodpath, _tcslen(system_root)) == 0);
     /* By default, we only fetch CRT symbols. */
     if (r && fetch_crt_syms_only) {
-        const char *basename;
-        basename = strrchr(modpath, '\\');  /* GetLongPathName uses \ only. */
-        basename = (basename == NULL ? modpath : basename + 1);
-        r = (_strnicmp("msvc", basename, 4) == 0);
+        const TCHAR *basename;
+        basename = _tcsrchr(wmodpath, _T('\\'));  /* GetLongPathName uses \ only. */
+        basename = (basename == NULL ? wmodpath : basename + 1);
+        r = (_tcsnicmp(_T("msvc"), basename, 4) == 0);
     }
-    info("%s: modpath %s => %d\n", __FUNCTION__, modpath, r);
+    info("%s: modpath %s => %d", __FUNCTION__, modpath, r);
     return r;
 }
 
 static void
-fetch_missing_symbols(const char *logdir, const char *resfile)
+fetch_missing_symbols(const char *logdir, const TCHAR *resfile)
 {
-    char missing_symbols[MAXIMUM_PATH];
+    TCHAR missing_symbols[MAXIMUM_PATH];
     char line[MAXIMUM_PATH];
     FILE *stream;
-    char *last_slash;
+    TCHAR *last_slash;
     HANDLE proc = GetCurrentProcess();
     int num_files;
     int cur_file;
     int files_fetched;
-    char system_root[MAXIMUM_PATH];
+    TCHAR system_root[MAXIMUM_PATH];
     DWORD len;
+    TCHAR wsymsrv_path[MAX_SYMSRV_PATH];
 
     /* Get %SystemRoot%. */
     len = GetWindowsDirectory(system_root, BUFFER_SIZE_ELEMENTS(system_root));
     if (len == 0) {
-        strncpy(system_root, "C:\\Windows", sizeof(system_root));
+        _tcsncpy(system_root, _T("C:\\Windows"), BUFFER_SIZE_ELEMENTS(system_root));
         NULL_TERMINATE_BUFFER(system_root);
     }
-
-    strncpy(missing_symbols, resfile, BUFFER_SIZE_ELEMENTS(missing_symbols));
+    _tcsncpy(missing_symbols, resfile, BUFFER_SIZE_ELEMENTS(missing_symbols));
     NULL_TERMINATE_BUFFER(missing_symbols);
-    string_replace_character(missing_symbols, '\\', '/');
-    last_slash = strrchr(missing_symbols, '/');
+    string_replace_character_wide(missing_symbols, _T('\\'), _T('/'));
+    last_slash = _tcsrchr(missing_symbols, _T('/'));
     if (last_slash == NULL) {
-        warn("%s is not an absolute path", missing_symbols);
+        warn(TSTR_FMT" is not an absolute path", missing_symbols);
         return;
     }
-    *last_slash = '\0';
-    strcat_s(missing_symbols, sizeof(missing_symbols), "/missing_symbols.txt");
+    *last_slash = _T('\0');
+    _tcscat_s(missing_symbols, BUFFER_SIZE_ELEMENTS(missing_symbols),
+              _T("/missing_symbols.txt"));
     NULL_TERMINATE_BUFFER(missing_symbols);
 
-    stream = fopen(missing_symbols, "r");
+    stream = _tfopen(missing_symbols, _T("r"));
     if (stream == NULL) {
-        warn("can't open %s to fetch missing symbols", missing_symbols);
+        warn("can't open "TSTR_FMT" to fetch missing symbols", missing_symbols);
         return;
     }
 
@@ -566,11 +716,12 @@ fetch_missing_symbols(const char *logdir, const char *resfile)
     /* Initializing dbghelp can be slow, so print something to the user. */
     sym_info("Fetching %d symbol files...", num_files);
 
-    if (!SymInitialize(proc, symsrv_path, FALSE)) {
+    char_to_tchar(symsrv_path, wsymsrv_path, BUFFER_SIZE_ELEMENTS(wsymsrv_path));
+    if (!SymInitializeW(proc, wsymsrv_path, FALSE)) {
         warn("SymInitialize error %d", GetLastError());
         goto stream_cleanup;
     }
-    SymSetSearchPath(proc, symsrv_path);
+    SymSetSearchPathW(proc, wsymsrv_path);
 
     cur_file = 0;
     files_fetched = 0;
@@ -604,22 +755,24 @@ static void
 process_results_file(const char *logdir, process_id_t pid, const char *app)
 {
     HANDLE f;
-    char fname[MAXIMUM_PATH];
+    TCHAR fname[MAXIMUM_PATH];
     char resfile[MAXIMUM_PATH];
+    TCHAR wresfile[MAXIMUM_PATH];
     DWORD read;
     if (no_resfile || (quiet && batch))
         return;
-    _snprintf(fname, BUFFER_SIZE_ELEMENTS(fname), "%s/resfile.%d", logdir, pid);
+    dr_snwprintf(fname, BUFFER_SIZE_ELEMENTS(fname), _T(TSTR_FMT)_T("/resfile.%d"),
+                 logdir, pid);
     NULL_TERMINATE_BUFFER(fname);
     f = CreateFile(fname, GENERIC_READ, FILE_SHARE_READ,
                    NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) {
-        warn("unable to locate results file since can't open %s: %d",
+        warn("unable to locate results file since can't open "TSTR_FMT": %d",
              fname, GetLastError());
         return;
     }
     if (!ReadFile(f, resfile, BUFFER_SIZE_ELEMENTS(resfile), &read, NULL)) {
-        warn("unable to locate results file since can't read %s: %d",
+        warn("unable to locate results file since can't read "TSTR_FMT": %d",
              fname, GetLastError());
         CloseHandle(f);
         return;
@@ -629,8 +782,9 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     CloseHandle(f);
     /* We are now done with the file */
     if (!DeleteFile(fname)) {
-        warn("unable to delete temp file %s: %d", fname, GetLastError());
+        warn("unable to delete temp file "TSTR_FMT": %d", fname, GetLastError());
     }
+    char_to_tchar(resfile, wresfile, BUFFER_SIZE_ELEMENTS(wresfile));
 
     if (!quiet &&
         /* on vista, or win7+ with i#440, output works from client, even during exit */
@@ -654,7 +808,7 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
             FILE *stream;
             char line[100];
             bool found_summary = false, in_leak = false;
-            if ((stream = fopen(resfile, "r" )) != NULL) {
+            if ((stream = _tfopen(wresfile, _T("r"))) != NULL) {
                 while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
                     if (!found_summary) {
                         found_summary = (strstr(line, "ERRORS FOUND:") == line);
@@ -683,12 +837,12 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
         /* Pop up notepad in background w/ results file */
         PROCESS_INFORMATION pi;
         STARTUPINFO si;
-        char cmd[MAXIMUM_PATH*2];
+        TCHAR cmd[MAXIMUM_PATH*2];
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
-        _searchenv("notepad.exe", "PATH", fname);
+        _tsearchenv(_T("notepad.exe"), _T("PATH"), fname);
         NULL_TERMINATE_BUFFER(fname);
-        _snprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), "%s %s", fname, resfile);
+        _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), fname, wresfile);
         NULL_TERMINATE_BUFFER(cmd);
         if (!CreateProcess(fname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
             warn("cannot run \"%s\": %d", cmd, GetLastError());
@@ -701,14 +855,16 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     /* We provide an option to allow the user to turn this feature off. */
     if (fetch_symbols || fetch_crt_syms_only) {
         info("fetching symbols");
-        fetch_missing_symbols(logdir, resfile);
+        fetch_missing_symbols(logdir, wresfile);
     } else {
         info("skipping symbol fetching");
     }
 }
 
-int main(int argc, char *argv[])
+int
+_tmain(int argc, TCHAR *targv[])
 {
+    char **argv;
     char *process = NULL;
     char *dr_root = NULL;
     char *drmem_root = NULL;
@@ -754,6 +910,25 @@ int main(int argc, char *argv[])
 
     dr_standalone_init();
 
+#ifdef _UNICODE
+    /* To simplify our (soon-to-be) cross-platform code we convert to utf8 up front.
+     * We need to do this for app_argv in any case so there's not much extra
+     * work here.
+     */
+    argv = (char **) malloc((argc + 1/*null*/)*sizeof(*argv));
+    for (i = 0; i < argc; i++) {
+        size_t len = tchar_to_char_size_needed(targv[i]);
+        argv[i] = (char *) malloc(len); /* len includes terminating null */
+        tchar_to_char(targv[i], argv[i], len);
+    }
+    argv[i] = NULL;
+#else
+# ifdef _MBCS
+#  error _MBCS not supported: only _UNICODE or ascii
+# endif
+    argv = targv;
+#endif
+
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
     get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
     c = buf + strlen(buf) - 1;
@@ -761,15 +936,14 @@ int main(int argc, char *argv[])
         c--;
     _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "../dynamorio");
     NULL_TERMINATE_BUFFER(buf);
-    GetFullPathName(buf, BUFFER_SIZE_ELEMENTS(default_dr_root), default_dr_root, NULL);
+    get_absolute_path(buf, default_dr_root, BUFFER_SIZE_ELEMENTS(default_dr_root));
     NULL_TERMINATE_BUFFER(default_dr_root);
     dr_root = default_dr_root;
 
     /* assuming we're in bin/ (mainly due to CPack NSIS limitations) */
     _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "..");
     NULL_TERMINATE_BUFFER(buf);
-    GetFullPathName(buf, BUFFER_SIZE_ELEMENTS(default_drmem_root),
-                    default_drmem_root, NULL);
+    get_absolute_path(buf, default_drmem_root, BUFFER_SIZE_ELEMENTS(default_drmem_root));
     NULL_TERMINATE_BUFFER(default_drmem_root);
     drmem_root = default_drmem_root;
 
@@ -786,45 +960,42 @@ int main(int argc, char *argv[])
         /* On Vista+ we can't write to Program Files; plus better to not store
          * logs there on 2K or XP either.
          */
-        int len = GetEnvironmentVariableA("APPDATA", buf, BUFFER_SIZE_ELEMENTS(buf));
-        bool have_env = false;
-        if (len > 0) {
+        bool have_env = get_env_var(_T("APPDATA"), buf, BUFFER_SIZE_ELEMENTS(buf));
+        if (have_env) {
             _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/Dr. Memory", buf);
             NULL_TERMINATE_BUFFER(logdir);
-            have_env = true;
         } else {
-            len = GetEnvironmentVariableA("USERPROFILE", buf, BUFFER_SIZE_ELEMENTS(buf));
-            if (len > 0) {
+            have_env = get_env_var(_T("USERPROFILE"), buf, BUFFER_SIZE_ELEMENTS(buf));
+            if (have_env) {
                 _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), 
                           "%s/Application Data/Dr. Memory", buf);
                 NULL_TERMINATE_BUFFER(logdir);
-                have_env = true;
             }
         }
         if (have_env) {
-            if (CreateDirectoryA(logdir, NULL) || GetLastError() == ERROR_ALREADY_EXISTS) {
+            if (dr_create_dir(logdir) || dr_directory_exists(logdir)) {
                 have_logdir = true;
             }
         }
     } else {
         _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/drmemory/logs", drmem_root);
         NULL_TERMINATE_BUFFER(logdir);
-        if (_access(logdir, 2/*write*/) == -1) {
+        if (!file_is_writable(logdir)) {
             /* try w/o the drmemory */
             _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/logs", drmem_root);
             NULL_TERMINATE_BUFFER(logdir);
-            if (_access(logdir, 2/*write*/) > -1)
+            if (file_is_writable(logdir))
                 have_logdir = true;
         } else
             have_logdir = true;
     }
     if (!have_logdir) {
         /* try logs in cur dir */
-        GetFullPathName("./logs", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+        get_absolute_path("./logs", logdir, BUFFER_SIZE_ELEMENTS(logdir));
         NULL_TERMINATE_BUFFER(logdir);
-        if (_access(logdir, 2/*write*/) == -1) {
+        if (!file_is_writable(logdir)) {
             /* try cur dir */
-            GetFullPathName(".", BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            get_absolute_path(".", logdir, BUFFER_SIZE_ELEMENTS(logdir));
             NULL_TERMINATE_BUFFER(logdir);
         }
     }
@@ -953,7 +1124,7 @@ int main(int argc, char *argv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(logdir), logdir, NULL);
+            get_absolute_path(argv[++i], logdir, BUFFER_SIZE_ELEMENTS(logdir));
             NULL_TERMINATE_BUFFER(logdir);
             /* added to client ops below */
         }
@@ -961,9 +1132,9 @@ int main(int argc, char *argv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(scratch), scratch, NULL);
+            get_absolute_path(argv[++i], scratch, BUFFER_SIZE_ELEMENTS(scratch));
             NULL_TERMINATE_BUFFER(scratch);
-            if (_access(scratch, 2/*write*/) == -1) {
+            if (!file_is_writable(scratch)) {
                 fatal("invalid -symcache_dir: cannot find/write %s", scratch);
                 goto error; /* actually won't get here */
             }
@@ -984,8 +1155,8 @@ int main(int argc, char *argv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(persist_dir),
-                            persist_dir, NULL);
+            get_absolute_path(argv[++i], persist_dir,
+                              BUFFER_SIZE_ELEMENTS(persist_dir));
             NULL_TERMINATE_BUFFER(persist_dir);
             /* further processed below */
         }
@@ -994,9 +1165,9 @@ int main(int argc, char *argv[])
                 usage("invalid arguments");
             /* front-end provides relative-to-absolute and existence check */
             /* make absolute */
-            GetFullPathName(argv[++i], BUFFER_SIZE_ELEMENTS(suppress), suppress, NULL);
+            get_absolute_path(argv[++i], suppress, BUFFER_SIZE_ELEMENTS(suppress));
             NULL_TERMINATE_BUFFER(suppress);
-            if (_access(suppress, 4/*read*/) == -1) {
+            if (!file_is_readable(suppress)) {
                 fatal("cannot find -suppress file %s", suppress);
                 goto error; /* actually won't get here */
             }
@@ -1069,7 +1240,7 @@ int main(int argc, char *argv[])
     }
 #endif
 
-    if (_access(dr_root, 4/*read*/) == -1) {
+    if (!file_is_readable(dr_root)) {
         fatal("invalid -dr_root %s", dr_root);
         goto error; /* actually won't get here */
     }
@@ -1077,13 +1248,13 @@ int main(int argc, char *argv[])
               "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root,
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
-    if (_access(buf, 4/*read*/) == -1) {
+    if (!file_is_readable(buf)) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
                       "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root, "debug");
             NULL_TERMINATE_BUFFER(buf);
-            if (_access(buf, 4/*read*/) == -1) {
+            if (!file_is_readable(buf)) {
                 fatal("cannot find DynamoRIO library %s", buf);
                 goto error; /* actually won't get here */
             }
@@ -1097,12 +1268,12 @@ int main(int argc, char *argv[])
               "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root,
               use_drmem_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(client_path);
-    if (_access(client_path, 4/*read*/) == -1) {
+    if (!file_is_readable(client_path)) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
                       "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root, "debug");
             NULL_TERMINATE_BUFFER(client_path);
-            if (_access(client_path, 4/*read*/) == -1) {
+            if (!file_is_readable(client_path)) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);
                 goto error; /* actually won't get here */
             }
@@ -1110,13 +1281,13 @@ int main(int argc, char *argv[])
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
                       "%s/CMakeCache.txt", drmem_root);
             NULL_TERMINATE_BUFFER(buf);
-            if (_access(buf, 4/*read*/) == -1)
+            if (!file_is_readable(buf))
                 warn("using debug Dr. Memory since release not found");
             use_drmem_debug = true;
         }
     }
 
-    if (_access(logdir, 2/*write*/) == -1) {
+    if (!file_is_writable(logdir)) {
         fatal("invalid -logdir: cannot find/write %s", logdir);
         goto error; /* actually won't get here */
     }
@@ -1168,7 +1339,7 @@ int main(int argc, char *argv[])
                 }
             }
         }
-        if (_access(persist_dir, 2/*write*/) == -1) {
+        if (!file_is_writable(persist_dir)) {
             fatal("invalid -persist_dir: cannot find/write %s", persist_dir);
             goto error; /* actually won't get here */
         }
@@ -1241,9 +1412,15 @@ int main(int argc, char *argv[])
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
     process_results_file(logdir, pid, app_name);
-    return (exit0 ? 0 : errcode);
+    goto cleanup;
  error:
     dr_inject_process_exit(inject_data, false);
-    return (exit0 ? 0 : 1);
+    errcode = 1;
+ cleanup:
+#ifdef _UNICODE
+    for (i = 0; i < argc; i++)
+        free(argv[i]);
+    free(argv);
+#endif
+    return (exit0 ? 0 : errcode);
 }
-
