@@ -20,13 +20,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifdef LINUX
-/* avoid depending on __isoc99_sscanf */
-# define _GNU_SOURCE 1
-# include <stdio.h>
-# undef _GNU_SOURCE
-#endif
-
 #include "dr_api.h"
 #include "drmgr.h"
 #include "utils.h"
@@ -34,8 +27,6 @@
 #include "shadow.h"
 #include "pattern.h"
 #include <string.h>
-
-#undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
 /***************************************************************************
  * OPTIONS
@@ -153,8 +144,8 @@ option_read_uint(const char *s, char *word, void *var_in /* really uint* */,
     if (word[0] == '-')
         option_error(opname, "negative value not allowed");
     /* allow hex: must read it first, else 0 in 0x will be taken */
-    if (sscanf(word, "0x%x", var) != 1 &&
-        sscanf(word, "%u", var) != 1)
+    if (dr_sscanf(word, "0x%x", var) != 1 &&
+        dr_sscanf(word, "%u", var) != 1)
         option_error(opname, "invalid unsigned integer");
     if (*var < minval || *var > maxval)
         option_error(opname, "value is outside allowed range");
@@ -171,8 +162,8 @@ option_read_int(const char *s, char *word, void *var_in /* really int* */,
     if (s == NULL || word[0] == '\0')
         option_error(opname, "missing value");
     /* allow hex: must read it first, else 0 in 0x will be taken */
-    if (sscanf(word, "0x%x", var) != 1 &&
-        sscanf(word, "%d", var) != 1)
+    if (dr_sscanf(word, "0x%x", var) != 1 &&
+        dr_sscanf(word, "%d", var) != 1)
         option_error(opname, "invalid integer");
     if (*var < minval || *var > maxval)
         option_error(opname, "value is outside allowed range");

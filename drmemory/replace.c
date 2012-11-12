@@ -30,14 +30,6 @@
  * Xref PR 485412.
  */
 
-#ifdef LINUX
-/* avoid depending on __isoc99_sscanf */
-# undef sscanf
-# define _GNU_SOURCE 1
-# include <stdio.h>
-# undef _GNU_SOURCE
-#endif
-
 #include "dr_api.h"
 #include "drwrap.h"
 #include "utils.h"
@@ -56,8 +48,6 @@
 #ifdef USE_DRSYMS
 # include "drsyms.h"
 #endif
-
-#undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
 /* On Windows, keep this updated with drmemory.pl which queries these pre-run.
  *
@@ -762,9 +752,9 @@ replace_init(void)
         s = options.libc_addrs;
         i = 0;
         while (s != NULL) {
-            if (sscanf(s, PIFX, (ptr_uint_t *)&addr) == 1 ||
+            if (dr_sscanf(s, PIFX, (ptr_uint_t *)&addr) == 1 ||
                 /* we save option space by having no 0x prefix but assuming hex */
-                sscanf(s, PIFMT, (ptr_uint_t *)&addr) == 1) {
+                dr_sscanf(s, PIFMT, (ptr_uint_t *)&addr) == 1) {
                 LOG(2, "replacing %s @"PFX" in executable from options\n",
                     replace_routine_name[i], addr);
                 if (!drwrap_replace((app_pc)addr, (app_pc)replace_routine_addr[i], false))

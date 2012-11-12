@@ -27,21 +27,12 @@
 # error requires USE_DRSYMS
 #endif
 
-#ifdef LINUX
-/* avoid depending on __isoc99_sscanf */
-# define _GNU_SOURCE 1
-# include <stdio.h>
-# undef _GNU_SOURCE
-#endif
-
 #include "dr_api.h"
 #include "symcache.h"
 #include "drmgr.h"
 #include "drsyms.h"
 #include "utils.h"
 #include <string.h>
-
-#undef sscanf /* eliminate warning from utils.h b/c we have _GNU_SOURCE above */
 
 /* General comments:
  * - The file is not assumed to be complete and instead contains negative
@@ -292,9 +283,6 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
 }
 
 #define MAX_SYMLEN 256
-/* sscanf will add a null beyond this */
-#define MAX_SYMLEN_MINUS_1 255
-#define MAX_SYMLEN_MINUS_1_STR STRINGIFY(MAX_SYMLEN_MINUS_1)
 
 /* Sets modcache->has_debug_info */
 static bool
@@ -332,7 +320,11 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         WARN("WARNING: symbol cache file is corrupted\n");
         goto symcache_read_symfile_done;
     }
-    if (sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d", (uint *)&offs) != 1 ||
+    /* i#1057: We use dr_sscanf() because sscanf() from ntdll will call strlen()
+     * and read off the end of the mapped file if it doesn't hit a null.
+     */
+    if (dr_sscanf((char *)map + strlen(SYMCACHE_FILE_HEADER) + 1, "%d",
+                  (uint *)&offs) != 1 ||
         /* neither forward nor backward compatible */
         offs != SYMCACHE_VERSION) {
         WARN("WARNING: symbol cache file has wrong version\n");
@@ -352,11 +344,11 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         uint checksum;
         uint timestamp;
         size_t module_internal_size;
-        if (sscanf(line, "%u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
-                   UINT64_FORMAT_STRING",%u,%u,%lu",
-                   &cache_file_size, &module_file_size, &file_version.version,
-                   &product_version.version, &checksum, &timestamp,
-                   &module_internal_size) != 7) {
+        if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING","UINT64_FORMAT_STRING","
+                      UINT64_FORMAT_STRING",%u,%u,%lu",
+                      &cache_file_size, &module_file_size, &file_version.version,
+                      &product_version.version, &checksum, &timestamp,
+                      &module_internal_size) != 7) {
             WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
             goto symcache_read_symfile_done;
         }
@@ -380,8 +372,8 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
             goto symcache_read_symfile_done;
         }
 #else
-        if (sscanf(line, "%u,"UINT64_FORMAT_STRING,
-                   &cache_file_size, &module_file_size) != 2) {
+        if (dr_sscanf(line, "%u,"UINT64_FORMAT_STRING,
+                      &cache_file_size, &module_file_size) != 2) {
             WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
             goto symcache_read_symfile_done;
         }
@@ -401,7 +393,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
         line++;
     if (line != NULL) {
         uint has_debug_info;
-        if (sscanf(line, "%u", &has_debug_info) != 1) {
+        if (dr_sscanf(line, "%u", &has_debug_info) != 1) {
             WARN("WARNING: %s symbol cache file has bad consistency header\n", modname);
             goto symcache_read_symfile_done;
         }
@@ -424,19 +416,20 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
 
     symbol[0] = '\0';
     for (; line != NULL && line < ((char *)map) + map_size; line = next_line) {
+        const char *comma = strchr(line, ',');
         const char *newline = strchr(line, '\n');
+        size_t symlen = (comma != NULL ? comma - line : 0);
         if (newline == NULL) {
             next_line = ((char *)map) + map_size + 1; /* handle EOF w/o trailing \n */
         } else {
             next_line = newline + 1;
         }
-        if (sscanf(line, "%"MAX_SYMLEN_MINUS_1_STR"[^,],0x%x", symbol,
-                   (uint *)&offs) == 2) {
-            symcache_symbol_add(modname, symtable, symbol, offs);
-        } else if (symbol[0] != '\0' && sscanf(line, ",0x%x", (uint *)&offs) == 1) {
-            /* duplicate entries are allowed to not list the symbol, to save
-             * space in the file (mainly for post-call caching i#669)
-             */
+        if (symlen > 0 && symlen < MAX_SYMLEN) {
+            strncpy(symbol, line, symlen);
+            symbol[symlen] = '\0';
+        }
+        if (comma != NULL && symlen < MAX_SYMLEN && symbol[0] != '\0' &&
+            dr_sscanf(comma, ",0x%x", (uint *)&offs) == 1) {
             symcache_symbol_add(modname, symtable, symbol, offs);
         } else {
             WARN("WARNING: malformed symbol cache line \"%.*s\"\n",
