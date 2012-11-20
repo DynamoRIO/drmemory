@@ -1289,7 +1289,7 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
      */
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
-    dr_register_post_syscall_event(event_post_syscall);
+    drmgr_register_post_syscall_event(event_post_syscall);
 
     /* We support additional system call handling via a separate shared library */
     if (options.auxlib[0] != '\0')

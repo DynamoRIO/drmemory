@@ -2174,7 +2174,7 @@ dr_init(client_id_t client_id)
     }
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
-    dr_register_post_syscall_event(event_post_syscall);
+    drmgr_register_post_syscall_event(event_post_syscall);
     dr_register_nudge_event(event_nudge, client_id);
     if (options.staleness)
         dr_register_restore_state_ex_event(event_restore_state);
