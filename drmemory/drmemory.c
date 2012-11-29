@@ -1599,8 +1599,8 @@ dr_init(client_id_t id)
     drmgr_register_thread_exit_event(event_thread_exit);
     dr_register_restore_state_ex_event(event_restore_state);
     dr_register_delete_event(event_fragment_delete);
-    dr_register_module_load_event(event_module_load);
-    dr_register_module_unload_event(event_module_unload);
+    drmgr_register_module_load_event(event_module_load);
+    drmgr_register_module_unload_event(event_module_unload);
     dr_register_nudge_event(event_nudge, client_id);
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);

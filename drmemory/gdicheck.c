@@ -73,7 +73,7 @@ gdicheck_init(void)
 {
     ASSERT(options.check_gdi, "incorrectly called");
 
-    dr_register_module_load_event(gdicheck_module_load);
+    drmgr_register_module_load_event(gdicheck_module_load);
 
     hashtable_init_ex(&dc_table, DC_TABLE_HASH_BITS, HASH_INTPTR, 
                       false/*!str_dup*/, true/*synch*/,

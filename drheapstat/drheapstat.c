@@ -2160,8 +2160,8 @@ dr_init(client_id_t client_id)
         (event_bb_app2app, event_bb_analysis, event_bb_insert,
          event_bb_instru2instru, &priority))
         ASSERT(false, "drmgr registration failed");
-    dr_register_module_load_event(event_module_load);
-    dr_register_module_unload_event(event_module_unload);
+    drmgr_register_module_load_event(event_module_load);
+    drmgr_register_module_unload_event(event_module_unload);
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);
 #endif
