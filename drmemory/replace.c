@@ -39,6 +39,7 @@
 #ifdef USE_DRSYMS
 # include "symcache.h"
 #endif
+#include <limits.h>  /* UCHAR_MAX */
 #ifdef LINUX
 # include <unistd.h> /* size_t */
 #endif
@@ -87,6 +88,8 @@
     REPLACE_DEF(wcsrchr, NULL)     \
     REPLACE_DEF(strcasecmp, NULL)  \
     REPLACE_DEF(strncasecmp, NULL) \
+    REPLACE_DEF(strspn, NULL) \
+    REPLACE_DEF(strcspn, NULL) \
     REPLACE_DEF(stpcpy, NULL)
 
 /* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
@@ -584,6 +587,36 @@ replace_strncat(char *dst, const char *src, size_t size)
     }
     *d = '\0';
     return dst;
+}
+
+IN_REPLACE_SECTION size_t
+replace_strspn(const char *str, const char *accept)
+{
+    const char *cur = str;
+    bool table[UCHAR_MAX];
+    replace_memset(table, 0, sizeof(table));
+    while (*accept != '\0') {
+        table[(unsigned char)*accept] = true;
+        accept++;
+    }
+    while (*cur != '\0' && table[(unsigned char)*cur])
+        cur++;
+    return cur - str;
+}
+
+IN_REPLACE_SECTION size_t
+replace_strcspn(const char *str, const char *reject)
+{
+    const char *cur = str;
+    bool table[UCHAR_MAX];
+    replace_memset(table, 1, sizeof(table));
+    while (*reject != '\0') {
+        table[(unsigned char)*reject] = false;
+        reject++;
+    }
+    while (*cur != '\0' && table[(unsigned char)*cur])
+        cur++;
+    return cur - str;
 }
 
 IN_REPLACE_SECTION void *

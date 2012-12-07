@@ -142,4 +142,23 @@ TEST(StringTests, stpcpy) {
     cur = stpcpy(cur, "third");
     ASSERT_STREQ(buf, "firstsecondthird");
 }
+
+TEST(StringTests, strspn) {
+    ASSERT_EQ(1UL, strspn("abc", "a"));
+    ASSERT_EQ(2UL, strspn("a;b;c", "a;"));
+    ASSERT_EQ(5UL, strspn("a;b;c", "a; bcd:"));
+    ASSERT_EQ(0UL, strspn("a; b;c", " "));
+    ASSERT_EQ(7UL, strspn("a; b;cd:", "a; b;cd"));
+    ASSERT_EQ(0UL, strspn("a; b;cd:", ""));
+}
+
+TEST(StringTests, strcspn) {
+    ASSERT_EQ(0UL, strcspn("abc", "a"));
+    ASSERT_EQ(1UL, strcspn("a;b;c", ";"));
+    ASSERT_EQ(1UL, strcspn("a;b;c", "; bcd:"));
+    ASSERT_EQ(2UL, strcspn("a; b;c", " "));
+    ASSERT_EQ(7UL, strcspn("a; b;cd:", ":"));
+    ASSERT_EQ(8UL, strcspn("a; b;cd:", ""));
+}
+
 #endif /* LINUX */
