@@ -40,6 +40,7 @@ features beyond the basics in the DynamoRIO API itself.  \p drsyscall is
 part of the Dr. Memory Framework.
 
  - \ref sec_drsyscall_setup
+ - \ref sec_drsyscall_events
  - \ref sec_drsyscall_API
 
 \section sec_drsyscall_setup Setup
@@ -60,10 +61,40 @@ Your client must call \p drsys_init() prior to accessing any API
 routines \p drsyscall, and should call \p drsys_exit() at process exit
 time.
 
+\section sec_drsyscall_events Event Replacement
+
+\p drsyscall uses the \p drmgr Extension to ensure its events occur at the
+proper order.  A user of \p drsyscall must use the \p drmgr versions of the
+basic block and thread events.
+
 \section sec_drsyscall_API Dr. Syscall API
 
-\p drsyscall provides the following features:
+\p drsyscall provides the following key features:
 
- -# FIXME i#822: NYI
+ -# System call name to number querying
+ -# System call number to name querying
+ -# System call argument type iteration
+ -# System call argument value iteration
+ -# Query whether a system call return value indicates success
+ -# Iteration over every memory region read or written by a system call
+ -# Storage of system call argument values for access in post-syscall events
+
+Many features of \p drsyscall operate on the current in-progress system
+call.  The client should register for the pre- and post-syscall events
+through \p drmgr.  In those events, the client can then invoke \p drsyscall
+API routines to query the current system call.  The client should normally
+use a default priority for its system call events to ensure that \p
+drsyscall's per-system-call initialization is in place prior to invoking \p
+drsyscall functions.
+
+If the client wishes to modify the machine context, system call parameters,
+or system call return value, the client must use a separate system
+call event that is ordered prior to DRMGR_PRIORITY_PRESYS_DRSYS or
+DRMGR_PRIORITY_POSTSYS_DRSYS.
+
+The client can statically iterate over the types of the parameters to every
+system call in its dr_init() routine and decide which system calls it wants
+to monitor.  It should then request that \p drsyscall filter those system
+calls.  Only filtered system calls can be dynamically queried.
 
 */

@@ -53,6 +53,8 @@ typedef enum {
     DRMF_ERROR_NOT_IMPLEMENTED,    /**< Operation failed: not yet implemented */
     DRMF_ERROR_FEATURE_NOT_AVAILABLE, /**< Operation failed: not available */
     DRMF_ERROR_NOMEM,              /**< Operation failed: not enough memory */
+    DRMF_ERROR_DETAILS_UNKNOWN,    /**< Operation failed: answer not yet known */
+    DRMF_ERROR_NOT_FOUND,          /**< Operation failed: query not found */
 } drmf_status_t;
 
 #endif /* _DRMEMORY_FRAMEWORK_H_ */
