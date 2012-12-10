@@ -1256,8 +1256,10 @@ syscall_thread_exit(void *drcontext)
 void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 {
+#if 0 /* FIXME i#822: disabling temporarily for incremental commits */
     if (drsys_init(client_id) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
+#endif
 
     cls_idx_syscall = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
     ASSERT(cls_idx_syscall > -1, "unable to reserve CLS field");
@@ -1304,8 +1306,10 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 void
 syscall_exit(void)
 {
+#if 0 /* FIXME i#822: disabling temporarily for incremental commits */
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
+#endif
 
 #ifdef SYSCALL_DRIVER
     if (options.syscall_driver)

@@ -1300,11 +1300,13 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE Release)
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
 
-add_subdirectory(drsyscall)
+# FIXME i#822: disabling temporarily for incremental commits
+#add_subdirectory(drsyscall)
 
 # XXX: change this to find_package() + use_DynamoRIO_extension(drsyscall)
 include_directories(drsyscall)
-target_link_libraries(${client_target} drsyscall_int)
+# FIXME i#822: disabling temporarily for incremental commits
+#target_link_libraries(${client_target} drsyscall_int)
 
 if (BUILD_TOOL_TESTS)
   # FIXME i#1061: disabling until works with non-pre-built-DR
