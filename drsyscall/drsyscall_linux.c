@@ -22,16 +22,10 @@
 
 #include "dr_api.h"
 #include "drmemory.h"
-#include "syscall.h"
-#include "syscall_os.h"
-#include "shadow.h"
-#include "readwrite.h"
+#include "drsyscall.h"
+#include "drsyscall_os.h"
 #include "sysnum_linux.h"
-#include "alloc_drmem.h"
-#include "alloc.h"
 #include "heap.h"
-#include "stack.h"
-#include "report.h"
 #include "asm_utils.h"
 
 #include <stddef.h> /* for offsetof */
@@ -262,6 +256,11 @@ safe_strnlen(const char *str, size_t max)
         s++;
     return (s - str);
 }
+
+#if DEBUG
+extern void
+report_callstack(void *drcontext, dr_mcontext_t *mc);
+#endif /* DEBUG */
 
 /***************************************************************************
  * SYSTEM CALLS FOR LINUX
@@ -718,55 +717,83 @@ static syscall_info_t syscall_info[] = {
 
 #define NUM_SYSCALL_STATIC_ENTRIES (sizeof(syscall_info)/sizeof(syscall_info[0]))
 
+/***************************************************************************
+ * TOP-LEVEL
+ */
 
-void
-syscall_os_init(void *drcontext)
+/* Table that maps syscall names to numbers.  Payload points at num in syscall_info[]. */
+#define NAME2NUM_TABLE_HASH_BITS 10 /* <500 of them */
+static hashtable_t name2num_table;
+
+drmf_status_t
+drsyscall_os_init(void *drcontext)
 {
     uint i;
-    hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
+    hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
+                      true/*synch*/, NULL, sysnum_hash, sysnum_cmp);
+ 
+    hashtable_init(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING,
+                   false/*!strdup*/);
 
     for (i = 0; i < NUM_SYSCALL_STATIC_ENTRIES; i++) {
 #ifdef X64
-        syscall_info[i].num = UNPACK_X64(syscall_info[i].num);
+        syscall_info[i].num.number = UNPACK_X64(syscall_info[i].num.number);
 #else
-        syscall_info[i].num = UNPACK_X86(syscall_info[i].num);
+        syscall_info[i].num.number = UNPACK_X86(syscall_info[i].num.number);
 #endif
-        if (syscall_info[i].num != -1) {
-            hashtable_add(&systable, (void *)(ptr_int_t) syscall_info[i].num,
+        if (syscall_info[i].num.number != -1) {
+            hashtable_add(&systable, (void *) &syscall_info[i].num,
                           (void *) &syscall_info[i]);
+
+            hashtable_add(&name2num_table, (void *) syscall_info[i].name,
+                          (void *) &syscall_info[i].num);
         }
     }
+    return DRMF_SUCCESS;
 }
 
 void
-syscall_os_exit(void)
+drsyscall_os_exit(void)
 {
     hashtable_delete(&systable);
+    hashtable_delete(&name2num_table);
 }
 
 void
-syscall_os_thread_init(void *drcontext)
+drsyscall_os_thread_init(void *drcontext)
 {
 }
 
 void
-syscall_os_thread_exit(void *drcontext)
+drsyscall_os_thread_exit(void *drcontext)
 {
 }
 
 void
-syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
+drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
 }
 
 syscall_info_t *
-syscall_lookup(int num)
+syscall_lookup(drsys_sysnum_t num)
 {
-    return (syscall_info_t *) hashtable_lookup(&systable, (void *)(ptr_int_t) num);
+    return (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
+}
+
+bool
+os_syscall_get_num(const char *name, drsys_sysnum_t *num_out OUT)
+{
+    drsys_sysnum_t *num = (drsys_sysnum_t *)
+        hashtable_lookup(&name2num_table, (void *)name);
+    if (num != NULL) {
+        *num_out = *num;
+        return true;
+    }
+    return false;
 }
 
 static inline reg_id_t
-sysparam_reg(uint sysnum, uint argnum)
+sysparam_reg(uint argnum)
 {
 #ifdef X64
     switch (argnum) {
@@ -793,56 +820,32 @@ sysparam_reg(uint sysnum, uint argnum)
     return REG_NULL;
 }
 
-uint
-get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
+/* Either sets arg->reg to DR_REG_NULL and sets arg->start_addr, or sets arg->reg
+ * to non-DR_REG_NULL
+ */
+void
+drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *arg)
 {
-    void *drcontext = dr_get_current_drcontext();
-    reg_id_t reg = sysparam_reg(sysnum, argnum);
-    ASSERT(options.shadowing, "shadowing disabled");
+    reg_id_t reg = sysparam_reg(argnum);
     /* DR's syscall events don't tell us if this was vsyscall so we compare
      * values to find out
      */
-    if (reg == REG_EBP &&
-        reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
+    if (reg == REG_EBP && reg_get_value(reg, arg->mc) != pt->sysarg[argnum]) {
         /* must be vsyscall */
         ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
-        return shadow_get_byte((app_pc)mc->xsp);
+        arg->reg = DR_REG_NULL;
+        arg->start_addr = (app_pc) arg->mc->xsp;
     } else {
-        return get_shadow_register(reg);
+        arg->reg = reg;
+        arg->start_addr = NULL;
     }
 }
 
-/* check syscall params in pre-syscall only */
-void
-check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
+drmf_status_t
+drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
 {
-    void *drcontext = dr_get_current_drcontext();
-    reg_id_t reg = sysparam_reg(sysnum, argnum);
-
-    /* indicate which syscall arg (i#510) */
-    char idmsg[32];
-    IF_DEBUG(int res = )
-        dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg),
-                    "parameter value #%d", argnum);
-    ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
-    NULL_TERMINATE_BUFFER(idmsg);
-
-    ASSERT(INSTRUMENT_MEMREFS(), "memory reference checking disabled");
-    /* DR's syscall events don't tell us if this was vsyscall so we compare
-     * values to find out
-     */
-    if (reg == REG_EBP &&
-        reg_get_value(reg, mc) != dr_syscall_get_param(drcontext, argnum)) {
-        /* must be vsyscall */
-        ASSERT(!is_using_sysint(), "vsyscall incorrect assumption");
-        check_sysmem(CHECK_UNINITS() ?
-                     MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE,
-                     sysnum, (app_pc)mc->xsp, argsz, mc, idmsg);
-    } else if (CHECK_UNINITS()){
-        app_loc_t loc;
-        syscall_to_loc(&loc, sysnum, idmsg);
-        check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
-    }
+    *type = DRSYS_SYSCALL_TYPE_KERNEL;
+    return DRMF_SUCCESS;
 }
 
 /***************************************************************************
@@ -850,10 +853,9 @@ check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
  */
 
 static void
-handle_clone(void *drcontext, dr_mcontext_t *mc)
+handle_clone(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    uint flags = (uint) dr_syscall_get_param(drcontext, 0);
-    app_pc newsp = (app_pc) dr_syscall_get_param(drcontext, 1);
+    uint flags = (uint) pt->sysarg[0];
 
     /* PR 426162: pre-2.5.32-kernel, only 2 args.  Later glibc clone() has 3
      * optional args.  It blindly copies the 3 added args into registers, but
@@ -861,11 +863,13 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
      * We check the writes here to avoid races (xref PR 408540).
      */
     if (TEST(CLONE_PARENT_SETTID, flags)) {
-        pid_t *ptid = (pid_t *) dr_syscall_get_param(drcontext, 2);
-        check_sysparam(SYS_clone, 2, mc, sizeof(reg_t));
+        pid_t *ptid = (pid_t *) pt->sysarg[2];
+        if (!report_sysarg(ii, 2, SYSARG_WRITE))
+            return;
         if (ptid != NULL) {
-            check_sysmem(MEMREF_WRITE, SYS_clone,
-                         (app_pc) ptid, sizeof(*ptid), mc, NULL);
+            if (!report_memarg_type(ii, 2, SYSARG_WRITE, (app_pc) ptid, sizeof(*ptid),
+                                    NULL, DRSYS_TYPE_INT, NULL))
+                return;
         }
     }
     if (TEST(CLONE_SETTLS, flags)) {
@@ -875,11 +879,13 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
 #else
         typedef struct user_desc user_desc_t;
 #endif
-        user_desc_t *tls = (user_desc_t *) dr_syscall_get_param(drcontext, 3);
-        check_sysparam(SYS_clone, 3, mc, sizeof(reg_t));
+        user_desc_t *tls = (user_desc_t *) pt->sysarg[3];
+        if (!report_sysarg(ii, 3, SYSARG_READ))
+            return;
         if (tls != NULL) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_clone,
-                         (app_pc) tls, sizeof(*tls), mc, NULL);
+            if (!report_memarg_type(ii, 3, SYSARG_READ, (app_pc) tls, sizeof(*tls), NULL,
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
     }
     if (TESTANY(CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID, flags)) {
@@ -888,91 +894,13 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
          * didn't support the param but the kernel did, the kernel will store
          * this address so we should complain.
          */
-        pid_t *ptid = (pid_t *) dr_syscall_get_param(drcontext, 4);
-        check_sysparam(SYS_clone, 4, mc, sizeof(reg_t));
+        pid_t *ptid = (pid_t *) pt->sysarg[4];
+        if (!report_sysarg(ii, 4, SYSARG_WRITE))
+            return;
         if (ptid != NULL) {
-            check_sysmem(MEMREF_WRITE, SYS_clone,
-                         (app_pc) ptid, sizeof(*ptid), mc, NULL);
-        }
-    }
-
-    /* PR 418629: we need to change the stack from defined (marked when it
-     * was allocated) to unaddressable.  Originally we couldn't get the stack
-     * bounds in the thread init event (xref PR 395156) so we watch here:
-     * we could move this code now but not worth it.
-     * FIXME: should we watch SYS_exit and put stack back to defined
-     * in case it's re-used?  Seems better to leave it unaddressable
-     * since may be more common to have racy accesses we want to flag
-     * rather than legitimate re-use?
-     */
-    if (TEST(CLONE_VM, flags) && newsp != NULL) {
-        app_pc stack_base = NULL;
-        size_t stack_size;
-        /* newsp is TOS */
-        ASSERT(options.track_heap, "now relying on -track_heap in general");
-        if (is_in_heap_region(newsp)) {
-            /* How find base of malloc chunk to then find size?
-             * Don't want to store all mallocs in an interval data structure
-             * (shown to be slow in PR 535568).
-             * Maybe hardcode knowledge of how far from upper address
-             * glibc clone() sets newsp?
-             * Actually, should just walk shadow memory until hit
-             * unaddressable.
-             */
-            /* FIXME: NEVER TESTED! */
-            app_pc pc;
-            ssize_t sz;
-            /* PR 525807 added an interval tree of "large mallocs" */
-            if (malloc_large_lookup(newsp, &pc, (size_t*)&sz)) {
-                stack_base = pc;
-                stack_size = sz;
-            } else {
-                /* Should be rare so we just do brute force and slow */
-                pc = shadow_prev_dword(newsp, newsp - options.stack_swap_threshold,
-                                       SHADOW_UNADDRESSABLE);
-                sz = malloc_size(pc+1);
-                if (sz > 0) { /* returns -1 on failure */
-                    stack_base = pc + 1;
-                    stack_size = sz;
-                }
-            }
-        } else {
-            /* On linux a pre-adjacent mmap w/ same prot will be merged into the
-             * same region as returned by dr_query_memory() and we'll mark it as
-             * unaddressable => many false positives (on FC10, adding a printf
-             * to suite/tests/linux/clone.c between the stack mmap and the clone
-             * call resulted in the merge).  My solution is to track mmaps and
-             * assume a stack will be a single mmap (maybe separate guard page
-             * but that should be noprot so ok to not mark unaddress: xref PR
-             * 406328).
-             */
-            if (!mmap_anon_lookup(newsp, &stack_base, &stack_size)) {
-                /* Fall back to a query */
-                LOG(2, "thread stack "PFX" not in mmap table, querying\n", newsp);
-                if (!dr_query_memory(newsp - 1, &stack_base, &stack_size, NULL)) {
-                    /* We can estimate the stack end by assuming that clone()
-                     * puts less than a page on the stack, but the base is harder:
-                     * instead we rely on PR 525807 handle_push_addressable() to
-                     * mark the stack unaddr one page at a time.
-                     */
-                    stack_base = NULL;
-                }
-            }
-        }
-        if (stack_base != NULL) {
-            LOG(2, "changing thread stack "PFX"-"PFX" -"PFX" to unaddressable\n",
-                stack_base, stack_base + stack_size, newsp);
-            ASSERT(stack_base + stack_size >= newsp,
-                   "new thread's stack alloc messed up");
-            if (options.check_stack_bounds) {
-                /* assume that above newsp should stay defined */
-                shadow_set_range(stack_base, newsp, SHADOW_UNADDRESSABLE);
-                check_stack_size_vs_threshold(drcontext, stack_size);
-            }
-        } else {
-            LOG(0, "ERROR: cannot find bounds of new thread's stack "PFX"\n",
-                newsp);
-            ASSERT(false, "can't find bounds of thread's stack");
+            if (!report_memarg_type(ii, 4, SYSARG_WRITE, (app_pc) ptid, sizeof(*ptid),
+                                    NULL, DRSYS_TYPE_INT, NULL))
+                return;
         }
     }
 }
@@ -990,11 +918,13 @@ ipmi_addr_len_adjust(struct ipmi_addr * addr)
     return 0;
 }
 
+#define IOCTL_BUF_ARGNUM 2
+
 static void
-handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
+handle_pre_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    uint request = (uint) dr_syscall_get_param(drcontext, 1);
-    void *arg = (void *) dr_syscall_get_param(drcontext, 2);
+    uint request = (uint) pt->sysarg[1];
+    void *arg = (void *) pt->sysarg[IOCTL_BUF_ARGNUM];
     bool write = false;
     size_t sz = 0;
     const char *id = NULL;
@@ -1006,10 +936,16 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
      */
     union ioctl_data data;
     /* shorter, easier-to-read code */
-#define CHECK_DEF(ptr, sz, mc, id) \
-    check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_ioctl, (app_pc)ptr, sz, mc, id)
-#define CHECK_ADDR(ptr, sz, mc, id) \
-    check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_ioctl, (app_pc)ptr, sz, mc, id)
+#define CHECK_DEF(ii, ptr, sz, id) do {                                       \
+    if (!report_memarg_type(ii, IOCTL_BUF_ARGNUM, SYSARG_READ, (byte*)ptr,    \
+                                sz, id, DRSYS_TYPE_STRUCT, NULL))             \
+        return;                                                               \
+} while (0)
+#define CHECK_ADDR(ii, ptr, sz, id) do {                                       \
+    if (!report_memarg_type(ii, IOCTL_BUF_ARGNUM, SYSARG_WRITE, (byte*)ptr,    \
+                                sz, id, DRSYS_TYPE_STRUCT, NULL))              \
+        return;                                                                \
+} while (0)
 
     /* From "man ioctl_list" 
      * Note that we treat in-out as just read since we'll report and mark
@@ -1361,9 +1297,9 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
     case SIOCSIFLINK: sz = 0; /* void */ break;
     case SIOCGIFCONF: {
         struct ifconf input;
-        CHECK_DEF(arg, sizeof(struct ifconf), mc, NULL);
+        CHECK_DEF(ii, arg, sizeof(struct ifconf), NULL);
         if (safe_read((void *)arg, sizeof(input), &input))
-            CHECK_ADDR(input.ifc_buf, input.ifc_len, mc, "SIOCGIFCONF ifc_buf");
+            CHECK_ADDR(ii, input.ifc_buf, input.ifc_len, "SIOCGIFCONF ifc_buf");
         return;
     }
     case SIOCGIFFLAGS: sz = sizeof(struct ifreq); /* in-out */ break;
@@ -1556,38 +1492,38 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
 
     /* include <linux/ipmi.h> PR 531644 */
     case IPMICTL_SEND_COMMAND:
-        CHECK_DEF(arg, sizeof(struct ipmi_req), mc, NULL); /*no id == arg itself*/
+        CHECK_DEF(ii, arg, sizeof(struct ipmi_req), NULL); /*no id == arg itself*/
         if (safe_read((void *)arg, sizeof(struct ipmi_req), &data.req)) {
-            CHECK_DEF(data.req.addr, data.req.addr_len +
-                      ipmi_addr_len_adjust((struct ipmi_addr *)data.req.addr), mc,
+            CHECK_DEF(ii, data.req.addr, data.req.addr_len +
+                      ipmi_addr_len_adjust((struct ipmi_addr *)data.req.addr),
                       "IPMICTL_SEND_COMMAND addr");
-            CHECK_DEF(data.req.msg.data, data.req.msg.data_len, mc,
+            CHECK_DEF(ii, data.req.msg.data, data.req.msg.data_len,
                       "IPMICTL_SEND_COMMAND msg.data");
         }
         return;
     case IPMICTL_SEND_COMMAND_SETTIME:
-        CHECK_DEF(arg, sizeof(struct ipmi_req_settime), mc, NULL); /*no id == arg*/
+        CHECK_DEF(ii, arg, sizeof(struct ipmi_req_settime), NULL); /*no id == arg*/
         if (safe_read((void *)arg, sizeof(struct ipmi_req_settime), &data.reqs)) {
-            CHECK_DEF(data.reqs.req.addr, data.reqs.req.addr_len +
-                      ipmi_addr_len_adjust((struct ipmi_addr *)data.reqs.req.addr), mc,
+            CHECK_DEF(ii, data.reqs.req.addr, data.reqs.req.addr_len +
+                      ipmi_addr_len_adjust((struct ipmi_addr *)data.reqs.req.addr),
                       "IPMICTL_SEND_COMMAND_SETTIME addr");
-            CHECK_DEF(data.reqs.req.msg.data, data.reqs.req.msg.data_len, mc,
+            CHECK_DEF(ii, data.reqs.req.msg.data, data.reqs.req.msg.data_len,
                       "IPMICTL_SEND_COMMAND_SETTIME msg.data");
         }
         return;
     case IPMICTL_RECEIVE_MSG:
     case IPMICTL_RECEIVE_MSG_TRUNC: {
         struct ipmi_recv *recv = (struct ipmi_recv *) arg;
-        CHECK_ADDR(arg, sizeof(struct ipmi_recv), mc, NULL); /*no id == arg*/
+        CHECK_ADDR(ii, arg, sizeof(struct ipmi_recv), NULL); /*no id == arg*/
         /* some fields are purely OUT so we must check the IN ones separately */
-        CHECK_DEF(&recv->addr, sizeof(recv->addr), mc, NULL);
-        CHECK_DEF(&recv->addr_len, sizeof(recv->addr_len), mc, NULL);
-        CHECK_DEF(&recv->msg.data, sizeof(recv->msg.data), mc, NULL);
-        CHECK_DEF(&recv->msg.data_len, sizeof(recv->msg.data_len), mc, NULL);
+        CHECK_DEF(ii, &recv->addr, sizeof(recv->addr), NULL);
+        CHECK_DEF(ii, &recv->addr_len, sizeof(recv->addr_len), NULL);
+        CHECK_DEF(ii, &recv->msg.data, sizeof(recv->msg.data), NULL);
+        CHECK_DEF(ii, &recv->msg.data_len, sizeof(recv->msg.data_len), NULL);
         if (safe_read((void *)arg, sizeof(struct ipmi_recv), &data.recv)) {
-            CHECK_ADDR(data.recv.addr, data.recv.addr_len, mc,
+            CHECK_ADDR(ii, data.recv.addr, data.recv.addr_len,
                       "IPMICTL_RECEIVE_MSG* addr");
-            CHECK_ADDR(data.recv.msg.data, data.recv.msg.data_len, mc,
+            CHECK_ADDR(ii, data.recv.msg.data, data.recv.msg.data_len,
                       "IPMICTL_RECEIVE_MSG* msg.data");
         }
         return;
@@ -1622,30 +1558,28 @@ handle_pre_ioctl(void *drcontext, dr_mcontext_t *mc)
          * both erroneous b/c they don't consider the other's code
          */
         LOG(1, "WARNING: unknown ioctl request %d\n", request); 
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(drcontext);)
 #endif
         break;
     }
 
     if (sz > 0) {
-        /* FIXME: really for a write should do MEMREF_CHECK_ADDRESSABLE in pre-syscall
-         * and MEMREF_WRITE in post
-         */
         /* FIXME: should we report the ioctl # a la PR 525269?  Hard
          * to fit that into the string literal model of syscall_aux
          * info.  For ioctls vs each other, the rest of the callstack
          * should distinguish (though that's also true for SYS_ipc, etc.),
          * and for multi-arg we can provide custom strings.
          */
-        check_sysmem(write ? MEMREF_WRITE : MEMREF_CHECK_DEFINEDNESS,
-                     SYS_ioctl, (app_pc) arg, sz, mc, id);
+        if (!report_memarg_type(ii, IOCTL_BUF_ARGNUM, write ? SYSARG_WRITE : SYSARG_READ,
+                                (app_pc) arg, sz, id, DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
 #undef CHECK_DEF
 #undef CHECK_ADDR
 }
 
 static void
-handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_post_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[1];
     void *arg = (ptr_uint_t *) pt->sysarg[2];
@@ -1661,21 +1595,24 @@ handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
      */
     union ioctl_data data;
     /* shorter, easier-to-read code */
-#define MARK_WRITE(ptr, sz, mc, id) \
-    check_sysmem(MEMREF_WRITE, SYS_ioctl, (app_pc)ptr, sz, mc, id)
+#define MARK_WRITE(ii, ptr, sz, id) do {                                       \
+    if (!report_memarg_type(ii, IOCTL_BUF_ARGNUM, SYSARG_WRITE, (byte*)ptr,    \
+                                sz, id, DRSYS_TYPE_STRUCT, NULL))              \
+        return;                                                                \
+} while (0)
     switch (request) {
     case SIOCGIFCONF: {
         struct ifconf output;
         if (safe_read((void *)arg, sizeof(output), &output))
-            MARK_WRITE(output.ifc_buf, output.ifc_len, mc, "SIOCGIFCONF ifc_buf");
+            MARK_WRITE(ii, output.ifc_buf, output.ifc_len, "SIOCGIFCONF ifc_buf");
         return;
     }
     case IPMICTL_RECEIVE_MSG:
     case IPMICTL_RECEIVE_MSG_TRUNC:
         if (safe_read((void *)arg, sizeof(struct ipmi_recv), &data.recv)) {
-            MARK_WRITE(data.recv.addr, data.recv.addr_len, mc,
+            MARK_WRITE(ii, data.recv.addr, data.recv.addr_len,
                        "IPMICTL_RECEIVE_MSG* addr");
-            MARK_WRITE(data.recv.msg.data, data.recv.msg.data_len, mc,
+            MARK_WRITE(ii, data.recv.msg.data, data.recv.msg.data_len,
                        "IPMICTL_RECEIVE_MSG* msg.data");
         }
         return;
@@ -1686,8 +1623,8 @@ handle_post_ioctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
 /* struct sockaddr is large but the meaningful portions vary by family */
 /* it's up to the caller to check the whole struct for addressability on writes */
 static void
-check_sockaddr(cls_syscall_t *pt, byte *ptr, socklen_t socklen, uint memcheck_flags,
-               dr_mcontext_t *mc, const char *id, int sysnum)
+check_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii,
+               byte *ptr, socklen_t socklen, int ordinal, uint arg_flags, const char *id)
 {
     struct sockaddr *sa = (struct sockaddr *) ptr;
     sa_family_t family;
@@ -1695,17 +1632,18 @@ check_sockaddr(cls_syscall_t *pt, byte *ptr, socklen_t socklen, uint memcheck_fl
     /* If not enough space kernel writes space needed, so we need to adjust
      * to the passed-in size by storing it in pre-syscall.
      */
-    if (TEST(MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
+    if (pt->first_iter && ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
         store_extra_info(pt, EXTRA_INFO_SOCKADDR, socklen);
-    } else if (TEST(MEMREF_WRITE, memcheck_flags)) {
+    } else if (TEST(SYSARG_WRITE, arg_flags)) {
         socklen_t pre_len = (socklen_t) release_extra_info(pt, EXTRA_INFO_SOCKADDR);
         if (socklen > pre_len)
             socklen = pre_len;
     }    
 
-    if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sa->sa_family, sizeof(sa->sa_family), mc, id);
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sa->sa_family,
+                                sizeof(sa->sa_family), id, DRSYS_TYPE_INT, NULL))
+            return;
     }
     if (!safe_read(&sa->sa_family, sizeof(family), &family))
         return;
@@ -1715,52 +1653,64 @@ check_sockaddr(cls_syscall_t *pt, byte *ptr, socklen_t socklen, uint memcheck_fl
         struct sockaddr_un *sun = (struct sockaddr_un *) sa;
         size_t len = safe_strnlen(sun->sun_path, (socklen < sizeof(*sun)) ?
                                   socklen : sizeof(*sun)) + 1;
-        check_sysmem(memcheck_flags, sysnum, (app_pc) sun->sun_path, len, mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) sun->sun_path,
+                                len, id, DRSYS_TYPE_CARRAY, NULL))
+            return;
         break;
     }
     case AF_INET: {
         struct sockaddr_in *sin = (struct sockaddr_in *) sa;
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin->sin_port, sizeof(sin->sin_port), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_port,
+                                sizeof(sin->sin_port), id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_addr,
+                                sizeof(sin->sin_addr), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case AF_INET6: {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_port,
+                                sizeof(sin6->sin6_port), id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_flowinfo,
+                                sizeof(sin6->sin6_flowinfo), id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_addr,
+                                sizeof(sin6->sin6_addr), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_scope_id,
+                                sizeof(sin6->sin6_scope_id), id, DRSYS_TYPE_INT, NULL))
+            return;
         break;
     }
     case AF_NETLINK: {
         struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &snl->nl_pad, sizeof(snl->nl_pad), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &snl->nl_pid, sizeof(snl->nl_pid), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &snl->nl_groups, sizeof(snl->nl_groups), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pad,
+                                sizeof(snl->nl_pad), id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pid,
+                                sizeof(snl->nl_pid), id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_groups,
+                                sizeof(snl->nl_groups), id, DRSYS_TYPE_INT, NULL))
+            return;
         break;
     }
     default:
         ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family); 
-        IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
 
 /* scatter-gather buffer vector handling.
- * ignores bytes_read unless memcheck_flags == MEMREF_WRITE.
+ * ignores bytes_read unless arg_flags == SYSARG_WRITE.
  */
 static void
-check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
-          uint memcheck_flags, uint sysnum, dr_mcontext_t *mc, const char *id)
+check_iov(cls_syscall_t *pt, sysarg_iter_info_t *ii,
+          struct iovec *iov, size_t iov_len, size_t bytes_read,
+          int ordinal, uint arg_flags, const char *id)
 {
     uint i;
     size_t bytes_so_far = 0;
@@ -1768,11 +1718,12 @@ check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
     struct iovec iov_copy;
     if (iov == NULL || iov_len == 0)
         return;
-    check_sysmem(memcheck_flags, sysnum,
-                 (app_pc)iov, iov_len * sizeof(struct iovec), mc, id);
+    if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)iov,
+                            iov_len * sizeof(struct iovec), id, DRSYS_TYPE_STRUCT, NULL))
+        return;
     for (i = 0; i < iov_len; i++) {
         if (safe_read(&iov[i], sizeof(iov_copy), &iov_copy)) {
-            if (memcheck_flags == MEMREF_WRITE) {
+            if (arg_flags == SYSARG_WRITE) {
                 if (bytes_so_far + iov_copy.iov_len > bytes_read) {
                     done = true;
                     iov_copy.iov_len = (bytes_read - bytes_so_far);
@@ -1781,8 +1732,9 @@ check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
             }
             LOG(3, "check_iov: iov entry %d, buf="PFX", len="PIFX"\n",
                 i, iov_copy.iov_base, iov_copy.iov_len);
-            check_sysmem(memcheck_flags, sysnum,
-                         (app_pc)iov_copy.iov_base, iov_copy.iov_len, mc, id);
+            if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)iov_copy.iov_base,
+                                    iov_copy.iov_len, id, DRSYS_TYPE_STRUCT, NULL))
+                return;
             if (done)
                 break;
         }
@@ -1791,56 +1743,66 @@ check_iov(struct iovec *iov, size_t iov_len, size_t bytes_read,
 
 /* checks entire struct so caller need do nothing */
 static void
-check_msghdr(void *drcontext, cls_syscall_t *pt, byte *ptr, size_t len,
-             uint memcheck_flags, dr_mcontext_t *mc, int sysnum)
+check_msghdr(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
+             byte *ptr, size_t len, int ordinal, uint arg_flags)
 {
-    bool sendmsg = TEST(MEMREF_CHECK_DEFINEDNESS, memcheck_flags); /* else, recvmsg */
+    bool sendmsg = TEST(SYSARG_READ, arg_flags); /* else, recvmsg */
     struct msghdr *msg = (struct msghdr *) ptr;
     byte *ptr1, *ptr2;
     size_t val_socklen;
-    if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
+    if (ii->arg->pre) {
         /* pre-syscall */
         size_t len = sendmsg ? sizeof(struct msghdr) :
             /* msg_flags is an out param */
             offsetof(struct msghdr, msg_flags);
         LOG(3, "\tmsg="PFX", name="PFX", iov="PFX", control="PFX"\n",
             msg, msg->msg_name, msg->msg_iov, msg->msg_control);/*unsafe reads*/
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                     (app_pc)msg, len, mc,
-                     sendmsg ? "sendmsg msg" : "recvmsg msg");
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)msg, len,
+                                sendmsg ? "sendmsg msg" : "recvmsg msg",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (!sendmsg) {
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                         (app_pc)&msg->msg_flags, sizeof(msg->msg_flags), mc,
-                         "recvmsg msg_flags");
+            if (!report_memarg_type(ii, ordinal, arg_flags,
+                                    (app_pc)&msg->msg_flags, sizeof(msg->msg_flags),
+                                    "recvmsg msg_flags", DRSYS_TYPE_INT, NULL))
+                return;
         }
         if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
             safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
             ptr2 != NULL) {
             if (sendmsg) {
-                check_sockaddr(pt, ptr2, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
-                               "sendmsg addr", sysnum);
+                check_sockaddr(pt, ii, ptr2, val_socklen, ordinal, SYSARG_READ,
+                               "sendmsg addr");
+                if (ii->abort)
+                    return;
             } else {
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                             ptr2, val_socklen, mc, "recvmsg addr");
+                if (!report_memarg_type(ii, ordinal, arg_flags, ptr2, val_socklen,
+                                        "recvmsg addr", DRSYS_TYPE_STRUCT, NULL))
+                return;
             }
         }
         if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &ptr1) &&
             safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
             ptr1 != NULL) {
-            check_iov((struct iovec *) ptr1, len, 0,
-                      memcheck_flags, sysnum, mc,
+            check_iov(pt, ii, (struct iovec *) ptr1, len, 0, ordinal, arg_flags,
                       sendmsg ? "sendmsg iov" : "recvmsg iov");
+            if (ii->abort)
+                return;
         }
         if (safe_read(&msg->msg_control, sizeof(msg->msg_control), &ptr2) &&
             safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen),
                       &val_socklen)) {
-            store_extra_info(pt, EXTRA_INFO_MSG_CONTROL, (ptr_int_t) ptr2);
-            store_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN, val_socklen);
-            if (ptr2 != NULL) {
-                check_sysmem(memcheck_flags, sysnum, ptr2, val_socklen, mc,
-                             sendmsg ? "sendmsg msg_control" : "recvmsg msg_control");
+            if (pt->first_iter) {
+                store_extra_info(pt, EXTRA_INFO_MSG_CONTROL, (ptr_int_t) ptr2);
+                store_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN, val_socklen);
             }
-        } else {
+            if (ptr2 != NULL) {
+                if (!report_memarg_type(ii, ordinal, arg_flags, ptr2, val_socklen,
+                                        sendmsg ? "sendmsg msg_control" :
+                                        "recvmsg msg_control", DRSYS_TYPE_STRUCT, NULL))
+                    return;
+            }
+        } else if (pt->first_iter) {
             store_extra_info(pt, EXTRA_INFO_MSG_CONTROL, 0);
             store_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN, 0);
         }
@@ -1853,30 +1815,38 @@ check_msghdr(void *drcontext, cls_syscall_t *pt, byte *ptr, size_t len,
         void *pre_control = (void *) release_extra_info(pt, EXTRA_INFO_MSG_CONTROL);
         size_t pre_controllen = (size_t) release_extra_info(pt, EXTRA_INFO_MSG_CONTROLLEN);
         ASSERT(!sendmsg, "logic error"); /* currently axiomatic but just in case */
-        check_sysmem(MEMREF_WRITE, sysnum, (app_pc)&msg->msg_flags,
-                     sizeof(msg->msg_flags), mc, "recvmsg msg_flags");
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)&msg->msg_flags,
+                                sizeof(msg->msg_flags), "recvmsg msg_flags",
+                                DRSYS_TYPE_INT, NULL))
+            return;
         if (safe_read(&msg->msg_iov, sizeof(msg->msg_iov), &iov) &&
             safe_read(&msg->msg_iovlen, sizeof(msg->msg_iovlen), &len) &&
             iov != NULL) {
-            check_iov(iov, len, result, MEMREF_WRITE, sysnum, mc, "recvmsg iov");
+            check_iov(pt, ii, iov, len, result, ordinal, arg_flags, "recvmsg iov");
+            if (ii->abort)
+                return;
         }
         if (safe_read(&msg->msg_name, sizeof(msg->msg_name), &ptr2) &&
             safe_read(&msg->msg_namelen, sizeof(msg->msg_namelen), &val_socklen) &&
             ptr2 != NULL) {
-            check_sockaddr(pt, (app_pc)ptr2, val_socklen, MEMREF_WRITE, mc,
-                           "recvmsg addr", sysnum);
+            check_sockaddr(pt, ii, (app_pc)ptr2, val_socklen, ordinal, arg_flags,
+                           "recvmsg addr");
+            if (ii->abort)
+                return;
         }
         /* re-read to see size returned by kernel */
         if (safe_read(&msg->msg_controllen, sizeof(msg->msg_controllen), &val_socklen)) {
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (val_socklen <= pre_controllen) ? val_socklen : pre_controllen;
-            check_sysmem(MEMREF_WRITE, sysnum,
-                         (app_pc)&msg->msg_controllen, sizeof(msg->msg_controllen),
-                         mc, "recvmsg msg_controllen");
+            if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)&msg->msg_controllen,
+                                    sizeof(msg->msg_controllen), "recvmsg msg_controllen",
+                                    DRSYS_TYPE_INT, NULL))
+                return;
             if (pre_control != NULL && len > 0) {
-                check_sysmem(MEMREF_WRITE, sysnum,
-                             (app_pc)pt->sysarg[3]/*msg_control*/, len, mc,
-                             "recvmsg msg_control");
+                if (!report_memarg_type(ii, ordinal, arg_flags,
+                                        (app_pc)pt->sysarg[3]/*msg_control*/, len,
+                                        "recvmsg msg_control", DRSYS_TYPE_STRUCT, NULL))
+                    return;
             } else
                 ASSERT(len == 0, "msg w/ no data can't have non-zero len!");
         }
@@ -1885,11 +1855,12 @@ check_msghdr(void *drcontext, cls_syscall_t *pt, byte *ptr, size_t len,
 
 #ifndef X64 /* XXX i#1013: for mixed-mode we'll need to indirect SYS_socketcall, etc. */
 static void
-handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    uint request = (uint) dr_syscall_get_param(drcontext, 0);
+    uint request = (uint) pt->sysarg[0];
     /* The first sysparam is an array of args of varying length */
-    ptr_uint_t *arg = (ptr_uint_t *) dr_syscall_get_param(drcontext, 1);
+#   define SOCK_ARRAY_ARG 1
+    ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[SOCK_ARRAY_ARG];
     app_pc ptr1, ptr2;
     socklen_t val_socklen;
     size_t val_size;
@@ -1897,10 +1868,12 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
     /* we store some values for post-syscall on successful safe_read using
      * these array values beyond our 2 params
      */
-    pt->sysarg[2] = 0;
-    pt->sysarg[3] = 0;
-    pt->sysarg[4] = 0;
-    pt->sysarg[5] = 0;
+    if (pt->first_iter) {
+        pt->sysarg[2] = 0;
+        pt->sysarg[3] = 0;
+        pt->sysarg[4] = 0;
+        pt->sysarg[5] = 0;
+    }
     LOG(2, "pre-sys_socketcall request=%d arg="PFX"\n", request, arg);
     LOG(3, "\targs: 0="PFX", 2="PFX", 3="PFX", 4="PFX"\n",
         arg[0], arg[1], arg[2], arg[3], arg[4]);/*unsafe reads*/
@@ -1909,30 +1882,35 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
     /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
     switch (request) {
     case SYS_SOCKET:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 3*sizeof(ptr_uint_t), mc, "socket");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                3*sizeof(ptr_uint_t), "socket", DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     case SYS_BIND:
         id = "bind";
     case SYS_CONNECT:
         id = (id == NULL) ? "connect" : id;
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 3*sizeof(ptr_uint_t), mc, id);
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                3*sizeof(ptr_uint_t), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[2], sizeof(val_socklen), &val_socklen) &&
             safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
             /* whole thing should be addressable, but only part must be defined */
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                         ptr1, val_socklen, mc, id);
-            check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc, id,
-                           SYS_socketcall);
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1, val_socklen,
+                                    id, DRSYS_TYPE_STRUCT, NULL))
+                return;
+            check_sockaddr(pt, ii, ptr1, val_socklen, SOCK_ARRAY_ARG, SYSARG_READ, id);
+            if (ii->abort)
+                return;
         }
         break;
     case SYS_SHUTDOWN:
         id = "shutdown";
     case SYS_LISTEN:
         id = (id == NULL) ? "listen" : id;
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 2*sizeof(ptr_uint_t), mc, id);
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                2*sizeof(ptr_uint_t), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     case SYS_ACCEPT:
         id = "accept";
@@ -1941,58 +1919,78 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
     case SYS_GETPEERNAME:
         id = (id == NULL) ? "getpeername" : id;
     case SYS_ACCEPT4:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 3*sizeof(ptr_uint_t), mc, id);
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                3*sizeof(ptr_uint_t), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen) &&
             safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
             /* the size is an in-out arg */
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                         ptr2, sizeof(socklen_t), mc, id);
-            pt->sysarg[2] = (ptr_int_t) ptr1;
-            pt->sysarg[3] = val_socklen;
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, ptr2,
+                                    sizeof(socklen_t), id, DRSYS_TYPE_INT, NULL))
+                return;
+            if (pt->first_iter) {
+                pt->sysarg[2] = (ptr_int_t) ptr1;
+                pt->sysarg[3] = val_socklen;
+            }
             if (ptr1 != NULL) { /* ok to be NULL for SYS_ACCEPT at least */
-                check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_ADDRESSABLE, mc, id,
-                               SYS_socketcall);
+                check_sockaddr(pt, ii, ptr1, val_socklen, SOCK_ARRAY_ARG, SYSARG_WRITE,
+                               id);
+                if (ii->abort)
+                    return;
             }
         }
         break;
     case SYS_SOCKETPAIR:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 4*sizeof(ptr_uint_t), mc, "socketpair");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                4*sizeof(ptr_uint_t), "socketpair",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[3], sizeof(arg[3]), &ptr1)) {
-            check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                         ptr1, 2*sizeof(int), mc, "socketpair");
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1,
+                                    2*sizeof(int), "socketpair", DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     case SYS_SEND:
         id = "send";
     case SYS_RECV:
         id = (id == NULL) ? "recv" : id;
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 4*sizeof(ptr_uint_t), mc, id);
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                4*sizeof(ptr_uint_t), id, DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[2], sizeof(arg[2]), &val_size) &&
             safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
-            pt->sysarg[4] = (ptr_int_t) ptr1;
-            pt->sysarg[5] = val_size;
-            check_sysmem(request == SYS_SEND ? MEMREF_CHECK_DEFINEDNESS :
-                         MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                         ptr1, val_size, mc, id);
+            if (pt->first_iter) {
+                pt->sysarg[4] = (ptr_int_t) ptr1;
+                pt->sysarg[5] = val_size;
+            }
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG,
+                                    request == SYS_SEND ? SYSARG_READ :
+                                    SYSARG_WRITE, ptr1, val_size, id,
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     case SYS_SENDTO:
     case SYS_RECVFROM:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 6*sizeof(ptr_uint_t), mc,
-                     (request == SYS_SENDTO) ? "sendto args" : "recvfrom args");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                6*sizeof(ptr_uint_t),
+                                (request == SYS_SENDTO) ? "sendto args" : "recvfrom args",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[2], sizeof(arg[2]), &val_size) &&
             safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
-            pt->sysarg[4] = (ptr_int_t) ptr1;
-            pt->sysarg[5] = val_size;
-            check_sysmem(request == SYS_SENDTO ? MEMREF_CHECK_DEFINEDNESS :
-                         MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                         ptr1, val_size, mc,
-                         (request == SYS_SENDTO) ? "sendto buf" : "recvfrom buf");
+            if (pt->first_iter) {
+                pt->sysarg[4] = (ptr_int_t) ptr1;
+                pt->sysarg[5] = val_size;
+            }
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG,
+                                    request == SYS_SENDTO ? SYSARG_READ : SYSARG_WRITE,
+                                    ptr1, val_size, (request == SYS_SENDTO) ?
+                                    "sendto buf" : "recvfrom buf",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         if (((request == SYS_SENDTO && 
               safe_read((void *)&arg[5], sizeof(val_socklen), &val_socklen)) ||
@@ -2000,66 +1998,85 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
               safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
               safe_read(ptr2, sizeof(val_socklen), &val_socklen))) &&
             safe_read((void *)&arg[4], sizeof(arg[4]), &ptr1)) {
-            pt->sysarg[2] = (ptr_int_t) ptr1;
-            pt->sysarg[3] = val_socklen;
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                         ptr1, val_socklen, mc, 
-                         (request == SYS_SENDTO) ? "sendto addr" : "recvfrom addr");
+            if (pt->first_iter) {
+                pt->sysarg[2] = (ptr_int_t) ptr1;
+                pt->sysarg[3] = val_socklen;
+            }
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1, val_socklen, 
+                                    (request == SYS_SENDTO) ? "sendto addr" :
+                                    "recvfrom addr", DRSYS_TYPE_STRUCT, NULL))
+                return;
             if (request == SYS_SENDTO) {
-                check_sockaddr(pt, ptr1, val_socklen, MEMREF_CHECK_DEFINEDNESS, mc,
-                               "sendto addrlen", SYS_socketcall);
+                check_sockaddr(pt, ii, ptr1, val_socklen, SOCK_ARRAY_ARG, SYSARG_READ,
+                               "sendto addrlen");
+                if (ii->abort)
+                    return;
             }
         }
         break;
     case SYS_SETSOCKOPT:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 5*sizeof(ptr_uint_t), mc, "setsockopt args");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                5*sizeof(ptr_uint_t), "setsockopt args",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[4], sizeof(val_socklen), &val_socklen) &&
             safe_read((void *)&arg[3], sizeof(arg[3]), &ptr1)) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                         ptr1, val_socklen, mc, "setsockopt optval");
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, ptr1, val_socklen,
+                                    "setsockopt optval", DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     case SYS_GETSOCKOPT:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 5*sizeof(ptr_uint_t), mc, "getsockopt args");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                5*sizeof(ptr_uint_t), "getsockopt args",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[4], sizeof(arg[4]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen) &&
             safe_read((void *)&arg[3], sizeof(arg[3]), &ptr1) &&
             ptr1 != NULL/*optional*/) {
             /* in-out arg */
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                         ptr2, sizeof(socklen_t), mc, "getsockopt optval");
-            pt->sysarg[2] = (ptr_int_t) ptr1;
-            pt->sysarg[3] = val_socklen;
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_socketcall,
-                         ptr1, val_socklen, mc, "getsockopt optlen");
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, ptr2,
+                                    sizeof(socklen_t), "getsockopt optval",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (pt->first_iter) {
+                pt->sysarg[2] = (ptr_int_t) ptr1;
+                pt->sysarg[3] = val_socklen;
+            }
+            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1, val_socklen,
+                                    "getsockopt optlen", DRSYS_TYPE_INT, NULL))
+                return;
         }
         break;
     case SYS_SENDMSG:
     case SYS_RECVMSG:
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_socketcall,
-                     (app_pc) arg, 3*sizeof(ptr_uint_t), mc,
-                     (request == SYS_SENDMSG) ? "sendmsg args" : "recvmsg args");
+        if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ, (app_pc) arg,
+                                3*sizeof(ptr_uint_t), (request == SYS_SENDMSG) ?
+                                "sendmsg args" : "recvmsg args", DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (safe_read((void *)&arg[1], sizeof(arg[1]), &ptr1)) {
-            pt->sysarg[2] = (ptr_int_t) ptr1; /* struct msghdr* */
-            check_msghdr(drcontext, pt, ptr1, sizeof(struct msghdr),
-                         (request == SYS_SENDMSG) ? MEMREF_CHECK_DEFINEDNESS :
-                         MEMREF_CHECK_ADDRESSABLE, mc, SYS_socketcall);
+            if (pt->first_iter)
+                pt->sysarg[2] = (ptr_int_t) ptr1; /* struct msghdr* */
+            check_msghdr(drcontext, pt, ii, ptr1, sizeof(struct msghdr),
+                         SOCK_ARRAY_ARG, (request == SYS_SENDMSG) ? SYSARG_READ :
+                         SYSARG_WRITE);
+            if (ii->abort)
+                return;
         }
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown socketcall request %d\n", request); 
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
 
 static void
-handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
-    ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[1];
+    ptr_uint_t *arg = (ptr_uint_t *) pt->sysarg[SOCK_ARRAY_ARG];
     ptr_int_t result = dr_syscall_get_result(drcontext);
     app_pc ptr2;
     socklen_t val_socklen;
@@ -2079,8 +2096,10 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[2], sizeof(arg[2]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
-            check_sockaddr(pt, (app_pc)pt->sysarg[2], val_socklen, MEMREF_WRITE, mc, id,
-                           SYS_socketcall);
+            check_sockaddr(pt, ii, (app_pc)pt->sysarg[2], val_socklen, SOCK_ARRAY_ARG,
+                           SYSARG_WRITE, id);
+            if (ii->abort)
+                return;
         }
         break;
     case SYS_RECV:
@@ -2088,8 +2107,9 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (result <= pt->sysarg[5]/*buflen*/) ? result : pt->sysarg[5];
             if (len > 0) {
-                check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                             (app_pc)pt->sysarg[4], len, mc, "recv");
+                if (!report_memarg_type(ii, 4, SYSARG_WRITE, (app_pc)pt->sysarg[4],
+                                        len, "recv", DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         break;
@@ -2098,16 +2118,19 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (result <= pt->sysarg[5]/*buflen*/) ? result : pt->sysarg[5];
             if (len > 0) {
-                check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                             (app_pc)pt->sysarg[4], len, mc, "recvfrom buf");
+                if (!report_memarg_type(ii, 4, SYSARG_WRITE, (app_pc)pt->sysarg[4],
+                                        len, "recvfrom buf", DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         if (pt->sysarg[3]/*pre-addrlen*/ > 0 && pt->sysarg[2]/*sockaddr*/ != 0 &&
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
-            check_sockaddr(pt, (app_pc)pt->sysarg[2], val_socklen, MEMREF_WRITE, mc,
-                           "recvfrom addr", SYS_socketcall);
+            check_sockaddr(pt, ii, (app_pc)pt->sysarg[2], val_socklen, 2, SYSARG_WRITE,
+                           "recvfrom addr");
+            if (ii->abort)
+                return;
         }
         break;
     case SYS_GETSOCKOPT:
@@ -2117,14 +2140,17 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
             safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
             /* Not sure what kernel does on truncation so being safe */
             size_t len = (val_socklen <= pt->sysarg[3]) ? val_socklen : pt->sysarg[3];
-            check_sysmem(MEMREF_WRITE, SYS_socketcall,
-                         (app_pc)pt->sysarg[2], len, mc, "getsockopt");
+            if (!report_memarg_type(ii, 2, SYSARG_WRITE, (app_pc)pt->sysarg[2],
+                                    len, "getsockopt", DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     case SYS_RECVMSG: {
         if (pt->sysarg[2] != 0) { /* if 0, error on safe_read in pre */
-            check_msghdr(drcontext, pt, (byte *) pt->sysarg[2], sizeof(struct msghdr),
-                         MEMREF_WRITE, mc, SYS_socketcall);
+            check_msghdr(drcontext, pt, ii, (byte *) pt->sysarg[2], sizeof(struct msghdr),
+                         SOCK_ARRAY_ARG, SYSARG_WRITE);
+            if (ii->abort)
+                return;
         }
         break;
     }
@@ -2155,8 +2181,7 @@ ipc_sem_len(int semid)
  * are not always used
  */
 static void
-handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
-              int sysnum,
+handle_semctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
               /* shifted by one for 32-bit so we take in the base */
               int argnum_semid)
 {
@@ -2170,56 +2195,76 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     arg_val = (ptr_int_t) pt->sysarg[argnum_semid + 3];
     arg = *(union semun *) &arg_val;
     semid = (int) pt->sysarg[argnum_semid];
-    if (!pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
+    if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
     /* strip out the version flag or-ed in by libc */
     cmd &= (~IPC_64);
-    if (pre) {
-        check_sysparam(sysnum, argnum_semid, mc, sizeof(reg_t));
-        check_sysparam(sysnum, argnum_semid + 2/*cmd*/, mc, sizeof(reg_t));
+    if (ii->arg->pre) {
+        if (!report_sysarg(ii, argnum_semid, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, argnum_semid + 2/*cmd*/, SYSARG_READ))
+            return;
     }
     switch (cmd) {
     case IPC_SET:
-        if (pre) {
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (app_pc) arg.buf,
-                         sizeof(struct semid_ds), mc, "semctl.IPC_SET");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
+            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg.buf,
+                                    sizeof(struct semid_ds), "semctl.IPC_SET",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     case IPC_STAT:
     case SEM_STAT:
-        if (pre)
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) arg.buf, sizeof(struct semid_ds), mc,
-                     (cmd == IPC_STAT) ? "semctl.IPC_STAT" : "semctl.SEM_STAT");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
+        }
+        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg.buf,
+                                sizeof(struct semid_ds),
+                                (cmd == IPC_STAT) ? "semctl.IPC_STAT" : "semctl.SEM_STAT",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     case IPC_RMID: /* nothing further */
         break;
     case IPC_INFO:
     case SEM_INFO:
-        if (pre)
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) arg.__buf, sizeof(struct seminfo), mc,
-                     (cmd == IPC_INFO) ? "semctl.IPC_INFO" : "semctl.SEM_INFO");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
+        }
+        if (!report_memarg_type(ii,argnum_semid + 3,  SYSARG_WRITE, (app_pc) arg.__buf,
+                                sizeof(struct seminfo),
+                                (cmd == IPC_INFO) ? "semctl.IPC_INFO" : "semctl.SEM_INFO",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     case GETALL: {
         /* we must query to get the length of arg.array */
         uint semlen = ipc_sem_len(semid);
-        if (pre)
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) arg.array, semlen*sizeof(short), mc, "semctl.GETALL");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
+        }
+        if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_WRITE, (app_pc) arg.array,
+                                semlen*sizeof(short), "semctl.GETALL",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case SETALL: {
-        if (pre) {
+        if (ii->arg->pre) {
             /* we must query to get the length of arg.array */
             uint semlen = ipc_sem_len(semid);
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (app_pc) arg.array,
-                         semlen*sizeof(short), mc, "semctl.SETALL");
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
+            if (!report_memarg_type(ii, argnum_semid + 3, SYSARG_READ, (app_pc) arg.array,
+                                    semlen*sizeof(short), "semctl.SETALL",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     }
@@ -2227,18 +2272,21 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
     case GETZCNT:
     case GETPID:
     case GETVAL:
-        if (pre)
-            check_sysparam(sysnum, argnum_semid + 1/*semnum*/, mc, sizeof(reg_t));
+        if (ii->arg->pre)
+            if (!report_sysarg(ii, argnum_semid + 1/*semnum*/,SYSARG_READ))
+                return;
         break;
     case SETVAL:
-        if (pre) {
-            check_sysparam(sysnum, argnum_semid + 1/*semnun*/, mc, sizeof(reg_t));
-            check_sysparam(sysnum, argnum_semid + 3/*semun*/, mc, sizeof(reg_t));
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_semid + 1/*semnun*/,SYSARG_READ))
+                return;
+            if (!report_sysarg(ii, argnum_semid + 3/*semun*/,SYSARG_READ))
+                return;
         }
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown SEMCTL request %d\n", cmd);
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
@@ -2247,49 +2295,60 @@ handle_semctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
  * are not always used
  */
 static void
-handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
-              int sysnum,
+handle_msgctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
               /* arg numbers vary for 32-bit vs 64-bit so we take them in */
               int argnum_msqid, int argnum_cmd, int argnum_buf)
 {
     uint cmd = (uint) pt->sysarg[argnum_cmd];
     byte *ptr = (byte *) pt->sysarg[argnum_buf];
-    if (!pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
+    if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
-    if (pre) {
-        check_sysparam(sysnum, argnum_msqid, mc, sizeof(reg_t));
-        check_sysparam(sysnum, argnum_cmd, mc, sizeof(reg_t));
+    if (ii->arg->pre) {
+        if (!report_sysarg(ii, argnum_msqid, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, argnum_cmd, SYSARG_READ))
+            return;
     }
     switch (cmd) {
     case IPC_INFO:
     case MSG_INFO: {
         struct msginfo *buf = (struct msginfo *) ptr;
-        if (pre)
-            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                return;
+        }
         /* not all fields are set but we simplify */
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) buf, sizeof(*buf), mc,
-                     (cmd == IPC_INFO) ? "msgctl ipc_info" : "msgctl msg_info");
+        if (!report_memarg_type(ii, argnum_buf, SYSARG_WRITE, (app_pc) buf, sizeof(*buf),
+                                (cmd == IPC_INFO) ? "msgctl ipc_info" : "msgctl msg_info",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case IPC_STAT:
     case MSG_STAT: {
         struct msqid_ds *buf = (struct msqid_ds *) ptr;
-        if (pre)
-            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) buf, sizeof(*buf), mc,
-                     (cmd == IPC_STAT) ?  "msgctl ipc_stat" : "msgctl msg_stat");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                return;
+        }
+        if (!report_memarg_type(ii, argnum_buf, SYSARG_WRITE, (app_pc) buf, sizeof(*buf),
+                                (cmd == IPC_STAT) ?  "msgctl ipc_stat" : "msgctl msg_stat",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case IPC_SET: {
-        if (pre) {
+        if (ii->arg->pre) {
             struct msqid_ds *buf = (struct msqid_ds *) ptr;
-            if (pre)
-                check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
+            if (ii->arg->pre) {
+                if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                    return;
+            }
             /* not all fields are read but we simplify */
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                         (app_pc) buf, sizeof(*buf), mc, "msgctl ipc_set");
+            if (!report_memarg_type(ii, argnum_buf, SYSARG_READ, (app_pc) buf,
+                                    sizeof(*buf), "msgctl ipc_set",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         break;
     }
@@ -2297,7 +2356,7 @@ handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown MSGCTL request %d\n", cmd);
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
@@ -2306,87 +2365,98 @@ handle_msgctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
  * are not always used
  */
 static void
-handle_shmctl(bool pre, void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc,
-              int sysnum,
+handle_shmctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
               /* arg numbers vary for 32-bit vs 64-bit so we take them in */
               int argnum_shmid, int argnum_cmd, int argnum_buf)
 {
     uint cmd = (uint) pt->sysarg[argnum_cmd];
     byte *ptr = (byte *) pt->sysarg[argnum_buf];
-    if (!pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
+    if (!ii->arg->pre && (ptr_int_t)dr_syscall_get_result(drcontext) < 0)
         return;
-    if (pre) {
-        check_sysparam(sysnum, argnum_shmid, mc, sizeof(reg_t));
-        check_sysparam(sysnum, argnum_cmd, mc, sizeof(reg_t));
+    if (ii->arg->pre) {
+        if (!report_sysarg(ii, argnum_shmid, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, argnum_cmd, SYSARG_READ))
+            return;
     }
     switch (cmd) {
     case IPC_INFO:
     case SHM_INFO: {
         struct shminfo *buf = (struct shminfo *) ptr;
-        if (pre)
-            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                return;
+        }
         /* not all fields are set but we simplify */
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) buf, sizeof(*buf), mc,  "shmctl ipc_info");
+        if (!report_memarg_type(ii, argnum_buf, SYSARG_WRITE, (app_pc) buf, sizeof(*buf),
+                                "shmctl ipc_info", DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case IPC_STAT:
     case SHM_STAT: {
         struct shmid_ds *buf = (struct shmid_ds *) ptr;
-        if (pre)
-            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (app_pc) buf, sizeof(*buf), mc,
-                     (cmd == IPC_STAT) ? "shmctl ipc_stat" : "shmctl shm_stat");
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                return;
+        }
+        if (!report_memarg_type(ii, argnum_buf, SYSARG_WRITE, (app_pc) buf, sizeof(*buf),
+                                (cmd == IPC_STAT) ? "shmctl ipc_stat" : "shmctl shm_stat",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case IPC_SET: {
         struct shmid_ds *buf = (struct shmid_ds *) ptr;
-        if (pre)
-            check_sysparam(sysnum, argnum_buf, mc, sizeof(reg_t));
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, argnum_buf, SYSARG_READ))
+                return;
+        }
         /* not all fields are read but we simplify */
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_CHECK_DEFINEDNESS, sysnum,
-                     (app_pc) buf, sizeof(*buf), mc, "shmctl ipc_set");
+        if (!report_memarg_type(ii, argnum_buf, ii->arg->pre ? SYSARG_WRITE : SYSARG_READ,
+                                (app_pc) buf, sizeof(*buf), "shmctl ipc_set",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case IPC_RMID: /* nothing further to do */
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown SHMCTL request %d\n", cmd);
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
 
 static void
-check_msgbuf(bool pre, void *drcontext, byte *ptr, size_t len,
-             uint memcheck_flags, dr_mcontext_t *mc, int sysnum)
+check_msgbuf(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
+             byte *ptr, size_t len, int ordinal, uint arg_flags)
 {
-    bool msgsnd = TEST(MEMREF_CHECK_DEFINEDNESS, memcheck_flags); /* else, msgrcv */
+    bool msgsnd = TEST(SYSARG_READ, arg_flags); /* else, msgrcv */
     struct msgbuf *buf = (struct msgbuf *) ptr;
-    if (!pre) {
+    if (!ii->arg->pre) {
         if (msgsnd)
             return;
         else
             len = (size_t) dr_syscall_get_result(drcontext);
     }
-    check_sysmem(memcheck_flags, sysnum,
-                 (app_pc) &buf->mtype, sizeof(buf->mtype), mc,
-                 msgsnd? "msgsnd mtype" : "msgrcv mtype");
-    check_sysmem(memcheck_flags, sysnum,
-                 (app_pc) &buf->mtext, len, mc,
-                 msgsnd? "msgsnd mtext" : "msgrcv mtext");
+    if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &buf->mtype,
+                            sizeof(buf->mtype), msgsnd? "msgsnd mtype" : "msgrcv mtype",
+                            DRSYS_TYPE_INT, NULL))
+        return;
+    report_memarg_type(ii, ordinal, arg_flags, (app_pc) &buf->mtext, len,
+                       msgsnd? "msgsnd mtext" : "msgrcv mtext",
+                       DRSYS_TYPE_STRUCT, NULL);
 }
 
 #ifndef X64 /* XXX i#1013: for mixed-mode we'll need to indirect SYS_socketcall, etc. */
 static void
-handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
+handle_pre_ipc(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    uint request = (uint) dr_syscall_get_param(drcontext, 0);
-    int arg2 = (int) dr_syscall_get_param(drcontext, 2);
-    ptr_uint_t *ptr = (ptr_uint_t *) dr_syscall_get_param(drcontext, 4);
-    ptr_int_t arg5 = (int) dr_syscall_get_param(drcontext, 5);
+    uint request = (uint) pt->sysarg[0];
+    int arg2 = (int) pt->sysarg[2];
+    ptr_uint_t *ptr = (ptr_uint_t *) pt->sysarg[4];
+    ptr_int_t arg5 = (int) pt->sysarg[5];
     /* They all use param #0, which is checked via table specifying 1 arg */
     /* Note that we can't easily use SYSINFO_SECONDARY_TABLE for these
      * b/c they don't require all their params to be defined.
@@ -2396,146 +2466,190 @@ handle_pre_ipc(void *drcontext, dr_mcontext_t *mc)
         /* int semtimedop(int semid, struct sembuf *sops, unsigned nsops,
          *                struct timespec *timeout)
          */
-        check_sysparam(SYS_ipc, 5, mc, sizeof(reg_t));
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_ipc,
-                     (app_pc) arg5, sizeof(struct timespec), mc, "semtimedop");
+        if (!report_sysarg(ii, 5, SYSARG_READ))
+            return;
+        if (!report_memarg_type(ii, 5, SYSARG_READ, (app_pc) arg5,
+                                sizeof(struct timespec), "semtimedop",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         /* fall-through */
     case SEMOP:
         /* int semop(int semid, struct sembuf *sops, unsigned nsops) */
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, SYS_ipc,
-                     (app_pc) ptr, arg2*sizeof(struct sembuf), mc, "semop");
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 4, SYSARG_READ))
+            return;
+        if (!report_memarg_type(ii, 4, SYSARG_READ, (app_pc) ptr,
+                                arg2*sizeof(struct sembuf), "semop",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     case SEMGET: /* nothing */
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 3, SYSARG_READ))
+            return;
         break;
     case SEMCTL: {
         /* int semctl(int semid, int semnum, int cmd, ...) */
-        handle_semctl(true/*pre*/, drcontext, pt, mc, SYS_ipc, 1);
+        handle_semctl(drcontext, pt, ii, 1);
+        if (ii->abort)
+            return;
         break;
     }
     case MSGSND: {
         /* int msgsnd(int msqid, const void *msgp, size_t msgsz, int msgflg) */
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
-        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
-        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
-        check_msgbuf(true/*pre*/, drcontext, (byte *) ptr, arg2,
-                     MEMREF_CHECK_DEFINEDNESS, mc, SYS_ipc);
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return; /* msqid */
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return; /* msgsz */
+        if (!report_sysarg(ii, 3, SYSARG_READ))
+            return; /* msgflg */
+        if (!report_sysarg(ii, 4, SYSARG_READ))
+            return; /* msgp */
+        check_msgbuf(drcontext, pt, ii, (byte *) ptr, arg2, 2, SYSARG_READ);
+        if (ii->abort)
+            return;
         break;
     }
     case MSGRCV: {
         /* ssize_t msgrcv(int msqid, void *msgp, size_t msgsz, long msgtyp,
          *                int msgflg)
          */
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t)); /* msqid */
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t)); /* msgsz */
-        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t)); /* msgflg */
-        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t)); /* msgp */
-        check_sysparam(SYS_ipc, 5, mc, sizeof(reg_t)); /* msgtyp */
-        check_msgbuf(true/*pre*/, drcontext, (byte *) ptr, arg2,
-                     MEMREF_CHECK_ADDRESSABLE, mc, SYS_ipc);
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return; /* msqid */
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return; /* msgsz */
+        if (!report_sysarg(ii, 3, SYSARG_READ))
+            return; /* msgflg */
+        if (!report_sysarg(ii, 4, SYSARG_READ))
+            return; /* msgp */
+        if (!report_sysarg(ii, 5, SYSARG_READ))
+            return; /* msgtyp */
+        check_msgbuf(drcontext, pt, ii, (byte *) ptr, arg2, 2, SYSARG_WRITE);
         break;
     }
     case MSGGET:
         /* int msgget(key_t key, int msgflg) */
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return;
         break;
     case MSGCTL: {
-        handle_msgctl(true/*pre*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
+        handle_msgctl(drcontext, pt, ii, 1, 2, 4);
         break;
     }
     case SHMAT:
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 4, SYSARG_READ))
+            return;
         /* FIXME: this should be treated as a new mmap by DR? */
         break;
     case SHMDT:
-        check_sysparam(SYS_ipc, 4, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 4, SYSARG_READ))
+            return;
         break;
     case SHMGET:
-        check_sysparam(SYS_ipc, 1, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 2, mc, sizeof(reg_t));
-        check_sysparam(SYS_ipc, 3, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 2, SYSARG_READ))
+            return;
+        if (!report_sysarg(ii, 3, SYSARG_READ))
+            return;
         break;
     case SHMCTL: {
-        handle_shmctl(true/*pre*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
+        handle_shmctl(drcontext, pt, ii, 1, 2, 4);
         break;
     }
     default:
         ELOGF(0, f_global, "WARNING: unknown ipc request %d\n", request); 
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
+    /* If you add any handling here: need to check ii->abort first */
 }
 
 static void
-handle_post_ipc(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_post_ipc(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
     ptr_uint_t *ptr = (ptr_uint_t *) pt->sysarg[4];
     ptr_int_t result = dr_syscall_get_result(drcontext);
     switch (request) {
     case SEMCTL: {
-        handle_semctl(false/*post*/, drcontext, pt, mc, SYS_ipc, 1);
+        handle_semctl(drcontext, pt, ii, 1);
         break;
     }
     case MSGRCV: {
         if (result >= 0) {
-            check_msgbuf(false/*post*/, drcontext, (byte *) ptr, (size_t) result,
-                         MEMREF_WRITE, mc, SYS_ipc);
+            check_msgbuf(drcontext, pt, ii, (byte *) ptr, (size_t) result,
+                         4, SYSARG_WRITE);
         }
         break;
     }
     case MSGCTL: {
-        handle_msgctl(false/*post*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
+        handle_msgctl(drcontext, pt, ii, 1, 2, 4);
         break;
     }
     case SHMCTL: {
-        handle_shmctl(false/*post*/, drcontext, pt, mc, SYS_ipc, 1, 2, 4);
+        handle_shmctl(drcontext, pt, ii, 1, 2, 4);
         break;
     }
     }
+    /* If you add any handling here: need to check ii->abort first */
 }
 #endif /* !X64 */
 
 /* handles both select and pselect6 */
 static void
-handle_pre_select(void *drcontext, dr_mcontext_t *mc, int sysnum)
+handle_pre_select(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    int nfds = (int) dr_syscall_get_param(drcontext, 0);
+    int nfds = (int) pt->sysarg[0];
     /* Only special-cased b/c the size is special: one bit each.
      * No post-syscall action needed b/c no writes to previously-undef mem.
      */
     size_t sz = nfds / 8; /* 8 bits per byte, size is in bytes */
-    app_pc ptr = (app_pc) dr_syscall_get_param(drcontext, 1);
-    if (ptr != NULL)
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ptr, sz, mc, "select readfds");
-    ptr = (app_pc) dr_syscall_get_param(drcontext, 2);
-    if (ptr != NULL)
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ptr, sz, mc, "select writefds");
-    ptr = (app_pc) dr_syscall_get_param(drcontext, 3);
+    app_pc ptr = (app_pc) pt->sysarg[1];
     if (ptr != NULL) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ptr, sz, mc, "select exceptfds");
+        if (!report_memarg_type(ii, 1, SYSARG_READ, ptr, sz,
+                                "select readfds", DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
-    ptr = (app_pc) dr_syscall_get_param(drcontext, 4);
+    ptr = (app_pc) pt->sysarg[2];
     if (ptr != NULL) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ptr,
-                     (sysnum == SYS_select ? 
-                      sizeof(struct timeval) : sizeof(struct timespec)), mc,
-                     "select timeout");
+        if (!report_memarg_type(ii, 2, SYSARG_READ, ptr, sz,
+                                "select writefds", DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
-    if (sysnum == SYS_pselect6) {
-        ptr = (app_pc) dr_syscall_get_param(drcontext, 5);
+    ptr = (app_pc) pt->sysarg[3];
+    if (ptr != NULL) {
+        if (!report_memarg_type(ii, 3, SYSARG_READ, ptr, sz,
+                                "select exceptfds", DRSYS_TYPE_STRUCT, NULL))
+            return;
+    }
+    ptr = (app_pc) pt->sysarg[4];
+    if (ptr != NULL) {
+        if (!report_memarg_type(ii, 4, SYSARG_READ, ptr,
+                                (ii->arg->sysnum.number == SYS_select ? 
+                                 sizeof(struct timeval) : sizeof(struct timespec)),
+                                "select timeout", DRSYS_TYPE_STRUCT, NULL))
+            return;
+    }
+    if (ii->arg->sysnum.number == SYS_pselect6) {
+        ptr = (app_pc) pt->sysarg[5];
         if (ptr != NULL) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ptr,
-                         sizeof(kernel_sigset_t), mc, "pselect sigmask");
+            if (!report_memarg_type(ii, 5, SYSARG_READ, ptr,
+                                    sizeof(kernel_sigset_t), "pselect sigmask",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
     }
 }
@@ -2543,62 +2657,10 @@ handle_pre_select(void *drcontext, dr_mcontext_t *mc, int sysnum)
 #define PRCTL_NAME_SZ 16 /* from man page */
 
 static void
-check_prctl_whitelist(byte *prctl_arg1)
+handle_pre_prctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    /* disable instrumentation on seeing prctl(PR_SET_NAME) that does not
-     * match any of the specified ,-separated names (PR 574018)
-     */
-    char nm[PRCTL_NAME_SZ+1];
-    ASSERT(options.prctl_whitelist[0] != '\0', "caller should check for empty op");
-    if (safe_read(prctl_arg1, PRCTL_NAME_SZ, nm)) {
-        bool on_whitelist = false;
-        char *s, *next;
-        char *list_end = options.prctl_whitelist + strlen(options.prctl_whitelist);
-        size_t white_sz;
-        NULL_TERMINATE_BUFFER(nm);
-        LOG(1, "prctl set name %s\n", nm);
-        s = options.prctl_whitelist;
-        while (s < list_end) {
-            next = strchr(s, ',');
-            if (next == NULL)
-                white_sz = (list_end - s);
-            else
-                white_sz = (next - s);
-            LOG(2, "comparing \"%s\" with whitelist entry \"%.*s\" sz=%d\n",
-                nm, white_sz, s, white_sz);
-            if (strncmp(nm, s, white_sz) == 0) {
-                LOG(0, "prctl name %s matches whitelist\n", nm);
-                on_whitelist = true;
-                break;
-            }
-            s += white_sz + 1 /* skip , itself */;
-        }
-        if (!on_whitelist) {
-            /* ideally: suspend world, then set options, then flush
-             * w/o resuming.
-             * FIXME: just setting options is unsafe if another thread
-             * hits an event and fails to restore state or sthg.
-             * Fortunately we expect most uses of PR_SET_NAME to be
-             * immediately after forking.
-             * Ideally we'd call dr_suspend_all_other_threads()
-             * and nest dr_flush_region() inside it but both want
-             * the same master lock: should check whether easy to support
-             * via internal vars indicating whether lock held.
-             */
-            ELOGF(0, f_global, "\n*********\nDISABLING MEMORY CHECKING for %s\n", nm);
-            options.shadowing = false;
-            options.track_allocs = false;
-            options.count_leaks = false;
-            dr_flush_region(0, ~((ptr_uint_t)0));
-        }
-    }
-}
-
-static void
-handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
-{
-    uint request = (uint) dr_syscall_get_param(drcontext, 0);
-    ptr_int_t arg1 = (ptr_int_t) dr_syscall_get_param(drcontext, 1);
+    uint request = (uint) pt->sysarg[0];
+    ptr_int_t arg1 = (ptr_int_t) pt->sysarg[1];
     /* They all use param #0, which is checked via table specifying 1 arg.
      * Officially it's a 5-arg syscall but so far nothing using beyond 2 args.
      */
@@ -2618,7 +2680,8 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     case PR_SET_TIMERSLACK:
     case PR_CAPBSET_READ:
     case PR_CAPBSET_DROP:
-        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
         break;
     case PR_GET_PDEATHSIG:
     case PR_GET_UNALIGN:
@@ -2626,9 +2689,11 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     case PR_GET_FPEXC:
     case PR_GET_TSC:
     case PR_GET_ENDIAN:
-        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
-        check_sysmem(MEMREF_CHECK_ADDRESSABLE, SYS_prctl,
-                     (app_pc) arg1, sizeof(int), mc, NULL);
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) arg1, sizeof(int), NULL,
+                                DRSYS_TYPE_INT, NULL))
+            return;
         break;
     case PR_GET_DUMPABLE:
     case PR_GET_TIMING:
@@ -2640,22 +2705,22 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
         break;
     case PR_SET_NAME:
     case PR_GET_NAME:
-        check_sysparam(SYS_prctl, 1, mc, sizeof(reg_t));
-        check_sysmem((request == PR_GET_NAME) ? MEMREF_CHECK_ADDRESSABLE :
-                     MEMREF_CHECK_DEFINEDNESS, SYS_prctl,
-                     (app_pc) arg1, PRCTL_NAME_SZ, mc, NULL);
-        if (request == PR_SET_NAME && options.prctl_whitelist[0] != '\0')
-            check_prctl_whitelist((byte *)arg1);
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
+        if (!report_memarg_type(ii, 1, (request == PR_GET_NAME) ? SYSARG_WRITE :
+                                SYSARG_READ, (app_pc) arg1, PRCTL_NAME_SZ, NULL,
+                                DRSYS_TYPE_CARRAY, NULL))
+            return;
         break;
     default:
         ELOGF(0, f_global, "WARNING: unknown prctl request %d\n", request); 
-        IF_DEBUG(report_callstack(drcontext, mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
 
 static void
-handle_post_prctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_post_prctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint request = (uint) pt->sysarg[0];
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -2667,121 +2732,50 @@ handle_post_prctl(void *drcontext, cls_syscall_t *pt, dr_mcontext_t *mc)
     case PR_GET_TSC:
     case PR_GET_ENDIAN:
         if (result >= 0) {
-            check_sysmem(MEMREF_WRITE, SYS_prctl,
-                         (app_pc) pt->sysarg[1], sizeof(int), mc, NULL);
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) pt->sysarg[1],
+                                    sizeof(int), NULL, DRSYS_TYPE_INT, NULL))
+                return;
         }
         break;
     case PR_GET_NAME:
         /* FIXME PR 408539: actually only writes up to null char */
-        check_sysmem(MEMREF_WRITE, SYS_prctl,
-                     (app_pc) pt->sysarg[1], PRCTL_NAME_SZ, mc, NULL);
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (app_pc) pt->sysarg[1],
+                                PRCTL_NAME_SZ, NULL, DRSYS_TYPE_CARRAY, NULL))
+            return;
         break;
     }
 }
 
-static void
-handle_pre_execve(void *drcontext)
-{
-#ifndef USE_DRSYMS
-    /* PR 453867: tell postprocess.pl to watch for new logdir and
-     * fork a new copy.
-     * FIXME: what if syscall fails?  Punting on that for now.
-     * Note that if it fails and then a later one succeeds, postprocess.pl
-     * will replace the first with the last.
-     */
-    char logdir[MAXIMUM_PATH]; /* one reason we're not inside os_post_syscall() */
-    size_t bytes_read = 0;
-    /* Not using safe_read() since we want a partial read if hits page boundary */
-    if (dr_safe_read((void *) dr_syscall_get_param(drcontext, 0),
-                     BUFFER_SIZE_BYTES(logdir), logdir, &bytes_read)) {
-        if (bytes_read < BUFFER_SIZE_BYTES(logdir))
-            logdir[bytes_read] = '\0';
-        NULL_TERMINATE_BUFFER(logdir);
-        ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
-    }
-#endif
-}
-
-/* for tasks unrelated to shadowing that are common to all tools */
-bool
-os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
-{
-    bool res = true;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
-    switch (sysnum) {
-    case SYS_close: {
-        /* DRi#357 has DR isolating our files for us, so nothing to do here anymore */
-        break;
-    }
-    case SYS_execve:
-        handle_pre_execve(drcontext);
-        break;
-    }
-    return res;
-}
-
-/* for tasks unrelated to shadowing that are common to all tools */
 void
-os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    switch (sysnum) {
-    case SYS_clone: {
-        uint flags = (uint) pt->sysarg[0];
-        if (TEST(CLONE_VM, flags)) {
-            thread_id_t child = dr_syscall_get_result(drcontext);
-            report_child_thread(drcontext, child);
-            break;
-        }
-        /* else, fall through */
-    }
-    case SYS_fork: {
-#ifndef USE_DRSYMS
-        /* PR 453867: tell postprocess.pl to not exit until it sees a message
-         * from the child starting up.
-         */
-        process_id_t child = dr_syscall_get_result(drcontext);
-        if (child != 0)
-            ELOGF(0, f_fork, "FORK child=%d\n", child);
-#endif
-        break;
-    }
-    }
-}
-
-bool
-os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
-{
-    bool res = true;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
-    switch (sysnum) {
+    switch (ii->arg->sysnum.number) {
     case SYS_clone: 
-        handle_clone(drcontext, &mc); 
+        handle_clone(drcontext, pt, ii); 
         break;
     case SYS__sysctl: {
-        struct __sysctl_args *args = (struct __sysctl_args *)
-            dr_syscall_get_param(drcontext, 0);
+        struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
         if (args != NULL) {
             /* just doing reads here: writes in post */
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                         (app_pc) args->name, args->nlen*sizeof(int), &mc, NULL);
+            if (!report_memarg_type(ii, 0, SYSARG_READ, (app_pc) args->name,
+                                    args->nlen*sizeof(int), NULL,
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
             if (args->newval != NULL) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) args->newval, args->newlen, &mc, NULL);
+                if (!report_memarg_type(ii, 0, SYSARG_READ, (app_pc) args->newval,
+                                        args->newlen, NULL, DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         break;
     }
     case SYS_mremap: {
         /* 5th arg is conditionally valid */
-        int flags = (int) dr_syscall_get_param(drcontext, 3);
-        if (TEST(MREMAP_FIXED, flags))
-            check_sysparam(sysnum, 4, &mc, sizeof(reg_t));
+        int flags = (int) pt->sysarg[3];
+        if (TEST(MREMAP_FIXED, flags)) {
+            if (!report_sysarg(ii, 4, SYSARG_READ))
+                return;
+        }
         break;
     }
     case SYS_open: {
@@ -2789,9 +2783,11 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
          * a constant 0 as mode if no O_CREAT, but opendir() bypasses
          * that wrapper (PR 488597).
          */
-        int flags = (int) dr_syscall_get_param(drcontext, 1);
-        if (TEST(O_CREAT, flags))
-            check_sysparam(sysnum, 2, &mc, sizeof(reg_t));
+        int flags = (int) pt->sysarg[1];
+        if (TEST(O_CREAT, flags)) {
+            if (!report_sysarg(ii, 2, SYSARG_READ))
+                return;
+        }
         break;
     }
     case SYS_fcntl:
@@ -2804,162 +2800,170 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
          * a constant 0 as mode if no O_CREAT: yet fcntl glibc routine
          * blindly reads 3rd arg regardless of 2nd.
          */
-        int cmd = (int) dr_syscall_get_param(drcontext, 1);
-        /* Some kernels add custom cmds, so error on side of false pos
-         * rather than false neg via negative checks
-         */
-        if (cmd != F_GETFD && cmd != F_GETFL && cmd != F_GETOWN
+            int cmd = (int) pt->sysarg[1];
+            /* Some kernels add custom cmds, so error on side of false pos
+             * rather than false neg via negative checks
+             */
+            if (cmd != F_GETFD && cmd != F_GETFL && cmd != F_GETOWN
 #ifdef __USE_GNU
-            && cmd != F_GETSIG && cmd != F_GETLEASE
+                && cmd != F_GETSIG && cmd != F_GETLEASE
 #endif
-            )
-            check_sysparam(sysnum, 2, &mc, sizeof(reg_t));
+                ) {
+                if (!report_sysarg(ii, 2, SYSARG_READ))
+                    return;
+            }
         }
         break;
     case SYS_ioctl: 
-        handle_pre_ioctl(drcontext, &mc); 
+        handle_pre_ioctl(drcontext, pt, ii); 
         break;
 #ifdef X64
     case SYS_semctl:
-        handle_semctl(true/*pre*/, drcontext, pt, &mc, sysnum, 0);
+        handle_semctl(drcontext, pt, ii, 0);
         break;
     case SYS_msgctl:
-        handle_msgctl(true/*pre*/, drcontext, pt, &mc, sysnum, 0, 1, 2);
+        handle_msgctl(drcontext, pt, ii, 0, 1, 2);
         break;
     case SYS_shmctl:
-        handle_shmctl(true/*pre*/, drcontext, pt, &mc, sysnum, 0, 1, 2);
+        handle_shmctl(drcontext, pt, ii, 0, 1, 2);
         break;
 #else
     /* XXX i#1013: for mixed-mode we'll need is_sysnum() for access to these */
     case SYS_socketcall: 
-        handle_pre_socketcall(drcontext, pt, &mc);
+        handle_pre_socketcall(drcontext, pt, ii);
         break;
     case SYS_ipc: 
-        handle_pre_ipc(drcontext, &mc); 
+        handle_pre_ipc(drcontext, pt, ii); 
         break;
 #endif
     case SYS_select: /* fall-through */
     case SYS_pselect6:
-        handle_pre_select(drcontext, &mc, sysnum);
+        handle_pre_select(drcontext, pt, ii);
         break;
     case SYS_poll: {
-        struct pollfd *fds = (struct pollfd *) dr_syscall_get_param(drcontext, 0);
-        nfds_t nfds = (nfds_t) dr_syscall_get_param(drcontext, 1);
+        struct pollfd *fds = (struct pollfd *) pt->sysarg[0];
+        nfds_t nfds = (nfds_t) pt->sysarg[1];
         if (fds != NULL) {
             int i;
             for (i = 0; i < nfds; i++) {
                 /* First fields are inputs, last is output */
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) &fds[i], offsetof(struct pollfd, revents),
-                             &mc, NULL);
-                check_sysmem(MEMREF_WRITE, sysnum,
-                             (app_pc) &fds[i].revents, sizeof(fds[i].revents),
-                             &mc, NULL);
+                if (!report_memarg_type(ii, 0, SYSARG_READ, (app_pc) &fds[i],
+                                        offsetof(struct pollfd, revents), NULL,
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
+                if (!report_memarg_type(ii, 0, SYSARG_WRITE, (app_pc) &fds[i].revents,
+                                        sizeof(fds[i].revents), NULL,
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         break;
     }
     case SYS_prctl:
-        handle_pre_prctl(drcontext, &mc);
+        handle_pre_prctl(drcontext, pt, ii);
         break;
     case SYS_rt_sigaction: {
         /* restorer field not always filled in.  we ignore the old (pre-2.1.68)
          * kernel sigaction struct layout.
          */
-        kernel_sigaction_t *sa = (kernel_sigaction_t *)
-            dr_syscall_get_param(drcontext, 1);
+        kernel_sigaction_t *sa = (kernel_sigaction_t *) pt->sysarg[1];
         if (sa != NULL) {
             if (TEST(SA_RESTORER, sa->flags)) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) sa, sizeof(*sa), &mc, NULL);
+                if (!report_memarg_type(ii, 1, SYSARG_READ, (app_pc) sa, sizeof(*sa),
+                                        NULL, DRSYS_TYPE_STRUCT, NULL))
+                    return;
             } else {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) sa, offsetof(kernel_sigaction_t, restorer),
-                             &mc, NULL);
+                if (!report_memarg_type(ii, 1, SYSARG_READ, (app_pc) sa,
+                                        offsetof(kernel_sigaction_t, restorer), NULL,
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
                 /* skip restorer field */
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) &sa->mask,
-                             sizeof(*sa) - offsetof(kernel_sigaction_t, mask),
-                             &mc, NULL);
+                if (!report_memarg_type(ii, 1, SYSARG_READ, (app_pc) &sa->mask,
+                                        sizeof(*sa) - offsetof(kernel_sigaction_t, mask),
+                                        NULL, DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         break;
     }
     case SYS_futex: {
         /* PR 479107: later args are optional */
-        int op = (int) dr_syscall_get_param(drcontext, 1);
+        int op = (int) pt->sysarg[1];
         if (op == FUTEX_WAKE || op == FUTEX_FD) {
             /* just the 3 params */
         } else if (op == FUTEX_WAIT) {
-            struct timespec *timeout = (struct timespec *)
-                dr_syscall_get_param(drcontext, 3);
-            check_sysparam(sysnum, 3, &mc, sizeof(reg_t));
+            struct timespec *timeout = (struct timespec *) pt->sysarg[3];
+            if (!report_sysarg(ii, 3, SYSARG_READ))
+                return;
             if (timeout != NULL) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (app_pc) timeout, sizeof(*timeout), &mc, NULL);
+                if (!report_memarg_type(ii, 3, SYSARG_READ, (app_pc) timeout,
+                                        sizeof(*timeout), NULL, DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         } else if (op == FUTEX_REQUEUE || op == FUTEX_CMP_REQUEUE) {
-            check_sysparam(sysnum, 4, &mc, sizeof(reg_t));
-            if (op == FUTEX_CMP_REQUEUE)
-                check_sysparam(sysnum, 5, &mc, sizeof(reg_t));
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                         (app_pc) dr_syscall_get_param(drcontext, 4),
-                         sizeof(uint), &mc, NULL);
+            if (!report_sysarg(ii, 4, SYSARG_READ))
+                return;
+            if (op == FUTEX_CMP_REQUEUE) {
+                if (!report_sysarg(ii, 5, SYSARG_READ))
+                    return;
+            }
+            if (!report_memarg_type(ii, 4, SYSARG_READ, (app_pc) pt->sysarg[4],
+                                    sizeof(uint), NULL, DRSYS_TYPE_INT, NULL))
+                return;
         }
         break;
     }
     }
-    return res; /* execute syscall */
+    /* If you add any handling here: need to check ii->abort first */
 }
 
 void
-os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     /* each handler checks result for success */
-    switch (sysnum) {
+    switch (ii->arg->sysnum.number) {
     case SYS__sysctl: {
         struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
         size_t len;
-        dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
         if (dr_syscall_get_result(drcontext) == 0 && args != NULL) {
             /* xref PR 408540: here we wait until post so we can use the
              * actual written size.  There could be races but they're
              * app errors, which we should report, right?
              */
             if (args->oldval != NULL && safe_read(args->oldlenp, sizeof(len), &len)) {
-                check_sysmem(MEMREF_WRITE, sysnum, (app_pc) args->oldval, len, &mc, NULL);
+                if (!report_memarg_type(ii, 0, SYSARG_WRITE, (app_pc) args->oldval, len,
+                                        NULL, DRSYS_TYPE_STRUCT, NULL))
+                    return;
             }
         }
         break;
     }
     case SYS_ioctl: 
-        handle_post_ioctl(drcontext, pt, &mc); 
+        handle_post_ioctl(drcontext, pt, ii); 
         break;
 #ifdef X64
     case SYS_semctl:
-        handle_semctl(false/*post*/, drcontext, pt, &mc, sysnum, 0);
+        handle_semctl(drcontext, pt, ii, sysnum, 0);
         break;
     case SYS_msgctl:
-        handle_msgctl(false/*post*/, drcontext, pt, &mc, sysnum, 0, 1, 2);
+        handle_msgctl(drcontext, pt, ii, sysnum, 0, 1, 2);
         break;
     case SYS_shmctl:
-        handle_shmctl(false/*post*/, drcontext, pt, &mc, sysnum, 0, 1, 2);
+        handle_shmctl(drcontext, pt, ii, sysnum, 0, 1, 2);
         break;
 #else
     case SYS_socketcall: 
-        handle_post_socketcall(drcontext, pt, &mc); 
+        handle_post_socketcall(drcontext, pt, ii); 
         break;
     case SYS_ipc: 
-        handle_post_ipc(drcontext, pt, &mc); 
+        handle_post_ipc(drcontext, pt, ii); 
         break;
 #endif
     case SYS_prctl:
-        handle_post_prctl(drcontext, pt, &mc);
+        handle_post_prctl(drcontext, pt, ii);
         break;
     };
+    /* If you add any handling here: need to check ii->abort first */
 }
 
 /***************************************************************************
@@ -2967,58 +2971,54 @@ os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
  */
 
 static bool
-handle_cstring_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                      uint arg_num,
+handle_cstring_access(sysarg_iter_info_t *ii,
                       const syscall_arg_t *arg_info,
                       app_pc start, uint size/*in bytes*/)
 {
-    return handle_cstring(pre, sysnum, mc, NULL, start, size, arg_info->flags,
-                          NULL,
+    return handle_cstring(ii, arg_info->param, arg_info->flags,
+                          NULL, start, size, NULL,
                           /* let normal check ensure full size is addressable */
                           false);
 }
 
 static bool
-handle_sockaddr_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                       uint arg_num, const syscall_arg_t *arg_info,
+handle_sockaddr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
                        app_pc start, uint size)
 {
-    void *drcontext = dr_get_current_drcontext();
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
-    check_sockaddr(pt, start, (socklen_t) size, check_type, mc, NULL, sysnum);
-    if (check_type == MEMREF_CHECK_DEFINEDNESS)
+    cls_syscall_t *pt = (cls_syscall_t *)
+        drmgr_get_cls_field(ii->arg->drcontext, cls_idx_drsys);
+    check_sockaddr(pt, ii, start, (socklen_t) size, arg_info->param,
+                   arg_info->flags, NULL);
+    if (TEST(SYSARG_READ, arg_info->flags))
         return true; /* whole struct not defined */
     else
         return false; /* do check whole struct for addressability */
 }
 
 static bool
-handle_msghdr_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                       uint arg_num, const syscall_arg_t *arg_info,
+handle_msghdr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
                        app_pc start, uint size)
 {
-    void *drcontext = dr_get_current_drcontext();
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
-    check_msghdr(drcontext, pt, start, (socklen_t) size, check_type, mc, sysnum);
+    cls_syscall_t *pt = (cls_syscall_t *)
+        drmgr_get_cls_field(ii->arg->drcontext, cls_idx_drsys);
+    check_msghdr(ii->arg->drcontext, pt, ii, start, (socklen_t) size,
+                 arg_info->param, arg_info->flags);
     return true; /* check_msghdr checks whole struct */
 }
 
 static bool
-handle_msgbuf_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                     uint arg_num, const syscall_arg_t *arg_info,
+handle_msgbuf_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
                      app_pc start, uint size)
 {
-    void *drcontext = dr_get_current_drcontext();
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
-    check_msgbuf(pre, drcontext, start, size, check_type, mc, sysnum);
+    cls_syscall_t *pt = (cls_syscall_t *)
+        drmgr_get_cls_field(ii->arg->drcontext, cls_idx_drsys);
+    check_msgbuf(ii->arg->drcontext, pt, ii, start, size,
+                 arg_info->param, arg_info->flags);
     return true; /* check_msgbuf checks whole struct */
 }
 
-bool
-os_handle_syscall_arg_access(bool pre,
-                             int sysnum, dr_mcontext_t *mc, uint arg_num,
+static bool
+os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const syscall_arg_t *arg_info,
                              app_pc start, uint size)
 {
@@ -3027,37 +3027,31 @@ os_handle_syscall_arg_access(bool pre,
 
     switch (arg_info->misc) {
     case SYSARG_TYPE_CSTRING:
-        return handle_cstring_access(pre, sysnum, mc, arg_num,
-                                     arg_info, start, size);
+        return handle_cstring_access(ii, arg_info, start, size);
     case SYSARG_TYPE_SOCKADDR:
-        return handle_sockaddr_access(pre, sysnum, mc, arg_num,
-                                      arg_info, start, size);
+        return handle_sockaddr_access(ii, arg_info, start, size);
     case SYSARG_TYPE_MSGHDR:
-        return handle_msghdr_access(pre, sysnum, mc, arg_num,
-                                    arg_info, start, size);
+        return handle_msghdr_access(ii, arg_info, start, size);
     case SYSARG_TYPE_MSGBUF:
-        return handle_msgbuf_access(pre, sysnum, mc, arg_num,
-                                    arg_info, start, size);
+        return handle_msgbuf_access(ii, arg_info, start, size);
     }
     return false;
 }
 
 bool
-os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
                                  const syscall_arg_t *arg_info,
                                  app_pc start, uint size)
 {
-    return os_handle_syscall_arg_access(true/*pre*/, sysnum, mc, arg_num,
-                                        arg_info, start, size);
+    return os_handle_syscall_arg_access(ii, arg_info, start, size);
 }
 
 bool
-os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size)
 {
-    return os_handle_syscall_arg_access(false/*!pre*/, sysnum, mc, arg_num,
-                                        arg_info, start, size);
+    return os_handle_syscall_arg_access(ii, arg_info, start, size);
 }
 
 /***************************************************************************
@@ -3065,10 +3059,10 @@ os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
  */
 
 bool
-os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
 {
-    if (sysnum == SYS_mmap || IF_X86_32(sysnum == SYS_mmap2 ||)
-        sysnum == SYS_mremap)
+    if (sysnum.number == SYS_mmap || IF_X86_32(sysnum.number == SYS_mmap2 ||)
+        sysnum.number == SYS_mremap)
         return (res >= 0 || res < -PAGE_SIZE);
     else
         return (res >= 0);
@@ -3076,7 +3070,7 @@ os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
 
 /* provides name if known when not in syscall_lookup(num) */
 const char *
-os_syscall_get_name(uint num)
+os_syscall_get_name(drsys_sysnum_t num)
 {
     /* everything's in the table */
     return NULL;

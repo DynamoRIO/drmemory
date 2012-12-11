@@ -24,6 +24,7 @@
  */
 
 #include "dr_api.h"
+#include <ctype.h> /* for tolower */
 
 bool op_print_stderr = false;
 uint op_verbose_level = 0;
