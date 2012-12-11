@@ -20,8 +20,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _SYSCALL_OS_H_
-#define _SYSCALL_OS_H_ 1
+#ifndef _DRSYSCALL_OS_H_
+#define _DRSYSCALL_OS_H_ 1
+
+#include "utils.h"
 
 #ifdef WINDOWS
 # define SYSCALL_NUM_ARG_STORE 14
@@ -30,6 +32,18 @@
 #endif
 
 #define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
+
+/* for diagnostics: eventually provide some runtime option,
+ * -logmask or something: for now have to modify this constant
+ */
+#define SYSCALL_VERBOSE 2
+
+/* syscall numbers are most natural in decimal on linux but hex on windows */
+#ifdef LINUX
+# define SYSNUM_FMT "%d"
+#else
+# define SYSNUM_FMT PIFX
+#endif
 
 /* extra_info slot usage */
 enum {
@@ -45,36 +59,11 @@ enum {
     EXTRA_INFO_MAX,
 };
 
-extern int cls_idx_syscall;
+extern int cls_idx_drsys;
 
-typedef struct _cls_syscall_t {
-    /* for recording args so post-syscall can examine */
-    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+extern drsys_options_t drsys_ops;
 
-    /* for recording additional info for particular arg types */
-    ptr_int_t extra_info[EXTRA_INFO_MAX];
-#ifdef DEBUG
-    /* We should be able to statically share extra_info[].  This helps find errors. */
-    bool extra_inuse[SYSCALL_NUM_ARG_STORE];
-#endif
-
-    /* for comparing memory across unknown system calls */
-    app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
-    size_t sysarg_sz[SYSCALL_NUM_ARG_TRACK];
-    /* dynamically allocated */
-    size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
-    byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
-
-    /* Saves syscall params across syscall */
-    void *sysaux_params;
-
-#ifdef WINDOWS
-    /* for GDI checks (i#752) */
-    HDC paintDC;
-    /* for handle leak checks (i#974) */
-    void *handle_info;
-#endif
-} cls_syscall_t;
+extern const char * const param_type_names[];
 
 enum {
     /*****************************************/
@@ -130,27 +119,27 @@ enum {
     /*****************************************/
     /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
     /* The following flags are used on Windows. */
-    SYSARG_TYPE_PORT_MESSAGE            =  0,
-    SYSARG_TYPE_CONTEXT                 =  1,
-    SYSARG_TYPE_EXCEPTION_RECORD        =  2,
-    SYSARG_TYPE_SECURITY_QOS            =  3,
-    SYSARG_TYPE_SECURITY_DESCRIPTOR     =  4,
-    SYSARG_TYPE_UNICODE_STRING          =  5,
-    SYSARG_TYPE_CSTRING_WIDE            =  6,
-    SYSARG_TYPE_OBJECT_ATTRIBUTES       =  7,
-    SYSARG_TYPE_LARGE_STRING            =  8,
-    SYSARG_TYPE_DEVMODEW                =  9,
-    SYSARG_TYPE_WNDCLASSEXW             = 10,
-    SYSARG_TYPE_CLSMENUNAME             = 11,
-    SYSARG_TYPE_MENUITEMINFOW           = 12,
-    SYSARG_TYPE_UNICODE_STRING_NOLEN    = 13,
-    SYSARG_TYPE_CSTRING                 = 14, /* Linux too */
-    SYSARG_TYPE_ALPC_PORT_ATTRIBUTES    = 15,
-    SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES= 16,
+    SYSARG_TYPE_CSTRING                 = DRSYS_TYPE_CSTRING, /* Linux too */
+    SYSARG_TYPE_CSTRING_WIDE            = DRSYS_TYPE_CWSTRING,
+    SYSARG_TYPE_PORT_MESSAGE            = DRSYS_TYPE_PORT_MESSAGE,
+    SYSARG_TYPE_CONTEXT                 = DRSYS_TYPE_CONTEXT,
+    SYSARG_TYPE_EXCEPTION_RECORD        = DRSYS_TYPE_EXCEPTION_RECORD,
+    SYSARG_TYPE_SECURITY_QOS            = DRSYS_TYPE_SECURITY_QOS,
+    SYSARG_TYPE_SECURITY_DESCRIPTOR     = DRSYS_TYPE_SECURITY_DESCRIPTOR,
+    SYSARG_TYPE_UNICODE_STRING          = DRSYS_TYPE_UNICODE_STRING,
+    SYSARG_TYPE_UNICODE_STRING_NOLEN    = DRSYS_TYPE_LAST + 1,
+    SYSARG_TYPE_OBJECT_ATTRIBUTES       = DRSYS_TYPE_OBJECT_ATTRIBUTES,
+    SYSARG_TYPE_LARGE_STRING            = DRSYS_TYPE_LARGE_STRING,
+    SYSARG_TYPE_DEVMODEW                = DRSYS_TYPE_DEVMODEW,
+    SYSARG_TYPE_WNDCLASSEXW             = DRSYS_TYPE_WNDCLASSEXW,
+    SYSARG_TYPE_CLSMENUNAME             = DRSYS_TYPE_CLSMENUNAME,
+    SYSARG_TYPE_MENUITEMINFOW           = DRSYS_TYPE_MENUITEMINFOW,
+    SYSARG_TYPE_ALPC_PORT_ATTRIBUTES    = DRSYS_TYPE_ALPC_PORT_ATTRIBUTES,
+    SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES= DRSYS_TYPE_ALPC_SECURITY_ATTRIBUTES,
     /* These are Linux-specific */
-    SYSARG_TYPE_SOCKADDR                = 17,
-    SYSARG_TYPE_MSGHDR                  = 18,
-    SYSARG_TYPE_MSGBUF                  = 19,
+    SYSARG_TYPE_SOCKADDR                = DRSYS_TYPE_SOCKADDR,
+    SYSARG_TYPE_MSGHDR                  = DRSYS_TYPE_MSGHDR,
+    SYSARG_TYPE_MSGBUF                  = DRSYS_TYPE_MSGBUF,
 };
 
 /* We encode the actual size of a write, if it can differ from the
@@ -220,7 +209,7 @@ enum {
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
 typedef struct _syscall_info_t {
-    int num; /* system call number: filled in dynamically */
+    drsys_sysnum_t num; /* system call number: filled in dynamically */
     const char *name;
     uint flags; /* SYSINFO_ flags */
     int arg_count;
@@ -231,78 +220,97 @@ typedef struct _syscall_info_t {
      * a pointer to a new syscall_info_t table.
      * (I'd use a union but that makes syscall table initializers uglier)
      */
-    int *num_out;
+    drsys_sysnum_t *num_out;
 } syscall_info_t;
 
-#define SYSARG_CHECK_TYPE(flags, pre) \
-    ((pre) ? (TEST(SYSARG_READ, (flags)) ? \
-              MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE) : \
-     (TEST(SYSARG_WRITE, (flags)) ? MEMREF_WRITE : 0))
+typedef struct _cls_syscall_t {
+    /* the interface keeps state for API simplicity and for performance */
+    drsys_sysnum_t sysnum;
+    syscall_info_t *sysinfo;
+    dr_mcontext_t mc;
+    bool pre;
 
-/* For secondary syscalls, b/c we have "int sysnum" as a param all over the place,
- * we don't want to introduce a compound type.
- * So, we pack it into a single integer value.
- * Because we store it as a 24-bit value in packed_frame_t we limit to 24 bits
- * everywhere.
- * We assume the primary maxes out at 0x3fff and the secondary at 0x1ff
- * which is true for all uses today: but we if we start using secondary
- * for ioctls we will need to expand this and perhaps have a different way
- * of encoding into packed_frame_t.
- * Top bit indicates whether secondary exists (since sysnum can be 0).
- */
-#define SYSNUM_HAS_SECONDARY(combined) ((combined) & 0x800000)
-#define SYSNUM_COMBINE(primary, secondary) ((primary) | ((secondary) << 14) | 0x800000)
-#define SYSNUM_MAX_PRIMARY 0x3fff
-#define SYSNUM_PRIMARY(combined) ((combined) & 0x3fff)
-#define SYSNUM_MAX_SECONDARY 0x1ff
-#define SYSNUM_SECONDARY(combined) (((combined) >> 14) & SYSNUM_MAX_SECONDARY)
+    /* for recording args so post-syscall can examine */
+    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
+#ifdef WINDOWS
+    reg_t pre_xdx;
+#endif
+
+    /* for recording additional info for particular arg types */
+    ptr_int_t extra_info[EXTRA_INFO_MAX];
+#ifdef DEBUG
+    /* We should be able to statically share extra_info[].  This helps find errors. */
+    bool extra_inuse[SYSCALL_NUM_ARG_STORE];
+#endif
+    bool first_iter;
+    bool first_iter_generic_loop; /* just for sysarg_get_size */
+
+    /* for comparing memory across unknown system calls */
+    bool known;
+    app_pc sysarg_ptr[SYSCALL_NUM_ARG_TRACK];
+    size_t sysarg_sz[SYSCALL_NUM_ARG_TRACK];
+    /* dynamically allocated */
+    size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
+    byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
+} cls_syscall_t;
+
+/* used for simpler arg passing among syscall arg handlers */
+typedef struct _sysarg_iter_info_t {
+    drsys_arg_t *arg;
+    drsys_iter_cb_t cb_mem;
+    drsys_iter_cb_t cb_arg;
+    void *user_data;
+    cls_syscall_t *pt;
+    bool abort;
+} sysarg_iter_info_t;
+
+
+drmf_status_t
+drsyscall_os_init(void *drcontext);
 
 void
-syscall_os_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base));
-
-void
-syscall_os_exit(void);
+drsyscall_os_exit(void);
 
 syscall_info_t *
-syscall_lookup(int num);
+syscall_lookup(drsys_sysnum_t num);
 
 void
-syscall_os_thread_init(void *drcontext);
+drsyscall_os_thread_init(void *drcontext);
 
 void
-syscall_os_thread_exit(void *drcontext);
+drsyscall_os_thread_exit(void *drcontext);
 
 void
-syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded);
+drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
-uint
-get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc);
+bool
+is_using_sysenter(void);
+
+bool
+is_using_sysint(void);
+
+/* Either sets arg->reg to DR_REG_NULL and sets arg->start_addr, or sets arg->reg
+ * to non-DR_REG_NULL
+ */
+void
+drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *arg);
 
 /* check syscall param at pre-syscall only */
 void
 check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz);
 
-/* for tasks unrelated to shadowing that are common to all tools */
-bool
-os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum
-                      _IF_WINDOWS(dr_mcontext_t *mc));
-
-void
-os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum
-                       _IF_WINDOWS(dr_mcontext_t *mc));
-
 /* for memory shadowing checks */
-bool
-os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
+void
+os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii);
 
 void
-os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum);
+os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii);
 
 /* returns true if the given argument was processed in a non-standard way
  * (e.g. OS-specific structures) and we should skip the standard check
  */
 bool
-os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
                                  const syscall_arg_t *arg_info,
                                  app_pc start, uint size);
 
@@ -310,25 +318,25 @@ os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
  * (e.g. OS-specific structures) and we should skip the standard check
  */
 bool
-os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size);
 
 bool
-os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res);
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res);
 
 /* provides name if known when not in syscall_lookup(num) */
 const char *
-os_syscall_get_name(uint num);
+os_syscall_get_name(drsys_sysnum_t num);
 
-#ifdef WINDOWS
-/* uses tables and other sources not available to sysnum_from_name() */
-int
-os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name);
-#endif
+bool
+os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT);
 
-syscall_info_t *
-get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt);
+uint
+sysnum_hash(void *val);
+
+bool
+sysnum_cmp(void *v1, void *v2);
 
 bool
 sysarg_invalid(syscall_arg_t *arg);
@@ -339,4 +347,35 @@ store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value);
 ptr_int_t
 release_extra_info(cls_syscall_t *pt, int index);
 
-#endif /* _SYSCALL_OS_H_ */
+bool
+report_memarg_ex(sysarg_iter_info_t *iter_info,
+                 int ordinal, drsys_param_mode_t mode,
+                 app_pc ptr, size_t sz, const char *id,
+                 drsys_param_type_t type, const char *type_name,
+                 drsys_param_type_t containing_type);
+
+bool
+report_memarg_type(sysarg_iter_info_t *iter_info,
+                   int ordinal, uint arg_flags,
+                   app_pc ptr, size_t sz, const char *id,
+                   drsys_param_type_t type, const char *type_name);
+
+bool
+report_memarg_field(sysarg_iter_info_t *ii,
+                    const syscall_arg_t *arg_info,
+                    app_pc ptr, size_t sz, const char *id,
+                    drsys_param_type_t type, const char *type_name);
+
+bool
+report_memarg(sysarg_iter_info_t *iter_info,
+              const syscall_arg_t *arg_info,
+              app_pc ptr, size_t sz, const char *id);
+
+bool
+report_sysarg(sysarg_iter_info_t *iter_info, int ordinal, uint arg_flags);
+
+bool
+handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
+               byte *start, size_t size/*in bytes*/, char *safe, bool check_addr);
+
+#endif /* _DRSYSCALL_OS_H_ */

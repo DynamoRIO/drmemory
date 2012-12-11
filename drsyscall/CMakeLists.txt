@@ -32,11 +32,32 @@ else()
   set(libtype SHARED)
 endif ()
 
+option(SYSCALL_DRIVER "use a kernel driver to identify system call writes")
+option(SYSCALL_DRIVER_SRCDIR "source dir of kernel driver")
+if (SYSCALL_DRIVER)
+  set(DEFINES ${DEFINES} -DSYSCALL_DRIVER)
+  include_directories(${SYSCALL_DRIVER_SRCDIR})
+endif (SYSCALL_DRIVER)
+
 set(srcs
-  drsyscall_drmf.c
+  drsyscall.c
   ../framework/version.c
   # add more here
   )
+
+if (UNIX)
+  set(srcs ${srcs}
+    drsyscall_linux.c
+    ../${asm_utils_src})
+else (UNIX)
+  set(srcs ${srcs} 
+    drsyscall_windows.c
+    drsyscall_wingdi.c)
+  if (SYSCALL_DRIVER)
+    set(srcs ${srcs} 
+      drmemory/syscall_driver.c)
+  endif (SYSCALL_DRIVER)
+endif (UNIX)
 
 # For the exported version, we don't want to print to stderr or raise
 # msgboxes, so we link in globals to suppress notification in drmf_utils.c.
@@ -58,6 +79,10 @@ set_target_properties(drsyscall PROPERTIES
 # a pain to export w/ the proper link rules.  But we at least use the
 # same flags and avoid compiling the same file differently.
 set_property(TARGET drsyscall PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+target_link_libraries(drsyscall ${ntimp_lib})
+if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  add_dependencies(drsyscall ntimp_tgt)
+endif ()
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
@@ -72,6 +97,10 @@ if (UNIX)
   append_property_string(TARGET drsyscall_int COMPILE_FLAGS "-fPIC")
 endif (UNIX)
 set_property(TARGET drsyscall_int PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+target_link_libraries(drsyscall_int ${ntimp_lib})
+if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+  add_dependencies(drsyscall_int ntimp_tgt)
+endif ()
 
 # Documentation is handled as part of the main tool docs processing.
 

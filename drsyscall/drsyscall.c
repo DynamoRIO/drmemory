@@ -20,26 +20,65 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+/* Dr. Syscall top-level code */
+
 #include "dr_api.h"
+#include "drmgr.h"
 #include "drsyscall.h"
-#include "drmemory.h"
+#include "drsyscall_os.h"
+#include "drmemory_framework.h"
+#include "../framework/drmf.h"
 #include "utils.h"
-#include "syscall.h"
-#include "shadow.h"
-#include "readwrite.h"
-#include "syscall_os.h"
-#include "alloc.h"
-#include "perturb.h"
-#ifdef LINUX
-# include "sysnum_linux.h"
-#endif
-#include "report.h"
+#include <string.h>
 
 #ifdef SYSCALL_DRIVER
 # include "syscall_driver.h"
 #endif
 
-int cls_idx_syscall = -1;
+/* Keep this in synch with drsys_param_type_t */
+const char * const param_type_names[] = {
+    "<invalid>",                /* DRSYS_TYPE_INVALID */
+    "<unknown>",                /* DRSYS_TYPE_UNKNOWN */
+    "bool",                     /* DRSYS_TYPE_BOOL */
+    "int",                      /* DRSYS_TYPE_SIGNED_INT */
+    "unsigned int",             /* DRSYS_TYPE_INT */
+    "HANDLE",                   /* DRSYS_TYPE_HANDLE */
+    "<struct>",                 /* DRSYS_TYPE_STRUCT */
+    "char *",                   /* DRSYS_TYPE_CSTRING */
+    "wchar_t *",                /* DRSYS_TYPE_CWSTRING */
+    "char[]",                   /* DRSYS_TYPE_CARRAY */
+    "wchar_t[]",                /* DRSYS_TYPE_CWARRAY */
+    "char **",                  /* DRSYS_TYPE_CSTRARRAY */
+    "UNICODE_STRING",           /* DRSYS_TYPE_UNICODE_STRING */
+    "LARGE_STRING",             /* DRSYS_TYPE_LARGE_STRING */
+    "OBJECT_ATTRIBUTES",        /* DRSYS_TYPE_OBJECT_ATTRIBUTES */
+    "SECURITY_DESCRIPTOR",      /* DRSYS_TYPE_SECURITY_DESCRIPTOR */
+    "SECURITY_QOS",             /* DRSYS_TYPE_SECURITY_QOS */
+    "PORT_MESSAGE",             /* DRSYS_TYPE_PORT_MESSAGE */
+    "CONTEXT",                  /* DRSYS_TYPE_CONTEXT */
+    "EXCEPTION_RECORD",         /* DRSYS_TYPE_EXCEPTION_RECORD */
+    "DEVMODEW",                 /* DRSYS_TYPE_DEVMODEW */
+    "WNDCLASSEXW",              /* DRSYS_TYPE_WNDCLASSEXW */
+    "CLSMENUNAME",              /* DRSYS_TYPE_CLSMENUNAME */
+    "MENUITEMINFOW",            /* DRSYS_TYPE_MENUITEMINFOW */
+    "ALPC_PORT_ATTRIBUTES",     /* DRSYS_TYPE_ALPC_PORT_ATTRIBUTES */
+    "ALPC_SECURITY_ATTRIBUTES", /* DRSYS_TYPE_ALPC_SECURITY_ATTRIBUTES */
+    "LOGFONTW",                 /* DRSYS_TYPE_LOGFONTW */
+    "NONCLIENTMETRICSW",        /* DRSYS_TYPE_NONCLIENTMETRICSW */
+    "ICONMETRICSW",             /* DRSYS_TYPE_ICONMETRICSW */
+    "SERIALKEYSW",              /* DRSYS_TYPE_SERIALKEYSW */
+    "struct sockaddr",          /* DRSYS_TYPE_SOCKADDR */
+    "struct msghdr",            /* DRSYS_TYPE_MSGHDR */
+    "struct msgbuf",            /* DRSYS_TYPE_MSGBUF */
+};
+#define NUM_PARAM_TYPE_NAMES \
+    (sizeof(param_type_names)/sizeof(param_type_names[0]))
+
+int cls_idx_drsys = -1;
+
+drsys_options_t drsys_ops;
+
+static int init_count;
 
 /***************************************************************************
  * SYSTEM CALLS
@@ -57,10 +96,6 @@ typedef enum {
 
 static syscall_gateway_t syscall_gateway = SYSCALL_GATEWAY_UNKNOWN;
 
-#ifdef STATISTICS
-int syscall_invoked[MAX_SYSNUM];
-#endif
-
 bool
 is_using_sysenter(void)
 {
@@ -74,7 +109,7 @@ is_using_sysint(void)
     return (syscall_gateway == SYSCALL_GATEWAY_INT);
 }
 
-void
+static void
 check_syscall_gateway(instr_t *inst)
 {
     if (instr_get_opcode(inst) == OP_sysenter) {
@@ -117,344 +152,171 @@ check_syscall_gateway(instr_t *inst)
         ASSERT(false, "unknown system call gateway");
 }
 
-/***************************************************************************
- * AUXILIARY LIBRARY
- */
-
-static dr_auxlib_handle_t auxlib;
-static byte *auxlib_start, *auxlib_end;
-
-/* We want function pointers, not static functions */
-/* These function pointers are all in .data so will be read-only after init */
-#define DYNAMIC_INTERFACE 1
-#include "syscall_aux.h"
-
-/* local should be a char * and is meant to record which bind failed */
-#define BINDFUNC(lib, local, name) \
-    (local = #name, name = (void *) dr_lookup_aux_library_routine(lib, #name))
-
-#define SYSAUXLIB_MIN_VERSION_USED 1
-
-static bool
-syscall_load_auxlib(const char *name)
-{
-    char auxpath[MAXIMUM_PATH];
-    char *buf = auxpath;
-    size_t bufsz = BUFFER_SIZE_ELEMENTS(auxpath);
-    ssize_t len = 0;
-    size_t sofar = 0;
-    const char *path = dr_get_client_path(client_id);
-    const char *sep = path;
-    char *func;
-    int *drauxlib_ver_compat, *drauxlib_ver_cur;
-
-    /* basename is passed in: use client path */
-    while (*sep != '\0')
-        sep++;
-    while (sep > path && *sep != '/' IF_WINDOWS(&& *sep != '\\'))
-        sep--;
-    BUFPRINT(buf, bufsz, sofar, len, "%.*s", (sep - path), path);
-    BUFPRINT(buf, bufsz, sofar, len, "/%s", name);
-    auxlib = dr_load_aux_library(auxpath, &auxlib_start, &auxlib_end);
-    if (auxlib == NULL) {
-        NOTIFY_ERROR("Error loading auxiliary library %s"NL, auxpath);
-        goto auxlib_load_error;
-    }
-
-    /* version check */
-    drauxlib_ver_compat = (int *)
-        dr_lookup_aux_library_routine(auxlib, SYSAUXLIB_VERSION_COMPAT_NAME);
-    drauxlib_ver_cur = (int *)
-        dr_lookup_aux_library_routine(auxlib, SYSAUXLIB_VERSION_CUR_NAME);
-    if (drauxlib_ver_compat == NULL || drauxlib_ver_cur == NULL ||
-        *drauxlib_ver_compat > SYSAUXLIB_MIN_VERSION_USED ||
-        *drauxlib_ver_cur < SYSAUXLIB_MIN_VERSION_USED) {
-        NOTIFY_ERROR("Version %d mismatch with aux library %s version %d-%d"NL,
-                     SYSAUXLIB_MIN_VERSION_USED, auxpath,
-                     (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur,
-                     (drauxlib_ver_compat == NULL) ? -1 : *drauxlib_ver_cur);
-        goto auxlib_load_error;
-    }
-    LOG(1, "loaded aux lib %s at "PFX"-"PFX" ver=%d-%d\n",
-        auxpath, auxlib_start, auxlib_end, *drauxlib_ver_compat, *drauxlib_ver_cur);
-
-    /* required import binding */
-    if (BINDFUNC(auxlib, func, sysauxlib_init) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_syscall_name) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_save_params) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_free_params) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_syscall_successful) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_num_reg_params) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_reg_param_info) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_num_mem_params) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_mem_param_info) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_is_fork) == NULL ||
-        BINDFUNC(auxlib, func, sysauxlib_is_exec) == NULL) {
-        NOTIFY_ERROR("Required export %s missing from aux library %s"NL,
-                     func, auxpath);
-        goto auxlib_load_error;
-    }
-    if (!sysauxlib_init()) {
-        NOTIFY_ERROR("aux library init failed: do you have the latest version?"NL);
-        goto auxlib_load_error;
-    }
-    return true;
-
- auxlib_load_error:
-    dr_abort();
-    ASSERT(false, "shouldn't get here");
-    if (auxlib != NULL)
-        dr_unload_aux_library(auxlib);
-    auxlib = NULL;
-    return false;
-}
-
-byte *
-syscall_auxlib_start(void)
-{
-    return auxlib_start;
-}
-
-byte *
-syscall_auxlib_end(void)
-{
-    return auxlib_end;
-}
-
-static const char *
-auxlib_syscall_name(int sysnum)
-{
-    if (auxlib == NULL || sysauxlib_syscall_name == NULL)
-        return NULL;
-    return sysauxlib_syscall_name(sysnum);
-}
-
-static bool
-auxlib_known_syscall(int sysnum)
-{
-    return (auxlib_syscall_name(sysnum) != NULL);
-}
-
-/* checking syscall param in pre-syscall only.
- * params in memory slots have to be treated as normal param handling
- * and won't be handled by this routine.
- */
-static void
-auxlib_check_sysparam(void *drcontext, uint sysnum, uint argnum,
-                      dr_mcontext_t *mc, size_t argsz)
-{
-    cls_syscall_t *cpt;
-    app_loc_t loc;
-    reg_id_t reg;
-    if (CHECK_UNINITS())
-        return;
-    ASSERT(options.shadowing, "shadowing disabled");
-    cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    reg = sysauxlib_reg_param_info(drcontext, cpt->sysaux_params, argnum);
-    syscall_to_loc(&loc, sysnum, NULL);
-    check_register_defined(drcontext, reg, &loc, argsz, mc, NULL);
-}
-
-static bool
-auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
-{
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-#ifndef USE_DRSYMS
-    char path[MAXIMUM_PATH];
-#endif
-    cpt->sysaux_params = sysauxlib_save_params(drcontext);
-#ifdef LINUX
-    if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, NULL)) {
-        if (options.perturb)
-            perturb_pre_fork();
-    }
-# ifndef USE_DRSYMS
-    else if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
-                               path, BUFFER_SIZE_BYTES(path)))
-        ELOGF(0, f_fork, "EXEC path=%s\n", path);
-# endif
-#endif
-    return true;
-}
-
-static void
-auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
-{
-#if defined(LINUX) && !defined(USE_DRSYMS)
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    char path[MAXIMUM_PATH];
-    process_id_t child;
-    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
-    if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, &child)) {
-       /* PR 453867: tell postprocess.pl to watch for child logdir and
-         * then fork a new copy.
-         */
-        if (sysauxlib_is_exec(drcontext, cpt->sysaux_params,
-                              path, BUFFER_SIZE_BYTES(path))) {
-            ELOGF(0, f_fork, "FORKEXEC child=%d path=%s\n", child, path);
-        } else {
-            ELOGF(0, f_fork, "FORK child=%d\n", child);
-        }
-    } 
-#endif
-}
-
-static bool
-auxlib_shadow_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
-{
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    int i;
-    if (auxlib == NULL || !auxlib_known_syscall(sysnum))
-        return true;
-    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
-    for (i=0; i<sysauxlib_num_reg_params(drcontext, cpt->sysaux_params); i++)
-        auxlib_check_sysparam(drcontext, sysnum, i, mc, sizeof(reg_t));
-    for (i=0; i<sysauxlib_num_mem_params(drcontext, cpt->sysaux_params); i++) {
-        byte *start;
-        size_t len_in, len_out;
-        sysauxlib_param_t type;
-        const char *name;
-        if (sysauxlib_mem_param_info(drcontext, cpt->sysaux_params, i, &name,
-                                     &start, &len_in, &len_out, &type)) {
-            LOG(3, "sysauxlib syscall %d mem param %d %s: "PFX" "PIFX" "PIFX" %d\n",
-                sysnum, i, name, start, len_in, len_out, type);
-            if (type == SYSAUXLIB_PARAM_STRING ||
-                type == SYSAUXLIB_PARAM_STRARRAY) {
-                /* FIXME PR 408539: check addressability and definedness
-                 * of each byte prior to deref and find end.
-                 */
-            }
-            if (len_in > 0) {
-                check_sysmem((type == SYSAUXLIB_PARAM_STRING) ?
-                             /* capacity should be addr, until NULL defined */
-                             MEMREF_CHECK_ADDRESSABLE :
-                             MEMREF_CHECK_DEFINEDNESS,
-                             sysnum, start, len_in, mc, name);
-            }
-            if (len_out > 0) {
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE,
-                             sysnum, start, len_out, mc, name);
-            }
-        } else {
-            LOG(1, "WARNING: unable to retrieve sysauxlib syscall %d param %d\n",
-                sysnum, i);
-        }
-    }
-    return true;
-}
-
-static void
-auxlib_shadow_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
-{
-    cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    if (auxlib == NULL || !auxlib_known_syscall(sysnum))
-        return;
-    ASSERT(cpt->sysaux_params != NULL, "params should already be saved");
-    if (sysauxlib_syscall_successful(drcontext, cpt->sysaux_params)) {
-        int i;
-        for (i=0; i<sysauxlib_num_mem_params(drcontext, cpt->sysaux_params); i++) {
-            byte *start;
-            size_t len_in, len_out;
-            sysauxlib_param_t type;
-            const char *name;
-            if (sysauxlib_mem_param_info(drcontext, cpt->sysaux_params, i,
-                                         &name, &start, &len_in, &len_out, &type)) {
-                if (len_out > 0) {
-                    if (type == SYSAUXLIB_PARAM_STRING ||
-                        type == SYSAUXLIB_PARAM_STRARRAY) {
-                        /* FIXME PR 408539: mark defined until end */
-                    }
-                    check_sysmem(MEMREF_WRITE, sysnum, start, len_out, mc, name);
-                }
-            } else {
-                LOG(1, "WARNING: unable to retrieve sysauxlib syscall %d param %s\n",
-                    sysnum, name);
-            }
-        }
-    }
-    sysauxlib_free_params(drcontext, cpt->sysaux_params);
-    cpt->sysaux_params = NULL;
-}
-
-/***************************************************************************
- * SYSCALL HANDLING
- */
-
-const char *
-get_syscall_name(uint num)
+DR_EXPORT
+drmf_status_t
+drsys_number_to_name(drsys_sysnum_t num, const char **name OUT)
 {
     syscall_info_t *sysinfo = syscall_lookup(num);
+    if (name == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
     if (sysinfo != NULL)
-        return sysinfo->name;
+        *name = sysinfo->name;
     else {
-        const char *name = auxlib_syscall_name(num);
-        if (name != NULL)
-            return name;
-        else {
-            name = os_syscall_get_name(num);
-            if (name != NULL)
-                return name;
+        *name = os_syscall_get_name(num);
+        if (*name == NULL) {
+            *name = "<unknown>";
+            return DRMF_ERROR_NOT_FOUND;
         }
-        return "<unknown>";
     }
+    return DRMF_SUCCESS;
 }
 
-#ifdef WINDOWS
-/* uses tables and other sources not available to sysnum_from_name() */
-/* will not locate secondary syscalls */
-int
-get_syscall_num(void *drcontext, const module_data_t *info, const char *name)
+DR_EXPORT
+drmf_status_t
+drsys_name_to_number(const char *name, drsys_sysnum_t *sysnum OUT)
 {
-    return os_syscall_get_num(drcontext, info, name);
-}
+    bool ok;
+    IF_DEBUG(const char *name_check;)
+    if (sysnum == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    ok = os_syscall_get_num(name, sysnum);
+#ifdef DEBUG
+    if (drsys_number_to_name(*sysnum, &name_check) == DRMF_SUCCESS) {
+        ASSERT(stri_eq(name_check, name) ||
+               /* account for NtUser*, etc. prefix differences */
+               strcasestr(name_check, name) != NULL , "name<->num mismatch");
+    } else
+        ASSERT(false, "name<->num check failed");
 #endif
-
-bool
-syscall_is_known(uint num)
-{
-    bool known = false;
-    syscall_info_t *sysinfo = syscall_lookup(num);
-    if (sysinfo != NULL)
-        known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
+    if (ok)
+        return DRMF_SUCCESS;
     else
-        known = auxlib_known_syscall(num);
-    return known;
+        return DRMF_ERROR_NOT_FOUND;
 }
 
+/* to avoid heap-allocated data we use pointers to temporary drsys_sysnum_t */
+uint
+sysnum_hash(void *val)
+{
+    drsys_sysnum_t *num = (drsys_sysnum_t *) val;
+    /* Most primaries are < 0x3fff and secondaries are < 0x1ff so we
+     * simply combine the most-likely-meaningful bits.
+     */
+    return (num->secondary << 14) | num->number;
+}
+
+/* to avoid heap-allocated data we use pointers to temporary drsys_sysnum_t */
+bool
+sysnum_cmp(void *v1, void *v2)
+{
+    drsys_sysnum_t *num1 = (drsys_sysnum_t *) v1;
+    drsys_sysnum_t *num2 = (drsys_sysnum_t *) v2;
+    return drsys_sysnums_equal(num1, num2);
+}
+
+/***************************************************************************
+ * UNKNOWN SYSCALL HANDLING
+ */
 
 static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
+
+DR_EXPORT
+drmf_status_t
+drsys_syscall_is_known(drsys_sysnum_t sysnum, bool *known OUT)
+{
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (known == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (sysinfo != NULL)
+        *known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
+    else
+        *known = false;
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_is_known(void *drcontext, bool *known OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    return drsys_syscall_is_known(pt->sysnum, known);
+}
+
+static bool
+is_byte_addressable(byte *addr)
+{
+    if (drsys_ops.is_byte_addressable == NULL)
+        return true; /* have to assume it is */
+    else
+        return (*drsys_ops.is_byte_addressable)(addr);
+}
+
+static bool
+is_byte_defined(byte *addr)
+{
+    if (drsys_ops.is_byte_defined == NULL)
+        return is_byte_addressable(addr); /* have to assume it is */
+    else
+        return (*drsys_ops.is_byte_defined)(addr);
+}
+
+static bool
+is_byte_undefined(byte *addr)
+{
+    if (drsys_ops.is_byte_defined == NULL)
+        return false; /* have to assume it's not */
+    else
+        return !(*drsys_ops.is_byte_defined)(addr);
+}
+
+static bool
+is_register_defined(reg_id_t reg)
+{
+    if (drsys_ops.is_register_defined == NULL)
+        return true; /* have to assume it is */
+    else
+        return (*drsys_ops.is_register_defined)(reg);
+}
 
 /* For syscall we do not have specific parameter info for, we do a
  * memory comparison to find what has been written.
  * We will not catch passing undefined values in that are read, of course.
  */
 static void
-handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                           cls_syscall_t *cpt)
+handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
+                           sysarg_iter_info_t *ii)
 {
+    drsys_sysnum_t sysnum = ii->arg->sysnum;
+    syscall_info_t *sysinfo = cpt->sysinfo;
     app_pc start;
     int i, j;
-    if (!options.analyze_unknown_syscalls ||
-        !options.check_uninitialized)
+    bool defined;
+    drsys_arg_t arg_loc = *ii->arg; /* set up mc, etc. */
+
+    if (!drsys_ops.analyze_unknown_syscalls)
         return;
-    LOG(SYSCALL_VERBOSE, "unknown system call #"PIFX" %s\n",
-        sysnum, os_syscall_get_name(sysnum) == NULL ? "" : os_syscall_get_name(sysnum));
-    if (options.verbose >= 2) {
-        ELOGF(0, f_global, "WARNING: unhandled system call #"PIFX"\n", sysnum);
-    } else {
-        /* PR 484069: reduce global logfile size */
-        DO_ONCE(ELOGF(0, f_global, "WARNING: unhandled system calls found\n"));
-    }
+    LOG(SYSCALL_VERBOSE, "unknown system call #"SYSNUM_FMT"."SYSNUM_FMT" %s\n",
+        sysnum.number, sysnum.secondary, sysinfo == NULL ? "" : sysinfo->name);
+    /* PR 484069: reduce global logfile size */
+    DO_ONCE(ELOGF(0, f_global, "WARNING: unhandled system calls found\n"));
     for (i=0; i<SYSCALL_NUM_ARG_TRACK; i++) {
         cpt->sysarg_ptr[i] = NULL;
-        if (get_sysparam_shadow_val(sysnum, i, mc) == SHADOW_DEFINED) {
+
+        drsyscall_os_get_sysparam_location(cpt, i, &arg_loc);
+        if (arg_loc.reg != DR_REG_NULL)
+            defined = is_register_defined(arg_loc.reg);
+        else
+            defined = is_byte_defined(arg_loc.start_addr);
+
+        if (defined) {
             start = (app_pc) dr_syscall_get_param(drcontext, i);
-            LOG(2, "pre-unknown-syscall #"PIFX": param %d == "PFX"\n", sysnum, i, start);
-            if (ALIGNED(start, 4) && shadow_get_byte(start) != SHADOW_UNADDRESSABLE) {
+            LOG(2, "pre-unknown-syscall #"SYSNUM_FMT"."SYSNUM_FMT": param %d == "PFX"\n",
+                sysnum.number, sysnum.secondary, i, start);
+            if (ALIGNED(start, 4) && is_byte_addressable(start)) {
                 /* This looks like a memory parameter.  It might contain OUT
                  * values mixed with IN, so we do not stop at the first undefined
                  * byte: instead we stop at an unaddr or at the max size.
-                 * We need two passes to know how far was can safely read,
+                 * We need two passes to know how far we can safely read,
                  * so we go ahead and use dynamically sized memory as well.
                  */
                 byte *s_at = NULL;
@@ -471,7 +333,7 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                             break;
                         }
                     }
-                    if (overlap || shadow_get_byte(start + j) == SHADOW_UNADDRESSABLE)
+                    if (overlap || !is_byte_addressable(start + j))
                         break;
                 }
                 if (j > 0) {
@@ -500,9 +362,9 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
                         cpt->sysarg_sz[i] = 0;
                     }
                 }
-                if (options.syscall_sentinels) {
+                if (drsys_ops.syscall_sentinels) {
                     for (j=0; j<cpt->sysarg_sz[i]; j++) {
-                        if (shadow_get_byte(start + j) == SHADOW_UNDEFINED) {
+                        if (is_byte_undefined(start + j)) {
                             size_t written;
                             /* Detect writes to data that happened to have the same
                              * value beforehand (happens often with 0) by writing
@@ -539,14 +401,15 @@ handle_pre_unknown_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
     }
 }
 
+/* If ii is NULL, performs post-syscall final actions */
 static void
-handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
+handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
+                            sysarg_iter_info_t *ii)
 {
     int i, j;
     byte *w_at = NULL;
     byte post_val[SYSCALL_ARG_TRACK_MAX_SZ];
-    if (!options.analyze_unknown_syscalls ||
-        !options.check_uninitialized)
+    if (!drsys_ops.analyze_unknown_syscalls)
         return;
     /* we analyze params even if syscall failed, since in some cases
      * some params are still written (xref i#486, i#358)
@@ -556,7 +419,7 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
             if (safe_read(cpt->sysarg_ptr[i], cpt->sysarg_sz[i], post_val)) {
                 for (j = 0; j < cpt->sysarg_sz[i]; j++) {
                     byte *pc = cpt->sysarg_ptr[i] + j;
-                    if (shadow_get_byte(pc) == SHADOW_UNDEFINED) {
+                    if (is_byte_undefined(pc)) {
                         /* kernel could have written sentinel.
                          * XXX: we won't mark as defined if pre-syscall value
                          * matched sentinel and kernel wrote sentinel!
@@ -564,9 +427,9 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
                         LOG(4, "\targ %d "PFX" %d comparing %x to %x\n", i,
                             cpt->sysarg_ptr[i], j,
                             post_val[j], cpt->sysarg_val[i][j]);
-                        if ((options.syscall_sentinels &&
+                        if ((drsys_ops.syscall_sentinels &&
                              post_val[j] != UNKNOWN_SYSVAL_SENTINEL) ||
-                            (!options.syscall_sentinels &&
+                            (!drsys_ops.syscall_sentinels &&
                              post_val[j] != cpt->sysarg_val[i][j])) {
                             if (w_at == NULL)
                                 w_at = pc;
@@ -574,19 +437,20 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
                              * see if we hit any races, but we have overlapping syscall
                              * args and I don't want to check for them
                              */
-                            ASSERT(shadow_get_byte(pc) != SHADOW_UNADDRESSABLE, "");
-                            if (options.syscall_dword_granularity) {
+                            ASSERT(is_byte_addressable(pc), "");
+                            if (drsys_ops.syscall_dword_granularity) {
                                 /* w/o sentinels (which are dangerous) we often miss
                                  * seemingly unchanged bytes (often zero) so mark
                                  * the containing dword (i#477)
                                  */
-                                shadow_set_range((byte *)ALIGN_BACKWARD(pc, 4),
-                                                 (byte *)ALIGN_BACKWARD(pc, 4) + 4,
-                                                 SHADOW_DEFINED);
+                                report_memarg_type(ii, i, SYSARG_WRITE,
+                                                   (byte *)ALIGN_BACKWARD(pc, 4), 4, NULL,
+                                                   DRSYS_TYPE_UNKNOWN, NULL);
                             } else {
-                                shadow_set_byte(pc, SHADOW_DEFINED);
+                                report_memarg_type(ii, i, SYSARG_WRITE, pc, 1, NULL,
+                                                   DRSYS_TYPE_UNKNOWN, NULL);
                             }
-                        } else {
+                        } else if (ii == NULL /* => restore */) {
                             if (post_val[j] == UNKNOWN_SYSVAL_SENTINEL &&
                                 cpt->sysarg_val[i][j] != UNKNOWN_SYSVAL_SENTINEL) {
                                 /* kernel didn't write so restore app value that
@@ -601,9 +465,9 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
                                 }
                             }
                             if (w_at != NULL) {
-                                LOG(SYSCALL_VERBOSE, "unknown-syscall #"PIFX
+                                LOG(SYSCALL_VERBOSE, "unknown-syscall #"SYSNUM_FMT
                                     ": param %d written "PFX" %d bytes\n",
-                                    sysnum, i, w_at, pc - w_at);
+                                    ii->arg->sysnum.number, i, w_at, pc - w_at);
                                 w_at = NULL;
                             }
                         }
@@ -613,9 +477,9 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
                     }
                 }
                 if (w_at != NULL) {
-                    LOG(SYSCALL_VERBOSE, "unknown-syscall #"PIFX": param %d written "
-                        PFX" %d bytes\n",
-                        sysnum, i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
+                    LOG(SYSCALL_VERBOSE, "unknown-syscall #"SYSNUM_FMT": param %d written "
+                        PFX" %d bytes\n", ii->arg->sysnum.number,
+                        i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
                     w_at = NULL;
                 }
             } else {
@@ -628,36 +492,204 @@ handle_post_unknown_syscall(void *drcontext, int sysnum, cls_syscall_t *cpt)
     }
 }
 
-void
-check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
-             const char *id)
+/***************************************************************************
+ * QUERY ROUTINES
+ */
+
+DR_EXPORT
+drmf_status_t
+drsys_syscall_succeeded(drsys_sysnum_t sysnum, reg_t result, bool *success OUT)
 {
-    /* Don't trigger asserts in handle_mem_ref(): syscall will probably fail
-     * or it's an optional arg
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (success == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *success = os_syscall_succeeded(sysnum, sysinfo, result);
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_succeeded(void *drcontext, bool *success OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (success == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *success = os_syscall_succeeded(pt->sysnum, pt->sysinfo,
+                                    dr_syscall_get_result(drcontext));
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (value == NULL || argnum >= SYSCALL_NUM_ARG_STORE)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *value = pt->sysarg[argnum];
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_get_sysnum(void *drcontext, drsys_sysnum_t *sysnum OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (sysnum == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *sysnum = pt->sysnum;
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (mc == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *mc = &pt->mc;
+    return DRMF_SUCCESS;
+}
+
+/***************************************************************************
+ * REGULAR SYSCALL HANDLING
+ */
+
+/* Assumes that arg fields on the context (drcontext, sysnum, pre, and
+ * mc) have already been filled in.
+ *
+ * Fills in arg->valid with true.
+ * XXX: should we get rid of the valid field?  For the all-args
+ * dynamic iterator we use the sysparam addr and don't do a deref; and
+ * for memargs, not reading usually means not knowing the bounds of a
+ * sub-field where there's no type or other info and so it's not worth
+ * invoking the callback.
+ *
+ * Sets ii->abort according to return value.
+ */
+bool
+report_memarg_ex(sysarg_iter_info_t *ii,
+                 int ordinal, drsys_param_mode_t mode,
+                 app_pc ptr, size_t sz, const char *id,
+                 drsys_param_type_t type, const char *type_name,
+                 drsys_param_type_t containing_type)
+{
+    drsys_arg_t *arg = ii->arg;
+
+    arg->type = type;
+    if (type_name == NULL && type != DRSYS_TYPE_UNKNOWN &&
+        type != DRSYS_TYPE_INVALID) {
+        ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
+        arg->type_name = param_type_names[type];
+    } else
+        arg->type_name = type_name;
+    arg->containing_type = containing_type;
+    arg->arg_name = id;
+
+    arg->ordinal = ordinal;
+    arg->mode = mode;
+
+    arg->reg = DR_REG_NULL;
+    arg->start_addr = ptr;
+    arg->size = sz;
+
+    /* We can't short-circuit on first iter b/c we have too much code that
+     * stores extra info in pre for post that's after several reports.
+     * Thus we just suppress future callbacks on first iter.
      */
-    ASSERT(INSTRUMENT_MEMREFS(), "memory reference checking disabled");
-    if (!options.check_uninitialized && flags != MEMREF_CHECK_ADDRESSABLE)
-        return;
-    if (ptr != NULL && sz > 0 && flags != 0) {
-        app_loc_t loc;
-        syscall_to_loc(&loc, sysnum, id);
-        DOLOG(SYSCALL_VERBOSE, {
-            if (flags == MEMREF_WRITE) {
-                LOG(SYSCALL_VERBOSE, "\t  marking "PIFX"-"PIFX" written %s\n",
-                    ptr, ptr + sz, (id == NULL) ? "" : id);
-            }
-        });
-        /* i#556: for uninitialized random values passed as sizes to syscalls, we
-         * don't want to walk huge sections of memory, so we stop checking after
-         * the first erroneous word is found.  The reported error may not have
-         * an intuitive size, but it's not clear how else to handle it since there's
-         * no magic threshold that's bigger than any valid size, and any separate
-         * error within the same region will today be reported as a dup (i#581).
-         */
-        if (sz > 64*1024)
-            flags |= MEMREF_ABORT_AFTER_UNADDR;
-        handle_mem_ref(flags, &loc, ptr, sz, mc, NULL);
+    if (!ii->abort) {
+        if (!(*ii->cb_mem)(arg, ii->user_data))
+            ii->abort = true;
+    } else {
+        ASSERT(ii->pt->first_iter,
+               "other than 1st iter, shouldn't report after abort");
     }
+    return ii->pt->first_iter || !ii->abort;
+}
+
+static drsys_param_mode_t
+mode_from_flags(uint arg_flags)
+{
+    drsys_param_mode_t mode = 0;
+    if (TEST(SYSARG_WRITE, arg_flags))
+        mode |= DRSYS_PARAM_OUT;
+    if (TEST(SYSARG_READ, arg_flags))
+        mode |= DRSYS_PARAM_IN;
+    return mode;
+}
+
+static drsys_param_type_t
+type_from_arg_info(const syscall_arg_t *arg_info)
+{
+    drsys_param_type_t type = DRSYS_TYPE_INVALID;
+    if (TEST(SYSARG_COMPLEX_TYPE, arg_info->flags)) {
+        /* map to exported types */
+        if (arg_info->misc == SYSARG_TYPE_UNICODE_STRING_NOLEN)
+            type = SYSARG_TYPE_UNICODE_STRING;
+        else
+            type = (drsys_param_type_t) arg_info->misc;
+        ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
+    }
+    return type;
+}
+
+bool
+report_memarg_type(sysarg_iter_info_t *ii,
+                   int ordinal, uint arg_flags,
+                   app_pc ptr, size_t sz, const char *id,
+                   drsys_param_type_t type, const char *type_name)
+{
+    return report_memarg_ex(ii, ordinal, mode_from_flags(arg_flags), ptr, sz, id,
+                            type, type_name, DRSYS_TYPE_INVALID);
+}
+
+/* For memargs, we report their fields, so the arg type is the containing type.
+ * This routine allows specifying the type of the subfield.
+ */
+bool
+report_memarg_field(sysarg_iter_info_t *ii,
+                    const syscall_arg_t *arg_info,
+                    app_pc ptr, size_t sz, const char *id,
+                    drsys_param_type_t type, const char *type_name)
+{
+    drsys_param_type_t containing_type = type_from_arg_info(arg_info);
+    return report_memarg_ex(ii, arg_info->param, mode_from_flags(arg_info->flags),
+                            ptr, sz, id, type, type_name, containing_type);
+}
+
+/* For memargs, we report their fields, so the arg type is the containing type. */
+bool
+report_memarg(sysarg_iter_info_t *ii,
+              const syscall_arg_t *arg_info,
+              app_pc ptr, size_t sz, const char *id)
+{
+    return report_memarg_field(ii, arg_info, ptr, sz, id, DRSYS_TYPE_STRUCT, NULL);
+}
+
+bool
+report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
+{
+    drsys_arg_t *arg = ii->arg;
+    arg->ordinal = ordinal;
+    arg->size = sizeof(reg_t);
+    drsyscall_os_get_sysparam_location(ii->pt, ordinal, arg);
+    arg->value = ii->pt->sysarg[ordinal];
+    arg->type = DRSYS_TYPE_UNKNOWN;
+    arg->type_name = NULL;
+    arg->mode = mode_from_flags(arg_flags);
+
+    /* We can't short-circuit on first iter b/c we have too much code that
+     * stores extra info in pre for post that's after several reports.
+     * Thus we just suppress future callbacks on first iter.
+     */
+    if (!ii->abort) {
+        if (!(*ii->cb_arg)(arg, ii->user_data))
+            ii->abort = true;
+    }
+    else
+        ASSERT(ii->pt->first_iter, "other than 1st iter, shouldn't report after abort");
+    return ii->pt->first_iter || !ii->abort;
 }
 
 bool
@@ -672,11 +704,9 @@ sysarg_invalid(syscall_arg_t *arg)
 
 /* pass 0 for size if there is no max size */
 bool
-handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-               byte *start, size_t size/*in bytes*/, uint arg_flags, char *safe,
-               bool check_addr)
+handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
+               byte *start, size_t size/*in bytes*/, char *safe, bool check_addr)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     /* the kernel wrote a wide string to the buffer: only up to the terminating
      * null should be marked as defined
      */
@@ -686,16 +716,17 @@ handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
     size_t maxsz = (size == 0) ? (MAX_PATH*sizeof(char)) : size;
     if (start == NULL)
         return false; /* nothing to do */
-    if (pre && !TEST(SYSARG_READ, arg_flags)) {
+    if (ii->arg->pre && !TEST(SYSARG_READ, arg_flags)) {
         if (!check_addr)
             return false;
         if (size > 0) {
             /* if max size specified, on pre-write check whole thing for addr */
-            check_sysmem(check_type, sysnum, start, size, mc, id);
+            report_memarg_type(ii, ordinal, arg_flags, start, size, id,
+                               DRSYS_TYPE_CSTRING, NULL);
             return true;
         }
     }
-    if (!pre && !TEST(SYSARG_WRITE, arg_flags))
+    if (!ii->arg->pre && !TEST(SYSARG_WRITE, arg_flags))
         return false; /*nothing to do */
     for (i = 0; i < maxsz; i += sizeof(char)) {
         if (safe != NULL)
@@ -707,14 +738,15 @@ handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
         if (c == L'\0')
             break;
     }
-    check_sysmem(check_type, sysnum, start, i + sizeof(char), mc, id);
+    report_memarg_type(ii, ordinal, arg_flags, start, i + sizeof(char), id,
+                       DRSYS_TYPE_CSTRING, NULL);
     return true;
 }
 
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
-sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
-                int argnum, bool pre, byte *start, int sysnum, dr_mcontext_t *mc)
+sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
+                syscall_arg_t *arg, int argnum, bool pre, byte *start)
 {
     ptr_uint_t size = 0;
     if (arg->size == SYSARG_POST_SIZE_RETVAL) {
@@ -744,8 +776,9 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
                 /* by using this flag, os-specific code gives up first access
                  * rights (i.e., to skip this check, don't use this flag)
                  */
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, field,
-                             sizeof(sz), mc, NULL);
+                if (!report_memarg_type(ii, arg->param, SYSARG_READ, field,
+                                        sizeof(sz), NULL, DRSYS_TYPE_INT, NULL))
+                    return 0;
                 if (safe_read(field, sizeof(sz), &sz))
                     size = sz;
                 else
@@ -753,6 +786,9 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
             }
             /* Even if we failed to get the size, initialize this for
              * post-syscall checks.
+             */
+            /* We don't check pt->first_iter b/c drsys_iterate_args() does not
+             * invoke this code.  No harm in setting every time.
              */
             store_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD, size);
         } else {
@@ -801,31 +837,21 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, syscall_arg_t *arg,
     return size;
 }
 
+/* Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in */
 static void
-process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                                     syscall_info_t *sysinfo)
+process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    void *drcontext = ii->arg->drcontext;
+    syscall_info_t *sysinfo = pt->sysinfo;
     app_pc start;
     ptr_uint_t size;
     uint num_args;
     int i, last_param = -1;
     char idmsg[32];
 
-    LOG(2, "processing pre system call #"PIFX" %s\n", sysnum, sysinfo->name);
+    LOG(SYSCALL_VERBOSE, "processing pre system call #"SYSNUM_FMT"."SYSNUM_FMT" %s\n",
+        pt->sysnum.number, pt->sysnum.secondary, sysinfo->name);
     num_args = sysinfo->arg_count;
-    /* Treat all parameters as IN.
-     * There are no inlined OUT params anyway: have to at least set
-     * to NULL, unless truly ignored based on another parameter.
-     */
-    for (i=0; i<num_args; i++) {
-        size_t argsz = sizeof(reg_t);
-        if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags)) {
-            /* BOOLEAN is only 1 byte so ok if only lsb is defined */
-            argsz = 1;
-        }
-        check_sysparam(sysnum, i, mc, argsz);
-    }
     for (i=0; i<num_args; i++) {
         LOG(SYSCALL_VERBOSE, "\t  pre considering arg %d %d %x\n", sysinfo->arg[i].param,
             sysinfo->arg[i].size, sysinfo->arg[i].flags);
@@ -850,24 +876,26 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
         if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags))
             continue;
 
-        start = (app_pc) dr_syscall_get_param(drcontext, sysinfo->arg[i].param);
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, true/*pre*/, start,
-                               sysnum, mc);
+        start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
+        size = sysarg_get_size(drcontext, pt, ii, &sysinfo->arg[i], i,
+                               true/*pre*/, start);
+        if (ii->abort)
+            break;
 
         /* FIXME PR 406355: we don't record which params are optional 
          * FIXME: some OUT params may not be written if the IN is bogus:
          * we should check here since harder to undo post-syscall on failure.
          */
         if (start != NULL && size > 0) {
-            bool skip = os_handle_pre_syscall_arg_access(sysnum, mc, i,
-                                                         &sysinfo->arg[i],
+            bool skip = os_handle_pre_syscall_arg_access(ii, &sysinfo->arg[i],
                                                          start, size);
+            if (ii->abort)
+                break;
             /* i#502-c#5 some arg should be ignored if next is NULL */
             if (!skip &&
                 TESTALL(SYSARG_READ | SYSARG_IGNORE_IF_NEXT_NULL,
                         sysinfo->arg[i].flags) &&
-                (app_pc)dr_syscall_get_param(drcontext, sysinfo->arg[i+1].param)
-                == NULL) {
+                (app_pc) pt->sysarg[sysinfo->arg[i+1].param] == NULL) {
                 ASSERT(i+1 < sysinfo->arg_count, "sysarg index out of bound");
                 skip = true;
             }
@@ -884,19 +912,19 @@ process_pre_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t 
                        "message buffer too small");
                 NULL_TERMINATE_BUFFER(idmsg);
 
-                check_sysmem((TEST(SYSARG_READ, sysinfo->arg[i].flags) ?
-                             MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE),
-                             sysnum, start, size, mc, idmsg);
+                if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                    break;
             }
         }
     }
 }
 
+/* Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in */
 static void
-process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                                      syscall_info_t *sysinfo)
+process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+    void *drcontext = ii->arg->drcontext;
+    syscall_info_t *sysinfo = pt->sysinfo;
     app_pc start;
     ptr_uint_t size, last_size = 0;
     uint num_args;
@@ -906,12 +934,9 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 #ifdef WINDOWS
     ptr_int_t result = dr_syscall_get_result(drcontext);
 #endif
-    LOG(SYSCALL_VERBOSE, "processing post system call #");
-    if (SYSNUM_HAS_SECONDARY(sysnum)) {
-        LOG(SYSCALL_VERBOSE, PIFX"."PIFX, SYSNUM_PRIMARY(sysnum),
-            SYSNUM_SECONDARY(sysnum));
-    } else
-        LOG(SYSCALL_VERBOSE, PIFX, sysnum);
+
+    LOG(SYSCALL_VERBOSE, "processing post system call #"SYSNUM_FMT"."SYSNUM_FMT,
+        pt->sysnum.number, pt->sysnum.secondary);
     LOG(SYSCALL_VERBOSE, " %s res="PIFX"\n",
         sysinfo->name, dr_syscall_get_result(drcontext));
     num_args = sysinfo->arg_count;
@@ -938,8 +963,10 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
 #endif
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        size = sysarg_get_size(drcontext, pt, &sysinfo->arg[i], i, false/*!pre*/, start,
-                               sysnum, mc);
+        size = sysarg_get_size(drcontext, pt, ii, &sysinfo->arg[i], i,
+                               false/*!pre*/, start);
+        if (ii->abort)
+            break;
         /* indicate which syscall arg (i#510) */
         IF_DEBUG(res = )
             dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
@@ -974,9 +1001,11 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
             }
             if (start != NULL && size > 0) {
                 bool skip = os_handle_post_syscall_arg_access
-                    (sysnum, mc, i, &sysinfo->arg[i], start, size);
-                if (!skip)
-                    check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, idmsg);
+                    (ii, &sysinfo->arg[i], start, size);
+                if (!skip) {
+                    if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                        break;
+                }
             }
             continue;
         }
@@ -990,28 +1019,30 @@ process_post_syscall_reads_and_writes(void *drcontext, int sysnum, dr_mcontext_t
             continue;
         LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
         if (start != NULL && size > 0) {
-            bool skip = os_handle_post_syscall_arg_access(sysnum, mc, i,
-                                                          &sysinfo->arg[i],
+            bool skip = os_handle_post_syscall_arg_access(ii, &sysinfo->arg[i],
                                                           start, size);
-            if (!skip)
-                check_sysmem(MEMREF_WRITE, sysnum, start, size, mc, idmsg);
+            if (!skip) {
+                if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                    break;
+            }
         }
     }
 }
 
-syscall_info_t *
-get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt)
+static syscall_info_t *
+get_sysinfo(cls_syscall_t *pt, int initial_num, drsys_sysnum_t *sysnum OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(*sysnum);
+    syscall_info_t *sysinfo;
+    ASSERT(sysnum != NULL, "invalid param");
+    sysnum->number = initial_num;
+    sysnum->secondary = 0;
+    sysinfo = syscall_lookup(*sysnum);
     if (sysinfo != NULL) {
         if (TEST(SYSINFO_SECONDARY_TABLE, sysinfo->flags)) {
             uint code;
             ASSERT(sysinfo->arg_count >= 1, "at least 1 arg for code");
             code = pt->sysarg[sysinfo->arg[0].param];
-            /* encode a new sysnum */
-            ASSERT((uint)*sysnum <= SYSNUM_MAX_PRIMARY, "sysnum too large");
-            ASSERT(code <= SYSNUM_MAX_SECONDARY, "secondary sysnum too large");
-            *sysnum = SYSNUM_COMBINE(*sysnum, code);
+            sysnum->secondary = code;
             /* get a new sysinfo */
             sysinfo = syscall_lookup(*sysnum);
         }
@@ -1019,46 +1050,173 @@ get_sysinfo(int *sysnum IN OUT, cls_syscall_t *pt)
     return sysinfo;
 }
 
+/* used to ignore either memargs or regular args while iterating the other */
 static bool
-event_pre_syscall(void *drcontext, int sysnum)
+nop_iter_cb(drsys_arg_t *arg, void *user_data)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    syscall_info_t *sysinfo;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    int i;
-    bool res = true;
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
+    return true; /* must keep going to find the other type */
+}
 
-#ifdef STATISTICS
-    /* XXX: we could dynamically allocate entries and separate secondary syscalls */
-    if (sysnum >= MAX_SYSNUM-1) {
-        ATOMIC_INC32(syscall_invoked[MAX_SYSNUM-1]);
+DR_EXPORT
+drmf_status_t
+drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    drsys_arg_t arg;
+    sysarg_iter_info_t iter_info = {&arg, cb, nop_iter_cb, user_data, pt, false};
+
+    arg.drcontext = drcontext;
+    arg.sysnum = pt->sysnum;
+    arg.pre = pt->pre;
+    arg.mc = &pt->mc;
+    arg.valid = true;
+    arg.value = 0; /* only used for arg iterator */
+
+    if (pt->pre) {
+        if (pt->sysinfo != NULL) {
+            process_pre_syscall_reads_and_writes(pt, &iter_info);
+            os_handle_pre_syscall(drcontext, pt, &iter_info);
+        }
+        if (!pt->known) {
+            handle_pre_unknown_syscall(drcontext, pt, &iter_info);
+        }
     } else {
-        ATOMIC_INC32(syscall_invoked[sysnum]);
-    }
+#ifdef SYSCALL_DRIVER
+        if (drsys_ops.syscall_driver)
+            driver_process_writes(drcontext, sysnum);
 #endif
+        if (pt->sysinfo != NULL) {
+            if (!os_syscall_succeeded(pt->sysnum, pt->sysinfo,
+                                      (ptr_int_t)dr_syscall_get_result(drcontext))) {
+                LOG(SYSCALL_VERBOSE,
+                    "system call #"SYSNUM_FMT"."SYSNUM_FMT" %s failed with "PFX"\n",
+                    pt->sysnum.number, pt->sysnum.secondary,
+                    os_syscall_get_name(pt->sysnum), dr_syscall_get_result(drcontext));
+            } else {
+                process_post_syscall_reads_and_writes(pt, &iter_info);
+            }
+            os_handle_post_syscall(drcontext, pt, &iter_info);
+        }
+        if (!pt->known)
+            handle_post_unknown_syscall(drcontext, pt, &iter_info);
+    }
+    pt->first_iter = false;
+    return DRMF_SUCCESS;
+}
 
-    LOG(SYSCALL_VERBOSE, "system call #"PIFX" %s\n", sysnum, get_syscall_name(sysnum));
-    DOLOG(SYSCALL_VERBOSE, { 
-        /* for sysenter, pc is at vsyscall and there's no frame for wrapper.
-         * simplest soln: skip to wrapper now.
-         */
-        app_pc tmp = mc.pc;
-        app_pc parent;
-        if (safe_read((void *)mc.xsp, sizeof(parent), &parent))
-            mc.pc = parent;
-        report_callstack(drcontext, &mc);
-        mc.pc = tmp;
-    });
+DR_EXPORT
+drmf_status_t
+drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    drsys_arg_t arg;
+    sysarg_iter_info_t iter_info = {&arg, nop_iter_cb, cb, user_data, pt, false};
+    int i, compacted;
+
+    if (pt->sysinfo == NULL)
+        return DRMF_ERROR_DETAILS_UNKNOWN;
+
+    LOG(2, "iterating over args for syscall #"SYSNUM_FMT"."SYSNUM_FMT" %s\n",
+        pt->sysnum.number, pt->sysnum.secondary, pt->sysinfo->name);
+
+    arg.drcontext = drcontext;
+    arg.sysnum = pt->sysnum;
+    arg.pre = pt->pre;
+    arg.mc = &pt->mc;
+
+    arg.arg_name = NULL;
+    arg.valid = true;
+    arg.containing_type = DRSYS_TYPE_INVALID;
+    
+    /* Treat all parameters as IN.
+     * There are no inlined OUT params anyway: have to at least set
+     * to NULL, unless truly ignored based on another parameter.
+     */
+    for (i = 0, compacted = 0; i < pt->sysinfo->arg_count; i++) {
+        arg.ordinal = i;
+        arg.size = sizeof(void*);
+        drsyscall_os_get_sysparam_location(pt, i, &arg);
+        arg.type = DRSYS_TYPE_UNKNOWN;
+        arg.type_name = NULL;
+        arg.mode = SYSARG_READ;
+        arg.value = pt->sysarg[i];
+
+        /* FIXME i#1089: add type info for the non-memory-complex-type args */
+        if (!sysarg_invalid(&pt->sysinfo->arg[compacted]) &&
+            pt->sysinfo->arg[compacted].param == i) {
+            if (TEST(SYSARG_COMPLEX_TYPE, pt->sysinfo->arg[compacted].flags)) {
+                arg.type = type_from_arg_info(&pt->sysinfo->arg[compacted]);
+            }
+            if (TEST(SYSARG_INLINED_BOOLEAN, pt->sysinfo->arg[compacted].flags)) {
+                /* BOOLEAN is only 1 byte so ok if only lsb is defined */
+                arg.size = 1;
+            }
+            arg.mode = mode_from_flags(pt->sysinfo->arg[compacted].flags);
+            /* Go to next entry.  Skip double entries. */
+            while (pt->sysinfo->arg[compacted].param == i &&
+                   !sysarg_invalid(&pt->sysinfo->arg[compacted]))
+                compacted++;
+            ASSERT(compacted <= MAX_NONINLINED_ARGS, "error in table entry");
+        }
+
+        if (!(*cb)(&arg, user_data))
+            break;
+    }
+
+    /* FIXME i#822: for non-status retvals, call *cb for DRSYS_PARAM_RETVAL.
+     * SYSINFO_RET_ZERO_FAIL all seem to return handle today?
+     * NtUserRegisterClassExWOW returns an atom.
+     * They don't all create: that's SYSINFO_CREATE_HANDLE.
+     */
+    
+    /* Handle dynamically-determined parameters.  For simpler code, we pay the
+     * cost of calls to nop_iter_cb for all the memargs.  An alternative would
+     * be to pass in a flag and check it before each report_{memarg,sysarg},
+     * or to split the routines up (but that would duplicate a lot of code).
+     */
+    os_handle_pre_syscall(drcontext, pt, &iter_info);
+
+    pt->first_iter = false;
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_iterate_arg_types(drsys_sysnum_t sysnum, drsys_iter_cb_t cb, void *user_data)
+{
+    /* FIXME i#822: NYI */
+    return DRMF_ERROR_NOT_IMPLEMENTED;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t num, void *user_data),
+                       void *user_data)
+{
+    /* FIXME i#822: NYI */
+    return DRMF_ERROR_NOT_IMPLEMENTED;
+}
+
+static bool
+drsys_event_pre_syscall(void *drcontext, int initial_num)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    int i;
+
+    /* cache values for dynamic iteration */
+    pt->pre = true;
+    pt->first_iter = true;
+
+    pt->mc.size = sizeof(pt->mc);
+    pt->mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
+    dr_get_mcontext(drcontext, &pt->mc);
 
     /* save params for post-syscall access 
      * FIXME: it's possible for a pathological app to crash us here
      * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
      * params will hit unreadable page: should use TRY/EXCEPT
      */
-    LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", mc.xsp);
+    LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", pt->mc.xsp);
     for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
         pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
         LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
@@ -1070,49 +1228,10 @@ event_pre_syscall(void *drcontext, int sysnum)
         memset(pt->extra_inuse, 0, sizeof(pt->extra_inuse));
     });
 
-    /* acquire expanded sysnum for os_shared_pre_syscall() in addition to
-     * shadow checks
-     */
-    sysinfo = get_sysinfo(&sysnum, pt);
-    DOLOG(SYSCALL_VERBOSE, {
-        if (sysinfo != NULL && SYSNUM_HAS_SECONDARY(sysnum)) {
-            LOG(SYSCALL_VERBOSE, "system call #"PIFX"."PIFX" %s\n",
-                SYSNUM_PRIMARY(sysnum), SYSNUM_SECONDARY(sysnum),
-                get_syscall_name(sysnum));
-        }
-    });
-
-    /* give os-specific-code chance to do non-shadow processing */
-    res = os_shared_pre_syscall(drcontext, pt, sysnum _IF_WINDOWS(&mc));
-    if (auxlib_known_syscall(sysnum))
-        res = auxlib_shared_pre_syscall(drcontext, sysnum, &mc) && res;
-
-    /* FIXME: i#750 need enable system call parameter checks in pattern mode. */
-    if (options.shadowing) {
-        bool known = false;
-        if (sysinfo != NULL) {
-            known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
-            process_pre_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
-            res = os_shadow_pre_syscall(drcontext, pt, sysnum) && res;
-        }
-        /* there may be overlap between our table and auxlib: e.g., SYS_ioctl */
-        if (auxlib_known_syscall(sysnum)) {
-            known = true;
-            res = auxlib_shadow_pre_syscall(drcontext, sysnum, &mc) && res;
-        }
-        if (!known) {
-            handle_pre_unknown_syscall(drcontext, sysnum, &mc, pt);
-        }
-    }
-
-    /* syscall-specific handling we ourselves need, which must come after
-     * shadow handling for proper NtContinue handling and proper
-     * NtCallbackReturn handling
-     */
-    handle_pre_alloc_syscall(drcontext, sysnum, &mc, pt->sysarg, SYSCALL_NUM_ARG_STORE);
-
-    if (options.perturb)
-        res = perturb_pre_syscall(drcontext, sysnum) && res;
+    /* now that we have pt->sysarg set, get sysinfo and sysnum */
+    pt->sysinfo = get_sysinfo(pt, initial_num, &pt->sysnum);
+    pt->known = (pt->sysinfo != NULL &&
+                 TEST(SYSINFO_ALL_PARAMS_KNOWN, pt->sysinfo->flags));
 
 #ifdef SYSCALL_DRIVER
     /* do this as late as possible to avoid our own syscalls from corrupting
@@ -1120,72 +1239,123 @@ event_pre_syscall(void *drcontext, int sysnum)
      * the current plan is to query the driver on all syscalls, not just unknown,
      * as a sanity check on both sides.
      */
-    if (options.syscall_driver)
-        driver_pre_syscall(drcontext, sysnum);
+    if (drsys_ops.syscall_driver)
+        driver_pre_syscall(drcontext, pt->sysnum);
 #endif
 
-    return res;
+    return true;
 }
 
 static void
-event_post_syscall(void *drcontext, int sysnum)
+drsys_event_post_syscall(void *drcontext, int sysnum)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
 
 #ifdef SYSCALL_DRIVER
     /* do this as early as possible to avoid drmem's own syscalls.
      * unfortunately the module load event runs before this: so we skip
      * NtMapViewOfSection.
      */
-    if (options.syscall_driver) {
+    if (drsys_ops.syscall_driver) {
         const char *name = get_syscall_name(sysnum);
         if (name == NULL || strcmp(name, "NtMapViewOfSection") != 0)
-            driver_process_writes(drcontext, sysnum);
+            driver_freeze_writes(drcontext);
+        else
+            driver_reset_writes(drcontext);
     }
 #endif
 
-    handle_post_alloc_syscall(drcontext, sysnum, &mc, pt->sysarg, SYSCALL_NUM_ARG_STORE);
-    os_shared_post_syscall(drcontext, pt, sysnum _IF_WINDOWS(&mc));
-    if (auxlib_known_syscall(sysnum))
-        auxlib_shared_post_syscall(drcontext, sysnum, &mc);
-
-    if (options.shadowing) {
-        bool known = false;
-        syscall_info_t *sysinfo;
-
-        /* post-syscall, eax is defined */
-        register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
-
-        sysinfo = get_sysinfo(&sysnum, pt);
-        if (sysinfo != NULL) {
-            known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
-            if (!os_syscall_succeeded(sysnum, sysinfo,
-                                      (ptr_int_t)dr_syscall_get_result(drcontext))) {
-                LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
-                    sysnum, get_syscall_name(sysnum), dr_syscall_get_result(drcontext));
-            } else {
-                /* commit the writes via MEMREF_WRITE */
-                process_post_syscall_reads_and_writes(drcontext, sysnum, &mc, sysinfo);
-            }
-            os_shadow_post_syscall(drcontext, pt, sysnum);
-        }
-        if (auxlib_known_syscall(sysnum)) {
-            known = true;
-            auxlib_shadow_post_syscall(drcontext, sysnum, &mc);
-        }
-        if (!known)
-            handle_post_unknown_syscall(drcontext, sysnum, pt);
-    }
+    /* cache values for dynamic iteration */
+    ASSERT(pt->mc.size == sizeof(pt->mc), "mc was clobbered");
+    ASSERT(pt->mc.flags == (DR_MC_CONTROL|DR_MC_INTEGER), "mc was clobbered");
+    dr_get_mcontext(drcontext, &pt->mc);
+    pt->pre = false;
 }
 
-static bool
-event_filter_syscall(void *drcontext, int sysnum)
+
+static void
+drsys_event_post_syscall_last(void *drcontext, int sysnum)
 {
-    return true; /* intercept everything */
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+
+    /* The client's post-syscall event occurs prior to this due to our large
+     * priority value.  Thus, all iterations are now done and we can perform
+     * a final iteration that enacts any necessary state changes.
+     */
+#ifdef SYSCALL_DRIVER
+    if (drsys_ops.syscall_driver)
+        driver_reset_writes(drcontext);
+#endif
+    if (!pt->known)
+        handle_post_unknown_syscall(drcontext, pt, NULL);
+}
+
+/***************************************************************************
+ * Filters
+ */
+
+/* We keep a table as a convenience so that the client can use a
+ * static iterator and simply call our filter registration for each
+ * interesting syscall found.
+ */
+static bool filter_all;
+#define FILTERED_TABLE_HASH_BITS 6
+/* Operates on DR's simple "int sysnum" */
+static hashtable_t filtered_table;
+
+static bool
+drsys_event_filter_syscall(void *drcontext, int sysnum)
+{
+    return (filter_all ||
+            (hashtable_lookup(&filtered_table, (void *)(ptr_int_t)sysnum) != NULL));
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_filter_syscall(drsys_sysnum_t sysnum)
+{
+    /* DR only gives us the primary number, so we over-filter */
+    hashtable_add(&filtered_table, (void *)(ptr_uint_t)sysnum.number,
+                  (void *)(ptr_uint_t)sysnum.number);
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_filter_all_syscalls(void)
+{
+    filter_all = true;
+    return DRMF_SUCCESS;
+}
+
+/***************************************************************************
+ * Events and Top-Level
+ */
+
+static dr_emit_flags_t
+drsys_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                        bool for_trace, bool translating, void **user_data)
+{
+    instr_t *inst;
+    for (inst = instrlist_first(bb); inst != NULL; inst = instr_get_next(inst)) {
+        if (instr_is_syscall(inst))
+            check_syscall_gateway(inst);
+    }
+
+    return DR_EMIT_DEFAULT;
+}
+
+static dr_emit_flags_t
+drsys_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                      bool for_trace, bool translating, void *user_data)
+{
+    return DR_EMIT_DEFAULT;
+}
+
+static void
+syscall_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    drsyscall_os_module_load(drcontext, info, loaded);
 }
 
 static void
@@ -1209,12 +1379,19 @@ syscall_context_init(void *drcontext, bool new_depth)
     cls_syscall_t *cpt;
     if (new_depth) {
         cpt = (cls_syscall_t *) thread_alloc(drcontext, sizeof(*cpt), HEAPSTAT_MISC);
-        drmgr_set_cls_field(drcontext, cls_idx_syscall, cpt);
+        drmgr_set_cls_field(drcontext, cls_idx_drsys, cpt);
     } else {
-        cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
+        cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
         syscall_reset_per_thread(drcontext, cpt);
     }
     memset(cpt, 0, sizeof(*cpt));
+
+#ifdef SYSCALL_DRIVER
+    if (drsys_ops.syscall_driver &&
+        /* exclude thread init */
+        !new_depth || drmgr_get_parent_cls_field(drcontext, cls_idx_drsys) != NULL)
+        driver_handle_callback(drcontext);
+#endif
 }
 
 static void
@@ -1222,47 +1399,94 @@ syscall_context_exit(void *drcontext, bool thread_exit)
 {
     if (thread_exit) {
         cls_syscall_t *cpt = (cls_syscall_t *)
-            drmgr_get_cls_field(drcontext, cls_idx_syscall);
+            drmgr_get_cls_field(drcontext, cls_idx_drsys);
         syscall_reset_per_thread(drcontext, cpt);
         thread_free(drcontext, cpt, sizeof(*cpt), HEAPSTAT_MISC);
     }
     /* else, nothing to do: we leave the struct for re-use on next callback */
+
+#ifdef SYSCALL_DRIVER
+    if (drsys_ops.syscall_driver && !thread_exit)
+        driver_handle_cbret(drcontext);
+#endif
 }
 
-void
+static void
 syscall_thread_init(void *drcontext)
 {
     /* we lazily initialize sysarg_ arrays */
 
 #ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
+    if (drsys_ops.syscall_driver)
         driver_thread_init(drcontext);
 #endif
 
-    syscall_os_thread_init(drcontext);
+    drsyscall_os_thread_init(drcontext);
 }
 
-void
+static void
 syscall_thread_exit(void *drcontext)
 {
-    syscall_os_thread_exit(drcontext);
+    drsyscall_os_thread_exit(drcontext);
 
 #ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
+    if (drsys_ops.syscall_driver)
         driver_thread_exit(drcontext);
 #endif
 }
 
-void
-syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
+DR_EXPORT
+drmf_status_t
+drsys_init(client_id_t client_id, drsys_options_t *ops)
 {
-    if (drsys_init(client_id) != DRMF_SUCCESS)
-        ASSERT(false, "drsys failed to init");
+    void *drcontext = dr_get_current_drcontext();
+    drmf_status_t res;
+    drmgr_priority_t pri_modload =
+        {sizeof(pri_modload), DRMGR_PRIORITY_NAME_DRSYS, NULL, NULL,
+         DRMGR_PRIORITY_MODLOAD_DRSYS};
+    drmgr_priority_t pri_presys =
+        {sizeof(pri_presys), DRMGR_PRIORITY_NAME_DRSYS, NULL, NULL,
+         DRMGR_PRIORITY_PRESYS_DRSYS};
+    drmgr_priority_t pri_postsys =
+        {sizeof(pri_postsys), DRMGR_PRIORITY_NAME_DRSYS, NULL, NULL,
+         DRMGR_PRIORITY_POSTSYS_DRSYS};
+    drmgr_priority_t pri_postsys_last =
+        {sizeof(pri_postsys_last), DRMGR_PRIORITY_NAME_DRSYS_LAST, NULL, NULL,
+         DRMGR_PRIORITY_POSTSYS_DRSYS_LAST};
+    /* we don't insert anything so priority shouldn't matter */
+    drmgr_priority_t pri_bb =
+        {sizeof(pri_bb), DRMGR_PRIORITY_NAME_DRSYS, NULL, NULL, 0};
 
-    cls_idx_syscall = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
-    ASSERT(cls_idx_syscall > -1, "unable to reserve CLS field");
+    /* handle multiple sets of init/exit calls */
+    int count = dr_atomic_add32_return_sum(&init_count, 1);
+    if (count > 1)
+        return true;
 
-    syscall_os_init(drcontext _IF_WINDOWS(ntdll_base));
+    res = drmf_check_version(client_id);
+    if (res != DRMF_SUCCESS)
+        return res;
+
+    drmgr_init();
+
+    if (ops->struct_size > sizeof(drsys_ops))
+        return DRMF_ERROR_INCOMPATIBLE_VERSION;
+    /* once we start appending new options we'll replace this */
+    if (ops->struct_size != sizeof(drsys_ops))
+        return DRMF_ERROR_INCOMPATIBLE_VERSION;
+    memcpy(&drsys_ops, ops, sizeof(drsys_ops));
+
+    drmgr_register_thread_init_event(syscall_thread_init);
+    drmgr_register_thread_exit_event(syscall_thread_exit);
+    drmgr_register_module_load_event_ex(syscall_module_load, &pri_modload);
+
+    cls_idx_drsys = drmgr_register_cls_field(syscall_context_init, syscall_context_exit);
+    ASSERT(cls_idx_drsys > -1, "unable to reserve CLS field");
+    if (cls_idx_drsys == -1)
+        return DRMF_ERROR;
+
+    res = drsyscall_os_init(drcontext);
+    if (res != DRMF_SUCCESS)
+        return res;
 
     /* We used to handle all the gory details of Windows pre- and
      * post-syscall hooking ourselves, including system call parameter
@@ -1287,66 +1511,51 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
      * But now that DR 1.3 has syscall events we use those, which also makes it
      * easier to port to Linux.
      */
-    dr_register_filter_syscall_event(event_filter_syscall);
-    drmgr_register_pre_syscall_event(event_pre_syscall);
-    drmgr_register_post_syscall_event(event_post_syscall);
+    drmgr_register_pre_syscall_event_ex(drsys_event_pre_syscall, &pri_presys);
+    drmgr_register_post_syscall_event_ex(drsys_event_post_syscall, &pri_postsys);
+    drmgr_register_post_syscall_event_ex(drsys_event_post_syscall_last, &pri_postsys_last);
 
-    /* We support additional system call handling via a separate shared library */
-    if (options.auxlib[0] != '\0')
-        syscall_load_auxlib(options.auxlib);
+    dr_register_filter_syscall_event(drsys_event_filter_syscall);
+    hashtable_init(&filtered_table, FILTERED_TABLE_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+
+    if (!drmgr_register_bb_instrumentation_event
+        (drsys_event_bb_analysis, drsys_event_bb_insert, &pri_bb)) {
+        ASSERT(false, "drmgr registration failed");
+    }
 
 #ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
+    if (drsys_ops.syscall_driver)
         driver_init();
 #endif
+
+    return DRMF_SUCCESS;
 }
 
-void
-syscall_exit(void)
+DR_EXPORT
+drmf_status_t
+drsys_exit(void)
 {
-    if (drsys_exit() != DRMF_SUCCESS)
-        ASSERT(false, "drsys failed to exit");
+    /* handle multiple sets of init/exit calls */
+    int count = dr_atomic_add32_return_sum(&init_count, -1);
+    if (count > 0)
+        return DRMF_SUCCESS;
 
 #ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
+    if (drsys_ops.syscall_driver)
         driver_exit();
 #endif
-
-    if (auxlib != NULL && !dr_unload_aux_library(auxlib))
-        LOG(1, "WARNING: unable to unload auxlib\n");
  
-    syscall_os_exit();
+    hashtable_delete(&filtered_table);
+
+    drsyscall_os_exit();
 
     drmgr_unregister_cls_field(syscall_context_init, syscall_context_exit,
-                               cls_idx_syscall);
-}
+                               cls_idx_drsys);
 
-void
-syscall_module_load(void *drcontext, const module_data_t *info, bool loaded)
-{
-    syscall_os_module_load(drcontext, info, loaded);
-}
+    drmgr_exit();
 
-void
-syscall_handle_callback(void *drcontext)
-{
-    /* note that this is not quite the same as syscall_context_init() b/c
-     * that includes thread init (no callback)
-     */
-#ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
-        driver_handle_callback(drcontext);
-#endif
-}
-
-void
-syscall_handle_cbret(void *drcontext)
-{
-    /* we could get rid of this and call from syscall_context_exit() for !thread_exit */
-#ifdef SYSCALL_DRIVER
-    if (options.syscall_driver)
-        driver_handle_cbret(drcontext);
-#endif
+    return DRMF_SUCCESS;
 }
 
 /***************************************************************************
@@ -1356,6 +1565,10 @@ syscall_handle_cbret(void *drcontext)
 void
 store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value)
 {
+    ASSERT(pt->first_iter ||
+           /* exception for sysarg_get_size() */
+           index == EXTRA_INFO_SIZE_FROM_FIELD,
+           "only store on first iter");
     ASSERT(index <= EXTRA_INFO_MAX, "index too high");
     DODEBUG({
         ASSERT(!pt->extra_inuse[index], "sysarg extra info conflict");
@@ -1372,7 +1585,7 @@ release_extra_info(cls_syscall_t *pt, int index)
     value = pt->extra_info[index];
     DODEBUG({
         ASSERT(pt->extra_inuse[index], "sysarg extra info used improperly");
-        pt->extra_inuse[index] = false;
+        /* we can't set to false b/c there are multiple iters */
     });
     return value;
 }

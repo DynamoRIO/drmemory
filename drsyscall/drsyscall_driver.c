@@ -27,7 +27,8 @@
 #include "drmemory.h"
 #include "utils.h"
 #include "shadow.h"
-#include "syscall_driver.h"
+#include "drsyscall_driver.h"
+#include "drsyscall.h"
 #include "drmemory/driver/drmemory.h" /* off of SYSCALL_DRIVER_SRCDIR */
 
 /***************************************************************************
@@ -66,7 +67,8 @@ static int tls_idx_driver = -1;
 
 typedef struct _tls_driver_t {
     void *driver_buffer;
-    int sysnum;
+    drsys_sysnum_t sysnum;
+    uint frozen_num_writes;
 } tls_driver_t;
 
 void
@@ -167,23 +169,24 @@ driver_handle_cbret(void *drcontext)
 }
 
 void
-driver_pre_syscall(void *drcontext, int sysnum)
+driver_pre_syscall(void *drcontext, drsys_sysnum_t sysnum)
 {
     tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
     WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
     size_t i;
 
-    /* remember for syscall_handle_cbret */
+    /* remember for driver_handle_cbret */
     pt->sysnum = sysnum;
 
     if (f_driver == INVALID_FILE || writes == NULL)
         return;
     /* reset */
     writes->num_used = 0;
+    pt->frozen_num_writes = 0;
 }
 
 bool
-driver_process_writes(void *drcontext, int sysnum)
+driver_freeze_writes(void *drcontext)
 {
     tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
     WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
@@ -198,7 +201,21 @@ driver_process_writes(void *drcontext, int sysnum)
         LOG(2, "driver writes buffer is full\n");
     } else
         num = writes->num_used;
-    for (i = 0; i < num; i++) {
+    pt->frozen_num_writes = num;
+    return true;
+}
+
+bool
+driver_process_writes(void *drcontext, drsys_sysnum_t sysnum)
+{
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
+    size_t i;
+    if (f_driver == INVALID_FILE)
+        return false;
+    if (writes == NULL)
+        return false;
+    for (i = 0; i < pt->frozen_num_writes; i++) {
         LOG(2, "driver info: syscall #0x%x write %d: "PFX"-"PFX"\n",
             sysnum, i, writes->writes[i].start,
             (byte*)writes->writes[i].start + writes->writes[i].length);        
@@ -206,7 +223,15 @@ driver_process_writes(void *drcontext, int sysnum)
                          (byte*)writes->writes[i].start + writes->writes[i].length,
                          SHADOW_DEFINED);
     }
-    writes->num_used = 0;
     return true;
 }
 
+bool
+driver_reset_writes(void *drcontext)
+{
+    tls_driver_t *pt = (tls_driver_t *) drmgr_get_tls_field(drcontext, tls_idx_driver);
+    WritesBuffer *writes = (WritesBuffer *) pt->driver_buffer;
+    writes->num_used = 0;
+    pt->frozen_num_writes = 0;
+    return true;
+}

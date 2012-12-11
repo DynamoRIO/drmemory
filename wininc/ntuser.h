@@ -15,6 +15,8 @@
 #ifndef __WIN32K_NTUSER_H
 #define __WIN32K_NTUSER_H
 
+#include "ndk_extypes.h"
+
 typedef char *PSZ;
 typedef const char *PCSZ;
 typedef int INT;
