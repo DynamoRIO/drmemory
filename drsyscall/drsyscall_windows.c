@@ -22,9 +22,9 @@
 
 #include "dr_api.h"
 #include "drmemory.h"
-#include "syscall.h"
-#include "syscall_os.h"
-#include "syscall_windows.h"
+#include "drsyscall.h"
+#include "drsyscall_os.h"
+#include "drsyscall_windows.h"
 #include "readwrite.h"
 #include "frontend.h"
 #include <stddef.h> /* offsetof */
@@ -40,26 +40,8 @@
 #include "../wininc/iptypes_undocumented.h"
 #include "../wininc/ntalpctyp.h"
 
-extern bool
-wingdi_shared_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                              dr_mcontext_t *mc);
-
-extern bool
-wingdi_shadow_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                              dr_mcontext_t *mc);
-
-extern bool
-wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
-                           const syscall_arg_t *arg_info, app_pc start, uint size);
-
-/* forward decl */
-bool
-handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-                byte *start, size_t size, uint arg_flags, wchar_t *safe,
-                bool check_addr);
-
-static int
-syscall_get_handle_type(syscall_info_t *sysinfo);
+static app_pc ntdll_base;
+dr_os_version_info_t win_ver = {sizeof(win_ver),};
 
 /***************************************************************************
  * WIN32K.SYS SYSTEM CALL NUMBERS
@@ -75,56 +57,56 @@ syscall_get_handle_type(syscall_info_t *sysinfo);
 
 static const char * const sysnum_names[] = {
 #define USER32(name, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   #name,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
 static const int win7wow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7wow,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win7x86_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7x86,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistawow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistawow,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistax86_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistax86,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXPwow_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpwow,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2003_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2003,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXP_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpx86,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2K_sysnums[] = {
 #define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2K,
-#include "syscall_numx.h"
+#include "drsyscall_numx.h"
 #undef USER32
 };
 
@@ -132,19 +114,68 @@ static const int win2K_sysnums[] = {
 #undef GDI32
 #undef KERNEL32
 
-/* Table that maps win32k.sys names to numbers.  We store the unchanged number
- * under the assumption that it's never 0 (that would be an ntoskrnl syscall)
- */
-#define SYSNUM_TABLE_HASH_BITS 12 /* nearly 1K of them, x2 for no-prefix entries */
-static hashtable_t sysnum_table;
-
 #ifdef STATISTICS
 /* Until we have everything in the tables for syscall_lookup we use this
- * to provide names
+ * to provide names.  It takes in primary numbers.
+ * For drsyscall framework, we went the route of not providing
+ * num2name until modload time, so we can keep this as stats-only.
  */
 # define SYSNAME_TABLE_HASH_BITS 11 /* nearly 1K of them */
 static hashtable_t sysname_table;
 #endif
+
+/***************************************************************************
+ * NAME TO NUMBER
+ */
+
+/* Table that maps syscall names to numbers.  We need to store primary + secondary,
+ * and we need to allocate the Zw forms, so we can't avoid a heap-allocated payload.
+ */
+#define NAME2NUM_TABLE_HASH_BITS 13 /* 1.5K of them, x2 for no-prefix entries + Zw */
+static hashtable_t name2num_table;
+
+typedef struct _name2num_entry_t {
+    char *name;
+    bool name_allocated;
+    drsys_sysnum_t num;
+} name2num_entry_t;
+
+static void
+name2num_entry_free(void *p)
+{
+    name2num_entry_t *e = (name2num_entry_t *) p;
+    if (e->name_allocated)
+        global_free(e->name, strlen(e->name) + 1/*null*/, HEAPSTAT_MISC);
+    global_free(e, sizeof(*e), HEAPSTAT_MISC);
+}
+
+void
+name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw)
+{
+    name2num_entry_t *e = global_alloc(sizeof(*e), HEAPSTAT_MISC);
+    bool ok;
+    if (dup_Zw && name[0] == 'N' && name[1] == 't') {
+        size_t len = strlen(name) + 1/*null*/;
+        e->name = global_alloc(len, HEAPSTAT_MISC);
+        dr_snprintf(e->name, len, "Zw%s", name + 2/*skip "Nt"*/);
+        e->name[len - 1] = '\0';
+        e->name_allocated = true;
+    } else {
+        e->name = (char *) name;
+        e->name_allocated = false;
+    }
+    e->num = num;
+    LOG(SYSCALL_VERBOSE + 1, "name2num: adding %s => "SYSNUM_FMT"."SYSNUM_FMT"\n",
+        e->name, num.number, num.secondary);
+    ok = hashtable_add(&name2num_table, (void *)e->name, (void *)e);
+    if (!ok) {
+        /* If we have any more of these, add a flag to drsyscall_numx.h */
+        ASSERT(strcmp(e->name, "GetThreadDesktop") == 0/*i#487*/ ||
+               strstr(e->name, "PREPAREFORLOGOFF") != NULL, /* NoParam vs OneParam */
+               "no dup entries in name2num_table");
+        name2num_entry_free((void *)e);
+    }
+}
 
 /***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
@@ -159,13 +190,12 @@ hashtable_t systable;
 /* Syscalls that need special processing.  The address of each is kept
  * in the syscall_info_t entry so we don't need separate lookup.
  */
-static int sysnum_CreateThread = -1;
-static int sysnum_CreateThreadEx = -1;
-static int sysnum_CreateUserProcess = -1;
-static int sysnum_DeviceIoControlFile = -1;
-static int sysnum_QuerySystemInformation = -1;
-static int sysnum_SetSystemInformation = -1;
-static int sysnum_TerminateProcess = -1;
+static drsys_sysnum_t sysnum_CreateThread = {-1,0};
+static drsys_sysnum_t sysnum_CreateThreadEx = {-1,0};
+static drsys_sysnum_t sysnum_CreateUserProcess = {-1,0};
+static drsys_sysnum_t sysnum_DeviceIoControlFile = {-1,0};
+static drsys_sysnum_t sysnum_QuerySystemInformation = {-1,0};
+static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: add new XP, Vista, and Win7 syscalls!
@@ -211,6 +241,9 @@ static int sysnum_TerminateProcess = -1;
 #define IB (SYSARG_INLINED_BOOLEAN)
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
 #define RET (SYSARG_POST_SIZE_RETVAL)
+/* FIXME i#822: for HANDLE (and later all args): some kind of INLINED flag
+ * that's also used for bool?
+ */
 static syscall_info_t syscall_ntdll_info[] = {
     /* Base set from Windows NT, Windows 2000, and Windows XP */
     {0,"NtAcceptConnectPort", OK|SYSINFO_CREATE_HANDLE, 6, {{0,sizeof(HANDLE),SYSARG_IS_HANDLE|SYSARG_WRITE}, {2,sizeof(PORT_MESSAGE),R|CT,SYSARG_TYPE_PORT_MESSAGE}, {3,0,IB}, {4,sizeof(PORT_VIEW),R|W}, {5,sizeof(REMOTE_PORT_VIEW),R|W}, }},
@@ -516,7 +549,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {0,"NtSuspendThread", OK, 2, {{1,sizeof(ULONG),W}, }},
     {0,"NtSystemDebugControl", OK, 6, {{3,-4,W}, {3,-5,WI}, {5,sizeof(ULONG),W}, }},
     {0,"NtTerminateJobObject", OK, 2, },
-    {0,"NtTerminateProcess", OK, 2, {{0,}}, &sysnum_TerminateProcess},
+    {0,"NtTerminateProcess", OK, 2, {{0,}}, },
     {0,"NtTerminateThread", OK, 2, },
     {0,"NtTestAlert", OK, 0, },
     /* unlike TraceEvent API routine, syscall takes size+flags as
@@ -733,145 +766,169 @@ extern size_t num_usercall_syscalls(void);
 #undef IO
 #undef RET
 
-/* takes in any Nt syscall wrapper entry point */
-byte *
-vsyscall_pc(void *drcontext, byte *entry)
+/* Takes in any Nt syscall wrapper entry point.
+ * Will accept other entry points (e.g., we call it for gdi32!GetFontData)
+ * and return -1 for them: up to caller to assert if that shouldn't happen.
+ */
+static int
+syscall_num_from_wrapper(void *drcontext, byte *entry)
 {
-    byte *vpc = NULL;
-    byte *pc = entry;
-    uint opc;
-    instr_t instr;
-    ASSERT(entry != NULL, "invalid entry");
-    instr_init(drcontext, &instr);
-    do {
-        instr_reset(drcontext, &instr);
-        pc = decode(drcontext, pc, &instr);
-        ASSERT(instr_valid(&instr), "unknown system call sequence");
-        opc = instr_get_opcode(&instr);
-        ASSERT(opc_is_in_syscall_wrapper(opc), "unknown system call sequence");
-        /* safety check: should only get 11 or 12 bytes in */
-        if (pc - entry > 20) {
-            ASSERT(false, "unknown system call sequence");
-            instr_free(drcontext, &instr);
-            return NULL;
-        }
-        if (opc == OP_mov_imm && opnd_is_reg(instr_get_dst(&instr, 0)) &&
-            opnd_get_reg(instr_get_dst(&instr, 0)) == REG_EDX) {
-            ASSERT(opnd_is_immed_int(instr_get_src(&instr, 0)), "internal error");
-            vpc = (byte *) opnd_get_immed_int(instr_get_src(&instr, 0));
-        }
-        /* stop at call to vsyscall or at int itself */
-    } while (opc != OP_call_ind && opc != OP_int);
-    /* vpc should only exist if have call* */
-    ASSERT(vpc == NULL || opc == OP_call_ind, "internal error");
-    instr_free(drcontext, &instr);
-    return vpc;
+    /* Presumably the cross-module cost here doesn't matter vs all the
+     * calls into DR: if so we should inline the DR calls and maybe
+     * have our own copy here (like we used to).
+     */
+    return drmgr_decode_sysnum_from_wrapper(entry);
 }
 
-static int
-syscall_num_from_name(void *drcontext, const module_data_t *info, const char *name,
-                      const char *optional_prefix, bool sym_lookup)
+static bool
+syscall_num_from_name(void *drcontext, const module_data_t *info,
+                      const char *name, const char *optional_prefix,
+                      bool sym_lookup, drsys_sysnum_t *num_out OUT)
 {
-    app_pc entry = (app_pc)dr_get_proc_address(info->handle, name);
+    app_pc entry = (app_pc) dr_get_proc_address(info->handle, name);
     int num = -1;
+    ASSERT(num_out != NULL, "invalid param");
     if (entry != NULL) {
         /* look for partial map (i#730) */
         if (entry >= info->end) /* XXX: syscall_num will decode a few instrs in */
             return -1;
-        num = syscall_num(drcontext, entry);
+        num = syscall_num_from_wrapper(drcontext, entry);
     }
-#ifdef USE_DRSYMS
-    if (entry == NULL && sym_lookup) {
+    if (entry == NULL && sym_lookup && drsys_ops.lookup_internal_symbol != NULL) {
         /* i#388: for those that aren't exported, if we have symbols, find the
          * sysnum that way.
          */
         /* drsym_init() was called already in utils_init() */
-        entry = lookup_internal_symbol(info, name);
+        entry = (*drsys_ops.lookup_internal_symbol)(info, name);
         if (entry != NULL)
-            num = syscall_num(drcontext, entry);
+            num = syscall_num_from_wrapper(drcontext, entry);
         if (num == -1 && optional_prefix != NULL) {
             const char *skip_prefix = name + strlen(optional_prefix);
             ASSERT(strstr(name, optional_prefix) == name,
                    "missing syscall prefix");
-            entry = lookup_internal_symbol(info, skip_prefix);
+            entry = (*drsys_ops.lookup_internal_symbol)(info, skip_prefix);
             if (entry != NULL)
-                num = syscall_num(drcontext, entry);
+                num = syscall_num_from_wrapper(drcontext, entry);
         }
     }
-#endif
-    if (num == -1) {
-        /* i#388: use sysnum table if the wrapper is not exported and we don't have
-         * symbol info.  Currently the table only has win32k.sys entries since
-         * all the ntdll wrappers are exported.
-         */
-        int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)name);
-        if (sysnum != 0) {
-            LOG(SYSCALL_VERBOSE, "using sysnum_table since no wrapper found for %s\n",
-                name);
-            num = sysnum;
-        }
-    } else {
-        DOLOG(1, {
-            int sysnum = (int) hashtable_lookup(&sysnum_table, (void *)name);
-            if (sysnum != 0 && sysnum != num) {
+    DOLOG(1, {
+        if (num != -1) {
+            name2num_entry_t *e = (name2num_entry_t *)
+                hashtable_lookup(&name2num_table, (void *)name);
+            if (e != NULL && e->num.number != num) {
                 WARN("WARNING: sysnum table "PIFX" != wrapper "PIFX" for %s\n",
-                     sysnum, num, name);
+                     e->num.number, num, name);
                 ASSERT(false, "syscall number table error detected");
             }
-        });
+        }
+    });
+    if (num == -1)
+        return false;
+    num_out->number = num;
+    num_out->secondary = 0;
+    return true;
+}
+
+bool
+os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT)
+{
+    name2num_entry_t *e = (name2num_entry_t *)
+        hashtable_lookup(&name2num_table, (void *)name);
+    ASSERT(num != NULL, "invalid param");
+    if (e != NULL) {
+        *num = e->num;
+        return true;
     }
-    return num;
+    return false;
 }
 
 static void
-add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
+check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
                   const char *optional_prefix)
 {
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
-    syslist->num = syscall_num_from_name(drcontext, info, syslist->name,
-                                         optional_prefix, 
-                                         /* it's a perf hit to do one-at-a-time symbol
-                                          * lookup for hundreds of syscalls, so we rely
-                                          * on our tables unless asked.
-                                          * XXX: a single Nt* regex would probably
-                                          * be performant enough
-                                          */
-                                         options.verify_sysnums);
-    if (syslist->num > -1) {
-        hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
-        LOG(info->start == ntdll_base ? 2 : SYSCALL_VERBOSE,
-            "system call %-35s = %3d (0x%04x)\n", syslist->name, syslist->num, syslist->num);
+    if (info != NULL) {
+        drsys_sysnum_t num_from_wrapper;
+        bool ok = syscall_num_from_name(drcontext, info, syslist->name,
+                                        optional_prefix, 
+                                        drsys_ops.verify_sysnums,
+                                        &num_from_wrapper);
+        ASSERT(!ok/*no syms*/ || drsys_sysnums_equal(&syslist->num, &num_from_wrapper),
+               "sysnum table does not match wrapper");
+    }
+}
+
+static void
+add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
+                  const char *optional_prefix, bool add_name2num)
+{
+    bool ok = false;
+    if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
+        optional_prefix = NULL;
+    if (info != NULL) {
+        ok = syscall_num_from_name(drcontext, info, syslist->name,
+                                   optional_prefix, 
+                                   /* it's a perf hit to do one-at-a-time symbol
+                                    * lookup for hundreds of syscalls, so we rely
+                                    * on our tables unless asked.
+                                    * XXX: a single Nt* regex would probably
+                                    * be performant enough
+                                    */
+                                   drsys_ops.verify_sysnums,
+                                   &syslist->num);
+    }
+    if (!ok) {
+        /* i#388: use sysnum table if the wrapper is not exported and we don't have
+         * symbol info.  Currently the table only has win32k.sys entries since
+         * all the ntdll wrappers are exported.
+         */
+        LOG(SYSCALL_VERBOSE, "using name2num_table since no wrapper found for %s\n",
+            syslist->name);
+        ok = os_syscall_get_num(syslist->name, &syslist->num);
+    }
+    if (ok) {
+        hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+        LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
+            "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
+            syslist->num.secondary, syslist->num.number, syslist->num.secondary);
         if (syslist->num_out != NULL)
             *syslist->num_out = syslist->num;
+        if (add_name2num) {
+            name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
+            /* Add the Zw variant */
+            name2num_entry_add(syslist->name, syslist->num, true/*dup Zw*/);
+        }
     } else {
         LOG(SYSCALL_VERBOSE, "WARNING: could not find system call %s\n", syslist->name);
     }
 }
 
-/* uses tables and other sources not available to sysnum_from_name() */
-int
-os_syscall_get_num(void *drcontext, const module_data_t *info, const char *name)
-{
-    return syscall_num_from_name(drcontext, info, name, NULL, true/*sym lookup*/);
-}
-
-void
-syscall_os_init(void *drcontext, app_pc ntdll_base)
+drmf_status_t
+drsyscall_os_init(void *drcontext)
 {
     uint i;
-    const int *sysnums;
+#ifdef WINDOWS
+    module_data_t *data;
+#endif
+    const int *sysnums; /* array of primary syscall numbers */
     /* FIXME i#945: we expect the #s and args of 64-bit windows syscall match
      * wow64, but we have not verified there's no number shifting or arg shifting
      * in the wow64 marshaling layer.
+     * FIXME i#772: on win8, wow64 does add some upper bits, which we
+     * want to honor so that our stateless number-to-name and
+     * name-to-number match real numbers.
      */
-    bool wow64 = IF_X64_ELSE(true, is_wow64_process());
-    dr_os_version_info_t info = {sizeof(info),};
-    if (!dr_get_os_version(&info)) {
+    bool wow64 = IF_X64_ELSE(true, dr_is_wow64());
+    if (!dr_get_os_version(&win_ver)) {
         ASSERT(false, "unable to get version");
+        /* guess at win7 */
+        win_ver.version = DR_WINDOWS_VERSION_7;
+        win_ver.service_pack_major = 1;
+        win_ver.service_pack_minor = 0;
         sysnums = win7wow_sysnums;
     }
-    switch (info.version) {
+    switch (win_ver.version) {
     case DR_WINDOWS_VERSION_7:
         sysnums = wow64 ? win7wow_sysnums : win7x86_sysnums;
         break;
@@ -889,21 +946,23 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
         break;
     case DR_WINDOWS_VERSION_NT:
     default:
-        usage_error("This version of Windows is not supported", "");
+        return DRMF_ERROR_INCOMPATIBLE_VERSION;
     }
 
-    /* Set up hashtable of win32k.sys syscall numbers */
-    hashtable_init(&sysnum_table, SYSNUM_TABLE_HASH_BITS, HASH_STRING, false/*!strdup*/);
+    /* Set up hashtable for name2num translation at init time.
+     * Case-insensitive primarily for NtUserCallOneParam.*.
+     */
+    hashtable_init_ex(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING_NOCASE,
+                      false/*!strdup*/, true/*synch*/, name2num_entry_free,
+                      NULL, NULL);
 #ifdef STATISTICS
     hashtable_init(&sysname_table, SYSNAME_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 #endif
     for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
         if (sysnums[i] != NONE) {
             const char *skip_prefix = NULL;
-            IF_DEBUG(bool ok =)
-                hashtable_add(&sysnum_table, (void *)sysnum_names[i], (void *)sysnums[i]);
-            ASSERT(ok, "no dup entries in sysnum_table");
-            ASSERT(sysnums[i] != 0, "no 0 sysnum: then can't tell from empty");
+            drsys_sysnum_t sysnum = {sysnums[i], 0};
+            name2num_entry_add(sysnum_names[i], sysnum, false/*no dup*/);
 
             /* we also add the version without the prefix, so e.g. alloc.c
              * can pass in "UserConnectToServer" without having the
@@ -914,15 +973,7 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
             else if (strstr(sysnum_names[i], "NtGdi") == sysnum_names[i])
                 skip_prefix = sysnum_names[i] + strlen("NtGdi");
             if (skip_prefix != NULL) {
-                IF_DEBUG(ok =)
-                    hashtable_add(&sysnum_table, (void *)skip_prefix, (void *)sysnums[i]);
-#ifdef DEBUG
-                if (!ok) {
-                    /* If we have any more of these, add a flag to syscall_numx.h */
-                    ASSERT(strcmp(sysnum_names[i], "NtUserGetThreadDesktop") ==
-                           0/*i#487*/, "no dup entries in sysnum_table");
-                }
-#endif
+                name2num_entry_add(skip_prefix, sysnum, false/*no dup*/);
             }
 
 #ifdef STATISTICS
@@ -933,250 +984,142 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
         }
     }
 
-    hashtable_init(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
-    syscall_wingdi_init(drcontext, ntdll_base, &info);
-    if (options.check_handle_leaks)
-        handlecheck_init();
+    hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
+                      true/*synch*/, NULL, sysnum_hash, sysnum_cmp);
+
+    data = dr_lookup_module_by_name("ntdll.dll");
+    ASSERT(data != NULL, "cannot find ntdll.dll");
+    if (data == NULL)
+        return DRMF_ERROR;
+    ntdll_base = data->start;
+
+    /* Add all entries at process init time, to support drsys_name_to_number()
+     * for secondary win32k.sys and drsys_number_to_name() in dr_init.
+     */
+    for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
+        add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true);
+    for (i = 0; i < num_kernel32_syscalls(); i++) {
+        add_syscall_entry(drcontext, NULL, &syscall_kernel32_info[i], NULL,
+                          false/*already added*/);
+    }
+    for (i = 0; i < num_user32_syscalls(); i++) {
+        if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
+            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
+                              false/*already added*/);
+        }
+    }
+    for (i = 0; i < num_user32_syscalls(); i++) {
+        if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
+            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
+                              false/*already added*/);
+        }
+    }
+    for (i = 0; i < num_gdi32_syscalls(); i++) {
+        add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",
+                          false/*already added*/);
+    }
+
+    dr_free_module_data(data);
+
+    return drsyscall_wingdi_init(drcontext, ntdll_base, &win_ver);
 }
 
 void
-syscall_os_exit(void)
+drsyscall_os_exit(void)
 {
-    /* must be called before systable delete */
-    if (options.check_handle_leaks)
-        handlecheck_exit();
     hashtable_delete(&systable);
-    hashtable_delete(&sysnum_table);
+    hashtable_delete(&name2num_table);
 #ifdef STATISTICS
     hashtable_delete(&sysname_table);
 #endif
-    syscall_wingdi_exit();
+    drsyscall_wingdi_exit();
 }
 
 void
-syscall_os_thread_init(void *drcontext)
+drsyscall_os_thread_init(void *drcontext)
 {
-    syscall_wingdi_thread_init(drcontext);
+    drsyscall_wingdi_thread_init(drcontext);
 }
 
 void
-syscall_os_thread_exit(void *drcontext)
+drsyscall_os_thread_exit(void *drcontext)
 {
-    syscall_wingdi_thread_exit(drcontext);
+    drsyscall_wingdi_thread_exit(drcontext);
 }
 
 void
-syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
+drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     uint i;
     const char *modname = dr_module_preferred_name(info);
     if (modname == NULL)
         return;
 
-    /* systable synch: if really get two threads adding at same time 2nd should
-     * just fail in the hashtable_add so no harm done
+    /* We've already added to the tables at process init time.
+     * Here we just check vs the wrapper numbers for other than ntdll
+     * (ntdll module was available at process init).
      */
-    if (stri_eq(modname, "ntdll.dll")) {
-        ASSERT(info->start == ntdll_base, "duplicate ntdll?");
-        for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
-            add_syscall_entry(drcontext, info, &syscall_ntdll_info[i], NULL);
-    } else if (stri_eq(modname, "kernel32.dll")) {
+    if (stri_eq(modname, "kernel32.dll")) {
         for (i = 0; i < num_kernel32_syscalls(); i++)
-            add_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
+            check_syscall_entry(drcontext, info, &syscall_kernel32_info[i], NULL);
     } else if (stri_eq(modname, "user32.dll")) {
         for (i = 0; i < num_user32_syscalls(); i++) {
             if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
-                add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+                check_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
         }
-        syscall_wingdi_user32_load(drcontext, info);
     } else if (stri_eq(modname, "imm32.dll")) {
         for (i = 0; i < num_user32_syscalls(); i++) {
             if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags))
-                add_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
+                check_syscall_entry(drcontext, info, &syscall_user32_info[i], "NtUser");
         }
     } else if (stri_eq(modname, "gdi32.dll")) {
         for (i = 0; i < num_gdi32_syscalls(); i++)
-            add_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
+            check_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
     }
 }
 
 syscall_info_t *
-syscall_lookup(int num)
+syscall_lookup(drsys_sysnum_t num)
 {
-    return (syscall_info_t *) hashtable_lookup(&systable, (void *) num);
+    return (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
 }
 
 /* Though DR's new syscall events provide parameter value access,
  * we need the address of all parameters passed on the stack
  */
 static reg_t *
-get_sysparam_base(dr_mcontext_t *mc)
+get_sysparam_base(cls_syscall_t *pt)
 {
-    reg_t *base = (reg_t *) mc->xdx;
+    reg_t *base = (reg_t *) pt->pre_xdx;
     if (is_using_sysenter())
         base += 2;
     return base;
 }
 
 static app_pc
-get_sysparam_addr(uint ord, dr_mcontext_t *mc)
+get_sysparam_addr(cls_syscall_t *pt, uint ord)
 {
-    return (app_pc)(((reg_t *)get_sysparam_base(mc)) + ord);
+    return (app_pc)(((reg_t *)get_sysparam_base(pt)) + ord);
 }
 
-uint
-get_sysparam_shadow_val(uint sysnum, uint argnum, dr_mcontext_t *mc)
-{
-    return shadow_get_byte(get_sysparam_addr(argnum, mc));
-}
-
-/* check syscall params in pre-syscall only */
+/* Either sets arg->reg to DR_REG_NULL and sets arg->start_addr, or sets arg->reg
+ * to non-DR_REG_NULL
+ */
 void
-check_sysparam(uint sysnum, uint argnum, dr_mcontext_t *mc, size_t argsz)
+drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *arg)
 {
-    /* indicate which syscall arg (i#510) */
-    char idmsg[32];
-    int res = dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg),
-                          "parameter value #%d", argnum);
-    ASSERT(res > 0 && res < BUFFER_SIZE_ELEMENTS(idmsg), "message buffer too small");
-    NULL_TERMINATE_BUFFER(idmsg);
-
-    check_sysmem(CHECK_UNINITS() ?
-                 MEMREF_CHECK_DEFINEDNESS : MEMREF_CHECK_ADDRESSABLE,
-                 sysnum, get_sysparam_addr(argnum, mc), argsz, mc, idmsg);
+    /* Store xdx (sysparam base for many windows versions) so we can
+     * answer queries about syscall parameter addresses in
+     * post-syscall where xdx is often clobbered.
+     */
+    if (pt->pre)
+        pt->pre_xdx = arg->mc->xdx;
+    arg->reg = DR_REG_NULL;
+    arg->start_addr = get_sysparam_addr(pt, argnum);
 }
 
 bool
-os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
-                      dr_mcontext_t *mc)
-{
-    /* i#544: give child processes a chance for clean exit for leak scan
-     * and option summary and symbol and code cache generation.
-     *
-     * XXX: a child under DR but not DrMem will be left alive: but that's
-     * a risk we can live with.
-     */
-    if (sysnum == sysnum_TerminateProcess && options.soft_kills) {
-        HANDLE proc = (HANDLE) pt->sysarg[0];
-        process_id_t pid = dr_convert_handle_to_pid(proc);
-        if (pid != INVALID_PROCESS_ID && pid != dr_get_process_id()) {
-            dr_config_status_t res =
-                dr_nudge_client_ex(pid, client_id, NUDGE_TERMINATE,
-                                   /*preserve exit code*/pt->sysarg[1]);
-            LOG(1, "TerminateProcess => nudge pid=%d res=%d\n", pid, res);
-            if (res == DR_SUCCESS) {
-                /* skip syscall since target will terminate itself */
-                dr_syscall_set_result(drcontext, 0/*success*/);
-                return false;
-            }
-            /* else failed b/c target not under DR control or maybe some other error:
-             * let syscall go through
-             */
-        }
-    }
-    if (options.check_handle_leaks) {
-        syscall_info_t *sysinfo = get_sysinfo(&sysnum, pt);
-        if (sysinfo != NULL && TEST(SYSINFO_DELETE_HANDLE, sysinfo->flags)) {
-            /* assuming the handle to be deleted is at the first arg */
-            /* XXX: cannot use sysarg_invalid to check if the sysarg
-             * is valid, because it might be {0,} in syscall_info.
-             * Alternative solution is to add inlined arg type flags.
-             */
-            /* i#974: multiple threads may create/delete handles in parallel,
-             * so we remove the handle from table at pre-syscall by simply
-             * assuming the syscall will success, and add it back if fail.
-             */
-            pt->handle_info =
-                handlecheck_delete_handle(drcontext, (HANDLE)pt->sysarg[0],
-                                          syscall_get_handle_type(sysinfo),
-                                          sysnum, NULL, mc);
-        }
-    }
-    return wingdi_shared_process_syscall(true/*pre*/, drcontext, sysnum, pt, mc);
-}
-
-void
-os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum,
-                       dr_mcontext_t *mc)
-{
-    /* FIXME PR 456501: watch CreateProcess, CreateProcessEx, and
-     * CreateUserProcess.  Convert process handle to pid and section
-     * handle to file path, and write both as a FORKEXEC line in
-     * f_fork.
-     */
-    if (sysnum == sysnum_CreateThread || sysnum == sysnum_CreateThreadEx) {
-        if (NT_SUCCESS(dr_syscall_get_result(drcontext)) &&
-            is_current_process((HANDLE)pt->sysarg[3]/*3rd arg for both*/)) {
-            HANDLE thread_handle;
-            thread_id_t child = INVALID_THREAD_ID;
-            if (safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle))
-                child = get_tid_from_handle(thread_handle);
-            if (child != INVALID_THREAD_ID)
-                report_child_thread(drcontext, child);
-            else
-                WARN("WARNING: unable to determine child thread it\n");
-        }
-    }
-    /* for handle leak checks */
-    if (options.check_handle_leaks) {
-        syscall_info_t *sysinfo = get_sysinfo(&sysnum, pt);
-        reg_t res = dr_syscall_get_result(drcontext);
-        if (sysinfo != NULL &&
-            TESTANY(SYSINFO_CREATE_HANDLE | SYSINFO_DELETE_HANDLE,
-                    sysinfo->flags)) {
-            int type = syscall_get_handle_type(sysinfo);
-            bool success = os_syscall_succeeded(sysnum, sysinfo, res);
-            if (TEST(SYSINFO_DELETE_HANDLE, sysinfo->flags)) {
-                handlecheck_delete_handle_post_syscall(drcontext,
-                                                       (HANDLE)pt->sysarg[0],
-                                                       type,
-                                                       pt->handle_info,
-                                                       success);
-                pt->handle_info = NULL;
-            } else if (TEST(SYSINFO_CREATE_HANDLE, sysinfo->flags) && success) {
-                HANDLE handle;
-                bool handle_in_arg = false;
-                int i, num_args = sysinfo->arg_count;
-                /* handle create
-                 * we assume that no syscall both returns and has OUT arg,
-                 * so first walk the arg, and get return if no handle in arg.
-                 */
-                for (i = 0; i < num_args; i++) {
-                    if (sysarg_invalid(&sysinfo->arg[i]))
-                        break;
-                    if (TESTALL(SYSARG_IS_HANDLE|SYSARG_WRITE,
-                                sysinfo->arg[i].flags)) {
-                        handle_in_arg = true;
-                        if (safe_read((void *)pt->sysarg[sysinfo->arg[i].param],
-                                      sizeof(HANDLE), &handle)) {
-                            /* assuming any handle arg written by the syscall
-                             * is newly created.
-                             */
-                            handlecheck_create_handle(drcontext, handle, type,
-                                                      sysnum, NULL, mc);
-                        } else {
-                            LOG(SYSCALL_VERBOSE,
-                                "fail to read handle from syscall %d %s",
-                                sysnum, sysinfo->name);
-                        }
-                    }
-                }
-                if (!handle_in_arg) {
-                    /* handle is in return */
-                    /* XXX: should all syscalls that directly return handle be
-                     * SYSINFO_RET_ZERO_FAIL?
-                     */
-                    handlecheck_create_handle(drcontext, (HANDLE)res, type,
-                                              sysnum, NULL, mc);
-                }
-            }
-        }
-    }
-    wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc);
-}
-
-bool
-os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
+os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
 {
     /* if info==NULL we assume specially handled and we don't need to look it up */
     if (info != NULL) {
@@ -1199,10 +1142,10 @@ os_syscall_succeeded(int sysnum, syscall_info_t *info, ptr_int_t res)
 
 /* provides name if known when not in syscall_lookup(num) */
 const char *
-os_syscall_get_name(uint num)
+os_syscall_get_name(drsys_sysnum_t num)
 {
 #ifdef STATISTICS
-    return (const char *) hashtable_lookup(&sysname_table, (void *)num);
+    return (const char *) hashtable_lookup(&sysname_table, (void *)num.number);
 #else
     /* not bothering to keep data outside of table */
     return NULL;
@@ -1210,21 +1153,29 @@ os_syscall_get_name(uint num)
 }
 
 /***************************************************************************
- * handle check related system call routines
+ * SYSTEM CALL TYPE
  */
 
-static int
-syscall_get_handle_type(syscall_info_t *sysinfo)
+DR_EXPORT
+drmf_status_t
+drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
 {
-    if ((sysinfo >= &syscall_user32_info[0] &&
-         sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
-        (sysinfo >= &syscall_usercall_info[0] &&
-         sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
-        return HANDLE_TYPE_USER;
-    if (sysinfo >= &syscall_gdi32_info[0] &&
-        sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])
-        return HANDLE_TYPE_GDI;
-    return HANDLE_TYPE_KERNEL;
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (type == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (sysinfo == NULL)
+        *type = DRSYS_SYSCALL_TYPE_KERNEL;
+    else if ((sysinfo >= &syscall_user32_info[0] &&
+              sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
+             (sysinfo >= &syscall_usercall_info[0] &&
+              sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
+        *type = DRSYS_SYSCALL_TYPE_USER;
+    else if (sysinfo >= &syscall_gdi32_info[0] &&
+             sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])
+        *type = DRSYS_SYSCALL_TYPE_GRAPHICS;
+    else
+        *type = DRSYS_SYSCALL_TYPE_KERNEL;
+    return DRMF_SUCCESS;
 }
 
 /***************************************************************************
@@ -1232,22 +1183,21 @@ syscall_get_handle_type(syscall_info_t *sysinfo)
  */
 
 static bool
-handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                           uint arg_num,
+handle_port_message_access(sysarg_iter_info_t *ii,
                            const syscall_arg_t *arg_info,
                            app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* variable-length */
     PORT_MESSAGE pm;
-    if (TEST(SYSARG_WRITE, arg_info->flags) && pre &&
+    if (TEST(SYSARG_WRITE, arg_info->flags) && ii->arg->pre &&
         !TEST(SYSARG_READ, arg_info->flags)) {
         /* Struct is passed in uninit w/ max-len buffer after it.
          * FIXME i#415: There is some ambiguity over the max, hence we choose
          * the lower estimation to avoid false positives.
          * (We'll still use sizeof(PORT_MESSAGE) + PORT_MAXIMUM_MESSAGE_LENGTH
          *  in the ASSERTs below)
-         * We'll re-do the addressability check at the post- hook.
+         * We'll re-do the addressability check at the post- hook as part
+         * of handling SYSARG_WRITE in any case.
          */
         size = PORT_MAXIMUM_MESSAGE_LENGTH;
     } else if (safe_read(start, sizeof(pm), &pm)) {
@@ -1270,27 +1220,23 @@ handle_port_message_access(bool pre, int sysnum, dr_mcontext_t *mc,
          * filled with 0's
          */
         ASSERT(size == 0 || (ssize_t)size >= sizeof(pm), "PORT_MESSAGE size too small");
-        LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_num, size);
+        LOG(2, "total size of PORT_MESSAGE arg %d is %d\n", arg_info->param, size);
     } else {
         /* can't read real size, so report presumed-unaddr w/ struct size */
         ASSERT(size == sizeof(PORT_MESSAGE), "invalid PORT_MESSAGE sysarg size");
+        /* XXX: should we mark arg->valid as false?  though start addr
+         * is known: it's just size.  Could change meaning of valid as it's
+         * not really used for memargs right now.
+         */
     }
 
-    /* FIXME i#415: As a temp workaround, check for addressability
-     * once again in the post- hook but knowing the size precisely.
-     * This won't catch a bug where a too-small capacity is passed yet in all
-     * the actual syscalls during execution all the written data is small.
-     */
-    if (TEST(SYSARG_WRITE, arg_info->flags) && !pre) {
-        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start, size, mc, NULL);
-    }
-
-    check_sysmem(check_type, sysnum, start, size, mc, NULL);
+    if (!report_memarg(ii, arg_info, start, size, NULL))
+        return true;
     return true;
 }
 
 static bool
-handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
+handle_context_access(sysarg_iter_info_t *ii,
                       const syscall_arg_t *arg_info,
                       app_pc start, uint size)
 {
@@ -1298,18 +1244,18 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
     ASSERT_NOT_IMPLEMENTED();
     return true;
 #else /* defined(_X86_) */
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* The 'cxt' pointer will only be used for retrieving pointers
      * for the CONTEXT fields, hence we can do without safe_read.
      */
     const CONTEXT *cxt = (CONTEXT *)start;
     DWORD context_flags;
-    check_sysmem(check_type, sysnum, start, sizeof(context_flags),
-                 mc, "CONTEXT.ContextFlags");
+    if (!report_memarg(ii, arg_info, start, sizeof(context_flags),
+                       "CONTEXT.ContextFlags"))
+        return true;
     if (!safe_read((void*)&cxt->ContextFlags, sizeof(context_flags),
                    &context_flags)) {
         /* if safe_read fails due to CONTEXT being unaddr, the preceding
-         * check_sysmem should have raised the error, and there's
+         * report_memarg should have raised the error, and there's
          * no point in trying to further check the CONTEXT
          */
         return true;
@@ -1333,75 +1279,85 @@ handle_context_access(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
 
     if (TESTALL(CONTEXT_DEBUG_REGISTERS, context_flags)) {
 #define CONTEXT_NUM_DEBUG_REGS 6
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
-                     mc, "CONTEXT.DrX");
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Dr0, CONTEXT_NUM_DEBUG_REGS*sizeof(DWORD),
+                           "CONTEXT.DrX"))
+            return true;
     }
     if (TESTALL(CONTEXT_FLOATING_POINT, context_flags)) {
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
-                     mc, "CONTEXT.FloatSave");
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->FloatSave, sizeof(cxt->FloatSave),
+                           "CONTEXT.FloatSave"))
+            return true;
     }
     /* Segment registers are 16-bits each but stored with 16-bit gaps
      * so we can't use sizeof(cxt->Seg*s);
      */
 #define SIZE_SEGMENT_REG 2
     if (TESTALL(CONTEXT_SEGMENTS, context_flags)) {
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegGs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegGs");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegFs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegFs");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegEs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegEs");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegDs");
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegGs, SIZE_SEGMENT_REG, "CONTEXT.SegGs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegFs, SIZE_SEGMENT_REG, "CONTEXT.SegFs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegEs, SIZE_SEGMENT_REG, "CONTEXT.SegEs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegDs, SIZE_SEGMENT_REG, "CONTEXT.SegDs"))
+            return true;
     }
     if (TESTALL(CONTEXT_INTEGER, context_flags) &&
-        sysnum != sysnum_CreateThread) {
+        ii->arg->sysnum.number != sysnum_CreateThread.number) {
         /* For some reason, cxt->Edi...Eax are not initialized when calling
          * NtCreateThread though CONTEXT_INTEGER flag is set
          */
 #define CONTEXT_NUM_INT_REGS 6
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
-                     mc, "CONTEXT.Exx");
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Edi, CONTEXT_NUM_INT_REGS*sizeof(DWORD),
+                           "CONTEXT.Exx"))
+            return true;
     }
     if (TESTALL(CONTEXT_CONTROL, context_flags)) {
-        if (sysnum != sysnum_CreateThread) {
+        if (ii->arg->sysnum.number != sysnum_CreateThread.number) {
             /* Ebp is not initialized when calling NtCreateThread,
              * so we skip it
              */
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&cxt->Ebp, sizeof(DWORD),
-                         mc, "CONTEXT.Ebp");
+            if (!report_memarg(ii, arg_info,
+                               (app_pc)&cxt->Ebp, sizeof(DWORD), "CONTEXT.Ebp"))
+                return true;
         }
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Eip, sizeof(cxt->Eip), mc, "CONTEXT.Eip");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->Esp, sizeof(cxt->Esp), mc, "CONTEXT.Esp");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), mc, "CONTEXT.Eflags");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegCs");
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, mc, "CONTEXT.SegSs");
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Eip, sizeof(cxt->Eip), "CONTEXT.Eip"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->Esp, sizeof(cxt->Esp), "CONTEXT.Esp"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->EFlags, sizeof(cxt->EFlags), "CONTEXT.Eflags"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegCs, SIZE_SEGMENT_REG, "CONTEXT.SegCs"))
+            return true;
+        if (!report_memarg(ii, arg_info,
+                           (app_pc)&cxt->SegSs, SIZE_SEGMENT_REG, "CONTEXT.SegSs"))
+            return true;
     }
     if (TESTALL(CONTEXT_EXTENDED_REGISTERS, context_flags)) {
-        check_sysmem(check_type, sysnum,
-                     (app_pc)&cxt->ExtendedRegisters,
-                     sizeof(cxt->ExtendedRegisters), mc, "CONTEXT.ExtendedRegisters");
+        if (!report_memarg(ii, arg_info, (app_pc)&cxt->ExtendedRegisters,
+                           sizeof(cxt->ExtendedRegisters), "CONTEXT.ExtendedRegisters"))
+            return true;
     }
     return true;
 #endif
 }
 
 static bool
-handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                               uint arg_num,
+handle_exception_record_access(sysarg_iter_info_t *ii,
                                const syscall_arg_t *arg_info,
                                app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const EXCEPTION_RECORD *er = (EXCEPTION_RECORD *)start;
     DWORD num_params;
     /* According to MSDN, NumberParameters stores the number of defined
@@ -1409,52 +1365,48 @@ handle_exception_record_access(bool pre, int sysnum, dr_mcontext_t *mc,
      * at the end of the EXCEPTION_RECORD structure.
      * http://msdn.microsoft.com/en-us/library/aa363082(VS.85).aspx
      */
-    check_sysmem(check_type, sysnum,
-                 start, sizeof(*er) - sizeof(er->ExceptionInformation),
-                 mc, "EXCEPTION_RECORD");
+    if (!report_memarg(ii, arg_info, start, sizeof(*er) - sizeof(er->ExceptionInformation),
+                       "EXCEPTION_RECORD"))
+        return true;
     ASSERT(sizeof(num_params) == sizeof(er->NumberParameters), "");
     if (safe_read((void*)&er->NumberParameters, sizeof(num_params),
                   &num_params)) {
-        check_sysmem(check_type, sysnum,
-                     (app_pc)er->ExceptionInformation,
-                     num_params * sizeof(er->ExceptionInformation[0]),
-                     mc, "EXCEPTION_RECORD.ExceptionInformation");
+        if (!report_memarg(ii, arg_info, (app_pc)er->ExceptionInformation,
+                           num_params * sizeof(er->ExceptionInformation[0]),
+                           "EXCEPTION_RECORD.ExceptionInformation"))
+            return true;
     }
     return true;
 }
 
 static bool
-handle_security_qos_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                           uint arg_num,
+handle_security_qos_access(sysarg_iter_info_t *ii,
                            const syscall_arg_t *arg_info,
                            app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_QUALITY_OF_SERVICE *s = (SECURITY_QUALITY_OF_SERVICE *)start;
     /* The SECURITY_QUALITY_OF_SERVICE structure is
      * DWORD + DWORD + unsigned char + BOOLEAN
      * so it takes 12 bytes (and its Length field value is 12)
      * but only 10 must be initialized.
      */
-    check_sysmem(check_type, sysnum, start,
-                 sizeof(s->Length) + sizeof(s->ImpersonationLevel) +
-                 sizeof(s->ContextTrackingMode) + sizeof(s->EffectiveOnly),
-                 mc, NULL);
+    if (!report_memarg(ii, arg_info, start,
+                       sizeof(s->Length) + sizeof(s->ImpersonationLevel) +
+                       sizeof(s->ContextTrackingMode) + sizeof(s->EffectiveOnly),
+                       NULL))
+        return true;
     return true;
 }
 
 static bool
-handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                  uint arg_num,
+handle_security_descriptor_access(sysarg_iter_info_t *ii,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
     SECURITY_DESCRIPTOR_CONTROL flags;
-    ASSERT(check_type == MEMREF_CHECK_DEFINEDNESS,
-           "Should only be called for reads");
-    if (!pre) {
+    ASSERT(!TEST(SYSARG_WRITE, arg_info->flags), "Should only be called for reads");
+    if (!ii->arg->pre) {
         /* Handling pre- is enough for reads */
         return true;
     }
@@ -1462,28 +1414,27 @@ handle_security_descriptor_access(bool pre, int sysnum, dr_mcontext_t *mc,
      * which must be init only when the corresponding bits of Control are set.
      */
     ASSERT(start + sizeof(*s) == (app_pc)&s->Dacl + sizeof(s->Dacl), "");
-    check_sysmem(check_type, sysnum, start, (app_pc)&s->Sacl - start, mc, NULL);
+    if (!report_memarg(ii, arg_info, start, (app_pc)&s->Sacl - start, NULL))
+        return true;
 
     ASSERT(sizeof(flags) == sizeof(s->Control), "");
     if (safe_read((void*)&s->Control, sizeof(flags), &flags)) {
         if (TEST(SE_SACL_PRESENT, flags)) {
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&s->Sacl, sizeof(s->Sacl), mc, NULL);
+            if (!report_memarg(ii, arg_info, (app_pc)&s->Sacl, sizeof(s->Sacl), NULL))
+                return true;
         }
         if (TEST(SE_DACL_PRESENT, flags)) {
-            check_sysmem(check_type, sysnum,
-                         (app_pc)&s->Dacl, sizeof(s->Dacl), mc, NULL);
+            if (!report_memarg(ii, arg_info, (app_pc)&s->Dacl, sizeof(s->Dacl), NULL))
+                return true;
         }
     }
     return true;
 }
 
 bool
-handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                             uint arg_num, const syscall_arg_t *arg_info,
+handle_unicode_string_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
                              app_pc start, uint size, bool ignore_len)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     UNICODE_STRING us;
     UNICODE_STRING *arg = (UNICODE_STRING *) start;
     ASSERT(size == sizeof(UNICODE_STRING), "invalid size");
@@ -1493,57 +1444,66 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
         return true;
 
     /* we assume OUT fields just have their Buffer as OUT */
-    if (pre) {
+    if (ii->arg->pre) {
         if (TEST(SYSARG_READ, arg_info->flags)) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Length,
-                         sizeof(arg->Length), mc, "UNICODE_STRING.Length");
+            if (!report_memarg(ii, arg_info, (byte *)&arg->Length,
+                               sizeof(arg->Length), "UNICODE_STRING.Length"))
+                return true;
             /* i#519: MaximumLength may not be initialized in case of IN params. */
         } else {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->MaximumLength,
-                         sizeof(arg->MaximumLength), mc, "UNICODE_STRING.MaximumLength");
+            if (!report_memarg_type(ii, arg_info->param, SYSARG_READ,
+                                    (byte *)&arg->MaximumLength,
+                                    sizeof(arg->MaximumLength),
+                                    "UNICODE_STRING.MaximumLength",
+                                    DRSYS_TYPE_UNICODE_STRING, NULL))
+                return true;
             /* i#519: Length may not be initialized in case of OUT params. */
         }
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
-                     sizeof(arg->Buffer), mc, "UNICODE_STRING.Buffer");
+        if (!report_memarg(ii, arg_info, (byte *)&arg->Buffer,
+                           sizeof(arg->Buffer), "UNICODE_STRING.Buffer"))
+            return true;
     }
     if (safe_read((void*)start, sizeof(us), &us)) {
         LOG(SYSCALL_VERBOSE,
             "UNICODE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
             (byte *)us.Buffer, us.Length, us.MaximumLength);
-        if (pre) {
+        if (ii->arg->pre) {
             if (TEST(SYSARG_READ, arg_info->flags)) {
                 /* For IN params, the buffer size is passed as us.Length */
                 ASSERT(!ignore_len, "Length must be defined for IN params");
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             /* XXX i#519: Length doesn't include NULL, but NULL seems
-                              * to be optional, though there is inconsistency.  While it
-                              * would be nice to clean up code by complaining if it's
-                              * not there, we'd hit false positives in
-                              * non-user-controlled code.
-                              */
-                             (byte *)us.Buffer, us.Length, mc,
-                             "UNICODE_STRING content");
+                /* XXX i#519: Length doesn't include NULL, but NULL seems
+                 * to be optional, though there is inconsistency.  While it
+                 * would be nice to clean up code by complaining if it's
+                 * not there, we'd hit false positives in
+                 * non-user-controlled code.
+                 */
+                if (!report_memarg(ii, arg_info, (byte *)us.Buffer, us.Length,
+                                   "UNICODE_STRING content"))
+                    return true;
             } else {
                 /* For OUT params, MaximumLength-sized buffer should be addressable. */
-                check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                             (byte *)us.Buffer, us.MaximumLength, mc,
-                             "UNICODE_STRING capacity");
+                if (!report_memarg(ii, arg_info, (byte *)us.Buffer, us.MaximumLength,
+                                   "UNICODE_STRING capacity"))
+                    return true;
             }
         } else if (us.MaximumLength > 0) {
             /* Reminder: we don't do post-processing of IN params. */
             if (ignore_len) {
                 /* i#490: wrong Length stored so as workaround we walk the string */
-                handle_cwstring(pre, sysnum, mc, "UNICODE_STRING content",
+                handle_cwstring(ii, "UNICODE_STRING content",
                                 (byte *)us.Buffer, us.MaximumLength,
-                                arg_info->flags, NULL, false);
+                                arg_info->param, arg_info->flags, NULL, false);
+                if (ii->abort)
+                    return true;
             } else {
-                check_sysmem(check_type, sysnum, (byte *)us.Buffer,
-                             /* Length field does not include final NULL.
-                              * We mark it defined even though it may be optional
-                              * in some situations: i#519.
-                              */
-                             us.Length+sizeof(wchar_t),
-                             mc, "UNICODE_STRING content");
+                if (!report_memarg(ii, arg_info, (byte *)us.Buffer,
+                                   /* Length field does not include final NULL.
+                                    * We mark it defined even though it may be optional
+                                    * in some situations: i#519.
+                                    */
+                                   us.Length+sizeof(wchar_t),
+                                   "UNICODE_STRING content"))
+                    return true;
             }
         }
     } else
@@ -1552,25 +1512,27 @@ handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 bool
-handle_object_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                uint arg_num,
+handle_object_attributes_access(sysarg_iter_info_t *ii,
                                 const syscall_arg_t *arg_info,
                                 app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     OBJECT_ATTRIBUTES oa;
     ASSERT(size == sizeof(OBJECT_ATTRIBUTES), "invalid size");
-    check_sysmem(check_type, sysnum, start, size, mc, "OBJECT_ATTRIBUTES fields");
+    if (!report_memarg(ii, arg_info, start, size, "OBJECT_ATTRIBUTES fields"))
+        return true;
     if (safe_read((void*)start, sizeof(oa), &oa)) {
-        handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
-                                     (byte *) oa.ObjectName,
+        handle_unicode_string_access(ii, arg_info, (byte *) oa.ObjectName,
                                      sizeof(*oa.ObjectName), false);
-        handle_security_descriptor_access(pre, sysnum, mc, arg_num, arg_info,
-                                          (byte *) oa.SecurityDescriptor,
+        if (ii->abort)
+            return true;
+        handle_security_descriptor_access(ii, arg_info, (byte *) oa.SecurityDescriptor,
                                           sizeof(SECURITY_DESCRIPTOR));
-        handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
-                                   (byte *) oa.SecurityQualityOfService,
+        if (ii->abort)
+            return true;
+        handle_security_qos_access(ii, arg_info, (byte *) oa.SecurityQualityOfService,
                                    sizeof(SECURITY_QUALITY_OF_SERVICE));
+        if (ii->abort)
+            return true;
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true;
@@ -1578,11 +1540,10 @@ handle_object_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
 
 /* pass 0 for size if there is no max size */
 bool
-handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-                byte *start, size_t size/*in bytes*/, uint arg_flags, wchar_t *safe,
-                bool check_addr)
+handle_cwstring(sysarg_iter_info_t *ii, const char *id,
+                byte *start, size_t size/*in bytes*/, int ordinal, uint arg_flags,
+                wchar_t *safe, bool check_addr)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     /* the kernel wrote a wide string to the buffer: only up to the terminating
      * null should be marked as defined
      */
@@ -1592,16 +1553,18 @@ handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
     size_t maxsz = (size == 0) ? (MAX_PATH*sizeof(wchar_t)) : size;
     if (start == NULL)
         return false; /* nothing to do */
-    if (pre && !TEST(SYSARG_READ, arg_flags)) {
+    if (ii->arg->pre && !TEST(SYSARG_READ, arg_flags)) {
         if (!check_addr)
             return false;
         if (size > 0) {
             /* if max size specified, on pre-write check whole thing for addr */
-            check_sysmem(check_type, sysnum, start, size, mc, id);
+            if (!report_memarg_type(ii, ordinal, arg_flags, start, size, id,
+                                    DRSYS_TYPE_CSTRING, NULL))
+                return true;
             return true;
         }
     }
-    if (!pre && !TEST(SYSARG_WRITE, arg_flags))
+    if (!ii->arg->pre && !TEST(SYSARG_WRITE, arg_flags))
         return false; /*nothing to do */
     for (i = 0; i < maxsz; i += sizeof(wchar_t)) {
         if (safe != NULL)
@@ -1613,71 +1576,80 @@ handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
         if (c == L'\0')
             break;
     }
-    check_sysmem(check_type, sysnum, start, i + sizeof(wchar_t), mc, id);
+    if (!report_memarg_type(ii, ordinal, arg_flags, start, i + sizeof(wchar_t), id,
+                            DRSYS_TYPE_CSTRING, NULL))
+        return true;
     return true;
 }
 
 static bool
-handle_cstring_wide_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                           uint arg_num,
+handle_cstring_wide_access(sysarg_iter_info_t *ii,
                            const syscall_arg_t *arg_info,
                            app_pc start, uint size/*in bytes*/)
 {
-    return handle_cwstring(pre, sysnum, mc, NULL, start, size, arg_info->flags, NULL,
-                           /* let normal check ensure full size is addressable */
+    return handle_cwstring(ii, NULL, start, size, arg_info->param, arg_info->flags, NULL,
+                           /* let normal check ensure full size is addressable (since
+                            * OUT user must pass in max size) 
+                            */
                            false);
 }
 
 static bool
-handle_alpc_port_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                   uint arg_num,
+handle_alpc_port_attributes_access(sysarg_iter_info_t *ii,
                                    const syscall_arg_t *arg_info,
                                    app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     ALPC_PORT_ATTRIBUTES *apa = (ALPC_PORT_ATTRIBUTES *) start;
     ASSERT(size == sizeof(ALPC_PORT_ATTRIBUTES), "invalid size");
     
-    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start, size, mc,
-                 "ALPC_PORT_ATTRIBUTES");
-    check_sysmem(check_type, sysnum, (byte *) &apa->Flags, sizeof(apa->Flags),
-                 mc, "ALPC_PORT_ATTRIBUTES.Flags");
-    handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
-                               (byte *) &apa->SecurityQos,
+    if (ii->arg->pre) {
+        if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
+                              start, size, "ALPC_PORT_ATTRIBUTES",
+                              DRSYS_TYPE_ALPC_PORT_ATTRIBUTES, NULL, DRSYS_TYPE_INVALID))
+            return true;
+    }
+    if (!report_memarg(ii, arg_info, (byte *) &apa->Flags, sizeof(apa->Flags),
+                       "ALPC_PORT_ATTRIBUTES.Flags"))
+        return true;
+    handle_security_qos_access(ii, arg_info, (byte *) &apa->SecurityQos,
                                sizeof(SECURITY_QUALITY_OF_SERVICE));
-    check_sysmem(check_type, sysnum, (byte *) &apa->MaxMessageLength,
-                 ((byte *) &apa->MaxTotalSectionSize) + sizeof(apa->MaxTotalSectionSize) -
-                 (byte *) &apa->MaxMessageLength,
-                 mc, "ALPC_PORT_ATTRIBUTES MaxMessageLength through MaxTotalSectionSize");
+    if (ii->abort)
+        return true;
+    if (!report_memarg(ii, arg_info, (byte *) &apa->MaxMessageLength,
+                       ((byte *) &apa->MaxTotalSectionSize) +
+                       sizeof(apa->MaxTotalSectionSize) -
+                       (byte *) &apa->MaxMessageLength,
+                       "ALPC_PORT_ATTRIBUTES MaxMessageLength..MaxTotalSectionSize"))
+        return true;
     return true;
 }
 
 static bool
-handle_alpc_security_attributes_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                                       uint arg_num,
+handle_alpc_security_attributes_access(sysarg_iter_info_t *ii,
                                        const syscall_arg_t *arg_info,
                                        app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     ALPC_SECURITY_ATTRIBUTES asa;
     ALPC_SECURITY_ATTRIBUTES *arg = (ALPC_SECURITY_ATTRIBUTES *) start;
     ASSERT(size == sizeof(ALPC_SECURITY_ATTRIBUTES), "invalid size");
 
-    check_sysmem(check_type, sysnum, start, sizeof(arg->Flags) +
-                 sizeof(arg->SecurityQos) + sizeof(arg->ContextHandle), mc,
-                 "ALPC_SECURITY_ATTRIBUTES fields");
+    if (!report_memarg(ii, arg_info, start, sizeof(arg->Flags) +
+                       sizeof(arg->SecurityQos) + sizeof(arg->ContextHandle),
+                       "ALPC_SECURITY_ATTRIBUTES fields"))
+        return true;
     if (safe_read((void*)start, sizeof(asa), &asa)) {
-        handle_security_qos_access(pre, sysnum, mc, arg_num, arg_info,
+        handle_security_qos_access(ii, arg_info,
                                    (byte *) asa.SecurityQos,
                                    sizeof(SECURITY_QUALITY_OF_SERVICE));
+        if (ii->abort)
+            return true;
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true;
 }
 
 static bool
-os_handle_syscall_arg_access(bool pre,
-                             int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const syscall_arg_t *arg_info,
                              app_pc start, uint size)
 {
@@ -1686,68 +1658,157 @@ os_handle_syscall_arg_access(bool pre,
 
     switch (arg_info->misc) {
     case SYSARG_TYPE_PORT_MESSAGE:
-        return handle_port_message_access(pre, sysnum, mc, arg_num,
-                                          arg_info, start, size);
+        return handle_port_message_access(ii, arg_info, start, size);
     case SYSARG_TYPE_CONTEXT:
-        return handle_context_access(pre, sysnum, mc, arg_num,
-                                     arg_info, start, size);
+        return handle_context_access(ii, arg_info, start, size);
     case SYSARG_TYPE_EXCEPTION_RECORD:
-        return handle_exception_record_access(pre, sysnum, mc, arg_num,
-                                              arg_info, start, size);
+        return handle_exception_record_access(ii, arg_info, start, size);
     case SYSARG_TYPE_SECURITY_QOS:
-        return handle_security_qos_access(pre, sysnum, mc, arg_num,
-                                          arg_info, start, size);
+        return handle_security_qos_access(ii, arg_info, start, size);
     case SYSARG_TYPE_SECURITY_DESCRIPTOR:
-        return handle_security_descriptor_access(pre, sysnum, mc, arg_num,
-                                                 arg_info, start, size);
+        return handle_security_descriptor_access(ii, arg_info, start, size);
     case SYSARG_TYPE_UNICODE_STRING:
-        return handle_unicode_string_access(pre, sysnum, mc, arg_num,
-                                            arg_info, start, size, false);
+        return handle_unicode_string_access(ii, arg_info, start, size, false);
     case SYSARG_TYPE_UNICODE_STRING_NOLEN:
-        return handle_unicode_string_access(pre, sysnum, mc, arg_num,
-                                            arg_info, start, size, true);
+        return handle_unicode_string_access(ii, arg_info, start, size, true);
     case SYSARG_TYPE_OBJECT_ATTRIBUTES:
-        return handle_object_attributes_access(pre, sysnum, mc, arg_num,
-                                               arg_info, start, size);
+        return handle_object_attributes_access(ii, arg_info, start, size);
     case SYSARG_TYPE_CSTRING_WIDE:
-        return handle_cstring_wide_access(pre, sysnum, mc, arg_num,
-                                          arg_info, start, size);
+        return handle_cstring_wide_access(ii, arg_info, start, size);
     case SYSARG_TYPE_ALPC_PORT_ATTRIBUTES:
-        return handle_alpc_port_attributes_access(pre, sysnum, mc, arg_num,
-                                                  arg_info, start, size);
+        return handle_alpc_port_attributes_access(ii, arg_info, start, size);
     case SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES:
-        return handle_alpc_security_attributes_access(pre, sysnum, mc, arg_num,
-                                                      arg_info, start, size);
+        return handle_alpc_security_attributes_access(ii, arg_info, start, size);
     }
-    return wingdi_process_syscall_arg(pre, sysnum, mc, arg_num,
-                                      arg_info, start, size);
+    return wingdi_process_arg(ii, arg_info, start, size);
 }
 
 bool
-os_handle_pre_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
                                  const syscall_arg_t *arg_info,
                                  app_pc start, uint size)
 {
-    return os_handle_syscall_arg_access(true/*pre*/, sysnum, mc, arg_num,
-                                        arg_info, start, size);
+    return os_handle_syscall_arg_access(ii, arg_info, start, size);
 }
 
 bool
-os_handle_post_syscall_arg_access(int sysnum, dr_mcontext_t *mc, uint arg_num,
+os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
                                   const syscall_arg_t *arg_info,
                                   app_pc start, uint size)
 {
-    return os_handle_syscall_arg_access(false/*!pre*/, sysnum, mc, arg_num,
-                                        arg_info, start, size);
+    return os_handle_syscall_arg_access(ii, arg_info, start, size);
 }
 
 /***************************************************************************
  * SHADOW PER-SYSCALL HANDLING
  */
 
+typedef enum _PROCESSINFOCLASS {
+    ProcessBasicInformation,
+    ProcessQuotaLimits,
+    ProcessIoCounters,
+    ProcessVmCounters,
+    ProcessTimes,
+    ProcessBasePriority,
+    ProcessRaisePriority,
+    ProcessDebugPort,
+    ProcessExceptionPort,
+    ProcessAccessToken,
+    ProcessLdtInformation,
+    ProcessLdtSize,
+    ProcessDefaultHardErrorMode,
+    ProcessIoPortHandlers,
+    ProcessPooledUsageAndLimits,
+    ProcessWorkingSetWatch,
+    ProcessUserModeIOPL,
+    ProcessEnableAlignmentFaultFixup,
+    ProcessPriorityClass,
+    ProcessWx86Information,
+    ProcessHandleCount,
+    ProcessAffinityMask,
+    ProcessPriorityBoost,
+    ProcessDeviceMap,
+    ProcessSessionInformation,
+    ProcessForegroundInformation,
+    ProcessWow64Information,
+    /* added after XP+ */
+    ProcessImageFileName,
+    ProcessLUIDDeviceMapsEnabled,
+    ProcessBreakOnTermination,
+    ProcessDebugObjectHandle,
+    ProcessDebugFlags,
+    ProcessHandleTracing,
+    ProcessIoPriority,
+    ProcessExecuteFlags,
+    ProcessResourceManagement,
+    ProcessCookie,
+    ProcessImageInformation,
+    MaxProcessInfoClass
+} PROCESSINFOCLASS;
+
+typedef LONG KPRIORITY;
+typedef struct _PROCESS_BASIC_INFORMATION {
+    NTSTATUS ExitStatus;
+    PPEB PebBaseAddress;
+    ULONG_PTR AffinityMask;
+    KPRIORITY BasePriority;
+    ULONG_PTR UniqueProcessId;
+    ULONG_PTR InheritedFromUniqueProcessId;
+} PROCESS_BASIC_INFORMATION;
+typedef PROCESS_BASIC_INFORMATION *PPROCESS_BASIC_INFORMATION;
+
+GET_NTDLL(NtQueryInformationProcess, (IN HANDLE ProcessHandle,
+                                      IN PROCESSINFOCLASS ProcessInformationClass,
+                                      OUT PVOID ProcessInformation,
+                                      IN ULONG ProcessInformationLength,
+                                      OUT PULONG ReturnLength OPTIONAL));
+
+static TEB *
+get_TEB(void)
+{
+#ifdef X64
+    return (TEB *) __readgsqword(offsetof(TEB, Self));
+#else
+    return (TEB *) __readfsdword(offsetof(TEB, Self));
+#endif
+}
+
+static uint
+getpid(void)
+{
+    return (uint) get_TEB()->ClientId.UniqueProcess;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_handle_is_current_process(HANDLE h, bool *current)
+{
+    uint pid, got;
+    PROCESS_BASIC_INFORMATION info;
+    NTSTATUS res;
+    if (current == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (h == NT_CURRENT_PROCESS) {
+        *current = true;
+        return DRMF_SUCCESS;
+    }
+    if (h == NULL) {
+        *current = false;
+        return DRMF_SUCCESS;
+    }
+    memset(&info, 0, sizeof(PROCESS_BASIC_INFORMATION));
+    res = NtQueryInformationProcess(h, ProcessBasicInformation,
+                                    &info, sizeof(PROCESS_BASIC_INFORMATION), &got);
+    if (!NT_SUCCESS(res) || got != sizeof(PROCESS_BASIC_INFORMATION)) {
+        ASSERT(false, "internal error");
+        return DRMF_ERROR; /* better to have false positives than negatives? */
+    }
+    *current = (info.UniqueProcessId == getpid());
+    return DRMF_SUCCESS;
+}
+
 static void
-handle_post_CreateThread(void *drcontext, int sysnum, cls_syscall_t *pt,
-                         dr_mcontext_t *mc)
+handle_post_CreateThread(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
         /* Even on XP+ where csrss frees the stack, the stack alloc happens
@@ -1759,25 +1820,28 @@ handle_post_CreateThread(void *drcontext, int sysnum, cls_syscall_t *pt,
          * so it's not suspended at this point.
          */
         HANDLE thread_handle;
+        bool cur_proc;
         /* If not suspended, let set_thread_initial_structures() handle it to
          * avoid races: though since setting as defined the only race would be
          * the thread exiting
          */
         if (pt->sysarg[7]/*bool suspended*/ &&
-            is_current_process((HANDLE)pt->sysarg[3]) &&
+            drsys_handle_is_current_process((HANDLE)pt->sysarg[3], &cur_proc) ==
+            DRMF_SUCCESS && cur_proc &&
             safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
-            TEB *teb = get_TEB_from_handle(thread_handle);
-            LOG(1, "TEB for new thread: "PFX"\n", teb);
-            set_teb_initial_shadow(teb);
+            /* XXX: this is a new thread.  Should we tell the user to treat
+             * its TEB as newly defined memory?
+             */
         }
     }
 }
 
-static bool
-handle_pre_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
-                          dr_mcontext_t *mc)
+static void
+handle_pre_CreateThreadEx(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    if (is_current_process((HANDLE)pt->sysarg[3])) {
+    bool cur_proc;
+    if (drsys_handle_is_current_process((HANDLE)pt->sysarg[3], &cur_proc) ==
+        DRMF_SUCCESS && cur_proc) {
         create_thread_info_t info;
         if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
                       sizeof(info.struct_size), &info.struct_size)) {
@@ -1786,37 +1850,43 @@ handle_pre_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
                 info.struct_size = sizeof(info);  /* avoid overflowing the struct */
             }
             if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[10],
-                             info.struct_size, mc, "create_thread_info_t");
+                if (!report_memarg_type(ii, 10, SYSARG_READ, (byte *)pt->sysarg[10],
+                                        info.struct_size, "create_thread_info_t",
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
                 if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
-                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
-                                 info.client_id.buffer_size, mc, "PCLIENT_ID");
+                    if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.client_id.buffer,
+                                            info.client_id.buffer_size, "PCLIENT_ID",
+                                            DRSYS_TYPE_STRUCT, NULL))
+                        return;
                 }
                 if (info.struct_size > offsetof(create_thread_info_t, teb)) {
                     /* This is optional, and omitted in i#342 */
-                    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.teb.buffer,
-                                 info.teb.buffer_size, mc, "PTEB");
+                    if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.teb.buffer,
+                                            info.teb.buffer_size, "PTEB",
+                                            DRSYS_TYPE_STRUCT, NULL))
+                        return;
                 }
             }
         }
     }
-    return true;
 }
 
 static void
-handle_post_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
-                           dr_mcontext_t *mc)
+handle_post_CreateThreadEx(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    if (is_current_process((HANDLE)pt->sysarg[3]) &&
+    bool cur_proc;
+    if (drsys_handle_is_current_process((HANDLE)pt->sysarg[3], &cur_proc) ==
+        DRMF_SUCCESS && cur_proc &&
         NT_SUCCESS(dr_syscall_get_result(drcontext))) {
         HANDLE thread_handle;
         create_thread_info_t info;
         /* See notes in handle_post_CreateThread() */
         if (pt->sysarg[6]/*bool suspended*/ &&
             safe_read((byte *)pt->sysarg[0], sizeof(thread_handle), &thread_handle)) {
-            TEB *teb = get_TEB_from_handle(thread_handle);
-            LOG(1, "TEB for new thread: "PFX"\n", teb);
-            set_teb_initial_shadow(teb);
+            /* XXX: this is a new thread.  Should we tell the user to treat
+             * its TEB as newly defined memory?
+             */
         }
         if (safe_read(&((create_thread_info_t *)pt->sysarg[10])->struct_size,
                       sizeof(info.struct_size), &info.struct_size)) {
@@ -1825,54 +1895,64 @@ handle_post_CreateThreadEx(void *drcontext, int sysnum, cls_syscall_t *pt,
             }
             if (safe_read((byte *)pt->sysarg[10], info.struct_size, &info)) {
                 if (info.struct_size > offsetof(create_thread_info_t, client_id)) {
-                    check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
-                                 info.client_id.buffer_size, mc, "PCLIENT_ID");
+                    if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.client_id.buffer,
+                                            info.client_id.buffer_size, "PCLIENT_ID",
+                                            DRSYS_TYPE_STRUCT, NULL))
+                        return;
                 }
                 if (info.struct_size > offsetof(create_thread_info_t, teb)) {
-                    check_sysmem(MEMREF_WRITE, sysnum, info.teb.buffer,
-                                 info.teb.buffer_size, mc, "PTEB");
+                    if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.teb.buffer,
+                                            info.teb.buffer_size, "PTEB",
+                                            DRSYS_TYPE_STRUCT, NULL))
+                        return;
                 }
             }
         }
     }
 }
 
-static bool
-handle_pre_CreateUserProcess(void *drcontext, int sysnum, cls_syscall_t *pt,
-                             dr_mcontext_t *mc)
+static void
+handle_pre_CreateUserProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     create_proc_thread_info_t info;
     if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, info.nt_path_to_exe.buffer,
-                     info.nt_path_to_exe.buffer_size, mc, "path to exe");
-        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.client_id.buffer,
-                     info.client_id.buffer_size, mc, "PCLIENT_ID");
-        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, info.exe_stuff.buffer,
-                     info.exe_stuff.buffer_size, mc, "path to exe");
+        if (!report_memarg_type(ii, 10, SYSARG_READ, info.nt_path_to_exe.buffer,
+                                info.nt_path_to_exe.buffer_size, "path to exe",
+                                DRSYS_TYPE_CWARRAY, param_type_names[DRSYS_TYPE_CWARRAY]))
+            return;
+        if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.client_id.buffer,
+                                info.client_id.buffer_size, "PCLIENT_ID",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
+        if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.exe_stuff.buffer,
+                                info.exe_stuff.buffer_size, "exe stuff",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         /* XXX i#98: there are other IN/OUT params but exact form not clear */
     }
-    return true;
 }
 
 static void
-handle_post_CreateUserProcess(void *drcontext, int sysnum, cls_syscall_t *pt,
-                              dr_mcontext_t *mc)
+handle_post_CreateUserProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
         create_proc_thread_info_t info;
         if (safe_read((byte *)pt->sysarg[10], sizeof(info), &info)) {
-            check_sysmem(MEMREF_WRITE, sysnum, info.client_id.buffer,
-                         info.client_id.buffer_size, mc, "PCLIENT_ID");
-            check_sysmem(MEMREF_WRITE, sysnum, info.exe_stuff.buffer,
-                         info.exe_stuff.buffer_size, mc, "exe_stuff");
+            if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.client_id.buffer,
+                                    info.client_id.buffer_size, "PCLIENT_ID",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (!report_memarg_type(ii, 10, SYSARG_WRITE, info.exe_stuff.buffer,
+                                    info.exe_stuff.buffer_size, "exe_stuff",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
             /* XXX i#98: there are other IN/OUT params but exact form not clear */
         }
     }
 }
 
-static bool
-handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                            dr_mcontext_t *mc)
+static void
+handle_QuerySystemInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* Normally the buffer is just output.  For the input case here we
      * will mark the buffer as defined b/c of the regular table processing:
@@ -1881,13 +1961,17 @@ handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall
     SYSTEM_INFORMATION_CLASS cls = (SYSTEM_INFORMATION_CLASS) pt->sysarg[0];
     if (cls == SystemSessionProcessesInformation) {
         SYSTEM_SESSION_PROCESS_INFORMATION buf;
-        if (pre) {
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[1],
-                         sizeof(buf), mc, "SYSTEM_SESSION_PROCESS_INFORMATION");
+        if (ii->arg->pre) {
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)pt->sysarg[1],
+                                    sizeof(buf), "SYSTEM_SESSION_PROCESS_INFORMATION",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
         if (safe_read((byte *) pt->sysarg[1], sizeof(buf), &buf)) {
-            check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE,
-                         sysnum, buf.Buffer, buf.SizeOfBuf, mc, "Buffer");
+            if (!report_memarg_type(ii, 1, SYSARG_WRITE,
+                                    buf.Buffer, buf.SizeOfBuf, "Buffer",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
     }
     /* i#932: The kernel always writes the size needed info ReturnLength, even
@@ -1895,31 +1979,31 @@ handle_QuerySystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall
      * may be zero.  For DrMemory, we can handle this with
      * SYSINFO_RET_SMALL_WRITE_LAST.
      */
-    return true;
 }
 
-static bool
-handle_SetSystemInformation(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                            dr_mcontext_t *mc)
+static void
+handle_SetSystemInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* Normally the buffer is just input, but some info classes write data */
     SYSTEM_INFORMATION_CLASS cls = (SYSTEM_INFORMATION_CLASS) pt->sysarg[0];
-    if (pre)
-        return true;
+    if (ii->arg->pre)
+        return;
     /* Nebbett had this as SystemLoadImage and SYSTEM_LOAD_IMAGE */
     if (cls == SystemLoadGdiDriverInformation) {
         SYSTEM_GDI_DRIVER_INFORMATION *buf =
             (SYSTEM_GDI_DRIVER_INFORMATION *) pt->sysarg[1];
-        check_sysmem(MEMREF_WRITE, sysnum, (byte *) &buf->ImageAddress,
-                     sizeof(*buf) - offsetof(SYSTEM_GDI_DRIVER_INFORMATION, ImageAddress),
-                     mc, "loaded image info");
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (byte *) &buf->ImageAddress,
+                                sizeof(*buf) -
+                                offsetof(SYSTEM_GDI_DRIVER_INFORMATION, ImageAddress),
+                                "loaded image info", DRSYS_TYPE_STRUCT, NULL))
+            return;
         /* Nebbett had this as SystemCreateSession and SYSTEM_CREATE_SESSION */
     } else if (cls == SystemSessionCreate) {
         /* Just a ULONG, no struct */
-        check_sysmem(MEMREF_WRITE, sysnum, (byte *) pt->sysarg[1],
-                     sizeof(ULONG), mc, "session id");
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (byte *) pt->sysarg[1],
+                                sizeof(ULONG), "session id", DRSYS_TYPE_INT, NULL))
+            return;
     }
-    return true;
 }
 
 /***************************************************************************
@@ -1968,19 +2052,24 @@ ZwDeviceIoControlFile(
 #define AFD_FUNCTION_FROM_CTL_CODE(code) \
         (FUNCTION_FROM_CTL_CODE(code) & 0x3ff)
 
+#define IOCTL_INBUF_ARGNUM 6
+#define IOCTL_OUTBUF_ARGNUM 8
+
 /* XXX: very similar to Linux layouts, though exact constants are different.
  * Still, should be able to share some code.
  */
 static void
-check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
-               int sysnum, const char *id)
+check_sockaddr(sysarg_iter_info_t *ii, byte *ptr, size_t len, bool inbuf,
+               const char *id)
 {
     struct sockaddr *sa = (struct sockaddr *) ptr;
     ADDRESS_FAMILY family;
-    if (TESTANY(MEMREF_CHECK_DEFINEDNESS | MEMREF_CHECK_ADDRESSABLE, memcheck_flags)) {
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sa->sa_family, sizeof(sa->sa_family), mc, id);
-    }
+    int ordinal = inbuf ? IOCTL_INBUF_ARGNUM : IOCTL_OUTBUF_ARGNUM;
+    uint arg_flags = inbuf ? SYSARG_READ : SYSARG_WRITE;
+    if (!report_memarg_type(ii, ordinal, arg_flags,
+                            (app_pc) &sa->sa_family, sizeof(sa->sa_family), id,
+                            DRSYS_TYPE_INT, NULL))
+        return;
     if (!safe_read(&sa->sa_family, sizeof(family), &family))
         return;
     /* FIXME: do not check beyond len */
@@ -1996,48 +2085,72 @@ check_sockaddr(byte *ptr, size_t len, uint memcheck_flags, dr_mcontext_t *mc,
     }
     case AF_INET: {
         struct sockaddr_in *sin = (struct sockaddr_in *) sa;
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin->sin_port, sizeof(sin->sin_port), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin->sin_port, sizeof(sin->sin_port), id,
+                                DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), id,
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         break;
     }
     case AF_INET6: {
         struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo), mc, id);
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), id,
+                                DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo),
+                                id, DRSYS_TYPE_INT, NULL))
+            return;
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), id,
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
         /* FIXME: when is sin6_scope_struct used? */
-        check_sysmem(memcheck_flags, sysnum,
-                     (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id), mc, id);
+        if (!report_memarg_type(ii, ordinal, arg_flags,
+                                (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id),
+                                id, DRSYS_TYPE_INT, NULL))
+            return;
         break;
     }
     default:
         WARN("WARNING: unknown sockaddr type %d\n", family); 
-        IF_DEBUG(report_callstack(dr_get_current_drcontext(), mc);)
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
 }
 
 /* Macros for shorter, easier-to-read code */
-#define CHECK_DEF(ptr, sz, id) \
-    check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte*)ptr, sz, mc, id)
-#define CHECK_ADDR(ptr, sz, id) \
-    check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, (byte*)ptr, sz, mc, id)
-#define MARK_WRITE(ptr, sz, id) \
-    check_sysmem(MEMREF_WRITE, sysnum, ptr, sz, mc, id)
-#define CHECK_OUT_PARAM(ptr, sz, id) \
-    check_sysmem((pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE), \
-                 sysnum, ptr, sz, mc, id)
+/* N.B.: these return directly, so do not use in functions that need cleanup! */
+#define CHECK_DEF(ii, ptr, sz, id) do {                                        \
+    if (!report_memarg_type(ii, IOCTL_INBUF_ARGNUM, SYSARG_READ, (byte *)(ptr),\
+                            sz, id, DRSYS_TYPE_STRUCT, NULL))                  \
+        return;                                                                \
+} while (0)
+#define CHECK_ADDR(ii, ptr, sz, id) do {                                         \
+    if (!report_memarg_type(ii, IOCTL_OUTBUF_ARGNUM, SYSARG_WRITE, (byte *)(ptr),\
+                            sz, id, DRSYS_TYPE_STRUCT, NULL))                    \
+        return;                                                                  \
+} while (0)
+#define MARK_WRITE(ii, ptr, sz, id) do {                                       \
+    if (!report_memarg_type(ii, IOCTL_OUTBUF_ARGNUM, SYSARG_WRITE, ptr, sz, id,\
+                            DRSYS_TYPE_STRUCT, NULL))                          \
+        return;                                                                \
+} while (0)
+#define CHECK_OUT_PARAM(ii, ptr, sz, id) do {                                  \
+    if (!report_memarg_type(ii, IOCTL_OUTBUF_ARGNUM, SYSARG_WRITE, ptr, sz, id,\
+                            DRSYS_TYPE_STRUCT, NULL))                          \
+        return;                                                                \
+} while (0)
 
 static void
-handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint full_code = (uint) pt->sysarg[5];
-    byte *inbuf = (byte *) pt->sysarg[6];
+    byte *inbuf = (byte *) pt->sysarg[IOCTL_INBUF_ARGNUM];
     uint insz = (uint) pt->sysarg[7];
     /* FIXME: put max of insz on all the sizes below */
 
@@ -2062,28 +2175,29 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         /* InputBuffer == AFD_RECV_INFO */
         AFD_RECV_INFO info;
         uint i;
-        if (pre)
-            CHECK_DEF(inbuf, insz, "AFD_RECV_INFO");
+        if (ii->arg->pre)
+            CHECK_DEF(ii, inbuf, insz, "AFD_RECV_INFO");
 
         if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info)) {
             WARN("WARNING: AFD_RECV: can't read param\n");
             break;
         }
 
-        if (pre) {
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+        if (ii->arg->pre) {
+            CHECK_DEF(ii, (byte *)info.BufferArray,
+                      info.BufferCount * sizeof(*info.BufferArray),
                       "AFD_RECV_INFO.BufferArray");
         }
 
         for (i = 0; i < info.BufferCount; i++) {
             AFD_WSABUF buf;
             if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
-                if (pre)
-                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                if (ii->arg->pre)
+                    CHECK_ADDR(ii, buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
                 else {
                     LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO buf %d: "PFX"-"PFX"\n",
                         i, buf.buf, buf.len);
-                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
+                    MARK_WRITE(ii, buf.buf, buf.len, "AFD_RECV_INFO.BufferArray[i].buf");
                 }
             } else
                 WARN("WARNING: AFD_RECV: can't read param\n");
@@ -2094,8 +2208,8 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         /* InputBuffer == AFD_RECV_INFO_UDP */
         AFD_RECV_INFO_UDP info;
         uint i;
-        if (pre)
-            CHECK_DEF(inbuf, insz, "AFD_RECV_INFO_UDP");
+        if (ii->arg->pre)
+            CHECK_DEF(ii, inbuf, insz, "AFD_RECV_INFO_UDP");
 
         if (inbuf == NULL || !safe_read(inbuf, sizeof(info), &info)) {
             WARN("WARNING: AFD_RECV_DATAGRAM: can't read param\n");
@@ -2103,8 +2217,8 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         }
 
         if (safe_read(info.AddressLength, sizeof(i), &i)) {
-            if (pre)
-                CHECK_ADDR((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
+            if (ii->arg->pre)
+                CHECK_ADDR(ii, (byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
             else {
                 /* XXX i#410: This API is asynch and info.Address is an
                  * outparam, so its possible that none of this data is written
@@ -2112,24 +2226,24 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
                  * rather than using check_sockaddr(), which will try to look at
                  * the unwritten sa_family field.
                  */
-                MARK_WRITE((byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
+                MARK_WRITE(ii, (byte*)info.Address, i, "AFD_RECV_INFO_UDP.Address");
             }
         } else
             WARN("WARNING: AFD_RECV_DATAGRAM: can't read AddressLength\n");
 
-        if (pre) {
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+        if (ii->arg->pre) {
+            CHECK_DEF(ii, info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
                       "AFD_RECV_INFO_UDP.BufferArray");
         }
         for (i = 0; i < info.BufferCount; i++) {
             AFD_WSABUF buf;
             if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf)) {
-                if (pre)
-                    CHECK_ADDR(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                if (ii->arg->pre)
+                    CHECK_ADDR(ii, buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
                 else {
                     LOG(SYSCALL_VERBOSE, "\tAFD_RECV_INFO_UDP buf %d: "PFX"-"PFX"\n",
                         i, buf.buf, buf.len);
-                    MARK_WRITE(buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
+                    MARK_WRITE(ii, buf.buf, buf.len, "AFD_RECV_INFO_UDP.BufferArray[i].buf");
                 }
             } else
                 WARN("WARNING: AFD_RECV_DATAGRAM: can't read BufferArray\n");
@@ -2140,8 +2254,8 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         AFD_POLL_INFO info;
         uint i;
         AFD_POLL_INFO *ptr = NULL;
-        if (pre) {
-            CHECK_DEF(inbuf, offsetof(AFD_POLL_INFO, Handles),
+        if (ii->arg->pre) {
+            CHECK_DEF(ii, inbuf, offsetof(AFD_POLL_INFO, Handles),
                       "AFD_POLL_INFO pre-Handles");
         }
 
@@ -2155,20 +2269,20 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         ptr = (AFD_POLL_INFO *) inbuf;
         for (i = 0; i < info.HandleCount; i++) {
             /* I'm assuming Status is an output field */
-            if (pre ) {
-                CHECK_DEF(&ptr->Handles[i], offsetof(AFD_HANDLE, Status),
+            if (ii->arg->pre ) {
+                CHECK_DEF(ii, &ptr->Handles[i], offsetof(AFD_HANDLE, Status),
                           "AFD_POLL_INFO.Handles[i]");
             } else {
-              MARK_WRITE((byte*)&ptr->Handles[i].Status, sizeof(ptr->Handles[i].Status),
+              MARK_WRITE(ii, (byte*)&ptr->Handles[i].Status, sizeof(ptr->Handles[i].Status),
                           "AFD_POLL_INFO.Handles[i].Status");
             }
         }
         break;
     }
     case AFD_GET_TDI_HANDLES: { /* 13 == 0x12037 */
-        if (pre) {
+        if (ii->arg->pre) {
             /* I believe input is a uint of AFD_*_HANDLE flags */
-            CHECK_DEF(inbuf, insz, "AFD_GET_TDI_HANDLES flags");
+            CHECK_DEF(ii, inbuf, insz, "AFD_GET_TDI_HANDLES flags");
             /* as usual the write param will be auto-checked for addressabilty */
         } else {
             uint outsz = (uint) pt->sysarg[9];
@@ -2177,12 +2291,12 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
             if (safe_read(inbuf, sizeof(flags), &flags) &&
                 outsz == sizeof(*info)) {
                 if (TEST(AFD_ADDRESS_HANDLE, flags)) {
-                    MARK_WRITE((byte*)&info->TdiAddressHandle,
+                    MARK_WRITE(ii, (byte*)&info->TdiAddressHandle,
                                sizeof(info->TdiAddressHandle),
                                "AFD_TDI_HANDLE_DATA.TdiAddressHandle");
                 }
                 if (TEST(AFD_CONNECTION_HANDLE, flags)) {
-                    MARK_WRITE((byte*)&info->TdiConnectionHandle,
+                    MARK_WRITE(ii, (byte*)&info->TdiConnectionHandle,
                                sizeof(info->TdiConnectionHandle),
                                "AFD_TDI_HANDLE_DATA.TdiConnectionHandle");
                 }
@@ -2192,9 +2306,9 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         break;
     }
     case AFD_GET_INFO: { /* 30 == 0x1207b */
-        if (pre) {
+        if (ii->arg->pre) {
             /* InputBuffer == AFD_INFO.  Only InformationClass need be defined. */
-            CHECK_DEF(inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
+            CHECK_DEF(ii, inbuf, sizeof(((AFD_INFO*)0)->InformationClass),
                       "AFD_INFO.InformationClass");
         } else {
             /* XXX i#378: post-syscall we should only define the particular info
@@ -2211,7 +2325,7 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
     }
     }
 
-    if (pre_post_ioctl || !pre) {
+    if (pre_post_ioctl || !ii->arg->pre) {
         return;
     }
 
@@ -2222,12 +2336,12 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
          * Padding also need not be defined.
          */
         AFD_INFO info;
-        CHECK_DEF(inbuf, sizeof(info.InformationClass), "AFD_INFO.InformationClass");
+        CHECK_DEF(ii, inbuf, sizeof(info.InformationClass), "AFD_INFO.InformationClass");
         if (safe_read(inbuf, sizeof(info), &info)) {
             switch (info.InformationClass) {
             case AFD_INFO_BLOCKING_MODE:
                 /* uses BOOLEAN in union */
-                CHECK_DEF(inbuf + offsetof(AFD_INFO, Information.Boolean),
+                CHECK_DEF(ii, inbuf + offsetof(AFD_INFO, Information.Boolean),
                           sizeof(info.Information.Boolean), "AFD_INFO.Information");
                 break;
             default:
@@ -2256,7 +2370,7 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         ASSERT(offsetof(SOCKET_CONTEXT_NOGUID, SharedData) == 0,
                "SOCKET_CONTEXT_NOGUID layout changed?");
 
-        CHECK_DEF(inbuf, sizeof(sd), "SOCKET_CONTEXT SharedData");
+        CHECK_DEF(ii, inbuf, sizeof(sd), "SOCKET_CONTEXT SharedData");
         if (!safe_read(inbuf, sizeof(sd), &sd)) {
             WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
             break;
@@ -2265,7 +2379,7 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         /* Now that we know the exact layout we can re-read the SOCKET_CONTEXT */
         if (sd.HasGUID) {
             SOCKET_CONTEXT sc;
-            CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT, Padding),
+            CHECK_DEF(ii, inbuf, offsetof(SOCKET_CONTEXT, Padding),
                       "SOCKET_CONTEXT pre-Padding");
             if (!safe_read(inbuf, sizeof(sc), &sc)) {
                 WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
@@ -2280,7 +2394,7 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
                 sd.SizeOfLocalAddress + sd.SizeOfRemoteAddress;
         } else {
             SOCKET_CONTEXT_NOGUID sc;
-            CHECK_DEF(inbuf, offsetof(SOCKET_CONTEXT_NOGUID, Padding),
+            CHECK_DEF(ii, inbuf, offsetof(SOCKET_CONTEXT_NOGUID, Padding),
                       "SOCKET_CONTEXT pre-Padding");
             if (!safe_read(inbuf, sizeof(sc), &sc)) {
                 WARN("WARNING: AFD_SET_CONTEXT: can't read param\n");
@@ -2300,58 +2414,57 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
             break;
         }
 
-        check_sockaddr(l_addr_ptr, sd.SizeOfLocalAddress, MEMREF_CHECK_DEFINEDNESS,
-                       mc, sysnum, "SOCKET_CONTEXT.LocalAddress");
+        check_sockaddr(ii, l_addr_ptr, sd.SizeOfLocalAddress, true/*in*/,
+                       "SOCKET_CONTEXT.LocalAddress");
         /* I'm treating these SOCKADDRS as var-len */
-        check_sockaddr(r_addr_ptr, sd.SizeOfRemoteAddress, MEMREF_CHECK_DEFINEDNESS,
-                       mc, sysnum, "SOCKET_CONTEXT.RemoteAddress");
+        check_sockaddr(ii, r_addr_ptr, sd.SizeOfRemoteAddress, true/*in*/,
+                       "SOCKET_CONTEXT.RemoteAddress");
 
         /* FIXME i#424: helper data could be a struct w/ padding. I have seen pieces of
          * it be uninit on XP. Just ignore the definedness check if helper data
          * is not trivial
          */
         if (helper_size <= 4)
-            CHECK_DEF(inbuf + helper_offs, helper_size, "SOCKET_CONTEXT.HelperData");
+            CHECK_DEF(ii, inbuf + helper_offs, helper_size, "SOCKET_CONTEXT.HelperData");
         break;
     }
     case AFD_BIND: { /* 0 == 0x12003 */
         /* InputBuffer == AFD_BIND_DATA.  Address.Address is var-len and mswsock.dll
          * seems to pass an over-estimate of the real size.
          */
-        CHECK_DEF(inbuf, offsetof(AFD_BIND_DATA, Address), "AFD_BIND_DATA pre-Address");
-        check_sockaddr(inbuf + offsetof(AFD_BIND_DATA, Address),
-                       insz - offsetof(AFD_BIND_DATA, Address), MEMREF_CHECK_DEFINEDNESS,
-                       mc, sysnum, "AFD_BIND_DATA.Address");
+        CHECK_DEF(ii, inbuf, offsetof(AFD_BIND_DATA, Address), "AFD_BIND_DATA pre-Address");
+        check_sockaddr(ii, inbuf + offsetof(AFD_BIND_DATA, Address),
+                       insz - offsetof(AFD_BIND_DATA, Address), true/*in*/,
+                       "AFD_BIND_DATA.Address");
         break;
     }
     case AFD_CONNECT: { /* 1 == 0x12007 */
         /* InputBuffer == AFD_CONNECT_INFO.  RemoteAddress.Address is var-len. */
         AFD_CONNECT_INFO *info = (AFD_CONNECT_INFO *) inbuf;
         /* Have to separate the Boolean since padding after it */
-        CHECK_DEF(inbuf, sizeof(info->UseSAN), "AFD_CONNECT_INFO.UseSAN");
-        CHECK_DEF(&info->Root, (byte*)&info->RemoteAddress - (byte*)&info->Root,
+        CHECK_DEF(ii, inbuf, sizeof(info->UseSAN), "AFD_CONNECT_INFO.UseSAN");
+        CHECK_DEF(ii, &info->Root, (byte*)&info->RemoteAddress - (byte*)&info->Root,
                   "AFD_CONNECT_INFO pre-RemoteAddress");
-        check_sockaddr((byte*)&info->RemoteAddress,
+        check_sockaddr(ii, (byte*)&info->RemoteAddress,
                        insz - offsetof(AFD_CONNECT_INFO, RemoteAddress),
-                       MEMREF_CHECK_DEFINEDNESS, mc, sysnum,
-                       "AFD_CONNECT_INFO.RemoteAddress");
+                       true/*in*/, "AFD_CONNECT_INFO.RemoteAddress");
         break;
     }
     case AFD_DISCONNECT: { /* 10 == 0x1202b */
         /* InputBuffer == AFD_DISCONNECT_INFO.  Padding between fields need not be def. */
         AFD_DISCONNECT_INFO *info = (AFD_DISCONNECT_INFO *) inbuf;
-        CHECK_DEF(inbuf, sizeof(info->DisconnectType),
+        CHECK_DEF(ii, inbuf, sizeof(info->DisconnectType),
                   "AFD_DISCONNECT_INFO.DisconnectType");
-        CHECK_DEF(inbuf + offsetof(AFD_DISCONNECT_INFO, Timeout),
+        CHECK_DEF(ii, inbuf + offsetof(AFD_DISCONNECT_INFO, Timeout),
                   sizeof(info->Timeout), "AFD_DISCONNECT_INFO.Timeout");
         break;
     }
     case AFD_DEFER_ACCEPT: { /* 35 == 0x120bf */
         /* InputBuffer == AFD_DEFER_ACCEPT_DATA */
         AFD_DEFER_ACCEPT_DATA *info = (AFD_DEFER_ACCEPT_DATA *) inbuf;
-        CHECK_DEF(inbuf, sizeof(info->SequenceNumber),
+        CHECK_DEF(ii, inbuf, sizeof(info->SequenceNumber),
                   "AFD_DEFER_ACCEPT_DATA.SequenceNumber");
-        CHECK_DEF(inbuf + offsetof(AFD_DEFER_ACCEPT_DATA, RejectConnection),
+        CHECK_DEF(ii, inbuf + offsetof(AFD_DEFER_ACCEPT_DATA, RejectConnection),
                   sizeof(info->RejectConnection),
                   "AFD_DEFER_ACCEPT_DATA.RejectConnection");
         break;
@@ -2359,15 +2472,15 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
     case AFD_SEND: { /* 7 == 0x1201f */
         /* InputBuffer == AFD_SEND_INFO */
         AFD_SEND_INFO info;
-        CHECK_DEF(inbuf, insz, "AFD_SEND_INFO"); /* no padding */
+        CHECK_DEF(ii, inbuf, insz, "AFD_SEND_INFO"); /* no padding */
         if (safe_read(inbuf, sizeof(info), &info)) {
             uint i;
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+            CHECK_DEF(ii, info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
                       "AFD_SEND_INFO.BufferArray");
             for (i = 0; i < info.BufferCount; i++) {
                 AFD_WSABUF buf;
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
-                    CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO.BufferArray[i].buf");
+                    CHECK_DEF(ii, buf.buf, buf.len, "AFD_SEND_INFO.BufferArray[i].buf");
                 else
                     WARN("WARNING: AFD_SEND: can't read param\n");
             }
@@ -2383,43 +2496,43 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         ASSERT(sizeof(size_of_remote_address) == sizeof(info.SizeOfRemoteAddress) &&
                sizeof(remote_address) == sizeof(info.RemoteAddress), "sizes don't match");
         /* Looks like AFD_SEND_INFO_UDP has 36 bytes of uninit gap in the middle: i#418 */
-        CHECK_DEF(inbuf, offsetof(AFD_SEND_INFO_UDP, UnknownGap),
+        CHECK_DEF(ii, inbuf, offsetof(AFD_SEND_INFO_UDP, UnknownGap),
                   "AFD_SEND_INFO_UDP before gap");
         if (safe_read(inbuf, offsetof(AFD_SEND_INFO_UDP, UnknownGap), &info)) {
             uint i;
-            CHECK_DEF(info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
+            CHECK_DEF(ii, info.BufferArray, info.BufferCount * sizeof(*info.BufferArray),
                       "AFD_SEND_INFO_UDP.BufferArray");
             for (i = 0; i < info.BufferCount; i++) {
                 AFD_WSABUF buf;
                 if (safe_read((char *)&info.BufferArray[i], sizeof(buf), &buf))
-                    CHECK_DEF(buf.buf, buf.len, "AFD_SEND_INFO_UDP.BufferArray[i].buf");
+                    CHECK_DEF(ii, buf.buf, buf.len, "AFD_SEND_INFO_UDP.BufferArray[i].buf");
                 else
                     WARN("WARNING: AFD_SEND_DATAGRAM: can't read param\n");
             }
         } else
             WARN("WARNING: AFD_SEND_DATAGRAM: can't read param\n");
-        CHECK_DEF(inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
+        CHECK_DEF(ii, inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
                   sizeof(info.SizeOfRemoteAddress),
                   "AFD_SEND_INFO_UDP.SizeOfRemoteAddress");
-        CHECK_DEF(inbuf + offsetof(AFD_SEND_INFO_UDP, RemoteAddress),
+        CHECK_DEF(ii, inbuf + offsetof(AFD_SEND_INFO_UDP, RemoteAddress),
                   sizeof(info.RemoteAddress),
                   "AFD_SEND_INFO_UDP.RemoteAddress");
         if (safe_read(inbuf + offsetof(AFD_SEND_INFO_UDP, SizeOfRemoteAddress),
                       sizeof(size_of_remote_address), &size_of_remote_address) &&
             safe_read(inbuf + offsetof(AFD_SEND_INFO_UDP, RemoteAddress),
                       sizeof(remote_address), &remote_address)) {
-            CHECK_DEF(remote_address, size_of_remote_address,
+            CHECK_DEF(ii, remote_address, size_of_remote_address,
                       "AFD_SEND_INFO_UDP.RemoteAddress buffer");
         }
 
         break;
     }
     case AFD_EVENT_SELECT: { /* 33 == 0x12087 */
-        CHECK_DEF(inbuf, insz, "AFD_EVENT_SELECT_INFO");
+        CHECK_DEF(ii, inbuf, insz, "AFD_EVENT_SELECT_INFO");
         break;
     }
     case AFD_ENUM_NETWORK_EVENTS: { /* 34 == 0x1208b */
-        CHECK_DEF(inbuf, insz, "AFD_ENUM_NETWORK_EVENTS_INFO"); /*  */
+        CHECK_DEF(ii, inbuf, insz, "AFD_ENUM_NETWORK_EVENTS_INFO"); /*  */
         break;
     }
     case AFD_START_LISTEN: { /* 2 == 0x1200b */
@@ -2427,14 +2540,14 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         if (insz != sizeof(AFD_LISTEN_DATA))
             WARN("WARNING: invalid size for AFD_LISTEN_DATA\n");
         /* Have to separate the Booleans since padding after */
-        CHECK_DEF(inbuf, sizeof(info->UseSAN), "AFD_LISTEN_DATA.UseSAN");
-        CHECK_DEF(&info->Backlog, sizeof(info->Backlog), "AFD_LISTEN_DATA.Backlog");
-        CHECK_DEF(&info->UseDelayedAcceptance, sizeof(info->UseDelayedAcceptance),
+        CHECK_DEF(ii, inbuf, sizeof(info->UseSAN), "AFD_LISTEN_DATA.UseSAN");
+        CHECK_DEF(ii, &info->Backlog, sizeof(info->Backlog), "AFD_LISTEN_DATA.Backlog");
+        CHECK_DEF(ii, &info->UseDelayedAcceptance, sizeof(info->UseDelayedAcceptance),
                   "AFD_LISTEN_DATA.UseDelayedAcceptance");
         break;
     }
     case AFD_ACCEPT: { /* 4 == 0x12010 */
-        CHECK_DEF(inbuf, insz, "AFD_ACCEPT_DATA");
+        CHECK_DEF(ii, inbuf, insz, "AFD_ACCEPT_DATA");
         break;
     }
     default: {
@@ -2445,41 +2558,24 @@ handle_AFD_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         WARN("WARNING: unknown AFD ioctl "PIFX" => op %d\n", full_code, opcode);
         /* XXX: should perhaps dump a callstack too at higher verbosity */
         /* assume full thing must be defined */ 
-        CHECK_DEF(inbuf, insz, "AFD InputBuffer");
+        CHECK_DEF(ii, inbuf, insz, "AFD InputBuffer");
         break;
     }
     }
 
-    ASSERT(pre, "Sanity check - we should only process pre- ioctls at this point");
-}
-
-/* Helper for checking an optional output buffer.  If the buffer was allocated
- * on the heap, warns if the expected size and the allocation size do not
- * match.
- */
-static void
-check_out_buf(bool pre, int sysnum, dr_mcontext_t *mc, void *buf, size_t size,
-              const char *name)
-{
-    ssize_t heap_size = malloc_size(buf);
-    if (pre && buf != NULL && heap_size >= 0 && (size_t)heap_size != size) {
-        WARN("WARNING: heap buffer \"%s\" at "PFX" is of size %d bytes, "
-             "which does not match the expected size of %d bytes.\n",
-             name, buf, heap_size, size);
-    }
-    CHECK_OUT_PARAM(buf, size, name);
+    ASSERT(ii->arg->pre, "Sanity check - we should only process pre- ioctls at this point");
 }
 
 /* Handles ioctls of type FILE_DEVICE_NETWORK.  Some codes are documented in
  * wininc/tcpioctl.h.
  */
 static void
-handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
+handle_NET_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     uint full_code = (uint) pt->sysarg[5];
-    byte *inbuf = (byte *) pt->sysarg[6];
+    byte *inbuf = (byte *) pt->sysarg[IOCTL_INBUF_ARGNUM];
     uint insz = (uint) pt->sysarg[7];
-    byte *outbuf = (byte *) pt->sysarg[8];
+    byte *outbuf = (byte *) pt->sysarg[IOCTL_OUTBUF_ARGNUM];
     uint outsz = (uint) pt->sysarg[9];
     bool handled;
 
@@ -2515,43 +2611,42 @@ handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
             break;
         }
         adapter_info = data.adapter_info;
-        if (pre && data.buf1) {
-            CHECK_DEF(data.buf1, data.buf1_sz, "net ioctl 0x003 buf1");
+        if (ii->arg->pre && data.buf1) {
+            CHECK_DEF(ii, data.buf1, data.buf1_sz, "net ioctl 0x003 buf1");
         }
-        CHECK_OUT_PARAM(data.buf2, data.buf2_sz,
-                        "net ioctl 0x003 buf2");
+        CHECK_OUT_PARAM(ii, data.buf2, data.buf2_sz, "net ioctl 0x003 buf2");
 
         /* Check whole buffer for addressability, but the kernel only writes
          * part of the output, so mark each struct member individually.
          */
-        if (pre) {
+        if (ii->arg->pre) {
             if (data.adapter_info_sz != sizeof(ip_adapter_info_t)) {
                 WARN("WARNING: adapter info struct size does not match "
                      "expectation: found %d expected %d\n",
                      data.adapter_info_sz, sizeof(ip_adapter_info_t));
             }
-            CHECK_ADDR(adapter_info, data.adapter_info_sz,
+            CHECK_ADDR(ii, adapter_info, data.adapter_info_sz,
                        "net ioctl 0x003 adapter_info");
         } else if (adapter_info != NULL) {
             /* XXX: Can we refactor these struct field checks here and above so
              * we only have to write the pointer, type, and field once?
              */
-            MARK_WRITE((byte*)&adapter_info->adapter_name_len,
+            MARK_WRITE(ii, (byte*)&adapter_info->adapter_name_len,
                        sizeof(adapter_info->adapter_name_len),
                        "net ioctl 0x003 adapter_info->adapter_name_len");
-            MARK_WRITE((byte*)&adapter_info->adapter_name,
+            MARK_WRITE(ii, (byte*)&adapter_info->adapter_name,
                        sizeof(adapter_info->adapter_name),
                        "net ioctl 0x003 adapter_info->adapter_name");
-            MARK_WRITE((byte*)&adapter_info->unknown_a,
+            MARK_WRITE(ii, (byte*)&adapter_info->unknown_a,
                        sizeof(adapter_info->unknown_a),
                        "net ioctl 0x003 adapter_info->unknown_a");
-            MARK_WRITE((byte*)&adapter_info->unknown_b,
+            MARK_WRITE(ii, (byte*)&adapter_info->unknown_b,
                        sizeof(adapter_info->unknown_b),
                        "net ioctl 0x003 adapter_info->unknown_b");
-            MARK_WRITE((byte*)&adapter_info->unknown_c,
+            MARK_WRITE(ii, (byte*)&adapter_info->unknown_c,
                        sizeof(adapter_info->unknown_c),
                        "net ioctl 0x003 adapter_info->unknown_c");
-            MARK_WRITE((byte*)&adapter_info->unknown_d,
+            MARK_WRITE(ii, (byte*)&adapter_info->unknown_d,
                        sizeof(adapter_info->unknown_d),
                        "net ioctl 0x003 adapter_info->unknown_d");
         }
@@ -2579,10 +2674,10 @@ handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         buf2sz = data.buf2_elt_sz * data.num_elts;
         buf3sz = data.buf3_elt_sz * data.num_elts;
         buf4sz = data.buf4_elt_sz * data.num_elts;
-        check_out_buf(pre, sysnum, mc, data.buf1, buf1sz, "net ioctl 0x006 buf1");
-        check_out_buf(pre, sysnum, mc, data.buf2, buf2sz, "net ioctl 0x006 buf2");
-        check_out_buf(pre, sysnum, mc, data.buf3, buf3sz, "net ioctl 0x006 buf3");
-        check_out_buf(pre, sysnum, mc, data.buf4, buf4sz, "net ioctl 0x006 buf4");
+        CHECK_OUT_PARAM(ii, data.buf1, buf1sz, "net ioctl 0x006 buf1");
+        CHECK_OUT_PARAM(ii, data.buf2, buf2sz, "net ioctl 0x006 buf2");
+        CHECK_OUT_PARAM(ii, data.buf3, buf3sz, "net ioctl 0x006 buf3");
+        CHECK_OUT_PARAM(ii, data.buf4, buf4sz, "net ioctl 0x006 buf4");
         break;
     }
 
@@ -2592,8 +2687,8 @@ handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
      */
     case IOCTL_TCP_QUERY_INFORMATION_EX:
     case IOCTL_TCP_SET_INFORMATION_EX:
-        if (pre) {
-            CHECK_DEF(inbuf, insz, "NET InputBuffer");
+        if (ii->arg->pre) {
+            CHECK_DEF(ii, inbuf, insz, "NET InputBuffer");
         }
         break;
 
@@ -2606,21 +2701,21 @@ handle_NET_ioctl(bool pre, int sysnum, cls_syscall_t *pt, dr_mcontext_t *mc)
         /* Unknown ioctl.  Check inbuf for full def and let table mark outbuf as
          * written.
          */
-        if (pre) {
+        if (ii->arg->pre) {
             WARN("WARNING: unhandled NET ioctl "PIFX" => op %d\n",
                  full_code, function);
-            CHECK_DEF(inbuf, insz, "NET InputBuffer");
+            CHECK_DEF(ii, inbuf, insz, "NET InputBuffer");
         }
     }
 }
 
-static bool
-handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                           dr_mcontext_t *mc)
+static void
+handle_DeviceIoControlFile_helper(void *drcontext, cls_syscall_t *pt,
+                                  sysarg_iter_info_t *ii)
 {
     uint code = (uint) pt->sysarg[5];
     uint device = (uint) DEVICE_TYPE_FROM_CTL_CODE(code);
-    byte *inbuf = (byte *) pt->sysarg[6];
+    byte *inbuf = (byte *) pt->sysarg[IOCTL_INBUF_ARGNUM];
     uint insz = (uint) pt->sysarg[7];
 
     /* We don't put "6,-7,R" into the table b/c for some ioctls only part of
@@ -2628,9 +2723,9 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t 
      */
 
     /* Common ioctl handling before calling more specific handler. */
-    if (pre) {
+    if (ii->arg->pre) {
         if (inbuf == NULL)
-            return true;
+            return;
     } else {
         /* We have "8,-9,W" in the table so we only need to handle additional pointers
          * here or cases where subsets of the full output buffer are written.
@@ -2639,8 +2734,9 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t 
          * watch NtWait* and tracking event objects, though we'll
          * over-estimate the amount written in some cases.
          */
-        if (!os_syscall_succeeded(sysnum, NULL, dr_syscall_get_result(drcontext)))
-            return true;
+        if (!os_syscall_succeeded(ii->arg->sysnum, NULL,
+                                  dr_syscall_get_result(drcontext)))
+            return;
     }
 
     /* XXX: could use SYSINFO_SECONDARY_TABLE instead */
@@ -2648,19 +2744,19 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t 
         /* This is redundant for those where entire buffer must be defined but
          * most need subset defined.
          */
-        if (pre)
-            CHECK_ADDR(inbuf, insz, "InputBuffer");
-        handle_AFD_ioctl(pre, sysnum, pt, mc);
+        if (ii->arg->pre)
+            CHECK_ADDR(ii, inbuf, insz, "InputBuffer");
+        handle_AFD_ioctl(drcontext, pt, ii);
     } else if (device == FILE_DEVICE_NETWORK) {
-        handle_NET_ioctl(pre, sysnum, pt, mc);
+        handle_NET_ioctl(drcontext, pt, ii);
     } else {
         /* FIXME i#377: add more ioctl codes. */
         WARN("WARNING: unknown ioctl "PIFX" => op %d\n",
                 code, FUNCTION_FROM_CTL_CODE(code));
         /* XXX: should perhaps dump a callstack too at higher verbosity */
         /* assume full thing must be defined */
-        if (pre)
-            CHECK_DEF(inbuf, insz, "InputBuffer");
+        if (ii->arg->pre)
+            CHECK_DEF(ii, inbuf, insz, "InputBuffer");
 
         /* Table always marks outbuf as written during post callback.
          * XXX i#378: should break down the output buffer as well since it
@@ -2668,9 +2764,16 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t 
          */
     }
 
-    return true;
+    return;
 }
 
+static bool
+handle_DeviceIoControlFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* we use a helper w/ void return value so we can use CHECK_DEF, etc. macros */
+    handle_DeviceIoControlFile_helper(drcontext, pt, ii);
+    return true; /* handled */
+}
 #undef CHECK_DEF
 #undef CHECK_ADDR
 #undef MARK_WRITE
@@ -2680,25 +2783,21 @@ handle_DeviceIoControlFile(bool pre, void *drcontext, int sysnum, cls_syscall_t 
  */
 
 
-bool
-os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+void
+os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
-    if (sysnum == sysnum_CreateThreadEx)
-        return handle_pre_CreateThreadEx(drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_CreateUserProcess)
-        return handle_pre_CreateUserProcess(drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_DeviceIoControlFile)
-        return handle_DeviceIoControlFile(true/*pre*/, drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_SetSystemInformation)
-        return handle_SetSystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_QuerySystemInformation)
-        return handle_QuerySystemInformation(true/*pre*/, drcontext, sysnum, pt, &mc);
+    if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_CreateThreadEx))
+        handle_pre_CreateThreadEx(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_CreateUserProcess))
+        handle_pre_CreateUserProcess(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_DeviceIoControlFile))
+        handle_DeviceIoControlFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
+        handle_SetSystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
+        handle_QuerySystemInformation(drcontext, pt, ii);
     else
-        return wingdi_shadow_process_syscall(true/*pre*/, drcontext, sysnum, pt, &mc);
+        wingdi_shadow_process_syscall(drcontext, pt, ii);
 }
 
 #ifdef DEBUG
@@ -2706,11 +2805,10 @@ os_shadow_pre_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
  * maybe could eventually spin some of this off as an strace tool.
  */
 void
-syscall_diagnostics(void *drcontext, int sysnum)
+syscall_diagnostics(void *drcontext, cls_syscall_t *pt)
 {
     /* XXX: even though only at -verbose 2, should use safe_read for all derefs */
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_tls_field(drcontext, cls_idx_syscall);
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    syscall_info_t *sysinfo = pt->sysinfo;
     if (sysinfo == NULL)
         return;
     if (!NT_SUCCESS(dr_syscall_get_result(drcontext)))
@@ -2755,12 +2853,8 @@ syscall_diagnostics(void *drcontext, int sysnum)
 #endif
 
 void
-os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
+os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc); /* move up once have more cases */
     /* FIXME code org: there's some processing of syscalls in alloc_drmem.c's
      * client_post_syscall() where common/alloc.c identifies the sysnum: but
      * for things that don't have anything to do w/ mem alloc I think it's
@@ -2769,20 +2863,20 @@ os_shadow_post_syscall(void *drcontext, cls_syscall_t *pt, int sysnum)
      * the teb is an alloc.
      */
     /* each handler checks result for success */
-    if (sysnum == sysnum_CreateThread)
-        handle_post_CreateThread(drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_CreateThreadEx)
-        handle_post_CreateThreadEx(drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_CreateUserProcess)
-        handle_post_CreateUserProcess(drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_DeviceIoControlFile)
-        handle_DeviceIoControlFile(false/*!pre*/, drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_SetSystemInformation)
-        handle_SetSystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
-    else if (sysnum == sysnum_QuerySystemInformation)
-        handle_QuerySystemInformation(false/*!pre*/, drcontext, sysnum, pt, &mc);
+    if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_CreateThread))
+        handle_post_CreateThread(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_CreateThreadEx))
+        handle_post_CreateThreadEx(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_CreateUserProcess))
+        handle_post_CreateUserProcess(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_DeviceIoControlFile))
+        handle_DeviceIoControlFile(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
+        handle_SetSystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
+        handle_QuerySystemInformation(drcontext, pt, ii);
     else
-        wingdi_shadow_process_syscall(false/*!pre*/, drcontext, sysnum, pt, &mc);
-    DOLOG(2, { syscall_diagnostics(drcontext, sysnum); });
+        wingdi_shadow_process_syscall(drcontext, pt, ii);
+    DOLOG(2, { syscall_diagnostics(drcontext, pt); });
 }
 

@@ -19,19 +19,42 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _SYSCALL_WINDOWS_H_
-#define _SYSCALL_WINDOWS_H_ 1
+#ifndef _DRSYSCALL_WINDOWS_H_
+#define _DRSYSCALL_WINDOWS_H_ 1
 
-void
-syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver);
-
-void
-syscall_wingdi_exit(void);
-
-void
-syscall_wingdi_user32_load(void *drcontext, const module_data_t *info);
-
+/* drsyscall_windows.c */
 
 extern hashtable_t systable; /* windows num-to-sysinfo table */
+extern dr_os_version_info_t win_ver;
 
-#endif /* _SYSCALL_WINDOWS_H_ */
+bool
+handle_unicode_string_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+                             app_pc start, uint size, bool ignore_len);
+
+bool
+handle_cwstring(sysarg_iter_info_t *ii, const char *id,
+                byte *start, size_t size, int ordinal, uint arg_flags, wchar_t *safe,
+                bool check_addr);
+
+
+/* drsyscall_wingdi.c */
+
+drmf_status_t
+drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver);
+
+void
+drsyscall_wingdi_exit(void);
+
+bool
+wingdi_shared_process_syscall(void *drcontext, cls_syscall_t *pt,
+                              sysarg_iter_info_t *ii);
+
+void
+wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt,
+                              sysarg_iter_info_t *ii);
+
+bool
+wingdi_process_arg(sysarg_iter_info_t *iter_info,
+                   const syscall_arg_t *arg_info, app_pc start, uint size);
+
+#endif /* _DRSYSCALL_WINDOWS_H_ */
