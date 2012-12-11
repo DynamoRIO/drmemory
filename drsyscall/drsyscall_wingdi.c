@@ -19,15 +19,17 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+/* FIXME i#1091 add kernel32 syscall info */
+
 /* Need this defined and to the latest to get the latest defines and types */
 #define _WIN32_WINNT 0x0601 /* == _WIN32_WINNT_WIN7 */
 #define WINVER _WIN32_WINNT
 
 #include "dr_api.h"
 #include "drmemory.h"
-#include "syscall.h"
-#include "syscall_os.h"
-#include "syscall_windows.h"
+#include "drsyscall.h"
+#include "drsyscall_os.h"
+#include "drsyscall_windows.h"
 #include "readwrite.h"
 #include "shadow.h"
 #include <stddef.h> /* offsetof */
@@ -98,27 +100,21 @@ num_kernel32_syscalls(void)
  * Unresolved issues are marked w/ FIXME in the table.
  */
 
-static int sysnum_UserSystemParametersInfo = -1;
-static int sysnum_UserMenuInfo = -1;
-static int sysnum_UserMenuItemInfo = -1;
-static int sysnum_UserGetAltTabInfo = -1;
-static int sysnum_UserGetRawInputBuffer = -1;
-static int sysnum_UserGetRawInputData = -1;
-static int sysnum_UserGetRawInputDeviceInfo = -1;
-static int sysnum_UserTrackMouseEvent = -1;
-static int sysnum_UserLoadKeyboardLayoutEx = -1;
-static int sysnum_UserCreateWindowStation = -1;
-static int sysnum_UserGetDC = -1;
-static int sysnum_UserGetDCEx = -1;
-static int sysnum_UserGetWindowDC = -1;
-static int sysnum_UserBeginPaint = -1;
-static int sysnum_UserEndPaint = -1;
-static int sysnum_UserReleaseDC = -1;
+static drsys_sysnum_t sysnum_UserSystemParametersInfo = {-1,0};
+static drsys_sysnum_t sysnum_UserMenuInfo = {-1,0};
+static drsys_sysnum_t sysnum_UserMenuItemInfo = {-1,0};
+static drsys_sysnum_t sysnum_UserGetAltTabInfo = {-1,0};
+static drsys_sysnum_t sysnum_UserGetRawInputBuffer = {-1,0};
+static drsys_sysnum_t sysnum_UserGetRawInputData = {-1,0};
+static drsys_sysnum_t sysnum_UserGetRawInputDeviceInfo = {-1,0};
+static drsys_sysnum_t sysnum_UserTrackMouseEvent = {-1,0};
+static drsys_sysnum_t sysnum_UserLoadKeyboardLayoutEx = {-1,0};
+static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1,0};
 
 /* forward decl so "extern" */
 extern syscall_info_t syscall_usercall_info[];
 
-/* Table that maps usercall names to (un-combined) numbers.
+/* Table that maps usercall names to secondary syscall numbers.
  * Number can be 0 so we store +1.
  */
 #define USERCALL_TABLE_HASH_BITS 8
@@ -130,7 +126,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserAlterWindowStyle", OK, 3, },
     {0,"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, 3, },
     {0,"NtUserAttachThreadInput", OK, 3, },
-    {0,"NtUserBeginPaint", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 2, {{1,sizeof(PAINTSTRUCT),W,}, }, &sysnum_UserBeginPaint},
+    {0,"NtUserBeginPaint", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 2, {{1,sizeof(PAINTSTRUCT),W,}, }, },
     {0,"NtUserBitBltSysBmp", OK, 8, },
     {0,"NtUserBlockInput", OK, 1, },
     {0,"NtUserBuildHimcList", OK|SYSINFO_IMM32_DLL, 4, {{2,-1,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(HIMC)}, {3,sizeof(UINT),W}, }},
@@ -232,8 +228,8 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetControlColor", OK, 4, },
     {0,"NtUserGetCursorFrameInfo", OK, 4, },
     {0,"NtUserGetCursorInfo", OK, 1, {{0,SYSARG_SIZE_IN_FIELD,W,offsetof(CURSORINFO,cbSize)}, }},
-    {0,"NtUserGetDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, &sysnum_UserGetDC},
-    {0,"NtUserGetDCEx", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 3, {{0,}}, &sysnum_UserGetDCEx},
+    {0,"NtUserGetDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, },
+    {0,"NtUserGetDCEx", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 3, {{0,}}, },
     {0,"NtUserGetDoubleClickTime", OK, 0, },
     {0,"NtUserGetForegroundWindow", OK, 0, },
     {0,"NtUserGetGUIThreadInfo", OK, 2, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(GUITHREADINFO,cbSize)}, }},
@@ -283,7 +279,7 @@ syscall_info_t syscall_user32_info[] = {
     {0,"NtUserGetUpdateRect", OK, 3, {{1,sizeof(RECT),W,}, }},
     {0,"NtUserGetUpdateRgn", OK, 3, },
     {0,"NtUserGetWOWClass", OK, 2, {{1,sizeof(UNICODE_STRING),R|CT,SYSARG_TYPE_UNICODE_STRING}, }},
-    {0,"NtUserGetWindowDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, &sysnum_UserGetWindowDC},
+    {0,"NtUserGetWindowDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, },
     {0,"NtUserGetWindowPlacement", OK, 2, {{1,SYSARG_SIZE_IN_FIELD,W,offsetof(WINDOWPLACEMENT,length)}, }},
     {0,"NtUserHardErrorControl", OK, 3, },
     {0,"NtUserHideCaret", OK, 1, },
@@ -586,7 +582,7 @@ syscall_info_t syscall_usercall_info[] = {
     {0,"NtUserCallOneParam.REGISTERSYSTEMTHREAD", UNKNOWN, 2, },
     {0,"NtUserCallOneParam.REMOTERECONNECT", UNKNOWN, 2, },
     {0,"NtUserCallOneParam.REMOTETHINWIRESTATUS", UNKNOWN, 2, },
-    {0,"NtUserCallOneParam.RELEASEDC", OK|SYSINFO_DELETE_HANDLE, 2, /*HDC*/{{0,}}, &sysnum_UserReleaseDC},
+    {0,"NtUserCallOneParam.RELEASEDC", OK|SYSINFO_DELETE_HANDLE, 2, /*HDC*/{{0,}}, },
     {0,"NtUserCallOneParam.REMOTENOTIFY", UNKNOWN, 2, },
     {0,"NtUserCallOneParam.REPLYMESSAGE", OK, 2, /*LRESULT*/},
     {0,"NtUserCallOneParam.SETCARETBLINKTIME", OK, 2, /*UINT*/},
@@ -673,8 +669,51 @@ num_usercall_syscalls(void)
     return NUM_USERCALL_SYSCALLS;
 }
 
-void
-syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver)
+/***************************************************************************
+ * TOP-LEVEL
+ */
+
+extern void
+name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw);
+
+static void
+wingdi_secondary_syscall_setup(void *drcontext)
+{
+    uint i;
+    for (i = 0; i < NUM_USERCALL_SYSCALLS; i++) {
+        syscall_info_t *syslist = &syscall_usercall_info[i];
+        uint secondary = (uint)
+            hashtable_lookup(&usercall_table, (void *)syslist->name);
+        if (secondary != 0) {
+            const char *skip_primary;
+            IF_DEBUG(bool ok =)
+                os_syscall_get_num(usercall_primary[i], &syslist->num);
+            ASSERT(ok, "failed to get syscall number");
+            ASSERT(syslist->num.secondary == 0, "primary should have no secondary");
+            syslist->num.secondary = secondary - 1/*+1 in table*/;
+
+            hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+
+            /* Add with and without the primary prefix */
+            name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
+            skip_primary = strstr(syslist->name, "Param.");
+            if (skip_primary != NULL) {
+                name2num_entry_add(skip_primary + strlen("Param."),
+                                   syslist->num, false/*no dup*/);
+            }
+
+            if (syslist->num_out != NULL)
+                *syslist->num_out = syslist->num;
+            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d (0x%04x)\n",
+                syslist->name, syslist->num, syslist->num);
+        } else {
+            LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", syslist->name);
+        }
+    }
+}
+
+drmf_status_t
+drsyscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver)
 {
     uint i;
     const int *usercalls;
@@ -694,7 +733,7 @@ syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ve
     case DR_WINDOWS_VERSION_2000:  usercalls = win2k_usercall_nums;    break;
     case DR_WINDOWS_VERSION_NT:
     default:
-        usage_error("This version of Windows is not supported", "");
+        return DRMF_ERROR_INCOMPATIBLE_VERSION;
     }
 
     /* Set up hashtable to translate usercall names to numbers */
@@ -710,57 +749,25 @@ syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ve
     }
     ASSERT(NUM_USERCALL_NAMES == NUM_USERCALL_SYSCALLS, "mismatch in usercall tables");
 
-    if (options.check_gdi)
-        gdicheck_init();
+    wingdi_secondary_syscall_setup(drcontext);
+
+    return DRMF_SUCCESS;
 }
 
 void
-syscall_wingdi_exit(void)
+drsyscall_wingdi_exit(void)
 {
-    if (options.check_gdi)
-        gdicheck_exit();
-
     hashtable_delete(&usercall_table);
 }
 
 void
-syscall_wingdi_thread_init(void *drcontext)
+drsyscall_wingdi_thread_init(void *drcontext)
 {
-    if (options.check_gdi)
-        gdicheck_thread_init(drcontext);
 }
 
 void
-syscall_wingdi_thread_exit(void *drcontext)
+drsyscall_wingdi_thread_exit(void *drcontext)
 {
-    if (options.check_gdi)
-        gdicheck_thread_exit(drcontext);
-}
-
-void
-syscall_wingdi_user32_load(void *drcontext, const module_data_t *info)
-{
-    uint i;
-    for (i = 0; i < NUM_USERCALL_SYSCALLS; i++) {
-        syscall_info_t *syslist = &syscall_usercall_info[i];
-        uint secondary = (uint)
-            hashtable_lookup(&usercall_table, (void *)syslist->name);
-        if (secondary != 0) {
-            /* no reason to support syscall_num_from_name() and it's simple
-             * enough to directly add rather than add more complexity to
-             * add_syscall_entry()
-             */
-            uint primary = get_syscall_num(drcontext, info, usercall_primary[i]);
-            syslist->num = SYSNUM_COMBINE(primary, secondary - 1/*+1 in table*/);
-            hashtable_add(&systable, (void *) syslist->num, (void *) syslist);
-            if (syslist->num_out != NULL)
-                *syslist->num_out = syslist->num;
-            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d (0x%04x)\n",
-                syslist->name, syslist->num, syslist->num);
-        } else {
-            LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", syslist->name);
-        }
-    }
 }
 
 /***************************************************************************/
@@ -797,18 +804,12 @@ syscall_wingdi_user32_load(void *drcontext, const module_data_t *info)
  * + the REALIZATION_INFO struct is much larger on win7
  */
 
-static int sysnum_GdiCreatePaletteInternal = -1;
-static int sysnum_GdiCheckBitmapBits = -1;
-static int sysnum_GdiCreateDIBSection = -1;
-static int sysnum_GdiHfontCreate = -1;
-static int sysnum_GdiDoPalette = -1;
-static int sysnum_GdiExtTextOutW = -1;
-static int sysnum_GdiOpenDCW = -1;
-static int sysnum_GdiGetDCforBitmap = -1;
-static int sysnum_GdiDdGetDC = -1;
-static int sysnum_GdiDeleteObjectApp = -1;
-static int sysnum_GdiCreateMetafileDC = -1;
-static int sysnum_GdiCreateCompatibleDC = -1;
+static drsys_sysnum_t sysnum_GdiCreatePaletteInternal = {-1,0};
+static drsys_sysnum_t sysnum_GdiCheckBitmapBits = {-1,0};
+static drsys_sysnum_t sysnum_GdiHfontCreate = {-1,0};
+static drsys_sysnum_t sysnum_GdiDoPalette = {-1,0};
+static drsys_sysnum_t sysnum_GdiExtTextOutW = {-1,0};
+static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 
 syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiInit", OK, 0, },
@@ -821,7 +822,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiGetOutlineTextMetricsInternalW", OK, 4, {{2,-1,W,}, {3,sizeof(TMDIFF),W,}, }},
     {0,"NtGdiGetAndSetDCDword", OK, 4, {{3,sizeof(DWORD),W,}, }},
     {0,"NtGdiGetDCObject", OK, 2, },
-    {0,"NtGdiGetDCforBitmap", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, &sysnum_GdiGetDCforBitmap},
+    {0,"NtGdiGetDCforBitmap", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, },
     {0,"NtGdiGetMonitorID", OK, 3, {{2,-1,W,}, }},
     {0,"NtGdiGetLinkedUFIs", OK, 3, {{1,-2,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, }},
     {0,"NtGdiSetLinkedUFIs", OK, 3, {{1,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(UNIVERSAL_FONT_ID)}, }},
@@ -862,7 +863,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiDdFlip", OK, 5, {{4,sizeof(DD_FLIPDATA),R|W,}, }},
     {0,"NtGdiDdGetAvailDriverMemory", OK, 2, {{1,sizeof(DD_GETAVAILDRIVERMEMORYDATA),R|W,}, }},
     {0,"NtGdiDdGetBltStatus", OK, 2, {{1,sizeof(DD_GETBLTSTATUSDATA),R|W,}, }},
-    {0,"NtGdiDdGetDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 2, {{1,sizeof(PALETTEENTRY),R,}, }, &sysnum_GdiDdGetDC},
+    {0,"NtGdiDdGetDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 2, {{1,sizeof(PALETTEENTRY),R,}, }, },
     {0,"NtGdiDdGetDriverInfo", OK, 2, {{1,sizeof(DD_GETDRIVERINFODATA),R|W,}, }},
     {0,"NtGdiDdGetFlipStatus", OK, 2, {{1,sizeof(DD_GETFLIPSTATUSDATA),R|W,}, }},
     {0,"NtGdiDdGetScanLine", OK, 2, {{1,sizeof(DD_GETSCANLINEDATA),R|W,}, }},
@@ -936,14 +937,14 @@ syscall_info_t syscall_gdi32_info[] = {
     {0,"NtGdiSetDeviceGammaRamp", OK, 2, },
     {0,"NtGdiIcmBrushInfo", OK, 8, {{2,sizeof(BITMAPINFO) + ((/*MAX_COLORTABLE*/256 - 1) * sizeof(RGBQUAD)),R|W,}, {3,-4,R|SYSARG_LENGTH_INOUT,}, {4,sizeof(ULONG),R|W,}, {5,sizeof(DWORD),W,}, {6,sizeof(BOOL),W,}, }},
     {0,"NtGdiFlush", OK, 0, },
-    {0,"NtGdiCreateMetafileDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, &sysnum_GdiCreateMetafileDC},
+    {0,"NtGdiCreateMetafileDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, },
     {0,"NtGdiMakeInfoDC", OK, 2, },
     {0,"NtGdiCreateClientObj", OK|SYSINFO_CREATE_HANDLE, 1, },
     {0,"NtGdiDeleteClientObj", OK, 1, },
     {0,"NtGdiGetBitmapBits", OK, 3, {{2,-1,W,}, }},
-    {0,"NtGdiDeleteObjectApp", OK|SYSINFO_DELETE_HANDLE, 1, {{0,}}, &sysnum_GdiDeleteObjectApp},
+    {0,"NtGdiDeleteObjectApp", OK|SYSINFO_DELETE_HANDLE, 1, {{0,}}, },
     {0,"NtGdiGetPath", OK, 4, {{1,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(POINT)}, {2,-3,W|SYSARG_SIZE_IN_ELEMENTS,sizeof(BYTE)}, }},
-    {0,"NtGdiCreateCompatibleDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, &sysnum_GdiCreateCompatibleDC},
+    {0,"NtGdiCreateCompatibleDC", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 1, {{0,}}, },
     {0,"NtGdiCreateDIBitmapInternal", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 11, {{4,-8,R,}, {5,-7,R,}, }},
     {0,"NtGdiCreateDIBSection", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 9, {{3,-5,R,}, {8,sizeof(PVOID),W,}, }},
     {0,"NtGdiCreateSolidBrush", OK|SYSINFO_CREATE_HANDLE|SYSINFO_RET_ZERO_FAIL, 2, },
@@ -1238,26 +1239,15 @@ is_int_resource(void *ptr)
     return IS_INTRESOURCE(ptr);
 }
 
-extern bool
-handle_unicode_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                             uint arg_num, const syscall_arg_t *arg_info,
-                             app_pc start, uint size, bool ignore_len);
-
-extern bool
-handle_cwstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-                byte *start, size_t size, uint arg_flags, wchar_t *safe,
-                bool check_addr);
-
-
 bool
-handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                             uint arg_num,
-                             const syscall_arg_t *arg_info,
-                             app_pc start, uint size)
+handle_large_string_access(sysarg_iter_info_t *ii,
+                           const syscall_arg_t *arg_info,
+                           app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     LARGE_STRING ls;
     LARGE_STRING *arg = (LARGE_STRING *) start;
+    drsys_param_type_t type_val = DRSYS_TYPE_LARGE_STRING;
+    const char *type_name = "LARGE_STRING";
     ASSERT(size == sizeof(LARGE_STRING), "invalid size");
     /* I've seen an atom (or int resource?) here
      * XXX i#488: avoid false neg: not too many of these now though
@@ -1266,42 +1256,36 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
     if (is_atom(start))
         return true; /* handled */
     /* we assume OUT fields just have their Buffer as OUT */
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Length,
-                     sizeof(arg->Length), mc, "LARGE_STRING.Length");
-        /* i#489: LARGE_STRING.MaximumLength and LARGE_STRING.bAnsi end
-         * up initialized by a series of bit manips that fool us
-         * so we don't check here
-         */
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)&arg->Buffer,
-                     sizeof(arg->Buffer), mc, "LARGE_STRING.Buffer");
+    if (ii->arg->pre) {
+        if (!report_memarg(ii, arg_info, (byte *)&arg->Length,
+                           sizeof(arg->Length), "LARGE_STRING.Length"))
+            return true;
+        /* this will include LARGE_STRING.bAnsi */
+        if (!report_memarg(ii, arg_info,
+                           /* we assume no padding (can't take & or offsetof bitfield) */
+                           (byte *)&arg->Length + sizeof(arg->Length),
+                           sizeof(ULONG/*+bAnsi*/), "LARGE_STRING.MaximumLength"))
+            return true;
+        if (!report_memarg(ii, arg_info, (byte *)&arg->Buffer,
+                           sizeof(arg->Buffer), "LARGE_STRING.Buffer"))
+            return true;
     }
     if (safe_read((void*)start, sizeof(ls), &ls)) {
-        if (pre) {
-            LOG(SYSCALL_VERBOSE,
-                "LARGE_STRING Buffer="PFX" Length=%d MaximumLength=%d\n",
-                (byte *)ls.Buffer, ls.Length, ls.MaximumLength);
-            /* See i#489 notes above: check for undef if looks "suspicious": weak,
-             * but simpler and more efficient than pattern match on every bb.
-             */
-            if (ls.MaximumLength > ls.Length &&
-                ls.MaximumLength > 1024 /* suspicious */) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start + sizeof(arg->Length),
-                             sizeof(ULONG/*+bAnsi*/), mc, "LARGE_STRING.MaximumLength");
-            } else {
-                shadow_set_range(start + sizeof(arg->Length),
-                                 (byte *)&arg->Buffer, SHADOW_DEFINED);
-            }
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum,
-                         (byte *)ls.Buffer, ls.MaximumLength, mc,
-                         "LARGE_STRING capacity");
+        if (ii->arg->pre) {
+            if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
+                                  (byte *)ls.Buffer, ls.MaximumLength,
+                                  "LARGE_STRING capacity", DRSYS_TYPE_LARGE_STRING, NULL,
+                                  DRSYS_TYPE_INVALID))
+                return true;
             if (TEST(SYSARG_READ, arg_info->flags)) {
-                check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                             (byte *)ls.Buffer, ls.Length, mc, "LARGE_STRING content");
+                if (!report_memarg(ii, arg_info,
+                                   (byte *)ls.Buffer, ls.Length, "LARGE_STRING content"))
+                    return true;
             }
         } else if (TEST(SYSARG_WRITE, arg_info->flags)) {
-            check_sysmem(MEMREF_WRITE, sysnum, (byte *)ls.Buffer, ls.Length, mc,
-                          "LARGE_STRING content");
+            if (!report_memarg(ii, arg_info,
+                               (byte *)ls.Buffer, ls.Length, "LARGE_STRING content"))
+                return true;
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -1309,46 +1293,51 @@ handle_large_string_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 bool
-handle_devmodew_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                       uint arg_num,
+handle_devmodew_access(sysarg_iter_info_t *ii,
                        const syscall_arg_t *arg_info,
                        app_pc start, uint size)
 {
     /* DEVMODEW is var-len by windows ver plus optional private driver data appended */
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     /* can't use a DEVMODEW as ours may be longer than app's if on older windows */
     char buf[offsetof(DEVMODEW,dmFields)]; /* need dmSize and dmDriverExtra */
     DEVMODEW *safe;
     DEVMODEW *param = (DEVMODEW *) start;
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     BUFFER_SIZE_BYTES(buf), mc, "DEVMODEW through dmDriverExtra");
+    if (ii->arg->pre) {
+        /* XXX: for writes, are we sure all these fields should be set by the caller?
+         * That's what my pre-drsyscall code had so going with it for now.
+         */
+        if (!report_memarg_type(ii, arg_info->param, SYSARG_READ,
+                                start, BUFFER_SIZE_BYTES(buf),
+                                "DEVMODEW through dmDriverExtra",
+                                SYSARG_TYPE_DEVMODEW, NULL))
+            return true;
     }
     if (safe_read(start, BUFFER_SIZE_BYTES(buf), buf)) {
         safe = (DEVMODEW *) buf;
         ASSERT(safe->dmSize > offsetof(DEVMODEW, dmFormName), "invalid size");
         /* there's some padding in the middle */
-        check_sysmem(check_type, sysnum, (byte *) &param->dmFields,
-                     ((byte *) &param->dmCollate) + sizeof(safe->dmCollate) -
-                     (byte *) &param->dmFields,
-                     mc, "DEVMODEW dmFields through dmCollate");
-        check_sysmem(check_type, sysnum, (byte *) &param->dmFormName,
-                     (start + safe->dmSize) - (byte *) (&param->dmFormName),
-                     mc, "DEVMODEW dmFormName onward");
-        check_sysmem(check_type, sysnum, start + safe->dmSize, safe->dmDriverExtra,
-                     mc, "DEVMODEW driver extra info");
+        if (!report_memarg(ii, arg_info, (byte *) &param->dmFields,
+                           ((byte *) &param->dmCollate) + sizeof(safe->dmCollate) -
+                           (byte *) &param->dmFields,
+                           "DEVMODEW dmFields through dmCollate"))
+            return true;
+        if (!report_memarg(ii, arg_info, (byte *) &param->dmFormName,
+                           (start + safe->dmSize) - (byte *) (&param->dmFormName),
+                           "DEVMODEW dmFormName onward"))
+            return true;
+        if (!report_memarg(ii, arg_info, start + safe->dmSize, safe->dmDriverExtra,
+                           "DEVMODEW driver extra info"))
+            return true;;
     } else
         WARN("WARNING: unable to read syscall param\n");
     return true; /* handled */
 }
 
 bool
-handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                          uint arg_num,
+handle_wndclassexw_access(sysarg_iter_info_t *ii,
                           const syscall_arg_t *arg_info,
                           app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     WNDCLASSEXW safe;
     /* i#499: it seems that cbSize is not set for NtUserGetClassInfo when using
      * user32!GetClassInfo so we use sizeof for writes.  I suspect that once
@@ -1357,33 +1346,40 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
      * suppress it.
      */
     bool use_cbSize = TEST(SYSARG_READ, arg_info->flags);
-    if (pre && use_cbSize) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     sizeof(safe.cbSize), mc, "WNDCLASSEX.cbSize");
+    if (ii->arg->pre && use_cbSize) {
+        if (!report_memarg_type(ii, arg_info->param, SYSARG_READ, start,
+                                sizeof(safe.cbSize), "WNDCLASSEX.cbSize",
+                                SYSARG_TYPE_WNDCLASSEXW, NULL))
+            return true;
     }
     if (safe_read(start, sizeof(safe), &safe)) {
-        check_sysmem(check_type, sysnum, start,
-                     use_cbSize ? safe.cbSize : sizeof(WNDCLASSEX), mc, "WNDCLASSEX");
+        if (!report_memarg(ii, arg_info, start,
+                           use_cbSize ? safe.cbSize : sizeof(WNDCLASSEX), "WNDCLASSEX"))
+            return true;
         /* For WRITE there is no capacity here so nothing to check (i#505) */
-        if ((pre && TEST(SYSARG_READ, arg_info->flags)) ||
-            (!pre && TEST(SYSARG_WRITE, arg_info->flags))) {
+        if ((ii->arg->pre && TEST(SYSARG_READ, arg_info->flags)) ||
+            (!ii->arg->pre && TEST(SYSARG_WRITE, arg_info->flags))) {
                 /* lpszMenuName can be from MAKEINTRESOURCE, and
                  * lpszClassName can be an atom
                  */
                 if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszMenuName)) &&
                     !is_atom((void *)safe.lpszMenuName)) {
-                    handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszMenuName",
-                                    (byte *) safe.lpszMenuName, 0, arg_info->flags,
-                                    NULL, true);
+                    handle_cwstring(ii, "WNDCLASSEXW.lpszMenuName",
+                                    (byte *) safe.lpszMenuName, 0,
+                                    arg_info->param, arg_info->flags, NULL, true);
+                    if (ii->abort)
+                        return true;
                 }
                 if ((!use_cbSize || safe.cbSize > offsetof(WNDCLASSEX, lpszClassName)) &&
                     !is_int_resource((void *)safe.lpszClassName)) {
-                    handle_cwstring(pre, sysnum, mc, "WNDCLASSEXW.lpszClassName",
+                    handle_cwstring(ii, "WNDCLASSEXW.lpszClassName",
                                     /* docs say 256 is max length: we read until
                                      * NULL though
                                      */
-                                    (byte *) safe.lpszClassName, 0, arg_info->flags,
-                                    NULL, true);
+                                    (byte *) safe.lpszClassName, 0,
+                                    arg_info->param, arg_info->flags, NULL, true);
+                    if (ii->abort)
+                        return true;
                 }
         }
     } else
@@ -1392,15 +1388,14 @@ handle_wndclassexw_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 bool
-handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                          uint arg_num,
+handle_clsmenuname_access(sysarg_iter_info_t *ii,
                           const syscall_arg_t *arg_info,
                           app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     CLSMENUNAME safe;
-    check_sysmem(check_type, sysnum, start, size, mc, "CLSMENUNAME");
-    if (pre && !TEST(SYSARG_READ, arg_info->flags)) {
+    if (!report_memarg(ii, arg_info, start, size, "CLSMENUNAME"))
+        return true;
+    if (ii->arg->pre && !TEST(SYSARG_READ, arg_info->flags)) {
         /* looks like even the UNICODE_STRING is not set up: contains garbage,
          * so presumably kernel creates it and doesn't just write to Buffer
          */
@@ -1412,22 +1407,28 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
 #if 0 /* disabled: see comment above */
     if (safe_read(start, sizeof(safe), &safe)) {
         if (!is_atom(safe.pszClientAnsiMenuName)) {
-            handle_cstring(pre, sysnum, mc, "CLSMENUNAME.lpszMenuName",
+            handle_cstring(pre, sysnum, "CLSMENUNAME.lpszMenuName",
                            safe.pszClientAnsiMenuName, 0, arg_info->flags,
                            NULL, true);
+            if (ii->abort)
+                return true;
         }
         if (!is_atom(safe.pwszClientUnicodeMenuName)) {
-            handle_cwstring(pre, sysnum, mc, "CLSMENUNAME.lpszMenuName",
-                            (byte *) safe.pwszClientUnicodeMenuName, 0, arg_info->flags,
-                            NULL, true);
+            handle_cwstring(ii, "CLSMENUNAME.lpszMenuName",
+                            (byte *) safe.pwszClientUnicodeMenuName, 0,
+                            arg_info->param, arg_info->flags, NULL, true);
+            if (ii->abort)
+                return true;
         }
         /* XXX: I've seen the pusMenuName pointer itself be an atom, though
          * perhaps should also handle just the Buffer being an atom?
          */
         if (!is_atom(safe.pusMenuName)) {
-            handle_unicode_string_access(pre, sysnum, mc, arg_num, arg_info,
+            handle_unicode_string_access(ii, arg_info,
                                          (byte *) safe.pusMenuName,
                                          sizeof(UNICODE_STRING), false);
+            if (ii->abort)
+                return true;
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -1436,89 +1437,102 @@ handle_clsmenuname_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 bool
-handle_menuiteminfow_access(bool pre, int sysnum, dr_mcontext_t *mc,
-                            uint arg_num,
+handle_menuiteminfow_access(sysarg_iter_info_t *ii,
                             const syscall_arg_t *arg_info,
                             app_pc start, uint size)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_info->flags, pre);
     MENUITEMINFOW *real = (MENUITEMINFOW *) start;
     MENUITEMINFOW safe;
     bool check_dwTypeData = false;
     /* user must set cbSize for set or get */
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     sizeof(safe.cbSize), mc, "MENUITEMINFOW.cbSize");
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, arg_info->param, SYSARG_READ,
+                                start, sizeof(safe.cbSize), "MENUITEMINFOW.cbSize",
+                                SYSARG_TYPE_MENUITEMINFOW, NULL))
+            return true;
     }
     if (safe_read(start, sizeof(safe), &safe)) {
-        if (pre) {
-            check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start,
-                         safe.cbSize, mc, "MENUITEMINFOW");
+        if (ii->arg->pre) {
+            if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
+                                  start, safe.cbSize, "MENUITEMINFOW",
+                                  DRSYS_TYPE_MENUITEMINFOW, NULL, DRSYS_TYPE_INVALID))
+                return true;
         }
         if (TEST(MIIM_BITMAP, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, hbmpItem)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->hbmpItem,
-                         sizeof(real->hbmpItem), mc, "MENUITEMINFOW.hbmpItem");
+            if (!report_memarg(ii, arg_info, (byte *) &real->hbmpItem,
+                               sizeof(real->hbmpItem), "MENUITEMINFOW.hbmpItem"))
+                return true;
         }
         if (TEST(MIIM_CHECKMARKS, safe.fMask)) {
             if (safe.cbSize > offsetof(MENUITEMINFOW, hbmpChecked)) {
-                check_sysmem(check_type, sysnum, (byte *) &real->hbmpChecked,
-                             sizeof(real->hbmpChecked), mc, "MENUITEMINFOW.hbmpChecked");
+                if (!report_memarg(ii, arg_info, (byte *) &real->hbmpChecked,
+                             sizeof(real->hbmpChecked), "MENUITEMINFOW.hbmpChecked"))
+                return true;
             }
             if (safe.cbSize > offsetof(MENUITEMINFOW, hbmpUnchecked)) {
-                check_sysmem(check_type, sysnum, (byte *) &real->hbmpUnchecked,
-                             sizeof(real->hbmpUnchecked), mc,
-                             "MENUITEMINFOW.hbmpUnchecked");
+                if (!report_memarg(ii, arg_info, (byte *) &real->hbmpUnchecked,
+                             sizeof(real->hbmpUnchecked), "MENUITEMINFOW.hbmpUnchecked"))
+                    return true;
             }
         }
         if (TEST(MIIM_DATA, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, dwItemData)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->dwItemData,
-                         sizeof(real->dwItemData), mc, "MENUITEMINFOW.dwItemData");
+            if (!report_memarg(ii, arg_info, (byte *) &real->dwItemData,
+                               sizeof(real->dwItemData), "MENUITEMINFOW.dwItemData"))
+                return true;
         }
         if (TEST(MIIM_FTYPE, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, fType)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->fType,
-                         sizeof(real->fType), mc, "MENUITEMINFOW.fType");
+            if (!report_memarg(ii, arg_info, (byte *) &real->fType,
+                               sizeof(real->fType), "MENUITEMINFOW.fType"))
+                return true;
         }
         if (TEST(MIIM_ID, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, wID)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->wID,
-                         sizeof(real->wID), mc, "MENUITEMINFOW.wID");
+            if (!report_memarg(ii, arg_info, (byte *) &real->wID,
+                               sizeof(real->wID), "MENUITEMINFOW.wID"))
+                return true;
         }
         if (TEST(MIIM_STATE, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, fState)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->fState,
-                         sizeof(real->fState), mc, "MENUITEMINFOW.fState");
+            if (!report_memarg(ii, arg_info, (byte *) &real->fState,
+                               sizeof(real->fState), "MENUITEMINFOW.fState"))
+                return true;
         }
         if (TEST(MIIM_STRING, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, dwTypeData)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->dwTypeData,
-                         sizeof(real->dwTypeData), mc, "MENUITEMINFOW.dwTypeData");
+            if (!report_memarg(ii, arg_info, (byte *) &real->dwTypeData,
+                               sizeof(real->dwTypeData), "MENUITEMINFOW.dwTypeData"))
+                return true;
             check_dwTypeData = true;
         }
         if (TEST(MIIM_SUBMENU, safe.fMask) &&
             safe.cbSize > offsetof(MENUITEMINFOW, hSubMenu)) {
-            check_sysmem(check_type, sysnum, (byte *) &real->hSubMenu,
-                         sizeof(real->hSubMenu), mc, "MENUITEMINFOW.hSubMenu");
+            if (!report_memarg(ii, arg_info, (byte *) &real->hSubMenu,
+                               sizeof(real->hSubMenu), "MENUITEMINFOW.hSubMenu"))
+                return true;
         }
         if (TEST(MIIM_TYPE, safe.fMask) &&
             !TESTANY(MIIM_BITMAP | MIIM_FTYPE | MIIM_STRING, safe.fMask)) {
             if (safe.cbSize > offsetof(MENUITEMINFOW, fType)) {
-                check_sysmem(check_type, sysnum, (byte *) &real->fType,
-                             sizeof(real->fType), mc, "MENUITEMINFOW.fType");
+                if (!report_memarg(ii, arg_info, (byte *) &real->fType,
+                                   sizeof(real->fType), "MENUITEMINFOW.fType"))
+                return true;
             }
             if (safe.cbSize > offsetof(MENUITEMINFOW, dwTypeData)) {
-                check_sysmem(check_type, sysnum, (byte *) &real->dwTypeData,
-                             sizeof(real->dwTypeData), mc, "MENUITEMINFOW.dwTypeData");
+                if (!report_memarg(ii, arg_info, (byte *) &real->dwTypeData,
+                                   sizeof(real->dwTypeData), "MENUITEMINFOW.dwTypeData"))
+                return true;
                 check_dwTypeData = true;
             }
         }
         if (check_dwTypeData) {
             /* kernel sets safe.cch so we don't have to walk the string */
-            check_sysmem(check_type, sysnum, (byte *) safe.dwTypeData,
-                         (safe.cch + 1/*null*/) * sizeof(wchar_t),
-                         mc, "MENUITEMINFOW.dwTypeData");
+            if (!report_memarg(ii, arg_info, (byte *) safe.dwTypeData,
+                               (safe.cch + 1/*null*/) * sizeof(wchar_t),
+                               "MENUITEMINFOW.dwTypeData"))
+                return true;
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
@@ -1526,13 +1540,14 @@ handle_menuiteminfow_access(bool pre, int sysnum, dr_mcontext_t *mc,
 }
 
 static void
-handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
-               byte *start, size_t size, uint arg_flags, LOGFONTW *safe)
+handle_logfont(sysarg_iter_info_t *ii,
+               byte *start, size_t size, int ordinal, uint arg_flags, LOGFONTW *safe)
 {
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     LOGFONTW *font = (LOGFONTW *) start;
-    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
-        check_sysmem(check_type, sysnum, start, size, mc, "LOGFONTW");
+    if (ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, start, size, "LOGFONTW",
+                                DRSYS_TYPE_LOGFONTW, NULL))
+            return;
     } else {
         size_t check_sz;
         if (size == 0) {
@@ -1546,23 +1561,26 @@ handle_logfont(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
         check_sz = MIN(size - offsetof(LOGFONTW, lfFaceName),
                        sizeof(font->lfFaceName));
         ASSERT(size >= offsetof(LOGFONTW, lfFaceName), "invalid size");
-        check_sysmem(check_type, sysnum, start,
-                     offsetof(LOGFONTW, lfFaceName), mc, "LOGFONTW");
-        handle_cwstring(pre, sysnum, mc, "LOGFONTW.lfFaceName",
-                        (byte *) &font->lfFaceName, check_sz, arg_flags,
+        if (!report_memarg_type(ii, ordinal, arg_flags, start,
+                                offsetof(LOGFONTW, lfFaceName), "LOGFONTW",
+                                DRSYS_TYPE_LOGFONTW, NULL))
+            return;
+        handle_cwstring(ii, "LOGFONTW.lfFaceName",
+                        (byte *) &font->lfFaceName, check_sz, ordinal, arg_flags,
                         (safe == NULL) ? NULL : (wchar_t *)&safe->lfFaceName, true);
+        if (ii->abort)
+            return;
     }
 }
 
 static void
-handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
+handle_nonclientmetrics(sysarg_iter_info_t *ii,
                         byte *start, size_t size_specified,
-                        uint arg_flags, NONCLIENTMETRICSW *safe)
+                        int ordinal, uint arg_flags, NONCLIENTMETRICSW *safe)
 {
     NONCLIENTMETRICSW *ptr_arg = (NONCLIENTMETRICSW *) start;
     NONCLIENTMETRICSW *ptr_safe;
     NONCLIENTMETRICSW ptr_local;
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     size_t size;
     if (safe != NULL)
         ptr_safe = safe;
@@ -1584,8 +1602,9 @@ handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc
     LOG(2, "NONCLIENTMETRICSW %s: sizeof(NONCLIENTMETRICSW)=%x, cbSize=%x, uiParam=%x\n",
         TEST(SYSARG_WRITE, arg_flags) ? "write" : "read",
         sizeof(NONCLIENTMETRICSW), ptr_safe->cbSize, size_specified);
-    if (running_on_Win7_or_later()/*win7 seems to set cbSize properly, always*/ ||
-        (!pre && TEST(SYSARG_WRITE, arg_flags)))
+    /* win7 seems to set cbSize properly, always */
+    if (win_ver.version >= DR_WINDOWS_VERSION_7 ||
+        (!ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)))
         size = ptr_safe->cbSize;
     else {
         /* MAX to handle future additions.  I don't think older versions
@@ -1594,82 +1613,102 @@ handle_nonclientmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc
         size = MAX(sizeof(NONCLIENTMETRICSW), size_specified);
     }
 
-    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
-        check_sysmem(check_type, sysnum, start, size, mc, "NONCLIENTMETRICSW");
+    if (ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, start, size, "NONCLIENTMETRICSW",
+                                DRSYS_TYPE_NONCLIENTMETRICSW, NULL))
+            return;
     } else {
         size_t offs = 0;
         size_t check_sz = MIN(size, offsetof(NONCLIENTMETRICSW, lfCaptionFont));
-        check_sysmem(check_type, sysnum, start, check_sz, mc, "NONCLIENTMETRICSW A");
+        if (!report_memarg_type(ii, ordinal, arg_flags, start, check_sz,
+                                "NONCLIENTMETRICSW A",
+                                DRSYS_TYPE_NONCLIENTMETRICSW, NULL))
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfCaptionFont,
-                       check_sz, arg_flags, &ptr_safe->lfCaptionFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfCaptionFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfCaptionFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, offsetof(NONCLIENTMETRICSW, lfSmCaptionFont) -
                        offsetof(NONCLIENTMETRICSW, iSmCaptionWidth));
-        check_sysmem(check_type, sysnum, (byte *) &ptr_arg->iSmCaptionWidth,
-                     check_sz, mc, "NONCLIENTMETRICSW B");
+        if (!report_memarg_type(ii, ordinal, arg_flags, (byte *) &ptr_arg->iSmCaptionWidth,
+                                check_sz, "NONCLIENTMETRICSW B",
+                                DRSYS_TYPE_NONCLIENTMETRICSW, NULL))
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfSmCaptionFont,
-                       check_sz, arg_flags, &ptr_safe->lfSmCaptionFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfSmCaptionFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfSmCaptionFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, offsetof(NONCLIENTMETRICSW, lfMenuFont) -
                        offsetof(NONCLIENTMETRICSW, iMenuWidth));
-        check_sysmem(check_type, sysnum, (byte *) &ptr_arg->iMenuWidth,
-                     check_sz, mc, "NONCLIENTMETRICSW B");
+        if (!report_memarg_type(ii, ordinal, arg_flags, (byte *) &ptr_arg->iMenuWidth,
+                                check_sz, "NONCLIENTMETRICSW B",
+                                DRSYS_TYPE_NONCLIENTMETRICSW, NULL))
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfMenuFont,
-                       check_sz, arg_flags, &ptr_safe->lfMenuFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfMenuFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfMenuFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfStatusFont,
-                       check_sz, arg_flags, &ptr_safe->lfStatusFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfStatusFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfStatusFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfMessageFont,
-                       check_sz, arg_flags, &ptr_safe->lfMessageFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfMessageFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfMessageFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         /* there is another field on Vista */
         check_sz = size - offs;
-        check_sysmem(check_type, sysnum, ((byte *)ptr_arg) + offs,
-                     check_sz, mc, "NONCLIENTMETRICSW C");
+        if (!report_memarg_type(ii, ordinal, arg_flags, ((byte *)ptr_arg) + offs,
+                                check_sz, "NONCLIENTMETRICSW C",
+                                DRSYS_TYPE_NONCLIENTMETRICSW, NULL))
+            return;
     }
 }
 
 static void
-handle_iconmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
-                        byte *start, uint arg_flags, ICONMETRICSW *safe)
+handle_iconmetrics(sysarg_iter_info_t *ii,
+                   byte *start, int ordinal, uint arg_flags, ICONMETRICSW *safe)
 {
     ICONMETRICSW *ptr_arg = (ICONMETRICSW *) start;
     ICONMETRICSW *ptr_safe;
     ICONMETRICSW ptr_local;
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     size_t size;
     if (safe != NULL)
         ptr_safe = safe;
@@ -1682,37 +1721,44 @@ handle_iconmetrics(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
     }
     size = ptr_safe->cbSize;
 
-    if (pre && TEST(SYSARG_WRITE, arg_flags)) {
-        check_sysmem(check_type, sysnum, start, size, mc, "ICONMETRICSW");
+    if (ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, start, size, "ICONMETRICSW",
+                                DRSYS_TYPE_ICONMETRICSW, NULL))
+            return;
     } else {
         size_t offs = 0;
         size_t check_sz = MIN(size, offsetof(ICONMETRICSW, lfFont));
-        check_sysmem(check_type, sysnum, start, check_sz, mc, "ICONMETRICSW A");
+        if (!report_memarg_type(ii, ordinal, arg_flags, start, check_sz, "ICONMETRICSW A",
+                                DRSYS_TYPE_ICONMETRICSW, NULL))
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         check_sz = MIN(size - offs, sizeof(LOGFONTW));
-        handle_logfont(pre, drcontext, sysnum, mc, (byte *) &ptr_arg->lfFont,
-                       check_sz, arg_flags, &ptr_safe->lfFont);
+        handle_logfont(ii, (byte *) &ptr_arg->lfFont,
+                       check_sz, ordinal, arg_flags, &ptr_safe->lfFont);
+        if (ii->abort)
+            return;
         offs += check_sz;
         if (offs >= size)
             return;
 
         /* currently no more args, but here for forward compat */
         check_sz = size - offs;
-        check_sysmem(check_type, sysnum, ((byte *)ptr_arg) + offs,
-                     check_sz, mc, "ICONMETRICSW B");
+        if (!report_memarg_type(ii, ordinal, arg_flags, ((byte *)ptr_arg) + offs,
+                                check_sz, "ICONMETRICSW B",
+                                DRSYS_TYPE_ICONMETRICSW, NULL))
+            return;
     }
 }
 
 static void
-handle_serialkeys(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
-                  byte *start, uint arg_flags, SERIALKEYSW *safe)
+handle_serialkeys(sysarg_iter_info_t *ii,
+                  byte *start, int ordinal, uint arg_flags, SERIALKEYSW *safe)
 {
     SERIALKEYSW *ptr_safe;
     SERIALKEYSW ptr_local;
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     size_t size;
     if (safe != NULL)
         ptr_safe = safe;
@@ -1724,48 +1770,47 @@ handle_serialkeys(bool pre, void *drcontext, int sysnum, dr_mcontext_t *mc,
         ptr_safe = &ptr_local;
     }
     size = ptr_safe->cbSize;
-    check_sysmem(check_type, sysnum, start, size, mc, "SERIALKEYSW");
-    handle_cwstring(pre, sysnum, mc, "SERIALKEYSW.lpszActivePort",
-                    (byte *) ptr_safe->lpszActivePort, 0, arg_flags, NULL, true);
-    handle_cwstring(pre, sysnum, mc, "SERIALKEYSW.lpszPort",
-                    (byte *) ptr_safe->lpszPort, 0, arg_flags, NULL, true);
+    if (!report_memarg_type(ii, ordinal, arg_flags, start, size, "SERIALKEYSW",
+                            DRSYS_TYPE_SERIALKEYSW, NULL))
+        return;
+    handle_cwstring(ii, "SERIALKEYSW.lpszActivePort",
+                    (byte *) ptr_safe->lpszActivePort, 0, ordinal, arg_flags, NULL, true);
+    if (ii->abort)
+        return;
+    handle_cwstring(ii, "SERIALKEYSW.lpszPort",
+                    (byte *) ptr_safe->lpszPort, 0, ordinal, arg_flags, NULL, true);
 }
 
 static void
-handle_cwstring_field(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-                      uint arg_flags,
+handle_cwstring_field(sysarg_iter_info_t *ii, const char *id,
+                      int ordinal, uint arg_flags,
                       byte *struct_start, size_t struct_size, size_t cwstring_offs)
 {
     wchar_t *ptr;
-    uint check_type = SYSARG_CHECK_TYPE(arg_flags, pre);
     if (struct_size <= cwstring_offs)
         return;
     if (!safe_read(struct_start + cwstring_offs, sizeof(ptr), &ptr)) {
         WARN("WARNING: unable to read syscall param\n");
         return;
     }
-    handle_cwstring(pre, sysnum, mc, id, (byte *)ptr, 0, arg_flags, NULL, true);
+    handle_cwstring(ii, id, (byte *)ptr, 0, ordinal, arg_flags, NULL, true);
 }
 
 bool
-wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num,
-                           const syscall_arg_t *arg_info, app_pc start, uint size)
+wingdi_process_arg(sysarg_iter_info_t *iter_info,
+                   const syscall_arg_t *arg_info, app_pc start, uint size)
 {
     switch (arg_info->misc) {
     case SYSARG_TYPE_LARGE_STRING:
-        return handle_large_string_access(pre, sysnum, mc, arg_num,
-                                          arg_info, start, size);
+        return handle_large_string_access(iter_info, arg_info, start, size);
     case SYSARG_TYPE_DEVMODEW:
-        return handle_devmodew_access(pre, sysnum, mc, arg_num, arg_info, start, size);
+        return handle_devmodew_access(iter_info, arg_info, start, size);
     case SYSARG_TYPE_WNDCLASSEXW:
-        return handle_wndclassexw_access(pre, sysnum, mc, arg_num,
-                                         arg_info, start, size);
+        return handle_wndclassexw_access(iter_info, arg_info, start, size);
     case SYSARG_TYPE_CLSMENUNAME:
-        return handle_clsmenuname_access(pre, sysnum, mc, arg_num,
-                                         arg_info, start, size);
+        return handle_clsmenuname_access(iter_info, arg_info, start, size);
     case SYSARG_TYPE_MENUITEMINFOW:
-        return handle_menuiteminfow_access(pre, sysnum, mc, arg_num,
-                                           arg_info, start, size);
+        return handle_menuiteminfow_access(iter_info, arg_info, start, size);
     }
     return false; /* not handled */
 }
@@ -1774,13 +1819,13 @@ wingdi_process_syscall_arg(bool pre, int sysnum, dr_mcontext_t *mc, uint arg_num
  * CUSTOM SYSCALL HANDLING
  */
 
-static bool
-handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                                dr_mcontext_t *mc)
+static void
+handle_UserSystemParametersInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     UINT uiAction = (UINT) pt->sysarg[0];
     UINT uiParam = (UINT) pt->sysarg[1];
-    byte *pvParam = (byte *) pt->sysarg[2];
+#   define PV_PARAM_ORDINAL 2
+    byte *pvParam = (byte *) pt->sysarg[PV_PARAM_ORDINAL];
     bool get = true;
     size_t sz = 0;
     bool uses_pvParam = false; /* also considered used if sz>0 */
@@ -1804,19 +1849,22 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     case SPI_SETGRIDGRANULARITY: get = false; uses_uiParam = true; break;
     case SPI_GETDESKWALLPAPER: {
         /* uiParam is size in characters */
-        handle_cwstring(pre, sysnum, mc, "pvParam", pvParam,
-                        uiParam * sizeof(wchar_t), SYSARG_WRITE, NULL, true);
+        handle_cwstring(ii, "pvParam", pvParam, uiParam * sizeof(wchar_t),
+                        PV_PARAM_ORDINAL, SYSARG_WRITE, NULL, true);
+        if (ii->abort)
+            return;
         get = true;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_SETDESKWALLPAPER: {
-        syscall_arg_t arg = {0, sizeof(UNICODE_STRING),
+        syscall_arg_t arg = {PV_PARAM_ORDINAL, sizeof(UNICODE_STRING),
                              SYSARG_READ|SYSARG_COMPLEX_TYPE,
                              SYSARG_TYPE_UNICODE_STRING};
-        handle_unicode_string_access(pre, sysnum, mc, 0/*unused*/,
-                                     &arg, pvParam, sizeof(UNICODE_STRING), false);
+        handle_unicode_string_access(ii, &arg, pvParam, sizeof(UNICODE_STRING), false);
+        if (ii->abort)
+            return;
         get = false;
         uses_pvParam = true;
         break;
@@ -1851,16 +1899,18 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     case SPI_SETDOUBLECLKWIDTH: get = false; uses_uiParam = true; break;
     case SPI_SETDOUBLECLKHEIGHT: get = false; uses_uiParam = true; break;
     case SPI_GETICONTITLELOGFONT: {
-        handle_logfont(pre, drcontext, sysnum, mc, pvParam,
-                       uiParam, SYSARG_WRITE, NULL);
+        handle_logfont(ii, pvParam, uiParam, PV_PARAM_ORDINAL, SYSARG_WRITE, NULL);
+        if (ii->abort)
+            return;
         get = true;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_SETICONTITLELOGFONT: {
-        handle_logfont(pre, drcontext, sysnum, mc, pvParam,
-                       uiParam, SYSARG_READ, NULL);
+        handle_logfont(ii, pvParam, uiParam, PV_PARAM_ORDINAL, SYSARG_READ, NULL);
+        if (ii->abort)
+            return;
         get = false;
         uses_uiParam = true;
         uses_pvParam = true;
@@ -1873,16 +1923,19 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     case SPI_GETDRAGFULLWINDOWS: get = true;  sz = sizeof(BOOL); break;
     case SPI_SETDRAGFULLWINDOWS: get = false; uses_uiParam = true; break;
     case SPI_GETNONCLIENTMETRICS: {
-        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam, uiParam,
+        handle_nonclientmetrics(ii, pvParam, uiParam, PV_PARAM_ORDINAL,
                                 SYSARG_WRITE, NULL);
+        if (ii->abort)
+            return;
         get = true;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_SETNONCLIENTMETRICS: {
-        handle_nonclientmetrics(pre, drcontext, sysnum, mc, pvParam, uiParam,
-                                SYSARG_READ, NULL);
+        handle_nonclientmetrics(ii, pvParam, uiParam, PV_PARAM_ORDINAL, SYSARG_READ, NULL);
+        if (ii->abort)
+            return;
         get = false;
         uses_uiParam = true;
         uses_pvParam = true;
@@ -1891,14 +1944,18 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     case SPI_GETMINIMIZEDMETRICS: get = true;  uses_uiParam = true; sz = uiParam; break;
     case SPI_SETMINIMIZEDMETRICS: get = false; uses_uiParam = true; sz = uiParam; break;
     case SPI_GETICONMETRICS: {
-        handle_iconmetrics(pre, drcontext, sysnum, mc, pvParam, SYSARG_WRITE, NULL);
+        handle_iconmetrics(ii, pvParam, PV_PARAM_ORDINAL, SYSARG_WRITE, NULL);
+        if (ii->abort)
+            return;
         get = true;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_SETICONMETRICS: {
-        handle_iconmetrics(pre, drcontext, sysnum, mc, pvParam, SYSARG_READ, NULL);
+        handle_iconmetrics(ii, pvParam, PV_PARAM_ORDINAL, SYSARG_READ, NULL);
+        if (ii->abort)
+            return;
         get = false;
         uses_uiParam = true;
         uses_pvParam = true;
@@ -1919,23 +1976,29 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     case SPI_GETACCESSTIMEOUT: get = true;  uses_uiParam = true; sz = uiParam; break;
     case SPI_SETACCESSTIMEOUT: get = false; uses_uiParam = true; sz = uiParam; break;
     case SPI_GETSERIALKEYS: {
-        handle_serialkeys(pre, drcontext, sysnum, mc, pvParam, SYSARG_WRITE, NULL);
+        handle_serialkeys(ii, pvParam, PV_PARAM_ORDINAL, SYSARG_WRITE, NULL);
+        if (ii->abort)
+            return;
         get = true;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_SETSERIALKEYS: {
-        handle_serialkeys(pre, drcontext, sysnum, mc, pvParam, SYSARG_READ, NULL);
+        handle_serialkeys(ii, pvParam, PV_PARAM_ORDINAL, SYSARG_READ, NULL);
+        if (ii->abort)
+            return;
         get = false;
         uses_uiParam = true;
         uses_pvParam = true;
         break;
     }
     case SPI_GETSOUNDSENTRY: {
-        handle_cwstring_field(pre, sysnum, mc, "SOUNDSENTRYW.lpszWindowsEffectDLL",
-                              SYSARG_WRITE, pvParam, uiParam,
+        handle_cwstring_field(ii, "SOUNDSENTRYW.lpszWindowsEffectDLL",
+                              PV_PARAM_ORDINAL, SYSARG_WRITE, pvParam, uiParam,
                               offsetof(SOUNDSENTRYW, lpszWindowsEffectDLL));
+        if (ii->abort)
+            return;
         /* rest of struct handled through pvParam check below */
         get = true;
         uses_uiParam = true;
@@ -1943,9 +2006,11 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
         break;
     }
     case SPI_SETSOUNDSENTRY: {
-        handle_cwstring_field(pre, sysnum, mc, "SOUNDSENTRYW.lpszWindowsEffectDLL",
-                              SYSARG_READ, pvParam, uiParam,
+        handle_cwstring_field(ii, "SOUNDSENTRYW.lpszWindowsEffectDLL",
+                              PV_PARAM_ORDINAL, SYSARG_READ, pvParam, uiParam,
                               offsetof(SOUNDSENTRYW, lpszWindowsEffectDLL));
+        if (ii->abort)
+            return;
         /* rest of struct handled through pvParam check below */
         get = false;
         uses_uiParam = true;
@@ -1953,9 +2018,11 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
         break;
     }
     case SPI_GETHIGHCONTRAST: {
-        handle_cwstring_field(pre, sysnum, mc, "HIGHCONTRASTW.lpszDefaultScheme",
-                              SYSARG_WRITE, pvParam, uiParam,
+        handle_cwstring_field(ii, "HIGHCONTRASTW.lpszDefaultScheme",
+                              PV_PARAM_ORDINAL, SYSARG_WRITE, pvParam, uiParam,
                               offsetof(HIGHCONTRASTW, lpszDefaultScheme));
+        if (ii->abort)
+            return;
         /* rest of struct handled through pvParam check below */
         get = true;
         uses_uiParam = true;
@@ -1963,9 +2030,11 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
         break;
     }
     case SPI_SETHIGHCONTRAST: {
-        handle_cwstring_field(pre, sysnum, mc, "HIGHCONTRASTW.lpszDefaultScheme",
-                              SYSARG_READ, pvParam, uiParam,
+        handle_cwstring_field(ii, "HIGHCONTRASTW.lpszDefaultScheme",
+                              PV_PARAM_ORDINAL, SYSARG_READ, pvParam, uiParam,
                               offsetof(HIGHCONTRASTW, lpszDefaultScheme));
+        if (ii->abort)
+            return;
         /* rest of struct handled through pvParam check below */
         get = false;
         uses_uiParam = true;
@@ -2143,85 +2212,88 @@ handle_UserSystemParametersInfo(bool pre, void *drcontext, int sysnum, cls_sysca
     }
 
     /* table entry only checked uiAction for definedness */
-    if (uses_uiParam && pre)
-        check_sysparam(sysnum, 1, mc, sizeof(reg_t));
-    if (sz > 0 || uses_pvParam) { /* pvParam is used */
-        if (pre)
-            check_sysparam(sysnum, 2, mc, sizeof(reg_t));
-        if (get && sz > 0) {
-            check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum, 
-                         pvParam, sz, mc, "pvParam");
-        } else if (pre && sz > 0)
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, pvParam, sz, mc, "pvParam");
+    if (uses_uiParam && ii->arg->pre) {
+        if (!report_sysarg(ii, 1, SYSARG_READ))
+            return;
     }
-    if (!get && pre) /* fWinIni used for all SET codes */
-        check_sysparam(sysnum, 3, mc, sizeof(reg_t));
-
-    return true;
+    if (sz > 0 || uses_pvParam) { /* pvParam is used */
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, 2, get ? SYSARG_WRITE : SYSARG_READ))
+                return;
+        }
+        if (get && sz > 0) {
+            if (!report_memarg_type(ii, PV_PARAM_ORDINAL, SYSARG_WRITE,
+                                    pvParam, sz, "pvParam",
+                                    sz == sizeof(int) ? DRSYS_TYPE_INT :
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        } else if (ii->arg->pre && sz > 0) {
+            if (!report_memarg_type(ii, PV_PARAM_ORDINAL, SYSARG_READ, pvParam, sz,
+                                    "pvParam", sz == sizeof(int) ? DRSYS_TYPE_INT :
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+    }
+    if (!get && ii->arg->pre) /* fWinIni used for all SET codes */
+        report_sysarg(ii, 3, SYSARG_READ);
 }
 
-static bool
-handle_UserMenuInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                        dr_mcontext_t *mc)
+static void
+handle_UserMenuInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* 3rd param is bool saying whether it's Set or Get */
     BOOL set = (BOOL) pt->sysarg[3];
-    uint check_type = SYSARG_CHECK_TYPE(set ? SYSARG_READ : SYSARG_WRITE, pre);
     MENUINFO info;
     /* user must set cbSize for set or get */
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[1],
-                     sizeof(info.cbSize), mc, "MENUINFOW.cbSize");
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) pt->sysarg[1],
+                                sizeof(info.cbSize), "MENUINFOW.cbSize",
+                                DRSYS_TYPE_INT, NULL))
+            return;
     }
     if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
-        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
-                     info.cbSize, mc, "MENUINFOW");
+        if (!report_memarg_type(ii, 3, set ? SYSARG_READ : SYSARG_WRITE,
+                                (byte *) pt->sysarg[3], info.cbSize, "MENUINFOW",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
     } else
         WARN("WARNING: unable to read syscall param\n");
-    return true;
 }
 
-static bool
-handle_UserMenuItemInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                        dr_mcontext_t *mc)
+static void
+handle_UserMenuItemInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* 4th param is bool saying whether it's Set or Get */
     BOOL set = (BOOL) pt->sysarg[4];
-    syscall_arg_t arg = {0, 0,
+    syscall_arg_t arg = {3, 0,
                          (set ? SYSARG_READ : SYSARG_WRITE)|SYSARG_COMPLEX_TYPE,
                          SYSARG_TYPE_MENUITEMINFOW};
-    handle_menuiteminfow_access(pre, sysnum, mc, 0/*unused*/,
-                                &arg, (byte *) pt->sysarg[3], 0);
-    return true;
+    handle_menuiteminfow_access(ii, &arg, (byte *) pt->sysarg[3], 0);
 }
 
-static bool
-handle_UserGetAltTabInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                         dr_mcontext_t *mc)
+static void
+handle_UserGetAltTabInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* buffer is ansi or unicode depending on arg 5; size (arg 4) is in chars */
     BOOL ansi = (BOOL) pt->sysarg[5];
-    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
     UINT count = (UINT) pt->sysarg[4];
-    check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
-                 count * (ansi ? sizeof(char) : sizeof(wchar_t)),
-                 mc, "pszItemText");
-    return true;
+    report_memarg_type(ii, 3, SYSARG_WRITE, (byte *) pt->sysarg[3],
+                       count * (ansi ? sizeof(char) : sizeof(wchar_t)),
+                       "pszItemText", ansi ? DRSYS_TYPE_CARRAY : DRSYS_TYPE_CWARRAY, NULL);
 }
 
-static bool
-handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                             dr_mcontext_t *mc)
+static void
+handle_UserGetRawInputBuffer(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
     byte *buf = (byte *) pt->sysarg[0];
     UINT size;
     if (buf == NULL) {
         /* writes out total buffer size needed in bytes to param #1 */
-        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[1],
-                     sizeof(UINT), mc, "pcbSize");
+        if (!report_memarg_type(ii, 1, SYSARG_WRITE, (byte *) pt->sysarg[1],
+                                sizeof(UINT), "pcbSize", DRSYS_TYPE_INT, NULL))
+            return;
     } else {
-        if (pre) {
+        if (ii->arg->pre) {
             /* FIXME i#485: we don't know the number of array entries so we
              * can't check addressability pre-syscall: comes from a prior
              * buf==NULL call
@@ -2231,31 +2303,30 @@ handle_UserGetRawInputBuffer(bool pre, void *drcontext, int sysnum, cls_syscall_
             size = (size * dr_syscall_get_result(drcontext)) +
                 /* param #2 holds header size */
                 (UINT) pt->sysarg[2];
-            check_sysmem(check_type, sysnum, buf, size, mc, "pData");
+            if (!report_memarg_type(ii, 0, SYSARG_WRITE, buf, size, "pData",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         } else
             WARN("WARNING: unable to read syscall param\n");
     }
-    return true;
 }
 
-static bool
-handle_UserGetRawInputData(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                           dr_mcontext_t *mc)
+static void
+handle_UserGetRawInputData(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     byte *buf = (byte *) pt->sysarg[2];
     /* arg #3 is either R or W.  when W buf must be NULL and the 2,-3,WI entry
      * will do a safe_read but won't do a check so no false pos.
      */
-    uint check_type = SYSARG_CHECK_TYPE((buf == NULL) ? SYSARG_WRITE : SYSARG_READ, pre);
-    check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3], sizeof(UINT), mc, "pcbSize");
-    return true;
+    uint flags = ((buf == NULL) ? SYSARG_WRITE : SYSARG_READ);
+    report_memarg_type(ii, 3, flags, (byte *) pt->sysarg[3], sizeof(UINT),
+                       "pcbSize", DRSYS_TYPE_INT, NULL);
 }
 
-static bool
-handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                                 dr_mcontext_t *mc)
+static void
+handle_UserGetRawInputDeviceInfo(void *drcontext, cls_syscall_t *pt,
+                                 sysarg_iter_info_t *ii)
 {
-    uint check_type = SYSARG_CHECK_TYPE(SYSARG_WRITE, pre);
     UINT uiCommand = (UINT) pt->sysarg[1];
     UINT size;
     if (safe_read((byte *) pt->sysarg[3], sizeof(size), &size)) {
@@ -2268,91 +2339,58 @@ handle_UserGetRawInputDeviceInfo(bool pre, void *drcontext, int sysnum, cls_sysc
              */
             size *= sizeof(wchar_t);
         }
-        check_sysmem(check_type, sysnum, (byte *) pt->sysarg[2], size, mc, "pData");
+        if (!report_memarg_type(ii, 2, SYSARG_WRITE, (byte *) pt->sysarg[2], size,
+                                "pData", DRSYS_TYPE_STRUCT, NULL))
+            return;
         if (pt->sysarg[2] == 0) {
             /* XXX i#486: if buffer is not large enough, returns -1 but still
              * sets *pcbSize
              */
-            check_sysmem(check_type, sysnum, (byte *) pt->sysarg[3],
-                         sizeof(UINT), mc, "pData");
+            if (!report_memarg_type(ii, 3, SYSARG_WRITE, (byte *) pt->sysarg[3],
+                                    sizeof(UINT), "pData", DRSYS_TYPE_INT, NULL))
+                return;
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
-    return true;
 }
 
-static bool
-handle_UserTrackMouseEvent(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                           dr_mcontext_t *mc)
+static void
+handle_UserTrackMouseEvent(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     DWORD dwFlags = (BOOL) pt->sysarg[3];
     TRACKMOUSEEVENT *safe;
     byte buf[offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags)];
     /* user must set cbSize and dwFlags */
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pt->sysarg[0],
-                     offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags),
-                     mc, "TRACKMOUSEEVENT cbSize+dwFlags");
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) pt->sysarg[0],
+                                offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags),
+                                "TRACKMOUSEEVENT cbSize+dwFlags",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
     if (safe_read((byte *) pt->sysarg[0], BUFFER_SIZE_BYTES(buf), buf)) {
-        uint check_type;
+        uint flags;
         safe = (TRACKMOUSEEVENT *) buf;
         /* XXX: for non-TME_QUERY are the other fields read? */
-        check_type = SYSARG_CHECK_TYPE(TEST(TME_QUERY, safe->dwFlags) ?
-                                       SYSARG_WRITE : SYSARG_READ, pre);
+        flags = TEST(TME_QUERY, safe->dwFlags) ? SYSARG_WRITE : SYSARG_READ;
         if (safe->cbSize > BUFFER_SIZE_BYTES(buf)) {
-            check_sysmem(check_type, sysnum,
-                         ((byte *)pt->sysarg[0]) + BUFFER_SIZE_BYTES(buf),
-                         safe->cbSize - BUFFER_SIZE_BYTES(buf), mc,
-                         "TRACKMOUSEEVENT post-dwFlags");
+            if (!report_memarg_type(ii, 0, flags,
+                                    ((byte *)pt->sysarg[0]) + BUFFER_SIZE_BYTES(buf),
+                                    safe->cbSize - BUFFER_SIZE_BYTES(buf),
+                                    "TRACKMOUSEEVENT post-dwFlags",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
-    return true;
 }
 
-static bool
-handle_GdiCreateDIBSection(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                           dr_mcontext_t *mc)
-{
-    byte *dib;
-    if (pre)
-        return true;
-    if (safe_read((byte *) pt->sysarg[8], sizeof(dib), &dib)) {
-        /* XXX: move this into common/alloc.c since that's currently
-         * driving all the known allocs, heap and otherwise
-         */
-        byte *dib_base;
-        size_t dib_size;
-        if (dr_query_memory(dib, &dib_base, &dib_size, NULL)) {
-            LOG(SYSCALL_VERBOSE, "NtGdiCreateDIBSection created "PFX"-"PFX"\n",
-                dib_base, dib_base+dib_size);
-            client_handle_mmap(drcontext, dib_base, dib_size,
-                               /* XXX: may not be file-backed but treating as
-                                * all-defined and non-heap which is what this param
-                                * does today.  could do dr_virtual_query().
-                                */
-                               true/*file-backed*/);
-        } else
-            WARN("WARNING: unable to query DIB section "PFX"\n", dib);
-    } else
-        WARN("WARNING: unable to read NtGdiCreateDIBSection param\n");
-    /* When passed-in section pointer is NULL, the return value is
-     * HBITMAP but doesn't seem to be a real memory address, which is
-     * odd, b/c presumably when a section is used it would be a real
-     * memory address, right?  The value is typically large so clearly
-     * not just a table index.  Xref i#539.
-     */
-    return true;
-}
-
-static bool
-handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                      dr_mcontext_t *mc)
+static void
+handle_GdiHfontCreate(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     ENUMLOGFONTEXDVW dvw;
     ENUMLOGFONTEXDVW *real_dvw = (ENUMLOGFONTEXDVW *) pt->sysarg[0];
-    if (pre && safe_read((byte *) pt->sysarg[0], sizeof(dvw), &dvw)) {
+    if (ii->arg->pre && safe_read((byte *) pt->sysarg[0], sizeof(dvw), &dvw)) {
         uint i;
         byte *start = (byte *) pt->sysarg[0];
         ULONG total_size = (ULONG) pt->sysarg[1];
@@ -2361,13 +2399,17 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
          * If any other syscall turns out to have this param type should
          * turn this into a type handler and not a syscall handler.
          */
-        check_sysmem(MEMREF_CHECK_ADDRESSABLE, sysnum, start,
-                     total_size, mc, "ENUMLOGFONTEXDVW");
+        if (!report_memarg_ex(ii, 0, DRSYS_PARAM_BOUNDS, start,
+                              total_size, "ENUMLOGFONTEXDVW", DRSYS_TYPE_STRUCT, NULL,
+                              DRSYS_TYPE_INVALID))
+            return;
 
         ASSERT(offsetof(ENUMLOGFONTEXDVW, elfEnumLogfontEx) == 0 &&
                offsetof(ENUMLOGFONTEXW, elfLogFont) == 0, "logfont structs changed");
-        handle_logfont(pre, drcontext, sysnum, mc, start,
-                       sizeof(LOGFONTW), SYSARG_READ, &dvw.elfEnumLogfontEx.elfLogFont);
+        handle_logfont(ii, start, sizeof(LOGFONTW), 0, SYSARG_READ,
+                       &dvw.elfEnumLogfontEx.elfLogFont);
+        if (ii->abort)
+            return;
 
         start = (byte *) &real_dvw->elfEnumLogfontEx.elfFullName;
         for (i = 0;
@@ -2375,8 +2417,9 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                  dvw.elfEnumLogfontEx.elfFullName[i] != L'\0';
              i++)
             ; /* nothing */
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfFullName");
+        if (!report_memarg_type(ii, 0, SYSARG_READ, start, i * sizeof(wchar_t),
+                                "ENUMLOGFONTEXW.elfFullName", DRSYS_TYPE_CWARRAY, NULL))
+            return;
 
         start = (byte *) &real_dvw->elfEnumLogfontEx.elfStyle;
         for (i = 0;
@@ -2384,8 +2427,9 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                  dvw.elfEnumLogfontEx.elfStyle[i] != L'\0';
              i++)
             ; /* nothing */
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfStyle");
+        if (!report_memarg_type(ii, 0, SYSARG_READ, start, i * sizeof(wchar_t),
+                                "ENUMLOGFONTEXW.elfStyle", DRSYS_TYPE_CWARRAY, NULL))
+            return;
 
         start = (byte *) &real_dvw->elfEnumLogfontEx.elfScript;
         for (i = 0;
@@ -2393,8 +2437,9 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
                  dvw.elfEnumLogfontEx.elfScript[i] != L'\0';
              i++)
             ; /* nothing */
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     i * sizeof(wchar_t), mc, "ENUMLOGFONTEXW.elfScript");
+        if (!report_memarg_type(ii, 0, SYSARG_READ, start, i * sizeof(wchar_t),
+                                "ENUMLOGFONTEXW.elfScript", DRSYS_TYPE_CWARRAY, NULL))
+            return;
 
         /* the dvValues of DESIGNVECTOR are optional: from 0 to 64 bytes */
         start = (byte *) &real_dvw->elfDesignVector;
@@ -2407,18 +2452,17 @@ handle_GdiHfontCreate(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
             (byte*) pt->sysarg[0] != total_size) {
             WARN("WARNING: NtGdiHfontCreate total size doesn't match\n");
         }
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, start,
-                     offsetof(DESIGNVECTOR, dvValues) +
-                     dvw.elfDesignVector.dvNumAxes * sizeof(LONG),
-                     mc, "DESIGNVECTOR");
-    } else if (pre)
+        if (!report_memarg_type(ii, 0, SYSARG_READ, start,
+                                offsetof(DESIGNVECTOR, dvValues) +
+                                dvw.elfDesignVector.dvNumAxes * sizeof(LONG),
+                                "DESIGNVECTOR", DRSYS_TYPE_STRUCT, NULL))
+            return;
+    } else if (ii->arg->pre)
         WARN("WARNING: unable to read NtGdiHfontCreate param\n");
-    return true;
 }
 
-static bool
-handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                    dr_mcontext_t *mc)
+static void
+handle_GdiDoPalette(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* Entry would read: {3,-2,R|SYSARG_SIZE_IN_ELEMENTS,sizeof(PALETTEENTRY)}
      * But pPalEntries is an OUT param if !bInbound.
@@ -2427,20 +2471,21 @@ handle_GdiDoPalette(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
     WORD cEntries = (WORD) pt->sysarg[2];
     PALETTEENTRY *pPalEntries = (PALETTEENTRY *) pt->sysarg[3];
     bool bInbound = (bool) pt->sysarg[5];
-    if (bInbound && pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *) pPalEntries,
-                     cEntries * sizeof(PALETTEENTRY), mc, "pPalEntries");
+    if (bInbound && ii->arg->pre) {
+        if (!report_memarg_type(ii, 3, SYSARG_READ, (byte *) pPalEntries,
+                                cEntries * sizeof(PALETTEENTRY), "pPalEntries",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
     } else if (!bInbound) {
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (byte *) pPalEntries,
-                     cEntries * sizeof(PALETTEENTRY), mc, "pPalEntries");
+        if (!report_memarg_type(ii, 3, SYSARG_WRITE, (byte *) pPalEntries,
+                                cEntries * sizeof(PALETTEENTRY), "pPalEntries",
+                                DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
-    return true;
 }
 
-static bool
-handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                  dr_mcontext_t *mc)
+static void
+handle_GdiOpenDCW(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* An extra arg "BOOL bDisplay" was added as arg #4 in Vista so
      * we have to special-case the subsequent args, which for Vista+ are:
@@ -2448,155 +2493,89 @@ handle_GdiOpenDCW(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
      */
     uint num_driver = 5;
     uint num_pump = 6;
-    if (running_on_Vista_or_later()) {
-        if (pre)
-            check_sysparam(sysnum, 7, mc, sizeof(reg_t));
+    if (win_ver.version >= DR_WINDOWS_VERSION_VISTA) {
+        if (ii->arg->pre) {
+            if (!report_sysarg(ii, 7, SYSARG_WRITE))
+                return;
+        }
         num_driver = 6;
         num_pump = 7;
     }
-    if (pre) {
-        check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum,
-                     (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
-                     mc, "DRIVER_INFO_2W");
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, num_driver, SYSARG_READ,
+                                (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
+                                "DRIVER_INFO_2W", DRSYS_TYPE_STRUCT, NULL))
+            return;
     }
-    check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                 (byte *) pt->sysarg[num_pump], sizeof(PUMDHPDEV *),
-                 mc, "PUMDHPDEV*");
-    return true;
+    report_memarg_type(ii, num_pump, SYSARG_WRITE, (byte *) pt->sysarg[num_pump],
+                       sizeof(PUMDHPDEV *), "PUMDHPDEV*", DRSYS_TYPE_STRUCT, NULL);
 }
 
-bool
-wingdi_shadow_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                              dr_mcontext_t *mc)
+void
+wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* handlers here do not check for success so we check up front */
-    if (!pre) {
-        syscall_info_t *sysinfo = syscall_lookup(sysnum);
-        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
-            return true;
+    if (!ii->arg->pre) {
+        if (!os_syscall_succeeded(ii->arg->sysnum, pt->sysinfo,
+                                  dr_syscall_get_result(drcontext)))
+            return;
     }
-    if (sysnum == sysnum_UserSystemParametersInfo) {
-        return handle_UserSystemParametersInfo(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserMenuInfo) {
-        return handle_UserMenuInfo(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserMenuItemInfo) {
-        return handle_UserMenuItemInfo(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserGetAltTabInfo) {
-        return handle_UserGetAltTabInfo(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserGetRawInputBuffer) {
-        return handle_UserGetRawInputBuffer(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserGetRawInputData) {
-        return handle_UserGetRawInputData(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserGetRawInputDeviceInfo) {
-        return handle_UserGetRawInputDeviceInfo(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserTrackMouseEvent) {
-        return handle_UserTrackMouseEvent(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_UserCreateWindowStation ||
-               sysnum == sysnum_UserLoadKeyboardLayoutEx) {
+    if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserSystemParametersInfo)) {
+        handle_UserSystemParametersInfo(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserMenuInfo)) {
+        handle_UserMenuInfo(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserMenuItemInfo)) {
+        handle_UserMenuItemInfo(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserGetAltTabInfo)) {
+        handle_UserGetAltTabInfo(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserGetRawInputBuffer)) {
+        handle_UserGetRawInputBuffer(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserGetRawInputData)) {
+        handle_UserGetRawInputData(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserGetRawInputDeviceInfo)) {
+        handle_UserGetRawInputDeviceInfo(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserTrackMouseEvent)) {
+        handle_UserTrackMouseEvent(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserCreateWindowStation) ||
+               drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserLoadKeyboardLayoutEx)) {
         /* Vista SP1 added one arg (both were 7, now 8)
          * FIXME i#487: figure out what it is and whether we need to process it
          * for each of the two syscalls.
          * Also check whether it's defined after first deciding whether
          * we're on SP1: use core's method of checking for export?
          */
-    } else if (sysnum == sysnum_GdiCreatePaletteInternal) {
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiCreatePaletteInternal)) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
-        if (pre) {
+        if (ii->arg->pre) {
             UINT cEntries = (UINT) pt->sysarg[1];
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, (byte *)pt->sysarg[0],
-                         sizeof(LOGPALETTE) - sizeof(PALETTEENTRY) +
-                         sizeof(PALETTEENTRY) * cEntries, mc, "pLogPal");
+            report_memarg_type(ii, 1, SYSARG_READ, (byte *)pt->sysarg[0],
+                               sizeof(LOGPALETTE) - sizeof(PALETTEENTRY) +
+                               sizeof(PALETTEENTRY) * cEntries, "pLogPal",
+                               DRSYS_TYPE_STRUCT, NULL);
         }
-    } else if (sysnum == sysnum_GdiCheckBitmapBits) {
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiCheckBitmapBits)) {
         /* Entry would read: {7,dwWidth * dwHeight,W,} */
         DWORD dwWidth = (DWORD) pt->sysarg[4];
         DWORD dwHeight = (DWORD) pt->sysarg[5];
-        check_sysmem(pre ? MEMREF_CHECK_ADDRESSABLE : MEMREF_WRITE, sysnum,
-                     (byte *)pt->sysarg[7], dwWidth * dwHeight, mc, "paResults");
-    } else if (sysnum == sysnum_GdiCreateDIBSection) {
-        return handle_GdiCreateDIBSection(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_GdiHfontCreate) {
-        return handle_GdiHfontCreate(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_GdiDoPalette) {
-        return handle_GdiDoPalette(pre, drcontext, sysnum, pt, mc);
-    } else if (sysnum == sysnum_GdiExtTextOutW) {
+        report_memarg_type(ii, 7, SYSARG_WRITE, (byte *)pt->sysarg[7],
+                           dwWidth * dwHeight, "paResults", DRSYS_TYPE_STRUCT, NULL);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiHfontCreate)) {
+        handle_GdiHfontCreate(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiDoPalette)) {
+        handle_GdiDoPalette(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiExtTextOutW)) {
         UINT fuOptions = (UINT) pt->sysarg[3];
         int cwc = (int) pt->sysarg[6];
         INT *pdx = (INT *) pt->sysarg[7];
-        if (pre && TEST(ETO_PDY, fuOptions)) {
+        if (ii->arg->pre && TEST(ETO_PDY, fuOptions)) {
             /* pdx contains pairs of INTs.  regular entry already checked
              * size of singletons of INTs so here we check the extra size.
              */
-            check_sysmem(MEMREF_CHECK_DEFINEDNESS, sysnum, ((byte *)pdx) + cwc*sizeof(INT),
-                         cwc*sizeof(INT), mc, "pdx extra size from ETO_PDY");
+            report_memarg_type(ii, 7, SYSARG_READ, ((byte *)pdx) + cwc*sizeof(INT),
+                               cwc*sizeof(INT), "pdx extra size from ETO_PDY",
+                               DRSYS_TYPE_STRUCT, NULL);
         }
-    } else if (sysnum == sysnum_GdiOpenDCW) {
-        return handle_GdiOpenDCW(pre, drcontext, sysnum, pt, mc);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiOpenDCW)) {
+        handle_GdiOpenDCW(drcontext, pt, ii);
     } 
-    return true; /* execute syscall */
 }
-
-/***************************************************************************
- * General (non-shadow/memory checking) system call handling
- */
-/* Caller should check for success and only call if syscall is successful (for !pre) */
-static void
-syscall_check_gdi(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                  dr_mcontext_t *mc)
-{
-    ASSERT(options.check_gdi, "shouldn't be called");
-    if (sysnum == sysnum_UserGetDC || sysnum == sysnum_UserGetDCEx ||
-        sysnum == sysnum_UserGetWindowDC || sysnum == sysnum_UserBeginPaint ||
-        sysnum == sysnum_GdiGetDCforBitmap || sysnum == sysnum_GdiDdGetDC) {
-        if (!pre) {
-            HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-            gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
-            if (sysnum == sysnum_UserBeginPaint) {
-                /* we store the hdc for access in EndPaint */
-                pt->paintDC = hdc;
-            }
-        }
-    } else if (sysnum == sysnum_GdiCreateMetafileDC ||
-               sysnum == sysnum_GdiCreateCompatibleDC ||
-               sysnum == sysnum_GdiOpenDCW) {
-        if (!pre) {
-            HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-            gdicheck_dc_alloc(hdc, true/*Create not Get*/,
-                              (sysnum == sysnum_GdiCreateCompatibleDC &&
-                               pt->sysarg[0] == 0),
-                              sysnum, mc);
-        }
-    } else if (sysnum == sysnum_UserReleaseDC || sysnum == sysnum_UserEndPaint) {
-        if (pre) {
-            HDC hdc;
-            if (sysnum == sysnum_UserReleaseDC)
-                hdc = (HDC)pt->sysarg[0];
-            else {
-                hdc = pt->paintDC;
-                pt->paintDC = NULL;
-            }
-            gdicheck_dc_free(hdc, false/*Get not Create*/, sysnum, mc);
-        }
-    } else if (sysnum == sysnum_GdiDeleteObjectApp) {
-        if (pre)
-            gdicheck_obj_free((HANDLE)pt->sysarg[0], sysnum, mc);
-    }
-}
-
-bool
-wingdi_shared_process_syscall(bool pre, void *drcontext, int sysnum, cls_syscall_t *pt,
-                              dr_mcontext_t *mc)
-{
-    /* handlers here do not check for success so we check up front */
-    if (!pre) {
-        syscall_info_t *sysinfo = syscall_lookup(sysnum);
-        if (!os_syscall_succeeded(sysnum, sysinfo, dr_syscall_get_result(drcontext)))
-            return true;
-    }
-    if (options.check_gdi) {
-        syscall_check_gdi(pre, drcontext, sysnum, pt, mc);
-    }
-
-    return true; /* execute syscall */
-}
-
