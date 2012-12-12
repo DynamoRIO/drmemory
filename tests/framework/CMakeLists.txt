@@ -53,6 +53,7 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
 
   foreach (ext ${ext_list})
     use_DynamoRIO_extension(${client_name} drmf_${ext})
+    use_DynamoRIO_extension(${client_name} drmgr)
     # We use the namespace prefix to allow us to avoid target conflicts
     # (else we'd need a completely separate build for these tests),
     # but cmake gets confused and we have to tell it the two are the same.
