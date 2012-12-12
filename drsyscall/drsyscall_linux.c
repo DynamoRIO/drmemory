@@ -21,13 +21,12 @@
  */
 
 #include "dr_api.h"
-#include "drmemory.h"
 #include "drsyscall.h"
 #include "drsyscall_os.h"
 #include "sysnum_linux.h"
 #include "heap.h"
 #include "asm_utils.h"
-
+#include <string.h> /* for strcmp */
 #include <stddef.h> /* for offsetof */
 
 /* for linux-specific types/defines for fcntl and ipc */
@@ -288,9 +287,10 @@ report_callstack(void *drcontext, dr_mcontext_t *mc);
  * XXX i#1013: for all the sizeof(struct) entries we'll have to make two entries
  * and define our own 32-bit version of the struct.
  */
-#define PACKNUM(x64,x86) (((x64) << 16) | (x86))
-#define UNPACK_X64(packed) ((packed) >> 16)
-#define UNPACK_X86(packed) ((packed) & 0xffff)
+#define PACKNUM(x64,x86) (((x64) << 16) | (x86 & 0xffff))
+/* the cast is for sign extension for -1 sentinel */
+#define UNPACK_X64(packed) ((int)(short)((packed) >> 16))
+#define UNPACK_X86(packed) ((int)(short)((packed) & 0xffff))
 
 /* Table that maps system call number to a syscall_info_t* */
 #define SYSTABLE_HASH_BITS 9 /* ~2x the # of entries */
@@ -2943,13 +2943,13 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         break;
 #ifdef X64
     case SYS_semctl:
-        handle_semctl(drcontext, pt, ii, sysnum, 0);
+        handle_semctl(drcontext, pt, ii, 0);
         break;
     case SYS_msgctl:
-        handle_msgctl(drcontext, pt, ii, sysnum, 0, 1, 2);
+        handle_msgctl(drcontext, pt, ii, 0, 1, 2);
         break;
     case SYS_shmctl:
-        handle_shmctl(drcontext, pt, ii, sysnum, 0, 1, 2);
+        handle_shmctl(drcontext, pt, ii, 0, 1, 2);
         break;
 #else
     case SYS_socketcall: 

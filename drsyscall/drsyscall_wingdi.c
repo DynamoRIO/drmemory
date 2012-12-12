@@ -26,12 +26,9 @@
 #define WINVER _WIN32_WINNT
 
 #include "dr_api.h"
-#include "drmemory.h"
 #include "drsyscall.h"
 #include "drsyscall_os.h"
 #include "drsyscall_windows.h"
-#include "readwrite.h"
-#include "shadow.h"
 #include <stddef.h> /* offsetof */
 
 /* for NtGdi* syscalls */
@@ -469,50 +466,50 @@ num_user32_syscalls(void)
 
 static const char * const usercall_names[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   #type"."#name,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 #define NUM_USERCALL_NAMES (sizeof(usercall_names)/sizeof(usercall_names[0]))
 
 static const char * const usercall_primary[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   #type,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win7_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w7,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winvistaSP2_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   vistaSP2,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winvistaSP01_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   vistaSP01,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win2003_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w2003,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winxp_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   xp,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win2k_usercall_nums[] = {
 #define USERCALL(type, name, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w2k,
-#include "syscall_usercallx.h"
+#include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 

@@ -104,9 +104,16 @@ endif ()
 
 # Documentation is handled as part of the main tool docs processing.
 
+# We need to clear the dependents that come from DR to avoid the prefix
+# from affecting them too.
+set_target_properties(drsyscall PROPERTIES
+  LINK_INTERFACE_LIBRARIES "")
 # We use a prefix primarly to make it easy to test the imported targets,
 # and to give a better "bundled extensions" feel.
 export_target(drsyscall NAMESPACE drmf_)
+# Now put in our imports w/o the namespace on them
+set_target_properties(drsyscall PROPERTIES
+  LINK_INTERFACE_LIBRARIES "dynamorio;drmgr;drcontainers")
 install(TARGETS drsyscall EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL_BIN})
 install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 # Top-level installs .debug and .pdb files

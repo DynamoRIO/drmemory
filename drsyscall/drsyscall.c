@@ -286,12 +286,12 @@ static void
 handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                            sysarg_iter_info_t *ii)
 {
-    drsys_sysnum_t sysnum = ii->arg->sysnum;
-    syscall_info_t *sysinfo = cpt->sysinfo;
     app_pc start;
     int i, j;
     bool defined;
     drsys_arg_t arg_loc = *ii->arg; /* set up mc, etc. */
+    IF_DEBUG(drsys_sysnum_t sysnum = ii->arg->sysnum;)
+    IF_DEBUG(syscall_info_t *sysinfo = cpt->sysinfo;)
 
     if (!drsys_ops.analyze_unknown_syscalls)
         return;

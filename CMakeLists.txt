@@ -19,13 +19,10 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  # for output dir name control
-  cmake_minimum_required(VERSION 2.8.2)
-else ()
-  # for cmake bug #8639 (asm support broken)
-  cmake_minimum_required(VERSION 2.6.4)
-endif ()
+# We need 2.8.10 for multi-export-set support for DRMF.
+# (For Visual Studio generators, we also need >= 2.8.2 for output dir name control.)
+# (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
+cmake_minimum_required(VERSION 2.8.10)
 
 # like DR, we collapse VS generator into one config since
 # we don't have enough control over output dirs
@@ -713,8 +710,12 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DR_EXT_DRSYMS_STATIC ON CACHE BOOL "static drsyms")
   endif (STATIC_DRSYMS)
 
-  # we do not want DR install
+  # We do not want DR install, except for the targets we need for our
+  # multi-export-set install of the DRMF.
   set(DO_DR_INSTALL OFF)
+  set(DO_DR_INSTALL_TARGETS ON)
+  # Stick the binaries somewhere outside of the install dir:
+  set(DR_INSTALL_TARGETS_DEST ${PROJECT_BINARY_DIR}/dynamorio/installs)
 
   add_subdirectory(dynamorio)
 
@@ -1003,8 +1004,7 @@ if (WIN32)
     set(ntimp_lib "${libpath}/ntdll_imports.lib")
   else ()
     # XXX: This relies on knowing where DR puts it.
-    # Long-term we will probably switch to installing the local DR first,
-    # primarily to solve i#1061.
+    # One option is ExternalProject to install the local DR first: xref i#1061.
     set(ntimp_lib "${PROJECT_BINARY_DIR}/dynamorio/core/ntdll_imports.lib")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # for parallel build correctness we need a target dependence
@@ -1300,17 +1300,14 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE Release)
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
 
-# FIXME i#822: disabling temporarily for incremental commits
-#add_subdirectory(drsyscall)
+add_subdirectory(drsyscall)
 
 # XXX: change this to find_package() + use_DynamoRIO_extension(drsyscall)
 include_directories(drsyscall)
-# FIXME i#822: disabling temporarily for incremental commits
-#target_link_libraries(${client_target} drsyscall_int)
+target_link_libraries(${client_target} drsyscall_int)
 
 if (BUILD_TOOL_TESTS)
-  # FIXME i#1061: disabling until works with non-pre-built-DR
-  #add_subdirectory(tests/framework)
+  add_subdirectory(tests/framework)
 endif (BUILD_TOOL_TESTS)
 
 ###########################################################################
@@ -1565,8 +1562,7 @@ install(DIRECTORY ${framework_bindir}/
 # the exports have changed and thus clobbering the other config's files.
 install(CODE "file(APPEND \"${PROJECT_BINARY_DIR}/CMakeFiles/Export/cmake/${exported_targets_name}.cmake\" \"${exported_targets_append}\")")
 # Create the exported targets file
-# FIXME i#1061: disabling until works with non-pre-built-DR
-#install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
+install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 
 ###########################################################################
 # packaging

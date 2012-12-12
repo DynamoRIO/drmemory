@@ -42,7 +42,8 @@ void exit_event(void)
 DR_EXPORT
 void dr_init(client_id_t id)
 {
-    if (drsys_init(id) != DRMF_SUCCESS)
+    drsys_options_t ops = { sizeof(ops), 0, };
+    if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
 }

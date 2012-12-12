@@ -21,14 +21,11 @@
  */
 
 #include "dr_api.h"
-#include "drmemory.h"
 #include "drsyscall.h"
 #include "drsyscall_os.h"
 #include "drsyscall_windows.h"
-#include "readwrite.h"
-#include "frontend.h"
+#include <string.h> /* for strcmp */
 #include <stddef.h> /* offsetof */
-#include "handlecheck.h"
 
 #include "../wininc/ndk_dbgktypes.h"
 #include "../wininc/ndk_iotypes.h"

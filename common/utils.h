@@ -727,6 +727,9 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
 const char *
 get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
 
+const char *
+strcasestr(const char *text, const char *pattern);
+
 bool
 text_matches_pattern(const char *text, const char *pattern, bool ignore_case);
 

@@ -24,9 +24,7 @@
 #endif
 
 #include "dr_api.h"
-#include "drmemory.h"
 #include "utils.h"
-#include "shadow.h"
 #include "drsyscall_driver.h"
 #include "drsyscall.h"
 #include "drmemory/driver/drmemory.h" /* off of SYSCALL_DRIVER_SRCDIR */

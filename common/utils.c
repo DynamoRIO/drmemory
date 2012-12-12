@@ -546,7 +546,7 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
 }
 
 /* not available in ntdll CRT so we supply our own */
-static const char *
+const char *
 strcasestr(const char *text, const char *pattern)
 {
     const char *cur_text, *cur_pattern, *root;
