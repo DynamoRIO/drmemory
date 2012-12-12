@@ -706,7 +706,7 @@ static drsys_param_type_t
 type_from_arg_info(const syscall_arg_t *arg_info)
 {
     drsys_param_type_t type = DRSYS_TYPE_INVALID;
-    if (TEST(SYSARG_COMPLEX_TYPE, arg_info->flags)) {
+    if (SYSARG_MISC_HAS_TYPE(arg_info->flags)) {
         /* we don't need size b/c it's encoded in arg_info already */
         type = map_to_exported_type(arg_info->misc, NULL);
     }
@@ -952,7 +952,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         }
         last_param = sysinfo->arg[i].param;
 
-        if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags))
+        if (TEST(SYSARG_INLINED, sysinfo->arg[i].flags))
             continue;
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
@@ -1028,8 +1028,8 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         ASSERT(i < SYSCALL_NUM_ARG_STORE, "not storing enough args");
         if (!TEST(SYSARG_WRITE, sysinfo->arg[i].flags))
             continue;
-        ASSERT(!TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[i].flags),
-               "inlined bool should always be read, not write");
+        ASSERT(!TEST(SYSARG_INLINED, sysinfo->arg[i].flags),
+               "inlined should not be written");
 #ifdef WINDOWS
         /* i#486, i#531, i#932: for too-small buffer, only last param written */
         if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, sysinfo->flags) &&
@@ -1235,12 +1235,13 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
         /* FIXME i#1089: add type info for the non-memory-complex-type args */
         if (!sysarg_invalid(&sysinfo->arg[compacted]) &&
             sysinfo->arg[compacted].param == i) {
-            if (TEST(SYSARG_COMPLEX_TYPE, sysinfo->arg[compacted].flags)) {
+            if (SYSARG_MISC_HAS_TYPE(sysinfo->arg[compacted].flags)) {
                 arg->type = type_from_arg_info(&sysinfo->arg[compacted]);
             }
-            if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[compacted].flags)) {
-                /* BOOLEAN is only 1 byte so ok if only lsb is defined */
-                arg->size = 1;
+            if (TEST(SYSARG_INLINED, sysinfo->arg[compacted].flags)) {
+                int sz = sysinfo->arg[compacted].size;
+                ASSERT(sz > 0, "inlined must have regular size in bytes");
+                arg->size = sz;
             }
             arg->mode = mode_from_flags(sysinfo->arg[compacted].flags);
             /* Go to next entry.  Skip double entries. */

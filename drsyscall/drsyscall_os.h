@@ -89,18 +89,15 @@ enum {
      * overlap then special handling must be done for the type.
      */
     SYSARG_SIZE_IN_ELEMENTS    = 0x00000040,
-    /* BOOLEAN is only 1 byte so ok if only lsb is defined
-     * FIXME: are we going to need the sizes of all the params, esp.
-     * when we move to 64-bit?
-     */
-    SYSARG_INLINED_BOOLEAN     = 0x00000080,
+    /* A non-memory argument (i.e., entire value is in parameter slot). */
+    SYSARG_INLINED             = 0x00000080,
     /* for SYSARG_POST_SIZE_RETVAL on a duplicate entry, nothing is
      * written if the count, given in the first entry, is zero,
      * regardless of the buffer pointer value.
      */
     SYSARG_NO_WRITE_IF_COUNT_0 = 0x00000100,
-    /* for handle check */
-    SYSARG_IS_HANDLE           = 0x00000200,
+    /* Contains a type specifier */
+    SYSARG_HAS_TYPE            = 0x00000200,
     /* i#502-c#5 the arg should be ignored if the next arg is null */
     SYSARG_IGNORE_IF_NEXT_NULL = 0x00000400,
 
@@ -174,9 +171,14 @@ typedef struct _syscall_arg_t {
      * - SYSARG_COMPLEX_TYPE: holds SYSARG_TYPE_* enum value
      * - SYSARG_SIZE_IN_ELEMENTS: holds size of array entry
      * - SYSARG_SIZE_IN_FIELD: holds offset of 4-byte size field
+     * - SYSARG_INLINED: holds SYSARG_TYPE_* enum value
+     * - SYSARG_HAS_TYPE: holds SYSARG_TYPE_* enum value
      */
     int misc;
 } syscall_arg_t;
+
+#define SYSARG_MISC_HAS_TYPE(flags) \
+    (TESTANY(SYSARG_COMPLEX_TYPE|SYSARG_INLINED|SYSARG_HAS_TYPE, (flags)))
 
 enum {
     /* If not set, automated param comparison is used to find writes */
@@ -204,15 +206,8 @@ enum {
      * Any other argument fields in the initial entry are ignored.
      */
     SYSINFO_SECONDARY_TABLE     = 0x00000020,
-    /* System call deletes handle */
-    SYSINFO_DELETE_HANDLE       = 0x00000040,
-    /* System call creates handle
-     * we assume that no syscall both returns and has OUT arg,
-     * so using the same flag for both cases.
-     */
-    SYSINFO_CREATE_HANDLE       = 0x00000080,
     /* Return value indicates failure only when -1 */
-    SYSINFO_RET_MINUS1_FAIL     = 0x00000100,
+    SYSINFO_RET_MINUS1_FAIL     = 0x00000040,
 };
 
 #ifdef WINDOWS
