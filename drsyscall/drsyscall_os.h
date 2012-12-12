@@ -233,7 +233,7 @@ typedef struct _cls_syscall_t {
     /* for recording args so post-syscall can examine */
     reg_t sysarg[SYSCALL_NUM_ARG_STORE];
 #ifdef WINDOWS
-    reg_t pre_xdx;
+    reg_t param_base;
 #endif
 
     /* for recording additional info for particular arg types */

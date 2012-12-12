@@ -1081,7 +1081,7 @@ syscall_lookup(drsys_sysnum_t num)
 static reg_t *
 get_sysparam_base(cls_syscall_t *pt)
 {
-    reg_t *base = (reg_t *) pt->pre_xdx;
+    reg_t *base = (reg_t *) pt->param_base;
     if (is_using_sysenter())
         base += 2;
     return base;
@@ -1099,14 +1099,39 @@ get_sysparam_addr(cls_syscall_t *pt, uint ord)
 void
 drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *arg)
 {
-    /* Store xdx (sysparam base for many windows versions) so we can
-     * answer queries about syscall parameter addresses in
-     * post-syscall where xdx is often clobbered.
+    /* We store the sysparam base so we can answer queries about
+     * syscall parameter addresses in post-syscall, where xdx (base
+     * for 32-bit) is often clobbered.
      */
+#ifdef X64
+    arg->reg = DR_REG_NULL;
+    switch (argnum) {
+    case 0:
+        arg->reg = DR_REG_RCX;
+        break;
+    case 1:
+        arg->reg = DR_REG_RDX;
+        break;
+    case 2:
+        arg->reg = DR_REG_R8;
+        break;
+    case 3:
+        arg->reg = DR_REG_R9;
+        break;
+    }
     if (pt->pre)
-        pt->pre_xdx = arg->mc->xdx;
+        pt->param_base = arg->mc->xsp; /* x64 never uses xdx */
+    if (arg->reg == DR_REG_NULL) {
+        arg->start_addr = get_sysparam_addr(pt, argnum);
+    } else {
+        arg->start_addr = NULL;
+    }
+#else
+    if (pt->pre)
+        pt->param_base = arg->mc->xdx; /* xdx points at args on stack */
     arg->reg = DR_REG_NULL;
     arg->start_addr = get_sysparam_addr(pt, argnum);
+#endif
 }
 
 bool
