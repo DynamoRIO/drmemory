@@ -234,10 +234,10 @@ typedef struct _drsys_arg_t {
      */
     reg_id_t reg;
     /**
-     * Indicates whether the start_addr or value field is valid.  For memarg
+     * Indicates whether the start_addr and value fields are valid.  For memarg
      * iteration, this is always true, as a failure to read will result in not
      * calling the callback for that memarg.  For arg iteration this field can
-     * be false.
+     * be false.  For static iteration this field is always false.
      */
     bool valid;
     /**
@@ -592,7 +592,9 @@ drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT);
 DR_EXPORT
 /**
  * Iterates over all system call numbers and calls the given callback
- * for each one.
+ * for each one.  The argument types of each system call can then be
+ * enumerated by calling drsys_iterate_arg_types() and passing the
+ * given \p iter_arg_cxt.
  *
  * This will enumerate all system calls even if the libraries
  * containing their wrappers have not yet been loaded.  System calls
@@ -607,17 +609,26 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum, void *user_data),
+drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum,
+                                  void *iter_arg_cxt, void *user_data),
                        void *user_data);
 
 DR_EXPORT
 /**
  * Statically iterates over all system call parameters for the given
- * system call.  Only the top-level types are enumerated (i.e., fields
- * of structures are not recursively followed).  As this is a static
- * iteration, only the types are known and not any values.
+ * system call.  The system call is specified in one of two ways:
+ * either \p iter_arg_cxt, obtained from drsys_iterate_syscalls(), is
+ * non-NULL, or if it is NULL then \p sysnum is used.
  *
+ * Only the top-level types are enumerated (i.e., fields of structures
+ * are not recursively followed).  As this is a static iteration, only
+ * the types are known and not any values.
+ *
+ * @param[in] iter_arg_cxt  The opaque pointer passed to the callback in
+ *                          drsys_iterate_syscalls().  If this is non-NULL,
+ *                          \p sysnum is ignored.
  * @param[in] sysnum     The system call whose arguments should be enumerated.
+ *                       Ignored if \p iter_arg_cxt is non-NULL.
  * @param[in] cb         The callback to invoke for each system call parameter.
  *                       The callback's return value indicates whether to
  *                       continue the iteration.
@@ -626,7 +637,8 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_iterate_arg_types(drsys_sysnum_t sysnum, drsys_iter_cb_t cb, void *user_data);
+drsys_iterate_arg_types(void *iter_arg_cxt, drsys_sysnum_t sysnum,
+                        drsys_iter_cb_t cb, void *user_data);
 
 /***************************************************************************
  * DYNAMIC CALLBACK-BASED ITERATORS

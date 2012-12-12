@@ -294,7 +294,7 @@ report_callstack(void *drcontext, dr_mcontext_t *mc);
 
 /* Table that maps system call number to a syscall_info_t* */
 #define SYSTABLE_HASH_BITS 9 /* ~2x the # of entries */
-static hashtable_t systable;
+hashtable_t systable;
 
 /* Created from ./mksystable_linux.pl
  * And then manually:
@@ -730,11 +730,12 @@ drsyscall_os_init(void *drcontext)
 {
     uint i;
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
-                      true/*synch*/, NULL, sysnum_hash, sysnum_cmp);
+                      false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
  
     hashtable_init(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING,
                    false/*!strdup*/);
 
+    dr_recurlock_lock(systable_lock);
     for (i = 0; i < NUM_SYSCALL_STATIC_ENTRIES; i++) {
 #ifdef X64
         syscall_info[i].num.number = UNPACK_X64(syscall_info[i].num.number);
@@ -742,13 +743,18 @@ drsyscall_os_init(void *drcontext)
         syscall_info[i].num.number = UNPACK_X86(syscall_info[i].num.number);
 #endif
         if (syscall_info[i].num.number != -1) {
-            hashtable_add(&systable, (void *) &syscall_info[i].num,
-                          (void *) &syscall_info[i]);
+            IF_DEBUG(bool ok =)
+                hashtable_add(&systable, (void *) &syscall_info[i].num,
+                              (void *) &syscall_info[i]);
+            ASSERT(ok, "no dups");
 
-            hashtable_add(&name2num_table, (void *) syscall_info[i].name,
-                          (void *) &syscall_info[i].num);
+            IF_DEBUG(ok =)
+                hashtable_add(&name2num_table, (void *) syscall_info[i].name,
+                              (void *) &syscall_info[i].num);
+            ASSERT(ok || strcmp(syscall_info[i].name, "ni_syscall") == 0, "no dups");
         }
     }
+    dr_recurlock_unlock(systable_lock);
     return DRMF_SUCCESS;
 }
 
@@ -772,12 +778,6 @@ drsyscall_os_thread_exit(void *drcontext)
 void
 drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
-}
-
-syscall_info_t *
-syscall_lookup(drsys_sysnum_t num)
-{
-    return (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
 }
 
 bool

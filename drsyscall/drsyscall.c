@@ -80,6 +80,8 @@ drsys_options_t drsys_ops;
 
 static int init_count;
 
+void *systable_lock;
+
 /***************************************************************************
  * SYSTEM CALLS
  */
@@ -212,6 +214,16 @@ sysnum_cmp(void *v1, void *v2)
     drsys_sysnum_t *num1 = (drsys_sysnum_t *) v1;
     drsys_sysnum_t *num2 = (drsys_sysnum_t *) v2;
     return drsys_sysnums_equal(num1, num2);
+}
+
+syscall_info_t *
+syscall_lookup(drsys_sysnum_t num)
+{
+    syscall_info_t *res;
+    dr_recurlock_lock(systable_lock);
+    res = (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
+    dr_recurlock_unlock(systable_lock);
+    return res;
 }
 
 /***************************************************************************
@@ -1104,62 +1116,74 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
     return DRMF_SUCCESS;
 }
 
-DR_EXPORT
-drmf_status_t
-drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
+/* Pass pt==NULL for static iteration.
+ * arg need not be initialized.
+ */
+static drmf_status_t
+drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sysinfo,
+                          drsys_arg_t *arg, drsys_iter_cb_t cb, void *user_data)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    drsys_arg_t arg;
-    sysarg_iter_info_t iter_info = {&arg, nop_iter_cb, cb, user_data, pt, false};
     int i, compacted;
 
-    if (pt->sysinfo == NULL)
+    if (sysinfo == NULL)
         return DRMF_ERROR_DETAILS_UNKNOWN;
 
     LOG(2, "iterating over args for syscall #"SYSNUM_FMT"."SYSNUM_FMT" %s\n",
-        pt->sysnum.number, pt->sysnum.secondary, pt->sysinfo->name);
+        sysinfo->num.number, sysinfo->num.secondary, sysinfo->name);
 
-    arg.drcontext = drcontext;
-    arg.sysnum = pt->sysnum;
-    arg.pre = pt->pre;
-    arg.mc = &pt->mc;
+    arg->drcontext = drcontext;
+    arg->sysnum = sysinfo->num;
+    if (pt == NULL) {
+        arg->pre = true; /* arbitrary */
+        arg->mc = NULL;
+        arg->valid = false;
+    } else {
+        arg->valid = true;
+        arg->pre = pt->pre;
+        arg->mc = &pt->mc;
+    }
 
-    arg.arg_name = NULL;
-    arg.valid = true;
-    arg.containing_type = DRSYS_TYPE_INVALID;
+    arg->arg_name = NULL;
+    arg->containing_type = DRSYS_TYPE_INVALID;
     
     /* Treat all parameters as IN.
      * There are no inlined OUT params anyway: have to at least set
      * to NULL, unless truly ignored based on another parameter.
      */
-    for (i = 0, compacted = 0; i < pt->sysinfo->arg_count; i++) {
-        arg.ordinal = i;
-        arg.size = sizeof(void*);
-        drsyscall_os_get_sysparam_location(pt, i, &arg);
-        arg.type = DRSYS_TYPE_UNKNOWN;
-        arg.type_name = NULL;
-        arg.mode = SYSARG_READ;
-        arg.value = pt->sysarg[i];
+    for (i = 0, compacted = 0; i < sysinfo->arg_count; i++) {
+        arg->ordinal = i;
+        arg->size = sizeof(void*);
+        if (pt == NULL) {
+            arg->reg = DR_REG_NULL;
+            arg->start_addr = NULL;
+            arg->value = 0;
+        } else {
+            drsyscall_os_get_sysparam_location(pt, i, arg);
+            arg->value = pt->sysarg[i];
+        }
+        arg->type = DRSYS_TYPE_UNKNOWN;
+        arg->type_name = NULL;
+        arg->mode = SYSARG_READ;
 
         /* FIXME i#1089: add type info for the non-memory-complex-type args */
-        if (!sysarg_invalid(&pt->sysinfo->arg[compacted]) &&
-            pt->sysinfo->arg[compacted].param == i) {
-            if (TEST(SYSARG_COMPLEX_TYPE, pt->sysinfo->arg[compacted].flags)) {
-                arg.type = type_from_arg_info(&pt->sysinfo->arg[compacted]);
+        if (!sysarg_invalid(&sysinfo->arg[compacted]) &&
+            sysinfo->arg[compacted].param == i) {
+            if (TEST(SYSARG_COMPLEX_TYPE, sysinfo->arg[compacted].flags)) {
+                arg->type = type_from_arg_info(&sysinfo->arg[compacted]);
             }
-            if (TEST(SYSARG_INLINED_BOOLEAN, pt->sysinfo->arg[compacted].flags)) {
+            if (TEST(SYSARG_INLINED_BOOLEAN, sysinfo->arg[compacted].flags)) {
                 /* BOOLEAN is only 1 byte so ok if only lsb is defined */
-                arg.size = 1;
+                arg->size = 1;
             }
-            arg.mode = mode_from_flags(pt->sysinfo->arg[compacted].flags);
+            arg->mode = mode_from_flags(sysinfo->arg[compacted].flags);
             /* Go to next entry.  Skip double entries. */
-            while (pt->sysinfo->arg[compacted].param == i &&
-                   !sysarg_invalid(&pt->sysinfo->arg[compacted]))
+            while (sysinfo->arg[compacted].param == i &&
+                   !sysarg_invalid(&sysinfo->arg[compacted]))
                 compacted++;
             ASSERT(compacted <= MAX_NONINLINED_ARGS, "error in table entry");
         }
 
-        if (!(*cb)(&arg, user_data))
+        if (!(*cb)(arg, user_data))
             break;
     }
 
@@ -1168,33 +1192,72 @@ drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
      * NtUserRegisterClassExWOW returns an atom.
      * They don't all create: that's SYSINFO_CREATE_HANDLE.
      */
-    
-    /* Handle dynamically-determined parameters.  For simpler code, we pay the
-     * cost of calls to nop_iter_cb for all the memargs.  An alternative would
-     * be to pass in a flag and check it before each report_{memarg,sysarg},
-     * or to split the routines up (but that would duplicate a lot of code).
-     */
-    os_handle_pre_syscall(drcontext, pt, &iter_info);
 
-    pt->first_iter = false;
     return DRMF_SUCCESS;
 }
 
 DR_EXPORT
 drmf_status_t
-drsys_iterate_arg_types(drsys_sysnum_t sysnum, drsys_iter_cb_t cb, void *user_data)
+drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
 {
-    /* FIXME i#822: NYI */
-    return DRMF_ERROR_NOT_IMPLEMENTED;
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    drmf_status_t res;
+    drsys_arg_t arg;
+    sysarg_iter_info_t iter_info = {&arg, nop_iter_cb, cb, user_data, pt, false};
+
+    ASSERT(drsys_sysnums_equal(&pt->sysnum, &pt->sysinfo->num), "sysnum mismatch");
+
+    res = drsys_iterate_args_common(drcontext, pt, pt->sysinfo, &arg, cb, user_data);
+    if (res == DRMF_SUCCESS) {
+        /* Handle dynamically-determined parameters.  For simpler code, we pay the
+         * cost of calls to nop_iter_cb for all the memargs.  An alternative would
+         * be to pass in a flag and check it before each report_{memarg,sysarg},
+         * or to split the routines up (but that would duplicate a lot of code).
+         */
+        os_handle_pre_syscall(drcontext, pt, &iter_info);
+
+        pt->first_iter = false;
+    }
+
+    return res;
 }
 
 DR_EXPORT
 drmf_status_t
-drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t num, void *user_data),
+drsys_iterate_arg_types(void *iter_arg_cxt, drsys_sysnum_t sysnum,
+                        drsys_iter_cb_t cb, void *user_data)
+{
+    void *drcontext = dr_get_current_drcontext();
+    syscall_info_t *sysinfo;
+    drsys_arg_t arg;
+    if (iter_arg_cxt != NULL) {
+        sysinfo = (syscall_info_t *) iter_arg_cxt;
+    } else {
+        sysinfo = syscall_lookup(sysnum);
+    }
+    return drsys_iterate_args_common(drcontext, NULL/*==static*/, sysinfo,
+                                     &arg, cb, user_data);
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum, void *iter_arg_cxt,
+                                  void *user_data),
                        void *user_data)
 {
-    /* FIXME i#822: NYI */
-    return DRMF_ERROR_NOT_IMPLEMENTED;
+    uint i;
+    /* we need a recursive lock to support queries during iteration */
+    dr_recurlock_lock(systable_lock);
+    for (i = 0; i < HASHTABLE_SIZE(systable.table_bits); i++) {
+        hash_entry_t *he;
+        for (he = systable.table[i]; he != NULL; he = he->next) {
+            syscall_info_t *sysinfo = (syscall_info_t *) he->payload;
+            if (!(*cb)(sysinfo->num, (void *) sysinfo, user_data))
+                break;
+        }
+    }
+    dr_recurlock_unlock(systable_lock);
+    return DRMF_SUCCESS;
 }
 
 static bool
@@ -1484,6 +1547,8 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
     if (cls_idx_drsys == -1)
         return DRMF_ERROR;
 
+    systable_lock = dr_recurlock_create();
+
     res = drsyscall_os_init(drcontext);
     if (res != DRMF_SUCCESS)
         return res;
@@ -1549,6 +1614,9 @@ drsys_exit(void)
     hashtable_delete(&filtered_table);
 
     drsyscall_os_exit();
+
+    dr_recurlock_destroy(systable_lock);
+    systable_lock = NULL;
 
     drmgr_unregister_cls_field(syscall_context_init, syscall_context_exit,
                                cls_idx_drsys);

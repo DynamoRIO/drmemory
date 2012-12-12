@@ -36,6 +36,8 @@
                  __FILE__,  __LINE__, #cond, msg), \
       dr_abort(), 0) : 0))
 
+static bool verbose;
+
 static void
 check_mcontext(void *drcontext)
 {
@@ -86,6 +88,11 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
     if (drsys_pre_syscall_arg(arg->drcontext, arg->ordinal, &val) != DRMF_SUCCESS)
         ASSERT(false, "drsys_pre_syscall_arg failed");
     ASSERT(val == arg->value, "values do not match");
+
+    /* We could test drsys_handle_is_current_process() but we'd have to
+     * locate syscalls operating on processes.  Currently drsyscall.c
+     * already tests this call.
+     */
 
     return true; /* keep going */
 }
@@ -184,6 +191,39 @@ test_static_queries(void)
     ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_number_to_name failed");
 }
 
+static bool
+static_iter_arg_cb(drsys_arg_t *arg, void *user_data)
+{
+    ASSERT(!arg->valid, "no arg vals should be valid statically");
+    ASSERT(arg->mc == NULL, "mc should be invalid");
+    ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
+
+    return true; /* keep going */
+}
+
+static bool
+static_iter_cb(drsys_sysnum_t num, void *iter_arg_cxt, void *user_data)
+{
+    const char *name;
+    drmf_status_t res = drsys_number_to_name(num, &name);
+    ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_number_to_name failed");
+
+    if (verbose)
+        dr_fprintf(STDERR, "syscall %d.%d = %s\n", num.number, num.secondary, name);
+
+    if (drsys_iterate_arg_types(iter_arg_cxt, num, static_iter_arg_cb, NULL) !=
+        DRMF_SUCCESS)
+        ASSERT(false, "drsys_iterate_arg_types failed");
+    return true; /* keep going */
+}
+
+static void
+test_static_iterator(void)
+{
+    if (drsys_iterate_syscalls(static_iter_cb, NULL) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_iterate_syscalls failed");
+}
+
 static
 void exit_event(void)
 {
@@ -210,15 +250,12 @@ void dr_init(client_id_t id)
 
     test_static_queries();
 
+    test_static_iterator();
+
     /* XXX: it would be nice to do deeper tests:
      * + drsys_filter_syscall() and have an app that makes both filtered
      *   and unfiltered syscalls
      * + have app make specific syscall w/ specific args and ensure
      *   they match up
-     */
-
-    /* XXX: test static iterator once it's implemented.
-     * Also test drsys_handle_is_current_process() once we have HANDLE
-     * types in the static iterator.
      */
 }

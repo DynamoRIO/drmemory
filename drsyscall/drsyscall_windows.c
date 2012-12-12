@@ -879,7 +879,10 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         ok = os_syscall_get_num(syslist->name, &syslist->num);
     }
     if (ok) {
+        dr_recurlock_lock(systable_lock);
         hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+        dr_recurlock_unlock(systable_lock);
+
         LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
             "system call %-35s = %3d.%d (0x%04x.%x)\n", syslist->name, syslist->num.number,
             syslist->num.secondary, syslist->num.number, syslist->num.secondary);
@@ -976,7 +979,7 @@ drsyscall_os_init(void *drcontext)
     }
 
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
-                      true/*synch*/, NULL, sysnum_hash, sysnum_cmp);
+                      false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
 
     data = dr_lookup_module_by_name("ntdll.dll");
     ASSERT(data != NULL, "cannot find ntdll.dll");
@@ -1067,12 +1070,6 @@ drsyscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded
         for (i = 0; i < num_gdi32_syscalls(); i++)
             check_syscall_entry(drcontext, info, &syscall_gdi32_info[i], "NtGdi");
     }
-}
-
-syscall_info_t *
-syscall_lookup(drsys_sysnum_t num)
-{
-    return (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
 }
 
 /* Though DR's new syscall events provide parameter value access,

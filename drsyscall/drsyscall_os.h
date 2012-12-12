@@ -264,6 +264,12 @@ typedef struct _sysarg_iter_info_t {
     bool abort;
 } sysarg_iter_info_t;
 
+/* Hashtable maintained in os-specific code that maps drsys_sysnum_t to
+ * syscall_info_t*.
+ */
+extern hashtable_t systable;
+/* lock for systable, maintained in drsyscall.c */
+extern void *systable_lock;
 
 drmf_status_t
 drsyscall_os_init(void *drcontext);

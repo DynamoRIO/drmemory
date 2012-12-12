@@ -24,7 +24,6 @@
 
 /* drsyscall_windows.c */
 
-extern hashtable_t systable; /* windows num-to-sysinfo table */
 extern dr_os_version_info_t win_ver;
 
 bool
