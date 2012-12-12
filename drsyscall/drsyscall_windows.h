@@ -56,4 +56,11 @@ bool
 wingdi_process_arg(sysarg_iter_info_t *iter_info,
                    const syscall_arg_t *arg_info, app_pc start, uint size);
 
+/* Returns true if the success value is known, in which case it is placed in *success. 
+ * Returns false if the caller should determine whether successful.
+ */
+bool
+wingdi_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res,
+                         bool *success OUT);
+
 #endif /* _DRSYSCALL_WINDOWS_H_ */

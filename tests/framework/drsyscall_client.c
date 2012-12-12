@@ -79,15 +79,20 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
     ASSERT(arg->mc != NULL, "mc check");
     ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
 
-    if (arg->reg == DR_REG_NULL) {
+    if (arg->reg == DR_REG_NULL && arg->mode != DRSYS_PARAM_RETVAL) {
         ASSERT((byte *)arg->start_addr >= (byte *)arg->mc->xsp &&
                (byte *)arg->start_addr < (byte *)arg->mc->xsp + PAGE_SIZE,
                "mem args should be on stack");
     }
 
-    if (drsys_pre_syscall_arg(arg->drcontext, arg->ordinal, &val) != DRMF_SUCCESS)
-        ASSERT(false, "drsys_pre_syscall_arg failed");
-    ASSERT(val == arg->value, "values do not match");
+    if (arg->mode == DRSYS_PARAM_RETVAL) {
+        ASSERT(arg->pre || arg->value == dr_syscall_get_result(dr_get_current_drcontext()),
+               "return val wrong");
+    } else {
+        if (drsys_pre_syscall_arg(arg->drcontext, arg->ordinal, &val) != DRMF_SUCCESS)
+            ASSERT(false, "drsys_pre_syscall_arg failed");
+        ASSERT(val == arg->value, "values do not match");
+    }
 
     /* We could test drsys_handle_is_current_process() but we'd have to
      * locate syscalls operating on processes.  Currently drsyscall.c
@@ -102,12 +107,17 @@ event_pre_syscall(void *drcontext, int sysnum)
 {
     drsys_sysnum_t sysnum_full;
     bool known;
+    drsys_param_type_t ret_type;
 
     if (drsys_get_sysnum(drcontext, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "primary should match DR's num");
 
     check_mcontext(drcontext);
+
+    if (drsys_cur_syscall_return_type(drcontext, &ret_type) != DRMF_SUCCESS ||
+        ret_type == DRSYS_TYPE_INVALID || ret_type == DRSYS_TYPE_UNKNOWN)
+        ASSERT(false, "failed to get syscall return type");
 
     if (drsys_cur_syscall_is_known(drcontext, &known) != DRMF_SUCCESS || !known)
         ASSERT(false, "no syscalls in this app should be unknown");
@@ -156,6 +166,7 @@ test_static_queries(void)
     drmf_status_t res;
     bool known;
     drsys_syscall_type_t type;
+    drsys_param_type_t ret_type;
     const char *name = "bogus";
 
 #ifdef WINDOWS
@@ -169,6 +180,9 @@ test_static_queries(void)
     if (drsys_syscall_type(num, &type) != DRMF_SUCCESS ||
         type != DRSYS_SYSCALL_TYPE_KERNEL)
         ASSERT(false, "syscall type wrong");
+    if (drsys_syscall_return_type(num, &ret_type) != DRMF_SUCCESS ||
+        ret_type == DRSYS_TYPE_INVALID || ret_type == DRSYS_TYPE_UNKNOWN)
+        ASSERT(false, "failed to get syscall return type");
 
 #ifdef WINDOWS
     /* test Zw variant */

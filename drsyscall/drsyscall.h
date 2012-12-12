@@ -148,10 +148,15 @@ typedef enum {
     DRSYS_TYPE_UNKNOWN,     /**< Unknown type. */
 
     /* Inlined */
+    DRSYS_TYPE_VOID,   	    /**< Void type. */
     DRSYS_TYPE_BOOL,   	    /**< Boolean type. */
+    DRSYS_TYPE_INT,    	    /**< Integer type of unspecified signedness. */
     DRSYS_TYPE_SIGNED_INT,  /**< Signed integer type. */
-    DRSYS_TYPE_INT,    	    /**< Unsigned integer type. */
+    DRSYS_TYPE_UNSIGNED_INT,/**< Unsigned integer type. */
     DRSYS_TYPE_HANDLE,      /**< Windows-only: kernel/GDI/user handle type. */
+    DRSYS_TYPE_NTSTATUS,    /**< Windows-only: NTSTATUS Native API/RTL type. */
+    DRSYS_TYPE_ATOM,        /**< Windows-only: ATOM type. */
+    DRSYS_TYPE_POINTER,     /**< Pointer to an unspecified type. */
 
     /* Structs */
     DRSYS_TYPE_STRUCT,      /**< Unspecified structure type. */
@@ -206,10 +211,7 @@ typedef struct _drsys_arg_t {
     dr_mcontext_t *mc;
 
     /* System call argument information ****************************/
-    /**
-     * The ordinal of the parameter.  Set to -1 for the return value when it
-     * is included in iteration.
-     */
+    /** The ordinal of the parameter.  Set to -1 for a return value. */
     int ordinal;
     /** The mode (whether read or written) of the parameter. */
     drsys_param_mode_t mode;
@@ -461,6 +463,18 @@ DR_EXPORT
 drmf_status_t
 drsys_syscall_succeeded(drsys_sysnum_t sysnum, reg_t result, bool *success OUT);
 
+DR_EXPORT
+/**
+ * Identifies the type of the return value for the specified system call.
+ *
+ * @param[in]  sysnum   The system call number to look up.
+ * @param[out] type     The system call return type.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_syscall_return_type(drsys_sysnum_t sysnum, drsys_param_type_t *type OUT);
+
 #ifdef WINDOWS
 DR_EXPORT
 /**
@@ -531,6 +545,19 @@ DR_EXPORT
  */
 drmf_status_t
 drsys_cur_syscall_succeeded(void *drcontext, bool *success OUT);
+
+DR_EXPORT
+/**
+ * Identifies the type of the return value for the current in-progress
+ * system call.
+ *
+ * @param[in]  drcontext  The current DynamoRIO thread context.
+ * @param[out] type     The system call return type.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_cur_syscall_return_type(void *drcontext, drsys_param_type_t *type OUT);
 
 DR_EXPORT
 /**
@@ -623,6 +650,8 @@ DR_EXPORT
  * Only the top-level types are enumerated (i.e., fields of structures
  * are not recursively followed).  As this is a static iteration, only
  * the types are known and not any values.
+ * The return value is included at the end of the iteration, with a
+ * drsys_arg_t.ordinal value of -1.
  *
  * @param[in] iter_arg_cxt  The opaque pointer passed to the callback in
  *                          drsys_iterate_syscalls().  If this is non-NULL,
@@ -649,7 +678,8 @@ DR_EXPORT
  * Dynamically iterates over all system call parameters for the
  * current in-progress system call.  Only the top-level types are
  * enumerated (i.e., fields of structures are not recursively
- * followed).  Must be called from a system call pre- or post-event.
+ * followed).  The return value is included.
+ * Must be called from a system call pre- or post-event.
  *
  * @param[in] drcontext  The current DynamoRIO thread context.
  * @param[in] cb         The callback to invoke for each system call parameter.

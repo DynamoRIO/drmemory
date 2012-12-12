@@ -39,10 +39,15 @@
 const char * const param_type_names[] = {
     "<invalid>",                /* DRSYS_TYPE_INVALID */
     "<unknown>",                /* DRSYS_TYPE_UNKNOWN */
+    "void",                     /* DRSYS_TYPE_VOID */
     "bool",                     /* DRSYS_TYPE_BOOL */
+    "int",                      /* DRSYS_TYPE_INT */
     "int",                      /* DRSYS_TYPE_SIGNED_INT */
-    "unsigned int",             /* DRSYS_TYPE_INT */
+    "unsigned int",             /* DRSYS_TYPE_UNSIGNED_INT */
     "HANDLE",                   /* DRSYS_TYPE_HANDLE */
+    "NTSTATUS",                 /* DRSYS_TYPE_NTSTATUS */
+    "ATOM",                     /* DRSYS_TYPE_ATOM */
+    "void *",                   /* DRSYS_TYPE_POINTER */
     "<struct>",                 /* DRSYS_TYPE_STRUCT */
     "char *",                   /* DRSYS_TYPE_CSTRING */
     "wchar_t *",                /* DRSYS_TYPE_CWSTRING */
@@ -81,6 +86,9 @@ drsys_options_t drsys_ops;
 static int init_count;
 
 void *systable_lock;
+
+static drsys_param_type_t
+map_to_exported_type(uint sysarg_type, size_t *sz_out OUT);
 
 /***************************************************************************
  * SYSTEM CALLS
@@ -564,6 +572,32 @@ drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT)
     return DRMF_SUCCESS;
 }
 
+DR_EXPORT
+drmf_status_t
+drsys_syscall_return_type(drsys_sysnum_t sysnum, drsys_param_type_t *type OUT)
+{
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (type == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    /* XXX: should we provide size too?  They can iterate to get that. */
+    *type = map_to_exported_type(sysinfo->return_type, NULL);
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_return_type(void *drcontext, drsys_param_type_t *type OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (type == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (pt->sysinfo == NULL)
+        return DRMF_ERROR_DETAILS_UNKNOWN;
+    /* XXX: should we provide size too?  They can iterate to get that. */
+    *type = map_to_exported_type(pt->sysinfo->return_type, NULL);
+    return DRMF_SUCCESS;
+}
+
 /***************************************************************************
  * REGULAR SYSCALL HANDLING
  */
@@ -632,16 +666,49 @@ mode_from_flags(uint arg_flags)
 }
 
 static drsys_param_type_t
+map_to_exported_type(uint sysarg_type, size_t *sz_out OUT)
+{
+    size_t sz = 0;
+    drsys_param_type_t type = (drsys_param_type_t) sysarg_type;
+    /* map to exported types */
+    if (sysarg_type == SYSARG_TYPE_UNICODE_STRING_NOLEN) {
+        type = DRSYS_TYPE_UNICODE_STRING;
+    } else if (sysarg_type == SYSARG_TYPE_SINT32) {
+        type = DRSYS_TYPE_SIGNED_INT;
+        sz = 4;
+    } else if (sysarg_type == SYSARG_TYPE_UINT32) {
+        type = DRSYS_TYPE_UNSIGNED_INT;
+        sz = 4;
+    } else if (sysarg_type == SYSARG_TYPE_SINT16) {
+        type = DRSYS_TYPE_SIGNED_INT;
+        sz = 2;
+    } else if (sysarg_type == SYSARG_TYPE_UINT16) {
+        type = DRSYS_TYPE_UNSIGNED_INT;
+        sz = 2;
+    } else if (sysarg_type == SYSARG_TYPE_BOOL8) {
+        type = DRSYS_TYPE_BOOL;
+        sz = 1;
+    } else if (sysarg_type == SYSARG_TYPE_BOOL32) {
+        type = DRSYS_TYPE_BOOL;
+        sz = 4;
+#ifdef WINDOWS
+    } else if (sysarg_type == DRSYS_TYPE_NTSTATUS) {
+        sz = sizeof(NTSTATUS);
+#endif
+    }
+    ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
+    if (sz_out != NULL && sz > 0)
+        *sz_out = sz;
+    return type;
+}
+
+static drsys_param_type_t
 type_from_arg_info(const syscall_arg_t *arg_info)
 {
     drsys_param_type_t type = DRSYS_TYPE_INVALID;
     if (TEST(SYSARG_COMPLEX_TYPE, arg_info->flags)) {
-        /* map to exported types */
-        if (arg_info->misc == SYSARG_TYPE_UNICODE_STRING_NOLEN)
-            type = SYSARG_TYPE_UNICODE_STRING;
-        else
-            type = (drsys_param_type_t) arg_info->misc;
-        ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
+        /* we don't need size b/c it's encoded in arg_info already */
+        type = map_to_exported_type(arg_info->misc, NULL);
     }
     return type;
 }
@@ -1163,7 +1230,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
         }
         arg->type = DRSYS_TYPE_UNKNOWN;
         arg->type_name = NULL;
-        arg->mode = SYSARG_READ;
+        arg->mode = DRSYS_PARAM_IN;
 
         /* FIXME i#1089: add type info for the non-memory-complex-type args */
         if (!sysarg_invalid(&sysinfo->arg[compacted]) &&
@@ -1187,11 +1254,20 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             break;
     }
 
-    /* FIXME i#822: for non-status retvals, call *cb for DRSYS_PARAM_RETVAL.
-     * SYSINFO_RET_ZERO_FAIL all seem to return handle today?
-     * NtUserRegisterClassExWOW returns an atom.
-     * They don't all create: that's SYSINFO_CREATE_HANDLE.
-     */
+    /* return value */
+    arg->ordinal = -1;
+    arg->reg = DR_REG_NULL;
+    arg->start_addr = NULL;
+    if (pt != NULL && !pt->pre)
+        arg->value = dr_syscall_get_result(drcontext);
+    else
+        arg->value = 0;
+    arg->size = sizeof(reg_t);
+    /* get exported type and size if different from reg_t */
+    arg->type = map_to_exported_type(sysinfo->return_type, &arg->size);
+    arg->type_name = param_type_names[arg->type];
+    arg->mode = DRSYS_PARAM_RETVAL;
+    (*cb)(arg, user_data);
 
     return DRMF_SUCCESS;
 }
@@ -1205,7 +1281,8 @@ drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
     drsys_arg_t arg;
     sysarg_iter_info_t iter_info = {&arg, nop_iter_cb, cb, user_data, pt, false};
 
-    ASSERT(drsys_sysnums_equal(&pt->sysnum, &pt->sysinfo->num), "sysnum mismatch");
+    ASSERT(pt->sysinfo == NULL ||
+           drsys_sysnums_equal(&pt->sysnum, &pt->sysinfo->num), "sysnum mismatch");
 
     res = drsys_iterate_args_common(drcontext, pt, pt->sysinfo, &arg, cb, user_data);
     if (res == DRMF_SUCCESS) {

@@ -118,6 +118,11 @@ enum {
 
     /*****************************************/
     /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
+    /* These occupy the same number-space as DRSYS_TYPE_*.
+     * We have duplicate labels here for legacy code.
+     * We have a separate namespace so we can use our own types
+     * internally w/o exposing in the public header.
+     */
     /* The following flags are used on Windows. */
     SYSARG_TYPE_CSTRING                 = DRSYS_TYPE_CSTRING, /* Linux too */
     SYSARG_TYPE_CSTRING_WIDE            = DRSYS_TYPE_CWSTRING,
@@ -127,7 +132,6 @@ enum {
     SYSARG_TYPE_SECURITY_QOS            = DRSYS_TYPE_SECURITY_QOS,
     SYSARG_TYPE_SECURITY_DESCRIPTOR     = DRSYS_TYPE_SECURITY_DESCRIPTOR,
     SYSARG_TYPE_UNICODE_STRING          = DRSYS_TYPE_UNICODE_STRING,
-    SYSARG_TYPE_UNICODE_STRING_NOLEN    = DRSYS_TYPE_LAST + 1,
     SYSARG_TYPE_OBJECT_ATTRIBUTES       = DRSYS_TYPE_OBJECT_ATTRIBUTES,
     SYSARG_TYPE_LARGE_STRING            = DRSYS_TYPE_LARGE_STRING,
     SYSARG_TYPE_DEVMODEW                = DRSYS_TYPE_DEVMODEW,
@@ -140,6 +144,18 @@ enum {
     SYSARG_TYPE_SOCKADDR                = DRSYS_TYPE_SOCKADDR,
     SYSARG_TYPE_MSGHDR                  = DRSYS_TYPE_MSGHDR,
     SYSARG_TYPE_MSGBUF                  = DRSYS_TYPE_MSGBUF,
+    /* Types that we map to other types.  These need unique number separate
+     * from the DRSYS_TYPE_* numbers so we sequentially number from here:
+     */
+    SYSARG_TYPE_UNICODE_STRING_NOLEN    = DRSYS_TYPE_LAST + 1,
+    /* These are used to encode type+size into return_type field */
+    SYSARG_TYPE_SINT32,
+    SYSARG_TYPE_UINT32,
+    SYSARG_TYPE_SINT16,
+    SYSARG_TYPE_UINT16,
+    SYSARG_TYPE_BOOL32,
+    SYSARG_TYPE_BOOL8,
+    /* Be sure to update map_to_exported_type() when adding here */
 };
 
 /* We encode the actual size of a write, if it can differ from the
@@ -195,6 +211,8 @@ enum {
      * so using the same flag for both cases.
      */
     SYSINFO_CREATE_HANDLE       = 0x00000080,
+    /* Return value indicates failure only when -1 */
+    SYSINFO_RET_MINUS1_FAIL     = 0x00000100,
 };
 
 #ifdef WINDOWS
@@ -212,6 +230,7 @@ typedef struct _syscall_info_t {
     drsys_sysnum_t num; /* system call number: filled in dynamically */
     const char *name;
     uint flags; /* SYSINFO_ flags */
+    uint return_type; /* not drsys_param_type_t so we can use extended SYSARG_TYPE_* */
     int arg_count;
     /* list of args that are not inlined */
     syscall_arg_t arg[MAX_NONINLINED_ARGS];
