@@ -27,6 +27,60 @@ typedef struct _THREADINFO *PTHREADINFO;
 struct _DESKTOP;
 struct _WND;
 
+#define FIRST_USER_HANDLE 0x0020  /* first possible value for low word of user handle */
+#define LAST_USER_HANDLE  0xffef  /* last possible value for low word of user handle */
+
+#define HANDLEENTRY_INDESTROY 1
+
+typedef struct _USER_HANDLE_ENTRY
+{
+    void          *ptr;          /* pointer to object */
+    union
+    {
+        PVOID pi;
+        PTHREADINFO pti;          // pointer to Win32ThreadInfo
+        PPROCESSINFO ppi;         // pointer to W32ProcessInfo
+    };
+    unsigned char  type;         /* object type (0 if free) */
+    unsigned char  flags;
+    unsigned short generation;   /* generation counter */
+} USER_HANDLE_ENTRY, * PUSER_HANDLE_ENTRY;
+
+typedef struct _USER_HANDLE_TABLE
+{
+   PUSER_HANDLE_ENTRY handles;
+   PUSER_HANDLE_ENTRY freelist;
+   int nb_handles;
+   int allocated_handles;
+} USER_HANDLE_TABLE, * PUSER_HANDLE_TABLE;
+
+typedef enum _USER_OBJECT_TYPE
+{
+  otFree = 0,
+  otWindow,
+  otMenu,
+  otCursorIcon,
+  otSMWP,
+  otHook,
+  otClipBoardData,
+  otCallProc,
+  otAccel,
+  otDDEaccess,
+  otDDEconv,
+  otDDExact,
+  otMonitor,
+  otKBDlayout,
+  otKBDfile,
+  otEvent,
+  otTimer,
+  otInputContext,
+  otHidData,
+  otDeviceInfo,
+  otTouchInput,
+  otGestureInfo,
+  USER_HANDLE_TYPE_COUNT
+} USER_OBJECT_TYPE;
+
 typedef enum _USERTHREADINFOCLASS
 {
     UserThreadShutdownInformation,
@@ -86,6 +140,8 @@ typedef struct _DESKTOPINFO
     HWND hProgmanWindow;
     HWND hShellWindow;
 
+    PPROCESSINFO ppiShellProcess;
+
     union
     {
         UINT Dummy;
@@ -98,6 +154,7 @@ typedef struct _DESKTOPINFO
     WCHAR szDesktopName[1];
 } DESKTOPINFO, *PDESKTOPINFO;
 
+#define CTI_THREADSYSLOCK 0x0001
 #define CTI_INSENDMESSAGE 0x0002
 
 typedef struct _CLIENTTHREADINFO
@@ -164,11 +221,17 @@ typedef struct tagHOOK
   struct _DESKTOP *rpdesk;
   /* ReactOS */
   LIST_ENTRY     Chain;      /* Hook chain entry */
-  struct _ETHREAD* Thread;   /* Thread owning the hook */
   HOOKPROC       Proc;       /* Hook function */
   BOOLEAN        Ansi;       /* Is it an Ansi hook? */
   UNICODE_STRING ModuleName; /* Module name for global hooks */
 } HOOK, *PHOOK;
+
+typedef struct tagCLIPBOARDDATA
+{
+  HEAD  head;
+  DWORD cbData;
+  BYTE  Data[0];
+} CLIPBOARDDATA, *PCLIPBOARDDATA;
 
 /* THREADINFO Flags */
 #define TIF_INCLEANUP               0x00000001
@@ -205,6 +268,7 @@ typedef struct _CALLBACKWND
 {
      HWND hWnd;
      struct _WND *pWnd;
+     PVOID pActCtx;
 } CALLBACKWND, *PCALLBACKWND;
 
 #define CI_TRANSACTION       0x00000001
@@ -242,7 +306,7 @@ typedef struct _CLIENTINFO
     UCHAR achDbcsCF[2];
     MSG msgDbcsCB;
     LPDWORD lpdwRegisteredClasses;
-    ULONG Win32ClientInfo3[27];
+    ULONG Win32ClientInfo3[26];
 /* It's just a pointer reference not to be used w the structure in user space. */
     PPROCESSINFO ppi;
 } CLIENTINFO, *PCLIENTINFO;
@@ -343,7 +407,7 @@ typedef struct _CLSMENUNAME
 typedef struct tagSBDATA
 {
   INT posMin;
-  INT posMax;  
+  INT posMax;
   INT page;
   INT pos;
 } SBDATA, *PSBDATA;
@@ -354,6 +418,26 @@ typedef struct tagSBINFO
   SBDATA Horz;
   SBDATA Vert;
 } SBINFO, *PSBINFO;
+
+typedef struct tagSBCALC
+{
+  INT posMin;
+  INT posMax;
+  INT page;
+  INT pos;
+  INT pxTop;
+  INT pxBottom;
+  INT pxLeft;
+  INT pxRight;
+  INT cpxThumb;
+  INT pxUpArrow;
+  INT pxDownArrow;
+  INT pxStart;
+  INT pxThumbBottom;
+  INT pxThumbTop;
+  INT cpx;
+  INT pxMin;
+} SBCALC, *PSBCALC;
 
 typedef enum _GETCPD
 {
@@ -408,7 +492,7 @@ typedef struct _CLS
     //PCURSOR spcur;
     HBRUSH hbrBackground;
     PWSTR lpszMenuName;     // kernel use
-    PSTR lpszAnsiClassName; // " 
+    PSTR lpszAnsiClassName; // "
     HANDLE hIconSm; /* FIXME - Use pointer! */
     //PCURSOR spicnSm;
 
@@ -446,7 +530,7 @@ typedef struct _SBINFOEX
 #define WNDS_HASCREATESTRUCTNAME     0X00020000
 #define WNDS_SERVERSIDEWINDOWPROC    0x00040000 // Call proc inside win32k.
 #define WNDS_ANSIWINDOWPROC          0x00080000
-#define WNDS_BEGINGACTIVATED         0x00100000
+#define WNDS_BEINGACTIVATED          0x00100000
 #define WNDS_HASPALETTE              0x00200000
 #define WNDS_PAINTNOTPROCESSED       0x00400000
 #define WNDS_SYNCPAINTPENDING        0x00800000
@@ -458,6 +542,8 @@ typedef struct _SBINFOEX
 #define WNDS_ANSICREATOR             0x20000000
 #define WNDS_MAXIMIZESTOMONITOR      0x40000000
 #define WNDS_DESTROYED               0x80000000
+
+#define WNDSACTIVEFRAME              0x00000006
 
 // State2 Flags !Not Implemented!
 #define WNDS2_WMPAINTSENT               0X00000001
@@ -505,6 +591,9 @@ typedef struct _SBINFOEX
 #define WS_EX2_CONSOLEWINDOW            0X00000400
 #define WS_EX2_CHILDNOACTIVATE          0X00000800
 
+#define WPF_MININIT    0x0008
+#define WPF_MAXINIT    0x0010
+
 typedef struct _WND
 {
     THRDESKHEAD head;
@@ -545,11 +634,10 @@ typedef struct _WND
     LARGE_UNICODE_STRING strName;
     /* Size of the extra data associated with the window. */
     ULONG cbwndExtra;
-    HWND hWndLastActive;
     struct _WND *spwndLastActive;
     //HIMC hImc; // Input context associated with this window.
     LONG dwUserData;
-    //PACTIVATION_CONTEXT pActCtx;
+    PVOID pActCtx;
     //PD3DMATRIX pTransForm;
     struct _WND *spwndClipboardListener;
     DWORD ExStyle2;
@@ -560,10 +648,10 @@ typedef struct _WND
         RECT NormalRect;
         POINT IconPos;
         POINT MaxPos;
+        UINT flags; // WPF_ flags.
     } InternalPos;
 
     UINT Unicode : 1; // !(WNDS_ANSICREATOR|WNDS_ANSIWINDOWPROC) ?
-    /* Indicates whether the window is derived from a system class */
     UINT InternalPosInitialized : 1;
     UINT HideFocus : 1; // WS_EX_UISTATEFOCUSRECTHIDDEN ?
     UINT HideAccel : 1; // WS_EX_UISTATEKBACCELHIDDEN ?
@@ -573,6 +661,16 @@ typedef struct _WND
   /* Entry in the list of thread windows. */
   LIST_ENTRY ThreadListEntry;
 } WND, *PWND;
+
+#define PWND_BOTTOM ((PWND)1)
+
+typedef struct _SBWND
+{
+  WND    wnd;
+  BOOL   fVert;
+  UINT   wDisableFlags;
+  SBCALC SBCalc;
+} SBWND, *PSBWND;
 
 typedef struct _PFNCLIENT
 {
@@ -654,9 +752,9 @@ typedef LONG_PTR (NTAPI *PFN_FNID)(PWND, UINT, WPARAM, LPARAM, ULONG_PTR);
 #define FNID_SENDMESSAGEFF          0x02B2
 // Kernel has option to use TimeOut or normal msg send, based on type of msg.
 #define FNID_SENDMESSAGEWTOOPTION   0x02B3
-#define FNID_SENDMESSAGETIMEOUT     0x02B4
+#define FNID_SENDMESSAGECALLPROC    0x02B4
 #define FNID_BROADCASTSYSTEMMESSAGE 0x02B5
-#define FNID_TOOLTIPS               0x02B6 
+#define FNID_TOOLTIPS               0x02B6
 #define FNID_SENDNOTIFYMESSAGE      0x02B7
 #define FNID_SENDMESSAGECALLBACK    0x02B8
 #define FNID_LAST                   0x02B9
@@ -717,6 +815,9 @@ typedef LONG_PTR (NTAPI *PFN_FNID)(PWND, UINT, WPARAM, LPARAM, ULONG_PTR);
 
 #define SRVINFO_APIHOOK 0x0010
 #define SRVINFO_METRICS 0x0020
+#define SRVINFO_KBDPREF 0x0080
+
+#define NUM_SYSCOLORS 31
 
 typedef struct tagOEMBITMAPINFO
 {
@@ -743,12 +844,19 @@ typedef struct tagDPISERVERINFO
     UINT wMaxBtnSize;                    /* 014 */
 } DPISERVERINFO, *PDPISERVERINFO;
 
+// PUSIFlags:
+#define PUSIF_PALETTEDISPLAY         0x01
+#define PUSIF_SNAPTO                 0x02
+#define PUSIF_COMBOBOXANIMATION      0x04
+#define PUSIF_LISTBOXSMOOTHSCROLLING 0x08
+#define PUSIF_KEYBOARDCUES           0x20
+
 typedef struct _PERUSERSERVERINFO
 {
     INT           aiSysMet[SM_CMETRICS];
-    ULONG         argbSystemUnmatched[COLOR_LAST+1];
-    COLORREF      argbSystem[COLOR_LAST+1];
-    HBRUSH        ahbrSystem[COLOR_LAST+1];
+    ULONG         argbSystemUnmatched[NUM_SYSCOLORS];
+    COLORREF      argbSystem[NUM_SYSCOLORS];
+    HBRUSH        ahbrSystem[NUM_SYSCOLORS];
     HBRUSH        hbrGray;
     POINT         ptCursor;
     POINT         ptCursorReal;
@@ -850,7 +958,7 @@ PPROCESSINFO GetW32ProcessInfo(VOID);
 typedef struct _WNDMSG
 {
   DWORD maxMsgs;
-  DWORD abMsgs;
+  PINT abMsgs;
 } WNDMSG, *PWNDMSG;
 
 typedef struct _SHAREDINFO
@@ -871,6 +979,60 @@ typedef struct _USERCONNECT
   DWORD dwDispatchCount;
   SHAREDINFO siClient;
 } USERCONNECT, *PUSERCONNECT;
+
+typedef struct tagGETCLIPBDATA
+{
+  UINT uFmtRet;
+  BOOL fGlobalHandle;
+  union
+  {
+    HANDLE hLocale;
+    HANDLE hPalette;
+  };
+} GETCLIPBDATA, *PGETCLIPBDATA;
+
+typedef struct tagSETCLIPBDATA
+{
+    BOOL fGlobalHandle;
+    BOOL fIncSerialNumber;
+} SETCLIPBDATA, *PSETCLIPBDATA;
+
+// Used with NtUserSetCursorIconData, last parameter.
+typedef struct tagCURSORDATA
+{
+   LPWSTR lpName;
+   LPWSTR lpModName;
+   USHORT rt;
+   USHORT dummy;
+   ULONG CURSORF_flags;
+   SHORT xHotspot;
+   SHORT yHotspot;
+   HBITMAP hbmMask;
+   HBITMAP hbmColor;
+   HBITMAP hbmAlpha;
+   RECT rcBounds;
+   HBITMAP hbmUserAlpha; // Could be in W7U, not in W2k
+   ULONG bpp;
+   ULONG cx;
+   ULONG cy;
+   INT cpcur;
+   INT cicur;
+   struct tagCURSORDATA * aspcur;
+   DWORD * aicur;
+   INT * ajifRate;
+   INT iicur;
+} CURSORDATA, *PCURSORDATA; /* !dso CURSORDATA */
+
+// CURSORF_flags:
+#define CURSORF_FROMRESOURCE 0x0001
+#define CURSORF_GLOBAL       0x0002
+#define CURSORF_LRSHARED     0x0004
+#define CURSORF_ACON         0x0008
+#define CURSORF_WOWCLEANUP   0x0010
+#define CURSORF_ACONFRAME    0x0040
+#define CURSORF_SECRET       0x0080
+#define CURSORF_LINKED       0x0100
+#define CURSORF_CURRENT      0x0200
 
 DWORD
 NTAPI
@@ -973,8 +1135,8 @@ NtUserGetSystemMenu(
 BOOL
 NTAPI
 NtUserHiliteMenuItem(
-  HWND hwnd,
-  HMENU hmenu,
+  HWND hWnd,
+  HMENU hMenu,
   UINT uItemHilite,
   UINT uHilite);
 
@@ -1429,18 +1591,18 @@ NtUserConsoleControl(
   DWORD dwUnknown2,
   DWORD dwUnknown3);
 
-DWORD
+HANDLE
 NTAPI
 NtUserConvertMemHandle(
-  DWORD Unknown0,
-  DWORD Unknown1);
+  PVOID pData,
+  DWORD cbData);
 
-int
+ULONG
 NTAPI
 NtUserCopyAcceleratorTable(
   HACCEL Table,
   LPACCEL Entries,
-  int EntriesCount);
+  ULONG EntriesCount);
 
 DWORD
 NTAPI
@@ -1450,7 +1612,7 @@ HACCEL
 NTAPI
 NtUserCreateAcceleratorTable(
   LPACCEL Entries,
-  SIZE_T EntriesCount);
+  ULONG EntriesCount);
 
 BOOL
 NTAPI
@@ -1474,13 +1636,13 @@ NTAPI
 NtUserCreateInputContext(
     DWORD dwUnknown1);
 
-DWORD
+NTSTATUS
 NTAPI
 NtUserCreateLocalMemHandle(
-  DWORD Unknown0,
-  DWORD Unknown1,
-  DWORD Unknown2,
-  DWORD Unknown3);
+  HANDLE hMem,
+  PVOID pData,
+  DWORD cbData,
+  DWORD *pcbData);
 
 HWND
 NTAPI
@@ -1559,8 +1721,8 @@ NtUserDestroyAcceleratorTable(
 BOOL
 NTAPI
 NtUserDestroyCursor(
-  HANDLE Handle,
-  DWORD Unknown);
+  _In_  HANDLE Handle,
+  _In_  BOOL bForce);
 
 DWORD
 NTAPI
@@ -1647,7 +1809,7 @@ NtUserDrawIconEx(
   BOOL bMetaHDC,
   PVOID pDIXData);
 
-DWORD
+BOOL
 NTAPI
 NtUserEmptyClipboard(VOID);
 
@@ -1722,14 +1884,6 @@ NtUserFillWindow(
   HDC  hDC,
   HBRUSH hBrush);
 
-HICON
-NTAPI
-NtUserFindExistingCursorIcon(
-  HMODULE hModule,
-  HRSRC hRsrc,
-  LONG cx,
-  LONG cy);
-
 HWND
 NTAPI
 NtUserFindWindowEx(
@@ -1774,7 +1928,7 @@ DWORD
 NTAPI
 NtUserGetAtomName(
     ATOM nAtom,
-    LPWSTR lpBuffer);
+    PUNICODE_STRING pBuffer);
 
 UINT
 NTAPI
@@ -1803,14 +1957,14 @@ NtUserGetClassName(
 HANDLE
 NTAPI
 NtUserGetClipboardData(
-  UINT uFormat,
-  PVOID pBuffer);
+  UINT fmt,
+  PGETCLIPBDATA pgcd);
 
 INT
 NTAPI
 NtUserGetClipboardFormatName(
-  UINT format,
-  PUNICODE_STRING FormatName,
+  UINT uFormat,
+  LPWSTR lpszFormatName,
   INT cchMaxCount);
 
 HWND
@@ -1855,16 +2009,16 @@ ULONG_PTR
 NTAPI
 NtUserGetCPD(
   HWND hWnd,
-  GETCPD Flags,   
+  GETCPD Flags,
   ULONG_PTR Proc);
 
-DWORD
+HCURSOR
 NTAPI
 NtUserGetCursorFrameInfo(
-  DWORD Unknown0,
-  DWORD Unknown1,
-  DWORD Unknown2,
-  DWORD Unknown3);
+  HCURSOR hCursor,
+  DWORD istep,
+  PDWORD rate_jiffies,
+  INT *num_steps);
 
 BOOL
 NTAPI
@@ -1906,12 +2060,12 @@ NtUserGetGUIThreadInfo(
 BOOL
 NTAPI
 NtUserGetIconInfo(
-   HANDLE hCurIcon,
-   PICONINFO IconInfo,
-   PUNICODE_STRING lpInstName,
-   PUNICODE_STRING lpResName,
-   LPDWORD pbpp,
-   BOOL bInternal);
+   _In_      HANDLE hCurIcon,
+   _Out_opt_ PICONINFO IconInfo,
+   _Out_opt_ PUNICODE_STRING lpInstName,
+   _Out_opt_ PUNICODE_STRING lpResName,
+   _Out_opt_ LPDWORD pbpp,
+   _In_      BOOL bInternal);
 
 BOOL
 NTAPI
@@ -1950,7 +2104,7 @@ NtUserGetKeyboardLayout(
 UINT
 NTAPI
 NtUserGetKeyboardLayoutList(
-  INT nItems,
+  ULONG nItems,
   HKL *pHklBuff);
 
 BOOL
@@ -2095,7 +2249,9 @@ enum ThreadStateRoutines
     THREADSTATE_TASKMANWINDOW,
     THREADSTATE_GETMESSAGETIME,
     THREADSTATE_GETINPUTSTATE,
-    THREADSTATE_UPTIMELASTREAD
+    THREADSTATE_UPTIMELASTREAD,
+    THREADSTATE_FOREGROUNDTHREAD,
+    THREADSTATE_GETCURSOR
 };
 
 DWORD_PTR
@@ -2439,6 +2595,7 @@ NtUserQueryUserCounters(
 #define QUERY_WINDOW_FOCUS      0x03
 #define QUERY_WINDOW_ISHUNG	0x04
 #define QUERY_WINDOW_REAL_ID	0x05
+#define QUERY_WINDOW_FOREGROUND 0x06
 DWORD
 NTAPI
 NtUserQueryWindow(
@@ -2629,9 +2786,9 @@ NtUserSetClassWord(
 HANDLE
 NTAPI
 NtUserSetClipboardData(
-  UINT uFormat,
+  UINT fmt,
   HANDLE hMem,
-  DWORD Unknown2);
+  PSETCLIPBDATA scd);
 
 HWND
 NTAPI
@@ -2663,6 +2820,29 @@ NtUserSetCursorContents(
   HANDLE Handle,
   PICONINFO IconInfo);
 
+#ifdef NEW_CURSORICON
+BOOL
+NTAPI
+NtUserSetCursorIconData(
+  _In_ HCURSOR hCursor,
+  _In_ PUNICODE_STRING pustrModule,
+  _In_ PUNICODE_STRING puSrcName,
+  _In_ PCURSORDATA pCursorData);
+
+typedef struct _tagFINDEXISTINGCURICONPARAM
+{
+    BOOL bIcon;
+    LONG cx;
+    LONG cy;
+} FINDEXISTINGCURICONPARAM;
+  
+HICON
+NTAPI
+NtUserFindExistingCursorIcon(
+  _In_  PUNICODE_STRING pustrModule,
+  _In_  PUNICODE_STRING pustrRsrc,
+  _In_  FINDEXISTINGCURICONPARAM* param);
+#else
 BOOL
 NTAPI
 NtUserSetCursorIconData(
@@ -2672,6 +2852,15 @@ NtUserSetCursorIconData(
   HMODULE hModule,
   HRSRC hRsrc,
   HRSRC hGroupRsrc);
+  
+HICON
+NTAPI
+NtUserFindExistingCursorIcon(
+  HMODULE hModule,
+  HRSRC hRsrc,
+  LONG cx,
+  LONG cy);
+#endif
 
 DWORD
 NTAPI
@@ -3158,16 +3347,8 @@ typedef struct tagKMDDEEXECUTEDATA
 
 typedef struct tagKMDDELPARAM
 {
-  BOOL Packed;
-  union
-    {
-      struct
-        {
-          UINT_PTR uiLo;
-          UINT_PTR uiHi;
-        } Packed;
-      LPARAM Unpacked;
-    } Value;
+  UINT_PTR uiLo;
+  UINT_PTR uiHi;
 } KMDDELPARAM, *PKMDDELPARAM;
 
 
@@ -3179,12 +3360,10 @@ typedef struct tagKMDDELPARAM
  */
 
 #define NOPARAM_ROUTINE_GETMESSAGEEXTRAINFO   0xffff0005
-#define NOPARAM_ROUTINE_ANYPOPUP              0xffff0006
 #define ONEPARAM_ROUTINE_CSRSS_GUICHECK       0xffff0008
 #define ONEPARAM_ROUTINE_SWITCHCARETSHOWING   0xfffe0008
 #define ONEPARAM_ROUTINE_ENABLEPROCWNDGHSTING 0xfffe000d
 #define ONEPARAM_ROUTINE_GETDESKTOPMAPPING    0xfffe000e
-#define ONEPARAM_ROUTINE_GETCURSORPOSITION    0xfffe0048 // use ONEPARAM_ or TWOPARAM routine ?
 #define TWOPARAM_ROUTINE_SETMENUBARHEIGHT   0xfffd0050
 #define TWOPARAM_ROUTINE_SETGUITHRDHANDLE   0xfffd0052
   #define MSQ_STATE_CAPTURE	0x1
@@ -3194,7 +3373,6 @@ typedef struct tagKMDDELPARAM
   #define MSQ_STATE_MOVESIZE	0x5
   #define MSQ_STATE_CARET	0x6
 #define TWOPARAM_ROUTINE_SETCARETPOS        0xfffd0060
-#define TWOPARAM_ROUTINE_REGISTERLOGONPROC  0xfffd0062
 #define TWOPARAM_ROUTINE_ROS_UPDATEUISTATE  0x1004
 #define HWNDPARAM_ROUTINE_ROS_NOTIFYWINEVENT 0x1005
 
@@ -3206,33 +3384,12 @@ NtUserBuildMenuItemList(
  ULONG nBufSize,
  DWORD Reserved);
 
-
-/* Should be done in usermode and use NtUserGetCPD. */
-ULONG_PTR
-NTAPI
-NtUserGetClassLong(
-  HWND hWnd,
-  INT Offset,
-  BOOL Ansi);
-
 UINT
 NTAPI
 NtUserGetMenuDefaultItem(
   HMENU hMenu,
   UINT fByPos,
   UINT gmdiFlags);
-
-BOOL
-NTAPI
-NtUserGetLastInputInfo(
-    PLASTINPUTINFO plii);
-
-BOOL
-NTAPI
-NtUserGetMinMaxInfo(
-  HWND hwnd,
-  MINMAXINFO *MinMaxInfo,
-  BOOL SendMessage);
 
 BOOL
 NTAPI
