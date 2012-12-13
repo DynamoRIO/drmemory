@@ -182,7 +182,7 @@ perturb_module_load(void *drcontext, const module_data_t *info, bool loaded)
         return;
 
 # define INIT_SYSNUM(name, dc, mod, ok_to_fail) do {                        \
-    sysnum_##name = sysnum_from_name(dc, mod, "Nt"#name);                   \
+    sysnum_##name = sysnum_from_name("Nt"#name);                            \
     ASSERT(ok_to_fail || sysnum_##name >= 0, "cannot find "#name" sysnum"); \
 } while (0);
 

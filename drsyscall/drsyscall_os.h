@@ -258,6 +258,7 @@ typedef struct _cls_syscall_t {
 #endif
     bool first_iter;
     bool first_iter_generic_loop; /* just for sysarg_get_size */
+    bool memargs_iterated; /* to enforce that post requires pre */
 
     /* for comparing memory across unknown system calls */
     bool known;

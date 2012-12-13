@@ -339,6 +339,7 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
     -D USE_DRSYMS:BOOL=${USE_DRSYMS}
+    -D X64:BOOL=${X64}
     -D toolbindir:STRING=${DR_param_pattern}/../${TOOL_BIN}
     -D DRMEMORY_CTEST_SRC_DIR:STRING=${CMAKE_CURRENT_SOURCE_DIR}
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}

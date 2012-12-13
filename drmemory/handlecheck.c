@@ -25,6 +25,7 @@
 #include "drmemory.h"
 #include "callstack.h"
 #include "syscall.h"
+#include "drsyscall.h"
 
 #ifndef WINDOWS
 # error WINDOWS-only
@@ -65,7 +66,7 @@ handle_create_info_clone(handle_create_info_t *src)
 }
 
 static handle_create_info_t *
-handle_create_info_alloc(int sysnum, app_pc pc, dr_mcontext_t *mc)
+handle_create_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
                          
 {
     handle_create_info_t *hci;
@@ -209,7 +210,7 @@ handlecheck_exit(void)
 
 void
 handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
-                          int sysnum, app_pc pc, dr_mcontext_t *mc)
+                          drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     handle_create_info_t *hci;
     hashtable_t *table;
@@ -236,7 +237,7 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
 
 void *
 handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
-                          int sysnum, app_pc pc, dr_mcontext_t *mc)
+                          drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     hashtable_t *table;
     handle_create_info_t *hci;

@@ -22,5 +22,10 @@
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total GDI usage error(s)
-~~Dr.M~~      11 unique,    11 total handle leak(s)
+%if X86
+~~Dr.M~~      22 unique,    23 total handle leak(s)
+%endif
+%if X64
+~~Dr.M~~      23 unique,    24 total handle leak(s)
+%endif
 ~~Dr.M~~       0 unique,     0 total warning(s)

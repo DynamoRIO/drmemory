@@ -26,6 +26,7 @@
 
 #include "dr_api.h"
 #include "windefs.h"
+#include "drsyscall.h"
 
 enum {
     HANDLE_TYPE_KERNEL,
@@ -41,11 +42,11 @@ handlecheck_exit(void);
 
 void
 handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
-                          int sysnum, app_pc pc, dr_mcontext_t *mc);
+                          drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc);
 
 void *
 handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
-                          int sysnum, app_pc pc, dr_mcontext_t *mc);
+                          drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc);
 
 void
 handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,

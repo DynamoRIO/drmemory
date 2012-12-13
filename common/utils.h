@@ -620,14 +620,9 @@ is_current_process(HANDLE h);
 bool
 is_wow64_process(void);
 
-bool
-opc_is_in_syscall_wrapper(uint opc);
-
+/* returns just the primary number */
 int
-syscall_num(void *drcontext, byte *entry);
-
-int
-sysnum_from_name(void *drcontext, const module_data_t *info, const char *name);
+sysnum_from_name(const char *name);
 
 bool
 running_on_Win7_or_later(void);
@@ -654,6 +649,9 @@ virtual_free(void *base);
 bool
 module_imports_from_msvc(const module_data_t *mod);
 #endif /* WINDOWS */
+
+reg_t
+syscall_get_param(void *drcontext, uint num);
 
 /***************************************************************************
  * HEAP WITH STATS

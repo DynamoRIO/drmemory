@@ -3433,7 +3433,8 @@ loc_to_print(app_loc_t *loc)
         return loc->u.addr.valid ? loc->u.addr.pc : NULL;
     } else {
         ASSERT(loc->type == APP_LOC_SYSCALL, "unknown type");
-        return (app_pc)(ptr_uint_t) loc->u.syscall.sysnum;
+        /* we ignore secondary sysnum (used only for logging) */
+        return (app_pc)(ptr_uint_t) loc->u.syscall.sysnum.number;
     }
 }
 
@@ -4171,9 +4172,6 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (instr_is_syscall(inst)) {
         /* new syscall events mean we no longer have to add a clean call
          */
-#ifdef TOOL_DR_MEMORY
-        check_syscall_gateway(inst);
-#endif
         /* we treat interrupts and syscalls, including the call*
          * for a wow64 syscall, as though they do not write to the
          * stack or esp (for call*, since we never see the

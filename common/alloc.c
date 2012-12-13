@@ -151,6 +151,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 # include "../wininc/crtdbg.h"
 #endif
 #include "asm_utils.h"
+#include "drsyscall.h"
 #include <string.h>
 
 #define DR_MC_GPR (DR_MC_INTEGER | DR_MC_CONTROL)
@@ -2666,6 +2667,18 @@ malloc_allocator_type(alloc_routine_entry_t *routine)
 
 #ifdef WINDOWS
 static void
+get_sysnum(const char *name, int *var, bool ok_to_fail)
+{
+    drsys_sysnum_t fullnum;
+    if (drsys_name_to_number(name, &fullnum) == DRMF_SUCCESS) {
+        *var = fullnum.number;
+        ASSERT(fullnum.secondary == 0, "should only query for primary nums");
+    } else {
+        ASSERT(ok_to_fail, "error finding required syscall #");
+    }
+}
+
+static void
 alloc_find_syscalls(void *drcontext, const module_data_t *info)
 {
     const char *modname = dr_module_preferred_name(info);
@@ -2706,26 +2719,16 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
                 !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
                 ASSERT(false, "failed to wrap");
             
-            sysnum_mmap = sysnum_from_name(drcontext, info, "NtMapViewOfSection");
-            ASSERT(sysnum_mmap != -1, "error finding alloc syscall #");
-            sysnum_munmap = sysnum_from_name(drcontext, info, "NtUnmapViewOfSection");
-            ASSERT(sysnum_munmap != -1, "error finding alloc syscall #");
-            sysnum_valloc = sysnum_from_name(drcontext, info, "NtAllocateVirtualMemory");
-            ASSERT(sysnum_valloc != -1, "error finding alloc syscall #");
-            sysnum_vfree = sysnum_from_name(drcontext, info, "NtFreeVirtualMemory");
-            ASSERT(sysnum_vfree != -1, "error finding alloc syscall #");
-            sysnum_continue = sysnum_from_name(drcontext, info, "NtContinue");
-            ASSERT(sysnum_continue != -1, "error finding alloc syscall #");
-            sysnum_cbret = sysnum_from_name(drcontext, info, "NtCallbackReturn");
-            ASSERT(sysnum_cbret != -1, "error finding alloc syscall #");
-            sysnum_setcontext = sysnum_from_name(drcontext, info, "NtSetContextThread");
-            ASSERT(sysnum_setcontext != -1, "error finding alloc syscall #");
-            sysnum_mapcmf = sysnum_from_name(drcontext, info, "NtMapCMFModule");
-            ASSERT(sysnum_mapcmf != -1 || !running_on_Win7_or_later(),
-                   "error finding alloc syscall #");
-            sysnum_RaiseException = sysnum_from_name(drcontext, info, "NtRaiseException");
-            ASSERT(sysnum_RaiseException != -1, "error finding alloc syscall #");
-            
+            get_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
+            get_sysnum("NtUnmapViewOfSection", &sysnum_munmap, false);
+            get_sysnum("NtAllocateVirtualMemory", &sysnum_valloc, false);
+            get_sysnum("NtFreeVirtualMemory", &sysnum_vfree, false);
+            get_sysnum("NtContinue", &sysnum_continue, false);
+            get_sysnum("NtCallbackReturn", &sysnum_cbret, false);
+            get_sysnum("NtSetContextThread", &sysnum_setcontext, false);
+            get_sysnum("NtMapCMFModule", &sysnum_mapcmf, !running_on_Win7_or_later());
+            get_sysnum("NtRaiseException", &sysnum_RaiseException, false);
+
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);
                 find_alloc_routines(info, possible_rtl_routines,
@@ -2736,8 +2739,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             }
         }
     } else if (stri_eq(modname, "user32.dll")) {
-        sysnum_UserConnectToServer =
-            sysnum_from_name(drcontext, info, "UserConnectToServer");
+        sysnum_UserConnectToServer = sysnum_from_name("UserConnectToServer");
         /* UserConnectToServer is not exported and so requires symbols or i#388's
          * table.  It's not present prior to Vista or on 32-bit kernels.
          */
@@ -3901,8 +3903,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
 }
 
 void
-handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t sysarg[],
-                         uint arg_cap)
+handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
 #if defined(WINDOWS) || defined(DEBUG)
     cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
@@ -4054,7 +4055,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t s
     }
 # endif
 #endif /* WINDOWS */
-    client_pre_syscall(drcontext, sysnum, sysarg);
+    client_pre_syscall(drcontext, sysnum);
 }
 
 #ifdef WINDOWS
@@ -4077,15 +4078,16 @@ is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc)
     return is_in_seh(drcontext);
 }
 
-
 static void
-handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sysarg[])
+handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
 {
     bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
     if (success && pt->syscall_this_process) {
-        app_pc *base_ptr = (app_pc *) sysarg[1];
-        size_t *size_ptr = (size_t *) sysarg[3];
-        app_pc base;
+        app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 1);
+        size_t *size_ptr = (size_t *) syscall_get_param(drcontext, 3);
+ drmf_status_t
+drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT);
+       app_pc base;
         size_t size;
         if (!safe_read(base_ptr, sizeof(*base_ptr), &base) ||
             !safe_read(size_ptr, sizeof(*size_ptr), &size)) {
@@ -4153,8 +4155,8 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
         }
     } else {
         DOLOG(2, {
-            app_pc *base_ptr = (app_pc *) sysarg[1];
-            size_t *size_ptr = (size_t *) sysarg[3];
+            app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 1);
+            size_t *size_ptr = (size_t *) syscall_get_param(drcontext, 3);
             app_pc base;
             size_t size;
             if (safe_read(base_ptr, sizeof(*base_ptr), &base) &&
@@ -4171,11 +4173,11 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sy
 }
 
 static void
-handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sysarg[])
+handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
 {
     bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
-    app_pc *base_ptr = (app_pc *) sysarg[1];
-    size_t *size_ptr = (size_t *) sysarg[2];
+    app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 1);
+    size_t *size_ptr = (size_t *) syscall_get_param(drcontext, 2);
     app_pc base;
     size_t size;
     if (!pt->syscall_this_process)
@@ -4242,15 +4244,14 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt, reg_t sys
 }
 
 static void
-handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt,
-                                reg_t sysarg[])
+handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
 {
     if (NT_SUCCESS(dr_syscall_get_result(drcontext))) {
         /* A data file is mmapped by csrss and its base is stored at offset 0x10 */
 # define UserConnectToServer_BASE_OFFS 0x10
         app_pc base;
-        if (safe_read((byte *)sysarg[1] + UserConnectToServer_BASE_OFFS,
-                      sizeof(base), &base)) {
+        if (safe_read((byte *)syscall_get_param(drcontext, 1) +
+                      UserConnectToServer_BASE_OFFS, sizeof(base), &base)) {
             app_pc check_base;
             size_t sz = allocation_size(base, &check_base);
             if (base == check_base)
@@ -4263,18 +4264,16 @@ handle_post_UserConnectToServer(void *drcontext, dr_mcontext_t *mc, cls_alloc_t 
 #endif /* WINDOWS */
 
 void
-handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t sysarg[],
-                          uint arg_cap)
+handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
     cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
 #ifdef WINDOWS
     /* we access up to param#4 */
-    ASSERT(arg_cap >= 6, "need to up #sysargs stored");
     if (sysnum == sysnum_mmap) {
         /* FIXME: provide a memory tracking interface? */
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (success && pt->syscall_this_process) {
-            app_pc *base_ptr = (app_pc *) sysarg[2];
+            app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 2);
             app_pc base;
             if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
                 LOG(1, "WARNING: NtMapViewOfSection: error reading param\n");
@@ -4294,14 +4293,14 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                                       false/*file-backed*/);
         }
     } else if (sysnum == sysnum_valloc) {
-        handle_post_valloc(drcontext, mc, pt, sysarg);
+        handle_post_valloc(drcontext, mc, pt);
     } else if (sysnum == sysnum_vfree) {
         if (pt->syscall_this_process)
-            handle_post_vfree(drcontext, mc, pt, sysarg);
+            handle_post_vfree(drcontext, mc, pt);
     } else if (sysnum == sysnum_mapcmf) {
         bool success = NT_SUCCESS(dr_syscall_get_result(drcontext));
         if (success && pt->syscall_this_process) {
-            app_pc *base_ptr = (app_pc *) sysarg[5];
+            app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 5);
             app_pc base;
             if (!safe_read(base_ptr, sizeof(*base_ptr), &base)) {
                 LOG(1, "WARNING: NtMapCMFModule: error reading param\n");
@@ -4314,12 +4313,11 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
             }
         }
     } else if (sysnum == sysnum_UserConnectToServer) {
-        handle_post_UserConnectToServer(drcontext, mc, pt, sysarg);
+        handle_post_UserConnectToServer(drcontext, mc, pt);
     }
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
     bool success = (result >= 0);
-    ASSERT(arg_cap >= 4, "need to up #sysargs stored");
     if (sysnum == SYS_mmap IF_X86_32(|| sysnum == SYS_mmap2)) {
         unsigned long flags = 0;
         size_t size = 0;
@@ -4332,13 +4330,14 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
                  *                unsigned long prot, unsigned long flags,
                  *                unsigned long fd, unsigned long pgoff)
                  */
-                flags = (unsigned long) sysarg[3];
-                size = (size_t) sysarg[1];
+                flags = (unsigned long) syscall_get_param(drcontext, 3);
+                size = (size_t) syscall_get_param(drcontext, 1);
             }
 # ifdef X86_32
             if (sysnum == SYS_mmap) {
                 mmap_arg_struct_t arg;
-                if (!safe_read((void *)sysarg[0], sizeof(arg), &arg)) {
+                if (!safe_read((void *)syscall_get_param(drcontext, 0),
+                               sizeof(arg), &arg)) {
                     ASSERT(false, "failed to read successful mmap arg struct");
                     /* fallback is to walk as though an image */
                     memset(&arg, 0, sizeof(arg));
@@ -4367,8 +4366,8 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
     else if (sysnum == SYS_munmap) {
         if (!success) {
             /* we already marked unaddressable: restore */
-            app_pc base = (app_pc) sysarg[0];
-            size_t size = (size_t) sysarg[1];
+            app_pc base = (app_pc) syscall_get_param(drcontext, 0);
+            size_t size = (size_t) syscall_get_param(drcontext, 1);
             dr_mem_info_t info;
             LOG(2, "SYS_munmap "PFX"-"PFX" failed\n", base, base+size);
             if (!dr_query_memory_ex(base, &info))
@@ -4379,10 +4378,10 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
         }
     } 
     else if (sysnum == SYS_mremap) {
-        app_pc old_base = (app_pc) sysarg[0];
-        size_t old_size = (size_t) sysarg[1];
+        app_pc old_base = (app_pc) syscall_get_param(drcontext, 0);
+        size_t old_size = (size_t) syscall_get_param(drcontext, 1);
         app_pc new_base = (app_pc) result;
-        size_t new_size = (size_t) sysarg[2];
+        size_t new_size = (size_t) syscall_get_param(drcontext, 2);
         /* libc interprets up to -PAGE_SIZE as an error */
         bool mmap_success = (result > 0 || result < -PAGE_SIZE);
         if (mmap_success) {
@@ -4424,7 +4423,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc, reg_t 
             heap_region_adjust(heap_start, (byte *) result);
     }
 #endif /* WINDOWS */
-    client_post_syscall(drcontext, sysnum, sysarg);
+    client_post_syscall(drcontext, sysnum);
 }
 
 static inline app_pc

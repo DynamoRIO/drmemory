@@ -28,6 +28,7 @@
 # * toolbindir = location of DynamoRIO tools dir
 # * VMKERNEL = whether running on vmkernel
 # * USE_DRSYMS = whether running a DRSYMS build
+# * X64 = whether running a 64-bit build
 # * postcmd = post-process command for Dr. Heapstat leak results or
 #     Dr. Memory -skip_results + -results
 # * CMAKE_SYSTEM_VERSION
@@ -344,6 +345,11 @@ foreach (str ${patterns})
   else (USE_DRSYMS)
     string(REGEX REPLACE "(^|\n)%if DRSYMS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
   endif (USE_DRSYMS)
+  if (X64)
+    string(REGEX REPLACE "(^|\n)%if X86[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  else (X64)
+    string(REGEX REPLACE "(^|\n)%if X64[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+  endif (X64)
 
   # Our expected output files don't support regexes, but we do support matching
   # any of a set of lines with %ANYLINE blocks.

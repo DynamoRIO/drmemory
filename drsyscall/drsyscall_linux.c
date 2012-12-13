@@ -328,7 +328,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(87,10),0},"unlink", OK, RLONG, 1,{{0,0,R|CT,CSTRING},}},
     {{PACKNUM(59,11),0},"execve", OK, RLONG, 3,{{0,0,R|CT,CSTRING},/* FIXME: char** argv and envp */}},
     {{PACKNUM(80,12),0},"chdir", OK, RLONG, 1,{{0,0,R|CT,CSTRING},}},
-    {{PACKNUM(36,13),0},"time", OK, RLONG, 1,{{0,sizeof(time_t),W},}},
+    {{PACKNUM(201,13),0},"time", OK, RLONG, 1,{{0,sizeof(time_t),W},}},
     {{PACKNUM(133,14),0},"mknod", OK, RLONG, 3,{{0,0,R|CT,CSTRING},}},
     {{PACKNUM(90,15),0},"chmod", OK, RLONG, 2,{{0,0,R|CT,CSTRING},}},
     {{PACKNUM(-1,16),0},"lchown16", OK, RLONG, 3,{{0,0,R|CT,CSTRING},}},
@@ -353,7 +353,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(21,33),0},"access", OK, RLONG, 2,{{0,0,R|CT,CSTRING},}},
     {{PACKNUM(-1,34),0},"nice", OK, RLONG, 1,},
     {{PACKNUM(-1,35),0},"ni_syscall", OK, RLONG, 0,},
-    {{PACKNUM(26,36),0},"sync", OK, RLONG, 0,},
+    {{PACKNUM(162,36),0},"sync", OK, RLONG, 0,},
     {{PACKNUM(62,37),0},"kill", OK, RLONG, 2,},
     {{PACKNUM(82,38),0},"rename", OK, RLONG, 2,{{0,0,R|CT,CSTRING},{1,0,R|CT,CSTRING},}},
     {{PACKNUM(83,39),0},"mkdir", OK, RLONG, 2,{{0,0,R|CT,CSTRING},}},
@@ -365,11 +365,11 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(12,45),0},"brk", OK, RLONG, 1,},
     {{PACKNUM(-1,46),0},"setgid16", OK, RLONG, 1,},
     {{PACKNUM(-1,47),0},"getgid16", OK, RLONG, 0,},
-    {{PACKNUM(282,48),0},"signal", OK, RLONG, 2,},
+    {{PACKNUM(-1,48),0},"signal", OK, RLONG, 2,},
     {{PACKNUM(-1,49),0},"geteuid16", OK, RLONG, 0,},
     {{PACKNUM(-1,50),0},"getegid16", OK, RLONG, 0,},
     {{PACKNUM(163,51),0},"acct", OK, RLONG, 1,{{0,0,R|CT,CSTRING},}},
-    {{PACKNUM(166,52),0},"umount", OK, RLONG, 2,{{0,0,R|CT,CSTRING},}},
+    {{PACKNUM(-1,52),0},"umount", OK, RLONG, 2,{{0,0,R|CT,CSTRING},}},
     {{PACKNUM(-1,53),0},"ni_syscall", OK, RLONG, 0,},
     {{PACKNUM(16,54),0},"ioctl", OK, RLONG, 3,}, /* varies: special-cased below */
     {{PACKNUM(72,55),0},"fcntl", OK, RLONG, 2,}, /*special-cased: 3rd arg not always required*/
@@ -384,13 +384,13 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(110,64),0},"getppid", OK, RLONG, 0,},
     {{PACKNUM(111,65),0},"getpgrp", OK, RLONG, 0,},
     {{PACKNUM(112,66),0},"setsid", OK, RLONG, 0,},
-    {{PACKNUM(13,67),0},"sigaction", OK, RLONG, 3,/*FIXME type: {{1,sizeof(struct old_sigaction),W},{2,sizeof(struct old_sigaction),R},}*/},
+    {{PACKNUM(-1,67),0},"sigaction", OK, RLONG, 3,/*FIXME type: {{1,sizeof(struct old_sigaction),W},{2,sizeof(struct old_sigaction),R},}*/},
     {{PACKNUM(-1,68),0},"sgetmask", OK, RLONG, 0,},
     {{PACKNUM(-1,69),0},"ssetmask", OK, RLONG, 1,},
     {{PACKNUM(-1,70),0},"setreuid16", OK, RLONG, 2,},
     {{PACKNUM(-1,71),0},"setregid16", OK, RLONG, 2,},
-    {{PACKNUM(130,72),0},"sigsuspend", OK, RLONG, 3,},
-    {{PACKNUM(127,73),0},"sigpending", OK, RLONG, 1,/*FIXME type: {{0,sizeof(old_sigset_t),W},}*/},
+    {{PACKNUM(-1,72),0},"sigsuspend", OK, RLONG, 3,},
+    {{PACKNUM(-1,73),0},"sigpending", OK, RLONG, 1,/*FIXME type: {{0,sizeof(old_sigset_t),W},}*/},
     {{PACKNUM(170,74),0},"sethostname", OK, RLONG, 2,{{0,-1,R},}},
     {{PACKNUM(160,75),0},"setrlimit", OK, RLONG, 2,{{1,sizeof(struct rlimit),R},}},
     {{PACKNUM(-1,76),0},"old_getrlimit", OK, RLONG, 2,{{1,sizeof(struct rlimit),W},}},
@@ -428,7 +428,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(36,105),0},"getitimer", OK, RLONG, 2,{{1,sizeof(struct itimerval),W},}},
     {{PACKNUM(-1,106),0},"newstat", OK, RLONG, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat),W},}},
     {{PACKNUM(-1,107),0},"newlstat", OK, RLONG, 2,{{0,0,R|CT,CSTRING},{1,sizeof(struct stat),W},}},
-    {{PACKNUM(262,108),0},"newfstat", OK, RLONG, 2,{{1,sizeof(struct stat),W},}},
+    {{PACKNUM(-1,108),0},"newfstat", OK, RLONG, 2,{{1,sizeof(struct stat),W},}},
     {{PACKNUM(63,109),0},"uname", OK, RLONG, 1, /* FIXME: ***Missing prototype*** */ },
     {{PACKNUM(172,110),0},"iopl", OK, RLONG, 1,},
     {{PACKNUM(153,111),0},"vhangup", OK, RLONG, 0,},
@@ -439,14 +439,14 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(99,116),0},"sysinfo", OK, RLONG, 1,{{0,sizeof(struct sysinfo),W},}},
     {{PACKNUM(-1,117),0},"ipc", OK, RLONG, 1, /* special-cased below */ },
     {{PACKNUM(74,118),0},"fsync", OK, RLONG, 1,},
-    {{PACKNUM(15,119),0},"sigreturn", OK, RLONG, 0},
+    {{PACKNUM(-1,119),0},"sigreturn", OK, RLONG, 0},
     {{PACKNUM(56,120),0},"clone", OK, RLONG, 2,}, /* 3 params added in later kernels special-cased */
     {{PACKNUM(171,121),0},"setdomainname", OK, RLONG, 2,{{0,-1,R},}},
     {{PACKNUM(-1,122),0},"newuname", OK, RLONG, 1,{{0,sizeof(struct new_utsname),W},}},
     {{PACKNUM(154,123),0},"modify_ldt", OK, RLONG, 3, /* FIXME: ***Missing prototype*** */ },
     {{PACKNUM(159,124),0},"adjtimex", OK, RLONG, 1,{{0,sizeof(struct timex),R},}},
     {{PACKNUM(10,125),0},"mprotect", OK, RLONG, 3,},
-    {{PACKNUM(14,126),0},"sigprocmask", OK, RLONG, 3,/*FIXME type: {{1,sizeof(old_sigset_t),R},{2,sizeof(old_sigset_t),W},}*/},
+    {{PACKNUM(-1,126),0},"sigprocmask", OK, RLONG, 3,/*FIXME type: {{1,sizeof(old_sigset_t),R},{2,sizeof(old_sigset_t),W},}*/},
     {{PACKNUM(-1,127),0},"ni_syscall", OK, RLONG, 0,},
     {{PACKNUM(175,128),0},"init_module", OK, RLONG, 3,{{0,-1,R},{2,0,R|CT,CSTRING},}},
     {{PACKNUM(176,129),0},"delete_module", OK, RLONG, 2, {{0,0,R|CT,CSTRING},}},
@@ -469,7 +469,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(20,146),0},"writev", OK, RLONG, 3, /* FIXME 1,ARG3 * sizeof(struct vki_iovec),R, 1,****** special-case:  "writev(vector[...])", OK, RLONG, (Addr)vec[i].iov_base, vec[i].iov_len,R, */},
     {{PACKNUM(124,147),0},"getsid", OK, RLONG, 1,},
     {{PACKNUM(75,148),0},"fdatasync", OK, RLONG, 1,},
-    {{PACKNUM(156,149),0},"sysctl", OK, RLONG, 1,{{0,sizeof(struct __sysctl_args),R},}},/*special-cased*/
+    {{PACKNUM(156,149),0},"_sysctl", OK, RLONG, 1,{{0,sizeof(struct __sysctl_args),R},}},/*special-cased*/
     {{PACKNUM(149,150),0},"mlock", OK, RLONG, 2,},
     {{PACKNUM(150,151),0},"munlock", OK, RLONG, 2,},
     {{PACKNUM(151,152),0},"mlockall", OK, RLONG, 1,},
@@ -579,8 +579,8 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(231,252),0},"exit_group", OK, RLONG, 1,},
     {{PACKNUM(212,253),0},"lookup_dcookie", OK, RLONG, 3, /* FIXME 1,sizeof(char),U,{2,-3,W},{2,RET,W}, */},
     {{PACKNUM(213,254),0},"epoll_create", OK, RLONG, 1,},
-    {{PACKNUM(214,255),0},"epoll_ctl", OK, RLONG, 4,{{3,sizeof(struct epoll_event),R},}},
-    {{PACKNUM(215,256),0},"epoll_wait", OK, RLONG, 4,{{1,sizeof(struct epoll_event),W},/*FIXME {1,sizeof(struct vki_epoll_event)*RES,W},*/}},
+    {{PACKNUM(-1,255),0},"epoll_ctl", OK, RLONG, 4,{{3,sizeof(struct epoll_event),R},}},
+    {{PACKNUM(-1,256),0},"epoll_wait", OK, RLONG, 4,{{1,sizeof(struct epoll_event),W},/*FIXME {1,sizeof(struct vki_epoll_event)*RES,W},*/}},
     {{PACKNUM(216,257),0},"remap_file_pages", OK, RLONG, 5,},
     {{PACKNUM(218,258),0},"set_tid_address", OK, RLONG, 1, /* FIXME 0,sizeof(int),U, */},
     {{PACKNUM(222,259),0},"timer_create", OK, RLONG, 3,{{1,sizeof(struct sigevent),R},{2,sizeof(timer_t),W},}},
@@ -627,7 +627,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(-1,300),0},"fstatat64", OK, RLONG, 4, /* FIXME 1,sizeof(char),U, 2,sizeof(struct stat64),U, */},
     {{PACKNUM(263,301),0},"unlinkat", OK, RLONG, 3,{{1,0,R|CT,CSTRING},}},
     {{PACKNUM(264,302),0},"renameat", OK, RLONG, 4,{{1,0,R|CT,CSTRING},{3,0,R|CT,CSTRING},}},
-    {{PACKNUM(263,303),0},"linkat", OK, RLONG, 5,{{1,0,R|CT,CSTRING},{3,0,R|CT,CSTRING},}},
+    {{PACKNUM(265,303),0},"linkat", OK, RLONG, 5,{{1,0,R|CT,CSTRING},{3,0,R|CT,CSTRING},}},
     {{PACKNUM(266,304),0},"symlinkat", OK, RLONG, 3,{{0,0,R|CT,CSTRING},{2,0,R|CT,CSTRING},}},
     {{PACKNUM(267,305),0},"readlinkat", OK, RLONG, 4,{{1,0,R|CT,CSTRING},{2,-3,W},{2,RET,W},}},
     {{PACKNUM(268,306),0},"fchmodat", OK, RLONG, 3,{{1,0,R|CT,CSTRING},}},
@@ -685,8 +685,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(69,-1),0},"msgsnd", OK, RLONG, 4, {{1,-2,R|CT,SYSARG_TYPE_MSGBUF}, }},
     {{PACKNUM(70,-1),0},"msgrcv", OK, RLONG, 5, {{1,-2,W|CT,SYSARG_TYPE_MSGBUF}, }},
     {{PACKNUM(71,-1),0},"msgctl", OK, RLONG, 3, /*special-cased*/},
-    /* FIXME i#1019: fill these in */
-    {{PACKNUM(156,-1),0},"_sysctl", UNKNOWN, RLONG, 0, },
+    /* FIXME i#1019: fill these in (merge w/ 32-bit parallel entries above if nec) */
     {{PACKNUM(158,-1),0},"arch_prctl", UNKNOWN, RLONG, 0, },
     {{PACKNUM(166,-1),0},"umount2", UNKNOWN, RLONG, 0, },
     {{PACKNUM(174,-1),0},"create_module", UNKNOWN, RLONG, 0, },
@@ -845,6 +844,17 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
 drmf_status_t
 drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
 {
+    if (type == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *type = DRSYS_SYSCALL_TYPE_KERNEL;
+    return DRMF_SUCCESS;
+}
+
+drmf_status_t
+drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT)
+{
+    if (type == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
     *type = DRSYS_SYSCALL_TYPE_KERNEL;
     return DRMF_SUCCESS;
 }

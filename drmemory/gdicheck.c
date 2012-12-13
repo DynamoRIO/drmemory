@@ -124,7 +124,7 @@ gdicheck_thread_exit(void *drcontext)
 #define REPORT_MAX_SZ 512
 
 static void
-gdicheck_report(app_pc addr, uint sysnum, dr_mcontext_t *mc, const char *msg, ...)
+gdicheck_report(app_pc addr, drsys_sysnum_t sysnum, dr_mcontext_t *mc, const char *msg, ...)
 {
     va_list ap;
     app_loc_t loc;
@@ -178,7 +178,7 @@ obj_is_drawing_object(HGDIOBJ obj)
 }
 
 void
-gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_t *mc)
+gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
 {
     per_dc_t *pdc;
     bool exists;
@@ -202,7 +202,7 @@ gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_
 }
 
 void
-gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc)
+gdicheck_dc_free(HDC hdc, bool create, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
 {
     per_dc_t *pdc = (per_dc_t *) hashtable_lookup(&dc_table, (void *)hdc);
     IF_DEBUG(bool found;)
@@ -237,7 +237,7 @@ gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc)
 }
 
 void
-gdicheck_obj_free(HANDLE obj, uint sysnum, dr_mcontext_t *mc)
+gdicheck_obj_free(HANDLE obj, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
 {
     LOG(2, "GDI obj free "PFX"\n", obj);
     if (obj == NULL)
@@ -280,6 +280,7 @@ static void
 gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
                        app_pc addr, dr_mcontext_t *mc)
 {
+    drsys_sysnum_t sysnum = {0,0}; /* not specifying */
     per_dc_t *pdc = (per_dc_t *) hashtable_lookup(&dc_table, (void *)hdc);
     LOG(2, "GDI obj select prior="PFX" new="PFX" hdc="PFX"\n", prior_obj, new_obj, hdc);
     if (pdc != NULL) {
@@ -295,7 +296,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          * local objects that are created, used, and then destroyed.
          */
         if (pdc->dup_null && pdc->exited) {
-            gdicheck_report(addr, 0, mc, REPORT_PREFIX
+            gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
                             "DC "PFX" used for select was created by now-exited thread %d "
                             "by duplicating NULL, which makes it a thread-private DC",
                             hdc, pdc->thread);
@@ -309,7 +310,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          */
         else if (!pdc->exited &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
-            gdicheck_report(addr, 0, mc, REPORT_PREFIX
+            gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
                             "DC created by one thread %d and used by another %d",
                             pdc->thread, dr_get_thread_id(dr_get_current_drcontext()));
         }
@@ -318,7 +319,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
             HDC curdc = (HDC) hashtable_lookup(&selected_table, (void *)new_obj);
             /* Check: do not select the same bitmap into two different DC's */
             if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
-                gdicheck_report(addr, 0, mc, REPORT_PREFIX
+                gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
                                 "same bitmap "PFX" selected into two different DC's "
                                 PFX" and "PFX, new_obj, hdc, curdc);
             }
@@ -340,7 +341,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
                                               (void *)hdc);
                 /* Check: do not select the same bitmap into two different DC's */
                 if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
-                    gdicheck_report(addr, 0, mc, REPORT_PREFIX
+                    gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
                                     "same bitmap "PFX" selected into two different DC's "
                                     PFX" and "PFX, new_obj, hdc, curdc);
                 }

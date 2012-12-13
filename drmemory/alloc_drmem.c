@@ -1249,7 +1249,7 @@ adjust_stack_to_context(dr_mcontext_t *mc, reg_t cxt_xsp _IF_DEBUG(const char *p
 #endif
 
 void
-client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
+client_pre_syscall(void *drcontext, int sysnum)
 {
 #ifdef WINDOWS
     DWORD cxt_flags;
@@ -1329,16 +1329,16 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
         void *handler = NULL;
         if (sysnum == SYS_rt_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)sysarg[1], sizeof(handler), &handler);
+            safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
 # ifdef X86_32
         else if (sysnum == SYS_sigaction) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
-            safe_read((void *)sysarg[1], sizeof(handler), &handler);
+            safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
         else if (sysnum == SYS_signal) {
             /* 2nd arg is handler */
-            handler = (void *) sysarg[1];
+            handler = (void *) syscall_get_param(drcontext, 1);
         }
 # endif
         if (handler != NULL) {
@@ -1411,7 +1411,7 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
         stack_t stk;
         cpt->prev_sigaltstack = cpt->sigaltstack;
         cpt->prev_sigaltsize = cpt->sigaltsize;
-        if (safe_read((void *)sysarg[0], sizeof(stk), &stk)) {
+        if (safe_read((void *)syscall_get_param(drcontext, 0), sizeof(stk), &stk)) {
             if (stk.ss_flags == SS_DISABLE) {
                 cpt->sigaltstack = NULL;
                 cpt->sigaltsize = 0;
@@ -1436,14 +1436,15 @@ client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
             }
             LOG(2, "new sigaltstack "PFX"\n", cpt->sigaltstack);
         } else {
-            LOG(2, "WARNING: can't read sigaltstack param "PFX"\n", sysarg[0]);
+            LOG(2, "WARNING: can't read sigaltstack param "PFX"\n",
+                syscall_get_param(drcontext, 0));
         }
     }
 #endif /* WINDOWS */
 }
 
 void
-client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[])
+client_post_syscall(void *drcontext, int sysnum)
 {
 #ifdef LINUX
     ptr_int_t result = dr_syscall_get_result(drcontext);
@@ -1454,7 +1455,7 @@ client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[])
         IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
         if (result != 0) {
             LOG(2, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
-                  sysarg[1]);
+                  syscall_get_param(drcontext, 1));
             /* See notes above: if we had a counter we could remove from
              * sighand_table if there were no successfull registrations --
              * but we assume handler code is only used for signals so

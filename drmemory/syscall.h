@@ -23,6 +23,8 @@
 #ifndef _SYSCALL_H_
 #define _SYSCALL_H_ 1
 
+#include "drsyscall.h"
+
 #ifdef WINDOWS
 # define KUSER_SHARED_DATA_START 0x7ffe0000
 #endif
@@ -56,15 +58,6 @@ syscall_handle_cbret(void *drcontext);
 void
 syscall_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
-bool
-is_using_sysenter(void);
-
-bool
-is_using_sysint(void);
-
-void
-check_syscall_gateway(instr_t *inst);
-
 #ifdef WINDOWS
 /* The size, from the vsyscall start, that should be considered
  * "defined".  We size it big enough to cover both stored pc and
@@ -78,16 +71,10 @@ byte *
 vsyscall_pc(void *drcontext, byte *entry);
 
 const char *
-get_syscall_name(uint num);
-
-#ifdef WINDOWS
-/* uses tables and other sources not available to sysnum_from_name() */
-int
-get_syscall_num(void *drcontext, const module_data_t *info, const char *name);
-#endif
+get_syscall_name(drsys_sysnum_t num);
 
 bool
-syscall_is_known(uint num);
+syscall_is_known(drsys_sysnum_t num);
 
 #ifdef STATISTICS
 # ifdef WINDOWS
@@ -101,13 +88,8 @@ extern int syscall_invoked[MAX_SYSNUM];
 #endif
 
 void
-check_sysmem(uint flags, int sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
+check_sysmem(uint flags, drsys_sysnum_t sysnum, app_pc ptr, size_t sz, dr_mcontext_t *mc,
              const char *id);
-
-bool
-handle_cstring(bool pre, int sysnum, dr_mcontext_t *mc, const char *id,
-               byte *start, size_t size/*in bytes*/, uint arg_flags, char *safe,
-               bool check_addr);
 
 byte *
 syscall_auxlib_start(void);

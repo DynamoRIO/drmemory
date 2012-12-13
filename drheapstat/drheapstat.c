@@ -26,6 +26,7 @@
 
 #include "dr_api.h"
 #include "drwrap.h"
+#include "drsyscall.h"
 #include "drheapstat.h"
 #include "alloc.h"
 #include "heap.h"
@@ -161,13 +162,7 @@ typedef struct _tls_heapstat_t {
 # define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
 #endif
 
-typedef struct _cls_heapstat_t {
-    /* for recording args so post-syscall can examine */
-    reg_t sysarg[SYSCALL_NUM_ARG_STORE];
-} cls_heapstat_t;
-
 static int tls_idx_heapstat = -1;
-static int cls_idx_heapstat = -1;
 
 /***************************************************************************
  * OPTIONS
@@ -1052,12 +1047,12 @@ client_stack_dealloc(byte *start, byte *end)
 }
 
 void
-client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[])
+client_pre_syscall(void *drcontext, int sysnum)
 {
 }
 
 void
-client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[])
+client_post_syscall(void *drcontext, int sysnum)
 {
 }
 
@@ -1429,6 +1424,14 @@ dump_statistics(void)
     heap_dump_stats(f_global);
 }
 #endif /* STATISTICS */
+
+#if DEBUG
+/* drsyscall debug build uses this */
+void
+report_callstack(void *drcontext, dr_mcontext_t *mc)
+{
+}
+#endif /* DEBUG */
 
 static void
 client_heap_add(app_pc start, app_pc end, dr_mcontext_t *mc)
@@ -1842,24 +1845,11 @@ event_pre_syscall(void *drcontext, int sysnum)
 {
     tls_heapstat_t *pt = (tls_heapstat_t *)
         drmgr_get_tls_field(drcontext, tls_idx_heapstat);
-    cls_heapstat_t *cpt = (cls_heapstat_t *)
-        drmgr_get_cls_field(drcontext, cls_idx_heapstat);
-    int i;
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
+    dr_mcontext_t *mc;
+    if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_get_mcontext failed");
 
-    /* FIXME: share this code w/ drmemory/syscall.c */
-    /* save params for post-syscall access 
-     * FIXME: it's possible for a pathological app to crash us here
-     * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
-     * params will hit unreadable page.
-     */
-    for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++)
-        cpt->sysarg[i] = dr_syscall_get_param(drcontext, i);
-
-    handle_pre_alloc_syscall(drcontext, sysnum, &mc, cpt->sysarg, SYSCALL_NUM_ARG_STORE);
+    handle_pre_alloc_syscall(drcontext, sysnum, mc);
 
 #ifdef LINUX
     if (sysnum == SYS_fork ||
@@ -1880,13 +1870,10 @@ event_pre_syscall(void *drcontext, int sysnum)
 static void
 event_post_syscall(void *drcontext, int sysnum)
 {
-    cls_heapstat_t *cpt = (cls_heapstat_t *)
-        drmgr_get_cls_field(drcontext, cls_idx_heapstat);
-    dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
-    mc.size = sizeof(mc);
-    mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
-    dr_get_mcontext(drcontext, &mc);
-    handle_post_alloc_syscall(drcontext, sysnum, &mc, cpt->sysarg, SYSCALL_NUM_ARG_STORE);
+    dr_mcontext_t *mc;
+    if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_get_mcontext failed");
+    handle_post_alloc_syscall(drcontext, sysnum, mc);
 }
 
 static void
@@ -1993,29 +1980,6 @@ event_fragment_delete(void *drcontext, void *tag)
     alloc_fragment_delete(drcontext, tag);
 }
 
-static void
-event_context_init(void *drcontext, bool new_depth)
-{
-    cls_heapstat_t *data;
-    if (new_depth) {
-        data = (cls_heapstat_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
-        drmgr_set_cls_field(drcontext, cls_idx_heapstat, data);
-    } else
-        data = (cls_heapstat_t *) drmgr_get_cls_field(drcontext, cls_idx_heapstat);
-    memset(data, 0, sizeof(*data));
-}
-
-static void
-event_context_exit(void *drcontext, bool thread_exit)
-{
-    if (thread_exit) {
-        cls_heapstat_t *cpt = (cls_heapstat_t *)
-            drmgr_get_cls_field(drcontext, cls_idx_heapstat);
-        thread_free(drcontext, cpt, sizeof(*cpt), HEAPSTAT_MISC);
-    }
-    /* else, nothing to do: we leave the struct for re-use on next callback */
-}
-
 static void 
 event_thread_init(void *drcontext)
 {
@@ -2106,9 +2070,9 @@ event_exit(void)
     dump_statistics();
 #endif
 
+    if (drsys_exit() != DRMF_SUCCESS)
+        ASSERT(false, "drsys failed to exit");
     drmgr_unregister_tls_field(tls_idx_heapstat);
-    drmgr_unregister_cls_field(event_context_init, event_context_exit,
-                               cls_idx_heapstat);
     drwrap_exit();
     drmgr_exit();
 
@@ -2130,6 +2094,7 @@ dr_init(client_id_t client_id)
 {
     const char *opstr = dr_get_options(client_id);
     alloc_options_t alloc_ops;
+    drsys_options_t ops = { sizeof(ops), 0, };
     drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 1000};
 
     ASSERT(opstr != NULL, "error obtaining option string");
@@ -2138,12 +2103,11 @@ dr_init(client_id_t client_id)
     drmgr_init(); /* must be before utils_init and any other tls/cls uses */
     tls_idx_heapstat = drmgr_register_tls_field();
     ASSERT(tls_idx_heapstat > -1, "unable to reserve TLS slot");
-    cls_idx_heapstat = drmgr_register_cls_field
-        (event_context_init, event_context_exit);
-    ASSERT(cls_idx_heapstat > -1, "unable to reserve CLS field");
 
     drwrap_init();
     utils_init();
+    if (drsys_init(client_id, &ops) != DRMF_SUCCESS)
+        ASSERT(false, "drsys failed to init");
 
     /* now that we know whether -quiet, print basic info */
     NOTIFY("Dr. Heapstat version %s"NL, VERSION_STRING);
@@ -2172,9 +2136,16 @@ dr_init(client_id_t client_id)
         dr_register_exception_event(event_exception);
 #endif
     }
+
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
     drmgr_register_post_syscall_event(event_post_syscall);
+    /* simplest to filter all for pre-syscall-arg access: else we'd
+     * need to ask alloc for all that it cares about.
+     */
+    if (drsys_filter_all_syscalls() != DRMF_SUCCESS)
+        ASSERT(false, "drsys_filter_all_syscalls should never fail");
+
     dr_register_nudge_event(event_nudge, client_id);
     if (options.staleness)
         dr_register_restore_state_ex_event(event_restore_state);

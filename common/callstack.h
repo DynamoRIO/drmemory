@@ -30,6 +30,7 @@
 #include "dr_api.h"
 #include "crypto.h"
 #include "utils.h"
+#include "drsyscall.h"
 
 /****************************************************************************
  * Application locations
@@ -48,7 +49,7 @@ typedef enum {
  * additional string describing which parameter (PR 525269).
  */
 typedef struct {
-    uint sysnum;
+    drsys_sysnum_t sysnum;
     /* syscalls store a string identifying param (PR 525269) */
     const char *syscall_aux;
 } syscall_loc_t;
@@ -75,7 +76,7 @@ void
 pc_to_loc(app_loc_t *loc, app_pc pc);
 
 void
-syscall_to_loc(app_loc_t *loc, uint sysnum, const char *aux);
+syscall_to_loc(app_loc_t *loc, drsys_sysnum_t sysnum, const char *aux);
 
 /* needs to be defined by the tool-specific code */
 app_pc
@@ -190,7 +191,7 @@ extern uint cstack_is_retaddr_unreadable;
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
-               const char *(*get_syscall_name)(uint),
+               const char *(*get_syscall_name)(drsys_sysnum_t),
                bool (*is_dword_defined)(byte *),
                bool (*ignore_xbp)(void *, dr_mcontext_t *),
                const char *frame_truncate_below,

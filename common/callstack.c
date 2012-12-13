@@ -32,6 +32,7 @@
 #ifdef USE_DRSYMS
 # include "drsyms.h"
 #endif
+#include "drsyscall.h"
 #ifdef LINUX
 # include <string.h>
 # include <errno.h>
@@ -45,7 +46,7 @@ static uint op_fp_flags; /* set of FP_ flags */
 static uint op_print_flags; /* set of PRINT_ flags */
 static size_t op_fp_scan_sz;
 /* optional: only needed if packed_callstack_record is passed a pc<64K */
-static const char * (*op_get_syscall_name)(uint);
+static const char * (*op_get_syscall_name)(drsys_sysnum_t);
 static bool (*op_is_dword_defined)(byte *);
 static bool (*op_ignore_xbp)(void *drcontext, dr_mcontext_t *mc);
 static const char *op_truncate_below;
@@ -285,7 +286,7 @@ max_callstack_size(void)
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
-               const char *(*get_syscall_name)(uint),
+               const char *(*get_syscall_name)(drsys_sysnum_t),
                bool (*is_dword_defined)(byte *),
                bool (*ignore_xbp)(void *, dr_mcontext_t *),
                const char *callstack_truncate_below,
@@ -1481,8 +1482,9 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
         if (name[0] != '\0' && name[0] != '<' /* "<unknown>" */) {
             BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "%s", name);
         } else {
-            BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "%d",
-                     frame->loc.u.syscall.sysnum);
+            BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "%d.%d",
+                     frame->loc.u.syscall.sysnum.number,
+                     frame->loc.u.syscall.sysnum.secondary);
         }
         if (frame->loc.u.syscall.syscall_aux != NULL) {
             /* syscall aux identifier (PR 525269) */
@@ -2174,7 +2176,7 @@ pc_to_loc(app_loc_t *loc, app_pc pc)
 }
 
 void
-syscall_to_loc(app_loc_t *loc, uint sysnum, const char *aux)
+syscall_to_loc(app_loc_t *loc, drsys_sysnum_t sysnum, const char *aux)
 {
     ASSERT(loc != NULL, "invalid param");
     loc->type = APP_LOC_SYSCALL;

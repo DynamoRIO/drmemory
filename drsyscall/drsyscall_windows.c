@@ -1181,11 +1181,9 @@ os_syscall_get_name(drsys_sysnum_t num)
  * SYSTEM CALL TYPE
  */
 
-DR_EXPORT
-drmf_status_t
-drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
+static drmf_status_t
+drsys_syscall_type_common(syscall_info_t *sysinfo, drsys_syscall_type_t *type OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
     if (type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     if (sysinfo == NULL)
@@ -1202,6 +1200,23 @@ drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
         *type = DRSYS_SYSCALL_TYPE_KERNEL;
     return DRMF_SUCCESS;
 }
+
+DR_EXPORT
+drmf_status_t
+drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
+{
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    return drsys_syscall_type_common(sysinfo, type);
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT)
+{
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    return drsys_syscall_type_common(pt->sysinfo, type);
+}
+
 
 /***************************************************************************
  * SHADOW PER-ARG-TYPE HANDLING

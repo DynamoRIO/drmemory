@@ -190,17 +190,17 @@ drsys_name_to_number(const char *name, drsys_sysnum_t *sysnum OUT)
     if (sysnum == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     ok = os_syscall_get_num(name, sysnum);
+    if (ok) {
 #ifdef DEBUG
-    if (drsys_number_to_name(*sysnum, &name_check) == DRMF_SUCCESS) {
-        ASSERT(stri_eq(name_check, name) ||
-               /* account for NtUser*, etc. prefix differences */
-               strcasestr(name_check, name) != NULL , "name<->num mismatch");
-    } else
-        ASSERT(false, "name<->num check failed");
+        if (drsys_number_to_name(*sysnum, &name_check) == DRMF_SUCCESS) {
+            ASSERT(stri_eq(name_check, name) ||
+                   /* account for NtUser*, etc. prefix differences */
+                   strcasestr(name_check, name) != NULL , "name<->num mismatch");
+        } else
+            ASSERT(false, "name<->num check failed");
 #endif
-    if (ok)
         return DRMF_SUCCESS;
-    else
+    } else
         return DRMF_ERROR_NOT_FOUND;
 }
 
@@ -737,6 +737,18 @@ report_memarg_field(sysarg_iter_info_t *ii,
                             ptr, sz, id, type, type_name, containing_type);
 }
 
+/* When we're not reporting sub-fields, stored type is reported type
+ * and not just containing type.
+ */
+bool
+report_memarg_nonfield(sysarg_iter_info_t *ii,
+                       const syscall_arg_t *arg_info,
+                       app_pc ptr, size_t sz, const char *id)
+{
+    return report_memarg_type(ii, arg_info->param, arg_info->flags,
+                              ptr, sz, id, type_from_arg_info(arg_info), NULL);
+}
+
 /* For memargs, we report their fields, so the arg type is the containing type. */
 bool
 report_memarg(sysarg_iter_info_t *ii,
@@ -991,7 +1003,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                        "message buffer too small");
                 NULL_TERMINATE_BUFFER(idmsg);
 
-                if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, size, idmsg))
                     break;
             }
         }
@@ -1082,7 +1094,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                 bool skip = os_handle_post_syscall_arg_access
                     (ii, &sysinfo->arg[i], start, size);
                 if (!skip) {
-                    if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                    if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, size, idmsg))
                         break;
                 }
             }
@@ -1101,7 +1113,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             bool skip = os_handle_post_syscall_arg_access(ii, &sysinfo->arg[i],
                                                           start, size);
             if (!skip) {
-                if (!report_memarg(ii, &sysinfo->arg[i], start, size, idmsg))
+                if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, size, idmsg))
                     break;
             }
         }
@@ -1143,6 +1155,13 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
     drsys_arg_t arg;
     sysarg_iter_info_t iter_info = {&arg, cb, nop_iter_cb, user_data, pt, false};
+
+    if (!pt->memargs_iterated) {
+        if (pt->pre)
+            pt->memargs_iterated = true;
+        else /* can't call post w/o having called pre, b/c of extra_info */
+            return DRMF_ERROR_INVALID_CALL;
+    }
 
     arg.drcontext = drcontext;
     arg.sysnum = pt->sysnum;
@@ -1347,6 +1366,7 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     /* cache values for dynamic iteration */
     pt->pre = true;
     pt->first_iter = true;
+    pt->memargs_iterated = false;
 
     pt->mc.size = sizeof(pt->mc);
     pt->mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
@@ -1730,7 +1750,8 @@ release_extra_info(cls_syscall_t *pt, int index)
     ASSERT(index <= EXTRA_INFO_MAX, "index too high");
     value = pt->extra_info[index];
     DODEBUG({
-        ASSERT(pt->extra_inuse[index], "sysarg extra info used improperly");
+        ASSERT(pt->extra_inuse[index],
+               "extra info used improperly (iterating memargs in post but not pre?)");
         /* we can't set to false b/c there are multiple iters */
     });
     return value;

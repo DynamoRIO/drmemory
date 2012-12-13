@@ -151,12 +151,10 @@ bool
 alloc_syscall_filter(void *drcontext, int sysnum);
 
 void
-handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                         reg_t sysarg[], uint arg_cap);
+handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc);
 
 void
-handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc,
-                          reg_t sysarg[], uint arg_cap);
+handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc);
 
 void
 malloc_add(app_pc start, app_pc end, app_pc real_end,
@@ -384,10 +382,10 @@ is_in_seh_unwind(void *drcontext, dr_mcontext_t *mc);
 #endif
 
 void
-client_pre_syscall(void *drcontext, int sysnum, reg_t sysarg[]);
+client_pre_syscall(void *drcontext, int sysnum);
 
 void
-client_post_syscall(void *drcontext, int sysnum, reg_t sysarg[]);
+client_post_syscall(void *drcontext, int sysnum);
 
 void
 client_entering_heap_routine(void);

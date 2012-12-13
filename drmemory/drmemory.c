@@ -273,9 +273,10 @@ dump_statistics(void)
     dr_fprintf(f_global, "\nSystem calls invoked:\n");
     for (i = 0; i < MAX_SYSNUM; i++) {
         if (syscall_invoked[i] > 0) {
+            drsys_sysnum_t num = {i, 0};
             dr_fprintf(f_global, "\t0x%04x %-40s %6u%s\n",
-                       i, get_syscall_name(i), syscall_invoked[i],
-                       syscall_is_known(i) ? "" : " <unknown>");
+                       i, get_syscall_name(num), syscall_invoked[i],
+                       syscall_is_known(num) ? "" : " <unknown>");
         }
     }
 
@@ -1688,7 +1689,7 @@ dr_init(client_id_t id)
 
     heap_region_init(handle_new_heap_region, handle_removed_heap_region);
 
-    /* must be before alloc_drmem_init() */
+    /* must be before alloc_drmem_init() and any other use of drsyscall */
     syscall_init(drcontext _IF_WINDOWS(ntdll_base));
 
     hashtable_init(&known_table, KNOWN_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);

@@ -22,16 +22,32 @@
 #ifndef _SYSCALL_WINDOWS_H_
 #define _SYSCALL_WINDOWS_H_ 1
 
+/* syscall_windows.c exports */ 
+
+extern hashtable_t systable; /* windows num-to-sysinfo table */
+
 void
-syscall_wingdi_init(void *drcontext, app_pc ntdll_base, dr_os_version_info_t *ver);
+get_sysnum(const char *name, drsys_sysnum_t *var);
+
+
+/* syscall_wingdi.c exports */ 
+
+void
+syscall_wingdi_init(void *drcontext, app_pc ntdll_base);
 
 void
 syscall_wingdi_exit(void);
 
-void
-syscall_wingdi_user32_load(void *drcontext, const module_data_t *info);
+bool
+wingdi_shared_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
+                              cls_syscall_t *pt, dr_mcontext_t *mc);
 
+bool
+wingdi_shadow_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
+                              cls_syscall_t *pt, dr_mcontext_t *mc);
 
-extern hashtable_t systable; /* windows num-to-sysinfo table */
+bool
+wingdi_process_syscall_arg(drsys_arg_t *arg);
+
 
 #endif /* _SYSCALL_WINDOWS_H_ */

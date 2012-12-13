@@ -593,49 +593,6 @@ text_contains_any_string(const char *text, const char *patterns, bool ignore_cas
  */
 
 #ifdef WINDOWS
-typedef enum _PROCESSINFOCLASS {
-    ProcessBasicInformation,
-    ProcessQuotaLimits,
-    ProcessIoCounters,
-    ProcessVmCounters,
-    ProcessTimes,
-    ProcessBasePriority,
-    ProcessRaisePriority,
-    ProcessDebugPort,
-    ProcessExceptionPort,
-    ProcessAccessToken,
-    ProcessLdtInformation,
-    ProcessLdtSize,
-    ProcessDefaultHardErrorMode,
-    ProcessIoPortHandlers,
-    ProcessPooledUsageAndLimits,
-    ProcessWorkingSetWatch,
-    ProcessUserModeIOPL,
-    ProcessEnableAlignmentFaultFixup,
-    ProcessPriorityClass,
-    ProcessWx86Information,
-    ProcessHandleCount,
-    ProcessAffinityMask,
-    ProcessPriorityBoost,
-    ProcessDeviceMap,
-    ProcessSessionInformation,
-    ProcessForegroundInformation,
-    ProcessWow64Information,
-    /* added after XP+ */
-    ProcessImageFileName,
-    ProcessLUIDDeviceMapsEnabled,
-    ProcessBreakOnTermination,
-    ProcessDebugObjectHandle,
-    ProcessDebugFlags,
-    ProcessHandleTracing,
-    ProcessIoPriority,
-    ProcessExecuteFlags,
-    ProcessResourceManagement,
-    ProcessCookie,
-    ProcessImageInformation,
-    MaxProcessInfoClass
-} PROCESSINFOCLASS;
-
 typedef enum _THREADINFOCLASS {
     ThreadBasicInformation,
     ThreadTimes,
@@ -659,15 +616,6 @@ typedef enum _THREADINFOCLASS {
 } THREADINFOCLASS;
 
 typedef LONG KPRIORITY;
-typedef struct _PROCESS_BASIC_INFORMATION {
-    NTSTATUS ExitStatus;
-    PPEB PebBaseAddress;
-    ULONG_PTR AffinityMask;
-    KPRIORITY BasePriority;
-    ULONG_PTR UniqueProcessId;
-    ULONG_PTR InheritedFromUniqueProcessId;
-} PROCESS_BASIC_INFORMATION;
-typedef PROCESS_BASIC_INFORMATION *PPROCESS_BASIC_INFORMATION;
 
 typedef struct _THREAD_BASIC_INFORMATION { // Information Class 0
     NTSTATUS ExitStatus;
@@ -794,18 +742,6 @@ set_app_error_code(void *drcontext, uint val)
         dr_switch_to_dr_state(drcontext);
 }
 
-static uint
-getpid(void)
-{
-    return (uint) get_TEB()->ClientId.UniqueProcess;
-}
-
-GET_NTDLL(NtQueryInformationProcess, (IN HANDLE ProcessHandle,
-                                      IN PROCESSINFOCLASS ProcessInformationClass,
-                                      OUT PVOID ProcessInformation,
-                                      IN ULONG ProcessInformationLength,
-                                      OUT PULONG ReturnLength OPTIONAL));
-
 PEB *
 get_app_PEB(void)
 {
@@ -848,21 +784,9 @@ get_process_heap_handle(void)
 bool
 is_current_process(HANDLE h)
 {
-    uint pid, got;
-    PROCESS_BASIC_INFORMATION info;
-    NTSTATUS res;
-    if (h == NT_CURRENT_PROCESS)
-        return true;
-    if (h == NULL)
-        return false;
-    memset(&info, 0, sizeof(PROCESS_BASIC_INFORMATION));
-    res = NtQueryInformationProcess(h, ProcessBasicInformation,
-                                    &info, sizeof(PROCESS_BASIC_INFORMATION), &got);
-    if (!NT_SUCCESS(res) || got != sizeof(PROCESS_BASIC_INFORMATION)) {
-        ASSERT(false, "internal error");
-        return false; /* better to have false positives than negatives? */
-    }
-    return (info.UniqueProcessId == getpid());
+    bool res = false;
+    /* if it fails, assume NOT cur process since usually would use NT_CURRENT_PROCESS */
+    return (drsys_handle_is_current_process(h, &res) == DRMF_SUCCESS && res);
 }
 
 bool
@@ -886,103 +810,15 @@ get_app_commandline(void)
     return L"";
 }
 
-bool
-opc_is_in_syscall_wrapper(uint opc)
-{
-    return (opc == OP_mov_imm || opc == OP_lea || opc == OP_xor /*wow64*/ ||
-            opc == OP_int || opc == OP_call_ind ||
-            /* 64-bit Windows:
-             * ntdll!NtMapViewOfSection:
-             * 77941590 4c8bd1          mov     r10,rcx
-             * 77941593 b825000000      mov     eax,25h
-             * 77941598 0f05            syscall
-             */
-            IF_X64(opc == OP_mov_ld ||)
-            /* w/ DR Ki hooks before dr_init we have to walk over the
-             * native_exec_syscall hooks */
-            opc == OP_jmp);
-}
-
-/* Takes in any Nt syscall wrapper entry point.
- * Will accept other entry points (e.g., we call it for gdi32!GetFontData)
- * and return -1 for them: up to caller to assert if that shouldn't happen.
- *
- * FIXME: deal with hooks
- */
 int
-syscall_num(void *drcontext, byte *entry)
+sysnum_from_name(const char *name)
 {
-    int num = -1;
-    byte *pc = entry;
-    uint opc;
-    instr_t instr;
-    instr_init(drcontext, &instr);
-    do {
-        instr_reset(drcontext, &instr);
-        pc = decode(drcontext, pc, &instr);
-        ASSERT(instr_valid(&instr), "unknown system call sequence");
-        opc = instr_get_opcode(&instr);
-        if (!opc_is_in_syscall_wrapper(opc))
-            break;
-        /* safety check: should only get 11 or 12 bytes in */
-        if (pc - entry > 20)
-            break;
-        /* FIXME: what if somebody has hooked the wrapper? */
-        if (opc == OP_mov_imm && opnd_is_reg(instr_get_dst(&instr, 0)) &&
-            opnd_get_reg(instr_get_dst(&instr, 0)) == REG_EAX) {
-            ASSERT(opnd_is_immed_int(instr_get_src(&instr, 0)), "internal error");
-            num = opnd_get_immed_int(instr_get_src(&instr, 0));
-            break;
-        }
-        /* stop at call to vsyscall or at int itself */
-    } while (opc != OP_call_ind && opc != OP_int &&
-             opc != OP_sysenter && opc != OP_syscall);
-    instr_free(drcontext, &instr);
-    return num;
-}
-
-# ifdef TOOL_DR_MEMORY
-extern const char *get_syscall_name(int sysnum);
-extern int get_syscall_num(void *drcontext, const module_data_t *info, const char *name);
-# endif
-
-/* Returns -1 on failure */
-int
-sysnum_from_name(void *drcontext, const module_data_t *info, const char *name)
-{
-    int num;
-# ifdef TOOL_DR_MEMORY
-    /* drmem has extra info via tables for when no syms are avail (i#388) */
-    num = get_syscall_num(drcontext, info, name);
-    /* good sanity check */
-    DOLOG(1, {
-        if (num != -1) {
-            const char *sysname = get_syscall_name(num);
-            ASSERT(stri_eq(sysname, name) ||
-                   /* account for NtUser*, etc. prefix differences */
-                   strstr(sysname, name) != NULL , "sysnum mismatch");
-        }
-    });
-# else
-    app_pc entry = (app_pc) dr_get_proc_address(info->handle, name);
-#  ifdef USE_DRSYMS
-    if (entry == NULL) {
-        /* Some kernel32 and user32 syscall wrappers are not exported.
-         * For Windows drmem (the only place so far where we need
-         * non-exported syscall nums) we use get_syscall_num() above.
-         */
-        entry = lookup_internal_symbol(info, name);
+    drsys_sysnum_t sysnum;
+    if (drsys_name_to_number(name, &sysnum) == DRMF_SUCCESS) {
+        ASSERT(sysnum.secondary == 0, "should only query primary");
+        return sysnum.number;
     }
-#  endif
-    if (entry == NULL)
-        return -1;
-    /* look for partial map (i#730) */
-    if (entry >= info->end) /* XXX: syscall_num will decode a few instrs in */
-        return -1;
-    num = syscall_num(drcontext, entry);
-    ASSERT(num != -1, "error finding key syscall number");
-# endif /* TOOL_DR_MEMORY */
-    return num;
+    return -1;
 }
 
 static void
@@ -1128,6 +964,17 @@ module_imports_from_msvc(const module_data_t *mod)
     return false;
 }
 #endif /* WINDOWS */
+
+reg_t
+syscall_get_param(void *drcontext, uint num)
+{
+    reg_t res;
+    if (drsys_pre_syscall_arg(drcontext, num, &res) != DRMF_SUCCESS) {
+        ASSERT(false, "failed to get arg");
+        res = 0;
+    }
+    return res;
+}
 
 /***************************************************************************
  * HEAP WITH STATS

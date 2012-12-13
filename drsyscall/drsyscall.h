@@ -514,6 +514,18 @@ drsys_sysnums_equal(drsys_sysnum_t *num1, drsys_sysnum_t *num2)
 
 DR_EXPORT
 /**
+ * Identifies the type of the current in-progress system call.
+ *
+ * @param[in]  drcontext  The current DynamoRIO thread context.
+ * @param[out] type    The system call type.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT);
+
+DR_EXPORT
+/**
  * Identifies whether the system call details for the current in-progress
  * system call are known.
  * Must be called from a system call pre- or post-event.
@@ -696,7 +708,12 @@ DR_EXPORT
 /**
  * Dynamically iterates over all memory regions read or written by the
  * current in-progress system call.  Does descend into fields of data
- * structures.  Must be called from a system call pre- or post-event.
+ * structures.
+ *
+ * Must be called from a system call pre- or post-event.  If this is
+ * called from a post-system call event, it must also be called from
+ * the pre-system call event, as some information required for
+ * post-system call values is stored during pre-system call iteration.
  *
  * In pre-syscall, for OUT parameters, may treat a region containing
  * padding between structure fields as a single region.  Otherwise,
