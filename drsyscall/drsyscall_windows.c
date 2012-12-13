@@ -111,16 +111,6 @@ static const int win2K_sysnums[] = {
 #undef GDI32
 #undef KERNEL32
 
-#ifdef STATISTICS
-/* Until we have everything in the tables for syscall_lookup we use this
- * to provide names.  It takes in primary numbers.
- * For drsyscall framework, we went the route of not providing
- * num2name until modload time, so we can keep this as stats-only.
- */
-# define SYSNAME_TABLE_HASH_BITS 11 /* nearly 1K of them */
-static hashtable_t sysname_table;
-#endif
-
 /***************************************************************************
  * NAME TO NUMBER
  */
@@ -952,9 +942,6 @@ drsyscall_os_init(void *drcontext)
     hashtable_init_ex(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!strdup*/, true/*synch*/, name2num_entry_free,
                       NULL, NULL);
-#ifdef STATISTICS
-    hashtable_init(&sysname_table, SYSNAME_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
-#endif
     for (i = 0; i < NUM_SYSNUM_NAMES; i++) {
         if (sysnums[i] != NONE) {
             const char *skip_prefix = NULL;
@@ -972,12 +959,6 @@ drsyscall_os_init(void *drcontext)
             if (skip_prefix != NULL) {
                 name2num_entry_add(skip_prefix, sysnum, false/*no dup*/);
             }
-
-#ifdef STATISTICS
-            hashtable_add(&sysname_table, (void *)sysnums[i], (void *)sysnum_names[i]);
-            LOG(2, "adding win32k.sys syscall #%d \"%s\" to table under #0x%04x\n",
-                i, sysnum_names[i], sysnums[i]);
-#endif
         }
     }
 
@@ -1026,9 +1007,6 @@ drsyscall_os_exit(void)
 {
     hashtable_delete(&systable);
     hashtable_delete(&name2num_table);
-#ifdef STATISTICS
-    hashtable_delete(&sysname_table);
-#endif
     drsyscall_wingdi_exit();
 }
 
@@ -1165,33 +1143,21 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
     return NT_SUCCESS(res);
 }
 
-/* provides name if known when not in syscall_lookup(num) */
-const char *
-os_syscall_get_name(drsys_sysnum_t num)
-{
-#ifdef STATISTICS
-    return (const char *) hashtable_lookup(&sysname_table, (void *)num.number);
-#else
-    /* not bothering to keep data outside of table */
-    return NULL;
-#endif
-}
-
 /***************************************************************************
  * SYSTEM CALL TYPE
  */
 
-static drmf_status_t
-drsys_syscall_type_common(syscall_info_t *sysinfo, drsys_syscall_type_t *type OUT)
+DR_EXPORT
+drmf_status_t
+drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 {
-    if (type == NULL)
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (sysinfo == NULL)
-        *type = DRSYS_SYSCALL_TYPE_KERNEL;
-    else if ((sysinfo >= &syscall_user32_info[0] &&
-              sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
-             (sysinfo >= &syscall_usercall_info[0] &&
-              sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
+    if ((sysinfo >= &syscall_user32_info[0] &&
+         sysinfo <= &syscall_user32_info[num_user32_syscalls()-1]) ||
+        (sysinfo >= &syscall_usercall_info[0] &&
+         sysinfo <= &syscall_usercall_info[num_usercall_syscalls()-1]))
         *type = DRSYS_SYSCALL_TYPE_USER;
     else if (sysinfo >= &syscall_gdi32_info[0] &&
              sysinfo <= &syscall_gdi32_info[num_gdi32_syscalls()-1])
@@ -1199,22 +1165,6 @@ drsys_syscall_type_common(syscall_info_t *sysinfo, drsys_syscall_type_t *type OU
     else
         *type = DRSYS_SYSCALL_TYPE_KERNEL;
     return DRMF_SUCCESS;
-}
-
-DR_EXPORT
-drmf_status_t
-drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
-{
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
-    return drsys_syscall_type_common(sysinfo, type);
-}
-
-DR_EXPORT
-drmf_status_t
-drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT)
-{
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    return drsys_syscall_type_common(pt->sysinfo, type);
 }
 
 

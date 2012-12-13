@@ -101,6 +101,15 @@ enum {
 /** Name of drsyscall post-syscall last-chance event. */
 #define DRMGR_PRIORITY_NAME_DRSYS_LAST "drsyscall_last"
 
+/** Opaque "system call handle" type.  See #drsys_syscall_t. */
+struct _drsys_syscall_t;
+/**
+ * Opaque "system call handle" type used to refer to a particular system call.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ */
+typedef struct _drsys_syscall_t drsys_syscall_t;
 
 /** Representation of a system call number. */
 typedef struct _drsys_sysnum_t {
@@ -193,6 +202,8 @@ typedef enum {
 /** Describes a system call parameter or memory region. */
 typedef struct _drsys_arg_t {
     /* System call context *****************************************/
+    /** The system call handle. */
+    drsys_syscall_t *syscall;
     /** The system call number. */
     drsys_sysnum_t sysnum;
     /** The current thread's drcontext.  Set for the dynamic iterators only. */
@@ -391,7 +402,9 @@ drsys_filter_all_syscalls(void);
 
 DR_EXPORT
 /**
- * Given a system call name, retrieves the system call number.
+ * Given a system call name, retrieves a handle to the system call to
+ * be used for further queries.  The handle is valid until drsys_exit()
+ * is called.
  * On Windows, multiple versions of the name are accepted.
  * For ntoskrnl system calls, the Nt or Zw varieties are supported.
  * For secondary system calls like NtUserCallOneParam.RELEASEDC, the
@@ -401,79 +414,124 @@ DR_EXPORT
  * libraries containing their wrappers have not yet been loaded.
  *
  * @param[in]  name    The system call name to look up.
- * @param[out] sysnum  The system call number.
+ * @param[out] sysnum  The system call handle.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_name_to_number(const char *name, drsys_sysnum_t *sysnum OUT);
+drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT);
 
 DR_EXPORT
 /**
- * Given a system call number, retrieves the canonical system call name.
+ * Given a system call number, retrieves a handle to the system call to
+ * be used for further queries.  The handle is valid until drsys_exit()
+ * is called.
  * This can be called in dr_init() for all system calls, even if the
  * libraries containing their wrappers have not yet been loaded.
  *
- * @param[in]  sysnum  The system call number to look up.
- * @param[out] name    The system call name.
+ * @param[in]  sysnum   The system call number to look up.
+ * @param[out] syscall  The system call handle.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_number_to_name(drsys_sysnum_t sysnum, const char **name OUT);
+drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT);
+
+DR_EXPORT
+/**
+ * Given a system call handle, retrieves the canonical system call name.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ *
+ * @param[in]  syscall  The handle for the system call to query.
+ * @param[out] name     The system call name.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_syscall_name(drsys_syscall_t *syscall, const char **name OUT);
+
+DR_EXPORT
+/**
+ * Given a system call handle, retrieves the system call number.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ *
+ * @param[in]  syscall  The handle for the system call to query.
+ * @param[out] sysnum   The system call number.
+ *
+ * \return success code.
+ */
+drmf_status_t
+drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum OUT);
 
 DR_EXPORT
 /**
  * Identifies the type of system call.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
- * @param[in]  sysnum  The system call number to look up.
- * @param[out] type    The system call type.
+ * @param[in]  syscall  The handle for the system call to query.
+ * @param[out] type     The system call type.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT);
+drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT);
 
 DR_EXPORT
 /**
- * Identifies whether the system call details for the given number are known.
+ * Identifies whether the system call details for the given syscall are known.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
- * @param[in]  sysnum  The system call number to look up.
- * @param[out] known   Whether known.
+ * @param[in]  syscall  The handle for the system call to query.
+ * @param[out] known    Whether known.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_is_known(drsys_sysnum_t sysnum, bool *known OUT);
+drsys_syscall_is_known(drsys_syscall_t *syscall, bool *known OUT);
 
 DR_EXPORT
 /**
  * Identifies whether the given value is a successful return value
  * for the given system call.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ *
  * On Windows, System calls that return an error code like
  * STATUS_BUFFER_TOO_SMALL but that still write an OUT param are
  * considered to have succeeded.
  *
- * @param[in]  sysnum   The system call number to look up.
+ * @param[in]  syscall  The handle for the system call to query.
  * @param[in]  result   The system call return value.
  * @param[out] success  Whether the value indicates success.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_succeeded(drsys_sysnum_t sysnum, reg_t result, bool *success OUT);
+drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT);
 
 DR_EXPORT
 /**
  * Identifies the type of the return value for the specified system call.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
- * @param[in]  sysnum   The system call number to look up.
+ * @param[in]  syscall  The handle for the system call to query.
  * @param[out] type     The system call return type.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_return_type(drsys_sysnum_t sysnum, drsys_param_type_t *type OUT);
+drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type OUT);
 
 #ifdef WINDOWS
 DR_EXPORT
@@ -514,62 +572,17 @@ drsys_sysnums_equal(drsys_sysnum_t *num1, drsys_sysnum_t *num2)
 
 DR_EXPORT
 /**
- * Identifies the type of the current in-progress system call.
+ * Retrieves the system call handle for the current in-progress system call.
+ * The handle is only valid through the end of the post-system-call event
+ * for the system call.
  *
  * @param[in]  drcontext  The current DynamoRIO thread context.
- * @param[out] type    The system call type.
+ * @param[out] syscall    The system call handle.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT);
-
-DR_EXPORT
-/**
- * Identifies whether the system call details for the current in-progress
- * system call are known.
- * Must be called from a system call pre- or post-event.
- *
- * @param[in]  drcontext  The current DynamoRIO thread context.
- * @param[out] known      Whether known.
- *
- * \return success code.
- */
-drmf_status_t
-drsys_cur_syscall_is_known(void *drcontext, bool *known OUT);
-
-/* note: syscalls that return an error code like STATUS_BUFFER_TOO_SMALL but that
- * still write an out param are considered to have succeeded
- */
-DR_EXPORT
-/**
- * Identifies whether the current just-completed system call succeeded.
- * Must be called from a system call post-event.
- *
- * On Windows, System calls that return an error code like
- * STATUS_BUFFER_TOO_SMALL but that still write an OUT param are
- * considered to have succeeded.
- *
- * @param[in]  drcontext  The current DynamoRIO thread context.
- * @param[out] success  Whether the value indicates success.
- *
- * \return success code.
- */
-drmf_status_t
-drsys_cur_syscall_succeeded(void *drcontext, bool *success OUT);
-
-DR_EXPORT
-/**
- * Identifies the type of the return value for the current in-progress
- * system call.
- *
- * @param[in]  drcontext  The current DynamoRIO thread context.
- * @param[out] type     The system call return type.
- *
- * \return success code.
- */
-drmf_status_t
-drsys_cur_syscall_return_type(void *drcontext, drsys_param_type_t *type OUT);
+drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall OUT);
 
 DR_EXPORT
 /**
@@ -587,19 +600,6 @@ DR_EXPORT
  */
 drmf_status_t
 drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT);
-
-DR_EXPORT
-/**
- * Identifies the number of the current in-progress system call.
- * Must be called from a system call pre- or post-event.
- *
- * @param[in]  drcontext  The current DynamoRIO thread context.
- * @param[out] sysnum     The system call number.
- *
- * \return success code.
- */
-drmf_status_t
-drsys_get_sysnum(void *drcontext, drsys_sysnum_t *sysnum OUT);
 
 DR_EXPORT
 /**
@@ -633,7 +633,7 @@ DR_EXPORT
  * Iterates over all system call numbers and calls the given callback
  * for each one.  The argument types of each system call can then be
  * enumerated by calling drsys_iterate_arg_types() and passing the
- * given \p iter_arg_cxt.
+ * given system call handle \p syscall.
  *
  * This will enumerate all system calls even if the libraries
  * containing their wrappers have not yet been loaded.  System calls
@@ -649,15 +649,16 @@ DR_EXPORT
  */
 drmf_status_t
 drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum,
-                                  void *iter_arg_cxt, void *user_data),
+                                  drsys_syscall_t *syscall, void *user_data),
                        void *user_data);
 
 DR_EXPORT
 /**
  * Statically iterates over all system call parameters for the given
- * system call.  The system call is specified in one of two ways:
- * either \p iter_arg_cxt, obtained from drsys_iterate_syscalls(), is
- * non-NULL, or if it is NULL then \p sysnum is used.
+ * system call.
+ * The system call handle can be obtained from drsys_cur_syscall(),
+ * drsys_iterate_syscalls(), drsys_name_to_syscall(),
+ * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
  * Only the top-level types are enumerated (i.e., fields of structures
  * are not recursively followed).  As this is a static iteration, only
@@ -665,11 +666,7 @@ DR_EXPORT
  * The return value is included at the end of the iteration, with a
  * drsys_arg_t.ordinal value of -1.
  *
- * @param[in] iter_arg_cxt  The opaque pointer passed to the callback in
- *                          drsys_iterate_syscalls().  If this is non-NULL,
- *                          \p sysnum is ignored.
- * @param[in] sysnum     The system call whose arguments should be enumerated.
- *                       Ignored if \p iter_arg_cxt is non-NULL.
+ * @param[in] syscall    The handle for the system call to query.
  * @param[in] cb         The callback to invoke for each system call parameter.
  *                       The callback's return value indicates whether to
  *                       continue the iteration.
@@ -678,8 +675,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_iterate_arg_types(void *iter_arg_cxt, drsys_sysnum_t sysnum,
-                        drsys_iter_cb_t cb, void *user_data);
+drsys_iterate_arg_types(drsys_syscall_t *syscall, drsys_iter_cb_t cb, void *user_data);
 
 /***************************************************************************
  * DYNAMIC CALLBACK-BASED ITERATORS

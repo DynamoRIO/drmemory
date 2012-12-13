@@ -55,11 +55,11 @@ syscall_os_module_load(void *drcontext, const module_data_t *info, bool loaded);
 /* for tasks unrelated to shadowing that are common to all tools */
 bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                      dr_mcontext_t *mc);
+                      dr_mcontext_t *mc, drsys_syscall_t *syscall);
 
 void
 os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                       dr_mcontext_t *mc);
+                       dr_mcontext_t *mc, drsys_syscall_t *syscall);
 
 bool
 os_process_syscall_memarg(drsys_arg_t *arg);

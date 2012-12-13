@@ -221,13 +221,14 @@ syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_
 
 bool
 wingdi_shared_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
-                              cls_syscall_t *pt, dr_mcontext_t *mc)
+                              cls_syscall_t *pt, dr_mcontext_t *mc,
+                              drsys_syscall_t *syscall)
 {
     /* handlers here do not check for success so we check up front */
     if (!pre) {
         bool success;
-        if (drsys_cur_syscall_succeeded(drcontext, &success) != DRMF_SUCCESS ||
-            !success)
+        if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success)
+            != DRMF_SUCCESS || !success)
             return true;
     }
 

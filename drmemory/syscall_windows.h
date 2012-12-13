@@ -40,11 +40,8 @@ syscall_wingdi_exit(void);
 
 bool
 wingdi_shared_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
-                              cls_syscall_t *pt, dr_mcontext_t *mc);
-
-bool
-wingdi_shadow_process_syscall(bool pre, void *drcontext, drsys_sysnum_t sysnum,
-                              cls_syscall_t *pt, dr_mcontext_t *mc);
+                              cls_syscall_t *pt, dr_mcontext_t *mc,
+                              drsys_syscall_t *syscall);
 
 bool
 wingdi_process_syscall_arg(drsys_arg_t *arg);

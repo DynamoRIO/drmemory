@@ -315,7 +315,9 @@ const char *
 get_syscall_name(drsys_sysnum_t num)
 {
     const char *name;
-    if (drsys_number_to_name(num, &name) == DRMF_SUCCESS)
+    drsys_syscall_t *syscall;
+    if (drsys_number_to_syscall(num, &syscall) == DRMF_SUCCESS &&
+        drsys_syscall_name(syscall, &name) == DRMF_SUCCESS)
         return name;
     else {
         name = auxlib_syscall_name(num.number);
@@ -329,7 +331,9 @@ bool
 syscall_is_known(drsys_sysnum_t num)
 {
     bool known = false;
-    if (drsys_syscall_is_known(num, &known) != DRMF_SUCCESS)
+    drsys_syscall_t *syscall;
+    if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS ||
+        drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS)
         known = auxlib_known_syscall(num.number);
     return known;
 }
@@ -447,8 +451,11 @@ event_pre_syscall(void *drcontext, int sysnum)
     drsys_sysnum_t sysnum_full;
     dr_mcontext_t *mc;
     bool res = true;
+    drsys_syscall_t *syscall;
+    if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "shouldn't fail");
 
-    if (drsys_get_sysnum(drcontext, &sysnum_full) != DRMF_SUCCESS)
+    if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "stats expect primary==DR's num");
     if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
@@ -478,7 +485,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     });
 
     /* give os-specific-code chance to do non-shadow processing */
-    res = os_shared_pre_syscall(drcontext, pt, sysnum_full, mc);
+    res = os_shared_pre_syscall(drcontext, pt, sysnum_full, mc, syscall);
     if (auxlib_known_syscall(sysnum))
         res = auxlib_shared_pre_syscall(drcontext, sysnum, mc) && res;
 
@@ -511,15 +518,18 @@ event_post_syscall(void *drcontext, int sysnum)
     cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     drsys_sysnum_t sysnum_full;
     dr_mcontext_t *mc;
+    drsys_syscall_t *syscall;
+    if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "shouldn't fail");
 
-    if (drsys_get_sysnum(drcontext, &sysnum_full) != DRMF_SUCCESS)
+    if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "stats expect primary==DR's num");
     if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_mcontext failed");
 
     handle_post_alloc_syscall(drcontext, sysnum, mc);
-    os_shared_post_syscall(drcontext, pt, sysnum_full, mc);
+    os_shared_post_syscall(drcontext, pt, sysnum_full, mc, syscall);
     if (auxlib_known_syscall(sysnum))
         auxlib_shared_post_syscall(drcontext, sysnum, mc);
 
@@ -529,8 +539,8 @@ event_post_syscall(void *drcontext, int sysnum)
         /* post-syscall, eax is defined */
         register_shadow_set_dword(REG_XAX, SHADOW_DWORD_DEFINED);
 
-        if (drsys_cur_syscall_succeeded(drcontext, &success) != DRMF_SUCCESS ||
-            !success) {
+        if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success)
+            != DRMF_SUCCESS || !success) {
             LOG(SYSCALL_VERBOSE, "system call %i %s failed with "PFX"\n",
                 sysnum, get_syscall_name(sysnum_full), dr_syscall_get_result(drcontext));
         } else {

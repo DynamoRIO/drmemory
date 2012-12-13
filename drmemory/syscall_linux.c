@@ -263,7 +263,7 @@ handle_pre_execve(void *drcontext)
 /* for tasks unrelated to shadowing that are common to all tools */
 bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                      dr_mcontext_t *mc)
+                      dr_mcontext_t *mc, drsys_syscall_t *syscall)
 {
     bool res = true;
     switch (sysnum.number) {
@@ -290,7 +290,7 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
 /* for tasks unrelated to shadowing that are common to all tools */
 void
 os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                       dr_mcontext_t *mc)
+                       dr_mcontext_t *mc, drsys_syscall_t *syscall)
 {
     switch (sysnum.number) {
     case SYS_clone: {

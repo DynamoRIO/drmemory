@@ -105,21 +105,24 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 static bool
 event_pre_syscall(void *drcontext, int sysnum)
 {
+    drsys_syscall_t *syscall;
     drsys_sysnum_t sysnum_full;
     bool known;
     drsys_param_type_t ret_type;
 
-    if (drsys_get_sysnum(drcontext, &sysnum_full) != DRMF_SUCCESS)
+    if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_cur_syscall failed");
+    if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "primary should match DR's num");
 
     check_mcontext(drcontext);
 
-    if (drsys_cur_syscall_return_type(drcontext, &ret_type) != DRMF_SUCCESS ||
+    if (drsys_syscall_return_type(syscall, &ret_type) != DRMF_SUCCESS ||
         ret_type == DRSYS_TYPE_INVALID || ret_type == DRSYS_TYPE_UNKNOWN)
         ASSERT(false, "failed to get syscall return type");
 
-    if (drsys_cur_syscall_is_known(drcontext, &known) != DRMF_SUCCESS || !known)
+    if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
         ASSERT(false, "no syscalls in this app should be unknown");
 
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
@@ -133,10 +136,13 @@ event_pre_syscall(void *drcontext, int sysnum)
 static void
 event_post_syscall(void *drcontext, int sysnum)
 {
+    drsys_syscall_t *syscall;
     drsys_sysnum_t sysnum_full;
     bool success = false;
 
-    if (drsys_get_sysnum(drcontext, &sysnum_full) != DRMF_SUCCESS)
+    if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_cur_syscall failed");
+    if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_sysnum failed");
     ASSERT(sysnum == sysnum_full.number, "primary should match DR's num");
 
@@ -145,7 +151,8 @@ event_post_syscall(void *drcontext, int sysnum)
     if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
         ASSERT(false, "drsys_iterate_args failed");
 
-    if (drsys_cur_syscall_succeeded(drcontext, &success) != DRMF_SUCCESS || !success) {
+    if (drsys_syscall_succeeded(syscall, dr_syscall_get_result(drcontext), &success) !=
+        DRMF_SUCCESS || !success) {
         ASSERT(false, "no syscalls in this app should fail");
     } else {
         if (drsys_iterate_memargs(drcontext, drsys_iter_memarg_cb, NULL) != DRMF_SUCCESS)
@@ -162,6 +169,7 @@ event_filter_syscall(void *drcontext, int sysnum)
 static void
 test_static_queries(void)
 {
+    drsys_syscall_t *syscall;
     drsys_sysnum_t num = {4,4};
     drmf_status_t res;
     bool known;
@@ -170,38 +178,44 @@ test_static_queries(void)
     const char *name = "bogus";
 
 #ifdef WINDOWS
-    res = drsys_name_to_number("NtContinue", &num);
+    res = drsys_name_to_syscall("NtContinue", &syscall);
 #else
-    res = drsys_name_to_number("fstatfs", &num);
+    res = drsys_name_to_syscall("fstatfs", &syscall);
 #endif
+    ASSERT(res == DRMF_SUCCESS, "drsys_name_to_syscall failed");
+    res = drsys_syscall_number(syscall, &num);
     ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_number failed");
-    if (drsys_syscall_is_known(num, &known) != DRMF_SUCCESS || !known)
+    if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
         ASSERT(false, "syscall should be known");
-    if (drsys_syscall_type(num, &type) != DRMF_SUCCESS ||
+    if (drsys_syscall_type(syscall, &type) != DRMF_SUCCESS ||
         type != DRSYS_SYSCALL_TYPE_KERNEL)
         ASSERT(false, "syscall type wrong");
-    if (drsys_syscall_return_type(num, &ret_type) != DRMF_SUCCESS ||
+    if (drsys_syscall_return_type(syscall, &ret_type) != DRMF_SUCCESS ||
         ret_type == DRSYS_TYPE_INVALID || ret_type == DRSYS_TYPE_UNKNOWN)
         ASSERT(false, "failed to get syscall return type");
 
 #ifdef WINDOWS
     /* test Zw variant */
     num.secondary = 4;
-    res = drsys_name_to_number("ZwContinue", &num);
+    if (drsys_name_to_syscall("ZwContinue", &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_name_to_syscall failed");
+    res = drsys_syscall_number(syscall, &num);
     ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_number failed");
     /* test not found */
-    res = drsys_name_to_number("NtContinueBogus", &num);
+    res = drsys_name_to_syscall("NtContinueBogus", &syscall);
     ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_number should have failed");
 #else
     /* test not found */
-    res = drsys_name_to_number("fstatfr", &num);
+    res = drsys_name_to_syscall("fstatfr", &syscall);
     ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_number should have failed");
 #endif
 
     /* test number to name */
     num.number = 0;
     num.secondary = 0;
-    res = drsys_number_to_name(num, &name);
+    if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_number_to_syscall failed");
+    res = drsys_syscall_name(syscall, &name);
     ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_number_to_name failed");
 }
 
@@ -216,16 +230,16 @@ static_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 }
 
 static bool
-static_iter_cb(drsys_sysnum_t num, void *iter_arg_cxt, void *user_data)
+static_iter_cb(drsys_sysnum_t num, drsys_syscall_t *syscall, void *user_data)
 {
     const char *name;
-    drmf_status_t res = drsys_number_to_name(num, &name);
-    ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_number_to_name failed");
+    drmf_status_t res = drsys_syscall_name(syscall, &name);
+    ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_syscall_name failed");
 
     if (verbose)
         dr_fprintf(STDERR, "syscall %d.%d = %s\n", num.number, num.secondary, name);
 
-    if (drsys_iterate_arg_types(iter_arg_cxt, num, static_iter_arg_cb, NULL) !=
+    if (drsys_iterate_arg_types(syscall, static_iter_arg_cb, NULL) !=
         DRMF_SUCCESS)
         ASSERT(false, "drsys_iterate_arg_types failed");
     return true; /* keep going */

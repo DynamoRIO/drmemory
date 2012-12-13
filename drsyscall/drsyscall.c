@@ -83,7 +83,7 @@ int cls_idx_drsys = -1;
 
 drsys_options_t drsys_ops;
 
-static int init_count;
+static int drsys_init_count;
 
 void *systable_lock;
 
@@ -164,44 +164,44 @@ check_syscall_gateway(instr_t *inst)
 
 DR_EXPORT
 drmf_status_t
-drsys_number_to_name(drsys_sysnum_t num, const char **name OUT)
+drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(num);
-    if (name == NULL)
+    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    if (syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    if (sysinfo != NULL)
-        *name = sysinfo->name;
-    else {
-        *name = os_syscall_get_name(num);
-        if (*name == NULL) {
-            *name = "<unknown>";
-            return DRMF_ERROR_NOT_FOUND;
-        }
-    }
+    /* All unknown-detail syscalls are now in the tables, so we only return
+     * NULL on error.
+     */
+    if (sysinfo == NULL)
+        return DRMF_ERROR_NOT_FOUND;
+    *syscall = (drsys_syscall_t *) sysinfo;
     return DRMF_SUCCESS;
 }
 
 DR_EXPORT
 drmf_status_t
-drsys_name_to_number(const char *name, drsys_sysnum_t *sysnum OUT)
+drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
 {
+    drsys_sysnum_t sysnum;
+    syscall_info_t *sysinfo;
     bool ok;
-    IF_DEBUG(const char *name_check;)
-    if (sysnum == NULL)
+    if (name == NULL || syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    ok = os_syscall_get_num(name, sysnum);
-    if (ok) {
-#ifdef DEBUG
-        if (drsys_number_to_name(*sysnum, &name_check) == DRMF_SUCCESS) {
-            ASSERT(stri_eq(name_check, name) ||
-                   /* account for NtUser*, etc. prefix differences */
-                   strcasestr(name_check, name) != NULL , "name<->num mismatch");
-        } else
-            ASSERT(false, "name<->num check failed");
-#endif
-        return DRMF_SUCCESS;
-    } else
+    ok = os_syscall_get_num(name, &sysnum);
+    if (!ok)
         return DRMF_ERROR_NOT_FOUND;
+    sysinfo = syscall_lookup(sysnum);
+    if (sysinfo == NULL) {
+        ASSERT(false, "name2num should return num in systable");
+        return DRMF_ERROR_NOT_FOUND;
+    }
+#ifdef DEBUG
+    ASSERT(stri_eq(sysinfo->name, name) ||
+           /* account for NtUser*, etc. prefix differences */
+           strcasestr(sysinfo->name, name) != NULL , "name<->num mismatch");
+#endif
+    *syscall = (drsys_syscall_t *) sysinfo;
+    return DRMF_SUCCESS;
 }
 
 /* to avoid heap-allocated data we use pointers to temporary drsys_sysnum_t */
@@ -240,26 +240,18 @@ syscall_lookup(drsys_sysnum_t num)
 
 static const byte UNKNOWN_SYSVAL_SENTINEL = 0xab;
 
-DR_EXPORT
-drmf_status_t
-drsys_syscall_is_known(drsys_sysnum_t sysnum, bool *known OUT)
-{
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
-    if (known == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
-    if (sysinfo != NULL)
-        *known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
-    else
-        *known = false;
-    return DRMF_SUCCESS;
-}
+static const syscall_info_t unknown_info_template =
+    {{0,0},"<unknown>", 0/*UNKNOWN*/, DRSYS_TYPE_UNKNOWN, };
 
 DR_EXPORT
 drmf_status_t
-drsys_cur_syscall_is_known(void *drcontext, bool *known OUT)
+drsys_syscall_is_known(drsys_syscall_t *syscall, bool *known OUT)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    return drsys_syscall_is_known(pt->sysnum, known);
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || known == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *known = TEST(SYSINFO_ALL_PARAMS_KNOWN, sysinfo->flags);
+    return DRMF_SUCCESS;
 }
 
 static bool
@@ -516,26 +508,42 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
  * QUERY ROUTINES
  */
 
+static drsys_syscall_t *
+get_cur_syscall(cls_syscall_t *pt)
+{
+    /* We can't return NULL b/c the caller will pass it to our query routines.
+     * So we pass a sentinel entry, which is per-thread so we can modify it.
+     * We only use this for dynamic queries where the caller shouldn't keep
+     * the pointer around.
+     */
+    if (pt->sysinfo == NULL) {
+        /* We do need to fill in the syscall number */
+        memcpy(&pt->unknown_info, &unknown_info_template, sizeof(pt->unknown_info));
+        pt->unknown_info.num = pt->sysnum;
+        return (drsys_syscall_t *) &pt->unknown_info;
+    } else
+        return (drsys_syscall_t *) pt->sysinfo;
+}
+
 DR_EXPORT
 drmf_status_t
-drsys_syscall_succeeded(drsys_sysnum_t sysnum, reg_t result, bool *success OUT)
+drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
-    if (success == NULL)
+    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
+    if (drcontext == NULL || syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    *success = os_syscall_succeeded(sysnum, sysinfo, result);
+    *syscall = get_cur_syscall(pt);
     return DRMF_SUCCESS;
 }
 
 DR_EXPORT
 drmf_status_t
-drsys_cur_syscall_succeeded(void *drcontext, bool *success OUT)
+drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    if (success == NULL)
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || success == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    *success = os_syscall_succeeded(pt->sysnum, pt->sysinfo,
-                                    dr_syscall_get_result(drcontext));
+    *success = os_syscall_succeeded(sysinfo->num, sysinfo, result);
     return DRMF_SUCCESS;
 }
 
@@ -552,12 +560,23 @@ drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_get_sysnum(void *drcontext, drsys_sysnum_t *sysnum OUT)
+drsys_syscall_name(drsys_syscall_t *syscall, const char **name OUT)
 {
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    if (sysnum == NULL)
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || name == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    *sysnum = pt->sysnum;
+    *name = sysinfo->name;
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum OUT)
+{
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || sysnum == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *sysnum = sysinfo->num;
     return DRMF_SUCCESS;
 }
 
@@ -574,27 +593,13 @@ drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT)
 
 DR_EXPORT
 drmf_status_t
-drsys_syscall_return_type(drsys_sysnum_t sysnum, drsys_param_type_t *type OUT)
+drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
-    if (type == NULL)
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
+    if (syscall == NULL || type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     /* XXX: should we provide size too?  They can iterate to get that. */
     *type = map_to_exported_type(sysinfo->return_type, NULL);
-    return DRMF_SUCCESS;
-}
-
-DR_EXPORT
-drmf_status_t
-drsys_cur_syscall_return_type(void *drcontext, drsys_param_type_t *type OUT)
-{
-    cls_syscall_t *pt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_drsys);
-    if (type == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
-    if (pt->sysinfo == NULL)
-        return DRMF_ERROR_DETAILS_UNKNOWN;
-    /* XXX: should we provide size too?  They can iterate to get that. */
-    *type = map_to_exported_type(pt->sysinfo->return_type, NULL);
     return DRMF_SUCCESS;
 }
 
@@ -1164,6 +1169,7 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
     }
 
     arg.drcontext = drcontext;
+    arg.syscall = get_cur_syscall(pt);
     arg.sysnum = pt->sysnum;
     arg.pre = pt->pre;
     arg.mc = &pt->mc;
@@ -1189,7 +1195,7 @@ drsys_iterate_memargs(void *drcontext, drsys_iter_cb_t cb, void *user_data)
                 LOG(SYSCALL_VERBOSE,
                     "system call #"SYSNUM_FMT"."SYSNUM_FMT" %s failed with "PFX"\n",
                     pt->sysnum.number, pt->sysnum.secondary,
-                    os_syscall_get_name(pt->sysnum), dr_syscall_get_result(drcontext));
+                    pt->sysinfo->name, dr_syscall_get_result(drcontext));
             } else {
                 process_post_syscall_reads_and_writes(pt, &iter_info);
             }
@@ -1218,6 +1224,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
         sysinfo->num.number, sysinfo->num.secondary, sysinfo->name);
 
     arg->drcontext = drcontext;
+    arg->syscall = (drsys_syscall_t *) sysinfo;
     arg->sysnum = sysinfo->num;
     if (pt == NULL) {
         arg->pre = true; /* arbitrary */
@@ -1321,24 +1328,20 @@ drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
 
 DR_EXPORT
 drmf_status_t
-drsys_iterate_arg_types(void *iter_arg_cxt, drsys_sysnum_t sysnum,
-                        drsys_iter_cb_t cb, void *user_data)
+drsys_iterate_arg_types(drsys_syscall_t *syscall, drsys_iter_cb_t cb, void *user_data)
 {
     void *drcontext = dr_get_current_drcontext();
-    syscall_info_t *sysinfo;
+    syscall_info_t *sysinfo = (syscall_info_t *) syscall;
     drsys_arg_t arg;
-    if (iter_arg_cxt != NULL) {
-        sysinfo = (syscall_info_t *) iter_arg_cxt;
-    } else {
-        sysinfo = syscall_lookup(sysnum);
-    }
+    if (syscall == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
     return drsys_iterate_args_common(drcontext, NULL/*==static*/, sysinfo,
                                      &arg, cb, user_data);
 }
 
 DR_EXPORT
 drmf_status_t
-drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum, void *iter_arg_cxt,
+drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum, drsys_syscall_t *syscall,
                                   void *user_data),
                        void *user_data)
 {
@@ -1349,7 +1352,7 @@ drsys_iterate_syscalls(bool (*cb)(drsys_sysnum_t sysnum, void *iter_arg_cxt,
         hash_entry_t *he;
         for (he = systable.table[i]; he != NULL; he = he->next) {
             syscall_info_t *sysinfo = (syscall_info_t *) he->payload;
-            if (!(*cb)(sysinfo->num, (void *) sysinfo, user_data))
+            if (!(*cb)(sysinfo->num, (drsys_syscall_t *) sysinfo, user_data))
                 break;
         }
     }
@@ -1619,7 +1622,7 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
         {sizeof(pri_bb), DRMGR_PRIORITY_NAME_DRSYS, NULL, NULL, 0};
 
     /* handle multiple sets of init/exit calls */
-    int count = dr_atomic_add32_return_sum(&init_count, 1);
+    int count = dr_atomic_add32_return_sum(&drsys_init_count, 1);
     if (count > 1)
         return true;
 
@@ -1700,9 +1703,11 @@ drmf_status_t
 drsys_exit(void)
 {
     /* handle multiple sets of init/exit calls */
-    int count = dr_atomic_add32_return_sum(&init_count, -1);
+    int count = dr_atomic_add32_return_sum(&drsys_init_count, -1);
     if (count > 0)
         return DRMF_SUCCESS;
+    if (count < 0)
+        return DRMF_ERROR;
 
 #ifdef SYSCALL_DRIVER
     if (drsys_ops.syscall_driver)

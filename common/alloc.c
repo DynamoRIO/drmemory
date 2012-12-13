@@ -2669,8 +2669,10 @@ malloc_allocator_type(alloc_routine_entry_t *routine)
 static void
 get_sysnum(const char *name, int *var, bool ok_to_fail)
 {
+    drsys_syscall_t *syscall;
     drsys_sysnum_t fullnum;
-    if (drsys_name_to_number(name, &fullnum) == DRMF_SUCCESS) {
+    if (drsys_name_to_syscall(name, &syscall) == DRMF_SUCCESS &&
+        drsys_syscall_number(syscall, &fullnum) == DRMF_SUCCESS) {
         *var = fullnum.number;
         ASSERT(fullnum.secondary == 0, "should only query for primary nums");
     } else {

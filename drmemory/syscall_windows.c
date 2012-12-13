@@ -68,9 +68,10 @@ static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
 void
 get_sysnum(const char *name, drsys_sysnum_t *var)
 {
-    IF_DEBUG(drmf_status_t res =)
-        drsys_name_to_number(name, var);
-    ASSERT(res == DRMF_SUCCESS, "error finding required syscall #");
+    drsys_syscall_t *syscall;
+    if (drsys_name_to_syscall(name, &syscall) != DRMF_SUCCESS ||
+        drsys_syscall_number(syscall, var) != DRMF_SUCCESS)
+        ASSERT(false, "error finding required syscall #");
 }
 
 static bool
@@ -226,7 +227,7 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 {
     if (options.check_handle_leaks && !arg->pre && arg->type == DRSYS_TYPE_HANDLE) {
         drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
-        if (drsys_cur_syscall_type(arg->drcontext, &syscall_type) != DRMF_SUCCESS)
+        if (drsys_syscall_type(arg->syscall, &syscall_type) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall type\n");
         if (arg->mode == DRSYS_PARAM_OUT) {
             HANDLE handle;
@@ -240,7 +241,7 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
             } else {
                 DODEBUG({
                     const char *sysname = "<unknown>";
-                    drsys_number_to_name(arg->sysnum, &sysname);
+                    drsys_syscall_name(arg->syscall, &sysname);
                     LOG(SYSCALL_VERBOSE,
                         "fail to read handle from syscall %x.%x %s",
                         arg->sysnum.number, arg->sysnum.secondary, sysname);
@@ -272,7 +273,7 @@ syscall_deletes_handle(drsys_sysnum_t sysnum)
 
 bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                      dr_mcontext_t *mc)
+                      dr_mcontext_t *mc, drsys_syscall_t *syscall)
 {
     /* i#544: give child processes a chance for clean exit for leak scan
      * and option summary and symbol and code cache generation.
@@ -306,7 +307,7 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
              * assuming the syscall will success, and add it back if fail.
              */
             drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
-            if (drsys_cur_syscall_type(drcontext, &syscall_type) != DRMF_SUCCESS)
+            if (drsys_syscall_type(syscall, &syscall_type) != DRMF_SUCCESS)
                 WARN("WARNING: failed to get syscall type\n");
             pt->handle_info =
                 handlecheck_delete_handle(drcontext,
@@ -315,12 +316,12 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
                                           sysnum, NULL, mc);
         }
     }
-    return wingdi_shared_process_syscall(true/*pre*/, drcontext, sysnum, pt, mc);
+    return wingdi_shared_process_syscall(true/*pre*/, drcontext, sysnum, pt, mc, syscall);
 }
 
 void
 os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                       dr_mcontext_t *mc)
+                       dr_mcontext_t *mc, drsys_syscall_t *syscall)
 {
     /* FIXME PR 456501: watch CreateProcess, CreateProcessEx, and
      * CreateUserProcess.  Convert process handle to pid and section
@@ -351,9 +352,9 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
         reg_t res = dr_syscall_get_result(drcontext);
         drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
         bool success = false;
-        if (drsys_cur_syscall_succeeded(drcontext, &success) != DRMF_SUCCESS)
+        if (drsys_syscall_succeeded(syscall, res, &success) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall success\n");
-        if (drsys_cur_syscall_type(drcontext, &syscall_type) != DRMF_SUCCESS)
+        if (drsys_syscall_type(syscall, &syscall_type) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall type\n");
         if (syscall_deletes_handle(sysnum)) {
             /* XXX: really we should iterate the args and look for the handle,
@@ -368,7 +369,7 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
         if (drsys_iterate_args(drcontext, post_syscall_iter_arg_cb, NULL) != DRMF_SUCCESS)
             LOG(1, "unknown system call args for #%d\n", sysnum.number);
     }
-    wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc);
+    wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc, syscall);
 }
 
 bool

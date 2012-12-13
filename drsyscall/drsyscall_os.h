@@ -267,6 +267,9 @@ typedef struct _cls_syscall_t {
     /* dynamically allocated */
     size_t sysarg_val_bytes[SYSCALL_NUM_ARG_TRACK];
     byte *sysarg_val[SYSCALL_NUM_ARG_TRACK];
+
+    /* for a writable info struct so we can set the sysnum */
+    syscall_info_t unknown_info;
 } cls_syscall_t;
 
 /* used for simpler arg passing among syscall arg handlers */
@@ -281,6 +284,11 @@ typedef struct _sysarg_iter_info_t {
 
 /* Hashtable maintained in os-specific code that maps drsys_sysnum_t to
  * syscall_info_t*.
+ * To gain efficiency and merge static and dynamic queries, our API
+ * hands out an opaque copy of the syscall_info_t pointers that are
+ * stored in this table to the client.
+ * We assume the source tables pointed into are set at process init
+ * and never changed afterward.
  */
 extern hashtable_t systable;
 /* lock for systable, maintained in drsyscall.c */
@@ -345,10 +353,6 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
 
 bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res);
-
-/* provides name if known when not in syscall_lookup(num) */
-const char *
-os_syscall_get_name(drsys_sysnum_t num);
 
 bool
 os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT);

@@ -813,8 +813,10 @@ get_app_commandline(void)
 int
 sysnum_from_name(const char *name)
 {
+    drsys_syscall_t *syscall;
     drsys_sysnum_t sysnum;
-    if (drsys_name_to_number(name, &sysnum) == DRMF_SUCCESS) {
+    if (drsys_name_to_syscall(name, &syscall) == DRMF_SUCCESS &&
+        drsys_syscall_number(syscall, &sysnum) == DRMF_SUCCESS) {
         ASSERT(sysnum.secondary == 0, "should only query primary");
         return sysnum.number;
     }

@@ -842,18 +842,9 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
 }
 
 drmf_status_t
-drsys_syscall_type(drsys_sysnum_t sysnum, drsys_syscall_type_t *type OUT)
+drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 {
-    if (type == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
-    *type = DRSYS_SYSCALL_TYPE_KERNEL;
-    return DRMF_SUCCESS;
-}
-
-drmf_status_t
-drsys_cur_syscall_type(void *drcontext, drsys_syscall_type_t *type OUT)
-{
-    if (type == NULL)
+    if (syscall == NULL || type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     *type = DRSYS_SYSCALL_TYPE_KERNEL;
     return DRMF_SUCCESS;
@@ -3077,12 +3068,4 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
         return (res >= 0 || res < -PAGE_SIZE);
     else
         return (res >= 0);
-}
-
-/* provides name if known when not in syscall_lookup(num) */
-const char *
-os_syscall_get_name(drsys_sysnum_t num)
-{
-    /* everything's in the table */
-    return NULL;
 }
