@@ -2131,9 +2131,9 @@ dr_init(client_id_t client_id)
 #endif
     if (ZERO_STACK()) {
 #ifdef LINUX
-        dr_register_signal_event(event_signal);
+        drmgr_register_signal_event(event_signal);
 #else
-        dr_register_exception_event(event_exception);
+        drmgr_register_exception_event(event_exception);
 #endif
     }
 
@@ -2148,10 +2148,10 @@ dr_init(client_id_t client_id)
 
     dr_register_nudge_event(event_nudge, client_id);
     if (options.staleness)
-        dr_register_restore_state_ex_event(event_restore_state);
+        drmgr_register_restore_state_ex_event(event_restore_state);
     /* DR complains if we have xl8 fields and faults w/o restore-state events */
     else if (ZERO_STACK())
-        dr_register_restore_state_ex_event(event_restore_state_nop);
+        drmgr_register_restore_state_ex_event(event_restore_state_nop);
     if (options.staleness)
         dr_register_delete_event(event_fragment_delete);
 

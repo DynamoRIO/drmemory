@@ -62,8 +62,13 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
 
   get_target_property(app_path ${test_name} LOCATION${location_suffix})
   get_target_property(client_path ${client_name} LOCATION${location_suffix})
+  if (DEBUG_BUILD)
+    set(drrun_extra -debug)
+  else ()
+    set(drrun_extra "")
+  endif ()
   add_test(${test_name}
-    ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun -debug
+    ${DynamoRIO_DIR}/../${BIN_ARCH}/drrun ${drrun_extra}
     -client ${client_path} 0 ""
     -msgbox_mask 0
     "--" ${app_path})

@@ -1598,16 +1598,16 @@ dr_init(client_id_t id)
     dr_register_exit_event(event_exit);
     drmgr_register_thread_init_event(event_thread_init);
     drmgr_register_thread_exit_event(event_thread_exit);
-    dr_register_restore_state_ex_event(event_restore_state);
+    drmgr_register_restore_state_ex_event(event_restore_state);
     dr_register_delete_event(event_fragment_delete);
     drmgr_register_module_load_event(event_module_load);
     drmgr_register_module_unload_event(event_module_unload);
     dr_register_nudge_event(event_nudge, client_id);
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);
-    dr_register_signal_event(event_signal);
+    drmgr_register_signal_event(event_signal);
 #else
-    dr_register_exception_event(event_exception);
+    drmgr_register_exception_event(event_exception);
 #endif
     client_base = dr_get_client_base(client_id);
     if (options.persist_code) {
