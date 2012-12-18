@@ -65,15 +65,6 @@ static drsys_sysnum_t sysnum_UserDestroyWindow = {-1,0};
 static drsys_sysnum_t sysnum_UserCallOneParam_RELEASEDC = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
 
-void
-get_sysnum(const char *name, drsys_sysnum_t *var)
-{
-    drsys_syscall_t *syscall;
-    if (drsys_name_to_syscall(name, &syscall) != DRMF_SUCCESS ||
-        drsys_syscall_number(syscall, var) != DRMF_SUCCESS)
-        ASSERT(false, "error finding required syscall #");
-}
-
 static bool
 opc_is_in_syscall_wrapper(uint opc)
 {
@@ -129,17 +120,20 @@ vsyscall_pc(void *drcontext, byte *entry)
 void
 syscall_os_init(void *drcontext, app_pc ntdll_base)
 {
-    get_sysnum("NtCreateThread", &sysnum_CreateThread);
-    get_sysnum("NtCreateThreadEx", &sysnum_CreateThreadEx);
-    get_sysnum("NtTerminateProcess", &sysnum_TerminateProcess);
-    get_sysnum("NtClose", &sysnum_Close);
-    get_sysnum("NtUserDestroyAcceleratorTable", &sysnum_UserDestroyAcceleratorTable);
-    get_sysnum("NtUserDestroyCursor", &sysnum_UserDestroyCursor);
-    get_sysnum("NtUserDestroyInputContext", &sysnum_UserDestroyInputContext);
-    get_sysnum("NtUserDestroyMenu", &sysnum_UserDestroyMenu);
-    get_sysnum("NtUserDestroyWindow", &sysnum_UserDestroyWindow);
-    get_sysnum("NtUserCallOneParam.RELEASEDC", &sysnum_UserCallOneParam_RELEASEDC);
-    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp);
+    get_sysnum("NtCreateThread", &sysnum_CreateThread, false/*reqd*/);
+    get_sysnum("NtCreateThreadEx", &sysnum_CreateThreadEx, true/*added in vista*/);
+    get_sysnum("NtTerminateProcess", &sysnum_TerminateProcess, false/*reqd*/);
+    get_sysnum("NtClose", &sysnum_Close, false/*reqd*/);
+    get_sysnum("NtUserDestroyAcceleratorTable", &sysnum_UserDestroyAcceleratorTable,
+               false/*reqd*/);
+    get_sysnum("NtUserDestroyCursor", &sysnum_UserDestroyCursor, false/*reqd*/);
+    get_sysnum("NtUserDestroyInputContext", &sysnum_UserDestroyInputContext,
+               false/*reqd*/);
+    get_sysnum("NtUserDestroyMenu", &sysnum_UserDestroyMenu, false/*reqd*/);
+    get_sysnum("NtUserDestroyWindow", &sysnum_UserDestroyWindow, false/*reqd*/);
+    get_sysnum("NtUserCallOneParam.RELEASEDC", &sysnum_UserCallOneParam_RELEASEDC,
+               false/*reqd*/);
+    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, false/*reqd*/);
 
     syscall_wingdi_init(drcontext, ntdll_base);
 

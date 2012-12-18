@@ -52,20 +52,20 @@ static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 void
 syscall_wingdi_init(void *drcontext, app_pc ntdll_base)
 {
-    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection);
+    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection, false/*reqd*/);
 
-    get_sysnum("NtUserGetDC", &sysnum_UserGetDC);
-    get_sysnum("NtUserGetDCEx", &sysnum_UserGetDCEx);
-    get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC);
-    get_sysnum("NtUserBeginPaint", &sysnum_UserBeginPaint);
-    get_sysnum("NtUserEndPaint", &sysnum_UserEndPaint);
-    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC);
-    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap);
-    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC);
-    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp);
-    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC);
-    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC);
-    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW);
+    get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
+    get_sysnum("NtUserGetDCEx", &sysnum_UserGetDCEx, false/*reqd*/);
+    get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
+    get_sysnum("NtUserBeginPaint", &sysnum_UserBeginPaint, false/*reqd*/);
+    get_sysnum("NtUserEndPaint", &sysnum_UserEndPaint, false/*reqd*/);
+    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC, false/*reqd*/);
+    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap, false/*reqd*/);
+    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC, false/*reqd*/);
+    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, false/*reqd*/);
+    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC, false/*reqd*/);
+    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC, false/*reqd*/);
+    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW, false/*reqd*/);
 
     if (options.check_gdi)
         gdicheck_init();

@@ -27,6 +27,7 @@
 #include "dr_config.h"  /* for DR_MAX_OPTIONS_LENGTH */
 #include "drmgr.h"
 #include "drsyms.h"
+#include "drsyscall.h"
 
 #include <limits.h>
 
@@ -623,6 +624,9 @@ is_wow64_process(void);
 /* returns just the primary number */
 int
 sysnum_from_name(const char *name);
+
+bool
+get_sysnum(const char *name, drsys_sysnum_t *var, bool ok_to_fail);
 
 bool
 running_on_Win7_or_later(void);

@@ -2667,17 +2667,11 @@ malloc_allocator_type(alloc_routine_entry_t *routine)
 
 #ifdef WINDOWS
 static void
-get_sysnum(const char *name, int *var, bool ok_to_fail)
+get_primary_sysnum(const char *name, int *var, bool ok_to_fail)
 {
-    drsys_syscall_t *syscall;
     drsys_sysnum_t fullnum;
-    if (drsys_name_to_syscall(name, &syscall) == DRMF_SUCCESS &&
-        drsys_syscall_number(syscall, &fullnum) == DRMF_SUCCESS) {
+    if (get_sysnum(name, &fullnum, ok_to_fail))
         *var = fullnum.number;
-        ASSERT(fullnum.secondary == 0, "should only query for primary nums");
-    } else {
-        ASSERT(ok_to_fail, "error finding required syscall #");
-    }
 }
 
 static void
@@ -2721,15 +2715,16 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
                 !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
                 ASSERT(false, "failed to wrap");
             
-            get_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
-            get_sysnum("NtUnmapViewOfSection", &sysnum_munmap, false);
-            get_sysnum("NtAllocateVirtualMemory", &sysnum_valloc, false);
-            get_sysnum("NtFreeVirtualMemory", &sysnum_vfree, false);
-            get_sysnum("NtContinue", &sysnum_continue, false);
-            get_sysnum("NtCallbackReturn", &sysnum_cbret, false);
-            get_sysnum("NtSetContextThread", &sysnum_setcontext, false);
-            get_sysnum("NtMapCMFModule", &sysnum_mapcmf, !running_on_Win7_or_later());
-            get_sysnum("NtRaiseException", &sysnum_RaiseException, false);
+            get_primary_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
+            get_primary_sysnum("NtUnmapViewOfSection", &sysnum_munmap, false);
+            get_primary_sysnum("NtAllocateVirtualMemory", &sysnum_valloc, false);
+            get_primary_sysnum("NtFreeVirtualMemory", &sysnum_vfree, false);
+            get_primary_sysnum("NtContinue", &sysnum_continue, false);
+            get_primary_sysnum("NtCallbackReturn", &sysnum_cbret, false);
+            get_primary_sysnum("NtSetContextThread", &sysnum_setcontext, false);
+            get_primary_sysnum("NtMapCMFModule", &sysnum_mapcmf,
+                               !running_on_Win7_or_later());
+            get_primary_sysnum("NtRaiseException", &sysnum_RaiseException, false);
 
             if (alloc_ops.track_heap) {
                 dr_mutex_lock(alloc_routine_lock);

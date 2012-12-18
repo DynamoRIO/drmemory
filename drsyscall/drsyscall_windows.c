@@ -624,14 +624,15 @@ static syscall_info_t syscall_ntdll_info[] = {
         {5, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
         {6, sizeof(USER_STACK), R},
         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-            },
-            &sysnum_CreateThread},
+     }, &sysnum_CreateThread
+    },
     {{0,0},"NtCreateThreadEx", OK, RNTST, 11,
      {
         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-            6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL /*rest handled manually*/, },
-            &sysnum_CreateThreadEx},
+        {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL /*rest handled manually*/},
+     }, &sysnum_CreateThreadEx
+    },
     {{0,0},"NtCreateTimer", OK, RNTST, 4,
      {
         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -661,8 +662,10 @@ static syscall_info_t syscall_ntdll_info[] = {
         {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
         {8, sizeof(RTL_USER_PROCESS_PARAMETERS), R},
-            /*XXX i#98: arg 9 is in/out but not completely known*/ 10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
-            &sysnum_CreateUserProcess},
+        /*XXX i#98: arg 9 is in/out but not completely known*/ 
+        {10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
+     }, &sysnum_CreateUserProcess
+    },
     {{0,0},"NtCreateWaitablePort", OK, RNTST, 5,
      {
         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
@@ -714,9 +717,10 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, RNTST, 10,
      {
         {4, sizeof(IO_STATUS_BLOCK), W},
-            /*param6 handled manually*/ {8, -9, W},
-            },
-            &sysnum_DeviceIoControlFile},
+        /*param6 handled manually*/
+        {8, -9, W},
+     }, &sysnum_DeviceIoControlFile
+    },
     {{0,0},"NtDisplayString", OK, RNTST, 1,
      {
         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
@@ -1390,8 +1394,8 @@ static syscall_info_t syscall_ntdll_info[] = {
         {1, -2, W},
         {1, -3, WI},
         {3, sizeof(ULONG), W},
-            },
-            &sysnum_QuerySystemInformation},
+     }, &sysnum_QuerySystemInformation
+    },
     {{0,0},"NtQuerySystemTime", OK, RNTST, 1,
      {
         {0, sizeof(LARGE_INTEGER), W},
@@ -1694,8 +1698,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetSystemInformation", OK, RNTST, 3,
      {
         {1, -2, R},
-            },
-            &sysnum_SetSystemInformation},
+     }, &sysnum_SetSystemInformation
+    },
     {{0,0},"NtSetSystemPowerState", OK, RNTST, 3, },
     {{0,0},"NtSetSystemTime", OK, RNTST, 2,
      {

@@ -26,9 +26,6 @@
 
 extern hashtable_t systable; /* windows num-to-sysinfo table */
 
-void
-get_sysnum(const char *name, drsys_sysnum_t *var);
-
 
 /* syscall_wingdi.c exports */ 
 

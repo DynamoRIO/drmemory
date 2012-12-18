@@ -1297,10 +1297,14 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE Release)
   set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
 endmacro(export_target)
 
+# Included prior to add_subdirectory() for building version.c which
+# includes utils.h which includes drsyscall.h.
+include_directories(drsyscall)
+
 add_subdirectory(drsyscall)
 
-# XXX: change this to find_package() + use_DynamoRIO_extension(drsyscall)
-include_directories(drsyscall)
+# XXX: change this and include_directories above to
+# find_package() + use_DynamoRIO_extension(drsyscall)
 target_link_libraries(${client_target} drsyscall_int)
 
 if (BUILD_TOOL_TESTS)

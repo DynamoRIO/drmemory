@@ -823,6 +823,18 @@ sysnum_from_name(const char *name)
     return -1;
 }
 
+bool
+get_sysnum(const char *name, drsys_sysnum_t *var, bool ok_to_fail)
+{
+    drsys_syscall_t *syscall;
+    if (drsys_name_to_syscall(name, &syscall) != DRMF_SUCCESS ||
+        drsys_syscall_number(syscall, var) != DRMF_SUCCESS) {
+        ASSERT(ok_to_fail, "error finding required syscall #");
+        return false;
+    }
+    return true;
+}
+
 static void
 init_os_version(void)
 {
