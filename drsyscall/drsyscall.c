@@ -1624,7 +1624,7 @@ drsys_init(client_id_t client_id, drsys_options_t *ops)
     /* handle multiple sets of init/exit calls */
     int count = dr_atomic_add32_return_sum(&drsys_init_count, 1);
     if (count > 1)
-        return true;
+        return DRMF_SUCCESS;
 
     res = drmf_check_version(client_id);
     if (res != DRMF_SUCCESS)
