@@ -98,11 +98,13 @@ set(run_tests OFF)
 set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}")
 include("${runsuite_include_path}/runsuite_common_pre.cmake")
 
+# i#1099: be sure to set BUILDING_PACKAGE
 set(base_cache "
   ${DR_entry}
   TOOL_BUILD_NUMBER:STRING=${arg_build}
   UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
   BUILD_TOOL_TESTS:BOOL=OFF
+  BUILDING_PACKAGE:BOOL=ON
   ${arg_cacheappend}
   ${base_cache}
   ")

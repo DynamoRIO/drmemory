@@ -708,8 +708,17 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   # multi-export-set install of the DRMF.
   set(DO_DR_INSTALL OFF)
   set(DO_DR_INSTALL_TARGETS ON)
-  # Stick the binaries somewhere outside of the install dir:
-  set(DR_INSTALL_TARGETS_DEST ${PROJECT_BINARY_DIR}/dynamorio/installs)
+  # Stick the binaries somewhere outside of the install dir.
+  # However, NSIS won't allow an absolute path (i#1099).
+  # So for an automated package.cmake build via cpack, we use .. which
+  # is fine in the package dir structure.  We don't want .. for a
+  # user-specified destination of course.  We simply don't
+  # support creating a package manually outside of package.cmake.
+  if (BUILDING_PACKAGE)
+    set(DR_INSTALL_TARGETS_DEST ../ignored-installs)
+  else ()
+    set(DR_INSTALL_TARGETS_DEST ${PROJECT_BINARY_DIR}/dynamorio/installs)
+  endif ()
 
   add_subdirectory(dynamorio)
 
@@ -1618,8 +1627,7 @@ if (WIN32)
     # install to drmemory exports dir
     install(DIRECTORY "${DynamoRIO_DIR}/../${LIB_ARCH}"
       DESTINATION "${DR_install_dir}")
-    install(DIRECTORY "${DynamoRIO_DIR}/../ext/${LIB_ARCH}"
-      DESTINATION "${DR_install_dir}/ext")
+    # we don't need ext/ at all b/c we use static libs
   else (NOT USER_SPECIFIED_DynamoRIO_DIR)
     # don't take time and space copying: user can pass same dr to frontend,
     # so we only copy for package target
