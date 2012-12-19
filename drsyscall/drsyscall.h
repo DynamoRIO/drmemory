@@ -354,12 +354,14 @@ typedef bool (*drsys_iter_cb_t)(drsys_arg_t *arg, void *user_data);
 DR_EXPORT
 /**
  * Initializes the Dr. Syscall extension.  Must be called prior to any
- * of the other routines, and should only be called once.
+ * of the other routines.  Can be called multiple times (by separate components,
+ * normally) but each call must be paired with a corresponding call to
+ * drsys_exit().
  *
  * @param[in] client_id  The id of the client using drsys, as passed to dr_init().
  * @param[in] options    Allows changing the default behavior of Dr. Syscall.
  *
- * \return success code.  Will return failure if called a second time.
+ * \return success code.
  */
 drmf_status_t
 drsys_init(client_id_t client_id, drsys_options_t *options);
