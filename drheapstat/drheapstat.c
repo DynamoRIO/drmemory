@@ -2232,7 +2232,7 @@ dr_init(client_id_t client_id)
     if (options.time_clock)
         timestamp_last_snapshot = dr_get_milliseconds();
     if (options.time_clock || options.staleness) {
-        if (!dr_create_client_thread(sideline_run, NULL)) {
+        if (false && !dr_create_client_thread(sideline_run, NULL)) {
             ASSERT(false, "unable to create thread");
         }
     }
