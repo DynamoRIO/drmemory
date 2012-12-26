@@ -4356,13 +4356,15 @@ handle_UserMenuInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
                                 DRSYS_TYPE_INT, NULL))
             return;
     }
-    if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
-        if (!report_memarg_type(ii, 3, set ? SYSARG_READ : SYSARG_WRITE,
-                                (byte *) pt->sysarg[3], info.cbSize, "MENUINFOW",
-                                DRSYS_TYPE_STRUCT, NULL))
-            return;
-    } else
-        WARN("WARNING: unable to read syscall param\n");
+    if (ii->arg->pre || !set) {
+        if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
+            if (!report_memarg_type(ii, 3, set ? SYSARG_READ : SYSARG_WRITE,
+                                    (byte *) pt->sysarg[3], info.cbSize, "MENUINFOW",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        } else
+            WARN("WARNING: unable to read syscall param\n");
+    }
 }
 
 static void
@@ -4423,9 +4425,11 @@ handle_UserGetRawInputData(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_
     /* arg #3 is either R or W.  when W buf must be NULL and the 2,-3,WI entry
      * will do a safe_read but won't do a check so no false pos.
      */
-    uint flags = ((buf == NULL) ? SYSARG_WRITE : SYSARG_READ);
-    report_memarg_type(ii, 3, flags, (byte *) pt->sysarg[3], sizeof(UINT),
-                       "pcbSize", DRSYS_TYPE_INT, NULL);
+    if (buf == NULL || ii->arg->pre) {
+        uint flags = ((buf == NULL) ? SYSARG_WRITE : SYSARG_READ);
+        report_memarg_type(ii, 3, flags, (byte *) pt->sysarg[3], sizeof(UINT),
+                           "pcbSize", DRSYS_TYPE_INT, NULL);
+    }
 }
 
 static void
@@ -4478,7 +4482,8 @@ handle_UserTrackMouseEvent(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_
         safe = (TRACKMOUSEEVENT *) buf;
         /* XXX: for non-TME_QUERY are the other fields read? */
         flags = TEST(TME_QUERY, safe->dwFlags) ? SYSARG_WRITE : SYSARG_READ;
-        if (safe->cbSize > BUFFER_SIZE_BYTES(buf)) {
+        if ((flags == SYSARG_WRITE || ii->arg->pre) &&
+            safe->cbSize > BUFFER_SIZE_BYTES(buf)) {
             if (!report_memarg_type(ii, 0, flags,
                                     ((byte *)pt->sysarg[0]) + BUFFER_SIZE_BYTES(buf),
                                     safe->cbSize - BUFFER_SIZE_BYTES(buf),
