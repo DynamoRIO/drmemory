@@ -42,7 +42,6 @@ Error #18: HANDLE LEAK:
 Error #19: HANDLE LEAK:
 Error #20: HANDLE LEAK:
 Error #21: HANDLE LEAK:
-Error #22: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
@@ -61,9 +60,6 @@ system call NtUserRemoveProp
 system call NtUserFindExistingCursorIcon
 system call NtUserGetAncestor
 system call NtUserGetThreadDesktop
-%if X64
-system call NtOpenThreadToken
-%endif
 
 test_file_handles
 test_file_handles

@@ -216,10 +216,16 @@ handle_post_CreateThreadEx(void *drcontext, drsys_sysnum_t sysnum, cls_syscall_t
     }
 }
 
+/* This is only called from os_shared_post_syscall with check_handle_leaks
+ * on successful system calls.
+ * If we add any arg iteration w/o check_handle_leaks or failed system call,
+ * we must change os_shared_post_syscall too.
+ */
 static bool
 post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 {
-    if (options.check_handle_leaks && !arg->pre && arg->type == DRSYS_TYPE_HANDLE) {
+    ASSERT(!arg->pre, "we only iterate on post-syscall");
+    if (options.check_handle_leaks && arg->type == DRSYS_TYPE_HANDLE) {
         drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
         if (drsys_syscall_type(arg->syscall, &syscall_type) != DRMF_SUCCESS)
             WARN("WARNING: failed to get syscall type\n");
@@ -360,7 +366,9 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
             pt->handle_info = NULL;
         }
         /* find the OUT params, including return value */
-        if (drsys_iterate_args(drcontext, post_syscall_iter_arg_cb, NULL) != DRMF_SUCCESS)
+        if (success &&
+            drsys_iterate_args(drcontext, post_syscall_iter_arg_cb, NULL) !=
+            DRMF_SUCCESS)
             LOG(1, "unknown system call args for #%d\n", sysnum.number);
     }
     wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc, syscall);
