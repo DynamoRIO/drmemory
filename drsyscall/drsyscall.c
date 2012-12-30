@@ -767,6 +767,11 @@ bool
 report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
 {
     drsys_arg_t *arg = ii->arg;
+    /* For arg iteration post-syscall we masquerade as pre so the complex-type
+     * handlers invoke report_sysarg().  XXX: cleaner to have some separate flag.
+     */
+    bool set_pre = arg->pre;
+    arg->pre = ii->pt->pre;
     arg->ordinal = ordinal;
     arg->size = sizeof(reg_t);
     drsyscall_os_get_sysparam_location(ii->pt, ordinal, arg);
@@ -785,6 +790,7 @@ report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
     }
     else
         ASSERT(ii->pt->first_iter, "other than 1st iter, shouldn't report after abort");
+    arg->pre = set_pre;
     return ii->pt->first_iter || !ii->abort;
 }
 
@@ -1318,6 +1324,13 @@ drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
          * be to pass in a flag and check it before each report_{memarg,sysarg},
          * or to split the routines up (but that would duplicate a lot of code).
          */
+        /* We rely on arg being initialized by drsys_iterate_args_common().
+         * We just need to set pre to true (yes, even if called from post-syscall)
+         * in order to hit all the report_sysarg() calls (i#1102).
+         * XXX: it's a little weird to call os_handle_pre_syscall() from post-syscall:
+         * rename to os_handle_syscall() w/ the only weirdness arg.pre in post?
+         */
+        arg.pre = true;
         os_handle_pre_syscall(drcontext, pt, &iter_info);
 
         pt->first_iter = false;
