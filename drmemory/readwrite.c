@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2562,15 +2562,24 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             LOG(3, "translation test: cache="PFX", orig="PFX", xl8="PFX"\n",
                 ret_pc, pc, xl8);
             ASSERT(xl8 == pc || 
-                   /* for repstr_to_loop we changed pc */
-                   (options.repstr_to_loop && opc_is_stringop(opc) &&
-                    xl8 == loc_to_pc(&loc)) ||
-                   /* for repstr_to_loop OP_loop, ret_pc is the restore
-                    * code after stringop and before OP_loop*, so we'll get
-                    * post-xl8 pc.
+                   (options.repstr_to_loop &&
+                    /* Depending on -no_fastpath we'll get here for the jecxz pointing
+                     * at the loop, the loop, or the stringop.
+                     */
+                    (opc_is_stringop(opc) || opc == OP_loop) &&
+                    /* For repstr_to_loop we changed pc */
+                    (xl8 == loc_to_pc(&loc) ||
+                     /* For repstr_to_loop OP_loop, ret_pc is the restore
+                      * code after stringop and before OP_loop*, so we'll get
+                      * post-xl8 pc.
+                      */
+                     xl8 == decode_next_pc(drcontext, loc_to_pc(&loc)))) ||
+                   /* ret_pc may be a global reg restore, and for -no_fastpath
+                    * this will use the prior xl8 since there's no meta-xl8 and
+                    * the real app instr is beyond ret_pc.
                     */
-                   (options.repstr_to_loop && opc == OP_loop &&
-                    xl8 == decode_next_pc(drcontext, loc_to_pc(&loc))) ||
+                   (instr_at_pc_is_restore(drcontext, ret_pc) &&
+                    pc == decode_next_pc(drcontext, xl8)) ||
                    /* for native ret we changed pc */
                    (options.replace_malloc && opc == OP_ret &&
                     alloc_entering_replace_routine(xl8)),

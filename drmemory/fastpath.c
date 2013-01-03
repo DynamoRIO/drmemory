@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -5291,6 +5291,18 @@ instr_is_restore(instr_t *inst)
     return (instr_get_opcode(inst) == OP_mov_ld &&
             is_spill_slot_opnd(dr_get_current_drcontext(), instr_get_src(inst, 0)) &&
             opnd_is_reg(instr_get_dst(inst, 0)));
+}
+
+bool
+instr_at_pc_is_restore(void *drcontext, byte *pc)
+{
+    instr_t inst;
+    bool res;
+    instr_init(drcontext, &inst);
+    res = (decode(drcontext, pc, &inst) != NULL &&
+           instr_is_restore(&inst));
+    instr_free(drcontext, &inst);
+    return res;
 }
 
 void
