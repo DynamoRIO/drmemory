@@ -71,6 +71,18 @@ thread_free(void *drcontext, void *p, size_t size, heapstat_t type)
     dr_thread_free(drcontext, p, size);
 }
 
+void *
+nonheap_alloc(size_t size, uint prot, heapstat_t type)
+{
+    return dr_nonheap_alloc(size, prot);
+}
+
+void
+nonheap_free(void *p, size_t size, heapstat_t type)
+{
+    dr_nonheap_free(p, size);
+}
+
 bool
 safe_read(void *base, size_t size, void *out_buf)
 {
