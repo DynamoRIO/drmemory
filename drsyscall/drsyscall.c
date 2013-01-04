@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -848,9 +848,10 @@ handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t
 sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
-                syscall_arg_t *arg, int argnum, bool pre, byte *start)
+                syscall_info_t *sysinfo, int argnum, bool pre, byte *start)
 {
     ptr_uint_t size = 0;
+    syscall_arg_t *arg = &sysinfo->arg[argnum];
     if (arg->size == SYSARG_POST_SIZE_RETVAL) {
         /* XXX: some syscalls (in particular NtGdi* and NtUser*) return
          * the capacity needed when the input buffer is NULL or
@@ -903,17 +904,35 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     } else {
         ASSERT(arg->size > 0 || -arg->size < SYSCALL_NUM_ARG_STORE,
                "reached max syscall args stored");
-        size = (arg->size > 0) ? arg->size : ((uint) pt->sysarg[-arg->size]);
+        size = (arg->size > 0) ? arg->size : ((ptr_uint_t) pt->sysarg[-arg->size]);
         if (TEST(SYSARG_LENGTH_INOUT, arg->flags)) {
-            /* for x64 can't just take cur val of size so recompute */
             size_t *ptr;
+            int sz_argnum;
             ASSERT(arg->size <= 0, "inout can't be immed");
+            /* The size may be smaller than size_t (i#1108) so we need to find
+             * its entry to know the proper size to read.
+             * If the size is behind us, we start from 0; else, from next.
+             */
+            sz_argnum = (-arg->size < arg->param) ? 0 : argnum + 1;
+            for (; sz_argnum < sysinfo->arg_count; sz_argnum++) {
+                if (sysinfo->arg[sz_argnum].param == -arg->size)
+                    break;
+            }
+            ASSERT(sz_argnum < sysinfo->arg_count, "in/out size should have own entry");
+            ASSERT(sysinfo->arg[sz_argnum].size > 0, "in/out size must be immed");
+            ASSERT(sysinfo->arg[sz_argnum].size <= sizeof(size),
+                   "in/out size must be <= sizeof(size_t)");
             ptr = (size_t *) pt->sysarg[-arg->size];
+            size = 0; /* fill in top bytes */
             /* XXX: in some cases, ptr isn't checked for definedness until
              * after this de-ref (b/c the SYSARG_READ entry is after this
              * entry in the arg array: we could re-arrange the entries?
              */
-            if (ptr == NULL || !safe_read((void *)ptr, sizeof(size), &size))
+            if (ptr == NULL ||
+                /* We assume little-endian.  The portable way is to declare
+                 * a char, a short, etc. which seems uglier.
+                 */
+                !safe_read((void *)ptr, sysinfo->arg[sz_argnum].size, &size))
                 size = 0;
         } else if (TEST(SYSARG_POST_SIZE_IO_STATUS, arg->flags)) {
 #ifdef WINDOWS
@@ -979,8 +998,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             continue;
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        size = sysarg_get_size(drcontext, pt, ii, &sysinfo->arg[i], i,
-                               true/*pre*/, start);
+        size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, true/*pre*/, start);
         if (ii->abort)
             break;
 
@@ -1065,8 +1083,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 #endif
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
-        size = sysarg_get_size(drcontext, pt, ii, &sysinfo->arg[i], i,
-                               false/*!pre*/, start);
+        size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, false/*!pre*/, start);
         if (ii->abort)
             break;
         /* indicate which syscall arg (i#510) */

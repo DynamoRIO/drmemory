@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1339,7 +1339,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(43,-1),0},"accept", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(int), W},
+         {2, sizeof(socklen_t), W},
      }
     },
     {{PACKNUM(44,-1),0},"sendto", OK, RLONG, 6,
@@ -1374,13 +1374,13 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(51,-1),0},"getsockname", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(int), W},
+         {2, sizeof(socklen_t), W},
      }
     },
     {{PACKNUM(52,-1),0},"getpeername", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(int), W},
+         {2, sizeof(socklen_t), W},
      }
     },
     {{PACKNUM(53,-1),0},"socketpair", OK, RLONG, 4,

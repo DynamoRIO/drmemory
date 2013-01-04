@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -76,4 +76,7 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
 endfunction(add_drmf_test)
 
 add_drmf_test(drsyscall_test drsyscall_app.c drsyscall_client.c
+  drsyscall "TEST PASSED")
+
+add_drmf_test(strace_test drsyscall_app.c strace_client.c
   drsyscall "TEST PASSED")
