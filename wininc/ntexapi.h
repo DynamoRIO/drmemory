@@ -10,6 +10,58 @@
  ****************************************************************************/
 
 NTSTATUS NTAPI
+NtEnumerateBootEntries(
+    __out_bcount_opt(*BufferLength) PVOID Buffer,
+    __inout PULONG BufferLength
+    );
+
+NTSTATUS NTAPI
+NtEnumerateDriverEntries(
+    __out_bcount(*BufferLength) PVOID Buffer,
+    __inout PULONG BufferLength
+    );
+
+NTSTATUS NTAPI
+NtEnumerateSystemEnvironmentValuesEx(
+    __in ULONG InformationClass,
+    __out PVOID Buffer,
+    __inout PULONG BufferLength
+    );
+
+NTSTATUS NTAPI
+NtQueryBootEntryOrder(
+    __out_ecount_opt(*Count) PULONG Ids,
+    __inout PULONG Count
+    );
+
+NTSTATUS NTAPI
+NtQueryBootOptions(
+    __out_bcount_opt(*BootOptionsLength) PBOOT_OPTIONS BootOptions,
+    __inout PULONG BootOptionsLength
+    );
+
+NTSTATUS NTAPI
+NtQueryDriverEntryOrder(
+    __out_ecount(*Count) PULONG Ids,
+    __inout PULONG Count
+    );
+
+NTSTATUS NTAPI
+NtQuerySystemEnvironmentValueEx(
+    __in PUNICODE_STRING VariableName,
+    __in LPGUID VendorGuid,
+    __out_bcount_opt(*ValueLength) PVOID Value,
+    __inout PULONG ValueLength,
+    __out_opt PULONG Attributes
+    );
+
+NTSTATUS NTAPI
+NtSetBootEntryOrder(
+    __in_ecount(Count) PULONG Ids,
+    __in ULONG Count
+    );
+
+NTSTATUS NTAPI
 NtSetDriverEntryOrder(
     __in_ecount(Count) PULONG Ids,
     __in ULONG Count

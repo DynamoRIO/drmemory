@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -738,8 +738,18 @@ static syscall_info_t syscall_ntdll_info[] = {
         {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtEnumerateBootEntries", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtEnumerateDriverEntries", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtEnumerateBootEntries", OK, RNTST, 2,
+     {
+        {0, -1, WI},
+        {1, sizeof(ULONG), R|W},
+     }
+    },
+    {{0,0},"NtEnumerateDriverEntries", OK, RNTST, 2,
+     {
+        {0, -1, WI},
+        {1, sizeof(ULONG), R|W},
+     }
+    },
     {{0,0},"NtEnumerateKey", OK, RNTST, 6,
      {
         {3, -4, W},
@@ -747,7 +757,13 @@ static syscall_info_t syscall_ntdll_info[] = {
         {5, sizeof(ULONG), W},
      }
     },
-    {{0,0},"NtEnumerateSystemEnvironmentValuesEx", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
+     {
+        {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+        {1, -2, WI},
+        {2, sizeof(ULONG), R|W},
+     }
+    },
     {{0,0},"NtEnumerateValueKey", OK, RNTST, 6,
      {
         {3, -4, W},
@@ -826,7 +842,6 @@ static syscall_info_t syscall_ntdll_info[] = {
     /* BufferEntries is #elements, not #bytes */
     {{0,0},"NtGetWriteWatch", OK, RNTST, 7,
      {
-        {4, -5, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(void*)},
         {4, -5, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(void*)},
         {5, sizeof(ULONG), R|W},
         {6, sizeof(ULONG), W},
@@ -1159,8 +1174,18 @@ static syscall_info_t syscall_ntdll_info[] = {
         {1, sizeof(FILE_BASIC_INFORMATION), W},
      }
     },
-    {{0,0},"NtQueryBootEntryOrder", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtQueryBootOptions", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtQueryBootEntryOrder", OK, RNTST, 2,
+     {
+        {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+        {1, sizeof(ULONG), R|W},
+     }
+    },
+    {{0,0},"NtQueryBootOptions", OK, RNTST, 2,
+     {
+        {0, -1, WI},
+        {1, sizeof(ULONG), R|W}
+     }
+    },
     {{0,0},"NtQueryDebugFilterState", OK, RNTST, 2, },
     {{0,0},"NtQueryDefaultLocale", OK, RNTST, 2,
      {
@@ -1192,7 +1217,12 @@ static syscall_info_t syscall_ntdll_info[] = {
         {6, sizeof(ULONG), W},
      }
     },
-    {{0,0},"NtQueryDriverEntryOrder", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtQueryDriverEntryOrder", OK, RNTST, 2,
+     {
+        {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+        {1, sizeof(ULONG), R|W},
+     }
+    },
     {{0,0},"NtQueryEaFile", OK, RNTST, 9,
      {
         {1, sizeof(IO_STATUS_BLOCK), W},
@@ -1387,7 +1417,15 @@ static syscall_info_t syscall_ntdll_info[] = {
         {3, sizeof(ULONG), W},
      }
     },
-    {{0,0},"NtQuerySystemEnvironmentValueEx", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtQuerySystemEnvironmentValueEx", OK, RNTST, 5,
+     {
+        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+        {1, sizeof(GUID), R},
+        {2, -3, WI},
+        {3, sizeof(ULONG), R|W},
+        {4, sizeof(ULONG), W},
+     }
+    },
     /* One info class reads data, which is special-cased */
     {{0,0},"NtQuerySystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 4,
      {
@@ -1610,7 +1648,12 @@ static syscall_info_t syscall_ntdll_info[] = {
         {3, sizeof(CHANNEL_MESSAGE), W},
      }
     },
-    {{0,0},"NtSetBootEntryOrder", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtSetBootEntryOrder", OK, RNTST, 2,
+     {
+        {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+        {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtSetBootOptions", OK, RNTST, 2,
      {
         {0, sizeof(BOOT_OPTIONS), R},
@@ -1894,6 +1937,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetDriverEntryOrder", OK, RNTST, 2,
      {
         {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+        {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
 
