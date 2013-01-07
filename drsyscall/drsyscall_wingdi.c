@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1130,7 +1130,7 @@ syscall_info_t syscall_user32_info[] = {
      {
          {0,0, R|CT, SYSARG_TYPE_CSTRING_WIDE},
          {1, -2, WI},
-         {2, sizeof(ULONG), R},
+         {2, sizeof(ULONG), R|W},
      }
     },
 

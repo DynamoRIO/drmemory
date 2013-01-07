@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -79,7 +79,14 @@ enum {
     SYSARG_POST_SIZE_IO_STATUS = 0x00000008,
     /* the size points at a poiner-to-8-byte value param */
     SYSARG_POST_SIZE_8BYTES    = 0x00000010,
-    /* the param holding the size is a pointer b/c it's an IN OUT var */
+    /* The param holding the size is a pointer b/c it's an IN OUT var.
+     * This can be used in one of two ways:
+     * 1) A single entry exists for the buffer/struct.  In this case, the param
+     *    holding the size must be both read and write (R|W).
+     * 2) A duplicate entry exists for the buffer/struct.  Then the second can
+     *    be SYSARG_LENGTH_INOUT (often "WI" in the tables) and the size param
+     *    can just be written and not read (W).
+     */
     SYSARG_LENGTH_INOUT        = 0x00000020,
     /* The size is not in bytes but in elements where the size of
      * each element is in the misc field.  The misc field can
