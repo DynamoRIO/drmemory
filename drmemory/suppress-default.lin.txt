@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -159,7 +159,7 @@ name=default (one-time eglibc ld-linux leak)
 ld-linux.so.2!_dl_map_object_deps
 ld-linux.so.2!dl_open_worker
 ...
-libdl.so.2!__dlopen
+libdl.so.2!*dlopen*
 
 ##################################################
 # PR 564660: libz optimized code
