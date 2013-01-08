@@ -64,6 +64,9 @@ static drsys_sysnum_t sysnum_UserDestroyMenu = {-1,0};
 static drsys_sysnum_t sysnum_UserDestroyWindow = {-1,0};
 static drsys_sysnum_t sysnum_UserCallOneParam_RELEASEDC = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
+/* i#988-c#7: system calls that return exist handles */
+static drsys_sysnum_t sysnum_UserSetClipboardData = {-1, 0};
+static drsys_sysnum_t sysnum_UserRemoveProp = {-1, 0};
 
 static bool
 opc_is_in_syscall_wrapper(uint opc)
@@ -134,6 +137,9 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtUserCallOneParam.RELEASEDC", &sysnum_UserCallOneParam_RELEASEDC,
                false/*reqd*/);
     get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, false/*reqd*/);
+    get_sysnum("NtUserSetClipboardData", &sysnum_UserSetClipboardData,
+               false/*reqd*/);
+    get_sysnum("NtUserRemoveProp", &sysnum_UserRemoveProp, false/*reqd*/);
 
     syscall_wingdi_init(drcontext, ntdll_base);
 
@@ -248,7 +254,9 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
                 });
             }
         } else if (arg->mode == DRSYS_PARAM_RETVAL) {
-            /* handle is in return which we assume is newly created */
+            /* i#988-c#7,c#8: handle in return may not be newly created,
+             * now we just manually remove those.
+             */
             handlecheck_create_handle(arg->drcontext, (HANDLE)arg->value,
                                       syscall_handle_type(syscall_type),
                                       arg->sysnum, NULL, arg->mc);
@@ -269,6 +277,23 @@ syscall_deletes_handle(drsys_sysnum_t sysnum)
             drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyWindow) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
             drsys_sysnums_equal(&sysnum, &sysnum_GdiDeleteObjectApp));
+}
+
+/* Returns if a system call creates a new handle.
+ * It must be called from pre/post syscall event where syscall
+ * arguments are available.
+ */
+static bool
+syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
+{
+    reg_t arg;
+    if (drsys_sysnums_equal(&sysnum, &sysnum_UserRemoveProp))
+        return false;
+    if (drsys_sysnums_equal(&sysnum, &sysnum_UserSetClipboardData) &&
+        drsys_pre_syscall_arg(drcontext, 1, &arg) == DRMF_SUCCESS &&
+        arg != (reg_t)NULL)
+        return false;
+    return true;
 }
 
 bool
@@ -367,6 +392,7 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
         }
         /* find the OUT params, including return value */
         if (success &&
+            syscall_creates_handle(drcontext, sysnum) &&
             drsys_iterate_args(drcontext, post_syscall_iter_arg_cb, NULL) !=
             DRMF_SUCCESS)
             LOG(1, "unknown system call args for #%d\n", sysnum.number);

@@ -41,7 +41,6 @@ Error #17: HANDLE LEAK:
 Error #18: HANDLE LEAK:
 Error #19: HANDLE LEAK:
 Error #20: HANDLE LEAK:
-Error #21: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
@@ -56,7 +55,6 @@ system call NtCreateSection
 system call NtOpenProcess
 system call NtGdiGetStockObject
 system call NtGdiHfontCreate
-system call NtUserRemoveProp
 system call NtUserFindExistingCursorIcon
 system call NtUserGetAncestor
 system call NtUserGetThreadDesktop

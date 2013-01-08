@@ -938,7 +938,7 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserSetClassWord", OK, SYSARG_TYPE_UINT16, 3, },
     {{0,0},"NtUserSetClipboardData", OK, DRSYS_TYPE_HANDLE, 3,
      {
-         {1, sizeof(SETCLIPBDATA), R},
+         {2, sizeof(SETCLIPBDATA), R},
      }
     },
     {{0,0},"NtUserSetClipboardViewer", OK, DRSYS_TYPE_HANDLE, 1, },

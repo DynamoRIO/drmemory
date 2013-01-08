@@ -2893,6 +2893,8 @@ handle_security_descriptor_access(sysarg_iter_info_t *ii,
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
     SECURITY_DESCRIPTOR_CONTROL flags;
     ASSERT(!TEST(SYSARG_WRITE, arg_info->flags), "Should only be called for reads");
+    if (s == NULL)
+        return true;
     if (!ii->arg->pre) {
         /* Handling pre- is enough for reads */
         return true;
