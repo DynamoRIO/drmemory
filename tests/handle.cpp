@@ -87,7 +87,7 @@ static void
 test_file_handles(bool close)
 {
     // the files' handles
-    HANDLE hFile;
+    HANDLE hFile, dupFile1, dupFile2;
     HANDLE hFind;
     // filenames, the file is not there...
     TCHAR buf[MAX_PATH];
@@ -111,6 +111,7 @@ test_file_handles(bool close)
     }
     // find all the files in the directory
     do {
+        bool test_done = false;
         if (!create_file_tested &&
             !(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             hFile = CreateFile(ffd.cFileName, 0, 0, NULL, OPEN_EXISTING,
@@ -120,9 +121,46 @@ test_file_handles(bool close)
                 printf("fail to open the file %s\n", ffd.cFileName);
                 return;
             }
-            if (close)
+            // test DuplicateHandle
+            DuplicateHandle(GetCurrentProcess(), 
+                            hFile,
+                            GetCurrentProcess(),
+                            &dupFile1,
+                            0,
+                            FALSE,
+                            DUPLICATE_SAME_ACCESS);
+            if (dupFile1 == INVALID_HANDLE_VALUE) {
+                printf("fail to duplicate the file handle\n");
+                return;
+            }
+            // close the handle using DuplicateHandle
+            DuplicateHandle(GetCurrentProcess(),
+                            dupFile1,
+                            GetCurrentProcess(),
+                            &dupFile2, // NULL would cause another leak
+                            0,
+                            FALSE,
+                            DUPLICATE_CLOSE_SOURCE);
+            if (dupFile2 == INVALID_HANDLE_VALUE) {
+                printf("fail to duplicate the file handle\n");
+                return;
+            }
+            CloseHandle(dupFile2);
+            if (close) {
+                // test handle leak on syscall
+                DuplicateHandle(GetCurrentProcess(),
+                                hFile,
+                                GetCurrentProcess(),
+                                NULL, // handle leak
+                                0,
+                                FALSE,
+                                DUPLICATE_SAME_ACCESS);
                 CloseHandle(hFile);
+            }
+            test_done = true;
         }
+        if (test_done)
+            break;
     } while (FindNextFile(hFind, &ffd) != 0);
     if (GetLastError() != ERROR_NO_MORE_FILES) {
         printf("fail to find the next file\n");

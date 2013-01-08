@@ -2892,9 +2892,8 @@ handle_security_descriptor_access(sysarg_iter_info_t *ii,
 {
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
     SECURITY_DESCRIPTOR_CONTROL flags;
+    ASSERT(s != NULL, "descriptor must not be NULL"); /* caller should check */
     ASSERT(!TEST(SYSARG_WRITE, arg_info->flags), "Should only be called for reads");
-    if (s == NULL)
-        return true;
     if (!ii->arg->pre) {
         /* Handling pre- is enough for reads */
         return true;
@@ -3010,16 +3009,24 @@ handle_object_attributes_access(sysarg_iter_info_t *ii,
     if (!report_memarg(ii, arg_info, start, size, "OBJECT_ATTRIBUTES fields"))
         return true;
     if (safe_read((void*)start, sizeof(oa), &oa)) {
-        handle_unicode_string_access(ii, arg_info, (byte *) oa.ObjectName,
-                                     sizeof(*oa.ObjectName), false);
+        if ((byte *) oa.ObjectName != NULL) {
+            handle_unicode_string_access(ii, arg_info, (byte *) oa.ObjectName,
+                                         sizeof(*oa.ObjectName), false);
+        }
         if (ii->abort)
             return true;
-        handle_security_descriptor_access(ii, arg_info, (byte *) oa.SecurityDescriptor,
-                                          sizeof(SECURITY_DESCRIPTOR));
+        if ((byte *) oa.SecurityDescriptor != NULL) {
+            handle_security_descriptor_access(ii, arg_info,
+                                              (byte *) oa.SecurityDescriptor,
+                                              sizeof(SECURITY_DESCRIPTOR));
+        }
         if (ii->abort)
             return true;
-        handle_security_qos_access(ii, arg_info, (byte *) oa.SecurityQualityOfService,
-                                   sizeof(SECURITY_QUALITY_OF_SERVICE));
+        if ((byte *) oa.SecurityQualityOfService != NULL) {
+            handle_security_qos_access(ii, arg_info,
+                                       (byte *) oa.SecurityQualityOfService,
+                                       sizeof(SECURITY_QUALITY_OF_SERVICE));
+        }
         if (ii->abort)
             return true;
     } else

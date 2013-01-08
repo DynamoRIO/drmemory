@@ -53,6 +53,9 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
                                        int type, void *handle_info,
                                        bool success);
 
+void
+handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg);
+
 #ifdef STATISTICS
 void
 handlecheck_dump_statistics(void);

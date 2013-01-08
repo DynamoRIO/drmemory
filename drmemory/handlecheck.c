@@ -125,6 +125,32 @@ handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
 }
 
 #define HANDLECHECK_PRE_MSG_SIZE 0x100
+
+void
+handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg)
+{
+    handle_create_info_t *hci;
+    char msg[HANDLECHECK_PRE_MSG_SIZE];
+    const char *name;
+    /* Some system call like NtDuplicateObject may leak the handle by passing
+     * NULL to the out handle argument, so we assume that the leak on syscall
+     * is only caused by the arg PHANDLE being NULL.
+     */
+    ASSERT(arg->value == (ptr_uint_t)NULL, "syscall arg value is not NULL");
+    hci = handle_create_info_alloc(arg->sysnum, NULL, mc);
+    if (drsys_syscall_name(arg->syscall, &name) != DRMF_SUCCESS)
+        name = "<unknown>";
+    /* We do not have the leaked handle value, so we report leak without
+     * value. We could passing our own ptr to get the value, which may have
+     * transparency problems.
+     */
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                "Syscall %s leaks handle with NULL handle pointer.",
+                name);
+    report_handle_leak(dr_get_current_drcontext(), msg, &hci->loc, hci->pcs);
+    handle_create_info_free(hci);
+}
+
 static void
 handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name)
 {
