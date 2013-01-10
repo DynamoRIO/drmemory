@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -34,6 +34,7 @@ extern uint midchunk_postsize_ptrs;
 extern uint midchunk_postnew_ptrs;
 extern uint midchunk_postinheritance_ptrs;
 extern uint midchunk_string_ptrs;
+extern uint strings_not_pointers;
 # ifdef WINDOWS
 extern uint pointers_encoded;
 extern uint encoded_pointers_scanned;

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -97,6 +97,7 @@ uint midchunk_postsize_ptrs;
 uint midchunk_postnew_ptrs;
 uint midchunk_postinheritance_ptrs;
 uint midchunk_string_ptrs;
+uint strings_not_pointers;
 # ifdef WINDOWS
 uint pointers_encoded;
 uint encoded_pointers_scanned;
@@ -748,8 +749,88 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
     return false;
 }
 
+/***************************************************************************
+ * STRINGS VS POINTERS
+ */
+
+/* i#625: rule out parts of a string that look like heap pointers.  We use
+ * heuristics geared toward ASCII characters in ASCII string or wide-char
+ * string sequences.  It seems too fragile to just look for one string, and
+ * most cases of false anchors are copies of the environment and other sequences
+ * of many strings.  So we loook for at least 3 min-10-char strings, separated
+ * by at least one null char, starting at the given address.  We need to take in
+ * max_scan so we know what's guaranteed to be readable (all the threads are
+ * suspended so there are no races).
+ */
+
+#define STRING_MIN_LEN   10
+#define STRING_MIN_COUNT  3
+#define IS_ASCII(c) ((c) < 0x80)
+
+#ifdef WINDOWS
+static bool
+is_part_of_string_wide(wchar_t *s, wchar_t *max_scan)
+{
+    uint count = 0;
+    wchar_t *stop = (max_scan != NULL) ? max_scan :
+        (wchar_t *) ALIGN_FORWARD(s, PAGE_SIZE);
+    wchar_t *start;
+    for (start = s; s < stop; s++) {
+        if (!IS_ASCII(*s))
+            return false;
+        if (*s == 0) {
+            if (start < s) {
+                count++;
+                if (s - start < STRING_MIN_LEN)
+                    return false;
+                if (count >= STRING_MIN_COUNT)
+                    break;
+            } /* else, several nulls in a row */
+            start = s + 1;
+        }
+    }
+    return (count >= STRING_MIN_COUNT);
+}
+#endif
+
+static bool
+is_part_of_string_ascii(byte *s, byte *max_scan)
+{
+    uint count = 0;
+    byte *stop = (max_scan != NULL) ? max_scan : (byte *) ALIGN_FORWARD(s, PAGE_SIZE);
+    byte *start;
+    for (start = s; s < stop; s++) {
+        if (!IS_ASCII(*s))
+            return false;
+        if (*s == 0) {
+            if (start < s) {
+                count++;
+                if (s - start < STRING_MIN_LEN)
+                    return false;
+                if (count >= STRING_MIN_COUNT)
+                    break;
+            } /* else, several nulls in a row */
+            start = s + 1;
+        }
+    }
+    return (count >= STRING_MIN_COUNT);
+}
+
+static bool
+is_part_of_string(byte *s, byte *max_scan)
+{
+#ifdef WINDOWS
+    if (*(s+1) == 0 && *(s+3) == 0)
+        return is_part_of_string_wide((wchar_t *)s, (wchar_t *)max_scan);
+#endif
+    return is_part_of_string_ascii(s, max_scan);
+}
+
+/***************************************************************************/
+
 static void
-check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *data)
+check_reachability_pointer(byte *pointer, byte *ptr_addr, byte *defined_end,
+                           reachability_data_t *data)
 {
     byte *chunk_start = NULL;
     byte *chunk_end;
@@ -776,7 +857,7 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
              * No reverse in table so we won't recurse forever.
              */
             ASSERT(get_decoded_ptr(decoded) == NULL, "encoded table can't have reverse");
-            check_reachability_pointer(decoded, ptr_addr, data);
+            check_reachability_pointer(decoded, ptr_addr, defined_end, data);
             pointer = decoded;
         }
     }
@@ -784,6 +865,21 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, reachability_data_t *d
 
     /* We look in rbtree first since likely to miss both so why do hash lookup */
     node = rb_in_node(data->alloc_tree, pointer);
+    if (node != NULL) {
+#ifndef VMX86_SERVER /* unsafe to read */
+        /* We check for strings after the rbtree lookup to avoid extra work
+         * on every pointer.
+         */
+        if (options.strings_vs_pointers &&
+            ptr_addr > (byte *) PAGE_SIZE && /* rule out register */
+            is_part_of_string(ptr_addr, defined_end)) {
+            LOG(3, "\t("PFX" is part of a string table so not considering a pointer)\n",
+                ptr_addr);
+            STATS_INC(strings_not_pointers);
+            node = NULL;
+        }
+#endif
+    }
     if (node != NULL) {
         chunk_end = malloc_end(pointer);
         if (chunk_end != NULL) {
@@ -1014,12 +1110,12 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                  * info, so we can and have crashed here
                  */
                 if (safe_read(pc, sizeof(pointer), &pointer))
-                    check_reachability_pointer(pointer, pc, data);
+                    check_reachability_pointer(pointer, pc, defined_end, data);
             } else  {
 #endif
                 /* Threads are suspended and we checked readability so safe to deref */
                 pointer = *((app_pc*)pc);
-                check_reachability_pointer(pointer, pc, data);
+                check_reachability_pointer(pointer, pc, defined_end, data);
 #ifdef VMX86_SERVER /* really should be !HAVE_PROC_MAPS */
             }
 #endif
@@ -1054,7 +1150,7 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
             reg_t val = reg_get_value(reg, mc);
             LOG(4, "thread %d reg %d: "PFX"\n", dr_get_thread_id(drcontext), reg, val);
             check_reachability_pointer((byte *)val, (byte *)(ptr_uint_t)reg/*diagnostic*/,
-                                       data);
+                                       NULL, data);
         }
     }
 }

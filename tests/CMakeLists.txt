@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -653,6 +653,9 @@ if (TOOL_DR_MEMORY AND WIN32)
 endif (TOOL_DR_MEMORY AND WIN32)
 
 newtest(leakcycle leakcycle.cpp)
+if (WIN32)
+  newtest(leak_string leak_string.cpp)
+endif (WIN32)
 
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")

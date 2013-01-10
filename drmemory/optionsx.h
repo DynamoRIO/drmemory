@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -289,6 +289,9 @@ OPTION_CLIENT_BOOL(client, midchunk_string_ok, true,
 OPTION_CLIENT_BOOL(client, scan_read_only_files, false,
                    "Whether the leak scan should scan read-only file-mapped memory",
                    "Whether the leak scan should scan read-only file-mapped memory when looking for pointers to the heap.  The leak scan does not track whether pages have been read-only since they were mapped, so it's possible for the application to store heap pointers in a file-mapped region and then mark it read-only.  If your application does so, you may want to turn on this option.")
+OPTION_CLIENT_BOOL(client, strings_vs_pointers, true,
+                   "Use heuristics to rule out sub-strings as leak scan pointers",
+                   "Use heuristics to rule out sub-strings as leak scan pointers, preventing strings from anchoring heap objects and resulting in false negatives.")
 OPTION_CLIENT_BOOL(client, show_reachable, false,
                    "List reachable allocs",
                    "Whether to list reachable allocations when leak checking.  Requires -check_leaks.")

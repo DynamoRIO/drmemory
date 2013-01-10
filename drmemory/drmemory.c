@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -254,6 +254,7 @@ dump_statistics(void)
                "midchunk legit ptrs: %5u size, %5u new, %5u inheritance, %5u string\n",
                midchunk_postsize_ptrs, midchunk_postnew_ptrs,
                midchunk_postinheritance_ptrs, midchunk_string_ptrs);
+    dr_fprintf(f_global, "strings not pointers: %5u\n", strings_not_pointers);
 #ifdef WINDOWS
     if (options.check_handle_leaks)
         handlecheck_dump_statistics();
