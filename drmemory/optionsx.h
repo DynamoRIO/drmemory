@@ -286,6 +286,9 @@ OPTION_CLIENT_BOOL(client, midchunk_inheritance_ok, true,
 OPTION_CLIENT_BOOL(client, midchunk_string_ok, true,
                    "Consider mid-chunk std::string pointers legitimate",
                    "Consider allocations reached by a mid-allocation pointer that points to a char array inside an instance of a std::string representation to be reachable instead of possibly leaked.  A heuristic is used for this identification that is not perfect.")
+OPTION_CLIENT_BOOL(client, scan_read_only_files, false,
+                   "Whether the leak scan should scan read-only file-mapped memory",
+                   "Whether the leak scan should scan read-only file-mapped memory when looking for pointers to the heap.  The leak scan does not track whether pages have been read-only since they were mapped, so it's possible for the application to store heap pointers in a file-mapped region and then mark it read-only.  If your application does so, you may want to turn on this option.")
 OPTION_CLIENT_BOOL(client, show_reachable, false,
                    "List reachable allocs",
                    "Whether to list reachable allocations when leak checking.  Requires -check_leaks.")

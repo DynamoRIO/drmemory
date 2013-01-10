@@ -934,19 +934,24 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
                  */
                 (TESTALL(DR_MEMPROT_READ|DR_MEMPROT_EXEC, info.prot) &&
                  !TEST(DR_MEMPROT_WRITE, info.prot)) ||
-#ifdef WINDOWS
-                /* FIXME PR 475518: this could result in false negatives: should
-                 * track whether unmodified since load.  I'm only doing this
-                 * by default w/o PR 475518 impl to avoid .pdata sections so our
-                 * unit tests will pass deterministically (PR 485354).
+                (!options.scan_read_only_files &&
+                /* This could result in false negatives, which is why this is
+                 * under an option.  It's not worth tracking whether these pages
+                 * have been unmodified since loaded since mapped (how often is
+                 * someone going to store a heap pointer in a file-mapped page
+                 * and then mark the page read-only?).
+                 * We want to skip these not only for a significant performance
+                 * gain but also to avoid false anchors in .pdata sections (PR 485354)
+                 * and locale.nls (i#1096) that make our test suite non-deterministic.
                  */
-                (TEST(DR_MEMPROT_READ, info.prot) &&
+                 TEST(DR_MEMPROT_READ, info.prot) &&
                  !TEST(DR_MEMPROT_WRITE, info.prot) &&
-                 info.type == DR_MEMTYPE_IMAGE) ||
-# ifdef USE_DRSYMS
+                 (info.type == DR_MEMTYPE_IMAGE
+                  /* Windows-only b/c it's a pain to identify non-image maps on Linux */
+                  IF_WINDOWS(|| mbi.Type == MEM_MAPPED))) ||
+#if defined(WINDOWS) && defined(USE_DRSYMS)
                 /* skip private heap: here we assume it's a single segment */
                 (pc == (byte *) get_private_heap_handle()) ||
-# endif
 #endif
                 /* don't count references in DR data */
                 dr_memory_is_dr_internal(pc) ||
