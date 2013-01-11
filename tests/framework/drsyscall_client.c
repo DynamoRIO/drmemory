@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -27,6 +27,9 @@
 #include <string.h>
 #ifdef WINDOWS
 # include <windows.h>
+#else
+# include <sys/types.h>
+# include <sys/socket.h>
 #endif
 
 #undef ASSERT /* we don't want msgbox */
@@ -66,6 +69,15 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
     ASSERT(arg->valid, "no args should be invalid in this app");
     ASSERT(arg->mc != NULL, "mc check");
     ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
+
+#ifdef LINUX
+    /* the app deliberately trips i#1119 w/ a too-small sockaddr */
+    if (arg->type == DRSYS_TYPE_SOCKADDR && !arg->pre) {
+        static bool first = true;
+        ASSERT(!first || arg->size == sizeof(struct sockaddr)/2, "i#1119 test");
+        first = false;
+    }
+#endif
 
     return true; /* keep going */
 }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -28,6 +28,10 @@
 # include <sys/stat.h>
 # include <fcntl.h>
 # include <unistd.h>
+# include <sys/socket.h>
+# include <linux/in.h>
+# include <linux/un.h>
+# include <linux/in6.h>
 #else
 # include <windows.h>
 #endif
@@ -48,10 +52,42 @@ syscall_test(void)
 #endif
 }
 
+#ifdef LINUX
+static void
+socket_test(void)
+{
+    int s;
+    int i;
+    socklen_t addrlen;
+
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in sa;
+    addrlen = sizeof(sa)/2; /* test i#1119 */
+    getsockname(s, (struct sockaddr*)&sa, &addrlen);
+
+    s = socket(AF_INET, SOCK_STREAM, 0);
+    addrlen = sizeof(sa);
+    getsockname(s, (struct sockaddr*)&sa, &addrlen);
+
+    s = socket(AF_UNIX, SOCK_STREAM, 0);
+    struct sockaddr_un sa2;
+    addrlen = sizeof(sa2);
+    getsockname(s, (struct sockaddr*)&sa2, &addrlen);
+
+    s = socket(AF_INET6, SOCK_STREAM, 0);
+    struct sockaddr_in6 sa3;
+    addrlen = sizeof(sa3);
+    getsockname(s, (struct sockaddr*)&sa3, &addrlen);
+}
+#endif
+
 int
 main(int argc, char **argv)
 {
     syscall_test();
+#ifdef LINUX
+    socket_test();
+#endif
     printf("done\n");
     return 0;
 }

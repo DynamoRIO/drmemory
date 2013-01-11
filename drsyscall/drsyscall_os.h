@@ -77,8 +77,7 @@ enum {
     SYSARG_COMPLEX_TYPE        = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */
     SYSARG_POST_SIZE_IO_STATUS = 0x00000008,
-    /* the size points at a poiner-to-8-byte value param */
-    SYSARG_POST_SIZE_8BYTES    = 0x00000010,
+    /* (available)             = 0x00000010, */
     /* The param holding the size is a pointer b/c it's an IN OUT var.
      * This can be used in one of two ways:
      * 1) A single entry exists for the buffer/struct.  In this case, the param
@@ -165,8 +164,8 @@ enum {
 /* We encode the actual size of a write, if it can differ from the
  * requested size, as a subsequent syscall_arg_t entry with the same
  * param#.  A negative size there refers to a parameter that should be
- * de-referenced to obtain the actual write size.  The de-reference size
- * is assumed to be 4 unless SYSARG_POST_SIZE_8BYTES is set.
+ * de-referenced to obtain the actual write size.  That parameter to be
+ * de-referenced must have its own entry which indicates its size.
  */
 typedef struct _syscall_arg_t {
     int param; /* ordinal of parameter */
@@ -263,6 +262,11 @@ typedef struct _cls_syscall_t {
     /* We should be able to statically share extra_info[].  This helps find errors. */
     bool extra_inuse[SYSCALL_NUM_ARG_STORE];
 #endif
+    /* We need to store the size in pre for use in post (for i#1119)
+     * and we can't syare sysarg_sz as some syscalls are both known
+     * and unknown.
+     */
+    size_t sysarg_known_sz[SYSCALL_NUM_ARG_STORE];
     bool first_iter;
     bool first_iter_generic_loop; /* just for sysarg_get_size */
     bool memargs_iterated; /* to enforce that post requires pre */

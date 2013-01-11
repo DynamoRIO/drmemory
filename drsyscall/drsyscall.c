@@ -890,10 +890,8 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
             /* Even if we failed to get the size, initialize this for
              * post-syscall checks.
              */
-            /* We don't check pt->first_iter b/c drsys_iterate_args() does not
-             * invoke this code.  No harm in setting every time.
-             */
-            store_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD, size);
+            if (pt->first_iter)
+                store_extra_info(pt, EXTRA_INFO_SIZE_FROM_FIELD, size);
         } else {
             /* i#992: The kernel can overwrite these struct fields during the
              * syscall, so we save them in the pre-syscall event and use them
@@ -958,7 +956,10 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     return size;
 }
 
-/* Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in */
+/* Walks the param entries stored in the syscall table and processes them
+ * for pre-syscall usage.
+ * Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in.
+ */
 static void
 process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
@@ -999,6 +1000,9 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];
         size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, true/*pre*/, start);
+        pt->sysarg_known_sz[sysinfo->arg[i].param] = size;
+        LOG(SYSCALL_VERBOSE, "\t  pre storing size "PIFX" for arg %d\n",
+            size, sysinfo->arg[i].param);
         if (ii->abort)
             break;
 
@@ -1039,7 +1043,10 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
     }
 }
 
-/* Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in */
+/* Walks the param entries stored in the syscall table and processes them
+ * for post-syscall usage.
+ * Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in.
+ */
 static void
 process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
@@ -1086,6 +1093,18 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         size = sysarg_get_size(drcontext, pt, ii, sysinfo, i, false/*!pre*/, start);
         if (ii->abort)
             break;
+
+        /* For some syscalls, if the output param is not large enough the
+         * syscall still succeeds and the data is truncated.  The required
+         * size is still written, instead of the written size.  We want
+         * the written size.  Xref i#1119.
+         */
+        if (size > pt->sysarg_known_sz[sysinfo->arg[i].param]) {
+            LOG(SYSCALL_VERBOSE, "\ttruncating out size of arg %d from "PIFX" to "PIFX"\n",
+                sysinfo->arg[i].param, size, pt->sysarg_known_sz[sysinfo->arg[i].param]);
+            size = pt->sysarg_known_sz[sysinfo->arg[i].param];
+        }
+
         /* indicate which syscall arg (i#510) */
         IF_DEBUG(res = )
             dr_snprintf(idmsg, BUFFER_SIZE_ELEMENTS(idmsg), "parameter #%d",
@@ -1348,6 +1367,11 @@ drsys_iterate_args(void *drcontext, drsys_iter_cb_t cb, void *user_data)
          * rename to os_handle_syscall() w/ the only weirdness arg.pre in post?
          */
         arg.pre = true;
+        /* We must call this to process SYSARG_COMPLEX_TYPE table entries while
+         * pt->first_iter is true, so that subsequent calls for memarg iteration
+         * work properly.
+         */
+        process_pre_syscall_reads_and_writes(pt, &iter_info);
         os_handle_pre_syscall(drcontext, pt, &iter_info);
 
         pt->first_iter = false;
