@@ -242,25 +242,6 @@ union ioctl_data {
     struct ipmi_recv recv;
 };
 
-static size_t
-safe_strnlen(const char *str, size_t max)
-{
-    register char *s = (char *) str;
-    if (str == NULL)
-        return 0;
-    /* FIXME PR 408539: use safe_read(), in a general routine that can be used
-     * for SYSARG_SIZE_CSTRING in process_syscall_reads_and_writes()
-     */
-    while ((s - str) < max && *s != '\0')
-        s++;
-    return (s - str);
-}
-
-#if DEBUG
-extern void
-report_callstack(void *drcontext, dr_mcontext_t *mc);
-#endif /* DEBUG */
-
 /***************************************************************************
  * SYSTEM CALLS FOR LINUX
  */
@@ -2375,108 +2356,8 @@ static void
 check_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii,
                byte *ptr, socklen_t socklen, int ordinal, uint arg_flags, const char *id)
 {
-    struct sockaddr *sa = (struct sockaddr *) ptr;
-    sa_family_t family;
-
-    /* If not enough space kernel writes space needed, so we need to adjust
-     * to the passed-in size by storing it in pre-syscall.
-     */
-    if (pt->first_iter && ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
-        store_extra_info(pt, EXTRA_INFO_SOCKADDR, socklen);
-    } else if (!ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
-        socklen_t pre_len = (socklen_t) release_extra_info(pt, EXTRA_INFO_SOCKADDR);
-        if (socklen > pre_len)
-            socklen = pre_len;
-        ASSERT(pre_len != 0, "check_sockaddr called in post but not pre");
-    }
-
-    /* Whole thing should be addressable, but only part must be
-     * defined.  The kernel returns how much it wrote (once we MIN it
-     * with specified capacity above) and it seems to fill in solidly
-     * w/ no gaps, so on a write we do not walk the individual fields.
-     */
-    if (TEST(SYSARG_WRITE, arg_flags)) {
-        if (!report_memarg_type(ii, ordinal, arg_flags, ptr,
-                                socklen, id, DRSYS_TYPE_SOCKADDR, NULL))
-            return;
-        return; /* all done */
-    }
-    if (ii->arg->pre) {
-        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sa->sa_family,
-                                sizeof(sa->sa_family), id, DRSYS_TYPE_INT, NULL))
-            return;
-    }
-    if (!safe_read(&sa->sa_family, sizeof(family), &family))
-        return;
-    /* we're careful to not check beyond socklen */
-    switch (family) {
-    case AF_UNIX: {
-        struct sockaddr_un *sun = (struct sockaddr_un *) sa;
-        size_t sz_left = socklen - offsetof(struct sockaddr_un, sun_path);
-        size_t len = safe_strnlen(sun->sun_path, MIN(sz_left, sizeof(sun->sun_path)));
-        if (len > 0 &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) sun->sun_path,
-                                len, id, DRSYS_TYPE_CARRAY, NULL))
-            return;
-        break;
-    }
-    case AF_INET: {
-        struct sockaddr_in *sin = (struct sockaddr_in *) sa;
-        if (socklen >= offsetof(struct sockaddr_in, sin_port) + sizeof(sin->sin_port) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_port,
-                                sizeof(sin->sin_port), id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_in, sin_addr) + sizeof(sin->sin_addr) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_addr,
-                                sizeof(sin->sin_addr), id, DRSYS_TYPE_STRUCT, NULL))
-            return;
-        break;
-    }
-    case AF_INET6: {
-        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
-        if (socklen >= offsetof(struct sockaddr_in6, sin6_port) +
-            sizeof(sin6->sin6_port) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_port,
-                                sizeof(sin6->sin6_port), id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_in6, sin6_flowinfo) +
-            sizeof(sin6->sin6_flowinfo) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_flowinfo,
-                                sizeof(sin6->sin6_flowinfo), id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_in6, sin6_addr) +
-            sizeof(sin6->sin6_addr) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_addr,
-                                sizeof(sin6->sin6_addr), id, DRSYS_TYPE_STRUCT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_in6, sin6_scope_id) +
-            sizeof(sin6->sin6_scope_id) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_scope_id,
-                                sizeof(sin6->sin6_scope_id), id, DRSYS_TYPE_INT, NULL))
-            return;
-        break;
-    }
-    case AF_NETLINK: {
-        struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
-        if (socklen >= offsetof(struct sockaddr_nl, nl_pad) + sizeof(snl->nl_pad) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pad,
-                                sizeof(snl->nl_pad), id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_nl, nl_pid) + sizeof(snl->nl_pid) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pid,
-                                sizeof(snl->nl_pid), id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (socklen >= offsetof(struct sockaddr_nl, nl_groups) + sizeof(snl->nl_groups) &&
-            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_groups,
-                                sizeof(snl->nl_groups), id, DRSYS_TYPE_INT, NULL))
-            return;
-        break;
-    }
-    default:
-        ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family); 
-        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
-        break;
-    }
+    ASSERT(sizeof(socklen_t) <= sizeof(size_t), "shared code size type sanity check");
+    handle_sockaddr(pt, ii, ptr, socklen, ordinal, arg_flags, id);
 }
 
 /* scatter-gather buffer vector handling.

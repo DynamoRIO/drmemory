@@ -30,6 +30,22 @@
 #include "../framework/drmf.h"
 #include "utils.h"
 #include <string.h>
+#include <stddef.h> /* for offsetof */
+
+/* for handle_sockaddr()
+ * XXX: should we move it to a new drsyscall_shared.c to avoid having
+ * all these platform-specific includes in the main file?
+ */
+#ifdef LINUX
+# include <sys/types.h>
+# include <sys/socket.h>
+# include <linux/in.h>
+# include <linux/in6.h>
+# include <linux/un.h>
+# include <linux/netlink.h>
+#else
+# include "../wininc/afd_shared.h"
+#endif
 
 #ifdef SYSCALL_DRIVER
 # include "syscall_driver.h"
@@ -804,6 +820,10 @@ sysarg_invalid(syscall_arg_t *arg)
 # define MAX_PATH 4096
 #endif
 
+/***************************************************************************
+ * Type-specific cross-platform syscall arg processing
+ */
+
 /* pass 0 for size if there is no max size */
 bool
 handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
@@ -844,6 +864,157 @@ handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *
                        DRSYS_TYPE_CSTRING, NULL);
     return true;
 }
+
+static size_t
+safe_strnlen(const char *str, size_t max)
+{
+    register char *s = (char *) str;
+    if (str == NULL)
+        return 0;
+    /* FIXME PR 408539: use safe_read(), in a general routine that can be used
+     * for SYSARG_SIZE_CSTRING in process_syscall_reads_and_writes()
+     */
+    while ((s - str) < max && *s != '\0')
+        s++;
+    return (s - str);
+}
+
+/* struct sockaddr is large but the meaningful portions vary by family.
+ * This routine stores the socklen passed in pre-syscall and uses it to
+ * take a MIN(pre,post) in post.
+ * It performs all checks including on whole struct.
+ */
+bool
+handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
+                size_t socklen, int ordinal, uint arg_flags, const char *id)
+{
+    struct sockaddr *sa = (struct sockaddr *) ptr;
+#ifdef LINUX
+    sa_family_t family;
+#else
+    ADDRESS_FAMILY family;
+#endif
+
+    /* If not enough space kernel writes space needed, so we need to adjust
+     * to the passed-in size by storing it in pre-syscall.
+     */
+    if (pt->first_iter && ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
+        store_extra_info(pt, EXTRA_INFO_SOCKADDR, socklen);
+    } else if (!ii->arg->pre && TEST(SYSARG_WRITE, arg_flags)) {
+        size_t pre_len = (size_t) release_extra_info(pt, EXTRA_INFO_SOCKADDR);
+        if (socklen > pre_len)
+            socklen = pre_len;
+        ASSERT(pre_len != 0, "check_sockaddr called in post but not pre");
+    }
+
+    /* Whole thing should be addressable, but only part must be
+     * defined.  The kernel returns how much it wrote (once we MIN it
+     * with specified capacity above) and it seems to fill in solidly
+     * w/ no gaps, so on a write we do not walk the individual fields.
+     */
+    if (TEST(SYSARG_WRITE, arg_flags)) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, ptr,
+                                socklen, id, DRSYS_TYPE_SOCKADDR, NULL))
+            return true;
+        return true; /* all done */
+    }
+    if (ii->arg->pre) {
+        if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sa->sa_family,
+                                sizeof(sa->sa_family), id, DRSYS_TYPE_INT, NULL))
+            return true;
+    }
+    if (!safe_read(&sa->sa_family, sizeof(family), &family))
+        return true;
+    /* we're careful to not check beyond socklen */
+    switch (family) {
+#ifdef WINDOWS
+    case AF_UNSPEC: {
+        /* FIXME i#386: I'm seeing 0 (AF_UNSPEC) a lot, e.g., with
+         * IOCTL_AFD_SET_CONTEXT where the entire sockaddrs are just zero.  Not sure
+         * whether to require that anything beyond sa_family be defined.  Sometimes
+         * there is further data and the family is set later.  For now ignoring
+         * beyond sa_family.
+         */
+        break;
+    }
+#else
+    case AF_UNIX: {
+        struct sockaddr_un *sun = (struct sockaddr_un *) sa;
+        size_t sz_left = socklen - offsetof(struct sockaddr_un, sun_path);
+        size_t len = safe_strnlen(sun->sun_path, MIN(sz_left, sizeof(sun->sun_path)));
+        if (len > 0 &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) sun->sun_path,
+                                len, id, DRSYS_TYPE_CARRAY, NULL))
+            return true;
+        break;
+    }
+#endif
+    case AF_INET: {
+        struct sockaddr_in *sin = (struct sockaddr_in *) sa;
+        if (socklen >= offsetof(struct sockaddr_in, sin_port) + sizeof(sin->sin_port) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_port,
+                                sizeof(sin->sin_port), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        if (socklen >= offsetof(struct sockaddr_in, sin_addr) + sizeof(sin->sin_addr) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin->sin_addr,
+                                sizeof(sin->sin_addr), id, DRSYS_TYPE_STRUCT, NULL))
+            return true;
+        break;
+    }
+    case AF_INET6: {
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
+        if (socklen >= offsetof(struct sockaddr_in6, sin6_port) +
+            sizeof(sin6->sin6_port) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_port,
+                                sizeof(sin6->sin6_port), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        if (socklen >= offsetof(struct sockaddr_in6, sin6_flowinfo) +
+            sizeof(sin6->sin6_flowinfo) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_flowinfo,
+                                sizeof(sin6->sin6_flowinfo), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        if (socklen >= offsetof(struct sockaddr_in6, sin6_addr) +
+            sizeof(sin6->sin6_addr) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_addr,
+                                sizeof(sin6->sin6_addr), id, DRSYS_TYPE_STRUCT, NULL))
+            return true;
+        /* FIXME: when is sin6_scope_struct used? */
+        if (socklen >= offsetof(struct sockaddr_in6, sin6_scope_id) +
+            sizeof(sin6->sin6_scope_id) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &sin6->sin6_scope_id,
+                                sizeof(sin6->sin6_scope_id), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        break;
+    }
+#ifdef LINUX
+    case AF_NETLINK: {
+        struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
+        if (socklen >= offsetof(struct sockaddr_nl, nl_pad) + sizeof(snl->nl_pad) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pad,
+                                sizeof(snl->nl_pad), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        if (socklen >= offsetof(struct sockaddr_nl, nl_pid) + sizeof(snl->nl_pid) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_pid,
+                                sizeof(snl->nl_pid), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        if (socklen >= offsetof(struct sockaddr_nl, nl_groups) + sizeof(snl->nl_groups) &&
+            !report_memarg_type(ii, ordinal, arg_flags, (app_pc) &snl->nl_groups,
+                                sizeof(snl->nl_groups), id, DRSYS_TYPE_INT, NULL))
+            return true;
+        break;
+    }
+#endif
+    default:
+        ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family); 
+        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
+        break;
+    }
+    return true;
+}
+
+/***************************************************************************
+ * General syscall arg processing
+ */
 
 /* assumes pt->sysarg[] has already been filled in */
 static ptr_uint_t

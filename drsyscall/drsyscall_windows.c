@@ -3555,68 +3555,12 @@ ZwDeviceIoControlFile(
  * Still, should be able to share some code.
  */
 static void
-check_sockaddr(sysarg_iter_info_t *ii, byte *ptr, size_t len, bool inbuf,
-               const char *id)
+check_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
+               size_t len, bool inbuf, const char *id)
 {
-    struct sockaddr *sa = (struct sockaddr *) ptr;
-    ADDRESS_FAMILY family;
     int ordinal = inbuf ? IOCTL_INBUF_ARGNUM : IOCTL_OUTBUF_ARGNUM;
     uint arg_flags = inbuf ? SYSARG_READ : SYSARG_WRITE;
-    if (!report_memarg_type(ii, ordinal, arg_flags,
-                            (app_pc) &sa->sa_family, sizeof(sa->sa_family), id,
-                            DRSYS_TYPE_INT, NULL))
-        return;
-    if (!safe_read(&sa->sa_family, sizeof(family), &family))
-        return;
-    /* FIXME: do not check beyond len */
-    switch (family) {
-    case AF_UNSPEC: {
-        /* FIXME i#386: I'm seeing 0 (AF_UNSPEC) a lot, e.g., with
-         * IOCTL_AFD_SET_CONTEXT where the entire sockaddrs are just zero.  Not sure
-         * whether to require that anything beyond sa_family be defined.  Sometimes
-         * there is further data and the family is set later.  For now ignoring
-         * beyond sa_family.
-         */
-        break;
-    }
-    case AF_INET: {
-        struct sockaddr_in *sin = (struct sockaddr_in *) sa;
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin->sin_port, sizeof(sin->sin_port), id,
-                                DRSYS_TYPE_INT, NULL))
-            return;
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin->sin_addr, sizeof(sin->sin_addr), id,
-                                DRSYS_TYPE_STRUCT, NULL))
-            return;
-        break;
-    }
-    case AF_INET6: {
-        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *) sa;
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin6->sin6_port, sizeof(sin6->sin6_port), id,
-                                DRSYS_TYPE_INT, NULL))
-            return;
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin6->sin6_flowinfo, sizeof(sin6->sin6_flowinfo),
-                                id, DRSYS_TYPE_INT, NULL))
-            return;
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin6->sin6_addr, sizeof(sin6->sin6_addr), id,
-                                DRSYS_TYPE_STRUCT, NULL))
-            return;
-        /* FIXME: when is sin6_scope_struct used? */
-        if (!report_memarg_type(ii, ordinal, arg_flags,
-                                (app_pc) &sin6->sin6_scope_id, sizeof(sin6->sin6_scope_id),
-                                id, DRSYS_TYPE_INT, NULL))
-            return;
-        break;
-    }
-    default:
-        WARN("WARNING: unknown sockaddr type %d\n", family); 
-        IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
-        break;
-    }
+    handle_sockaddr(pt, ii, ptr, len, ordinal, arg_flags, id);
 }
 
 /* Macros for shorter, easier-to-read code */
@@ -3910,10 +3854,10 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
             break;
         }
 
-        check_sockaddr(ii, l_addr_ptr, sd.SizeOfLocalAddress, true/*in*/,
+        check_sockaddr(pt, ii, l_addr_ptr, sd.SizeOfLocalAddress, true/*in*/,
                        "SOCKET_CONTEXT.LocalAddress");
         /* I'm treating these SOCKADDRS as var-len */
-        check_sockaddr(ii, r_addr_ptr, sd.SizeOfRemoteAddress, true/*in*/,
+        check_sockaddr(pt, ii, r_addr_ptr, sd.SizeOfRemoteAddress, true/*in*/,
                        "SOCKET_CONTEXT.RemoteAddress");
 
         /* FIXME i#424: helper data could be a struct w/ padding. I have seen pieces of
@@ -3929,7 +3873,7 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
          * seems to pass an over-estimate of the real size.
          */
         CHECK_DEF(ii, inbuf, offsetof(AFD_BIND_DATA, Address), "AFD_BIND_DATA pre-Address");
-        check_sockaddr(ii, inbuf + offsetof(AFD_BIND_DATA, Address),
+        check_sockaddr(pt, ii, inbuf + offsetof(AFD_BIND_DATA, Address),
                        insz - offsetof(AFD_BIND_DATA, Address), true/*in*/,
                        "AFD_BIND_DATA.Address");
         break;
@@ -3941,7 +3885,7 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
         CHECK_DEF(ii, inbuf, sizeof(info->UseSAN), "AFD_CONNECT_INFO.UseSAN");
         CHECK_DEF(ii, &info->Root, (byte*)&info->RemoteAddress - (byte*)&info->Root,
                   "AFD_CONNECT_INFO pre-RemoteAddress");
-        check_sockaddr(ii, (byte*)&info->RemoteAddress,
+        check_sockaddr(pt, ii, (byte*)&info->RemoteAddress,
                        insz - offsetof(AFD_CONNECT_INFO, RemoteAddress),
                        true/*in*/, "AFD_CONNECT_INFO.RemoteAddress");
         break;

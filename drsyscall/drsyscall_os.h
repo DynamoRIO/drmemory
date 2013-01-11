@@ -51,8 +51,8 @@ enum {
      * syscall.  We only support one such parameter per syscall.
      */
     EXTRA_INFO_SIZE_FROM_FIELD,
-#ifdef LINUX
     EXTRA_INFO_SOCKADDR,
+#ifdef LINUX
     EXTRA_INFO_MSG_CONTROL,
     EXTRA_INFO_MSG_CONTROLLEN,
 #endif
@@ -413,5 +413,14 @@ report_sysarg(sysarg_iter_info_t *iter_info, int ordinal, uint arg_flags);
 bool
 handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
                byte *start, size_t size/*in bytes*/, char *safe, bool check_addr);
+
+bool
+handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
+                size_t len, int ordinal, uint arg_flags, const char *id);
+
+#if DEBUG
+void
+report_callstack(void *drcontext, dr_mcontext_t *mc);
+#endif /* DEBUG */
 
 #endif /* _DRSYSCALL_OS_H_ */
