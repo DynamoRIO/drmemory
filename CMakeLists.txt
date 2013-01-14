@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -1265,7 +1265,7 @@ configure_file(framework/drmf.cmake.in
   @ONLY)
 foreach (ext drsyscall)
   file(APPEND ${framework_dir}/DrMemoryFrameworkConfig.cmake "
-set(DynamoRIO_EXT_${ext}_INC \${cwd}/include)
+set(DynamoRIO_EXT_${ext}_INC \${drmf_cwd}/include)
 ")
 endforeach (ext)
 configure_file(framework/drmf_version.cmake.in
@@ -1563,6 +1563,8 @@ install(DIRECTORY ${framework_bindir}/
 # the exports have changed and thus clobbering the other config's files.
 install(CODE "file(APPEND \"${PROJECT_BINARY_DIR}/CMakeFiles/Export/cmake/${exported_targets_name}.cmake\" \"${exported_targets_append}\")")
 # Create the exported targets file
+# Note that we do not use the drmf_ NAMESPACE here: it's only needed for
+# internal tests.
 install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 
 ###########################################################################

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -18,20 +18,24 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+# Be sure to prefix all global vars with "drmf_" to avoid conflicts
+# with the containing project.
+
 if (${CMAKE_CXX_SIZEOF_DATA_PTR} EQUAL 4)
-  set(is_x64 OFF)
+  set(drmf_is_x64 OFF)
 elseif (${CMAKE_C_SIZEOF_DATA_PTR} EQUAL 4)
-  set(is_x64 OFF)
+  set(drmf_is_x64 OFF)
 else ()
-  set(is_x64 ON)
+  set(drmf_is_x64 ON)
 endif ()
 
-if (is_x64)
-  set(bits 64)
-else (is_x64)
-  set(bits 32)
-endif (is_x64)
+if (drmf_is_x64)
+  set(drmf_bits 64)
+else (drmf_is_x64)
+  set(drmf_bits 32)
+endif (drmf_is_x64)
 
-get_filename_component(cwd "${CMAKE_CURRENT_LIST_FILE}" PATH)
+# Be sure to not conflict w/ DR's "cwd" var (i#1105)
+get_filename_component(drmf_cwd "${CMAKE_CURRENT_LIST_FILE}" PATH)
 
-include(${cwd}/DRMFTarget${bits}.cmake)
+include(${drmf_cwd}/DRMFTarget${drmf_bits}.cmake)
