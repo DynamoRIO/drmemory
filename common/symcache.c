@@ -220,7 +220,8 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         i++;
     }
     if (f == INVALID_FILE) {
-        NOTIFY_ERROR("Unable to create temp file for symfile %s"NL, symfile);
+        NOTIFY("WARNING: Unable to create symcache temp file %s"NL,
+               symfile_tmp);
         return;
     }
 
@@ -266,7 +267,7 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         !dr_file_seek(f, filesz_loc, DR_SEEK_SET) ||
         dr_write_file(f, buf, SYMCACHE_SIZE_DIGITS) != SYMCACHE_SIZE_DIGITS) {
         /* If any steps fail, warn and give up. */
-        NOTIFY_ERROR("WARNING: Unable to write symcache file size."NL);
+        NOTIFY("WARNING: Unable to write symcache file size."NL);
         dr_close_file(f);
         dr_delete_file(symfile_tmp);
         return;

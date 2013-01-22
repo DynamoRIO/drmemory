@@ -480,7 +480,10 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     ASSERT(len > 0, "logfile name buffer max reached");
     NULL_TERMINATE_BUFFER(logname);
     f = dr_open_file(logname, DR_FILE_WRITE_OVERWRITE | extra_flags);
-    ASSERT(f != INVALID_FILE, "unable to open log file");
+    if (f == INVALID_FILE) {
+        NOTIFY_ERROR("Unable to open log file %s"NL, logname);
+        dr_abort();
+    }
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
         dr_log(drcontext, LOG_ALL, 1, 
@@ -1262,7 +1265,6 @@ create_global_logfile(void)
     } while (!dr_create_dir(logsubdir) && ++count < LOGDIR_TRY_MAX);
     if (count >= LOGDIR_TRY_MAX) {
         NOTIFY_ERROR("Unable to create subdir in log base dir %s"NL, options.logdir);
-        ASSERT(false, "unable to create unique logsubdir");
         dr_abort();
     }
 
