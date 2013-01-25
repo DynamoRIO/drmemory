@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -4082,9 +4082,7 @@ handle_post_valloc(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
     if (success && pt->syscall_this_process) {
         app_pc *base_ptr = (app_pc *) syscall_get_param(drcontext, 1);
         size_t *size_ptr = (size_t *) syscall_get_param(drcontext, 3);
- drmf_status_t
-drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT);
-       app_pc base;
+        app_pc base;
         size_t size;
         if (!safe_read(base_ptr, sizeof(*base_ptr), &base) ||
             !safe_read(size_ptr, sizeof(*size_ptr), &size)) {
