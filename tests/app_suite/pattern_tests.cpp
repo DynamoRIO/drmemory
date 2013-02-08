@@ -23,6 +23,9 @@
 
 #include "gtest/gtest.h"
 
+/* create bss segment */
+static char bss_array[0x4000];
+
 #ifdef WINDOWS
 #include <windows.h>
 #include <setjmp.h>
@@ -67,7 +70,7 @@ TEST(PatternModeTests, FalsePositiveTest) {
     i = pattern_check(ptr + 10);
     ASSERT_EQ(COUNT, i);
     /* now test the slow table walk, should not report any error */
-    ((char *)ptr)[0] = 0; /* start */
+    ((char *)ptr)[0] = bss_array[0x4000-4]; /* start */
     ((char *)ptr)[20*sizeof(int)-1] = 0; /* end */
     free(ptr);
 }

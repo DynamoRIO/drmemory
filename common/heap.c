@@ -102,32 +102,36 @@ get_heap_start(void)
     if (heap_start == NULL) {
         app_pc cur_brk = get_brk(true/*pre-us*/);
         dr_mem_info_t info;
-        const char *appnm = dr_get_application_name();
+        module_data_t *data;
         /* Locate the heap */
         if (!dr_query_memory_ex(cur_brk - 1, &info)) {
             ASSERT(false, "cannot find heap region");
             return NULL;
         }
-        if (info.base_pc + info.size <= cur_brk ||
-            /* if absolutely no heap, whole thing will show up as free to DR */
-            info.type != DR_MEMTYPE_DATA) {
+        if (info.type == DR_MEMTYPE_FREE) {
             /* Heap is empty */
             heap_start = cur_brk;
         } else {
             ASSERT(!dr_memory_is_dr_internal(info.base_pc), "heap location error");
-            ASSERT(info.type == DR_MEMTYPE_DATA, "heap type error");
             /* we no longer assert that these are equal b/c -replace_malloc
              * has extended the brk already
              */
             ASSERT(info.base_pc + info.size >= cur_brk, "heap location error");
             heap_start = info.base_pc;
-        }
-
-        /* workaround for PR 618178 where /proc/maps is wrong on suse
-         * and lists last 2 pages of executable as heap!
-         */
-        if (appnm != NULL) {
-            module_data_t *data = dr_lookup_module_by_name(appnm);
+            /* workaround for PR 618178 where /proc/maps is wrong on suse
+             * and lists last 2 pages of executable as heap!
+             */
+            /* On some old Linux kernel, the heap might be right after the bss
+             * segment. DR's map iterator used by dr_query_memory_ex cannot
+             * split bss out of heap.
+             * We use dr_lookup_module to find the right bounds of bss so that
+             * we can check whether the base is bss, existing heap, or merge of
+             * the two.
+             */
+            /* XXX: we still cannot handle the case that the application creates
+             * memory right before the heap.
+             */
+            data = dr_lookup_module(info.base_pc);
             if (data != NULL) {
                 if (data->start < heap_start && data->end > heap_start) {
                     heap_start = (byte *) ALIGN_FORWARD(data->end, PAGE_SIZE);
