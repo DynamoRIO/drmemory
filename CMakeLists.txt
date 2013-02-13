@@ -997,19 +997,26 @@ if (USE_DRSYMS)
   use_DynamoRIO_extension(${client_target} drsyms)
 endif (USE_DRSYMS)
 if (WIN32)
-  # We need to link with ntdll.lib which we get from DR
+  # We need to link with ntdll.lib and dbghelp.lib which we get from DR
   if (USER_SPECIFIED_DynamoRIO_DIR)
     get_target_property(libbase drinjectlib LOCATION)
     get_filename_component(libpath ${libbase} PATH)
     set(ntimp_lib "${libpath}/ntdll_imports.lib")
+    set(dbghelp_lib "${libpath}/dbghelp_imports.lib")
   else ()
     # XXX: This relies on knowing where DR puts it.
     # One option is ExternalProject to install the local DR first: xref i#1061.
     set(ntimp_lib "${PROJECT_BINARY_DIR}/dynamorio/core/ntdll_imports.lib")
+    set(dbghelp_lib "${PROJECT_BINARY_DIR}/ext/drsyms/dbghelp_imports.lib")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # for parallel build correctness we need a target dependence
       add_dependencies(${client_target} ntimp_tgt)
     endif ()
+  endif ()
+
+  if (TOOL_DR_MEMORY)
+    # Front-end uses dbghelp routines not in VS2005 so we link w/ DR's import lib.
+    target_link_libraries(${toolname} ${dbghelp_lib})
   endif ()
 
   # we have to link with ntdll AFTER any libcmt.lib from configure_DynamoRIO_client

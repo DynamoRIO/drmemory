@@ -62,6 +62,21 @@
 #include <stdio.h>
 #include <time.h>
 
+#if _MSC_VER <= 1400 /* VS2005- */
+/* These aren't present in VS2005 DbgHelp.h */
+BOOL IMAGEAPI
+SymInitializeW(__in HANDLE hProcess, __in_opt PCWSTR UserSearchPath,
+               __in BOOL fInvadeProcess);
+
+BOOL IMAGEAPI
+SymSetSearchPathW(__in HANDLE hProcess, __in_opt PCWSTR SearchPath);
+
+DWORD64 IMAGEAPI
+SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR ImageName,
+                 __in_opt PCWSTR ModuleName, __in DWORD64 BaseOfDll, __in DWORD DllSize,
+                 __in_opt PMODLOAD_DATA Data, __in_opt DWORD Flags);
+#endif
+
 /* XXX: we may want to share this with DR's libutil/our_tchar.h b/c we'll
  * want something similar for drdeploy and drinject libs and tools
  */

@@ -15,6 +15,14 @@
 #ifndef __WIN32K_NTUSER_H
 #define __WIN32K_NTUSER_H
 
+#ifndef _In_ /* not in VS2005- */
+# define _In_ __in
+#endif
+
+#ifndef _Out_opt_ /* not in VS2005- */
+# define _Out_opt_ __out_opt
+#endif
+
 #include "ndk_extypes.h"
 
 typedef char *PSZ;
