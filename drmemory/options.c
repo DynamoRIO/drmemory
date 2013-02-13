@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -427,7 +427,7 @@ options_init(const char *opstr)
             /* Truncate executable path prefix */
             extern char app_path[MAXIMUM_PATH];
             const char *sep = app_path + strlen(app_path);
-            while (sep > app_path && *sep != '/' IF_WINDOWS(&& *sep != '\\'))
+            while (sep > app_path && *sep != DIRSEP IF_WINDOWS(&& *sep != ALT_DIRSEP))
                 sep--;
             ASSERT(sep - app_path <
                    BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix),

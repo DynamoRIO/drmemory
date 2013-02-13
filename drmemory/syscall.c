@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -79,7 +79,7 @@ syscall_load_auxlib(const char *name)
     /* basename is passed in: use client path */
     while (*sep != '\0')
         sep++;
-    while (sep > path && *sep != '/' IF_WINDOWS(&& *sep != '\\'))
+    while (sep > path && *sep != DIRSEP IF_WINDOWS(&& *sep != ALT_DIRSEP))
         sep--;
     BUFPRINT(buf, bufsz, sofar, len, "%.*s", (sep - path), path);
     BUFPRINT(buf, bufsz, sofar, len, "/%s", name);

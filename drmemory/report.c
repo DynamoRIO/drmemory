@@ -1166,7 +1166,7 @@ up_one_dir(const char *string)
 {
     const char *dir1 = NULL, *dir2 = NULL;
     while (*string != '\0') {
-        if (*string == DIRSEP IF_WINDOWS(|| *string == '\\')) {
+        if (*string == DIRSEP IF_WINDOWS(|| *string == ALT_DIRSEP)) {
             dir1 = dir2;
             dir2 = string;
         }
@@ -1516,7 +1516,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats)
         NOTIFY_COND(notify, f, "  %5d leak(s) beyond -report_leak_max"NL,
                     num_throttled_leaks);
     }
-    NOTIFY_COND(notify, f, "Details: %s/results.txt"NL, logsubdir);
+    NOTIFY_COND(notify, f, "Details: %s%cresults.txt"NL, logsubdir, DIRSEP);
 }
 
 void

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -55,6 +55,7 @@
 #include "dr_api.h" /* for the types */
 #include "dr_inject.h"
 #include "dr_config.h"
+#include "utils.h"
 #include "frontend.h"
 #include <assert.h>
 #include <dbghelp.h>
@@ -89,12 +90,6 @@
 
 #define MAX_DR_CMDLINE (MAXIMUM_PATH*6)
 #define MAX_APP_CMDLINE 4096
-
-/* maybe DR should export these */
-#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
-#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof(buf[0]))
-#define BUFFER_LAST_ELEMENT(buf)    buf[BUFFER_SIZE_ELEMENTS(buf) - 1]
-#define NULL_TERMINATE_BUFFER(buf)  BUFFER_LAST_ELEMENT(buf) = 0
 
 #ifdef X64
 # define LIB_ARCH "lib64"
@@ -234,6 +229,7 @@ print_usage(void)
     exit(1);                                                    \
 } while (0)
 
+#undef BUFPRINT /* XXX: we could redefine ASSERT to use utils.h BUFPRINT here */
 /* must use dr_snprintf here to support %S converting UTF-16<->UTF-8 */
 #define BUFPRINT(buf, bufsz, sofar, len, ...) do { \
     len = dr_snprintf((buf)+(sofar), (bufsz)-(sofar), __VA_ARGS__); \
@@ -507,7 +503,7 @@ set_symbol_search_path(const char *logdir)
         char pdb_dir[MAXIMUM_PATH];
         _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", logdir);
         NULL_TERMINATE_BUFFER(pdb_dir);
-        string_replace_character(pdb_dir, '\\', '/');
+        string_replace_character(pdb_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
         dr_create_dir(pdb_dir);
         if (!dr_directory_exists(pdb_dir)) {
             warn("Failed to create directory for symbols: %s", pdb_dir);
@@ -682,15 +678,16 @@ fetch_missing_symbols(const char *logdir, const TCHAR *resfile)
     }
     _tcsncpy(missing_symbols, resfile, BUFFER_SIZE_ELEMENTS(missing_symbols));
     NULL_TERMINATE_BUFFER(missing_symbols);
-    string_replace_character_wide(missing_symbols, _T('\\'), _T('/'));
-    last_slash = _tcsrchr(missing_symbols, _T('/'));
+    string_replace_character_wide(missing_symbols, _T(ALT_DIRSEP), _T(DIRSEP));
+    last_slash = _tcsrchr(missing_symbols, _T(DIRSEP));
     if (last_slash == NULL) {
         warn(TSTR_FMT" is not an absolute path", missing_symbols);
         return;
     }
-    *last_slash = _T('\0');
+    *last_slash = _T(DIRSEP);
+    *(last_slash+1) = _T('\0'); /* safe, since was null-terminated prior to _tcsrchr */
     _tcscat_s(missing_symbols, BUFFER_SIZE_ELEMENTS(missing_symbols),
-              _T("/missing_symbols.txt"));
+              _T("missing_symbols.txt"));
     NULL_TERMINATE_BUFFER(missing_symbols);
 
     stream = _tfopen(missing_symbols, _T("r"));
@@ -842,6 +839,8 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
         si.cb = sizeof(si);
         _tsearchenv(_T("notepad.exe"), _T("PATH"), fname);
         NULL_TERMINATE_BUFFER(fname);
+        /* Older notepad can't handle forward slashes (i#1123) */
+        string_replace_character_wide(wresfile, _T('/'), _T('\\'));
         _sntprintf(cmd, BUFFER_SIZE_ELEMENTS(cmd), _T("%s %s"), fname, wresfile);
         NULL_TERMINATE_BUFFER(cmd);
         if (!CreateProcess(fname, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
@@ -932,7 +931,7 @@ _tmain(int argc, TCHAR *targv[])
     /* Default root: we assume this exe is <root>/bin/drmemory.exe */
     get_full_path(argv[0], buf, BUFFER_SIZE_ELEMENTS(buf));
     c = buf + strlen(buf) - 1;
-    while (*c != '\\' && *c != '/' && c > buf)
+    while (*c != DIRSEP && *c != ALT_DIRSEP && c > buf)
         c--;
     _snprintf(c+1, BUFFER_SIZE_ELEMENTS(buf) - (c+1-buf), "../dynamorio");
     NULL_TERMINATE_BUFFER(buf);
@@ -946,6 +945,7 @@ _tmain(int argc, TCHAR *targv[])
     get_absolute_path(buf, default_drmem_root, BUFFER_SIZE_ELEMENTS(default_drmem_root));
     NULL_TERMINATE_BUFFER(default_drmem_root);
     drmem_root = default_drmem_root;
+    string_replace_character(drmem_root, ALT_DIRSEP, DIRSEP); /* canonicalize */
 
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
@@ -978,11 +978,13 @@ _tmain(int argc, TCHAR *targv[])
             }
         }
     } else {
-        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/drmemory/logs", drmem_root);
+        _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s%cdrmemory%clogs",
+                  drmem_root, DIRSEP, DIRSEP);
         NULL_TERMINATE_BUFFER(logdir);
         if (!file_is_writable(logdir)) {
             /* try w/o the drmemory */
-            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s/logs", drmem_root);
+            _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), "%s%clogs",
+                      drmem_root, DIRSEP);
             NULL_TERMINATE_BUFFER(logdir);
             if (file_is_writable(logdir))
                 have_logdir = true;
@@ -1265,13 +1267,14 @@ _tmain(int argc, TCHAR *targv[])
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
     _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
-              "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root,
-              use_drmem_debug ? "debug" : "release");
+              "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root, DIRSEP, DIRSEP,
+              use_drmem_debug ? "debug" : "release", DIRSEP);
     NULL_TERMINATE_BUFFER(client_path);
     if (!file_is_readable(client_path)) {
         if (!use_drmem_debug) {
             _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
-                      "%s/"BIN_ARCH"/%s/drmemorylib.dll", drmem_root, "debug");
+                      "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root,
+                      DIRSEP, DIRSEP, "debug", DIRSEP);
             NULL_TERMINATE_BUFFER(client_path);
             if (!file_is_readable(client_path)) {
                 fatal("invalid -drmem_root: cannot find %s", client_path);
@@ -1279,7 +1282,7 @@ _tmain(int argc, TCHAR *targv[])
             }
             /* try to avoid warning for devs running from build dir */
             _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
-                      "%s/CMakeCache.txt", drmem_root);
+                      "%s%cCMakeCache.txt", drmem_root, DIRSEP);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf))
                 warn("using debug Dr. Memory since release not found");
@@ -1287,6 +1290,7 @@ _tmain(int argc, TCHAR *targv[])
         }
     }
 
+    string_replace_character(logdir, ALT_DIRSEP, DIRSEP); /* canonicalize */
     if (!file_is_writable(logdir)) {
         fatal("invalid -logdir: cannot find/write %s", logdir);
         goto error; /* actually won't get here */
@@ -1301,7 +1305,7 @@ _tmain(int argc, TCHAR *targv[])
      * for every run.
      */
     if (!dr_logdir_specified) { /* don't override user-specified DR logdir */
-        _snprintf(scratch, BUFFER_SIZE_ELEMENTS(scratch), "%s/dynamorio", logdir);
+        _snprintf(scratch, BUFFER_SIZE_ELEMENTS(scratch), "%s%cdynamorio", logdir, DIRSEP);
         NULL_TERMINATE_BUFFER(scratch);
         /* Default dir is created at install/config time but if user specifies
          * a new base logdir we need to create the subdir.
@@ -1323,7 +1327,7 @@ _tmain(int argc, TCHAR *targv[])
         /* default -persist_dir is not DR's default so we have to set it */
         if (persist_dir[0] == '\0') { /* not set by user */
             _snprintf(persist_dir, BUFFER_SIZE_ELEMENTS(persist_dir),
-                      "%s/codecache", logdir);
+                      "%s%ccodecache", logdir, DIRSEP);
             NULL_TERMINATE_BUFFER(persist_dir);
             /* create it if not specified by user.
              * using dr_ API here since available and perhaps we'll want this
@@ -1339,6 +1343,7 @@ _tmain(int argc, TCHAR *targv[])
                 }
             }
         }
+        string_replace_character(persist_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
         if (!file_is_writable(persist_dir)) {
             fatal("invalid -persist_dir: cannot find/write %s", persist_dir);
             goto error; /* actually won't get here */

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -252,7 +252,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     module_check_for_symbols(mod->full_path);
 
     for (c = mod->full_path; *c != '\0'; c++) {
-        if (*c == DIRSEP IF_WINDOWS(|| *c == '\\'))
+        if (*c == DIRSEP IF_WINDOWS(|| *c == ALT_DIRSEP))
             fname = c + 1;
     }
     ASSERT(fname != NULL, "unable to get fname for module");

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -566,7 +566,7 @@ print_file_and_line(symbolized_frame_t *frame IN,
                                          IGNORE_FILE_CASE, &matched);
             if (match != NULL) {
                 fname = match + strlen(matched);
-                if (fname[0] == '/' || fname[0] == '\\')
+                if (fname[0] == DIRSEP IF_WINDOWS(|| fname[0] == ALT_DIRSEP))
                     fname++;
             }
         }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -140,10 +140,19 @@
 
 #ifdef LINUX
 # define DIRSEP '/'
+# define ALT_DIRSEP '/'
 # define NL "\n"
 #else
-/* we now use mixed paths with drive letter but forward slashes */
-# define DIRSEP '/'
+/* We can pick which we want for usability: the auto-launch of notepad
+ * converts to backslash regardless (i#1123).  Backslash works in all
+ * Windows apps, while forward works in most and in cygwin (though
+ * still not first-class there as it has a drive letter) but not in
+ * File Open dialogs or older notepad Save As (or as executable path
+ * when launching).  We could consider making this a runtime option
+ * or auto-picked if in cygwin but for now we're going with backslash.
+ */
+# define DIRSEP '\\'
+# define ALT_DIRSEP '/'
 # define NL "\r\n"
 #endif
 
