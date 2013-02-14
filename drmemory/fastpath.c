@@ -2679,7 +2679,8 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
     ASSERT(src_opsz == dst_opsz ||
            ((src_opsz == 1 || src_opsz == 2) && dst_opsz == 4),
            "mismatched sizes only supported for src==1 or 2 dst==4");
-    ASSERT(!opnd_is_null(dst.shadow) || process_eflags, "shouldn't be called");
+    ASSERT(!opnd_is_null(dst.shadow) ||
+           (process_eflags && !opnd_is_null(src.shadow)), "shouldn't be called");
     ASSERT(src_opsz > 0 && !opnd_is_null(src.shadow), "shouldn't be called");
     ASSERT(!reg_is_8bit_high(scratch8), "scratch8 must be low8 reg");
 
@@ -3155,7 +3156,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(false, "only one of src and dst can have non-const offs");
         }
 
-        if (preserve) {
+        if (preserve && !opnd_is_null(memoffs)/*nothing clobbered*/) {
             /* XXX: more efficient to combine the 2 dst writes but simpler
              * code-wise for now to fully restore and then put back into cl
              */

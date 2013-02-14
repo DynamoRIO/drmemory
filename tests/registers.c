@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -33,6 +33,7 @@ typedef intptr_t reg_t;
 #else
 # include <windows.h>
 typedef INT_PTR reg_t;
+typedef unsigned short ushort;
 #endif
 
 typedef struct _gpr_t {
@@ -608,6 +609,23 @@ multi_dst_test(void)
     free(x);
 }
 
+/* i#1127 */
+void
+data16_div_test(void)
+{
+    /* Declare here to avoid disturbing line numbers. */
+    ushort data16_div_test_asm(ushort a, ushort b);
+    ushort res = data16_div_test_asm(10, 5);
+    if (res != 2)
+        printf("10 / 5 != 2, res: %d\n", res);
+    res = data16_div_test_asm(13, 5);
+    if (res != 2)
+        printf("13 / 5 != 2, res: %d\n", res);
+    res = data16_div_test_asm(65000, 20);
+    if (res != 3250)
+        printf("65000 / 20 != 3250, res: %d\n", res);
+}
+
 int
 main()
 {
@@ -642,6 +660,8 @@ main()
     nop_test();
 
     multi_dst_test();
+
+    data16_div_test();
 
     return 0;
 }
@@ -735,6 +755,22 @@ GLOBAL_LABEL(FUNCNAME:)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         cvttsd2si eax, QWORD [REG_XAX]
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME data16_div_test_asm
+/* ushort data16_div_test_asm(ushort a, ushort b); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XAX, ARG1
+        mov      REG_XCX, ARG2
+        push     REG_XDI
+        mov      di, cx
+        xor      edx, edx
+        div      di
+        pop      REG_XDI
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME
