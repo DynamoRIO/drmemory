@@ -1007,10 +1007,13 @@ if (WIN32)
     # XXX: This relies on knowing where DR puts it.
     # One option is ExternalProject to install the local DR first: xref i#1061.
     set(ntimp_lib "${PROJECT_BINARY_DIR}/dynamorio/core/ntdll_imports.lib")
-    set(dbghelp_lib "${PROJECT_BINARY_DIR}/ext/drsyms/dbghelp_imports.lib")
+    set(dbghelp_lib "${PROJECT_BINARY_DIR}/dynamorio/ext/drsyms/dbghelp_imports.lib")
     if ("${CMAKE_GENERATOR}" MATCHES "Visual Studio")
       # for parallel build correctness we need a target dependence
       add_dependencies(${client_target} ntimp_tgt)
+      if (TOOL_DR_MEMORY)
+        add_dependencies(${toolname} dbghelp_tgt)
+      endif ()
     endif ()
   endif ()
 
