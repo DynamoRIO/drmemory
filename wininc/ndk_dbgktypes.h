@@ -110,4 +110,13 @@ typedef struct _DBGUI_WAIT_STATE_CHANGE
     } StateInfo;
 } DBGUI_WAIT_STATE_CHANGE, *PDBGUI_WAIT_STATE_CHANGE;
 
+//
+// Debug Object Information Classes for NtQueryDebugObject
+//
+typedef enum _DEBUGOBJECTINFOCLASS
+{
+    DebugObjectUnusedInformation,
+    DebugObjectKillProcessOnExitInformation
+} DEBUGOBJECTINFOCLASS, *PDEBUGOBJECTINFOCLASS;
+
 #endif /*__AFD_SHARED_H */

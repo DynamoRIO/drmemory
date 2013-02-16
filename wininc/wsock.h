@@ -1,6 +1,13 @@
 /****************************************************************************
- * Portions copyright (c) Microsoft Corporation
- * Portions copyright (c) Regents of the University of California
+ ****************************************************************************
+ ***
+ ***   This header was generated from a Windows DDK header to make
+ ***   information necessary for userspace to call into the Windows
+ ***   kernel available to Dr. Memory.  It contains only constants,
+ ***   structures, and macros generated from the original header, and
+ ***   thus, contains no copyrightable information.
+ ***
+ ****************************************************************************
  ****************************************************************************/
 
 #ifndef _WSOCK_H_

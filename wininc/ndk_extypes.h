@@ -121,6 +121,48 @@ typedef enum _SYSTEM_INFORMATION_CLASS
     MaxSystemInfoClass,
 } SYSTEM_INFORMATION_CLASS;
 
+//
+//  System Information Classes for NtQueryMutant
+//
+typedef enum _MUTANT_INFORMATION_CLASS
+{
+    MutantBasicInformation,
+    MutantOwnerInformation
+} MUTANT_INFORMATION_CLASS;
+
+//
+//  System Information Classes for NtQueryAtom
+//
+typedef enum _ATOM_INFORMATION_CLASS
+{
+    AtomBasicInformation,
+    AtomTableInformation,
+} ATOM_INFORMATION_CLASS;
+
+//
+//  System Information Classes for NtQueryTimer
+//
+typedef enum _TIMER_INFORMATION_CLASS
+{
+    TimerBasicInformation
+} TIMER_INFORMATION_CLASS;
+
+//
+//  System Information Classes for NtQuerySemaphore
+//
+typedef enum _SEMAPHORE_INFORMATION_CLASS
+{
+    SemaphoreBasicInformation
+} SEMAPHORE_INFORMATION_CLASS;
+
+//
+//  System Information Classes for NtQueryEvent
+//
+typedef enum _EVENT_INFORMATION_CLASS
+{
+    EventBasicInformation
+} EVENT_INFORMATION_CLASS;
+
 // Class 26
 typedef struct _SYSTEM_GDI_DRIVER_INFORMATION
 {
@@ -144,5 +186,16 @@ typedef struct _SYSTEM_SESSION_PROCESS_INFORMATION
 // Rtl Atom
 //
 typedef USHORT RTL_ATOM, *PRTL_ATOM;
+
+//
+// Shutdown types for NtShutdownSystem
+//
+typedef enum _SHUTDOWN_ACTION
+{
+    ShutdownNoReboot,
+    ShutdownReboot,
+    ShutdownPowerOff
+} SHUTDOWN_ACTION;
+
 
 #endif /* _EXTYPES_H */

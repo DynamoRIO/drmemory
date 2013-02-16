@@ -39,4 +39,29 @@ typedef struct _BOOT_OPTIONS
     WCHAR HeadlessRedirection[1];
 } BOOT_OPTIONS, *PBOOT_OPTIONS;
 
+//
+// I/O Completion Information Class for NtQueryIoCompletionInformation
+//
+typedef enum _IO_COMPLETION_INFORMATION_CLASS
+{
+    IoCompletionBasicInformation
+} IO_COMPLETION_INFORMATION_CLASS;
+
+//
+// File Information Classes for NtQueryInformationFileSystem
+//
+typedef enum _FSINFOCLASS
+{
+    FileFsVolumeInformation = 1,
+    FileFsLabelInformation,
+    FileFsSizeInformation,
+    FileFsDeviceInformation,
+    FileFsAttributeInformation,
+    FileFsControlInformation,
+    FileFsFullSizeInformation,
+    FileFsObjectIdInformation,
+    FileFsDriverPathInformation,
+    FileFsMaximumInformation
+} FS_INFORMATION_CLASS, *PFS_INFORMATION_CLASS;
+
 #endif /* _IOTYPES_H */

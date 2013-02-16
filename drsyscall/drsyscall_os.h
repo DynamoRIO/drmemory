@@ -26,10 +26,13 @@
 #include "utils.h"
 
 #ifdef WINDOWS
-# define SYSCALL_NUM_ARG_STORE 14
+/* We need extra room for dup entries for diff in vs out size to writes. */
+# define MAX_ARGS_IN_ENTRY 18 /* 17 is max known */
 #else
-# define SYSCALL_NUM_ARG_STORE 6 /* 6 is max on Linux */
+# define MAX_ARGS_IN_ENTRY 6 /* 6 is max on Linux */
 #endif
+
+#define SYSCALL_NUM_ARG_STORE MAX_ARGS_IN_ENTRY
 
 #define SYSCALL_NUM_ARG_TRACK IF_WINDOWS_ELSE(26, 6)
 
@@ -216,15 +219,6 @@ enum {
     SYSINFO_RET_MINUS1_FAIL     = 0x00000040,
 };
 
-#ifdef WINDOWS
-/* unverified but we don't expect pointers beyond 1st 11 args
- * (even w/ dup entries for diff in vs out size to writes)
- */
-# define MAX_NONINLINED_ARGS 11
-#else
-# define MAX_NONINLINED_ARGS 6
-#endif
-
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
 typedef struct _syscall_info_t {
@@ -234,7 +228,7 @@ typedef struct _syscall_info_t {
     uint return_type; /* not drsys_param_type_t so we can use extended SYSARG_TYPE_* */
     int arg_count;
     /* list of args that are not inlined */
-    syscall_arg_t arg[MAX_NONINLINED_ARGS];
+    syscall_arg_t arg[MAX_ARGS_IN_ENTRY];
     /* For custom handling w/o separate number lookup.
      * If SYSINFO_SECONDARY_TABLE is set in flags, this is instead
      * a pointer to a new syscall_info_t table.

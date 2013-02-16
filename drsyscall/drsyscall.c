@@ -1083,11 +1083,12 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
              * If the size is behind us, we start from 0; else, from next.
              */
             sz_argnum = (-arg->size < arg->param) ? 0 : argnum + 1;
-            for (; sz_argnum < sysinfo->arg_count; sz_argnum++) {
+            for (; !sysarg_invalid(&sysinfo->arg[sz_argnum]); sz_argnum++) {
                 if (sysinfo->arg[sz_argnum].param == -arg->size)
                     break;
             }
-            ASSERT(sz_argnum < sysinfo->arg_count, "in/out size should have own entry");
+            ASSERT(!sysarg_invalid(&sysinfo->arg[sz_argnum]),
+                   "in/out size should have own entry");
             ASSERT(sysinfo->arg[sz_argnum].size > 0, "in/out size must be immed");
             ASSERT(sysinfo->arg[sz_argnum].size <= sizeof(size),
                    "in/out size must be <= sizeof(size_t)");
@@ -1138,18 +1139,17 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
     syscall_info_t *sysinfo = pt->sysinfo;
     app_pc start;
     ptr_uint_t size;
-    uint num_args;
     int i, last_param = -1;
     char idmsg[32];
 
     LOG(SYSCALL_VERBOSE, "processing pre system call #"SYSNUM_FMT"."SYSNUM_FMT" %s\n",
         pt->sysnum.number, pt->sysnum.secondary, sysinfo->name);
-    num_args = sysinfo->arg_count;
-    for (i=0; i<num_args; i++) {
+    for (i=0; i<MAX_ARGS_IN_ENTRY; i++) { /* not <arg_count b/c of double entries */
         LOG(SYSCALL_VERBOSE, "\t  pre considering arg %d %d %x\n", sysinfo->arg[i].param,
             sysinfo->arg[i].size, sysinfo->arg[i].flags);
         if (sysarg_invalid(&sysinfo->arg[i]))
             break;
+        ASSERT(sysinfo->arg[i].param < sysinfo->arg_count, "param # > arg count!");
 
         /* The length written may not match that requested, so we check whether
          * addressable at pre-syscall point but only mark as defined (i.e.,
@@ -1189,10 +1189,12 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             /* i#502-c#5 some arg should be ignored if next is NULL */
             if (!skip &&
                 TESTALL(SYSARG_READ | SYSARG_IGNORE_IF_NEXT_NULL,
-                        sysinfo->arg[i].flags) &&
-                (app_pc) pt->sysarg[sysinfo->arg[i+1].param] == NULL) {
-                ASSERT(i+1 < sysinfo->arg_count, "sysarg index out of bound");
-                skip = true;
+                        sysinfo->arg[i].flags)) {
+                ASSERT(i+1 < MAX_ARGS_IN_ENTRY, "sysarg index out of bound");
+                if (i+1 < MAX_ARGS_IN_ENTRY &&
+                    (app_pc) pt->sysarg[sysinfo->arg[i+1].param] == NULL) {
+                    skip = true;
+                }
             }
             /* pass syscall # as pc for reporting purposes */
             /* we treat in-out read-and-write as simply read, since if
@@ -1225,7 +1227,6 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
     syscall_info_t *sysinfo = pt->sysinfo;
     app_pc start;
     ptr_uint_t size, last_size = 0;
-    uint num_args;
     int i, last_param = -1;
     IF_DEBUG(int res;)
     char idmsg[32];
@@ -1237,8 +1238,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         pt->sysnum.number, pt->sysnum.secondary);
     LOG(SYSCALL_VERBOSE, " %s res="PIFX"\n",
         sysinfo->name, dr_syscall_get_result(drcontext));
-    num_args = sysinfo->arg_count;
-    for (i=0; i<num_args; i++) {
+    for (i=0; i<MAX_ARGS_IN_ENTRY; i++) { /* not <arg_count b/c of double entries */
         LOG(SYSCALL_VERBOSE, "\t  post considering arg %d %d %x "PFX"\n",
             sysinfo->arg[i].param, sysinfo->arg[i].size, sysinfo->arg[i].flags,
             pt->sysarg[sysinfo->arg[i].param]);
@@ -1255,7 +1255,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             (result == STATUS_BUFFER_TOO_SMALL ||
              result == STATUS_BUFFER_OVERFLOW ||
              result == STATUS_INFO_LENGTH_MISMATCH) &&
-            i+1 < num_args &&
+            i+1 < MAX_ARGS_IN_ENTRY &&
             !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;
 #endif
@@ -1323,7 +1323,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         /* If the first in a double entry, give 2nd entry precedence, but
          * keep size in last_size in case 2nd was optional OUT and is NULL
          */
-        if (i < num_args && sysinfo->arg[i+1].param == last_param &&
+        if (i < MAX_ARGS_IN_ENTRY && sysinfo->arg[i+1].param == last_param &&
             !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;
         LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
@@ -1487,7 +1487,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             while (sysinfo->arg[compacted].param == i &&
                    !sysarg_invalid(&sysinfo->arg[compacted]))
                 compacted++;
-            ASSERT(compacted <= MAX_NONINLINED_ARGS, "error in table entry");
+            ASSERT(compacted <= MAX_ARGS_IN_ENTRY, "error in table entry");
         }
 
         if (!(*cb)(arg, user_data))
