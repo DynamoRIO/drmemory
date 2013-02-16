@@ -248,166 +248,166 @@ static syscall_info_t syscall_ntdll_info[] = {
     },
     {{0,0},"NtAccessCheck", OK, RNTST, 8,
      {
-        {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {3, sizeof(GENERIC_MAPPING), R},
-        {4, sizeof(PRIVILEGE_SET), W},
-        {5, sizeof(ULONG), R},
-        {6, sizeof(ACCESS_MASK), W},
-        {7, sizeof(BOOLEAN), W},
+         {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {3, sizeof(GENERIC_MAPPING), R},
+         {4, sizeof(PRIVILEGE_SET), W},
+         {5, sizeof(ULONG), R},
+         {6, sizeof(ACCESS_MASK), W},
+         {7, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtAccessCheckAndAuditAlarm", OK, RNTST, 11,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {6, sizeof(GENERIC_MAPPING), R},
-        {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {8, sizeof(ACCESS_MASK), W},
-        {9, sizeof(BOOLEAN), W},
-        {10, sizeof(BOOLEAN), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {6, sizeof(GENERIC_MAPPING), R},
+         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {8, sizeof(ACCESS_MASK), W},
+         {9, sizeof(BOOLEAN), W},
+         {10, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtAccessCheckByType", OK, RNTST, 11,
      {
-        {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {1, sizeof(SID), R},
-        {4, sizeof(OBJECT_TYPE_LIST), R},
-        {6, sizeof(GENERIC_MAPPING), R},
-        {7, sizeof(PRIVILEGE_SET), R},
-        {8, sizeof(ULONG), R},
-        {9, sizeof(ACCESS_MASK), W},
-        {10, sizeof(ULONG), W},
+         {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {1, sizeof(SID), R},
+         {4, sizeof(OBJECT_TYPE_LIST), R},
+         {6, sizeof(GENERIC_MAPPING), R},
+         {7, sizeof(PRIVILEGE_SET), R},
+         {8, sizeof(ULONG), R},
+         {9, sizeof(ACCESS_MASK), W},
+         {10, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAccessCheckByTypeAndAuditAlarm", OK, RNTST, 16,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {5, sizeof(SID), R},
-        {9, sizeof(OBJECT_TYPE_LIST), R},
-        {11, sizeof(GENERIC_MAPPING), R},
-        {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {13, sizeof(ACCESS_MASK), W},
-        {14, sizeof(ULONG), W},
-        {15, sizeof(BOOLEAN), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {5, sizeof(SID), R},
+         {9, sizeof(OBJECT_TYPE_LIST), R},
+         {11, sizeof(GENERIC_MAPPING), R},
+         {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {13, sizeof(ACCESS_MASK), W},
+         {14, sizeof(ULONG), W},
+         {15, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultList", OK, RNTST, 11,
      {
-        {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {1, sizeof(SID), R},
-        {4, sizeof(OBJECT_TYPE_LIST), R},
-        {6, sizeof(GENERIC_MAPPING), R},
-        {7, sizeof(PRIVILEGE_SET), R},
-        {8, sizeof(ULONG), R},
-        {9, sizeof(ACCESS_MASK), W},
-        {10, sizeof(ULONG), W},
+         {0, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {1, sizeof(SID), R},
+         {4, sizeof(OBJECT_TYPE_LIST), R},
+         {6, sizeof(GENERIC_MAPPING), R},
+         {7, sizeof(PRIVILEGE_SET), R},
+         {8, sizeof(ULONG), R},
+         {9, sizeof(ACCESS_MASK), W},
+         {10, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarm", OK, RNTST, 16,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {5, sizeof(SID), R},
-        {9, sizeof(OBJECT_TYPE_LIST), R},
-        {11, sizeof(GENERIC_MAPPING), R},
-        {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {13, sizeof(ACCESS_MASK), W},
-        {14, sizeof(ULONG), W},
-        {15, sizeof(ULONG), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {5, sizeof(SID), R},
+         {9, sizeof(OBJECT_TYPE_LIST), R},
+         {11, sizeof(GENERIC_MAPPING), R},
+         {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {13, sizeof(ACCESS_MASK), W},
+         {14, sizeof(ULONG), W},
+         {15, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", OK, RNTST, 17,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {5, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {6, sizeof(SID), R},
-        {10, sizeof(OBJECT_TYPE_LIST), R},
-        {12, sizeof(GENERIC_MAPPING), R},
-        {13, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {14, sizeof(ACCESS_MASK), W},
-        {15, sizeof(ULONG), W},
-        {16, sizeof(ULONG), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {5, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {6, sizeof(SID), R},
+         {10, sizeof(OBJECT_TYPE_LIST), R},
+         {12, sizeof(GENERIC_MAPPING), R},
+         {13, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {14, sizeof(ACCESS_MASK), W},
+         {15, sizeof(ULONG), W},
+         {16, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAddAtom", OK, RNTST, 3,
      {
-        {0, -1, R},
-        {2, sizeof(USHORT), W},
+         {0, -1, R},
+         {2, sizeof(USHORT), W},
      }
     },
     {{0,0},"NtAddBootEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtAddDriverEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtAdjustGroupsToken", OK, RNTST, 6,
      {
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {2, sizeof(TOKEN_GROUPS), R},
-        {4, -3, W},
-        {4, -5, WI},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(TOKEN_GROUPS), R},
+         {4, -3, W},
+         {4, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAdjustPrivilegesToken", OK, RNTST, 6,
      {
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {2, sizeof(TOKEN_PRIVILEGES), R},
-        {4, -3, W},
-        {4, -5, WI},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(TOKEN_PRIVILEGES), R},
+         {4, -3, W},
+         {4, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAlertResumeThread", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAlertThread", OK, RNTST, 1, },
     {{0,0},"NtAllocateLocallyUniqueId", OK, RNTST, 1,
      {
-        {0, sizeof(LUID), W},
+         {0, sizeof(LUID), W},
      }
     },
     {{0,0},"NtAllocateUserPhysicalPages", OK, RNTST, 3,
      {
-        {1, sizeof(ULONG), R},
-        {2, sizeof(ULONG), W},
+         {1, sizeof(ULONG), R},
+         {2, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtAllocateUuids", OK, RNTST, 4,
      {
-        {0, sizeof(LARGE_INTEGER), W},
-        {1, sizeof(ULONG), W},
-        {2, sizeof(ULONG), W},
-        {3, sizeof(UCHAR), W},
+         {0, sizeof(LARGE_INTEGER), W},
+         {1, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W},
+         {3, sizeof(UCHAR), W},
      }
     },
     {{0,0},"NtAllocateVirtualMemory", OK, RNTST, 6,
      {
-        {1, sizeof(PVOID), R|W},
-        {3, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W},
+         {3, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtApphelpCacheControl", OK, RNTST, 2,
      {
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtAreMappedFilesTheSame", OK, RNTST, 2, },
@@ -416,30 +416,30 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtCancelDeviceWakeupRequest", OK, RNTST, 1, },
     {{0,0},"NtCancelIoFile", OK, RNTST, 2,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtCancelTimer", OK, RNTST, 2,
      {
-        {1, sizeof(BOOLEAN), W},
+         {1, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtClearEvent", OK, RNTST, 1, },
     {{0,0},"NtClose", OK, RNTST, 1,
      {
-        {0,},
+         {0,},
      }
     },
     {{0,0},"NtCloseObjectAuditAlarm", OK, RNTST, 3,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCompactKeys", OK, RNTST, 2, },
     {{0,0},"NtCompareTokens", OK, RNTST, 3,
      {
-        {2, sizeof(BOOLEAN), W},
+         {2, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtCompleteConnectPort", OK, RNTST, 1, },
@@ -451,953 +451,953 @@ static syscall_info_t syscall_ntdll_info[] = {
      */
     {{0,0},"NtConnectPort", OK, RNTST, 8,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
-        {3, sizeof(PORT_VIEW), R|W},
-        {4, sizeof(REMOTE_PORT_VIEW), W},
-        {5, sizeof(ULONG), W},
-        {6, -7, R|WI},
-        {7, sizeof(ULONG), R|W},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
+         {3, sizeof(PORT_VIEW), R|W},
+         {4, sizeof(REMOTE_PORT_VIEW), W},
+         {5, sizeof(ULONG), W},
+         {6, -7, R|WI},
+         {7, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtContinue", OK, RNTST, 2,
      {
-        {0, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCreateChannel", OK, RNTST, 2,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateDebugObject", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCreateDirectoryObject", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateEvent", OK, RNTST, 5,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCreateEventPair", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateFile", OK, RNTST, 11,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(IO_STATUS_BLOCK), W},
-        {4, sizeof(LARGE_INTEGER), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtCreateIoCompletion", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateJobObject", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateJobSet", OK, RNTST, 3,
      {
-        {1, sizeof(JOB_SET_ARRAY), R},
+         {1, sizeof(JOB_SET_ARRAY), R},
      }
     },
     {{0,0},"NtCreateKey", OK, RNTST, 7,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {6, sizeof(ULONG), W},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {6, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtCreateKeyedEvent", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateMailslotFile", OK, RNTST, 8,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(IO_STATUS_BLOCK), W},
-        {7, sizeof(LARGE_INTEGER), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(IO_STATUS_BLOCK), W},
+         {7, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtCreateMutant", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCreateNamedPipeFile", OK, RNTST, 14,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(IO_STATUS_BLOCK), W},
-        {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {13, sizeof(LARGE_INTEGER), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(IO_STATUS_BLOCK), W},
+         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {13, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtCreatePagingFile", OK, RNTST, 4,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(ULARGE_INTEGER), R},
-        {2, sizeof(ULARGE_INTEGER), R},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(ULARGE_INTEGER), R},
+         {2, sizeof(ULARGE_INTEGER), R},
      }
     },
     {{0,0},"NtCreatePort", OK, RNTST, 5,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateProcess", OK, RNTST, 8,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCreateProcessEx", OK, RNTST, 9,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateProfile", OK, RNTST, 9,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {5, sizeof(ULONG), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {5, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtCreateSection", OK, RNTST, 7,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(LARGE_INTEGER), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtCreateSemaphore", OK, RNTST, 5,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateSymbolicLinkObject", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtCreateThread", OK, RNTST, 8,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(CLIENT_ID), W},
-        {5, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
-        {6, sizeof(USER_STACK), R},
-        {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(CLIENT_ID), W},
+         {5, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
+         {6, sizeof(USER_STACK), R},
+         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_CreateThread
     },
     {{0,0},"NtCreateThreadEx", OK, RNTST, 11,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL /*rest handled manually*/},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL /*rest handled manually*/},
      }, &sysnum_CreateThreadEx
     },
     {{0,0},"NtCreateTimer", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtCreateToken", OK, RNTST, 13,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(LUID), R},
-        {5, sizeof(LARGE_INTEGER), R},
-        {6, sizeof(TOKEN_USER), R},
-        {7, sizeof(TOKEN_GROUPS), R},
-        {8, sizeof(TOKEN_PRIVILEGES), R},
-        {9, sizeof(TOKEN_OWNER), R},
-        {10, sizeof(TOKEN_PRIMARY_GROUP), R},
-        {11, sizeof(TOKEN_DEFAULT_DACL), R},
-        {12, sizeof(TOKEN_SOURCE), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(LUID), R},
+         {5, sizeof(LARGE_INTEGER), R},
+         {6, sizeof(TOKEN_USER), R},
+         {7, sizeof(TOKEN_GROUPS), R},
+         {8, sizeof(TOKEN_PRIVILEGES), R},
+         {9, sizeof(TOKEN_OWNER), R},
+         {10, sizeof(TOKEN_PRIMARY_GROUP), R},
+         {11, sizeof(TOKEN_DEFAULT_DACL), R},
+         {12, sizeof(TOKEN_SOURCE), R},
      }
     },
     {{0,0},"NtCreateUserProcess", OK, RNTST, 11,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {8, sizeof(RTL_USER_PROCESS_PARAMETERS), R},
-        /*XXX i#98: arg 9 is in/out but not completely known*/ 
-        {10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {8, sizeof(RTL_USER_PROCESS_PARAMETERS), R},
+         /*XXX i#98: arg 9 is in/out but not completely known*/ 
+         {10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
      }, &sysnum_CreateUserProcess
     },
     {{0,0},"NtCreateWaitablePort", OK, RNTST, 5,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtDebugActiveProcess", OK, RNTST, 2, },
     {{0,0},"NtDebugContinue", OK, RNTST, 3,
      {
-        {1, sizeof(CLIENT_ID), R},
+         {1, sizeof(CLIENT_ID), R},
      }
     },
     {{0,0},"NtDelayExecution", OK, RNTST, 2,
      {
-        {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {1, sizeof(LARGE_INTEGER), R},
+         {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {1, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtDeleteAtom", OK, RNTST, 1, },
     {{0,0},"NtDeleteBootEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtDeleteDriverEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtDeleteFile", OK, RNTST, 1,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtDeleteKey", OK, RNTST, 1, },
     {{0,0},"NtDeleteObjectAuditAlarm", OK, RNTST, 3,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtDeleteValueKey", OK, RNTST, 2,
      {
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtDeviceIoControlFile", UNKNOWN/*to do param cmp for unknown ioctl codes*/, RNTST, 10,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        /*param6 handled manually*/
-        {8, -9, W},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         /*param6 handled manually*/
+         {8, -9, W},
      }, &sysnum_DeviceIoControlFile
     },
     {{0,0},"NtDisplayString", OK, RNTST, 1,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtDuplicateObject", OK, RNTST, 7,
      {
-        {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtDuplicateToken", OK, RNTST, 6,
      {
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtEnumerateBootEntries", OK, RNTST, 2,
      {
-        {0, -1, WI},
-        {1, sizeof(ULONG), R|W},
+         {0, -1, WI},
+         {1, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtEnumerateDriverEntries", OK, RNTST, 2,
      {
-        {0, -1, WI},
-        {1, sizeof(ULONG), R|W},
+         {0, -1, WI},
+         {1, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtEnumerateKey", OK, RNTST, 6,
      {
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
      {
-        {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-        {1, -2, WI},
-        {2, sizeof(ULONG), R|W},
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, -2, WI},
+         {2, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtEnumerateValueKey", OK, RNTST, 6,
      {
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtExtendSection", OK, RNTST, 2,
      {
-        {1, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtFilterToken", OK, RNTST, 6,
      {
-        {2, sizeof(TOKEN_GROUPS), R},
-        {3, sizeof(TOKEN_PRIVILEGES), R},
-        {4, sizeof(TOKEN_GROUPS), R},
-        {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(TOKEN_GROUPS), R},
+         {3, sizeof(TOKEN_PRIVILEGES), R},
+         {4, sizeof(TOKEN_GROUPS), R},
+         {5, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtFindAtom", OK, RNTST, 3,
      {
-        {0, -1, R},
-        {2, sizeof(USHORT), W},
+         {0, -1, R},
+         {2, sizeof(USHORT), W},
      }
     },
     {{0,0},"NtFlushBuffersFile", OK, RNTST, 2,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtFlushInstructionCache", OK, RNTST, 3, },
     {{0,0},"NtFlushKey", OK, RNTST, 1, },
     {{0,0},"NtFlushVirtualMemory", OK, RNTST, 4,
      {
-        {1, sizeof(PVOID), R|W},
-        {2, sizeof(ULONG), R|W},
-        {3, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(PVOID), R|W},
+         {2, sizeof(ULONG), R|W},
+         {3, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtFlushWriteBuffer", OK, RNTST, 0, },
     {{0,0},"NtFreeUserPhysicalPages", OK, RNTST, 3,
      {
-        {1, sizeof(ULONG), R|W},
-        {2, sizeof(ULONG), R},
+         {1, sizeof(ULONG), R|W},
+         {2, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtFreeVirtualMemory", OK, RNTST, 4,
      {
-        {1, sizeof(PVOID), R|W},
-        {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W},
+         {2, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtFsControlFile", OK, RNTST, 10,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {8, -9, W},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {8, -9, W},
      }
     },
     {{0,0},"NtGetContextThread", OK, RNTST, 2,
      {
-        {1, sizeof(CONTEXT), W|CT, SYSARG_TYPE_CONTEXT},
+         {1, sizeof(CONTEXT), W|CT, SYSARG_TYPE_CONTEXT},
      }
     },
     {{0,0},"NtGetCurrentProcessorNumber", OK, RNTST, 1, },
     {{0,0},"NtGetDevicePowerState", OK, RNTST, 2,
      {
-        {1, sizeof(DEVICE_POWER_STATE), W},
+         {1, sizeof(DEVICE_POWER_STATE), W},
      }
     },
     {{0,0},"NtGetPlugPlayEvent", OK, RNTST, 4,
      {
-        {2, -3, W},
+         {2, -3, W},
      }
     },
     /* BufferEntries is #elements, not #bytes */
     {{0,0},"NtGetWriteWatch", OK, RNTST, 7,
      {
-        {4, -5, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(void*)},
-        {5, sizeof(ULONG), R|W},
-        {6, sizeof(ULONG), W},
+         {4, -5, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(void*)},
+         {5, sizeof(ULONG), R|W},
+         {6, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtImpersonateAnonymousToken", OK, RNTST, 1, },
     {{0,0},"NtImpersonateClientOfPort", OK, RNTST, 2,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
     {{0,0},"NtImpersonateThread", OK, RNTST, 3,
      {
-        {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
+         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
      }
     },
     {{0,0},"NtInitializeRegistry", OK, RNTST, 1,
      {
-        {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtInitiatePowerAction", OK, RNTST, 4,
      {
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtIsProcessInJob", OK, RNTST, 2, },
     {{0,0},"NtIsSystemResumeAutomatic", OK, RNTST, 0, },
     {{0,0},"NtListenChannel", OK, RNTST, 2,
      {
-        {1, sizeof(CHANNEL_MESSAGE), W},
+         {1, sizeof(CHANNEL_MESSAGE), W},
      }
     },
     {{0,0},"NtListenPort", OK, RNTST, 2,
      {
-        {1, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
     {{0,0},"NtLoadDriver", OK, RNTST, 1,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtLoadKey2", OK, RNTST, 3,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtLoadKey", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtLoadKeyEx", OK, RNTST, 4,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtLockFile", OK, RNTST, 10,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, sizeof(ULARGE_INTEGER), R},
-        {6, sizeof(ULARGE_INTEGER), R},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, sizeof(ULARGE_INTEGER), R},
+         {6, sizeof(ULARGE_INTEGER), R},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtLockProductActivationKeys", OK, RNTST, 2,
      {
-        {0, sizeof(ULONG), W},
-        {1, sizeof(ULONG), W},
+         {0, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtLockRegistryKey", OK, RNTST, 1, },
     {{0,0},"NtLockVirtualMemory", OK, RNTST, 4,
      {
-        {1, sizeof(PVOID), R|W},
-        {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W},
+         {2, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtMakePermanentObject", OK, RNTST, 1, },
     {{0,0},"NtMakeTemporaryObject", OK, RNTST, 1, },
     {{0,0},"NtMapCMFModule", OK, RNTST, 6, {/* XXX DRi#415 not all known */ {4, sizeof(PVOID), W},
-        {5, sizeof(ULONG), W},
-     }
+                                            {5, sizeof(ULONG), W},
+        }
     },
     {{0,0},"NtMapUserPhysicalPages", OK, RNTST, 3,
      {
-        {1, sizeof(ULONG), R},
-        {2, sizeof(ULONG), R},
+         {1, sizeof(ULONG), R},
+         {2, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtMapUserPhysicalPagesScatter", OK, RNTST, 3,
      {
-        {0, sizeof(PVOID), R},
-        {1, sizeof(ULONG), R},
-        {2, sizeof(ULONG), R},
+         {0, sizeof(PVOID), R},
+         {1, sizeof(ULONG), R},
+         {2, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtMapViewOfSection", OK, RNTST, 10,
      {
-        {2, sizeof(PVOID), R|W},
-        {5, sizeof(LARGE_INTEGER), R|W},
-        {6, sizeof(ULONG), R|W},
+         {2, sizeof(PVOID), R|W},
+         {5, sizeof(LARGE_INTEGER), R|W},
+         {6, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtModifyBootEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtModifyDriverEntry", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtNotifyChangeDirectoryFile", OK, RNTST, 9,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, sizeof(FILE_NOTIFY_INFORMATION), W},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, sizeof(FILE_NOTIFY_INFORMATION), W},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtNotifyChangeKey", OK, RNTST, 10,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtNotifyChangeMultipleKeys", OK, RNTST, 12,
      {
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {6, sizeof(IO_STATUS_BLOCK), W},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {11, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {6, sizeof(IO_STATUS_BLOCK), W},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {11, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtOpenChannel", OK, RNTST, 2,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenDirectoryObject", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenEvent", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenEventPair", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenFile", OK, RNTST, 6,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(IO_STATUS_BLOCK), W},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtOpenIoCompletion", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenJobObject", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenKey", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenKeyEx", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenKeyedEvent", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenMutant", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenObjectAuditAlarm", OK, RNTST, 12,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(PVOID), R},
-        {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
-        {8, sizeof(PRIVILEGE_SET), R},
-        {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {11, sizeof(BOOLEAN), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(PVOID), R},
+         {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {8, sizeof(PRIVILEGE_SET), R},
+         {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {11, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtOpenProcess", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(CLIENT_ID), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(CLIENT_ID), R},
      }
     },
     {{0,0},"NtOpenProcessToken", OK, RNTST, 3,
      {
-        {2, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtOpenProcessTokenEx", OK, RNTST, 4,
      {
-        {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtOpenSection", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenSemaphore", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenSymbolicLinkObject", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtOpenThread", OK, RNTST, 4,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(CLIENT_ID), R},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(CLIENT_ID), R},
      }
     },
     {{0,0},"NtOpenThreadToken", OK, RNTST, 4,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtOpenThreadTokenEx", OK, RNTST, 5,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtOpenTimer", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtPlugPlayControl", OK, RNTST, 4,
      {
-        {1, -2, W},
+         {1, -2, W},
      }
     },
     {{0,0},"NtPowerInformation", OK, RNTST, 5,
      {
-        {3, -4, W},
+         {3, -4, W},
      }
     },
     {{0,0},"NtPrivilegeCheck", OK, RNTST, 3,
      {
-        {1, sizeof(PRIVILEGE_SET), R},
-        {2, sizeof(BOOLEAN), W},
+         {1, sizeof(PRIVILEGE_SET), R},
+         {2, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtPrivilegedServiceAuditAlarm", OK, RNTST, 5,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, sizeof(PRIVILEGE_SET), R},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(PRIVILEGE_SET), R},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtPrivilegeObjectAuditAlarm", OK, RNTST, 6,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {4, sizeof(PRIVILEGE_SET), R},
-        {5, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(PRIVILEGE_SET), R},
+         {5, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtProtectVirtualMemory", OK, RNTST, 5,
      {
-        {1, sizeof(PVOID), R|W},
-        {2, sizeof(ULONG), R|W},
-        {4, sizeof(ULONG), W},
+         {1, sizeof(PVOID), R|W},
+         {2, sizeof(ULONG), R|W},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtPulseEvent", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryAttributesFile", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(FILE_BASIC_INFORMATION), W},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(FILE_BASIC_INFORMATION), W},
      }
     },
     {{0,0},"NtQueryBootEntryOrder", OK, RNTST, 2,
      {
-        {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-        {1, sizeof(ULONG), R|W},
+         {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+         {1, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtQueryBootOptions", OK, RNTST, 2,
      {
-        {0, -1, WI},
-        {1, sizeof(ULONG), R|W}
+         {0, -1, WI},
+         {1, sizeof(ULONG), R|W}
      }
     },
     {{0,0},"NtQueryDebugFilterState", OK, RNTST, 2, },
     {{0,0},"NtQueryDefaultLocale", OK, RNTST, 2,
      {
-        {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {1, sizeof(LCID), W},
+         {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {1, sizeof(LCID), W},
      }
     },
     {{0,0},"NtQueryDefaultUILanguage", OK, RNTST, 1,
      {
-        {0, sizeof(LANGID), W},
+         {0, sizeof(LANGID), W},
      }
     },
     {{0,0},"NtQueryDirectoryFile", OK, RNTST, 11,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, -6, W},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {9, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, -6, W},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {9, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtQueryDirectoryObject", OK, RNTST, 7,
      {
-        {1, -2, W},
-        {1, -6, WI},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {5, sizeof(ULONG), R|W},
-        {6, sizeof(ULONG), W},
+         {1, -2, W},
+         {1, -6, WI},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {5, sizeof(ULONG), R|W},
+         {6, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryDriverEntryOrder", OK, RNTST, 2,
      {
-        {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-        {1, sizeof(ULONG), R|W},
+         {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+         {1, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtQueryEaFile", OK, RNTST, 9,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, sizeof(FILE_FULL_EA_INFORMATION), W},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {5, sizeof(FILE_GET_EA_INFORMATION), R},
-        {7, sizeof(ULONG), R},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, sizeof(FILE_FULL_EA_INFORMATION), W},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {5, sizeof(FILE_GET_EA_INFORMATION), R},
+         {7, sizeof(ULONG), R},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtQueryEvent", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryFullAttributesFile", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(FILE_NETWORK_OPEN_INFORMATION), W},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(FILE_NETWORK_OPEN_INFORMATION), W},
      }
     },
     {{0,0},"NtQueryInformationAtom", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInformationFile", OK, RNTST, 5,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, -3, W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, -3, W},
      }
     },
     {{0,0},"NtQueryInformationJobObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInformationPort", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInformationProcess", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInformationThread", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInformationToken", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryInstallUILanguage", OK, RNTST, 1,
      {
-        {0, sizeof(LANGID), W},
+         {0, sizeof(LANGID), W},
      }
     },
     {{0,0},"NtQueryIntervalProfile", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryIoCompletion", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryKey", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryMultipleValueKey", OK, RNTST, 6,
      {
-        {1, sizeof(KEY_VALUE_ENTRY), R|W},
-        {3, -4, WI},
-        {4, sizeof(ULONG), R|W},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(KEY_VALUE_ENTRY), R|W},
+         {3, -4, WI},
+         {4, sizeof(ULONG), R|W},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryMutant", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryOleDirectoryFile", OK, RNTST, 11,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, -6, W},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {9, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, -6, W},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {9, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtQueryOpenSubKeys", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(ULONG), W},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryOpenSubKeysEx", OK, RNTST, 4,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {2, sizeof(ULONG), W},
-        {3, sizeof(ULONG), W},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {2, sizeof(ULONG), W},
+         {3, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryPerformanceCounter", OK, RNTST, 2,
      {
-        {0, sizeof(LARGE_INTEGER), W},
-        {1, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), W},
+         {1, sizeof(LARGE_INTEGER), W},
      }
     },
     {{0,0},"NtQueryPortInformationProcess", OK, RNTST, 1, },
     {{0,0},"NtQueryQuotaInformationFile", OK, RNTST, 9,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, sizeof(FILE_USER_QUOTA_INFORMATION), W},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {5, sizeof(FILE_QUOTA_LIST_INFORMATION), R},
-        {7, sizeof(SID), R},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, sizeof(FILE_USER_QUOTA_INFORMATION), W},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {5, sizeof(FILE_QUOTA_LIST_INFORMATION), R},
+         {7, sizeof(SID), R},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtQuerySection", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQuerySecurityObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQuerySemaphore", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     /* No double entry for 3rd param needed b/c the written size is in
@@ -1405,192 +1405,192 @@ static syscall_info_t syscall_ntdll_info[] = {
      */
     {{0,0},"NtQuerySymbolicLinkObject", OK, RNTST, 3,
      {
-        {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(ULONG), W},
+         {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQuerySystemEnvironmentValue", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 4,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, -2, W},
-        {1, -3, WI},
-        {3, sizeof(ULONG), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, -2, W},
+         {1, -3, WI},
+         {3, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQuerySystemEnvironmentValueEx", OK, RNTST, 5,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(GUID), R},
-        {2, -3, WI},
-        {3, sizeof(ULONG), R|W},
-        {4, sizeof(ULONG), W},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(GUID), R},
+         {2, -3, WI},
+         {3, sizeof(ULONG), R|W},
+         {4, sizeof(ULONG), W},
      }
     },
     /* One info class reads data, which is special-cased */
     {{0,0},"NtQuerySystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 4,
      {
-        {1, -2, W},
-        {1, -3, WI},
-        {3, sizeof(ULONG), W},
+         {1, -2, W},
+         {1, -3, WI},
+         {3, sizeof(ULONG), W},
      }, &sysnum_QuerySystemInformation
     },
     {{0,0},"NtQuerySystemTime", OK, RNTST, 1,
      {
-        {0, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), W},
      }
     },
     {{0,0},"NtQueryTimer", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryTimerResolution", OK, RNTST, 3,
      {
-        {0, sizeof(ULONG), W},
-        {1, sizeof(ULONG), W},
-        {2, sizeof(ULONG), W},
+         {0, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryValueKey", OK, RNTST, 6,
      {
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryVirtualMemory", OK, RNTST, 6,
      {
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtQueryVolumeInformationFile", OK, RNTST, 5,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, -3, W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, -3, W},
      }
     },
     {{0,0},"NtQueueApcThread", OK, RNTST, 5, },
     {{0,0},"NtRaiseException", OK, RNTST, 3,
      {
-        {0, sizeof(EXCEPTION_RECORD), R|CT, SYSARG_TYPE_EXCEPTION_RECORD},
-        {1, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(EXCEPTION_RECORD), R|CT, SYSARG_TYPE_EXCEPTION_RECORD},
+         {1, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtRaiseHardError", OK, RNTST, 6,
      {
-        {3, sizeof(ULONG_PTR), R},
-        {5, sizeof(ULONG), W},
+         {3, sizeof(ULONG_PTR), R},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtReadFile", OK, RNTST, 9,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, -6, W},
-        {5, -4,(W|IO)},
-        {7, sizeof(LARGE_INTEGER), R},
-        {8, sizeof(ULONG), R},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, -6, W},
+         {5, -4,(W|IO)},
+         {7, sizeof(LARGE_INTEGER), R},
+         {8, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtReadFileScatter", OK, RNTST, 9,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, sizeof(FILE_SEGMENT_ELEMENT), R},
-        {7, sizeof(LARGE_INTEGER), R},
-        {8, sizeof(ULONG), R},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, sizeof(FILE_SEGMENT_ELEMENT), R},
+         {7, sizeof(LARGE_INTEGER), R},
+         {8, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtReadRequestData", OK, RNTST, 6,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtReadVirtualMemory", OK, RNTST, 5,
      {
-        {2, -3, W},
-        {2, -4, WI},
-        {4, sizeof(ULONG), W},
+         {2, -3, W},
+         {2, -4, WI},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtRegisterThreadTerminatePort", OK, RNTST, 1, },
     {{0,0},"NtReleaseKeyedEvent", OK, RNTST, 4,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {3, sizeof(LARGE_INTEGER), R},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtReleaseMutant", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtReleaseSemaphore", OK, RNTST, 3,
      {
-        {2, sizeof(LONG), W},
+         {2, sizeof(LONG), W},
      }
     },
     {{0,0},"NtRemoveIoCompletion", OK, RNTST, 5,
      {
-        {1, sizeof(ULONG), W},
-        {2, sizeof(ULONG), W},
-        {3, sizeof(IO_STATUS_BLOCK), W},
-        {4, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W},
+         {3, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtRemoveProcessDebug", OK, RNTST, 2, },
     {{0,0},"NtRenameKey", OK, RNTST, 2,
      {
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtReplaceKey", OK, RNTST, 3,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtReplyPort", OK, RNTST, 2,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
     {{0,0},"NtReplyWaitReceivePort", OK, RNTST, 4,
      {
-        {1, sizeof(ULONG), W},
-        {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(ULONG), W},
+         {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
     {{0,0},"NtReplyWaitReceivePortEx", OK, RNTST, 5,
      {
-        {1, sizeof(PVOID), W},
-        {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {4, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(PVOID), W},
+         {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {4, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtReplyWaitReplyPort", OK, RNTST, 2,
      {
-        {1, sizeof(PORT_MESSAGE), R|W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), R|W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
     {{0,0},"NtReplyWaitSendChannel", OK, RNTST, 3,
      {
-        {2, sizeof(CHANNEL_MESSAGE), W},
+         {2, sizeof(CHANNEL_MESSAGE), W},
      }
     },
     {{0,0},"NtRequestDeviceWakeup", OK, RNTST, 1, },
     {{0,0},"NtRequestPort", OK, RNTST, 2,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
 #if 1
@@ -1601,22 +1601,22 @@ static syscall_info_t syscall_ntdll_info[] = {
      */
     {{0,0},"NtRequestWaitReplyPort", OK, RNTST, 3,
      {
-        {1,8, R},
-        {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1,8, R},
+         {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
 #else
     {{0,0},"NtRequestWaitReplyPort", OK, RNTST, 3,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {2, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
     },
 #endif
     {{0,0},"NtRequestWakeupLatency", OK, RNTST, 1, },
     {{0,0},"NtResetEvent", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtResetWriteWatch", OK, RNTST, 3, },
@@ -1624,7 +1624,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtResumeProcess", OK, RNTST, 1, },
     {{0,0},"NtResumeThread", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtSaveKey", OK, RNTST, 2, },
@@ -1632,60 +1632,60 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSaveMergedKeys", OK, RNTST, 3, },
     {{0,0},"NtSecureConnectPort", OK, RNTST, 9,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
-        {3, sizeof(PORT_VIEW), R|W},
-        {4, sizeof(SID), R},
-        {5, sizeof(REMOTE_PORT_VIEW), R|W},
-        {6, sizeof(ULONG), W},
-        {7, -8, R|WI},
-        {8, sizeof(ULONG), R|W},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
+         {3, sizeof(PORT_VIEW), R|W},
+         {4, sizeof(SID), R},
+         {5, sizeof(REMOTE_PORT_VIEW), R|W},
+         {6, sizeof(ULONG), W},
+         {7, -8, R|WI},
+         {8, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtSendWaitReplyChannel", OK, RNTST, 4,
      {
-        {3, sizeof(CHANNEL_MESSAGE), W},
+         {3, sizeof(CHANNEL_MESSAGE), W},
      }
     },
     {{0,0},"NtSetBootEntryOrder", OK, RNTST, 2,
      {
-        {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-        {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetBootOptions", OK, RNTST, 2,
      {
-        {0, sizeof(BOOT_OPTIONS), R},
+         {0, sizeof(BOOT_OPTIONS), R},
      }
     },
     {{0,0},"NtSetContextChannel", OK, RNTST, 1, },
     {{0,0},"NtSetContextThread", OK, RNTST, 2,
      {
-        {1, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
+         {1, sizeof(CONTEXT), R|CT, SYSARG_TYPE_CONTEXT},
      }
     },
     {{0,0},"NtSetDebugFilterState", OK, RNTST, 3,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtSetDefaultHardErrorPort", OK, RNTST, 1, },
     {{0,0},"NtSetDefaultLocale", OK, RNTST, 2,
      {
-        {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtSetDefaultUILanguage", OK, RNTST, 1, },
     {{0,0},"NtSetEaFile", OK, RNTST, 4,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, sizeof(FILE_FULL_EA_INFORMATION), R},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, sizeof(FILE_FULL_EA_INFORMATION), R},
      }
     },
     {{0,0},"NtSetEvent", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtSetEventBoostPriority", OK, RNTST, 1, },
@@ -1694,12 +1694,12 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetHighWaitLowThread", OK, RNTST, 0, },
     {{0,0},"NtSetInformationDebugObject", OK, RNTST, 5,
      {
-        {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtSetInformationFile", OK, RNTST, 5,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtSetInformationJobObject", OK, RNTST, 4, },
@@ -1716,78 +1716,78 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetLowWaitHighThread", OK, RNTST, 0, },
     {{0,0},"NtSetQuotaInformationFile", OK, RNTST, 4,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, sizeof(FILE_USER_QUOTA_INFORMATION), R},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, sizeof(FILE_USER_QUOTA_INFORMATION), R},
      }
     },
     {{0,0},"NtSetSecurityObject", OK, RNTST, 3,
      {
-        {2, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
+         {2, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
      }
     },
     {{0,0},"NtSetSystemEnvironmentValue", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtSetSystemEnvironmentValueEx", OK, RNTST, 2,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {1, sizeof(GUID), R},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(GUID), R},
      }
     },
     /* Some info classes write data as well, which is special-cased */
     {{0,0},"NtSetSystemInformation", OK, RNTST, 3,
      {
-        {1, -2, R},
+         {1, -2, R},
      }, &sysnum_SetSystemInformation
     },
     {{0,0},"NtSetSystemPowerState", OK, RNTST, 3, },
     {{0,0},"NtSetSystemTime", OK, RNTST, 2,
      {
-        {0, sizeof(LARGE_INTEGER), R},
-        {1, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(LARGE_INTEGER), W},
      }
     },
     {{0,0},"NtSetThreadExecutionState", OK, RNTST, 2,
      {
-        {1, sizeof(EXECUTION_STATE), W},
+         {1, sizeof(EXECUTION_STATE), W},
      }
     },
     {{0,0},"NtSetTimer", OK, RNTST, 7,
      {
-        {1, sizeof(LARGE_INTEGER), R},
-        {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {6, sizeof(BOOLEAN), W},
+         {1, sizeof(LARGE_INTEGER), R},
+         {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {6, sizeof(BOOLEAN), W},
      }
     },
     {{0,0},"NtSetTimerResolution", OK, RNTST, 3,
      {
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {2, sizeof(ULONG), W},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtSetUuidSeed", OK, RNTST, 1,
      {
-        {0, sizeof(UCHAR), R},
+         {0, sizeof(UCHAR), R},
      }
     },
     {{0,0},"NtSetValueKey", OK, RNTST, 6,
      {
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtSetVolumeInformationFile", OK, RNTST, 5,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W},
      }
     },
     {{0,0},"NtShutdownSystem", OK, RNTST, 1, },
     {{0,0},"NtSignalAndWaitForSingleObject", OK, RNTST, 4,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {3, sizeof(LARGE_INTEGER), R},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtStartProfile", OK, RNTST, 1, },
@@ -1795,21 +1795,21 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSuspendProcess", OK, RNTST, 1, },
     {{0,0},"NtSuspendThread", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtSystemDebugControl", OK, RNTST, 6,
      {
-        {3, -4, W},
-        {3, -5, WI},
-        {5, sizeof(ULONG), W},
+         {3, -4, W},
+         {3, -5, WI},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtTerminateJobObject", OK, RNTST, 2, },
     {{0,0},"NtTerminateProcess", OK, RNTST, 2,
      {
-        {0,}},
-            },
+         {0,}},
+    },
     {{0,0},"NtTerminateThread", OK, RNTST, 2, },
     {{0,0},"NtTestAlert", OK, RNTST, 0, },
     /* unlike TraceEvent API routine, syscall takes size+flags as
@@ -1818,116 +1818,116 @@ static syscall_info_t syscall_ntdll_info[] = {
      */
     {{0,0},"NtTraceEvent", OK, RNTST, 4,
      {
-        {3, sizeof(EVENT_TRACE_HEADER), W},
+         {3, sizeof(EVENT_TRACE_HEADER), W},
      }
     },
     {{0,0},"NtTranslateFilePath", OK, RNTST, 4,
      {
-        {0, sizeof(FILE_PATH), R},
-        {2, sizeof(FILE_PATH), W},
+         {0, sizeof(FILE_PATH), R},
+         {2, sizeof(FILE_PATH), W},
      }
     },
     {{0,0},"NtUnloadDriver", OK, RNTST, 1,
      {
-        {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtUnloadKey2", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtUnloadKey", OK, RNTST, 1,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtUnloadKeyEx", OK, RNTST, 2,
      {
-        {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtUnlockFile", OK, RNTST, 5,
      {
-        {1, sizeof(IO_STATUS_BLOCK), W},
-        {2, sizeof(ULARGE_INTEGER), R},
-        {3, sizeof(ULARGE_INTEGER), R},
+         {1, sizeof(IO_STATUS_BLOCK), W},
+         {2, sizeof(ULARGE_INTEGER), R},
+         {3, sizeof(ULARGE_INTEGER), R},
      }
     },
     {{0,0},"NtUnlockVirtualMemory", OK, RNTST, 4,
      {
-        {1, sizeof(PVOID), R|W},
-        {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W},
+         {2, sizeof(ULONG), R|W},
      }
     },
     {{0,0},"NtUnmapViewOfSection", OK, RNTST, 2, },
     {{0,0},"NtVdmControl", OK, RNTST, 2, },
     {{0,0},"NtW32Call", OK, RNTST, 5,
      {
-        {3, -4, WI/*FIXME: de-ref w/o corresponding R to check definedness: but not enough info to understand exactly what's going on here*/},
-        {4, sizeof(ULONG), W},
+         {3, -4, WI/*FIXME: de-ref w/o corresponding R to check definedness: but not enough info to understand exactly what's going on here*/},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtWaitForDebugEvent", OK, RNTST, 4,
      {
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {2, sizeof(LARGE_INTEGER), R},
-        {3, sizeof(DBGUI_WAIT_STATE_CHANGE), W},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(DBGUI_WAIT_STATE_CHANGE), W},
      }
     },
     {{0,0},"NtWaitForKeyedEvent", OK, RNTST, 4,
      {
-        {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {3, sizeof(LARGE_INTEGER), R},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtWaitForMultipleObjects", OK, RNTST, 5,
      {
-        {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {4, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtWaitForMultipleObjects32", OK, RNTST, 5,
      {
-        {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
-        {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {4, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
+         {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtWaitForSingleObject", OK, RNTST, 3,
      {
-        {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-        {2, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(LARGE_INTEGER), R},
      }
     },
     {{0,0},"NtWaitHighEventPair", OK, RNTST, 1, },
     {{0,0},"NtWaitLowEventPair", OK, RNTST, 1, },
     {{0,0},"NtWriteFile", OK, RNTST, 9,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {7, sizeof(LARGE_INTEGER), R},
-        {8, sizeof(ULONG), R},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {7, sizeof(LARGE_INTEGER), R},
+         {8, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtWriteFileGather", OK, RNTST, 9,
      {
-        {4, sizeof(IO_STATUS_BLOCK), W},
-        {5, sizeof(FILE_SEGMENT_ELEMENT), R},
-        {7, sizeof(LARGE_INTEGER), R},
-        {8, sizeof(ULONG), R},
+         {4, sizeof(IO_STATUS_BLOCK), W},
+         {5, sizeof(FILE_SEGMENT_ELEMENT), R},
+         {7, sizeof(LARGE_INTEGER), R},
+         {8, sizeof(ULONG), R},
      }
     },
     {{0,0},"NtWriteRequestData", OK, RNTST, 6,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {5, sizeof(ULONG), W},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {5, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtWriteVirtualMemory", OK, RNTST, 5,
      {
-        {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W},
      }
     },
     {{0,0},"NtYieldExecution", OK, RNTST, 0, },
