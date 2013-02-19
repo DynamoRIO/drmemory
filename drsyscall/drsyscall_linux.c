@@ -122,6 +122,12 @@
  * FC16 (in flux apparently) so we define on our own:
  */
 #ifndef EXT2_IOC_GETFLAGS
+# ifndef FS_IOC_GETFLAGS
+#  define FS_IOC_GETFLAGS                _IOR('f', 1, long)
+#  define FS_IOC_SETFLAGS                _IOW('f', 2, long)
+#  define FS_IOC_GETVERSION              _IOR('v', 1, long)
+#  define FS_IOC_SETVERSION              _IOW('v', 2, long)
+# endif
 # define EXT2_IOC_GETFLAGS               FS_IOC_GETFLAGS
 # define EXT2_IOC_SETFLAGS               FS_IOC_SETFLAGS
 # define EXT2_IOC_GETVERSION             FS_IOC_GETVERSION

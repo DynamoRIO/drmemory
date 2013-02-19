@@ -1305,7 +1305,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                  */
                 ASSERT(i > 0, "logic error");
                 ASSERT(sysinfo->arg[i-1].size <= 0, "invalid syscall table entry");
-                if (pt->sysarg[-sysinfo->arg[i-1].size] == 0)
+                if (i > 0 && pt->sysarg[-sysinfo->arg[i-1].size] == 0)
                     size = 0;
             }
             if (start != NULL && size > 0) {
@@ -1323,7 +1323,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         /* If the first in a double entry, give 2nd entry precedence, but
          * keep size in last_size in case 2nd was optional OUT and is NULL
          */
-        if (i < MAX_ARGS_IN_ENTRY && sysinfo->arg[i+1].param == last_param &&
+        if (i < MAX_ARGS_IN_ENTRY-1 && sysinfo->arg[i+1].param == last_param &&
             !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;
         LOG(SYSCALL_VERBOSE, "\t     start "PFX", size "PIFX"\n", start, size);
