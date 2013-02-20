@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -39,6 +39,8 @@
 
 use Getopt::Long;
 
+$all_params = 1; # we now want all, not just memory
+
 # list of non-pointer types that start with P
 %ptypes = ('PROCESSINFOCLASS' => 1,
            'POWER_ACTION' => 1,
@@ -46,6 +48,7 @@ use Getopt::Long;
            'PKNORMAL_ROUTINE' => 1,
            'PIO_APC_ROUTINE' => 1,
            'PTIMER_APC_ROUTINE' => 1,
+           'PTHREAD_START_ROUTINE' => 1,
            'PALETTEENTRY' => 1,
            'PATHOBJ' => 1,
            'POINT' => 1,
@@ -55,6 +58,87 @@ use Getopt::Long;
            'POLYTEXTW' => 1,
            'POLYPATBLT' => 1,
            'PERBANDINFO' => 1,
+    );
+
+%typemap_inline =
+    ('ULONG'                    => 'DRSYS_TYPE_UNSIGNED_INT',
+     'LONG'                     => 'DRSYS_TYPE_SIGNED_INT',
+     'USHORT'                   => 'DRSYS_TYPE_UNSIGNED_INT',
+     'UCHAR'                    => 'DRSYS_TYPE_UNSIGNED_INT',
+     'DWORD'                    => 'DRSYS_TYPE_UNSIGNED_INT',
+     'LCID'                     => 'DRSYS_TYPE_UNSIGNED_INT',
+     'LANGID'                   => 'DRSYS_TYPE_UNSIGNED_INT',
+     'ACCESS_MASK'              => 'DRSYS_TYPE_UNSIGNED_INT',
+     'SECURITY_INFORMATION'     => 'DRSYS_TYPE_UNSIGNED_INT',
+     'EXECUTION_STATE'          => 'DRSYS_TYPE_UNSIGNED_INT',
+     'DEBUG_CONTROL_CODE'       => 'DRSYS_TYPE_UNSIGNED_INT',
+     'APPHELPCACHECONTROL'      => 'DRSYS_TYPE_UNSIGNED_INT',
+     'POWER_INFORMATION_LEVEL'  => 'DRSYS_TYPE_SIGNED_INT',
+     'POWER_ACTION'             => 'DRSYS_TYPE_SIGNED_INT',
+     'SYSTEM_POWER_STATE'       => 'DRSYS_TYPE_SIGNED_INT',
+     'DEVICE_POWER_STATE'       => 'DRSYS_TYPE_SIGNED_INT',
+     'LATENCY_TIME'             => 'DRSYS_TYPE_SIGNED_INT',
+     'AUDIT_EVENT_TYPE'         => 'DRSYS_TYPE_SIGNED_INT',
+     'SHUTDOWN_ACTION'          => 'DRSYS_TYPE_SIGNED_INT',
+     'THREADINFOCLASS'          => 'DRSYS_TYPE_SIGNED_INT',
+     'PROCESSINFOCLASS'         => 'DRSYS_TYPE_SIGNED_INT',
+     'JOBOBJECTINFOCLASS'       => 'DRSYS_TYPE_SIGNED_INT',
+     'DEBUGOBJECTINFOCLASS'     => 'DRSYS_TYPE_SIGNED_INT',
+     'VDMSERVICECLASS'          => 'DRSYS_TYPE_SIGNED_INT',
+     'TOKEN_TYPE'               => 'DRSYS_TYPE_SIGNED_INT',
+     'WAIT_TYPE'                => 'DRSYS_TYPE_SIGNED_INT',
+     'KPROFILE_SOURCE'          => 'DRSYS_TYPE_SIGNED_INT',
+     'EVENT_TYPE'               => 'DRSYS_TYPE_SIGNED_INT',
+     'TIMER_TYPE'               => 'DRSYS_TYPE_SIGNED_INT',
+     'SECTION_INHERIT'          => 'DRSYS_TYPE_SIGNED_INT',
+     'HARDERROR_RESPONSE_OPTION'=> 'DRSYS_TYPE_SIGNED_INT',
+     'BOOL'                     => 'DRSYS_TYPE_BOOL',
+     'BOOLEAN'                  => 'DRSYS_TYPE_BOOL',
+     'HANDLE'                   => 'DRSYS_TYPE_HANDLE',
+     'ATOM'                     => 'DRSYS_TYPE_ATOM',
+     'NTSTATUS'                 => 'DRSYS_TYPE_NTSTATUS',
+     'PVOID'                    => 'DRSYS_TYPE_POINTER',
+     'PKNORMAL_ROUTINE'         => 'DRSYS_TYPE_FUNCTION',
+     'PIO_APC_ROUTINE'          => 'DRSYS_TYPE_FUNCTION',
+     'PTIMER_APC_ROUTINE'       => 'DRSYS_TYPE_FUNCTION',
+     'PTHREAD_START_ROUTINE'    => 'DRSYS_TYPE_FUNCTION',
+     # no targeted type
+     'LDT_ENTRY'                => 'DRSYS_TYPE_STRUCT',
+     'PIO_APC_ROUTINE'          => 'DRSYS_TYPE_POINTER',
+     'PTIMER_APC_ROUTINE'       => 'DRSYS_TYPE_POINTER',
+     'PKNORMAL_ROUTINE'         => 'DRSYS_TYPE_POINTER',
+    );
+%typemap_complex =
+    ('PCSTR'                    => 'DRSYS_TYPE_CSTRING',
+     'PCWSTR'                   => 'DRSYS_TYPE_CWSTRING',
+     'wchar_t'                  => 'DRSYS_TYPE_CWSTRING',
+     'UNICODE_STRING'           => 'DRSYS_TYPE_UNICODE_STRING',
+     'LARGE_STRING'             => 'DRSYS_TYPE_LARGE_STRING',
+     'OBJECT_ATTRIBUTES'        => 'DRSYS_TYPE_OBJECT_ATTRIBUTES',
+     'SECURITY_DESCRIPTOR'      => 'DRSYS_TYPE_SECURITY_DESCRIPTOR',
+     'SECURITY_QUALITY_OF_SERVICE' => 'DRSYS_TYPE_SECURITY_QOS',
+     'PORT_MESSAGE'             => 'DRSYS_TYPE_PORT_MESSAGE',
+     'CONTEXT'                  => 'DRSYS_TYPE_CONTEXT',
+     'EXCEPTION_RECORD'         => 'DRSYS_TYPE_EXCEPTION_RECORD',
+     'DEVMODEW'                 => 'DRSYS_TYPE_DEVMODEW',
+     'WNDCLASSEXW'              => 'DRSYS_TYPE_WNDCLASSE W',
+     'CLSMENUNAME'              => 'DRSYS_TYPE_CLSMENUNAME',
+     'MENUITEMINFOW'            => 'DRSYS_TYPE_MENUITEMINFOW',
+     'ALPC_PORT_ATTRIBUTES'     => 'DRSYS_TYPE_ALPC_PORT_ATTRIBUTES',
+     'ALPC_SECURITY_ATTRIBUTES' => 'DRSYS_TYPE_ALPC_SECURITY_ATTRIBUTES',
+     'LOGFONTW'                 => 'DRSYS_TYPE_LOGFONTW',
+     'NONCLIENTMETRICSW'        => 'DRSYS_TYPE_NONCLIENTMETRICSW',
+     'ICONMETRICSW'             => 'DRSYS_TYPE_ICONMETRICSW',
+     'SERIALKEYSW'              => 'DRSYS_TYPE_SERIALKEYSW',
+     'SOCKADDR'                 => 'DRSYS_TYPE_SOCKADDR',
+     'MSGHDR'                   => 'DRSYS_TYPE_MSGHDR',
+     'MSGBUF'                   => 'DRSYS_TYPE_MSGBUF',
+    );
+%typemap_struct =
+    (
+     'LARGE_INTEGER'            => 'DRSYS_TYPE_LARGE_INTEGER',
+     'ULARGE_INTEGER'           => 'DRSYS_TYPE_ULARGE_INTEGER',
+     'IO_STATUS_BLOCK'          => 'DRSYS_TYPE_IO_STATUS_BLOCK',
     );
 
 $verbose = 0;
@@ -71,6 +155,7 @@ while (<STDIN>) {
         last;
     }
     next if (/^APIENTRY\s*$/); # sometimes on next line
+    next if (/^Rtl/);
     die "Function parsing error $_" unless (/^((Zw)|(Nt))(\w+)\s*\(/);
     $name = "Nt" . $4;
     my $noargs = 0;
@@ -79,8 +164,7 @@ while (<STDIN>) {
     }
     # not a real system call: just reads KUSER_SHARED_DATA
     next if ($name eq "NtGetTickCount");
-    print "    {0,\"$name\", OK, ";
-    print "\n" if ($verbose);
+    $entry{$name} = "    {{0,0},\"$name\", OK, RNTST, ";
     my $argnum = 0;
     my $toprint = "";
     my $nameline = $_;
@@ -187,7 +271,7 @@ while (<STDIN>) {
                 $arg_type[$argnum] =~ s/PORT_SECTION_WRITE/PORT_VIEW/;
 
                 # convert enum to ULONG
-                $arg_type[$argnum] =~ s/HARDERROR_RESPONSE/ULONG/;
+                $arg_type[$argnum] =~ s/^HARDERROR_RESPONSE$/ULONG/;
                 $arg_type[$argnum] =~ s/SAFEBOOT_MODE/ULONG/;
                 $arg_type[$argnum] =~ s/OPEN_SUB_KEY_INFORMATION/ULONG/;
 
@@ -219,16 +303,20 @@ while (<STDIN>) {
     for ($i = 0; $i < $argnum; $i++) {
         my $inout = $arg_inout[$i];
         my $type = $arg_type[$i];
+        my $param_in_memory =
+            ($type =~ /^P/ || $type =~ /\*/) &&
+            # IN PVOID is usually inlined
+            ($type ne 'PVOID' || $inout =~ /OUT/ ||
+             $arg_var[$i] =~ /Buffer$/ ||
+             $arg_var[$i] =~ /Information$/) &&
+            # list of inlined types that start with P
+            $type !~ /_INFORMATION_CLASS/ &&
+            !defined($ptypes{$type});
         if ($name eq 'NtVdmControl' && $arg_var[$i] eq 'ServiceData') {
             # FIXME: ServiceData arg to NtVdmControl in Metasploit is IN OUT
             # but we don't know size so we ignore its OUT and hope we
             # never see it
-        } elsif (($type =~ /^P/ || $type =~ /\*/) &&
-                 # IN PVOID is inlined
-                 ($type ne 'PVOID' || $inout =~ /OUT/) &&
-                 # list of inlined types that start with P
-                 $type !~ /_INFORMATION_CLASS/ &&
-                 !defined($ptypes{$type})) {
+        } elsif ($all_params || $param_in_memory) {
             my $rtype = $type;
             if ($type eq 'PWSTR' || $type eq 'PCWSTR') {
                 $rtype = 'wchar_t';
@@ -237,14 +325,18 @@ while (<STDIN>) {
             } else {
                 if ($rtype =~ /\*/) {
                     $rtype =~ s/\s*\*$//;
-                } elsif ($rtype =~ /^P/) {
+                } elsif ($rtype =~ /^P/ && $param_in_memory) {
                     $rtype =~ s/^P//;
                 }
             }
+            if ($name =~ /Atom$/) {
+                $rtype =~ s/USHORT/ATOM/;
+            }
+            print "type=$type, rtype=$rtype\n" if ($verbose);
             my $inout_string = $inout =~ /OUT/ ? ($inout =~ /IN/ ? "R|W" : "W") : "R";
             my $cap;
             my $wrote = '';
-            $toprint .= "{";
+            $toprint .= "         {";
             if ($arg_bufsz[$i] ne '') {
                 if ($arg_bufsz[$i] =~ /([^,]+),\s+(.+)/) {
                     $cap = $1;
@@ -267,30 +359,62 @@ while (<STDIN>) {
                     }
                 }
                 if (defined($arg_name_to_num{$cap})) {
-                    $toprint .= sprintf("%d,-%d,", $i, $arg_name_to_num{$cap});
+                    $toprint .= sprintf("%d, -%d,", $i, $arg_name_to_num{$cap});
                 } else {
-                    $toprint .= sprintf("%d,%s,", $i, $cap);
+                    $toprint .= sprintf("%d, %s,", $i, $cap);
                 }
-            } elsif (!$is_w32k && ($type eq 'PVOID' || $type eq 'PWSTR')) {
+            } elsif ($param_in_memory && !$is_w32k &&
+                     ($type eq 'PVOID' || $type eq 'PWSTR')) {
                 # when don't have length annotations: assume next arg holds length
                 # XXX: pretty risky assumption: verify manually
-                $toprint .= sprintf("%d,-%d,", $i, $i+1);
+                $toprint .= sprintf("%d, -%d, ", $i, $i+1);
             } else {
-                $toprint .= sprintf("%d,sizeof(%s),", $i, $rtype);
+                my $size_type = $rtype;
+                if ($type eq 'PVOID') {
+                    $size_type = 'PVOID';
+                }
+                $toprint .= sprintf("%d, sizeof(%s), ", $i, $size_type);
             }
-            if ($rtype eq 'PORT_MESSAGE' && $inout_string =~ 'W') {
-                die "PORT_MESSAGE with W*\n" if ($inout_string ne 'W');
-                $inout_string = 'WP';
+            my $stype;
+            if ($type ne 'VOID') {
+                if ($rtype =~ /_INFORMATION_CLASS$/) {
+                    $stype = 'DRSYS_TYPE_SIGNED_INT'; # enum
+                } elsif (defined($typemap_inline{$rtype})) {
+                    $stype = $typemap_inline{$rtype};
+                } elsif (defined($typemap_struct{$rtype})) {
+                    $stype = $typemap_struct{$rtype};
+                } elsif (defined($typemap_complex{$rtype})) {
+                    $stype = $typemap_complex{$rtype};
+                    # shrink diff
+                    $stype =~ s/DRSYS_TYPE/SYSARG_TYPE/;
+                } else {
+                    if ($param_in_memory) {
+                        $stype = 'DRSYS_TYPE_STRUCT';
+                    } else {
+                        die "unknown type: \"$rtype\"\n";
+                    }
+                }
+                if (!$param_in_memory) {
+                    $stype =~ s/DRSYS_TYPE_POINTER/DRSYS_TYPE_UNKNOWN/;
+                }
             }
-            $inout_string .= '|SYSARG_UNICODE_STRING' if ($rtype eq 'UNICODE_STRING');
-            $toprint .= sprintf("%s", $inout_string);
+            if ($param_in_memory) {
+                $toprint .= sprintf("%s", $inout_string);
+                if (defined($typemap_complex{$rtype})) {
+                    $toprint .= '|CT, ';
+                } else {
+                    $toprint .= '|HT, ';
+                }
+            } elsif ($type ne 'VOID') {
+                # no R or W for inlined: implied R
+                $toprint .= 'SYSARG_INLINED, ';
+            }
+            $toprint .= $stype;
             if ($arg_bufsz[$i] ne '' && $arg_ecount[$i]) {
-                $toprint .= sprintf("|SYSARG_SIZE_IN_ELEMENTS,sizeof(%s)", $rtype);
-            } else {
-                $toprint .= ",";
+                $toprint .= sprintf("|SYSARG_SIZE_IN_ELEMENTS, sizeof(%s)", $rtype);
             }
             $toprint .= $arg_comment[$i];
-            $toprint .= "}, ";
+            $toprint .= "},\n";
 
             if ($wrote ne '') {
                 # XXX: share code w/ above
@@ -300,18 +424,18 @@ while (<STDIN>) {
                     $wrote_inout = 'WI';
                 }
                 if (defined($arg_name_to_num{$wrote})) {
-                    $toprint .= sprintf("{%d,-%d,", $i, $arg_name_to_num{$wrote});
+                    $toprint .= sprintf("{%d, -%d, ", $i, $arg_name_to_num{$wrote});
                 } else {
                     $wrote = 'RET' if ($wrote eq 'return');
-                    $toprint .= sprintf("{%d,%s,", $i, $wrote);
+                    $toprint .= sprintf("{%d, %s, ", $i, $wrote);
                 }
                 $toprint .= $wrote_inout;
                 if ($arg_bufsz[$i] ne '' && $arg_ecount[$i]) {
-                    $toprint .= sprintf("|SYSARG_SIZE_IN_ELEMENTS,sizeof(%s)", $rtype);
+                    $toprint .= sprintf("|SYSARG_SIZE_IN_ELEMENTS, sizeof(%s)", $rtype);
                 } else {
                     $toprint .= ",";
                 }
-                $toprint .= "}, ";
+                $toprint .= "\n},";
             }
         } elsif ($inout eq 'IN' && $type eq 'BOOLEAN') {
             $toprint .= sprintf("{%d,0,IB,}, ", $i);
@@ -319,6 +443,10 @@ while (<STDIN>) {
             die "OUT arg w/o P or * type" if ($inout =~ /OUT/);
         }
     }
-    $toprint = '{' . $toprint . '}' if ($toprint ne '');
-    printf("%d, %s},\n", $argnum, $toprint);
+    $entry{$name} .= sprintf("%d,\n     {\n%s     }\n    },\n", $argnum, $toprint);
+    print $entry{$name} if ($verbose);
+}
+
+foreach $n (sort(keys %entry)) {
+    print $entry{$n};
 }
