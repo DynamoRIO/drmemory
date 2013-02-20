@@ -1321,6 +1321,13 @@ if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
 endif (BUILD_TOOL_TESTS)
 
+if (TOOL_DR_MEMORY AND WIN32)
+  # We only build for Dr. Memory b/c we'd need extra work to deal w/
+  # drheapstat's bin/bin32 different subdir.
+  # FIXME i#566: we need a Linux frontend; for now, Windows-only
+  add_subdirectory(drstrace)
+endif (TOOL_DR_MEMORY AND WIN32)
+
 ###########################################################################
 # installation
 

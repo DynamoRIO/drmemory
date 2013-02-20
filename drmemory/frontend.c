@@ -1261,6 +1261,13 @@ _tmain(int argc, TCHAR *targv[])
         fatal("invalid -dr_root %s", dr_root);
         goto error; /* actually won't get here */
     }
+    if (dr_root != default_dr_root) {
+        /* Workaround for DRi#1082 where DR root path can't have ".." */
+        get_absolute_path(dr_root, default_dr_root,
+                          BUFFER_SIZE_ELEMENTS(default_dr_root));
+        NULL_TERMINATE_BUFFER(default_dr_root);
+        dr_root = default_dr_root;
+    }
     _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
               "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root,
               use_dr_debug ? "debug" : "release");
