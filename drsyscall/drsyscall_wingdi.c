@@ -54,6 +54,10 @@
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS)
 
+/* FIXME i#1089: fill in info on all the inlined args for all of
+ * syscalls in this file.
+ */
+
 /***************************************************************************/
 /* System calls with wrappers in kernel32.dll (on win7 these are duplicated
  * in kernelbase.dll as well but w/ the same syscall number)

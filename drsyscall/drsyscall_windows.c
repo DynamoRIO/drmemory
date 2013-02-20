@@ -235,10 +235,10 @@ static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 #define IO (SYSARG_POST_SIZE_IO_STATUS)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS) /* they all return NTSTATUS */
-/* FIXME i#1089: fill in info on all the args.
- * The plan is to eliminate the param field and have a full array of all
- * args.  We'll abandon single-line entries as well, for readability (but
- * multi-step grep).
+
+/* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
+ * a different type is specified with |HT.
+ * So a truly unknown memory type must be explicitly marked DRSYS_TYPE_UNKNOWN.
  */
 static syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
@@ -260,9 +260,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(GENERIC_MAPPING), R},
          {4, sizeof(PRIVILEGE_SET), R},
-         {5, sizeof(ULONG), R},
-         {6, sizeof(ACCESS_MASK), W},
-         {7, sizeof(BOOLEAN), W},
+         {5, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAccessCheckAndAuditAlarm", OK, RNTST, 11,
@@ -275,9 +275,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(GENERIC_MAPPING), R},
          {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {8, sizeof(ACCESS_MASK), W},
-         {9, sizeof(BOOLEAN), W},
-         {10, sizeof(BOOLEAN), W},
+         {8, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+         {10, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAccessCheckByType", OK, RNTST, 11,
@@ -290,9 +290,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(GENERIC_MAPPING), R},
          {7, sizeof(PRIVILEGE_SET), R},
-         {8, sizeof(ULONG), R},
-         {9, sizeof(ACCESS_MASK), W},
-         {10, sizeof(ULONG), W},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {10, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAccessCheckByTypeAndAuditAlarm", OK, RNTST, 16,
@@ -310,9 +310,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {11, sizeof(GENERIC_MAPPING), R},
          {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {13, sizeof(ACCESS_MASK), W},
-         {14, sizeof(ULONG), W},
-         {15, sizeof(BOOLEAN), W},
+         {13, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {14, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {15, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultList", OK, RNTST, 11,
@@ -325,9 +325,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(GENERIC_MAPPING), R},
          {7, sizeof(PRIVILEGE_SET), R},
-         {8, sizeof(ULONG), R},
-         {9, sizeof(ACCESS_MASK), W},
-         {10, sizeof(ULONG), W},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {10, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarm", OK, RNTST, 16,
@@ -345,9 +345,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {11, sizeof(GENERIC_MAPPING), R},
          {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {13, sizeof(ACCESS_MASK), W},
-         {14, sizeof(ULONG), W},
-         {15, sizeof(ULONG), W},
+         {13, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {14, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {15, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", OK, RNTST, 17,
@@ -366,16 +366,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {11, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {12, sizeof(GENERIC_MAPPING), R},
          {13, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {14, sizeof(ACCESS_MASK), W},
-         {15, sizeof(ULONG), W},
-         {16, sizeof(ULONG), W},
+         {14, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {15, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {16, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAddAtom", OK, RNTST, 3,
      {
          {0, -1, R|HT, DRSYS_TYPE_CWSTRING},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(ATOM), W},
+         {2, sizeof(ATOM), W|HT, DRSYS_TYPE_ATOM},
      }
     },
     {{0,0},"NtAddBootEntry", OK, RNTST, 2,
@@ -398,7 +398,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, -3, W},
          {4, -5, WI},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAdjustPrivilegesToken", OK, RNTST, 6,
@@ -409,13 +409,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, -3, W},
          {4, -5, WI},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlertResumeThread", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlertThread", OK, RNTST, 1,
@@ -431,24 +431,24 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtAllocateUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), R},
-         {2, sizeof(ULONG), W},
+         {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAllocateUuids", OK, RNTST, 4,
      {
-         {0, sizeof(LARGE_INTEGER), W},
-         {1, sizeof(ULONG), W},
-         {2, sizeof(ULONG), W},
-         {3, sizeof(UCHAR), W},
+         {0, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UCHAR), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAllocateVirtualMemory", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(ULONG), R|W},
+         {3, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -486,13 +486,13 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtCancelIoFile", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
     {{0,0},"NtCancelTimer", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(BOOLEAN), W},
+         {1, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtClearEvent", OK, RNTST, 1,
@@ -522,7 +522,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(BOOLEAN), W},
+         {2, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtCompleteConnectPort", OK, RNTST, 1,
@@ -547,9 +547,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
          {3, sizeof(PORT_VIEW), R|W},
          {4, sizeof(REMOTE_PORT_VIEW), W},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {6, -7, R|WI},
-         {7, sizeof(ULONG), R|W},
+         {7, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtContinue", OK, RNTST, 2,
@@ -600,8 +600,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {3, sizeof(IO_STATUS_BLOCK), W},
-         {4, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -640,7 +640,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {6, sizeof(ULONG), W},
+         {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtCreateKeyedEvent", OK, RNTST, 4,
@@ -656,11 +656,11 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {3, sizeof(IO_STATUS_BLOCK), W},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(LARGE_INTEGER), R},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtCreateMutant", OK, RNTST, 4,
@@ -676,7 +676,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {3, sizeof(IO_STATUS_BLOCK), W},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -686,14 +686,14 @@ static syscall_info_t syscall_ntdll_info[] = {
          {10, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {11, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {12, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {13, sizeof(LARGE_INTEGER), R},
+         {13, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtCreatePagingFile", OK, RNTST, 4,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-         {1, sizeof(ULARGE_INTEGER), R},
-         {2, sizeof(ULARGE_INTEGER), R},
+         {1, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
+         {2, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
@@ -738,7 +738,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), R},
+         {5, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(KPROFILE_SOURCE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {8, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -749,7 +749,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {3, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -790,7 +790,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {4, sizeof(PTHREAD_START_ROUTINE), R},
+         {4, sizeof(PTHREAD_START_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {5, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -814,7 +814,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {3, sizeof(TOKEN_TYPE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {4, sizeof(LUID), R},
-         {5, sizeof(LARGE_INTEGER), R},
+         {5, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {6, sizeof(TOKEN_USER), R},
          {7, sizeof(TOKEN_GROUPS), R},
          {8, sizeof(TOKEN_PRIVILEGES), R},
@@ -864,7 +864,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtDelayExecution", OK, RNTST, 2,
      {
          {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {1, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtDeleteAtom", OK, RNTST, 1,
@@ -911,9 +911,9 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          /*param6 handled manually*/
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -950,13 +950,13 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtEnumerateBootEntries", OK, RNTST, 2,
      {
          {0, -1, WI},
-         {1, sizeof(ULONG), R|W},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtEnumerateDriverEntries", OK, RNTST, 2,
      {
          {0, -1, WI},
-         {1, sizeof(ULONG), R|W},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtEnumerateKey", OK, RNTST, 6,
@@ -967,14 +967,14 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtEnumerateSystemEnvironmentValuesEx", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, -2, WI},
-         {2, sizeof(ULONG), R|W},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtEnumerateValueKey", OK, RNTST, 6,
@@ -985,13 +985,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtExtendSection", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtFilterToken", OK, RNTST, 6,
@@ -1008,13 +1008,13 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, -1, R|HT, DRSYS_TYPE_CWSTRING},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(ATOM), W},
+         {2, sizeof(ATOM), W|HT, DRSYS_TYPE_ATOM},
      }
     },
     {{0,0},"NtFlushBuffersFile", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
     {{0,0},"NtFlushInstructionCache", OK, RNTST, 3,
@@ -1032,24 +1032,24 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtFlushVirtualMemory", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
-         {2, sizeof(ULONG), R|W},
-         {3, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
     {{0,0},"NtFlushWriteBuffer", OK, RNTST, 0, },
     {{0,0},"NtFreeUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), R|W},
-         {2, sizeof(ULONG), R},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtFreeVirtualMemory", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
-         {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
@@ -1057,9 +1057,9 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, -7, R},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1077,7 +1077,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtGetDevicePowerState", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(DEVICE_POWER_STATE), W},
+         {1, sizeof(DEVICE_POWER_STATE), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtGetPlugPlayEvent", OK, RNTST, 4,
@@ -1096,8 +1096,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, -5, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(void*)},
-         {5, sizeof(ULONG), R|W},
-         {6, sizeof(ULONG), W},
+         {5, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtImpersonateAnonymousToken", OK, RNTST, 1,
@@ -1180,11 +1180,11 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
-         {5, sizeof(ULARGE_INTEGER), R},
-         {6, sizeof(ULARGE_INTEGER), R},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {5, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
+         {6, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
@@ -1192,8 +1192,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     },
     {{0,0},"NtLockProductActivationKeys", OK, RNTST, 2,
      {
-         {0, sizeof(ULONG), R|W},
-         {1, sizeof(ULONG), W},
+         {0, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtLockRegistryKey", OK, RNTST, 1,
@@ -1204,8 +1204,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtLockVirtualMemory", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
-         {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
@@ -1222,33 +1222,33 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtMapCMFModule", OK, RNTST, 6,
      {
          /* XXX DRi#415 not all known */
-         {4, sizeof(PVOID), W},
-         {5, sizeof(ULONG), W},
+         {4, sizeof(PVOID), W|HT, DRSYS_TYPE_POINTER},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtMapUserPhysicalPages", OK, RNTST, 3,
      {
          {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {1, sizeof(ULONG), R},
-         {2, sizeof(ULONG), R},
+         {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtMapUserPhysicalPagesScatter", OK, RNTST, 3,
      {
-         {0, sizeof(PVOID), R},
-         {1, sizeof(ULONG), R},
-         {2, sizeof(ULONG), R},
+         {0, sizeof(PVOID), R|HT, DRSYS_TYPE_POINTER},
+         {1, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtMapViewOfSection", OK, RNTST, 10,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PVOID), R|W},
+         {2, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(LARGE_INTEGER), R|W},
-         {6, sizeof(ULONG), R|W},
+         {5, sizeof(LARGE_INTEGER), R|W|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {6, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(SECTION_INHERIT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {8, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {9, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1270,9 +1270,9 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(FILE_NOTIFY_INFORMATION), W},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -1283,9 +1283,9 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {7, -8, R},
@@ -1299,9 +1299,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {4, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {4, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {5, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {6, sizeof(IO_STATUS_BLOCK), W},
+         {6, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {9, -10, R},
@@ -1341,7 +1341,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {3, sizeof(IO_STATUS_BLOCK), W},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -1392,7 +1392,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtOpenObjectAuditAlarm", OK, RNTST, 12,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-         {1, sizeof(PVOID), R},
+         /* XXX: not a regular HANDLE?  ditto NtAccessCheck* */
+         {1, sizeof(PVOID), R|HT, DRSYS_TYPE_UNKNOWN},
          {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {4, sizeof(SECURITY_DESCRIPTOR), R|CT, SYSARG_TYPE_SECURITY_DESCRIPTOR},
@@ -1402,7 +1403,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {8, sizeof(PRIVILEGE_SET), R},
          {9, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {10, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {11, sizeof(BOOLEAN), W},
+         {11, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtOpenProcess", OK, RNTST, 4,
@@ -1502,7 +1503,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PRIVILEGE_SET), R},
-         {2, sizeof(BOOLEAN), W},
+         {2, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtPrivilegedServiceAuditAlarm", OK, RNTST, 5,
@@ -1527,16 +1528,16 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtProtectVirtualMemory", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
-         {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtPulseEvent", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryAttributesFile", OK, RNTST, 2,
@@ -1548,13 +1549,13 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryBootEntryOrder", OK, RNTST, 2,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-         {1, sizeof(ULONG), R|W},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryBootOptions", OK, RNTST, 2,
      {
          {0, -1, WI},
-         {1, sizeof(ULONG), R|W}
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT}
      }
     },
     {{0,0},"NtQueryDebugFilterState", OK, RNTST, 2,
@@ -1566,21 +1567,21 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryDefaultLocale", OK, RNTST, 2,
      {
          {0, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {1, sizeof(LCID), W},
+         {1, sizeof(LCID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryDefaultUILanguage", OK, RNTST, 1,
      {
-         {0, sizeof(LANGID), W},
+         {0, sizeof(LANGID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryDirectoryFile", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, -6, W},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1597,26 +1598,26 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {5, sizeof(ULONG), R|W},
-         {6, sizeof(ULONG), W},
+         {5, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryDriverEntryOrder", OK, RNTST, 2,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-         {1, sizeof(ULONG), R|W},
+         {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryEaFile", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(FILE_FULL_EA_INFORMATION), W},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {5, sizeof(FILE_GET_EA_INFORMATION), R},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(ULONG), R},
+         {7, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
@@ -1627,7 +1628,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryFullAttributesFile", OK, RNTST, 2,
@@ -1643,13 +1644,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInformationFile", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, -3, W},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1662,7 +1663,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInformationPort", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1672,7 +1673,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInformationProcess", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1682,7 +1683,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInformationThread", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1692,7 +1693,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInformationToken", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1702,18 +1703,18 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryInstallUILanguage", OK, RNTST, 1,
      {
-         {0, sizeof(LANGID), W},
+         {0, sizeof(LANGID), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryIntervalProfile", OK, RNTST, 2,
      {
          {0, sizeof(KPROFILE_SOURCE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryIoCompletion", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1723,7 +1724,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryKey", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1733,7 +1734,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryMultipleValueKey", OK, RNTST, 6,
@@ -1742,8 +1743,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(KEY_VALUE_ENTRY), R|W},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, -4, WI},
-         {4, sizeof(ULONG), R|W},
-         {5, sizeof(ULONG), W},
+         {4, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryMutant", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1753,7 +1754,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1763,16 +1764,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryOleDirectoryFile", OK, RNTST, 11,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, -6, W},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1784,28 +1785,28 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueryOpenSubKeys", OK, RNTST, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryOpenSubKeysEx", OK, RNTST, 4,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(ULONG), W},
-         {3, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryPerformanceCounter", OK, RNTST, 2,
      {
-         {0, sizeof(LARGE_INTEGER), W},
-         {1, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {1, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtQueryPortInformationProcess", OK, RNTST, 0, },
     {{0,0},"NtQueryQuotaInformationFile", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(FILE_USER_QUOTA_INFORMATION), W},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
@@ -1822,7 +1823,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQuerySecurityObject", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1832,7 +1833,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQuerySemaphore", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1842,7 +1843,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     /* No double entry for 3rd param needed b/c the written size is in
@@ -1852,7 +1853,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
-         {2, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQuerySystemEnvironmentValue", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 4,
@@ -1861,7 +1862,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, -2, W},
          {1, -3, WI},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(ULONG), W},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQuerySystemEnvironmentValueEx", OK, RNTST, 5,
@@ -1869,8 +1870,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(GUID), R},
          {2, -3, WI},
-         {3, sizeof(ULONG), R|W},
-         {4, sizeof(ULONG), W},
+         {3, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     /* One info class reads data, which is special-cased */
@@ -1880,12 +1881,12 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, -2, W},
          {1, -3, WI},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(ULONG), W},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_QuerySystemInformation
     },
     {{0,0},"NtQuerySystemTime", OK, RNTST, 1,
      {
-         {0, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtQueryTimer", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
@@ -1895,14 +1896,14 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, -3, W},
          {2, -4, WI},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryTimerResolution", OK, RNTST, 3,
      {
-         {0, sizeof(ULONG), W},
-         {1, sizeof(ULONG), W},
-         {2, sizeof(ULONG), W},
+         {0, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryValueKey", OK, RNTST, 6,
@@ -1913,7 +1914,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryVirtualMemory", OK, RNTST, 6,
@@ -1924,13 +1925,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtQueryVolumeInformationFile", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, -3, W},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1939,7 +1940,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtQueueApcThread", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PKNORMAL_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {1, sizeof(PKNORMAL_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
@@ -1957,36 +1958,36 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(ULONG_PTR), R},
+         {3, sizeof(ULONG_PTR), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtReadFile", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
-         {5, -6, W},
-         {5, -4,(W|IO)},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {5, -6, W|HT, DRSYS_TYPE_VOID},
+         {5, -4,(W|IO)|HT, DRSYS_TYPE_VOID},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(LARGE_INTEGER), R},
-         {8, sizeof(ULONG), R},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtReadFileScatter", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(FILE_SEGMENT_ELEMENT), R},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(LARGE_INTEGER), R},
-         {8, sizeof(ULONG), R},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtReadRequestData", OK, RNTST, 6,
@@ -1997,17 +1998,17 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtReadVirtualMemory", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {2, -3, W},
-         {2, -4, WI},
+         {2, -3, W|HT, DRSYS_TYPE_VOID},
+         {2, -4, WI|HT, DRSYS_TYPE_VOID},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtRegisterThreadTerminatePort", OK, RNTST, 1,
@@ -2020,29 +2021,29 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {3, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtReleaseMutant", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtReleaseSemaphore", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, sizeof(LONG), W},
+         {2, sizeof(LONG), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtRemoveIoCompletion", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
-         {2, sizeof(ULONG), W},
-         {3, sizeof(IO_STATUS_BLOCK), W},
-         {4, sizeof(LARGE_INTEGER), R},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtRemoveProcessDebug", OK, RNTST, 2,
@@ -2073,7 +2074,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtReplyWaitReceivePort", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), W},
+         {1, sizeof(PVOID), W|HT, DRSYS_TYPE_UNKNOWN /* XXX: what type is this? */},
          {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
          {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
      }
@@ -2081,10 +2082,10 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtReplyWaitReceivePortEx", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), W},
+         {1, sizeof(PVOID), W|HT, DRSYS_TYPE_UNKNOWN /* XXX: what type is this? */},
          {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
          {3, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE},
-         {4, sizeof(LARGE_INTEGER), R},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtReplyWaitReplyPort", OK, RNTST, 2,
@@ -2135,7 +2136,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtResetEvent", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtResetWriteWatch", OK, RNTST, 3,
@@ -2160,7 +2161,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtResumeThread", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSaveKey", OK, RNTST, 2,
@@ -2191,9 +2192,9 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, sizeof(PORT_VIEW), R|W},
          {4, sizeof(SID), R},
          {5, sizeof(REMOTE_PORT_VIEW), R|W},
-         {6, sizeof(ULONG), W},
+         {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {7, -8, R|WI},
-         {8, sizeof(ULONG), R|W},
+         {8, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSendWaitReplyChannel", OK, RNTST, 4,
@@ -2252,7 +2253,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetEaFile", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(FILE_FULL_EA_INFORMATION), R},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -2260,7 +2261,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetEvent", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetEventBoostPriority", OK, RNTST, 1,
@@ -2285,13 +2286,13 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(DEBUGOBJECTINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, -3, R},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetInformationFile", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, -3, R},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -2382,7 +2383,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetQuotaInformationFile", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, sizeof(FILE_USER_QUOTA_INFORMATION), R},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
@@ -2423,37 +2424,37 @@ static syscall_info_t syscall_ntdll_info[] = {
     },
     {{0,0},"NtSetSystemTime", OK, RNTST, 2,
      {
-         {0, sizeof(LARGE_INTEGER), R},
-         {1, sizeof(LARGE_INTEGER), W},
+         {0, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {1, sizeof(LARGE_INTEGER), W|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtSetThreadExecutionState", OK, RNTST, 2,
      {
          {0, sizeof(EXECUTION_STATE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {1, sizeof(EXECUTION_STATE), W},
+         {1, sizeof(EXECUTION_STATE), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetTimer", OK, RNTST, 7,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(LARGE_INTEGER), R},
-         {2, sizeof(PTIMER_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {2, sizeof(PTIMER_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {4, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {5, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {6, sizeof(BOOLEAN), W},
+         {6, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtSetTimerResolution", OK, RNTST, 3,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {2, sizeof(ULONG), W},
+         {2, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetUuidSeed", OK, RNTST, 1,
      {
-         {0, sizeof(UCHAR), R},
+         {0, sizeof(UCHAR), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSetValueKey", OK, RNTST, 6,
@@ -2469,7 +2470,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSetVolumeInformationFile", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {2, -3, R},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(FS_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -2485,7 +2486,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {3, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtStartProfile", OK, RNTST, 1,
@@ -2506,7 +2507,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtSuspendThread", OK, RNTST, 2,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(ULONG), W},
+         {1, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtSystemDebugControl", OK, RNTST, 6,
@@ -2517,7 +2518,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {3, -4, W},
          {3, -5, WI},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtTerminateJobObject", OK, RNTST, 2,
@@ -2584,17 +2585,17 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtUnlockFile", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(IO_STATUS_BLOCK), W},
-         {2, sizeof(ULARGE_INTEGER), R},
-         {3, sizeof(ULARGE_INTEGER), R},
+         {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {2, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
+         {3, sizeof(ULARGE_INTEGER), R|HT, DRSYS_TYPE_ULARGE_INTEGER},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUnlockVirtualMemory", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {1, sizeof(PVOID), R|W},
-         {2, sizeof(ULONG), R|W},
+         {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
@@ -2615,15 +2616,18 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, -4, WI/*FIXME: de-ref w/o corresponding R to check definedness: but not enough info to understand exactly what's going on here*/},
-         {4, sizeof(ULONG), W},
+         /* FIXME: de-ref w/o corresponding R to check definedness: but not enough
+          * info to understand exactly what's going on here
+          */
+         {3, -4, WI|HT, DRSYS_TYPE_VOID},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWaitForDebugEvent", OK, RNTST, 4,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {2, sizeof(LARGE_INTEGER), R},
+         {2, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
          {3, sizeof(DBGUI_WAIT_STATE_CHANGE), W},
      }
     },
@@ -2632,7 +2636,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {3, sizeof(LARGE_INTEGER), R},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtWaitForMultipleObjects", OK, RNTST, 5,
@@ -2641,7 +2645,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
          {2, sizeof(WAIT_TYPE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {4, sizeof(LARGE_INTEGER), R},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtWaitForMultipleObjects32", OK, RNTST, 5,
@@ -2650,14 +2654,14 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
          {2, sizeof(WAIT_TYPE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {4, sizeof(LARGE_INTEGER), R},
+         {4, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtWaitForSingleObject", OK, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
-         {2, sizeof(LARGE_INTEGER), R},
+         {2, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtWaitHighEventPair", OK, RNTST, 1,
@@ -2674,26 +2678,26 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
-         {5, -6, R},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {5, -6, R|HT, DRSYS_TYPE_VOID},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(LARGE_INTEGER), R},
-         {8, sizeof(ULONG), R},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWriteFileGather", OK, RNTST, 9,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, sizeof(PIO_APC_ROUTINE), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
          {3, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {4, sizeof(IO_STATUS_BLOCK), W},
+         {4, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
          {5, sizeof(FILE_SEGMENT_ELEMENT), R},
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(LARGE_INTEGER), R},
-         {8, sizeof(ULONG), R},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWriteRequestData", OK, RNTST, 6,
@@ -2703,16 +2707,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, -4, R},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {5, sizeof(ULONG), W},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWriteVirtualMemory", OK, RNTST, 5,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-         {2, -3, R},
+         {2, -3, R|HT, DRSYS_TYPE_VOID},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(ULONG), W},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtYieldExecution", OK, RNTST, 0, },
@@ -2725,6 +2729,10 @@ static syscall_info_t syscall_ntdll_info[] = {
         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
+
+    /* FIXME i#1089: fill in info on all the inlined args for the
+     * syscalls below here.
+     */
 
     /***************************************************/
     /* added in Windows XP64 WOW64 */
@@ -2739,7 +2747,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtWow64CsrCaptureMessageString", UNKNOWN, RNTST, 5, },
     {{0,0},"NtWow64CsrSetPriorityClass", OK, RNTST, 2,
      {
-        {1, sizeof(ULONG), R|W},
+        {1, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWow64CsrGetProcessId", OK, RNTST, 0, },
@@ -2749,14 +2757,14 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
         {1, -2, W},
         {1, -3, WI},
-        {3, sizeof(ULONG), W},
+        {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWow64QueryInformationProcess64", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
         {2, -3, W},
         {2, -4, WI},
-        {4, sizeof(ULONG), W},
+        {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWow64ReadVirtualMemory64", UNKNOWN, RNTST, 7, },
@@ -2788,10 +2796,10 @@ static syscall_info_t syscall_ntdll_info[] = {
         {3, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
         {5, sizeof(SID), R},
         {6, -7, WI},
-        {7, sizeof(ULONG), R|W},
+        {7, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
         {8, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W},
         {9, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W},
-        {10, sizeof(LARGE_INTEGER), R},
+        {10, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtAlpcCreatePort", OK, RNTST, 3,
@@ -2804,7 +2812,7 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtAlpcCreatePortSection", OK, RNTST, 6,
      {
         {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {5, sizeof(ULONG), W},
+        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlpcCreateResourceReserve", OK, RNTST, 4,
@@ -2852,14 +2860,14 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtAlpcQueryInformation", OK, RNTST, 5,
      {
         {2, -3, W},
-        {4, sizeof(ULONG), W},
+        {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlpcQueryInformationMessage", OK, RNTST, 6,
      {
         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
         {3, -4, W},
-        {5, sizeof(ULONG), W},
+        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3, },
@@ -2873,8 +2881,8 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtAlpcSendWaitReceivePort", UNKNOWN, RNTST, 8,
      {
         {4, -5, WI},
-        {5, sizeof(ULONG), W},
-        {7, sizeof(LARGE_INTEGER), R},
+        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+        {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtAlpcSetInformation", OK, RNTST, 4,
@@ -2967,14 +2975,14 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtWow64CsrVerifyRegion", OK, RNTST, 2, },
     {{0,0},"NtWow64WriteVirtualMemory64", OK, RNTST, 7,
      {
-        {6, sizeof(ULONGLONG), W},
+        {6, sizeof(ULONGLONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtWow64CallFunction64", OK, RNTST, 7,
      {
         {3, -2, R},
         {5, -4, W},
-        {6, sizeof(ULONG), W},
+        {6, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
 

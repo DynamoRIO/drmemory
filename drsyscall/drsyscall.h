@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -196,8 +196,13 @@ typedef enum {
     DRSYS_TYPE_SOCKADDR,            /**< struct sockaddr. */ 
     DRSYS_TYPE_MSGHDR,              /**< struct msghdr. */
     DRSYS_TYPE_MSGBUF,              /**< struct msgbuf. */
+    DRSYS_TYPE_LARGE_INTEGER,       /**< LARGE_INTEGER structure. */
+    DRSYS_TYPE_ULARGE_INTEGER,      /**< ULARGE_INTEGER structure. */
+    DRSYS_TYPE_IO_STATUS_BLOCK,     /**< IO_STATUS_BLOCK structure. */
+
+    DRSYS_TYPE_FUNCTION,            /**< Function of unspecified signature. */
     /* Additional types may be added in the future. */
-    DRSYS_TYPE_LAST = DRSYS_TYPE_MSGBUF,
+    DRSYS_TYPE_LAST = DRSYS_TYPE_FUNCTION,
 } drsys_param_type_t;
 
 /** Describes a system call parameter or memory region. */

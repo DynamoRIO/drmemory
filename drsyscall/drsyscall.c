@@ -91,6 +91,10 @@ const char * const param_type_names[] = {
     "struct sockaddr",          /* DRSYS_TYPE_SOCKADDR */
     "struct msghdr",            /* DRSYS_TYPE_MSGHDR */
     "struct msgbuf",            /* DRSYS_TYPE_MSGBUF */
+    "LARGE_INTEGER",            /* DRSYS_TYPE_LARGE_INTEGER */
+    "ULARGE_INTEGER",           /* DRSYS_TYPE_ULARGE_INTEGER */
+    "IO_STATUS_BLOCK",          /* DRSYS_TYPE_IO_STATUS_BLOCK */
+    "<function>",               /* DRSYS_TYPE_FUNCTION */
 };
 #define NUM_PARAM_TYPE_NAMES \
     (sizeof(param_type_names)/sizeof(param_type_names[0]))
@@ -1468,7 +1472,6 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             arg->value = pt->sysarg[i];
         }
         arg->type = DRSYS_TYPE_UNKNOWN;
-        arg->type_name = NULL;
         arg->mode = DRSYS_PARAM_IN;
 
         /* FIXME i#1089: add type info for the non-memory-complex-type args */
@@ -1476,6 +1479,13 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             sysinfo->arg[compacted].param == i) {
             if (SYSARG_MISC_HAS_TYPE(sysinfo->arg[compacted].flags)) {
                 arg->type = type_from_arg_info(&sysinfo->arg[compacted]);
+            } else if (!TEST(SYSARG_INLINED, sysinfo->arg[compacted].flags)) {
+                /* Rather than clutter up the tables with DRSYS_TYPE_STRUCT
+                 * for all the types we haven't given special enums to,
+                 * we mark the truly unknown and assume everything else is
+                 * a struct.
+                 */
+                arg->type = DRSYS_TYPE_STRUCT;
             }
             if (TEST(SYSARG_INLINED, sysinfo->arg[compacted].flags)) {
                 int sz = sysinfo->arg[compacted].size;
@@ -1489,6 +1499,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                 compacted++;
             ASSERT(compacted <= MAX_ARGS_IN_ENTRY, "error in table entry");
         }
+        arg->type_name = param_type_names[arg->type];
 
         if (!(*cb)(arg, user_data))
             break;
