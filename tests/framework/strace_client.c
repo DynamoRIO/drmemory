@@ -21,8 +21,9 @@
 
 /* strace: test of the Dr. Syscall Extension.
  *
- * Currently this doesn't do much testing beyond drsyscall_client.c but
- * the idea is to turn this into a sample strace client.
+ * Currently this doesn't do that much testing beyond drsyscall_client.c but
+ * the original idea was to turn this into a sample strace client.
+ * Now we have the separate drstrace but we keep this for its extra tests.
  */
 
 #include "dr_api.h"
@@ -32,6 +33,8 @@
 #ifdef WINDOWS
 # include <windows.h>
 #endif
+
+#define TEST(mask, var) (((mask) & (var)) != 0)
 
 #undef ASSERT /* we don't want msgbox */
 #define ASSERT(cond, msg) \
@@ -68,13 +71,13 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
     ASSERT(arg->mc != NULL, "mc check");
     ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
 
-    if (arg->reg == DR_REG_NULL && arg->mode != DRSYS_PARAM_RETVAL) {
+    if (arg->reg == DR_REG_NULL && !TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
         ASSERT((byte *)arg->start_addr >= (byte *)arg->mc->xsp &&
                (byte *)arg->start_addr < (byte *)arg->mc->xsp + PAGE_SIZE,
                "mem args should be on stack");
     }
 
-    if (arg->mode == DRSYS_PARAM_RETVAL) {
+    if (TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
         ASSERT(arg->pre || arg->value == dr_syscall_get_result(dr_get_current_drcontext()),
                "return val wrong");
     } else {

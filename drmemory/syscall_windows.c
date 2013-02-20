@@ -273,7 +273,7 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
                         arg->sysnum.number, arg->sysnum.secondary, sysname);
                 });
             }
-        } else if (arg->mode == DRSYS_PARAM_RETVAL) {
+        } else if (TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
             /* i#988-c#7,c#8: handle in return may not be newly created,
              * in which case, we won't iterate the args.
              */

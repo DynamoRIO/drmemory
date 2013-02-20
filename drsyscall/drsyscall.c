@@ -685,8 +685,10 @@ mode_from_flags(uint arg_flags)
     drsys_param_mode_t mode = 0;
     if (TEST(SYSARG_WRITE, arg_flags))
         mode |= DRSYS_PARAM_OUT;
-    if (TEST(SYSARG_READ, arg_flags))
+    if (TESTANY(SYSARG_READ|SYSARG_INLINED, arg_flags))
         mode |= DRSYS_PARAM_IN;
+    if (TEST(SYSARG_INLINED, arg_flags))
+        mode |= DRSYS_PARAM_INLINED;
     return mode;
 }
 
@@ -1499,6 +1501,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                 compacted++;
             ASSERT(compacted <= MAX_ARGS_IN_ENTRY, "error in table entry");
         }
+        ASSERT(arg->type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
         arg->type_name = param_type_names[arg->type];
 
         if (!(*cb)(arg, user_data))
@@ -1517,7 +1520,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
     /* get exported type and size if different from reg_t */
     arg->type = map_to_exported_type(sysinfo->return_type, &arg->size);
     arg->type_name = param_type_names[arg->type];
-    arg->mode = DRSYS_PARAM_RETVAL;
+    arg->mode = DRSYS_PARAM_RETVAL | DRSYS_PARAM_INLINED;
     (*cb)(arg, user_data);
 
     return DRMF_SUCCESS;

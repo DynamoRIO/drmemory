@@ -144,6 +144,12 @@ typedef enum {
      * status or error code.
      */
     DRSYS_PARAM_RETVAL = 0x08,
+    /**
+     * If this flag is not set, the parameter is passed as a pointer to
+     * the specified type.  If this flag is set, the parameter's value
+     * is passed in.
+     */
+    DRSYS_PARAM_INLINED= 0x10,
 } drsys_param_mode_t;
 
 /* Keep this in synch with param_type_names[] */

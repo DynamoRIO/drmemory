@@ -32,6 +32,8 @@
 # include <sys/socket.h>
 #endif
 
+#define TEST(mask, var) (((mask) & (var)) != 0)
+
 #undef ASSERT /* we don't want msgbox */
 #define ASSERT(cond, msg) \
     ((void)((!(cond)) ? \
@@ -91,13 +93,13 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
     ASSERT(arg->mc != NULL, "mc check");
     ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
 
-    if (arg->reg == DR_REG_NULL && arg->mode != DRSYS_PARAM_RETVAL) {
+    if (arg->reg == DR_REG_NULL && !TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
         ASSERT((byte *)arg->start_addr >= (byte *)arg->mc->xsp &&
                (byte *)arg->start_addr < (byte *)arg->mc->xsp + PAGE_SIZE,
                "mem args should be on stack");
     }
 
-    if (arg->mode == DRSYS_PARAM_RETVAL) {
+    if (TEST(DRSYS_PARAM_RETVAL, arg->mode)) {
         ASSERT(arg->pre || arg->value == dr_syscall_get_result(dr_get_current_drcontext()),
                "return val wrong");
     } else {
