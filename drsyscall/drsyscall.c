@@ -1493,6 +1493,17 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
                 int sz = sysinfo->arg[compacted].size;
                 ASSERT(sz > 0, "inlined must have regular size in bytes");
                 arg->size = sz;
+                /* We zero out the top bits here which are uninitialized, to
+                 * avoid confusing the client.
+                 */
+                if (arg->size < sizeof(ptr_uint_t)) {
+                    if (arg->size == 1)
+                        arg->value &= 0xff;
+                    else if (arg->size == 2)
+                        arg->value &= 0xffff;
+                    else if (arg->size == 4)
+                        arg->value &= 0xffffffff;
+                }
             }
             arg->mode = mode_from_flags(sysinfo->arg[compacted].flags);
             /* Go to next entry.  Skip double entries. */

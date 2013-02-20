@@ -83,6 +83,14 @@ drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
     } else {
         if (drsys_pre_syscall_arg(arg->drcontext, arg->ordinal, &val) != DRMF_SUCCESS)
             ASSERT(false, "drsys_pre_syscall_arg failed");
+        if (arg->size < sizeof(val)) {
+            if (arg->size == 1)
+                val &= 0xff;
+            else if (arg->size == 2)
+                val &= 0xffff;
+            else if (arg->size == 4)
+                val &= 0xffffffff;
+        }
         ASSERT(val == arg->value, "values do not match");
     }
 
