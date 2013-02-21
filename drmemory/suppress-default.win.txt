@@ -685,3 +685,12 @@ name=default i#1043: EH leak in mingw CRT
 *!__cxa_get_globals
 *!__cxa_allocate_exception
 
+##################################################
+# i#1134: TlsGetValue after TlsFree in mingw CRT
+# This was fixed between mingw g++ 4.5.2 and 4.7.2 so we may be able
+# to remove the suppression once we no longer support those versions.
+
+UNADDRESSABLE ACCESS
+name=default i#1134: mingw CRT TlsGetValue after TlsFree
+KERNEL*.dll!TlsGetValue
+*!__mingwthr_run_key_dtors

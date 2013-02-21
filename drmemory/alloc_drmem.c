@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -2251,8 +2251,9 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
             tls_ok = ((peb->TlsExpansionBitmap->Buffer[slot/32] & (1 << (slot % 32)))
                       != 0);
         }        
-        LOG(3, "ignoring unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
-            write ? "write" : "read", loc_to_print(loc), addr, shadow_get_byte(addr));
+        LOG(3, "%s unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
+            tls_ok ? "ignoring" : "reporting", write ? "write" : "read",
+            loc_to_print(loc), addr, shadow_get_byte(addr));
         STATS_INC(tls_exception);
         /* We leave as unaddressable since we're not tracking the unset so we
          * can't safely mark as addressable */
