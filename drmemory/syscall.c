@@ -616,6 +616,24 @@ syscall_thread_exit(void *drcontext)
 #endif
 }
 
+static bool
+is_byte_addressable(byte *addr)
+{
+    return shadow_get_byte(addr) != SHADOW_UNADDRESSABLE;
+}
+
+static bool
+is_byte_defined(byte *addr)
+{
+    return shadow_get_byte(addr) == SHADOW_DEFINED;
+}
+
+static bool
+is_register_defined(reg_id_t reg)
+{
+    return get_shadow_register(reg) == SHADOW_DEFINED;
+}
+
 void
 syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 {
@@ -628,6 +646,13 @@ syscall_init(void *drcontext _IF_WINDOWS(app_pc ntdll_base))
 #ifdef SYSCALL_DRIVER
     ops.syscall_driver = options.syscall_driver;
 #endif
+    if (options.shadowing) {
+        ops.is_byte_addressable = is_byte_addressable;
+        if (options.check_uninitialized) {
+            ops.is_byte_defined = is_byte_defined;
+            ops.is_register_defined = is_register_defined;
+        }
+    }
     if (drsys_init(client_id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
 

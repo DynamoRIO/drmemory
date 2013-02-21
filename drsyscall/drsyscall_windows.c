@@ -259,7 +259,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {2, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(GENERIC_MAPPING), R},
-         {4, sizeof(PRIVILEGE_SET), R},
+         {4, sizeof(PRIVILEGE_SET), W},
          {5, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
