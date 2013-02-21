@@ -658,7 +658,8 @@ if (WIN32)
 endif (WIN32)
 
 add_subdirectory(app_suite)
-newtest_nobuild(app_suite app_suite_tests "" "" "" OFF "")
+newtest_nobuild(app_suite app_suite_tests ""
+  "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt" "" OFF "")
 newtest_nobuild(app_suite.pattern app_suite_tests "" "-unaddr_only" "" OFF "")
 
 # framework subdir is added at top level b/c wants DR cflags

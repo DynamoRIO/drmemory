@@ -75,7 +75,7 @@ LEAK
 ntdll.dll!RtlInitOutOfProcessMemoryStream
 ntdll.dll!RtlInitializeCriticalSection
 
-########################################################
+##################################################
 # Deliberate bugs in tests
 
 UNINITIALIZED READ
@@ -83,3 +83,28 @@ name=i#837: deliberate race in test
 # i#1082: Can't match against trailing .exe.
 racecheck*!DoubleCheckedLocking::UseMe
 racecheck*!DoubleCheckedLocking::Worker?
+
+##################################################
+# i#1140: closed-MessageBox leaks: not analyzed
+
+LEAK
+name=i#1140 closed-MessageBox A
+KERNELBASE.dll!LocalAlloc    
+MSCTF.dll!...
+USER32.dll!ImeWndProcWorker
+USER32.dll!...
+USER32.dll!DispatchClientMessage
+
+LEAK
+name=i#1140 closed-MessageBox B
+ntdll.dll!LdrpSearchResourceSection_U
+ntdll.dll!...
+ntdll.dll!LdrFindResource_U
+...
+USER32.dll!LoadDIB   
+
+LEAK
+name=i#1140 closed-MessageBox C
+UxTheme.dll!...
+USER32.dll!...
+USER32.dll!DispatchClientMessage

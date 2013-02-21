@@ -211,3 +211,82 @@ TEST(NtUserTests, EnumDisplayDevices) {
     ASSERT_EQ(TRUE, success);
 }
 
+TEST(NtUserTests, WindowStation) {
+    BOOL success;
+    HWINSTA def_ws = GetProcessWindowStation();
+
+    HWINSTA ws = CreateWindowStation(NULL, 0, READ_CONTROL | DELETE, NULL);
+    ASSERT_NE(ws, (HWINSTA)NULL);
+
+    success = SetProcessWindowStation(ws);
+    ASSERT_EQ(success, TRUE);
+
+    // XXX: I tried CreateDesktop but it fails with ERROR_NOT_ENOUGH_MEMORY
+    // and I'm not sure we want to go tweaking the default desktop to
+    // free memory.
+
+    success = SetProcessWindowStation(def_ws);
+    ASSERT_EQ(success, TRUE);
+
+    success = CloseWindowStation(ws);
+    ASSERT_EQ(success, TRUE);
+}
+
+static DWORD WINAPI
+thread_func(void *arg)
+{
+    MessageBox(NULL, "<will be automatically closed>", "NtUserTests.MessageBox", MB_OK);
+    return 0;
+}
+
+static BOOL CALLBACK
+enum_windows(HWND hwnd, LPARAM param)
+{
+    DWORD target_tid = (DWORD) param;
+    DWORD target_pid = GetCurrentProcessId();
+    DWORD window_pid;
+    DWORD window_tid = GetWindowThreadProcessId(hwnd, &window_pid);
+    // We really only need to test tid but we test both:
+    if (window_pid == target_pid && window_tid == target_tid) {
+        // We're not allowed to call DestroyWindow() on another thread's window,
+        // and calling TerminateThread() seems to destabilize our own
+        // process shutdown, so we send a message:
+        LRESULT res = SendMessageTimeout(hwnd, WM_CLOSE, 0, 0, SMTO_BLOCK, 
+                                         0, NULL);
+        printf("Found msgbox window: closing.\n");
+        if (res != 0)
+            SetLastError(NO_ERROR);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+TEST(NtUserTests, Msgbox) {
+    BOOL success;
+    DWORD tid;
+    DWORD res;
+
+    // Strategy: have a separate thread open the msgbox so we can close
+    // it automatically.
+    HANDLE thread = CreateThread(NULL, 0, thread_func, NULL, 0, &tid);
+    ASSERT_NE(thread, (HANDLE)NULL);
+
+    Sleep(0); // Avoid initial spin
+    do {
+        // Close the window as soon as we can.  On an unloaded machine
+        // this kills it even before it's visible to avoid an annoying
+        // popup natively, though under DrMem full mode it is visible.
+        // This exercises ~35 NtGdi and ~60 NtUser syscalls.
+        // Unfortunately the timing makes it non-deterministic.
+        // Ideally we would write our own tests of all 95 of those
+        // syscalls but for now MessageBox is by far the easiest way
+        // to run them.
+        success = EnumWindows(enum_windows, (LPARAM) tid);
+        ASSERT_EQ(GetLastError(), NO_ERROR);
+    } while (success /* we went through all windows */);
+
+    // I thought I could wait on thread INFINITE but that hangs so don't wait
+    // at all.
+    success = CloseHandle(thread);
+    ASSERT_EQ(success, TRUE);
+}

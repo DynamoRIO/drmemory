@@ -694,3 +694,14 @@ UNADDRESSABLE ACCESS
 name=default i#1134: mingw CRT TlsGetValue after TlsFree
 KERNEL*.dll!TlsGetValue
 *!__mingwthr_run_key_dtors
+
+##################################################
+# i#1140: MessageBox leaks we need to analyze
+
+LEAK
+name=default i#1140 MessageBox
+IMM32.dll!ImmLocalAlloc
+IMM32.dll!...
+USER32.dll!FocusSetIMCContext
+USER32.dll!...
+USER32.dll!DispatchClientMessage
