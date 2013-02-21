@@ -52,13 +52,16 @@
                  __FILE__,  __LINE__, #cond, msg),         \
       dr_abort(), 0) : 0))
 
-/* assumes us != NULL */
 static void
 print_unicode_string(UNICODE_STRING *us)
 {
-    OUTPUT("%d/%d \"%.*S\"", us->Length, us->MaximumLength,
-           us->Length/sizeof(wchar_t),
-           (us->Buffer == NULL) ? L"<null>" : us->Buffer);
+    if (us == NULL)
+        OUTPUT("<null>");
+    else {
+        OUTPUT("%d/%d \"%.*S\"", us->Length, us->MaximumLength,
+               us->Length/sizeof(wchar_t),
+               (us->Buffer == NULL) ? L"<null>" : us->Buffer);
+    }
 }
 
 print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
@@ -175,8 +178,8 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (drsys_syscall_name(syscall, &name) != DRMF_SUCCESS)
         ASSERT(false, "drsys_syscall_name failed");
 
-    if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
-        ASSERT(false, "no syscalls in this app should be unknown");
+    if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS)
+        ASSERT(false, "failed to find whether known");
 
     OUTPUT("%s%s\n", name, known ? "" : " (details not all known)");
 
