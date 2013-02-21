@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -663,7 +663,7 @@ system call NtCreateWorkerFactory
 ntdll.dll!TpAllocWork
 
 ##################################################
-# i#: real bug where MSVCR80D!DebuggerProbe fails to initialize 3 of the 6
+# i#1039: real bug where MSVCR80D!DebuggerProbe fails to initialize 3 of the 6
 # exception arg slots it allocates.  The top MSVCR80D.dll frame is
 # DebuggerProbe but that's not exported.
 
@@ -674,3 +674,14 @@ KERNEL32.dll!RaiseException
 MSVCR80D.dll!*
 MSVCR80D.dll!*
 MSVCR80D.dll!*
+
+##################################################
+# i#1043: exception handling leak in mingw CRT
+# This was fixed between mingw g++ 4.5.2 and 4.7.2 so we may be able
+# to remove the suppression once we no longer support those versions.
+
+LEAK
+name=default i#1043: EH leak in mingw CRT
+*!__cxa_get_globals
+*!__cxa_allocate_exception
+
