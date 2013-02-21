@@ -1761,7 +1761,7 @@ syscall_info_t syscall_gdi32_info[] = {
      },/*special-cased: R or W depending*/ &sysnum_GdiDoPalette
     },
     {{0,0},"NtGdiComputeXformCoefficients", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtGdiGetWidthTable", OK, SYSARG_TYPE_BOOL32, 7,
+    {{0,0},"NtGdiGetWidthTable", OK|SYSINFO_RET_MINUS1_FAIL, SYSARG_TYPE_SINT32, 7,
      {
          {2, -3, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(WCHAR)},
          {4, -3, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(USHORT)},

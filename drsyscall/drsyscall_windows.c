@@ -3416,6 +3416,10 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
             info->return_type == DRSYS_TYPE_HANDLE ||
             info->return_type == DRSYS_TYPE_POINTER)
             return (res != 0);
+        /* For DRSYS_TYPE_HANDLE, while -1 is INVALID_HANDLE_VALUE, it is
+         * also NT_CURRENT_PROCESS, so we rely on any syscalls that return
+         * INVALID_HANDLE_VALUE for failure to use SYSINFO_RET_MINUS1_FAIL.
+         */
         if (TEST(SYSINFO_RET_MINUS1_FAIL, info->flags))
             return (res != -1);
         /* i#486, i#932: syscalls that return the capacity needed in an OUT
