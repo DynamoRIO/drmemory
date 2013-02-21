@@ -465,7 +465,7 @@ syscall_info_t syscall_user32_info[] = {
          {1, sizeof(PAINTSTRUCT), R,},
      }
     },
-    {{0,0},"NtUserEnumDisplayDevices", OK, SYSARG_TYPE_BOOL32, 4,
+    {{0,0},"NtUserEnumDisplayDevices", OK, RNTST, 4,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {2, SYSARG_SIZE_IN_FIELD, W, offsetof(DISPLAY_DEVICEW, cb)},

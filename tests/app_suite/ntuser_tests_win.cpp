@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -202,3 +202,12 @@ TEST(NtUserTests, DeferWindowPosTest) {
         EndDeferWindowPos(hdwp);
     }
 }
+
+TEST(NtUserTests, EnumDisplayDevices) {
+    DISPLAY_DEVICE device_info;
+    device_info.cb = sizeof(device_info);
+    BOOL success = EnumDisplayDevices(NULL, 0, /* display adapter #0 */
+                                      &device_info, 0);
+    ASSERT_EQ(TRUE, success);
+}
+
