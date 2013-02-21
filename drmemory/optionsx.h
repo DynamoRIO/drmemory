@@ -83,6 +83,9 @@
 OPTION_FRONT_BOOL(front, version, false,
                   "Display "TOOLNAME" version",
                   "Display "TOOLNAME" version")
+OPTION_FRONT_BOOL(front, help, false,
+                  "Display option list",
+                  "Display the full option list")
 OPTION_FRONT_STRING(front, dr, "",
                     "Path to DynamoRIO installation",
                     "The path to the DynamoRIO installation to use.  Not needed when using a released "TOOLNAME" package.")

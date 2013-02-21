@@ -218,9 +218,25 @@ static const char * const bool_string[2] = {
 };
 
 static void
-print_usage(void)
+print_usage(bool full)
 {
-    fprintf(stderr, "usage: Dr. Memory [options] -- <app and args to run>\n");
+    fprintf(stderr, "Usage: drmemory.exe [options] -- <app and args to run>\n");
+    if (!full) {
+        fprintf(stderr, "Run with --help for full option list.\n");
+        fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
+#ifdef WINDOWS
+        if (dr_using_console()) {
+            /* If someone double-clicked drmemory.exe, ensure the message
+             * stays up instead of the cmd window disappearing (i#1129).
+             * Yes, someone already in cmd will have to hit a key, but
+             * that's ok.
+             */
+            fprintf(stderr, "\n<press enter>\n");
+            getchar();
+        }
+#endif
+        return;
+    }
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
     if (SCOPE_IS_PUBLIC_##scope) {                                      \
         if (TYPE_IS_BOOL_##type) { /* turn "(0)" into "false" */        \
@@ -240,7 +256,7 @@ print_usage(void)
 #define usage(msg, ...) do {                                    \
     fprintf(stderr, "\n");                                      \
     fprintf(stderr, "ERROR: " msg "\n\n", __VA_ARGS__);         \
-    print_usage();                                              \
+    print_usage(false);                                         \
     exit(1);                                                    \
 } while (0)
 
@@ -1039,6 +1055,11 @@ _tmain(int argc, TCHAR *targv[])
         else if (strcmp(argv[i], "-v") == 0) {
             verbose = true;
             continue;
+        }
+        else if (strcmp(argv[i], "-h") == 0 ||
+                 strcmp(argv[i], "--help") == 0) {
+            print_usage(true/*full*/);
+            exit(0);
         }
         else if (strcmp(argv[i], "-quiet") == 0) {
             /* -quiet is also parsed by the client */
