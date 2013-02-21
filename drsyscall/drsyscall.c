@@ -470,7 +470,7 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                              * args and I don't want to check for them
                              */
                             ASSERT(is_byte_addressable(pc), "");
-                            if (drsys_ops.syscall_dword_granularity) {
+                            if (ii != NULL && drsys_ops.syscall_dword_granularity) {
                                 /* w/o sentinels (which are dangerous) we often miss
                                  * seemingly unchanged bytes (often zero) so mark
                                  * the containing dword (i#477)
@@ -478,7 +478,7 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                                 report_memarg_type(ii, i, SYSARG_WRITE,
                                                    (byte *)ALIGN_BACKWARD(pc, 4), 4, NULL,
                                                    DRSYS_TYPE_UNKNOWN, NULL);
-                            } else {
+                            } else if (ii != NULL) {
                                 report_memarg_type(ii, i, SYSARG_WRITE, pc, 1, NULL,
                                                    DRSYS_TYPE_UNKNOWN, NULL);
                             }
@@ -499,7 +499,8 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                             if (w_at != NULL) {
                                 LOG(SYSCALL_VERBOSE, "unknown-syscall #"SYSNUM_FMT
                                     ": param %d written "PFX" %d bytes\n",
-                                    ii->arg->sysnum.number, i, w_at, pc - w_at);
+                                    (ii == NULL) ? 0 : ii->arg->sysnum.number,
+                                    i, w_at, pc - w_at);
                                 w_at = NULL;
                             }
                         }
@@ -510,7 +511,7 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                 }
                 if (w_at != NULL) {
                     LOG(SYSCALL_VERBOSE, "unknown-syscall #"SYSNUM_FMT": param %d written "
-                        PFX" %d bytes\n", ii->arg->sysnum.number,
+                        PFX" %d bytes\n", (ii == NULL) ? 0 : ii->arg->sysnum.number,
                         i, w_at, (cpt->sysarg_ptr[i] + j) - w_at);
                     w_at = NULL;
                 }
