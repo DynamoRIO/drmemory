@@ -1068,8 +1068,11 @@ endif (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
 
 # symbol query tool
 add_executable(symquery tools/symquery.c)
+set(old_rpath ${DynamoRIO_RPATH})
+set(DynamoRIO_RPATH ON)
 configure_DynamoRIO_standalone(symquery)
 use_DynamoRIO_extension(symquery drsyms)
+set(DynamoRIO_RPATH ${old_rpath})
 
 # should go into a configure.h if we get enough of these
 set(script_aux "")
