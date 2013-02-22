@@ -574,10 +574,14 @@ if (TOOL_DR_MEMORY)
 
       # Test i#607 part D
       newtest_custbuild(operatorsMDd operators.cpp "/MDd" operators)
-      newtest_nobuild_ex(replace_operatorsMDd operatorsMDd ""
-        # FIXME i#1004: -skip_msvc_importers breaks -replace_malloc so disable for now
-        "-replace_malloc;-no_skip_msvc_importers"
-        "" OFF "operators" ON)
+      # FIXME i#1083: failing on bots w/ no symbols; re-enable once
+      # i#607 part A/i#960 is finished
+      if (NOT TEST_SUITE) # manual => probably a dev w/ syms
+        newtest_nobuild_ex(replace_operatorsMDd operatorsMDd ""
+          # FIXME i#1004: -skip_msvc_importers breaks -replace_malloc so disable for now
+          "-replace_malloc;-no_skip_msvc_importers"
+          "" OFF "operators" ON)
+      endif ()
     endif (USE_DRSYMS)
 
     if (GCC)
