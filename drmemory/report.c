@@ -1864,7 +1864,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
      */
     for (start = addr; start > addr - PAGE_SIZE; ) {
         if (options.shadowing &&
-            !shadow_check_range_backward(start-1, PAGE_SIZE,
+            !shadow_check_range_backward(start, PAGE_SIZE,
                                          SHADOW_UNADDRESSABLE, &end)) {
             LOG(3, "report_heap_info: prev addressable="PFX"\n", end);
             start = (byte *) ALIGN_BACKWARD(end, 4);

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -30,7 +30,14 @@ myfunc: parB
 hi
 bye
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       2 unique,     2 total unaddressable access(es)
+%ANYLINE
+# MinGW xp64
+~~Dr.M~~       6 unique,     6 total unaddressable access(es)
+# Linux wrap
+~~Dr.M~~       4 unique,     4 total unaddressable access(es)
+# everything else
+~~Dr.M~~       5 unique,     5 total unaddressable access(es)
+%ENDANYLINE
 %ANYLINE
 # Linux/MinGW/VS2005
 ~~Dr.M~~       2 unique,     2 total uninitialized access(es)

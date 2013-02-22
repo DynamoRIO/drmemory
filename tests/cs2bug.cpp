@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -91,6 +91,19 @@ test_basic()
     a[4] = a[4];
     if (setjmp(mark) == 0)
         delete a; /* also a mismatch */
+
+    /* zero-sized (i#1145) and "prev malloc" reports */
+    a = new int[0];
+    *((char *)a + 0) = 4;
+    delete [] a;
+
+    a = new int[0];
+    *((char *)a + 1) = 4;
+    delete [] a;
+
+    a = new int[8];
+    *((char *)a + 8*sizeof(int)) = 4;
+    delete [] a;
 }
 
 class hasdtr {
