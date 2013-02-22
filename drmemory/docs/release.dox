@@ -60,8 +60,25 @@ The Dr. Memory distribution contains the following:
 
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.5.0 include:
+ - Re-organized and improved the documentation.
  - Added Visual Studio External Tool support (-visual_studio option)
- - Various bug fixes
+ - Added Dr. Syscall library and Dr. Memory Framework for building other
+   tools from Dr. Memory's feature base.  Future releases will add other
+   libraries and add further tool-building support.
+ - Added \p drstrace, an initial version of a system call tracer.
+   Future releases will expand its capabilities.
+ - Added heuristics to distinguish substrings that look like pointers and
+   thus reduce false negatives in leak reporting.  See
+   the -strings_vs_pointers option.
+ - Added a new, experimental lightweight mode: \p -unaddr_only.
+ - Added non-ASCII support.
+ - Added option \p -show_duplicates to list details on duplicate errors.
+ - Eliminated reliance on the WDK/DDK when building from sources.
+ - Fixed PATH limit issue with the NSIS installer.
+ - Reduced false positives from bitfields.
+ - Fixed problems with debug C libraries on Windows.
+ - Fixed some problems in callstack walking.
+ - Various bug fixes.
 
 The changes between version 1.5.0 and 1.4.6 include:
  - Compatibility change: GDI usage errors are no longer of type WARNING
