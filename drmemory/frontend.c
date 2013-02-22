@@ -528,7 +528,7 @@ write_pid_to_file(const char *pidfile, process_id_t pid)
  * the app.
  */
 static void
-set_symbol_search_path(const char *logdir)
+set_symbol_search_path(const char *logdir, bool ignore_env)
 {
     char app_symsrv_path[MAX_SYMSRV_PATH];
     TCHAR wapp_symsrv_path[MAX_SYMSRV_PATH];
@@ -543,7 +543,8 @@ set_symbol_search_path(const char *logdir)
     /* If the user set a non-empty _NT_SYMBOL_PATH, then we use that.
      * Otherwise, we set it to logs/symbols and make sure it exists.
      */
-    if (get_env_var(_T("_NT_SYMBOL_PATH"), symsrv_path,
+    if (ignore_env ||
+        get_env_var(_T("_NT_SYMBOL_PATH"), symsrv_path,
                     BUFFER_SIZE_ELEMENTS(symsrv_path)) == 0 ||
         strlen(symsrv_path) == 0) {
         char pdb_dir[MAXIMUM_PATH];
@@ -593,6 +594,16 @@ set_symbol_search_path(const char *logdir)
     }
     if (sofar > 0)
         app_symsrv_path[sofar-1] = '\0';  /* Cut trailing '*'. */
+    if (app_symsrv_path[0] == '\0') {
+        if (!ignore_env) {
+            warn("_NT_SYMBOL_PATH incorrect: using local location instead");
+            /* Easiest to recurse.  Bool prevents 2nd recursion. */
+            set_symbol_search_path(logdir, true);
+            return;
+        } else {
+            warn("error parsing _NT_SYMBOL_PATH: may fail to fetch symbols");
+        }
+    }
     info("using symbol path %s as the local store", app_symsrv_path);
     info("using symbol path %s to fetch symbols", symsrv_path);
 
@@ -1425,7 +1436,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* Set _NT_SYMBOL_PATH for the app. */
-    set_symbol_search_path(logdir);
+    set_symbol_search_path(logdir, false);
 
     errcode = dr_inject_process_create(app_name, app_argv, &inject_data);
     if (errcode != 0) {
