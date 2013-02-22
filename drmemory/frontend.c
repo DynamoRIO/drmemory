@@ -138,6 +138,8 @@ static bool top_stats;
 static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
 static bool fetch_crt_syms_only = true;
 
+static OSVERSIONINFO win_ver;
+
 enum {
     /* _NT_SYMBOL_PATH typically has a local path and a URL. */
     MAX_SYMSRV_PATH = 2 * MAXIMUM_PATH
@@ -154,9 +156,27 @@ static const char ms_symsrv[] = "http://msdl.microsoft.com/download/symbols";
 
 #define prefix "~~Dr.M~~ "
 
+static void
+pause_if_in_cmd(void)
+{
+#ifdef WINDOWS
+    if (dr_using_console()) {
+        /* If someone double-clicked drmemory.exe, ensure the message
+         * stays up instead of the cmd window disappearing (i#1129).
+         * Yes, someone already in cmd will have to hit a key, but
+         * that's ok.
+         */
+        fprintf(stderr, "\n<press enter>\n");
+        getchar();
+    }
+#endif
+}
+
 #define fatal(msg, ...) do { \
     fprintf(stderr, "ERROR: " msg "\n", __VA_ARGS__);    \
     fflush(stderr); \
+    /* for drag-and-drop we'd better make fatal errors visible */ \
+    pause_if_in_cmd(); \
     exit(1); \
 } while (0)
 
@@ -224,17 +244,7 @@ print_usage(bool full)
     if (!full) {
         fprintf(stderr, "Run with --help for full option list.\n");
         fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
-#ifdef WINDOWS
-        if (dr_using_console()) {
-            /* If someone double-clicked drmemory.exe, ensure the message
-             * stays up instead of the cmd window disappearing (i#1129).
-             * Yes, someone already in cmd will have to hit a key, but
-             * that's ok.
-             */
-            fprintf(stderr, "\n<press enter>\n");
-            getchar();
-        }
-#endif
+        pause_if_in_cmd();
         return;
     }
 #define OPTION_CLIENT(scope, name, type, defval, min, max, short, long) \
@@ -302,12 +312,17 @@ char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
 static bool
 on_vista_or_later(void)
 {
-    OSVERSIONINFO version;
-    version.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
-    return (GetVersionEx(&version) &&
-            version.dwPlatformId == VER_PLATFORM_WIN32_NT && 
-            version.dwMajorVersion >= 6 &&
-            version.dwMinorVersion >= 0);
+    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
+            win_ver.dwMajorVersion >= 6 &&
+            win_ver.dwMinorVersion >= 0);
+}
+
+static bool
+on_win8_or_later(void)
+{
+    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
+            win_ver.dwMajorVersion >= 6 &&
+            win_ver.dwMinorVersion >= 2);
 }
 
 /* On failure returns INVALID_HANDLE_VALUE.
@@ -939,6 +954,12 @@ _tmain(int argc, TCHAR *targv[])
     time_t start_time, end_time;
 
     dr_standalone_init();
+
+    win_ver.dwOSVersionInfoSize = sizeof(win_ver);
+    if (!GetVersionEx(&win_ver))
+        fatal("unable to determine Windows version");
+    if (on_win8_or_later())
+        fatal("Dr. Memory does not yet support Windows 8.");
 
 #ifdef _UNICODE
     /* To simplify our (soon-to-be) cross-platform code we convert to utf8 up front.
