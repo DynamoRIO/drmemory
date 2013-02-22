@@ -145,7 +145,7 @@ OPTION_FRONT_BOOL(front, use_vmtree, true,
 
 OPTION_CLIENT_BOOL(client, brief, false,
                    "Show simplified and easier-to-read error reports",
-                   "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps.  Also enables -delay_frees_stack.")
+                   "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps.  Also enables -delay_frees_stack and disables -callstack_use_top_fp, trading off performance for better error reports.")
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 #ifdef WINDOWS
 OPTION_CLIENT_BOOL(client, visual_studio, false,

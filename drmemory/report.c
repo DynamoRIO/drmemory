@@ -1717,8 +1717,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
              * XXX: perhaps callstack should provide per-callstack flags.
              * But this works just as well.
              */
-            if ((!options.shadowing || !options.check_uninitialized) &&
-                (!options.leaks_only || !options.zero_stack)) {
+            if (HAVE_STALE_RETADDRS()) {
                 /* We don't have definedness info or zeroing so disabling
                  * top fp will result in risk of stale retaddrs.
                  * System libs don't normally have leaf funcs w/o frames so

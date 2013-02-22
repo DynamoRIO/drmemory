@@ -458,10 +458,13 @@ options_init(const char *opstr)
         }
 # endif
         /* kind of a hack for now, making -brief "better reports", until
-         * resolve perf issues w/ this option
+         * resolve perf issues w/ this option (i#205)
          */
         if (!option_specified.delay_frees_stack)
             options.delay_frees_stack = true;
+        /* another one of these perf vs accuracy tradeoffs (i#703) */
+        if (!option_specified.callstack_use_top_fp && !HAVE_STALE_RETADDRS())
+            options.callstack_use_top_fp = false;
     }
 #endif
 }

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -77,5 +77,9 @@ usage_error(const char *msg, const char *submsg);
  * options.check_uninitialized is often used inside a shadowing check too.
  */
 #define CHECK_UNINITS() (options.shadowing && options.check_uninitialized)
+
+#define HAVE_STALE_RETADDRS() \
+    ((!options.shadowing || !options.check_uninitialized) && \
+     (!options.leaks_only || !options.zero_stack))
 
 #endif /* _OPTIONS_H_ */
