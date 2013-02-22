@@ -338,6 +338,16 @@ typedef struct _drsys_options_t {
      */
     bool (*is_byte_defined)(byte *addr);
     /**
+     * Provides a query routine for whether a byte is undefined, i.e.,
+     * allocated and safe to access yet uninitialized.
+     * If analyze_unknown_syscalls is on, the quality of unknown parameter
+     * analysis increases substantially if information on whether registers
+     * and memory contain valid, initialized information is available.
+     * If this is not provided but is_byte_addressable and is_byte_defined both
+     * are, those two will be called in concert to provide this information.
+     */
+    bool (*is_byte_undefined)(byte *addr);
+    /**
      * Provides a query routine for whether a register is defined, i.e.,
      * contains a fully initialized value.
      * If analyze_unknown_syscalls is on, the quality of unknown parameter

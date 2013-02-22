@@ -295,10 +295,15 @@ is_byte_defined(byte *addr)
 static bool
 is_byte_undefined(byte *addr)
 {
-    if (drsys_ops.is_byte_defined == NULL)
-        return false; /* have to assume it's not */
-    else
-        return !(*drsys_ops.is_byte_defined)(addr);
+    if (drsys_ops.is_byte_undefined == NULL) {
+        if (drsys_ops.is_byte_defined != NULL &&
+            drsys_ops.is_byte_addressable != NULL) {
+            return ((*drsys_ops.is_byte_addressable)(addr) &&
+                    !(*drsys_ops.is_byte_defined)(addr));
+        } else
+            return false; /* have to assume it's not */
+    } else
+        return (*drsys_ops.is_byte_undefined)(addr);
 }
 
 static bool
@@ -465,11 +470,15 @@ handle_post_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
                              post_val[j] != cpt->sysarg_val[i][j])) {
                             if (w_at == NULL)
                                 w_at = pc;
-                            /* I would assert that this is still marked undefined, to
-                             * see if we hit any races, but we have overlapping syscall
-                             * args and I don't want to check for them
+                            /* With no other threads this would still be undefined,
+                             * modulo overlapping syscall args.  But another thread
+                             * could change it so we don't do a full ASSERT.
                              */
-                            ASSERT(is_byte_addressable(pc), "");
+                            DODEBUG({
+                                if (!is_byte_addressable(pc)) {
+                                    WARN("WARNING: "PFX" undefined but !addressable", pc);
+                                }
+                            });
                             if (ii != NULL && drsys_ops.syscall_dword_granularity) {
                                 /* w/o sentinels (which are dangerous) we often miss
                                  * seemingly unchanged bytes (often zero) so mark
@@ -1782,6 +1791,8 @@ syscall_reset_per_thread(void *drcontext, cls_syscall_t *cpt)
             ASSERT(cpt->sysarg_val[i] != NULL, "sysarg alloc error");
             thread_free(drcontext, cpt->sysarg_val[i], cpt->sysarg_val_bytes[i],
                         HEAPSTAT_MISC);
+            cpt->sysarg_val[i] = NULL;
+            cpt->sysarg_val_bytes[i] = 0;
         } else {
             ASSERT(cpt->sysarg_val[i] == NULL, "sysarg alloc error");
         }
