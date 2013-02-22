@@ -130,6 +130,7 @@ drmem_options_init(const char *opstr)
 #ifdef USE_DRSYMS
     op_use_symcache = options.use_symcache;
 #endif
+    op_prefix_style = options.prefix_style;
 }
 
 /***************************************************************************

@@ -145,7 +145,13 @@ OPTION_FRONT_BOOL(front, use_vmtree, true,
 
 OPTION_CLIENT_BOOL(client, brief, false,
                    "Show simplified and easier-to-read error reports",
-                   "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps")
+                   "Show simplified and easier-to-read error reports that hide STL and CRT source paths, remove executable path prefixes from source files, omit absolute addresses, omit instruction disassembly, and omit thread timestamps.  Also enables -delay_frees_stack.")
+/* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
+#ifdef WINDOWS
+OPTION_CLIENT_BOOL(client, visual_studio, false,
+                   "Produce Visual Studio external tool output",
+                   "Produce output suitable for a Visual Studio external tool.  Enables -prefix_style 2, -callstack_style 0x820, -batch, and -brief.")
+#endif
 /* The client default is "c:\\|/tmp" but the front-end script uses install/logs */
 OPTION_CLIENT_STRING(client, logdir, "<install>/logs",
                      "Base directory for result file subdirectories and symbol cache",
@@ -160,6 +166,15 @@ OPTION_CLIENT_BOOL(client, quiet, false,
 OPTION_CLIENT_BOOL(client, results_to_stderr, true,
                    "Print error reports to stderr in addition to results.txt",
                    "Print error reports to stderr in addition to results.txt, interleaving them with the application output.  The output will be prefixed by ~~Dr.M~~ for the main thread and by the thread id for other threads.  This interleaving can make it easier to see which part of an application run raised an error.")
+OPTION_CLIENT(client, prefix_style, uint, 0, 0, 2,
+              "Adjust the default output per-line prefix",
+              "For -results_to_stderr, controls the per-line prefix:@@<ul>"
+              "<li>0 = Default prefix: ~~Dr.M~~ for the main thread and the"
+              " thread id for other threads.@@"
+              "<li>1 = No prefix.@@"
+              "<li>2 = Use blank spaces.  This makes the output compatible "
+              " with Visual Studio file and line number parsing.@@"
+              "</ul>@@")
 OPTION_CLIENT_BOOL(client, log_suppressed_errors, false,
                    "Log suppressed error reports for postprocessing.",
                    "Log suppressed error reports for postprocessing.  Enabling this option will increase the logfile size, but will allow users to re-process suppressed reports with alternate suppressions or additional symbols.")
@@ -192,7 +207,7 @@ OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
               "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
 #endif
 
-OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
+OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0xfff,
               "Set of flags that controls the callstack printing style",
               "Set of flags that controls the callstack printing style: @@<ul>"
               "<li>0x0001 = show frame numbers@@"
@@ -208,6 +223,7 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x3ff,
               "<li>0x0200 = show symbol and module offset when symbols are"
               " missing@@"
               "<li>0x0400 = print unique module id@@"
+              "<li>0x0800 = show @&file(line):@& instead of @&file:line@&d@@"
               "</ul>@@")
               /* (when adding, update the max value as well!) */
 

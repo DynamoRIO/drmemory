@@ -48,6 +48,7 @@ uint op_verbose_level;
 bool op_pause_at_assert;
 bool op_pause_via_loop;
 bool op_ignore_asserts;
+uint op_prefix_style;
 file_t f_global = INVALID_FILE;
 #ifdef USE_DRSYMS
 bool op_use_symcache;
@@ -59,6 +60,13 @@ uint symbol_search_cache_hits;
 uint symbol_address_lookups;
 # endif
 #endif
+
+#ifdef TOOL_DR_MEMORY
+# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.M~~ "
+#else
+# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.H~~ "
+#endif
+#define PREFIX_BLANK "         "
 
 #ifdef WINDOWS
 static dr_os_version_info_t os_version = {sizeof(os_version),};
@@ -416,7 +424,13 @@ print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar)
 {
     void *drcontext = dr_get_current_drcontext();
     ssize_t len;
-    if (drcontext != NULL) {
+    if (op_prefix_style == PREFIX_STYLE_NONE) {
+        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "");
+        return;
+    } else if (op_prefix_style == PREFIX_STYLE_BLANK) {
+        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "%s", PREFIX_BLANK);
+        return;
+    } else if (drcontext != NULL) {
         thread_id_t tid = dr_get_thread_id(drcontext);
         if (primary_thread != INVALID_THREAD_ID/*initialized?*/ &&
             tid != primary_thread) {
@@ -426,7 +440,7 @@ print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar)
         }
     }
     /* no-assert since used for errors, etc. in fragile contexts */
-    BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "%s", PREFIX_MAIN_THREAD);
+    BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "%s", PREFIX_DEFAULT_MAIN_THREAD);
 }
 
 void

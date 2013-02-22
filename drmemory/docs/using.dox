@@ -260,7 +260,35 @@ Once you have installed Dr. Memory and built your application properly, the
 next step is to execute it on your workload of choice under Dr. memory.
 
 ********************
-\section sec_invocation Invoking Dr. Memory
+\section sec_vstudio Dr. Memory as a Visual Studio Tool
+
+To run Dr. Memory within Visual Studio, add it as an External Tool.  For
+Visual Studio 2005 through 2012, select the <tt>Tools | External
+Tools...</tt> menu option to open the External Tools dialog box.  Click Add
+and fill in the fields as follows (adjusting the path to \p drmemory.exe if
+you installed it somewhere else):
+
+\verbatim
+Title: Dr. Memory
+Command: C:\Program Files (x86)\Dr. Memory\bin\drmemory.exe
+Arguments: -visual_studio -- $(TargetPath)
+Initial Directory: $(TargetDir)
+\endverbatim
+
+Check the <tt>Use Output window</tt> checkbox.  Click OK.
+
+For Visual Studio 6, select <tt>Tools | Customize</tt>, then the \p Tools
+tab, and then click the \p New button.  Fill in the fields as above, though
+there will not be a \p Title field.
+
+Now you can select <tt>Tools | Dr. Memory</tt> and Visual Studio will run
+your application.  The output of Dr. Memory (along with your program) will
+be printed to the Output Window.  You can double-click on a source file on
+any callstack frame in order to automatically open up that file to the line
+number indicated.
+
+********************
+\section sec_invocation Invoking Dr. Memory from the Command Line
 
 Run your application as you normally would from a command prompt (on
 Windows, either the \p cmd shell or a Cygwin prompt), with \p \FRONT_END

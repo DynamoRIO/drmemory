@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -112,6 +112,7 @@ $user_ops = "";
 $nudge_pid = "";
 $pid_file = "";
 $external_pid_file = 0;
+# XXX: we ignore -prefix_style for now.  This perl script will go away soon anyway.
 my $prefix = "~~Dr.M~~";
 my $aggregate = 0;
 my $use_default_suppress = 1;

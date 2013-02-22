@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -140,6 +140,9 @@ enum {
     PRINT_ALIGN_COLUMNS        = 0x0100,
     PRINT_NOSYMS_OFFSETS       = 0x0200,
     PRINT_MODULE_ID            = 0x0400,
+    PRINT_VSTUDIO_FILE_LINE    = 0x0800,
+
+    PRINT_FOR_VSTUDIO          = (PRINT_SRCFILE_NEWLINE | PRINT_VSTUDIO_FILE_LINE),
 
     PRINT_FOR_POSTPROCESS      = (PRINT_FRAME_NUMBERS | PRINT_ABS_ADDRESS |
                                   PRINT_MODULE_OFFSETS | PRINT_MODULE_ID),

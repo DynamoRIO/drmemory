@@ -571,7 +571,9 @@ print_file_and_line(symbolized_frame_t *frame IN,
             }
         }
         BUFPRINT(buf, bufsz, *sofar, len, "%."STRINGIFY(MAX_FILENAME_LEN)"s", fname);
-        if (!TEST(PRINT_SRCFILE_NO_COLON, print_flags))
+        if (TEST(PRINT_VSTUDIO_FILE_LINE, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, "(");
+        else if (!TEST(PRINT_SRCFILE_NO_COLON, print_flags))
             BUFPRINT(buf, bufsz, *sofar, len, ":");
         else /* windbg format */
             BUFPRINT(buf, bufsz, *sofar, len, " @ ");
@@ -583,6 +585,8 @@ print_file_and_line(symbolized_frame_t *frame IN,
         BUFPRINT(buf, bufsz, *sofar, len, "%"UINT64_FORMAT_CODE, frame->line);
         if (TEST(PRINT_LINE_OFFSETS, print_flags))
             BUFPRINT(buf, bufsz, *sofar, len, "+"PIFX, frame->lineoffs);
+        if (TEST(PRINT_VSTUDIO_FILE_LINE, print_flags))
+            BUFPRINT(buf, bufsz, *sofar, len, ")");
         if (!TEST(PRINT_SRCFILE_NEWLINE, print_flags))
             BUFPRINT(buf, bufsz, *sofar, len, "]");
     } else {

@@ -413,6 +413,26 @@ options_init(const char *opstr)
         options.check_stack_access = true;
         options.check_alignment = true;
     }
+# ifdef WINDOWS
+    if (options.visual_studio) {
+        /* Allow earlier options to override by checking all for whether specified.
+         * Later can override individual components of this option as well.
+         * XXX: have a -callstack_style_append that adds via OR for adding
+         * stuff after -visual_studio?
+         */
+        if (!option_specified.callstack_style)
+            options.callstack_style = PRINT_FOR_VSTUDIO;
+        if (!option_specified.prefix_style)
+            options.prefix_style = PREFIX_STYLE_BLANK;
+        if (!option_specified.batch)
+            options.batch = true; /* frontend has to also set this of course */
+        /* The reasoning for -brief is that nobody's going to do perf measurements
+         * inside VS so we may as well have -delay_frees_stack, etc.
+         */
+        if (!option_specified.brief)
+            options.brief = true;
+    }
+# endif
     if (options.brief) {
         /* i#589: simpler error reports */
 # ifdef USE_DRSYMS

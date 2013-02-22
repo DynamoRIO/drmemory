@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -59,6 +59,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
+The changes between \TOOL_VERSION and version 1.5.0 include:
+ - Added Visual Studio External Tool support (-visual_studio option)
+ - Various bug fixes
+
 The changes between version 1.5.0 and 1.4.6 include:
  - Compatibility change: GDI usage errors are no longer of type WARNING
    but have their own type GDI USAGE ERROR.  This affects any existing

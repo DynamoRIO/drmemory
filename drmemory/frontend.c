@@ -1079,6 +1079,13 @@ _tmain(int argc, TCHAR *targv[])
             batch = true;
             continue;
         }
+        else if (strcmp(argv[i], "-visual_studio") == 0) {
+            /* also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "%s ", argv[i]);
+            batch = true;
+            continue;
+        }
         else if (strcmp(argv[i], "-fetch_symbols") == 0) {
             fetch_symbols = true;
             fetch_crt_syms_only = false;

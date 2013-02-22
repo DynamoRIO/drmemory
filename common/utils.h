@@ -186,6 +186,7 @@ extern uint op_verbose_level;
 extern bool op_pause_at_assert;
 extern bool op_pause_via_loop;
 extern bool op_ignore_asserts;
+extern uint op_prefix_style;
 extern file_t f_global;
 #ifdef USE_DRSYMS
 # ifdef TOOL_DR_MEMORY
@@ -228,11 +229,11 @@ extern bool op_use_symcache;
 /* for notifying user 
  * XXX: should add messagebox, controlled by option
  */
-#ifdef TOOL_DR_MEMORY
-# define PREFIX_MAIN_THREAD "~~Dr.M~~ "
-#else
-# define PREFIX_MAIN_THREAD "~~Dr.H~~ "
-#endif
+enum {
+    PREFIX_STYLE_DEAULT,
+    PREFIX_STYLE_NONE,
+    PREFIX_STYLE_BLANK,
+};
 
 void
 print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar);

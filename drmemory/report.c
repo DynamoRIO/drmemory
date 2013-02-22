@@ -256,6 +256,8 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
  * the primary line, timestamp line, and callstack itself (from PR 535568)
  */
 #define INFO_PFX IF_DRSYMS_ELSE("Note: ", "  info: ")
+/* We use a different prefix for the callstack, for Visual Studio (i#800) */
+static const char *info_cstack_pfx;
 
 /* To provide thread callstacks (i#312), we don't want to symbolize and
  * print at thread creation time b/c the symbolization is a noticeable
@@ -1345,6 +1347,11 @@ report_init(void)
                           false/*!str_dup*/, false/*!synch*/,
                           (void (*)(void*)) packed_callstack_free, NULL, NULL);
     }
+
+    if (options.prefix_style == PREFIX_STYLE_BLANK)
+        info_cstack_pfx = "      ";
+    else
+        info_cstack_pfx = INFO_PFX;
 }
 
 #ifdef LINUX
@@ -1968,7 +1975,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
              * and avoid this extra work
              */
             packed_callstack_to_symbolized(pcs, &scs);
-            symbolized_callstack_print(&scs, buf, bufsz, sofar, INFO_PFX,
+            symbolized_callstack_print(&scs, buf, bufsz, sofar, info_cstack_pfx,
                                        for_log);
             symbolized_callstack_free(&scs);
         } else
