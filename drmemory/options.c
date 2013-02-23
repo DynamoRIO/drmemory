@@ -437,10 +437,13 @@ options_init(const char *opstr)
         /* i#589: simpler error reports */
 # ifdef USE_DRSYMS
         if (!option_specified.callstack_srcfile_hide) { /* overridable */
-            /* Hide Visual Studio STL and CRT source file paths */
+            /* Hide Visual Studio STL and CRT source file paths.
+             * But, don't hide VS6 default project dir on win2k:
+             * C:\Program Files\Microsoft Visual Studio\MyProjects
+             */
             dr_snprintf(options.callstack_srcfile_hide,
                         BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_hide),
-                        "*program files*visual studio*,*self_x86*");
+                        "*program files*visual studio*vc*,*self_x86*");
             NULL_TERMINATE_BUFFER(options.callstack_srcfile_hide);
         }
         if (!option_specified.callstack_srcfile_prefix) { /* overridable */

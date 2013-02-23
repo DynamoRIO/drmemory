@@ -260,6 +260,8 @@ some bugs.  The missing features include:
    - This release can produce false positives if multiple threads write
      to adjacent bytes simultaneously.  Future releases will provide
      options to trade off performance, memory usage, and accuracy.
+ - On Windows 2000, error reports are not visible in the \p cmd window.
+   Send stderr to a file to view them inlined with program output.
 
 ****************************************************************************
 ****************************************************************************

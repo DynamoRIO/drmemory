@@ -279,7 +279,15 @@ Check the <tt>Use Output window</tt> checkbox.  Click OK.
 
 For Visual Studio 6, select <tt>Tools | Customize</tt>, then the \p Tools
 tab, and then click the \p New button.  Fill in the fields as above, though
-there will not be a \p Title field.
+the \p Title field is instead the input box in the main list.  Also, you'll
+want quotes around the TargetPath variable (but you do not want quotes for
+any later Visual Studio version):
+
+\verbatim
+Command: C:\Program Files\Dr. Memory\bin\drmemory.exe
+Arguments: -visual_studio -- "$(TargetPath)"
+Initial Directory: $(TargetDir)
+\endverbatim
 
 Now you can select <tt>Tools | Dr. Memory</tt> and Visual Studio will run
 your application.  The output of Dr. Memory (along with your program) will

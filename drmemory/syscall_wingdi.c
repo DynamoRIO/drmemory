@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -52,20 +52,20 @@ static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 void
 syscall_wingdi_init(void *drcontext, app_pc ntdll_base)
 {
-    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection, false/*reqd*/);
+    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection, true/*XP+*/);
 
     get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
     get_sysnum("NtUserGetDCEx", &sysnum_UserGetDCEx, false/*reqd*/);
     get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
     get_sysnum("NtUserBeginPaint", &sysnum_UserBeginPaint, false/*reqd*/);
     get_sysnum("NtUserEndPaint", &sysnum_UserEndPaint, false/*reqd*/);
-    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC, false/*reqd*/);
-    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap, false/*reqd*/);
-    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC, false/*reqd*/);
-    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, false/*reqd*/);
-    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC, false/*reqd*/);
-    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC, false/*reqd*/);
-    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW, false/*reqd*/);
+    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC, true/*XP+*/);
+    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap, true/*XP+*/);
+    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC, true/*XP+*/);
+    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, true/*XP+*/);
+    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC, true/*XP+*/);
+    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC, true/*XP+*/);
+    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW, true/*XP+*/);
 
     if (options.check_gdi)
         gdicheck_init();
