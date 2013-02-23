@@ -865,7 +865,8 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
             if ((stream = _tfopen(wresfile, _T("r"))) != NULL) {
                 while (fgets(line, BUFFER_SIZE_ELEMENTS(line), stream) != NULL) {
                     if (!found_summary) {
-                        found_summary = (strstr(line, "ERRORS FOUND:") == line);
+                        found_summary = (strstr(line, "ERRORS FOUND:") == line ||
+                                         strstr(line, "NO ERRORS FOUND:") == line);
                         if (found_summary)
                             fprintf(stderr, "%s\r\n", prefix);
                     }
