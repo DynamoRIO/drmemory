@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -28,7 +28,6 @@
 #include "gtest/gtest.h"
 
 #pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "riched20.lib")
 #pragma comment(lib, "user32.lib")
 
 TEST(NtGdiTests, GetTextMetricsW) {
@@ -43,7 +42,14 @@ TEST(NtGdiTests, GetTextMetricsW) {
 
 TEST(NtGdiTests, CreateTextServices) {
     // Was: http://code.google.com/p/drmemory/issues/detail?id=455
-    CreateTextServices(NULL, NULL, NULL);  // it fails but it's OK
+    /* i#1152: VS2012 doesn't have riched20.lib so we have to do this dynamically */
+    HMODULE lib = LoadLibrary("riched20.dll");
+    EXPECT_NE(lib, (HMODULE)NULL);
+    typedef HRESULT (*create_text_services_t)(IUnknown *, ITextHost *, IUnknown **);
+    create_text_services_t func = (create_text_services_t)
+        GetProcAddress(lib, "CreateTextServices");
+    EXPECT_NE(func, (create_text_services_t)NULL);
+    (*func)(NULL, NULL, NULL);  // it fails but it's OK
 }
 
 TEST(NtGdiTests, DeviceContext) {
