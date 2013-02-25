@@ -266,6 +266,8 @@ static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS) /* they all return NTSTATUS */
 
+#define WIN7 DR_WINDOWS_VERSION_7
+
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
  * So a truly unknown memory type must be explicitly marked DRSYS_TYPE_UNKNOWN.
@@ -1110,7 +1112,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {1, sizeof(DEVICE_POWER_STATE), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtGetPlugPlayEvent", OK, RNTST, 4,
+    {{0,WIN7},"NtGetPlugPlayEvent", OK, RNTST, 4,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3042,7 +3044,7 @@ static syscall_info_t syscall_ntdll_info[] = {
         {0, sizeof(PROCESSOR_NUMBER), W},
      }
     },
-    {{0,0},"NtWow64InterlockedPopEntrySList", OK, RNTST, 1,
+    {{0,WIN7},"NtWow64InterlockedPopEntrySList", OK, RNTST, 1,
      {
         {0, sizeof(SLIST_HEADER), R|W},
      }
@@ -3111,6 +3113,9 @@ extern syscall_info_t syscall_gdi32_info[];
 extern size_t num_gdi32_syscalls(void);
 extern syscall_info_t syscall_usercall_info[];
 extern size_t num_usercall_syscalls(void);
+
+#undef WIN7
+#undef RNTST
 
 #undef OK
 #undef UNKNOWN
@@ -3220,6 +3225,11 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
                   const char *optional_prefix, bool add_name2num)
 {
     bool ok = false;
+    /* Windows version-specific entry feature */
+    if (syslist->num.number != 0 && win_ver.version < syslist->num.number)
+        return;
+    if (syslist->num.secondary != 0 && win_ver.version > syslist->num.number)
+        return;
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
     if (info != NULL) {
@@ -3357,16 +3367,11 @@ drsyscall_os_init(void *drcontext)
                           false/*already added*/);
     }
     for (i = 0; i < num_user32_syscalls(); i++) {
-        if (!TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
-            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
-                              false/*already added*/);
-        }
-    }
-    for (i = 0; i < num_user32_syscalls(); i++) {
-        if (TEST(SYSINFO_IMM32_DLL, syscall_user32_info[i].flags)) {
-            add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
-                              false/*already added*/);
-        }
+        /* We ignore SYSINFO_IMM32_DLL here.  We check vs dlls in
+         * drsyscall_os_module_load().
+         */
+        add_syscall_entry(drcontext, NULL, &syscall_user32_info[i], "NtUser",
+                          false/*already added*/);
     }
     for (i = 0; i < num_gdi32_syscalls(); i++) {
         add_syscall_entry(drcontext, NULL, &syscall_gdi32_info[i], "NtGdi",

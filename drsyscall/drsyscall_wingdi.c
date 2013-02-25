@@ -265,11 +265,19 @@ syscall_info_t syscall_user32_info[] = {
          {3, sizeof(UINT), W},
      }
     },
-    {{0,0},"NtUserBuildHwndList", OK, RNTST, 7,
+    {{0,DR_WINDOWS_VERSION_7},"NtUserBuildHwndList", OK, RNTST, 7,
      {
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
          {5, -6, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
          {6, sizeof(ULONG), R|W,},
+     }
+    },
+    {{DR_WINDOWS_VERSION_8,0},"NtUserBuildHwndList", OK, RNTST, 8,
+     {
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
+         /* XXX i#1153: extra param somewhere in the middle here */
+         {6, -7, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
+         {7, sizeof(ULONG), R|W,},
      }
     },
     {{0,0},"NtUserBuildMenuItemList", OK, SYSARG_TYPE_UINT32, 4,

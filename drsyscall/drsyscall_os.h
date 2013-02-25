@@ -222,7 +222,16 @@ enum {
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
 
 typedef struct _syscall_info_t {
-    drsys_sysnum_t num; /* system call number: filled in dynamically */
+    /* System call number: filled in dynamically, allowing us to use the static
+     * fields to indicate underlying version reliance.  We read the static
+     * fields before we decide to use an entry and clobber the static value with
+     * the actual dynamic number.  Statically, the number field, if non-zero,
+     * indicates the minimum Windows version at which this entry is valid; the
+     * secondary field, if non-zero, indicates the maximum Windows version at
+     * which this entry is valid.  I'd use a union but then we'd need even more
+     * {} in the tables.
+     */
+    drsys_sysnum_t num;
     const char *name;
     uint flags; /* SYSINFO_ flags */
     uint return_type; /* not drsys_param_type_t so we can use extended SYSARG_TYPE_* */
