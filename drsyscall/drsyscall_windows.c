@@ -3486,8 +3486,12 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
         arg->start_addr = NULL;
     }
 #else
-    if (pt->pre)
-        pt->param_base = arg->mc->xdx; /* xdx points at args on stack */
+    if (pt->pre) {
+        if (win_ver.version >= DR_WINDOWS_VERSION_8 && dr_is_wow64())
+            pt->param_base = arg->mc->xsp; /* right on stack */
+        else
+            pt->param_base = arg->mc->xdx; /* xdx points at args on stack */
+    }
     arg->reg = DR_REG_NULL;
     arg->start_addr = get_sysparam_addr(pt, argnum);
 #endif
