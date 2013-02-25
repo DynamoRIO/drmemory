@@ -705,3 +705,11 @@ IMM32.dll!...
 USER32.dll!FocusSetIMCContext
 USER32.dll!...
 USER32.dll!DispatchClientMessage
+
+##################################################
+# i#1155: real bug in VS2012 istream
+
+UNINITIALIZED READ
+name=default i#1155 VS2012 istream
+MSVCP110*.dll!std::_Find_elem<char>
+MSVCP110*.dll!std::num_get<char,std::istreambuf_iterator<char,std::char_traits<char> > >::_Getifld
