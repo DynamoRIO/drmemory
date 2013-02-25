@@ -567,6 +567,9 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_free_dbg_impl", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg_impl", HEAP_ROUTINE_CALLOC_DBG },
     /* to control the debug crt options (i#51) */
+    /* _CrtSetDbgFlag is sometimes just a nop routine.  We determine whether
+     * it is, and if so we disable it, in disable_crtdbg().  Xref i#1154.
+     */
     { "_CrtSetDbgFlag", HEAP_ROUTINE_SET_DBG },
     /* the dbgflag only controls full-heap scans: to disable checks on
      * malloc and free we disable the reporting routines.  this is a hack
@@ -1219,13 +1222,38 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
 }
 
 #if defined(WINDOWS) && defined(USE_DRSYMS)
-static void
-disable_crtdbg(const module_data_t *mod)
+/* Returns whether to add _CrtSetDbgFlag */
+static bool
+disable_crtdbg(const module_data_t *mod, byte *pc)
 {
     static const int zero = 0;
+    void *drcontext = dr_get_current_drcontext();
     int *crtdbg_flag_ptr;
+    byte *npc;
+    instr_t inst;
+    bool res = true;
     if (!alloc_ops.disable_crtdbg)
-        return;
+        return false;
+    /* i#1154: _CrtSetDbgFlag sometimes points to a nop routine with
+     * no args where clobbring the 1st arg messes up the stack:
+     *   msvcrt!__init_dummy:
+     *   7636c92d 33c0             xor     eax,eax
+     *   7636c92f c3               ret
+     */
+    instr_init(drcontext, &inst);
+    npc = decode(drcontext, pc, &inst);
+    if (npc != NULL && instr_get_opcode(&inst) == OP_xor &&
+        opnd_is_reg(instr_get_dst(&inst, 0)) &&
+        opnd_get_reg(instr_get_dst(&inst, 0)) == DR_REG_XAX &&
+        opnd_same(instr_get_src(&inst, 0), instr_get_dst(&inst, 0))) {
+        instr_reset(drcontext, &inst);
+        npc = decode(drcontext, npc, &inst);
+        if (instr_is_return(&inst)) {
+            res = false;
+        }
+    }
+    instr_free(drcontext, &inst);
+
     /* i#51: we do not want crtdbg checks when our tool is present
      * (the checks overlap, better to have our tool report it than
      * crt, etc.).  This dbgflag only controls full-heap scans: to
@@ -1261,6 +1289,7 @@ disable_crtdbg(const module_data_t *mod)
          */
         LOG(1, "WARNING: unable to disable crtdbg checks\n");
     }
+    return res;
 }
 
 static size_t
@@ -1649,6 +1678,12 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     if (modname == NULL)
         modname = "<noname>";
     ASSERT(edata != NULL && pc != NULL, "invalid params");
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+    if (alloc_ops.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG) {
+        if (!disable_crtdbg(edata->mod, pc))
+            return; /* do not add */
+    }
+#endif
     /* look for partial map (i#730) */
     if (pc >= edata->mod->end) {
         LOG(1, "NOT intercepting %s @"PFX" beyond end of mapping for module %s\n",
@@ -1679,10 +1714,6 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         edata->processed[idx] = true;
     LOG(1, "intercepting %s @"PFX" type %d in module %s\n",
         edata->possible[idx].name, pc, edata->possible[idx].type, modname);
-#if defined(WINDOWS) && defined(USE_DRSYMS)
-    if (alloc_ops.disable_crtdbg && edata->possible[idx].type == HEAP_ROUTINE_SET_DBG)
-        disable_crtdbg(edata->mod);
-#endif
 }
 
 #ifdef USE_DRSYMS
@@ -6262,6 +6293,10 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
     else if (alloc_ops.disable_crtdbg && type == HEAP_ROUTINE_SET_DBG) {
         /* i#51: disable crt dbg checks: don't let app request _CrtCheckMemory */
+        /* i#1154: sometimes _CrtSetDbgFlag is a nop routine with no args!
+         * We disable the interception in disable_crtdbg() if so and so shouldn't
+         * get here.
+         */
         LOG(1, "disabling %s %d\n", routine->name, drwrap_get_arg(wrapcxt, 0));
         drwrap_set_arg(wrapcxt, 0, (void *)(ptr_uint_t)0);
     }
