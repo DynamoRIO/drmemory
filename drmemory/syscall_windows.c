@@ -126,7 +126,8 @@ void
 syscall_os_init(void *drcontext, app_pc ntdll_base)
 {
     get_sysnum("NtCreateThread", &sysnum_CreateThread, false/*reqd*/);
-    get_sysnum("NtCreateThreadEx", &sysnum_CreateThreadEx, true/*added in vista*/);
+    get_sysnum("NtCreateThreadEx", &sysnum_CreateThreadEx,
+               get_windows_version() <= DR_WINDOWS_VERSION_2003);
     get_sysnum("NtTerminateProcess", &sysnum_TerminateProcess, false/*reqd*/);
     get_sysnum("NtClose", &sysnum_Close, false/*reqd*/);
     get_sysnum("NtUserDestroyAcceleratorTable",

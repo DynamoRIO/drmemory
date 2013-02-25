@@ -52,20 +52,28 @@ static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 void
 syscall_wingdi_init(void *drcontext, app_pc ntdll_base)
 {
-    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection, true/*XP+*/);
+    get_sysnum("NtGdiCreateDIBSection", &sysnum_GdiCreateDIBSection,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
 
     get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
     get_sysnum("NtUserGetDCEx", &sysnum_UserGetDCEx, false/*reqd*/);
     get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
     get_sysnum("NtUserBeginPaint", &sysnum_UserBeginPaint, false/*reqd*/);
     get_sysnum("NtUserEndPaint", &sysnum_UserEndPaint, false/*reqd*/);
-    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC, true/*XP+*/);
-    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap, true/*XP+*/);
-    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC, true/*XP+*/);
-    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp, true/*XP+*/);
-    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC, true/*XP+*/);
-    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC, true/*XP+*/);
-    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW, true/*XP+*/);
+    get_sysnum("ReleaseDC", &sysnum_UserReleaseDC,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiGetDCforBitmap", &sysnum_GdiGetDCforBitmap,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiDdGetDC", &sysnum_GdiDdGetDC,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiCreateMetafileDC", &sysnum_GdiCreateMetafileDC,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiCreateCompatibleDC", &sysnum_GdiCreateCompatibleDC,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiOpenDCW", &sysnum_GdiOpenDCW,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
 
     if (options.check_gdi)
         gdicheck_init();
