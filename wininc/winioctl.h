@@ -25,6 +25,7 @@
 #define METHOD_FROM_CTL_CODE(ctrlCode)          ((DWORD)(ctrlCode & 3))
 
 #define FILE_DEVICE_NETWORK             0x00000012
+#define FILE_DEVICE_CONSOLE             0x00000050
 
 #define FILE_ANY_ACCESS                 0
 #define FILE_SPECIAL_ACCESS    (FILE_ANY_ACCESS)

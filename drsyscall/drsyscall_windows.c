@@ -5034,6 +5034,11 @@ handle_DeviceIoControlFile_helper(void *drcontext, cls_syscall_t *pt,
         handle_AFD_ioctl(drcontext, pt, ii);
     } else if (device == FILE_DEVICE_NETWORK) {
         handle_NET_ioctl(drcontext, pt, ii);
+    } else if (device == FILE_DEVICE_CONSOLE) {
+        /* FIXME i#1156: there's some data structure with padding in
+         * at least one of the common transactions here.
+         * For now, disabling the inputbuffer check.
+         */
     } else {
         /* FIXME i#377: add more ioctl codes. */
         WARN("WARNING: unknown ioctl "PIFX" => op %d\n",
