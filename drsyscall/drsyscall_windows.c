@@ -59,56 +59,86 @@ dr_os_version_info_t win_ver = {sizeof(win_ver),};
 #define KERNEL32 USER32
 
 static const char * const sysnum_names[] = {
-#define USER32(name, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   #name,
+#define USER32(name, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   #name,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
+static const int win8x64_sysnums[] = {
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w8x64,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
+static const int win8wow_sysnums[] = {
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w8wow,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
+static const int win8x86_sysnums[] = {
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w8x86,
+#include "drsyscall_numx.h"
+#undef USER32
+};
+
 static const int win7wow_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7wow,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w7wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win7x86_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w7x86,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w7x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistawow_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistawow,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   vwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistax86_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   vistax86,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   vx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXPwow_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpwow,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   xpwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2003_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2003,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w2k3,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXP_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   xpx86,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   xpx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2K_sysnums[] = {
-#define USER32(n, w7wow, w7x86, vistawow, vistax86, xpwow, w2003, xpx86, w2K)   w2K,
+#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
+     xpx86, w2K)   w2K,
 #include "drsyscall_numx.h"
 #undef USER32
 };
@@ -3017,6 +3047,58 @@ static syscall_info_t syscall_ntdll_info[] = {
         {0, sizeof(SLIST_HEADER), R|W},
      }
     },
+
+    /***************************************************/
+    /* Added in Windows 8 */
+    /* FIXME i#1153: fill in details */
+    {{0,0},"NtAddAtomEx", UNKNOWN, RNTST, 4, },
+    {{0,0},"NtAdjustTokenClaimsAndDeviceGroups", UNKNOWN, RNTST, 16, },
+    {{0,0},"NtAlertThreadByThreadId", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtAlpcConnectPortEx", UNKNOWN, RNTST, 11, },
+    {{0,0},"NtAssociateWaitCompletionPacket", UNKNOWN, RNTST, 8, },
+    {{0,0},"NtCancelWaitCompletionPacket", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtCreateDirectoryObjectEx", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtCreateIRTimer", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtCreateLowBoxToken", UNKNOWN, RNTST, 9, },
+    {{0,0},"NtCreateTokenEx", UNKNOWN, RNTST, 17, },
+    {{0,0},"NtCreateWaitCompletionPacket", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtCreateWnfStateName", UNKNOWN, RNTST, 7, },
+    {{0,0},"NtDeleteWnfStateData", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtDeleteWnfStateName", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtFilterBootOption", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtFilterTokenEx", UNKNOWN, RNTST, 14, },
+    {{0,0},"NtFlushBuffersFileEx", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtGetCachedSigningLevel", UNKNOWN, RNTST, 6, },
+    {{0,0},"NtQueryWnfStateData", UNKNOWN, RNTST, 6, },
+    {{0,0},"NtQueryWnfStateNameInformation", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtSetCachedSigningLevel", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtSetInformationVirtualMemory", UNKNOWN, RNTST, 6, },
+    {{0,0},"NtSetIRTimer", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtSubscribeWnfStateChange", UNKNOWN, RNTST, 4, },
+    {{0,0},"NtUnmapViewOfSectionEx", UNKNOWN, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         /* FIXME i#1153: what is the 3rd arg?  Observed to be 0. */
+     }
+    },
+    {{0,0},"NtUnsubscribeWnfStateChange", UNKNOWN, RNTST, 1, },
+    {{0,0},"NtUpdateWnfStateData", UNKNOWN, RNTST, 7, },
+    {{0,0},"NtWaitForAlertByThreadId", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtWow64AllocateVirtualMemory64", UNKNOWN, RNTST, 7,
+     {
+         /* XXX: I'm asuming the base and size pointers point at 64-bit values */
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONGLONG), R|W|HT, DRSYS_TYPE_POINTER},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         /* FIXME i#1153: what is 4th arg?  Top of ZeroBits?*/
+         {4, sizeof(ULONGLONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+
 };
 #define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
 
@@ -3206,6 +3288,10 @@ drsyscall_os_init(void *drcontext)
         sysnums = win7wow_sysnums;
     }
     switch (win_ver.version) {
+    case DR_WINDOWS_VERSION_8:
+        sysnums = IF_X64_ELSE(win8x64_sysnums,
+                              wow64 ? win8wow_sysnums : win8x86_sysnums);
+        break;
     case DR_WINDOWS_VERSION_7:
         sysnums = wow64 ? win7wow_sysnums : win7x86_sysnums;
         break;

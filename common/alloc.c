@@ -2715,6 +2715,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
                 !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
                 ASSERT(false, "failed to wrap");
             
+            /* FIXME i#1153: watch NtWow64AllocateVirtualMemory64 on win8 */
             get_primary_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
             get_primary_sysnum("NtUnmapViewOfSection", &sysnum_munmap, false);
             get_primary_sysnum("NtAllocateVirtualMemory", &sysnum_valloc, false);
