@@ -406,9 +406,10 @@ if (WIN32)
   set(dbghelp_paths
     "${DDK_ROOT}/bin/${ARCH_SFX}/dbghelp.dll"
     "${DDK_ROOT}/tools/tracing/${DDK_SFX}/dbghelp.dll"
-    "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/dbghelp.dll"
-    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/dbghelp.dll"
+    # Putting this last mainly b/c only older versions (like my 6.3) are here.
+    "${PROGFILES}/Debugging Tools for Windows/dbghelp.dll")
   if (NOT X64)
     set(dbghelp_paths ${dbghelp_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/dbghelp.dll")

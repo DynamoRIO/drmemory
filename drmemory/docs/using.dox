@@ -181,11 +181,12 @@ dialog (press Alt-F7 to bring it up) under the "Configuration Properties |
 C/C++ | Code Generation | Runtime Library" settings.  Change
 "Multi-threaded Debug DLL (/MDd)" to "Multi-threaded DLL (/MD)".
 
-If your application is C++, another step is necessary when using /MD to
-avoid the C++ Debug DLL: under "Configuration Properties | C/C++ |
-Preprocessor", remove "_DEBUG" from the list of "Preprocessor Definitions".
-It probably says "WIN32;_DEBUG;_CONSOLE" by default. Change it to
-"WIN32;_CONSOLE".
+If your application is C++ and you are using Visual Studio 2008 or older,
+another step is necessary when using /MD to avoid the C++ Debug DLL: under
+"Configuration Properties | C/C++ | Preprocessor", remove "_DEBUG" from the
+list of "Preprocessor Definitions".  It probably says
+"WIN32;_DEBUG;_CONSOLE" by default. Change it to "WIN32;_CONSOLE".
+You should not need this step on Visual Studio 2010 or higher.
 
 **********
 \subsection sec_prep_win_rtc Disable Runtime Checks
@@ -313,7 +314,7 @@ On Linux:
 drmemory.pl -- /path/to/my/app args to my app
 \endverbatim
 
-Examples throughout the rest of the documentation will be use one platform,
+Examples throughout the rest of the documentation will use just one platform,
 but can readily be adapted to the other by changing the front-end (\p
 drmemory.exe or \p drmemory.pl) and the path style.
 
