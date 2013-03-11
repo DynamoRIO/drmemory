@@ -1202,6 +1202,7 @@ else (WIN32)
     set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig")
     add_custom_target(drconfig_copy_tgt ALL DEPENDS "${drconfig_copy}")
     add_custom_command(OUTPUT "${drconfig_copy}" 
+      DEPENDS drconfig
       COMMAND ${CMAKE_COMMAND}
       ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig"
       "${drconfig_copy}" VERBATIM)
