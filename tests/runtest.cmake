@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -335,6 +335,17 @@ foreach (str ${patterns})
     if (WIN32)
       string(REGEX REPLACE "(^|\n)%if UNIX[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
+      # distinguish pre-win8 from win8
+      if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "" ${str} "${${str}}")
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1" 
+          ${str} "${${str}}")
+      else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "" 
+          ${str} "${${str}}")
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "\\1" 
+          ${str} "${${str}}")
+      endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
     elseif (UNIX)
       string(REGEX REPLACE "(^|\n)%if WINDOWS[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
       string(REGEX REPLACE "(^|\n)%if CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")

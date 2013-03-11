@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -71,6 +71,18 @@ our_top_handler(struct _EXCEPTION_POINTERS * pExceptionInfo)
         longjmp(mark, 1);
     }
     return EXCEPTION_EXECUTE_HANDLER; /* => global unwind and silent death */
+}
+
+BOOL
+is_pre_win8(void)
+{
+    OSVERSIONINFO info;
+    info.dwOSVersionInfoSize = sizeof(info);
+    if (GetVersionEx(&info)) {
+        return (info.dwMajorVersion < 6 ||
+                (info.dwMajorVersion == 6 && info.dwMinorVersion < 2));
+    }
+    return FALSE;
 }
 #endif
 
@@ -182,7 +194,11 @@ main()
         p1 = HeapAlloc(newheap, HEAP_ZERO_MEMORY, sizeof(int));
         memcpy(save, (char *)p1 - sizeof(save), sizeof(save));
         if (setjmp(mark) == 0) { /* crashes on win7 (i#515) */
-            ok = HeapFree(GetProcessHeap(), 0, p1);
+            /* i#1161: we cannot recover from a heap exception on win8 */
+            if (is_pre_win8())
+                ok = HeapFree(GetProcessHeap(), 0, p1);
+            else
+                ok = HeapFree(newheap, 0, (void*)0x300);
             if (!ok) /* invalid Heap fails w/ 87 "The parameter is incorrect." */
                 printf("HeapFree failed %d\n", GetLastError());
         } else

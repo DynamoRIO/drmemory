@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,19 +21,24 @@
 #
 Error #1: INVALID HEAP ARGUMENT
 # addr2line and winsyms report slightly different results here
-malloc.c:163
+malloc.c:175
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
-malloc.c:175
+malloc.c:187
 Error #3: INVALID HEAP ARGUMENT
-malloc.c:185
+%endif
+%if WINDOWS_PRE_8
+malloc.c:199
+%endif
+%if WINDOWS_8
+malloc.c:201
 %endif
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:219
+malloc.c:235
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:251
+malloc.c:267
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:256
+malloc.c:272
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:257
+malloc.c:273

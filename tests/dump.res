@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -25,13 +25,19 @@ Error #1: INVALID HEAP ARGUMENT
 malloc.c:162
 %endif
 %if UNIX
-malloc.c:163
+malloc.c:175
 %endif
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
-malloc.c:174
-Error #3: INVALID HEAP ARGUMENT 
-malloc.c:185
+malloc.c:187
+%endif
+%if WINDOWS_PRE_8
+malloc.c:199
+%endif
+%if WINDOWS_8
+malloc.c:201
+%endif
+%if WINDOWS
 # FIXME: should we remove the auto-escaping of regex chars in
 # this file, and then we can use them: "Error #(5|6)"?
 Error #4: LEAK 42 bytes

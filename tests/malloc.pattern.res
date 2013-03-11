@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,14 +21,19 @@
 #
 # This is malloc.res minus leaks and uninits with updated error number.
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:96
+malloc.c:108
 Error #2: INVALID HEAP ARGUMENT
-malloc.c:163
+malloc.c:175
 %if WINDOWS
 Error #3: WARNING: heap allocation failed
-malloc.c:175
+malloc.c:187
 Error #4: UNADDRESSABLE ACCESS: reading 4 byte(s)
-malloc.c:183
+malloc.c:195
 Error #5: INVALID HEAP ARGUMENT
-malloc.c:185
+%endif
+%if WINDOWS_PRE_8
+malloc.c:199
+%endif
+%if WINDOWS_8
+malloc.c:201
 %endif

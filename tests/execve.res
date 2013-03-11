@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -20,19 +20,19 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:96
+malloc.c:108
 Error #2: UNINITIALIZED READ
-malloc.c:106
+malloc.c:118
 Error #3: UNINITIALIZED READ
-malloc.c:119
+malloc.c:131
 Error #4: INVALID HEAP ARGUMENT
-malloc.c:163
+malloc.c:175
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:219
+malloc.c:235
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:251
+malloc.c:267
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:256
+malloc.c:272
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:257
+malloc.c:273
