@@ -33,6 +33,10 @@ endif (UNIX)
 
 find_package(DrMemoryFramework PATHS ${framework_dir})
 
+# As we'll be calling configure_DynamoRIO_{client,standalone} from within
+# a function scope, we must set the global vars ahead of time:
+configure_DynamoRIO_global(OFF ON)
+
 # We only expect a few tests, so we simplify things by having a simple
 # regex output for whether they passed.
 # ext_list should be a list of extensions minus the drmf_ prefix.
