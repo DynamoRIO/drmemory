@@ -405,10 +405,20 @@ if (WIN32)
   # i#489: building /GL results in a double-xor sequence
   newtest_custbuild(bitfieldGL bitfield.cpp "/O2 /GL" bitfield)
 endif (WIN32)
-# linux glibc backtrace on hashtable curiosities causing problems:
-# * making syscalls => hit sysenter hook
-# * w/ -sysenter_is_int80 => calls abort() for some reason
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF "")
+
+if (UNIX OR "${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+  set(cs2bug_res "cs2bug")
+  set(cs2bug_flags "")
+else ()
+  # For /MTd and /MDd, or if on win8 (i#1161), we skip the
+  # destructor mismatches, as they end up raising heap assertions
+  # that we can't recover from.
+  set(cs2bug_res "cs2bugMTd")
+  set(cs2bug_flags "/DSKIP_MISMATCH_DTR")
+endif ()
+newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res})
+append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
+
 newtest(operators operators.cpp)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
@@ -465,7 +475,7 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(slowesp registers "" "-no_esp_fastpath" "" OFF "registers")
   newtest_nobuild(addronly free "" "-light" "" OFF "")
   newtest_nobuild(addronly-reg registers "" "-no_check_uninitialized" "" OFF "")
-  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
+  newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF ${cs2bug_res})
   if (USE_DRSYMS)
     newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
   endif (USE_DRSYMS)
@@ -478,7 +488,12 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
   # test malloc replacement (additional tests are below)
   newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
-  newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF "cs2bug")
+  if (cs2bug_flags STREQUAL "")
+    newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF ${cs2bug_res})
+  else ()
+    # -replace_malloc won't raise unrecoverable heap errors (i#1161)!
+    newtest_ex(replace_cs2bug cs2bug.cpp "" "-replace_malloc" "" OFF "cs2bug")
+  endif ()
   newtest_nobuild_ex(replace_operators operators "" "-replace_malloc" "" OFF "operators"
     # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
     ON)
@@ -565,10 +580,8 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
       # C++ tests with other libc configs
-      # for /MTd and /MDd, we skip the destructor mismatches, as they end up raising
-      # heap assertions that we can't recover from
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_custbuild(cs2bugMD cs2bug.cpp "/MD" cs2bug)
+      newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_nobuild(replace_cs2bugMTd cs2bugMTd "" "-replace_malloc" "" OFF "cs2bugMTd")
 
