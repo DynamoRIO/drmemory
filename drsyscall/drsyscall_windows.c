@@ -1065,7 +1065,7 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), R|W|HT, DRSYS_TYPE_POINTER},
-         {2, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG_PTR), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
      }
     },
