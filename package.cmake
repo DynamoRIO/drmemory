@@ -37,6 +37,7 @@ set(arg_version "")    # version #
 set(arg_outdir ".")    # directory in which to place deliverables
 set(arg_cacheappend "")# string to append to every build's cache
 set(arg_drmem_only OFF) # do not include Dr. Heapstat
+set(arg_x64_build OFF)  # do not include x64 build
 # also takes args parsed by runsuite_common_pre.cmake, in particular:
 set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
@@ -71,6 +72,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^drmem_only" OR
       ${arg} MATCHES "^drmemory_only")
     set(arg_drmem_only ON)
+  endif ()
+  if (${arg} MATCHES "^x64_build")
+    set(arg_x64_build ON)
   endif ()
 endforeach (arg)
 
@@ -135,6 +139,16 @@ if (NOT arg_drmem_only)
     TOOL_DR_HEAPSTAT:BOOL=ON
     CMAKE_BUILD_TYPE:STRING=Debug
     " OFF ON "")
+  if (arg_x64_build)
+    testbuild_ex("drheapstat-${name_sfx}release-64" ON "
+      TOOL_DR_HEAPSTAT:BOOL=ON
+      CMAKE_BUILD_TYPE:STRING=Release
+      " OFF ON "")
+    testbuild_ex("drheapstat-${name_sfx}debug-64" ON "
+      TOOL_DR_HEAPSTAT:BOOL=ON
+      CMAKE_BUILD_TYPE:STRING=Debug
+      " OFF ON "")
+  endif (arg_x64_build)
 endif (NOT arg_drmem_only)
 testbuild_ex("drmemory-${name_sfx}release-32" OFF "
   CMAKE_BUILD_TYPE:STRING=Release
@@ -142,6 +156,14 @@ testbuild_ex("drmemory-${name_sfx}release-32" OFF "
 testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
   CMAKE_BUILD_TYPE:STRING=Debug
   " OFF ON "")
+if (arg_x64_build)
+  testbuild_ex("drmemory-${name_sfx}release-64" ON "
+    CMAKE_BUILD_TYPE:STRING=Release
+    " OFF ON "")
+  testbuild_ex("drmemory-${name_sfx}debug-64" ON "
+    CMAKE_BUILD_TYPE:STRING=Debug
+    " OFF ON "")
+endif (arg_x64_build)
 
 if (arg_cpackappend)
   # ${last_package_build_dir} is a global var set in parent scope by
