@@ -3132,7 +3132,11 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                 /* we are removing while while iterating */
                 nxt = he->next;
                 if (e->set->modbase == info->start) {
-                    IF_DEBUG(bool found;)
+#ifdef DEBUG
+                    bool found;
+                    const char *name = e->name;
+                    app_pc pc = e->pc;
+#endif
                     /* could wait for realloc but we remove on 1st hit */
                     if (e->set->realloc_replacement != NULL) {
                         /* put replacement routine on free list (i#545) */
@@ -3171,16 +3175,17 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
 
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);
+                    /* e is now freed so don't de-reference it below here! */
 
                     LOG(3, "removing %s "PFX" from interception table: found=%d\n",
-                        e->name, e->pc, found); 
+                        name, pc, found); 
                     DOLOG(1, {
                         if (!found) {
                             /* some dlls have malloc_usable_size and _msize
                              * pointing at the same place, which will trigger this
                              */
                             LOG(1, "WARNING: did not find %s @"PFX" for %s\n",
-                                e->name, e->pc,
+                                name, pc,
                                 dr_module_preferred_name(info) == NULL ? "<null>" :
                                 dr_module_preferred_name(info));
                         }
