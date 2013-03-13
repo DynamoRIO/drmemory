@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -49,6 +49,7 @@ static void lookup_address(const char *dllpath, size_t modoffs);
 static void lookup_symbol(const char *dllpath, const char *sym);
 static void enumerate_symbols(const char *dllpath, const char *match,
                               bool search, bool searchall);
+static void enumerate_lines(const char *dllpath);
 
 /* options */
 #define USAGE_PRE "Usage:\n\
@@ -72,6 +73,8 @@ Look up private symbols matching wildcard patterns (glob-style: *,?) for one mod
 #define USAGE_POST \
 "List all symbols in a module:\n\
   %s -e <module> [-v] --list\n\
+List all source lines in a module:\n\
+  %s -e <module> [-v] --lines\n\
 Optional parameters:\n\
   -f = show function name\n\
   -v = verbose\n\
@@ -80,7 +83,7 @@ Optional parameters:\n\
 #define PRINT_USAGE(mypath) do {\
     printf(USAGE_PRE, mypath, mypath, mypath);\
     printf(USAGE_MID, mypath, mypath);\
-    printf(USAGE_POST, mypath);\
+    printf(USAGE_POST, mypath, mypath);\
 } while (0)
 
 static bool show_func;
@@ -103,6 +106,7 @@ main(int argc, char *argv[])
     bool enumerate_all = false;
     bool search = false;
     bool searchall = false;
+    bool enum_lines = false;
 
     for (i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "-e") == 0) {
@@ -139,6 +143,8 @@ main(int argc, char *argv[])
             i++;
             /* rest of args read below */
             break;
+        } else if (_stricmp(argv[i], "--lines") == 0) {
+            enum_lines = true;
         } else if (_stricmp(argv[i], "-q") == 0) {
             addr2sym_multi = true;
         } else if (_stricmp(argv[i], "--enum") == 0) {
@@ -155,9 +161,9 @@ main(int argc, char *argv[])
             return 1;
         }
     }
-    if (((sym2addr || addr2sym) && dll == NULL) ||
+    if ((!addr2sym_multi && dll == NULL) ||
         (addr2sym_multi && dll != NULL) ||
-        (!sym2addr && !addr2sym && !addr2sym_multi && !enumerate_all)) {
+        (!sym2addr && !addr2sym && !addr2sym_multi && !enumerate_all && !enum_lines)) {
         PRINT_USAGE(argv[0]);
         return 1;
     }
@@ -170,7 +176,9 @@ main(int argc, char *argv[])
     }
 
     if (!addr2sym_multi) {
-        if (enumerate_all)
+        if (enum_lines)
+            enumerate_lines(dll);
+        else if (enumerate_all)
             enumerate_symbols(dll, NULL, search, searchall);
         else {
             /* kind of a hack: assumes i hasn't changed and that -s/-a is last option */
@@ -311,3 +319,25 @@ enumerate_symbols(const char *dllpath, const char *match, bool search, bool sear
     if (symres != DRSYM_SUCCESS && verbose)
         printf("search/enum error %d\n", symres);
 }
+
+static bool
+enum_line_cb(drsym_line_info_t *info, void *data)
+{
+    printf("cu=\"%s\", file=\"%s\" line=" INT64_FORMAT_STRING ", addr="PIFX"\n",
+           (info->cu_name == NULL) ? "<null>" : info->cu_name,
+           (info->file == NULL) ? "<null>" : info->file,
+           info->line, info->line_addr);
+    return true;
+}
+
+static void
+enumerate_lines(const char *dllpath)
+{
+    drsym_error_t symres;
+    if (verbose)
+        get_and_print_debug_kind(dllpath);
+    symres = drsym_enumerate_lines(dllpath, enum_line_cb, (void *) dllpath);
+    if (symres != DRSYM_SUCCESS && verbose)
+        printf("line enum error %d\n", symres);
+}
+
