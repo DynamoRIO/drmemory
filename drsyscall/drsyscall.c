@@ -658,6 +658,11 @@ report_memarg_ex(sysarg_iter_info_t *ii,
 {
     drsys_arg_t *arg = ii->arg;
 
+#ifdef LINUX
+    /* FIXME i#1171: this assertion fails on Windows. */
+    ASSERT(sz > 0, "drsyscall shouldn't report empty memargs");
+#endif
+
     arg->type = type;
     if (type_name == NULL && type != DRSYS_TYPE_UNKNOWN &&
         type != DRSYS_TYPE_INVALID) {
@@ -1144,6 +1149,27 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     return size;
 }
 
+static bool
+should_ignore_arg(cls_syscall_t *pt, sysarg_iter_info_t *ii,
+                  syscall_info_t *sysinfo, int i)
+{
+    int if_null_arg = -1;
+    /* XXX: Unify these two flags by specifying the arg that might be NULL in
+     * misc.  We skip that for now to avoid conflicting with type info for
+     * inline args.
+     */
+    if (TEST(SYSARG_IGNORE_IF_NEXT_NULL, sysinfo->arg[i].flags))
+        if_null_arg = i+1;
+    else if (TEST(SYSARG_IGNORE_IF_PREV_NULL, sysinfo->arg[i].flags))
+        if_null_arg = i-1;
+    else
+        return false;
+    ASSERT(if_null_arg >= 0 && if_null_arg < MAX_ARGS_IN_ENTRY,
+           "sysarg index out of bound");
+    return (if_null_arg >= 0 && if_null_arg < MAX_ARGS_IN_ENTRY &&
+            (app_pc) pt->sysarg[sysinfo->arg[if_null_arg].param] == NULL);
+}
+
 /* Walks the param entries stored in the syscall table and processes them
  * for pre-syscall usage.
  * Assumes that arg fields drcontext, sysnum, pre, and mc have already been filled in.
@@ -1202,16 +1228,9 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                                                          start, size);
             if (ii->abort)
                 break;
-            /* i#502-c#5 some arg should be ignored if next is NULL */
-            if (!skip &&
-                TESTALL(SYSARG_READ | SYSARG_IGNORE_IF_NEXT_NULL,
-                        sysinfo->arg[i].flags)) {
-                ASSERT(i+1 < MAX_ARGS_IN_ENTRY, "sysarg index out of bound");
-                if (i+1 < MAX_ARGS_IN_ENTRY &&
-                    (app_pc) pt->sysarg[sysinfo->arg[i+1].param] == NULL) {
-                    skip = true;
-                }
-            }
+            /* i#502-c#5, i#1169: some arg should be ignored if another arg is NULL */
+            if (!skip && should_ignore_arg(pt, ii, sysinfo, i))
+                skip = true;
             /* pass syscall # as pc for reporting purposes */
             /* we treat in-out read-and-write as simply read, since if
              * not defined we'll report and then mark as defined anyway.
@@ -1327,6 +1346,11 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
             if (start != NULL && size > 0) {
                 bool skip = os_handle_post_syscall_arg_access
                     (ii, &sysinfo->arg[i], start, size);
+                /* i#1169: some args (usually sizes) are not written if optional
+                 * out params are not present.
+                 */
+                if (!skip && should_ignore_arg(pt, ii, sysinfo, i))
+                    skip = true;
                 if (!skip) {
                     if (!report_memarg_nonfield(ii, &sysinfo->arg[i], start, size, idmsg))
                         break;

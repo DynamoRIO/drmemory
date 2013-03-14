@@ -57,11 +57,13 @@ TEST(SocketTests, ClientServer) {
     child = fork();
     ASSERT_TRUE(child >= 0);
     if (child == 0) {
+        struct sockaddr from_addr;
+        socklen_t from_len = sizeof(from_addr);
         int fd_client;
         struct hostent *hp = gethostbyname("localhost");
         ASSERT_NE(hp, (struct hostent *)NULL);
 
-	memset(&saddr, 0, sizeof(saddr));
+        memset(&saddr, 0, sizeof(saddr));
         saddr.sin_family = AF_INET;
         saddr.sin_addr.s_addr = ((struct in_addr *)(hp->h_addr))->s_addr;
         saddr.sin_port = htons(port);
@@ -73,8 +75,9 @@ TEST(SocketTests, ClientServer) {
         ASSERT_NE(res, -1);
         res = send(fd_client, "hello", strlen("hello")+1, 0);
         ASSERT_NE(res, -1);
-        res = recv(fd_client, buf, sizeof(buf), 0);
+        res = recvfrom(fd_client, buf, sizeof(buf), 0, &from_addr, &from_len);
         ASSERT_NE(res, -1);
+        EXPECT_EQ(0, (int)from_len);  /* no from addr with SOCK_STREAM */
         ASSERT_STREQ(buf, "goodbye");
 
         close(fd_client);
@@ -92,10 +95,12 @@ TEST(SocketTests, ClientServer) {
         res = send(fd_connect, "goodbye", strlen("goodbye")+1, 0);
         ASSERT_NE(res, -1);
 
+        int status;
         do {
-            res = waitpid(child, NULL, 0);
+            res = waitpid(child, &status, 0);
         } while (res == -1 && errno == EINTR);
         ASSERT_EQ(res, child);
+        ASSERT_EQ(0, status);
 
         close(fd_connect);
         close(fd_socket);

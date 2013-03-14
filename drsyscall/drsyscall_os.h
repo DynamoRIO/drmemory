@@ -109,6 +109,11 @@ enum {
     SYSARG_HAS_TYPE            = 0x00000200,
     /* i#502-c#5 the arg should be ignored if the next arg is null */
     SYSARG_IGNORE_IF_NEXT_NULL = 0x00000400,
+    /* Ignore this arg if the previous arg is NULL.
+     * XXX: Unify this with SYSARG_IGNORE_IF_NEXT_NULL by storing the arg# in
+     * misc once that doesn't conflict with type info.
+     */
+    SYSARG_IGNORE_IF_PREV_NULL = 0x00000800,
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for

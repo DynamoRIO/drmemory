@@ -306,11 +306,10 @@ extern syscall_info_t syscall_ioctl_info[];
 #define R (SYSARG_READ)
 #define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
 #define CT (SYSARG_COMPLEX_TYPE)
+#define HT (SYSARG_HAS_TYPE)
 #define CSTRING (SYSARG_TYPE_CSTRING)
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RLONG (DRSYS_TYPE_SIGNED_INT) /* they all return type "long" */
-#define INT_TYPE DRSYS_TYPE_SIGNED_INT
-#define UINT_TYPE DRSYS_TYPE_UNSIGNED_INT
 static syscall_info_t syscall_info[] = {
     {{PACKNUM(219,0),0},"restart_syscall", OK, RLONG, 0,},
     {{PACKNUM(60,1),0},"exit", OK, RLONG, 1,},
@@ -1340,19 +1339,21 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(43,-1),0},"accept", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(socklen_t), W},
+         {2, sizeof(socklen_t), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(44,-1),0},"sendto", OK, RLONG, 6,
      {
          {1, -2, R},
          {4, -5, R|CT, SYSARG_TYPE_SOCKADDR},
+         {5, sizeof(socklen_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(45,-1),0},"recvfrom", OK, RLONG, 6,
      {
          {1, -2, W},
          {4, -5, WI|CT, SYSARG_TYPE_SOCKADDR},
+         {5, sizeof(socklen_t), R|W|HT|SYSARG_IGNORE_IF_PREV_NULL, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(46,-1),0},"sendmsg", OK, RLONG, 3,
@@ -1375,13 +1376,13 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(51,-1),0},"getsockname", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(socklen_t), W},
+         {2, sizeof(socklen_t), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(52,-1),0},"getpeername", OK, RLONG, 3,
      {
          {1, -2, WI|CT, SYSARG_TYPE_SOCKADDR},
-         {2, sizeof(socklen_t), W},
+         {2, sizeof(socklen_t), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(53,-1),0},"socketpair", OK, RLONG, 4,
@@ -1397,7 +1398,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(55,-1),0},"getsockopt", OK, RLONG, 5,
      {
          {3, -4, WI},
-         {4, sizeof(socklen_t), W},
+         {4, sizeof(socklen_t), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{PACKNUM(64,-1),0},"semget", OK, RLONG, 3, },
@@ -1444,7 +1445,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(288,-1),0},"paccept", OK, RLONG, 4,
      {
          {1,-2,WI|CT,SYSARG_TYPE_SOCKADDR},
-         {2,sizeof(int),W},
+         {2,sizeof(int),W, DRSYS_TYPE_SIGNED_INT},
      }
     }, /* == accept4 */
 
@@ -1469,6 +1470,9 @@ static syscall_info_t syscall_info[] = {
 #define FD_REQ \
     {0, sizeof(int), SYSARG_INLINED, INT_TYPE}, /* fd */ \
     {1, sizeof(int), SYSARG_INLINED, INT_TYPE}  /* request */
+
+#define INT_TYPE DRSYS_TYPE_SIGNED_INT
+#define UINT_TYPE DRSYS_TYPE_UNSIGNED_INT
 
 syscall_info_t syscall_ioctl_info[] = {
     // <include/asm-i386/socket.h>
@@ -2025,6 +2029,8 @@ syscall_info_t syscall_ioctl_info[] = {
 
 #undef IOCTL
 #undef FD_REQ
+#undef INT_TYPE
+#undef UINT_TYPE
 
 #undef OK
 #undef UNKNOWN
@@ -2032,11 +2038,10 @@ syscall_info_t syscall_ioctl_info[] = {
 #undef R
 #undef WI
 #undef CT
+#undef HT
 #undef CSTRING
 #undef RET
 #undef RLONG
-#undef INT_TYPE
-#undef UINT_TYPE
 
 /***************************************************************************
  * TOP-LEVEL
@@ -2416,7 +2421,8 @@ check_iov(cls_syscall_t *pt, sysarg_iter_info_t *ii,
             }
             LOG(3, "check_iov: iov entry %d, buf="PFX", len="PIFX"\n",
                 i, iov_copy.iov_base, iov_copy.iov_len);
-            if (!report_memarg_type(ii, ordinal, arg_flags, (app_pc)iov_copy.iov_base,
+            if (iov_copy.iov_len > 0 &&
+                !report_memarg_type(ii, ordinal, arg_flags, (app_pc)iov_copy.iov_base,
                                     iov_copy.iov_len, id, DRSYS_TYPE_STRUCT, NULL))
                 return;
             if (done)
@@ -2527,8 +2533,7 @@ check_msghdr(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
                                     DRSYS_TYPE_INT, NULL))
                 return;
             if (pre_control != NULL && len > 0) {
-                if (!report_memarg_type(ii, ordinal, arg_flags,
-                                        (app_pc)pt->sysarg[3]/*msg_control*/, len,
+                if (!report_memarg_type(ii, ordinal, arg_flags, pre_control, len,
                                         "recvmsg msg_control", DRSYS_TYPE_STRUCT, NULL))
                     return;
             } else
@@ -2682,14 +2687,27 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
                 pt->sysarg[2] = (ptr_int_t) ptr1;
                 pt->sysarg[3] = val_socklen;
             }
-            if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1, val_socklen, 
-                                    (request == SYS_SENDTO) ? "sendto addr" :
-                                    "recvfrom addr", DRSYS_TYPE_STRUCT, NULL))
-                return;
+            if (ptr1 == NULL)
+                break;  /* sockaddr is optional to both sendto and recvfrom */
             if (request == SYS_SENDTO) {
-                check_sockaddr(pt, ii, ptr1, val_socklen, SOCK_ARRAY_ARG, SYSARG_READ,
-                               "sendto addrlen");
+                check_sockaddr(pt, ii, ptr1, val_socklen, SOCK_ARRAY_ARG,
+                               SYSARG_READ, "sendto addr");
                 if (ii->abort)
+                    return;
+            } else {
+                /* XXX: save socklen for post recvfrom() handline.
+                 * check_sockaddr() would store socklen for us, but it reads
+                 * sa_family, which is uninitialized for recvfrom().
+                 */
+                if (pt->first_iter)
+                    store_extra_info(pt, EXTRA_INFO_SOCKADDR, val_socklen);
+                if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_WRITE, ptr1,
+                                        val_socklen, "recvfrom addr",
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
+                if (!report_memarg_type(ii, SOCK_ARRAY_ARG, SYSARG_READ|SYSARG_WRITE,
+                                        ptr2, sizeof(socklen_t), "recvfrom socklen",
+                                        DRSYS_TYPE_UNSIGNED_INT, NULL))
                     return;
             }
         }
@@ -2806,7 +2824,8 @@ handle_post_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         if (pt->sysarg[3]/*pre-addrlen*/ > 0 && pt->sysarg[2]/*sockaddr*/ != 0 &&
             /* re-read to see size returned by kernel */
             safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
-            safe_read(ptr2, sizeof(val_socklen), &val_socklen)) {
+            safe_read(ptr2, sizeof(val_socklen), &val_socklen) &&
+            val_socklen > 0) {
             check_sockaddr(pt, ii, (app_pc)pt->sysarg[2], val_socklen, 2, SYSARG_WRITE,
                            "recvfrom addr");
             if (ii->abort)
