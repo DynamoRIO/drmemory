@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -63,6 +63,7 @@
 /* we need a separate hashtable per module */
 #define SYMCACHE_MASTER_TABLE_HASH_BITS 6
 #define SYMCACHE_MODULE_TABLE_HASH_BITS 6
+#define SYMCACHE_OLIST_TABLE_HASH_BITS 5
 
 /* Size of the buffer used to write the symbol cache.  This is stack allocated,
  * so it should not be increased.
@@ -110,11 +111,30 @@ typedef struct _mod_cache_t {
     bool has_debug_info; /* do we have DWARF/PECOFF/PDB symbols? */
 } mod_cache_t;
 
+typedef struct _offset_entry_t {
+    size_t offs;
+    struct _offset_entry_t *next;
+} offset_entry_t;
+
+/* For very few entries (which are the most common) we don't need a hashtable */
+#define OFFSET_LIST_MIN_TABLE 3
+
 /* Entry in the per-module table */
 typedef struct _offset_list_t {
     uint num;
-    size_t offs;
-    struct _offset_list_t *next;
+    /* We use both a linked list (for index-based iteration/lookup)
+     * and a hashtable (to easily see whether an offset exists)
+     */
+    offset_entry_t *list;
+    /* We want to append on add */
+    offset_entry_t *list_last;
+    /* The table is only allocated once we have OFFSET_LIST_MIN_TABLE entries.
+     * Entries are offset+1 (b/c we have 0 offset).
+     */
+    hashtable_t *table;
+    /* For improved iteration performance we cache the last index + entry */
+    uint iter_idx;
+    offset_entry_t *iter_entry;
 } offset_list_t;
 
 static char symcache_dir[MAXIMUM_PATH];
@@ -151,36 +171,73 @@ static bool
 symcache_symbol_add(const char *modname, hashtable_t *symtable,
                     const char *symbol, size_t offs)
 {
-    offset_list_t *olist, *new_olist;
+    offset_list_t *olist;
+    offset_entry_t *e;
     olist = (offset_list_t *) hashtable_lookup(symtable, (void *)symbol);
-    for (new_olist = olist; new_olist != NULL; new_olist = new_olist->next) {
-        if (new_olist->offs == offs) { /* dup */
-            LOG(2, "%s: ignoring dup entry %s\n", __FUNCTION__, symbol);
-            return false;
+    if (olist != NULL) {
+        if (olist->num == 1 && olist->list->offs == 0) {
+            /* replace a single 0 entry */
+            if (olist->table != NULL) {
+                ASSERT(olist->num >= OFFSET_LIST_MIN_TABLE, "table should be NULL");
+                hashtable_remove(olist->table, (void *)(olist->list->offs + 1));
+                hashtable_add(olist->table, (void *)(offs + 1), (void *)(offs + 1));
+            }
+            olist->list->offs = offs;
+            return true;
         }
+        if (olist->table != NULL) {
+            if (hashtable_lookup(olist->table, (void *)(offs + 1)) != NULL) {
+                LOG(2, "%s: ignoring dup entry %s\n", __FUNCTION__, symbol);
+                return false;
+            }
+        } else {
+            for (e = olist->list; e != NULL; e = e->next) {
+                if (e->offs == offs) {
+                    LOG(2, "%s: ignoring dup entry %s\n", __FUNCTION__, symbol);
+                    return false;
+                }
+            }
+        }
+    } else {
+        olist = (offset_list_t *) global_alloc(sizeof(*olist), HEAPSTAT_HASHTABLE);
+        olist->num = 0;
+        olist->list = NULL;
+        olist->list_last = NULL;
+        olist->table = NULL;
     }
     LOG(2, "%s: %s \"%s\" @ "PIFX"\n", __FUNCTION__, modname, symbol, offs);
     /* we could verify by an addr lookup but we still need consistency info
      * in the file for the negative entries so we don't bother
      */
-    new_olist = (offset_list_t *) global_alloc(sizeof(*new_olist), HEAPSTAT_HASHTABLE);
-    new_olist->offs = offs;
-    new_olist->next = NULL;
-    if (olist == NULL) {
-        new_olist->num = 1;
-        hashtable_add(symtable, (void *)symbol, (void *)new_olist);
+    e = (offset_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+    e->offs = offs;
+    e->next = NULL;
+    /* append to avoid affecting iteration */
+    if (olist->list_last == NULL) {
+        ASSERT(olist->list == NULL, "last not set");
+        olist->list = e;
+        olist->list_last = e;
     } else {
-        if (olist->num == 1 && olist->offs == 0) {
-            /* replace a single 0 entry */
-            olist->offs = offs;
-            global_free(new_olist, sizeof(*new_olist), HEAPSTAT_HASHTABLE);
-        } else {
-            olist->num++;
-            while (olist->next != NULL)
-                olist = olist->next;
-            olist->next = new_olist;
-        }
+        olist->list_last->next = e;
+        olist->list_last = e;
     }
+    olist->num++;
+    if (olist->num >= OFFSET_LIST_MIN_TABLE) {
+        if (olist->table == NULL) {
+            /* enough entries that a table is worthwhile */
+            olist->table = (hashtable_t *)
+                global_alloc(sizeof(*olist->table), HEAPSTAT_HASHTABLE);
+            hashtable_init(olist->table, SYMCACHE_OLIST_TABLE_HASH_BITS,
+                           HASH_INTPTR, false/*strdup*/);
+            for (e = olist->list; e != NULL; e = e->next)
+                hashtable_add(olist->table, (void *)(e->offs + 1), (void *)(e->offs + 1));
+        } else
+            hashtable_add(olist->table, (void *)(offs + 1), (void *)(offs + 1));
+    }
+    hashtable_add(symtable, (void *)symbol, (void *)olist);
+    /* clear any cached values */
+    olist->iter_idx = 0;
+    olist->iter_entry = NULL;
     return true;
 }
 
@@ -248,13 +305,15 @@ symcache_write_symfile(const char *modname, mod_cache_t *modcache)
         hash_entry_t *he;
         for (he = symtable->table[i]; he != NULL; he = he->next) {
             offset_list_t *olist = (offset_list_t *) he->payload;
+            offset_entry_t *e;
             if (olist == NULL)
                 continue;
             /* skip symbol in dup entries to save space */
             BUFFERED_WRITE(f, buf, bsz, sofar, len, "%s", he->key);
-            while (olist != NULL) {
-                BUFFERED_WRITE(f, buf, bsz, sofar, len, ",0x%x\n", olist->offs);
-                olist = olist->next;
+            e = olist->list;
+            while (e != NULL) {
+                BUFFERED_WRITE(f, buf, bsz, sofar, len, ",0x%x\n", e->offs);
+                e = e->next;
             }
         }
     }
@@ -507,12 +566,17 @@ static void
 symcache_free_list(void *v)
 {
     offset_list_t *olist = (offset_list_t *) v;
-    offset_list_t *tmp;
-    while (olist != NULL) {
-        tmp = olist;
-        olist = olist->next;
+    offset_entry_t *tmp, *e = olist->list;
+    if (olist->table != NULL) {
+        hashtable_delete(olist->table);
+        global_free(olist->table, sizeof(*olist->table), HEAPSTAT_HASHTABLE);
+    }
+    while (e != NULL) {
+        tmp = e;
+        e = e->next;
         global_free(tmp, sizeof(*tmp), HEAPSTAT_HASHTABLE);
     }
+    global_free(olist, sizeof(*olist), HEAPSTAT_HASHTABLE);
 }
 
 void
@@ -681,6 +745,7 @@ symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
                 size_t *offs OUT, uint *num OUT)
 {
     offset_list_t *olist;
+    offset_entry_t *e;
     mod_cache_t *modcache;
     uint i;
     const char *modname = dr_module_preferred_name(mod);
@@ -703,12 +768,23 @@ symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
         return false;
     }
     *num = olist->num;
-    for (i = 0; i < idx && olist != NULL; i++, olist = olist->next)
+    if (olist->iter_entry != NULL && olist->iter_idx <= idx) {
+        /* start at cached location */
+        e = olist->iter_entry;
+        i = olist->iter_idx;
+    } else {
+        /* start at the beginning */
+        e = olist->list;
+        i = 0;
+    }
+    for (; i < idx && e != NULL; i++, e = e->next)
         ; /* nothing */
-    if (olist != NULL)
-        *offs = olist->offs;
+    if (e != NULL)
+        *offs = e->offs;
     else
         *offs = 0;
+    olist->iter_idx = idx;
+    olist->iter_entry = e;
     dr_mutex_unlock(symcache_lock);
     LOG(2, "sym lookup of %s in %s => symcache hit "PIFX"\n",
         symbol, mod->full_path, *offs);
