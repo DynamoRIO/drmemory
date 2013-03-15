@@ -4196,7 +4196,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 #ifdef WINDOWS
     ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
-    if (!INSTRUMENT_MEMREFS() && !options.leaks_only)
+    if (!INSTRUMENT_MEMREFS() && (!options.leaks_only || !options.count_leaks))
         goto instru_event_bb_insert_done;
     if (instr_is_interrupt(inst))
         goto instru_event_bb_insert_done;
