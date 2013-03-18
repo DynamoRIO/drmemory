@@ -1066,14 +1066,15 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(231,252),0},"exit_group", OK, RLONG, 1,},
     {{PACKNUM(212,253),0},"lookup_dcookie", OK, RLONG, 3, /* FIXME 1, sizeof(char), U,{2, -3, W},{2, RET, W}, */},
     {{PACKNUM(213,254),0},"epoll_create", OK, RLONG, 1,},
-    {{PACKNUM(-1,255),0},"epoll_ctl", OK, RLONG, 4,
+    {{PACKNUM(233,255),0},"epoll_ctl", OK, RLONG, 4,
      {
          {3, sizeof(struct epoll_event), R},
      }
     },
-    {{PACKNUM(-1,256),0},"epoll_wait", OK, RLONG, 4,
+    {{PACKNUM(232,256),0},"epoll_wait", OK, RLONG, 4,
      {
-         {1, sizeof(struct epoll_event), W},/*FIXME {1, sizeof(struct vki_epoll_event)*RES, W},*/
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct epoll_event)},
+         {1, RET, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct epoll_event)},
      }
     },
     {{PACKNUM(216,257),0},"remap_file_pages", OK, RLONG, 5,},
@@ -1290,7 +1291,9 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(-1,318),0},"getcpu", OK, RLONG, 3, /* FIXME 0, sizeof(unsigned), U, 1, sizeof(unsigned), U, 2, sizeof(struct getcpu_cache), U, */},
     {{PACKNUM(281,319),0},"epoll_pwait", OK, RLONG, 6,
      {
-         {1, sizeof(struct epoll_event), W},/*FIXME {1, sizeof(struct epoll_event)*RES, W},*/{4, sizeof(kernel_sigset_t), R},
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct epoll_event)},
+         {1, RET, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct epoll_event)},
+         {4, sizeof(kernel_sigset_t), R},
      }
     },
     {{PACKNUM(280,320),0},"utimensat", OK, RLONG, 4,

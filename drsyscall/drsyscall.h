@@ -583,7 +583,7 @@ static inline bool
 drsys_sysnums_equal(drsys_sysnum_t *num1, drsys_sysnum_t *num2)
 {
     if (num1 == NULL || num2 == NULL)
-        return DRMF_ERROR_INVALID_PARAMETER;
+        return false;
     return (num1->number == num2->number &&
             num1->secondary == num2->secondary);
 }
