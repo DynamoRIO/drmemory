@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -21,6 +21,9 @@
 
 #include "gtest/gtest.h"
 #include <locale.h>
+
+#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
+#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
 
 TEST(StringTests, Memmove) {
     const char input[128] = "0123456789abcdefg";  // strlen(input) = 17.
@@ -79,6 +82,17 @@ TEST(StringTests, wcsrchr) {
     found = wcsrchr(w, L'x');
     ASSERT_TRUE(found == NULL);
     delete [] w;
+}
+
+TEST(StringTests, strncpy) {
+    char buf[64];
+    size_t i;
+    const char *src = "source";
+    char *dst = strncpy(buf, src, BUFFER_SIZE_ELEMENTS(buf));
+    ASSERT_EQ(dst, buf);
+    ASSERT_STREQ(dst, "source");
+    for (i = strlen(buf); i < BUFFER_SIZE_ELEMENTS(buf); i++)
+        ASSERT_EQ(buf[i], '\0');
 }
 
 #ifdef LINUX

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -544,7 +544,7 @@ replace_strncpy(char *dst, const char *src, size_t size)
     }
     /* if hit size, do not null terminate */
     while (size > 0) {
-        *d = '\0';
+        *d++ = '\0';
         size--;
     }
     return dst;
