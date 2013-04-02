@@ -207,11 +207,9 @@ typedef struct _arena_header_t {
     free_lists_t *free_list;
     void *lock;
     uint flags;
-#ifdef WINDOWS
     uint magic;
     /* we need to iterate arenas belonging to one (non-default) Heap */
     struct _arena_header_t *next_arena;
-#endif
     /* for main arena of each Heap, we inline free_lists_t here */
 } arena_header_t;
 
@@ -231,7 +229,10 @@ static HANDLE process_heap;
 # define ARENA_MAIN 0x0001
 #endif
 
-/* Linux current arena, or Windows default Heap */
+/* Linux current arena, or Windows default Heap.  We always use this main
+ * pointer as the arena, even though there can be extra sub-arena regions that
+ * belong to this Heap linked in the next_arena field.
+ */
 static arena_header_t *cur_arena;
 
 /* For handling pre-us mallocs for non-earliest injection or delayed/attach
@@ -248,6 +249,11 @@ static hashtable_t pre_us_table;
  * Cleaner to have own table here and not try to use the alloc.c malloc-wrap table
  * though we do want the same hash tuning.
  */
+
+#ifdef STATISTICS
+static uint peak_heap_capacity;
+static uint num_arenas = 1;
+#endif
 
 /***************************************************************************
  * utility routines
@@ -521,16 +527,12 @@ is_valid_chunk(void *ptr, chunk_header_t *head)
 static inline bool
 ptr_is_in_arena(byte *ptr, arena_header_t *arena)
 {
-#ifdef WINDOWS
     arena_header_t *a;
     for (a = arena; a != NULL; a = a->next_arena) {
         if (ptr >= a->start_chunk && ptr < a->commit_end)
             return true;
     }
     return false;
-#else
-    return (ptr >= arena->start_chunk && ptr < arena->commit_end);
-#endif
 }
 
 /* Returns true iff ptr is a live alloc inside arena.  Thus, will return
@@ -589,14 +591,13 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
         ALIGN_FORWARD(header_size, CHUNK_ALIGNMENT) +
         alloc_ops.redzone_size + header_beyond_redzone;
     arena->next_chunk = arena->start_chunk;
-#ifdef WINDOWS
     arena->magic = HEADER_MAGIC;
     arena->next_arena = NULL;
+    STATS_ADD(peak_heap_capacity, (uint)(arena->commit_end - (byte *)arena));
     if (parent != NULL) {
         ASSERT(parent->next_arena == NULL, "should only append to end");
         parent->next_arena = arena;
     }
-#endif
 }
 
 /* up to caller to call heap_region_remove() before calling here,
@@ -626,12 +627,16 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         byte *new_brk = set_brk(cur_brk + aligned_add);
         if (new_brk >= cur_brk + add_size) {
             LOG(2, "\tincreased brk from "PFX" to "PFX"\n", cur_brk, new_brk);
+            STATS_ADD(peak_heap_capacity, (uint)(new_brk - cur_brk));
             cur_brk = new_brk;
             arena->commit_end = new_brk;
+            arena->reserve_end = arena->commit_end;
             heap_region_adjust((byte *)arena, new_brk);
             return arena;
-        } else
-            LOG(1, "brk cannot expand: switching to mmap\n");
+        } else {
+            LOG(1, "brk @"PFX"-"PFX" cannot expand: switching to mmap\n",
+                pre_us_brk, cur_brk);
+        }
     } else
 #else
     if (arena->commit_end + aligned_add <= arena->reserve_end)
@@ -641,8 +646,10 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         size_t new_size = cur_size + aligned_add;
         if (os_large_alloc_extend((byte *)arena, cur_size, new_size
                                   _IF_WINDOWS(arena_page_prot(arena->flags)))) {
+            STATS_ADD(peak_heap_capacity, (uint)(new_size - cur_size));
             arena->commit_end = (byte *)arena + new_size;
 #ifdef LINUX /* windows already added whole reservation */
+            arena->reserve_end = arena->commit_end;
             heap_region_adjust((byte *)arena, (byte *)arena + new_size);
 #endif
             return arena;
@@ -653,11 +660,12 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         return NULL;
 #endif
     /* XXX: add stranded space at end of arena to free list */
-    LOG(1, "cur arena "PFX"-"PFX" out of space: creating new one\n",
-        (byte *)arena, arena->reserve_end);
     new_arena = (arena_header_t *)
         os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE
                        _IF_WINDOWS(arena_page_prot(arena->flags)));
+    LOG(1, "cur arena "PFX"-"PFX" out of space: created new one @"PFX"\n",
+        (byte *)arena, arena->reserve_end, new_arena);
+    STATS_INC(num_arenas);
     if (new_arena == NULL)
         return NULL;
 #ifdef LINUX
@@ -848,12 +856,26 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
     /* if no free list entry, get new memory */
     if (head == NULL) {
         heapsz_t add_size = aligned_size + alloc_ops.redzone_size + header_beyond_redzone;
-        if (arena->next_chunk + add_size > arena->commit_end) {
-            arena = arena_extend(arena, add_size);
-            if (arena == NULL) {
-                client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
-                goto replace_alloc_common_done;
-            }
+        /* We deliberately walk every arena each time.  This helps use empty
+         * space at the bottom that was too small for larger allocs that triggered
+         * creating a new arena.  However, it is extra overhead, especially if
+         * we ever end up with many arenas, where we should probably keep a pointer
+         * to the last one around to avoid this walk.  But, even artificially
+         * forcing allocs among 28 arenas on cfrac, the overhead isn't egregious,
+         * so I'm sticking with this simple design for now.
+         */
+        arena_header_t *last_arena = arena;
+        while (arena != NULL) {
+            if (arena->next_chunk + add_size <= arena->commit_end)
+                break;
+            last_arena = arena;
+            arena = arena->next_arena;
+        }
+        if (arena == NULL)
+            arena = arena_extend(last_arena, add_size);
+        if (arena == NULL) {
+            client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
+            goto replace_alloc_common_done;
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
         head = (chunk_header_t *)
@@ -2018,7 +2040,7 @@ bool
 alloc_replace_in_cur_arena(byte *addr)
 {
     ASSERT(alloc_ops.replace_malloc, "shouldn't call");
-    return (addr >= (byte *)cur_arena && addr < cur_arena->reserve_end);
+    return ptr_is_in_arena(addr, cur_arena);
 }
 
 bool
@@ -2483,6 +2505,12 @@ void
 alloc_replace_exit(void)
 {
     uint i;
+#ifdef STATISTICS
+    LOG(1, "alloc_replace statistics:\n");
+    LOG(1, "  arenas: %5d\n", num_arenas);
+    LOG(1, "  peak heap capacity: %9d KB\n", peak_heap_capacity);
+#endif
+
     alloc_iterate(free_user_data_at_exit, NULL, false/*free too*/);
     /* XXX: should add hashtable_iterate() to drcontainers */
     for (i = 0; i < HASHTABLE_SIZE(pre_us_table.table_bits); i++) {
