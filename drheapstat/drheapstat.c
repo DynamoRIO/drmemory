@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -341,6 +341,15 @@ void *
 client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call)
 {
     /* nothing to do since we persist our callstacks in alloc_stack_table */
+    return cur_data;
+}
+
+void *
+client_malloc_data_free_split(void *cur_data)
+{
+    /* Just keep the same data.  There's no use-after-free b/c we don't free
+     * it in client_malloc_data_free().
+     */
     return cur_data;
 }
 

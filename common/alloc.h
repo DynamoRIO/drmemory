@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -261,6 +261,12 @@ client_malloc_data_free(void *data);
  */
 void *
 client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_call);
+
+/* called when a freed chunk is being split, allowing for a copy of the
+ * stored user data to be kept with the remaining-free portion.
+ */
+void *
+client_malloc_data_free_split(void *cur_data);
 
 /* A lock is held around the call to this routine.
  * The return value is stored as the client data.

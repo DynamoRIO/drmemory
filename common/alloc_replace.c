@@ -679,6 +679,30 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
     return new_arena;
 }
 
+static void
+add_to_free_list(arena_header_t *arena, chunk_header_t *head)
+{
+    free_header_t *cur = (free_header_t *) head;
+    uint bucket;
+    /* our buckets guarantee that all allocs in that bucket have at least that size */
+    for (bucket = NUM_FREE_LISTS - 1; head->alloc_size < free_list_sizes[bucket];
+         bucket--)
+        ; /* nothing */
+    ASSERT(head->alloc_size >= free_list_sizes[bucket], "bucket invariant violated");
+
+    /* add to the end for delayed free FIFO */
+    cur->next = NULL;
+    if (arena->free_list->last[bucket] == NULL) {
+        ASSERT(arena->free_list->front[bucket] == NULL, "inconsistent free list");
+        arena->free_list->front[bucket] = cur;
+    } else
+        arena->free_list->last[bucket]->next = cur;
+    arena->free_list->last[bucket] = cur;
+    LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
+        arena, bucket, arena->free_list->front[bucket],
+        arena->free_list->last[bucket]);
+}
+
 static chunk_header_t *
 search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucket)
 {
@@ -743,13 +767,14 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             bucket++;
     }
     
-    /* if delay frees are piling up, use a larger bucket to avoid
-     * delaying a ton of allocs of a certain size and never re-using
-     * them for pathological app alloc sequences
+    /* Use a larger bucket to avoid delaying a ton of allocs of a
+     * certain size and never re-using them for pathological app alloc
+     * sequences.  I used to do this only when delayed frees were piling
+     * up (delayed_chunks or delayed_bytes at 2x the threshold) but
+     * it seems worth doing every time, even at the risk of fragmentation,
+     * since we plan to implement coalescing.
      */
-    if (head == NULL && arena->free_list->front[bucket] == NULL &&
-        (delayed_chunks >= 2*alloc_ops.delay_frees ||
-         delayed_bytes >= 2*alloc_ops.delay_frees_maxsz)) {
+    if (head == NULL && arena->free_list->front[bucket] == NULL) {
         LOG(2, "\tallocating from larger bucket size to reduce delayed frees\n");
         while (bucket < NUM_FREE_LISTS - 1 && arena->free_list->front[bucket] == NULL)
             bucket++;
@@ -779,6 +804,33 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
         delayed_chunks--;
         ASSERT(delayed_bytes >= head->alloc_size, "delay bytes counter off");
         delayed_bytes -= head->alloc_size;
+
+        /* if there's a lot of extra room, split it off as a separate free entry */
+        if (head->alloc_size > aligned_size + CHUNK_MIN_SIZE +
+            alloc_ops.redzone_size + header_beyond_redzone) {
+            byte *split = ptr_from_header(head) + aligned_size;
+            size_t rest_size = head->alloc_size -
+                (aligned_size + alloc_ops.redzone_size + header_beyond_redzone);
+            byte *chunk2_start = split + alloc_ops.redzone_size + header_beyond_redzone;
+            free_header_t *rest = (free_header_t *) header_from_ptr(chunk2_start);
+            ASSERT(!TEST(CHUNK_MMAP, head->flags), "mmap not expected on free list");
+            rest->head.user_data = client_malloc_data_free_split(head->user_data);
+            rest->head.request_size = rest_size;
+            rest->head.alloc_size = rest_size;
+            rest->head.magic = HEADER_MAGIC;
+            rest->head.flags = head->flags;
+            /* XXX: this adds it to the end, even though maybe it
+             * should stay at the front for FIFO.
+             */
+            add_to_free_list(arena, (chunk_header_t *)rest);
+            /* we'll go ahead and consider the split-off piece toward the
+             * delay_frees limit:
+             */
+            delayed_chunks++;
+
+            head->alloc_size = aligned_size;
+        }
+
         if (head->user_data != NULL) {
             client_malloc_data_free(head->user_data);
             head->user_data = NULL;
@@ -942,8 +994,6 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
                     void *drcontext, dr_mcontext_t *mc, app_pc caller, uint free_type)
 {
     chunk_header_t *head = header_from_ptr(ptr);
-    free_header_t *cur;
-    uint bucket;
 
     if (!is_live_alloc(ptr, arena, head)) { /* including NULL */
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -997,26 +1047,10 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
     if (!TEST(CHUNK_MMAP, head->flags))
         head->flags |= CHUNK_FREED;
     if (!TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
-        cur = (free_header_t *) head;
-        /* our buckets guarantee that all allocs in that bucket have at least that size */
-        for (bucket = NUM_FREE_LISTS - 1; head->alloc_size < free_list_sizes[bucket];
-             bucket--)
-            ; /* nothing */
-        ASSERT(head->alloc_size >= free_list_sizes[bucket], "bucket invariant violated");
+        add_to_free_list(arena, head);
+
         LOG(2, "\treplace_free_common "PFX" == request=%d, alloc=%d\n",
             ptr, head->request_size, head->alloc_size);
-
-        /* add to the end for delayed free FIFO */
-        cur->next = NULL;
-        if (arena->free_list->last[bucket] == NULL) {
-            ASSERT(arena->free_list->front[bucket] == NULL, "inconsistent free list");
-            arena->free_list->front[bucket] = cur;
-        } else
-            arena->free_list->last[bucket]->next = cur;
-        arena->free_list->last[bucket] = cur;
-        LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
-            arena, bucket, arena->free_list->front[bucket],
-            arena->free_list->last[bucket]);
 
         delayed_chunks++;
         delayed_bytes += head->alloc_size;
@@ -1024,7 +1058,9 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
         /* XXX i#948: could add more sophisticated features like coalescing adjacent
          * free entries which we may actually need for apps with corner-case
          * alloc patterns.  We may also want to implement negative sbrk to
-         * give memory back.
+         * give memory back.  One complication with coalescing is how to handle
+         * the user data: we would be giving up the feature of having an
+         * alloc callstack for every freed object.
          */
     }
 

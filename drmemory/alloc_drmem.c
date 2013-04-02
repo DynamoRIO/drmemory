@@ -904,6 +904,18 @@ client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_c
     }
 }
 
+void *
+client_malloc_data_free_split(void *cur_data)
+{
+    packed_callstack_t *pcs = (packed_callstack_t *) cur_data;
+    ASSERT(options.replace_malloc, "should not be called");
+    if (pcs != NULL) {
+        ASSERT(options.delay_frees_stack, "should be NULL");
+        packed_callstack_add_ref(pcs);
+    }
+    return pcs;
+}
+
 #ifdef WINDOWS
 /* i#264: client needs to clean up any data related to allocs inside this heap */
 void
