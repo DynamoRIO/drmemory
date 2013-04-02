@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -150,6 +150,8 @@ extern uint movs4_src_unaligned;
 extern uint movs4_dst_unaligned;
 extern uint movs4_src_undef;
 extern uint movs4_med_fast;
+extern uint cmps1_src_undef;
+extern uint cmps1_med_fast;
 #endif
 
 extern hashtable_t bb_table;
@@ -270,6 +272,7 @@ get_raw_tls_value(uint offset);
 #define REP_PREFIX    0xf3
 #define REPNE_PREFIX  0xf2
 #define MOVS_4_OPCODE 0xa5
+#define CMPS_1_OPCODE 0xa6
 #define LOOP_INSTR_OPCODE 0xe2
 #define LOOP_INSTR_LENGTH 2
 #define JNZ_SHORT_OPCODE    0x75

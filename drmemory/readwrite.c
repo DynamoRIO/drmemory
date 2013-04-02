@@ -155,6 +155,8 @@ uint movs4_src_unaligned;
 uint movs4_dst_unaligned;
 uint movs4_src_undef;
 uint movs4_med_fast;
+uint cmps1_src_undef;
+uint cmps1_med_fast;
 #endif
 
 #ifdef TOOL_DR_MEMORY
@@ -2000,6 +2002,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
             STATS_INC(movs4_med_fast);
             return;
         }
+        /* no need to initialize shadow_vals for MEMREF_CHECK_ADDRESSABLE */
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc, 
                        opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                                  REG_NULL, 0, 0, OPSZ_4),
@@ -2043,6 +2046,8 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
         }
     }
 
+    for (i = 0; i < 4; i++)
+        shadow_vals[i] = SHADOW_DEFINED;
     check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
                    opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                              REG_NULL, 0, 0, OPSZ_4),
@@ -2053,6 +2058,90 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
                    opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
                                              REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);
+}
+
+/* See comments for medium_path_movs4().  For cmps1, because it has 2 memory
+ * refs, it only stays on the fastpath if both dwords are fully defined:
+ * which fails at the end of strings and other locations.
+ */
+void
+medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
+{
+    /* since esi and edi are used as base regs, we are checking
+     * definedness, so we ignore the reg operands
+     */
+    uint shadow_vals[1];
+    uint flags;
+    LOG(3, "medium_path cmps1 "PFX" src1="PFX" %d%d%d%d src2="PFX" %d%d%d%d\n",
+        loc_to_pc(loc), mc->xsi,
+        shadow_get_byte((app_pc)mc->xsi), shadow_get_byte((app_pc)mc->xsi+1),
+        shadow_get_byte((app_pc)mc->xsi+2), shadow_get_byte((app_pc)mc->xsi+3),
+        mc->xdi, shadow_get_byte((app_pc)mc->xdi), shadow_get_byte((app_pc)mc->xdi+1),
+        shadow_get_byte((app_pc)mc->xdi+2), shadow_get_byte((app_pc)mc->xdi+3));
+#ifdef STATISTICS
+    if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+1) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+2) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xsi+3) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xdi) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xdi+1) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xdi+2) != SHADOW_DEFINED ||
+        shadow_get_byte((app_pc)mc->xdi+3) != SHADOW_DEFINED)
+        STATS_INC(cmps1_src_undef);
+#endif
+    STATS_INC(medpath_executions);
+
+    if (!options.check_uninitialized) {
+        if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte((app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
+            STATS_INC(cmps1_med_fast);
+            return;
+        }
+        /* no need to initialize shadow_vals for MEMREF_CHECK_ADDRESSABLE */
+        check_mem_opnd(OP_cmps, MEMREF_CHECK_ADDRESSABLE, loc,
+                       opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
+                                                 REG_NULL, 0, 0, OPSZ_1),
+                       1, mc, shadow_vals);
+        check_mem_opnd(OP_cmps, MEMREF_CHECK_ADDRESSABLE, loc,
+                       opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
+                                                 REG_NULL, 0, 0, OPSZ_1),
+                       1, mc, shadow_vals);
+        return;
+    }
+
+    /* The generalized routines are just a little too slow.
+     * Xref i#i#237 for movs4.
+     */
+    /* XXX: assuming SEG_DS and SEG_ES are flat+full */
+    if (is_shadow_register_defined(get_shadow_register(DR_REG_XSI)) &&
+        is_shadow_register_defined(get_shadow_register(DR_REG_XDI)) &&
+        get_shadow_eflags() == SHADOW_DEFINED) {
+        uint src0 = shadow_get_byte((app_pc)mc->xsi);
+        uint src1 = shadow_get_byte((app_pc)mc->xdi);
+        if ((src0 == SHADOW_DEFINED ||
+             (!options.check_uninit_cmps && src0 == SHADOW_UNDEFINED)) &&
+            (src1 == SHADOW_DEFINED ||
+             (!options.check_uninit_cmps && src1 == SHADOW_UNDEFINED))) {
+            set_shadow_eflags(combine_shadows(src0, src1));
+            STATS_INC(cmps1_med_fast);
+            return;
+        }
+    }
+
+    flags = MEMREF_USE_VALUES;
+    if (options.check_uninit_cmps)
+        flags |= MEMREF_CHECK_DEFINEDNESS;
+    shadow_vals[0] = SHADOW_DEFINED;
+    check_mem_opnd(OP_cmps, flags, loc,
+                   opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
+                                             REG_NULL, 0, 0, OPSZ_1),
+                   1, mc, shadow_vals);
+    check_mem_opnd(OP_cmps, flags, loc,
+                   opnd_create_far_base_disp(SEG_ES, DR_REG_XDI,
+                                             REG_NULL, 0, 0, OPSZ_1),
+                   1, mc, shadow_vals);
+    shadow_vals[0] = combine_shadows(shadow_vals[0], get_shadow_eflags());
+    set_shadow_eflags(shadow_vals[0]);
 }
 
 bool
@@ -2218,19 +2307,26 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
     
 #ifdef TOOL_DR_MEMORY
-    if (decode_pc != NULL &&
-        (*decode_pc == MOVS_4_OPCODE ||
-         /* we now pass original pc from -repstr_to_loop including rep.
-          * ignore other prefixes here: data16 most likely and then not movs4.
-          */
-         (options.repstr_to_loop && *decode_pc == REP_PREFIX &&
-          *(decode_pc + 1) == MOVS_4_OPCODE))) {
-        /* see comments for this routine: common enough it's worth optimizing */
-        medium_path_movs4(&loc, mc);
-        /* no sharing with string instrs so no need to call
-         * slow_path_xl8_sharing
-         */
-        return true;
+    if (decode_pc != NULL) {
+        if (*decode_pc == MOVS_4_OPCODE ||
+            /* we now pass original pc from -repstr_to_loop including rep.
+             * ignore other prefixes here: data16 most likely and then not movs4.
+             */
+            (options.repstr_to_loop && *decode_pc == REP_PREFIX &&
+             *(decode_pc + 1) == MOVS_4_OPCODE)) {
+            /* see comments for this routine: common enough it's worth optimizing */
+            medium_path_movs4(&loc, mc);
+            /* no sharing with string instrs so no need to call
+             * slow_path_xl8_sharing
+             */
+            return true;
+        } else if (*decode_pc == CMPS_1_OPCODE ||
+                   (options.repstr_to_loop &&
+                    (*decode_pc == REP_PREFIX || *decode_pc == REPNE_PREFIX) &&
+                    *(decode_pc + 1) == CMPS_1_OPCODE)) {
+            medium_path_cmps1(&loc, mc);
+            return true;
+        }
     }
 #endif /* TOOL_DR_MEMORY */
 
