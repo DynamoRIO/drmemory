@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1153,8 +1153,8 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
      * use the large malloc tree b/c it has pre_us allocs too (i#1051).
      */
     if (TEST(HEAP_MMAP, flags)) {
-        byte *start = iter_arena_start;
-        chunk_header_t *head = header_from_ptr(start);
+        chunk_header_t *head = (chunk_header_t *) iter_arena_start;
+        byte *start = iter_arena_start + HEADER_SIZE + redzone_beyond_header;
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
         LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + head->request_size);
         if (!data->cb(start, start + head->request_size, start + head->alloc_size,
