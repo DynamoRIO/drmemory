@@ -2591,18 +2591,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
     }
 
     if (alloc_ops.track_allocs) {
-        hashtable_config_t hashconfig;
-        hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
-                          false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
-                          malloc_hash, NULL);
-        /* hash lookup can be a bottleneck so it's worth taking some extra space
-         * to reduce the collision chains
-         */
-        hashconfig.size = sizeof(hashconfig);
-        hashconfig.resizable = true;
-        hashconfig.resize_threshold = 50; /* default is 75 */
-        hashtable_configure(&malloc_table, &hashconfig);
-
         large_malloc_tree = rb_tree_create(NULL);
         large_malloc_lock = dr_mutex_create();
 #ifdef USE_DRSYMS
@@ -2643,24 +2631,28 @@ alloc_exit(void)
     hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
     dr_mutex_destroy(alloc_routine_lock);
 
-    LOG(1, "final malloc table size: %u bits, %u entries\n",
-        malloc_table.table_bits, malloc_table.entries);
-    /* we can't hold malloc_table.lock b/c report_leak() acquires it
-     * for malloc_get_caller()
-     */
-    for (i = 0; i < HASHTABLE_SIZE(malloc_table.table_bits); i++) {
-        hash_entry_t *he;
-        for (he = malloc_table.table[i]; he != NULL; he = he->next) {
-            malloc_entry_t *e = (malloc_entry_t *) he->payload;
-            if (MALLOC_VISIBLE(e->flags) && !malloc_entry_is_native(e)) {
-                client_exit_iter_chunk(e->start, e->end, TEST(MALLOC_PRE_US, e->flags),
-                                       e->flags, e->data);
+    if (!alloc_ops.replace_malloc) {
+        LOG(1, "final malloc table size: %u bits, %u entries\n",
+            malloc_table.table_bits, malloc_table.entries);
+        /* we can't hold malloc_table.lock b/c report_leak() acquires it
+         * for malloc_get_caller()
+         */
+        for (i = 0; i < HASHTABLE_SIZE(malloc_table.table_bits); i++) {
+            hash_entry_t *he;
+            for (he = malloc_table.table[i]; he != NULL; he = he->next) {
+                malloc_entry_t *e = (malloc_entry_t *) he->payload;
+                if (MALLOC_VISIBLE(e->flags) && !malloc_entry_is_native(e)) {
+                    client_exit_iter_chunk(e->start, e->end,
+                                           TEST(MALLOC_PRE_US, e->flags),
+                                           e->flags, e->data);
+                }
             }
         }
     }
 
     if (alloc_ops.track_allocs) {
-        hashtable_delete(&malloc_table);
+        if (!alloc_ops.replace_malloc)
+            hashtable_delete(&malloc_table);
         rb_tree_destroy(large_malloc_tree);
         dr_mutex_destroy(large_malloc_lock);
 #ifdef USE_DRSYMS
@@ -3874,6 +3866,20 @@ alloc_in_heap_routine(void *drcontext)
 static void
 malloc_wrap_init(void)
 {
+    if (alloc_ops.track_allocs) {
+        hashtable_config_t hashconfig;
+        hashtable_init_ex(&malloc_table, ALLOC_TABLE_HASH_BITS, HASH_INTPTR,
+                          false/*!str_dup*/, false/*!synch*/, malloc_entry_free,
+                          malloc_hash, NULL);
+        /* hash lookup can be a bottleneck so it's worth taking some extra space
+         * to reduce the collision chains
+         */
+        hashconfig.size = sizeof(hashconfig);
+        hashconfig.resizable = true;
+        hashconfig.resize_threshold = 50; /* default is 75 */
+        hashtable_configure(&malloc_table, &hashconfig);
+    }
+
     malloc_interface.malloc_lock = malloc_wrap__lock;
     malloc_interface.malloc_unlock = malloc_wrap__unlock;
     malloc_interface.malloc_end = malloc_wrap__end;
