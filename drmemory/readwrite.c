@@ -2259,24 +2259,26 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
 #ifdef STATISTICS
     STATS_INC(slowpath_count[opc]);
     {
-        opnd_size_t sz;
-        if (instr_num_dsts(&inst) > 0 &&
-            !opnd_is_pc(instr_get_dst(&inst, 0)) &&
-            !opnd_is_instr(instr_get_dst(&inst, 0)))
-            sz = opnd_get_size(instr_get_dst(&inst, 0));
-        else if (instr_num_srcs(&inst) > 0 &&
-                 !opnd_is_pc(instr_get_src(&inst, 0)) &&
-                 !opnd_is_instr(instr_get_src(&inst, 0)))
-            sz = opnd_get_size(instr_get_src(&inst, 0));
-        else
-            sz = OPSZ_0;
-        if (sz == OPSZ_1)
+        uint bytes = instr_memory_reference_size(&inst);
+        if (bytes == 0) {
+            if (instr_num_dsts(&inst) > 0 &&
+                !opnd_is_pc(instr_get_dst(&inst, 0)) &&
+                !opnd_is_instr(instr_get_dst(&inst, 0)))
+                bytes = opnd_size_in_bytes(opnd_get_size(instr_get_dst(&inst, 0)));
+            else if (instr_num_srcs(&inst) > 0 &&
+                     !opnd_is_pc(instr_get_src(&inst, 0)) &&
+                     !opnd_is_instr(instr_get_src(&inst, 0)))
+                bytes = opnd_size_in_bytes(opnd_get_size(instr_get_src(&inst, 0)));
+            else
+                bytes = 0;
+        }
+        if (bytes == 1)
             STATS_INC(slowpath_sz1);
-        else if (sz == OPSZ_2)
+        else if (bytes == 2)
             STATS_INC(slowpath_sz2);
-        else if (sz == OPSZ_4)
+        else if (bytes == 4)
             STATS_INC(slowpath_sz4);
-        else if (sz == OPSZ_8)
+        else if (bytes == 8)
             STATS_INC(slowpath_sz8);
         else
             STATS_INC(slowpath_szOther);
@@ -2545,7 +2547,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     /* call this last after freeing inst in case it does a synchronous flush */
     slow_path_xl8_sharing(&loc, instr_sz, memop, mc);
 
-    DOLOG(4, {
+    DOLOG(5, { /* this pollutes the logfile, so it's a pain to have at 4 or lower */
         if (!options.single_arg_slowpath && pc == decode_pc/*else retpc not in tls3*/) {
             /* Test translation when have both args */
             /* we want the ultimate target, not whole_bb_spills_enabled()'s
@@ -2586,7 +2588,6 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                    "xl8 doesn't match");
         }
     });
-
     return true;
 #endif /* !TOOL_DR_HEAPSTAT */
 }
