@@ -2768,7 +2768,8 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
         opnd_t shiftby;
         bool wrote_shadow_eflags = false;
         ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
-        ASSERT(!opnd_is_null(src.offs) && !opnd_is_null(dst.offs),
+        ASSERT(!opnd_is_null(src.offs) &&
+               (opnd_is_null(dst.shadow) || !opnd_is_null(dst.offs)),
                "must have offs set for src and dst");
 
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
@@ -2777,10 +2778,11 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* We split into cases based on which of src and dst has a constant
          * offset.  Only one should dynamically vary.
          */
-        if (opnd_is_immed_int(dst.offs) && opnd_is_immed_int(src.offs)) {
+        if ((opnd_is_null(dst.offs) || opnd_is_immed_int(dst.offs)) &&
+            opnd_is_immed_int(src.offs)) {
             /* Reg-to-reg move, or movzx reg to aligned 4-byte memory */
             int ofnum_src = opnd_get_immed_int(src.offs);
-            int ofnum_dst = opnd_get_immed_int(dst.offs);
+            int ofnum_dst = opnd_is_null(dst.offs) ? 0 : opnd_get_immed_int(dst.offs);
             if (src_opsz == 2) {
                 ASSERT(ofnum_src == 0 && ofnum_dst == 0, "must have 0 offs");
                 shiftby = opnd_create_null();
@@ -2923,9 +2925,12 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             PREXL8M(bb, inst, INSTR_XL8
                     (INSTR_CREATE_mov_st(drcontext, dst.shadow, opreg1), xl8));
         }
-        else if (opnd_is_immed_int(dst.offs)) {
-            /* Load from memory into register, or register-to-register move */
-            int ofnum = opnd_get_immed_int(dst.offs);
+        else if (opnd_is_immed_int(dst.offs) || opnd_is_null(dst.offs)) {
+            /* Load from memory into register, or register-to-register move,
+             * or cmp mem,reg/immed with -no_check_uninit_cmps
+             */
+            int ofnum = opnd_is_null(dst.offs) ? 0/*eflags*/ :
+                opnd_get_immed_int(dst.offs);
             ASSERT(opnd_is_null(dst.shadow) ||
                    (opnd_is_reg(mi->dst[0].app) &&
                     (mi->load || opnd_is_immed_int(src.offs))), "invalid assumptions");
