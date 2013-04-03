@@ -187,16 +187,20 @@ typedef struct _free_header_t {
 } free_header_t;
 
 typedef struct _free_lists_t {
-    /* a normal free list can be LIFO, but for more effective delayed frees
+    /* Delayed frees are kept here for more fair delaying across sizes
+     * than if we put them into the per-size lists.
+     */
+    free_header_t *delay_front;
+    free_header_t *delay_last;
+    /* The delay threshold is per-arena */
+    uint delayed_chunks;
+    size_t delayed_bytes;
+    /* A normal free list can be LIFO, but for more effective delayed frees
      * we want FIFO.  FIFO-per-bucket-size is sufficient.
      */
     free_header_t *front[NUM_FREE_LISTS];
     free_header_t *last[NUM_FREE_LISTS];
 } free_lists_t;
-
-/* counters for delayed frees.  protected by malloc lock. */
-static uint delayed_chunks;
-static size_t delayed_bytes;
 
 #ifdef LINUX
 /* we assume we're the sole users of the brk (after pre-us allocs) */
@@ -693,6 +697,13 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
     return new_arena;
 }
 
+static inline bool
+arena_delayed_list_full(arena_header_t *arena)
+{
+    return (arena->free_list->delayed_chunks >= alloc_ops.delay_frees ||
+            arena->free_list->delayed_bytes >= alloc_ops.delay_frees_maxsz);
+}
+
 static void
 add_to_free_list(arena_header_t *arena, chunk_header_t *head)
 {
@@ -704,7 +715,6 @@ add_to_free_list(arena_header_t *arena, chunk_header_t *head)
         ; /* nothing */
     ASSERT(head->alloc_size >= free_list_sizes[bucket], "bucket invariant violated");
 
-    /* add to the end for delayed free FIFO */
     cur->next = NULL;
     if (arena->free_list->last[bucket] == NULL) {
         ASSERT(arena->free_list->front[bucket] == NULL, "inconsistent free list");
@@ -712,9 +722,49 @@ add_to_free_list(arena_header_t *arena, chunk_header_t *head)
     } else
         arena->free_list->last[bucket]->next = cur;
     arena->free_list->last[bucket] = cur;
-    LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
+    LOG(3, "%s: arena "PFX" bucket %d free front="PFX" last="PFX"\n", __FUNCTION__,
         arena, bucket, arena->free_list->front[bucket],
         arena->free_list->last[bucket]);
+}
+
+static void
+add_to_delay_list(arena_header_t *arena, chunk_header_t *head)
+{
+    free_header_t *cur = (free_header_t *) head;
+    /* add to the end for delayed free FIFO */
+    cur->next = NULL;
+    if (arena->free_list->delay_last == NULL) {
+        ASSERT(arena->free_list->delay_front == NULL, "inconsistent free list");
+        arena->free_list->delay_front = cur;
+    } else
+        arena->free_list->delay_last->next = cur;
+    arena->free_list->delay_last = cur;
+
+    arena->free_list->delayed_chunks++;
+    arena->free_list->delayed_bytes += head->alloc_size;
+    LOG(3, "%s: updated delayed chunks=%d, bytes="PIFX"\n", __FUNCTION__,
+        arena->free_list->delayed_chunks, arena->free_list->delayed_bytes);
+
+    while (arena_delayed_list_full(arena)) {
+        /* Keep shifting first delayed entry to the free lists, until we're
+         * below both thresholds.
+         */
+        cur = arena->free_list->delay_front;
+        if (cur == NULL)
+            break;
+        LOG(3, "%s: shifting "PFX" to regular free list\n", __FUNCTION__, cur);
+        arena->free_list->delay_front = cur->next;
+        if (cur == arena->free_list->delay_last)
+            arena->free_list->delay_last = NULL;
+        add_to_free_list(arena, &cur->head);
+        ASSERT(arena->free_list->delayed_chunks > 0, "delay counter off");
+        arena->free_list->delayed_chunks--;
+        ASSERT(arena->free_list->delayed_bytes >= cur->head.alloc_size,
+               "delay bytes counter off");
+        arena->free_list->delayed_bytes -= cur->head.alloc_size;
+        LOG(3, "%s: updated delayed chunks=%d, bytes="PIFX"\n", __FUNCTION__,
+            arena->free_list->delayed_chunks, arena->free_list->delayed_bytes);
+    }
 }
 
 static chunk_header_t *
@@ -741,8 +791,8 @@ search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucke
             arena->free_list->last[bucket] = prev;
         head = (chunk_header_t *) cur;
     }
-    LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
-        arena, bucket, arena->free_list->front[bucket],
+    LOG(3, "arena "PFX" taking cur="PFX" => bucket %d free front="PFX" last="PFX"\n",
+        arena, cur, bucket, arena->free_list->front[bucket],
         arena->free_list->last[bucket]);
     return head;
 }
@@ -757,9 +807,8 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
 #endif
 
-    /* don't use free list unless we hit max delay */
-    if (delayed_chunks < alloc_ops.delay_frees &&
-        delayed_bytes < alloc_ops.delay_frees_maxsz)
+    /* free list is empty unless we're over the delay threshold */
+    if (!arena_delayed_list_full(arena))
         return NULL;
 
     /* b/c we're delaying, we're not able to re-use a just-freed chunk.
@@ -805,8 +854,8 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             arena->free_list->front[bucket] = arena->free_list->front[bucket]->next;
             if (head == (chunk_header_t *) arena->free_list->last[bucket])
                 arena->free_list->last[bucket] = arena->free_list->front[bucket];
-            LOG(3, "arena "PFX" bucket %d free front="PFX" last="PFX"\n",
-                arena, bucket, arena->free_list->front[bucket],
+            LOG(3, "arena "PFX" bucket %d taking "PFX" => free front="PFX" last="PFX"\n",
+                arena, bucket, head, arena->free_list->front[bucket],
                 arena->free_list->last[bucket]);
         }
     }
@@ -814,10 +863,6 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
     if (head != NULL) {
         LOG(2, "\tusing free list size=%d for request=%d align=%d from bucket %d\n",
             head->alloc_size, request_size, aligned_size, bucket);
-        ASSERT(delayed_chunks > 0, "delay counter off");
-        delayed_chunks--;
-        ASSERT(delayed_bytes >= head->alloc_size, "delay bytes counter off");
-        delayed_bytes -= head->alloc_size;
 
         /* if there's a lot of extra room, split it off as a separate free entry */
         if (head->alloc_size > aligned_size + CHUNK_MIN_SIZE +
@@ -837,10 +882,6 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
              * should stay at the front for FIFO.
              */
             add_to_free_list(arena, (chunk_header_t *)rest);
-            /* we'll go ahead and consider the split-off piece toward the
-             * delay_frees limit:
-             */
-            delayed_chunks++;
 
             head->alloc_size = aligned_size;
         }
@@ -1063,13 +1104,10 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
     if (!TEST(CHUNK_MMAP, head->flags))
         head->flags |= CHUNK_FREED;
     if (!TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
-        add_to_free_list(arena, head);
+        add_to_delay_list(arena, head);
 
         LOG(2, "\treplace_free_common "PFX" == request=%d, alloc=%d\n",
             ptr, chunk_request_size(head), head->alloc_size);
-
-        delayed_chunks++;
-        delayed_bytes += head->alloc_size;
 
         /* XXX i#948: could add more sophisticated features like coalescing adjacent
          * free entries which we may actually need for apps with corner-case
