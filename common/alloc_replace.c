@@ -270,7 +270,9 @@ static hashtable_t pre_us_table;
 
 #ifdef STATISTICS
 static uint heap_capacity;
-static uint num_arenas = 1;
+static uint peak_heap_capacity;
+static uint num_arenas;
+static uint peak_num_arenas;
 static uint num_splits;
 static uint num_coalesces;
 static uint num_dealloc;
@@ -626,6 +628,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     arena->magic = HEADER_MAGIC;
     arena->next_arena = NULL;
     STATS_ADD(heap_capacity, (uint)(arena->commit_end - (byte *)arena));
+    STATS_PEAK(heap_capacity);
+    STATS_INC(num_arenas);
+    STATS_PEAK(num_arenas);
     if (parent != NULL) {
         ASSERT(parent->next_arena == NULL, "should only append to end");
         parent->next_arena = arena;
@@ -668,6 +673,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         if (new_brk >= cur_brk + add_size) {
             LOG(2, "\tincreased brk from "PFX" to "PFX"\n", cur_brk, new_brk);
             STATS_ADD(heap_capacity, (uint)(new_brk - cur_brk));
+            STATS_PEAK(heap_capacity);
             cur_brk = new_brk;
             arena->commit_end = new_brk;
             arena->reserve_end = arena->commit_end;
@@ -688,6 +694,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
                                   _IF_WINDOWS(arena_page_prot(arena->flags)))) {
             LOG(2, "\textended arena to "PFX"-"PFX"\n", arena, (byte*)arena + new_size);
             STATS_ADD(heap_capacity, (uint)(new_size - cur_size));
+            STATS_PEAK(heap_capacity);
             arena->commit_end = (byte *)arena + new_size;
 #ifdef LINUX /* windows already added whole reservation */
             arena->reserve_end = arena->commit_end;
@@ -706,7 +713,6 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
                        _IF_WINDOWS(arena_page_prot(arena->flags)));
     LOG(1, "cur arena "PFX"-"PFX" out of space: created new one @"PFX"\n",
         (byte *)arena, arena->reserve_end, new_arena);
-    STATS_INC(num_arenas);
     if (new_arena == NULL)
         return NULL;
 #ifdef LINUX
@@ -876,6 +882,7 @@ consider_giving_back_memory(arena_header_t *arena, chunk_header_t *tofree)
                     prev->next_arena = sub->next_arena;
                     STATS_ADD(heap_capacity, -(int)(sub->commit_end - (byte *)sub));
                     STATS_INC(num_dealloc);
+                    STATS_DEC(num_arenas);
                     heap_region_remove((byte *)sub, sub->reserve_end, NULL);
                     arena_deallocate(sub);
                     return NULL;
@@ -2833,11 +2840,13 @@ alloc_replace_exit(void)
     uint i;
 #ifdef STATISTICS
     LOG(1, "alloc_replace statistics:\n");
-    LOG(1, "  arenas:        %9d\n", num_arenas);
-    LOG(1, "  heap capacity: %9d\n", heap_capacity);
-    LOG(1, "  splits:        %9d\n", num_splits);
-    LOG(1, "  coalesces:     %9d\n", num_coalesces);
-    LOG(1, "  deallocs:      %9d\n", num_dealloc);
+    LOG(1, "  arenas:             %9d\n", num_arenas);
+    LOG(1, "  peak arenas:        %9d\n", peak_num_arenas);
+    LOG(1, "  heap capacity:      %9d\n", heap_capacity);
+    LOG(1, "  peak heap capacity: %9d\n", peak_heap_capacity);
+    LOG(1, "  splits:             %9d\n", num_splits);
+    LOG(1, "  coalesces:          %9d\n", num_coalesces);
+    LOG(1, "  deallocs:           %9d\n", num_dealloc);
 #endif
 
     alloc_iterate(free_user_data_at_exit, NULL, false/*free too*/);
