@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -21,6 +21,10 @@
 
 #include "gtest/gtest.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <poll.h>
 #include <semaphore.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
@@ -60,4 +64,25 @@ TEST(IPCTests, Futex_Semaphore) {
     ASSERT_EQ(value, 0);
 
     sem_destroy(&mysem);
+}
+
+TEST(IPCTests, Pipe) {
+    int fds[2];
+    int res = pipe2(fds, 0);
+    ASSERT_EQ(res, 0);
+
+    struct pollfd pfds[2];
+    pfds[0].fd = fds[0];
+    pfds[0].events = POLLIN;
+    pfds[1].fd = fds[1];
+    pfds[1].events = POLLIN;
+    res = poll(pfds, 2, 1);
+    ASSERT_EQ(res, 0);
+
+    /* i#1181: ensure syscall out params are marked written */
+    ASSERT_NE(fds[0], 0);
+    ASSERT_EQ(pfds[0].revents, 0);
+
+    close(fds[0]);
+    close(fds[1]);
 }

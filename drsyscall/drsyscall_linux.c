@@ -1325,7 +1325,12 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(290,328),0},"eventfd2", OK, RLONG, 2,},
     {{PACKNUM(291,329),0},"epoll_create1", OK, RLONG, 1,},
     {{PACKNUM(292,330),0},"dup3", OK, RLONG, 3,},
-    {{PACKNUM(293,331),0},"pipe2", OK, RLONG, 2, /* FIXME 0, sizeof(int), U, */},
+    {{PACKNUM(293,331),0},"pipe2", OK, RLONG, 2,
+     {
+         {0, sizeof(int)*2, W},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{PACKNUM(294,332),0},"inotify_init1", OK, RLONG, 1,},
 
     /**************************************************/
@@ -3553,10 +3558,6 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
                                         offsetof(struct pollfd, revents), NULL,
                                         DRSYS_TYPE_STRUCT, NULL))
                     return;
-                if (!report_memarg_type(ii, 0, SYSARG_WRITE, (app_pc) &fds[i].revents,
-                                        sizeof(fds[i].revents), NULL,
-                                        DRSYS_TYPE_STRUCT, NULL))
-                    return;
             }
         }
         break;
@@ -3661,6 +3662,21 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_post_ipc(drcontext, pt, ii); 
         break;
 #endif
+    case SYS_poll: {
+        struct pollfd *fds = (struct pollfd *) pt->sysarg[0];
+        nfds_t nfds = (nfds_t) pt->sysarg[1];
+        if (fds != NULL) {
+            int i;
+            for (i = 0; i < nfds; i++) {
+                /* First fields are inputs, last is output */
+                if (!report_memarg_type(ii, 0, SYSARG_WRITE, (app_pc) &fds[i].revents,
+                                        sizeof(fds[i].revents), NULL,
+                                        DRSYS_TYPE_STRUCT, NULL))
+                    return;
+            }
+        }
+        break;
+    }
     case SYS_prctl:
         handle_post_prctl(drcontext, pt, ii);
         break;
