@@ -140,19 +140,6 @@ typedef struct _chunk_header_t {
      * bucket that had the alloc_size.
      */
     heapsz_t alloc_size;
-    /* Difference between alloc_size and requested size.  We currently always
-     * split re-used large free chunks, so 64K as the max diff works out.
-     */
-    ushort request_diff;
-    /* The size of the previous free chunk / CHUNK_ALIGNMENT (i.e., >>3).  Only
-     * valid if CHUNK_PREV_FREE is set in flags.  We get away with only a 512KB
-     * max because larger elements, which are always mmaps, are not put on the
-     * free list or coalesced.  We assert on the various constants all lining up
-     * in our init routine.  After coalescing we can reach a larger size than
-     * 512KB, in which case we place 0 here and store the size immediately
-     * prior to the redzone.
-     */
-    ushort prev_size_shr;
     /* Bitmask of CHUNK_ flags */
     ushort flags;
     /* Put magic last for a greater chance of surviving underflow, esp when our
@@ -160,14 +147,36 @@ typedef struct _chunk_header_t {
      * unfortunately is true by default as both are 16 for 32-bit).
      */
     ushort magic;
+    union {
+        /* A live or delay-free chunk does not need a prev pointer, while a truly
+         * free chunk does not need the request size nor the prev size (b/c
+         * we always coalesce, and we don't set prev size if prev is delay-free).
+         */
+        struct {
+            /* Difference between alloc_size and requested size.  We currently always
+             * split re-used large free chunks, so 64K as the max diff works out.
+             */
+            ushort request_diff;
+            /* The size of the previous free chunk / CHUNK_ALIGNMENT (i.e., >>3).  Only
+             * valid if CHUNK_PREV_FREE is set in flags.  We get away with only a 512KB
+             * max because larger elements, which are always mmaps, are not put on the
+             * free list or coalesced.  We assert on the various constants all lining up
+             * in our init routine.  After coalescing we can reach a larger size than
+             * 512KB, in which case we place 0 here and store the size immediately
+             * prior to the redzone.
+             */
+            ushort prev_size_shr;
 #ifdef X64
-    /* compiler will add anyawy: just making explicit.  we need the header
-     * size to be aligned to 8 so we can't pack.  for alloc_ops.external_headers
-     * we eat this overhead to provide runtime flexibility w/ the same
-     * data struct as we don't need it there.
-     */
-    uint pad;
+            /* compiler will add anyway: just making explicit.  we need the header
+             * size to be aligned to 8 so we can't pack.  for alloc_ops.external_headers
+             * we eat this overhead to provide runtime flexibility w/ the same
+             * data struct as we don't need it there.
+             */
+            uint pad;
 #endif
+        } unfree;
+        struct _free_header_t *prev;
+    } u;
 } chunk_header_t;
 
 #define HEADER_SIZE sizeof(chunk_header_t)
@@ -177,19 +186,15 @@ static heapsz_t header_beyond_redzone;
 /* we place header in the middle */
 static heapsz_t redzone_beyond_header;
 
-/* free list header for both regular and var-size chunk.  each chunk
- * is at least 8 bytes so we can fit both the next pointer and the
- * only-used-for-alloc_ops.external_headers chunk pointer, simplifying
- * the code by having one header type.
- *
- * FIXME: for x64 chunk ptr doesn't fit: so either need a separate
- * struct used for hashtable only that has the chunk ptr, or need
- * to set CHUNK_MIN_SIZE to 16 for x64
+/* Free list header for both regular and var-size chunk.  Each chunk
+ * is at least 8 bytes so we can fit the next pointer here even for
+ * x64.  We squish the prev pointer into fields of the chunk header we
+ * no longer need, for a true free; for a delay free we don't use a
+ * prev pointer.
  */
 typedef struct _free_header_t {
     chunk_header_t head;
     struct _free_header_t *next;
-    byte *chunk; /* only used for alloc_ops.external_headers */
 } free_header_t;
 
 typedef struct _free_lists_t {
@@ -444,7 +449,7 @@ os_large_free(byte *map, size_t map_size)
 static inline heapsz_t
 chunk_request_size(chunk_header_t *head)
 {
-    return (head->alloc_size - head->request_diff);
+    return (head->alloc_size - head->u.unfree.request_diff);
 }
 
 static void
@@ -756,18 +761,22 @@ static void
 set_prev_size_field(arena_header_t *arena, chunk_header_t *head)
 {
     chunk_header_t *next = next_chunk_forward(arena, head);
+    ASSERT(!TEST(CHUNK_DELAY_FREE, head->flags), "no need/room for prev size for delay");
     if (next != NULL) {
+        ASSERT(!TEST(CHUNK_FREED, next->flags) || TEST(CHUNK_DELAY_FREE, next->flags),
+               "can't set prev size on true free");
         next->flags |= CHUNK_PREV_FREE;
         if (head->alloc_size / CHUNK_MIN_SIZE <= USHRT_MAX) {
-            next->prev_size_shr = head->alloc_size / CHUNK_MIN_SIZE;
-            LOG(3, "set prev_size_shr of "PFX" to "PIFX"\n", next, next->prev_size_shr);
+            next->u.unfree.prev_size_shr = head->alloc_size / CHUNK_MIN_SIZE;
+            LOG(3, "set prev_size_shr of "PFX" to "PIFX"\n",
+                next, next->u.unfree.prev_size_shr);
         } else {
             /* We don't want to increase the header size, so we store
              * in the prev chunk.  This takes away one slot from pattern
              * mode but we can live with that.
              */
             byte *redzone_start = (byte *)next - inter_chunk_space();
-            next->prev_size_shr = 0;
+            next->u.unfree.prev_size_shr = 0;
             LOG(3, "writing prev size "PIFX" to "PFX"\n", head->alloc_size,
                 redzone_start - sizeof(heapsz_t));
             *(heapsz_t*)(redzone_start - sizeof(heapsz_t)) = head->alloc_size;
@@ -779,14 +788,14 @@ static heapsz_t
 get_prev_size_field(chunk_header_t *head)
 {
     ASSERT(TEST(CHUNK_PREV_FREE, head->flags), "only call if prev free exists");
-    if (head->prev_size_shr == 0) {
+    if (head->u.unfree.prev_size_shr == 0) {
         byte *redzone_start = (byte *)head - inter_chunk_space();
         LOG(3, "reading prev size "PIFX" from "PFX"\n",
             *(heapsz_t*)(redzone_start - sizeof(heapsz_t)),
             redzone_start - sizeof(heapsz_t));
         return *(heapsz_t*)(redzone_start - sizeof(heapsz_t));
     } else
-        return head->prev_size_shr * CHUNK_MIN_SIZE;
+        return head->u.unfree.prev_size_shr * CHUNK_MIN_SIZE;
 }
 
 static inline uint
@@ -801,21 +810,26 @@ bucket_index(chunk_header_t *head)
     return bucket;
 }
 
+/* Pass UINT_MAX if the bucket is not known */
 static void
-remove_from_free_list(arena_header_t *arena, free_header_t *target)
+remove_from_free_list(arena_header_t *arena, free_header_t *target, uint bucket)
 {
-    free_header_t *cur, *prev;
-    uint bucket = bucket_index(&target->head);
-    for (cur = arena->free_list->front[bucket], prev = NULL;
-         cur != NULL && cur != target; prev = cur, cur = cur->next)
-        ; /* nothing */
-    ASSERT(cur == target, "entry not on free list");
-    if (prev == NULL)
-        arena->free_list->front[bucket] = cur->next;
-    else
-        prev->next = cur->next;
-    if (cur == arena->free_list->last[bucket])
-        arena->free_list->last[bucket] = prev;
+    if (target->head.u.prev == NULL) {
+        if (bucket == UINT_MAX)
+            bucket = bucket_index(&target->head);
+        ASSERT(target == arena->free_list->front[bucket], "free list corrupted");
+        arena->free_list->front[bucket] = target->next;
+    } else {
+        target->head.u.prev->next = target->next;
+    }
+    if (target->next == NULL) {
+        if (bucket == UINT_MAX)
+            bucket = bucket_index(&target->head);
+        ASSERT(target == arena->free_list->last[bucket], "free list corrupted");
+        arena->free_list->last[bucket] = target->head.u.prev;
+    } else {
+        target->next->head.u.prev = target->head.u.prev;
+    }
 }
 
 static void
@@ -827,8 +841,11 @@ add_to_free_list(arena_header_t *arena, chunk_header_t *head)
     if (arena->free_list->last[bucket] == NULL) {
         ASSERT(arena->free_list->front[bucket] == NULL, "inconsistent free list");
         arena->free_list->front[bucket] = cur;
-    } else
+        cur->head.u.prev = NULL;
+    } else {
+        cur->head.u.prev = arena->free_list->last[bucket];
         arena->free_list->last[bucket]->next = cur;
+    }
     arena->free_list->last[bucket] = cur;
     LOG(3, "%s: arena "PFX" bucket %d free front="PFX" last="PFX"\n", __FUNCTION__,
         arena, bucket, arena->free_list->front[bucket],
@@ -908,29 +925,33 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         free_header_t *prev = (free_header_t *) header_from_ptr(prev_ptr);
         ASSERT(TEST(CHUNK_FREED, prev->head.flags), "header flags inconsistent");
         ASSERT(prev->head.alloc_size == prev_sz, "prev size inconsistent");
-        /* We can't merge with a delayed free b/c we'd lose the callstack */
-        if (!TEST(CHUNK_DELAY_FREE, prev->head.flags)) {
-            /* Remove prev from free list and merge w/ head.  We'll add the
-             * newly combined chunk to the delay list below.  Yes, this delays
-             * re-use of the no-longer-delayed prev, but the size delay
-             * threshold should prevent OOM.
-             */
-            remove_from_free_list(arena, prev);
-            if (cur->head.user_data != NULL)
-                client_malloc_data_free(cur->head.user_data);
-            /* We don't want misleading data so we throw out prev as well */
-            if (prev->head.user_data != NULL) {
-                client_malloc_data_free(prev->head.user_data);
-                prev->head.user_data = NULL;
-            }
-            tofree = &prev->head;
-            tofree->alloc_size += cur->head.alloc_size + inter_chunk_space();
-            LOG(3, "coalescing with prev chunk "PFX" => "PFX"-"PFX"\n",
-                prev, prev_ptr, prev_ptr + tofree->alloc_size);
-            STATS_INC(num_coalesces);
-            /* XXX i#879: let pattern mode write the mid-header w/ the pattern */
-            set_prev_size_field(arena, tofree); /* update */
+        /* We can't merge with a delayed free b/c we'd lose the callstack, so we
+         * don't even set CHUNK_PREV_FREE (we don't have space anyway in a true-free
+         * header to store prev_size_shr: so we can't store for a delay, and we rely
+         * on always coalescing).
+         */
+        ASSERT(!TEST(CHUNK_DELAY_FREE, prev->head.flags), "prev free must be true free");
+        /* Remove prev from free list and merge w/ head.  We'll add the
+         * newly combined chunk to the delay list below.  Yes, this delays
+         * re-use of the no-longer-delayed prev, but the size delay
+         * threshold should prevent OOM.
+         */
+        remove_from_free_list(arena, prev, UINT_MAX);
+        if (cur->head.user_data != NULL)
+            client_malloc_data_free(cur->head.user_data);
+        /* We don't want misleading data so we throw out prev as well */
+        if (prev->head.user_data != NULL) {
+            client_malloc_data_free(prev->head.user_data);
+            prev->head.user_data = NULL;
         }
+        tofree = &prev->head;
+        tofree->alloc_size += cur->head.alloc_size + inter_chunk_space();
+        LOG(3, "coalescing with prev chunk "PFX" => "PFX"-"PFX"\n",
+            prev, prev_ptr, prev_ptr + tofree->alloc_size);
+        STATS_INC(num_coalesces);
+        /* We can't call set_prev_size_field() here b/c it will asset if
+         * next is free, so we wait until we've possibly merged w/ next
+         */
     }
     next = next_chunk_forward(arena, tofree);
     if (next != NULL && TEST(CHUNK_FREED, next->flags) &&
@@ -938,7 +959,7 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         /* Coalesce with next block */
         byte *next_ptr = ptr_from_header(next);
         byte *head_ptr = next_ptr - alloc_ops.redzone_size - header_beyond_redzone;
-        remove_from_free_list(arena, (free_header_t *)next);
+        remove_from_free_list(arena, (free_header_t *)next, UINT_MAX);
         if (next->user_data != NULL)
             client_malloc_data_free(next->user_data);
         /* We don't want misleading data so we throw out cur as well */
@@ -951,6 +972,10 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
             next, ptr_from_header(tofree), ptr_from_header(tofree) +
             tofree->alloc_size);
         STATS_INC(num_coalesces);
+        /* XXX i#879: let pattern mode write the mid-header w/ the pattern */
+        set_prev_size_field(arena, tofree); /* update */
+    } else if (tofree != &cur->head) {
+        /* Delayed from above: see comment in merge-prev */
         /* XXX i#879: let pattern mode write the mid-header w/ the pattern */
         set_prev_size_field(arena, tofree); /* update */
     }
@@ -1000,8 +1025,10 @@ add_to_delay_list(arena_header_t *arena, chunk_header_t *head)
          * can we throw away the user_data
          */
         cur = coalesce_adjacent_frees(arena, cur);
-        if (cur != NULL)
+        if (cur != NULL) {
+            set_prev_size_field(arena, &cur->head);
             add_to_free_list(arena, &cur->head);
+        }
     }
 }
 
@@ -1009,24 +1036,19 @@ static chunk_header_t *
 search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucket)
 {
     /* search for large enough chunk */
-    free_header_t *cur, *prev;
+    free_header_t *cur;
     chunk_header_t *head = NULL;
 #ifdef LINUX
     /* On Windows we have HEAP_NO_SERIALIZE.  Not worth passing the flags in. */
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
 #endif
     ASSERT(bucket < NUM_FREE_LISTS, "invalid param");
-    for (cur = arena->free_list->front[bucket], prev = NULL;
+    for (cur = arena->free_list->front[bucket];
          cur != NULL && cur->head.alloc_size < aligned_size;
-         prev = cur, cur = cur->next)
+         cur = cur->next)
         ; /* nothing */
     if (cur != NULL) {
-        if (prev == NULL)
-            arena->free_list->front[bucket] = cur->next;
-        else
-            prev->next = cur->next;
-        if (cur == arena->free_list->last[bucket])
-            arena->free_list->last[bucket] = prev;
+        remove_from_free_list(arena, cur, bucket);
         head = (chunk_header_t *) cur;
     }
     LOG(3, "arena "PFX" taking cur="PFX" => bucket %d free front="PFX" last="PFX"\n",
@@ -1088,6 +1110,11 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             arena->free_list->front[bucket] = arena->free_list->front[bucket]->next;
             if (head == (chunk_header_t *) arena->free_list->last[bucket])
                 arena->free_list->last[bucket] = arena->free_list->front[bucket];
+            else {
+                free_header_t *cur = (free_header_t *) head;
+                ASSERT(cur->next != NULL, "free list corrupted");
+                cur->next->head.u.prev = NULL;
+            }
             LOG(3, "arena "PFX" bucket %d taking "PFX" => free front="PFX" last="PFX"\n",
                 arena, bucket, head, arena->free_list->front[bucket],
                 arena->free_list->last[bucket]);
@@ -1110,7 +1137,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             LOG(3, "splitting off "PFX"-"PFX" from "PFX"\n",
                 split, chunk2_start + rest_size, head);
             rest->head.user_data = client_malloc_data_free_split(head->user_data);
-            rest->head.request_diff = 0;
+            rest->head.u.unfree.request_diff = 0;
             rest->head.alloc_size = rest_size;
             rest->head.magic = HEADER_MAGIC;
             rest->head.flags = head->flags;
@@ -1242,7 +1269,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
     ASSERT(head->magic == HEADER_MAGIC, "corrupted header");
     ASSERT(head->alloc_size - request_size <= REQUEST_DIFF_MAX,
            "illegally large chunk padding");
-    head->request_diff = head->alloc_size - request_size;
+    head->u.unfree.request_diff = head->alloc_size - request_size;
     head->flags |= alloc_type;
     res = ptr_from_header(head);
     LOG(2, "\treplace_alloc_common flags="PIFX" request=%d, alloc=%d => "PFX"\n",
@@ -1376,7 +1403,6 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
     if (!TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
         LOG(2, "\treplace_free_common "PFX" == request=%d, alloc=%d\n",
             ptr, chunk_request_size(head), head->alloc_size);
-        set_prev_size_field(arena, head);
         add_to_delay_list(arena, head);
         /* At this point head may be invalid to de-ref, if coalesced or freed (this
          * will only happen if -delay_frees is 0)
@@ -1451,7 +1477,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             malloc_large_remove(ptr);
         if (chunk_request_size(head) < size && zeroed)
             memset(ptr + chunk_request_size(head), 0, size - chunk_request_size(head));
-        head->request_diff = head->alloc_size - size;
+        head->u.unfree.request_diff = head->alloc_size - size;
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_add(ptr, chunk_request_size(head));
         res = ptr;
@@ -2603,7 +2629,7 @@ malloc_replace__add(app_pc start, app_pc end, app_pc real_end,
     chunk_header_t *head = global_alloc(sizeof(*head), HEAPSTAT_HASHTABLE);
     head->alloc_size = (real_end - start);
     ASSERT(real_end - end <= REQUEST_DIFF_MAX, "too-large padding on pre-us malloc");
-    head->request_diff = (real_end - end);
+    head->u.unfree.request_diff = (real_end - end);
     if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
         malloc_large_add(start, chunk_request_size(head));
     head->flags = CHUNK_PRE_US;
