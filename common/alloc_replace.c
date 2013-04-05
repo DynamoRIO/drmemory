@@ -230,6 +230,10 @@ typedef struct _arena_header_t {
     free_lists_t *free_list;
     void *lock;
     uint flags;
+    /* If we free the final chunk before the brk we need to know to mark the
+     * next carved-out chunk w/ the prev free size.
+     */
+    heapsz_t prev_free_sz;
     uint magic;
     /* we need to iterate arenas belonging to one (non-default) Heap */
     struct _arena_header_t *next_arena;
@@ -632,6 +636,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     arena->next_chunk = arena->start_chunk;
     arena->magic = HEADER_MAGIC;
     arena->next_arena = NULL;
+    arena->prev_free_sz = 0;
     STATS_ADD(heap_capacity, (uint)(arena->commit_end - (byte *)arena));
     STATS_PEAK(heap_capacity);
     STATS_INC(num_arenas);
@@ -739,7 +744,8 @@ arena_delayed_list_full(arena_header_t *arena)
 }
 
 static inline chunk_header_t *
-next_chunk_forward(arena_header_t *arena, chunk_header_t *head)
+next_chunk_forward(arena_header_t *arena, chunk_header_t *head,
+                   arena_header_t **container_out OUT)
 {
     arena_header_t *container;
     byte *start = ptr_from_header(head);
@@ -749,8 +755,13 @@ next_chunk_forward(arena_header_t *arena, chunk_header_t *head)
     for (container = arena; container != NULL; container = container->next_arena) {
         if (start >= container->start_chunk && start < container->commit_end) {
             start += head->alloc_size + inter_chunk_space();
-            if (start < container->next_chunk)
-                return header_from_ptr(start);
+            if (start < container->next_chunk) {
+                chunk_header_t *next = header_from_ptr(start);
+                ASSERT(is_valid_chunk(start, next), "next_chunk_forward error");
+                return next;
+            } else if (container_out != NULL)
+                *container_out = container;
+            break;
         }
     }
     return NULL;
@@ -760,7 +771,8 @@ next_chunk_forward(arena_header_t *arena, chunk_header_t *head)
 static void
 set_prev_size_field(arena_header_t *arena, chunk_header_t *head)
 {
-    chunk_header_t *next = next_chunk_forward(arena, head);
+    arena_header_t *container = NULL;
+    chunk_header_t *next = next_chunk_forward(arena, head, &container);
     ASSERT(!TEST(CHUNK_DELAY_FREE, head->flags), "no need/room for prev size for delay");
     if (next != NULL) {
         ASSERT(!TEST(CHUNK_FREED, next->flags) || TEST(CHUNK_DELAY_FREE, next->flags),
@@ -781,6 +793,9 @@ set_prev_size_field(arena_header_t *arena, chunk_header_t *head)
                 redzone_start - sizeof(heapsz_t));
             *(heapsz_t*)(redzone_start - sizeof(heapsz_t)) = head->alloc_size;
         }
+    } else {
+        ASSERT(container != NULL, "couldn't find containing sub-arena");
+        container->prev_free_sz = head->alloc_size;
     }
 }
 
@@ -878,6 +893,7 @@ consider_giving_back_memory(arena_header_t *arena, chunk_header_t *tofree)
                     arena->commit_end = new_brk;
                     arena->reserve_end = new_brk;
                     arena->next_chunk = ptr;
+                    arena->prev_free_sz = 0; /* can't end in free: would be coalesced */
                     return NULL;
                 } else {
                     LOG(1, "brk @"PFX"-"PFX" failed to shrink to "PFX"\n",
@@ -925,6 +941,7 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         free_header_t *prev = (free_header_t *) header_from_ptr(prev_ptr);
         ASSERT(TEST(CHUNK_FREED, prev->head.flags), "header flags inconsistent");
         ASSERT(prev->head.alloc_size == prev_sz, "prev size inconsistent");
+        ASSERT(is_valid_chunk(prev_ptr, &prev->head), "prev chunk inconsistent");
         /* We can't merge with a delayed free b/c we'd lose the callstack, so we
          * don't even set CHUNK_PREV_FREE (we don't have space anyway in a true-free
          * header to store prev_size_shr: so we can't store for a delay, and we rely
@@ -949,11 +966,11 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         LOG(3, "coalescing with prev chunk "PFX" => "PFX"-"PFX"\n",
             prev, prev_ptr, prev_ptr + tofree->alloc_size);
         STATS_INC(num_coalesces);
-        /* We can't call set_prev_size_field() here b/c it will asset if
+        /* We can't call set_prev_size_field() here b/c it will assert if
          * next is free, so we wait until we've possibly merged w/ next
          */
     }
-    next = next_chunk_forward(arena, tofree);
+    next = next_chunk_forward(arena, tofree, NULL);
     if (next != NULL && TEST(CHUNK_FREED, next->flags) &&
         !TEST(CHUNK_DELAY_FREE, next->flags) ) {
         /* Coalesce with next block */
@@ -1028,6 +1045,12 @@ add_to_delay_list(arena_header_t *arena, chunk_header_t *head)
         if (cur != NULL) {
             set_prev_size_field(arena, &cur->head);
             add_to_free_list(arena, &cur->head);
+            ASSERT(!TEST(CHUNK_PREV_FREE, cur->head.flags), "no adjacent frees");
+            DOLOG(2, {
+                chunk_header_t *next = next_chunk_forward(arena, &cur->head, NULL);
+                ASSERT(next == NULL || TEST(CHUNK_PREV_FREE, next->flags),
+                       "missing prev free pointer");
+            });
         }
     }
 }
@@ -1123,6 +1146,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 
     if (head != NULL) {
         chunk_header_t *next;
+        arena_header_t *container = NULL;
         LOG(2, "\tusing free list size=%d for request=%d align=%d from bucket %d\n",
             head->alloc_size, request_size, aligned_size, bucket);
 
@@ -1141,6 +1165,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             rest->head.alloc_size = rest_size;
             rest->head.magic = HEADER_MAGIC;
             rest->head.flags = head->flags;
+            ASSERT(is_valid_chunk(chunk2_start, &rest->head), "rest chunk inconsistent");
             /* XXX: this adds it to the end, even though maybe it
              * should stay at the front for FIFO.
              */
@@ -1157,9 +1182,11 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
         }
         head->flags &= ~(CHUNK_FREED | MALLOC_ALLOCATOR_FLAGS);
 
-        next = next_chunk_forward(arena, head);
+        next = next_chunk_forward(arena, head, &container);
         if (next != NULL)
             next->flags &= ~CHUNK_PREV_FREE;
+        else if (container != NULL)
+            container->prev_free_sz = 0;
     }
     return head;
 }
@@ -1241,6 +1268,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
          * so I'm sticking with this simple design for now.
          */
         arena_header_t *last_arena = arena;
+        byte *orig_next_chunk;
         while (arena != NULL) {
             if (arena->next_chunk + add_size <= arena->commit_end)
                 break;
@@ -1262,7 +1290,18 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         head->magic = HEADER_MAGIC;
         head->user_data = NULL; /* b/c we pass the old to client */
         head->flags = 0;
+        orig_next_chunk = arena->next_chunk;
         arena->next_chunk += add_size;
+        if (arena->prev_free_sz != 0) {
+            /* there's a prior free so we need to mark this new chunk w/ prev-free info */
+            byte *prev_ptr = orig_next_chunk - inter_chunk_space() -
+                arena->prev_free_sz;
+            chunk_header_t *prev = header_from_ptr(prev_ptr);
+            ASSERT(is_valid_chunk(prev_ptr, prev), "arena prev free corrupted");
+            ASSERT(TEST(CHUNK_FREED, prev->flags), "arena prev free inconsistent");
+            set_prev_size_field(arena, prev);
+            arena->prev_free_sz = 0;
+        }
     }
 
     /* head->alloc_size, head->magic, and head->flags (except type) are already set */
