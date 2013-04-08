@@ -110,7 +110,8 @@ typedef uint heapsz_t;
  * XXX: add stats on searches to help in tuning these
  */
 static const uint free_list_sizes[] = {
-    8, 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048, 4096
+    8, 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048,
+    4096, 8192, 16384, 32768,
 };
 #define NUM_FREE_LISTS (sizeof(free_list_sizes)/sizeof(free_list_sizes[0]))
 
@@ -817,8 +818,10 @@ static inline uint
 bucket_index(chunk_header_t *head)
 {
     uint bucket;
+    /* pivot around small vs large first to avoid walking whole list for small: */
+    uint start = (head->alloc_size > free_list_sizes[6]) ? (NUM_FREE_LISTS - 1) : 6;
     /* our buckets guarantee that all allocs in that bucket have at least that size */
-    for (bucket = NUM_FREE_LISTS - 1; head->alloc_size < free_list_sizes[bucket];
+    for (bucket = start; head->alloc_size < free_list_sizes[bucket];
          bucket--)
         ; /* nothing */
     ASSERT(head->alloc_size >= free_list_sizes[bucket], "bucket invariant violated");
@@ -1098,17 +1101,12 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
          bucket < NUM_FREE_LISTS - 1 && aligned_size > free_list_sizes[bucket];
          bucket++)
         ; /* nothing */
-    if (arena->free_list->front[bucket] == NULL && bucket > 0 &&
-        aligned_size < free_list_sizes[bucket]) {
-        /* next-bigger is not avail: search maybe-big-enough bucket before
-         * possibly going to even bigger buckets
-         */
-        bucket--;
-        head = search_free_list_bucket(arena, aligned_size, bucket);
-        if (head == NULL)
-            bucket++;
-    }
-    
+
+    /* I tried searching the maybe-big-enough bucket (bucket - 1) before
+     * going to bigger buckets but it's a huge time sink for some benchmarks
+     * and doesn't seem to help much on others so I removed it.
+     */
+
     /* Use a larger bucket to avoid delaying a ton of allocs of a
      * certain size and never re-using them for pathological app alloc
      * sequences.  I used to do this only when delayed frees were piling
