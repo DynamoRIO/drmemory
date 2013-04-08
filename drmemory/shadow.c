@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -538,7 +538,7 @@ shadow_set_range(app_pc start, app_pc end, uint val)
         if (end - start > 0x10000000)
             LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n", start, end);
     });
-    while (pc < end && pc >= start/*overflow*/) {
+    while (pc < end) {
         shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
         bool is_special = block_is_special(block);
         if (is_special && ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
@@ -551,7 +551,7 @@ shadow_set_range(app_pc start, app_pc end, uint val)
         } else {
             if (!is_special && ALIGNED(pc, SHADOW_GRANULARITY)) {
                 app_pc block_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
-                if (block_end > start/*overflow*/) {
+                if (!POINTER_OVERFLOW_ON_ADD(pc, ALLOC_UNIT)) {
                     app_pc set_end = (block_end < end ? block_end : end);
                     set_end = (app_pc) ALIGN_BACKWARD(set_end, SHADOW_GRANULARITY);
                     if (set_end > pc) {
@@ -569,6 +569,8 @@ shadow_set_range(app_pc start, app_pc end, uint val)
             }
             shadow_set_byte(pc, val);
             LOG(4, "\tset byte "PFX"\n", pc);
+            if (POINTER_OVERFLOW_ON_ADD(pc, 1))
+                break;
             pc++;
         }
     }
@@ -581,19 +583,27 @@ void
 shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 {
     app_pc pc = old_start;
-    app_pc new_pc;
+    app_pc new_pc, old_end = old_start + size, new_end = new_start + size;
     uint val;
     LOG(2, "copy range "PFX"-"PFX" to "PFX"-"PFX"\n",
-         old_start, old_start+size, new_start, new_start+size);
+         old_start, old_end, new_start, new_end);
     /* We don't check what the current value of the destination is b/c
      * it could be anything: realloc can shrink, grow, overlap, etc.
      */
-    while (pc < old_start + size) {
+    while (pc < old_end) {
+        shadow_block_t *block_src;
+        shadow_block_t *block_dst;
+        bool is_special_src;
+        bool is_special_dst;
         new_pc = (pc - old_start) + new_start;
+        block_src = get_shadow_table(TABLE_IDX(pc));
+        block_dst = get_shadow_table(TABLE_IDX(new_pc));
+        is_special_src = block_is_special(block_src);
+        is_special_dst = block_is_special(block_dst);
         if (ALIGNED(pc, ALLOC_UNIT) && ALIGNED(new_pc, ALLOC_UNIT) &&
             (old_start + size - pc) >= ALLOC_UNIT &&
-            shadow_get_special(pc, &val) &&
-            shadow_get_special(new_pc, &val)) {
+            is_special_dst &&
+            shadow_get_special(pc, &val)) {
             if (shadow_set_special(new_pc, val))
                 pc += ALLOC_UNIT;
             else {
@@ -601,7 +611,39 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
                 ASSERT(!shadow_get_special(new_pc, NULL), "non-special never reverts");
             }
         } else {
-            /* FIXME optimize: set 4 aligned bytes at a time */
+            if (old_end - pc >= 8 && /* not worth it for just 4 */
+                !is_special_src && !is_special_dst &&
+                ALIGNED(pc, SHADOW_GRANULARITY) &&
+                ALIGNED(new_pc, SHADOW_GRANULARITY)) {
+                app_pc block_src_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
+                app_pc block_dst_end = (app_pc) ALIGN_FORWARD(new_pc + 1, ALLOC_UNIT);
+                if (!POINTER_OVERFLOW_ON_ADD(pc, ALLOC_UNIT) &&
+                    !POINTER_OVERFLOW_ON_ADD(new_pc, ALLOC_UNIT)) {
+                    app_pc src_end = block_src_end < old_end ? block_src_end : old_end;
+                    app_pc dst_end = block_dst_end < new_end ? block_dst_end : new_end;
+                    src_end = (app_pc) ALIGN_BACKWARD(src_end, SHADOW_GRANULARITY);
+                    dst_end = (app_pc) ALIGN_BACKWARD(dst_end, SHADOW_GRANULARITY);
+                    if (src_end > pc && dst_end > new_pc) {
+                        uint *array_start = &(*block_src)
+                            [BITMAPx2_IDX(((ptr_uint_t)pc) % ALLOC_UNIT)];
+                        byte *memcpy_dst;
+                        byte *memcpy_src = ((byte *)array_start) +
+                            (((ptr_uint_t)pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
+                        size_t sz = MIN(src_end - pc, dst_end - new_pc) /
+                            SHADOW_GRANULARITY;
+                        array_start = &(*block_dst)
+                            [BITMAPx2_IDX(((ptr_uint_t)new_pc) % ALLOC_UNIT)];
+                        memcpy_dst = ((byte *)array_start) +
+                            (((ptr_uint_t)new_pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
+                        /* We could have an overlap so we use memmove */
+                        LOG(3, "\tmemmove "PFX" => "PFX" size="PIFX"\n",
+                            memcpy_src, memcpy_dst, sz);
+                        memmove(memcpy_dst, memcpy_src, sz);
+                        pc += sz;
+                        continue;
+                    }
+                }
+            }
             shadow_set_byte(new_pc, shadow_get_byte(pc));
             pc++;
         }
