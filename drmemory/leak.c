@@ -765,6 +765,12 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
 
 #define STRING_MIN_LEN   10
 #define STRING_MIN_COUNT  3
+/* i#1183: perlbench has many 7-million-char strings.  An alternative
+ * to 3+ min-10-char strings is a single long string.  It seems
+ * unlikely that a series of pointers this long would have no byte
+ * with either the top bit set or equal to zero.
+ */
+#define STRING_SINGLE_MAX_LEN   128
 #define IS_ASCII(c) ((c) < 0x80)
 
 #ifdef WINDOWS
@@ -787,7 +793,8 @@ is_part_of_string_wide(wchar_t *s, wchar_t *max_scan)
                     break;
             } /* else, several nulls in a row */
             start = s + 1;
-        }
+        } else if (s - start >= STRING_SINGLE_MAX_LEN)
+            return true;
     }
     return (count >= STRING_MIN_COUNT);
 }
@@ -811,7 +818,8 @@ is_part_of_string_ascii(byte *s, byte *max_scan)
                     break;
             } /* else, several nulls in a row */
             start = s + 1;
-        }
+        } else if (s - start >= STRING_SINGLE_MAX_LEN)
+            return true;
     }
     return (count >= STRING_MIN_COUNT);
 }
