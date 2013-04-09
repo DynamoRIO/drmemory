@@ -2005,7 +2005,7 @@ syscall_info_t syscall_gdi32_info[] = {
     },
     {{0,0},"NtGdiDdReleaseDC", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0, sizeof(HANDLE), R|HT, DRSYS_TYPE_HANDLE},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtGdiDdResetVisrgn", OK, SYSARG_TYPE_BOOL32, 2, },

@@ -64,6 +64,7 @@ static drsys_sysnum_t sysnum_UserDestroyMenu = {-1,0};
 static drsys_sysnum_t sysnum_UserDestroyWindow = {-1,0};
 static drsys_sysnum_t sysnum_UserCallOneParam_RELEASEDC = {-1,0};
 static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
+static drsys_sysnum_t sysnum_GdiDdReleaseDC= {-1, 0};
 /* i#1112: NtDuplicateObject may delete a handle */
 static drsys_sysnum_t sysnum_DuplicateObject = {-1, 0};
 /* i#988-c#7: system calls that return existing handles */
@@ -143,6 +144,8 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
                &sysnum_UserCallOneParam_RELEASEDC,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtGdiDeleteObjectApp", &sysnum_GdiDeleteObjectApp,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiDdReleaseDC", &sysnum_GdiDdReleaseDC,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtDuplicateObject", &sysnum_DuplicateObject, false/*reqd*/);
     get_sysnum("NtUserSetClipboardData", &sysnum_UserSetClipboardData,
@@ -325,7 +328,8 @@ syscall_deletes_handle(void *drcontext, drsys_sysnum_t sysnum)
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyMenu) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserDestroyWindow) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_GdiDeleteObjectApp))
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiDeleteObjectApp) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiDdReleaseDC))
         return 0;
     if (drsys_sysnums_equal(&sysnum, &sysnum_DuplicateObject) &&
         syscall_duplicate_handle_deletes_handle(drcontext, sysnum))
