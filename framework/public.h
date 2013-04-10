@@ -56,6 +56,7 @@ typedef enum {
     DRMF_ERROR_DETAILS_UNKNOWN,    /**< Operation failed: answer not yet known */
     DRMF_ERROR_NOT_FOUND,          /**< Operation failed: query not found */
     DRMF_ERROR_INVALID_CALL,       /**< Operation failed: pre-req for call not met */
+    DRMF_ERROR_NOT_ENOUGH_REGS,    /**< Operation failed: not enough registers for use */
 } drmf_status_t;
 
 #endif /* _DRMEMORY_FRAMEWORK_H_ */
