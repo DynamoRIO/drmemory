@@ -378,31 +378,33 @@ umbra_insert_app_to_shadow(IN  void        *drcontext,
 
 DR_EXPORT
 /**
- * Read shadow memory for application memory at \p app_addr.
+ * Read shadow memory for application memory at \p app_addr to \p buffer.
  * 
- * @param[in]  map          The mapping object to use.
- * @param[in]  app_addr     Application memory address.
- * @param[in]  app_size     Application memory size.
- * @param[out] shadow_size  The number of bytes actually read.
- * @param[out] buffer       The buffer holds the read value.
+ * @param[in]     map          The mapping object to use.
+ * @param[in]     app_addr     Application memory address.
+ * @param[in]     app_size     Application memory size.
+ * @param[in,out] shadow_size  The max buffer size.
+ *                             Return the number of bytes actually read.
+ * @param[out]    buffer       The buffer holds the read value.
  * 
  */
 drmf_status_t
-umbra_read_shadow_memory(IN  umbra_map_t *map,
-                         IN  app_pc  app_addr,
-                         IN  size_t  app_size,
-                         OUT size_t *shadow_size,
-                         OUT byte   *buffer);
+umbra_read_shadow_memory(IN    umbra_map_t *map,
+                         IN    app_pc  app_addr,
+                         IN    size_t  app_size,
+                         INOUT size_t *shadow_size,
+                         OUT   byte   *buffer);
 
 DR_EXPORT
 /**
- * Write shadow memory for application memory at \p app_addr.
+ * Write shadow memory for application memory at \p app_addr from \p buffer.
  *
- * @param[in]  map          The mapping object to use.
- * @param[in]  app_addr     Application memory address.
- * @param[in]  app_size     Application memory size.
- * @param[out] shadow_size  The number of bytes actually written.
- * @param[in]  buffer       The buffer holds the value to write.
+ * @param[in]     map          The mapping object to use.
+ * @param[in]     app_addr     Application memory address.
+ * @param[in]     app_size     Application memory size.
+ * @param[in,out] shadow_size  The max buffer size.
+ *                             Return the number of bytes actually written.
+ * @param[in]     buffer       The buffer holds the value to write.
  *
  */
 drmf_status_t

@@ -213,16 +213,17 @@ static void
 umbra_map_remove(umbra_map_t *map)
 {
     uint i;
-    bool found;
     for (i = 0; i < MAX_NUM_MAPS; i++) {
         if (umbra_maps[i] == map) {
             umbra_maps[i] = NULL;
             num_umbra_maps--;
-            found = true;
             break;
         }
     }
-    ASSERT(found, "Wrong umbra map");
+    if (i >= MAX_NUM_MAPS) {
+        ASSERT(false, "Wrong umbra map");
+        return;
+    }
     umbra_map_destroy(map);
 }
 
