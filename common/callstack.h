@@ -185,6 +185,7 @@ enum {
 
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
+extern uint find_next_fp_cache_hits;
 extern uint symbol_names_truncated;
 extern uint cstack_is_retaddr;
 extern uint cstack_is_retaddr_backdecode;
@@ -201,7 +202,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
                const char *callstack_srcfile_prefix,
-               void (*missing_syms_cb)(const char *)
+               void (*missing_syms_cb)(const char *),
+               bool old_retaddrs_zeroed
                _IF_DEBUG(uint callstack_dump_stack));
 
 void

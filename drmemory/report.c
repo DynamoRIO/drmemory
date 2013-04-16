@@ -1287,7 +1287,8 @@ report_init(void)
 #else
                    NULL, NULL, NULL, NULL,
 #endif
-                   missing_syms_cb
+                   missing_syms_cb,
+                   options.zero_retaddr
                    _IF_DEBUG(options.callstack_dump_stack));
 
 #ifdef USE_DRSYMS

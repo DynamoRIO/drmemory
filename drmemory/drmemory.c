@@ -221,7 +221,8 @@ dump_statistics(void)
     dr_fprintf(f_global, "app mallocs: %8u, frees: %8u, large mallocs: %6u\n",
                num_mallocs, num_frees, num_large_mallocs);
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
-    dr_fprintf(f_global, "callstack fp scans: %8u\n", find_next_fp_scans);
+    dr_fprintf(f_global, "callstack fp scans: %8u, cache hits: %8u\n",
+               find_next_fp_scans, find_next_fp_cache_hits);
     dr_fprintf(f_global, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
                cstack_is_retaddr, cstack_is_retaddr_backdecode,
                cstack_is_retaddr_unreadable);

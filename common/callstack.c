@@ -54,6 +54,7 @@ static const char *op_modname_hide;
 static const char *op_srcfile_prefix;
 static const char *op_srcfile_hide;
 static void (*op_missing_syms_cb)(const char *);
+static bool op_old_retaddrs_zeroed;
 #ifdef DEBUG
 static uint op_callstack_dump_stack;
 #endif
@@ -69,17 +70,41 @@ static uint op_callstack_dump_stack;
 
 #ifdef STATISTICS
 uint find_next_fp_scans;
+uint find_next_fp_cache_hits;
 uint symbol_names_truncated;
 uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
 uint cstack_is_retaddr_unreadable;
 #endif
 
+/* Cached frame pointer values to avoid repeated scans (i#1186) */
+typedef struct _fpscan_cache_entry {
+    byte *input_fp;
+    byte *output_fp;
+    app_pc retaddr;
+} fpscan_cache_entry;
+
+/* XXX: perhaps this should be based on op_max_frames, though if someone
+ * asks for a ton of frames and optimizes his app with FPO he can't expect
+ * great performance.
+ */
+#define FPSCAN_CACHE_ENTRIES 16
+
 typedef struct _tls_callstack_t {
     char *errbuf; /* buffer for atomic writes to global logfile */
     size_t errbufsz;
     byte *page_buf; /* buffer for app stack safe read */
     app_pc stack_lowest_frame; /* optimization for recording callstacks */
+    /* Optimization for Linux main thread, where normal-looking but
+     * non-fp values can end up with a too-high stack_lowest_frame,
+     * causing us to keep scanning into the argv/envp/auxv area.  Thus
+     * for the main thread we store the retaddr of the call from the
+     * executable entry point (_start).  Xref i#1186.
+     */
+    app_pc stack_lowest_retaddr;
+    /* Optimization for FPO-optimized apps */
+    fpscan_cache_entry fpcache[FPSCAN_CACHE_ENTRIES];
+    uint fpcache_idx;
 } tls_callstack_t;
 
 static int tls_idx_callstack = -1;
@@ -293,7 +318,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_modname_hide,
                const char *callstack_srcfile_hide,
                const char *callstack_srcfile_prefix,
-               void (*missing_syms_cb)(const char *)
+               void (*missing_syms_cb)(const char *),
+               bool old_retaddrs_zeroed
                _IF_DEBUG(uint callstack_dump_stack))
 {
     tls_idx_callstack = drmgr_register_tls_field();
@@ -312,6 +338,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_srcfile_hide = callstack_srcfile_hide;
     op_srcfile_prefix = callstack_srcfile_prefix;
     op_missing_syms_cb = missing_syms_cb;
+    op_old_retaddrs_zeroed = old_retaddrs_zeroed;
 #ifdef DEBUG
     op_callstack_dump_stack = callstack_dump_stack;
 #endif
@@ -347,9 +374,13 @@ callstack_exit(void)
 void
 callstack_thread_init(void *drcontext)
 {
+#ifdef LINUX
+    static bool first = true;
+#endif
     tls_callstack_t *pt = (tls_callstack_t *)
         thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
     drmgr_set_tls_field(drcontext, tls_idx_callstack, pt);
+    memset(pt, 0, sizeof(*pt));
     /* PR 456181: we need our error reports to use a single atomic write.
      * We use a thread-private buffer to avoid using stack space or locks.
      * We can have a second callstack for delayed frees (i#205).
@@ -361,9 +392,53 @@ callstack_thread_init(void *drcontext)
 #ifdef WINDOWS
     if (get_TEB() != NULL) {
         pt->stack_lowest_frame = get_TEB()->StackBase;
-    } else
+    }
+#else
+    if (first) {
+        /* We can't get mcontext for main thread (DR limitation), but
+         * it won't help us much anyway b/c of all the argv, env, and auxv
+         * stuff at the base of the stack.
+         * Instead we find the entry point which will be the lowest
+         * retaddr we should have.
+         */
+        module_data_t *data = dr_get_main_module();
+        instr_t inst;
+        byte *pc = data->entry_point;
+        instr_init(drcontext, &inst);
+        do {
+            pc = decode(drcontext, pc, &inst);
+            /* We look for the first call.  There might be a jmp instead,
+             * or the first call might just be a leaf helper function:
+             * we just won't have this optimization in those cases.
+             */
+            if (instr_valid(&inst) && instr_is_call(&inst)) {
+                pt->stack_lowest_retaddr = pc;
+                break;
+            }
+            instr_reset(drcontext, &inst);
+        } while (pc != NULL && pc - data->entry_point < PAGE_SIZE);
+        instr_free(drcontext, &inst);
+        LOG(1, "stack_lowest_retaddr for main thread = 1st call "PFX" > entry "PFX"\n",
+            pt->stack_lowest_retaddr, data->entry_point);
+        dr_free_module_data(data);
+        first = false;
+    } else {
+        dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+        app_pc stack_base;
+        size_t stack_size;
+        mc.size = sizeof(mc);
+        mc.flags = DR_MC_CONTROL; /* only need xsp */
+        dr_get_mcontext(drcontext, &mc);
+        if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
+            LOG(2, "lowest frame for thread %d = top of stack "PFX"-"PFX", sp="PFX"\n",
+                dr_get_thread_id(drcontext), stack_base, stack_base + stack_size, mc.xsp);
+            pt->stack_lowest_frame = stack_base + stack_size;
+        } else {
+            LOG(2, "unable to query stack: leaving lowest frame for thread %d NULL\n",
+                dr_get_thread_id(drcontext));
+        }
+    }
 #endif
-        pt->stack_lowest_frame = NULL;
 }
 
 void
@@ -901,10 +976,20 @@ is_retaddr(byte *pc)
         return true;
 }
 
+static void
+fpcache_update(tls_callstack_t *pt, byte *fp_in, byte *fp_out, app_pc retaddr)
+{
+    pt->fpcache[pt->fpcache_idx].input_fp = fp_in;
+    pt->fpcache[pt->fpcache_idx].output_fp = fp_out;
+    pt->fpcache[pt->fpcache_idx].retaddr = retaddr;
+    pt->fpcache_idx = (pt->fpcache_idx + 1) % FPSCAN_CACHE_ENTRIES;
+}
+
 static app_pc
 find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
 {
     byte *page_buf = pt->page_buf;
+    app_pc orig_fp = fp;
     ASSERT(page_buf != NULL, "thread's page_buf is not initialized");
     /* Heuristic: scan stack for retaddr, or fp + retaddr pair */
     ASSERT(fp != NULL, "internal callstack-finding error");
@@ -930,11 +1015,43 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
         LOG(4, "find_next_fp: aborting b/c beyond stack_lowest_frame\n");
         return NULL;
     }
+    /* Check the cache.  We verify by reading the retaddr.  With
+     * -zero_retaddr, we'll only be wrong if there's a non-retaddr
+     * slot holding this retaddr and the real next retaddr is in front
+     * of it.  With -no_zero_retaddr, there are more chances of
+     * skipping frames, so we disable the cache in that scenario.
+     *
+     * XXX: we should also try a structured cache of the last callstack,
+     * which could result in greater speedup: but is also more complex
+     * to implement.
+     */
+    if (op_old_retaddrs_zeroed) {
+        uint i;
+        for (i = 0; i < FPSCAN_CACHE_ENTRIES; i++) {
+            if (orig_fp == pt->fpcache[i].input_fp) {
+                app_pc ra;
+                if (safe_read(pt->fpcache[i].output_fp + sizeof(app_pc),
+                              sizeof(ra), &ra) &&
+                    ra == pt->fpcache[i].retaddr) {
+                    if (retaddr != NULL)
+                        *retaddr = ra;
+                    LOG(4, "find_next_fp: cache hit "PFX" => "PFX", ra="PFX"\n",
+                        orig_fp, pt->fpcache[i].output_fp, ra);
+                    /* Make sure we don't clobber this hit on our next miss */
+                    pt->fpcache_idx = (i + 1) % FPSCAN_CACHE_ENTRIES;
+                    STATS_INC(find_next_fp_cache_hits);
+                    return pt->fpcache[i].output_fp;
+                } else {
+                    pt->fpcache[i].input_fp = NULL; /* invalidate */
+                }
+            }
+        }
+    }
     /* PR 454536: dr_memory_is_readable() is racy so we use a safe_read().
      * On Windows safe_read() costs 1 system call: perhaps DR should
      * use try/except there like on Linux?
-     * Should we also store the stack bounds and then we know when
-     * to stop instead of incurring a fault on every callstack?
+     * We use stack_lowest_frame, based on the stack bounds, to avoid
+     * incurring a fault (checked up above).
      * XXX: should support partial safe read for invalid page next to stack 
      */
     if (safe_read((app_pc)ALIGN_BACKWARD(fp, PAGE_SIZE), PAGE_SIZE, page_buf)) {
@@ -1014,11 +1131,18 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                 app_pc parent_ret;
                 if (!TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
                     /* caller expects fp,ra pair */
+                    LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
+                        orig_fp, sp - sizeof(app_pc), slot1);
+                    fpcache_update(pt, orig_fp, sp - sizeof(app_pc), slot1);
                     return sp - sizeof(app_pc);
                 }
                 if ((TEST(FP_SEARCH_MATCH_SINGLE_FRAME, op_fp_flags) &&
-                     !match_next_frame))
+                     !match_next_frame)) {
+                    LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
+                        orig_fp, sp, slot1);
+                    fpcache_update(pt, orig_fp, sp, slot1);
                     return sp;
+                }
                 /* Require the next retaddr to be in a module as well, to avoid
                  * continuing past the bottom frame on ESXi (xref PR 469043)
                  */
@@ -1029,6 +1153,9 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                         parent_ret = NULL;
                 }
                 if (parent_ret != NULL && is_retaddr(parent_ret)) {
+                    LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
+                        orig_fp, sp, slot1);
+                    fpcache_update(pt, orig_fp, sp, slot1);
                     return sp;
                 }
                 match = false;
@@ -1036,6 +1163,8 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
         }
     } else
         LOG(4, "find_next_fp: returning NULL b/c couldn't read stack page\n");
+    LOG(2, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
+        orig_fp, NULL, (retaddr==NULL)?NULL:*retaddr);//NOCHECKIN
     return NULL;
 }
 
@@ -1056,7 +1185,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         app_pc retaddr;
     } appdata;
     app_pc custom_retaddr = NULL;
-    app_pc lowest_frame = NULL;
+    app_pc prev_lowest_frame = NULL, lowest_frame = NULL;
     bool first_iter = true;
     bool have_appdata = false;
     bool scanned = false;
@@ -1131,6 +1260,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                          pc, appdata.next_fp);
             }
         }
+        prev_lowest_frame = lowest_frame;
         lowest_frame = (app_pc) pc;
         /* Unlesss FP_SHOW_NON_MODULE_FRAMES, we do not include not-in-a-module
          * addresses.  Perhaps something like dr_is_executable_memory() could
@@ -1158,10 +1288,17 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             num++;
             if (last_frame)
                 break;
+            if (appdata.retaddr == pt->stack_lowest_retaddr &&
+                pt->stack_lowest_retaddr != NULL) {
+                LOG(4, "ending callstack: hit stack_lowest_retaddr "PFX"\n",
+                    appdata.retaddr);
+                break;
+            }
         } else {
+            lowest_frame = prev_lowest_frame; /* be sure to undo (i#1186) */
             if (buf != NULL) /* undo the fp= print */
                 *sofar = prev_sofar;
-            if (first_iter) { /* don't trust "num == num_frames_printed" as test for 1st */
+            if (first_iter) { /* don't trust "num==num_frames_printed" as test for 1st */
                 /* We may have started in a frameless function using ebp for
                  * other purposes but it happens to point to higher on the stack.
                  * Start over w/ top of stack to avoid skipping a frame (i#521).
