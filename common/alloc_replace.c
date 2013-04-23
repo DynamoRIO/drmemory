@@ -405,25 +405,27 @@ app_heap_unlock(void *drcontext, void *recur_lock)
 static inline uint
 arena_page_prot(uint flags)
 {
-    return TEST(HEAP_CREATE_ENABLE_EXECUTE, flags) ?
-        PAGE_EXECUTE_READWRITE : PAGE_READWRITE;
+    return DR_MEMPROT_READ | DR_MEMPROT_WRITE |
+        (TEST(HEAP_CREATE_ENABLE_EXECUTE, flags) ? DR_MEMPROT_EXEC : 0);
 }
 #endif
 
+/* We used to call raw_syscall() and virtual_alloc(), but for DRi#199 we
+ * now have DR routines we can use, which avoids DR asserts (mainly on
+ * Linux allmem, but possible to have problems everywhere if the app
+ * puts code in the heap).
+ */
 static byte *
 os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(uint prot))
 {
-    /* FIXME DRi#199: how notify DR about app mem alloc?
-     * provide general raw_syscall() interface,
-     * or dr_mmap_as_app() or sthg.
-     * for now using our own raw syscall...
-     */
 #ifdef LINUX
-    byte *map = (byte *) raw_syscall
-        (IF_X64_ELSE(SYS_mmap, SYS_mmap2), 6, (ptr_int_t)NULL, commit_size,
-         PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    byte *map = (byte *)
+        dr_raw_mem_alloc(commit_size, DR_MEMPROT_READ | DR_MEMPROT_WRITE, NULL);
     ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
-    if ((ptr_int_t)map < 0 && (ptr_int_t)map > -PAGE_SIZE) {
+    /* dr_raw_mem_alloc returns NULL on failure, but I'm keeping the range for
+     * raw syscall.
+     */
+    if ((ptr_int_t)map <= 0 && (ptr_int_t)map > -PAGE_SIZE) {
         LOG(2, "os_large_alloc FAILED with return value "PFX"\n", map);
         return NULL;
     }
@@ -434,10 +436,16 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(u
     ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(reserve_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(reserve_size >= commit_size, "must reserve more than commit");
-    if (!virtual_alloc(&loc, reserve_size, MEM_RESERVE, PAGE_NOACCESS))
+    loc = dr_custom_alloc(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR |
+                          DR_ALLOC_RESERVE_ONLY, reserve_size,
+                          DR_MEMPROT_NONE, NULL);
+    if (loc == NULL)
         return NULL;
-    if (!virtual_alloc(&loc, commit_size, MEM_COMMIT, prot)) {
-        virtual_free(loc);
+    loc = dr_custom_alloc(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR |
+                          DR_ALLOC_COMMIT_ONLY | DR_ALLOC_FIXED_LOCATION, commit_size,
+                          prot, loc);
+    if (loc == NULL) {
+        dr_custom_free(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR, loc, reserve_size);
         return NULL;
     }
     LOG(3, "%s commit="PIFX" reserve="PIFX" prot="PIFX" => "PFX"\n",
@@ -454,13 +462,15 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
 #ifdef LINUX
-    byte *newmap = (byte *) raw_syscall
-        (SYS_mremap, 4, (ptr_int_t)map, cur_commit_size, new_commit_size, 0/*can't move*/);
-    if ((ptr_int_t)newmap < 0 && (ptr_int_t)newmap > -PAGE_SIZE)
+    byte *newmap = (byte *) dr_raw_mremap(map, cur_commit_size, new_commit_size,
+                                          0/*can't move*/, NULL/*ignored*/);
+    if ((ptr_int_t)newmap <= 0 && (ptr_int_t)newmap > -PAGE_SIZE)
         return false;
     return true;
 #else
-    return virtual_alloc(&map, new_commit_size, MEM_COMMIT, prot);
+    return (dr_custom_alloc(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR |
+                            DR_ALLOC_COMMIT_ONLY | DR_ALLOC_FIXED_LOCATION,
+                            new_commit_size, prot, map) != NULL);
 #endif
 }
 
@@ -469,15 +479,15 @@ static bool
 os_large_free(byte *map, size_t map_size)
 {
 #ifdef LINUX
-    int success;
+    bool success;
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
-    success = (int) raw_syscall(SYS_munmap, 2, (ptr_int_t)map, map_size);
+    success = dr_raw_mem_free(map, map_size);
     LOG(3, "%s "PFX" size="PIFX" => %d\n",  __FUNCTION__, map, map_size, success);
-    return (success == 0);
+    return success;
 #else
     LOG(3, "%s "PFX" size="PIFX"\n", __FUNCTION__, map, map_size);
-    return virtual_free(map);
+    return dr_custom_free(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR, map, map_size);
 #endif
 }
 

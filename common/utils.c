@@ -916,6 +916,7 @@ get_highest_user_address(void)
     return highest_user_address;
 }
 
+/* We now use dr_custom_alloc() instead, where possible */
 bool
 virtual_alloc(void **base, size_t size, uint memtype, uint prot)
 {
@@ -930,6 +931,7 @@ virtual_alloc(void **base, size_t size, uint memtype, uint prot)
     return NT_SUCCESS(res);
 }
 
+/* We now use dr_custom_free() instead, where possible */
 bool
 virtual_free(void *base)
 {

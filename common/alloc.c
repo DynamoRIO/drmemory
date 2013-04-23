@@ -202,18 +202,21 @@ static bool dbgcrt_nosyms;
 #endif
 
 #ifdef LINUX
+/* DRi#199: we use the new dr_raw_brk() instead of raw_syscall() to avoid
+ * DR's allmem complaining
+ */
 byte *
 get_brk(bool pre_us)
 {
     if (pre_us && alloc_ops.replace_malloc)
         return alloc_replace_orig_brk();
-    return (byte *) raw_syscall(SYS_brk, 1, 0);
+    return (byte *) dr_raw_brk(NULL);
 }
 
 byte *
 set_brk(byte *new_val)
 {
-    return (byte *) raw_syscall(SYS_brk, 1, (ptr_int_t) new_val);
+    return (byte *) dr_raw_brk(new_val);
 }
 #endif
 
