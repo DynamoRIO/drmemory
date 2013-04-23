@@ -24,6 +24,7 @@
 
 #include "fastpath.h"   /* for bb_info_t */
 #include "callstack.h"  /* for app_loc_t */
+#include "alloc.h"      /* for malloc_info_t */
 
 /* default pattern value if user does not specify any. */
 /* NOTE: the selection of pattern value may affect performance greatly.
@@ -60,21 +61,16 @@ void
 pattern_exit(void);
 
 void
-pattern_handle_malloc(byte *app_base,  size_t app_size,
-                      byte *real_base, size_t real_size);
+pattern_handle_malloc(malloc_info_t *info);
 
 void
-pattern_handle_real_free(app_pc base,  size_t size,
-                         byte *real_base, size_t real_size, bool delayed);
+pattern_handle_real_free(malloc_info_t *info, bool delayed);
 
 void
-pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size);
+pattern_handle_delayed_free(malloc_info_t *info);
 
 void
-pattern_handle_realloc(app_pc old_base, size_t old_size,
-                       app_pc old_real_base, size_t old_real_size,
-                       app_pc new_base, size_t new_size, app_pc new_real_base,
-                       size_t new_real_size);
+pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info);
 
 void
 pattern_new_redzone(app_pc start, size_t size);

@@ -60,6 +60,9 @@
  *                                                                             ^
  *                                                                 next_chunk _|
  *
+ * + for !alloc_ops.shared_redzones, there are two redzones in between
+ *   each chunk, with the header in between and separate from the redzones
+ *   (geared toward modes that want to fill the redzones)
  * + arena->next_chunk always has a redzone + header space (if co-located, i.e.,
  *   !alloc_ops.external_headers) to its left
  * + free lists are kept in buckets by size.  larger is preferred over
@@ -497,32 +500,19 @@ chunk_request_size(chunk_header_t *head)
     return (head->alloc_size - head->u.unfree.request_diff);
 }
 
-static inline size_t
-client_real_size_extra(void)
-{
-    return redzone_beyond_header +
-        (alloc_ops.shared_redzones ? 0 : alloc_ops.redzone_size);
-}
-
 static void
 notify_client_alloc(bool call_handle, void *drcontext, byte *ptr,
                     chunk_header_t *head, dr_mcontext_t *mc,
                     bool zeroed, bool realloc, app_pc caller)
 {
-    head->user_data = client_add_malloc_pre(ptr, ptr + chunk_request_size(head),
-                                            ptr + head->alloc_size,
-                                            head->user_data, mc, caller);
-    client_add_malloc_post(ptr, ptr + chunk_request_size(head),
-                           ptr + head->alloc_size, head->user_data);
+    malloc_info_t info = { sizeof(info), ptr, chunk_request_size(head),
+                           head->alloc_size, false/*!pre_us*/, true/*redzone*/,
+                           zeroed, realloc, 0, head->user_data };
+    head->user_data = client_add_malloc_pre(&info, mc, caller);
+    client_add_malloc_post(&info);
     if (call_handle) {
         ASSERT(drcontext != NULL, "invalid arg");
-        client_handle_malloc(drcontext, ptr, chunk_request_size(head),
-                             /* the caller might clobber from real_base, so
-                              * only pass what doesn't contain a header
-                              */
-                             ptr - redzone_beyond_header,
-                             head->alloc_size + client_real_size_extra(),
-                             zeroed, realloc, mc);
+        client_handle_malloc(drcontext, &info, mc);
     }
 }
 
@@ -553,8 +543,10 @@ ptr_from_header(chunk_header_t *head)
         /* XXX i#879: hashtable lookup */
         ASSERT(false, "NYI");
         return NULL;
-    } else
+    } else {
+        ASSERT(!TEST(CHUNK_PRE_US, head->flags), "caller must handle pre-us");
         return (byte *)head + redzone_beyond_header + header_size;
+    }
 }
 
 /* Distance from the end of one chunk (its start pointer plus alloc_size) to
@@ -656,6 +648,22 @@ header_from_ptr_include_pre_us(void *ptr)
     if (!is_valid_chunk(ptr, head))
         head = hashtable_lookup(&pre_us_table, (void *)ptr);
     return head;
+}
+
+/* if pre-us, caller must fill in info->base */
+static inline void
+header_to_info(chunk_header_t *head, malloc_info_t *info)
+{
+    info->struct_size = sizeof(*info);
+    info->pre_us = TEST(CHUNK_PRE_US, head->flags);
+    info->base = (info->pre_us ? NULL : ptr_from_header(head));
+    info->request_size = chunk_request_size(head);
+    info->pad_size = head->alloc_size;
+    info->has_redzone = !info->pre_us;
+    info->zeroed = false;
+    info->realloc = false;
+    info->client_flags = head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS;
+    info->client_data = head->user_data;
 }
 
 /* assumes caller initialized commit_end and reserve_end fields */
@@ -1276,7 +1284,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         /* rather than have larger headers for 64-bit we just don't support
          * enormous allocations
          */
-        client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
+        client_handle_alloc_failure(request_size, caller, mc);
         return NULL;
     }
 
@@ -1302,7 +1310,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         ASSERT(map_size >= aligned_size, "overflow should have been caught");
         LOG(2, "\tlarge alloc %d => mmap @"PFX"\n", request_size, map);
         if (map == NULL) {
-            client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
+            client_handle_alloc_failure(request_size, caller, mc);
             goto replace_alloc_common_done;
         }
         ASSERT(!alloc_ops.external_headers, "NYI");
@@ -1317,13 +1325,9 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         /* look for free list entry */
         head = find_free_list_entry(arena, request_size, aligned_size);
         if (head != NULL) {
-            client_handle_free_reuse(drcontext, ptr_from_header(head),
-                                     chunk_request_size(head),
-                                     /* the caller might clobber from real_base, so
-                                      * only pass what doesn't contain a header
-                                      */
-                                     ptr_from_header(head) - redzone_beyond_header,
-                                     head->alloc_size + client_real_size_extra(), mc);
+            malloc_info_t info;
+            header_to_info(head, &info);
+            client_handle_free_reuse(drcontext, &info, mc);
         }
     }
 
@@ -1349,7 +1353,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         if (arena == NULL)
             arena = arena_extend(last_arena, add_size);
         if (arena == NULL) {
-            client_handle_alloc_failure(request_size, zeroed, realloc, caller, mc);
+            client_handle_alloc_failure(request_size, caller, mc);
             goto replace_alloc_common_done;
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
@@ -1430,6 +1434,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
                     void *drcontext, dr_mcontext_t *mc, app_pc caller, uint free_type)
 {
     chunk_header_t *head = header_from_ptr(ptr);
+    malloc_info_t info;
 
     if (!is_live_alloc(ptr, arena, head)) { /* including NULL */
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -1487,27 +1492,20 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
      * would we ever want to keep the alloc callstack for freed entries,
      * or we always want to replace w/ free callstack?
      */
-    client_remove_malloc_pre((byte *)ptr, (byte *)ptr + chunk_request_size(head),
-                             (byte *)ptr + head->alloc_size, head->user_data);
+    header_to_info(head, &info);
+    client_remove_malloc_pre(&info);
     if (TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
         if (head->user_data != NULL)
             client_malloc_data_free(head->user_data);
         head->user_data = NULL;
     } else
         head->user_data = client_malloc_data_to_free_list(head->user_data, mc, caller);
-    client_remove_malloc_post((byte *)ptr, (byte *)ptr + chunk_request_size(head),
-                             (byte *)ptr + head->alloc_size);
+    client_remove_malloc_post(&info);
 
     /* we ignore the return value */
     if (invoke_client) {
-        client_handle_free((byte *)ptr, chunk_request_size(head),
-                           /* the caller might clobber from real_base, so
-                            * only pass what doesn't contain a header
-                            */
-                           (byte *)ptr - redzone_beyond_header,
-                           head->alloc_size + client_real_size_extra(),
-                           mc, caller, head->user_data, false/*reuse delayed*/
-                           _IF_WINDOWS(NULL));
+        client_handle_free(&info, (byte *)ptr, mc, caller, NULL,
+                           false/*reuse delayed*/ _IF_WINDOWS(NULL));
     }
 
     if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE &&
@@ -1546,6 +1544,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
 {
     byte *res = NULL;
     chunk_header_t *head = header_from_ptr(ptr);
+    malloc_info_t old_info;
+    malloc_info_t new_info;
     if (ptr == NULL) {
         if (allow_null) {
             client_handle_realloc_null(caller, mc);
@@ -1554,7 +1554,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                                                 drcontext, mc, caller,
                                                 MALLOC_ALLOCATOR_MALLOC);
         } else {
-            client_handle_alloc_failure(size, zeroed, true/*realloc*/, caller, mc);
+            client_handle_alloc_failure(size, caller, mc);
             res = NULL;
         }
         return res;
@@ -1579,21 +1579,11 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     }
     /* if we reach here, this is a regular realloc */
     ASSERT(head != NULL, "should return before here");
+    header_to_info(head, &old_info);
     if (head->alloc_size >= size &&
         head->alloc_size - size <= REQUEST_DIFF_MAX &&
         !TEST(CHUNK_PRE_US, head->flags)) {
         /* XXX: if shrinking a lot, should free and re-malloc to save space */
-        client_handle_realloc(drcontext, (byte *)ptr, chunk_request_size(head),
-                              /* the caller might clobber from real_base, so
-                               * only pass what doesn't contain a header
-                               */
-                              (byte *)ptr - redzone_beyond_header,
-                              head->alloc_size + client_real_size_extra(),
-                              (byte *)ptr, size,
-                              /* ditto: only pass what doesn't contain a header */
-                              (byte *)ptr - redzone_beyond_header,
-                              head->alloc_size + client_real_size_extra(),
-                              mc);
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_remove(ptr);
         if (chunk_request_size(head) < size && zeroed)
@@ -1602,9 +1592,10 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_add(ptr, chunk_request_size(head));
         res = ptr;
+        header_to_info(head, &new_info);
+        client_handle_realloc(drcontext, &old_info, &new_info, mc);
     } else if (!in_place_only || head->alloc_size >= size) {
         size_t old_request_size = chunk_request_size(head);
-        size_t old_alloc_size = head->alloc_size;
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size, lock, zeroed,
@@ -1616,17 +1607,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             memcpy(res, ptr, MIN(size, old_request_size));
             replace_free_common(arena, ptr, lock, false/*no client */,
                                 drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
-            client_handle_realloc(drcontext, (byte *)ptr, old_request_size,
-                                  /* the caller might clobber from real_base, so
-                                   * only pass what doesn't contain a header
-                                   */
-                                  (byte *)ptr - redzone_beyond_header,
-                                  old_alloc_size + client_real_size_extra(),
-                                  res, size,
-                                  /* ditto: only pass what doesn't contain a header */
-                                  (byte *)res - redzone_beyond_header,
-                                  head->alloc_size + client_real_size_extra(),
-                                  mc);
+            header_to_info(head, &new_info);
+            client_handle_realloc(drcontext, &old_info, &new_info, mc);
         }
     }
     return res;
@@ -1671,6 +1653,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     chunk_header_t *head;
     byte *cur;
     arena_header_t *arena = (arena_header_t *) iter_arena_start;
+    malloc_info_t info;
 
     /* We use the HEAP_MMAP flag to find our mmapped chunks.  We can't easily
      * use the large malloc tree b/c it has pre_us allocs too (i#1051).
@@ -1678,13 +1661,11 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
         chunk_header_t *head = (chunk_header_t *) iter_arena_start;
-        byte *start = iter_arena_start + header_size + redzone_beyond_header;
+        header_to_info(head, &info);
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
-        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start,
-            start + chunk_request_size(head));
-        if (!data->cb(start, start + chunk_request_size(head), start + head->alloc_size,
-                      false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
-                      head->user_data, data->data))
+        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
+            info.base + chunk_request_size(head));
+        if (!data->cb(&info, data->data))
             return false;
     }
 
@@ -1699,11 +1680,8 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
             ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
-            byte *start = ptr_from_header(head);
-            if (!data->cb(start, start + chunk_request_size(head),
-                          start + head->alloc_size,
-                          false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
-                          head->user_data, data->data)) {
+            header_to_info(head, &info);
+            if (!data->cb(&info, data->data)) {
                 dr_recurlock_unlock(arena->lock);
                 return false;
             }
@@ -1729,6 +1707,7 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
      */
     alloc_iter_data_t data = {only_live, cb, iter_data};
     uint i;
+    malloc_info_t info;
 
     /* the aborting case is dr_exit_process() on OOM */
     ASSERT(!on_app_stack() || aborting, "should be called from client context");
@@ -1753,9 +1732,9 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
             if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
                 LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
                     start, start + chunk_request_size(head), start + head->alloc_size);
-                if (!cb(start, start + chunk_request_size(head), start + head->alloc_size,
-                        true/*pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
-                        head->user_data, iter_data))
+                header_to_info(head, &info);
+                info.base = start;
+                if (!cb(&info, iter_data))
                     break;
             }
         }
@@ -1764,24 +1743,20 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 
 static bool
 overlap_helper(chunk_header_t *head,
-               byte *chunk_start,
-               byte **found_start OUT,
-               byte **found_end OUT,
-               byte **found_real_end OUT,
-               void **client_data OUT,
+               malloc_info_t *info INOUT,
                uint positive_flags,
                uint negative_flags)
 {
+    /* XXX: this is the one INOUT case of this structure.  Once we extend it,
+     * we need to handle back-compat struct size here.  For now, header_to_info()
+     * is used here and by above internal code that doesn't set struct-size.
+     */
+    if (info->struct_size != sizeof(*info))
+        ASSERT(false, "size is wrong");
     if (TESTALL(positive_flags, head->flags) &&
         !TEST(negative_flags, head->flags)) {
-        if (found_start != NULL)
-            *found_start = chunk_start;
-        if (found_end != NULL)
-            *found_end = chunk_start + chunk_request_size(head);
-        if (found_real_end != NULL)
-            *found_real_end = chunk_start + head->alloc_size;
-        if (client_data != NULL)
-            *client_data = head->user_data;
+        if (info != NULL)
+            header_to_info(head, info);
         return true;
     }
     return false;
@@ -1790,10 +1765,7 @@ overlap_helper(chunk_header_t *head,
 /* Considers alloc_size to overlap, but returns request size in *found_end */
 static bool
 alloc_replace_overlaps_region(byte *start, byte *end,
-                              byte **found_start OUT,
-                              byte **found_end OUT,
-                              byte **found_real_end OUT,
-                              void **client_data OUT,
+                              malloc_info_t *info INOUT,
                               uint positive_flags,
                               uint negative_flags)
 {
@@ -1822,9 +1794,7 @@ alloc_replace_overlaps_region(byte *start, byte *end,
          * arena and grab its lock to safely access the header.
          */
         chunk_header_t *head = header_from_ptr(found_arena_start);
-        found = overlap_helper(head, found_arena_start, found_start, found_end,
-                               found_real_end, client_data, positive_flags,
-                               negative_flags);
+        found = overlap_helper(head, info, positive_flags, negative_flags);
         ASSERT(size == chunk_request_size(head), "inconsistent");
     } else if (heap_region_bounds(start, &found_arena_start, &found_arena_end, &flags)) {
         if (TEST(HEAP_PRE_US, flags)) {
@@ -1839,8 +1809,7 @@ alloc_replace_overlaps_region(byte *start, byte *end,
                     chunk_header_t *head = (chunk_header_t *) he->payload;
                     byte *chunk_start = he->key;
                     if (start < chunk_start + head->alloc_size && end >= chunk_start) {
-                        found = overlap_helper(head, chunk_start, found_start, found_end,
-                                               found_real_end, client_data,
+                        found = overlap_helper(head, info,
                                                positive_flags, negative_flags);
                         goto overlap_inner_loop_break;
                     }
@@ -1868,9 +1837,7 @@ alloc_replace_overlaps_region(byte *start, byte *end,
                     chunk_start + head->alloc_size);
                 if (start < chunk_start + head->alloc_size + alloc_ops.redzone_size &&
                     end >= chunk_start - alloc_ops.redzone_size) {
-                    found = overlap_helper(head, chunk_start, found_start, found_end,
-                                           found_real_end, client_data,
-                                           positive_flags, negative_flags);
+                    found = overlap_helper(head, info, positive_flags, negative_flags);
                     break;
                 }
                 cur += head->alloc_size + inter_chunk_space();
@@ -1884,33 +1851,23 @@ alloc_replace_overlaps_region(byte *start, byte *end,
 
 bool
 alloc_replace_overlaps_delayed_free(byte *start, byte *end,
-                                    byte **free_start OUT,
-                                    byte **free_end OUT,
-                                    void **client_data OUT)
+                                    malloc_info_t *info OUT)
 {
-    return alloc_replace_overlaps_region(start, end, free_start, free_end,
-                                         NULL, client_data, CHUNK_DELAY_FREE, 0);
+    return alloc_replace_overlaps_region(start, end, info, CHUNK_DELAY_FREE, 0);
 }
 
 bool
 alloc_replace_overlaps_any_free(byte *start, byte *end,
-                                    byte **free_start OUT,
-                                    byte **free_end OUT,
-                                    void **client_data OUT)
+                                malloc_info_t *info OUT)
 {
-    return alloc_replace_overlaps_region(start, end, free_start, free_end,
-                                         NULL, client_data, CHUNK_FREED, 0);
+    return alloc_replace_overlaps_region(start, end, info, CHUNK_FREED, 0);
 }
 
 bool
 alloc_replace_overlaps_malloc(byte *start, byte *end,
-                              byte **alloc_start OUT,
-                              byte **alloc_end OUT,
-                              byte **alloc_real_end OUT,
-                              void **client_data OUT)
+                              malloc_info_t *info OUT)
 {
-    return alloc_replace_overlaps_region(start, end, alloc_start, alloc_end,
-                                         alloc_real_end, client_data, 0, CHUNK_FREED);
+    return alloc_replace_overlaps_region(start, end, info, 0, CHUNK_FREED);
 }
 
 /***************************************************************************
@@ -2197,6 +2154,7 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
 {
     arena_header_t *a, *next_a;
     chunk_header_t *head;
+    malloc_info_t info;
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, arena);
     for (a = arena; a != NULL; a = next_a) {
         next_a = a->next_arena;
@@ -2209,12 +2167,10 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
                      * re-using the memory won't be immediate, so we go w/
                      * a simple no-delay policy on the frees
                      */
-                    byte *start = ptr_from_header(head);
-                    client_handle_free(start, chunk_request_size(head),
-                                       start, head->alloc_size,
-                                       mc, (app_pc)replace_RtlDestroyHeap,
-                                       head->user_data, true/*not delayed*/
-                                       _IF_WINDOWS((HANDLE)arena));
+                    header_to_info(head, &info);
+                    client_handle_free(&info, info.base, mc,
+                                       (app_pc)replace_RtlDestroyHeap, NULL,
+                                       true/*not delayed*/ _IF_WINDOWS((HANDLE)arena));
                 }
                 cur += head->alloc_size + inter_chunk_space();
             }
@@ -2951,9 +2907,7 @@ malloc_replace__clear_client_flag(app_pc start, uint client_flag)
 }
 
 static void
-malloc_replace__iterate(bool (*cb)(app_pc start, app_pc end, app_pc real_end,
-                                  bool pre_us, uint client_flags,
-                                  void *client_data, void *iter_data), void *iter_data)
+malloc_replace__iterate(bool (*cb)(malloc_info_t *info, void *iter_data), void *iter_data)
 {
     alloc_iterate(cb, iter_data, true/*live only*/);
 }
@@ -3077,12 +3031,10 @@ free_arena_at_exit(byte *start, byte *end, uint flags
 }
 
 static bool
-free_user_data_at_exit(app_pc start, app_pc end, app_pc real_end,
-                       bool pre_us, uint client_flags,
-                       void *client_data, void *iter_data)
+free_user_data_at_exit(malloc_info_t *info, void *iter_data)
 {
-    if (!pre_us) {
-        chunk_header_t *head = header_from_ptr(start);
+    if (!info->pre_us) {
+        chunk_header_t *head = header_from_ptr(info->base);
         if (head->user_data != NULL)
             client_malloc_data_free(head->user_data);
     }

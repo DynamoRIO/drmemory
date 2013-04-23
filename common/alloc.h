@@ -97,13 +97,26 @@ enum {
     MALLOC_RESERVED_6 = 0x0200,
     MALLOC_RESERVED_7 = 0x0400,
     MALLOC_RESERVED_8 = 0x0800,
+    MALLOC_RESERVED_9 = 0x1000,
     MALLOC_POSSIBLE_CLIENT_FLAGS = (MALLOC_CLIENT_1 | MALLOC_CLIENT_2 |
                                     MALLOC_CLIENT_3 | MALLOC_CLIENT_4),
 };
 
-typedef bool (*malloc_iter_cb_t)(app_pc start, app_pc end, app_pc real_end,
-                                 bool pre_us, uint client_flags,
-                                 void *client_data, void *iter_data);
+/* Info on a malloc chunk used for malloc iteration and client notification */
+typedef struct {
+    size_t struct_size; /* only used when alloc by client: overlap routines */
+    byte *base;
+    size_t request_size;
+    size_t pad_size;    /* request_size plus padding */
+    bool pre_us;
+    bool has_redzone;
+    bool zeroed;        /* only applies to malloc and realloc */
+    bool realloc;       /* only applies to malloc */
+    uint client_flags;  /* does not apply to malloc/realloc where not set yet */
+    void *client_data;  /* does not apply to malloc/realloc where not set yet */
+} malloc_info_t;
+
+typedef bool (*malloc_iter_cb_t)(malloc_info_t *info, void *iter_data);
 
 /* system/lib calls we want to intercept */
 #ifdef WINDOWS
@@ -237,24 +250,20 @@ alloc_entering_replace_routine(app_pc pc);
 bool
 alloc_replace_in_cur_arena(byte *addr);
 
+/* overlap check includes redzone */
 bool
 alloc_replace_overlaps_delayed_free(byte *start, byte *end,
-                                    byte **free_start OUT,
-                                    byte **free_end OUT,
-                                    void **client_data OUT);
+                                    malloc_info_t *info INOUT);
 
+/* overlap check includes redzone */
 bool
 alloc_replace_overlaps_any_free(byte *start, byte *end,
-                                byte **free_start OUT,
-                                byte **free_end OUT,
-                                void **client_data OUT);
+                                malloc_info_t *info INOUT);
 
+/* overlap check includes redzone */
 bool
 alloc_replace_overlaps_malloc(byte *start, byte *end,
-                              byte **alloc_start OUT,
-                              byte **alloc_end OUT,
-                              byte **alloc_real_end OUT,
-                              void **client_data OUT);
+                              malloc_info_t *info INOUT);
 
 /***************************************************************************
  * CLIENT CALLBACKS
@@ -262,8 +271,7 @@ alloc_replace_overlaps_malloc(byte *start, byte *end,
 
 /* called for each live malloc chunk at process exit */
 void                                                             
-client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
-                       void *client_data);
+client_exit_iter_chunk(malloc_info_t *info);
 
 /* called when malloc chunk data is being free so user data can also be freed */
 void
@@ -285,7 +293,7 @@ client_malloc_data_free_split(void *cur_data);
 /* A lock is held around the call to this routine.
  * The return value is stored as the client data.
  * In some cases this routine is re-called for an entry that has
- * already had its data set: in such cases, existing_data is set.
+ * already had its data set: in such cases, info->client_data is non-NULL.
  * For all new entries, mc and post_call will be non-NULL, unless
  * during init time (i.e., pre-existing allocations).
  * The alloc entry is NOT in the alloc hashtable yet and will NOT show
@@ -293,12 +301,11 @@ client_malloc_data_free_split(void *cur_data);
  * a proper hashtable view.
  */
 void *
-client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
-                      void *existing_data, dr_mcontext_t *mc, app_pc post_call);
+client_add_malloc_pre(malloc_info_t *info, dr_mcontext_t *mc, app_pc post_call);
 
 /* Called after the new alloc entry has been added to the alloc hashtable. */
 void
-client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data);
+client_add_malloc_post(malloc_info_t *info);
 
 /* A lock is held around the call to this routine.
  * The alloc entry has NOT been removed from the alloc hashtable yet and
@@ -306,13 +313,13 @@ client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data);
  * a proper hashtable view.
  */
 void
-client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data);
+client_remove_malloc_pre(malloc_info_t *info);
 
 /* Called after the alloc entry has been removed from the alloc hashtable.
  * The client data has been freed and so is not available.
  */
 void
-client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end);
+client_remove_malloc_post(malloc_info_t *info);
 
 /* real_size is the actual size of memory allocated by allocator.
  * If alloc_options.get_padded_size, the padded_size is passed in;
@@ -320,19 +327,14 @@ client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end);
  * possibly (app_size + redzone_size*2).
  */
 void
-client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, size_t real_size, 
-                     bool zeroed, bool realloc, dr_mcontext_t *mc);
+client_handle_malloc(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc);
 
 void
-client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc old_real_base, size_t old_real_size,
-                      app_pc new_base, size_t new_size,
-                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc);
+client_handle_realloc(void *drcontext, malloc_info_t *old_info,
+                      malloc_info_t *new_info, dr_mcontext_t *mc);
 
 void
-client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
-                            app_pc pc, dr_mcontext_t *mc);
+client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc);
 
 void
 client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
@@ -340,7 +342,7 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
 /* This is called when the app asks to free a malloc chunk.
  * For wrapping:
  *   Up to the caller to delay, via its return value.
- *   Returns the value to pass to free().  Return "real_base" for no change.
+ *   Returns the value to pass to free().  Return "tofree" for no change.
  *   The Windows heap param is INOUT so it can be changed as well.
  *   client_data is from client_add_malloc_routine().
  * For replacing:
@@ -349,11 +351,13 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
  * for_reuse indicates whether the freed memory might be reused at any time.
  * If for_reuse is false, a subsequent call to client_handle_free_reuse()
  * will indicate when it is about to be reused.
+ *
+ * routine_set_data is here just for delayed frees: for DrMalloc we should
+ * pull delayed frees inside and elminate this parameter.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
-                   dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data, bool for_reuse
+client_handle_free(malloc_info_t *info, byte *tofree, dr_mcontext_t *mc,
+                   app_pc free_routine, void *routine_set_data, bool for_reuse
                    _IF_WINDOWS(ptr_int_t *auxarg INOUT));
 
 /* For wrapping:
@@ -362,8 +366,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
  *   Called when a free chunk is about to be re-used for a new malloc.
  */
 void
-client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
-                         app_pc real_base, size_t real_size, dr_mcontext_t *mc);
+client_handle_free_reuse(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc);
 
 /* Called when a free chunk is split and new redzones are created
  * or adjacent free chunks are coalesced and a header disappears (the prior header

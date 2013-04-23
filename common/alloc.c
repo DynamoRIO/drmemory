@@ -266,9 +266,7 @@ typedef struct _cls_alloc_t {
 #endif
     uint alloc_flags;
     size_t alloc_size;
-    size_t realloc_old_size;
-    app_pc realloc_old_real_base;
-    size_t realloc_old_real_size;
+    malloc_info_t realloc_old_info;
     size_t realloc_replace_size;
     app_pc alloc_base;
     bool syscall_this_process;
@@ -2119,6 +2117,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     return edata.set;
 }
 
+/* This either returns 0 or alloc_ops.redzone_size.  If we ever have partial redzones
+ * in between, we'll need to store that info per-malloc and not just MALLOC_HAS_REDZONE.
+ */
 static size_t
 redzone_size(alloc_routine_entry_t *routine)
 {
@@ -2212,7 +2213,9 @@ get_size_from_app_routine(IF_WINDOWS_(reg_t auxarg) app_pc real_base,
      * drwrap lock (i#689 part 1 DRWRAP_NO_FRILLS) helps there b/c we
      * won't be holding a lock when we call here
      */
-    ASSERT(alloc_ops.get_padded_size, "should not get here");
+    ASSERT(alloc_ops.get_padded_size ||
+           is_realloc_routine(routine->type), /* called on realloc(,0) */
+           "should not get here");
     ASSERT(!malloc_lock_held_by_self(), "should not hold lock here");
 #ifdef WINDOWS
     if (is_rtl_routine(routine->type)) {
@@ -2482,6 +2485,7 @@ enum {
     /* i#607 part A: try to handle msvc*d.dll w/o syms */
     MALLOC_LIBC_INTERNAL_ALLOC = MALLOC_RESERVED_7,
     MALLOC_CONTAINS_LIBC_ALLOC = MALLOC_RESERVED_8,
+    MALLOC_HAS_REDZONE         = MALLOC_RESERVED_9,
     /* The rest are reserved for future use */
 };
 
@@ -2539,6 +2543,26 @@ malloc_hash(void *v)
     ASSERT(MALLOC_CHUNK_ALIGNMENT == 8, "update hash func please");
     /* Many mallocs are larger than 8 and we get fewer collisions w/ >> 5 */
     return (hash >> 5);
+}
+
+static size_t
+malloc_entry_redzone_size(malloc_entry_t *e)
+{
+    return (TEST(MALLOC_HAS_REDZONE, e->flags) ? alloc_ops.redzone_size : 0);
+}
+
+static void
+malloc_entry_to_info(malloc_entry_t *e, malloc_info_t *info OUT)
+{
+    info->struct_size = sizeof(info);
+    info->base = e->start;
+    info->request_size = e->end - e->start;
+    info->pad_size = info->request_size + e->usable_extra -
+        malloc_entry_redzone_size(e);
+    info->pre_us = TEST(MALLOC_PRE_US, e->flags);
+    info->has_redzone = TEST(MALLOC_HAS_REDZONE, e->flags);
+    info->client_flags = e->flags & MALLOC_POSSIBLE_CLIENT_FLAGS;
+    info->client_data = e->data;
 }
 
 /* If track_allocs is false, only callbacks and callback returns are tracked.
@@ -2637,6 +2661,7 @@ alloc_exit(void)
     dr_mutex_destroy(alloc_routine_lock);
 
     if (!alloc_ops.replace_malloc) {
+        malloc_info_t info;
         LOG(1, "final malloc table size: %u bits, %u entries\n",
             malloc_table.table_bits, malloc_table.entries);
         /* we can't hold malloc_table.lock b/c report_leak() acquires it
@@ -2647,9 +2672,8 @@ alloc_exit(void)
             for (he = malloc_table.table[i]; he != NULL; he = he->next) {
                 malloc_entry_t *e = (malloc_entry_t *) he->payload;
                 if (MALLOC_VISIBLE(e->flags) && !malloc_entry_is_native(e)) {
-                    client_exit_iter_chunk(e->start, e->end,
-                                           TEST(MALLOC_PRE_US, e->flags),
-                                           e->flags, e->data);
+                    malloc_entry_to_info(e, &info);
+                    client_exit_iter_chunk(&info);
                 }
             }
         }
@@ -3239,10 +3263,14 @@ malloc_end(app_pc start)
     return malloc_interface.malloc_end(start);
 }
 
+/* Assumes no redzones have been added (used only for pre-us) and thus
+ * does not take in MALLOC_HAS_REDZONE
+ */
 void
 malloc_add(app_pc start, app_pc end, app_pc real_end, bool pre_us,
            uint client_flags, dr_mcontext_t *mc, app_pc post_call)
 {
+    ASSERT(pre_us, "need to tweak interface to support redzone presence");
     malloc_interface.malloc_add(start, end, real_end, pre_us,
                                     client_flags, mc, post_call);
 }
@@ -3380,6 +3408,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
     malloc_entry_t *old_e;
     bool locked_by_me;
+    malloc_info_t info;
     ASSERT((alloc_ops.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
            alloc_ops.record_allocs, 
            "internal inconsistency on when doing detailed malloc tracking");
@@ -3398,9 +3427,11 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     /* grab lock around client call and hashtable operations */
     locked_by_me = malloc_lock_if_not_held_by_me();
 
+    e->data = NULL;
+    malloc_entry_to_info(e, &info);
+
     if (!malloc_entry_is_native(e)) { /* don't show internal allocs to client */
-        e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
-                                        NULL, mc, post_call);
+        e->data = client_add_malloc_pre(&info, mc, post_call);
     } else
         e->data = NULL;
 
@@ -3417,7 +3448,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
 
     if (!malloc_entry_is_native(e)) { /* don't show internal allocs to client */
         /* PR 567117: client event with entry in hashtable */
-        client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
+        client_add_malloc_post(&info);
     }
 
 #ifdef STATISTICS
@@ -3460,15 +3491,12 @@ malloc_lookup(app_pc start)
 static void
 malloc_entry_remove(malloc_entry_t *e)
 {
-    app_pc start, end, real_end;
+    malloc_info_t info;
     bool native = malloc_entry_is_native(e);
     ASSERT(e != NULL, "invalid arg");
+    malloc_entry_to_info(e, &info);
     if (!native) {
-        /* cache values for post-event */
-        start = e->start;
-        end = e->end;
-        real_end = e->end + e->usable_extra;
-        client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
+        client_remove_malloc_pre(&info);
         if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
             malloc_large_remove(e->start);
         }
@@ -3492,7 +3520,7 @@ malloc_entry_remove(malloc_entry_t *e)
     }
     if (!native) {
         /* PR 567117: client event with entry removed from hashtable */
-        client_remove_malloc_post(start, end, real_end);
+        client_remove_malloc_post(&info);
     }
 }
 
@@ -3515,11 +3543,13 @@ malloc_entry_size(malloc_entry_t *e)
     return (e == NULL ? (size_t)-1 : (e->end - e->start));
 }
 
+#ifdef DEBUG
 static ushort
 malloc_entry_usable_extra(malloc_entry_t *e)
 {
     return (e == NULL ? 0 : e->usable_extra);
 }
+#endif
 
 /* caller must hold lock */
 static void
@@ -3527,17 +3557,17 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
 {
     if (e != NULL) {
         /* cache values for post-event */
-        app_pc start = e->start, end = e->end, real_end = e->end + e->usable_extra;
+        malloc_info_t info;
+        malloc_entry_to_info(e, &info);
         /* FIXME: should we tell client whether undoing false call failure prediction? */
         /* Call client BEFORE updating hashtable, to be consistent w/
          * other add/remove calls, so that any hashtable iteration will
          * NOT find the changes yet (PR 560824)
          */
         if (valid) {
-            e->data = client_add_malloc_pre(e->start, e->end, e->end + e->usable_extra,
-                                            e->data, NULL, NULL);
+            e->data = client_add_malloc_pre(&info, NULL, NULL);
         } else {
-            client_remove_malloc_pre(e->start, e->end, e->end + e->usable_extra, e->data);
+            client_remove_malloc_pre(&info);
         }
         ASSERT((TEST(MALLOC_VALID, e->flags) && !valid) ||
                (!TEST(MALLOC_VALID, e->flags) && valid),
@@ -3551,7 +3581,7 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
                 malloc_large_add(e->start, e->end - e->start);
             }
             /* PR 567117: client event with entry in hashtable */
-            client_add_malloc_post(e->start, e->end, e->end + e->usable_extra, e->data);
+            client_add_malloc_post(&info);
         } else {
             e->flags &= ~MALLOC_VALID;
             if (e->end - e->start >= LARGE_MALLOC_MIN_SIZE) {
@@ -3559,7 +3589,7 @@ malloc_entry_set_valid(malloc_entry_t *e, bool valid)
                 malloc_large_remove(e->start);
             }
             /* PR 567117: client event with entry removed from hashtable */
-            client_remove_malloc_post(start, end, real_end);
+            client_remove_malloc_post(&info);
         }
     } /* ok to be NULL: a race where re-used in malloc and then freed already */
 }
@@ -3640,17 +3670,6 @@ static bool
 malloc_wrap__is_pre_us(app_pc start)
 {
     return malloc_is_pre_us_ex(start, false/*only valid*/);
-}
-
-static void
-malloc_set_pre_us(app_pc start)
-{
-    malloc_entry_t *e;
-    bool locked_by_me = malloc_lock_if_not_held_by_me();
-    e = (malloc_entry_t *) hashtable_lookup(&malloc_table, (void *) start);
-    if (e != NULL)
-        e->flags |= MALLOC_PRE_US;
-    malloc_unlock_if_locked_by_me(locked_by_me);
 }
 
 /* Returns true if the malloc is ignored by us */
@@ -3806,6 +3825,7 @@ malloc_iterate_internal(bool include_native, malloc_iter_cb_t cb, void *iter_dat
      * be careful that table is in a consistent state (staleness does this)
      */
     bool locked_by_me = malloc_lock_if_not_held_by_me();
+    malloc_info_t info;
     for (i = 0; i < HASHTABLE_SIZE(malloc_table.table_bits); i++) {
         hash_entry_t *he, *nxt;
         for (he = malloc_table.table[i]; he != NULL; he = nxt) {
@@ -3814,11 +3834,10 @@ malloc_iterate_internal(bool include_native, malloc_iter_cb_t cb, void *iter_dat
             nxt = he->next;
             if (MALLOC_VISIBLE(e->flags) &&
                 (include_native || !malloc_entry_is_native(e))) {
-                if (!cb(e->start, e->end, e->end + e->usable_extra,
-                        TEST(MALLOC_PRE_US, e->flags),
-                        include_native ? e->flags :
-                        (e->flags & MALLOC_POSSIBLE_CLIENT_FLAGS),
-                        e->data, iter_data)) {
+                malloc_entry_to_info(e, &info);
+                if (include_native)
+                    info.client_flags = e->flags; /* all of them */
+                if (!cb(&info, iter_data)) {
                     goto malloc_iterate_done;
                 }
             }
@@ -4960,13 +4979,15 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         } /* else, probably LFH free which we should ignore */
     } else {
         app_pc change_base;
-        size_t real_size;
 #ifdef WINDOWS
         ptr_int_t auxarg;
         int auxargnum;
 #endif
         app_pc top_pc;
         dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR);
+        malloc_info_t info;
+        /* i#858, we obtain the real_size from entry instead of size + redzone */
+        malloc_entry_to_info(entry, &info);
 
         pt->expect_lib_to_fail = false;
         if (redzone_size(routine) > 0) {
@@ -4997,19 +5018,21 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             size = malloc_entry_size(entry);
             ASSERT((ssize_t)size != -1, "error determining heap block size");
         }
-        /* i#858, we obtain the real_size from entry instead of size + redzone */
-        if (base != real_base) {
-            ASSERT(base - real_base == alloc_ops.redzone_size, "redzone mismatch");
-            /* usable_extra includes trailing redzone */
-            real_size = (base - real_base) + size + malloc_entry_usable_extra(entry);
-        } else {
-            /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
-            real_size = size;
-        }
-        LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX
-            " size="PIFX" => "PFX" real size = "PIFX"\n",
-            IF_WINDOWS_(heap) base, size, real_base, real_size);
-
+        DOLOG(2, {
+            size_t real_size;
+            /* i#858, we obtain the real_size from entry instead of size + redzone */
+            if (base != real_base) {
+                ASSERT(base - real_base == alloc_ops.redzone_size, "redzone mismatch");
+                /* usable_extra includes trailing redzone */
+                real_size = (base - real_base) + size + malloc_entry_usable_extra(entry);
+            } else {
+                /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
+                real_size = size;
+            }
+            LOG(2, "free-pre" IF_WINDOWS(" heap="PFX)" ptr="PFX
+                " size="PIFX" => "PFX" real size = "PIFX"\n",
+                IF_WINDOWS_(heap) base, size, real_base, real_size);
+        });
         ASSERT(routine->set != NULL, "free must be part of set");
 #ifdef WINDOWS
         auxargnum = (type == RTL_ROUTINE_FREE ? 0 :
@@ -5023,7 +5046,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
              * be at top of stack with ebp pointing to its parent frame.
              * developer doesn't need to see explicit free() frame, right?
              */
-            (base, size, real_base, real_size, mc, top_pc,
+            (&info, real_base, mc, top_pc,
              routine->set->client, true/*may be reused*/ _IF_WINDOWS(&auxarg));
         restore_mc_for_client(pt, wrapcxt, mc);
 #ifdef WINDOWS
@@ -5313,6 +5336,13 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
     return real_size;
 }
 
+static inline size_t
+align_to_pad_size(size_t request_size)
+{
+    /* using 4 for linux b/c of i#787 */
+    return ALIGN_FORWARD(request_size, IF_WINDOWS_ELSE(MALLOC_CHUNK_ALIGNMENT, 4));
+}
+
 static app_pc
 adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     dr_mcontext_t *mc, size_t *padded_size_out,
@@ -5331,10 +5361,9 @@ adjust_alloc_result(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
              * (i#689 part 2) and correctness to avoid deadlocks (i#795, i#30)
              */
             real_size = pt->alloc_size + redzone_size(routine) * 2;
-            if (padded_size_out != NULL)
-                *padded_size_out = ALIGN_FORWARD
-                    /* using 4 for linux b/c of i#787 */
-                    (real_size, IF_WINDOWS_ELSE(MALLOC_CHUNK_ALIGNMENT, 4));
+            if (padded_size_out != NULL) {
+                *padded_size_out = align_to_pad_size(real_size);
+            }
         }
         ASSERT(real_size != -1, "error getting real size");
         /* If recursive we assume called by RtlReAllocateHeap where we
@@ -5428,10 +5457,9 @@ check_for_inner_libc_alloc(cls_alloc_t *pt, void *wrapcxt, dr_mcontext_t *mc,
 #endif
 
 static void
-handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
-                     app_pc pc, dr_mcontext_t *mc)
+handle_alloc_failure(malloc_info_t *info, app_pc pc, dr_mcontext_t *mc)
 {
-    client_handle_alloc_failure(sz, zeroed, realloc, pc, mc);
+    client_handle_alloc_failure(info->request_size, pc, mc);
 }
 
 static void
@@ -5446,6 +5474,13 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     bool zeroed = IF_WINDOWS_ELSE(is_rtl_routine(routine->type) ?
                                   TEST(HEAP_ZERO_MEMORY, pt->alloc_flags) :
                                   pt->in_calloc, pt->in_calloc);
+    malloc_info_t info = {
+        sizeof(info), app_base, pt->alloc_size,
+        /* if no padded size, use aligned size */
+        alloc_ops.get_padded_size ? (pad_size - redzone_size(routine)*2) :
+        align_to_pad_size(pt->alloc_size),
+        false/*!pre_us*/, redzone_size(routine) > 0, zeroed, realloc, /*rest 0*/
+    };
     if (pt->in_calloc) {
         /* calloc called malloc, so instruct post-calloc to NOT do anything */
         pt->malloc_from_calloc = true;
@@ -5457,11 +5492,11 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
 #endif
     if (app_base == NULL) {
-        handle_alloc_failure(pt->alloc_size, zeroed, realloc, post_call, mc);
+        handle_alloc_failure(&info, post_call, mc);
     } else {
         if (alloc_ops.record_allocs) {
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
-            uint flags = 0;
+            uint flags = info.has_redzone ? MALLOC_HAS_REDZONE : 0;
 #ifdef WINDOWS
             flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
                                                 app_base, pt->alloc_size);
@@ -5470,11 +5505,7 @@ handle_malloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                               flags, 0, mc, top_pc, pt->allocator);
             restore_mc_for_client(pt, wrapcxt, mc);
         }
-        client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
-                             /* if no padded size, use aligned real size */
-                             alloc_ops.get_padded_size ?
-                             pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
-                             zeroed, realloc, mc);
+        client_handle_malloc(drcontext, &info, mc);
     }
 }
 
@@ -5488,7 +5519,6 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
 {
     routine_type_t type = routine->type;
     app_pc real_base;
-    bool size_in_zone = redzone_size(routine) > 0 && alloc_ops.size_in_redzone;
     bool invalidated = false;
     size_t size = (size_t) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_SIZE(type));
     app_pc base = (app_pc) drwrap_get_arg(wrapcxt, ARGNUM_REALLOC_PTR(type));
@@ -5538,26 +5568,19 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         malloc_unlock();
         return;
     }
+    ASSERT(entry != NULL, "shouldn't get here: tangent or invalid checked above");
+    malloc_entry_to_info(entry, &pt->realloc_old_info);
+    pt->realloc_old_info.realloc = true;
     if (redzone_size(routine) > 0) {
         ASSERT(redzone_size(routine) >= 4, "redzone < 4 not supported");
         if (malloc_entry_is_pre_us(entry, false)) {
             /* was allocated before we took control, so no redzone */
-            /* since we have hashtable, we can use it to retrieve the app size
-             * (see comments in handle_free_pre())
-             */
-            pt->realloc_old_size = malloc_entry_size(entry);
-            ASSERT((ssize_t)pt->realloc_old_size != -1,
-                   "error getting pre-us size");
-            pt->realloc_old_real_size = pt->realloc_old_size +
-                /* usable_extra includes trailing redzone */
-                malloc_entry_usable_extra(entry) + redzone_size(routine);
             /* if we wait until post-free to check failure, we'll have
              * races, so we invalidate here: see comments for free */
             malloc_entry_set_valid(entry, false);
             invalidated = true;
-            size_in_zone = false;
             LOG(2, "realloc of pre-control "PFX"-"PFX"\n",
-                pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
+                pt->alloc_base, pt->alloc_base + pt->realloc_old_info.request_size);
         } else {
             real_base -= redzone_size(routine);
             drwrap_set_arg(wrapcxt, ARGNUM_REALLOC_PTR(type), (void *)real_base);
@@ -5587,28 +5610,10 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             }
         }
     }
-    pt->realloc_old_real_base = real_base;
-    /* We don't know how to read the Rtl headers, so we must
-     * either use our redzone to store the size or call RtlSizeHeap.
-     */
-    if (size_in_zone)
-        pt->realloc_old_size = *((size_t *)(pt->alloc_base - redzone_size(routine)));
-    else if (!invalidated) {
-        /* since we have hashtable, we can use it to retrieve the app size
-         * (see comments in handle_free_pre())
-         */
-        pt->realloc_old_size = malloc_entry_size(entry);
-        ASSERT((ssize_t)pt->realloc_old_size != -1, "error determining heap block size");
-        pt->realloc_old_real_size = pt->realloc_old_size +
-            /* usable_extra includes trailing redzone */
-            malloc_entry_usable_extra(entry) + redzone_size(routine);
-    }
-    ASSERT((ssize_t)pt->realloc_old_size != -1,
-           "error determining heap block size");
     LOG(2, "realloc-pre "IF_WINDOWS("heap="PFX)
         " base="PFX" oldsz="PIFX" newsz="PIFX"\n",
         IF_WINDOWS_(drwrap_get_arg(wrapcxt, 0))
-        pt->alloc_base, pt->realloc_old_size, pt->alloc_size);
+        pt->alloc_base, pt->realloc_old_info.request_size, pt->alloc_size);
     if (alloc_ops.record_allocs && !invalidated)
         malloc_entry_set_valid(entry, false);
     malloc_unlock();
@@ -5619,12 +5624,14 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                     dr_mcontext_t *mc, app_pc post_call,
                     alloc_routine_entry_t *routine)
 {
+    malloc_info_t info = pt->realloc_old_info; /* copy all fields */
+    info.request_size = pt->alloc_size;
     if (alloc_ops.replace_realloc) {
         /* for sz==0 normal to return NULL */
         if (mc->xax == 0 && pt->realloc_replace_size != 0) {
             LOG(2, "realloc-post failure %d %d\n",
                 pt->alloc_size, pt->realloc_replace_size);
-            handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
+            handle_alloc_failure(&info, post_call, mc);
         }
         return;
     }
@@ -5642,6 +5649,7 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         return;
     }
 #endif
+    ASSERT(info.realloc, "old info should also be realloc");
     if (mc->xax != 0) {
         app_pc real_base = (app_pc) mc->xax;
         size_t pad_size, real_size;
@@ -5649,36 +5657,44 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                                               &real_size,
                                               /* no redzone for sz==0 */
                                               pt->alloc_size != 0, routine);
-        app_pc old_end = pt->alloc_base + pt->realloc_old_size;
+        info.base = app_base;
+        /* if no padded size, use aligned size */
+        info.pad_size = alloc_ops.get_padded_size ? (pad_size - redzone_size(routine)*2) :
+            align_to_pad_size(pt->alloc_size);
         /* realloc sometimes calls free, but shouldn't be any conflicts */
         if (alloc_ops.record_allocs) {
             /* we can't remove the old one since it could have been
              * re-used already: so we leave it as invalid */
             app_pc top_pc = set_mc_for_client(pt, wrapcxt, mc, post_call);
-            uint flags = 0;
+            uint flags = info.has_redzone ? MALLOC_HAS_REDZONE : 0;
 #ifdef WINDOWS
             flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, top_pc,
                                                 app_base, pt->alloc_size);
 #endif
-            malloc_add_common(app_base, app_base + pt->alloc_size,
-                              real_base + 
-                              (alloc_ops.get_padded_size ? pad_size : real_size),
-                              flags, 0, mc, top_pc, pt->allocator);
-            restore_mc_for_client(pt, wrapcxt, mc);
             if (pt->alloc_size == 0) {
                 /* PR 493870: if realloc(non-NULL, 0) did allocate a chunk, mark
                  * as pre-us since we did not put a redzone on it
                  */
                 ASSERT(real_base == app_base, "no redzone on realloc(,0)");
-                malloc_set_pre_us(app_base);
-                LOG(2, "realloc-post "PFX" sz=0 no redzone padsz="PIFX"\n",
-                    app_base, pad_size);
+                flags |= MALLOC_PRE_US;
+                flags &= ~MALLOC_HAS_REDZONE;
+                info.pre_us = true;
+                info.has_redzone = false;
+                if (!alloc_ops.get_padded_size) {
+                    /* Estimate w/ redzones added is wrong */
+                    real_size = get_alloc_real_size(IF_WINDOWS_(pt->auxarg) app_base,
+                                                    pt->alloc_size, &pad_size, routine);
+                }
+                LOG(2, "realloc-post "PFX" sz=0 no redzone padsz="PIFX" realsz="PIFX"\n",
+                    app_base, pad_size, real_size);
             }
+            malloc_add_common(app_base, app_base + pt->alloc_size,
+                              real_base +
+                              (alloc_ops.get_padded_size ? pad_size : real_size),
+                              flags, 0, mc, top_pc, pt->allocator);
+            restore_mc_for_client(pt, wrapcxt, mc);
         }
-        client_handle_realloc(drcontext, pt->alloc_base, old_end - pt->alloc_base,
-                              pt->realloc_old_real_base, pt->realloc_old_real_size,
-                              app_base, pt->alloc_size,
-                              real_base, real_size, mc);
+        client_handle_realloc(drcontext, &pt->realloc_old_info, &info, mc);
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
         if (malloc_is_pre_us_ex(pt->alloc_base, true/*check invalid too*/) ||
@@ -5686,9 +5702,9 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             /* still there, and still pre-us if it was before */
             malloc_set_valid(pt->alloc_base, true);
             LOG(2, "re-instating failed realloc as pre-control "PFX"-"PFX"\n",
-                pt->alloc_base, pt->alloc_base + pt->realloc_old_size);
+                pt->alloc_base, pt->alloc_base + pt->realloc_old_info.request_size);
         }
-        handle_alloc_failure(pt->alloc_size, false, true, post_call, mc);
+        handle_alloc_failure(&info, post_call, mc);
     }
 }
 
@@ -5773,6 +5789,7 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     app_pc real_base = (app_pc) mc->xax;
     size_t pad_size, real_size;
     app_pc app_base;
+    malloc_info_t info = {sizeof(info)};
     ASSERT(pt->in_calloc, "calloc tracking messed up");
     pt->in_calloc = false;
     if (pt->malloc_from_calloc) {
@@ -5782,11 +5799,19 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
     app_base = adjust_alloc_result(drcontext, pt, wrapcxt, mc, &pad_size,
                                    &real_size, true, routine);
+    info.base = app_base;
+    info.request_size = pt->alloc_size;
+    /* if no padded size, use aligned size */
+    info.pad_size = alloc_ops.get_padded_size ? (pad_size - redzone_size(routine)*2) :
+        align_to_pad_size(pt->alloc_size);
+    info.has_redzone = redzone_size(routine) > 0;
+    info.zeroed = true;
     if (app_base == NULL) {
-        handle_alloc_failure(pt->alloc_size, true, false, post_call, mc);
+        /* rest stay zero */
+        handle_alloc_failure(&info, post_call, mc);
     } else {
         if (alloc_ops.record_allocs) {
-            uint flags = 0;
+            uint flags = info.has_redzone ? MALLOC_HAS_REDZONE : 0;
 #ifdef WINDOWS
             flags |= check_for_inner_libc_alloc(pt, wrapcxt, mc, routine, post_call,
                                                 app_base, pt->alloc_size);
@@ -5794,11 +5819,7 @@ handle_calloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             malloc_add_common(app_base, app_base + pt->alloc_size, real_base+pad_size,
                               flags, 0, mc, post_call, pt->allocator);
         }
-        client_handle_malloc(drcontext, app_base, pt->alloc_size, real_base,
-                             /* if no padded size, use aligned real size */
-                             alloc_ops.get_padded_size ?
-                             pad_size : ALIGN_FORWARD(real_size, sizeof(uint)),
-                             true/*zeroed*/, false/*!realloc*/, mc);
+        client_handle_malloc(drcontext, &info, mc);
     }
 }
 
@@ -5854,26 +5875,25 @@ typedef struct _heap_destroy_info_t {
 } heap_destroy_info_t;
 
 static bool
-heap_destroy_iter_cb(app_pc start, app_pc end, app_pc real_end,
-                     bool pre_us, uint client_flags,
-                     void *client_data, void *iter_data)
+heap_destroy_iter_cb(malloc_info_t *info, void *iter_data)
 {
-    heap_destroy_info_t *info = (heap_destroy_info_t *) iter_data;
-    if (start < info->end && end >= info->start) {
-        ASSERT(start >= info->start && end <= info->end,
-               "alloc should be entirely inside Heap");
+    heap_destroy_info_t *destroy = (heap_destroy_info_t *) iter_data;
+    if (info->base < destroy->end && info->base + info->request_size >= destroy->start) {
+        ASSERT(info->base >= destroy->start && info->base + info->request_size <=
+               destroy->end, "alloc should be entirely inside Heap");
         /* we already called client_handle_heap_destroy() for whole-heap handling.
          * we also call a special cb for individual handling.
          * additionally, client_remove_malloc_*() will be called by malloc_remove().
          */
-        if (!TEST(MALLOC_RTL_INTERNAL, client_flags))
-            client_remove_malloc_on_destroy(info->heap, start, end);
+        if (!TEST(MALLOC_RTL_INTERNAL, info->client_flags))
+            client_remove_malloc_on_destroy(destroy->heap, info->base, info->base +
+                                            info->request_size);
         /* yes the iteration can handle this.  this involves another lookup but
          * that's ok: RtlDestroyHeap is rare.
          */
         LOG(2, "removing chunk "PFX"-"PFX" in removed arena "PFX"-"PFX"\n",
-            start, end, info->start, info->end);
-        malloc_remove(start);
+            info->base, info->base + info->request_size, destroy->start, destroy->end);
+        malloc_remove(info->base);
     }
     return true;
 }

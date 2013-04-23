@@ -100,7 +100,7 @@ app_pc addr_RtlLeaveCrit; /* for i#689 */
  * includes the redzone).
  */
 typedef struct _delay_free_t {
-    app_pc addr;
+    app_pc addr; /* includes redzone */
 #ifdef WINDOWS
     /* We assume the only flag even at Rtl level is HEAP_NO_SERIALIZE so we only have
      * to record the Heap (xref PR 502150).
@@ -428,29 +428,28 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
 }
 
 void *
-client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
-                      void *existing_data, dr_mcontext_t *mc, app_pc post_call)
+client_add_malloc_pre(malloc_info_t *mal, dr_mcontext_t *mc, app_pc post_call)
 {
     if (!options.count_leaks && !options.track_origins_unaddr)
         return NULL;
     return (void *)
-        get_shared_callstack((packed_callstack_t *)existing_data, mc, post_call);
+        get_shared_callstack((packed_callstack_t *)mal->client_data, mc, post_call);
 }
 
 void
-client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data)
+client_add_malloc_post(malloc_info_t *mal)
 {
     /* nothing to do */
 }
 
 void
-client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data)
+client_remove_malloc_pre(malloc_info_t *mal)
 {
     /* nothing to do: client_malloc_data_free() does the work */
 }
 
 void
-client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end)
+client_remove_malloc_post(malloc_info_t *mal)
 {
     /* nothing to do */
 }
@@ -492,9 +491,7 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
 }
 
 void
-client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, size_t real_size,
-                     bool zeroed, bool realloc, dr_mcontext_t *mc)
+client_handle_malloc(void *drcontext, malloc_info_t *mal, dr_mcontext_t *mc)
 {
     /* For calloc via malloc, post-malloc marks as undefined, and we should
      * see the memset which should then mark as defined.
@@ -505,35 +502,36 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
      * mark as defined and to leave as unaddressable and to mark as
      * defined here (xref PR 531619).
      */
-    if (!zeroed && options.track_origins_unaddr && base != real_base) {
+    if (!mal->zeroed && options.track_origins_unaddr &&
+        !mal->pre_us && mal->has_redzone) {
         byte **ptr;
+        byte *rz_start = mal->base - options.redzone_size;
+        byte *end = mal->base + mal->request_size;
         LOG(2, "set value "PFX" at "PFX"-"PFX" in allocated block\n",
-            real_base, base, base + size);
+            rz_start, mal->base, end);
         /* Must set before pattern_handle_malloc, so it is ok to overflow 
          * to the redzone after the block.
          * In pattern mode, the redzone will be overwriten by pattern
          * value later in pattern_handle_malloc.
          */
-        for (ptr = (byte **)base; ptr < (byte **)(base + size); ptr++)
-            *ptr = real_base;
+        for (ptr = (byte **)mal->base; ptr < (byte **)end; ptr++)
+            *ptr = rz_start;
     }
     if (options.shadowing) {
-        uint val = zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED;
-        shadow_set_range(base, base + size, val);
+        uint val = mal->zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED;
+        shadow_set_range(mal->base, mal->base + mal->request_size, val);
     }
     if (options.pattern != 0) {
-        pattern_handle_malloc(base, size, real_base, real_size);
+        pattern_handle_malloc(mal);
     }
-    report_malloc(base, base + size,
-                  realloc ? "realloc" : "malloc", mc);
-    leak_handle_alloc(drcontext, base, size);
+    report_malloc(mal->base, mal->base + mal->request_size,
+                  mal->realloc ? "realloc" : "malloc", mc);
+    leak_handle_alloc(drcontext, mal->base, mal->request_size);
 }
 
 void
-client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc old_real_base, size_t old_real_size,
-                      app_pc new_base, size_t new_size,
-                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc)
+client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
+                      malloc_info_t *new_mal, dr_mcontext_t *mc)
 {
     /* XXX i#69: wrapping the app's realloc is racy: old region could
      * have been malloc'd again by now!  We could synchronize all
@@ -548,25 +546,26 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
      * the extra space at the end as undefined.  PR 486049.
      */ 
     if (options.shadowing) {
-        if (new_size > old_size) {
-            if (new_base != old_base)
-                shadow_copy_range(old_base, new_base, old_size);
-            shadow_set_range(new_base + old_size, new_base + new_size,
+        if (new_mal->request_size > old_mal->request_size) {
+            if (new_mal->base != old_mal->base)
+                shadow_copy_range(old_mal->base, new_mal->base, old_mal->request_size);
+            shadow_set_range(new_mal->base + old_mal->request_size,
+                             new_mal->base + new_mal->request_size,
                              SHADOW_UNDEFINED);
         } else {
-            if (new_base != old_base)
-                shadow_copy_range(old_base, new_base, new_size);
+            if (new_mal->base != old_mal->base)
+                shadow_copy_range(old_mal->base, new_mal->base, new_mal->request_size);
         }
         
         /* If the new region is after the old region, overlap or not, compute how 
          * much of the front of the old region needs to be marked unaddressable
          * and do so.  This can include the whole old region.
          */
-        if (new_base > old_base) {
-            shadow_set_range(old_base,
+        if (new_mal->base > old_mal->base) {
+            shadow_set_range(old_mal->base,
                              /* it can overlap */
-                             (new_base < old_base+old_size) ?
-                             new_base : old_base+old_size,
+                             (new_mal->base < old_mal->base + old_mal->request_size) ?
+                             new_mal->base : old_mal->base + old_mal->request_size,
                              SHADOW_UNADDRESSABLE);
         }
         
@@ -576,12 +575,13 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
          * Note: this 'if' can't be an else of the above 'if' because there is a
          *       case where the new region is fully subsumed by the old one.
          */
-        if (new_base + new_size < old_base + old_size) {
+        if (new_mal->base + new_mal->request_size <
+            old_mal->base + old_mal->request_size) {
             app_pc start;
-            if (new_base + new_size < old_base)     /* no overlap between regions */
-                start = old_base;
+            if (new_mal->base + new_mal->request_size < old_mal->base)/* no overlap */
+                start = old_mal->base;
             else {                                  /* old & new regions overlap */
-                start = new_base + new_size;
+                start = new_mal->base + new_mal->request_size;
                 if (MAP_4B_TO_1B) {
                     /* XXX i#650: granularity won't let us catch an error
                      * prior to next 4-aligned word in padding
@@ -589,28 +589,28 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
                     start = (app_pc) ALIGN_FORWARD(start, 4);
                 }
             }
-            shadow_set_range(start, old_base + old_size, SHADOW_UNADDRESSABLE);
+            shadow_set_range(start, old_mal->base + old_mal->request_size,
+                             SHADOW_UNADDRESSABLE);
         }
     }
     if (options.pattern != 0) {
-        pattern_handle_realloc(old_base, old_size, old_real_base, old_real_size,
-                               new_base, new_size,
-                               new_real_base, new_real_size);
+        pattern_handle_realloc(old_mal, new_mal);
     }
-    report_malloc(old_base, old_base+old_size, "realloc-old", mc);
-    report_malloc(new_base, new_base+new_size, "realloc-new", mc);
-    leak_handle_alloc(drcontext, new_base, new_size);
+    report_malloc(old_mal->base, old_mal->base + old_mal->request_size,
+                  "realloc-old", mc);
+    report_malloc(new_mal->base, new_mal->base + new_mal->request_size,
+                  "realloc-new", mc);
+    leak_handle_alloc(drcontext, new_mal->base, new_mal->request_size);
 }
 
 void
-client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
-                            app_pc pc, dr_mcontext_t *mc)
+client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc)
 {
     app_loc_t loc;
     pc_to_loc(&loc, pc);
 #ifdef LINUX
     LOG(1, "heap allocation failed on sz="PIFX"!  heap="PFX"-"PFX"\n",
-        sz, get_heap_start(), get_brk(false/*want full extent*/));
+        request_size, get_heap_start(), get_brk(false/*want full extent*/));
 # ifdef STATISTICS
     LOG(1, "\tdelayed=%u\n",  delayed_free_bytes);
     /* FIXME: if delayed frees really are a problem, should we free
@@ -725,11 +725,13 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
             pass_to_free + info->delay_free_list[idx].real_size
             _IF_WINDOWS(auxarg == NULL ? 0 : *auxarg));
         if (options.pattern != 0) {
-            pattern_handle_real_free(pass_to_free /* real_base */,
-                                     info->delay_free_list[idx].real_size,
-                                     pass_to_free,
-                                     info->delay_free_list[idx].real_size,
-                                     true /* delayed */);
+            /* pattern_handle_real_free only cares about redzone bounds */
+            malloc_info_t mal = {sizeof(info), pass_to_free,
+                                 info->delay_free_list[idx].real_size,
+                                 info->delay_free_list[idx].real_size,
+                                 false/*!pre_us*/, false/*redzone already in bounds*/,
+                                 /* rest 0 */};
+            pattern_handle_real_free(&mal, true /* delayed */);
         }
     }
     shared_callstack_free(info->delay_free_list[idx].pcs);
@@ -737,19 +739,20 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
     return pass_to_free;
 }
 
-/* Returns the value to pass to free().  Return "real_base" for no change.
+/* Returns the value to pass to free().  Return "tofree" for no change.
  * The auxarg param is INOUT so it can be changed as well.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
-                   dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data, bool for_reuse
+client_handle_free(malloc_info_t *mal, byte *tofree, dr_mcontext_t *mc,
+                   app_pc free_routine, void *routine_set_data, bool for_reuse
                    _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
-    report_malloc(base, base+size, "free", mc);
+    report_malloc(mal->base, mal->base + mal->request_size, "free", mc);
 
-    if (options.shadowing)
-        shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
+    if (options.shadowing) {
+        shadow_set_range(mal->base, mal->base + mal->request_size,
+                         SHADOW_UNADDRESSABLE);
+    }
 
     ASSERT(for_reuse || options.replace_malloc, "wrap free is always for reuse");
 
@@ -761,26 +764,30 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
          * We don't bother to free the FIFO entries at exit time; we
          * simply exclude from our leak report.
          */
-        delay_free_info_t *info = (delay_free_info_t *) client_data;
+        delay_free_info_t *info = (delay_free_info_t *) routine_set_data;
         app_pc pass_to_free = NULL;
 #ifdef WINDOWS
         ptr_int_t pass_auxarg;
         bool full;
 #endif
         uint idx;
+        size_t rz_sz = options.redzone_size;
+        byte *rz_start = mal->base - (mal->has_redzone ? rz_sz : 0);
+        size_t tot_sz = mal->pad_size + (mal->has_redzone ? rz_sz*2 : 0);
         ASSERT(info != NULL, "invalid param");
+        ASSERT(rz_start == tofree, "tofree should equal start of redzone");
         dr_mutex_lock(delay_free_lock);
-        if (real_size > options.delay_frees_maxsz) {
+        if (tot_sz > options.delay_frees_maxsz) {
             /* we have to free this one, it's too big */
             LOG(2, "malloc size %d is larger than max delay %d so freeing immediately\n",
-                real_size, options.delay_frees_maxsz);
+                tot_sz, options.delay_frees_maxsz);
             dr_mutex_unlock(delay_free_lock);
             if (options.pattern != 0)
-                pattern_handle_real_free(base, size, real_base, real_size, false);
-            return real_base;
+                pattern_handle_real_free(mal, false);
+            return tofree;
         }
         /* Store real base and real size: i.e., including redzones (PR 572716) */
-        info->delay_free_bytes += real_size;
+        info->delay_free_bytes += tot_sz;
         if (info->delay_free_bytes > options.delay_frees_maxsz) {
             int head_start = info->delay_free_head;
             int idx = info->delay_free_head;
@@ -800,7 +807,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                  * objects.  not ideal!
                  */
                 if (info->delay_free_list[idx].addr != NULL &&
-                    info->delay_free_list[idx].real_size >= real_size) {
+                    info->delay_free_list[idx].real_size >= tot_sz) {
                     LOG(2, "freeing delayed idx=%d "PFX" w/ size=%d (head=%d, fill=%d)\n", 
                         idx, info->delay_free_list[idx].addr,
                         info->delay_free_list[idx].real_size,
@@ -820,20 +827,20 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
             } while (idx != head_start);
             if (pass_to_free == NULL) {
                 LOG(2, "malloc size %d larger than any entry + over size limit\n",
-                    real_size);
-                info->delay_free_bytes -= real_size;
+                    tot_sz);
+                info->delay_free_bytes -= tot_sz;
                 dr_mutex_unlock(delay_free_lock);
                 if (options.pattern != 0) {
-                    pattern_handle_real_free(base, size, real_base, real_size, false);
+                    pattern_handle_real_free(mal, false);
                 }
-                return real_base;
+                return tofree;
             }
         }
 
         LOG(2, "inserting into delay_free_tree (queue idx=%d): "PFX
             "-"PFX" %d bytes redzone=%d\n",
             DELAY_FREE_FULL(info) ? info->delay_free_head : info->delay_free_fill,
-            real_base, real_base + real_size, real_size, base != real_base);
+            rz_start, rz_start + tot_sz, tot_sz, mal->has_redzone);
 
         if (DELAY_FREE_FULL(info)) {
             IF_WINDOWS(full = true;)
@@ -849,7 +856,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
         } else {
             LOG(2, "delayed free queue not full: delaying %d-th free of "PFX"-"PFX
                 IF_WINDOWS(" auxarg="PFX) "\n",
-                info->delay_free_fill, real_base, real_base + real_size
+                info->delay_free_fill, rz_start, rz_start + tot_sz
                 _IF_WINDOWS((auxarg==NULL) ? 0:*auxarg));
             ASSERT(info->delay_free_fill <= options.delay_frees - 1, "internal error");
             IF_WINDOWS(full = false;)
@@ -860,10 +867,10 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
              */
         }
 
-        rb_insert(delay_free_tree, real_base, real_size,
+        rb_insert(delay_free_tree, rz_start, tot_sz,
                   (void *)&info->delay_free_list[idx]);
 
-        info->delay_free_list[idx].addr = real_base;
+        info->delay_free_list[idx].addr = rz_start;
 #ifdef WINDOWS
         /* should we be doing safe_read() and safe_write()? */
         if (auxarg != NULL) {
@@ -876,36 +883,36 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 ASSERT(pass_auxarg == 0, "whether using auxarg should be consistent");
         }
 #endif
-        info->delay_free_list[idx].real_size = real_size;
-        info->delay_free_list[idx].has_redzone = (base != real_base);
-        if (options.delay_frees_stack)
-            info->delay_free_list[idx].pcs = get_shared_callstack(NULL, mc, free_routine);
-        else
+        info->delay_free_list[idx].real_size = tot_sz;
+        info->delay_free_list[idx].has_redzone = mal->has_redzone;
+        if (options.delay_frees_stack) {
+            info->delay_free_list[idx].pcs =
+                get_shared_callstack(NULL, mc, free_routine);
+        } else
             info->delay_free_list[idx].pcs = NULL;
 
-        STATS_ADD(delayed_free_bytes, (uint)real_size);
+        STATS_ADD(delayed_free_bytes, (uint)tot_sz);
 
         dr_mutex_unlock(delay_free_lock);
         if (options.pattern != 0)
-            pattern_handle_delayed_free(base, size, real_size);
+            pattern_handle_delayed_free(mal);
         return pass_to_free;
     }
     if (options.pattern != 0) {
         if (options.replace_malloc && !for_reuse)
-            pattern_handle_delayed_free(base, size, real_size);
+            pattern_handle_delayed_free(mal);
         else
-            pattern_handle_real_free(base, size, real_base, real_size, false);
+            pattern_handle_real_free(mal, false);
     }
-    return real_base; /* no change */
+    return tofree; /* no change */
 }
 
 void
-client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
-                         app_pc real_base, size_t real_size, dr_mcontext_t *mc)
+client_handle_free_reuse(void *drcontext, malloc_info_t *mal, dr_mcontext_t *mc)
 {
     if (options.pattern != 0) {
-        /* for delayed=true (final param), pattern wants real bounds */
-        pattern_handle_real_free(real_base, real_size, real_base, real_size, true);
+        /* for delayed=true (final param), pattern wants bounds w/ redzones */
+        pattern_handle_real_free(mal, true);
     }
 }
 
@@ -983,24 +990,38 @@ client_handle_heap_destroy(void *drcontext, HANDLE heap, void *client_data)
 
 bool
 overlaps_delayed_free(byte *start, byte *end,
-                      byte **free_start OUT,
-                      byte **free_end OUT,
+                      byte **free_start OUT, /* app base */
+                      byte **free_end OUT,   /* app request size */
                       packed_callstack_t **pcs OUT,
                       bool delayed_only)
 {
     bool res = false;
     rb_node_t *node;
+    malloc_info_t info;
+    info.struct_size = sizeof(info);
     if (options.delay_frees == 0)
         return false;
     if (options.replace_malloc) {
         /* replacement allocator is tracking all delayed frees, not us */
+        bool found;
         if (delayed_only) {
-            return alloc_replace_overlaps_delayed_free(start, end, free_start, free_end,
-                                                       (void **)pcs);
+            found = alloc_replace_overlaps_delayed_free(start, end, &info);
         } else {
-            return alloc_replace_overlaps_any_free(start, end, free_start, free_end,
-                                                   (void **)pcs);
+            found = alloc_replace_overlaps_any_free(start, end, &info);
         }
+        /* exclude redzone */
+        if (found &&
+            (!info.has_redzone ||
+             (start < info.base + info.request_size && end > info.base))) {
+            if (free_start != NULL)
+                *free_start = info.base;
+            if (free_end != NULL)
+                *free_end = info.base + info.request_size;
+            if (pcs != NULL)
+                *pcs = (packed_callstack_t *) info.client_data;
+        } else
+            found = false;
+        return found;
     }
     dr_mutex_lock(delay_free_lock);
     LOG(3, "overlaps_delayed_free "PFX"-"PFX"\n", start, end);
@@ -1019,7 +1040,7 @@ overlaps_delayed_free(byte *start, byte *end,
         redsz = (info->has_redzone ? options.redzone_size : 0);
         LOG(3, "\toverlap real base: "PFX", size: %d, redzone: %d\n",
             real_base, size, redsz);
-        if (info->has_redzone ||
+        if (!info->has_redzone ||
             (start < real_base + size - options.redzone_size &&
              end > real_base + options.redzone_size)) {
             res = true;
@@ -2373,14 +2394,15 @@ handle_removed_heap_region(app_pc start, app_pc end, dr_mcontext_t *mc)
  */
 
 void
-client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
-                       void *client_data)
+client_exit_iter_chunk(malloc_info_t *mal)
 {
     /* don't report leaks if we never scanned (could have bailed for PR 574018) */
     if (!options.track_allocs)
         return;
-    if (options.count_leaks)
-        leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
+    if (options.count_leaks) {
+        leak_exit_iter_chunk(mal->base, mal->base + mal->request_size, mal->pre_us,
+                             mal->client_flags, mal->client_data);
+    }
 }
 
 void
@@ -2454,24 +2476,23 @@ typedef struct _malloc_iter_data_t {
 
 /* iterate callback for finding block overlapping with [addr, addr + size) */
 static bool
-malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
-                  bool pre_us, uint client_flags,
-                  void *client_data, void *iter_data)
+malloc_iterate_cb(malloc_info_t *mal, void *iter_data)
 {
     malloc_iter_data_t *data = (malloc_iter_data_t *) iter_data;
+    byte *rz_start = mal->base - (mal->has_redzone ? options.redzone_size : 0);
+    size_t tot_sz = mal->pad_size + (mal->has_redzone ? options.redzone_size*2 : 0);
     ASSERT(iter_data != NULL, "invalid iteration data");
-    ASSERT(start != NULL && start <= end, "invalid params");
-    LOG(4, "malloc iter: "PFX"-"PFX"%s\n", start, end, pre_us ? ", pre-us" : "");
+    ASSERT(mal != NULL, "invalid params");
+    LOG(4, "malloc iter: "PFX"-"PFX"%s\n", mal->base, mal->base + mal->request_size,
+        mal->pre_us ? ", pre-us" : "");
     ASSERT(!data->found, "the iteration should be short-circuited");
-    if (data->addr < real_end &&
-        (data->addr + data->size) > (pre_us ?
-                                     start :
-                                     (start - options.redzone_size))) {
-        data->start     = start;
-        data->end       = end;
-        data->real_end  = real_end;
-        data->alloc_pcs = (packed_callstack_t *) client_data;
-        data->pre_us    = pre_us;
+    if (data->addr < rz_start + tot_sz &&
+        (data->addr + data->size) > rz_start) {
+        data->start     = mal->base;
+        data->end       = mal->base + mal->request_size;
+        data->real_end  = rz_start + tot_sz;
+        data->alloc_pcs = (packed_callstack_t *) mal->client_data;
+        data->pre_us    = mal->pre_us;
         data->found     = true;
         return false; /* stop iteration */
     }
@@ -2508,9 +2529,14 @@ region_in_redzone(byte *addr, size_t size,
     malloc_iter_data_t iter_data = {addr, size, NULL, NULL, NULL, false, false};
     if (options.replace_malloc) {
         /* Faster than full iteration, in presence of multiple arenas */
-        if (alloc_replace_overlaps_malloc(addr, addr + size, &iter_data.start,
-                                          &iter_data.end, &iter_data.real_end,
-                                          (void **)&iter_data.alloc_pcs)) {
+        malloc_info_t mal;
+        mal.struct_size = sizeof(mal);
+        if (alloc_replace_overlaps_malloc(addr, addr + size, &mal)) {
+            iter_data.start = mal.base;
+            iter_data.end = mal.base + mal.request_size;
+            iter_data.real_end = mal.base + mal.pad_size +
+                (mal.has_redzone ? options.redzone_size*2 : 0);
+            iter_data.alloc_pcs = (packed_callstack_t *) mal.client_data;
             iter_data.pre_us = false; /* we don't know, but won't match bounds checks */
             iter_data.found = true;
         }
@@ -2518,9 +2544,15 @@ region_in_redzone(byte *addr, size_t size,
         ASSERT(iter_data.found, "should be set already");
     }
     if (iter_data.found) {
+        LOG(3, "%s "PFX"-"PFX": match "PFX"-"PFX"-"PFX", checking redzones\n",
+            __FUNCTION__, addr, addr+size, iter_data.start, iter_data.end,
+            iter_data.real_end);
         if (iter_data.pre_us)
             return false; /* pre_us */
         /* in head redzone */
+        /* For -replace_malloc w/ shared redzones, we'll pick head over tail:
+         * shouldn't matter.
+         */
         if (addr <  iter_data.start &&
             addr + size > iter_data.start - options.redzone_size) {
             if (app_start != NULL)
@@ -2533,6 +2565,7 @@ region_in_redzone(byte *addr, size_t size,
                 *redzone_end = iter_data.start;
             if (alloc_pcs != NULL)
                 *alloc_pcs = iter_data.alloc_pcs;
+            LOG(3, "\tin pre-redzone\n");
             return true;
         }
         /* in tail redzone */
@@ -2547,6 +2580,7 @@ region_in_redzone(byte *addr, size_t size,
                 *redzone_end = iter_data.real_end;
             if (alloc_pcs != NULL)
                 *alloc_pcs = iter_data.alloc_pcs;
+            LOG(3, "\tin post-redzone\n");
             return true;
         }
     }

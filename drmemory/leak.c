@@ -1164,66 +1164,62 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
 }
 
 static bool
-malloc_iterate_identify_indirect_cb(app_pc start, app_pc end, app_pc real_end,
-                                    bool pre_us, uint client_flags,
-                                    void *client_data, void *iter_data)
+malloc_iterate_identify_indirect_cb(malloc_info_t *info, void *iter_data)
 {
     reachability_data_t *data = (reachability_data_t *) iter_data;
     ASSERT(data != NULL, "invalid iteration data");
-    ASSERT(start != NULL && start <= end, "invalid params");
+    ASSERT(info->base != NULL, "invalid params");
     if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE,
-                 client_flags)) {
-        check_reachability_helper(start, end, false, (void *)data);
+                 info->client_flags)) {
+        check_reachability_helper(info->base, info->base + info->request_size,
+                                  false, (void *)data);
     }
     return true;
 }
 
 static bool
-malloc_iterate_cb(app_pc start, app_pc end, app_pc real_end,
-                  bool pre_us, uint client_flags,
-                  void *client_data, void *iter_data)
+malloc_iterate_cb(malloc_info_t *info, void *iter_data)
 {
     reachability_data_t *data = (reachability_data_t *) iter_data;
     ASSERT(data != NULL, "invalid iteration data");
-    ASSERT(start != NULL && start <= end, "invalid params");
-    LOG(4, "malloc iter: "PFX"-"PFX"%s%s%s%s%s\n", start, end,
-        pre_us ? ", pre-us" : "",
-        TEST(MALLOC_IGNORE_LEAK, client_flags) ? ", ignore leak" : "",
-        TEST(MALLOC_REACHABLE, client_flags) ? ", reachable" : "", 
-        TEST(MALLOC_MAYBE_REACHABLE, client_flags) ? ", maybe reachable" : "",
-        TEST(MALLOC_INDIRECTLY_REACHABLE, client_flags) ? ", indirectly reachable" : "");
+    ASSERT(info->base != NULL, "invalid params");
+    LOG(4, "malloc iter: "PFX"-"PFX"%s%s%s%s%s\n", info->base,
+        info->base + info->request_size,  info->pre_us ? ", pre-us" : "",
+        TEST(MALLOC_IGNORE_LEAK, info->client_flags) ? ", ignore leak" : "",
+        TEST(MALLOC_REACHABLE, info->client_flags) ? ", reachable" : "",
+        TEST(MALLOC_MAYBE_REACHABLE, info->client_flags) ? ", maybe reachable" : "",
+        TEST(MALLOC_INDIRECTLY_REACHABLE, info->client_flags) ?
+        ", indirectly reachable" : "");
     /* If requested in future we can add a -show_indirectly_reachable: for now
      * we never print detailed info for them, just add their sizes to
      * their parent direct leaks
      */
-    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_INDIRECTLY_REACHABLE, client_flags) &&
+    if (!TESTANY(MALLOC_IGNORE_LEAK | MALLOC_INDIRECTLY_REACHABLE, info->client_flags) &&
         /* for 2nd pass only report reachable */
-        (!data->last_of_2_iters || TEST(MALLOC_REACHABLE, client_flags))) {
-        rb_node_t *node = rb_find(data->alloc_tree, start);
+        (!data->last_of_2_iters || TEST(MALLOC_REACHABLE, info->client_flags))) {
+        rb_node_t *node = rb_find(data->alloc_tree, info->base);
         unreach_entry_t *unreach;
         ASSERT(node != NULL, "must be in rbtree");
         rb_node_fields(node, NULL, NULL, (void *)&unreach);
-        client_found_leak(start, end, 
+        client_found_leak(info->base, info->base + info->request_size,
                           (unreach == NULL) ? 0 : unreach->indirect_bytes, 
-                          pre_us,
-                          TEST(MALLOC_REACHABLE, client_flags), 
-                          TEST(MALLOC_MAYBE_REACHABLE, client_flags),
-                          client_data,
+                          info->pre_us,
+                          TEST(MALLOC_REACHABLE, info->client_flags),
+                          TEST(MALLOC_MAYBE_REACHABLE, info->client_flags),
+                          info->client_data,
                           !data->last_of_2_iters, /* count on 1st iter */
                           data->last_of_2_iters); /* show, but no double-count, on 2nd */
     }
     /* clear for any subsequent reachability walks */
     if (!data->first_of_2_iters) {
-        malloc_clear_client_flag(start, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
+        malloc_clear_client_flag(info->base, MALLOC_REACHABLE | MALLOC_MAYBE_REACHABLE |
                                  MALLOC_INDIRECTLY_REACHABLE);
     }
     return true;
 }
 
 static bool
-malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
-                             bool pre_us, uint client_flags,
-                             void *client_data, void *iter_data)
+malloc_iterate_build_tree_cb(malloc_info_t *info, void *iter_data)
 {
     rb_tree_t *alloc_tree = (rb_tree_t *) iter_data;
     IF_DEBUG(rb_node_t *node;)
@@ -1233,7 +1229,7 @@ malloc_iterate_build_tree_cb(app_pc start, app_pc end, app_pc real_end,
      * best allocated lazily
      */
     IF_DEBUG(node = )
-        rb_insert(alloc_tree, start, (end - start), NULL);
+        rb_insert(alloc_tree, info->base, info->request_size, NULL);
     ASSERT(node == NULL, "mallocs should not overlap");
     return true;
 }

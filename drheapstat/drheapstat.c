@@ -315,13 +315,13 @@ get_cstack_from_alloc_data(void *client_data)
 }
 
 void
-client_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
-                       void *client_data)
+client_exit_iter_chunk(malloc_info_t *info)
 {
     if (options.check_leaks)
-        leak_exit_iter_chunk(start, end, pre_us, client_flags, client_data);
+        leak_exit_iter_chunk(info->base, info->base + info->request_size,
+                             info->pre_us, info->client_flags, info->client_data);
     if (options.staleness)
-        staleness_free_per_alloc((stale_per_alloc_t *)client_data);
+        staleness_free_per_alloc((stale_per_alloc_t *)info->client_data);
 }
 
 void
@@ -731,8 +731,7 @@ dump_callstack(packed_callstack_t *pcs, per_callstack_t *per,
 
 /* A lock is held around the call to this routine */
 void *
-client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
-                      void *existing_data, dr_mcontext_t *mc, app_pc post_call)
+client_add_malloc_pre(malloc_info_t *info, dr_mcontext_t *mc, app_pc post_call)
 {
     void *drcontext = dr_get_current_drcontext();
     per_callstack_t *per;
@@ -743,8 +742,8 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
     static uint malloc_count;
 #endif
     get_buffer(drcontext, &buf, &bufsz);
-    if (existing_data != NULL) {
-        per = get_cstack_from_alloc_data(existing_data);
+    if (info->client_data != NULL) {
+        per = get_cstack_from_alloc_data(info->client_data);
         IF_DEBUG({
             hashtable_lock(&alloc_stack_table);
             ASSERT(hashtable_lookup(&alloc_stack_table,
@@ -810,7 +809,7 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
 #ifdef X64
     /* FIXME: assert not truncating */
 #endif
-    account_for_bytes_pre(per, end - start, real_end - end, HEADER_SIZE);
+    account_for_bytes_pre(per, info->request_size, info->pad_size, HEADER_SIZE);
 
 #ifdef STATISTICS
     if (((malloc_count++) % STATS_DUMP_FREQ) == 0)
@@ -825,32 +824,33 @@ client_add_malloc_pre(app_pc start, app_pc end, app_pc real_end,
 }
 
 void
-client_add_malloc_post(app_pc start, app_pc end, app_pc real_end, void *data)
+client_add_malloc_post(malloc_info_t *info)
 {
     /* take potential snapshots here once table is consistent (PR 567117) */
-    account_for_bytes_post(end - start, real_end - end, HEADER_SIZE);
+    account_for_bytes_post(info->request_size, info->pad_size, HEADER_SIZE);
 }
 
 /* A lock is held around the call to this routine */
 void
-client_remove_malloc_pre(app_pc start, app_pc end, app_pc real_end, void *data)
+client_remove_malloc_pre(malloc_info_t *info)
 {
-    per_callstack_t *per = get_cstack_from_alloc_data(data);
+    per_callstack_t *per = get_cstack_from_alloc_data(info->client_data);
 #ifdef X64
     /* FIXME: assert not truncating */
 #endif
     /* To avoid repeatedly redoing the peak snapshot we wait until a drop (PR 476018) */
     check_for_peak();
-    account_for_bytes_pre(per, -(end - start), -(real_end - end), -(ssize_t)(HEADER_SIZE));
+    account_for_bytes_pre(per, -(ssize_t)info->request_size, -(ssize_t)info->pad_size,
+                          -(ssize_t)(HEADER_SIZE));
     if (options.staleness)
-        staleness_free_per_alloc((stale_per_alloc_t *)data);
+        staleness_free_per_alloc((stale_per_alloc_t *)info->client_data);
 }
 
 void
-client_remove_malloc_post(app_pc start, app_pc end, app_pc real_end)
+client_remove_malloc_post(malloc_info_t *info)
 {
     /* take potential snapshots here once table is consistent (PR 567117) */
-    account_for_bytes_post(end - start, real_end - end, HEADER_SIZE);
+    account_for_bytes_post(info->request_size, info->pad_size, HEADER_SIZE);
 }
 
 static void
@@ -915,27 +915,22 @@ snapshot_exit(void)
 }
 
 void
-client_handle_malloc(void *drcontext, app_pc base, size_t size,
-                     app_pc real_base, size_t real_size,
-                     bool zeroed, bool realloc, dr_mcontext_t *mc)
+client_handle_malloc(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc)
 {
     if (options.check_leaks)
-        leak_handle_alloc(drcontext, base, size);
+        leak_handle_alloc(drcontext, info->base, info->request_size);
 }
 
 void
-client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc old_real_base, size_t old_real_size,
-                      app_pc new_base, size_t new_size,
-                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc)
+client_handle_realloc(void *drcontext, malloc_info_t *old_info, malloc_info_t *new_info,
+                      dr_mcontext_t *mc)
 {
     if (options.check_leaks)
-        leak_handle_alloc(drcontext, new_base, new_size);
+        leak_handle_alloc(drcontext, new_info->base, new_info->request_size);
 }
 
 void
-client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
-                            app_pc pc, dr_mcontext_t *mc)
+client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc)
 {
 }
 
@@ -948,17 +943,15 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
  * The Windows heap param is INOUT so it can be changed as well.
  */
 app_pc
-client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
-                   dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data, bool for_reuse
+client_handle_free(malloc_info_t *info, byte *tofree, dr_mcontext_t *mc,
+                   app_pc free_routine, void *routine_set_data, bool for_reuse
                    _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
-    return real_base;
+    return tofree;
 }
 
 void
-client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
-                         app_pc real_base, size_t real_size, dr_mcontext_t *mc)
+client_handle_free_reuse(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc)
 {
     /* nothing */
 }

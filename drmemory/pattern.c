@@ -1164,39 +1164,44 @@ pattern_addr_in_malloc_tree(byte *addr, size_t size)
 }
 
 static void
-pattern_insert_malloc_tree(byte *app_base,  size_t app_size,
-                           byte *real_base, size_t real_size)
+pattern_insert_malloc_tree(malloc_info_t *info)
 {
     IF_DEBUG(rb_node_t *node;)
+    /* only used to find redzone overlap of live allocs */
+    if (!info->has_redzone)
+        return;
     dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
     /* due to padding, the real_size might be larger than 
      * (app_size + redzone_size*2), which makes the size of 
      * rear redzone not fixed, so store app_size in rb_tree.
      */
-    IF_DEBUG(node =) rb_insert(pattern_malloc_tree, real_base,
-                               real_size, (void *)app_size);
+    IF_DEBUG(node =)
+        rb_insert(pattern_malloc_tree, info->base - options.redzone_size,
+                  info->pad_size + options.redzone_size*2, (void *)info->request_size);
     dr_rwlock_write_unlock(pattern_malloc_tree_rwlock);
     ASSERT(node == NULL, "error in inserting pattern malloc tree");
 }
 
 static void
-pattern_remove_malloc_tree(app_pc app_base, size_t app_size, size_t real_size)
+pattern_remove_malloc_tree(malloc_info_t *info)
 {
     rb_node_t *node;
     void *data;
     app_pc real_base;
     size_t size;
 
+    /* only used to find redzone overlap of live allocs */
+    if (!info->has_redzone)
+        return;
     dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
-    node = rb_find(pattern_malloc_tree, app_base - options.redzone_size);
+    node = rb_find(pattern_malloc_tree, info->base - options.redzone_size);
     if (node != NULL) {
         rb_node_fields(node, &real_base, &size, &data);
-        ASSERT(app_size  == (size_t)data,
+        ASSERT(info->request_size  == (size_t)data,
                "wrong app size in pattern malloc tree");
-        ASSERT(real_base == app_base - options.redzone_size,
+        ASSERT(real_base == info->base - options.redzone_size,
                "wrong real_base in pattern malloc tree");
-        ASSERT(real_size == size &&
-               real_size >= app_size + options.redzone_size * 2,
+        ASSERT(size == info->pad_size + options.redzone_size * 2,
                "Wrong real_size in pattern malloc tree");
         /* XXX i#786: we simply remove the memory here, which can be 
          * improved by invalidating/removing malloc rbtree instead,
@@ -1264,6 +1269,7 @@ static bool
 pattern_addr_in_redzone(byte *addr, size_t size)
 {
     bool res = false;
+    LOG(3, "%s: "PFX"-"PFX"\n", __FUNCTION__, addr, addr+size);
     if (options.pattern_use_malloc_tree)
         res = pattern_addr_in_malloc_tree(addr, size);
     else
@@ -1300,21 +1306,22 @@ pattern_write_pattern(byte *start, byte *end _IF_DEBUG(const char *description))
 }
 
 void
-pattern_handle_malloc(byte *app_base,  size_t app_size,
-                      byte *real_base, size_t real_size)
+pattern_handle_malloc(malloc_info_t *info)
 {
     ASSERT(options.pattern != 0, "should not be called");
-    ASSERT(ALIGNED(real_base, sizeof(uint)), "real base is unaligned");
-    ASSERT(ALIGNED(real_size, sizeof(uint)), "real size is unaligned");
+    ASSERT(ALIGNED(info->base, sizeof(uint)), "base is unaligned");
+    ASSERT(ALIGNED(info->pad_size, sizeof(uint)), "pad size is unaligned");
 
-    if (app_base != real_base) {
+    if (info->has_redzone) {
         if (options.pattern_use_malloc_tree)
-            pattern_insert_malloc_tree(app_base, app_size, real_base, real_size);
-        pattern_write_pattern(real_base, app_base _IF_DEBUG("malloc pre-redzone"));
+            pattern_insert_malloc_tree(info);
+        pattern_write_pattern(info->base - options.redzone_size, info->base
+                              _IF_DEBUG("malloc pre-redzone"));
         /* the app_size might be unaligned, which will be expanded with padding
          * by allocator. We will fill the padding whenever possible.
          */
-        pattern_write_pattern(app_base + app_size, real_base + real_size
+        pattern_write_pattern(info->base + info->request_size,
+                              info->base + info->pad_size + options.redzone_size
                               _IF_DEBUG("malloc padding + post-redzone"));
     } else {
 #if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
@@ -1324,98 +1331,95 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
 }
 
 void
-pattern_handle_real_free(app_pc base, size_t size, app_pc real_base,
-                         size_t real_size, bool delayed)
+pattern_handle_real_free(malloc_info_t *info, bool delayed)
 {
+    size_t rz_sz = options.redzone_size;
     ASSERT(options.pattern != 0, "should not be called");
     if (delayed) {
-        /* if delayed, the base and size are real base and size */
         /* removing the pattern to avoid false positive faults. */
+        byte *rz_start = info->base - (info->has_redzone ? rz_sz : 0);
+        size_t tot_sz = info->pad_size + (info->has_redzone ? rz_sz*2 : 0);
         LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in freed block\n",
-            base, base + size, size);
-        memset(base, 0, size);
+            rz_start, rz_start + tot_sz, tot_sz);
+        memset(rz_start, 0, tot_sz);
     } else {
         if (options.pattern_use_malloc_tree) {
             /* if !delayed, the base is app base, and the size is app size.
              * we can ignore the size since our rbtree holds the app_size,
              * now use passed in size for sanity check.
              */
-            pattern_remove_malloc_tree(base, size, real_size);
+            pattern_remove_malloc_tree(info);
         }
         /* if !delayed, only need remove the pattern in redzone */
-        if (base != real_base) {
-            size_t sz;
+        if (info->has_redzone) {
             IF_DEBUG(uint val;)
-            ASSERT(safe_read(real_base, sizeof(val), &val) &&
+            ASSERT(safe_read(info->base - rz_sz, sizeof(val), &val) &&
                    val == options.pattern, "wrong free address");
-            sz = base - real_base;
-            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
-                real_base, base, sz);
-            memset(real_base, 0, sz);
-            sz = (real_base + real_size) - (base + size);
-            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
-                base + size, real_base + real_size, sz);
-            memset(base + size, 0, sz);
+            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in pre-redzone\n",
+                info->base - rz_sz, info->base, rz_sz);
+            memset(info->base - rz_sz, 0, rz_sz);
+            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in post-redzone\n",
+                info->base + info->pad_size, info->base + info->pad_size + rz_sz, rz_sz);
+            memset(info->base + info->pad_size, 0, rz_sz);
         } else {
 #if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
-            ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
+            ASSERT(info->pre_us, "unknown malloc region");
 #endif
         }
     }
 }
 
 void
-pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size)
+pattern_handle_delayed_free(malloc_info_t *info)
 {
     ASSERT(options.pattern != 0, "should not be called");
     /* We assume that any invalid free won't come here */
-    ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
     if (options.pattern_use_malloc_tree)
-        pattern_remove_malloc_tree(base, size, real_size);
+        pattern_remove_malloc_tree(info);
     /* We assume the actually alloced block length will be 4-byte aligned,
      * e.g. if size is 2, the allocator will alloc 4 bytes instead,
      * so it is ok to fill 4-byte uint pattern.
      */
-    ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
-    pattern_write_pattern(base, base + size _IF_DEBUG("delay-freed block"));
+    ASSERT(ALIGNED(info->base, 4), "unaligned pointer for free");
+    pattern_write_pattern(info->base, info->base + info->request_size
+                          _IF_DEBUG("delay-freed block"));
 }
 
 void
-pattern_handle_realloc(app_pc old_base, size_t old_size,
-                       app_pc old_real_base, size_t old_real_size,
-                       app_pc new_base, size_t new_size, app_pc new_real_base,
-                       size_t new_real_size)
+pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info)
 {
-    LOG(2, "%s: "PFX"-"PFX", "PFX"-"PFX", "PFX"-"PFX", "PFX"-"PFX"\n",
-        __FUNCTION__,
-        old_base, old_base + old_size,
-        old_real_base, old_real_base + old_real_size,
-        new_base, new_base + new_size,
-        new_real_base, new_real_base + new_real_size);
-    if (new_base != old_base) {
+    LOG(2, "%s: "PFX"-"PFX", "PFX"-"PFX"\n", __FUNCTION__,
+        old_info->base, old_info->base + old_info->request_size,
+        new_info->base, new_info->base + new_info->request_size);
+    if (new_info->base != old_info->base) {
         /* treat as free+malloc */
         if (options.replace_malloc) {
             /* check for munmap
              * XXX: racy!  add param to pattern_handle_realloc()?
              */
-            if (dr_memory_is_readable(old_base, 1))
-                pattern_handle_delayed_free(old_base, old_size, old_real_size);
+            if (dr_memory_is_readable(old_info->base, 1))
+                pattern_handle_delayed_free(old_info);
         } else {
-            pattern_handle_real_free(old_base, old_size, old_real_base,
-                                     old_real_size, false);
+            pattern_handle_real_free(old_info, false);
         }
-        pattern_handle_malloc(new_base, new_size, new_real_base, new_real_size);
+        pattern_handle_malloc(new_info);
     } else {
-        if (new_size > old_size) {
+        if (new_info->request_size > old_info->request_size) {
             /* clear pattern from padding + trailing redzone */
-            size_t sz = old_real_size - options.redzone_size - old_size;
+            size_t rm_sz = old_info->pad_size - old_info->request_size +
+                (old_info->has_redzone ? options.redzone_size : 0);
+            size_t add_sz = new_info->pad_size - new_info->request_size +
+                (new_info->has_redzone ? options.redzone_size : 0);
             LOG(2, "clear pattern value "PFX"-"PFX" %d bytes on in-place realloc\n",
-                old_base + old_size, old_base + sz, sz);
-            memset(old_base + old_size, 0, sz);
-            pattern_write_pattern(new_base + new_size, new_real_base + new_real_size
+                old_info->base + old_info->request_size,
+                old_info->base + old_info->request_size + rm_sz, rm_sz);
+            memset(old_info->base + old_info->request_size, 0, rm_sz);
+            pattern_write_pattern(new_info->base + new_info->request_size,
+                                  new_info->base + new_info->request_size + add_sz
                                   _IF_DEBUG("realloc in-place new pad + post-redzone"));
-        } else if (new_size < old_size) {
-            pattern_write_pattern(new_base + new_size, new_base + old_size
+        } else if (new_info->request_size < old_info->request_size) {
+            pattern_write_pattern(new_info->base + new_info->request_size,
+                                  new_info->base + old_info->request_size
                                   _IF_DEBUG("realloc shrunk in-place new pad"));
         }
     }

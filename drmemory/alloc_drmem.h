@@ -62,10 +62,11 @@ handle_removed_heap_region(app_pc start, app_pc end, dr_mcontext_t *mc);
 void
 check_reachability(bool at_exit);
 
+/* only returns true if overlap is in app requested chunk: not redzone */
 bool
 overlaps_delayed_free(byte *start, byte *end,
-                      byte **free_start OUT,
-                      byte **free_end OUT,
+                      byte **free_start OUT, /* app base */
+                      byte **free_end OUT,   /* app request size */
                       packed_callstack_t **pcs OUT,
                       bool delayed_only);
 

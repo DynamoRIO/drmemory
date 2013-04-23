@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -511,18 +511,17 @@ staleness_free_per_alloc(stale_per_alloc_t *spa)
  * is set and subsequently clears the metadata.
  */
 static bool
-alloc_itercb_sweep(app_pc start, app_pc end, app_pc real_end,
-                   bool pre_us, uint client_flags,
-              void *client_data, void *iter_data)
+alloc_itercb_sweep(malloc_info_t *info, void *iter_data)
 {
     /* we don't care much about synch: ok to not be perfectly accurate */
     /* FIXME: ignore pre_us? option-controlled? */
-    if (shadow_val_in_range(start, end, 1)) {
-        stale_per_alloc_t *spa = (stale_per_alloc_t *) client_data;
+    byte *end = info->base + info->request_size;
+    if (shadow_val_in_range(info->base, end, 1)) {
+        stale_per_alloc_t *spa = (stale_per_alloc_t *) info->client_data;
         uint64 stamp = *((uint64 *)iter_data);
-        LOG(3, "\t"PFX"-"PFX" was accessed @%"INT64_FORMAT"u\\n", start, end, stamp);
+        LOG(3, "\t"PFX"-"PFX" was accessed @%"INT64_FORMAT"u\\n", info->base, end, stamp);
         spa->last_access = stamp;
-        shadow_set_range(start, end, 0);
+        shadow_set_range(info->base, end, 0);
     }
     return true;
 }
@@ -579,19 +578,17 @@ staleness_get_snap_last_access(stale_snap_allocs_t *snaps, uint idx)
 }
 
 static bool
-alloc_itercb_snapshot(app_pc start, app_pc end, app_pc real_end,
-                      bool pre_us, uint client_flags,
-                      void *client_data, void *iter_data)
+alloc_itercb_snapshot(malloc_info_t *info, void *iter_data)
 {
     stale_snap_allocs_t *snaps = (stale_snap_allocs_t *) iter_data;
-    stale_per_alloc_t *spa = (stale_per_alloc_t *) client_data;
+    stale_per_alloc_t *spa = (stale_per_alloc_t *) info->client_data;
     uint cstack_id;
     uint bytes_asked_for;
     ASSERT(snaps != NULL, "invalid param");
     ASSERT(spa != NULL, "invalid param");
     /* FIXME: ignore pre_us? option-controlled? */
     cstack_id = get_cstack_id(spa->cstack);
-    bytes_asked_for = end - start;
+    bytes_asked_for = info->request_size;
     ASSERT(snaps->idx < snaps->num_entries, "stale array overflow");
     if (snaps->uses_large) {
         snaps->data.lg[snaps->idx].cstack_id = cstack_id;
@@ -634,7 +631,7 @@ alloc_itercb_snapshot(app_pc start, app_pc end, app_pc real_end,
         }
     }
     LOG(3, "\tadding "PFX"-"PFX" stamp %"INT64_FORMAT"u to snapshot idx %d\n", 
-        start, end, spa->last_access, snaps->idx);
+        info->base, info->base + info->request_size, spa->last_access, snaps->idx);
     snaps->idx++;
     return true;
 }
