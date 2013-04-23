@@ -1450,7 +1450,7 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          */
         pattern_addr_pre_check(addr) &&
         (pattern_addr_in_redzone(addr, size) ||
-         overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL))) {
+         overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL, false/*any*/))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree
          * nor in delayed free rbtree, in which case we cannot detect. We 
          * can maintain the information in pattern malloc tree, i.e. mark 

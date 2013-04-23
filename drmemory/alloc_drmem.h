@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -65,7 +66,8 @@ bool
 overlaps_delayed_free(byte *start, byte *end,
                       byte **free_start OUT,
                       byte **free_end OUT,
-                      packed_callstack_t **pcs OUT);
+                      packed_callstack_t **pcs OUT,
+                      bool delayed_only);
 
 bool
 is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,

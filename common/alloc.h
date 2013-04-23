@@ -243,6 +243,19 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
                                     byte **free_end OUT,
                                     void **client_data OUT);
 
+bool
+alloc_replace_overlaps_any_free(byte *start, byte *end,
+                                byte **free_start OUT,
+                                byte **free_end OUT,
+                                void **client_data OUT);
+
+bool
+alloc_replace_overlaps_malloc(byte *start, byte *end,
+                              byte **alloc_start OUT,
+                              byte **alloc_end OUT,
+                              byte **alloc_real_end OUT,
+                              void **client_data OUT);
+
 /***************************************************************************
  * CLIENT CALLBACKS
  */

@@ -1915,7 +1915,13 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
      * delay list as well as free-by-realloc (xref i#69: we now
      * replace realloc so realloc frees will be on the queue).
      */
-    found = overlaps_delayed_free(addr, addr+sz, &start, &end, &pcs);
+    found = overlaps_delayed_free(addr, addr+sz, &start, &end, &pcs,
+                                  /* While it would be nice to include
+                                   * free-list chunks, we don't want to report
+                                   * on a former redzone in a coalesced chunk,
+                                   * so we limit to delayed chunks.
+                                   */
+                                  true);
     if (!found && next_start != NULL) {
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_FORWARD(addr, MALLOC_CHUNK_ALIGNMENT);

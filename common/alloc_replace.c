@@ -304,6 +304,11 @@ static uint num_coalesces;
 static uint num_dealloc;
 #endif
 
+#ifdef DEBUG
+/* used to allow use of app stack on abort */
+static bool aborting;
+#endif
+
 /***************************************************************************
  * utility routines
  */
@@ -358,6 +363,15 @@ exit_client_code(void *drcontext, bool in_app_mode)
     drwrap_replace_native_fini(drcontext);
 }
 
+#ifdef DEBUG
+static bool
+on_app_stack(void)
+{
+    reg_t xsp, xbp;
+    get_stack_registers(&xsp, &xbp);
+    return !dr_memory_is_dr_internal((byte *)xsp);
+}
+#endif
 
 /* i#900: we need to mark an app lock acquisition as a safe spot.
  * This is made possible by drwrap_replace_native() using a continuation
@@ -1651,12 +1665,14 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     /* We use the HEAP_MMAP flag to find our mmapped chunks.  We can't easily
      * use the large malloc tree b/c it has pre_us allocs too (i#1051).
      */
+    /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
-        byte *start = iter_arena_start;
-        chunk_header_t *head = header_from_ptr(start);
+        chunk_header_t *head = (chunk_header_t *) iter_arena_start;
+        byte *start = iter_arena_start + header_size + redzone_beyond_header;
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
-        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + head->request_size);
-        if (!data->cb(start, start + head->request_size, start + head->alloc_size,
+        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start,
+            start + chunk_request_size(head));
+        if (!data->cb(start, start + chunk_request_size(head), start + head->alloc_size,
                       false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                       head->user_data, data->data))
             return false;
@@ -1666,6 +1682,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         return true;
 
     LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, iter_arena_start, iter_arena_end);
+    dr_recurlock_lock(arena->lock);
     cur = arena->start_chunk;
     while (cur < arena->next_chunk) {
         head = header_from_ptr(cur);
@@ -1673,17 +1690,23 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
             ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
             byte *start = ptr_from_header(head);
-            if (!data->cb(start, start + head->request_size, start + head->alloc_size,
+            if (!data->cb(start, start + chunk_request_size(head),
+                          start + head->alloc_size,
                           false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
-                          head->user_data, data->data))
+                          head->user_data, data->data)) {
+                dr_recurlock_unlock(arena->lock);
                 return false;
+            }
         }
-        cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
+        cur += head->alloc_size + inter_chunk_space();
     }
+    dr_recurlock_unlock(arena->lock);
     return true;
 }
 
-
+/* We assume this is called from a client context and thus we can grab
+ * DR locks.  We try to check for this via !on_app_stack().
+ */
 static void
 alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 {
@@ -1697,6 +1720,9 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     alloc_iter_data_t data = {only_live, cb, iter_data};
     uint i;
 
+    /* the aborting case is dr_exit_process() on OOM */
+    ASSERT(!on_app_stack() || aborting, "should be called from client context");
+
     LOG(2, "%s\n", __FUNCTION__);
 
     ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
@@ -1706,16 +1732,18 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
 
     LOG(3, "%s: iterating pre-us allocs\n", __FUNCTION__);
     /* XXX: should add hashtable_iterate() to drcontainers */
+    /* See notes at top: this table is only modified at init or teardown
+     * and thus needs no external lock.
+     */
     for (i = 0; i < HASHTABLE_SIZE(pre_us_table.table_bits); i++) {
-        /* we do NOT support removal while iterating.  we don't even hold a lock. */
         hash_entry_t *he;
         for (he = pre_us_table.table[i]; he != NULL; he = he->next) {
             chunk_header_t *head = (chunk_header_t *) he->payload;
             byte *start = he->key;
             if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
                 LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
-                    start, start + head->request_size, start + head->alloc_size);
-                if (!cb(start, start + head->request_size, start + head->alloc_size,
+                    start, start + chunk_request_size(head), start + head->alloc_size);
+                if (!cb(start, start + chunk_request_size(head), start + head->alloc_size,
                         true/*pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                         head->user_data, iter_data))
                     break;
@@ -1724,11 +1752,40 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     }
 }
 
-bool
-alloc_replace_overlaps_delayed_free(byte *start, byte *end,
-                                    byte **free_start OUT,
-                                    byte **free_end OUT,
-                                    void **client_data OUT)
+static bool
+overlap_helper(chunk_header_t *head,
+               byte *chunk_start,
+               byte **found_start OUT,
+               byte **found_end OUT,
+               byte **found_real_end OUT,
+               void **client_data OUT,
+               uint positive_flags,
+               uint negative_flags)
+{
+    if (TESTALL(positive_flags, head->flags) &&
+        !TEST(negative_flags, head->flags)) {
+        if (found_start != NULL)
+            *found_start = chunk_start;
+        if (found_end != NULL)
+            *found_end = chunk_start + chunk_request_size(head);
+        if (found_real_end != NULL)
+            *found_real_end = chunk_start + head->alloc_size;
+        if (client_data != NULL)
+            *client_data = head->user_data;
+        return true;
+    }
+    return false;
+}
+
+/* Considers alloc_size to overlap, but returns request size in *found_end */
+static bool
+alloc_replace_overlaps_region(byte *start, byte *end,
+                              byte **found_start OUT,
+                              byte **found_end OUT,
+                              byte **found_real_end OUT,
+                              void **client_data OUT,
+                              uint positive_flags,
+                              uint negative_flags)
 {
     /* Maintaining an rbtree is expensive, particularly b/c in order to keep
      * freed blocks in there until actual re-alloc we need to have rbtree
@@ -1745,63 +1802,105 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
      * being unlikely to overlap w/o overlapping start.  But if we want to we could
      * add a heap_region_overlaps() routine.
      */
-    byte *found_start = NULL;
-    chunk_header_t *found_head = NULL;
+    bool found = false;
     byte *found_arena_start, *found_arena_end;
     uint flags;
     size_t size;
+    LOG(4, "%s: looking for "PFX"-"PFX"\n", __FUNCTION__, start, end);
     if (malloc_large_lookup(start, &found_arena_start, &size)) {
-        found_head = header_from_ptr(found_arena_start);
-        found_start = found_arena_start;
-        ASSERT(found_arena_start + size == found_start + found_head->request_size,
-               "inconsistent");
+        /* XXX: potentially racy!  Would need to find the containing
+         * arena and grab its lock to safely access the header.
+         */
+        chunk_header_t *head = header_from_ptr(found_arena_start);
+        found = overlap_helper(head, found_arena_start, found_start, found_end,
+                               found_real_end, client_data, positive_flags,
+                               negative_flags);
+        ASSERT(size == chunk_request_size(head), "inconsistent");
     } else if (heap_region_bounds(start, &found_arena_start, &found_arena_end, &flags)) {
         if (TEST(HEAP_PRE_US, flags)) {
-            /* walk pre-us table */
+            /* walk pre-us table.
+             * See notes at top: this table is only modified at init or teardown
+             * and thus needs no external lock.
+             */
             uint i;
             for (i = 0; i < HASHTABLE_SIZE(pre_us_table.table_bits); i++) {
-                /* see notes in alloc_iterate() about no lock */
                 hash_entry_t *he;
                 for (he = pre_us_table.table[i]; he != NULL; he = he->next) {
                     chunk_header_t *head = (chunk_header_t *) he->payload;
                     byte *chunk_start = he->key;
-                    if (start < chunk_start + head->request_size && end >= chunk_start) {
-                        found_head = head;
-                        found_start = chunk_start;
+                    if (start < chunk_start + head->alloc_size && end >= chunk_start) {
+                        found = overlap_helper(head, chunk_start, found_start, found_end,
+                                               found_real_end, client_data,
+                                               positive_flags, negative_flags);
+                        goto overlap_inner_loop_break;
                     }
                 }
-                if (found_head != NULL)
-                    break;
             }
+        overlap_inner_loop_break:
+            ; /* nothing */
         } else if (TEST(HEAP_ARENA, flags)) {
             /* walk arena */
             /* XXX: make a shared internal iterator for this? */
             arena_header_t *arena = (arena_header_t *) found_arena_start;
             byte *cur = arena->start_chunk;
+            ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
+            dr_recurlock_lock(arena->lock);
             while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
                 chunk_start = ptr_from_header(head);
-                if (start < chunk_start + head->request_size && end >= chunk_start) {
-                    found_head = head;
-                    found_start = chunk_start;
+                /* Check vs alloc_size + redzones.  Even if we've coalesced, or
+                 * if beyond requested size, still considered to overlap freed
+                 * area.  Don't check vs inter_chunk_space: callers don't want a
+                 * match if beyond redzone.
+                 */
+                LOG(4, "\tchunk "PFX"-"PFX"\n", chunk_start,
+                    chunk_start + head->alloc_size);
+                if (start < chunk_start + head->alloc_size + alloc_ops.redzone_size &&
+                    end >= chunk_start - alloc_ops.redzone_size) {
+                    found = overlap_helper(head, chunk_start, found_start, found_end,
+                                           found_real_end, client_data,
+                                           positive_flags, negative_flags);
                     break;
                 }
-                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
+                cur += head->alloc_size + inter_chunk_space();
             }
+            dr_recurlock_unlock(arena->lock);
         } else
             ASSERT(false, "large lookup should have found it");
     }
-    if (found_head != NULL && TEST(CHUNK_FREED, found_head->flags)) {
-        if (free_start != NULL)
-            *free_start = found_start;
-        if (free_end != NULL)
-            *free_end = found_start + found_head->request_size;
-        if (client_data != NULL)
-            *client_data = found_head->user_data;
-        return true;
-    } else
-        return false;
+    return found;
+}
+
+bool
+alloc_replace_overlaps_delayed_free(byte *start, byte *end,
+                                    byte **free_start OUT,
+                                    byte **free_end OUT,
+                                    void **client_data OUT)
+{
+    return alloc_replace_overlaps_region(start, end, free_start, free_end,
+                                         NULL, client_data, CHUNK_DELAY_FREE, 0);
+}
+
+bool
+alloc_replace_overlaps_any_free(byte *start, byte *end,
+                                    byte **free_start OUT,
+                                    byte **free_end OUT,
+                                    void **client_data OUT)
+{
+    return alloc_replace_overlaps_region(start, end, free_start, free_end,
+                                         NULL, client_data, CHUNK_FREED, 0);
+}
+
+bool
+alloc_replace_overlaps_malloc(byte *start, byte *end,
+                              byte **alloc_start OUT,
+                              byte **alloc_end OUT,
+                              byte **alloc_real_end OUT,
+                              void **client_data OUT)
+{
+    return alloc_replace_overlaps_region(start, end, alloc_start, alloc_end,
+                                         alloc_real_end, client_data, 0, CHUNK_FREED);
 }
 
 /***************************************************************************
@@ -1936,7 +2035,8 @@ replace_malloc_usable_size(void *ptr)
  * reading it from CLS.
  */
 static inline void *
-replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type, app_pc caller)
+replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type,
+                            app_pc caller)
 {
     void *res;
     void *drcontext = enter_client_code();
@@ -1956,6 +2056,7 @@ replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type, app
     if (abort_on_oom && res == NULL) {
         /* XXX i#957: we should throw a C++ exception but for now we just abort */
         ELOGF(0, f_global, "ABORTING ON OOM\n");
+        IF_DEBUG(aborting = true;)
         dr_exit_process(1);
         ASSERT(false, "should not reach here");
     }

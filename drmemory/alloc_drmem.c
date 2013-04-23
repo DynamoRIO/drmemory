@@ -994,8 +994,13 @@ overlaps_delayed_free(byte *start, byte *end,
         return false;
     if (options.replace_malloc) {
         /* replacement allocator is tracking all delayed frees, not us */
-        return alloc_replace_overlaps_delayed_free(start, end, free_start, free_end,
+        if (delayed_only) {
+            return alloc_replace_overlaps_delayed_free(start, end, free_start, free_end,
+                                                       (void **)pcs);
+        } else {
+            return alloc_replace_overlaps_any_free(start, end, free_start, free_end,
                                                    (void **)pcs);
+        }
     }
     dr_mutex_lock(delay_free_lock);
     LOG(3, "overlaps_delayed_free "PFX"-"PFX"\n", start, end);
@@ -2501,7 +2506,18 @@ region_in_redzone(byte *addr, size_t size,
                   app_pc *redzone_end OUT)
 {
     malloc_iter_data_t iter_data = {addr, size, NULL, NULL, NULL, false, false};
-    if (region_overlap_with_malloc_block(&iter_data)) {
+    if (options.replace_malloc) {
+        /* Faster than full iteration, in presence of multiple arenas */
+        if (alloc_replace_overlaps_malloc(addr, addr + size, &iter_data.start,
+                                          &iter_data.end, &iter_data.real_end,
+                                          (void **)&iter_data.alloc_pcs)) {
+            iter_data.pre_us = false; /* we don't know, but won't match bounds checks */
+            iter_data.found = true;
+        }
+    } else if (region_overlap_with_malloc_block(&iter_data)) {
+        ASSERT(iter_data.found, "should be set already");
+    }
+    if (iter_data.found) {
         if (iter_data.pre_us)
             return false; /* pre_us */
         /* in head redzone */
