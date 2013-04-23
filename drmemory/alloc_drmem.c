@@ -189,7 +189,8 @@ alloc_drmem_init(void)
     alloc_ops.conservative = options.conservative;
     /* replace vs wrap */
     alloc_ops.replace_malloc = options.replace_malloc;
-    alloc_ops.external_headers = (options.pattern != 0);
+    alloc_ops.external_headers = false; /* i#879: NYI */
+    alloc_ops.shared_redzones = (options.pattern == 0);
     alloc_ops.delay_frees = options.delay_frees;
     alloc_ops.delay_frees_maxsz = options.delay_frees_maxsz;
 #ifdef WINDOWS
@@ -530,8 +531,9 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
 
 void
 client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc new_base, size_t new_size, app_pc new_real_base,
-                      dr_mcontext_t *mc)
+                      app_pc old_real_base, size_t old_real_size,
+                      app_pc new_base, size_t new_size,
+                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc)
 {
     /* XXX i#69: wrapping the app's realloc is racy: old region could
      * have been malloc'd again by now!  We could synchronize all
@@ -591,8 +593,9 @@ client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
         }
     }
     if (options.pattern != 0) {
-        pattern_handle_realloc(old_base, old_size, new_base, new_size,
-                               new_real_base);
+        pattern_handle_realloc(old_base, old_size, old_real_base, old_real_size,
+                               new_base, new_size,
+                               new_real_base, new_real_size);
     }
     report_malloc(old_base, old_base+old_size, "realloc-old", mc);
     report_malloc(new_base, new_base+new_size, "realloc-new", mc);
@@ -724,6 +727,7 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
         if (options.pattern != 0) {
             pattern_handle_real_free(pass_to_free /* real_base */,
                                      info->delay_free_list[idx].real_size,
+                                     pass_to_free,
                                      info->delay_free_list[idx].real_size,
                                      true /* delayed */);
         }
@@ -739,12 +743,15 @@ next_to_free(delay_free_info_t *info, int idx _IF_WINDOWS(ptr_int_t *auxarg OUT)
 app_pc
 client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                    dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
+                   void *client_data, bool for_reuse
+                   _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     report_malloc(base, base+size, "free", mc);
 
     if (options.shadowing)
         shadow_set_range(base, base+size, SHADOW_UNADDRESSABLE);
+
+    ASSERT(for_reuse || options.replace_malloc, "wrap free is always for reuse");
 
     if (INSTRUMENT_MEMREFS() && !options.replace_malloc && options.delay_frees > 0) {
         /* PR 406762: delay frees to catch more errors.  We put
@@ -769,7 +776,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 real_size, options.delay_frees_maxsz);
             dr_mutex_unlock(delay_free_lock);
             if (options.pattern != 0)
-                pattern_handle_real_free(base, size, real_size, false);
+                pattern_handle_real_free(base, size, real_base, real_size, false);
             return real_base;
         }
         /* Store real base and real size: i.e., including redzones (PR 572716) */
@@ -817,7 +824,7 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                 info->delay_free_bytes -= real_size;
                 dr_mutex_unlock(delay_free_lock);
                 if (options.pattern != 0) {
-                    pattern_handle_real_free(base, size, real_size, false);
+                    pattern_handle_real_free(base, size, real_base, real_size, false);
                 }
                 return real_base;
             }
@@ -883,9 +890,31 @@ client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
             pattern_handle_delayed_free(base, size, real_size);
         return pass_to_free;
     }
-    if (options.pattern != 0)
-        pattern_handle_real_free(base, size, real_size, false);
+    if (options.pattern != 0) {
+        if (options.replace_malloc && !for_reuse)
+            pattern_handle_delayed_free(base, size, real_size);
+        else
+            pattern_handle_real_free(base, size, real_base, real_size, false);
+    }
     return real_base; /* no change */
+}
+
+void
+client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
+                         app_pc real_base, size_t real_size, dr_mcontext_t *mc)
+{
+    if (options.pattern != 0) {
+        /* for delayed=true (final param), pattern wants real bounds */
+        pattern_handle_real_free(real_base, real_size, real_base, real_size, true);
+    }
+}
+
+void
+client_new_redzone(app_pc start, size_t size)
+{
+    if (options.pattern != 0)
+        pattern_new_redzone(start, size);
+    /* else, shadow already unaddr b/c this is always inside a free (coalesce, split) */
 }
 
 void *
@@ -956,7 +985,8 @@ bool
 overlaps_delayed_free(byte *start, byte *end,
                       byte **free_start OUT,
                       byte **free_end OUT,
-                      packed_callstack_t **pcs OUT)
+                      packed_callstack_t **pcs OUT,
+                      bool delayed_only)
 {
     bool res = false;
     rb_node_t *node;

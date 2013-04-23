@@ -74,6 +74,7 @@ typedef struct _alloc_options_t {
     bool replace_malloc;
     /* only used with -replace_malloc: */
     bool external_headers; /* headers in hashtable instead of inside redzone */
+    bool shared_redzones;
     uint delay_frees;
     uint delay_frees_maxsz;
 
@@ -312,8 +313,9 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
 
 void
 client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc new_base, size_t new_size, app_pc new_real_base,
-                      dr_mcontext_t *mc);
+                      app_pc old_real_base, size_t old_real_size,
+                      app_pc new_base, size_t new_size,
+                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc);
 
 void
 client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
@@ -322,14 +324,40 @@ client_handle_alloc_failure(size_t sz, bool zeroed, bool realloc,
 void
 client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc);
 
-/* Returns the value to pass to free().  Return "real_base" for no change.
- * The Windows heap param is INOUT so it can be changed as well.
- * client_data is from client_add_malloc_routine().
+/* This is called when the app asks to free a malloc chunk.
+ * For wrapping:
+ *   Up to the caller to delay, via its return value.
+ *   Returns the value to pass to free().  Return "real_base" for no change.
+ *   The Windows heap param is INOUT so it can be changed as well.
+ *   client_data is from client_add_malloc_routine().
+ * For replacing:
+ *   The return value is ignored.  Frees are always delayed, unless
+ *   for_reuse is true.
+ * for_reuse indicates whether the freed memory might be reused at any time.
+ * If for_reuse is false, a subsequent call to client_handle_free_reuse()
+ * will indicate when it is about to be reused.
  */
 app_pc
 client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                    dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT));
+                   void *client_data, bool for_reuse
+                   _IF_WINDOWS(ptr_int_t *auxarg INOUT));
+
+/* For wrapping:
+ *   Never called.
+ * For replacing:
+ *   Called when a free chunk is about to be re-used for a new malloc.
+ */
+void
+client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
+                         app_pc real_base, size_t real_size, dr_mcontext_t *mc);
+
+/* Called when a free chunk is split and new redzones are created
+ * or adjacent free chunks are coalesced and a header disappears (the prior header
+ * space is treated as a new "redzone").
+ */
+void
+client_new_redzone(app_pc start, size_t size);
 
 void
 client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char *routine,

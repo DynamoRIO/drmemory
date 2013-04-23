@@ -264,6 +264,8 @@ typedef struct _cls_alloc_t {
     uint alloc_flags;
     size_t alloc_size;
     size_t realloc_old_size;
+    app_pc realloc_old_real_base;
+    size_t realloc_old_real_size;
     size_t realloc_replace_size;
     app_pc alloc_base;
     bool syscall_this_process;
@@ -4995,6 +4997,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         /* i#858, we obtain the real_size from entry instead of size + redzone */
         if (base != real_base) {
             ASSERT(base - real_base == alloc_ops.redzone_size, "redzone mismatch");
+            /* usable_extra includes trailing redzone */
             real_size = (base - real_base) + size + malloc_entry_usable_extra(entry);
         } else {
             /* A pre-us alloc or msvcrtdbg alloc (i#26) w/ no redzone */
@@ -5018,7 +5021,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
              * developer doesn't need to see explicit free() frame, right?
              */
             (base, size, real_base, real_size, mc, top_pc,
-             routine->set->client _IF_WINDOWS(&auxarg));
+             routine->set->client, true/*may be reused*/ _IF_WINDOWS(&auxarg));
         restore_mc_for_client(pt, wrapcxt, mc);
 #ifdef WINDOWS
         if (auxargnum != -1)
@@ -5542,6 +5545,9 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             pt->realloc_old_size = malloc_entry_size(entry);
             ASSERT((ssize_t)pt->realloc_old_size != -1,
                    "error getting pre-us size");
+            pt->realloc_old_real_size = pt->realloc_old_size +
+                /* usable_extra includes trailing redzone */
+                malloc_entry_usable_extra(entry) + redzone_size(routine);
             /* if we wait until post-free to check failure, we'll have
              * races, so we invalidate here: see comments for free */
             malloc_entry_set_valid(entry, false);
@@ -5578,6 +5584,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             }
         }
     }
+    pt->realloc_old_real_base = real_base;
     /* We don't know how to read the Rtl headers, so we must
      * either use our redzone to store the size or call RtlSizeHeap.
      */
@@ -5589,7 +5596,9 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
          */
         pt->realloc_old_size = malloc_entry_size(entry);
         ASSERT((ssize_t)pt->realloc_old_size != -1, "error determining heap block size");
-        pt->realloc_old_size -= redzone_size(routine)*2;
+        pt->realloc_old_real_size = pt->realloc_old_size +
+            /* usable_extra includes trailing redzone */
+            malloc_entry_usable_extra(entry) + redzone_size(routine);
     }
     ASSERT((ssize_t)pt->realloc_old_size != -1,
            "error determining heap block size");
@@ -5664,7 +5673,9 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             }
         }
         client_handle_realloc(drcontext, pt->alloc_base, old_end - pt->alloc_base,
-                              app_base, pt->alloc_size, real_base, mc);
+                              pt->realloc_old_real_base, pt->realloc_old_real_size,
+                              app_base, pt->alloc_size,
+                              real_base, real_size, mc);
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
         if (malloc_is_pre_us_ex(pt->alloc_base, true/*check invalid too*/) ||

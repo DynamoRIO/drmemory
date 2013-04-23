@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1018,7 +1018,7 @@ pattern_handle_ill_fault(void *drcontext,
     /* we are not skipping all cmps for this instr, which is ok because we 
      * clobberred the pattern if a 2nd memref was unaddr.
      */
-    LOG(2, "pattern check ud2a triggerred@"PFX" => skip to "PFX"\n",
+    LOG(2, "pattern check ud2a triggered@"PFX" => skip to "PFX"\n",
         raw_mc->pc, raw_mc->pc + UD2A_LENGTH);
     raw_mc->pc += UD2A_LENGTH;
 
@@ -1271,6 +1271,30 @@ pattern_addr_in_redzone(byte *addr, size_t size)
     return res;
 }
 
+/* Assumes that it's ok to write the pattern value beyond end!
+ * I.e., if a small region is passed in, assumes there's already a
+ * redzone beyond it.
+ */
+static void
+pattern_write_pattern(byte *start, byte *end _IF_DEBUG(const char *description))
+{
+    uint *addr = (uint *) start;
+    LOG(2, "set pattern value at "PFX"-"PFX" in %s\n",
+        start, end, description);
+    if (!ALIGNED(addr, 2)) {
+        *addr = pattern_reverse;
+    } else if (!ALIGNED(addr, 4)) {
+        /* the addr must be 2-byte aligned, fill the 2-byte
+         * if it is not 4-byte aligned
+         */
+        *(ushort *)addr = (ushort)options.pattern;
+    }
+    for (addr = (uint *)ALIGN_FORWARD(start, 4);
+         addr < (uint *)end; /* we assume ok to write past end! */
+         addr++)
+        *addr = options.pattern;
+}
+
 void
 pattern_handle_malloc(byte *app_base,  size_t app_size,
                       byte *real_base, size_t real_size)
@@ -1279,33 +1303,15 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
     ASSERT(ALIGNED(real_base, sizeof(uint)), "real base is unaligned");
     ASSERT(ALIGNED(real_size, sizeof(uint)), "real size is unaligned");
 
-    if ((app_base - real_base) == options.redzone_size) {
-        uint *redzone;
+    if (app_base != real_base) {
         if (options.pattern_use_malloc_tree)
             pattern_insert_malloc_tree(app_base, app_size, real_base, real_size);
-        LOG(2, "set pattern value at "PFX"-"PFX" in redzone\n",
-            real_base, app_base);
-        for (redzone = (uint *)real_base; redzone < (uint *)app_base; redzone++)
-            *redzone = options.pattern;
+        pattern_write_pattern(real_base, app_base _IF_DEBUG("malloc pre-redzone"));
         /* the app_size might be unaligned, which will be expanded with padding
          * by allocator. We will fill the padding whenever possible.
          */
-        redzone = (uint *) (app_base + app_size);
-        LOG(2, "set pattern value at "PFX"-"PFX" in redzone\n",
-            redzone, real_base + real_size);
-        if (!ALIGNED(redzone, 2)) {
-            *redzone = pattern_reverse;
-        } else if (!ALIGNED(redzone, 4)) {
-            /* the redzone must be 2-byte aligned, fill the 2-byte 
-             * if it is not 4-byte aligned
-             */
-            *(ushort *)redzone = (ushort)options.pattern;
-        }
-
-        for (redzone = (uint *)ALIGN_FORWARD((app_base + app_size), 4);
-             redzone < (uint *)(real_base + real_size);
-             redzone++)
-            *redzone = options.pattern;
+        pattern_write_pattern(app_base + app_size, real_base + real_size
+                              _IF_DEBUG("malloc padding + post-redzone"));
     } else {
 #if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
         ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
@@ -1314,7 +1320,7 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
 }
 
 void
-pattern_handle_real_free(app_pc base, size_t size,
+pattern_handle_real_free(app_pc base, size_t size, app_pc real_base,
                          size_t real_size, bool delayed)
 {
     ASSERT(options.pattern != 0, "should not be called");
@@ -1333,18 +1339,19 @@ pattern_handle_real_free(app_pc base, size_t size,
             pattern_remove_malloc_tree(base, size, real_size);
         }
         /* if !delayed, only need remove the pattern in redzone */
-        if (real_size >= (size + 2 * options.redzone_size)) {
+        if (base != real_base) {
+            size_t sz;
             IF_DEBUG(uint val;)
-            ASSERT(safe_read(base - options.redzone_size, sizeof(val), &val) &&
+            ASSERT(safe_read(real_base, sizeof(val), &val) &&
                    val == options.pattern, "wrong free address");
+            sz = base - real_base;
             LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
-                base - options.redzone_size, base, options.redzone_size);
-            memset(base - options.redzone_size, 0, options.redzone_size);
+                real_base, base, sz);
+            memset(real_base, 0, sz);
+            sz = (real_base + real_size) - (base + size);
             LOG(2, "clear pattern value "PFX"-"PFX" %d bytes in redzone\n",
-                base + size,
-                base + size + (real_size - (size + options.redzone_size)),
-                real_size - (size + options.redzone_size));
-            memset(base + size, 0, real_size - (size + options.redzone_size));
+                base + size, real_base + real_size, sz);
+            memset(base + size, 0, sz);
         } else {
 #if 0 /* FIXME: i#832, no redzone for debug CRT, so cannot use ASSERT here */
             ASSERT(malloc_is_pre_us(app_base), "unknown malloc region");
@@ -1356,8 +1363,6 @@ pattern_handle_real_free(app_pc base, size_t size,
 void
 pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size)
 {
-    uint *redzone;
-
     ASSERT(options.pattern != 0, "should not be called");
     /* We assume that any invalid free won't come here */
     ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
@@ -1368,20 +1373,58 @@ pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size)
      * so it is ok to fill 4-byte uint pattern.
      */
     ASSERT(ALIGNED(base, 4), "unaligned pointer for free");
-    LOG(2, "set pattern value at "PFX"-"PFX" in delay-freed block\n",
-        base, base + size);
-    for (redzone = (uint *) ALIGN_BACKWARD(base, 4);
-         redzone < (uint *) (base + size);
-         redzone++)
-        *redzone = options.pattern;
+    pattern_write_pattern(base, base + size _IF_DEBUG("delay-freed block"));
 }
 
 void
 pattern_handle_realloc(app_pc old_base, size_t old_size,
-                       app_pc new_base, size_t new_size, app_pc new_real_base)
+                       app_pc old_real_base, size_t old_real_size,
+                       app_pc new_base, size_t new_size, app_pc new_real_base,
+                       size_t new_real_size)
 {
-    /* FIXME: i#779, support -no_replace_realloc for pattern mode */
-    ASSERT(options.replace_realloc, "-no_replace_realloc not supported");
+    LOG(2, "%s: "PFX"-"PFX", "PFX"-"PFX", "PFX"-"PFX", "PFX"-"PFX"\n",
+        __FUNCTION__,
+        old_base, old_base + old_size,
+        old_real_base, old_real_base + old_real_size,
+        new_base, new_base + new_size,
+        new_real_base, new_real_base + new_real_size);
+    if (new_base != old_base) {
+        /* treat as free+malloc */
+        if (options.replace_malloc) {
+            /* check for munmap
+             * XXX: racy!  add param to pattern_handle_realloc()?
+             */
+            if (dr_memory_is_readable(old_base, 1))
+                pattern_handle_delayed_free(old_base, old_size, old_real_size);
+        } else {
+            pattern_handle_real_free(old_base, old_size, old_real_base,
+                                     old_real_size, false);
+        }
+        pattern_handle_malloc(new_base, new_size, new_real_base, new_real_size);
+    } else {
+        if (new_size > old_size) {
+            /* clear pattern from padding + trailing redzone */
+            size_t sz = old_real_size - options.redzone_size - old_size;
+            LOG(2, "clear pattern value "PFX"-"PFX" %d bytes on in-place realloc\n",
+                old_base + old_size, old_base + sz, sz);
+            memset(old_base + old_size, 0, sz);
+            pattern_write_pattern(new_base + new_size, new_real_base + new_real_size
+                                  _IF_DEBUG("realloc in-place new pad + post-redzone"));
+        } else if (new_size < old_size) {
+            pattern_write_pattern(new_base + new_size, new_base + old_size
+                                  _IF_DEBUG("realloc shrunk in-place new pad"));
+        }
+    }
+}
+
+void
+pattern_new_redzone(app_pc start, size_t size)
+{
+    ASSERT(options.pattern != 0, "should not be called");
+    /* We assume the redzone will be 4-byte aligned */
+    ASSERT(ALIGNED(start, 4), "unaligned redzone start");
+    ASSERT(ALIGNED(size, 4), "unaligned redzone size");
+    pattern_write_pattern(start, start + size _IF_DEBUG("new redzone"));
 }
 
 /* returns true if no errors were found */

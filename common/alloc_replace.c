@@ -56,7 +56,7 @@
  *   reduce the likelihood of corruption from over/underflow:
  *
  *  | request sz|     |   redzone size   | request size |   |   redzone size   |
- *  | app chunk | pad |rz/2| header |rz/2| app chunk    |pad|rz/2| header /rz/2|
+ *  | app chunk | pad | rz | header | rz | app chunk    |pad| rz | header | rz |
  *                                                                             ^
  *                                                                 next_chunk _|
  *
@@ -131,8 +131,9 @@ enum {
  * and as a hashtable payload (for alloc_ops.external_headers).  Note
  * that when using redzones there's no problem with a large header as
  * it sits inside the redzone.  But with the hashtable, and for
- * Dr. Heapstat where we have no redzone, we want to make the header
- * as compact as is reasonable.
+ * pattern mode with co-located headers, and for Dr. Heapstat where we
+ * have no redzone, we want to make the header as compact as is
+ * reasonable.
  */
 typedef struct _chunk_header_t {
     void *user_data;
@@ -180,7 +181,15 @@ typedef struct _chunk_header_t {
     } u;
 } chunk_header_t;
 
-#define HEADER_SIZE sizeof(chunk_header_t)
+/* To support pattern mode, which wants to fill the redzone with its pattern,
+ * we don't want the next pointer in the redzone.  For now we pay the cost
+ * of extra memory rather than complicate the interface to pattern mode
+ * to have it skip the next pointer (we'd need a call when we move from delay
+ * queueu to free lists, and we'd need to adjust real_base on several calls:
+ * and ensure client isn't storing things by real base!).
+ * Thus, we indirect the live header size through here.
+ */
+static heapsz_t header_size;
 
 /* if redzone is too small, header sticks beyond it */
 static heapsz_t header_beyond_redzone;
@@ -192,6 +201,9 @@ static heapsz_t redzone_beyond_header;
  * x64.  We squish the prev pointer into fields of the chunk header we
  * no longer need, for a true free; for a delay free we don't use a
  * prev pointer.
+ *
+ * FIXME: for alloc_ops.external_headers do we need a chunk pointer
+ * here?  or will it be in the head struct?
  */
 typedef struct _free_header_t {
     chunk_header_t head;
@@ -271,11 +283,15 @@ static arena_header_t *cur_arena;
 #define PRE_US_TABLE_HASH_BITS 8
 static hashtable_t pre_us_table;
 
-/* XXX i#879: for pattern mode we don't want co-located headers and
- * instead want a hashtable of live allocs (free are in free lists
- * and/or rbtree).
+/* XXX i#879: for pattern mode we ideally don't want any co-located
+ * headers and instead want a hashtable of live allocs (free are in
+ * free lists and/or rbtree).
  * Cleaner to have own table here and not try to use the alloc.c malloc-wrap table
  * though we do want the same hash tuning.
+ * Currently we have a much simpler implementation for pattern mode
+ * that uses non-shared redzones and a header in between (so it looks
+ * like wrapping, and like wrapping won't detect a bug that clobbers
+ * the header prior to corruption and possible crash).
  */
 
 #ifdef STATISTICS
@@ -457,6 +473,13 @@ chunk_request_size(chunk_header_t *head)
     return (head->alloc_size - head->u.unfree.request_diff);
 }
 
+static inline size_t
+client_real_size_extra(void)
+{
+    return redzone_beyond_header +
+        (alloc_ops.shared_redzones ? 0 : alloc_ops.redzone_size);
+}
+
 static void
 notify_client_alloc(bool call_handle, void *drcontext, byte *ptr,
                     chunk_header_t *head, dr_mcontext_t *mc,
@@ -470,13 +493,12 @@ notify_client_alloc(bool call_handle, void *drcontext, byte *ptr,
     if (call_handle) {
         ASSERT(drcontext != NULL, "invalid arg");
         client_handle_malloc(drcontext, ptr, chunk_request_size(head),
-                             /* XXX: pattern wants us to subtract redzone
-                              * size for real_base but that would result in it clobbering
-                              * our header: so we're just incompatible w/ pattern mode
-                              * (checked up front in alloc_ops.c).
-                              * xref i#879 on an allocator for pattern mode.
+                             /* the caller might clobber from real_base, so
+                              * only pass what doesn't contain a header
                               */
-                             ptr, head->alloc_size, zeroed, realloc, mc);
+                             ptr - redzone_beyond_header,
+                             head->alloc_size + client_real_size_extra(),
+                             zeroed, realloc, mc);
     }
 }
 
@@ -492,10 +514,10 @@ header_from_ptr(void *ptr)
         ASSERT(false, "NYI");
         return NULL;
     } else {
-        if ((ptr_uint_t)ptr < HEADER_SIZE)
+        if ((ptr_uint_t)ptr < header_size)
             return NULL;
         else {
-            return (chunk_header_t *) ((byte *)ptr - redzone_beyond_header - HEADER_SIZE);
+            return (chunk_header_t *) ((byte *)ptr - redzone_beyond_header - header_size);
         }
     }
 }
@@ -508,13 +530,17 @@ ptr_from_header(chunk_header_t *head)
         ASSERT(false, "NYI");
         return NULL;
     } else
-        return (byte *)head + redzone_beyond_header + HEADER_SIZE;
+        return (byte *)head + redzone_beyond_header + header_size;
 }
 
+/* Distance from the end of one chunk (its start pointer plus alloc_size) to
+ * the start of the user memory for the subsequent chunk
+ */
 static inline size_t
 inter_chunk_space(void)
 {
-    return alloc_ops.redzone_size + header_beyond_redzone;
+    return alloc_ops.redzone_size + header_beyond_redzone +
+        (alloc_ops.shared_redzones ? 0 : alloc_ops.redzone_size);
 }
 
 /* Pass in result of header_from_ptr() as 2nd arg, but don't de-reference it!
@@ -633,6 +659,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     }
     /* need to start with a redzone */
     arena->start_chunk = (byte *)arena +
+        /* XXX: this wastes the initial redzone for !shared_redzones */
         ALIGN_FORWARD(header_size, CHUNK_ALIGNMENT) + inter_chunk_space();
     arena->next_chunk = arena->start_chunk;
     arena->magic = HEADER_MAGIC;
@@ -972,13 +999,14 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         /* We can't call set_prev_size_field() here b/c it will assert if
          * next is free, so we wait until we've possibly merged w/ next
          */
+        /* Let client fill/mark midpoint header, if desired */
+        if (!alloc_ops.shared_redzones)
+            client_new_redzone((byte *)cur, header_size);
     }
     next = next_chunk_forward(arena, tofree, NULL);
     if (next != NULL && TEST(CHUNK_FREED, next->flags) &&
         !TEST(CHUNK_DELAY_FREE, next->flags) ) {
         /* Coalesce with next block */
-        byte *next_ptr = ptr_from_header(next);
-        byte *head_ptr = next_ptr - alloc_ops.redzone_size - header_beyond_redzone;
         remove_from_free_list(arena, (free_header_t *)next, UINT_MAX);
         if (next->user_data != NULL)
             client_malloc_data_free(next->user_data);
@@ -987,16 +1015,17 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
             client_malloc_data_free(tofree->user_data);
             tofree->user_data = NULL;
         }
-        tofree->alloc_size += next->alloc_size + (next_ptr - head_ptr);
+        tofree->alloc_size += next->alloc_size + inter_chunk_space();
         LOG(3, "coalescing with next chunk "PFX" => "PFX"-"PFX"\n",
             next, ptr_from_header(tofree), ptr_from_header(tofree) +
             tofree->alloc_size);
         STATS_INC(num_coalesces);
-        /* XXX i#879: let pattern mode write the mid-header w/ the pattern */
+        /* Let client fill/mark midpoint header, if desired */
+        if (!alloc_ops.shared_redzones)
+            client_new_redzone((byte *)next, header_size);
         set_prev_size_field(arena, tofree); /* update */
     } else if (tofree != &cur->head) {
         /* Delayed from above: see comment in merge-prev */
-        /* XXX i#879: let pattern mode write the mid-header w/ the pattern */
         set_prev_size_field(arena, tofree); /* update */
     }
     return consider_giving_back_memory(arena, tofree);
@@ -1150,9 +1179,11 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 
         /* if there's a lot of extra room, split it off as a separate free entry */
         if (head->alloc_size > aligned_size + CHUNK_MIN_SIZE + inter_chunk_space()) {
-            byte *split = ptr_from_header(head) + aligned_size;
+            byte *split = ptr_from_header(head) + aligned_size +
+                (alloc_ops.shared_redzones ? 0 : alloc_ops.redzone_size);
             size_t rest_size = head->alloc_size - (aligned_size + inter_chunk_space());
-            byte *chunk2_start = split + inter_chunk_space();
+            byte *chunk2_start = split + inter_chunk_space() -
+                (alloc_ops.shared_redzones ? 0 : alloc_ops.redzone_size);
             free_header_t *rest = (free_header_t *) header_from_ptr(chunk2_start);
             ASSERT(!TEST(CHUNK_MMAP, head->flags), "mmap not expected on free list");
             STATS_INC(num_splits);
@@ -1170,6 +1201,15 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             add_to_free_list(arena, (chunk_header_t *)rest);
             /* we need to update this */
             set_prev_size_field(arena, (chunk_header_t *)rest);
+            /* Let client fill/mark new redzones, if desired.
+             * We currently have our next free ptr in the redzone:
+             */
+            client_new_redzone(chunk2_start - alloc_ops.redzone_size,
+                               alloc_ops.redzone_size);
+            if (!alloc_ops.shared_redzones) {
+                client_new_redzone(split - alloc_ops.redzone_size,
+                                   alloc_ops.redzone_size);
+            }
 
             head->alloc_size = aligned_size;
         }
@@ -1229,7 +1269,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
      * we use the large malloc table to track them for iteration.
      * XXX: for simplicity, not delay-freeing these for now
      */
-    if (aligned_size + HEADER_SIZE >= CHUNK_MIN_MMAP) {
+    if (aligned_size + header_size >= CHUNK_MIN_MMAP) {
         size_t map_size = (size_t)
             ALIGN_FORWARD(aligned_size + alloc_ops.redzone_size*2 +
                           header_beyond_redzone, PAGE_SIZE);
@@ -1244,7 +1284,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         ASSERT(!alloc_ops.external_headers, "NYI");
         head = (chunk_header_t *) (map + alloc_ops.redzone_size +
                                    header_beyond_redzone - redzone_beyond_header -
-                                   HEADER_SIZE);
+                                   header_size);
         head->flags |= CHUNK_MMAP;
         head->magic = HEADER_MAGIC;
         head->alloc_size = map_size - alloc_ops.redzone_size*2 - header_beyond_redzone;
@@ -1252,6 +1292,15 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
     } else {
         /* look for free list entry */
         head = find_free_list_entry(arena, request_size, aligned_size);
+        if (head != NULL) {
+            client_handle_free_reuse(drcontext, ptr_from_header(head),
+                                     chunk_request_size(head),
+                                     /* the caller might clobber from real_base, so
+                                      * only pass what doesn't contain a header
+                                      */
+                                     ptr_from_header(head) - redzone_beyond_header,
+                                     head->alloc_size + client_real_size_extra(), mc);
+        }
     }
 
     /* if no free list entry, get new memory */
@@ -1281,7 +1330,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
         head = (chunk_header_t *)
-            (arena->next_chunk - redzone_beyond_header - HEADER_SIZE);
+            (arena->next_chunk - redzone_beyond_header - header_size);
         LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
             arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
         head->alloc_size = aligned_size;
@@ -1428,9 +1477,13 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
     /* we ignore the return value */
     if (invoke_client) {
         client_handle_free((byte *)ptr, chunk_request_size(head),
-                           /* XXX: real_base is regular base for us => no pattern */
-                           (byte *)ptr, head->alloc_size,
-                           mc, caller, head->user_data _IF_WINDOWS(NULL));
+                           /* the caller might clobber from real_base, so
+                            * only pass what doesn't contain a header
+                            */
+                           (byte *)ptr - redzone_beyond_header,
+                           head->alloc_size + client_real_size_extra(),
+                           mc, caller, head->user_data, false/*reuse delayed*/
+                           _IF_WINDOWS(NULL));
     }
 
     if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE &&
@@ -1507,9 +1560,16 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         !TEST(CHUNK_PRE_US, head->flags)) {
         /* XXX: if shrinking a lot, should free and re-malloc to save space */
         client_handle_realloc(drcontext, (byte *)ptr, chunk_request_size(head),
+                              /* the caller might clobber from real_base, so
+                               * only pass what doesn't contain a header
+                               */
+                              (byte *)ptr - redzone_beyond_header,
+                              head->alloc_size + client_real_size_extra(),
                               (byte *)ptr, size,
-                              /* XXX: real_base is regular base for us => no pattern */
-                              (byte *)ptr, mc);
+                              /* ditto: only pass what doesn't contain a header */
+                              (byte *)ptr - redzone_beyond_header,
+                              head->alloc_size + client_real_size_extra(),
+                              mc);
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_remove(ptr);
         if (chunk_request_size(head) < size && zeroed)
@@ -1519,7 +1579,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             malloc_large_add(ptr, chunk_request_size(head));
         res = ptr;
     } else if (!in_place_only || head->alloc_size >= size) {
-        size_t old_size = chunk_request_size(head);
+        size_t old_request_size = chunk_request_size(head);
+        size_t old_alloc_size = head->alloc_size;
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size, lock, zeroed,
@@ -1527,12 +1588,21 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                                             drcontext, mc, caller,
                                             MALLOC_ALLOCATOR_MALLOC);
         if (res != NULL) {
-            memcpy(res, ptr, MIN(size, chunk_request_size(head)));
+            head = header_from_ptr(res);
+            memcpy(res, ptr, MIN(size, old_request_size));
             replace_free_common(arena, ptr, lock, false/*no client */,
                                 drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
-            client_handle_realloc(drcontext, (byte *)ptr, old_size, res, size,
-                                  /* XXX: pattern mode wants base - redzone */
-                                  (byte *)ptr, mc);
+            client_handle_realloc(drcontext, (byte *)ptr, old_request_size,
+                                  /* the caller might clobber from real_base, so
+                                   * only pass what doesn't contain a header
+                                   */
+                                  (byte *)ptr - redzone_beyond_header,
+                                  old_alloc_size + client_real_size_extra(),
+                                  res, size,
+                                  /* ditto: only pass what doesn't contain a header */
+                                  (byte *)res - redzone_beyond_header,
+                                  head->alloc_size + client_real_size_extra(),
+                                  mc);
         }
     }
     return res;
@@ -1582,11 +1652,11 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
      * use the large malloc tree b/c it has pre_us allocs too (i#1051).
      */
     if (TEST(HEAP_MMAP, flags)) {
-        chunk_header_t *head = (chunk_header_t *) iter_arena_start;
-        byte *start = iter_arena_start + HEADER_SIZE + redzone_beyond_header;
+        byte *start = iter_arena_start;
+        chunk_header_t *head = header_from_ptr(start);
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
-        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + chunk_request_size(head));
-        if (!data->cb(start, start + chunk_request_size(head), start + head->alloc_size,
+        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, start, start + head->request_size);
+        if (!data->cb(start, start + head->request_size, start + head->alloc_size,
                       false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                       head->user_data, data->data))
             return false;
@@ -1603,12 +1673,12 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
             ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
             byte *start = ptr_from_header(head);
-            if (!data->cb(start, start + chunk_request_size(head), start + head->alloc_size,
+            if (!data->cb(start, start + head->request_size, start + head->alloc_size,
                           false/*!pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                           head->user_data, data->data))
                 return false;
         }
-        cur += head->alloc_size + inter_chunk_space();
+        cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
     }
     return true;
 }
@@ -1644,8 +1714,8 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
             byte *start = he->key;
             if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
                 LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
-                    start, start + chunk_request_size(head), start + head->alloc_size);
-                if (!cb(start, start + chunk_request_size(head), start + head->alloc_size,
+                    start, start + head->request_size, start + head->alloc_size);
+                if (!cb(start, start + head->request_size, start + head->alloc_size,
                         true/*pre_us*/, head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS,
                         head->user_data, iter_data))
                     break;
@@ -1683,7 +1753,7 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
     if (malloc_large_lookup(start, &found_arena_start, &size)) {
         found_head = header_from_ptr(found_arena_start);
         found_start = found_arena_start;
-        ASSERT(found_arena_start + size == found_start + chunk_request_size(found_head),
+        ASSERT(found_arena_start + size == found_start + found_head->request_size,
                "inconsistent");
     } else if (heap_region_bounds(start, &found_arena_start, &found_arena_end, &flags)) {
         if (TEST(HEAP_PRE_US, flags)) {
@@ -1695,8 +1765,7 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
                 for (he = pre_us_table.table[i]; he != NULL; he = he->next) {
                     chunk_header_t *head = (chunk_header_t *) he->payload;
                     byte *chunk_start = he->key;
-                    if (start < chunk_start + chunk_request_size(head) &&
-                        end >= chunk_start) {
+                    if (start < chunk_start + head->request_size && end >= chunk_start) {
                         found_head = head;
                         found_start = chunk_start;
                     }
@@ -1709,17 +1778,16 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
             /* XXX: make a shared internal iterator for this? */
             arena_header_t *arena = (arena_header_t *) found_arena_start;
             byte *cur = arena->start_chunk;
-            ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
             while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
                 chunk_start = ptr_from_header(head);
-                if (start < chunk_start + chunk_request_size(head) && end >= chunk_start) {
+                if (start < chunk_start + head->request_size && end >= chunk_start) {
                     found_head = head;
                     found_start = chunk_start;
                     break;
                 }
-                cur += head->alloc_size + inter_chunk_space();
+                cur += head->alloc_size + alloc_ops.redzone_size + header_beyond_redzone;
             }
         } else
             ASSERT(false, "large lookup should have found it");
@@ -1728,7 +1796,7 @@ alloc_replace_overlaps_delayed_free(byte *start, byte *end,
         if (free_start != NULL)
             *free_start = found_start;
         if (free_end != NULL)
-            *free_end = found_start + chunk_request_size(found_head);
+            *free_end = found_start + found_head->request_size;
         if (client_data != NULL)
             *client_data = found_head->user_data;
         return true;
@@ -2034,7 +2102,8 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
                     client_handle_free(start, chunk_request_size(head),
                                        start, head->alloc_size,
                                        mc, (app_pc)replace_RtlDestroyHeap,
-                                       head->user_data _IF_WINDOWS((HANDLE)arena));
+                                       head->user_data, true/*not delayed*/
+                                       _IF_WINDOWS((HANDLE)arena));
                 }
                 cur += head->alloc_size + inter_chunk_space();
             }
@@ -2797,11 +2866,20 @@ malloc_replace__unlock(void)
 void
 alloc_replace_init(void)
 {
+    if (alloc_ops.shared_redzones) {
+        header_size = sizeof(chunk_header_t);
+    } else {
+        /* See comment up top: we pay in extra space for simplicity of keeping
+         * the free list next pointer out of the redzone.
+         */
+        header_size = ALIGN_FORWARD(sizeof(free_header_t), CHUNK_ALIGNMENT);
+    }
+
     ASSERT(sizeof(free_header_t) <=
            (alloc_ops.external_headers ? 0 : sizeof(chunk_header_t)) + CHUNK_MIN_SIZE,
            "min size too small");
     /* we could pad but it's simpler to have struct already have right size */
-    ASSERT(ALIGNED(sizeof(chunk_header_t), CHUNK_ALIGNMENT), "alignment off");
+    ASSERT(ALIGNED(header_size, CHUNK_ALIGNMENT), "alignment off");
 
     ASSERT(CHUNK_MIN_MMAP >= LARGE_MALLOC_MIN_SIZE,
            "we rely on mmapped chunks being in large malloc table");
@@ -2812,12 +2890,15 @@ alloc_replace_init(void)
 
     ASSERT(USHRT_MAX*CHUNK_ALIGNMENT >= CHUNK_MIN_MMAP, "prev_size_shr field too small");
 
-    if (alloc_ops.redzone_size < HEADER_SIZE) {
-        header_beyond_redzone = HEADER_SIZE - alloc_ops.redzone_size;
+    if (!alloc_ops.shared_redzones) {
+        header_beyond_redzone = header_size;
+        redzone_beyond_header = alloc_ops.redzone_size;
+    } else if (alloc_ops.redzone_size < header_size) {
+        header_beyond_redzone = header_size - alloc_ops.redzone_size;
         redzone_beyond_header = 0;
     } else {
-        redzone_beyond_header = (alloc_ops.redzone_size - HEADER_SIZE)/2;
-        ASSERT(redzone_beyond_header*2 + HEADER_SIZE <= alloc_ops.redzone_size,
+        redzone_beyond_header = (alloc_ops.redzone_size - header_size)/2;
+        ASSERT(redzone_beyond_header*2 + header_size <= alloc_ops.redzone_size,
                "redzone or header size not aligned properly");
     }
 

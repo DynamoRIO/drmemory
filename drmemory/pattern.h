@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -65,14 +65,19 @@ pattern_handle_malloc(byte *app_base,  size_t app_size,
 
 void
 pattern_handle_real_free(app_pc base,  size_t size,
-                         size_t real_size, bool delayed);
+                         byte *real_base, size_t real_size, bool delayed);
 
 void
 pattern_handle_delayed_free(app_pc base, size_t size, size_t real_size);
 
 void
 pattern_handle_realloc(app_pc old_base, size_t old_size,
-                       app_pc new_base, size_t new_size, app_pc new_real_base);
+                       app_pc old_real_base, size_t old_real_size,
+                       app_pc new_base, size_t new_size, app_pc new_real_base,
+                       size_t new_real_size);
+
+void
+pattern_new_redzone(app_pc start, size_t size);
 
 bool
 pattern_handle_mem_ref(app_loc_t *loc, app_pc addr, size_t size,

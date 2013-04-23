@@ -925,8 +925,9 @@ client_handle_malloc(void *drcontext, app_pc base, size_t size,
 
 void
 client_handle_realloc(void *drcontext, app_pc old_base, size_t old_size,
-                      app_pc new_base, size_t new_size, app_pc new_real_base,
-                      dr_mcontext_t *mc)
+                      app_pc old_real_base, size_t old_real_size,
+                      app_pc new_base, size_t new_size,
+                      app_pc new_real_base, size_t new_real_size, dr_mcontext_t *mc)
 {
     if (options.check_leaks)
         leak_handle_alloc(drcontext, new_base, new_size);
@@ -949,9 +950,23 @@ client_handle_realloc_null(app_pc pc, dr_mcontext_t *mc)
 app_pc
 client_handle_free(app_pc base, size_t size, app_pc real_base, size_t real_size,
                    dr_mcontext_t *mc, app_pc free_routine,
-                   void *client_data _IF_WINDOWS(ptr_int_t *auxarg INOUT))
+                   void *client_data, bool for_reuse
+                   _IF_WINDOWS(ptr_int_t *auxarg INOUT))
 {
     return real_base;
+}
+
+void
+client_handle_free_reuse(void *drcontext, app_pc base, size_t size,
+                         app_pc real_base, size_t real_size, dr_mcontext_t *mc)
+{
+    /* nothing */
+}
+
+void
+client_new_redzone(app_pc start, size_t size)
+{
+    /* nothing */
 }
 
 void
