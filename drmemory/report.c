@@ -971,6 +971,9 @@ top_frame_matches_suppression_frame(const error_callstack_t *ecs,
             return false;
         }
 #endif
+        LOG(4, "  error frame for cmp: %s!%s\n",
+            symbolized_callstack_frame_modname(&ecs->scs, idx),
+            symbolized_callstack_frame_func(&ecs->scs, idx));
         return (frame_matches_modname(ecs, idx, supp) &&
                 text_matches_pattern(func, supp->func, false/*consider case*/));
     }
@@ -1019,6 +1022,27 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
              */
             scs_last_ellipsis++;
             i = scs_last_ellipsis - 1; /* counteract for's ++ */
+        } else if (i == 0 && options.replace_malloc &&
+                   text_matches_pattern(symbolized_callstack_frame_func(&ecs->scs, i),
+                                        "replace_*", false/*consider case*/) &&
+                   text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, i),
+                                        "*drmemory*", false/*consider case*/)) {
+            /* To support swapping between wrapping and replacing, we ignore
+             * mismatches of replacing's top replace_ frame (i#1189).
+             */
+            LOG(4, "  skipping top replace_ frame\n");
+        } else if (i == 0 && !options.replace_malloc && supp->func != NULL &&
+                   text_matches_pattern(supp->func,
+                                        "replace_*", false/*consider case*/) &&
+                   text_matches_pattern(supp->modname,
+                                        "*drmemory*", false/*consider case*/)) {
+            /* The other direction: a suppression frame for replace_*
+             * yet we're running with wrapping (in case we have to
+             * turn off -replace_malloc) (i#1189).
+             */
+            LOG(4, "  skipping top replace_ suppress frame\n");
+            supp = supp->next;
+            i--; /* counteract for's ++ */
         } else {
             return false;
         }
