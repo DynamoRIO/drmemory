@@ -1163,8 +1163,6 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
         }
     } else
         LOG(4, "find_next_fp: returning NULL b/c couldn't read stack page\n");
-    LOG(2, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
-        orig_fp, NULL, (retaddr==NULL)?NULL:*retaddr);//NOCHECKIN
     return NULL;
 }
 
