@@ -1278,7 +1278,11 @@ pattern_addr_in_redzone(byte *addr, size_t size)
 static void
 pattern_write_pattern(byte *start, byte *end _IF_DEBUG(const char *description))
 {
-    uint *addr = (uint *) start;
+    /* gcc -O3 loads from options.pattern every iter of the loop so we
+     * explicitly put into a local.
+     */
+    register uint *addr = (uint *) start;
+    register uint pattern_val = options.pattern;
     LOG(2, "set pattern value at "PFX"-"PFX" in %s\n",
         start, end, description);
     if (!ALIGNED(addr, 2)) {
@@ -1292,7 +1296,7 @@ pattern_write_pattern(byte *start, byte *end _IF_DEBUG(const char *description))
     for (addr = (uint *)ALIGN_FORWARD(start, 4);
          addr < (uint *)end; /* we assume ok to write past end! */
          addr++)
-        *addr = options.pattern;
+        *addr = pattern_val;
 }
 
 void
