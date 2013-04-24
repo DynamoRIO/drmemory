@@ -355,18 +355,19 @@ function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
     "${postprocess}" "${resbase}" OFF)
 endfunction(newtest_nobuild)
 
-function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase)
+function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase
+    ignore_exit_code)
   tobuild(${test} ${source})
-  newtest_nobuild(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}")
+  newtest_nobuild_ex(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    "${postprocess}" "${resbase}" ${ignore_exit_code})
 endfunction(newtest_ex)
 
 function(newtest test source)
-  newtest_ex(${test} ${source} "" "" "" OFF "")
+  newtest_ex(${test} ${source} "" "" "" OFF "" OFF)
 endfunction(newtest)
 
 function(newtest_custbuild test source cust_flags resbase)
-  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}")
+  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}" OFF)
   get_target_property(cur_flags ${test} COMPILE_FLAGS)
   if (NOT cur_flags)
     set(cur_flags "")
@@ -416,10 +417,16 @@ else ()
   set(cs2bug_res "cs2bugMTd")
   set(cs2bug_flags "/DSKIP_MISMATCH_DTR")
 endif ()
-newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res})
+newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} OFF)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
-newtest(operators operators.cpp)
+if (UNIX)
+  newtest_ex(operators operators.cpp "" "" "" OFF ""
+    # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
+    ON)
+else (UNIX)
+  newtest_ex(operators operators.cpp "" "" "" OFF "" OFF)
+endif (UNIX)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -433,12 +440,12 @@ if (UNIX)
     newtest(clone clone.c)
   endif (NOT VMKERNEL)
   get_relative_location(malloc malloc_path)
-  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "")
+  newtest_ex(execve execve.c "${malloc_path}" "" "" OFF "" OFF)
   newtest(pthreads pthreads.c)
   target_link_libraries(pthreads pthread)
   tobuild_lib(loaderlib loader.lib.c "" "")
   get_relative_location(loaderlib loaderlib_path)
-  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "")
+  newtest_ex(loader loader.c "${loaderlib_path}" "" "" OFF "" OFF)
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
@@ -453,7 +460,7 @@ else (UNIX)
   tobuild_lib(unloadlib unload.lib.c "/DUSE_CUSTOM_MALLOC" "/nodefaultlib /noentry")
 endif (UNIX)
 get_relative_location(unloadlib unloadlib_path)
-newtest_ex(unload unload.c "${unloadlib_path}" "" "" OFF "")
+newtest_ex(unload unload.c "${unloadlib_path}" "" "" OFF "" OFF)
 if (UNIX)
   target_link_libraries(unload dl)
 endif (UNIX)
@@ -486,17 +493,31 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
-  # test malloc replacement (additional tests are below)
-  newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
-  if (cs2bug_flags STREQUAL "")
-    newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF ${cs2bug_res})
-  else ()
-    # -replace_malloc won't raise unrecoverable heap errors (i#1161)!
-    newtest_ex(replace_cs2bug cs2bug.cpp "" "-replace_malloc" "" OFF "cs2bug")
-  endif ()
-  newtest_nobuild_ex(replace_operators operators "" "-replace_malloc" "" OFF "operators"
-    # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
-    ON)
+  if (UNIX)
+    # -replace_malloc is the default, so test wrapping
+    newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+    if (cs2bug_flags STREQUAL "")
+      newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
+    else ()
+      # -no_replace_malloc raises unrecoverable heap errors (i#1161)
+      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
+    endif ()
+    newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
+      "" OFF "operators" OFF)
+  else (UNIX)
+    # test malloc replacement (additional tests are below)
+    newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
+    if (cs2bug_flags STREQUAL "")
+      newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF ${cs2bug_res})
+    else ()
+      # -replace_malloc won't raise unrecoverable heap errors (i#1161)!
+      newtest_ex(replace_cs2bug cs2bug.cpp "" "-replace_malloc" "" OFF "cs2bug" OFF)
+    endif ()
+    newtest_nobuild_ex(replace_operators operators "" "-replace_malloc" "" OFF "operators"
+      # ignore exit code (b/c -replace_malloc calls dr_exit_process(1)
+      # in lieu of exception)
+      ON)
+  endif (UNIX)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -603,12 +624,14 @@ if (TOOL_DR_MEMORY)
       newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "" "" "" cs2bug)
     endif (GCC)
 
-    newtest_ex(gdi gdi.cpp "" "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress" "" OFF "")
+    newtest_ex(gdi gdi.cpp "" "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress" ""
+      OFF "" OFF)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
-    newtest_ex(handle handle.cpp "" "-light;-check_handle_leaks;-callstack_max_frames;100" "" OFF "")
+    newtest_ex(handle handle.cpp ""
+      "-light;-check_handle_leaks;-callstack_max_frames;100" "" OFF "" OFF)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -628,7 +651,7 @@ if (TOOL_DR_MEMORY)
   # a bunch of annotations that are only used for tests.
   newtest_ex(pcache free.c "" "-light;-persist_code"
     # do not load any stale pcaches from prior runs, in first run
-    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly")
+    "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly" OFF)
   if (WIN32)
     # we make a separate executable to avoid ASLR
     append_link_flags(pcache "/dynamicbase:no")
@@ -636,15 +659,16 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(pcache-use pcache "" "-light;-persist_code" "" OFF "addronly")
   # when running tests in parallel, have to generate pcaches first
   set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
-  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" "" OFF "")
+  newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""
+    OFF "" OFF)
   # pattern mode testing.
   newtest_nobuild(free.pattern free "" "-unaddr_only" "" OFF "addronly")
   newtest_nobuild(malloc.pattern malloc "" "-unaddr_only" "" OFF "")
   newtest_nobuild(registers.pattern registers "" "-pattern;0xf1fd" "" OFF "addronly-reg")
-  newtest_nobuild(track_origins.pattern track_origins "" "-unaddr_only;-track_origins_unaddr"
-    "" OFF "track_origins")
+  newtest_nobuild(track_origins.pattern track_origins ""
+    "-unaddr_only;-track_origins_unaddr" "" OFF "track_origins")
 else (TOOL_DR_MEMORY)
-  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "")
+  newtest_ex(stale stale.c "" "-staleness;-stale_granularity 100" "" OFF "" OFF)
 
   newtest_nobuild(time-allocs malloc "" "-time_allocs" "" OFF "")
   newtest_nobuild(time-bytes malloc "" "-time_bytes" "" OFF "")
@@ -683,12 +707,14 @@ newtest_nobuild(app_suite.pattern app_suite_tests "" "-unaddr_only" "" OFF "")
 
 else (NOT X64)
   # pattern mode testing.
-  newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly")
-  newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "")
+  newtest_ex(free.pattern free.c "" "-unaddr_only" "" OFF "addronly" OFF)
+  newtest_ex(malloc.pattern malloc.c "" "-unaddr_only" "" OFF "" OFF)
   newtest_ex(track_origins.pattern track_origins.c "" "-unaddr_only;-track_origins_unaddr"
-    "" OFF "track_origins")
+    "" OFF "track_origins" OFF)
   if (WIN32)
     # FIXME i#672: see earlier comment on # callstack frames
-    newtest_ex(handle handle.cpp "" "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100" "" OFF "")
+    newtest_ex(handle handle.cpp ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100" ""
+      OFF "" OFF)
   endif (WIN32)
 endif (NOT X64)

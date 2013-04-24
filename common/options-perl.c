@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -21,6 +21,12 @@
  */
 
 /* Options list for perl */
+
+#ifdef LINUX
+# define IF_LINUX_ELSE(x,y) x
+#else
+# define IF_LINUX_ELSE(x,y) y
+#endif
 
 #define OPTION_FRONT OPTION_CLIENT
 /* There's no adjacent-string-literal concatenation in Perl */

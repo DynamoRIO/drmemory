@@ -647,7 +647,7 @@ OPTION_CLIENT_BOOL(client, leak_scan, true,
 OPTION_CLIENT_BOOL(internal, pattern_use_malloc_tree, false,
                    "Use red-black tree for tracking malloc/free",
                    "Use red-black tree for tracking malloc/free to reduce the overhead of maintaining the malloc tree on every memory allocation and free, but we have to do expensive hashtable walk to check if an address is in the redzone.")
-OPTION_CLIENT_BOOL(internal, replace_malloc, false,
+OPTION_CLIENT_BOOL(internal, replace_malloc, IF_LINUX_ELSE(true, false),
                    "Replace malloc rather than wrapping existing routines",
                    "Replace malloc with custom routines rather than wrapping existing routines.  Replacing is more efficient but can be less transparent.")
 OPTION_CLIENT_SCOPE(internal, pattern_max_2byte_faults, int, 0x1000, -1, INT_MAX,
