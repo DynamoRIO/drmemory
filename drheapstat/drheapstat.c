@@ -923,7 +923,7 @@ client_handle_malloc(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc)
 
 void
 client_handle_realloc(void *drcontext, malloc_info_t *old_info, malloc_info_t *new_info,
-                      dr_mcontext_t *mc)
+                      bool for_reuse, dr_mcontext_t *mc)
 {
     if (options.check_leaks)
         leak_handle_alloc(drcontext, new_info->base, new_info->request_size);

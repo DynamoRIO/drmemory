@@ -1387,7 +1387,8 @@ pattern_handle_delayed_free(malloc_info_t *info)
 }
 
 void
-pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info)
+pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info,
+                       bool for_reuse)
 {
     LOG(2, "%s: "PFX"-"PFX", "PFX"-"PFX"\n", __FUNCTION__,
         old_info->base, old_info->base + old_info->request_size,
@@ -1395,12 +1396,12 @@ pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info)
     if (new_info->base != old_info->base) {
         /* treat as free+malloc */
         if (options.replace_malloc) {
-            /* check for munmap
-             * XXX: racy!  add param to pattern_handle_realloc()?
-             */
-            if (dr_memory_is_readable(old_info->base, 1))
+            if (!for_reuse)
                 pattern_handle_delayed_free(old_info);
         } else {
+            /* XXX: with wrapping, we can have a race here with -no_replace_realloc.
+             * That option combo is just unsafe: pattern + wrap + -no_replace_realloc!
+             */
             pattern_handle_real_free(old_info, false);
         }
         pattern_handle_malloc(new_info);

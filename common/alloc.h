@@ -329,9 +329,10 @@ client_remove_malloc_post(malloc_info_t *info);
 void
 client_handle_malloc(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc);
 
+/* for_reuse indicates whether the freed memory might be reused at any time */
 void
 client_handle_realloc(void *drcontext, malloc_info_t *old_info,
-                      malloc_info_t *new_info, dr_mcontext_t *mc);
+                      malloc_info_t *new_info, bool for_reuse, dr_mcontext_t *mc);
 
 void
 client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc);

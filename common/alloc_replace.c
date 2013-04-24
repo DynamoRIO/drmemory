@@ -1593,9 +1593,10 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             malloc_large_add(ptr, chunk_request_size(head));
         res = ptr;
         header_to_info(head, &new_info);
-        client_handle_realloc(drcontext, &old_info, &new_info, mc);
+        client_handle_realloc(drcontext, &old_info, &new_info, false, mc);
     } else if (!in_place_only || head->alloc_size >= size) {
         size_t old_request_size = chunk_request_size(head);
+        bool was_mmap = TEST(CHUNK_MMAP, head->flags);
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size, lock, zeroed,
@@ -1608,7 +1609,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             replace_free_common(arena, ptr, lock, false/*no client */,
                                 drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
             header_to_info(head, &new_info);
-            client_handle_realloc(drcontext, &old_info, &new_info, mc);
+            client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
         }
     }
     return res;

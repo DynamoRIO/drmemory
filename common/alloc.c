@@ -5694,7 +5694,8 @@ handle_realloc_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                               flags, 0, mc, top_pc, pt->allocator);
             restore_mc_for_client(pt, wrapcxt, mc);
         }
-        client_handle_realloc(drcontext, &pt->realloc_old_info, &info, mc);
+        client_handle_realloc(drcontext, &pt->realloc_old_info, &info,
+                              pt->realloc_old_info.base != info.base, mc);
     } else if (pt->alloc_size != 0) /* for sz==0 normal to return NULL */ {
         /* if someone else already replaced that's fine */
         if (malloc_is_pre_us_ex(pt->alloc_base, true/*check invalid too*/) ||

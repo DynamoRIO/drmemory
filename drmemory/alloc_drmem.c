@@ -531,7 +531,7 @@ client_handle_malloc(void *drcontext, malloc_info_t *mal, dr_mcontext_t *mc)
 
 void
 client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
-                      malloc_info_t *new_mal, dr_mcontext_t *mc)
+                      malloc_info_t *new_mal, bool for_reuse, dr_mcontext_t *mc)
 {
     /* XXX i#69: wrapping the app's realloc is racy: old region could
      * have been malloc'd again by now!  We could synchronize all
@@ -594,7 +594,7 @@ client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
         }
     }
     if (options.pattern != 0) {
-        pattern_handle_realloc(old_mal, new_mal);
+        pattern_handle_realloc(old_mal, new_mal, for_reuse);
     }
     report_malloc(old_mal->base, old_mal->base + old_mal->request_size,
                   "realloc-old", mc);

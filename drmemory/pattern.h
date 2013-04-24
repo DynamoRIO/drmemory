@@ -70,7 +70,8 @@ void
 pattern_handle_delayed_free(malloc_info_t *info);
 
 void
-pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info);
+pattern_handle_realloc(malloc_info_t *old_info, malloc_info_t *new_info,
+                       bool for_reuse);
 
 void
 pattern_new_redzone(app_pc start, size_t size);
