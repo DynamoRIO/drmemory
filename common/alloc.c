@@ -2651,11 +2651,11 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
-    if (!alloc_ops.track_allocs)
-        return;
-
     if (alloc_ops.replace_malloc)
         alloc_replace_exit();
+
+    if (!alloc_ops.track_allocs)
+        return;
 
     hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
     dr_mutex_destroy(alloc_routine_lock);
