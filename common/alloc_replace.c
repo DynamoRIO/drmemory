@@ -1753,8 +1753,11 @@ overlap_helper(chunk_header_t *head,
      */
     if (info->struct_size != sizeof(*info))
         ASSERT(false, "size is wrong");
+    LOG(4, "overlap_helper for "PFX": 0x%x vs pos=0x%x neg=0x%x\n",
+        ptr_from_header(head), head->flags, positive_flags, negative_flags);
     if (TESTALL(positive_flags, head->flags) &&
         !TEST(negative_flags, head->flags)) {
+        LOG(4, "overlap_helper match for "PFX"\n", ptr_from_header(head));
         if (info != NULL)
             header_to_info(head, info);
         return true;

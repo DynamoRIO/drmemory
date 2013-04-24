@@ -1009,10 +1009,7 @@ overlaps_delayed_free(byte *start, byte *end,
         } else {
             found = alloc_replace_overlaps_any_free(start, end, &info);
         }
-        /* exclude redzone */
-        if (found &&
-            (!info.has_redzone ||
-             (start < info.base + info.request_size && end > info.base))) {
+        if (found) {
             if (free_start != NULL)
                 *free_start = info.base;
             if (free_end != NULL)
@@ -1028,33 +1025,28 @@ overlaps_delayed_free(byte *start, byte *end,
     DOLOG(3, { rb_iterate(delay_free_tree, print_free_tree, NULL); });
     node = rb_overlaps_node(delay_free_tree, start, end);
     if (node != NULL) {
-        /* we store real base and real size, so exclude redzone since we only
-         * want to report overlap with app-requested base and size
-         */
         app_pc real_base;
         size_t size;
         delay_free_t *info;
         size_t redsz;
+        res = true;
         rb_node_fields(node, &real_base, &size, (void **)&info);
         ASSERT(info != NULL, "invalid free tree info");
         redsz = (info->has_redzone ? options.redzone_size : 0);
         LOG(3, "\toverlap real base: "PFX", size: %d, redzone: %d\n",
             real_base, size, redsz);
-        if (!info->has_redzone ||
-            (start < real_base + size - options.redzone_size &&
-             end > real_base + options.redzone_size)) {
-            res = true;
-            if (free_start != NULL)
-                *free_start = real_base + redsz;
-            /* size is the app-asked-for-size */
-            if (free_end != NULL)
-                *free_end = real_base + size - redsz;
-            if (pcs != NULL) {
-                if (info->pcs == NULL)
-                    *pcs = NULL;
-                else
-                    *pcs = packed_callstack_clone(info->pcs);
-            }
+        if (free_start != NULL)
+            *free_start = real_base + redsz;
+        /* we didn't store the requested size or padded size so we include
+         * padding in free_end
+         */
+        if (free_end != NULL)
+            *free_end = real_base + size - redsz;
+        if (pcs != NULL) {
+            if (info->pcs == NULL)
+                *pcs = NULL;
+            else
+                *pcs = packed_callstack_clone(info->pcs);
         }
     }
     dr_mutex_unlock(delay_free_lock);
@@ -2514,7 +2506,8 @@ region_overlap_with_malloc_block(malloc_iter_data_t *iter_data)
     return iter_data->found;
 }
 
-/* check if region [addr, addr + size) overlaps with any malloc redzone,
+/* check if region [addr, addr + size) overlaps with any malloc redzone
+ * or padding.
  * - if overlaps, return true and fill all the passed in parameters,
  * - otherwise, return false and NO parameters is filled.
  */

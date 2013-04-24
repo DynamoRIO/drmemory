@@ -1265,6 +1265,7 @@ pattern_addr_pre_check(byte *addr)
     return false;
 }
 
+/* Checks whether [addr, addr+size) overlaps a redzone or padding */
 static bool
 pattern_addr_in_redzone(byte *addr, size_t size)
 {

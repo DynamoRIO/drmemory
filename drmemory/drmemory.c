@@ -325,6 +325,8 @@ persistence_supported(void)
     /* We count on DR to not persist any bbs w/ clean calls in them.
      * Both light modes and -leaks_only are all persistable so long as the drmem lib
      * is at the same base.
+     * For -replace_malloc, the replaced-callee bbs have direct jumps to
+     * the drmem library: but we're already assuming it's at the same base.
      * FIXME i#769: full mode is not yet persistable b/c its lean routines have
      * absolute return targets and they need patching
      */

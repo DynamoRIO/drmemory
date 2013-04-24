@@ -62,7 +62,10 @@ handle_removed_heap_region(app_pc start, app_pc end, dr_mcontext_t *mc);
 void
 check_reachability(bool at_exit);
 
-/* only returns true if overlap is in app requested chunk: not redzone */
+/* Returns true if the overlap is in any portion of freed memory,
+ * including padding and redzones.  The returned bounds can be used to
+ * rule out padding and redzones if desired.
+ */
 bool
 overlaps_delayed_free(byte *start, byte *end,
                       byte **free_start OUT, /* app base */
