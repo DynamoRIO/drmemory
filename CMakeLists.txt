@@ -1112,11 +1112,11 @@ file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
 if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
     "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
-  if (NOT USE_DRSYMS)
+  if (NOT USE_DRSYMS OR TOOL_DR_HEAPSTAT)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
     set(script_aux "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl")
-  endif (NOT USE_DRSYMS)
+  endif ()
   set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl"
     "${options_for_perl}")
 endif ()

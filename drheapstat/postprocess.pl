@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -41,6 +41,7 @@ use IO::Socket;
 use FindBin qw($RealBin);
 use File::Path;
 use lib "$FindBin::RealBin/..";
+use Cwd qw(abs_path);
 
 # Must be as early as possible.
 $SIG{__DIE__} = sub {
@@ -274,8 +275,15 @@ sub collaborate_with_vistool()
     print "server started\n" if ($verbose);
 
     # Launch the vistool (client for this server) in the background.
-    # FIXME: not sure if this will work on windows as such, so check.
-    my $cmd = $ENV{"FLASH_PLAYER"}." $vistool &";
+    # Make sure to quote the path to handle spaces.
+    my $player = $ENV{"FLASH_PLAYER"};
+    $vistool = canonicalize_path($vistool);
+    if (!$is_unix) {
+        # canonicalize_path will leave as unix path (which we want for everything
+        # else when using cygwin perl), so we do drive letter conversion here:
+        $vistool =~ s|^/([a-z])/|\1:/|;
+    }
+    my $cmd = "\"$player\" $vistool &";
     system $cmd;
     print "launched vistool: $cmd\n" if ($verbose);
 
@@ -306,6 +314,12 @@ sub collaborate_with_vistool()
         } elsif (/finished/){
             # Client notifies of exit.
             last;
+        } elsif (/<policy-file-request\/>/) {
+            # Attempt to satisfy Flash 9's policy file requirement to open
+            # a socket connection.  However, this doesn't seem to work for me:
+            # I need to instead listen on port 843 with a real policy file.
+            # FIXME: have this code listen on 843.
+            $res = "<?xml version=\"1.0\"?><cross-domain-policy><allow-access-from domain=\"*\" to-ports=\"*\"/></cross-domain-policy>\0";
         } else {
             print "unknown message from client\n" if ($verbose);
         }
@@ -803,7 +817,7 @@ sub create_file_list_xml()
             $fr_count++;
             # Grouping is done by the first non system library frame seen in the
             # callstack.
-            if ($frame =~ /^\s+\w+\s+<(.*)\+(.*)>/) {
+            if ($frame =~ /\s+<(.*)\+(.*)>/) {
                 my ($module, $offset) = ($1, $2);
                 # \Q...\E for PR 420898.  Else libstdc++'s + will be used as a
                 # meta character.  Match all versions of the system libraries
@@ -877,7 +891,7 @@ sub create_callstack_xml($cstack_str_in)
     foreach my $str (split /\n/, $cstack_str) {
         if ($str =~ /^CALLSTACK\s*(\d+)/) {
             $xml .= "<callstack id=\"$1\">\n";
-        } elsif ($str =~ /^#\s*\d+\s+\S+!\?\s*\w+\s+<(.*)>/) {
+        } elsif ($str =~ /\s+<(.*)>/) {
             ($symbol, $src_file) = lookup_addr("<$1>", $addr_sym_disp);
             # Can't use < or > in xml file, but templates have them.
             $symbol =~ s/</&lt;/g;
@@ -886,6 +900,8 @@ sub create_callstack_xml($cstack_str_in)
             $xml .= "\t\t<symbol>$symbol</symbol>\n";
             $xml .= "\t\t<file>$src_file</file>\n";
             $xml .= "\t</frame>\n";
+        } else {
+            print stderr "unknown callstack line $str\n" if ($verbose);
         }
         $addr_sym_disp = -1; # now past 1st frame
     }
@@ -918,7 +934,7 @@ sub create_callstack_header($cstack_str_in)
             $xml .= "<callstack id=\"$1\">\n";
             # callstack #1 is a special case
             return "Allocations before Dr. HeapStat got control" if ($1 == 1);
-        } elsif ($str =~ /^\s+\w+\s+<(.*)>/) {
+        } elsif ($str =~ /\s+<(.*)>/) {
             ($symbol, $src_file) = lookup_addr("<$1>", $addr_sym_disp);
 
             # Don't have to worry about <> in a symbol because we rip out
@@ -932,6 +948,8 @@ sub create_callstack_header($cstack_str_in)
             $header .= $symbol;
             $num_fr++;
             last if ($num_fr == 3);     # PR 544640 - empty call stack headers
+        } else {
+            print stderr "unknown callstack line $str\n" if ($verbose);
         }
         $addr_sym_disp = -1; # now past 1st frame
     }
@@ -1306,7 +1324,7 @@ sub init_libsearch_path ($use_vmtree)
     }
 
     print "INFO: libsearch is ".join("$newline\t", @libsearch)."\n\n"
-        if ($verbose);
+        if ($verbose_verbose); # huge list so not printing
 }
 
 #-------------------------------------------------------------------------------
