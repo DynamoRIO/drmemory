@@ -264,9 +264,10 @@ typedef struct _arena_header_t {
 /* another non-Heap flag to identify libc-default Heaps (i#939) */
 # define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY /* 0x10 */
 /* flags that we support being passed to HeapCreate:
- * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE
+ * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE |
+ * HEAP_GROWABLE
  */
-# define HEAP_CREATE_POSSIBLE_FLAGS 0x40005
+# define HEAP_CREATE_POSSIBLE_FLAGS 0x40007
 static HANDLE process_heap;
 #else
 # define ARENA_MAIN 0x0001
