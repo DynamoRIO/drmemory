@@ -1541,6 +1541,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
 static byte *
 replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                        bool lock, bool zeroed, bool in_place_only, bool allow_null,
+                       bool alloc_empty,
                        void *drcontext, dr_mcontext_t *mc, app_pc caller)
 {
     byte *res = NULL;
@@ -1559,7 +1560,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             res = NULL;
         }
         return res;
-    } else if (size == 0) {
+    } else if (size == 0 && !alloc_empty) {
         replace_free_common(arena, ptr, lock, true/*client*/, drcontext, mc, caller,
                             MALLOC_ALLOCATOR_MALLOC);
         return NULL;
@@ -1584,6 +1585,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     if (head->alloc_size >= size &&
         head->alloc_size - size <= REQUEST_DIFF_MAX &&
         !TEST(CHUNK_PRE_US, head->flags)) {
+        LOG(2, "\t%s: in-place realloc from %d to %d bytes\n", __FUNCTION__,
+            chunk_request_size(head), size);
         /* XXX: if shrinking a lot, should free and re-malloc to save space */
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_remove(ptr);
@@ -1598,6 +1601,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     } else if (!in_place_only || head->alloc_size >= size) {
         size_t old_request_size = chunk_request_size(head);
         bool was_mmap = TEST(CHUNK_MMAP, head->flags);
+        LOG(2, "\t%s: malloc-and-free realloc from %d to %d bytes\n", __FUNCTION__,
+            old_request_size, size);
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size, lock, zeroed,
@@ -1958,7 +1963,8 @@ replace_realloc(void *ptr, size_t size)
     LOG(2, "replace_realloc "PFX" %d\n", ptr, size);
     res = replace_realloc_common(arena, ptr, size, true/*lock*/, false/*!zeroed*/,
                                  false/*!in-place only*/, true/*allow null*/,
-                                 drcontext, &mc, (app_pc)replace_realloc);
+                                 false/*!alloc_empty*/, drcontext, &mc,
+                                 (app_pc)replace_realloc);
     LOG(2, "\treplace_realloc %d => "PFX"\n", size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return res;
@@ -2327,8 +2333,9 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
                                      !TEST(HEAP_NO_SERIALIZE, flags),
                                      TEST(HEAP_ZERO_MEMORY, flags),
                                      TEST(HEAP_REALLOC_IN_PLACE_ONLY, flags),
-                                     false/*fail on null*/, drcontext,
-                                     &mc, (app_pc)replace_RtlReAllocateHeap);
+                                     false/*fail on null*/,
+                                     true/*size==0 does re-allocate*/, 
+                                     drcontext, &mc, (app_pc)replace_RtlReAllocateHeap);
     }
     dr_switch_to_app_state(drcontext);
     if (res == NULL)
