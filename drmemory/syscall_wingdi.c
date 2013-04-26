@@ -30,6 +30,7 @@
 #include "syscall_windows.h"
 #include "readwrite.h"
 #include "shadow.h"
+#include "gdicheck.h"
 #include <stddef.h> /* offsetof */
 
 #include "../wininc/ntuser.h" /* LARGE_STRING */
@@ -193,8 +194,16 @@ syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_
         drsys_sysnums_equal(&sysnum, &sysnum_GdiDdGetDC)) {
         if (!pre) {
             HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+            /* i#1192: NtGdiGetDCforBitmap does not allocate a new DC
+             * that needs to be freed.  We leave it enabled as an
+             * "allocation" to have more DC's in our table (presumably
+             * adding in those created before we took over).
+             */
+            uint flags = 0;
+            if (!drsys_sysnums_equal(&sysnum, &sysnum_GdiGetDCforBitmap))
+                flags |= GDI_DC_ALLOC_GET;
             syscall_to_loc(&loc, sysnum, "");
-            gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc, &loc);
+            gdicheck_dc_alloc(hdc, flags, sysnum, mc, &loc);
             if (drsys_sysnums_equal(&sysnum, &sysnum_UserBeginPaint)) {
                 /* we store the hdc for access in EndPaint */
                 pt->paintDC = hdc;
@@ -205,12 +214,12 @@ syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_
                drsys_sysnums_equal(&sysnum, &sysnum_GdiOpenDCW)) {
         if (!pre) {
             HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+            uint flags = GDI_DC_ALLOC_CREATE;
+            if (drsys_sysnums_equal(&sysnum, &sysnum_GdiCreateCompatibleDC) &&
+                syscall_get_param(drcontext, 0) == 0)
+                flags |= GDI_DC_ALLOC_DUP_NULL;
             syscall_to_loc(&loc, sysnum, "");
-            gdicheck_dc_alloc(hdc, true/*Create not Get*/,
-                              (drsys_sysnums_equal(&sysnum,
-                                                   &sysnum_GdiCreateCompatibleDC) &&
-                               syscall_get_param(drcontext, 0) == 0),
-                              sysnum, mc, &loc);
+            gdicheck_dc_alloc(hdc, flags, sysnum, mc, &loc);
         }
     } else if (drsys_sysnums_equal(&sysnum, &sysnum_UserReleaseDC) ||
                drsys_sysnums_equal(&sysnum, &sysnum_UserEndPaint)) {

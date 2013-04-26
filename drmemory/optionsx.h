@@ -438,10 +438,12 @@ OPTION_CLIENT_BOOL(drmemscope, fault_to_slowpath, true,
 OPTION_CLIENT_BOOL(internal, check_tls, true,
                    "Check for access to un-reserved TLS slots",
                    "Check for access to un-reserved TLS slots")
-/* i#953: change warning to an error type instead */
 OPTION_CLIENT_BOOL(drmemscope, check_gdi, true,
                    "Check for GDI API usage errors",
-                   "Check for GDI API usage errors.  Any errors detected will be reported as errors of type WARNING.")
+                   "Check for GDI API usage errors.  Any errors detected will be reported as errors of type GDI USAGE ERROR.")
+OPTION_CLIENT_BOOL(drmemscope, check_gdi_multithread, false,
+                   "Check for GDI API usage error of one DC used by multiple threads",
+                   "Check for GDI API usage error of one DC used by multiple threads.  Some system libraries violate this guideline, however, resulting in potential false positives.")
 OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, false,
                    "Check for handle leak errors",
                    "Check for handle leak errors.  Any errors detected will be reported as errors of type WARNING.")

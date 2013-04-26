@@ -34,6 +34,7 @@
 #include "drmemory.h"
 #include "callstack.h"
 #include "report.h"
+#include "gdicheck.h"
 
 #include "../wininc/ntgdihdl.h"
 
@@ -44,9 +45,8 @@
 /* For device context (DC) checks we store data per DC */
 typedef struct _per_dc_t {
     thread_id_t thread;
-    bool created; /* else, obtained via Get */
+    gdi_dc_alloc_t flags;
     bool exited;
-    bool dup_null; /* dup of NULL HDC? */
     /* count of non-stock selected objects */
     uint non_stock_selected;
     packed_callstack_t *pcs;
@@ -195,19 +195,20 @@ obj_is_drawing_object(HGDIOBJ obj)
 }
 
 void
-gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, drsys_sysnum_t sysnum,
+gdicheck_dc_alloc(HDC hdc, gdi_dc_alloc_t flags, drsys_sysnum_t sysnum,
                   dr_mcontext_t *mc, app_loc_t *loc)
 {
     per_dc_t *pdc;
     bool exists;
-    LOG(2, "GDI DC alloc "PFX" %s\n", hdc, create ? "create" : "get");
+    LOG(2, "GDI DC alloc "PFX" %s%s\n", hdc,
+        TEST(GDI_DC_ALLOC_CREATE, flags) ? "create" : "",
+        TEST(GDI_DC_ALLOC_GET, flags) ? "get" : "");
     if (hdc == NULL)
         return;
     pdc = (per_dc_t *) global_alloc(sizeof(*pdc), HEAPSTAT_HASHTABLE);
     pdc->thread = dr_get_thread_id(dr_get_current_drcontext());
-    pdc->created = create;
+    pdc->flags = flags;
     pdc->exited = false;
-    pdc->dup_null = dup_null;
     pdc->non_stock_selected = 0;
     packed_callstack_record(&pdc->pcs, mc, loc);
     if (!hashtable_add(&dc_table, (void *)hdc, (void *)pdc)) {
@@ -231,13 +232,14 @@ gdicheck_dc_free(HDC hdc, bool create, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
         return;
     }
     /* Check: Proper pairing GetDC|ReleaseDC and CreateDC|DeleteDC */
-    if ((!pdc->created && create) || (pdc->created && !create)) {
+    if ((TEST(GDI_DC_ALLOC_GET, pdc->flags) && create) ||
+        (TEST(GDI_DC_ALLOC_CREATE, pdc->flags) && !create)) {
         gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                         "free mismatch for DC "PFX": use ReleaseDC only for GetDC "
                         "and DeleteDC only for CreateDC", hdc);
     }
     /* Check: ReleaseDC called from the same thread that called GetDC */
-    if (!pdc->created &&
+    if (TEST(GDI_DC_ALLOC_GET, pdc->flags) &&
         pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
         gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                         "ReleaseDC for DC "PFX" called from different thread %d "
@@ -314,20 +316,24 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          * other thread is dead, in general DC's are supposed to be
          * local objects that are created, used, and then destroyed.
          */
-        if (pdc->dup_null && pdc->exited) {
+        if (TEST(GDI_DC_ALLOC_DUP_NULL, pdc->flags) && pdc->exited) {
             gdicheck_report(addr, sysnum, mc, pdc, REPORT_PREFIX
-                            "DC "PFX" used for select was created by now-exited thread %d "
-                            "by duplicating NULL, which makes it a thread-private DC",
+                            "DC "PFX" used for select was created by now-exited thread "
+                            "%d by duplicating NULL, which makes it a thread-private DC",
                             hdc, pdc->thread);
         }
         /* Check: do not operate on a single DC from two different threads
+         * XXX i#1192: disabling this by default (under -check_gdi_multithread)
+         * as user32!ghdcBits2 violates it!
+         *
          * XXX: should check on other DC operations beyond selecting
          * XXX: also, once the creating thread exits we currently don't complain
          * and assume the DC was transferred to another thread, but we subsequently
          * don't ensure just one thread operates on it.  see also comment above
          * questioning how serious this is.
          */
-        else if (!pdc->exited &&
+        else if (options.check_gdi_multithread &&
+                 !pdc->exited &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
             gdicheck_report(addr, sysnum, mc, pdc, REPORT_PREFIX
                             "DC created by one thread %d and used by another %d",

@@ -624,7 +624,8 @@ if (TOOL_DR_MEMORY)
       newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "" "" "" cs2bug)
     endif (GCC)
 
-    newtest_ex(gdi gdi.cpp "" "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress" ""
+    newtest_ex(gdi gdi.cpp ""
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread" ""
       OFF "" OFF)
     # the handle leaks also cause memory leak, so we use light to avoid leak report.
     # FIXME i#672: some handle is created with deep call stack, so we increase
