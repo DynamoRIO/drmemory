@@ -294,6 +294,7 @@ options_init(const char *opstr)
         /* for performance use only DR's slots */
         options.num_spill_slots = 0;
         options.shadowing = false;
+        options.check_uninitialized = false;
     }
     /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath
      * XXX: there is nothing fundamentally impossible, it is just we didn't

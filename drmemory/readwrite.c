@@ -4293,8 +4293,11 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 #ifdef WINDOWS
     ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
-    if (!INSTRUMENT_MEMREFS() && (!options.leaks_only || !options.count_leaks))
+    if (!INSTRUMENT_MEMREFS() && (!options.leaks_only || !options.count_leaks)) {
+        if (options.zero_retaddr && instr_is_return(inst))
+            dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
         goto instru_event_bb_insert_done;
+    }
     if (instr_is_interrupt(inst))
         goto instru_event_bb_insert_done;
     if (instr_is_nop(inst))

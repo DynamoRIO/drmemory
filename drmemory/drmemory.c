@@ -1225,6 +1225,28 @@ set_initial_layout(void)
     if (options.shadowing) {
         set_initial_structures(dr_get_current_drcontext());
         memory_walk();
+    } else if (!options.check_uninitialized && !ZERO_STACK()) {
+        TEB *teb = get_TEB();
+        dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+        byte *stop;
+        IF_DEBUG(bool ok;)
+        mc.size = sizeof(mc);
+        mc.flags = DR_MC_CONTROL; /* only need xsp */
+        IF_DEBUG(ok = )
+            dr_get_mcontext(dr_get_current_drcontext(), &mc);
+        ASSERT(ok, "unable to get mcontext for thread");
+        ASSERT(mc.xsp <= (reg_t)teb->StackBase && mc.xsp > (reg_t)teb->StackLimit,
+               "initial xsp for thread invalid");
+        /* i#1196: zero out the DR retaddrs beyond TOS from DR init code using
+         * the app stack (DRi#1105 covers fixing that).  Without -zero_stack
+         * or definedness info (i.e., for -unaddr_only or -leaks_only -no_count_leaks),
+         * this will mess up our callstack walking.  Thus we zero out the 1st
+         * 2 pages, which seems to be enough (don't want to take the time to zero
+         * all 20K or whatnot that's typically committed).
+         */
+        stop = (byte *) MAX(teb->StackLimit, (byte *)mc.xsp - PAGE_SIZE*2);
+        LOG(1, "zeroing beyond TOS "PFX"-"PFX" to remove DR addresses\n", stop, mc.xsp);
+        memset(stop, 0, ((byte *)mc.xsp - stop));
     }
 #else
     if (options.shadowing) {
