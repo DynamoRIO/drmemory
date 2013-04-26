@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -38,7 +38,8 @@ gdicheck_thread_exit(void *drcontext);
  * The "dup_null" param indicates whether this is a Dup of NULL.
  */
 void
-gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_t *mc);
+gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, uint sysnum, dr_mcontext_t *mc,
+                  app_loc_t *loc);
 
 void
 gdicheck_dc_free(HDC hdc, bool create, uint sysnum, dr_mcontext_t *mc);

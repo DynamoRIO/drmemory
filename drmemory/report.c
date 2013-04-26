@@ -157,8 +157,11 @@ typedef struct _error_toprint_t {
     /* For warnings and invalid heap args: */
     const char *msg;            /* Free-form message. */
 
-    /* For invalid heap args and track_origins_unaddr: */
-    packed_callstack_t *alloc_pcs; /* For reporting alloc routine callstacks. */
+    /* Auxiliary callstack and a prefix message describing it, with INFO_PFX
+     * prior to each newline:
+     */
+    const char *aux_msg;
+    packed_callstack_t *aux_pcs;
 
     /* For leaks: */
     size_t indirect_size;       /* Size of indirect allocs. */
@@ -252,10 +255,6 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
     return (packed_callstack_cmp(err1->pcs, err2->pcs));
 }
 
-/* A prefix for supplying additional info on a reported error beyond
- * the primary line, timestamp line, and callstack itself (from PR 535568)
- */
-#define INFO_PFX IF_DRSYMS_ELSE("Note: ", "  info: ")
 /* We use a different prefix for the callstack, for Visual Studio (i#800) */
 static const char *info_cstack_pfx;
 
@@ -2324,7 +2323,7 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         BUFPRINT(buf, bufsz, sofar, len,
                  "INVALID HEAP ARGUMENT%s", etp->msg);
         /* Only print address when reporting neighbors */
-        if (!options.brief && etp->alloc_pcs == NULL && etp->report_neighbors)
+        if (!options.brief && etp->aux_pcs == NULL && etp->report_neighbors)
             BUFPRINT(buf, bufsz, sofar, len, " "PFX, addr);
         BUFPRINT(buf, bufsz, sofar, len, NL);
     } else if (etp->errtype == ERROR_WARNING) {
@@ -2379,19 +2378,15 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
         report_heap_info(buf, bufsz, &sofar, addr, etp->sz,
                          etp->errtype == ERROR_INVALID_HEAP_ARG, for_log);
     }
-    if (etp->alloc_pcs != NULL) {
+    if (etp->aux_pcs != NULL) {
         symbolized_callstack_t scs;
-        if (etp->errtype == ERROR_UNADDRESSABLE && etp->msg != NULL)
-            BUFPRINT(buf, bufsz, sofar, len, "%s", etp->msg);
-        else {
-            BUFPRINT(buf, bufsz, sofar, len,
-                     "%smemory was allocated here:"NL, INFO_PFX);
-        }
+        if (etp->aux_msg != NULL)
+            BUFPRINT(buf, bufsz, sofar, len, "%s", etp->aux_msg);
         /* to get var-align we need to convert to symbolized.
          * if we remove var-align feature, should use direct packed_callstack_print
          * and avoid this extra work
          */
-        packed_callstack_to_symbolized(etp->alloc_pcs, &scs);
+        packed_callstack_to_symbolized(etp->aux_pcs, &scs);
         symbolized_callstack_print(&scs, buf, bufsz, &sofar, INFO_PFX, for_log);
         symbolized_callstack_free(&scs);
     }
@@ -2430,9 +2425,9 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
     etp.container_end = container_end;
     etp.report_instruction = true;
     etp.report_neighbors = true;
-    etp.alloc_pcs = NULL;
+    etp.aux_pcs = NULL;
     if (options.track_origins_unaddr && options.redzone_size > 0 &&
-        region_in_redzone(addr, sz, &etp.alloc_pcs,
+        region_in_redzone(addr, sz, &etp.aux_pcs,
                           &app_start, &app_end, &redzone_start, NULL) &&
         /* XXX: we really have no idea whether this came from an uninit var that
          * points at redzone_start b/c of the fill we did, or whether it's an
@@ -2443,14 +2438,14 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
         redzone_start == addr) {
         ssize_t len = 0;
         size_t sofar = 0;
-        ASSERT(etp.alloc_pcs != NULL, "alloc_pcs must not be NULL");
+        ASSERT(etp.aux_pcs != NULL, "aux_pcs must not be NULL");
         BUFPRINT(buf, UNADDR_MSG_SZ, sofar, len,
                  "%sthe unaddressable error may have been caused by using"
                  " an uninitialized"NL, INFO_PFX);
         BUFPRINT(buf, UNADDR_MSG_SZ, sofar, len,
                  "%svariable from memory "PFX"-"PFX" allocated here:"NL,
                  INFO_PFX, app_start, app_end);
-        etp.msg = buf;
+        etp.aux_msg = buf;
     }
     report_error(&etp, mc, NULL);
 }
@@ -2492,16 +2487,25 @@ report_invalid_heap_arg(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
     }
 }
 
+#define MISMATCH_MSG_SZ 0x100
 void
 report_mismatched_heap(app_loc_t *loc, app_pc addr, dr_mcontext_t *mc,
                        const char *msg, packed_callstack_t *pcs)
 {
     error_toprint_t etp = {0};
+    char buf[MISMATCH_MSG_SZ];
     etp.errtype = ERROR_INVALID_HEAP_ARG;
     etp.loc = loc;
     etp.addr = addr;
     etp.msg = msg;
-    etp.alloc_pcs = pcs;
+    etp.aux_pcs = pcs;
+    if (etp.aux_pcs != NULL) {
+        ssize_t len = 0;
+        size_t sofar = 0;
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                 "%smemory was allocated here:"NL, INFO_PFX);
+        etp.aux_msg = buf;
+    }
     report_error(&etp, mc, NULL);
 }
 
@@ -2531,9 +2535,16 @@ report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
 
 #ifdef WINDOWS
 void
-report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg)
+report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+                 packed_callstack_t *aux_pcs, const char *aux_msg)
 {
-    report_misc_error(ERROR_GDI_USAGE, loc, mc, msg, NULL, 0, false, NULL);
+    error_toprint_t etp = {0};
+    etp.errtype = ERROR_GDI_USAGE;
+    etp.loc = loc;
+    etp.msg = msg;
+    etp.aux_msg = aux_msg;
+    etp.aux_pcs = aux_pcs;
+    report_error(&etp, mc, NULL);
 }
 
 void

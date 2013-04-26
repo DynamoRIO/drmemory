@@ -183,6 +183,7 @@ static void
 syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_t *pt,
                   dr_mcontext_t *mc)
 {
+    app_loc_t loc;
     ASSERT(options.check_gdi, "shouldn't be called");
     if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetDC) ||
         drsys_sysnums_equal(&sysnum, &sysnum_UserGetDCEx) ||
@@ -192,7 +193,8 @@ syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_
         drsys_sysnums_equal(&sysnum, &sysnum_GdiDdGetDC)) {
         if (!pre) {
             HDC hdc = (HDC) dr_syscall_get_result(drcontext);
-            gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc);
+            syscall_to_loc(&loc, sysnum, "");
+            gdicheck_dc_alloc(hdc, false/*Get not Create*/, false, sysnum, mc, &loc);
             if (drsys_sysnums_equal(&sysnum, &sysnum_UserBeginPaint)) {
                 /* we store the hdc for access in EndPaint */
                 pt->paintDC = hdc;
@@ -203,11 +205,12 @@ syscall_check_gdi(bool pre, void *drcontext, drsys_sysnum_t sysnum, cls_syscall_
                drsys_sysnums_equal(&sysnum, &sysnum_GdiOpenDCW)) {
         if (!pre) {
             HDC hdc = (HDC) dr_syscall_get_result(drcontext);
+            syscall_to_loc(&loc, sysnum, "");
             gdicheck_dc_alloc(hdc, true/*Create not Get*/,
                               (drsys_sysnums_equal(&sysnum,
                                                    &sysnum_GdiCreateCompatibleDC) &&
                                syscall_get_param(drcontext, 0) == 0),
-                              sysnum, mc);
+                              sysnum, mc, &loc);
         }
     } else if (drsys_sysnums_equal(&sysnum, &sysnum_UserReleaseDC) ||
                drsys_sysnums_equal(&sysnum, &sysnum_UserEndPaint)) {

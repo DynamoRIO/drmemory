@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -33,6 +33,7 @@
 #include "drwrap.h"
 #include "drmemory.h"
 #include "callstack.h"
+#include "report.h"
 
 #include "../wininc/ntgdihdl.h"
 
@@ -48,6 +49,7 @@ typedef struct _per_dc_t {
     bool dup_null; /* dup of NULL HDC? */
     /* count of non-stock selected objects */
     uint non_stock_selected;
+    packed_callstack_t *pcs;
 } per_dc_t;
 
 /* Table of per_dc_t entries */
@@ -62,6 +64,8 @@ static void
 per_dc_free(void *p)
 {
     per_dc_t *pdc = (per_dc_t *) p;
+    if (pdc->pcs != NULL)
+        packed_callstack_free(pdc->pcs);
     global_free(pdc, sizeof(*pdc), HEAPSTAT_HASHTABLE);
 }
 
@@ -122,14 +126,19 @@ gdicheck_thread_exit(void *drcontext)
 
 #define REPORT_PREFIX "" /* We used to need this when reported as WARNING */
 #define REPORT_MAX_SZ 512
+#define AUX_MSG_SZ 32
 
 static void
-gdicheck_report(app_pc addr, drsys_sysnum_t sysnum, dr_mcontext_t *mc, const char *msg, ...)
+gdicheck_report(app_pc addr, drsys_sysnum_t sysnum, dr_mcontext_t *mc,
+                per_dc_t *pdc, const char *msg, ...)
 {
     va_list ap;
     app_loc_t loc;
     char buf[REPORT_MAX_SZ];
-    int len;
+    char aux_buf[AUX_MSG_SZ];
+    char *aux_msg = NULL;
+    packed_callstack_t *aux_pcs = NULL;
+    ssize_t len;
     if (addr == NULL)
         syscall_to_loc(&loc, sysnum, NULL);
     else
@@ -146,7 +155,15 @@ gdicheck_report(app_pc addr, drsys_sysnum_t sysnum, dr_mcontext_t *mc, const cha
     ASSERT(len > 0, "GDI report exceeds buffer size");
     NULL_TERMINATE_BUFFER(buf);
     va_end(ap);
-    report_gdi_error(&loc, mc, buf);
+
+    if (pdc != NULL && pdc->pcs != NULL) {
+        size_t sofar = 0;
+        BUFPRINT(aux_buf, BUFFER_SIZE_ELEMENTS(aux_buf), sofar, len,
+                 "%sDC was allocated here:"NL, INFO_PFX);
+        aux_pcs = pdc->pcs;
+        aux_msg = aux_buf;
+    }
+    report_gdi_error(&loc, mc, buf, aux_pcs, aux_msg);
 }
 
 static inline bool
@@ -178,7 +195,8 @@ obj_is_drawing_object(HGDIOBJ obj)
 }
 
 void
-gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
+gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, drsys_sysnum_t sysnum,
+                  dr_mcontext_t *mc, app_loc_t *loc)
 {
     per_dc_t *pdc;
     bool exists;
@@ -191,6 +209,7 @@ gdicheck_dc_alloc(HDC hdc, bool create, bool dup_null, drsys_sysnum_t sysnum, dr
     pdc->exited = false;
     pdc->dup_null = dup_null;
     pdc->non_stock_selected = 0;
+    packed_callstack_record(&pdc->pcs, mc, loc);
     if (!hashtable_add(&dc_table, (void *)hdc, (void *)pdc)) {
         per_dc_free((void *)pdc);
         /* Note that we don't report an error for calling GetDC again without
@@ -213,14 +232,14 @@ gdicheck_dc_free(HDC hdc, bool create, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
     }
     /* Check: Proper pairing GetDC|ReleaseDC and CreateDC|DeleteDC */
     if ((!pdc->created && create) || (pdc->created && !create)) {
-        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                         "free mismatch for DC "PFX": use ReleaseDC only for GetDC "
                         "and DeleteDC only for CreateDC", hdc);
     }
     /* Check: ReleaseDC called from the same thread that called GetDC */
     if (!pdc->created &&
         pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
-        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                         "ReleaseDC for DC "PFX" called from different thread %d "
                         "than the%s thread %d that called GetDC", hdc,
                         dr_get_thread_id(dr_get_current_drcontext()),
@@ -228,7 +247,7 @@ gdicheck_dc_free(HDC hdc, bool create, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
     }
     /* Check: No non-default objects are selected in a DC being deleted */
     if (pdc->non_stock_selected > 0) {
-        gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
+        gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                         "DC "PFX" that contains selected object being deleted", hdc);
     }
     IF_DEBUG(found = )
@@ -252,12 +271,13 @@ gdicheck_obj_free(HANDLE obj, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
         HDC hdc = hashtable_lookup(&selected_table, (void *)obj);
         if (hdc != NULL) {
             per_dc_t *pdc;
+            pdc = (per_dc_t *) hashtable_lookup(&dc_table, (void *)hdc);
             /* Check: an HGDIOBJ being deleted is selected in any DC
              * While Petzold says not to delete any GDI object while it's selected,
              * MSDN explicitly says it's only bad to delete a pen or brush (i#899).
              */
             if (obj_is_drawing_object(obj)) {
-                gdicheck_report(NULL, sysnum, mc, REPORT_PREFIX
+                gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
                                 "deleting a drawing object "PFX
                                 " that is selected into DC", obj);
             }
@@ -265,7 +285,6 @@ gdicheck_obj_free(HANDLE obj, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
              * One solution is for hashtable_remove() to return the key.
              */
             hashtable_remove(&selected_table, (void *)obj);
-            pdc = (per_dc_t *) hashtable_lookup(&dc_table, (void *)hdc);
             /* Don't count as selected now that object is deleted: in fact on win7
              * GDI impl seems to do the right thing and it handles the delete
              * gracefully.
@@ -296,7 +315,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          * local objects that are created, used, and then destroyed.
          */
         if (pdc->dup_null && pdc->exited) {
-            gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
+            gdicheck_report(addr, sysnum, mc, pdc, REPORT_PREFIX
                             "DC "PFX" used for select was created by now-exited thread %d "
                             "by duplicating NULL, which makes it a thread-private DC",
                             hdc, pdc->thread);
@@ -310,7 +329,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
          */
         else if (!pdc->exited &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
-            gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
+            gdicheck_report(addr, sysnum, mc, pdc, REPORT_PREFIX
                             "DC created by one thread %d and used by another %d",
                             pdc->thread, dr_get_thread_id(dr_get_current_drcontext()));
         }
@@ -319,7 +338,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
             HDC curdc = (HDC) hashtable_lookup(&selected_table, (void *)new_obj);
             /* Check: do not select the same bitmap into two different DC's */
             if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
-                gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
+                gdicheck_report(addr, sysnum, mc, NULL, REPORT_PREFIX
                                 "same bitmap "PFX" selected into two different DC's "
                                 PFX" and "PFX, new_obj, hdc, curdc);
             }
@@ -341,7 +360,7 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
                                               (void *)hdc);
                 /* Check: do not select the same bitmap into two different DC's */
                 if (curdc != NULL && obj_is_bitmap(new_obj) && curdc != hdc) {
-                    gdicheck_report(addr, sysnum, mc, REPORT_PREFIX
+                    gdicheck_report(addr, sysnum, mc, NULL, REPORT_PREFIX
                                     "same bitmap "PFX" selected into two different DC's "
                                     PFX" and "PFX, new_obj, hdc, curdc);
                 }

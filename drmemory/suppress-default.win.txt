@@ -617,7 +617,6 @@ system call NtOpenKey
 ...
 *!__crtLCMapStringA
 *!setSBUpLow
-*!_setmbcp_nolock
 
 # i#988-c#2 for windows creation and destroy
 HANDLE LEAK

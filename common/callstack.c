@@ -1211,6 +1211,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
          mc->xbp - mc->xsp > op_stack_swap_threshold ||
          (op_ignore_xbp != NULL &&
           op_ignore_xbp(drcontext, mc)) ||
+#ifdef WINDOWS
+         /* don't trust ebp when in Windows syscall wrapper */
+         (pcs != NULL && pcs->first_is_syscall) ||
+#endif
          /* avoid stale fp,ra pair (i#640) */
          (op_is_dword_defined != NULL &&
           (!op_is_dword_defined((byte*)mc->xbp) ||

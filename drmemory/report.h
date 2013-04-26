@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -28,6 +28,11 @@
 #define _REPORT_H_ 1
 
 #include "callstack.h"
+
+/* A prefix for supplying additional info on a reported error beyond
+ * the primary line, timestamp line, and callstack itself (from PR 535568)
+ */
+#define INFO_PFX IF_DRSYMS_ELSE("Note: ", "  info: ")
 
 void
 report_init(void);
@@ -73,7 +78,8 @@ report_warning(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
 
 #ifdef WINDOWS
 void
-report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg);
+report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
+                 packed_callstack_t *aux_pcs, const char *aux_msg);
 
 void
 report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
