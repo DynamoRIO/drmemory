@@ -1970,7 +1970,11 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             }
         }
     }
-    ASSERT(!found || (addr < end + options.redzone_size &&
+    /* XXX: end might be the requested size, so estimate the padding -- should
+     * we return the padding instead for -replace_malloc?
+     */
+    ASSERT(!found || (addr < (byte *)ALIGN_FORWARD(end, MALLOC_CHUNK_ALIGNMENT) +
+                      options.redzone_size &&
                       addr+sz >= start - options.redzone_size),
            "bug in delay free overlap calc");
     if (found &&
