@@ -654,4 +654,4 @@ umbra_get_shared_shadow_block(IN  umbra_map_t *map,
 }
 #endif
 
-#endif /* _DR_SYSCALL_H_ */
+#endif /* _UMBRA_H_ */
