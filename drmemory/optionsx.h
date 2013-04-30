@@ -447,6 +447,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_gdi_multithread, false,
 OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, false,
                    "Check for handle leak errors",
                    "Check for handle leak errors.  Any errors detected will be reported as errors of type WARNING.")
+OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, true,
+                   "Whether to check for Windows API vs C library mismatches",
+                   "Whether to check for Windows API vs C library mismatches")
 #endif
 OPTION_CLIENT_BOOL(drmemscope, check_delete_mismatch, true,
                    "Whether to check for free/delete/delete[] mismatches",

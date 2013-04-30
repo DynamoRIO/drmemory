@@ -1,6 +1,6 @@
 # **********************************************************
 # Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
-# Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
+# Copyright (c) 2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -19,11 +19,30 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-Done
-~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       8 unique,     8 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+wincrt.cpp:42
+Error #2: UNADDRESSABLE ACCESS: reading 1 byte(s)
+wincrt.cpp:43
+Error #3: UNADDRESSABLE ACCESS: reading 1 byte(s)
+wincrt.cpp:44
+Error #4: UNADDRESSABLE ACCESS: reading 1 byte(s)
+wincrt.cpp:45
+Error #5: UNADDRESSABLE ACCESS: writing 1 byte(s)
+wincrt.cpp:100
+# errors from -replace_malloc i#1197:
+Error #6: INVALID HEAP ARGUMENT: allocated with C library layer, freed with Windows API layer
+replace_RtlSizeHeap
+rtl_mismatch_test
+wincrt.cpp:114
+memory was allocated here:
+replace_malloc
+rtl_mismatch_test
+wincrt.cpp:113
+Error #7: INVALID HEAP ARGUMENT: allocated with Windows API layer, freed with C library layer
+replace_malloc_usable_size
+rtl_mismatch_test
+wincrt.cpp:117
+memory was allocated here:
+replace_RtlAllocateHeap
+rtl_mismatch_test
+wincrt.cpp:116

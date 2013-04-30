@@ -394,7 +394,7 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 void
 client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
                        const char *alloc_routine, const char *free_routine,
-                       void *client_data);
+                       void *client_data, bool C_vs_CPP);
 
 void
 client_handle_mmap(void *drcontext, app_pc base, size_t size, bool anon);

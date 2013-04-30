@@ -595,6 +595,9 @@ if (TOOL_DR_MEMORY)
     #  add_dependencies(rtl_memory_zones ntimp_tgt)
     #endif ()
 
+    # test i#1197
+    newtest_nobuild(replace_wincrt wincrt "" "-replace_malloc" "" OFF "wincrt.replace")
+
     if (USE_DRSYMS) # cygwin build can't see static malloc routines
       newtest_custbuild(wincrtdbg wincrt.cpp "/MTd" "")
       newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)

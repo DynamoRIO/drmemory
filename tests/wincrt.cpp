@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <crtdbg.h>
 #include <malloc.h>
+#include <windows.h>
 
 static void
 use(char *a)
@@ -100,6 +101,24 @@ oob_write_test(void)
     free(foo);
 }
 
+/* i#1197: report libc vs Rtl mismatches.  These also raise invalid
+ * arg errors for what's passed to the size call, but those end up
+ * as duplicates and we have a nicer message with i#1197.
+ */
+static void
+rtl_mismatch_test(void)
+{
+#ifndef _DEBUG /* else crashes */
+    HANDLE libc_heap = (HANDLE) _get_heap_handle();
+    void *p = malloc(37);
+    size_t sz = HeapSize(libc_heap, 0, p);
+    free(p);
+    p = HeapAlloc(libc_heap, 0, 37);
+    sz = _msize(p);
+    HeapFree(libc_heap, 0, p);
+#endif
+}
+
 /* TODO PR 595802: test _recalloc and _aligned_* malloc routines
  */
 
@@ -110,6 +129,7 @@ int main()
     crtdbg_test();
     deletedbg_test();
     oob_write_test();
+    rtl_mismatch_test();
     printf("Done\n");
     return 0;
 }

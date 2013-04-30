@@ -490,13 +490,17 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 void
 client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
                        const char *alloc_routine, const char *free_routine,
-                       void *client_data)
+                       void *client_data, bool C_vs_CPP)
 {
     app_loc_t loc;
     char msg[128];
     packed_callstack_t *pcs = NULL;
-    if (!options.check_delete_mismatch)
+    if (C_vs_CPP && !options.check_delete_mismatch)
         return;
+#ifdef WINDOWS
+    if (!C_vs_CPP && !options.check_heap_mismatch)
+        return;
+#endif
     pc_to_loc(&loc, pc);
     /* i#642: We want to report the callstack where it was allocated.  But, we want
      * no-leak mode to be as fast as possible, so we don't record per-malloc
