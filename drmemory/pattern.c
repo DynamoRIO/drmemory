@@ -1459,6 +1459,11 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
          * a freed pre-us block with smaller-than-redzone size.
          */
         pattern_addr_pre_check(addr) &&
+        /* We don't have alloc_ops.global_lock set, but by iterating for
+         * live chunks before freed, we shouldn't miss anything: even
+         * chunk re-use should still show up, and we will synchronize
+         * with a split or coalesce.
+         */
         (pattern_addr_in_redzone(addr, size) ||
          overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL, false/*any*/))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree

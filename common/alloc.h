@@ -80,6 +80,16 @@ typedef struct _alloc_options_t {
 
     bool skip_msvc_importers;
 
+    /* Whether to synchronize all allocations and frees with a single
+     * global lock.  This enables use of malloc_lock().  With this set
+     * to false, malloc iteration or overlap checking that looks for
+     * freed chunks and then separately looks for live chunks can be
+     * racy and miss a chunk moved from live to free in between.  If
+     * this matters, the user should set this to true and use
+     * malloc_lock() across multiple iterations.
+     */
+    bool global_lock;
+
     /* Add new options here */
 } alloc_options_t;
 
@@ -226,6 +236,7 @@ set_brk(byte *new_val);
 extern alloc_size_func_t malloc_usable_size;
 #endif
 
+/* This can only be called if alloc_ops.global_lock was set */
 void
 malloc_lock(void);
 

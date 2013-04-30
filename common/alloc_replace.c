@@ -244,7 +244,17 @@ typedef struct _arena_header_t {
     byte *commit_end;
     byte *reserve_end;
     free_lists_t *free_list;
-    void *lock;
+#ifdef WINDOWS
+    /* i#949: We need two locks.  The lock field is the app lock, which can
+     * be acquired while in app code.  This field is a pure DR lock, and
+     * it's used to synchronize free chunk splitting and coalescing with
+     * malloc iteration.  (Regular mallocs and frees that do not split
+     * or coalesce do not need to synchronize with malloc iteration.)
+     * We always acquire the app lock first if we acquire both.
+     */
+    void *dr_lock;
+#endif
+    void *lock; /* app lock for Windows */
     uint flags;
     /* If we free the final chunk before the brk we need to know to mark the
      * next carved-out chunk w/ the prev free size.
@@ -395,6 +405,84 @@ app_heap_unlock(void *drcontext, void *recur_lock)
 {
     /* Nothing special, just for symmetry */
     dr_recurlock_unlock(recur_lock);
+}
+
+/* Locking for any alloc or free operation */
+static void
+arena_lock(void *drcontext, arena_header_t *arena, bool app_synch)
+{
+    /* XXX i#948: use per-thread free lists to avoid lock in common case,
+     * for Linux or Windows libc at least (where heap synch is not part
+     * of app API), and when !alloc_ops.global_lock.
+     */
+    if (app_synch)
+        app_heap_lock(drcontext, arena->lock);
+#ifdef WINDOWS
+    /* i#949: regardless of app synch, we need to synchronize our own
+     * operations.  We must grab this after the app lock.  We don't need
+     * this to be a safe spot as it's only grabbed in our own code.
+     */
+    if (alloc_ops.global_lock)
+        dr_recurlock_lock(arena->dr_lock);
+#else
+    /* We assume every top-level caller synchronizes (can't check here b/c
+     * this can be called via realloc calling free or malloc).
+     * If synch becomes optional on Linux, need to use dr_lock too.
+     */
+#endif
+}
+
+static void
+arena_unlock(void *drcontext, arena_header_t *arena, bool app_synch)
+{
+#ifdef WINDOWS
+    if (alloc_ops.global_lock)
+        dr_recurlock_unlock(arena->dr_lock);
+#else
+    /* We assume every top-level caller synchronizes (can't check here b/c
+     * this can be called via realloc calling free or malloc).
+     * If synch becomes optional on Linux, need to use dr_lock too.
+     */
+#endif
+    if (app_synch)
+        app_heap_unlock(drcontext, arena->lock);
+}
+
+/* i#949: locking for alloc or free operations that affect concurrent
+ * iteration: splitting or coalescing of free chunks.  Changing header
+ * flags concurrently with iteration is ok.  If the iterator wants to
+ * look for certain flags across multiple iterations, the user needs
+ * to set alloc_ops.global_lock.
+ */
+static void
+iterator_lock(arena_header_t *arena, bool in_alloc)
+{
+    /* We could blindly lock (it's a recursive lock) but more performant this way */
+#ifdef WINDOWS
+    if (!in_alloc || !alloc_ops.global_lock)
+        dr_recurlock_lock(arena->dr_lock);
+    else
+        ASSERT(dr_recurlock_self_owns(arena->dr_lock), "lock error");
+#else
+    if (!in_alloc)
+        dr_recurlock_lock(arena->lock);
+    else
+        ASSERT(dr_recurlock_self_owns(arena->lock), "lock error");
+#endif
+}
+
+static void
+iterator_unlock(arena_header_t *arena, bool in_alloc)
+{
+#ifdef WINDOWS
+    ASSERT(dr_recurlock_self_owns(arena->dr_lock), "lock error");
+    if (!in_alloc || !alloc_ops.global_lock)
+        dr_recurlock_unlock(arena->dr_lock);
+#else
+    ASSERT(dr_recurlock_self_owns(arena->lock), "lock error");
+    if (!in_alloc)
+        dr_recurlock_unlock(arena->lock);
+#endif
 }
 
 /* This must be inlined to get an xsp that's in the call chain */
@@ -675,6 +763,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     if (parent != NULL) {
         arena->flags = parent->flags;
         arena->lock = parent->lock;
+#ifdef WINDOWS
+        arena->dr_lock = parent->dr_lock;
+#endif
         arena->free_list = parent->free_list;
     } else {
         arena->flags = ARENA_MAIN;
@@ -684,6 +775,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
          * to ensure proper DR behavior
          */
         dr_recurlock_mark_as_app(arena->lock);
+#ifdef WINDOWS
+        arena->dr_lock = dr_recurlock_create();
+#endif
         /* to avoid complications of storing and freeing DR heap we inline these
          * in the main arena's header
          */
@@ -724,8 +818,12 @@ arena_deallocate(arena_header_t *arena)
 static void
 arena_free(arena_header_t *arena)
 {
-    if (TEST(ARENA_MAIN, arena->flags))
+    if (TEST(ARENA_MAIN, arena->flags)) {
         dr_recurlock_destroy(arena->lock);
+#ifdef WINDOWS
+        dr_recurlock_destroy(arena->dr_lock);
+#endif
+    }
     arena_deallocate(arena);
 }
 
@@ -1005,6 +1103,8 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         ASSERT(TEST(CHUNK_FREED, prev->head.flags), "header flags inconsistent");
         ASSERT(prev->head.alloc_size == prev_sz, "prev size inconsistent");
         ASSERT(is_valid_chunk(prev_ptr, &prev->head), "prev chunk inconsistent");
+        /* Synchronize with iterators (i#949) */
+        iterator_lock(arena, true/*in alloc*/);
         /* We can't merge with a delayed free b/c we'd lose the callstack, so we
          * don't even set CHUNK_PREV_FREE (we don't have space anyway in a true-free
          * header to store prev_size_shr: so we can't store for a delay, and we rely
@@ -1026,6 +1126,7 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         }
         tofree = &prev->head;
         tofree->alloc_size += cur->head.alloc_size + inter_chunk_space();
+        iterator_unlock(arena, true/*in alloc*/);
         LOG(3, "coalescing with prev chunk "PFX" => "PFX"-"PFX"\n",
             prev, prev_ptr, prev_ptr + tofree->alloc_size);
         STATS_INC(num_coalesces);
@@ -1039,6 +1140,8 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
     next = next_chunk_forward(arena, tofree, NULL);
     if (next != NULL && TEST(CHUNK_FREED, next->flags) &&
         !TEST(CHUNK_DELAY_FREE, next->flags) ) {
+        /* Synchronize with iterators (i#949) */
+        iterator_lock(arena, true/*in alloc*/);
         /* Coalesce with next block */
         remove_from_free_list(arena, (free_header_t *)next, UINT_MAX);
         if (next->user_data != NULL)
@@ -1057,6 +1160,7 @@ coalesce_adjacent_frees(arena_header_t *arena, free_header_t *cur)
         if (!alloc_ops.shared_redzones)
             client_new_redzone((byte *)next, header_size);
         set_prev_size_field(arena, tofree); /* update */
+        iterator_unlock(arena, true/*in alloc*/);
     } else if (tofree != &cur->head) {
         /* Delayed from above: see comment in merge-prev */
         set_prev_size_field(arena, tofree); /* update */
@@ -1220,6 +1324,9 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             free_header_t *rest = (free_header_t *) header_from_ptr(chunk2_start);
             ASSERT(!TEST(CHUNK_MMAP, head->flags), "mmap not expected on free list");
             STATS_INC(num_splits);
+
+            /* Synchronize with iterators (i#949) */
+            iterator_lock(arena, true/*in alloc*/);
             LOG(3, "splitting off "PFX"-"PFX" from "PFX"\n",
                 split, chunk2_start + rest_size, head);
             rest->head.user_data = client_malloc_data_free_split(head->user_data);
@@ -1245,6 +1352,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
             }
 
             head->alloc_size = aligned_size;
+            iterator_unlock(arena, true/*in alloc*/);
         }
 
         if (head->user_data != NULL) {
@@ -1294,9 +1402,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
     if (aligned_size < CHUNK_MIN_SIZE)
         aligned_size = CHUNK_MIN_SIZE;
 
-    /* XXX i#948: use per-thread free lists to avoid lock in common case */
-    if (synch)
-        app_heap_lock(drcontext, arena->lock);
+    arena_lock(drcontext, arena, synch);
 
     /* for large requests we do direct mmap with own redzones.
      * we use the large malloc table to track them for iteration.
@@ -1403,8 +1509,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size,
         STATS_INC(num_mallocs);
 
  replace_alloc_common_done:
-    if (synch)
-        app_heap_unlock(drcontext, arena->lock);
+    arena_unlock(drcontext, arena, synch);
 
     return res;
 }
@@ -1481,8 +1586,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
         }
     }
 
-    if (synch)
-        app_heap_lock(drcontext, arena->lock);
+    arena_lock(drcontext, arena, synch);
 
     check_type_match(ptr, head, free_type, mc, caller);
 
@@ -1533,8 +1637,7 @@ replace_free_common(arena_header_t *arena, void *ptr, bool synch, bool invoke_cl
 
     STATS_INC(num_frees);
 
-    if (synch)
-        app_heap_unlock(drcontext, arena->lock);
+    arena_unlock(drcontext, arena, synch);
     return true;
 }
 
@@ -1580,6 +1683,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         }
     }
     /* if we reach here, this is a regular realloc */
+    arena_lock(drcontext, arena, lock);
     ASSERT(head != NULL, "should return before here");
     header_to_info(head, &old_info);
     if (head->alloc_size >= size &&
@@ -1605,28 +1709,35 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             old_request_size, size);
         /* XXX: use mremap for mmapped alloc! */
         /* XXX: if final chunk in arena, extend in-place */
-        res = (void *) replace_alloc_common(arena, size, lock, zeroed,
+        res = (void *) replace_alloc_common(arena, size, false/*already locked*/, zeroed,
                                             true/*realloc*/, false/*no client*/,
                                             drcontext, mc, caller,
                                             MALLOC_ALLOCATOR_MALLOC);
         if (res != NULL) {
             head = header_from_ptr(res);
             memcpy(res, ptr, MIN(size, old_request_size));
-            replace_free_common(arena, ptr, lock, false/*no client */,
+            replace_free_common(arena, ptr, false/*already locked*/, false/*no client */,
                                 drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
             header_to_info(head, &new_info);
             client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
         }
     }
+    arena_unlock(drcontext, arena, lock);
     return res;
 }
 
 /* returns -1 on failure */
 static size_t
-replace_size_common(arena_header_t *arena, byte *ptr,
-                    void *drcontext, dr_mcontext_t *mc, app_pc caller)
+replace_size_common(arena_header_t *arena, byte *ptr, bool lock,
+                    void *drcontext, dr_mcontext_t *mc, app_pc caller,
+                    uint alloc_type)
 {
     chunk_header_t *head = header_from_ptr(ptr);
+    size_t res;
+    arena_lock(drcontext, arena, lock);
+#ifdef WINDOWS
+    check_type_match(ptr, head, alloc_type, flags, mc, caller);
+#endif
     if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
          * before we took over
@@ -1636,10 +1747,13 @@ replace_size_common(arena_header_t *arena, byte *ptr,
             client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                     IF_WINDOWS_ELSE("_msize", "malloc_usable_size"),
                                     false/*!free*/);
+            arena_unlock(drcontext, arena, lock);
             return (size_t)-1;
         }
     }
-    return chunk_request_size(head); /* we do not allow using padding */
+    res = chunk_request_size(head); /* we do not allow using padding */
+    arena_unlock(drcontext, arena, lock);
+    return res;
 }
 
 /***************************************************************************
@@ -1680,7 +1794,8 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         return true;
 
     LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, iter_arena_start, iter_arena_end);
-    dr_recurlock_lock(arena->lock);
+    /* Synchronize with splits or coalesces (i#949) */
+    iterator_lock(arena, false/*!in alloc*/);
     cur = arena->start_chunk;
     while (cur < arena->next_chunk) {
         head = header_from_ptr(cur);
@@ -1689,13 +1804,13 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
             header_to_info(head, &info);
             if (!data->cb(&info, data->data)) {
-                dr_recurlock_unlock(arena->lock);
+                iterator_unlock(arena, false/*!in alloc*/);
                 return false;
             }
         }
         cur += head->alloc_size + inter_chunk_space();
     }
-    dr_recurlock_unlock(arena->lock);
+    iterator_unlock(arena, false/*!in alloc*/);
     return true;
 }
 
@@ -1833,7 +1948,8 @@ alloc_replace_overlaps_region(byte *start, byte *end,
             arena_header_t *arena = (arena_header_t *) found_arena_start;
             byte *cur = arena->start_chunk;
             ASSERT(!alloc_ops.external_headers, "NYI: walk malloc table");
-            dr_recurlock_lock(arena->lock);
+            /* Synchronize with splits or coalesces (i#949) */
+            iterator_lock(arena, false/*!in alloc*/);
             while (cur < arena->next_chunk) {
                 byte *chunk_start;
                 chunk_header_t *head = header_from_ptr(cur);
@@ -1852,7 +1968,7 @@ alloc_replace_overlaps_region(byte *start, byte *end,
                 }
                 cur += head->alloc_size + inter_chunk_space();
             }
-            dr_recurlock_unlock(arena->lock);
+            iterator_unlock(arena, false/*!in alloc*/);
         } else
             ASSERT(false, "large lookup should have found it");
     }
@@ -1992,8 +2108,9 @@ replace_malloc_usable_size(void *ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_malloc_usable_size "PFX"\n", ptr);
-    res = replace_size_common(arena, ptr, drcontext, &mc,
-                              (app_pc)replace_malloc_usable_size);
+    res = replace_size_common(arena, ptr, true/*lock*/, drcontext, &mc,
+                              (app_pc)replace_malloc_usable_size,
+                              MALLOC_ALLOCATOR_MALLOC);
     if (res == (size_t)-1)
         res = 0; /* 0 on failure */
     LOG(2, "\treplace_malloc_usable_size "PFX" => "PIFX"\n", ptr, res);
@@ -2382,8 +2499,11 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
     if (arena != NULL) {
-        res = replace_size_common(arena, ptr, drcontext,
-                                  &mc, (app_pc)replace_RtlSizeHeap);
+        res = replace_size_common(arena, ptr, 
+                                  (!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
+                                   !TEST(HEAP_NO_SERIALIZE, flags)),
+                                  drcontext, &mc, (app_pc)replace_RtlSizeHeap,
+                                  MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
     }
     dr_switch_to_app_state(drcontext);
     if (!res) {
@@ -2396,13 +2516,11 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     return res;
 }
 
-/* FIXME i#893: allowing the app to hold a lock we'll wait for in our
+/* i#900: allowing the app to hold a lock we'll wait for in our
  * code that needs to return to a cache fragment is unsafe b/c a flusher
- * could hold the lock as the app.
- * We need to refactor all the code here to interpret the initial
- * code that acquires locks, and only then go native (for perf).
- * There are more complex schemes to handle this but none I've come up
- * with are appealing so far.
+ * could hold the lock as the app.  Thus, we mark the lock acquisition
+ * as a safe spot, and we redirect our return to the code cache
+ * via DRi#849.
  */
 static BOOL WINAPI
 replace_RtlLockHeap(HANDLE heap)
@@ -2927,17 +3045,31 @@ malloc_replace__iterate(bool (*cb)(malloc_info_t *info, void *iter_data), void *
 static void
 malloc_replace__lock(void)
 {
-    /* FIXME i#949: we can't mark safe to suspend here (in app_heap_lock())
-     * b/c it's called from clean calls, etc.  Currently this is unsafe
-     * and can deadlock.
+#ifdef WINDOWS
+    /* i#949: we can't mark safe to suspend here (in app_heap_lock())
+     * b/c it's called from clean calls, etc, and thus grabbing the app
+     * lock here is unsafe.  Thus we require the global_lock option in order
+     * to call this routine.
+     * We don't need to grab the app lock as we don't need to synchronize
+     * with app actions: only with our own allocator.
      */
+    ASSERT(alloc_ops.global_lock, "must set global_lock to use malloc_lock()");
+    dr_recurlock_lock(cur_arena->dr_lock);
+#else
     dr_recurlock_lock(cur_arena->lock);
+#endif
 }
 
 static void
 malloc_replace__unlock(void)
 {
+#ifdef WINDOWS
+    /* i#949: see comments above */
+    ASSERT(alloc_ops.global_lock, "must set global_lock to use malloc_lock()");
+    dr_recurlock_unlock(cur_arena->dr_lock);
+#else
     dr_recurlock_unlock(cur_arena->lock);
+#endif
 }
 
 void

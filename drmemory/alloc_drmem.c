@@ -193,6 +193,7 @@ alloc_drmem_init(void)
 #ifdef WINDOWS
     alloc_ops.skip_msvc_importers = options.skip_msvc_importers;
 #endif
+    alloc_ops.global_lock = false; /* we don't need it => can't call malloc_lock() */
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,

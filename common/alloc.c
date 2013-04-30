@@ -3381,6 +3381,7 @@ malloc_unlock_if_locked_by_me(bool by_me)
         malloc_unlock_internal();
 }
 
+/* For wrapping, alloc_ops.global_lock is essentially always on. */
 static void
 malloc_wrap__lock(void)
 {

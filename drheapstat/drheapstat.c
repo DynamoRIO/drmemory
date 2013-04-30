@@ -133,8 +133,9 @@ static uint peaks_skipped;
 
 /* PR 465174: share allocation site callstacks.
  * This table should only be accessed while holding the lock for
- * malloc_table (via malloc_lock()), which makes the coordinated
- * operations with malloc_table atomic.
+ * malloc_table (via malloc_lock(), which we enable via
+ * alloc_ops.global_lock), which makes the coordinated operations with
+ * malloc_table atomic.
  */
 #define ASTACK_TABLE_HASH_BITS 8
 static hashtable_t alloc_stack_table;
@@ -1664,9 +1665,8 @@ event_timer(void *drcontext, dr_mcontext_t *mcontext)
 
     if (alarm_clock) {
         timestamp_last_snapshot = dr_get_milliseconds();
-        /* must hold malloc lock first */
-        /* FIXME i#949: may need to use a special allocator option to have
-         * a global malloc lock for -replace_malloc
+        /* Must hold malloc lock first.  We set alloc_ops.global_lock, so this
+         * will synchronize w/ all allocations and frees.
          */
         malloc_lock();
         take_snapshot();
@@ -2212,6 +2212,7 @@ dr_init(client_id_t client_id)
     alloc_ops.cache_postcall = false;
     alloc_ops.intercept_operators = false;
     alloc_ops.conservative = options.conservative;
+    alloc_ops.global_lock = true; /* we want to serialize w/ our snapshots */
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
