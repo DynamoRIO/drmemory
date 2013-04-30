@@ -2683,7 +2683,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
          */
         if (!early && pcs == NULL) {
             locked_malloc = true;
-            malloc_lock(); /* unlocked below */
+            alloc_callstack_lock(); /* unlocked below */
             pcs = malloc_get_client_data(addr);
         }
 
@@ -2729,7 +2729,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         }
 
         if (locked_malloc)
-            malloc_unlock();
+            alloc_callstack_unlock();
 
         /* only real and possible leaks can be suppressed */
         if (type < ERROR_MAX_VAL)

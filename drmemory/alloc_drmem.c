@@ -41,13 +41,10 @@
 #endif
 #include "pattern.h"
 
-/* PR 465174: share allocation site callstacks.
- * This table should only be accessed while holding the lock for
- * malloc_table (via malloc_lock()), which makes the coordinated
- * operations with malloc_table atomic.
- *
- * FIXME i#949: for -replace_malloc a global lock is not always held
- * so we need our own locks
+/* PR 465174: share allocation site callstacks.  We do not rely on
+ * global malloc synchronization and instead use the
+ * hashtable_{,un}lock() functions plus reference counts in the
+ * payloads.
  */
 #define ASTACK_TABLE_HASH_BITS 8
 static hashtable_t alloc_stack_table;
@@ -199,8 +196,7 @@ alloc_drmem_init(void)
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
-                      false/*!str_dup*/, true/* synch (higher-level synch covered
-                                              * by malloc_table's lock) */,
+                      false/*!str_dup*/, false/*using external synch*/,
                       alloc_callstack_free,
                       (uint (*)(void*)) packed_callstack_hash,
                       (bool (*)(void*, void*)) packed_callstack_cmp);
@@ -335,6 +331,18 @@ mmap_anon_lookup(byte *addr, byte **start OUT, size_t *size OUT)
  */
 
 void
+alloc_callstack_lock(void)
+{
+    hashtable_lock(&alloc_stack_table);
+}
+
+void
+alloc_callstack_unlock(void)
+{
+    hashtable_unlock(&alloc_stack_table);
+}
+
+void
 alloc_callstack_free(void *p)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) p;
@@ -347,6 +355,8 @@ shared_callstack_free(packed_callstack_t *pcs)
     uint count;
     if (pcs == NULL)
         return;
+    /* We need to synchronize removal from the table w/ additions */
+    hashtable_lock(&alloc_stack_table);
     count = packed_callstack_free(pcs);
     ASSERT(count != 0, "refcount should not hit 0 in malloc_table");
     if (count == 1) {
@@ -356,6 +366,7 @@ shared_callstack_free(packed_callstack_t *pcs)
          */
         hashtable_remove(&alloc_stack_table, (void *)pcs);
     }
+    hashtable_unlock(&alloc_stack_table);
 }
 
 void
@@ -397,6 +408,14 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * right away we avoid the hashtable lookup+cmp+insert+remove
      * costs
      */ 
+
+    /* Synchronization: we no longer rely on malloc_lock(), as we
+     * don't enable a global lock for -replace_malloc: i#949.  Thus we
+     * must hold the hashtable lock across the lookup and ref count inc.
+     * shared_callstack_free() grabs the hashtable lock before the final
+     * remove, ensuring pcs doesn't disappear underneath us.
+     */
+    hashtable_lock(&alloc_stack_table);
     existing = hashtable_lookup(&alloc_stack_table, (void *)pcs);
     if (existing == NULL) {
         /* avoid calling lookup twice by not calling hashtable_add() */
@@ -424,6 +443,7 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * and the refcount hits 1 we remove from alloc_stack_table.
      */
     packed_callstack_add_ref(pcs);
+    hashtable_unlock(&alloc_stack_table);
     return pcs;
 }
 

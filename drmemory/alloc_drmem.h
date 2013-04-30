@@ -89,4 +89,11 @@ region_in_redzone(byte *addr, size_t size,
                   app_pc *redzone_start OUT,
                   app_pc *redzone_end OUT);
 
+/* Synchronizes access to malloc callstacks (malloc_get_client_data()) */
+void
+alloc_callstack_lock(void);
+
+void
+alloc_callstack_unlock(void);
+
 #endif /* _ALLOC_DRMEM_H_ */
