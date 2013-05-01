@@ -637,6 +637,9 @@ is_current_process(HANDLE h);
 bool
 is_wow64_process(void);
 
+const wchar_t *
+get_app_commandline(void);
+
 /* returns just the primary number */
 int
 sysnum_from_name(const char *name);

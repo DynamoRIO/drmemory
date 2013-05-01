@@ -297,7 +297,7 @@ if (UNIX)
   endif ()
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
 else (UNIX)
-  # FIXME: fix warnings and up to /W4
+  # FIXME i#1204: fix warnings and up to /W4
   set(WARN "/W2 /WX")
   # update flags for our types and Debug (tests always use Debug).
   # ok to double-update b/c these are are regex-replace.

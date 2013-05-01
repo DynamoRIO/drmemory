@@ -61,6 +61,7 @@
 #include <dbghelp.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
 
 #if _MSC_VER <= 1400 /* VS2005- */
 /* These aren't present in VS2005 DbgHelp.h */
