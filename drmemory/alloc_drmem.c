@@ -67,6 +67,8 @@ uint alloc_stack_count;
 app_pc addr_RtlLeaveCrit; /* for i#689 */
 #endif
 
+static bool process_exiting;
+
 #ifdef X64
 # define Xax Rax
 # define Xbx Rbx
@@ -235,6 +237,7 @@ alloc_drmem_init(void)
 void
 alloc_drmem_exit(void)
 {
+    process_exiting = true;
     leak_exit();
     alloc_exit(); /* must be before deleting alloc_stack_table */
     hashtable_delete_with_stats(&alloc_stack_table, "alloc stack table");
@@ -347,7 +350,14 @@ void
 alloc_callstack_free(void *p)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) p;
-    packed_callstack_free(pcs);
+    uint count;
+    /* For -replace_malloc, we need to force-remove here.  With wrapping, we rely
+     * on the malloc hashtable exist to free all references to these callstacks.
+     * For replacing, there's no reason to iterate the heap just to clean these up.
+     */
+    do {
+        count = packed_callstack_free(pcs);
+    } while (count > 0 && options.replace_malloc && process_exiting);
 }
 
 void
