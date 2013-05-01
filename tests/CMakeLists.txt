@@ -460,14 +460,31 @@ else (UNIX)
   tobuild_lib(unloadlib unload.lib.c "/DUSE_CUSTOM_MALLOC" "/nodefaultlib /noentry")
 endif (UNIX)
 get_relative_location(unloadlib unloadlib_path)
-newtest_ex(unload unload.c "${unloadlib_path}" "" "" OFF "" OFF)
+# We need 50 iters to hit i#545
+newtest_ex(unload unload.c "${unloadlib_path};50" "" "" OFF "" OFF)
 if (UNIX)
   target_link_libraries(unload dl)
 endif (UNIX)
 if (WIN32)
   tobuild_lib(unloadlibMTd unload.lib.c "/D_DEBUG /MTd" "")
   get_relative_location(unloadlibMTd unloadlibMTd_path)
-  newtest_nobuild(unloadMTd unload "${unloadlibMTd_path}" "" "" OFF "unload")
+  newtest_nobuild(unloadMTd unload "${unloadlibMTd_path};2" "" "" OFF "unload")
+
+  if (TOOL_DR_MEMORY) # XXX; not working in drheapstat: figure out why
+    tobuild_lib(unloadlibMD unload.lib.c "/MD" "")
+    get_relative_location(unloadlibMD unloadlibMD_path)
+    # Turning off leaks to avoid libc globals like environ ptr that
+    # show up as possible leaks.  XXX: may be worth investigating further.
+    newtest_nobuild(unloadMD unload "${unloadlibMD_path};2" "-no_count_leaks"
+      "" OFF "unloadMD")
+    
+    tobuild_lib(unloadlibMDd unload.lib.c "/D_DEBUG /MDd" "")
+    get_relative_location(unloadlibMDd unloadlibMDd_path)
+    # Turning off leaks to avoid libc globals like environ ptr that
+    # show up as possible leaks.  XXX: may be worth investigating further.
+    newtest_nobuild(unloadMDd unload "${unloadlibMDd_path};2" "-no_count_leaks"
+      "" OFF "unloadMD")
+  endif (TOOL_DR_MEMORY)
 endif (WIN32)
 
 if (TOOL_DR_MEMORY)

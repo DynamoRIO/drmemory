@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -25,20 +25,21 @@
 #else
 # include <windows.h>
 #endif
-
-#define ITERS 50 /* enough to hit i#545 */
+#include <stdlib.h>
 
 int
 main(int argc, char** argv)
 {
-    int i;
+    int i, iters;
 
-    if (argc < 2) {
-        fprintf(stderr, "Usage error: must pass in path to library to load\n");
+    if (argc < 3) {
+        fprintf(stderr, "Usage: <library-path> <iters>\n");
         return 1;
     }
 
-    for (i=0; i<ITERS; i++) {
+    iters = atoi(argv[2]);
+
+    for (i=0; i<iters; i++) {
 #ifdef WINDOWS
         HANDLE lib = LoadLibrary(argv[1]);
 #else /* LINUX */
