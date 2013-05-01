@@ -91,6 +91,8 @@
 # include "sysnum_linux.h"
 # define __USE_GNU /* for mremap */
 # include <sys/mman.h>
+#else
+# include "../wininc/crtdbg.h"
 #endif
 
 /***************************************************************************
@@ -334,6 +336,7 @@ static uint peak_num_arenas;
 static uint num_splits;
 static uint num_coalesces;
 static uint num_dealloc;
+static uint dbgcrt_mismatch;
 #endif
 
 #ifdef DEBUG
@@ -1552,8 +1555,9 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
     head->u.unfree.request_diff = head->alloc_size - request_size;
     head->flags |= alloc_type;
     res = ptr_from_header(head);
-    LOG(2, "\treplace_alloc_common flags="PIFX" request=%d, alloc=%d => "PFX"\n",
-        head->flags, chunk_request_size(head), head->alloc_size, res);
+    LOG(2, "\treplace_alloc_common arena="PFX" flags="PIFX" request=%d, alloc=%d "
+        "=> "PFX"\n", arena, head->flags,
+        chunk_request_size(head), head->alloc_size, res);
     if (TEST(ALLOC_ZERO, flags))
         memset(res, 0, request_size);
 
@@ -1620,7 +1624,7 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
          */
         head = hashtable_lookup(&pre_us_table, (void *)ptr);
         if (head != NULL && !TEST(CHUNK_FREED, head->flags)) {
-            /* XXX: need to call the app's free routine.
+            /* XXX i#1195: need to call the app's free routine.
              * Xref DRi#497 for a mechanism to do this; or, we could call
              * it natively (after swapping TLS back).
              * For Windows we can assume Rtl since that's where we iterated.
@@ -1637,24 +1641,60 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
         } else {
             /* try to report mismatches on common invalid ptr cases */
             byte *p = (byte *) ptr;
+            bool identified = false;
+            bool valid = false;
             /* try 4 bytes back, in case this is an array w/ size passed to delete */
             head = header_from_ptr(p - sizeof(int));
-            if (is_live_alloc(p - sizeof(int), arena, head))
+            if (is_live_alloc(p - sizeof(int), arena, head)) {
                 check_type_match(p - sizeof(int), head, free_type, flags, mc, caller);
-            else {
+                identified = true;
+            }
+            if (!identified) {
                 /* try 4 bytes in, in case this is a non-array passed to delete[] */
                 head = header_from_ptr(p + sizeof(int));
-                if (is_live_alloc(p + sizeof(int), arena, head))
+                if (is_live_alloc(p + sizeof(int), arena, head)) {
                     check_type_match(p + sizeof(int), head, free_type, flags, mc, caller);
+                    identified = true;
+                }
             }
-
-            client_invalid_heap_arg(caller, (byte *)ptr, mc,
-                                    /* XXX: we might be replacing RtlHeapFree or
-                                     * _free_dbg but it's not worth trying to
-                                     * store the exact name
-                                     */
-                                    "free", true/*free*/);
-            return false;
+#ifdef WINDOWS
+            if (!identified && (ptr_uint_t)p > DBGCRT_PRE_REDZONE_SIZE) {
+                /* i#607 part A: debug CRT code sometimes allocates via an internal
+                 * routine like _calloc_dbg_impl() which adds a redzone and
+                 * calls RtlAllocateHeap; the same object is later freed by
+                 * passing the inside-redzone pointer to free().
+                 * With symbols, we simply intercept the internal routine;
+                 * without, it's too complex to try and retroactively add our redzone
+                 * instead of the CRT redzone and skip over some callers, so we
+                 * live w/o our own redzone for this handful of allocs and simply
+                 * try to avoid reporting invalid args on the free (the Rtl
+                 * vs libc layer mismatch, which happens w/ release CRT too,
+                 * is suppressed as part of i#960).
+                 * But, this no longer happens with DR > r1728+ (it was an FLS
+                 * transparency bug that caused _getptd_noexit() to call
+                 * _calloc_dbg_impl(): and it's the only code I see that does so!).
+                 */
+                head = header_from_ptr(p - DBGCRT_PRE_REDZONE_SIZE);
+                if (is_live_alloc(p - DBGCRT_PRE_REDZONE_SIZE, arena, head) &&
+                    chunk_request_size(head) > DBGCRT_PRE_REDZONE_SIZE +
+                    DBGCRT_POST_REDZONE_SIZE) {
+                    identified = true;
+                    valid = true;
+                    ptr = (void *) (p - DBGCRT_PRE_REDZONE_SIZE);
+                    LOG(2, "inner-redzone pointer "PFX" => real alloc "PFX"\n", p, ptr);
+                    STATS_INC(dbgcrt_mismatch);
+                }
+            }
+#endif
+            if (!valid) {
+                client_invalid_heap_arg(caller, (byte *)ptr, mc,
+                                        /* XXX: we might be replacing RtlHeapFree or
+                                         * _free_dbg but it's not worth trying to
+                                         * store the exact name
+                                         */
+                                        "free", true/*free*/);
+                return false;
+            }
         }
     }
 
@@ -1690,8 +1730,8 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
         malloc_large_remove(ptr);
 
     if (!TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
-        LOG(2, "\treplace_free_common "PFX" == request=%d, alloc=%d\n",
-            ptr, chunk_request_size(head), head->alloc_size);
+        LOG(2, "\treplace_free_common "PFX" == request=%d, alloc=%d, arena="PFX"\n",
+            ptr, chunk_request_size(head), head->alloc_size, arena);
         add_to_delay_list(arena, head);
         /* At this point head may be invalid to de-ref, if coalesced or freed (this
          * will only happen if -delay_frees is 0)
@@ -1723,6 +1763,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
     malloc_info_t old_info;
     malloc_info_t new_info;
     alloc_flags_t sub_flags = flags;
+    LOG(2, "  %s: "PFX" %d bytes arena="PFX"\n", __FUNCTION__, ptr, size, arena);
     if (ptr == NULL) {
         if (TEST(ALLOC_ALLOW_NULL, flags)) {
             client_handle_realloc_null(caller, mc);
@@ -3441,6 +3482,7 @@ alloc_replace_exit(void)
     LOG(1, "  splits:             %9d\n", num_splits);
     LOG(1, "  coalesces:          %9d\n", num_coalesces);
     LOG(1, "  deallocs:           %9d\n", num_dealloc);
+    LOG(1, "  dbgcrt mismatches:  %9d\n", dbgcrt_mismatch);
 #endif
 
     alloc_iterate(free_user_data_at_exit, NULL, false/*free too*/);
