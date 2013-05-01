@@ -3154,7 +3154,7 @@ malloc_replace__add(app_pc start, app_pc end, app_pc real_end,
                     bool pre_us, uint client_flags, dr_mcontext_t *mc, app_pc post_call)
 {
     IF_DEBUG(bool new_entry;)
-    chunk_header_t *head = global_alloc(sizeof(*head), HEAPSTAT_HASHTABLE);
+    chunk_header_t *head = global_alloc(sizeof(*head), HEAPSTAT_WRAP);
     head->alloc_size = (real_end - start);
     ASSERT(real_end - end <= REQUEST_DIFF_MAX, "too-large padding on pre-us malloc");
     head->u.unfree.request_diff = (real_end - end);
@@ -3452,7 +3452,7 @@ alloc_replace_exit(void)
             next = he->next;
             if (head->user_data != NULL)
                 client_malloc_data_free(head->user_data);
-            global_free(head, sizeof(*head), HEAPSTAT_HASHTABLE);
+            global_free(head, sizeof(*head), HEAPSTAT_WRAP);
         }
     }
     hashtable_delete_with_stats(&pre_us_table, "pre_us");

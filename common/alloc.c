@@ -321,7 +321,7 @@ alloc_context_init(void *drcontext, bool new_depth)
 {
     cls_alloc_t *data;
     if (new_depth) {
-        data = (cls_alloc_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_MISC);
+        data = (cls_alloc_t *) thread_alloc(drcontext, sizeof(*data), HEAPSTAT_WRAP);
         drmgr_set_cls_field(drcontext, cls_idx_alloc, data);
     } else
         data = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
@@ -333,7 +333,7 @@ alloc_context_exit(void *drcontext, bool thread_exit)
 {
     if (thread_exit) {
         cls_alloc_t *data = (cls_alloc_t *) drmgr_get_cls_field(drcontext, cls_idx_alloc);
-        thread_free(drcontext, data, sizeof(*data), HEAPSTAT_MISC);
+        thread_free(drcontext, data, sizeof(*data), HEAPSTAT_WRAP);
     }
     /* else, nothing to do: we leave the struct for re-use on next callback */
 }
@@ -790,10 +790,10 @@ alloc_routine_entry_free(void *p)
                     dep->next_dep = NULL;
                 }
             }
-            global_free(e->set, sizeof(*e->set), HEAPSTAT_HASHTABLE);
+            global_free(e->set, sizeof(*e->set), HEAPSTAT_WRAP);
         }
     }
-    global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
+    global_free(e, sizeof(*e), HEAPSTAT_WRAP);
 }
 
 #ifdef WINDOWS
@@ -1250,7 +1250,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
         }
         return e;
     }
-    e = global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+    e = global_alloc(sizeof(*e), HEAPSTAT_WRAP);
     e->pc = pc;
     e->type = type;
     ASSERT(e->type < HEAP_ROUTINE_COUNT, "invalid type");
@@ -1613,16 +1613,16 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
            !is_operator_nothrow_routine(generic_type),
            "incoming type must be non-nothrow operator");
 
-    buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+    buf = (char *) global_alloc(bufsz, HEAPSTAT_WRAP);
     do {
         err = drsym_expand_type(mod->full_path, info->type_id, 
                                 2 /* for func_type, arg_type, elt_type */,
                                 buf, bufsz, (drsym_type_t **)&func_type);
         if (err != DRSYM_ERROR_NOMEM)
             break;
-        global_free(buf, bufsz, HEAPSTAT_MISC);
+        global_free(buf, bufsz, HEAPSTAT_WRAP);
         bufsz *= 2;
-        buf = (char *) global_alloc(bufsz, HEAPSTAT_MISC);
+        buf = (char *) global_alloc(bufsz, HEAPSTAT_WRAP);
     } while (true);
 
     LOG(2, "%s in %s @"PFX" generic type=%d => drsyms res=%d, %d args\n",
@@ -1699,7 +1699,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
             specific_type = generic_type;
         }
     }
-    global_free(buf, bufsz, HEAPSTAT_MISC);
+    global_free(buf, bufsz, HEAPSTAT_WRAP);
     return specific_type;
 }
 #endif
@@ -1750,7 +1750,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     if (edata->set == NULL) {
         void *user_data;
         edata->set = (alloc_routine_set_t *)
-            global_alloc(sizeof(*edata->set), HEAPSTAT_HASHTABLE);
+            global_alloc(sizeof(*edata->set), HEAPSTAT_WRAP);
         LOG(2, "new alloc set "PFX" of type %d\n", edata->set, edata->set_type);
         memset(edata->set, 0, sizeof(*edata->set));
         edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
@@ -2016,7 +2016,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         possible == possible_cpp_routines) {
         bool all_processed = true;
         edata.processed = (bool *)
-            global_alloc(sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
+            global_alloc(sizeof(*edata.processed)*num_possible, HEAPSTAT_WRAP);
         memset(edata.processed, 0, sizeof(*edata.processed)*num_possible);
 
         /* First we check the symbol cache */
@@ -2175,7 +2175,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         generate_realloc_replacement(edata.set);
 #ifdef USE_DRSYMS
     if (edata.processed != NULL)
-        global_free(edata.processed, sizeof(*edata.processed)*num_possible, HEAPSTAT_MISC);
+        global_free(edata.processed, sizeof(*edata.processed)*num_possible, HEAPSTAT_WRAP);
 #endif
     return edata.set;
 }
@@ -2595,7 +2595,7 @@ malloc_entry_free(void *v)
     malloc_entry_t *e = (malloc_entry_t *) v;
     if (!malloc_entry_is_native(e))
         client_malloc_data_free(e->data);
-    global_free(e, sizeof(*e), HEAPSTAT_HASHTABLE);
+    global_free(e, sizeof(*e), HEAPSTAT_WRAP);
 }
 
 /* Mallocs are aligned to 8 so drop the bottom 3 bits */
@@ -3476,7 +3476,7 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
                   uint flags, uint client_flags, dr_mcontext_t *mc, app_pc post_call,
                   uint alloc_type)
 {
-    malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_HASHTABLE);
+    malloc_entry_t *e = (malloc_entry_t *) global_alloc(sizeof(*e), HEAPSTAT_WRAP);
     malloc_entry_t *old_e;
     bool locked_by_me;
     malloc_info_t info;

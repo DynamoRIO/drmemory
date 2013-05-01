@@ -273,8 +273,6 @@ dump_statistics(void)
     dr_fprintf(f_global, "pcaches loaded: %3u, base mismatch: %3u, written: %3u\n",
                pcaches_loaded, pcaches_mismatch, pcaches_written);
 
-    heap_dump_stats(f_global);
-
     dr_fprintf(f_global, "\nSystem calls invoked:\n");
     for (i = 0; i < MAX_SYSNUM; i++) {
         if (syscall_invoked[i] > 0) {
@@ -440,6 +438,11 @@ event_exit(void)
     drmgr_unregister_cls_field(event_context_init, event_context_exit, cls_idx_drmem);
     drwrap_exit();
     drmgr_exit();
+
+#ifdef STATISTICS
+    /* Dump heap stats after most cleanup is done */
+    heap_dump_stats(f_global);
+#endif
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.
@@ -1563,6 +1566,8 @@ dr_init(client_id_t id)
 #endif
     module_data_t *data;
     const char *opstr;
+
+    utils_early_init();
 
     /* get app_path before drmem_options_init() */
 #ifdef WINDOWS

@@ -690,6 +690,7 @@ typedef enum {
     HEAPSTAT_GENCODE,
     HEAPSTAT_RBTREE,
     HEAPSTAT_REPORT,
+    HEAPSTAT_WRAP,
     HEAPSTAT_MISC,
     /* when you add here, add to heapstat_names in utils.c */
     HEAPSTAT_NUMTYPES,
@@ -763,6 +764,10 @@ text_contains_any_string(const char *text, const char *patterns, bool ignore_cas
  *
  * hashtable was moved and generalized so we need to initialize it
  */
+
+/* must be called before drmgr or drwrap */
+void
+utils_early_init(void);
 
 void
 utils_init(void);

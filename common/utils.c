@@ -1028,6 +1028,7 @@ static const char * heapstat_names[] = {
     "gencode",
     "rbtree",
     "suppress",
+    "wrap/replace",
     "misc",
 };
 
@@ -1066,9 +1067,11 @@ heap_dump_stats(file_t f)
     int i;
     dr_fprintf(f, "\nHeap usage:\n");
     for (i = 0; i < HEAPSTAT_NUMTYPES; i++) {
-        dr_fprintf(f, "\t%11s: count=%8u, cur=%6u KB, max=%6u KB\n",
+        dr_fprintf(f, "\t%12s: count=%8u, cur=%6u %s, max=%6u KB\n",
                    heapstat_names[i], heap_count[i],
-                   heap_usage[i]/1024, heap_max[i]/1024);
+                   (heap_usage[i] > 8192) ? heap_usage[i]/1024 : heap_usage[i],
+                   (heap_usage[i] > 8192) ? "KB" : " B",
+                   heap_max[i]/1024);
     }
 }
 #endif /* STATISTICS */
@@ -1207,6 +1210,15 @@ hashwrap_assert_fail(const char *msg)
  * INIT/EXIT
  */
 
+/* Must be called before drmgr or drwrap is initialized, so we allocate all
+ * hashtables in the same way for our heap stats.
+ */
+void
+utils_early_init(void)
+{
+    hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);
+}
+
 void
 utils_init(void)
 {
@@ -1229,8 +1241,6 @@ utils_init(void)
     ASSERT(get_TEB() != NULL, "can't get TEB");
     priv_peb = get_TEB()->ProcessEnvironmentBlock;
 #endif
-
-    hashtable_global_config(hashwrap_alloc, hashwrap_free, hashwrap_assert_fail);
 
     primary_thread = dr_get_thread_id(dr_get_current_drcontext());
 }
