@@ -307,8 +307,10 @@ typedef struct _malloc_interface_t {
     bool (*malloc_set_client_flag)(app_pc start, uint client_flag);
     bool (*malloc_clear_client_flag)(app_pc start, uint client_flag);
     void (*malloc_iterate)(malloc_iter_cb_t cb, void *iter_data);
-    void (*malloc_intercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
-    void (*malloc_unintercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
+    void (*malloc_intercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                             bool check_mismatch);
+    void (*malloc_unintercept)(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                               bool check_mismatch);
     /* For storing data per malloc routine set.  The pc is one routine from the set.
      * When type == HEAPSET_LIBC_DBG, libc_data points at the data (returned from an
      * earlier call) for the corresponding HEAPSET_LIBC for that module.
@@ -324,10 +326,12 @@ extern malloc_interface_t malloc_interface;
 
 /* XXX i#882: remove from header once malloc replacement replaces operators */
 void
-malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
+malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                       bool check_mismatch);
 
 void
-malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
+malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                         bool check_mismatch);
 
 /* Retrieves the libc set data, if the libc sets exists; else the individual set */
 void *

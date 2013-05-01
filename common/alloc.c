@@ -1270,7 +1270,7 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
      * we live w/ it
      * XXX: for -conservative we should do a lookup
      */
-    malloc_interface.malloc_intercept(pc, type, e);
+    malloc_interface.malloc_intercept(pc, type, e, e->set->check_mismatch);
     return e;
 }
 
@@ -2196,7 +2196,8 @@ void
  * have to figure out how to separate alloc_routine_entry_t: currently an
  * opaque type in alloc_private.h
  */
-malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                       bool check_mismatch)
 {
 #ifdef WINDOWS
     if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE) {
@@ -2223,7 +2224,8 @@ malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 
 /* XXX i#882: make this static once malloc replacement replaces operators */
 void
-malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                         bool check_mismatch)
 {
 #ifdef WINDOWS
     if (e->type == HEAP_ROUTINE_DBG_NOP_FALSE ||
@@ -2996,16 +2998,9 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
         if (is_libc && is_debug) {
             if (!module_has_pdb(info)) {
                 if (alloc_ops.replace_malloc) {
-                    /* FIXME i#607 part A for replacing: we don't yet have the
-                     * nosyms fallback in place
+                    /* Support is now in place for no-syms debug C dll (i#607,
+                     * i#960, i#959).
                      */
-                    NOTIFY_ERROR("FATAL ERROR: usage of Visual Studio Debug C DLL "
-                                 "(without its symbols) is not supported. "
-                                 "Please rebuild your application with either the Release "
-                                 "build (/MD or /MT) or static Debug library (/MTd). "
-                                 "With /MD, to avoid C++ Debug DLL, remove _DEBUG define."
-                                 NL);
-                    dr_abort();
                 } else {
                     /* i#607 part A: we need pdb symbols for dbgcrt in order to intercept
                      * all allocations.  If we don't have them we have a fallback but it
@@ -3262,7 +3257,8 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                         dr_mutex_unlock(gencode_lock);
                     }
 
-                    malloc_interface.malloc_unintercept(e->pc, e->type, e);
+                    malloc_interface.malloc_unintercept(e->pc, e->type, e,
+                                                        e->set->check_mismatch);
 
                     IF_DEBUG(found =)
                         hashtable_remove(&alloc_routine_table, (void *)e->pc);

@@ -2307,14 +2307,17 @@ replace_operator_new_array_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 }
 
 static inline void
-replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller)
+replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller,
+                               bool ignore_mismatch)
 {
     void *drcontext = enter_client_code();
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "replace_operator_delete "PFX"\n", ptr);
-    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT, drcontext,
+    LOG(2, "replace_operator_delete "PFX"%s\n", ptr,
+        ignore_mismatch ? " (ignore mismatches)" : "");
+    replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT |
+                        (ignore_mismatch ? ALLOC_IGNORE_MISMATCH : 0), drcontext,
                         &mc, caller, alloc_type);
     exit_client_code(drcontext, false/*need swap*/);
 }
@@ -2326,28 +2329,56 @@ static void
 replace_operator_delete(void *ptr)
 {
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
-                                   (app_pc)replace_operator_delete);
+                                   (app_pc)replace_operator_delete, false);
 }
 
 static void
 replace_operator_delete_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
-                                   (app_pc)replace_operator_delete);
+                                   (app_pc)replace_operator_delete, false);
 }
 
 static void
 replace_operator_delete_array(void *ptr)
 {
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
-                                   (app_pc)replace_operator_delete_array);
+                                   (app_pc)replace_operator_delete_array, false);
 }
 
 static void
 replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
-                                   (app_pc)replace_operator_delete_array_nothrow);
+                                   (app_pc)replace_operator_delete_array_nothrow, false);
+}
+
+static void *
+replace_operator_new_nomatch(size_t size)
+{
+    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_UNKNOWN,
+                                       (app_pc)replace_operator_new_nomatch);
+}
+
+static void *
+replace_operator_new_nothrow_nomatch(size_t size, int /*std::nothrow_t*/ ignore)
+{
+    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_UNKNOWN,
+                                       (app_pc)replace_operator_new_nothrow);
+}
+
+static void
+replace_operator_delete_nomatch(void *ptr)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+                                   (app_pc)replace_operator_delete_nomatch, true);
+}
+
+static void
+replace_operator_delete_nothrow_nomatch(void *ptr, int /*std::nothrow_t*/ ignore)
+{
+    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+                                   (app_pc)replace_operator_delete_nothrow_nomatch, true);
 }
 
 #ifdef WINDOWS
@@ -2361,7 +2392,7 @@ replace_operator_combined_delete(void *ptr)
      */
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_UNKNOWN,
-                                   (app_pc)replace_operator_combined_delete);
+                                   (app_pc)replace_operator_combined_delete, true);
 }
 #endif /* WINDOWS */
 
@@ -2943,8 +2974,8 @@ alloc_entering_replace_routine(app_pc pc)
 }
 
 static bool
-func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
-                 uint *stack OUT)
+func_interceptor(routine_type_t type, bool check_mismatch,
+                 void **routine OUT, bool *at_entry OUT, uint *stack OUT)
 {
     /* almost everything is at the callee entry */
     *at_entry = true;
@@ -2987,7 +3018,7 @@ func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
             *routine = (void *) replace_RtlSetHeapInformation;
             *stack = sizeof(void*) * 4;
             return true;
-        /* XXX: NYI.  Warn or assert if we hit them? */
+        /* XXX i#1202: NYI.  Warn or assert if we hit them? */
         case RTL_ROUTINE_GETINFO:
             *routine = (void *) replace_ignore_arg5;
             *stack = sizeof(void*) * 5;
@@ -3008,7 +3039,7 @@ func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
             ASSERT(false, "replace RtlFreeStringRoutine NYI");
             *routine = NULL; /* wrapping instead though it probably won't work */
             return true;
-#endif
+# endif
         /* FIXME i#893: we need to split up RTL_ROUTINE_QUERY, along with replacing
          * other routines not currently wrapped.  We don't need special
          * fast sym lookup or to treat as heap layers so we should do drwrap
@@ -3037,22 +3068,43 @@ func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
         *routine = (void *) replace_free;
     else if (is_size_routine(type))
         *routine = (void *) replace_malloc_usable_size;
-    else if (type == HEAP_ROUTINE_NEW)
-        *routine = (void *) replace_operator_new;
-    else if (type == HEAP_ROUTINE_NEW_ARRAY)
-        *routine = (void *) replace_operator_new_array;
-    else if (type == HEAP_ROUTINE_NEW_NOTHROW)
-        *routine = (void *) replace_operator_new_nothrow;
-    else if (type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW)
-        *routine = (void *) replace_operator_new_array_nothrow;
-    else if (type == HEAP_ROUTINE_DELETE)
-        *routine = (void *) replace_operator_delete;
-    else if (type == HEAP_ROUTINE_DELETE_ARRAY)
-        *routine = (void *) replace_operator_delete_array;
-    else if (type == HEAP_ROUTINE_DELETE_NOTHROW)
-        *routine = (void *) replace_operator_delete_nothrow;
-    else if (type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW)
-        *routine = (void *) replace_operator_delete_array_nothrow;
+    else if (type == HEAP_ROUTINE_NEW) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_new : replace_operator_new_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_NEW_ARRAY) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_new_array : replace_operator_new_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_NEW_NOTHROW) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_new_nothrow :
+             replace_operator_new_nothrow_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_new_array_nothrow :
+             replace_operator_new_nothrow_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_DELETE) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_delete : replace_operator_delete_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_DELETE_ARRAY) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_delete_array :
+             replace_operator_delete_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_DELETE_NOTHROW) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_delete_nothrow :
+             replace_operator_delete_nothrow_nomatch);
+    } 
+    else if (type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW) {
+        *routine = (void *)
+            (check_mismatch ? replace_operator_delete_array_nothrow :
+             replace_operator_delete_nothrow_nomatch);
+    }
 #ifdef WINDOWS
     else if (type == HEAP_ROUTINE_DebugHeapDelete) {
         *routine = (void *) replace_operator_combined_delete;
@@ -3068,12 +3120,13 @@ func_interceptor(routine_type_t type, void **routine OUT, bool *at_entry OUT,
 }
 
 static void
-malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                          bool check_mismatch)
 {
     void *interceptor = NULL;
     bool at_entry = true;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, &interceptor, &at_entry, &stack_adjust)) {
+    if (!func_interceptor(type, check_mismatch, &interceptor, &at_entry, &stack_adjust)) {
         /* we'll replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
@@ -3084,22 +3137,24 @@ malloc_replace__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t 
                                    user_data, false))
             ASSERT(false, "failed to replace alloc routine");
     } else {
+        LOG(2, "wrapping, not replacing, "PFX"\n", pc);
         /* else wrap */
-        /* FIXME i#794: Windows NYI: want to replace
-         * create/destroy/validate/etc., along with all other
+        /* XXX i#1202: Windows NYI: want to replace
+         * _Crt* / RtlMultipleAllocateHeap / etc., along with all other
          * heap-related routines currenly not intercepted, w/ nops
          */
-       malloc_wrap__intercept(pc, type, e);
+        malloc_wrap__intercept(pc, type, e, check_mismatch);
     }
 }
 
 static void
-malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
+malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e,
+                            bool check_mismatch)
 {
     void *interceptor = NULL;
     bool at_entry;
     uint stack_adjust = 0;
-    if (!func_interceptor(type, &interceptor, &at_entry, &stack_adjust)) {
+    if (!func_interceptor(type, check_mismatch, &interceptor, &at_entry, &stack_adjust)) {
         /* we'll un-replace it ourselves elsewhere: alloc.c should ignore it */
         return;
     }
@@ -3107,7 +3162,7 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
         if (!drwrap_replace_native(pc, NULL, at_entry, stack_adjust, NULL, true))
             ASSERT(false, "failed to un-replace alloc routine");
     } else {
-        malloc_wrap__unintercept(pc, type, e);
+        malloc_wrap__unintercept(pc, type, e, check_mismatch);
     }
 }
 
