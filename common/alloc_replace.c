@@ -2825,9 +2825,17 @@ static BOOL WINAPI
 replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
 {
     void *drcontext = enter_client_code();
-    ASSERT(false, "NYI");
+    arena_header_t *arena = heap_to_arena(heap);
+    BOOL res = FALSE;
+    if (arena != NULL) {
+        chunk_header_t *head = header_from_ptr(ptr);
+        if (is_live_alloc(ptr, arena, head)) /* checks for NULL */
+            res = TRUE;
+    }
+    LOG(2, "%s: heap "PFX"=>"PFX" arena, ptr "PFX" => %d\n",
+        __FUNCTION__, heap, arena, ptr, res);
     exit_client_code(drcontext, false/*need swap*/);
-    return TRUE;
+    return res;
 }
 
 static BOOL WINAPI
@@ -3030,6 +3038,10 @@ func_interceptor(routine_type_t type, bool check_mismatch,
         case RTL_ROUTINE_SETFLAGS:
             *routine = (void *) replace_ignore_arg5;
             *stack = sizeof(void*) * 5;
+            return true;
+        case RTL_ROUTINE_VALIDATE:
+            *routine = (void *) replace_RtlValidateHeap;
+            *stack = sizeof(void*) * 3;
             return true;
 # ifdef X64
         /* FIXME i#995-c#3: we need replace NtdllpFreeStringRoutine in win-x64,
