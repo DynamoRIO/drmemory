@@ -490,7 +490,7 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
 void
 client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
                        const char *alloc_routine, const char *free_routine,
-                       void *client_data, bool C_vs_CPP)
+                       const char *action, void *client_data, bool C_vs_CPP)
 {
     app_loc_t loc;
     char msg[128];
@@ -509,8 +509,8 @@ client_mismatched_heap(app_pc pc, app_pc target, dr_mcontext_t *mc,
      */
     pcs = (packed_callstack_t *) client_data;
     dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                ": allocated with %s, freed with %s",
-                alloc_routine, free_routine);
+                ": allocated with %s, %s with %s",
+                alloc_routine, action, free_routine);
     NULL_TERMINATE_BUFFER(msg);
     report_mismatched_heap(&loc, target, mc, msg, pcs);
 }

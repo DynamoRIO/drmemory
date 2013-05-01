@@ -30,7 +30,7 @@ wincrt.cpp:45
 Error #5: UNADDRESSABLE ACCESS: writing 1 byte(s)
 wincrt.cpp:100
 # errors from -replace_malloc i#1197:
-Error #6: INVALID HEAP ARGUMENT: allocated with C library layer, freed with Windows API layer
+Error #6: INVALID HEAP ARGUMENT: allocated with C library layer, queried with Windows API layer
 replace_RtlSizeHeap
 rtl_mismatch_test
 wincrt.cpp:114
@@ -38,7 +38,7 @@ memory was allocated here:
 replace_malloc
 rtl_mismatch_test
 wincrt.cpp:113
-Error #7: INVALID HEAP ARGUMENT: allocated with Windows API layer, freed with C library layer
+Error #7: INVALID HEAP ARGUMENT: allocated with Windows API layer, queried with C library layer
 replace_malloc_usable_size
 rtl_mismatch_test
 wincrt.cpp:117

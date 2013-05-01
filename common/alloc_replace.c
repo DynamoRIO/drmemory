@@ -337,12 +337,13 @@ static bool aborting;
 typedef enum {
     ALLOC_SYNCHRONIZE      = 0x0001, /* malloc, free, and realloc */
     ALLOC_ZERO             = 0x0002, /* malloc and realloc */
-    ALLOC_IS_REALLOC       = 0x0004, /* malloc */
+    ALLOC_IS_REALLOC       = 0x0004, /* malloc and free */
     ALLOC_INVOKE_CLIENT    = 0x0008, /* malloc and free */
     ALLOC_IN_PLACE_ONLY    = 0x0010, /* realloc */
     ALLOC_ALLOW_NULL       = 0x0020, /* realloc: do not fail on NULL */
     ALLOC_ALLOW_EMPTY      = 0x0040, /* realloc: size==0 does re-allocate */
     ALLOC_IGNORE_MISMATCH  = 0x0080, /* free, realloc, size */
+    ALLOC_IS_QUERY         = 0x0100, /* check_type_match */
 } alloc_flags_t;
 
 /***************************************************************************
@@ -1551,6 +1552,8 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
 {
     uint alloc_main_type = (head->flags & MALLOC_ALLOCATOR_FLAGS);
     uint free_main_type = (free_type & MALLOC_ALLOCATOR_FLAGS);
+    const char *action = (TEST(ALLOC_IS_REALLOC, flags) ? "realloc" :
+                          (TEST(ALLOC_IS_QUERY, flags) ? "queried" : "freed"));
     if (TEST(ALLOC_IGNORE_MISMATCH, flags))
         return;
     LOG(3, "\tcheck_type_match: alloc flags="PIFX" vs free="PIFX"\n",
@@ -1561,7 +1564,7 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
         alloc_main_type != free_main_type) {
         client_mismatched_heap(caller, (byte *)ptr, mc,
                                malloc_alloc_type_name(alloc_main_type),
-                               malloc_free_type_name(free_main_type),
+                               malloc_free_type_name(free_main_type), action,
                                head->user_data, true/*C vs C++*/);
     }
 #ifdef WINDOWS
@@ -1569,7 +1572,7 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
         /* i#1197: report libc/Rtl mismatches */
         client_mismatched_heap(caller, (byte *)ptr, mc,
                                malloc_layer_name(head->flags),
-                               malloc_layer_name(free_type),
+                               malloc_layer_name(free_type), action,
                                head->user_data, false/*!C vs C++*/);
     }
 #endif
@@ -1706,7 +1709,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         }
         return res;
     } else if (size == 0 && !TEST(ALLOC_ALLOW_EMPTY, flags)) {
-        replace_free_common(arena, ptr, flags | ALLOC_INVOKE_CLIENT,
+        replace_free_common(arena, ptr, flags | ALLOC_IS_REALLOC | ALLOC_INVOKE_CLIENT,
                             drcontext, mc, caller, alloc_type);
         return NULL;
     } else if (!is_live_alloc(ptr, arena, head)) {
@@ -1763,7 +1766,8 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
             head = header_from_ptr(res);
             memcpy(res, ptr, MIN(size, old_request_size));
             replace_free_common(arena, ptr,
-                                sub_flags /*no client */ | ALLOC_IGNORE_MISMATCH,
+                                sub_flags /*no client */ | ALLOC_IS_REALLOC |
+                                ALLOC_IGNORE_MISMATCH,
                                 drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
             header_to_info(head, &new_info);
             client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
@@ -1783,7 +1787,7 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
     size_t res;
     arena_lock(drcontext, arena, TEST(ALLOC_SYNCHRONIZE, flags));
 #ifdef WINDOWS
-    check_type_match(ptr, head, alloc_type, flags, mc, caller);
+    check_type_match(ptr, head, alloc_type, flags | ALLOC_IS_QUERY, mc, caller);
 #endif
     if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place

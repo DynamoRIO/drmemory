@@ -4872,7 +4872,7 @@ handle_free_check_mismatch(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
         client_mismatched_heap(drwrap_get_retaddr(wrapcxt),
                                base, drwrap_get_mcontext_ex(wrapcxt, DR_MC_GPR),
                                malloc_alloc_type_name(alloc_type),
-                               translate_routine_name(routine->name),
+                               translate_routine_name(routine->name), "freed",
                                malloc_get_client_data(base), true/*C vs C++*/);
         return false;
     }
