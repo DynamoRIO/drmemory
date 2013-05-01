@@ -334,6 +334,12 @@ symbolized_callstack_frame_modname(const symbolized_callstack_t *scs, uint frame
 char *
 symbolized_callstack_frame_modoffs(const symbolized_callstack_t *scs, uint frame);
 
+/* The module base may be inaccurate if scs was created from an old packed
+ * callstack, as the packed callstack does not store the base.
+ */
+app_pc
+symbolized_callstack_frame_modbase(const symbolized_callstack_t *scs, uint frame);
+
 char *
 symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
 

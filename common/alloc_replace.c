@@ -271,6 +271,12 @@ typedef struct _arena_header_t {
      */
     heapsz_t prev_free_sz;
     uint magic;
+#ifdef WINDOWS
+    /* A member of the alloc set for which this arena is the default heap */
+    app_pc alloc_set_member;
+    /* Base of the module for which this is the default Heap */
+    app_pc modbase;
+#endif
     /* we need to iterate arenas belonging to one (non-default) Heap */
     struct _arena_header_t *next_arena;
     /* for main arena of each Heap, we inline free_lists_t here */
@@ -742,6 +748,7 @@ ptr_is_in_arena(byte *ptr, arena_header_t *arena)
         if (ptr >= a->start_chunk && ptr < a->commit_end)
             return true;
     }
+    LOG(2, "%s: "PFX" not found in arena "PFX"\n", __FUNCTION__, ptr, arena);
     return false;
 }
 
@@ -795,12 +802,17 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 {
     size_t header_size = sizeof(*arena);
     if (parent != NULL) {
+        /* XXX: maybe we should have two different headers for parents vs children */
         arena->flags = parent->flags;
         arena->lock = parent->lock;
 #ifdef WINDOWS
         arena->dr_lock = parent->dr_lock;
 #endif
         arena->free_list = parent->free_list;
+#ifdef WINDOWS
+        arena->alloc_set_member = parent->alloc_set_member;
+        arena->modbase = parent->modbase;
+#endif
     } else {
         arena->flags = ARENA_MAIN;
         arena->lock = dr_recurlock_create();
@@ -817,6 +829,10 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
          */
         arena->free_list = (free_lists_t *) ((byte *)arena + header_size);
         header_size += sizeof(*arena->free_list);
+#ifdef WINDOWS
+        arena->alloc_set_member = NULL;
+        arena->modbase = NULL;
+#endif
     }
     /* need to start with a redzone */
     arena->start_chunk = (byte *)arena +
@@ -2303,6 +2319,13 @@ replace_operator_combined_delete(void *ptr)
  * Windows RTL Heap API
  */
 
+/* Table mapping a module base to arena_header_t.
+ * This stores the default Heap for the module and thus we assume the
+ * lifetime of the arena matches the module lifetime.
+ */
+static hashtable_t crtheap_mod_table;
+#define CRTHEAP_MOD_TABLE_HASH_BITS 8
+
 /* XXX: are the BOOL return values really NTSTATUS? */
 
 /* Forwards */
@@ -2328,6 +2351,7 @@ create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
     return new_arena;
 }
 
+/* If !free_chunks, we assume called at process exit */
 static void
 destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
 {
@@ -2335,6 +2359,19 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
     chunk_header_t *head;
     malloc_info_t info;
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, arena);
+    if (arena->modbase != NULL) {
+        IF_DEBUG(bool found =)
+            hashtable_remove(&crtheap_mod_table, (void *)arena->modbase);
+        ASSERT(found, "inconsistent default Heap");
+    }
+    /* If not at process exit (else we'll deadlock on alloc_routine_table lock),
+     * clear this from the alloc set
+     */
+    if (free_chunks && arena->alloc_set_member != NULL) {
+        IF_DEBUG(bool success =)
+            alloc_routine_set_update_user_data(arena->alloc_set_member, NULL);
+        ASSERT(success, "failed to invalidate default Heap on its destruction");
+    }
     for (a = arena; a != NULL; a = next_a) {
         next_a = a->next_arena;
         if (free_chunks) {
@@ -2382,6 +2419,76 @@ heap_to_arena(HANDLE heap)
         return NULL;
 }
 
+/* i#960/i#607.A: identify a new Heap for CRT */
+static void
+check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
+{
+    dr_mcontext_t mc;
+    packed_callstack_t *pcs;
+    symbolized_callstack_t scs;
+    uint i;
+    app_pc modbase;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    IF_DEBUG(report_callstack(drcontext, &mc));
+    /* XXX optimization: we don't need to symbolize the functions */
+    packed_callstack_record(&pcs, &mc, NULL/*skip replace_ frame*/);
+    packed_callstack_to_symbolized(pcs, &scs);
+    /* Look for 2 frames of ntdll (trying to rule out qsort or
+     * other callback) calling entry point of dll, some other
+     * frames of that dll, and then kernel*!HeapCreate.
+     */
+    LOG(2, "symbolized callstack:\n");
+    for (i = 0; i < scs.num_frames; i++)
+        LOG(2, "  #%d = %s\n", i, symbolized_callstack_frame_modname(&scs, i));
+    i = 0;
+    if (scs.num_frames >= 4 &&
+        text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
+                             "kernel*.dll", true/*ignore case*/)) {
+        IF_DEBUG(const char *modname = symbolized_callstack_frame_modname(&scs, i);)
+        modbase = symbolized_callstack_frame_modbase(&scs, i++);
+        LOG(2, "checking for CRT heap created by %s base="PFX"\n", modname, modbase);
+        while (i < scs.num_frames &&
+               symbolized_callstack_frame_modbase(&scs, i) == modbase)
+            i++;
+        if (i < scs.num_frames - 1 &&
+            text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
+                                 "ntdll.dll", true/*ignore case*/) &&
+            text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
+                                 "ntdll.dll", true/*ignore case*/)) {
+            /* Match => destroy the arena we made at lib load event time and
+             * replace with the one here, as this one has specific params.
+             */
+            arena_header_t *set_arena = (arena_header_t *)
+                hashtable_lookup(&crtheap_mod_table, (void *)modbase);
+            LOG(2, "arena for CRT in %s is "PFX"\n", modname, set_arena);
+            if (set_arena != NULL) {
+                bool success = alloc_routine_set_update_user_data
+                    (set_arena->alloc_set_member, new_arena);
+                LOG(2, "replacing arena for %s w/ app arena "PFX" for set "PFX"\n",
+                    modname, new_arena, set_arena->alloc_set_member);
+                ASSERT(set_arena->alloc_set_member != NULL, "mis-initialized arena");
+                ASSERT(set_arena->next_chunk == set_arena->start_chunk &&
+                       set_arena->next_arena == NULL,
+                       "arena should be unused");
+                ASSERT(success, "failed to update set arena");
+                if (success) {
+                    new_arena->flags |= ARENA_LIBC_DEFAULT;
+                    new_arena->modbase = set_arena->modbase;
+                    set_arena->modbase = NULL; /* xfer, no free */
+                    new_arena->alloc_set_member = set_arena->alloc_set_member;
+                    heap_region_remove((byte *)set_arena, set_arena->reserve_end,
+                                       NULL);
+                    hashtable_add_replace(&crtheap_mod_table, (void *)modbase,
+                                          (void *)new_arena);
+                    arena_free(set_arena);
+                }
+            }
+        }
+    }
+    symbolized_callstack_free(&scs);
+    packed_callstack_free(pcs);
+}
+
 static HANDLE WINAPI
 replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
                       size_t commit_sz, void *lock, void *params)
@@ -2405,6 +2512,10 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
         commit_sz = PAGE_SIZE;
     new_arena = (arena_header_t *) create_Rtl_heap(commit_sz, reserve_sz, flags);
     LOG(2, "  => "PFX"\n", new_arena);
+
+    if (new_arena != NULL)
+        check_for_CRT_heap(drcontext, new_arena);
+
     dr_switch_to_app_state(drcontext);
     if (new_arena == NULL) {
         /* XXX: most of our errors are invalid params so that's all we set.
@@ -2936,7 +3047,8 @@ malloc_replace__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_
 }
 
 static void *
-malloc_replace__set_init(heapset_type_t type, app_pc pc, void *libc_data)
+malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mod,
+                         void *libc_data)
 {
 #ifdef WINDOWS
     if (type == HEAPSET_RTL) {
@@ -2950,9 +3062,16 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, void *libc_data)
         /* Create the Heap for this libc alloc routine set (i#939) */
         arena_header_t *arena = (arena_header_t *)
             create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
-        LOG(2, "new default Heap for libc set type=%d @"PFX" is "PFX"\n",
-            type, pc, arena);
+        IF_DEBUG(bool unique;)
+        LOG(2, "new default Heap for libc set type=%d @"PFX" modbase="PFX" is "PFX"\n",
+            type, pc, mod->start, arena);
         arena->flags |= ARENA_LIBC_DEFAULT;
+        arena->alloc_set_member = pc;
+        IF_DEBUG(unique =)
+            hashtable_add(&crtheap_mod_table, (void *)mod->start, (void *)arena);
+        ASSERT(unique, "duplicate default Heap");
+        arena->modbase = mod->start;
+
         return arena;
     }
     /* cpp set does not need its own Heap (i#964) */
@@ -2961,23 +3080,23 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, void *libc_data)
 }
 
 static void
-malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data,
-                         void *libc_data)
+malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data)
 {
 #ifdef WINDOWS
-    if ((type != HEAPSET_RTL && libc_data == NULL) || type == HEAPSET_LIBC) {
+    if (type != HEAPSET_RTL && user_data != NULL) {
         /* Destroy the Heap for this libc alloc routine set (i#939) */
         arena_header_t *arena = (arena_header_t *) user_data;
-        ASSERT(arena != NULL, "stored Heap disappeared?");
-        LOG(2, "destroying default Heap "PFX" for libc set @"PFX"\n", arena, pc);
-        /* i#939: we assume the Heap used by a libc routine set is not destroyed
-         * mid-run (pool-style) and is simply torn down at the end without any
-         * desire to free the individual chunks.
-         * XXX if we do free indiv chunks, we have no mcxt: should be rare, but
-         * can imagine an app bug involving memory freed when a
-         * library w/ libc routine unloads
-         */
-        destroy_Rtl_heap(arena, NULL, false/*do not free indiv chunks*/);
+        if (arena != NULL) { /* for non-pre-us /MT module, we see the HeapDestroy */
+            LOG(2, "destroying default Heap "PFX" for libc set @"PFX"\n", arena, pc);
+            /* i#939: we assume the Heap used by a libc routine set is not destroyed
+             * mid-run (pool-style) and is simply torn down at the end without any
+             * desire to free the individual chunks.
+             * XXX if we do free indiv chunks, we have no mcxt: should be rare, but
+             * can imagine an app bug involving memory freed when a
+             * library w/ libc routine unloads
+             */
+            destroy_Rtl_heap(arena, NULL, false/*do not free indiv chunks*/);
+        }
     }
 #endif
 }
@@ -3196,6 +3315,11 @@ alloc_replace_init(void)
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);
 
+#ifdef WINDOWS
+    hashtable_init(&crtheap_mod_table, CRTHEAP_MOD_TABLE_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+#endif
+
     /* set up pointers for per-malloc API */
     malloc_interface.malloc_lock = malloc_replace__lock;
     malloc_interface.malloc_unlock = malloc_replace__unlock;
@@ -3273,4 +3397,8 @@ alloc_replace_exit(void)
     hashtable_delete_with_stats(&pre_us_table, "pre_us");
 
     heap_region_iterate(free_arena_at_exit, NULL);
+
+#ifdef WINDOWS
+    hashtable_delete_with_stats(&crtheap_mod_table, "crtheap");
+#endif
 }

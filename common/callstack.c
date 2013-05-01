@@ -270,6 +270,8 @@ struct _symbolized_frame_t {
     bool has_symbols;
     /* i#446: Unique id of the module. */
     uint modid;
+    /* We store the base for use in i#960 */
+    app_pc modbase;
     char modname[MAX_MODULE_LEN+1]; /* always null-terminated */
     /* This is a string instead of a number, again for comparison w/ wildcards
      * in the modoffs in suppression frames
@@ -463,6 +465,7 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     frame->hide_modname = false;
     frame->has_symbols = false;
     frame->modid = 0;
+    frame->modbase = NULL;
     frame->modname[0] = '\0';
     frame->modoffs[0] = '\0';
     frame->func[0] = '?';
@@ -848,6 +851,7 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
                 "<name unavailable>" : name_info->name;
             frame->is_module = true;
             frame->hide_modname = name_info->hide_modname;
+            frame->modbase = mod_start;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, pc - mod_start);
@@ -1645,6 +1649,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
             frame->is_module = true;
             frame->hide_modname = info->hide_modname;
             frame->modid = info->id;
+            /* Lazily compute frame->modbase so leave it NULL here */
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
@@ -1949,6 +1954,8 @@ symbolized_callstack_frame_modname(const symbolized_callstack_t *scs, uint frame
     ASSERT(scs != NULL, "invalid args");
     if (scs->num_frames <= frame)
         return NULL;
+    ASSERT(scs->frames[frame].is_module ||
+           scs->frames[frame].modname[0] == '\0', "modname not initialized");
     return scs->frames[frame].modname;
 }
 
@@ -1959,6 +1966,26 @@ symbolized_callstack_frame_modoffs(const symbolized_callstack_t *scs, uint frame
     if (scs->num_frames <= frame)
         return 0;
     return scs->frames[frame].modoffs;
+}
+
+app_pc
+symbolized_callstack_frame_modbase(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return NULL;
+    if (scs->frames[frame].is_module) {
+        if (scs->frames[frame].modbase == NULL) {
+            ASSERT(scs->frames[frame].loc.type == APP_LOC_PC &&
+                   scs->frames[frame].loc.u.addr.valid, "invalid frame");
+            /* If this fails we'll just try again: should be rare, and caller's
+             * fault if asking about an unloaded module.
+             */
+            module_lookup(scs->frames[frame].loc.u.addr.pc,
+                          &scs->frames[frame].modbase, NULL, NULL);
+        }
+    }
+    return scs->frames[frame].modbase;
 }
 
 char *

@@ -712,3 +712,14 @@ UNINITIALIZED READ
 name=default i#1155 VS2012 istream
 MSVCP110*.dll!std::_Find_elem<char>
 MSVCP110*.dll!std::num_get<char,std::istreambuf_iterator<char,std::char_traits<char> > >::_Getifld
+
+##################################################
+# i#960: real mismatches in CRT when we don't have syms and thus can't see
+# internal alloc routines.  We don't need to suppress in static CRT b/c w/o
+# syms we won't see the libc layer at all.
+# For -replace_malloc, the app calling libc won't have MSVCR*.dll at the
+# top as we'll replace that frame.
+
+INVALID HEAP ARGUMENT
+name=default i#960 CRT mismatch
+MSVCR*.dll!*

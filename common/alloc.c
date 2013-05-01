@@ -715,13 +715,40 @@ struct _alloc_routine_set_t {
     void *user_data;
     /* For i#964 we connect crt and dbgcrt */
     struct _alloc_routine_set_t *set_libc;
+    /* List of other sets for which this one is the set_libc, chained
+     * by this field.
+     */
+    struct _alloc_routine_set_t *next_dep;
 };
 
 void *
 alloc_routine_set_get_user_data(alloc_routine_entry_t *e)
 {
     ASSERT(e != NULL, "invalid param");
-    return e->set->user_data;
+    /* Prefer set_libc copy, so we can update in one place for all related sets */
+    if (e->set->set_libc != NULL)
+        return e->set->set_libc->user_data;
+    else
+        return e->set->user_data;
+}
+
+bool
+alloc_routine_set_update_user_data(app_pc member_func, void *new_data)
+{
+    alloc_routine_entry_t *e;
+    bool res = false;
+    dr_mutex_lock(alloc_routine_lock);
+    e = hashtable_lookup(&alloc_routine_table, (void *)member_func);
+    if (e != NULL) {
+        /* Prefer set_libc copy, so we can update in one place for all related sets */
+        if (e->set->set_libc != NULL)
+            e->set->set_libc->user_data = new_data;
+        else
+            e->set->user_data = new_data;
+        res = true;
+    }
+    dr_mutex_unlock(alloc_routine_lock);
+    return res;
 }
 
 /* The set for the dynamic libc lib */
@@ -736,10 +763,33 @@ alloc_routine_entry_free(void *p)
         ASSERT(e->set->refcnt > 0, "invalid refcnt");
         e->set->refcnt--;
         if (e->set->refcnt == 0) {
+            LOG(3, "removing alloc set "PFX" of type %d\n", e->set, e->set->type);
             client_remove_malloc_routine(e->set->client);
-            malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data,
-                                             e->set->set_libc == NULL ? NULL :
-                                             e->set->set_libc->user_data);
+            malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data);
+            if (e->set->set_libc != NULL) {
+                alloc_routine_set_t *dep, *prev;
+                /* remove from deps list */
+                for (prev = NULL, dep = e->set->set_libc->next_dep;
+                     dep != NULL && dep != e->set;
+                     prev = dep, dep = dep->next_dep)
+                    ; /* nothing */
+                ASSERT(dep != NULL, "set_libc inconsistency");
+                if (dep != NULL) {
+                    if (prev == NULL)
+                        e->set->set_libc->next_dep = dep->next_dep;
+                    else 
+                        prev->next_dep = dep->next_dep;
+                }
+            } else {
+                /* update other sets pointing here via their set_libc */
+                alloc_routine_set_t *dep, *next;
+                for (dep = e->set->next_dep; dep != NULL; dep = next) {
+                    ASSERT(dep->set_libc == e->set, "set_libc inconsistency");
+                    dep->set_libc = NULL;
+                    next = dep->next_dep;
+                    dep->next_dep = NULL;
+                }
+            }
             global_free(e->set, sizeof(*e->set), HEAPSTAT_HASHTABLE);
         }
     }
@@ -1301,7 +1351,7 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
     /* i#722, i#655: MSVS libraries call _DELETE_CRT(ptr) or _DELETE_CRT_VEC(ptr)
      * which for release build map to operatore delete or operator delete[], resp.
      * However, for _DEBUG, both map to the same routine std::_DebugHeapDelete, which
-     * explicitly calls the destructor and then call free(), sometimes via tailcall.
+     * explicitly calls the destructor and then calls free(), sometimes via tailcall.
      * This means we would report a mismatch for an allocation with new but
      * deallocation with free().  To suppress that, we could use a suppression, but
      * b/c of the tailcall std::_DebugHeapDelete is sometimes not on the callstack.
@@ -1698,18 +1748,31 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         symcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
 #endif
     if (edata->set == NULL) {
+        void *user_data;
         edata->set = (alloc_routine_set_t *)
             global_alloc(sizeof(*edata->set), HEAPSTAT_HASHTABLE);
+        LOG(2, "new alloc set "PFX" of type %d\n", edata->set, edata->set_type);
         memset(edata->set, 0, sizeof(*edata->set));
         edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
-        edata->set->user_data = malloc_interface.malloc_set_init
-            (edata->set_type, pc,
+        user_data = malloc_interface.malloc_set_init
+            (edata->set_type, pc, edata->mod,
              edata->set_libc == NULL ? NULL : edata->set_libc->user_data);
+        /* store preferentially in shared set_libc */
+        if (edata->set_libc != NULL)
+            edata->set_libc->user_data = user_data;
+        else
+            edata->set->user_data = user_data;
         edata->set->type = edata->set_type;
         edata->set->check_mismatch = edata->check_mismatch;
         edata->set->set_libc = edata->set_libc;
         edata->set->is_libc = edata->is_libc;
+        if (edata->set_libc != NULL) {
+            ASSERT(edata->set_libc->set_libc == NULL,
+                   "libc itself shouldn't point at another libc");
+            edata->set->next_dep = edata->set_libc->next_dep;
+            edata->set_libc->next_dep = edata->set;
+        }
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
                       edata->set, edata->mod->start, modname);
@@ -2651,14 +2714,17 @@ alloc_exit(void)
      * barrier here.
      */
     uint i;
+    if (alloc_ops.track_allocs) {
+        /* Must free this before alloc_replace_exit() frees crtheap_mod_table */
+        hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
+        dr_mutex_destroy(alloc_routine_lock);
+    }
+
     if (alloc_ops.replace_malloc)
         alloc_replace_exit();
 
     if (!alloc_ops.track_allocs)
         return;
-
-    hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
-    dr_mutex_destroy(alloc_routine_lock);
 
     if (!alloc_ops.replace_malloc) {
         malloc_info_t info;
@@ -2979,12 +3045,16 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                  * new is not debug and calls (regular) malloc.  Note that
                  * _nh_malloc_dbg is not exported so we can't use that as a decider.
                  */
-                use_redzone = false;
-                LOG(1, "NOT using redzones for any allocators in %s "PFX"\n",
-                    (modname == NULL) ? "<noname>" : modname, info->start);
+                if (!alloc_ops.replace_malloc) {
+                    use_redzone = false;
+                    LOG(1, "NOT using redzones for any allocators in %s "PFX"\n",
+                        (modname == NULL) ? "<noname>" : modname, info->start);
+                }
             } else {
-                LOG(1, "NOT using redzones for _dbg routines in %s "PFX"\n",
-                    (modname == NULL) ? "<noname>" : modname, info->start);
+                if (!alloc_ops.replace_malloc) {
+                    LOG(1, "NOT using redzones for _dbg routines in %s "PFX"\n",
+                        (modname == NULL) ? "<noname>" : modname, info->start);
+                }
             }
         } else {
             /* optimization: assume no other dbg routines if no _malloc_dbg */
@@ -3855,13 +3925,14 @@ malloc_wrap__iterate(malloc_iter_cb_t cb, void *iter_data)
 }
 
 static void *
-malloc_wrap__set_init(heapset_type_t type, app_pc pc, void *libc_data)
+malloc_wrap__set_init(heapset_type_t type, app_pc pc, const module_data_t *mod,
+                      void *libc_data)
 {
     return NULL;
 }
 
 static void
-malloc_wrap__set_exit(heapset_type_t type, app_pc pc, void *user_data, void *libc_data)
+malloc_wrap__set_exit(heapset_type_t type, app_pc pc, void *user_data)
 {
     /* nothing */
 }

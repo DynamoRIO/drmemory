@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -40,6 +40,7 @@ typedef enum {
     HEAPSET_CPP_DBG,
     HEAPSET_RTL,
 #endif
+    HEAPSET_NUM_TYPES,
 } heapset_type_t;
 
 typedef enum {
@@ -313,9 +314,10 @@ typedef struct _malloc_interface_t {
      * earlier call) for the corresponding HEAPSET_LIBC for that module.
      * HEAPSET_LIBC is guaranteed to be called before HEAPSET_LIBC_DBG.
      */
-    void * (*malloc_set_init)(heapset_type_t type, app_pc pc, void *libc_data);
-    void (*malloc_set_exit)(heapset_type_t type, app_pc pc, void *user_data,
-                            void *libc_data);
+    void * (*malloc_set_init)(heapset_type_t type, app_pc pc, const module_data_t *mod,
+                              void *libc_data);
+    /* Returns the new libc data */
+    void (*malloc_set_exit)(heapset_type_t type, app_pc pc, void *user_data);
 } malloc_interface_t;
 
 extern malloc_interface_t malloc_interface;
@@ -327,8 +329,13 @@ malloc_wrap__intercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e)
 void
 malloc_wrap__unintercept(app_pc pc, routine_type_t type, alloc_routine_entry_t *e);
 
+/* Retrieves the libc set data, if the libc sets exists; else the individual set */
 void *
 alloc_routine_set_get_user_data(alloc_routine_entry_t *e);
+
+/* Updates the libc set data, if the libc sets exists; else the individual set */
+bool
+alloc_routine_set_update_user_data(app_pc member_func, void *new_data);
 
 /***************************************************************************
  * Large malloc tree
