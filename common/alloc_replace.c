@@ -276,6 +276,8 @@ typedef struct _arena_header_t {
     app_pc alloc_set_member;
     /* Base of the module for which this is the default Heap */
     app_pc modbase;
+    /* HANDLE of Heap, for pre-us Heap */
+    HANDLE handle;
 #endif
     /* we need to iterate arenas belonging to one (non-default) Heap */
     struct _arena_header_t *next_arena;
@@ -338,6 +340,12 @@ static uint num_dealloc;
 /* used to allow use of app stack on abort */
 static bool aborting;
 #endif
+
+/* Indicates whether process initialization is fully complete, including
+ * iteration of modules.  Thus, we don't set this until we get the
+ * first thread init event.
+ */
+static bool process_initialized;
 
 /* Flags controlling allocation behavior */
 typedef enum {
@@ -812,6 +820,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 #ifdef WINDOWS
         arena->alloc_set_member = parent->alloc_set_member;
         arena->modbase = parent->modbase;
+        arena->handle = parent->handle;
 #endif
     } else {
         arena->flags = ARENA_MAIN;
@@ -832,6 +841,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 #ifdef WINDOWS
         arena->alloc_set_member = NULL;
         arena->modbase = NULL;
+        arena->handle = NULL;
 #endif
     }
     /* need to start with a redzone */
@@ -2319,12 +2329,16 @@ replace_operator_combined_delete(void *ptr)
  * Windows RTL Heap API
  */
 
-/* Table mapping a module base to arena_header_t.
+/* Table mapping a module base to arena_header_t, for post-us libc Heaps (i#960).
  * This stores the default Heap for the module and thus we assume the
  * lifetime of the arena matches the module lifetime.
  */
 static hashtable_t crtheap_mod_table;
 #define CRTHEAP_MOD_TABLE_HASH_BITS 8
+
+/* Table mapping Heap HANDLE to arena_header_t, for pre-us Heaps (i#959). */
+static hashtable_t crtheap_handle_table;
+#define CRTHEAP_HANDLE_TABLE_HASH_BITS 8
 
 /* XXX: are the BOOL return values really NTSTATUS? */
 
@@ -2362,6 +2376,11 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
     if (arena->modbase != NULL) {
         IF_DEBUG(bool found =)
             hashtable_remove(&crtheap_mod_table, (void *)arena->modbase);
+        ASSERT(found, "inconsistent default Heap");
+    }
+    if (arena->handle != NULL) {
+        IF_DEBUG(bool found =)
+            hashtable_remove(&crtheap_handle_table, (void *)arena->handle);
         ASSERT(found, "inconsistent default Heap");
     }
     /* If not at process exit (else we'll deadlock on alloc_routine_table lock),
@@ -2402,8 +2421,6 @@ heap_to_arena(HANDLE heap)
 {
     arena_header_t *arena = (arena_header_t *) heap;
     uint magic;
-    /* we assume that pre-us will be detected and handled by caller */
-    /* FIXME i#959: handle additional pre-us Heaps from dlls before we took over */
     if (heap == process_heap)
         return cur_arena;
 #ifdef USE_DRSYMS
@@ -2415,8 +2432,15 @@ heap_to_arena(HANDLE heap)
         /* XXX: safe_read flags too?  magic passed though */
         TEST(ARENA_MAIN, arena->flags))
         return arena;
-    else
+    else {
+#ifdef WINDOWS
+        arena = hashtable_lookup(&crtheap_handle_table, (void *)heap);
+        if (arena != NULL)
+            return arena;
+#endif
+        LOG(2, "%s: "PFX" => NULL!\n", __FUNCTION__, heap);
         return NULL;
+    }
 }
 
 /* i#960/i#607.A: identify a new Heap for CRT */
@@ -3072,6 +3096,30 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
         ASSERT(unique, "duplicate default Heap");
         arena->modbase = mod->start;
 
+        /* Determine the pre-us Heap for this pre-existing module, if
+         * any (i#959).
+         */
+        if (!process_initialized) {
+            ptr_uint_t (*get_heap)(void) = (ptr_uint_t (*)(void))
+                dr_get_proc_address(mod->handle, "_get_heap_handle");
+            HANDLE pre_us_heap = NULL;
+            if (get_heap != NULL) {
+                void *drcontext = dr_get_current_drcontext();
+                DR_TRY_EXCEPT(drcontext, {
+                    pre_us_heap = (HANDLE) (*get_heap)();
+                }, { /* EXCEPT */
+                });
+            }
+            LOG(2, "pre-existing Heap for libc set type=%d module=%s is "PFX"\n",
+                type, (dr_module_preferred_name(mod) == NULL) ? "<null>" :
+                dr_module_preferred_name(mod), pre_us_heap);
+            if (pre_us_heap != NULL) {
+                IF_DEBUG(unique =)
+                    hashtable_add(&crtheap_handle_table, (void *)pre_us_heap,
+                                  (void *)arena);
+                ASSERT(unique, "duplicate default Heap");
+            }
+        }
         return arena;
     }
     /* cpp set does not need its own Heap (i#964) */
@@ -3249,9 +3297,20 @@ malloc_replace__unlock(void)
 #endif
 }
 
+static void 
+alloc_replace_thread_init(void *drcontext)
+{
+    if (!process_initialized) {
+        /* process and pre-existing modules are all initialized */
+        process_initialized = true;
+    }
+}
+
 void
 alloc_replace_init(void)
 {
+    drmgr_register_thread_init_event(alloc_replace_thread_init);
+
     if (alloc_ops.shared_redzones) {
         header_size = sizeof(chunk_header_t);
     } else {
@@ -3317,6 +3376,8 @@ alloc_replace_init(void)
 
 #ifdef WINDOWS
     hashtable_init(&crtheap_mod_table, CRTHEAP_MOD_TABLE_HASH_BITS, HASH_INTPTR,
+                   false/*!strdup*/);
+    hashtable_init(&crtheap_handle_table, CRTHEAP_HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
                    false/*!strdup*/);
 #endif
 
@@ -3400,5 +3461,6 @@ alloc_replace_exit(void)
 
 #ifdef WINDOWS
     hashtable_delete_with_stats(&crtheap_mod_table, "crtheap");
+    hashtable_delete_with_stats(&crtheap_handle_table, "crtheap handles");
 #endif
 }
