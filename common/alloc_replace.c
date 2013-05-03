@@ -1832,15 +1832,14 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         /* XXX: if final chunk in arena, extend in-place */
         res = (void *) replace_alloc_common(arena, size,
                                             sub_flags | ALLOC_IS_REALLOC /*no client*/,
-                                            drcontext, mc, caller,
-                                            MALLOC_ALLOCATOR_MALLOC);
+                                            drcontext, mc, caller, alloc_type);
         if (res != NULL) {
             head = header_from_ptr(res);
             memcpy(res, ptr, MIN(size, old_request_size));
             replace_free_common(arena, ptr,
                                 sub_flags /*no client */ | ALLOC_IS_REALLOC |
                                 ALLOC_IGNORE_MISMATCH,
-                                drcontext, mc, caller, MALLOC_ALLOCATOR_MALLOC);
+                                drcontext, mc, caller, alloc_type);
             header_to_info(head, &new_info, NULL);
             client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
         }
