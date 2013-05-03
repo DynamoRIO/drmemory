@@ -1456,6 +1456,112 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
 #endif
 
 #ifdef USE_DRSYMS
+# ifdef WINDOWS
+static inline bool
+modname_is_libc_or_libcpp(const char *modname)
+{
+    return (modname != NULL && text_matches_pattern(modname, "msvc*", true));
+}
+# endif
+
+static bool
+distinguish_operator_by_decoding(routine_type_t generic_type,
+                                 routine_type_t *specific_type OUT,
+                                 const char *name, const module_data_t *mod,
+                                 size_t modoffs)
+{
+    /* Note that both g++ and MSVS inline both nothrow and placement operators.
+     * Thus, if we don't have symbols, we're probably fine as we want to ignore
+     * placement and we can ignore the outer layer of nothrow if it just wraps
+     * exception handling around the regular operator.
+     * But, if we do have symbols but no arg types, we need to distinguish.
+     * The strategy is to decode and if we see no call then assume it's
+     * placement (which should just return its arg).
+     * XXX i#1206: we'll give up on nothrow: but it's low-risk b/c it only comes into
+     * play if we run out of memory.  Plus -replace_malloc doesn't throw
+     * an exception yet anyway.
+     */
+    void *drcontext = dr_get_current_drcontext();
+    instr_t inst;
+    bool known = false;
+    app_pc pc = mod->start + modoffs, next_pc;
+    instr_init(drcontext, &inst);
+    /* XXX: in general when decoding we want to wait for the module to be relocated
+     * and thus we want DRi#884 or to delay our symbol searches via our
+     * mod_pending_tree.  But in this case, we only care about the opcodes, which
+     * shouldn't be affected by relocations.
+     */
+    LOG(3, "decoding %s @"PFX" looking for placement operator\n", name, pc);
+    ASSERT(drcontext != NULL, "must have DC");
+    do {
+        instr_reset(drcontext, &inst);
+        if (!safe_decode(drcontext, pc, &inst, &next_pc)) {
+            LOG(3, "\tfailed to decode "PFX"\n", pc);
+            break;
+        }
+        if (pc == NULL || !instr_valid(&inst))
+            break;
+        if (instr_is_return(&inst)) {
+            /* We hit a return w/ no cti first: we assume it's placement */
+            LOG(2, "%s is straight-line: looks like a placement operator\n", name);
+            *specific_type = HEAP_ROUTINE_INVALID;
+            known = true;
+            break;
+        }
+#ifdef WINDOWS
+        if (pc == mod->start + modoffs && instr_get_opcode(&inst) == OP_jmp_ind) {
+            /* Single jmp* => this is just a dllimport stub */
+            opnd_t dest = instr_get_target(&inst);
+            if (opnd_is_abs_addr(dest) IF_X64(|| opnd_is_rel_addr(dest))) {
+                app_pc slot = opnd_get_addr(dest);
+                app_pc target;
+                if (safe_read(slot, sizeof(target), &target)) {
+                    module_data_t *data = dr_lookup_module(target);
+                    const char *modname = (data == NULL) ? NULL :
+                        dr_module_preferred_name(data);
+                    LOG(2, "%s starts with jmp* to "PFX" == %s\n", name, target,
+                        modname == NULL ? "<null>" : modname);
+                    if (modname_is_libc_or_libcpp(modname)) {
+                        LOG(2, "%s is import stub from %s\n", name, modname);
+                        known = distinguish_operator_by_decoding
+                            (generic_type, specific_type, name, data,
+                             target - data->start);
+                    }
+                    dr_free_module_data(data);
+                }
+                if (known)
+                    break;
+            }
+        }
+#endif
+        if (instr_is_cti(&inst)) {
+            /* While we're not really sure whether nothrow, we're pretty sure
+             * it's not placement: but we've seen placement operators with
+             * asserts or other logic inside them (i#1006).
+             */
+#ifdef WINDOWS
+            const char *modname = dr_module_preferred_name(mod);
+            if (modname_is_libc_or_libcpp(modname)) {
+                /* We know that msvc* placement operators are all identifiable,
+                 * and we really want to replace the non-placement operators.
+                 * XXX i#1206: ignoring the nothrow distinction for now.
+                 * Really we should get mangled export syms!
+                 */
+                *specific_type = generic_type;
+                known = true;
+                LOG(2, "%s not straight-line + in msvc* so assuming non-placement\n",
+                    name);
+            } else
+#endif
+                LOG(2, "%s is not straight-line so type is unknown\n", name);
+            break;
+        }
+        pc = next_pc;
+    } while (true);
+    instr_free(drcontext, &inst);
+    return known;
+}
+
 /* Given a generic operator type and its location in a module, checks its
  * args and converts to a corresponding nothrow operator type or to
  * HEAP_ROUTINE_INVALID if a placement operator.  Returns true if successful.
@@ -1478,8 +1584,9 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
     ASSERT(specific_type != NULL, "invalid param");
     *specific_type = generic_type;
     if (res == DRSYM_SUCCESS && !TEST(DRSYM_PDB, kind)) {
-        /* We can't get mangled names for PDBs, and there's no existing interface
-         * to walk exports, so we fall back to decoding below.  Else, we continue.
+        /* XXX i#1206: we can't get mangled names for PDBs, and there's no
+         * existing interface to walk exports, so we fall back to decoding
+         * below.  Else, we continue.
          */
         drsym_error_t symres;
         drsym_info_t *sym;
@@ -1551,53 +1658,8 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
         }
     }
     if (!known) {
-        /* Note that both g++ and MSVS inline both nothrow and placement operators.
-         * Thus, if we don't have symbols, we're probably fine as we want to ignore
-         * placement and we can ignore the outer layer of nothrow if it just wraps
-         * exception handling around the regular operator.
-         * But, if we do have symbols but no arg types, we need to distinguish.
-         * The strategy is to decode and if we see no call then assume it's
-         * placement (which should just return its arg).
-         * We'll give up on nothrow: but it's low-risk b/c it only comes into
-         * play if we run out of memory.  Plus -replace_malloc doesn't throw
-         * an exception yet anyway.
-         */
-        void *drcontext = dr_get_current_drcontext();
-        instr_t inst;
-        app_pc pc = mod->start + modoffs;
-        instr_init(drcontext, &inst);
-        /* XXX: in general when decoding we want to wait for the module to be relocated
-         * and thus we want DRi#884 or to delay our symbol searches via our
-         * mod_pending_tree.  But in this case, we only care about the opcodes, which
-         * shouldn't be affected by relocations.
-         */
-        LOG(3, "decoding %s @"PFX" looking for placement operator\n", name, pc);
-        ASSERT(drcontext != NULL, "must have DC");
-        do {
-            instr_reset(drcontext, &inst);
-            if (!safe_decode(drcontext, pc, &inst, &pc)) {
-                LOG(3, "\tfailed to decode "PFX"\n", pc);
-                break;
-            }
-            if (pc == NULL || !instr_valid(&inst))
-                break;
-            if (instr_is_return(&inst)) {
-                /* We hit a return w/ no cti first: we assume it's placement */
-                LOG(2, "%s is straight-line: looks like a placement operator\n", name);
-                *specific_type = HEAP_ROUTINE_INVALID;
-                known = true;
-                break;
-            }
-            if (instr_is_cti(&inst)) {
-                /* While we're not really sure whether nothrow, we're pretty sure
-                 * it's not placement so we mark as known to avoid the warning msg.
-                 */
-                LOG(2, "%s is not straight-line so not a placement operator\n", name);
-                known = true;
-                break;
-            }
-        } while (true);
-        instr_free(drcontext, &inst);
+        known = distinguish_operator_by_decoding(generic_type, specific_type,
+                                                 name, mod, modoffs);
     }
     return known;
 }
@@ -1616,7 +1678,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     drsym_error_t err;
     routine_type_t specific_type = generic_type;
     const char *modname = dr_module_preferred_name(mod);
-    bool known = false;
+    bool known = false, have_types = true;
     if (modname == NULL)
         modname = "<noname>";
 
@@ -1642,6 +1704,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
 
     if (err != DRSYM_SUCCESS) {
         /* Fall through to no-arg-type handling below */
+        have_types = false;
     } else if (func_type->num_args == 1) {
         /* standard type: operator new(unsigned int) or operator delete(void *) */
         specific_type = generic_type;
@@ -1678,20 +1741,24 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
         }
         if (!known) {
             /* We do rule out (non-std::nothrow_t) struct or class pointers
-             * as not being placement.
+             * as not being placement, but best to be safe and not
+             * consider to be known.
              */
             WARN("WARNING: unknown 2-arg overload of %s in %s @"PFX"\n",
                  name, modname, mod->start + info->start_offs);
-            specific_type = generic_type;
         }
     } else {
         /* MSVC++ has 3-arg and 4-arg operators which we assume
          * are all non-placement non-nothrow:
          *   operator new(unsigned int, _HeapManager*, int)
          *   operator new(unsigned int,int,char const *,int)
+         * Other apps have their own custom multi-arg operators,
+         * though, with some taking void* and being placement and some
+         * very similar-looking ones taking void* and not being
+         * placement.  Let's try decoding.
          */
-        specific_type = generic_type;
-        known = true;
+        WARN("WARNING: unknown 3+-arg overload of %s in %s @"PFX"\n",
+             name, modname, mod->start + info->start_offs);
     }
     if (!known) {
         /* XXX DRi#860: drsyms does not yet provide arg types for Linux/Mingw.
@@ -1705,9 +1772,28 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
             LOG(2, "%s in %s @"PFX" determined to be type=%d\n",
                 name, modname, mod->start + info->start_offs, specific_type);
         } else {
-            WARN("WARNING: unable to determine args for operator %s in %s @"PFX"\n",
-                 name, modname, mod->start + info->start_offs);
-            specific_type = generic_type;
+            /* Safest to ignore: downside is just not reporting mismatches;
+             * but if we replace and it did something custom, or if it was
+             * placement and we allocate, we can break the app (i#1006).
+             *
+             * For msvc*, we assume we can distinguish placement via decoding,
+             * and for now we live w/ not distinguishing nothrow (i#1206).
+             *
+             * If we don't have types, which is true for many dlls, we boldly
+             * go ahead and assume that like msvc* we can distinguish placement
+             * (otherwise we wouldn't replace a whole bunch of operators).
+             * We assume that only the app itself and its dlls will have weird
+             * operators, and that we'll have type info.
+             */
+            if (have_types IF_WINDOWS(&& !modname_is_libc_or_libcpp(modname))) {
+                specific_type = HEAP_ROUTINE_INVALID;
+                WARN("WARNING: unable to determine type of %s in %s @"PFX"\n",
+                     name, modname, mod->start + info->start_offs);
+            } else {
+                specific_type = generic_type;
+                WARN("WARNING: assuming %s is non-placement in %s @"PFX"\n",
+                     name, modname, mod->start + info->start_offs);
+            }
         }
     }
     global_free(buf, bufsz, HEAPSTAT_WRAP);
