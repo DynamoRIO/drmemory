@@ -721,6 +721,12 @@ struct _alloc_routine_set_t {
     struct _alloc_routine_set_t *next_dep;
 };
 
+/* Until we see the dynamic libc dll, we use this as a placeholder */
+static alloc_routine_set_t set_dyn_libc_placeholder;
+
+/* The set for the dynamic libc lib */
+static alloc_routine_set_t *set_dyn_libc = &set_dyn_libc_placeholder;
+
 void *
 alloc_routine_set_get_user_data(alloc_routine_entry_t *e)
 {
@@ -751,8 +757,19 @@ alloc_routine_set_update_user_data(app_pc member_func, void *new_data)
     return res;
 }
 
-/* The set for the dynamic libc lib */
-static alloc_routine_set_t *set_dyn_libc;
+static void
+update_set_libc(alloc_routine_set_t *set_libc, alloc_routine_set_t *new_val,
+                alloc_routine_set_t *old_val, bool clear_list)
+{
+    alloc_routine_set_t *dep, *next;
+    for (dep = set_libc->next_dep; dep != NULL; dep = next) {
+        ASSERT(dep->set_libc == old_val, "set_libc inconsistency");
+        dep->set_libc = new_val;
+        next = dep->next_dep;
+        if (clear_list)
+            dep->next_dep = NULL;
+    }
+}
 
 /* lock is held when this is called */
 static void
@@ -763,7 +780,7 @@ alloc_routine_entry_free(void *p)
         ASSERT(e->set->refcnt > 0, "invalid refcnt");
         e->set->refcnt--;
         if (e->set->refcnt == 0) {
-            LOG(3, "removing alloc set "PFX" of type %d\n", e->set, e->set->type);
+            LOG(2, "removing alloc set "PFX" of type %d\n", e->set, e->set->type);
             client_remove_malloc_routine(e->set->client);
             malloc_interface.malloc_set_exit(e->set->type, e->pc, e->set->user_data);
             if (e->set->set_libc != NULL) {
@@ -782,13 +799,7 @@ alloc_routine_entry_free(void *p)
                 }
             } else {
                 /* update other sets pointing here via their set_libc */
-                alloc_routine_set_t *dep, *next;
-                for (dep = e->set->next_dep; dep != NULL; dep = next) {
-                    ASSERT(dep->set_libc == e->set, "set_libc inconsistency");
-                    dep->set_libc = NULL;
-                    next = dep->next_dep;
-                    dep->next_dep = NULL;
-                }
+                update_set_libc(e->set, NULL, e->set, true/*clear list*/);
             }
             global_free(e->set, sizeof(*e->set), HEAPSTAT_WRAP);
         }
@@ -1751,7 +1762,8 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         void *user_data;
         edata->set = (alloc_routine_set_t *)
             global_alloc(sizeof(*edata->set), HEAPSTAT_WRAP);
-        LOG(2, "new alloc set "PFX" of type %d\n", edata->set, edata->set_type);
+        LOG(2, "new alloc set "PFX" of type %d set_libc="PFX"\n",
+            edata->set, edata->set_type, edata->set_libc);
         memset(edata->set, 0, sizeof(*edata->set));
         edata->set->use_redzone = (edata->use_redzone && alloc_ops.redzone_size > 0);
         edata->set->client = client_add_malloc_routine(pc);
@@ -3066,7 +3078,16 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
              * numbers and find the specific sets used.
              */
             if (info->start == get_libc_base(NULL)) {
-                if (set_dyn_libc != NULL)
+                if (set_dyn_libc == &set_dyn_libc_placeholder) {
+                    /* Take over as the set_libc for modules we saw earlier */
+                    LOG(2, "alloc set "PFX" taking over placeholder "PFX" as libc set\n",
+                        set_libc, set_dyn_libc);
+                    update_set_libc(set_dyn_libc, set_libc, set_dyn_libc,
+                                    false/*keep list*/);
+                    /* Take over the deps */
+                    ASSERT(set_libc->next_dep == NULL, "should have no deps yet");
+                    set_libc->next_dep = set_dyn_libc->next_dep;
+                } else
                     WARN("WARNING: two libcs found");
                 set_dyn_libc = set_libc;
             }
