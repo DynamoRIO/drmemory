@@ -1858,9 +1858,6 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
     chunk_header_t *head = header_from_ptr(ptr);
     size_t res;
     arena_lock(drcontext, arena, TEST(ALLOC_SYNCHRONIZE, flags));
-#ifdef WINDOWS
-    check_type_match(ptr, head, alloc_type, flags | ALLOC_IS_QUERY, mc, caller);
-#endif
     if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
          * before we took over
@@ -1874,6 +1871,9 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
             return (size_t)-1;
         }
     }
+#ifdef WINDOWS
+    check_type_match(ptr, head, alloc_type, flags | ALLOC_IS_QUERY, mc, caller);
+#endif
     res = chunk_request_size(head); /* we do not allow using padding */
     arena_unlock(drcontext, arena, TEST(ALLOC_SYNCHRONIZE, flags));
     return res;
