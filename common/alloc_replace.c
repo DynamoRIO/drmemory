@@ -350,6 +350,10 @@ static bool aborting;
  */
 static bool process_initialized;
 
+#ifdef WINDOWS
+static app_pc executable_base;
+#endif
+
 /* Flags controlling allocation behavior */
 typedef enum {
     ALLOC_SYNCHRONIZE      = 0x0001, /* malloc, free, and realloc */
@@ -2524,6 +2528,7 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     symbolized_callstack_t scs;
     uint i;
     app_pc modbase;
+#   define CRT_HEAP_INIT_ROUTINE "_heap_init"
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     IF_DEBUG(report_callstack(drcontext, &mc));
     /* XXX optimization: we don't need to symbolize the functions */
@@ -2540,17 +2545,29 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     if (scs.num_frames >= 4 &&
         text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
                              "kernel*.dll", true/*ignore case*/)) {
+        bool crt_init;
         IF_DEBUG(const char *modname = symbolized_callstack_frame_modname(&scs, i);)
         modbase = symbolized_callstack_frame_modbase(&scs, i++);
         LOG(2, "checking for CRT heap created by %s base="PFX"\n", modname, modbase);
-        while (i < scs.num_frames &&
-               symbolized_callstack_frame_modbase(&scs, i) == modbase)
-            i++;
-        if (i < scs.num_frames - 1 &&
-            text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
-                                 "ntdll.dll", true/*ignore case*/) &&
-            text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
-                                 "ntdll.dll", true/*ignore case*/)) {
+        if (modbase == executable_base &&
+            strcmp(symbolized_callstack_frame_func(&scs, i-1), CRT_HEAP_INIT_ROUTINE)
+            == 0) {
+            /* CRT in executable */
+            crt_init = true;
+        } else {
+            /* Check for CRT in a DLL */
+            while (i < scs.num_frames &&
+                   symbolized_callstack_frame_modbase(&scs, i) == modbase)
+                i++;
+            if (i < scs.num_frames - 1 &&
+                text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
+                                     "ntdll.dll", true/*ignore case*/) &&
+                text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
+                                     "ntdll.dll", true/*ignore case*/)) {
+                crt_init = true;
+            }
+        }
+        if (crt_init) {
             /* Match => destroy the arena we made at lib load event time and
              * replace with the one here, as this one has specific params.
              */
@@ -3417,6 +3434,10 @@ alloc_replace_thread_init(void *drcontext)
 void
 alloc_replace_init(void)
 {
+#ifdef WINDOWS
+    module_data_t *exe;
+#endif
+
     drmgr_register_thread_init_event(alloc_replace_thread_init);
 
     if (alloc_ops.shared_redzones) {
@@ -3487,6 +3508,13 @@ alloc_replace_init(void)
                    false/*!strdup*/);
     hashtable_init(&crtheap_handle_table, CRTHEAP_HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
                    false/*!strdup*/);
+
+    exe = dr_get_main_module();
+    ASSERT(exe != NULL, "should find exe base");
+    if (exe != NULL) {
+        executable_base = exe->start;
+        dr_free_module_data(exe);
+    }
 #endif
 
     /* set up pointers for per-malloc API */
