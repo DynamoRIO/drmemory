@@ -4353,7 +4353,7 @@ handle_post_vfree(void *drcontext, dr_mcontext_t *mc, cls_alloc_t *pt)
                  */
                 ASSERT(pt->valloc_type == MEM_DECOMMIT ||
                        !is_in_heap_region(base), "heap region tracking bug");
-                if (alloc_ops.record_allocs) {
+                if (alloc_ops.record_allocs && !alloc_ops.replace_malloc) {
                     malloc_remove(base);
                 }
             }
