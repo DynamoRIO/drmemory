@@ -821,7 +821,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
     size_t header_size = sizeof(*arena);
     if (parent != NULL) {
         /* XXX: maybe we should have two different headers for parents vs children */
-        arena->flags = parent->flags;
+        arena->flags = (parent->flags & (~ARENA_MAIN));
         arena->lock = parent->lock;
 #ifdef WINDOWS
         arena->dr_lock = parent->dr_lock;
