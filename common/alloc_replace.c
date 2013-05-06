@@ -2099,6 +2099,12 @@ alloc_replace_overlaps_region(byte *start, byte *end,
                 cur += head->alloc_size + inter_chunk_space();
             }
             iterator_unlock(arena, false/*!in alloc*/);
+        } else if (TEST(HEAP_MMAP, flags)) {
+            /* i#1210: the large malloc tree stores only the requested size, so
+             * a padding-size overlap will end up here.
+             */
+            chunk_header_t *head = (chunk_header_t *) found_arena_start;
+            found = overlap_helper(head, info, positive_flags, negative_flags);
         } else
             ASSERT(false, "large lookup should have found it");
     }
