@@ -492,7 +492,7 @@ client_invalid_heap_arg(app_pc pc, app_pc target, dr_mcontext_t *mc, const char 
     app_loc_t loc;
     char msg[64];
     pc_to_loc(&loc, pc);
-    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg), " to %s()", routine);
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg), " to %s", routine);
     NULL_TERMINATE_BUFFER(msg);
     report_invalid_heap_arg(&loc, target, mc, msg, is_free);
 }

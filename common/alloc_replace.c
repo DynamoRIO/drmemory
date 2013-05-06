@@ -2507,7 +2507,9 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
     }
 }
 
-/* returns NULL if not a valid Heap handle */
+/* Returns NULL if not a valid Heap handle.  Caller may want to call
+ * report_invalid_heap() once mc is available to report NULL.
+ */
 static arena_header_t *
 heap_to_arena(HANDLE heap)
 {
@@ -2533,6 +2535,13 @@ heap_to_arena(HANDLE heap)
         LOG(2, "%s: "PFX" => NULL!\n", __FUNCTION__, heap);
         return NULL;
     }
+}
+
+static inline void
+report_invalid_heap(HANDLE heap, dr_mcontext_t *mc, app_pc caller)
+{
+    client_invalid_heap_arg(caller, (byte *)heap, mc,
+                            "Windows API routine: invalid heap HANDLE", false/*!free*/);
 }
 
 /* i#960/i#607.A: identify a new Heap for CRT */
@@ -2665,7 +2674,9 @@ replace_RtlDestroyHeap(HANDLE heap)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX"\n", __FUNCTION__, heap);
-    if (arena != NULL && heap != process_heap) {
+    if (arena == NULL)
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlDestroyHeap);
+    else if (heap != process_heap) {
         destroy_Rtl_heap(arena, &mc, true/*free indiv chunks*/);
         res = TRUE;
     }
@@ -2708,7 +2719,9 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" size="PIFX"\n",
         __FUNCTION__, heap, arena, flags, size);
-    if (arena != NULL) {
+    if (arena == NULL)
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlAllocateHeap);
+    else {
         res = replace_alloc_common(arena, size,
                                    ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                                      !TEST(HEAP_NO_SERIALIZE, flags)) ?
@@ -2735,7 +2748,9 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" ptr="PFX" size="PIFX"\n",
         __FUNCTION__, heap, arena, flags, ptr, size);
-    if (arena != NULL) {
+    if (arena == NULL)
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlReAllocateHeap);
+    else {
         /* unlike libc realloc(), HeapReAlloc fails when ptr==NULL */
         res = replace_realloc_common(arena, ptr, size,
                                      ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
@@ -2765,7 +2780,9 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
-    if (arena != NULL) {
+    if (arena == NULL)
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlFreeHeap);
+    else {
         bool ok = replace_free_common(arena, ptr,
                                       ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                                         !TEST(HEAP_NO_SERIALIZE, flags)) ?
@@ -2795,7 +2812,9 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s\n", __FUNCTION__);
-    if (arena != NULL) {
+    if (arena == NULL)
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlSizeHeap);
+    else {
         res = replace_size_common(arena, ptr, 
                                   ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                                     !TEST(HEAP_NO_SERIALIZE, flags)) ?
@@ -2827,7 +2846,11 @@ replace_RtlLockHeap(HANDLE heap)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
-    if (arena != NULL) {
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlLockHeap);
+    } else {
         /* We only grab this DR lock as the app and we mark it with
          * dr_recurlock_mark_as_app(), as well as using dr_mark_safe_to_suspend(),
          * to ensure proper DR behavior
@@ -2846,7 +2869,11 @@ replace_RtlUnlockHeap(HANDLE heap)
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
     LOG(2, "%s\n", __FUNCTION__);
-    if (arena != NULL && dr_recurlock_self_owns(arena->lock)) {
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlUnlockHeap);
+    } else if (dr_recurlock_self_owns(arena->lock)) {
         app_heap_unlock(drcontext, arena->lock);
         res = TRUE;
     }
@@ -2860,7 +2887,11 @@ replace_RtlValidateHeap(HANDLE heap, DWORD flags, void *ptr)
     void *drcontext = enter_client_code();
     arena_header_t *arena = heap_to_arena(heap);
     BOOL res = FALSE;
-    if (arena != NULL) {
+    if (arena == NULL) {
+        dr_mcontext_t mc;
+        INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+        report_invalid_heap(heap, &mc, (app_pc)replace_RtlValidateHeap);
+    } else {
         chunk_header_t *head = header_from_ptr(ptr);
         if (is_live_alloc(ptr, arena, head)) /* checks for NULL */
             res = TRUE;
@@ -2950,12 +2981,15 @@ replace_NtdllpFreeStringRoutine(PVOID ptr)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s ptr="PFX"\n", __FUNCTION__, ptr);
-    ok = replace_free_common(arena, ptr,
-                             (!TEST(HEAP_NO_SERIALIZE, arena->flags) ?
-                              ALLOC_SYNCHRONIZE : 0) | ALLOC_INVOKE_CLIENT,
-                             drcontext, &mc, (app_pc)replace_NtdllpFreeStringRoutine,
-                             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
-    res = !!ok; /* convert from bool to BOOL */
+    ASSERT(arena != NULL, "process_heap should always have an arena");
+    if (arena != NULL) {
+        ok = replace_free_common(arena, ptr,
+                                 (!TEST(HEAP_NO_SERIALIZE, arena->flags) ?
+                                  ALLOC_SYNCHRONIZE : 0) | ALLOC_INVOKE_CLIENT,
+                                 drcontext, &mc, (app_pc)replace_NtdllpFreeStringRoutine,
+                                 MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+        res = !!ok; /* convert from bool to BOOL */
+    }
     dr_switch_to_app_state(drcontext);
     if (!res)
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
@@ -3547,6 +3581,7 @@ alloc_replace_init(void)
     cur_arena->commit_end = (byte *)cur_arena + ARENA_INITIAL_COMMIT;
     cur_arena->reserve_end = (byte *)cur_arena + ARENA_INITIAL_SIZE;
     process_heap = get_app_PEB()->ProcessHeap;
+    LOG(2, "process heap="PFX"\n", process_heap);
 #endif
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);

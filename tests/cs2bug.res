@@ -49,7 +49,7 @@ cs2bug.cpp:193
 memory was allocated here:
 cs2bug.cpp:191
 %OPTIONAL # Linux
-: INVALID HEAP ARGUMENT to free()
+: INVALID HEAP ARGUMENT to free
 %ENDOPTIONAL
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
 cs2bug.cpp:196
@@ -82,7 +82,7 @@ memory was allocated here:
 cs2bug.cpp:200
 %ENDOPTIONAL
 %OPTIONAL # Linux
-: INVALID HEAP ARGUMENT to free()
+: INVALID HEAP ARGUMENT to free
 %ENDOPTIONAL
 ##################################################
 # test_mismatch_int()
