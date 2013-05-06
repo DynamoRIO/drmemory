@@ -342,7 +342,7 @@ options_init(const char *opstr)
     if (options.light) {
         /* we can switch to pattern mode later */
         options.check_uninitialized = false;
-        if (!option_specified.count_leaks)
+        if (!option_specified.count_leaks && !option_specified.check_leaks)
             options.count_leaks = false;
     }
     if (options.unaddr_only) {
