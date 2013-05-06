@@ -2574,7 +2574,7 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     app_pc modbase;
 #   define CRT_HEAP_INIT_ROUTINE "_heap_init"
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    IF_DEBUG(report_callstack(drcontext, &mc));
+    DOLOG(2, { report_callstack(drcontext, &mc); });
     /* XXX optimization: we don't need to symbolize the functions */
     packed_callstack_record(&pcs, &mc, NULL/*skip replace_ frame*/);
     packed_callstack_to_symbolized(pcs, &scs);
@@ -3608,19 +3608,14 @@ alloc_replace_init(void)
     cur_arena->commit_end = cur_brk;
     cur_arena->reserve_end = cur_arena->commit_end;
     LOG(2, "heap orig brk="PFX"\n", pre_us_brk);
-#else
-    cur_arena = (arena_header_t *)
-        os_large_alloc(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, arena_page_prot(0));
-    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
-    cur_arena->commit_end = (byte *)cur_arena + ARENA_INITIAL_COMMIT;
-    cur_arena->reserve_end = (byte *)cur_arena + ARENA_INITIAL_SIZE;
-    process_heap = get_app_PEB()->ProcessHeap;
-    LOG(2, "process heap="PFX"\n", process_heap);
-#endif
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);
+#else
+    cur_arena = create_Rtl_heap(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
+    process_heap = get_app_PEB()->ProcessHeap;
+    LOG(2, "process heap="PFX"\n", process_heap);
 
-#ifdef WINDOWS
     hashtable_init(&crtheap_mod_table, CRTHEAP_MOD_TABLE_HASH_BITS, HASH_INTPTR,
                    false/*!strdup*/);
     hashtable_init(&crtheap_handle_table, CRTHEAP_HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
