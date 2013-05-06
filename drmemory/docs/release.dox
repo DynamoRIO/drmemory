@@ -59,7 +59,17 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.5.0 include:
+The changes between \TOOL_VERSION and version 1.5.1 include:
+ - Added option -check_prefetch to make it easier to turn off the warnings
+   on prefetching unaddressable memory.
+ - Added checks for mixing of C library heap routines with Windows API heap
+   routines on the same allocation, under a new on-by-default new option
+   -check_heap_mismatch.
+ - The GDI error on using a DC by more than one thread is now off by
+   default.  It can be enabled with the -check_gdi_multithread option.
+ - Various bug fixes.
+
+The changes between version 1.5.1 and version 1.5.0 include:
  - Re-organized and improved the documentation.
  - Added Visual Studio External Tool support (-visual_studio option)
  - Added experimental support for Windows 8.  However, false positives
