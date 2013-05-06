@@ -1727,13 +1727,26 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
     if (pcs == NULL) {
         reg_t save_xbp = mc->xbp;
         bool zeroed_xbp = false;
+        const char *modpath = NULL;
+        if (options.callstack_use_top_fp_selectively && HAVE_STALE_RETADDRS()) {
+            /* We need the module of the top frame for checks below */
+            if (loc->type == APP_LOC_PC) {
+                app_pc pc = loc_to_pc(loc);
+                /* callstack mod table is faster than DR lookup */
+                modpath = module_lookup_path(pc);
+            }
+        }
         if (options.callstack_use_top_fp_selectively &&
             /* for -replace_malloc invalid args and leaks we have our own
              * malloc routine as the top frame (i#639).  we ensure it has ebp.
              */
             (!options.replace_malloc ||
              (type != ERROR_INVALID_HEAP_ARG && type != ERROR_LEAK &&
-              type != ERROR_POSSIBLE_LEAK))) {
+              type != ERROR_POSSIBLE_LEAK &&
+              /* ditto for warnings reported from malloc routines */
+              (type != ERROR_WARNING ||
+               (modpath != NULL &&
+                !text_matches_pattern(modpath, "*drmemory*", true/*ignore case*/)))))) {
             /* i#844: force a scan in the top frame to handle the all-too-common
              * leaf function with no frame pointer.
              * We assume there is no setting of mcontext on this path:
@@ -1753,9 +1766,6 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
                  * XXX i#624: Probably long-term we should add zeroing to light mode.
                  */
                 if (loc->type == APP_LOC_PC) {
-                    app_pc pc = loc_to_pc(loc);
-                    /* callstack mod table is faster than DR lookup */
-                    const char *modpath = module_lookup_path(pc);
                     if (modpath != NULL && !text_matches_pattern
                         (modpath, "*windows?sys*", true/*ignore case*/)) {
                         zeroed_xbp = true;
