@@ -2915,6 +2915,38 @@ replace_RtlEnumProcessHeaps(PVOID /*XXX PHEAP_ENUMERATION_ROUTINE*/ HeapEnumerat
     return TRUE;
 }
 
+#ifdef X64
+/* See i#907, i#995, i#1032.  For x64, strings are allocated via exported
+ * heap routines, but freed via internal.
+ */
+static BOOL WINAPI
+replace_NtdllpFreeStringRoutine(PVOID ptr)
+{
+    void *drcontext = enter_client_code();
+    /* This routine calls RtlpFreeHeap(PEB->ProcessHeap, 0x2, ptr - 0x10, ptr).
+     * I have no idea what the 0x2 is: is it really HEAP_GROWABLE?!?.
+     * We ignore it here.
+     */
+    arena_header_t *arena = heap_to_arena(process_heap);
+    BOOL res = FALSE;
+    bool ok;
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s ptr="PFX"\n", __FUNCTION__, ptr);
+    ok = replace_free_common(arena, ptr,
+                             (!TEST(HEAP_NO_SERIALIZE, arena->flags) ?
+                              ALLOC_SYNCHRONIZE : 0) | ALLOC_INVOKE_CLIENT,
+                             drcontext, &mc, (app_pc)replace_NtdllpFreeStringRoutine,
+                             MALLOC_ALLOCATOR_MALLOC | CHUNK_LAYER_RTL);
+    res = !!ok; /* convert from bool to BOOL */
+    dr_switch_to_app_state(drcontext);
+    if (!res)
+        set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
+    exit_client_code(drcontext, true/*already swapped*/);
+    return res;
+}
+#endif
+
 static BOOL WINAPI
 replace_ignore_arg0(void)
 {
@@ -3060,12 +3092,12 @@ func_interceptor(routine_type_t type, bool check_mismatch,
             *stack = sizeof(void*) * 3;
             return true;
 # ifdef X64
-        /* FIXME i#995-c#3: we need replace NtdllpFreeStringRoutine in win-x64,
+        /* i#995-c#3: we need to replace NtdllpFreeStringRoutine in win-x64,
          * which takes the first arg as the ptr to be freed.
          */
         case RTL_ROUTINE_FREE_STRING:
-            ASSERT(false, "replace RtlFreeStringRoutine NYI");
-            *routine = NULL; /* wrapping instead though it probably won't work */
+            *routine = (void *) replace_NtdllpFreeStringRoutine;
+            *stack = sizeof(void*);
             return true;
 # endif
         /* FIXME i#893: we need to split up RTL_ROUTINE_QUERY, along with replacing
