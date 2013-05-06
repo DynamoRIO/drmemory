@@ -446,7 +446,7 @@ OPTION_CLIENT_BOOL(drmemscope, check_gdi_multithread, false,
                    "Check for GDI API usage error of one DC used by multiple threads.  Some system libraries violate this guideline, however, resulting in potential false positives.")
 OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, false,
                    "Check for handle leak errors",
-                   "Check for handle leak errors.  Any errors detected will be reported as errors of type WARNING.")
+                   "Check for handle leak errors.  Any errors detected will be reported as errors of type HANDLE LEAK.")
 OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, true,
                    "Whether to check for Windows API vs C library mismatches",
                    "Whether to check for Windows API vs C library mismatches")
@@ -454,6 +454,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, true,
 OPTION_CLIENT_BOOL(drmemscope, check_delete_mismatch, true,
                    "Whether to check for free/delete/delete[] mismatches",
                    "Whether to check for free/delete/delete[] mismatches")
+OPTION_CLIENT_BOOL(drmemscope, check_prefetch, true,
+                   "Whether to report unaddressable prefetches as warnings",
+                   "Whether to report unaddressable prefetches as warnings")
 
 OPTION_CLIENT_STRING(drmemscope, prctl_whitelist, "",
                      "Disable instrumentation unless PR_SET_NAME is on list",

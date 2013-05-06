@@ -2074,13 +2074,15 @@ is_prefetch(void *drcontext, bool write, app_pc pc, app_pc next_pc,
 {
     /* i#585: prefetch should not raise an unaddr error, only a warning */
     if (instr_is_prefetch(inst)) {
-        char msg[64];
-        dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                    "prefetching unaddressable memory "PFX"-"PFX,
-                    addr, addr+sz);
-        NULL_TERMINATE_BUFFER(msg);
-        /* include instruction= line for max info and suppress flexibility */
-        report_warning(loc, mc, msg, addr, sz, true);
+        if (options.check_prefetch) {
+            char msg[64];
+            dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                        "prefetching unaddressable memory "PFX"-"PFX,
+                        addr, addr+sz);
+            NULL_TERMINATE_BUFFER(msg);
+            /* include instruction= line for max info and suppress flexibility */
+            report_warning(loc, mc, msg, addr, sz, true);
+        }
         *now_addressable = false;
         return true;
     }
