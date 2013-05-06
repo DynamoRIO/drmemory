@@ -1605,7 +1605,9 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
                                head->user_data, true/*C vs C++*/);
     }
 #ifdef WINDOWS
-    else if ((free_type & CHUNK_LAYER_RTL) != (head->flags & CHUNK_LAYER_RTL)) {
+    /* For pre-us we don't know whether Rtl or libc layer */
+    else if (!TEST(CHUNK_PRE_US, head->flags) &&
+             (free_type & CHUNK_LAYER_RTL) != (head->flags & CHUNK_LAYER_RTL)) {
         /* i#1197: report libc/Rtl mismatches */
         client_mismatched_heap(caller, (byte *)ptr, mc,
                                malloc_layer_name(head->flags),
