@@ -1873,7 +1873,14 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
         }
     }
 #ifdef WINDOWS
-    check_type_match(ptr, head, alloc_type, flags | ALLOC_IS_QUERY, mc, caller);
+    check_type_match(ptr, head,
+                     /* i#1207: malloc_usable_size() on operator new memory
+                      * should not be an error.  We only want to check for Rtl
+                      * vs libc mismatches.
+                      */
+                     MALLOC_ALLOCATOR_UNKNOWN |
+                     (TEST(CHUNK_LAYER_RTL, alloc_type) ? CHUNK_LAYER_RTL : 0),
+                     flags | ALLOC_IS_QUERY, mc, caller);
 #endif
     res = chunk_request_size(head); /* we do not allow using padding */
     arena_unlock(drcontext, arena, TEST(ALLOC_SYNCHRONIZE, flags));
