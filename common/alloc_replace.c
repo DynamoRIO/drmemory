@@ -695,6 +695,24 @@ ptr_from_header(chunk_header_t *head)
     }
 }
 
+static inline chunk_header_t *
+header_from_mmap_base(void *map)
+{
+    if (alloc_ops.external_headers) {
+        /* XXX i#879: hashtable lookup */
+        ASSERT(false, "NYI");
+        return NULL;
+    } else {
+        if ((ptr_uint_t)map < header_size)
+            return NULL;
+        else {
+            return (chunk_header_t *) ((byte *)map + alloc_ops.redzone_size +
+                                       header_beyond_redzone - redzone_beyond_header -
+                                       header_size);
+        }
+    }
+}
+
 /* Distance from the end of one chunk (its start pointer plus alloc_size) to
  * the start of the user memory for the subsequent chunk
  */
@@ -1490,9 +1508,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
             goto replace_alloc_common_done;
         }
         ASSERT(!alloc_ops.external_headers, "NYI");
-        head = (chunk_header_t *) (map + alloc_ops.redzone_size +
-                                   header_beyond_redzone - redzone_beyond_header -
-                                   header_size);
+        head = header_from_mmap_base(map);
         head->flags |= CHUNK_MMAP;
         head->magic = HEADER_MAGIC;
         head->alloc_size = map_size - alloc_ops.redzone_size*2 - header_beyond_redzone;
@@ -1914,7 +1930,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
      */
     /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
-        chunk_header_t *head = (chunk_header_t *) iter_arena_start;
+        chunk_header_t *head = header_from_mmap_base(iter_arena_start);
         header_to_info(head, &info, NULL);
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
         LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
@@ -2105,7 +2121,7 @@ alloc_replace_overlaps_region(byte *start, byte *end,
             /* i#1210: the large malloc tree stores only the requested size, so
              * a padding-size overlap will end up here.
              */
-            chunk_header_t *head = (chunk_header_t *) found_arena_start;
+            chunk_header_t *head = header_from_mmap_base(found_arena_start);
             found = overlap_helper(head, info, positive_flags, negative_flags);
         } else
             ASSERT(false, "large lookup should have found it");
