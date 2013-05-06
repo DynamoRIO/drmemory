@@ -1492,7 +1492,7 @@ heap_iter_chunk(app_pc start, app_pc end)
 static void
 heap_walk(void)
 {
-    heap_iterator(heap_iter_region, heap_iter_chunk);
+    heap_iterator(heap_iter_region, heap_iter_chunk _IF_WINDOWS(NULL));
 }
 
 /* if which_thread is >= 0, creates a file name with which_thread and

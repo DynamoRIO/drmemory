@@ -2537,6 +2537,25 @@ heap_to_arena(HANDLE heap)
     }
 }
 
+/* Called at process init, prior to any module events */
+static void
+pre_existing_heap_init(HANDLE heap)
+{
+    /* Create an arena for this pre-existing Heap (i#959) */
+    arena_header_t *arena;
+    IF_DEBUG(bool unique;)
+    if (heap == process_heap)
+        return;
+    /* XXX: we don't know whether this should be growable or not! */
+    arena = (arena_header_t *)
+        create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+    LOG(2, "new arena for pre-us Heap "PFX" is "PFX"\n", heap, arena);
+    IF_DEBUG(unique =)
+        hashtable_add(&crtheap_handle_table, (void *)heap, (void *)arena);
+    ASSERT(unique, "duplicate pre-us Heap");
+    arena->handle = heap;
+}
+
 static inline void
 report_invalid_heap(HANDLE heap, dr_mcontext_t *mc, app_pc caller)
 {
@@ -3290,18 +3309,10 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
             type, pc, libc_data);
         return libc_data;
     } else {
-        /* Create the Heap for this libc alloc routine set (i#939) */
-        arena_header_t *arena = (arena_header_t *)
-            create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+        arena_header_t *arena = NULL;
+        HANDLE pre_us_heap = NULL;
+        bool in_table;
         IF_DEBUG(bool unique;)
-        LOG(2, "new default Heap for libc set type=%d @"PFX" modbase="PFX" is "PFX"\n",
-            type, pc, mod->start, arena);
-        arena->flags |= ARENA_LIBC_DEFAULT;
-        arena->alloc_set_member = pc;
-        IF_DEBUG(unique =)
-            hashtable_add(&crtheap_mod_table, (void *)mod->start, (void *)arena);
-        ASSERT(unique, "duplicate default Heap");
-        arena->modbase = mod->start;
 
         /* Determine the pre-us Heap for this pre-existing module, if
          * any (i#959).
@@ -3309,7 +3320,6 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
         if (!process_initialized) {
             ptr_uint_t (*get_heap)(void) = (ptr_uint_t (*)(void))
                 dr_get_proc_address(mod->handle, "_get_heap_handle");
-            HANDLE pre_us_heap = NULL;
             if (get_heap != NULL) {
                 void *drcontext = dr_get_current_drcontext();
                 DR_TRY_EXCEPT(drcontext, {
@@ -3321,12 +3331,36 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
                 type, (dr_module_preferred_name(mod) == NULL) ? "<null>" :
                 dr_module_preferred_name(mod), pre_us_heap);
             if (pre_us_heap != NULL) {
-                IF_DEBUG(unique =)
-                    hashtable_add(&crtheap_handle_table, (void *)pre_us_heap,
-                                  (void *)arena);
-                ASSERT(unique, "duplicate default Heap");
+                /* We should have already added in pre_existing_heap_init() */
+                arena = (arena_header_t *)
+                    hashtable_lookup(&crtheap_handle_table, (void *)pre_us_heap);
+                in_table = (arena != NULL);
+                ASSERT(in_table, "pre-us libc missed in heap walk");
             }
         }
+
+        /* Create the Heap for this libc alloc routine set (i#939) */
+        if (arena == NULL) {
+            arena = (arena_header_t *)
+                create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+        }
+        LOG(2, "new default Heap for libc set type=%d @"PFX" modbase="PFX" is "PFX"\n",
+            type, pc, mod->start, arena);
+        arena->flags |= ARENA_LIBC_DEFAULT;
+        arena->alloc_set_member = pc;
+        IF_DEBUG(unique =)
+            hashtable_add(&crtheap_mod_table, (void *)mod->start, (void *)arena);
+        ASSERT(unique, "duplicate default Heap");
+        arena->modbase = mod->start;
+
+        /* Just in case: should be present from pre_existing_heap_init() */
+        if (pre_us_heap != NULL && !in_table) {
+            IF_DEBUG(unique =)
+                hashtable_add(&crtheap_handle_table, (void *)pre_us_heap, (void *)arena);
+            ASSERT(unique, "duplicate default Heap");
+            arena->handle = pre_us_heap;
+        }
+
         return arena;
     }
     /* cpp set does not need its own Heap (i#964) */
@@ -3598,6 +3632,8 @@ alloc_replace_init(void)
         executable_base = exe->start;
         dr_free_module_data(exe);
     }
+
+    heap_iterator(NULL, NULL _IF_WINDOWS(pre_existing_heap_init));
 #endif
 
     /* set up pointers for per-malloc API */
@@ -3676,6 +3712,18 @@ alloc_replace_exit(void)
         }
     }
     hashtable_delete_with_stats(&pre_us_table, "pre_us");
+
+#ifdef WINDOWS
+    /* Free any pre-us heaps that are still around */
+    for (i = 0; i < HASHTABLE_SIZE(crtheap_handle_table.table_bits); i++) {
+        hash_entry_t *he, *next;
+        for (he = crtheap_handle_table.table[i]; he != NULL; he = next) {
+            arena_header_t *arena = (arena_header_t *) he->payload;
+            next = he->next;
+            destroy_Rtl_heap(arena, NULL, false/*do not free indiv chunks*/);
+        }
+    }
+#endif
 
     heap_region_iterate(free_arena_at_exit, NULL);
 

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -335,10 +335,12 @@ GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
 
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena
  * and the "cb_chunk" callback for each malloc block.
+ * For Windows, calls cb_heap for each heap (one heap can contain multiple regions).
  */
 void
 heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
-              void (*cb_chunk)(app_pc,app_pc))
+              void (*cb_chunk)(app_pc,app_pc)
+              _IF_WINDOWS(void (*cb_heap)(HANDLE)))
 {
 #ifdef WINDOWS
     /* We have two choices: RtlEnumProcessHeaps or RtlGetProcessHeaps.
@@ -370,6 +372,10 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
             continue;
         }
 # endif
+        if (cb_heap != NULL)
+            cb_heap(heaps[i]);
+        if (cb_region == NULL && cb_chunk == NULL)
+            continue;
         memset(&heap_info, 0, sizeof(heap_info));
         /* While init time is assumed to be single-threaded there are
          * enough exceptions to that that we grab the lock: */
@@ -827,7 +833,7 @@ heap_region_set_heap(app_pc pc, HANDLE heap)
             DOLOG(1, {
                 if (info->heap != INVALID_HANDLE_VALUE) {
                     LOG(1, "\nHEAP WALK ON INCONSISTENCY\n");
-                    heap_iterator(debug_walk_region, debug_walk_chunk);
+                    heap_iterator(debug_walk_region, debug_walk_chunk _IF_WINDOWS(NULL));
                 }
             });
             ASSERT(info->heap == INVALID_HANDLE_VALUE, "conflicts in Heap for region");

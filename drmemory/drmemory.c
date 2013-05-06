@@ -1208,7 +1208,7 @@ static void
 heap_walk(void)
 {
     if (options.track_heap)
-        heap_iterator(heap_iter_region, heap_iter_chunk);
+        heap_iterator(heap_iter_region, heap_iter_chunk _IF_WINDOWS(NULL));
 }
 
 /* We wait to call this until 1st bb so we know stack pointer

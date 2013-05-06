@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -58,7 +58,8 @@ get_libcpp_base(void);
  */
 void
 heap_iterator(void (*cb_region)(app_pc start, app_pc end _IF_WINDOWS(HANDLE handle)),
-              void (*cb_chunk)(app_pc start, app_pc end));
+              void (*cb_chunk)(app_pc start, app_pc end)
+              _IF_WINDOWS(void (*cb_heap)(HANDLE)));
 
 /***************************************************************************
  * HEAP REGION LIST
