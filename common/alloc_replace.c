@@ -371,6 +371,8 @@ typedef enum {
  * utility routines
  */
 
+#define DR_STATE_TO_SWAP (DR_STATE_ALL & (~DR_STATE_STACK_BOUNDS))
+
 #ifdef WINDOWS
 static inline const char *
 malloc_layer_name(uint flags)
@@ -412,7 +414,7 @@ enter_client_code(void)
      * system call which kills performance: i#941.
      */
 #ifdef WINDOWS
-    dr_switch_to_dr_state(drcontext);
+    dr_switch_to_dr_state_ex(drcontext, DR_STATE_TO_SWAP);
 #endif
     return drcontext;
 }
@@ -426,7 +428,7 @@ exit_client_code(void *drcontext, bool in_app_mode)
 
 #if WINDOWS
     if (!in_app_mode)
-        dr_switch_to_app_state(drcontext);
+        dr_switch_to_app_state_ex(drcontext, DR_STATE_TO_SWAP);
 #endif
 
     drwrap_replace_native_fini(drcontext);
