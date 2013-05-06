@@ -3170,6 +3170,9 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                         set_libc, set_dyn_libc);
                     update_set_libc(set_dyn_libc, set_libc, set_dyn_libc,
                                     false/*keep list*/);
+                    malloc_interface.malloc_set_exit
+                       (set_dyn_libc->type, set_dyn_libc->modbase,
+                        set_dyn_libc->user_data);
                     /* Take over the deps */
                     ASSERT(set_libc->next_dep == NULL, "should have no deps yet");
                     set_libc->next_dep = set_dyn_libc->next_dep;
