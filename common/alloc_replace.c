@@ -600,7 +600,7 @@ os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(u
         dr_custom_free(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR, loc, reserve_size);
         return NULL;
     }
-    LOG(3, "%s commit="PIFX" reserve="PIFX" prot="PIFX" => "PFX"\n",
+    LOG(3, "%s commit="PIFX" reserve="PIFX" prot=0x%x => "PFX"\n",
         __FUNCTION__, commit_size, reserve_size, prot, loc);
     return loc;
 #endif
@@ -1581,7 +1581,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
     head->u.unfree.request_diff = head->alloc_size - request_size;
     head->flags |= alloc_type;
     res = ptr_from_header(head);
-    LOG(2, "\treplace_alloc_common arena="PFX" flags="PIFX" request=%d, alloc=%d "
+    LOG(2, "\treplace_alloc_common arena="PFX" flags=0x%x request=%d, alloc=%d "
         "=> "PFX"\n", arena, head->flags,
         chunk_request_size(head), head->alloc_size, res);
     if (TEST(ALLOC_ZERO, flags))
@@ -1612,7 +1612,7 @@ check_type_match(void *ptr, chunk_header_t *head, uint free_type,
                           (TEST(ALLOC_IS_QUERY, flags) ? "queried" : "freed"));
     if (TEST(ALLOC_IGNORE_MISMATCH, flags))
         return;
-    LOG(3, "\tcheck_type_match: alloc flags="PIFX" vs free="PIFX"\n",
+    LOG(3, "\tcheck_type_match: alloc flags=0x%x vs free=0x%x\n",
         head->flags, free_type);
     ASSERT((free_type & ~(ALLOCATOR_TYPE_FLAGS)) == 0, "invalid type flags");
     if ((alloc_main_type != MALLOC_ALLOCATOR_UNKNOWN &&
@@ -2469,7 +2469,7 @@ create_Rtl_heap(size_t commit_sz, size_t reserve_sz, uint flags)
     arena_header_t *new_arena = (arena_header_t *)
         os_large_alloc(commit_sz, reserve_sz, arena_page_prot(flags));
     if (new_arena != NULL) {
-        LOG(2, "%s commit="PIFX" reserve="PIFX" flags="PIFX" => "PFX"\n",
+        LOG(2, "%s commit="PIFX" reserve="PIFX" flags=0x%x => "PFX"\n",
             __FUNCTION__, commit_sz, reserve_sz, flags, new_arena);
         new_arena->commit_end = (byte *)new_arena + commit_sz;
         new_arena->reserve_end = (byte *)new_arena + reserve_sz;
@@ -2760,7 +2760,7 @@ replace_RtlAllocateHeap(HANDLE heap, ULONG flags, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" size="PIFX"\n",
+    LOG(2, "%s heap="PFX" (=> "PFX") flags=0x%x size="PIFX"\n",
         __FUNCTION__, heap, arena, flags, size);
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlAllocateHeap);
@@ -2789,7 +2789,7 @@ replace_RtlReAllocateHeap(HANDLE heap, ULONG flags, PVOID ptr, SIZE_T size)
     void *res = NULL;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s heap="PFX" (=> "PFX") flags="PIFX" ptr="PFX" size="PIFX"\n",
+    LOG(2, "%s heap="PFX" (=> "PFX") flags=0x%x ptr="PFX" size="PIFX"\n",
         __FUNCTION__, heap, arena, flags, ptr, size);
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlReAllocateHeap);
@@ -2822,7 +2822,7 @@ replace_RtlFreeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     BOOL res = FALSE;
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
-    LOG(2, "%s heap="PFX" flags="PIFX" ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
+    LOG(2, "%s heap="PFX" flags=0x%x ptr="PFX"\n", __FUNCTION__, heap, flags, ptr);
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlFreeHeap);
     else {
@@ -3680,7 +3680,7 @@ static bool
 free_arena_at_exit(byte *start, byte *end, uint flags
                    _IF_WINDOWS(HANDLE heap), void *iter_data)
 {
-    LOG(2, "%s: "PFX"-"PFX" "PIFX"\n", __FUNCTION__, start, end, flags);
+    LOG(2, "%s: "PFX"-"PFX" 0x%x\n", __FUNCTION__, start, end, flags);
     if (TEST(HEAP_ARENA, flags) && !TEST(HEAP_PRE_US, flags)) {
         arena_header_t *arena = (arena_header_t *) start;
 #ifdef WINDOWS
