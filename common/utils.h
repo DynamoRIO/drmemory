@@ -52,9 +52,11 @@
 #ifdef X64
 # define IF_X64(x) x
 # define IF_X86_32(x)
+# define IF_X86_32_(x)
 #else
 # define IF_X64(x) 
 # define IF_X86_32(x) x
+# define IF_X86_32_(x) x,
 #endif
 
 #ifdef DEBUG

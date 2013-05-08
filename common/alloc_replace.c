@@ -99,8 +99,11 @@
  * header and free list data structures
  */
 
-#define CHUNK_ALIGNMENT 8
-#define CHUNK_MIN_SIZE  8
+/* 64-bit malloc impls generally align to 16, and in fact some Windows code
+ * assumes this (i#1219).
+ */
+#define CHUNK_ALIGNMENT IF_X64_ELSE(16, 8)
+#define CHUNK_MIN_SIZE  IF_X64_ELSE(16, 8)
 #define CHUNK_MIN_MMAP  128*1024
 /* initial commit on linux has to hold at least one non-mmap chunk */
 #define ARENA_INITIAL_COMMIT  CHUNK_MIN_MMAP
@@ -115,7 +118,7 @@ typedef uint heapsz_t;
  * XXX: add stats on searches to help in tuning these
  */
 static const uint free_list_sizes[] = {
-    8, 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048,
+    IF_X86_32_(8) 16, 24, 32, 40, 64, 96, 128, 192, 256, 384, 512, 1024, 2048,
     4096, 8192, 16384, 32768,
 };
 #define NUM_FREE_LISTS (sizeof(free_list_sizes)/sizeof(free_list_sizes[0]))
@@ -3591,6 +3594,7 @@ alloc_replace_init(void)
            "min size too small");
     /* we could pad but it's simpler to have struct already have right size */
     ASSERT(ALIGNED(header_size, CHUNK_ALIGNMENT), "alignment off");
+    ASSERT(ALIGNED(inter_chunk_space(), CHUNK_ALIGNMENT), "alignment off");
 
     ASSERT(CHUNK_MIN_MMAP >= LARGE_MALLOC_MIN_SIZE,
            "we rely on mmapped chunks being in large malloc table");
