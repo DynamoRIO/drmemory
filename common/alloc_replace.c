@@ -1980,8 +1980,13 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     uint i;
     malloc_info_t info;
 
-    /* the aborting case is dr_exit_process() on OOM */
-    ASSERT(!on_app_stack() || aborting, "should be called from client context");
+    /* The aborting case is dr_exit_process() on OOM.
+     * The nudge thread case is a nudge leak scan, where the nudge thread's stack
+     * is not marked as DR memory (i#1215).
+     */
+    ASSERT(!on_app_stack() ||
+           IF_WINDOWS(dr_is_nudge_thread(dr_get_current_drcontext()) ||)
+           aborting, "should be called from client context");
 
     LOG(2, "%s\n", __FUNCTION__);
 
