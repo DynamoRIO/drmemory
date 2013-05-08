@@ -328,12 +328,14 @@ string(STRIP "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}"
   CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER})
 string(STRIP "${CMAKE_CXX_FLAGS}" CMAKE_CXX_FLAGS)
 
-include(CheckIncludeFiles)
-check_include_files("asm-i386/stat.h" HAVE_ASM_I386)
-if (HAVE_ASM_I386)
-  # see comments abouve about adding configure.h
-  set(DEFINES ${DEFINES} -DHAVE_ASM_I386)
-endif (HAVE_ASM_I386)
+if (UNIX)
+  include(CheckIncludeFiles)
+  check_include_files("asm-i386/stat.h" HAVE_ASM_I386)
+  if (HAVE_ASM_I386)
+    # see comments above about adding configure.h
+    set(DEFINES ${DEFINES} -DHAVE_ASM_I386)
+  endif (HAVE_ASM_I386)
+endif (UNIX)
 
 if (UNIX)
   # We don't want our instrument_init() pre-empted by debug-internal DynamoRIO
