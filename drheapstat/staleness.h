@@ -35,7 +35,7 @@ void
 shadow_table_exit(void);
 
 void
-shadow_replace_specials_in_range(byte * start, byte * end);
+shadow_create_shadow_memory(byte * start, byte * end, byte value);
 
 void
 shadow_reinstate_specials_in_range(byte * start, byte * end);

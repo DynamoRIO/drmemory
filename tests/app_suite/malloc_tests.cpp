@@ -22,12 +22,22 @@
 #include "gtest/gtest.h"
 #include <stdlib.h>
 
+#ifdef TOOL_DR_MEMORY
+# define ARRAY_SIZE 512
+#else
+/* For drheapstat, we clear the shadow memory on every malloc, which may cause
+ * test timeout if the array is too large (i.e., too many malloc).
+ * So we use a smaller array for drheapstat.
+ */
+# define ARRAY_SIZE 4
+#endif
+
 #define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
 #define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
 
 TEST(MallocTests, ReverseBrk) {
-    unsigned int i, j;
-    char *big[512];
+    unsigned int i = 0, j;
+    char *big[ARRAY_SIZE];
     /* Allocate 64K*256=32MB, in small enough chunks (64K) to avoid
      * mmaps and stay in regular heap.  Do this 128 times.  If there's
      * reverse brk and -delay_frees 0 we should end up with brk just
@@ -35,6 +45,7 @@ TEST(MallocTests, ReverseBrk) {
      * nice stress test of malloc coalescing and splitting.
      */
     for (j = 0; j < 128; j++) {
+        /* have fewer malloc/free to avoid time out in drheapstat test */
         for (i = 0; i < BUFFER_SIZE_ELEMENTS(big); i++)
             big[i] = (char *) malloc(64*1024);
         for (i = 0; i < BUFFER_SIZE_ELEMENTS(big); i++)

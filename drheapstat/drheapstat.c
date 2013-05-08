@@ -27,6 +27,7 @@
 #include "dr_api.h"
 #include "drwrap.h"
 #include "drsyscall.h"
+#include "umbra.h"
 #include "drheapstat.h"
 #include "alloc.h"
 #include "heap.h"
@@ -1456,7 +1457,7 @@ client_heap_add(app_pc start, app_pc end, dr_mcontext_t *mc)
 {
     LOG(2, "%s "PFX"-"PFX"\n", __FUNCTION__, start, end);
     if (options.staleness)
-        shadow_replace_specials_in_range(start, end);
+        shadow_create_shadow_memory(start, end, 0);
 }
 
 static void
@@ -2087,6 +2088,8 @@ event_exit(void)
     dump_statistics();
 #endif
 
+    if (umbra_exit() != DRMF_SUCCESS)
+        ASSERT(false, "fail to finalize umbra");
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
     drmgr_unregister_tls_field(tls_idx_heapstat);
@@ -2125,6 +2128,8 @@ dr_init(client_id_t client_id)
     utils_init();
     if (drsys_init(client_id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
+    if (umbra_init(client_id) != DRMF_SUCCESS)
+        ASSERT(false, "Umbra failed to init");
 
     /* now that we know whether -quiet, print basic info */
     NOTIFY("Dr. Heapstat version %s"NL, VERSION_STRING);

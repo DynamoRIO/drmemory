@@ -1284,7 +1284,7 @@ include_directories(${framework_incdir})
 configure_file(framework/drmf.cmake.in
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   @ONLY)
-foreach (ext drsyscall)
+foreach (ext drsyscall umbra)
   file(APPEND ${framework_dir}/DrMemoryFrameworkConfig.cmake "
 set(DynamoRIO_EXT_${ext}_INC \${drmf_cwd}/include)
 ")
@@ -1327,6 +1327,13 @@ add_subdirectory(drsyscall)
 # XXX: change this and include_directories above to
 # find_package() + use_DynamoRIO_extension(drsyscall)
 target_link_libraries(${client_target} drsyscall_int)
+
+# Add Umbra
+add_subdirectory(umbra)
+
+# XXX: change this to find_package() + use_DynamoRIO_extension(umbra)
+include_directories(umbra)
+target_link_libraries(${client_target} umbra_int)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)

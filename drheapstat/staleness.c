@@ -35,6 +35,7 @@
 #include "alloc.h"
 #include "../drmemory/readwrite.h"
 #include "../drmemory/fastpath.h"
+#include "umbra.h"
 
 /***************************************************************************
  * MEMORY SHADOWING DATA STRUCTURES
@@ -48,176 +49,122 @@
  * bytes.
  */
 #define SHADOW_GRANULARITY 8
+#define SHADOW_MAP_SCALE   UMBRA_MAP_SCALE_DOWN_8X
 
-/* Holds shadow state for a 64K unit of memory (the basic allocation
- * unit size on Windows)
- */
-#define ALLOC_UNIT (64*1024)
-typedef byte shadow_block_t[ALLOC_UNIT/SHADOW_GRANULARITY];
-#define BLOCK_IDX(addr) (((ptr_uint_t)(addr) & 0x0000ffff) / SHADOW_GRANULARITY)
+#define SHADOW_DEFAULT_VALUE      1
+#define SHADOW_DEFAULT_VALUE_SIZE 1
 
-/* Shadow state for 4GB address space: 4GB/ALLOC_UNIT */
-#define TABLE_ENTRIES (64*1024)
-/* We store the displacement (shadow addr minus app addr) from the base to
- * shrink instrumentation size (PR 553724)
- */
-ptr_int_t shadow_table[TABLE_ENTRIES];
-#define TABLE_IDX(addr) (((ptr_uint_t)(addr) & 0xffff0000) >> 16)
-#define ADDR_OF_BASE(table_idx) ((ptr_uint_t)(table_idx) << 16)
-
-/* For non-heap we use special read-only blocks */
-static shadow_block_t *special_nonheap;
-
-/* Not adding redzone: giving up xl8 sharing in order to have no extra
- * checks and no jmp to slowpath
- */
-#define SHADOW_BLOCK_ALLOC_SZ (sizeof(shadow_block_t))
-
-static shadow_block_t *
-create_shadow_block(bool special)
-{
-    shadow_block_t *block;
-    if (special) {
-        IF_DEBUG(bool ok;)
-        block = (shadow_block_t *)
-            nonheap_alloc(SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ|DR_MEMPROT_WRITE,
-                          HEAPSTAT_SHADOW);
-        memset(block, 1, sizeof(*block));
-        if (!options.stale_blind_store) {
-            /* We will never write to the special */
-            IF_DEBUG(ok = )
-                dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
-            ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
-        }
-    } else {
-        block = (shadow_block_t *) global_alloc(SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-        memset(block, 0, sizeof(*block));
-    }
-    LOG(2, "created new shadow block "PFX"\n", block);
-    return block;
-}
-
-static inline void
-set_shadow_table(uint idx, shadow_block_t *block)
-{
-    /* We store the displacement (shadow minus app) (PR 553724) */
-    shadow_table[idx] = ((ptr_int_t)block) - (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY);
-    LOG(2, "setting shadow table idx %d for block "PFX" to "PFX"\n",
-        idx, block, shadow_table[idx]);
-}
-
-static inline shadow_block_t *
-get_shadow_table(uint idx)
-{
-    /* We store the displacement (shadow minus app) (PR 553724) */
-    return (shadow_block_t *)
-        (shadow_table[idx] + (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY));
-}
+static umbra_map_t *umbra_map;
 
 void
 shadow_table_init(void)
 {
-    uint i;
-    special_nonheap = create_shadow_block(true);
-    for (i = 0; i < TABLE_ENTRIES; i++)
-        set_shadow_table(i, special_nonheap);
+    umbra_map_options_t umbra_map_ops;
+
+    LOG(2, "shadow_table_init\n");
+    /* create umbra shadow map */
+    memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
+    umbra_map_ops.struct_size = sizeof(umbra_map_ops);
+    umbra_map_ops.flags = 
+        UMBRA_MAP_CREATE_SHADOW_ON_TOUCH |
+        UMBRA_MAP_SHADOW_SHARED_READONLY;
+    umbra_map_ops.scale = SHADOW_MAP_SCALE;
+    umbra_map_ops.default_value = SHADOW_DEFAULT_VALUE;
+    umbra_map_ops.default_value_size = SHADOW_DEFAULT_VALUE_SIZE;
+#ifndef X64
+    umbra_map_ops.redzone_size = 0;
+#endif
+    if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
+        ASSERT(false, "fail to create shadow memory mapping");
 }
 
 void
 shadow_table_exit(void)
 {
-    uint i;
     LOG(2, "shadow_table_exit\n");
-    for (i = 0; i < TABLE_ENTRIES; i++) {
-        if (get_shadow_table(i) != special_nonheap) {
-            LOG(2, "freeing shadow block idx=%d "PFX"\n", i, get_shadow_table(i));
-            global_free(get_shadow_table(i), SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-        }
-    }
-    nonheap_free(special_nonheap, SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
+    if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
+        ASSERT(false, "fail to destroy shadow memory");
 }
 
 size_t
-get_shadow_block_size(void)
+get_shadow_block_size()
 {
-    return sizeof(shadow_block_t);
+    size_t size;
+    if (umbra_get_shadow_block_size(umbra_map, &size) != DRMF_SUCCESS) {
+        ASSERT(false, "fail to get shadow block size");
+        return PAGE_SIZE;
+    }
+    return size;
 }
 
 uint
 shadow_get_byte(byte *addr)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    return (*block)[BLOCK_IDX(addr)];
+    byte val;
+    size_t app_size = SHADOW_GRANULARITY;
+    size_t shdw_size = sizeof(val);
+    if (umbra_read_shadow_memory(umbra_map,
+                                 (app_pc)addr,
+                                 app_size,
+                                 &shdw_size,
+                                 &val) != DRMF_SUCCESS ||
+        shdw_size != sizeof(val))
+        ASSERT(false, "fail to get shadow byte");
+    return val;
 }
 
 void
-shadow_set_byte(byte * addr, uint val)
+shadow_set_byte(byte *addr, byte val)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
+    size_t app_size = SHADOW_GRANULARITY;
+    size_t shdw_size = sizeof(val);
     ASSERT(val == 0 || val == 1, "invalid staleness shadow val");
-    if (block == special_nonheap) {
-        ASSERT(val == 1, "cannot clear special shadow!");
-        return;
-    }
-    (*block)[BLOCK_IDX(addr)] = val;
+    if (umbra_write_shadow_memory(umbra_map, (app_pc)addr,
+                                  app_size, &shdw_size, &val) != DRMF_SUCCESS ||
+        shdw_size != sizeof(val))
+        ASSERT(false, "fail to set shadow byte");
 }
 
 void
-shadow_set_range(byte *start, byte *end, uint val)
+shadow_set_range(byte *start, byte *end, byte val)
 {
-    byte * pc = (byte *) ALIGN_BACKWARD(start, SHADOW_GRANULARITY);
+    size_t app_size = end - start;
+    size_t shdw_size;
     ASSERT(val == 0 || val == 1, "invalid staleness shadow val");
     /* synch: I don't think having races is unacceptable here so not going
      * to lock anything just yet
      */
-    while (pc <= end -1 /*handle end of address space*/) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        byte *block_start = &(*block)[BLOCK_IDX(pc)];
-        byte *block_end = (TABLE_IDX(end) > TABLE_IDX(pc)) ? 
-            ((*block) + sizeof(*block)) : (&(*block)[BLOCK_IDX(end)] + 1);
-        ASSERT(block != special_nonheap, "cannot set nonheap shadow");
-        memset(block_start, val, block_end - block_start);
-        pc += (block_end - block_start) * SHADOW_GRANULARITY;
-        if (pc < start) /* overflow */
-            break;
-    }
+    if (umbra_shadow_set_range(umbra_map, (app_pc)start,
+                               app_size, &shdw_size,
+                               val, 1) != DRMF_SUCCESS ||
+        shdw_size != app_size / SHADOW_GRANULARITY)
+        ASSERT(false, "fail to set shadow range");
 }
 
 void
 shadow_copy_range(byte *old_start, byte *new_start, size_t size)
 {
-    byte * pc = (byte *) ALIGN_BACKWARD(old_start, SHADOW_GRANULARITY);
-    byte * new_pc = (byte *) ALIGN_BACKWARD(new_start, SHADOW_GRANULARITY);
-    /* FIXME: optimize */
-    for (; pc < old_start + size; pc += SHADOW_GRANULARITY, new_pc += SHADOW_GRANULARITY)
-        shadow_set_byte(new_pc, shadow_get_byte(pc));
-}
-
-byte *
-shadow_replace_special(byte * addr)
-{
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    if (block == special_nonheap) {
-        block = create_shadow_block(false);
-        set_shadow_table(TABLE_IDX(addr), block);
-        LOG(2, "added heap shadow block for "PFX" @idx=%d\n", addr, TABLE_IDX(addr));
-    }
-    return NULL; /* nobody needs the return value */
+    size_t shdw_size;
+    if (umbra_shadow_copy_range(umbra_map,
+                                (app_pc)old_start,
+                                (app_pc)new_start,
+                                size,
+                                &shdw_size) != DRMF_SUCCESS ||
+        shdw_size != size / SHADOW_GRANULARITY)
+        ASSERT(false, "fail to copy shadow range");
 }
 
 void
-shadow_replace_specials_in_range(byte * start, byte * end)
+shadow_create_shadow_memory(byte * start, byte * end, byte val)
 {
-    byte * pc;
+    uint flags = 0; /* no special shadow memory */
     LOG(2, "%s "PFX"-"PFX"\n", __FUNCTION__, start, end);
-    for (pc = (byte *) ALIGN_BACKWARD(start, ALLOC_UNIT);
-         /* don't loop beyond overflow */
-         pc >= (byte *) ALIGN_BACKWARD(start, ALLOC_UNIT) &&
-         /* but do process a region at very end of address space: use -1 */
-         pc < (byte *) (ALIGN_FORWARD(end, ALLOC_UNIT) - 1);
-         pc += ALLOC_UNIT) {
-        shadow_replace_special(pc);
-    }
+    ASSERT(end > start, "invalid range");
+    if (umbra_create_shadow_memory(umbra_map, flags,
+                                   (app_pc)start, end - start,
+                                   val,
+                                   SHADOW_DEFAULT_VALUE_SIZE) != DRMF_SUCCESS)
+        ASSERT(false, "fail to create shadow memory");
 }
 
 void
@@ -232,43 +179,20 @@ shadow_reinstate_specials_in_range(byte * start, byte * end)
      * deletion algorithm, or using file mmap address games.
      */
     ASSERT(false, "not safe to call");
-#if 0 /* disabled: see comment above */
-    byte * pc;
-    /* If either end is not aligned we do not want to replace since
-     * another heap piece can be in the region
-     */
-    for (pc = (byte *) ALIGN_FORWARD(start-1, ALLOC_UNIT);
-         pc < (byte *) ALIGN_BACKWARD(end, ALLOC_UNIT);
-         pc += ALLOC_UNIT) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        if (block != special_nonheap) {
-            /* reduce race window: eventually we'll try to add more synch */
-            set_shadow_table(TABLE_IDX(pc), special_nonheap);
-            global_free(block, SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-            LOG(2, "reinstated non-heap shadow block for "PFX"\n", pc);
-        }
-    }
-#endif
 }
 
 static bool
-shadow_val_in_range(byte *start, byte *end, uint val)
+shadow_val_in_range(byte *start, byte *end, byte val)
 {
-    byte * pc = (byte *) ALIGN_BACKWARD(start, SHADOW_GRANULARITY);
-    ASSERT(val == 0 || val == 1, "invalid staleness shadow val");
-    while (pc <= end - 1 /*handle end of address space*/) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        byte *block_start = &(*block)[BLOCK_IDX(pc)];
-        byte *block_end = (TABLE_IDX(end) > TABLE_IDX(pc)) ? 
-            ((*block) + sizeof(*block)) : (&(*block)[BLOCK_IDX(end)] + 1);
-        byte *where = memchr(block_start, (int) val, block_end - block_start);
-        if (where != NULL)
-            return true;
-        pc += (block_end - block_start) * SHADOW_GRANULARITY;
-        if (pc < start) /* overflow */
-            break;
-    }
-    return false;
+    bool found;
+    if (umbra_value_in_shadow_memory(umbra_map,
+                                     (app_pc *)&start,
+                                     end - start,
+                                     val,
+                                     SHADOW_DEFAULT_VALUE_SIZE,
+                                     &found) != DRMF_SUCCESS)
+        ASSERT(false, "fail to check value in shadow mmeory");
+    return found;
 }
 
 /* Returns a pointer to an always-bitlevel shadow block */
@@ -288,34 +212,13 @@ void
 shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
                             reg_id_t addr_reg, reg_id_t scratch_reg)
 {
-    uint disp;
-    /* Shadow table stores displacement so we want copy of whole addr */
-    PRE(bb, inst, INSTR_CREATE_mov_ld
-        (drcontext, opnd_create_reg(scratch_reg), opnd_create_reg(addr_reg)));
-    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
-     * saves us from having to clear the lower bits here via OP_and or sthg (PR
-     * 553724).
-     */
-    PRE(bb, inst, INSTR_CREATE_shr
-        (drcontext, opnd_create_reg(scratch_reg), OPND_CREATE_INT8(16)));
-
-    /* Instead of finding the uint array index we go straight to the single
-     * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
-     * If sub-dword but not aligned we go ahead and get shadow byte for
-     * containing dword.
-     */
-    PRE(bb, inst, INSTR_CREATE_shr
-        (drcontext, opnd_create_reg(addr_reg),
-         /* Staleness has 1 shadow byte per 8 app bytes */
-         OPND_CREATE_INT8(3)));
-
-    /* Index into table: no collisions and no tag storage since full size */
-    /* Storing displacement, so add table result to app addr */
-    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
-    disp = (uint)(ptr_uint_t)shadow_table;
-    PRE(bb, inst, INSTR_CREATE_add
-        (drcontext, opnd_create_reg(addr_reg), opnd_create_base_disp
-         (REG_NULL, scratch_reg, 4, disp, OPSZ_PTR)));
+#ifdef DEBUG
+    int num_regs;
+#endif
+    ASSERT(umbra_num_scratch_regs_for_translation(&num_regs) == DRMF_SUCCESS &&
+           num_regs <= 1, "not enough scratch registers");
+    umbra_insert_app_to_shadow(drcontext, umbra_map, bb, inst, addr_reg,
+                               &scratch_reg, 1);
 }
 
 /***************************************************************************
@@ -359,7 +262,7 @@ slow_path_for_staleness(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
 
 bool
 handle_mem_ref(uint flags, app_loc_t *loc, byte *addr, size_t sz, dr_mcontext_t *mc,
-                  uint *shadow_vals)
+               uint *shadow_vals)
 {
     byte *ptr;
     /* We're piggybacking on Dr. Memory syscall, etc. code.  For reads
@@ -372,8 +275,9 @@ handle_mem_ref(uint flags, app_loc_t *loc, byte *addr, size_t sz, dr_mcontext_t 
     /* We ignore MEMREF_MOVS, etc.: we don't propagate anything */
     for (ptr = (byte *) ALIGN_BACKWARD(addr, SHADOW_GRANULARITY);
          ptr < (byte *) ALIGN_FORWARD(addr + sz, SHADOW_GRANULARITY);
-         ptr += SHADOW_GRANULARITY)
+         ptr += SHADOW_GRANULARITY) {
         shadow_set_byte(ptr, 1);
+    }
     return true;
 }
 
