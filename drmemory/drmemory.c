@@ -325,6 +325,7 @@ persistence_supported(void)
      * is at the same base.
      * For -replace_malloc, the replaced-callee bbs have direct jumps to
      * the drmem library: but we're already assuming it's at the same base.
+     * Plus, the bb will be fine-grained due to its non-exit cti.
      * FIXME i#769: full mode is not yet persistable b/c its lean routines have
      * absolute return targets and they need patching
      */

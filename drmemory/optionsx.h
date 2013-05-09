@@ -655,9 +655,9 @@ OPTION_CLIENT_BOOL(client, leak_scan, true,
 OPTION_CLIENT_BOOL(internal, pattern_use_malloc_tree, false,
                    "Use red-black tree for tracking malloc/free",
                    "Use red-black tree for tracking malloc/free to reduce the overhead of maintaining the malloc tree on every memory allocation and free, but we have to do expensive hashtable walk to check if an address is in the redzone.")
-OPTION_CLIENT_BOOL(internal, replace_malloc, IF_LINUX_ELSE(true, false),
+OPTION_CLIENT_BOOL(internal, replace_malloc, true,
                    "Replace malloc rather than wrapping existing routines",
-                   "Replace malloc with custom routines rather than wrapping existing routines.  Replacing is more efficient but can be less transparent.")
+                   "Replace malloc with custom routines rather than wrapping existing routines.  Replacing is more efficient and avoids several issues with the Windows debug C library where wrapping must disable some of Dr. Memory's checks.")
 OPTION_CLIENT_SCOPE(internal, pattern_max_2byte_faults, int, 0x1000, -1, INT_MAX,
                     "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only",
                     "The max number of faults caused by 2-byte pattern checks we could tolerate before switching to 4-byte checks only. 0 means do not use 2-byte checks, and negative value means always use 2-byte checks")

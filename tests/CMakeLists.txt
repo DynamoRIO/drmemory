@@ -366,13 +366,17 @@ function(newtest test source)
   newtest_ex(${test} ${source} "" "" "" OFF "" OFF)
 endfunction(newtest)
 
-function(newtest_custbuild test source cust_flags resbase)
-  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}" OFF)
+function(append_test_compile_flags test cust_flags)
   get_target_property(cur_flags ${test} COMPILE_FLAGS)
   if (NOT cur_flags)
     set(cur_flags "")
   endif (NOT cur_flags)
   set_target_properties(${test} PROPERTIES COMPILE_FLAGS "${cur_flags} ${cust_flags}")
+endfunction(append_test_compile_flags)
+
+function(newtest_custbuild test source cust_flags resbase)
+  newtest_ex(${test} ${source} "" "" "" OFF "${resbase}" OFF)
+  append_test_compile_flags(${test} ${cust_flags})
 endfunction(newtest_custbuild)
 
 function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess resbase)
@@ -420,13 +424,9 @@ endif ()
 newtest_ex(cs2bug cs2bug.cpp "" "" "" OFF ${cs2bug_res} OFF)
 append_property_string(TARGET cs2bug COMPILE_FLAGS "${cs2bug_flags}")
 
-if (UNIX)
-  newtest_ex(operators operators.cpp "" "" "" OFF ""
-    # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
-    ON)
-else (UNIX)
-  newtest_ex(operators operators.cpp "" "" "" OFF "" OFF)
-endif (UNIX)
+newtest_ex(operators operators.cpp "" "" "" OFF ""
+  # ignore exit code (b/c -replace_malloc calls dr_exit_process(1) in lieu of exception)
+  ON)
 newtest(float float.c)
 newtest(selfmod selfmod.c)
 newtest(patterns patterns.c)
@@ -510,31 +510,17 @@ if (TOOL_DR_MEMORY)
   # test redzone sizes
   newtest_nobuild(redzone8 malloc "" "-redzone_size;8" "" OFF "malloc")
   newtest_nobuild(redzone1024 malloc "" "-redzone_size;1024" "" OFF "malloc")
-  if (UNIX)
-    # -replace_malloc is the default, so test wrapping
-    newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
-    if (cs2bug_flags STREQUAL "")
-      newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
-    else ()
-      # -no_replace_malloc raises unrecoverable heap errors (i#1161)
-      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
-    endif ()
-    newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-      "" OFF "operators" OFF)
-  else (UNIX)
-    # test malloc replacement (additional tests are below)
-    newtest_nobuild(replace_malloc malloc "" "-replace_malloc" "" OFF "malloc")
-    if (cs2bug_flags STREQUAL "")
-      newtest_nobuild(replace_cs2bug cs2bug "" "-replace_malloc" "" OFF ${cs2bug_res})
-    else ()
-      # -replace_malloc won't raise unrecoverable heap errors (i#1161)!
-      newtest_ex(replace_cs2bug cs2bug.cpp "" "-replace_malloc" "" OFF "cs2bug" OFF)
-    endif ()
-    newtest_nobuild_ex(replace_operators operators "" "-replace_malloc" "" OFF "operators"
-      # ignore exit code (b/c -replace_malloc calls dr_exit_process(1)
-      # in lieu of exception)
-      ON)
-  endif (UNIX)
+
+  # -replace_malloc is now the default, so test wrapping
+  newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
+  if (cs2bug_flags STREQUAL "")
+    newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
+  else ()
+    # -no_replace_malloc raises unrecoverable heap errors (i#1161)
+    newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
+  endif ()
+  newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
+    "" OFF "operators" OFF)
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -603,7 +589,10 @@ if (TOOL_DR_MEMORY)
   endif (UNIX)
 
   if (WIN32)
-    newtest(wincrt wincrt.cpp)
+    # test i#1197.  With -replace_malloc default, we need to point at wincrt.replace.
+    newtest_ex(wincrt wincrt.cpp "" "" "" OFF "wincrt.replace" OFF)
+    newtest_nobuild(wrap_wincrt wincrt "" "-no_replace_malloc" "" OFF "wincrt")
+
     # FIXME: Re-enable when it doesn't break the build.
     #newtest(rtl_memory_zones rtl_memory_zones.c)
     #target_link_libraries(rtl_memory_zones ${ntimp_lib})
@@ -612,11 +601,12 @@ if (TOOL_DR_MEMORY)
     #  add_dependencies(rtl_memory_zones ntimp_tgt)
     #endif ()
 
-    # test i#1197
-    newtest_nobuild(replace_wincrt wincrt "" "-replace_malloc" "" OFF "wincrt.replace")
-
     if (USE_DRSYMS) # cygwin build can't see static malloc routines
-      newtest_custbuild(wincrtdbg wincrt.cpp "/MTd" "")
+      tobuild(wincrtdbg wincrt.cpp)
+      append_test_compile_flags(wincrtdbg "/MTd")
+      newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
+      newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF "wincrtdbg")
+
       newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
       newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
@@ -624,18 +614,16 @@ if (TOOL_DR_MEMORY)
       newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
       newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
       newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_nobuild(replace_cs2bugMTd cs2bugMTd "" "-replace_malloc" "" OFF "cs2bugMTd")
+      newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF "cs2bugMTd")
 
       # Test i#607 part D
-      newtest_custbuild(operatorsMDd operators.cpp "/MDd" operators)
-      # FIXME i#1083: failing on bots w/ no symbols; re-enable once
-      # i#607 part A/i#960 is finished
-      if (NOT TEST_SUITE) # manual => probably a dev w/ syms
-        newtest_nobuild_ex(replace_operatorsMDd operatorsMDd ""
-          # FIXME i#1004: -skip_msvc_importers breaks -replace_malloc so disable for now
-          "-replace_malloc;-no_skip_msvc_importers"
-          "" OFF "operators" ON)
-      endif ()
+      tobuild(operatorsMDd operators.cpp)
+      append_test_compile_flags(operatorsMDd "/MDd")
+      newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
+        # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
+        ON)
+      newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
+          "-no_replace_malloc" "" OFF operators OFF)
     endif (USE_DRSYMS)
 
     if (GCC)
@@ -716,7 +704,9 @@ endif (TOOL_DR_MEMORY AND WIN32)
 
 newtest(leakcycle leakcycle.cpp)
 if (WIN32)
-  newtest(leak_string leak_string.cpp)
+  # With -replace_malloc we have trouble allocating a low enough heap for the wide
+  # char test, so we stick to wrapping for this test.
+  newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string OFF)
 endif (WIN32)
 
 add_subdirectory(app_suite)
