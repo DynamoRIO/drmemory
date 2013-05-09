@@ -187,7 +187,7 @@ get_libc_base(app_pc *libc_end_out OUT)
             if (modname != NULL) {
                 if (text_matches_pattern(modname,
                                          IF_WINDOWS_ELSE("msvcr*", "libc.*"),
-                                         IF_WINDOWS_ELSE(true, false))) {
+                                         FILESYS_CASELESS)) {
 #ifdef WINDOWS
                     /* If we see both msvcrt.dll and MSVCRNN.dll (e.g., MSVCR80.dll),
                      * we want the latter, as the former is only there b/c of a small
@@ -241,7 +241,7 @@ get_libcpp_base(void)
             if (modname != NULL) {
                 if (text_matches_pattern(modname,
                                          IF_WINDOWS_ELSE("msvcp*", "libstdc++.*"),
-                                         IF_WINDOWS_ELSE(true, false))) {
+                                         FILESYS_CASELESS)) {
                         libcpp_base = data->start;
                 }
             }

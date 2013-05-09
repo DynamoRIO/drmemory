@@ -158,6 +158,10 @@
 # define NL "\r\n"
 #endif
 
+/* Names meant for use in text_matches_pattern() where wildcards are supported */
+#define DYNAMORIO_LIBNAME IF_WINDOWS_ELSE("dynamorio.dll","libdynamorio.so*")
+#define DRMEMORY_LIBNAME IF_WINDOWS_ELSE("drmemorylib.dll","libdrmemory.so*")
+
 #define MAX_INSTR_SIZE 17
 
 #define sscanf  DO_NOT_USE_sscanf_directly_see_issue_344
@@ -753,6 +757,8 @@ get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
 
 const char *
 strcasestr(const char *text, const char *pattern);
+
+#define FILESYS_CASELESS IF_WINDOWS_ELSE(true, false)
 
 bool
 text_matches_pattern(const char *text, const char *pattern, bool ignore_case);

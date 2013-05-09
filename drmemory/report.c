@@ -917,8 +917,7 @@ frame_matches_modname(const error_callstack_t *ecs, uint idx,
     ASSERT(supp != NULL && supp->is_module && supp->modname != NULL,
            "Must have a suppression with a modname!");
     return text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, idx),
-                                supp->modname,
-                                /*ignore_case=*/IF_WINDOWS_ELSE(true, false));
+                                supp->modname, FILESYS_CASELESS);
 }
 
 static bool
@@ -1025,7 +1024,7 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
                    text_matches_pattern(symbolized_callstack_frame_func(&ecs->scs, i),
                                         "replace_*", false/*consider case*/) &&
                    text_matches_pattern(symbolized_callstack_frame_modname(&ecs->scs, i),
-                                        "*drmemory*", false/*consider case*/)) {
+                                        DRMEMORY_LIBNAME, FILESYS_CASELESS)) {
             /* To support swapping between wrapping and replacing, we ignore
              * mismatches of replacing's top replace_ frame (i#1189).
              */
@@ -1034,7 +1033,7 @@ stack_matches_suppression(const error_callstack_t *ecs, const suppress_spec_t *s
                    text_matches_pattern(supp->func,
                                         "replace_*", false/*consider case*/) &&
                    text_matches_pattern(supp->modname,
-                                        "*drmemory*", false/*consider case*/)) {
+                                        DRMEMORY_LIBNAME, FILESYS_CASELESS)) {
             /* The other direction: a suppression frame for replace_*
              * yet we're running with wrapping (in case we have to
              * turn off -replace_malloc) (i#1189).
@@ -1121,7 +1120,7 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
     for (spec = supp_list[type]; spec != NULL; spec = spec->next) {
         if (is_module_wildcard(spec) &&
             text_matches_pattern(preferred_name, spec->frames[0].modname,
-                                 /*ignore_case=*/IF_WINDOWS_ELSE(true, false)) &&
+                                 FILESYS_CASELESS) &&
             (spec->instruction == NULL ||
              text_matches_pattern(instruction, spec->instruction,
                                   /*ignore_case=*/false))) {
@@ -1311,7 +1310,8 @@ report_init(void)
                    NULL, NULL, NULL, NULL,
 #endif
                    missing_syms_cb,
-                   options.zero_retaddr
+                   options.zero_retaddr,
+                   DRMEMORY_LIBNAME
                    _IF_DEBUG(options.callstack_dump_stack));
 
 #ifdef USE_DRSYMS

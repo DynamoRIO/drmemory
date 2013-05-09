@@ -203,7 +203,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_srcfile_hide,
                const char *callstack_srcfile_prefix,
                void (*missing_syms_cb)(const char *),
-               bool old_retaddrs_zeroed
+               bool old_retaddrs_zeroed,
+               const char *tool_lib_ignore
                _IF_DEBUG(uint callstack_dump_stack));
 
 void

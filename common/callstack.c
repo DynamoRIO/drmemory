@@ -55,6 +55,7 @@ static const char *op_srcfile_prefix;
 static const char *op_srcfile_hide;
 static void (*op_missing_syms_cb)(const char *);
 static bool op_old_retaddrs_zeroed;
+static const char *op_tool_lib_ignore;
 #ifdef DEBUG
 static uint op_callstack_dump_stack;
 #endif
@@ -250,6 +251,10 @@ static modname_info_t *modtree_last_name_info;
 static app_pc modtree_last_hit;
 static app_pc modtree_last_miss;
 
+/* i#1217: exclude DR and DrMem retaddrs on app stack from -replace_malloc */
+static app_pc libdr_base, libdr_end;
+static app_pc libtoolbase, libtoolend;
+
 /****************************************************************************
  * Symbolized callstacks for comparing to suppressions.
  * We do not store these long-term except those we read from suppression file.
@@ -310,6 +315,7 @@ max_callstack_size(void)
             *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
 
+/* XXX i#823: move these params to an options struct when refactoring for DrCallstack */
 void
 callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                uint fp_flags, size_t fp_scan_sz, uint print_flags,
@@ -321,7 +327,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_srcfile_hide,
                const char *callstack_srcfile_prefix,
                void (*missing_syms_cb)(const char *),
-               bool old_retaddrs_zeroed
+               bool old_retaddrs_zeroed,
+               const char *tool_lib_ignore
                _IF_DEBUG(uint callstack_dump_stack))
 {
     tls_idx_callstack = drmgr_register_tls_field();
@@ -341,6 +348,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_srcfile_prefix = callstack_srcfile_prefix;
     op_missing_syms_cb = missing_syms_cb;
     op_old_retaddrs_zeroed = old_retaddrs_zeroed;
+    op_tool_lib_ignore = tool_lib_ignore;
 #ifdef DEBUG
     op_callstack_dump_stack = callstack_dump_stack;
 #endif
@@ -359,6 +367,9 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
 void
 callstack_exit(void)
 {
+    ASSERT(libdr_base != NULL, "never found DR lib");
+    ASSERT(!(op_tool_lib_ignore != NULL && libtoolbase == NULL), "never found tool lib");
+
     hashtable_delete(&modname_table);
 
     dr_mutex_lock(modtree_lock);
@@ -918,7 +929,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 #define OP_CALL_IND 0xff
 
 static bool
-is_retaddr(byte *pc)
+is_retaddr(byte *pc, bool exclude_tool_lib)
 {
     /* XXX: for our purposes we really want is_in_code_section().  Since
      * is_in_module() is used for is_image(), we would need a separate rbtree.  We
@@ -932,6 +943,10 @@ is_retaddr(byte *pc)
      */
     STATS_INC(cstack_is_retaddr);
     if (!is_in_module(pc))
+        return false;
+    if (exclude_tool_lib &&
+        ((pc >= libdr_base && pc < libdr_end) ||
+         (pc >= libtoolbase && pc < libtoolend)))
         return false;
     if (!TEST(FP_SEARCH_DO_NOT_DISASM, op_fp_flags)) {
         /* The is_in_module() check is more expensive than our 3 derefs here.
@@ -1110,7 +1125,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                  * be used instead of checking modules.
                  * OPT: keep all modules in hashtable for quicker check
                  * that doesn't require alloc+free of heap */
-                if (is_retaddr(slot1))
+                if (is_retaddr(slot1, true/*i#1217*/))
                     match = true;
 #ifdef WINDOWS
                 else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
@@ -1119,7 +1134,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                      * of a leak callstack.
                      */
                     slot1 = *((app_pc*)&page_buf[(sp + 2*ret_offs) - buf_pg]);
-                    if (is_retaddr(slot1)) {
+                    if (is_retaddr(slot1, true/*i#1217*/)) {
                         match = true;
                         /* Do extra check for this case even if flags don't call for it */
                         match_next_frame = true;
@@ -1156,7 +1171,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                     if (!safe_read(parent_ret_ptr, sizeof(parent_ret), &parent_ret))
                         parent_ret = NULL;
                 }
-                if (parent_ret != NULL && is_retaddr(parent_ret)) {
+                if (parent_ret != NULL && is_retaddr(parent_ret, true/*i#1217*/)) {
                     LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
                         orig_fp, sp, slot1);
                     fpcache_update(pt, orig_fp, sp, slot1);
@@ -1229,7 +1244,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             * a misleading stack slot
             */
            (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, op_fp_flags) &&
-            !is_retaddr(appdata.retaddr)))))) {
+            !is_retaddr(appdata.retaddr, false/*include drmem*/)))))) {
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
@@ -1374,7 +1389,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                   * FP_CHECK_RETADDR_PRE_SCAN)
                   */
                  (scanned || TEST(FP_CHECK_RETADDR_PRE_SCAN, op_fp_flags)) &&
-                 !is_retaddr(appdata.retaddr))) {
+                 !is_retaddr(appdata.retaddr, false/*include drmem*/))) {
                 if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, op_fp_flags)) {
                     LOG(4, "find_next_fp "PFX" b/c hit bad non-zero fp "PFX"\n",
                         ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
@@ -2110,6 +2125,25 @@ callstack_module_remove_region(app_pc start, app_pc end)
     }
 }
 
+static void
+callstack_module_get_text_bounds(const module_data_t *info, bool loaded,
+                                 app_pc *start OUT, app_pc *end OUT)
+{
+    ASSERT(loaded, "only supports fully loaded modules");
+#ifdef LINUX
+    /* Yes, our own x64 libs are not contiguous */
+    if (!info->contiguous) {
+        /* We assume the 1st segment has .text */
+        *start = info->segments[0].start;
+        *end = info->segments[0].end;
+    } else
+#endif
+        {
+            *start = info->start;
+            *end = info->end;
+        }
+}
+
 /* For storing binary callstacks we need to store module names in a shared
  * location to save space and handle unloaded and reloaded modules.
  */
@@ -2117,7 +2151,18 @@ void
 callstack_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
     modname_info_t *name_info = add_new_module(drcontext, info);
-    
+
+    /* Record DR and DrMem lib bounds.  We assume they are contiguous. */
+    if (text_matches_pattern(name_info->name, DYNAMORIO_LIBNAME, FILESYS_CASELESS)) {
+        ASSERT(libdr_base == NULL, "duplicate DR lib");
+        callstack_module_get_text_bounds(info, loaded, &libdr_base, &libdr_end);
+    } else if (op_tool_lib_ignore != NULL &&
+               text_matches_pattern(name_info->name, op_tool_lib_ignore,
+                                    FILESYS_CASELESS)) {
+        ASSERT(libtoolbase == NULL, "duplicate tool lib");
+        callstack_module_get_text_bounds(info, loaded, &libtoolbase, &libtoolend);
+    }
+
     /* PR 473640: maintain our own module tree */
     dr_mutex_lock(modtree_lock);
     ASSERT(info->end > info->start, "invalid mod bounds");
