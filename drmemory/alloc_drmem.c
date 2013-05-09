@@ -181,10 +181,13 @@ alloc_drmem_init(void)
     alloc_ops.prefer_msize = options.prefer_msize;
     alloc_ops.cache_postcall = IF_DRSYMS_ELSE(options.use_symcache &&
                                               options.use_symcache_postcall, false);
-    /* we can't disable operator interception if !options.check_delete_mismatch
-     * b/c of msvc debug delete reading headers
+    /* We can't disable operator interception if !options.check_delete_mismatch
+     * b/c of msvc debug delete reading headers.  For -replace_malloc we can,
+     * but we still want to replace operators to ensure we get our redzones
+     * with debug msvc.
      */
-    alloc_ops.intercept_operators = INSTRUMENT_MEMREFS();
+    alloc_ops.intercept_operators =
+        (options.replace_malloc ? true : INSTRUMENT_MEMREFS());
     alloc_ops.conservative = options.conservative;
     /* replace vs wrap */
     alloc_ops.replace_malloc = options.replace_malloc;
