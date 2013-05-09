@@ -927,6 +927,8 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 
 #define OP_CALL_DIR 0xe8
 #define OP_CALL_IND 0xff
+#define OP_SEG_FS   0x64
+#define WOW64_SYSOFFS  0xc0
 
 static bool
 is_retaddr(byte *pc, bool exclude_tool_lib)
@@ -970,7 +972,12 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
                      (*(pc - 3) == OP_CALL_IND && ((*(pc - 2) >> 3) == 0x0a)) ||
                      /* indirect through mem: 0xff /2 + disp32 (mod==2) */
                      (*(pc - 6) == OP_CALL_IND &&
-                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)));
+                      ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15) &&
+                      /* i#1217: rule out WOW64 syscall from DR code invoked on app
+                       * stack by -replace_malloc.  We always have a syscall
+                       * in an app_loc_t so we should never need it in a frame.
+                       */
+                      (*(uint*)(pc - 4) != WOW64_SYSOFFS || *(pc - 7) != OP_SEG_FS)));
         }, { /* EXCEPT */
             match = false;
             /* If we end up with a lot of these we could either cache
@@ -1185,6 +1192,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
     return NULL;
 }
 
+/* XXX i#1222: on win64, we should use SEH unwind tables to walk the callstack. */
 void
 print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
