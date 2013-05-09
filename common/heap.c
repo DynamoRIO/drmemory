@@ -295,8 +295,8 @@ get_libcpp_base(void)
  *       heap_entry->wFlags = 1;
  *       heap_entry.Region = rtl_heap_entry.Region;
  *   }
- * the major different between the two is the size of cbData,
- * the rtl_process_heap_entry_t.flags doe not exactsly match with
+ * The major different between the two is the size of cbData,
+ * the rtl_process_heap_entry_t.flags do not exactly match with
  * PROCESS_HEAP_ENTRY.wFlags, but close enough since we only care
  * about 1 (== PROCESS_HEAP_REGION).
  */
@@ -331,6 +331,148 @@ GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
 GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
                         IN ULONG flags,
                         IN PVOID ptr));
+
+/* allocated_end is the end of the last valid chunk seen.
+ * If there are sub-regions, this will be in the final sub-region seen.
+ */
+static void
+walk_individual_heap(byte *heap,
+                     void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
+                     void (*cb_chunk)(app_pc,app_pc),
+                     byte **allocated_end OUT)
+{
+    rtl_process_heap_entry_t heap_info;
+    size_t size, commit_size, sub_size;
+    app_pc base, sub_base;
+    byte *chunk_start, *chunk_end;
+    byte *last_alloc = heap;
+    HANDLE process_heap = get_process_heap_handle();
+    LOG(2, "walking individual heap "PFX"\n", heap);
+    memset(&heap_info, 0, sizeof(heap_info));
+    /* While init time is assumed to be single-threaded there are
+     * enough exceptions to that that we grab the lock: */
+    RtlLockHeap(heap);
+    /* For tracking heap regions we use full reservation region */
+    size = allocation_size(heap, &base);
+    ASSERT(base == heap, "heap not at allocation base");
+    commit_size = region_size(heap);
+    ASSERT(commit_size == size ||
+           !dr_memory_is_readable(base+commit_size, size-commit_size),
+           "heap not committed followed by reserved");
+    if (cb_region != NULL)
+        cb_region(base, base+size, heap);
+    sub_base = base;
+    sub_size = size;
+    while (NT_SUCCESS(RtlWalkHeap(heap, &heap_info))) {
+        /* What I see doesn't quite match my quick reading of MSDN HeapWalk
+         * docs.  Not really clear where cbOverhead space is: before or after
+         * lpData?  Seems to not be after.  And what's up with these wFlags=0
+         * entries?  For wFlags=0, RtlSizeHeap gives a too-big # when
+         * passed lpData.  Also, wFlags containing PROCESS_HEAP_REGION
+         * should supposedly only happen for the first block in a region,
+         * but it's on for all legit blocks, it seems.
+         */
+        /* I've seen bogus lpData fields => RtlSizeHeap crashes if free mem.
+         * I've also seen bogus lpData pointing into not-yet-committed
+         * end of a heap!  Ridiculous.
+         */
+        size_t sz;
+        bool bad_chunk = false;
+        /* some heaps have multiple regions.  not bothering to check
+         * commit vs reserve on sub-regions.
+         */
+        if (((app_pc)heap_info.lpData < sub_base ||
+             (app_pc)heap_info.lpData >= sub_base+sub_size) &&
+            /* XXX: some of these have wFlags==0x100 and some point at free
+             * regions or memory occupied by something else (like our own
+             * replace_malloc arenas: i#961).  We should figure out what 0x100
+             * really means.  For now, requiring non-zero cbData.
+             */
+            heap_info.cbData > 0) {
+            /* a new region or large block inside this heap */
+            byte *new_base;
+            size_t new_size;
+            new_size = allocation_size((app_pc)heap_info.lpData, &new_base);
+            if (new_base == NULL) {
+                LOG(2, "free region "PFX"-"PFX" for heap @"PFX"\n",
+                    heap_info.lpData, (byte *)heap_info.lpData + new_size, heap);
+            } else {
+                sub_base = new_base;
+                sub_size = new_size;
+                if (cb_region != NULL)
+                    cb_region(sub_base, sub_base+sub_size, heap);
+                LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
+                    sub_base, sub_base+sub_size, heap);
+            }
+        }
+        /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista.
+         * Yet a TRY/EXCEPT around RtlSizeHeap is not enough:
+         * Vista calls RtlReportCriticalFailure on wFlags==0 chunks.
+         */
+        if (!TEST(PROCESS_HEAP_REGION, heap_info.wFlags) ||
+            /* sanity check: outside of committed but within main sub-region? */
+            ((app_pc)heap_info.lpData < base+size &&
+             (app_pc)heap_info.lpData >= base+commit_size))
+            bad_chunk = true;
+        LOG(2, "heap %x "PFX"-"PFX"-"PFX" %d "PFX","PFX" %x %x %x\n",
+            heap_info.wFlags, heap_info.lpData,
+            (app_pc)heap_info.lpData + heap_info.cbOverhead,
+            (app_pc)heap_info.lpData + heap_info.cbOverhead + heap_info.cbData,
+            heap_info.iRegionIndex, heap_info.Region.lpFirstBlock,
+            heap_info.Region.lpLastBlock,
+            heap_info.cbData,
+            (bad_chunk ? 0 : RtlSizeHeap(heap, 0, (app_pc)heap_info.lpData)),
+            ((bad_chunk || running_on_Vista_or_later()) ? 0 :
+             RtlSizeHeap(heap, 0, (app_pc)heap_info.lpData +
+                         heap_info.cbOverhead)));
+        if (bad_chunk)
+            continue;
+        last_alloc = (byte *)heap_info.lpData + heap_info.cbData;
+        if (cb_chunk == NULL)
+            continue;
+        /* Seems like I should be able to ignore all but PROCESS_HEAP_REGION,
+         * but that's not the case.  I also thought I might need to walk
+         * the Region.lpFirstBlock for PROCESS_HEAP_REGION using
+         * RtlSizeHeap, but can't skip headers that way, and all regions seem
+         * to show up in the RtlWalkHeap anyway.
+         */
+        sz = RtlSizeHeap(heap, 0, (app_pc)heap_info.lpData);
+        /* I'm skipping wFlags==0 if can't get valid size as I've seen such
+         * regions given out in later mallocs
+         */
+        chunk_start = (byte *) heap_info.lpData;
+        chunk_end = chunk_start + heap_info.cbData;
+        if (sz != -1 && (heap_info.wFlags > 0 || sz == heap_info.cbData)) {
+            /* i#607: is this a dbgcrt heap?  If so, these Rtl heap objects have
+             * dbgcrt redzones around them, and later libc-level operations will
+             * point inside the dbgcrt header at the app data.  If we had symbols
+             * we could look up _crtheap to identify the Heap.  For now we rule
+             * out the default heap and we check whether the header "looks like"
+             * the dbgcrt header.  Earlier injection would avoid this problem.
+             */
+            if (heap != process_heap &&
+                heap_info.cbData >= DBGCRT_PRE_REDZONE_SIZE +
+                DBGCRT_POST_REDZONE_SIZE) {
+                _CrtMemBlockHeader *head = (_CrtMemBlockHeader *) heap_info.lpData;
+                /* Check several fields.  Unlikely to match for random chunk. */
+                if (heap_info.cbData == head->nDataSize +
+                    DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE &&
+                    _BLOCK_TYPE_IS_VALID(head->nBlockUse) &&
+                    head->nLine < USHRT_MAX) {
+                    /* Skip the dbgcrt header */
+                    chunk_start += DBGCRT_PRE_REDZONE_SIZE;
+                    chunk_end -= DBGCRT_POST_REDZONE_SIZE;
+                    LOG(2, "  skipping dbgcrt header => "PFX"-"PFX"\n",
+                        chunk_start, chunk_end);
+                }
+            }
+            cb_chunk(chunk_start, chunk_end);
+        }
+    }
+    RtlUnlockHeap(heap);
+    if (allocated_end != NULL)
+        *allocated_end = last_alloc;
+}
 #endif /* WINDOWS */
 
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena
@@ -349,10 +491,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
      */
     uint cap_heaps = 10;
     byte **heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
-    rtl_process_heap_entry_t heap_info;
     uint i;
     uint num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
-    HANDLE process_heap = get_process_heap_handle();
     LOG(2, "walking %d heaps\n", num_heaps);
     if (num_heaps > cap_heaps) {
         global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
@@ -362,9 +502,6 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         ASSERT(cap_heaps >= num_heaps, "heap walk error");
     }
     for (i = 0; i < num_heaps; i++) {
-        size_t size, commit_size, sub_size;
-        app_pc base, sub_base;
-        byte *chunk_start, *chunk_end;
         LOG(2, "walking heap %d "PFX"\n", i, heaps[i]);
 # ifdef USE_DRSYMS
         if (heaps[i] == (byte *) get_private_heap_handle()) {
@@ -376,127 +513,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
             cb_heap(heaps[i]);
         if (cb_region == NULL && cb_chunk == NULL)
             continue;
-        memset(&heap_info, 0, sizeof(heap_info));
-        /* While init time is assumed to be single-threaded there are
-         * enough exceptions to that that we grab the lock: */
-        RtlLockHeap(heaps[i]);
-        /* For tracking heap regions we use full reservation region */
-        size = allocation_size(heaps[i], &base);
-        ASSERT(base == heaps[i], "heap not at allocation base");
-        commit_size = region_size(heaps[i]);
-        ASSERT(commit_size == size ||
-               !dr_memory_is_readable(base+commit_size, size-commit_size),
-               "heap not committed followed by reserved");
-        if (cb_region != NULL)
-            cb_region(base, base+size, heaps[i]);
-        sub_base = base;
-        sub_size = size;
-        while (NT_SUCCESS(RtlWalkHeap(heaps[i], &heap_info))) {
-            /* What I see doesn't quite match my quick reading of MSDN HeapWalk
-             * docs.  Not really clear where cbOverhead space is: before or after
-             * lpData?  Seems to not be after.  And what's up with these wFlags=0
-             * entries?  For wFlags=0, RtlSizeHeap gives a too-big # when
-             * passed lpData.  Also, wFlags containing PROCESS_HEAP_REGION
-             * should supposedly only happen for the first block in a region,
-             * but it's on for all legit blocks, it seems.
-             */
-            /* I've seen bogus lpData fields => RtlSizeHeap crashes if free mem.
-             * I've also seen bogus lpData pointing into not-yet-committed
-             * end of a heap!  Ridiculous.
-             */
-            size_t sz;
-            bool bad_chunk = false;
-            /* some heaps have multiple regions.  not bothering to check
-             * commit vs reserve on sub-regions.
-             */
-            if (((app_pc)heap_info.lpData < sub_base ||
-                 (app_pc)heap_info.lpData >= sub_base+sub_size) &&
-                /* XXX: some of these have wFlags==0x100 and some point at free
-                 * regions or memory occupied by something else (like our own
-                 * replace_malloc arenas: i#961).  We should figure out what 0x100
-                 * really means.  For now, requiring non-zero cbData.
-                 */
-                heap_info.cbData > 0) {
-                /* a new region or large block inside this heap */
-                byte *new_base;
-                size_t new_size;
-                new_size = allocation_size((app_pc)heap_info.lpData, &new_base);
-                if (new_base == NULL) {
-                    LOG(2, "free region "PFX"-"PFX" for heap @"PFX"\n",
-                        heap_info.lpData, (byte *)heap_info.lpData + new_size, heaps[i]);
-                } else {
-                    sub_base = new_base;
-                    sub_size = new_size;
-                    if (cb_region != NULL)
-                        cb_region(sub_base, sub_base+sub_size, heaps[i]);
-                    LOG(2, "new sub-heap region "PFX"-"PFX" for heap @"PFX"\n",
-                        sub_base, sub_base+sub_size, heaps[i]);
-                }
-            }
-            /* For UNCOMMITTED, RtlSizeHeap can crash: seen on Vista.
-             * Yet a TRY/EXCEPT around RtlSizeHeap is not enough:
-             * Vista calls RtlReportCriticalFailure on wFlags==0 chunks.
-             */
-            if (!TEST(PROCESS_HEAP_REGION, heap_info.wFlags) ||
-                /* sanity check: outside of committed but within main sub-region? */
-                ((app_pc)heap_info.lpData < base+size &&
-                 (app_pc)heap_info.lpData >= base+commit_size))
-                bad_chunk = true;
-            LOG(2, "heap %x "PFX"-"PFX"-"PFX" %d "PFX","PFX" %x %x %x\n",
-                heap_info.wFlags, heap_info.lpData,
-                (app_pc)heap_info.lpData + heap_info.cbOverhead,
-                (app_pc)heap_info.lpData + heap_info.cbOverhead + heap_info.cbData,
-                heap_info.iRegionIndex, heap_info.Region.lpFirstBlock,
-                heap_info.Region.lpLastBlock,
-                heap_info.cbData,
-                (bad_chunk ? 0 : RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData)),
-                ((bad_chunk || running_on_Vista_or_later()) ? 0 :
-                 RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData +
-                             heap_info.cbOverhead)));
-            if (bad_chunk)
-                continue;
-            if (cb_chunk == NULL)
-                continue;
-            /* Seems like I should be able to ignore all but PROCESS_HEAP_REGION,
-             * but that's not the case.  I also thought I might need to walk
-             * the Region.lpFirstBlock for PROCESS_HEAP_REGION using
-             * RtlSizeHeap, but can't skip headers that way, and all regions seem
-             * to show up in the RtlWalkHeap anyway.
-             */
-            sz = RtlSizeHeap(heaps[i], 0, (app_pc)heap_info.lpData);
-            /* I'm skipping wFlags==0 if can't get valid size as I've seen such
-             * regions given out in later mallocs
-             */
-            chunk_start = (byte *) heap_info.lpData;
-            chunk_end = chunk_start + heap_info.cbData;
-            if (sz != -1 && (heap_info.wFlags > 0 || sz == heap_info.cbData)) {
-                /* i#607: is this a dbgcrt heap?  If so, these Rtl heap objects have
-                 * dbgcrt redzones around them, and later libc-level operations will
-                 * point inside the dbgcrt header at the app data.  If we had symbols
-                 * we could look up _crtheap to identify the Heap.  For now we rule
-                 * out the default heap and we check whether the header "looks like"
-                 * the dbgcrt header.  Earlier injection would avoid this problem.
-                 */
-                if (heaps[i] != process_heap &&
-                    heap_info.cbData >= DBGCRT_PRE_REDZONE_SIZE +
-                    DBGCRT_POST_REDZONE_SIZE) {
-                    _CrtMemBlockHeader *head = (_CrtMemBlockHeader *) heap_info.lpData;
-                    /* Check several fields.  Unlikely to match for random chunk. */
-                    if (heap_info.cbData == head->nDataSize +
-                        DBGCRT_PRE_REDZONE_SIZE + DBGCRT_POST_REDZONE_SIZE &&
-                        _BLOCK_TYPE_IS_VALID(head->nBlockUse) &&
-                        head->nLine < USHRT_MAX) {
-                        /* Skip the dbgcrt header */
-                        chunk_start += DBGCRT_PRE_REDZONE_SIZE;
-                        chunk_end -= DBGCRT_POST_REDZONE_SIZE;
-                        LOG(2, "  skipping dbgcrt header => "PFX"-"PFX"\n",
-                            chunk_start, chunk_end);
-                    }
-                }
-                cb_chunk(chunk_start, chunk_end);
-            }
-        }
-        RtlUnlockHeap(heaps[i]);
+        walk_individual_heap(heaps[i], cb_region, cb_chunk, NULL);
     }
     global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
 #else /* WINDOWS */
@@ -563,6 +580,19 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     }
 #endif /* WINDOWS */
 }
+
+#ifdef WINDOWS
+/* Returns in *end the end of the last valid chunk seen.
+ * If there are sub-regions, this will be in the final sub-region seen.
+ */
+byte *
+heap_allocated_end(HANDLE heap)
+{
+    byte *end = NULL;
+    walk_individual_heap((byte *)heap, NULL, NULL, &end);
+    return end;
+}
+#endif
 
 /***************************************************************************
  * HEAP REGION LIST

@@ -61,6 +61,14 @@ heap_iterator(void (*cb_region)(app_pc start, app_pc end _IF_WINDOWS(HANDLE hand
               void (*cb_chunk)(app_pc start, app_pc end)
               _IF_WINDOWS(void (*cb_heap)(HANDLE)));
 
+#ifdef WINDOWS
+/* Returns the end of the last valid chunk seen.
+ * If there are sub-regions, this will be in the final sub-region seen.
+ */
+byte *
+heap_allocated_end(HANDLE heap);
+#endif
+
 /***************************************************************************
  * HEAP REGION LIST
  */

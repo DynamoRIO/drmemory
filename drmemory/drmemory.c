@@ -1202,7 +1202,7 @@ heap_iter_chunk(app_pc start, app_pc end)
 
 /* Walks the heap blocks that are already allocated at client init time,
  * to determine addressability.
- * FIXME: how know definedness?
+ * XXX: we don't know definedness and have to assume fully defined.
  */
 static void
 heap_walk(void)

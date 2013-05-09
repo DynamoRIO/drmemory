@@ -294,6 +294,7 @@ typedef struct _arena_header_t {
  * a Heap or a regular arena
  */
 # define ARENA_MAIN HEAP_ZERO_MEMORY  /* 0x8 */
+# define ARENA_PRE_US_MAPPED   0x100  /* unused by Windows */
 /* another non-Heap flag to identify libc-default Heaps (i#939) */
 # define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY /* 0x10 */
 /* flags that we support being passed to HeapCreate:
@@ -899,6 +900,9 @@ arena_deallocate(arena_header_t *arena)
 {
 #ifdef LINUX
     if (arena->reserve_end != cur_brk)
+#else
+    /* For pre-us mapped we just never free */
+    if (!TEST(ARENA_PRE_US_MAPPED, arena->flags))
 #endif
         os_large_free((byte *)arena, arena->reserve_end - (byte *)arena);
 }
@@ -2551,11 +2555,9 @@ heap_to_arena(HANDLE heap)
         TEST(ARENA_MAIN, arena->flags))
         return arena;
     else {
-#ifdef WINDOWS
         arena = hashtable_lookup(&crtheap_handle_table, (void *)heap);
         if (arena != NULL)
             return arena;
-#endif
         LOG(2, "%s: "PFX" => NULL!\n", __FUNCTION__, heap);
         return NULL;
     }
@@ -2567,17 +2569,46 @@ pre_existing_heap_init(HANDLE heap)
 {
     /* Create an arena for this pre-existing Heap (i#959) */
     arena_header_t *arena;
+    MEMORY_BASIC_INFORMATION mbi;
+    uint prot;
+    bool mapped = false;
     IF_DEBUG(bool unique;)
     if (heap == process_heap)
         return;
-    /* XXX: we don't know whether this should be growable or not! */
-    arena = (arena_header_t *)
-        create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
-    LOG(2, "new arena for pre-us Heap "PFX" is "PFX"\n", heap, arena);
+    if (dr_virtual_query((byte *)heap, &mbi, sizeof(mbi)) == sizeof(mbi) &&
+        (mbi.Type == MEM_MAPPED || mbi.Type == MEM_IMAGE)) {
+        /* i#1221: ntdll!CsrPortHeap passed in shared memory here.
+         * We can't use our own memory.
+         */
+        byte *alloc_end = heap_allocated_end(heap);
+        /* Go to next page to be safe */
+        alloc_end = (byte *) ALIGN_FORWARD(alloc_end + PAGE_SIZE, PAGE_SIZE);
+        /* FIXME: for this case we'd have to fall back to native calls */
+        ASSERT(alloc_end < (byte *)heap + mbi.RegionSize,
+               "pre-us mapped heap has no room left");
+        arena = (arena_header_t *) alloc_end;
+        arena->commit_end = (byte *)heap + mbi.RegionSize;
+        arena->reserve_end = arena->commit_end;
+        arena_init(arena, NULL);
+        arena->flags |= ARENA_PRE_US_MAPPED;
+        LOG(2, "new arena inside mmapped pre-us Heap "PFX" is "PFX"\n", heap, arena);
+    } else {
+        arena = (arena_header_t *)
+            create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
+        LOG(2, "new arena for pre-us Heap "PFX" is "PFX"\n", heap, arena);
+    }
     IF_DEBUG(unique =)
         hashtable_add(&crtheap_handle_table, (void *)heap, (void *)arena);
     ASSERT(unique, "duplicate pre-us Heap");
     arena->handle = heap;
+    if (dr_query_memory((byte *)heap, NULL, NULL, &prot) && TEST(DR_MEMPROT_EXEC, prot)) {
+        arena->flags |= HEAP_CREATE_ENABLE_EXECUTE;
+    }
+    /* XXX: we don't know about HEAP_GROWABLE or HEAP_GENERATE_EXCEPTIONS
+     * or HEAP_NO_SERIALIZE!  Best to be conservative on HEAP_GROWABLE.
+     */
+    if (!TEST(ARENA_PRE_US_MAPPED, arena->flags))
+        arena->flags |= HEAP_GROWABLE;
 }
 
 static inline void
@@ -2678,7 +2709,10 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
     void *drcontext = enter_client_code();
     LOG(2, "%s\n", __FUNCTION__);
     if (lock != NULL || params != NULL || base != NULL) {
-        /* as of win7, CreateHeap always passes NULL for these 3 */
+        /* As of win7, CreateHeap always passes NULL for these 3.
+         * XXX: once we have early injection, we'll see ntdll!CsrPortHeap created,
+         * and it passes in a base (xref i#1221) to RtlCreateHeap.
+         */
         ASSERT(false, "NYI params to RtlCreateHeap");
         /* we continue on and ignore params for release build */
     }
