@@ -702,8 +702,6 @@ name=default i#1140 MessageBox
 IMM32.dll!ImmLocalAlloc
 IMM32.dll!...
 USER32.dll!FocusSetIMCContext
-USER32.dll!...
-USER32.dll!DispatchClientMessage
 
 ##################################################
 # i#1155: real bug in VS2012 istream
