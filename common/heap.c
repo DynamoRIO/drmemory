@@ -449,9 +449,9 @@ walk_individual_heap(byte *heap,
              * we could look up _crtheap to identify the Heap.  For now we rule
              * out the default heap and we check whether the header "looks like"
              * the dbgcrt header.  Earlier injection would avoid this problem.
+             * i#1223: VS2012 uses the ProcessHeap so we have to check that too.
              */
-            if (heap != process_heap &&
-                heap_info.cbData >= DBGCRT_PRE_REDZONE_SIZE +
+            if (heap_info.cbData >= DBGCRT_PRE_REDZONE_SIZE +
                 DBGCRT_POST_REDZONE_SIZE) {
                 _CrtMemBlockHeader *head = (_CrtMemBlockHeader *) heap_info.lpData;
                 /* Check several fields.  Unlikely to match for random chunk. */

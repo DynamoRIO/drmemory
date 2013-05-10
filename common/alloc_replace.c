@@ -2189,7 +2189,8 @@ arena_for_libc_alloc(void *drcontext)
         dr_read_saved_reg(drcontext, DRWRAP_REPLACE_NATIVE_DATA_SLOT);
     ASSERT(e != NULL, "invalid stored arg");
     arena = (arena_header_t *) alloc_routine_set_get_user_data(e);
-    ASSERT(arena != NULL && TEST(ARENA_LIBC_DEFAULT, arena->flags),
+    ASSERT(arena != NULL &&
+           (arena == cur_arena || TEST(ARENA_LIBC_DEFAULT, arena->flags)),
            "invalid per-set arena");
     return arena;
 #else
@@ -3389,6 +3390,13 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
                 type, (dr_module_preferred_name(mod) == NULL) ? "<null>" :
                 dr_module_preferred_name(mod), pre_us_heap);
             if (pre_us_heap != NULL) {
+                if (pre_us_heap == process_heap) {
+                    /* win8 msvcr*.dll uses process heap (i#1223) */
+                    LOG(2, "pre-existing libc Heap for module=%s == process heap!\n",
+                        (dr_module_preferred_name(mod) == NULL) ? "<null>" :
+                        dr_module_preferred_name(mod));
+                    return cur_arena;
+                }
                 /* We should have already added in pre_existing_heap_init() */
                 arena = (arena_header_t *)
                     hashtable_lookup(&crtheap_handle_table, (void *)pre_us_heap);
@@ -3433,7 +3441,8 @@ malloc_replace__set_exit(heapset_type_t type, app_pc pc, void *user_data)
     if (type != HEAPSET_RTL && user_data != NULL) {
         /* Destroy the Heap for this libc alloc routine set (i#939) */
         arena_header_t *arena = (arena_header_t *) user_data;
-        if (arena != NULL) { /* for non-pre-us /MT module, we see the HeapDestroy */
+        /* For non-pre-us /MT module, we see the HeapDestroy, so arena can be NULL */
+        if (arena != NULL && arena != cur_arena) {
             LOG(2, "destroying default Heap "PFX" for libc set @"PFX"\n", arena, pc);
             /* i#939: we assume the Heap used by a libc routine set is not destroyed
              * mid-run (pool-style) and is simply torn down at the end without any
