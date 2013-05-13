@@ -423,8 +423,11 @@ event_exit(void)
     heap_region_exit();
     if (options.pattern != 0)
         pattern_exit();
-    if (options.shadowing)
+    if (options.shadowing) {
         shadow_exit();
+        if (umbra_exit() != DRMF_SUCCESS)
+            ASSERT(false, "fail to init Umbra");
+    }
     hashtable_delete(&known_table);
 
     if (!options.perturb_only)
@@ -1665,8 +1668,11 @@ dr_init(client_id_t id)
     if (!options.perturb_only)
         report_init();
 
-    if (options.shadowing)
+    if (options.shadowing) {
+        if (umbra_init(client_id) != DRMF_SUCCESS)
+            ASSERT(false, "fail to init Umbra");
         shadow_init();
+    }
 
     if (options.pattern != 0)
         pattern_init();

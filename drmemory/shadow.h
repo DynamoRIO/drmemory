@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -22,6 +22,8 @@
 
 #ifndef _SHADOW_H_
 #define _SHADOW_H_ 1
+
+#include "umbra.h"
 
 /* are we using 4Bto1B, or the default 1Bto2b? */
 #define MAP_4B_TO_1B (!options.check_uninitialized)
@@ -136,16 +138,29 @@ bool
 shadow_get_special(app_pc addr, uint *val);
 
 /* Returns the two bits for the byte at the passed-in address */
+/* umbra_shadow_memory_info must be first zeroed out by the caller prior to
+ * calling the first time for any series of calls. It will be filled out
+ * and can be used for a series of calls for better performance.
+ * On the subsequent calls, if the passed in umbra_shadow_memory_info has
+ * the right range, we assume the the shadow memory info is correct and
+ * will access the cached shadow memory directly without querying
+ * Umbra.
+ * However, the info may have stale info as Umbra may replace it, and
+ * the caller must be able to handle or tolerate that situation.
+ */
+/* it also has the racy problem on accessing partial byte, xref i#271 */
 uint
-shadow_get_byte(app_pc addr);
+shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 /* Returns the byte that shadows the 4-byte-aligned address */
+/* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 uint
-shadow_get_dword(app_pc addr);
+shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr);
 
 /* Sets the two bits for the byte at the passed-in address */
+/* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 void
-shadow_set_byte(app_pc addr, uint val);
+shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val);
 
 /* Converts the special shadow block for addr to non-special
  * and returns a pointer to the same offset within the new
@@ -156,9 +171,6 @@ shadow_replace_special(app_pc addr);
 
 byte *
 shadow_translation_addr(app_pc addr);
-
-byte *
-shadow_translation_addr_using_offset(app_pc addr, byte *target);
 
 /* Returns a pointer to an always-bitlevel shadow block */
 byte *

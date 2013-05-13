@@ -1975,21 +1975,27 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
      */
     uint shadow_vals[4];
     int i;
+    umbra_shadow_memory_info_t info = { 0,};
     LOG(3, "medium_path movs4 "PFX" src="PFX" %d%d%d%d dst="PFX" %d%d%d%d\n",
         loc_to_pc(loc), mc->xsi,
-        shadow_get_byte((app_pc)mc->xsi), shadow_get_byte((app_pc)mc->xsi+1),
-        shadow_get_byte((app_pc)mc->xsi+2), shadow_get_byte((app_pc)mc->xsi+3),
-        mc->xdi, shadow_get_byte((app_pc)mc->xdi), shadow_get_byte((app_pc)mc->xdi+1),
-        shadow_get_byte((app_pc)mc->xdi+2), shadow_get_byte((app_pc)mc->xdi+3));
+        shadow_get_byte(&info, (app_pc)mc->xsi),
+        shadow_get_byte(&info, (app_pc)mc->xsi+1),
+        shadow_get_byte(&info, (app_pc)mc->xsi+2),
+        shadow_get_byte(&info, (app_pc)mc->xsi+3),
+        mc->xdi, 
+        shadow_get_byte(&info, (app_pc)mc->xdi),
+        shadow_get_byte(&info, (app_pc)mc->xdi+1),
+        shadow_get_byte(&info, (app_pc)mc->xdi+2),
+        shadow_get_byte(&info, (app_pc)mc->xdi+3));
 #ifdef STATISTICS
     if (!ALIGNED(mc->xsi, 4))
         STATS_INC(movs4_src_unaligned);
     if (!ALIGNED(mc->xdi, 4))
         STATS_INC(movs4_dst_unaligned);
-    if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+1) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+2) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+3) != SHADOW_DEFINED)
+    if (shadow_get_byte(&info, (app_pc)mc->xsi) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+1) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+2) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+3) != SHADOW_DEFINED)
         STATS_INC(movs4_src_undef);
 #endif
     STATS_INC(medpath_executions);
@@ -1997,19 +2003,19 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     if (!options.check_uninitialized) {
         if ((!options.check_alignment ||
              (ALIGNED(mc->xsi, 4) && ALIGNED(mc->xdi, 4))) &&
-            shadow_get_byte((app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
+            shadow_get_byte(&info, (app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte(&info, (app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
             STATS_INC(movs4_med_fast);
             return;
         }
         /* no need to initialize shadow_vals for MEMREF_CHECK_ADDRESSABLE */
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc, 
                        opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
-                                                 REG_NULL, 0, 0, OPSZ_4),
+                                                 REG_NULL, 0, 0, OPSZ_PTR),
                        4, mc, shadow_vals);
         check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_ES, DR_REG_XDI
-                                                 , REG_NULL, 0, 0, OPSZ_4),
+                                                 , REG_NULL, 0, 0, OPSZ_PTR),
                        4, mc, shadow_vals);
         return;
     }
@@ -2025,22 +2031,22 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
     if (is_shadow_register_defined(get_shadow_register(DR_REG_XSI)) &&
         is_shadow_register_defined(get_shadow_register(DR_REG_XDI)) &&
         get_shadow_eflags() == SHADOW_DEFINED) {
-        uint src0 = shadow_get_byte((app_pc)mc->xsi+0);
-        uint src1 = shadow_get_byte((app_pc)mc->xsi+1);
-        uint src2 = shadow_get_byte((app_pc)mc->xsi+2);
-        uint src3 = shadow_get_byte((app_pc)mc->xsi+3);
+        uint src0 = shadow_get_byte(&info, (app_pc)mc->xsi+0);
+        uint src1 = shadow_get_byte(&info, (app_pc)mc->xsi+1);
+        uint src2 = shadow_get_byte(&info, (app_pc)mc->xsi+2);
+        uint src3 = shadow_get_byte(&info, (app_pc)mc->xsi+3);
         if ((src0 == SHADOW_DEFINED || src0 == SHADOW_UNDEFINED) &&
             (src1 == SHADOW_DEFINED || src1 == SHADOW_UNDEFINED) &&
             (src2 == SHADOW_DEFINED || src2 == SHADOW_UNDEFINED) &&
             (src3 == SHADOW_DEFINED || src3 == SHADOW_UNDEFINED) &&
-            shadow_get_byte((app_pc)mc->xdi+0) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->xdi+1) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->xdi+2) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->xdi+3) != SHADOW_UNADDRESSABLE) {
-            shadow_set_byte((app_pc)mc->xdi+0, src0);
-            shadow_set_byte((app_pc)mc->xdi+1, src1);
-            shadow_set_byte((app_pc)mc->xdi+2, src2);
-            shadow_set_byte((app_pc)mc->xdi+3, src3);
+            shadow_get_byte(&info, (app_pc)mc->xdi+0) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte(&info, (app_pc)mc->xdi+1) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte(&info, (app_pc)mc->xdi+2) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte(&info, (app_pc)mc->xdi+3) != SHADOW_UNADDRESSABLE) {
+            shadow_set_byte(&info, (app_pc)mc->xdi+0, src0);
+            shadow_set_byte(&info, (app_pc)mc->xdi+1, src1);
+            shadow_set_byte(&info, (app_pc)mc->xdi+2, src2);
+            shadow_set_byte(&info, (app_pc)mc->xdi+3, src3);
             STATS_INC(movs4_med_fast);
             return;
         }
@@ -2072,28 +2078,34 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
      */
     uint shadow_vals[1];
     uint flags;
+    umbra_shadow_memory_info_t info = { 0,};
     LOG(3, "medium_path cmps1 "PFX" src1="PFX" %d%d%d%d src2="PFX" %d%d%d%d\n",
         loc_to_pc(loc), mc->xsi,
-        shadow_get_byte((app_pc)mc->xsi), shadow_get_byte((app_pc)mc->xsi+1),
-        shadow_get_byte((app_pc)mc->xsi+2), shadow_get_byte((app_pc)mc->xsi+3),
-        mc->xdi, shadow_get_byte((app_pc)mc->xdi), shadow_get_byte((app_pc)mc->xdi+1),
-        shadow_get_byte((app_pc)mc->xdi+2), shadow_get_byte((app_pc)mc->xdi+3));
+        shadow_get_byte(&info, (app_pc)mc->xsi),
+        shadow_get_byte(&info, (app_pc)mc->xsi+1),
+        shadow_get_byte(&info, (app_pc)mc->xsi+2),
+        shadow_get_byte(&info, (app_pc)mc->xsi+3),
+        mc->xdi,
+        shadow_get_byte(&info, (app_pc)mc->xdi),
+        shadow_get_byte(&info, (app_pc)mc->xdi+1),
+        shadow_get_byte(&info, (app_pc)mc->xdi+2),
+        shadow_get_byte(&info, (app_pc)mc->xdi+3));
 #ifdef STATISTICS
-    if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+1) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+2) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xsi+3) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xdi) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xdi+1) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xdi+2) != SHADOW_DEFINED ||
-        shadow_get_byte((app_pc)mc->xdi+3) != SHADOW_DEFINED)
+    if (shadow_get_byte(&info, (app_pc)mc->xsi) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+1) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+2) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xsi+3) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xdi) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xdi+1) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xdi+2) != SHADOW_DEFINED ||
+        shadow_get_byte(&info, (app_pc)mc->xdi+3) != SHADOW_DEFINED)
         STATS_INC(cmps1_src_undef);
 #endif
     STATS_INC(medpath_executions);
 
     if (!options.check_uninitialized) {
-        if (shadow_get_byte((app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
-            shadow_get_byte((app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
+        if (shadow_get_byte(&info, (app_pc)mc->xsi) != SHADOW_UNADDRESSABLE &&
+            shadow_get_byte(&info, (app_pc)mc->xdi) != SHADOW_UNADDRESSABLE) {
             STATS_INC(cmps1_med_fast);
             return;
         }
@@ -2116,8 +2128,8 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
     if (is_shadow_register_defined(get_shadow_register(DR_REG_XSI)) &&
         is_shadow_register_defined(get_shadow_register(DR_REG_XDI)) &&
         get_shadow_eflags() == SHADOW_DEFINED) {
-        uint src0 = shadow_get_byte((app_pc)mc->xsi);
-        uint src1 = shadow_get_byte((app_pc)mc->xdi);
+        uint src0 = shadow_get_byte(&info, (app_pc)mc->xsi);
+        uint src1 = shadow_get_byte(&info, (app_pc)mc->xdi);
         if ((src0 == SHADOW_DEFINED ||
              (!options.check_uninit_cmps && src0 == SHADOW_UNDEFINED)) &&
             (src1 == SHADOW_DEFINED ||
@@ -2381,16 +2393,20 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     }
 #endif
 
-    DOLOG(3, { 
-        LOG(3, "\nslow_path "PFX": ", pc);
-        instr_disassemble(drcontext, &inst, LOGFILE_GET(drcontext));
-        if (instr_num_dsts(&inst) > 0 &&
-            opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
-            LOG(3, " | 0x%x",
-                shadow_get_byte(opnd_compute_address(instr_get_dst(&inst, 0), mc)));
-        }
-        LOG(3, "\n");
-    });
+    DOLOG(3, {
+            LOG(3, "\nslow_path "PFX": ", pc);
+            instr_disassemble(drcontext, &inst, LOGFILE_GET(drcontext));
+            if (instr_num_dsts(&inst) > 0 &&
+                opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
+                umbra_shadow_memory_info_t info;
+                memset(&info, 0, sizeof(info));
+                LOG(3, " | 0x%x",
+                    shadow_get_byte(&info,
+                                    opnd_compute_address(instr_get_dst(&inst, 0),
+                                                         mc)));
+            }
+            LOG(3, "\n");
+        });
 
 #ifdef TOOL_DR_HEAPSTAT
     return slow_path_for_staleness(drcontext, mc, &inst, &loc);
@@ -3710,6 +3726,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         shadow_get_special(addr, NULL) : false;
     bool exception = false;
 #endif
+    umbra_shadow_memory_info_t info = { 0,};
     app_pc stack_base = NULL;
     size_t stack_size = 0;
     bool handled_push_addr = false;
@@ -3723,7 +3740,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
         (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"), loc_to_print(loc), addr, sz,
-        shadow_get_dword(addr), shadow_get_dword(addr+4),
+        shadow_get_dword(&info, addr), shadow_get_dword(&info, addr+4),
         was_special ? " (was special)" : "");
     ASSERT(addr + sz > addr, "address overflow"); /* no overflow */
     /* xref PR 466036: a very large size and a bogus address can take an
@@ -3753,7 +3770,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     }
 #endif
     for (i = 0; i < sz; i++) {
-        uint shadow = shadow_get_byte(addr + i);
+        uint shadow = shadow_get_byte(&info, addr + i);
         ASSERT(shadow <= 3, "internal error");
         if (shadow == SHADOW_UNADDRESSABLE) {
             if (TEST(MEMREF_PUSHPOP, flags) && !TEST(MEMREF_WRITE, flags)) {
@@ -3767,7 +3784,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
              */
             if (TEST(MEMREF_PUSHPOP, flags) && TEST(MEMREF_WRITE, flags)) {
                 ASSERT(!TEST(MEMREF_MOVS, flags), "internal movs error");
-                shadow_set_byte(addr + i, TEST(MEMREF_USE_VALUES, flags) ?
+                shadow_set_byte(&info, addr + i, TEST(MEMREF_USE_VALUES, flags) ?
                                 shadow_vals[memref_idx(flags, i)] : SHADOW_DEFINED);
             } else {
                 /* We check stack bounds here and cache to avoid
@@ -3821,7 +3838,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     if (addr_on_stack) {
                         LOG(2, "unaddressable beyond TOS: leaving unaddressable\n");
                     } else {
-                        shadow_set_byte(addr+i, SHADOW_DEFINED);
+                        shadow_set_byte(&info, addr+i, SHADOW_DEFINED);
                     }
                     allgood = false;
                 }
@@ -3867,7 +3884,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                     allgood = false;
                     /* Set to defined to avoid duplicate errors */
                     if (!options.leave_uninit)
-                        shadow_set_byte(addr+i, SHADOW_DEFINED);
+                        shadow_set_byte(&info, addr+i, SHADOW_DEFINED);
                 }
 #ifdef STATISTICS
                 else
@@ -3879,7 +3896,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 ASSERT(false, "bitlevel NOT YET IMPLEMENTED");
             }
             if (TEST(MEMREF_PUSHPOP, flags)) {
-                shadow_set_byte(addr + i, SHADOW_UNADDRESSABLE);
+                shadow_set_byte(&info, addr + i, SHADOW_UNADDRESSABLE);
             }
         } else if (!TEST(MEMREF_CHECK_ADDRESSABLE, flags)) {
             uint newval;
@@ -3899,7 +3916,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 newval = 0;
                 ASSERT_NOT_IMPLEMENTED();
 #else
-                newval = shadow_get_byte(((app_pc)shadow_vals[0]) + i);
+                newval = shadow_get_byte(&info, ((app_pc)shadow_vals[0]) + i);
 #endif
             } else {
                 newval = TEST(MEMREF_USE_VALUES, flags) ?
@@ -3915,7 +3932,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 } else {
                     LOG(4, "store @"PFX" to "PFX" val="PIFX"\n",
                         loc_to_print(loc), addr + i, newval);
-                    shadow_set_byte(addr + i, newval);
+                    shadow_set_byte(&info, addr + i, newval);
                 }
             }
         }
@@ -3950,15 +3967,18 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         DOLOG(3, {
             char buf[256];
             size_t sofar = 0;
+            umbra_shadow_memory_info_t info = { 0};
             print_address(buf, BUFFER_SIZE_BYTES(buf), &sofar, loc_to_pc(loc),
                           NULL, true/*for log*/);
             NULL_TERMINATE_BUFFER(buf);
-            LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX" bytes (pre 0x%02x 0x%02x)%s %s ",
+            LOG(1, "unaligned slow @"PFX" %s "PFX" "PIFX
+                " bytes (pre 0x%02x 0x%02x)%s %s ",
                 loc_to_print(loc),
                 TEST(MEMREF_WRITE, flags) ?
                 (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
                 (TEST(MEMREF_PUSHPOP, flags) ? "pop" : "read"),
-                addr, sz, shadow_get_dword(addr), shadow_get_dword(addr+4),
+                addr, sz, shadow_get_dword(&info, addr),
+                shadow_get_dword(&info, addr+4),
                 was_special ? " (was special)" : "", buf);
             disassemble_with_info(dr_get_current_drcontext(), loc_to_pc(loc), f_global,
                                   false/*!show pc*/, true/*show bytes*/);

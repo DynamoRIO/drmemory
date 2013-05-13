@@ -994,10 +994,8 @@ umbra_iterate_shadow_memory_arch(umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared_arch(IN  umbra_map_t *map,
                                    IN  byte *shadow_addr,
-                                   OUT bool *shared,
                                    OUT uint *shadow_type)
 {
-    *shared = false;
     *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;
     return DRMF_SUCCESS;
 }

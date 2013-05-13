@@ -1212,6 +1212,7 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 void
 client_handle_cbret(void *drcontext)
 {
+    umbra_shadow_memory_info_t info = { 0,};
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
     cls_drmem_t *cpt_parent = (cls_drmem_t *)
@@ -1232,7 +1233,7 @@ client_handle_cbret(void *drcontext)
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
         sp, cpt_parent->pre_callback_esp);
     for (; sp < cpt_parent->pre_callback_esp; sp++)
-        shadow_set_byte(sp, SHADOW_UNADDRESSABLE);
+        shadow_set_byte(&info, sp, SHADOW_UNADDRESSABLE);
 }
 
 void
@@ -1253,6 +1254,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
+    umbra_shadow_memory_info_t info = { 0,};
     if (!options.shadowing || !options.check_stack_bounds)
         return;
 
@@ -1263,8 +1265,8 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
            /* if not on main stack, we could walk off into an adjacent
             * free space: should do mem query!
             */
-           shadow_get_byte(sp) == SHADOW_UNADDRESSABLE) {
-        shadow_set_byte(sp, SHADOW_DEFINED);
+           shadow_get_byte(&info, sp) == SHADOW_UNADDRESSABLE) {
+        shadow_set_byte(&info, sp, SHADOW_DEFINED);
         if (MAP_4B_TO_1B)
             sp += 4; /* 4 bytes map to one so skip to next */
         else
@@ -1352,6 +1354,7 @@ client_pre_syscall(void *drcontext, int sysnum)
 #ifdef WINDOWS
     DWORD cxt_flags;
     reg_t cxt_xsp;
+    umbra_shadow_memory_info_t info = { 0,};
 #endif
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1369,21 +1372,30 @@ client_pre_syscall(void *drcontext, int sysnum)
             safe_read(&cxt->Xsp, sizeof(cxt_xsp), &cxt_xsp)) {
             /* FIXME: what if the syscall fails? */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {
-                register_shadow_set_dword(REG_XSP, shadow_get_byte((app_pc)&cxt->Xsp));
+                register_shadow_set_dword(REG_XSP,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xsp));
 # ifndef X64
-                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Xbp));
+                register_shadow_set_dword(REG_XBP,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xbp));
 # endif
             }
             if (TESTALL(CONTEXT_INTEGER/*2 bits so ALL*/, cxt_flags)) {
-                register_shadow_set_dword(REG_XAX, shadow_get_byte((app_pc)&cxt->Xax));
-                register_shadow_set_dword(REG_XCX, shadow_get_byte((app_pc)&cxt->Xcx));
-                register_shadow_set_dword(REG_XDX, shadow_get_byte((app_pc)&cxt->Xdx));
-                register_shadow_set_dword(REG_XBX, shadow_get_byte((app_pc)&cxt->Xbx));
+                register_shadow_set_dword(REG_XAX,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xax));
+                register_shadow_set_dword(REG_XCX,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xcx));
+                register_shadow_set_dword(REG_XDX,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xdx));
+                register_shadow_set_dword(REG_XBX,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xbx));
 # ifdef X64
-                register_shadow_set_dword(REG_XBP, shadow_get_byte((app_pc)&cxt->Xbp));
+                register_shadow_set_dword(REG_XBP,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xbp));
 # endif
-                register_shadow_set_dword(REG_XSI, shadow_get_byte((app_pc)&cxt->Xsi));
-                register_shadow_set_dword(REG_XDI, shadow_get_byte((app_pc)&cxt->Xdi));
+                register_shadow_set_dword(REG_XSI,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xsi));
+                register_shadow_set_dword(REG_XDI,
+                                          shadow_get_byte(&info, (app_pc)&cxt->Xdi));
             }
             /* Mark stack AFTER reading cxt since cxt may be on stack! */
             if (TESTALL(CONTEXT_CONTROL/*2 bits so ALL*/, cxt_flags)) {
@@ -1611,6 +1623,7 @@ at_signal_handler(void)
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
+    umbra_shadow_memory_info_t info = { 0,};
     ASSERT(options.shadowing, "shadowing disabled");
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
@@ -1623,11 +1636,11 @@ at_signal_handler(void)
         stop > cpt->sigaltstack)
         stop = cpt->sigaltstack;
     /* XXX: we could probably assume stack alignment at start of handler */
-    while (sp < stop && shadow_get_byte(sp) == SHADOW_UNADDRESSABLE) {
+    while (sp < stop && shadow_get_byte(&info, sp) == SHADOW_UNADDRESSABLE) {
         /* Assume whole frame is defined (else would need DR to identify
          * which parts are padding).
          */
-        shadow_set_byte(sp, SHADOW_DEFINED);
+        shadow_set_byte(&info, sp, SHADOW_DEFINED);
         sp++;
     }
     LOG(2, "signal handler: marked new frame defined "PFX"-"PFX"\n", mc.xsp, sp);
@@ -2235,8 +2248,10 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
         LOG(3, "matched is_ok_unaddressable_pattern\n");
     }
 
-    if (now_addressable)
-        shadow_set_byte(addr, SHADOW_UNDEFINED);
+    if (now_addressable) {
+        umbra_shadow_memory_info_t info = { 0,};
+        shadow_set_byte(&info, addr, SHADOW_UNDEFINED);
+    }
     instr_free(drcontext, &inst);
     return match;
 }
@@ -2306,10 +2321,11 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
          */
         DOLOG(3, {
             if (options.shadowing) {
+                umbra_shadow_memory_info_t info = { 0};
                 LOG(3, "ignoring unaddr %s by heap routine "PFX" to "PFX
                     " tls=%d shadow=0x%x\n",
                     write ? "write" : "read", loc_to_print(loc), addr,
-                    get_shadow_inheap(), shadow_get_byte(addr));
+                    get_shadow_inheap(), shadow_get_byte(&info, addr));
             } else {
                 LOG(3, "ignoring unaddr %s by heap routine "PFX" to "PFX" \n",
                     write ? "write" : "read", loc_to_print(loc), addr);
@@ -2337,6 +2353,9 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
          addr >= (app_pc)teb->TlsExpansionSlots &&
          addr < (app_pc)teb->TlsExpansionSlots +
          TLS_EXPANSION_BITMAP_SLOTS*sizeof(byte))) {
+#ifdef DEBUG
+        umbra_shadow_memory_info_t info = { 0,};
+#endif
         bool tls_ok = false;
         if (addr >= (app_pc)&teb->TlsSlots[0] && addr < (app_pc)&teb->TlsSlots[64]) {
             uint slot = (addr - (app_pc)&teb->TlsSlots[0]) / sizeof(void*);
@@ -2353,7 +2372,7 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
         }        
         LOG(3, "%s unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
             tls_ok ? "ignoring" : "reporting", write ? "write" : "read",
-            loc_to_print(loc), addr, shadow_get_byte(addr));
+            loc_to_print(loc), addr, shadow_get_byte(&info, addr));
         STATS_INC(tls_exception);
         /* We leave as unaddressable since we're not tracking the unset so we
          * can't safely mark as addressable */

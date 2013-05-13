@@ -554,23 +554,27 @@ DR_EXPORT
 /**
  * Similar to umbra_get_shadow_memory_type, but only check if \p shadow_addr
  * is in a special shared shadow memory block.
+ * \p shadow_type is set to be UMBRA_SHADOW_MEMORY_TYPE_SHARED
+ * (optionally with UMBRA_SHADOW_MEMORY_TYPE_REDZONE also set) if
+ * \p shadow_addr is in any special shared shadow memory block
+ * and UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN otherwise.
+ * If \p shadow_addr is in the redzone of a special shared shadow
+ * memory block, UMBRA_SHADOW_MEMORY_TYPE_REDZONE is also set along with
+ * UMBRA_SHADOW_MEMORY_TYPE_SHARED.
  *
  * @param[in]  map          The mapping object to use.
  * @param[in]  shadow_addr  The shadow memory address.
- * @param[out] shared       Return true if special shared block.
  * @param[out] shadow_type  The type of the shadow memory at \p shadow_addr,
  *                          see #umbra_shadow_memory_type.
  *
  * \note: This is a routine for efficient check if \p shadow_addr is in a
- * special shared shadow memory. It returns UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN
- * if \p shadow_addr is not part of any special shared shadow memory, even
- * \p shadow_addr could be normal writable shadow memory.
+ * special shared shadow memory. UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN is set
+ * even \p shadow_addr could be normal writable shadow memory.
  * 
  */
 drmf_status_t
 umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
                               IN  byte *shadow_addr,
-                              OUT bool *shared,
                               OUT uint *shadow_type);
 
 DR_EXPORT
@@ -582,6 +586,17 @@ DR_EXPORT
  * @param[out] shadow_addr  The shadow memory address for \app_addr.
  * @param[out] shadow_info  The information about the shadow memory for
  *                          \p app_addr.
+ *
+ * \note: \p shadow_info contains the information about the shadow memory block
+ * and its application memory, so the caller can cache the information and 
+ * access the shadow memory later without querying Umbra again.
+ * However, if the shadow memory is a special shared memory block, it may be
+ * replaced with normal shadow memory and the caller will not see it,
+ * and the caller will see the old special value if using cached information.
+ * It is up to the caller to decide whether this is acceptable.
+ *
+ * \note: No redzone will be included in the \p shadow_info.
+ *
  */
 drmf_status_t
 umbra_get_shadow_memory(IN  umbra_map_t *map,

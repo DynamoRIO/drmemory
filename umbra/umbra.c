@@ -382,6 +382,18 @@ umbra_destroy_mapping(IN  umbra_map_t *map)
     return DRMF_SUCCESS;
 }
 
+/* PR 580017: We cannot replace a non-special with a special: more
+ * accurately, we cannot free a non-special b/c we could have a
+ * use-after-free in our own code.  Rather than a fancy delayed deletion
+ * algorithm, or having specials be files that are mmapped at the same
+ * address as non-specials thus supported swapping back and forth w/o
+ * changing the address (which saves pagefile but not address space: so
+ * should do it for 64-bit), we only replace specials with other specials.
+ * This still covers the biggest win for specials, the initial unaddr and
+ * the initial libraries.  Note that we do not want large stack
+ * allocs/deallocs to use specials anyway as the subsequent faults are perf
+ * hits (observed in gcc).
+ */
 DR_EXPORT
 drmf_status_t
 umbra_create_shadow_memory(IN  umbra_map_t *map,
@@ -653,17 +665,15 @@ umbra_get_shadow_memory_type(IN  umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
                               IN  byte *shadow_addr,
-                              OUT bool *shared,
                               OUT uint *shadow_type)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
         return DRMF_ERROR_INVALID_PARAMETER;
     }
-    if (shared == NULL || shadow_type == NULL)
+    if (shadow_type == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
-    return umbra_shadow_memory_is_shared_arch(map, shadow_addr, shared,
-                                              shadow_type);
+    return umbra_shadow_memory_is_shared_arch(map, shadow_addr, shadow_type);
 }
 
 DR_EXPORT

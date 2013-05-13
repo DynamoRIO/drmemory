@@ -862,28 +862,17 @@ umbra_iterate_shadow_memory_arch(umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared_arch(IN  umbra_map_t *map,
                                    IN  byte *shadow_addr,
-                                   OUT bool *shared,
                                    OUT uint *shadow_type)
 {
     bool redzone;
-    if (umbra_address_is_app_memory(shadow_addr)) {
-        *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW;
-        *shared = false;
-        return DRMF_SUCCESS;
-    }
-    if (shadow_table_is_in_default_block(map, shadow_addr, &redzone)) {
-        *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC;
-        if (redzone)
-            *shadow_type |= UMBRA_SHADOW_MEMORY_TYPE_REDZONE;
-        return DRMF_SUCCESS;
-    }    
     if (shadow_table_is_in_special_block(map, shadow_addr,
                                          NULL, NULL, &redzone)) {
         *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_SHARED;
         if (redzone)
             *shadow_type |= UMBRA_SHADOW_MEMORY_TYPE_REDZONE;
         return DRMF_SUCCESS;
-    }
+    } else
+        *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;
     return DRMF_SUCCESS;
 }
 
@@ -893,12 +882,22 @@ umbra_get_shadow_memory_type_arch(umbra_map_t *map,
                                   uint *shadow_type)
 {
     uint i;
+    bool redzone;
     byte *shadow_blk, *shadow_end;
-    bool shared;
 
-    umbra_shadow_memory_is_shared_arch(map, shadow_addr, &shared, shadow_type);
-    if (shared || *shadow_type == UMBRA_SHADOW_MEMORY_TYPE_NOT_SHADOW)
+    umbra_shadow_memory_is_shared_arch(map, shadow_addr, shadow_type);
+    if (shadow_table_is_in_default_block(map, shadow_addr, &redzone)) {
+        *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_SHADOW_NOT_ALLOC;
+        if (redzone)
+            *shadow_type |= UMBRA_SHADOW_MEMORY_TYPE_REDZONE;
         return DRMF_SUCCESS;
+    }
+    if (*shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED)
+        return DRMF_SUCCESS;
+    if (umbra_address_is_app_memory(shadow_addr)) {
+        *shadow_type = UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN;
+        return DRMF_SUCCESS;
+    }
     /* now we have to walk the whole table */
     for (i = 0; i < SHADOW_TABLE_ENTRIES; i++) {
         shadow_blk = shadow_table_get_block(map, i);
@@ -925,7 +924,7 @@ umbra_get_shadow_memory_arch(umbra_map_t *map,
         *shadow_addr = shadow_table_app_to_shadow(map, app_addr);
     if (shadow_info != NULL) {
         shadow_info->app_base = (app_pc)ALIGN_BACKWARD(app_addr,
-                                                    map->app_block_size);
+                                                       map->app_block_size);
         shadow_info->app_size = map->app_block_size;
         shadow_info->shadow_size = map->shadow_block_size;
         shadow_info->shadow_base =

@@ -619,13 +619,15 @@ syscall_thread_exit(void *drcontext)
 static bool
 is_byte_addressable(byte *addr)
 {
-    return shadow_get_byte(addr) != SHADOW_UNADDRESSABLE;
+    umbra_shadow_memory_info_t info = { 0,};
+    return shadow_get_byte(&info, addr) != SHADOW_UNADDRESSABLE;
 }
 
 static bool
 is_byte_defined(byte *addr)
 {
-    return shadow_get_byte(addr) == SHADOW_DEFINED;
+    umbra_shadow_memory_info_t info = { 0,};
+    return shadow_get_byte(&info, addr) == SHADOW_DEFINED;
 }
 
 static bool

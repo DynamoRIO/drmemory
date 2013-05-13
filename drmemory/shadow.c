@@ -24,6 +24,7 @@
 #include "drmemory.h"
 #include "utils.h"
 #include "shadow.h"
+#include "umbra.h"
 #include <limits.h> /* UINT_MAX */
 #include <stddef.h>
 #ifdef TOOL_DR_HEAPSTAT
@@ -38,12 +39,17 @@
  * BITMAP SUPPORT
  */
 
-typedef uint bitmap_t[];
+typedef uint* bitmap_t;
 
 /* 1 bit per byte */
 #define BITMAP_UNIT     32
 #define BITMAP_MASK(i)  (1 << ((i) % BITMAP_UNIT))
 #define BITMAP_IDX(i)  ((i) / BITMAP_UNIT)
+
+/* if a shadow memory type is special shared block, could be redzone */
+#define SHADOW_IS_SHARED(type) TEST(UMBRA_SHADOW_MEMORY_TYPE_SHARED, type)
+/* if a shadow memory type is special shared block, but not redzone */
+#define SHADOW_IS_SHARED_ONLY(type)  (UMBRA_SHADOW_MEMORY_TYPE_SHARED == type)
 
 /* returns non-zero value if bit is set */
 static inline bool
@@ -164,42 +170,24 @@ bytemap_4to1_dword(bitmap_t bm, uint i)
  * MEMORY SHADOWING DATA STRUCTURES
  */
 
-/* We divide the 32-bit address space uniformly into 16-bit units */
-#define SHADOW_SPLIT_BITS 16
-
-/* Holds shadow state for a 64K unit of memory (the basic allocation
- * unit size on Windows)
- */
-#define ALLOC_UNIT (1 << (SHADOW_SPLIT_BITS))
-typedef uint shadow_block_t[BITMAPx2_IDX(ALLOC_UNIT)];
+umbra_map_t *umbra_map;
 
 /* 2 shadow bits per app byte */
+/* we use Umbra's 4B-to-1B and layer 1B-to-2b on top of that */
 #define SHADOW_GRANULARITY 4
+#define SHADOW_MAP_SCALE   UMBRA_MAP_SCALE_DOWN_4X
+#define SHADOW_DEFAULT_VALUE SHADOW_DWORD_UNADDRESSABLE
+#define SHADOW_DEFAULT_VALUE_SIZE 1
+#define SHADOW_REDZONE_VALUE SHADOW_DWORD_BITLEVEL
+#define SHADOW_REDZONE_VALUE_SIZE 1
+#define REDZONE_SIZE 512
 
-/* Shadow state for 4GB address space
- * FIXME: drop top 1GB, or top 2GB if not /3GB, since only user space.
- * We allocate a full table with a slot for every possible 64K unit,
- * so we don't need to store tags, handle resize, or handle hash collisions.
- * Note that this arrangement is hardcoded into the inlined instrumentation
- * routines in fastpath.c.
- */
-#define TABLE_ENTRIES (1 << (32 - (SHADOW_SPLIT_BITS)))
-/* We store the displacement (shadow minus app) from the base to
- * shrink instrumentation size (PR 553724)
- */
-ptr_int_t shadow_table[TABLE_ENTRIES];
-#define TABLE_IDX(addr) (((ptr_uint_t)(addr) & 0xffff0000) >> (SHADOW_SPLIT_BITS))
-#define ADDR_OF_BASE(table_idx) ((ptr_uint_t)(table_idx) << (SHADOW_SPLIT_BITS))
-
-static void *shadow_lock;
-
-/* PR 448701: special blocks for all-identical 64K chunks */
-static shadow_block_t *special_unaddressable;
-static shadow_block_t *special_undefined;
-static shadow_block_t *special_defined;
-static shadow_block_t *special_bitlevel;
-
-#define SHADOW_BLOCK_ALLOC_SZ (sizeof(shadow_block_t) + 2*SHADOW_REDZONE_SIZE)
+#ifndef X64
+static byte *special_unaddressable;
+static byte *special_undefined;
+static byte *special_defined;
+static byte *special_bitlevel;
+#endif
 
 #ifdef STATISTICS
 uint shadow_block_alloc;
@@ -224,92 +212,45 @@ const char * const shadow_name[] = {
     "unknown", /* SHADOW_UNKNOWN */
 };
 
-static inline bool
-block_is_special(shadow_block_t *block)
+static inline uint
+shadow_value_byte_2_dword(uint val)
 {
-    return (block == special_unaddressable ||
-            block == special_undefined ||
-            block == special_defined ||
-            block == special_bitlevel);
-}
-
-static bool
-is_in_special_shadow_block_helper(app_pc pc, shadow_block_t *block)
-{
-    return (pc >= (app_pc) block && pc < (((app_pc)(block)) + sizeof(*block)));
+    if (val == SHADOW_UNADDRESSABLE)
+        return SHADOW_DWORD_UNADDRESSABLE;
+    if (val == SHADOW_UNDEFINED)
+        return SHADOW_DWORD_UNDEFINED;
+    if (val == SHADOW_DEFINED)
+        return SHADOW_DWORD_DEFINED;
+    if (val == SHADOW_DEFINED_BITLEVEL)
+        return SHADOW_DWORD_BITLEVEL;
+    ASSERT(false, "wrong shadow value");
+    return SHADOW_DWORD_UNADDRESSABLE;
 }
 
 bool
 is_in_special_shadow_block(app_pc pc)
 {
-    return (special_unaddressable != NULL &&
-            (is_in_special_shadow_block_helper(pc, special_unaddressable) ||
-             is_in_special_shadow_block_helper(pc, special_undefined) ||
-             is_in_special_shadow_block_helper(pc, special_defined) ||
-             is_in_special_shadow_block_helper(pc, special_bitlevel)));
+    uint shadow_type;
+    if (umbra_shadow_memory_is_shared(umbra_map, pc,
+                                      &shadow_type) != DRMF_SUCCESS)
+        ASSERT(false, "fail to get shadow memory type");
+    /* excluding redzone */
+    return SHADOW_IS_SHARED_ONLY(shadow_type);
 }
 
-static shadow_block_t *
-val_to_special(uint val)
+/* we can call umbra_scale_app_to_shadow, which would be slower */
+static inline ptr_uint_t
+shadow_scale_app_to_shadow(ptr_uint_t value)
 {
-    if (val == SHADOW_UNADDRESSABLE)
-        return special_unaddressable;
-    if (val == SHADOW_UNDEFINED)
-        return special_undefined;
-    if (val == SHADOW_DEFINED)
-        return special_defined;
-    if (val == SHADOW_DEFINED_BITLEVEL)
-        return special_bitlevel;
-    ASSERT(false, "internal shadow val error");
-    return NULL;
-}
-
-static shadow_block_t *
-create_special_block(uint dwordval)
-{
-    IF_DEBUG(bool ok;)
-    shadow_block_t *block = (shadow_block_t *)
-        nonheap_alloc(SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ|DR_MEMPROT_WRITE,
-                      HEAPSTAT_SHADOW);
-    LOG(2, "special %x = "PFX"\n", dwordval, block);
-    /* Set the redzone to bitlevel so we always exit (if unaddr we won't
-     * exit on a push)
-     */
-    memset(block, SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-    memset(((byte*)block) + SHADOW_BLOCK_ALLOC_SZ - SHADOW_REDZONE_SIZE,
-           SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-    block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
-    memset(block, dwordval, sizeof(*block));
-    IF_DEBUG(ok = )
-        dr_memory_protect(block, SHADOW_BLOCK_ALLOC_SZ, DR_MEMPROT_READ);
-    ASSERT(ok, "-w failed: will have inconsistencies in shadow data");
-    return block;
-}
-
-/* FIXME: share w/ staleness.c */
-/* if past init, caller must hold shadow_lock */
-static void
-set_shadow_table(uint idx, shadow_block_t *block)
-{
-    /* We store the displacement (shadow minus app) (PR 553724) */
-    shadow_table[idx] = ((ptr_int_t)block) - (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY);
-    LOG(3, "setting shadow table idx %d for block "PFX" to "PFX"\n",
-        idx, block, shadow_table[idx]);
-}
-
-static shadow_block_t *
-get_shadow_table(uint idx)
-{
-    /* We store the displacement (shadow minus app) (PR 553724) */
-    ASSERT(options.shadowing, "shadowing disabled");
-    return (shadow_block_t *)
-        (shadow_table[idx] + (ADDR_OF_BASE(idx) / SHADOW_GRANULARITY));
+    return (value >> 2);
 }
 
 static void
 shadow_table_init(void)
 {
-    uint i;
+    umbra_map_options_t umbra_map_ops;
+
+    LOG(2, "shadow_table_init\n");
 
     val_to_dword[0] = SHADOW_DWORD_DEFINED;
     val_to_dword[1] = SHADOW_DWORD_UNADDRESSABLE;
@@ -326,183 +267,178 @@ shadow_table_init(void)
     val_to_dqword[2] = SHADOW_DQWORD_BITLEVEL;
     val_to_dqword[3] = SHADOW_DQWORD_UNDEFINED;
 
-    special_unaddressable = create_special_block(SHADOW_DWORD_UNADDRESSABLE);
-    special_undefined = create_special_block(SHADOW_DWORD_UNDEFINED);
-    special_defined = create_special_block(SHADOW_DWORD_DEFINED);
-    special_bitlevel = create_special_block(SHADOW_DWORD_BITLEVEL);
-    for (i = 0; i < TABLE_ENTRIES; i++)
-        set_shadow_table(i, special_unaddressable);
-    shadow_lock = dr_mutex_create();
+    memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
+    umbra_map_ops.flags =
+        UMBRA_MAP_CREATE_SHADOW_ON_TOUCH |
+        UMBRA_MAP_SHADOW_SHARED_READONLY;
+    umbra_map_ops.scale = SHADOW_MAP_SCALE;
+    umbra_map_ops.default_value = SHADOW_DEFAULT_VALUE;
+    umbra_map_ops.default_value_size = SHADOW_DEFAULT_VALUE_SIZE;
+#ifndef X64
+    umbra_map_ops.redzone_size = REDZONE_SIZE;
+    umbra_map_ops.redzone_value = SHADOW_REDZONE_VALUE;
+    umbra_map_ops.redzone_value_size = 1;
+#endif
+    if (umbra_create_mapping(&umbra_map_ops, &umbra_map) != DRMF_SUCCESS)
+        ASSERT(false, "fail to create shadow memory mapping");
+#ifndef X64
+    umbra_create_shared_shadow_block(umbra_map, SHADOW_DWORD_UNADDRESSABLE,
+                                     1, &special_unaddressable);
+    umbra_create_shared_shadow_block(umbra_map, SHADOW_DWORD_UNDEFINED,
+                                     1, &special_undefined);
+    umbra_create_shared_shadow_block(umbra_map, SHADOW_DWORD_DEFINED,
+                                     1, &special_defined);
+    umbra_create_shared_shadow_block(umbra_map, SHADOW_DWORD_BITLEVEL,
+                                     1, &special_bitlevel);
+#endif
 }
 
 static void
 shadow_table_exit(void)
 {
-    uint i;
-    shadow_block_t *block;
-    for (i = 0; i < TABLE_ENTRIES; i++) {
-        block = get_shadow_table(i);
-        if (!block_is_special(block)) {
-            global_free(((byte*)block) - SHADOW_REDZONE_SIZE,
-                        SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-        }
-    }
-    nonheap_free(((byte*)special_unaddressable) - SHADOW_REDZONE_SIZE,
-                 SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-    nonheap_free(((byte*)special_undefined) - SHADOW_REDZONE_SIZE,
-                 SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-    nonheap_free(((byte*)special_defined) - SHADOW_REDZONE_SIZE,
-                 SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-    nonheap_free(((byte*)special_bitlevel) - SHADOW_REDZONE_SIZE,
-                 SHADOW_BLOCK_ALLOC_SZ, HEAPSTAT_SHADOW);
-    dr_mutex_destroy(shadow_lock);
+    LOG(2, "shadow_table_exit\n");
+    if (umbra_destroy_mapping(umbra_map) != DRMF_SUCCESS)
+        ASSERT(false, "fail to destroy shadow memory");
+}
+
+bool
+shadow_create_shadow_memory(app_pc base, size_t size, uint value)
+{
+    uint flags = UMBRA_CREATE_SHADOW_SHARED_READONLY; /* allow special block */
+    if (umbra_create_shadow_memory(umbra_map, flags,
+                                   base, size, value, 1) == DRMF_SUCCESS)
+        return true;
+    return false;
 }
 
 size_t
 get_shadow_block_size(void)
 {
-    return sizeof(shadow_block_t);
+    size_t size;
+    if (umbra_get_shadow_block_size(umbra_map, &size) != DRMF_SUCCESS) {
+        ASSERT(false, "fail to get shadow block size");
+        return PAGE_SIZE;
+    }
+    return size;
 }
 
 bool
 shadow_get_special(app_pc addr, uint *val)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
+    umbra_shadow_memory_info_t info = { 0,};
+    uint value = shadow_get_byte(&info, addr);
     if (val != NULL)
-        *val = shadow_get_byte(addr);
-    return block_is_special(block);
-}
-
-/* Returns false already non-special (can't go back: see below) */
-static bool
-shadow_set_special(app_pc addr, uint val)
-{
-    /* PR 580017: We cannot replace a non-special with a special: more
-     * accurately, we cannot free a non-special b/c we could have a
-     * use-after-free in our own code.  Rather than a fancy delayed deletion
-     * algorithm, or having specials be files that are mmapped at the same
-     * address as non-specials thus supported swapping back and forth w/o
-     * changing the address (which saves pagefile but not address space: so
-     * should do it for 64-bit), we only replace specials with other specials.
-     * This still covers the biggest win for specials, the initial unaddr and
-     * the initial libraries.  Note that we do not want large stack
-     * allocs/deallocs to use specials anyway as the subsequent faults are perf
-     * hits (observed in gcc).
+        *val = value;
+    /* the shadow memory is get from application address, so shadow_type
+     * should has no redzone set.
      */
-    shadow_block_t *block;
-    bool res = false;
-    /* grab lock to synch w/ special-to-non-special transition */
-    dr_mutex_lock(shadow_lock);
-    block = get_shadow_table(TABLE_IDX(addr));
-    if (block_is_special(block)) {
-        set_shadow_table(TABLE_IDX(addr), val_to_special(val));
-        res = true;
-#ifdef STATISTICS
-        if (val == SHADOW_UNADDRESSABLE)
-            STATS_INC(num_special_unaddressable);
-        if (val == SHADOW_UNDEFINED)
-            STATS_INC(num_special_undefined);
-        if (val == SHADOW_DEFINED)
-            STATS_INC(num_special_defined);
-#endif
+    return SHADOW_IS_SHARED_ONLY(info.shadow_type);
+}
+
+/* return the two bits for the byte at the passed-in address */
+/* umbra_shadow_memory_info must be first zeroed out by the caller prior to
+ * calling the first time for any series of calls. It will be filled out
+ * and can be used for a series of calls for better performance.
+ * On the subsequent calls, if the passed in umbra_shadow_memory_info has
+ * the right range, we assume the the shadow memory info is correct and
+ * will access the cached shadow memory directly without querying
+ * Umbra.
+ * However, the info may have stale info as Umbra may replace it, and
+ * the caller must be able to handle or tolerate that situation.
+ */
+/* it also has the racy problem on accessing partial byte, xref i#271 */
+uint
+shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
+{
+    ptr_uint_t idx;
+    if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        if (umbra_get_shadow_memory(umbra_map, addr,
+                                    NULL, info) != DRMF_SUCCESS) {
+            ASSERT(false, "fail to get shadow memory info");
+            return 0;
+        }
     }
-    /* else, leave non-special */
-    dr_mutex_unlock(shadow_lock);
-    return res;
-}
-
-/* Returns the two bits for the byte at the passed-in address */
-uint
-shadow_get_byte(app_pc addr)
-{
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    ptr_uint_t idx = ((ptr_uint_t)addr) % ALLOC_UNIT;
+    idx = addr - info->app_base;
     if (!MAP_4B_TO_1B)
-        return bitmapx2_get(*block, idx);
+        return bitmapx2_get((bitmap_t)info->shadow_base, idx);
     else
-        return bytemap_4to1_byte(*block, idx);
+        return bytemap_4to1_byte((bitmap_t)info->shadow_base, idx);
 }
 
+/* Returns the byte that shadows the 4-byte-aligned address */
+/* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 uint
-shadow_get_dword(app_pc addr)
+shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    ptr_uint_t idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) % ALLOC_UNIT;
+    ptr_uint_t idx;
+    if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        if (umbra_get_shadow_memory(umbra_map, addr,
+                                    NULL, info) != DRMF_SUCCESS) {
+            ASSERT(false, "fail to get shadow memory info");
+            return 0;
+        }
+    }
+    idx = ((ptr_uint_t)ALIGN_BACKWARD(addr, 4)) - (ptr_uint_t)info->app_base;
     if (!MAP_4B_TO_1B)
-        return bitmapx2_byte(*block, idx);
+        return bitmapx2_byte((bitmap_t)info->shadow_base, idx);
     else /* just return byte */
-        return bytemap_4to1_byte(*block, idx);
+        return bytemap_4to1_byte((bitmap_t)info->shadow_base, idx);
 }
 
 /* Sets the two bits for the byte at the passed-in address */
+/* see comment in shadow_get_byte about using umbra_shadow_memory_info_t */
 void
-shadow_set_byte(app_pc addr, uint val)
+shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
     ASSERT(val <= 4, "invalid shadow value");
+    if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        if (umbra_get_shadow_memory(umbra_map, addr,
+                                    NULL, info) != DRMF_SUCCESS) {
+            ASSERT(false, "fail to get shadow memory info");
+        }
+    }
     /* Note that we can come here for SHADOW_SPECIAL_DEFINED, for mmap
      * regions used for calloc (we mark headers as unaddressable), etc.
      */
-    if (block_is_special(block)) {
-        uint blockval = shadow_get_byte(addr);
-        uint dwordval = val_to_dword[blockval];
+    if (info->shadow_type == UMBRA_SHADOW_MEMORY_TYPE_SHARED) {
         /* Avoid replacing special on nop write */
-        if (val == shadow_get_byte(addr)) {
+        if (val == shadow_get_byte(info, addr)) {
             LOG(5, "writing "PFX" => nop (already special %d)\n", addr, val);
             return;
         }
-        /* check again with lock.  we only need synch on the special-to-non-special
-         * transition (we never go the other way).
-         *  can still have races between app access and shadow update,
-         * but if race between thread shadow updates there's a race in the app.
-         */
-        dr_mutex_lock(shadow_lock);
-        block = get_shadow_table(TABLE_IDX(addr));
-        if (block_is_special(block)) {
-            ASSERT(val_to_special(blockval) == block, "internal error");
-            LOG(2, "replacing shadow special "PFX" block for write @"PFX" %d\n",
-                block, addr, val);
-            block = (shadow_block_t *) global_alloc(SHADOW_BLOCK_ALLOC_SZ,
-                                                    HEAPSTAT_SHADOW);
-            ASSERT(block != NULL, "internal error");
-            /* Set the redzone to bitlevel so we always exit (if unaddr we won't
-             * exit on a push)
-             */
-            memset(block, SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-            memset(((byte*)block) + SHADOW_BLOCK_ALLOC_SZ - SHADOW_REDZONE_SIZE,
-                   SHADOW_DWORD_BITLEVEL, SHADOW_REDZONE_SIZE);
-            block = (shadow_block_t *) (((byte*)block) + SHADOW_REDZONE_SIZE);
-            ASSERT(ALIGNED(block, 4), "esp fastpath assumes block aligned to 4");
-            STATS_INC(shadow_block_alloc);
-            memset(block, dwordval, sizeof(*block));
-            set_shadow_table(TABLE_IDX(addr), block);
-        }
-        dr_mutex_unlock(shadow_lock);
+        /* it is special shared shadow memory, recreate normal shadow memory */
+        if (umbra_create_shadow_memory(umbra_map, 0,
+                                       info->app_base, info->app_size,
+                                       (ptr_uint_t)*(info->shadow_base),
+                                       1) != DRMF_SUCCESS)
+            ASSERT(false, "fail to create shadow memory");
+        if (umbra_get_shadow_memory(umbra_map, addr,
+                                    NULL, info) != DRMF_SUCCESS)
+            ASSERT(false, "fail to get shadow memory info");
     }
-    LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
-    if (!MAP_4B_TO_1B)
-        bitmapx2_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
-    else
-        bytemap_4to1_set(*block, ((ptr_uint_t)addr) % ALLOC_UNIT, val);
+    LOG(5, "writing "PFX" ("PIFX") => %d\n", addr, addr - info->app_base, val);
+    if (!MAP_4B_TO_1B) {
+        bitmapx2_set((bitmap_t)info->shadow_base,
+                     addr - info->app_base,
+                     val);
+    } else {
+        bytemap_4to1_set((bitmap_t)info->shadow_base,
+                         addr - info->app_base,
+                         val);
+    }
 }
 
 byte *
 shadow_translation_addr(app_pc addr)
 {
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    size_t mod = ((ptr_uint_t)addr) % ALLOC_UNIT;
-    return ((byte *)(*block)) + BLOCK_AS_BYTE_ARRAY_IDX(mod);
-}
-
-byte *
-shadow_translation_addr_using_offset(app_pc addr, byte *target)
-{
-    shadow_block_t *block = get_shadow_table(TABLE_IDX(addr));
-    LOG(2, "for addr="PFX" target="PFX" => block "PFX" offs "PFX"\n",
-        addr, target, block,
-        (((ptr_uint_t)target) & ((ALLOC_UNIT -1) * sizeof(uint) / BITMAPx2_UNIT)));
-    return ((byte *)(*block)) +
-        (((ptr_uint_t)target) & ((ALLOC_UNIT -1) * sizeof(uint) / BITMAPx2_UNIT));
+    umbra_shadow_memory_info_t info;
+    byte *shadow_addr;
+    if (umbra_get_shadow_memory(umbra_map, addr,
+                                &shadow_addr, &info) != DRMF_SUCCESS) {
+        ASSERT(false, "fail to get shadow memory");
+        return NULL;
+    }
+    return shadow_addr;
 }
 
 /* Returns a pointer to an always-bitlevel shadow block */
@@ -510,64 +446,70 @@ byte *
 shadow_bitlevel_addr(void)
 {
     /* For PR 493257 we need this pointer to have redzone bitlevel on both sides */
-    return (byte *) special_bitlevel + SHADOW_REDZONE_SIZE;
+#ifdef X64
+    return NULL;
+#else
+    return special_bitlevel + SHADOW_REDZONE_SIZE;
+#endif
 }
 
 byte *
 shadow_replace_special(app_pc addr)
 {
-    shadow_block_t *block;
-    size_t mod = ((ptr_uint_t)addr) % ALLOC_UNIT;
-    uint val = shadow_get_byte(addr);
-    /* kind of a hack to get shadow_set_byte to replace, since it won't re-instate */
-    shadow_set_byte(addr, (val == SHADOW_DEFINED) ? SHADOW_UNDEFINED : SHADOW_DEFINED);
-    shadow_set_byte(addr, val);
-    block = get_shadow_table(TABLE_IDX(addr));
-    return ((byte *)(*block)) + BLOCK_AS_BYTE_ARRAY_IDX(mod);
+    byte *shadow_addr;
+    if (umbra_replace_shared_shadow_memory(umbra_map, addr,
+                                           &shadow_addr) != DRMF_SUCCESS) {
+        ASSERT(false, "fail to replace special shadow memory");
+        return NULL;
+    }
+    return shadow_addr;
 }
 
 /* Sets the two bits for each byte in the range [start, end) */
 void
 shadow_set_range(app_pc start, app_pc end, uint val)
 {
-    app_pc pc = start;
+    umbra_shadow_memory_info_t info = { 0,};
+    app_pc aligned_start, aligned_end;
+    app_pc pc;
+    size_t shadow_size;
     ASSERT(options.shadowing, "shadowing disabled");
     ASSERT(val <= 4, "invalid shadow value");
     LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
     DOLOG(2, {
         if (end - start > 0x10000000)
-            LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n", start, end);
+            LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n",
+                start, end);
     });
-    while (pc < end) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        bool is_special = block_is_special(block);
-        if (is_special && ALIGNED(pc, ALLOC_UNIT) && (end - pc) >= ALLOC_UNIT) {
-            if (shadow_set_special(pc, val))
-                pc += ALLOC_UNIT;
-            else {
-                /* a race and special was replaced w/ non-special: so re-do */
-                ASSERT(!shadow_get_special(pc, NULL), "non-special never reverts");
-            }
-        } else {
-            if (!is_special && ALIGNED(pc, SHADOW_GRANULARITY)) {
-                app_pc block_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
-                if (!POINTER_OVERFLOW_ON_ADD(pc, ALLOC_UNIT)) {
-                    app_pc set_end = (block_end < end ? block_end : end);
-                    set_end = (app_pc) ALIGN_BACKWARD(set_end, SHADOW_GRANULARITY);
-                    if (set_end > pc) {
-                        uint *array_start =
-                            &(*block)[BITMAPx2_IDX(((ptr_uint_t)pc) % ALLOC_UNIT)];
-                        byte *memset_start = ((byte *)array_start) +
-                            (((ptr_uint_t)pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
-                        memset(memset_start, val_to_dword[val],
-                               (set_end - pc) / SHADOW_GRANULARITY);
-                        LOG(3, "\tmemset "PFX"-"PFX"\n", pc, set_end);
-                        pc = set_end;
-                        continue;
-                    }
-                }
-            }
-            shadow_set_byte(pc, val);
+    if (start >= end)
+        return;
+    /* for case like [0x1001, 0x1003]: align_start=0x1004, align_end=0x1000 */
+    aligned_start = (app_pc)ALIGN_FORWARD(start, SHADOW_GRANULARITY);
+    aligned_end   = (app_pc)ALIGN_BACKWARD(end, SHADOW_GRANULARITY);
+    /* set unaligned start */
+    pc = start;
+    while (pc < aligned_start && pc < end) {
+        shadow_set_byte(&info, pc, val);
+        LOG(4, "\tset byte "PFX"\n", pc);
+        if (POINTER_OVERFLOW_ON_ADD(pc, 1))
+            break;
+        pc++;
+    }
+    /* set aligned byte */
+    if (aligned_end > aligned_start &&
+        umbra_shadow_set_range(umbra_map,
+                               aligned_start,
+                               aligned_end-aligned_start,
+                               &shadow_size,
+                               shadow_value_byte_2_dword(val),
+                               1) != DRMF_SUCCESS) {
+        ASSERT(false, "fail to set shadow memory");
+    }
+    /* set unaligned end */
+    if (aligned_end >= aligned_start) {
+        pc = aligned_end;
+        while (pc < end) {
+            shadow_set_byte(&info, pc, val);
             LOG(4, "\tset byte "PFX"\n", pc);
             if (POINTER_OVERFLOW_ON_ADD(pc, 1))
                 break;
@@ -582,77 +524,63 @@ shadow_set_range(app_pc start, app_pc end, uint val)
 void
 shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 {
-    app_pc pc = old_start;
-    app_pc new_pc, old_end = old_start + size, new_end = new_start + size;
-    uint val;
+    size_t shdw_size;
+    app_pc old_pc, new_pc, old_end;
+    umbra_shadow_memory_info_t info_src = { 0,};
+    umbra_shadow_memory_info_t info_dst = { 0,};
+    uint head_val[SHADOW_GRANULARITY], tail_val[SHADOW_GRANULARITY];
+    uint head_bit, tail_bit, i;
+
     LOG(2, "copy range "PFX"-"PFX" to "PFX"-"PFX"\n",
-         old_start, old_end, new_start, new_end);
-    /* We don't check what the current value of the destination is b/c
-     * it could be anything: realloc can shrink, grow, overlap, etc.
+         old_start, old_start+size, new_start, new_start+size);
+    head_bit = (ptr_uint_t)old_start % SHADOW_GRANULARITY;
+    /* special case like shadow_copy_range(0x1003, 0x1001, 100),
+     * cannot be handled using shadow_set_byte(.. shadow_get_byte) or copy.
      */
-    while (pc < old_end) {
-        shadow_block_t *block_src;
-        shadow_block_t *block_dst;
-        bool is_special_src;
-        bool is_special_dst;
-        new_pc = (pc - old_start) + new_start;
-        block_src = get_shadow_table(TABLE_IDX(pc));
-        block_dst = get_shadow_table(TABLE_IDX(new_pc));
-        is_special_src = block_is_special(block_src);
-        is_special_dst = block_is_special(block_dst);
-        if (ALIGNED(pc, ALLOC_UNIT) && ALIGNED(new_pc, ALLOC_UNIT) &&
-            (old_start + size - pc) >= ALLOC_UNIT &&
-            is_special_dst &&
-            shadow_get_special(pc, &val)) {
-            if (shadow_set_special(new_pc, val))
-                pc += ALLOC_UNIT;
-            else {
-                /* a race and special was replaced w/ non-special: so re-do */
-                ASSERT(!shadow_get_special(new_pc, NULL), "non-special never reverts");
-            }
-        } else {
-            if (old_end - pc >= 8 && /* not worth it for just 4 */
-                !is_special_src && !is_special_dst &&
-                ALIGNED(pc, SHADOW_GRANULARITY) &&
-                ALIGNED(new_pc, SHADOW_GRANULARITY)) {
-                app_pc block_src_end = (app_pc) ALIGN_FORWARD(pc + 1, ALLOC_UNIT);
-                app_pc block_dst_end = (app_pc) ALIGN_FORWARD(new_pc + 1, ALLOC_UNIT);
-                if (!POINTER_OVERFLOW_ON_ADD(pc, ALLOC_UNIT) &&
-                    !POINTER_OVERFLOW_ON_ADD(new_pc, ALLOC_UNIT)) {
-                    app_pc src_end = block_src_end < old_end ? block_src_end : old_end;
-                    app_pc dst_end = block_dst_end < new_end ? block_dst_end : new_end;
-                    src_end = (app_pc) ALIGN_BACKWARD(src_end, SHADOW_GRANULARITY);
-                    dst_end = (app_pc) ALIGN_BACKWARD(dst_end, SHADOW_GRANULARITY);
-                    if (src_end > pc && dst_end > new_pc) {
-                        uint *array_start = &(*block_src)
-                            [BITMAPx2_IDX(((ptr_uint_t)pc) % ALLOC_UNIT)];
-                        byte *memcpy_dst;
-                        byte *memcpy_src = ((byte *)array_start) +
-                            (((ptr_uint_t)pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
-                        size_t sz = MIN(src_end - pc, dst_end - new_pc) /
-                            SHADOW_GRANULARITY;
-                        array_start = &(*block_dst)
-                            [BITMAPx2_IDX(((ptr_uint_t)new_pc) % ALLOC_UNIT)];
-                        memcpy_dst = ((byte *)array_start) +
-                            (((ptr_uint_t)new_pc) % BITMAPx2_UNIT) / SHADOW_GRANULARITY;
-                        /* We could have an overlap so we use memmove */
-                        LOG(3, "\tmemmove "PFX" => "PFX" size="PIFX"\n",
-                            memcpy_src, memcpy_dst, sz);
-                        memmove(memcpy_dst, memcpy_src, sz);
-                        pc += sz;
-                        continue;
-                    }
-                }
-            }
-            shadow_set_byte(new_pc, shadow_get_byte(pc));
-            pc++;
-        }
+    ASSERT(head_bit == ((ptr_uint_t)new_start % SHADOW_GRANULARITY),
+           "miss aligned app address");
+    old_end  = old_start + size;
+    tail_bit = (ptr_uint_t)old_end % SHADOW_GRANULARITY;
+    /* It is 1B-2-2b mapping and umbra only support full byte copy, so we have
+     * to handle the unaligned byte copy.
+     */
+    /* XXX: maybe umbra should support partial byte update and the code can be
+     * moved into umbra.
+     */
+    if (head_bit != 0) {
+        for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
+            head_val[i+head_bit] = shadow_get_byte(&info_src, old_start+i);
+    }
+    if (tail_bit != 0) {
+        old_end = (app_pc)ALIGN_BACKWARD(old_end, SHADOW_GRANULARITY);
+        for (i = 0; i < tail_bit; i++)
+            tail_val[i] = shadow_get_byte(&info_src, old_end+i);
+    }
+    old_pc  = (app_pc)ALIGN_FORWARD(old_start, SHADOW_GRANULARITY);
+    if (old_end > old_pc) {
+        size_t copy_size = old_end - old_pc;
+        new_pc = (app_pc)ALIGN_FORWARD(new_start, SHADOW_GRANULARITY);
+        if (umbra_shadow_copy_range(umbra_map, old_pc, new_pc, copy_size,
+                                    &shdw_size) != DRMF_SUCCESS ||
+            shdw_size != shadow_scale_app_to_shadow(copy_size))
+            ASSERT(false, "fale to copy shadow memory");
+    }
+    if (head_bit != 0) {
+        for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
+            shadow_set_byte(&info_dst, new_start+i, head_val[i+head_bit]);
+    }
+    if (tail_bit != 0) {
+        app_pc new_end = 
+            (app_pc)ALIGN_BACKWARD(new_start + size, SHADOW_GRANULARITY);
+        for (i = 0; i < tail_bit; i++)
+            shadow_set_byte(&info_dst, new_end+i, tail_val[i]);
     }
 }
 
 void
 shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not)
 {
+    umbra_shadow_memory_info_t info = { 0,};
     app_pc end = start + size;
     app_pc cur;
 
@@ -663,9 +591,9 @@ shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not)
      * go byte by byte.
      */
     for (cur = start; cur != end; cur++) {
-        uint shadow = shadow_get_byte(cur);
+        uint shadow = shadow_get_byte(&info, cur);
         if (shadow != val_not) {
-            shadow_set_byte(cur, val);
+            shadow_set_byte(&info, cur, val);
         }
     }
 }
@@ -706,6 +634,7 @@ bool
 shadow_check_range(app_pc start, size_t size, uint expect,
                    app_pc *bad_start, app_pc *bad_end, uint *bad_state)
 {
+    umbra_shadow_memory_info_t info = { 0,};
     app_pc pc = start;
     uint val;
     uint bad_val = 0;
@@ -714,18 +643,17 @@ shadow_check_range(app_pc start, size_t size, uint expect,
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(start+size > start, "invalid param");
     while (pc < start+size) {
+        val = shadow_get_byte(&info, pc);
         if (!ALIGNED(pc, 16)) {
-            val = shadow_get_byte(pc);
             incr = 1;
-        } else if (shadow_get_special(pc, &val)) {
-            incr = ALLOC_UNIT - (pc - (app_pc)ALIGN_BACKWARD(pc, ALLOC_UNIT));
+        } else if (SHADOW_IS_SHARED_ONLY(info.shadow_type)) {
+            incr = info.app_base + info.app_size - pc;
         } else {
-            shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-            val = bitmapx2_dword(*block, ((ptr_uint_t)pc) % ALLOC_UNIT);
+            val = bitmapx2_dword((bitmap_t)info.shadow_base, pc-info.app_base);
             val = dqword_to_val(val);
             if (val == UINT_MAX) {
                 /* mixed: have to drop to per-byte */
-                val = shadow_get_byte(pc);
+                val = shadow_get_byte(&info, pc);
                 incr = 1;
             } else /* all identical */
                 incr = 16;
@@ -762,8 +690,10 @@ shadow_check_range(app_pc start, size_t size, uint expect,
  * all the features of the forward version.
  */
 bool
-shadow_check_range_backward(app_pc start, size_t size, uint expect, app_pc *bad_addr)
+shadow_check_range_backward(app_pc start, size_t size, uint expect,
+                            app_pc *bad_addr)
 {
+    umbra_shadow_memory_info_t info = { 0,};
     app_pc pc = start;
     uint val;
     bool res = true;
@@ -773,7 +703,7 @@ shadow_check_range_backward(app_pc start, size_t size, uint expect, app_pc *bad_
         /* For simplicity and since performance is not critical for current
          * callers, walking one byte at a time
          */
-        val = shadow_get_byte(pc);
+        val = shadow_get_byte(&info, pc);
         if (val != expect) {
             res = false;
             if (bad_addr != NULL)
@@ -791,39 +721,18 @@ shadow_check_range_backward(app_pc start, size_t size, uint expect, app_pc *bad_
 app_pc
 shadow_next_dword(app_pc start, app_pc end, uint expect)
 {
-    app_pc pc = start;
-    size_t incr;
+    bool found;
+    app_pc app_addr = start;
     uint expect_dword = val_to_dword[expect];
-    ASSERT(expect <= 4, "invalid shadow value");
-    ASSERT(ALIGNED(start, 4), "invalid start pc");
-    while (pc < end) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
-        LOG(5, "shadow_next_dword: checking "PFX"\n", pc);
-        if (block_is_special(block)) {
-            uint blockval = shadow_get_byte(pc);
-            uint dwordval = val_to_dword[blockval];
-            if (dwordval == expect_dword)
-                return pc;
-        } else {
-            byte *base = (byte *)(*block);
-            size_t mod = ((ptr_uint_t)pc) % ALLOC_UNIT;
-            byte *start_shadow = base + BLOCK_AS_BYTE_ARRAY_IDX(mod);
-            byte *shadow = start_shadow;
-            while (shadow < base + sizeof(*block) && *shadow != expect_dword)
-                shadow++;
-            if (shadow < base + sizeof(*block)) {
-                pc = pc + ((shadow - start_shadow)*4);
-                if (pc < end)
-                    return pc;
-                else
-                    return NULL;
-            }
-        }
-        incr = ALLOC_UNIT - (pc - (app_pc)ALIGN_BACKWARD(pc, ALLOC_UNIT));
-        if (POINTER_OVERFLOW_ON_ADD(pc, incr))
-            break;
-        pc += incr;
-    }
+
+    if (umbra_value_in_shadow_memory(umbra_map,
+                                     (app_pc *)&app_addr,
+                                     end - app_addr,
+                                     expect_dword, 1,
+                                     &found) != DRMF_SUCCESS)
+        ASSERT(false, "fail to check value in shadow mmeory");
+    if (found)
+        return app_addr;
     return NULL;
 }
 
@@ -833,23 +742,23 @@ shadow_next_dword(app_pc start, app_pc end, uint expect)
 app_pc
 shadow_prev_dword(app_pc start, app_pc end, uint expect)
 {
+    umbra_shadow_memory_info_t info = { 0,};
     app_pc pc = start;
-    size_t incr;
     uint expect_dword = val_to_dword[expect];
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(ALIGNED(start, 4), "invalid start pc");
     ASSERT(end < start, "invalid end pc");
+
     while (pc > end) {
-        shadow_block_t *block = get_shadow_table(TABLE_IDX(pc));
+        uint blockval = shadow_get_byte(&info, pc);
         LOG(5, "shadow_prev_dword: checking "PFX"\n", pc);
-        if (block_is_special(block)) {
-            uint blockval = shadow_get_byte(pc);
+        if (SHADOW_IS_SHARED_ONLY(info.shadow_type)) {
             uint dwordval = val_to_dword[blockval];
             if (dwordval == expect_dword)
                 return pc;
         } else {
-            byte *base = (byte *)(*block);
-            size_t mod = ((ptr_uint_t)pc) % ALLOC_UNIT;
+            byte *base = info.shadow_base;
+            size_t mod = pc - info.app_base;
             byte *start_shadow = base + BLOCK_AS_BYTE_ARRAY_IDX(mod);
             byte *shadow = start_shadow;
             while (shadow >= base && *shadow != expect_dword)
@@ -862,12 +771,9 @@ shadow_prev_dword(app_pc start, app_pc end, uint expect)
                     return NULL;
             }
         }
-        incr = (pc - (app_pc)ALIGN_BACKWARD(pc-1, ALLOC_UNIT));
-        if (POINTER_UNDERFLOW_ON_SUB(pc, incr))
-            if (pc - incr < pc)
-            break;
-        ASSERT(incr > 0, "infinite loop");
-        pc -= incr;
+        ASSERT(!POINTER_UNDERFLOW_ON_SUB(info.app_base, 1),
+               "application address underflow");
+        pc = info.app_base - 1;
     }
     return NULL;
 }
@@ -885,32 +791,13 @@ void
 shadow_gen_translation_addr(void *drcontext, instrlist_t *bb, instr_t *inst,
                             reg_id_t addr_reg, reg_id_t scratch_reg)
 {
-    uint disp;
-    /* Shadow table stores displacement so we want copy of whole addr */
-    PRE(bb, inst, INSTR_CREATE_mov_ld
-        (drcontext, opnd_create_reg(scratch_reg), opnd_create_reg(addr_reg)));
-    /* Get top 16 bits into lower half.  We'll do x4 in a scale later, which
-     * saves us from having to clear the lower bits here via OP_and or sthg (PR
-     * 553724).
-     */
-    PRE(bb, inst, INSTR_CREATE_shr
-        (drcontext, opnd_create_reg(scratch_reg), OPND_CREATE_INT8(16)));
-
-    /* Instead of finding the uint array index we go straight to the single
-     * byte (or 2 bytes) that shadows this <4-byte (or 8-byte) read, since aligned.
-     * If sub-dword but not aligned we go ahead and get shadow byte for
-     * containing dword.
-     */
-    PRE(bb, inst, INSTR_CREATE_shr
-        (drcontext, opnd_create_reg(addr_reg), OPND_CREATE_INT8(2)));
-
-    /* Index into table: no collisions and no tag storage since full size */
-    /* Storing displacement, so add table result to app addr */
-    ASSERT_TRUNCATE(disp, uint, (ptr_uint_t)shadow_table);
-    disp = (uint)(ptr_uint_t)shadow_table;
-    PRE(bb, inst, INSTR_CREATE_add
-        (drcontext, opnd_create_reg(addr_reg), opnd_create_base_disp
-         (REG_NULL, scratch_reg, 4, disp, OPSZ_PTR)));
+#ifdef DEBUG
+    int num_regs;
+#endif
+    ASSERT(umbra_num_scratch_regs_for_translation(&num_regs) == DRMF_SUCCESS &&
+           num_regs <= 1, "not enough scratch registers");
+    umbra_insert_app_to_shadow(drcontext, umbra_map, bb, inst, addr_reg,
+                               &scratch_reg, 1);
 }
 
 /***************************************************************************

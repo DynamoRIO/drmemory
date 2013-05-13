@@ -192,7 +192,6 @@ umbra_get_shadow_memory_arch(umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared_arch(umbra_map_t *map,
                                    byte *shadow_addr,
-                                   bool *shared,
                                    uint *shadow_type);
 
 drmf_status_t
