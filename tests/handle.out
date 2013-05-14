@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -22,5 +22,6 @@
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total GDI usage error(s)
-~~Dr.M~~      22 unique,    22 total handle leak(s)
+# The exact number varies quite a bit by platform.
+#~~Dr.M~~      22 unique,    22 total handle leak(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
