@@ -297,6 +297,8 @@ typedef struct _arena_header_t {
 # define ARENA_PRE_US_MAPPED   0x100  /* unused by Windows */
 /* another non-Heap flag to identify libc-default Heaps (i#939) */
 # define ARENA_LIBC_DEFAULT HEAP_REALLOC_IN_PLACE_ONLY /* 0x10 */
+/* identify whether a static libc heap is the process heap (i#1223) */
+# define ARENA_LIBC_SPECULATIVE  0x200  /* unused by Windows */
 /* flags that we support being passed to HeapCreate:
  * HEAP_CREATE_ENABLE_EXECUTE | HEAP_GENERATE_EXCEPTIONS | HEAP_NO_SERIALIZE |
  * HEAP_GROWABLE
@@ -356,6 +358,9 @@ static bool process_initialized;
 
 #ifdef WINDOWS
 static app_pc executable_base;
+
+static arena_header_t *
+check_libc_vs_process_heap(alloc_routine_entry_t *e, arena_header_t *arena);
 #endif
 
 /* Flags controlling allocation behavior */
@@ -1901,6 +1906,7 @@ replace_size_common(arena_header_t *arena, byte *ptr, alloc_flags_t flags,
 {
     chunk_header_t *head = header_from_ptr(ptr);
     size_t res;
+    LOG(2, "%s: "PFX", flags 0x%x, arena "PFX"\n", __FUNCTION__, ptr, flags, arena);
     arena_lock(drcontext, arena, TEST(ALLOC_SYNCHRONIZE, flags));
     if (!is_live_alloc(ptr, arena, head)) {
         /* w/o early inject, or w/ delayed instru, there are allocs in place
@@ -2210,6 +2216,11 @@ arena_for_libc_alloc(void *drcontext)
     ASSERT(arena != NULL &&
            (arena == cur_arena || TEST(ARENA_LIBC_DEFAULT, arena->flags)),
            "invalid per-set arena");
+    if (TEST(ARENA_LIBC_SPECULATIVE, arena->flags)) {
+        arena->flags &= ~ARENA_LIBC_SPECULATIVE;
+        if (arena != cur_arena)
+            arena = check_libc_vs_process_heap(e, arena);
+    }
     return arena;
 #else
     /* we assume that pre-us (which doesn't use cur_arena) is checked by caller */
@@ -2630,6 +2641,77 @@ pre_existing_heap_init(HANDLE heap)
         arena->flags |= HEAP_GROWABLE;
 }
 
+static HANDLE
+libc_heap_handle(const module_data_t *mod)
+{
+    HANDLE pre_us_heap = NULL;
+    ptr_uint_t (*get_heap)(void) = (ptr_uint_t (*)(void))
+        dr_get_proc_address(mod->handle, "_get_heap_handle");
+    LOG(3, "%s: for "PFX" func is "PFX"\n", __FUNCTION__, mod->start, get_heap);
+    if (get_heap != NULL) {
+        void *drcontext = dr_get_current_drcontext();
+        DR_TRY_EXCEPT(drcontext, {
+            pre_us_heap = (HANDLE) (*get_heap)();
+        }, { /* EXCEPT */
+        });
+    } else {
+        /* For static libc, we don't want to call _get_heap_handle(), as it
+         * asserts if the heap is not initialized yet.  Since we need syms to find
+         * it anyway, we just go straight for _crtheap.
+         */
+        byte *addr = lookup_internal_symbol(mod, "_crtheap");
+        if (addr != NULL) {
+            if (!safe_read(addr, sizeof(pre_us_heap), &pre_us_heap))
+                pre_us_heap = NULL;
+            LOG(3, "%s: _crtheap @"PFX" => "PFX"\n", __FUNCTION__, addr, pre_us_heap);
+            if (op_use_symcache)
+                symcache_add(mod, "_crtheap", addr - mod->start);
+        }
+    }
+    return pre_us_heap;
+}
+
+static arena_header_t *
+check_libc_vs_process_heap(alloc_routine_entry_t *e, arena_header_t *arena)
+{
+    /* On first use, we must check whether the arena we created prior
+     * to the module initializing its _crtheap should in fact exist,
+     * or whether the module is using ProcessHeap as its libc heap
+     * (happens on VS2012: i#1223).
+     */
+    HANDLE pre_us_heap;
+    app_pc modbase = alloc_routine_get_module_base(e);
+    module_data_t *mod = dr_lookup_module(modbase);
+    ASSERT(mod != NULL, "libc set must have module");
+    pre_us_heap = libc_heap_handle(mod);
+    dr_free_module_data(mod);
+    LOG(2, "%s: modbase "PFX" arena "PFX" heap "PFX"\n", __FUNCTION__,
+        modbase, arena, pre_us_heap);
+    if (pre_us_heap == process_heap) {
+        /* win8 libc uses process heap (i#1223) */
+        bool success = alloc_routine_set_update_user_data
+            (arena->alloc_set_member, cur_arena);
+        LOG(2, "replacing arena for modbase "PFX" w/ default arena for set "PFX"\n",
+            modbase, arena->alloc_set_member);
+        ASSERT(arena->next_chunk == arena->start_chunk && arena->next_arena == NULL,
+               "arena should be unused");
+        ASSERT(success, "failed to update set arena");
+        IF_DEBUG(success =)
+            heap_region_remove((byte *)arena, arena->reserve_end, NULL);
+        ASSERT(success, "missing heap region for default Heap");
+        IF_DEBUG(success =)
+            hashtable_remove(&crtheap_mod_table, (void *)arena->modbase);
+        ASSERT(success, "inconsistent default Heap");
+        arena_free(arena);
+        return cur_arena;
+    } else {
+        ASSERT(pre_us_heap == NULL /* lib w/ just cpp stubs, using msvcr*.dll */ ||
+               hashtable_lookup(&crtheap_handle_table, (void *)pre_us_heap) != NULL,
+               "failed to find pre-us heap");
+        return arena;
+    }
+}
+
 static inline void
 report_invalid_heap(HANDLE heap, dr_mcontext_t *mc, app_pc caller)
 {
@@ -2660,9 +2742,13 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     for (i = 0; i < scs.num_frames; i++)
         LOG(2, "  #%d = %s\n", i, symbolized_callstack_frame_modname(&scs, i));
     i = 0;
+    /* Sometimes the replace_RtlCreateHeap still ends up on the stack */
+    if (text_matches_pattern(symbolized_callstack_frame_modname(&scs, i),
+                             DRMEMORY_LIBNAME, FILESYS_CASELESS))
+        i++;
     if (scs.num_frames >= 4 &&
         text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
-                             "kernel*.dll", true/*ignore case*/)) {
+                             "kernel*.dll", FILESYS_CASELESS)) {
         bool crt_init;
         IF_DEBUG(const char *modname = symbolized_callstack_frame_modname(&scs, i);)
         modbase = symbolized_callstack_frame_modbase(&scs, i++);
@@ -2679,9 +2765,9 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
                 i++;
             if (i < scs.num_frames - 1 &&
                 text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
-                                     "ntdll.dll", true/*ignore case*/) &&
+                                     "ntdll.dll", FILESYS_CASELESS) &&
                 text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
-                                     "ntdll.dll", true/*ignore case*/)) {
+                                     "ntdll.dll", FILESYS_CASELESS)) {
                 crt_init = true;
             }
         }
@@ -3395,15 +3481,7 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
          * any (i#959).
          */
         if (!process_initialized) {
-            ptr_uint_t (*get_heap)(void) = (ptr_uint_t (*)(void))
-                dr_get_proc_address(mod->handle, "_get_heap_handle");
-            if (get_heap != NULL) {
-                void *drcontext = dr_get_current_drcontext();
-                DR_TRY_EXCEPT(drcontext, {
-                    pre_us_heap = (HANDLE) (*get_heap)();
-                }, { /* EXCEPT */
-                });
-            }
+            pre_us_heap = libc_heap_handle(mod);
             LOG(2, "pre-existing Heap for libc set type=%d module=%s is "PFX"\n",
                 type, (dr_module_preferred_name(mod) == NULL) ? "<null>" :
                 dr_module_preferred_name(mod), pre_us_heap);
@@ -3431,6 +3509,11 @@ malloc_replace__set_init(heapset_type_t type, app_pc pc, const module_data_t *mo
         LOG(2, "new default Heap for libc set type=%d @"PFX" modbase="PFX" is "PFX"\n",
             type, pc, mod->start, arena);
         arena->flags |= ARENA_LIBC_DEFAULT;
+        /* Mark as speculative: for VS2012+, libc uses ProcessHeap, so we never
+         * see RtlCreateHeap and we must instead wait for the 1st malloc set use
+         * to see whether we want this separate arena.
+         */
+        arena->flags |= ARENA_LIBC_SPECULATIVE;
         arena->alloc_set_member = pc;
         IF_DEBUG(unique =)
             hashtable_add(&crtheap_mod_table, (void *)mod->start, (void *)arena);

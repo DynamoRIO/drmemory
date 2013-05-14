@@ -757,6 +757,13 @@ alloc_routine_set_update_user_data(app_pc member_func, void *new_data)
     return res;
 }
 
+app_pc
+alloc_routine_get_module_base(alloc_routine_entry_t *e)
+{
+    ASSERT(e != NULL, "invalid param");
+    return e->set->modbase;
+}
+
 static void
 update_set_libc(alloc_routine_set_t *set_libc, alloc_routine_set_t *new_val,
                 alloc_routine_set_t *old_val, bool clear_list)

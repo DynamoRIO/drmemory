@@ -513,11 +513,14 @@ if (TOOL_DR_MEMORY)
 
   # -replace_malloc is now the default, so test wrapping
   newtest_nobuild(wrap_malloc malloc "" "-no_replace_malloc" "" OFF "malloc")
-  if (cs2bug_flags STREQUAL "")
-    newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
-  else ()
-    # -no_replace_malloc raises unrecoverable heap errors (i#1161)
-    newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
+  if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+    # this test crashes on win8 so we only run it on older Windows
+    if (cs2bug_flags STREQUAL "")
+      newtest_nobuild(wrap_cs2bug cs2bug "" "-no_replace_malloc" "" OFF "cs2bug")
+    else ()
+      # -no_replace_malloc raises unrecoverable heap errors (i#1161)
+      newtest_ex(wrap_cs2bug cs2bug.cpp "" "-no_replace_malloc" "" OFF ${cs2bug_res} OFF)
+    endif ()
   endif ()
   newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
     "" OFF "operators" OFF)

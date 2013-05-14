@@ -341,6 +341,9 @@ alloc_routine_set_get_user_data(alloc_routine_entry_t *e);
 bool
 alloc_routine_set_update_user_data(app_pc member_func, void *new_data);
 
+app_pc
+alloc_routine_get_module_base(alloc_routine_entry_t *e);
+
 /***************************************************************************
  * Large malloc tree
  */
