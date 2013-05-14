@@ -139,6 +139,14 @@ is_using_sysint(void)
     return (syscall_gateway == SYSCALL_GATEWAY_INT);
 }
 
+#ifdef WINDOWS
+bool
+is_using_wow64(void)
+{
+    return (syscall_gateway == SYSCALL_GATEWAY_WOW64);
+}
+#endif
+
 static void
 check_syscall_gateway(instr_t *inst)
 {

@@ -3443,6 +3443,8 @@ get_sysparam_base(cls_syscall_t *pt)
     reg_t *base = (reg_t *) pt->param_base;
     if (is_using_sysenter())
         base += 2;
+    else if (win_ver.version >= DR_WINDOWS_VERSION_8 && is_using_wow64())
+        base += 1; /* retaddr */
     return base;
 }
 

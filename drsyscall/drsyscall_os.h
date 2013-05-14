@@ -337,6 +337,11 @@ is_using_sysenter(void);
 bool
 is_using_sysint(void);
 
+#ifdef WINDOWS
+bool
+is_using_wow64(void);
+#endif
+
 /* Either sets arg->reg to DR_REG_NULL and sets arg->start_addr, or sets arg->reg
  * to non-DR_REG_NULL
  */
