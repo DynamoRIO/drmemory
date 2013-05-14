@@ -42,6 +42,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
 
 /* XXX i#1079: share as much of this code as possible with drmem's frontend.c.
  * Currently this is all a copy based on frontend.c.

@@ -63,6 +63,18 @@ install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
 ##################################################
 # drstrace frontend
 
+# Restore global flags
+foreach (config "" ${CMAKE_BUILD_TYPE} ${CMAKE_CONFIGURATION_TYPES})
+  if ("${config}" STREQUAL "")
+    set(config_upper "")
+  else ("${config}" STREQUAL "")
+    string(TOUPPER "_${config}" config_upper)
+  endif ("${config}" STREQUAL "")
+  foreach (var CMAKE_C_FLAGS${config_upper};CMAKE_CXX_FLAGS${config_upper})
+    set(${var} "${SAVE_${var}}")
+  endforeach (var)
+endforeach (config)
+
 add_executable(drstrace drstrace_frontend.c)
 configure_DynamoRIO_standalone(drstrace)
 target_link_libraries(drstrace drinjectlib drconfiglib)
