@@ -91,7 +91,6 @@ LEAK
 name=i#1140 closed-MessageBox A
 KERNELBASE.dll!LocalAlloc    
 MSCTF.dll!*
-MSCTF.dll!*
 
 LEAK
 name=i#1140 closed-MessageBox B
@@ -109,4 +108,11 @@ LEAK
 name=i#1140 closed-MessageBox D
 ntdll.dll!RtlpUpdateTEBLanguage
 ntdll.dll!...
-KERNEL*.dll!LoadStringBaseExW
+KERNEL*.dll!*
+
+# on win8:
+LEAK
+name=i#1140 closed-MessageBox E
+combase.dll!*
+...
+tiptsf.dll!*

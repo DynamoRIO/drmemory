@@ -336,7 +336,7 @@ GDI32.dll!plfCreateLOCALFONT
 # w/o symbols
 POSSIBLE LEAK
 name=default i#733 (nosyms)
-GDI32.dll!*
+GDI32.dll!...
 GDI32.dll!CreateFontIndirectExW
 GDI32.dll!CreateFontIndirectW
 
