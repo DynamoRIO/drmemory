@@ -43,6 +43,7 @@
 /* for NtUser* syscalls */
 #include "../wininc/ndk_extypes.h" /* required by ntuser.h */
 #include "../wininc/ntuser.h"
+#include "../wininc/ntuser_win8.h"
 
 #define OK (SYSINFO_ALL_PARAMS_KNOWN)
 #define UNKNOWN 0
@@ -1285,7 +1286,12 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserGetPointerDevices", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserGetPointerInfoList", UNKNOWN, DRSYS_TYPE_UNKNOWN, 8, },
     {{0,0},"NtUserGetPointerType", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
-    {{0,0},"NtUserGetProcessUIContextInformation", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{0,0},"NtUserGetProcessUIContextInformation", OK, DRSYS_TYPE_BOOL, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PROCESS_UI_CONTEXT), W,},
+     }
+    },
     {{0,0},"NtUserGetQueueEventStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserGetRawPointerDeviceData", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{0,0},"NtUserGetTouchValidationStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
