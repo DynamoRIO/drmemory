@@ -3243,6 +3243,34 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
                                           IF_WINDOWS(is_dbg ? HEAPSET_CPP_DBG :)
                                           HEAPSET_CPP, corresponding_libc,
                                           is_libc, is_libcpp);
+            /* If there's only operator new and not operator delete, don't
+             * intercept at the operator layer.
+             */
+            if (set_cpp != NULL &&
+                ((set_cpp->func[HEAP_ROUTINE_NEW] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_NEW_ARRAY] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_NEW_NOTHROW] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_NEW_ARRAY_NOTHROW] == NULL) ||
+                 (set_cpp->func[HEAP_ROUTINE_DELETE] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_DELETE_ARRAY] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_DELETE_NOTHROW] == NULL &&
+                  set_cpp->func[HEAP_ROUTINE_DELETE_ARRAY_NOTHROW] == NULL))) {
+                int i;
+                LOG(1, "module %s has just one side of operators so not intercepting\n",
+                    (modname == NULL) ? "<noname>" : modname);
+                for (i = 0; i < HEAP_ROUTINE_COUNT; i++) {
+                    alloc_routine_entry_t *e = set_cpp->func[i];
+                    bool done = (set_cpp->refcnt == 1);
+                    if (e != NULL) {
+                        malloc_interface.malloc_unintercept(e->pc, e->type, e,
+                                                            e->set->check_mismatch);
+                        hashtable_remove(&alloc_routine_table, (void *)e->pc);
+                        if (done)
+                            break;
+                    }
+                }
+                set_cpp = NULL;
+            }
         }
         if (set_cpp != NULL) {
             /* for static, use corresponding libc for size.
