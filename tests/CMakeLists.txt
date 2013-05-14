@@ -709,7 +709,10 @@ newtest(leakcycle leakcycle.cpp)
 if (WIN32)
   # With -replace_malloc we have trouble allocating a low enough heap for the wide
   # char test, so we stick to wrapping for this test.
-  newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string OFF)
+  # Wrapping doesn't work on win8 so we disable the test there.
+  if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
+    newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string OFF)
+  endif ()
 endif (WIN32)
 
 add_subdirectory(app_suite)

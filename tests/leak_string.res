@@ -20,7 +20,8 @@
 #
 %OUT_OF_ORDER
 : LEAK 24 direct bytes + 0 indirect bytes
-leak_string.cpp:116
+# We don't list the line# b/c our test is fragile and non-deterministic:
+# if we don't get a heap allocated at just the right spot, the leak will
+# be in the else clause in the code.
 
 : LEAK 24 direct bytes + 0 indirect bytes
-leak_string.cpp:163
