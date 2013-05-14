@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -69,6 +69,7 @@ START_FILE
 #define FUNCNAME get_stack_registers
         DECLARE_FUNC(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
+        /* we don't bother to be SEH64 compliant */
         mov      REG_XAX, ARG1
         mov      REG_XCX, ARG2
         mov      PTRSZ [REG_XCX], REG_XBP
@@ -175,6 +176,30 @@ syscall_0args:
         ret
         END_FUNC(raw_syscall)
 #endif /* LINUX */
+
+
+/* void zero_stack(size_t count);
+ *
+ * Sets the memory in [xsp - count - ARG_SZ, xsp - ARG_SZ) to 0.
+ * Meant to be used to zero the stack, which is dangerous to do
+ * from C as we can easily clobber our own local variables.
+ */
+#define FUNCNAME zero_stack
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        /* we don't bother to be SEH64 compliant */
+        mov      REG_XCX, ARG1
+        push     REG_XDI
+        mov      REG_XDI, REG_XSP
+        sub      REG_XDI, ARG_SZ
+        mov      REG_XAX, 0
+        std
+        rep stosd
+        cld
+        pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
 
 
 END_FILE

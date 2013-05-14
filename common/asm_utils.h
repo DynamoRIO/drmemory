@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,5 +31,8 @@ get_stack_registers(reg_t *xsp OUT, reg_t *xbp OUT);
 ptr_int_t
 raw_syscall(uint sysnum, uint num_args, ...);
 #endif
+
+void
+zero_stack(size_t count);
 
 #endif /* _ASM_UTILS_H_ */
