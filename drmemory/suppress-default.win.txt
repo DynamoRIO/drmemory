@@ -122,7 +122,7 @@ kernel32.dll!*
 kernel32.dll!GetPrivateProfileStringA
 
 ##################################################
-# i#462, i#504: Deliberate write to beyond TOS
+# i#462, i#504, i#1224: Deliberate write to beyond TOS
 
 # with symbols
 UNADDRESSABLE ACCESS
@@ -148,6 +148,11 @@ UNADDRESSABLE ACCESS
 name=default i#462 (write beyond TOS)
 instruction=mov    %e?? -> 0xfffffffc(%esp)
 ADVAPI32.dll!*
+
+UNADDRESSABLE ACCESS
+name=default i#1224 (write beyond TOS)
+instruction=mov    %esp -> 0xfffffff8(%esp)
+bcryptPrimitives.dll!*
 
 ##################################################
 # i#492: false positive that needs per-bit granularity (i#113)
