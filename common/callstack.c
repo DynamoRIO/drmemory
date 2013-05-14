@@ -1058,7 +1058,10 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                 app_pc ra;
                 if (safe_read(pt->fpcache[i].output_fp + sizeof(app_pc),
                               sizeof(ra), &ra) &&
-                    ra == pt->fpcache[i].retaddr) {
+                    ra == pt->fpcache[i].retaddr &&
+                    /* i#1231: we don't zero for full mode but we want the cache */
+                    (op_is_dword_defined == NULL ||
+                     op_is_dword_defined(pt->fpcache[i].output_fp + sizeof(app_pc)))) {
                     if (retaddr != NULL)
                         *retaddr = ra;
                     LOG(4, "find_next_fp: cache hit "PFX" => "PFX", ra="PFX"\n",

@@ -1311,6 +1311,7 @@ report_init(void)
                    NULL, NULL, NULL, NULL,
 #endif
                    missing_syms_cb,
+                    /* i#1231: we don't zero for full mode but we want the cache */
                    options.zero_retaddr,
                    DRMEMORY_LIBNAME
                    _IF_DEBUG(options.callstack_dump_stack));
