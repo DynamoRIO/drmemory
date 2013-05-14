@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -87,7 +87,6 @@ main
 main
 
 _beginthreadex
-CreateFileW
 CreateFileA
 FindFirstFileA
 CreateWindowExA

@@ -2015,6 +2015,46 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
 
 # if defined(WINDOWS) && defined(X64)
 static app_pc
+find_RtlFreeStringRoutine_helper(void *drcontext, const module_data_t *mod,
+                                 const char *export)
+{
+    instr_t instr;
+    opnd_t opnd;
+    int i, opc;
+    app_pc pc;
+    pc = (app_pc)dr_get_proc_address(mod->handle, export);
+    if (pc == NULL) {
+        ASSERT(false, "fail to find RtlFree*String export");
+        return NULL;
+    }
+    instr_init(drcontext, &instr);
+    for (i = 0; i < 20 /* we decode no more than 20 instrs */; i++) {
+        instr_reset(drcontext, &instr);
+        pc = decode(drcontext, pc, &instr);
+        opc = instr_get_opcode(&instr);
+        if (pc == NULL || opc == OP_call_ind || opc == OP_ret)
+            break;
+    }
+
+    if (opc != OP_call_ind) {
+        WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
+        instr_free(drcontext, &instr);
+        return NULL;
+    }
+
+    opnd = instr_get_target(&instr);
+    instr_free(drcontext, &instr);
+    if ((opnd_is_abs_addr(opnd) || opnd_is_rel_addr(opnd)) &&
+        safe_read((void *)opnd_get_addr(opnd), sizeof(pc), &pc)) {
+        LOG(2, "find RtlFreeStringRoutine "PFX
+            " and RtlpFreeStringRoutine "PFX"\n", opnd_get_addr(opnd), pc);
+    } else {
+        pc = NULL;
+    }
+    return pc;
+}
+
+static app_pc
 find_RtlFreeStringRoutine(const module_data_t *mod)
 {
     /* i#995-c#3, RtlFreeStringRoutine is not an exported routine
@@ -2047,38 +2087,12 @@ find_RtlFreeStringRoutine(const module_data_t *mod)
      * 7d65e0c3 c20400           ret     0x4
      */
     void *drcontext = dr_get_current_drcontext();
-    instr_t instr;
-    opnd_t opnd;
-    int i, opc;
-    app_pc pc;
-    pc = (app_pc)dr_get_proc_address(mod->handle, "RtlFreeOemString");
+    app_pc pc = find_RtlFreeStringRoutine_helper(drcontext, mod, "RtlFreeOemString");
     if (pc == NULL) {
-        ASSERT(false, "fail to find RtlFreeOemString");
-        return NULL;
+        /* i#1234: win8 x64 RtlFreeOemString is split up so try Ansi */
+        pc = find_RtlFreeStringRoutine_helper(drcontext, mod, "RtlFreeAnsiString");
     }
-    instr_init(drcontext, &instr);
-    for (i = 0; i < 20 /* we decode no more than 20 instrs */; i++) {
-        instr_reset(drcontext, &instr);
-        pc = decode(drcontext, pc, &instr);
-        opc = instr_get_opcode(&instr);
-        if (pc == NULL || opc == OP_call_ind || opc == OP_ret)
-            break;
-    }
-
-    if (opc != OP_call_ind) {
-        WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
-        instr_free(drcontext, &instr);
-        return NULL;
-    }
-
-    opnd = instr_get_target(&instr);
-    instr_free(drcontext, &instr);
-    if ((opnd_is_abs_addr(opnd) || opnd_is_rel_addr(opnd)) &&
-        safe_read((void *)opnd_get_addr(opnd), sizeof(pc), &pc)) {
-        LOG(2, "find RtlFreeStringRoutine "PFX
-            " and RtlpFreeStringRoutine "PFX"\n", opnd_get_addr(opnd), pc);
-    } else {
-        pc = NULL;
+    if (pc == NULL) {
         WARN("WARNING: fail to find call to RtlFreeStringRoutine\n");
     }
     return pc;
