@@ -294,7 +294,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {4, sizeof(PRIVILEGE_SET), W},
          {5, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {6, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {7, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+         {7, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
      }
     },
     {{0,0},"NtAccessCheckAndAuditAlarm", OK, RNTST, 11,
@@ -308,7 +308,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(GENERIC_MAPPING), R},
          {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {8, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {9, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
+         {9, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
          {10, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
@@ -324,7 +324,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(PRIVILEGE_SET), R},
          {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {9, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {10, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {10, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
      }
     },
     {{0,0},"NtAccessCheckByTypeAndAuditAlarm", OK, RNTST, 16,
@@ -343,7 +343,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {11, sizeof(GENERIC_MAPPING), R},
          {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {13, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {14, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {14, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
          {15, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
@@ -359,7 +359,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {7, sizeof(PRIVILEGE_SET), R},
          {8, sizeof(ULONG), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {9, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {10, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {10, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarm", OK, RNTST, 16,
@@ -378,8 +378,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {11, sizeof(GENERIC_MAPPING), R},
          {12, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {13, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {14, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {15, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {14, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
+         {15, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAccessCheckByTypeResultListAndAuditAlarmByHandle", OK, RNTST, 17,
@@ -399,8 +399,8 @@ static syscall_info_t syscall_ntdll_info[] = {
          {12, sizeof(GENERIC_MAPPING), R},
          {13, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {14, sizeof(ACCESS_MASK), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {15, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {16, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {15, sizeof(NTSTATUS), W|HT, DRSYS_TYPE_NTSTATUS},
+         {16, sizeof(BOOLEAN), W|HT, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAddAtom", OK, RNTST, 3,
