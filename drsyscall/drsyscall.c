@@ -1216,7 +1216,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         }
         last_param = sysinfo->arg[i].param;
 
-        if (TEST(SYSARG_INLINED, sysinfo->arg[i].flags))
+        if (TESTANY(SYSARG_INLINED | SYSARG_NON_MEMARG, sysinfo->arg[i].flags))
             continue;
 
         start = (app_pc) pt->sysarg[sysinfo->arg[i].param];

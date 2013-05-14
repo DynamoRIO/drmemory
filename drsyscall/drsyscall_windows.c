@@ -42,6 +42,7 @@
 #include "../wininc/ntalpctyp.h"
 #include "../wininc/wdm.h"
 #include "../wininc/ntifs.h"
+#include "../wininc/tls.h"
 
 static app_pc ntdll_base;
 dr_os_version_info_t win_ver = {sizeof(win_ver),};
@@ -219,6 +220,7 @@ static drsys_sysnum_t sysnum_CreateUserProcess = {-1,0};
 static drsys_sysnum_t sysnum_DeviceIoControlFile = {-1,0};
 static drsys_sysnum_t sysnum_QuerySystemInformation = {-1,0};
 static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
+static drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
 
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: fill in data on rest of Vista and Win7 syscalls!
@@ -2358,9 +2360,13 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PROCESSINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {2, -3, R},
+         /* Some info classes have part of the passed-in size as OUT (i#1228),
+          * necessitating special-casing instead of listing "{2, -3, R}" here.
+          * We still list an entry (w/ default struct type) for non-memarg iterator.
+          */
+         {2, -3, SYSARG_NON_MEMARG, },
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_SetInformationProcess
     },
     {{0,0},"NtSetInformationThread", OK, RNTST, 4,
      {
@@ -4353,6 +4359,40 @@ handle_SetSystemInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info
     }
 }
 
+static void
+handle_SetInformationProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* Normally the buffer is just input, but some info classes write data */
+    PROCESSINFOCLASS cls = (PROCESSINFOCLASS) pt->sysarg[1];
+    if (cls == ProcessTlsInformation) {
+        /* i#1228: the struct is mostly OUT */
+        PROCESS_TLS_INFORMATION *buf = (PROCESS_TLS_INFORMATION *) pt->sysarg[2];
+        size_t bufsz = (size_t) pt->sysarg[3];
+        if (ii->arg->pre) {
+            if (!report_memarg_type(ii, 2, SYSARG_READ, (byte *) buf,
+                                    offsetof(PROCESS_TLS_INFORMATION, ThreadData),
+                                    "input fields", DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+        if (!report_memarg_type(ii, 2, SYSARG_WRITE, (byte *) &buf->ThreadData,
+                                /* XXX: not sure how much it writes.  For now we
+                                 * mark the whole capacity.  Does the kernel
+                                 * write the written size somewhere?
+                                 */
+                                bufsz - offsetof(PROCESS_TLS_INFORMATION, ThreadData),
+                                "output data", DRSYS_TYPE_STRUCT, NULL))
+            return;
+    } else {
+        if (ii->arg->pre) {
+            /* In table this would be "{2, -3, R}" */
+            if (!report_memarg_type(ii, 2, SYSARG_READ, (byte *) pt->sysarg[2],
+                                    pt->sysarg[3], "ProcessInformation",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+    }
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -5090,6 +5130,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_DeviceIoControlFile(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
         handle_SetSystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
+        handle_SetInformationProcess(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
         handle_QuerySystemInformation(drcontext, pt, ii);
     else
@@ -5169,6 +5211,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_DeviceIoControlFile(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetSystemInformation))
         handle_SetSystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
+        handle_SetInformationProcess(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
         handle_QuerySystemInformation(drcontext, pt, ii);
     else

@@ -114,6 +114,11 @@ enum {
      * misc once that doesn't conflict with type info.
      */
     SYSARG_IGNORE_IF_PREV_NULL = 0x00000800,
+    /* Indicates that this entry is for non-memarg iteration only:
+     * this memory parameter is complex and for memarg iteration
+     * it relies on handler code.
+     */
+    SYSARG_NON_MEMARG          = 0x00001000,
 
     /*****************************************/
     /* syscall_arg_t.size, using values that cannot be mistaken for
