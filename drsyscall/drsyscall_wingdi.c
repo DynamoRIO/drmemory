@@ -275,9 +275,11 @@ syscall_info_t syscall_user32_info[] = {
     {{DR_WINDOWS_VERSION_8,0},"NtUserBuildHwndList", OK, RNTST, 8,
      {
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
-         /* XXX i#1153: extra param somewhere in the middle here */
-         {6, -7, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
-         {7, sizeof(ULONG), R|W,},
+         /* i#1153: size of buffer seems to be a separate inline param inserted
+          * at 5th position.
+          */
+         {6, -5, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
+         {7, sizeof(ULONG), W,},
      }
     },
     {{0,0},"NtUserBuildMenuItemList", OK, SYSARG_TYPE_UINT32, 4,
