@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -111,6 +111,12 @@ foreach (cfile ${cfiles})
     string(REGEX MATCH "NOTIFY[^(\n]*\\([^)]*\\\\n" match "${string}")
     if (NOT "${match}" STREQUAL "")
       message(FATAL_ERROR "In ${cfile}, use NL macro, not \\n, for NOTIFY string: ${match}")
+    endif ()
+
+    # Check for NOCHECKIN
+    string(REGEX MATCH "NOCHECKIN" match "${string}")
+    if (NOT "${match}" STREQUAL "")
+      message(FATAL_ERROR "In ${cfile}, remove NOCHECKIN: ${match}")
     endif ()
 
     # Check for CR.  Unfortunately file(READ) seems to throw away CR's
