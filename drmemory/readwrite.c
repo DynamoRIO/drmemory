@@ -1975,7 +1975,8 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
      */
     uint shadow_vals[4];
     int i;
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
+    umbra_shadow_memory_info_init(&info);
     LOG(3, "medium_path movs4 "PFX" src="PFX" %d%d%d%d dst="PFX" %d%d%d%d\n",
         loc_to_pc(loc), mc->xsi,
         shadow_get_byte(&info, (app_pc)mc->xsi),
@@ -2078,7 +2079,8 @@ medium_path_cmps1(app_loc_t *loc, dr_mcontext_t *mc)
      */
     uint shadow_vals[1];
     uint flags;
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
+    umbra_shadow_memory_info_init(&info);
     LOG(3, "medium_path cmps1 "PFX" src1="PFX" %d%d%d%d src2="PFX" %d%d%d%d\n",
         loc_to_pc(loc), mc->xsi,
         shadow_get_byte(&info, (app_pc)mc->xsi),
@@ -2399,7 +2401,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             if (instr_num_dsts(&inst) > 0 &&
                 opnd_is_memory_reference(instr_get_dst(&inst, 0))) {
                 umbra_shadow_memory_info_t info;
-                memset(&info, 0, sizeof(info));
+                umbra_shadow_memory_info_init(&info);
                 LOG(3, " | 0x%x",
                     shadow_get_byte(&info,
                                     opnd_compute_address(instr_get_dst(&inst, 0),
@@ -3726,7 +3728,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         shadow_get_special(addr, NULL) : false;
     bool exception = false;
 #endif
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc stack_base = NULL;
     size_t stack_size = 0;
     bool handled_push_addr = false;
@@ -3736,6 +3738,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         !TEST(MEMREF_IS_READ, flags);
     if (options.pattern != 0)
         return pattern_handle_mem_ref(loc, addr, sz, mc, is_write);
+    umbra_shadow_memory_info_init(&info);
     ASSERT(options.shadowing, "shadowing disabled");
     LOG(3, "memref: %s @"PFX" "PFX" "PIFX" bytes (pre-dword 0x%02x 0x%02x)%s\n",
         TEST(MEMREF_WRITE, flags) ? (TEST(MEMREF_PUSHPOP, flags) ? "push" : "write") :
@@ -3967,7 +3970,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         DOLOG(3, {
             char buf[256];
             size_t sofar = 0;
-            umbra_shadow_memory_info_t info = { 0};
+            umbra_shadow_memory_info_t info;
+            umbra_shadow_memory_info_init(&info);
             print_address(buf, BUFFER_SIZE_BYTES(buf), &sofar, loc_to_pc(loc),
                           NULL, true/*for log*/);
             NULL_TERMINATE_BUFFER(buf);

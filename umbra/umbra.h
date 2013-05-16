@@ -164,10 +164,17 @@ typedef enum {
 
 /** Information about a shadow memory region. */
 typedef struct _umbra_shadow_memory_info_t {
+    /** For compatibility.  Set to sizeof(umbra_shadow_memory_info_t). */
+    size_t struct_size;
+    /** Base of the application memory block */
     app_pc app_base;
+    /** Size of the application memory block */
     size_t app_size;
+    /** Base of the shadow memory block */
     byte  *shadow_base;
+    /** Size of the shadow memory block */
     size_t shadow_size;
+    /** Type of the shadow memory block */
     uint   shadow_type;
 } umbra_shadow_memory_info_t;
 
@@ -581,11 +588,14 @@ DR_EXPORT
 /**
  * Get shadow memory address for application memory address \p app_addr.
  *
- * @param[in]  map          The mapping object to use.
- * @param[in]  app_addr     The application memory address.
- * @param[out] shadow_addr  The shadow memory address for \app_addr.
- * @param[out] shadow_info  The information about the shadow memory for
- *                          \p app_addr.
+ * @param[in]     map          The mapping object to use.
+ * @param[in]     app_addr     The application memory address.
+ * @param[out]    shadow_addr  The shadow memory address for \app_addr.
+ * @param[in,out] shadow_info  The information about the shadow memory for
+ *                             \p app_addr.
+ *
+ * \note: \p shadow_info->struct_size must be set to
+ * \p sizeof(umbra_shadow_memory_info_t) for compatiblity.
  *
  * \note: \p shadow_info contains the information about the shadow memory block
  * and its application memory, so the caller can cache the information and 
@@ -599,10 +609,10 @@ DR_EXPORT
  *
  */
 drmf_status_t
-umbra_get_shadow_memory(IN  umbra_map_t *map,
-                        IN  app_pc app_addr,
-                        OUT byte **shadow_addr,
-                        OUT umbra_shadow_memory_info_t *shadow_info);
+umbra_get_shadow_memory(IN    umbra_map_t *map,
+                        IN    app_pc app_addr,
+                        OUT   byte **shadow_addr,
+                        INOUT umbra_shadow_memory_info_t *shadow_info);
 
 DR_EXPORT
 /**

@@ -678,16 +678,18 @@ umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
 
 DR_EXPORT
 drmf_status_t
-umbra_get_shadow_memory(IN  umbra_map_t *map,
-                        IN  app_pc app_addr,
-                        OUT byte **shadow_addr,
-                        OUT umbra_shadow_memory_info_t *shadow_info)
+umbra_get_shadow_memory(IN    umbra_map_t *map,
+                        IN    app_pc app_addr,
+                        OUT   byte **shadow_addr,
+                        INOUT umbra_shadow_memory_info_t *shadow_info)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
         return DRMF_ERROR_INVALID_PARAMETER;
     }
     if (shadow_addr == NULL && shadow_info == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (shadow_info != NULL && shadow_info->struct_size != sizeof(*shadow_info))
         return DRMF_ERROR_INVALID_PARAMETER;
     return umbra_get_shadow_memory_arch(map, app_addr,
                                         shadow_addr, shadow_info);

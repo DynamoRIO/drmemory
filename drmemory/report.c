@@ -1202,7 +1202,8 @@ up_one_dir(const char *string)
 static bool
 is_dword_defined(byte *addr)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
+    umbra_shadow_memory_info_init(&info);
     return (shadow_get_dword(&info, addr) == SHADOW_DWORD_DEFINED);
 }
 

@@ -1212,7 +1212,7 @@ client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t n
 void
 client_handle_cbret(void *drcontext)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp;
     cls_drmem_t *cpt_parent = (cls_drmem_t *)
@@ -1232,6 +1232,7 @@ client_handle_cbret(void *drcontext)
     sp = (byte *) mc.xsp;
     LOG(2, "cbret: marking stack "PFX"-"PFX" as unaddressable\n",
         sp, cpt_parent->pre_callback_esp);
+    umbra_shadow_memory_info_init(&info);
     for (; sp < cpt_parent->pre_callback_esp; sp++)
         shadow_set_byte(&info, sp, SHADOW_UNADDRESSABLE);
 }
@@ -1254,9 +1255,10 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
     TEB *teb = get_TEB();
     app_pc base_esp = teb->StackBase;
     app_pc stop_esp = NULL;
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     if (!options.shadowing || !options.check_stack_bounds)
         return;
+    umbra_shadow_memory_info_init(&info);
 
     if (sp < base_esp && base_esp - sp < TYPICAL_STACK_MIN_SIZE)
         stop_esp = base_esp;
@@ -1354,7 +1356,6 @@ client_pre_syscall(void *drcontext, int sysnum)
 #ifdef WINDOWS
     DWORD cxt_flags;
     reg_t cxt_xsp;
-    umbra_shadow_memory_info_t info = { 0,};
 #endif
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1367,6 +1368,8 @@ client_pre_syscall(void *drcontext, int sysnum)
         return;
     if (sysnum == sysnum_continue) {
         CONTEXT *cxt = (CONTEXT *) dr_syscall_get_param(drcontext, 0);
+        umbra_shadow_memory_info_t info;
+        umbra_shadow_memory_info_init(&info);
         if (cxt != NULL &&
             safe_read(&cxt->ContextFlags, sizeof(cxt_flags), &cxt_flags) &&
             safe_read(&cxt->Xsp, sizeof(cxt_xsp), &cxt_xsp)) {
@@ -1623,7 +1626,9 @@ at_signal_handler(void)
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     byte *sp, *stop;
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
+    umbra_shadow_memory_info_init(&info);
+
     ASSERT(options.shadowing, "shadowing disabled");
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
@@ -2249,7 +2254,8 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
     }
 
     if (now_addressable) {
-        umbra_shadow_memory_info_t info = { 0,};
+        umbra_shadow_memory_info_t info;
+        umbra_shadow_memory_info_init(&info);
         shadow_set_byte(&info, addr, SHADOW_UNDEFINED);
     }
     instr_free(drcontext, &inst);
@@ -2321,7 +2327,8 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
          */
         DOLOG(3, {
             if (options.shadowing) {
-                umbra_shadow_memory_info_t info = { 0};
+                umbra_shadow_memory_info_t info;
+                umbra_shadow_memory_info_init(&info);
                 LOG(3, "ignoring unaddr %s by heap routine "PFX" to "PFX
                     " tls=%d shadow=0x%x\n",
                     write ? "write" : "read", loc_to_print(loc), addr,
@@ -2354,7 +2361,7 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
          addr < (app_pc)teb->TlsExpansionSlots +
          TLS_EXPANSION_BITMAP_SLOTS*sizeof(byte))) {
 #ifdef DEBUG
-        umbra_shadow_memory_info_t info = { 0,};
+        umbra_shadow_memory_info_t info;
 #endif
         bool tls_ok = false;
         if (addr >= (app_pc)&teb->TlsSlots[0] && addr < (app_pc)&teb->TlsSlots[64]) {
@@ -2369,7 +2376,10 @@ check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
                  addr, slot);
             tls_ok = ((peb->TlsExpansionBitmap->Buffer[slot/32] & (1 << (slot % 32)))
                       != 0);
-        }        
+        }
+#ifdef DEBUG
+        umbra_shadow_memory_info_init(&info);
+#endif
         LOG(3, "%s unaddr %s by "PFX" to TLS slot "PFX" shadow=%x\n",
             tls_ok ? "ignoring" : "reporting", write ? "write" : "read",
             loc_to_print(loc), addr, shadow_get_byte(&info, addr));

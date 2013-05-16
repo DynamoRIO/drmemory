@@ -325,8 +325,10 @@ get_shadow_block_size(void)
 bool
 shadow_get_special(app_pc addr, uint *val)
 {
-    umbra_shadow_memory_info_t info = { 0,};
-    uint value = shadow_get_byte(&info, addr);
+    umbra_shadow_memory_info_t info;
+    uint value;
+    umbra_shadow_memory_info_init(&info);
+    value = shadow_get_byte(&info, addr);
     if (val != NULL)
         *val = value;
     /* the shadow memory is get from application address, so shadow_type
@@ -352,6 +354,8 @@ shadow_get_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
 {
     ptr_uint_t idx;
     if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        ASSERT(info->struct_size == sizeof(*info),
+               "shadow memory info is not initialized properly");
         if (umbra_get_shadow_memory(umbra_map, addr,
                                     NULL, info) != DRMF_SUCCESS) {
             ASSERT(false, "fail to get shadow memory info");
@@ -372,6 +376,8 @@ shadow_get_dword(INOUT umbra_shadow_memory_info_t *info, app_pc addr)
 {
     ptr_uint_t idx;
     if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        ASSERT(info->struct_size == sizeof(*info),
+               "shadow memory info is not initialized properly");
         if (umbra_get_shadow_memory(umbra_map, addr,
                                     NULL, info) != DRMF_SUCCESS) {
             ASSERT(false, "fail to get shadow memory info");
@@ -392,6 +398,8 @@ shadow_set_byte(INOUT umbra_shadow_memory_info_t *info, app_pc addr, uint val)
 {
     ASSERT(val <= 4, "invalid shadow value");
     if (addr < info->app_base || addr >= info->app_base + info->app_size) {
+        ASSERT(info->struct_size == sizeof(*info),
+               "shadow memory info is not initialized properly");
         if (umbra_get_shadow_memory(umbra_map, addr,
                                     NULL, info) != DRMF_SUCCESS) {
             ASSERT(false, "fail to get shadow memory info");
@@ -433,6 +441,7 @@ shadow_translation_addr(app_pc addr)
 {
     umbra_shadow_memory_info_t info;
     byte *shadow_addr;
+    info.struct_size = sizeof(info);
     if (umbra_get_shadow_memory(umbra_map, addr,
                                 &shadow_addr, &info) != DRMF_SUCCESS) {
         ASSERT(false, "fail to get shadow memory");
@@ -469,13 +478,14 @@ shadow_replace_special(app_pc addr)
 void
 shadow_set_range(app_pc start, app_pc end, uint val)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc aligned_start, aligned_end;
     app_pc pc;
     size_t shadow_size;
     ASSERT(options.shadowing, "shadowing disabled");
     ASSERT(val <= 4, "invalid shadow value");
     LOG(2, "set range "PFX"-"PFX" => "PIFX"\n", start, end, val);
+    umbra_shadow_memory_info_init(&info);
     DOLOG(2, {
         if (end - start > 0x10000000)
             LOG(2, "WARNING: set range of very large range "PFX"-"PFX"\n",
@@ -526,8 +536,8 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 {
     size_t shdw_size;
     app_pc old_pc, new_pc, old_end;
-    umbra_shadow_memory_info_t info_src = { 0,};
-    umbra_shadow_memory_info_t info_dst = { 0,};
+    umbra_shadow_memory_info_t info_src;
+    umbra_shadow_memory_info_t info_dst;
     uint head_val[SHADOW_GRANULARITY], tail_val[SHADOW_GRANULARITY];
     uint head_bit, tail_bit, i;
 
@@ -547,6 +557,7 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
     /* XXX: maybe umbra should support partial byte update and the code can be
      * moved into umbra.
      */
+    umbra_shadow_memory_info_init(&info_src);
     if (head_bit != 0) {
         for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
             head_val[i+head_bit] = shadow_get_byte(&info_src, old_start+i);
@@ -565,6 +576,7 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
             shdw_size != shadow_scale_app_to_shadow(copy_size))
             ASSERT(false, "fale to copy shadow memory");
     }
+    umbra_shadow_memory_info_init(&info_dst);
     if (head_bit != 0) {
         for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
             shadow_set_byte(&info_dst, new_start+i, head_val[i+head_bit]);
@@ -580,7 +592,7 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 void
 shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc end = start + size;
     app_pc cur;
 
@@ -590,6 +602,7 @@ shadow_set_non_matching_range(app_pc start, size_t size, uint val, uint val_not)
     /* XXX: We could try to be clever for perf, but these calls are rare, so we
      * go byte by byte.
      */
+    umbra_shadow_memory_info_init(&info);
     for (cur = start; cur != end; cur++) {
         uint shadow = shadow_get_byte(&info, cur);
         if (shadow != val_not) {
@@ -634,7 +647,7 @@ bool
 shadow_check_range(app_pc start, size_t size, uint expect,
                    app_pc *bad_start, app_pc *bad_end, uint *bad_state)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc pc = start;
     uint val;
     uint bad_val = 0;
@@ -642,6 +655,7 @@ shadow_check_range(app_pc start, size_t size, uint expect,
     size_t incr;
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(start+size > start, "invalid param");
+    umbra_shadow_memory_info_init(&info);
     while (pc < start+size) {
         val = shadow_get_byte(&info, pc);
         if (!ALIGNED(pc, 16)) {
@@ -693,12 +707,13 @@ bool
 shadow_check_range_backward(app_pc start, size_t size, uint expect,
                             app_pc *bad_addr)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc pc = start;
     uint val;
     bool res = true;
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(size < (size_t)start, "invalid param");
+    umbra_shadow_memory_info_init(&info);
     while (pc > start-size) {
         /* For simplicity and since performance is not critical for current
          * callers, walking one byte at a time
@@ -742,13 +757,13 @@ shadow_next_dword(app_pc start, app_pc end, uint expect)
 app_pc
 shadow_prev_dword(app_pc start, app_pc end, uint expect)
 {
-    umbra_shadow_memory_info_t info = { 0,};
+    umbra_shadow_memory_info_t info;
     app_pc pc = start;
     uint expect_dword = val_to_dword[expect];
     ASSERT(expect <= 4, "invalid shadow value");
     ASSERT(ALIGNED(start, 4), "invalid start pc");
     ASSERT(end < start, "invalid end pc");
-
+    umbra_shadow_memory_info_init(&info);
     while (pc > end) {
         uint blockval = shadow_get_byte(&info, pc);
         LOG(5, "shadow_prev_dword: checking "PFX"\n", pc);

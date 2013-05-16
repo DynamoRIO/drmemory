@@ -138,8 +138,9 @@ bool
 shadow_get_special(app_pc addr, uint *val);
 
 /* Returns the two bits for the byte at the passed-in address */
-/* umbra_shadow_memory_info must be first zeroed out by the caller prior to
- * calling the first time for any series of calls. It will be filled out
+/* umbra_shadow_memory_info must be initialized properly by calling
+ * umbra_shadow_memory_info_init() prior to calling
+ * the first time for any series of calls. It will be filled out
  * and can be used for a series of calls for better performance.
  * On the subsequent calls, if the passed in umbra_shadow_memory_info has
  * the right range, we assume the the shadow memory info is correct and
@@ -285,5 +286,13 @@ set_shadow_inheap(uint val);
 
 bool
 is_shadow_register_defined(byte val);
+
+static inline void
+umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
+{
+    info->struct_size = sizeof(*info);
+    info->app_base = NULL;
+    info->app_size = 0;
+}
 
 #endif /* _SHADOW_H_ */
