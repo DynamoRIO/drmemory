@@ -95,6 +95,21 @@ TEST(StringTests, strncpy) {
         ASSERT_EQ(buf[i], '\0');
 }
 
+TEST(StringTests, strstr) {
+    ASSERT_STREQ(strstr("abcaddccdx", "cd"), "cdx");
+    ASSERT_STREQ(strstr("xyzabcxyz", "xyz"), "xyzabcxyz");
+    ASSERT_EQ(strstr("xy", "xyz"), (char *)NULL);
+    ASSERT_STREQ(strstr("abcd", ""), "abcd");
+
+    /* Test i#1243 where msvcr100!strstr calls into the middle of strchr
+     * and has an unaddr if the string doesn't fill out a malloc chunk
+     */
+    char *p = new char[3];
+    strcpy(p, "xy");
+    ASSERT_STREQ(strstr(p, "y"), "y");
+    delete [] p;
+}
+
 #ifdef LINUX
 TEST(StringTests, strcasecmp) {
     char *s = new char[3];

@@ -88,9 +88,10 @@
     REPLACE_DEF(wcsrchr, NULL)     \
     REPLACE_DEF(strcasecmp, NULL)  \
     REPLACE_DEF(strncasecmp, NULL) \
-    REPLACE_DEF(strspn, NULL) \
-    REPLACE_DEF(strcspn, NULL) \
-    REPLACE_DEF(stpcpy, NULL)
+    REPLACE_DEF(strspn, NULL)      \
+    REPLACE_DEF(strcspn, NULL)     \
+    REPLACE_DEF(stpcpy, NULL)      \
+    REPLACE_DEF(strstr, NULL)
 
 /* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
  * wcsncat, wmemmove.
@@ -620,6 +621,27 @@ replace_strcspn(const char *str, const char *reject)
     while (*cur != '\0' && table[(unsigned char)*cur])
         cur++;
     return cur - str;
+}
+
+IN_REPLACE_SECTION char *
+replace_strstr(const char *haystack, const char *needle)
+{
+    register const char *hs = haystack;
+    register const char *n = needle;
+    /* empty needle should return haystack */
+    if (*n == '\0')
+        return (char *) haystack;
+    while (*hs != '\0') {
+        if (*hs != *n)
+            n = needle;
+        if (*hs == *n) {
+            n++;
+            if (*n == '\0')
+                return (char *) (hs - (n - 1 - needle));
+        }
+        hs++;
+    }
+    return NULL;
 }
 
 IN_REPLACE_SECTION void *
