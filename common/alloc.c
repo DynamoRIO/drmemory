@@ -1281,6 +1281,15 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
         e->set->modbase = modbase;
     } else
         ASSERT(false, "set is required w/ new module unload scheme");
+    if (alloc_ops.replace_malloc && e->set->is_libc &&
+        (is_new_routine(type) || is_delete_routine(type))) {
+        /* i#1233, and original i#123: do not report mismatches where msvcr*.dll
+         * is the outer layer, as it should only happen for modules with no symbols
+         * calling into msvcr*.dll, and in that case the asymmetry will result
+         * in false positives.
+         */
+        e->set->check_mismatch = false;
+    }
     IF_DEBUG(is_new = )
         hashtable_add(&alloc_routine_table, (void *)pc, (void *)e);
     ASSERT(is_new, "alloc entry should not already exist");

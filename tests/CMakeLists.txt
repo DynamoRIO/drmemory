@@ -713,6 +713,18 @@ if (WIN32)
   if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
     newtest_ex(leak_string leak_string.cpp "" "-no_replace_malloc" "" OFF leak_string OFF)
   endif ()
+
+  # Ensure we don't spit out false positives when there are no symbols for the app
+  newtest_custbuild(nosyms nosyms.cpp "/MD" "nosyms")
+  # XXX: since cmake applies CMAKE_C_FLAGS_DEBUG and CMAKE_EXE_LINKER_FLAGS_DEBUG
+  # only at the end of the file to all targets, and there's no /Zi- or /debug:no,
+  # is there any better way to disable symbols than removing the pdb?
+  append_property_string(TARGET nosyms LINK_FLAGS "/incremental:no")
+  get_target_property(nosyms_pdb nosyms LOCATION${location_suffix})
+  string(REGEX REPLACE "exe$" "pdb" nosyms_pdb ${nosyms_pdb})
+  add_custom_command(TARGET nosyms POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E remove ${nosyms_pdb} VERBATIM)
+
 endif (WIN32)
 
 add_subdirectory(app_suite)
