@@ -1224,7 +1224,8 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
 /* caller must hold alloc routine lock */
 static alloc_routine_entry_t *
 add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
-                  alloc_routine_set_t *set, app_pc modbase, const char *modname)
+                  alloc_routine_set_t *set, app_pc modbase, const char *modname,
+                  bool indiv_check_mismatch)
 {
     alloc_routine_entry_t *e;
     IF_DEBUG(bool is_new;)
@@ -1297,7 +1298,8 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
      * we live w/ it
      * XXX: for -conservative we should do a lookup
      */
-    malloc_interface.malloc_intercept(pc, type, e, e->set->check_mismatch);
+    malloc_interface.malloc_intercept(pc, type, e,
+                                      e->set->check_mismatch && indiv_check_mismatch);
     return e;
 }
 
@@ -1445,8 +1447,8 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
                  * use libc), so we assume that any call to libc is a call to
                  * free.  We can't rely on this being the 2nd call as there's
                  * not always a call to the destructor.  No app destructor should
-                 * live in libc (XXX: there are some C++ classes in msvcr*.dll
-                 * though!).
+                 * live in libc (the Concurrency C++ classes live in msvcr*.dll
+                 * but their destructors are not exported).
                  */
                 (pc_is_in_libc(tgt) && !pc_is_in_libc(mod_start))) {
                 LOG(2, "%s: found cti to free? "PFX"\n", __FUNCTION__, tgt);
@@ -1680,13 +1682,35 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
     return known;
 }
 
+/* for passing data to sym callback, and simpler to use for
+ * non-USE_DRSYMS as well
+ */
+typedef struct _set_enum_data_t {
+    alloc_routine_set_t *set;
+    heapset_type_t set_type;
+    const possible_alloc_routine_t *possible;
+    uint num_possible;
+    bool *processed;
+    bool use_redzone;
+    bool check_mismatch;
+    bool indiv_check_mismatch;
+    /* if a wildcard lookup */
+    const char *wildcard_name;
+    const module_data_t *mod;
+    bool is_libc;
+    bool is_libcpp;
+    /* points at libc set, for pairing up dbgcrt and crt */
+    alloc_routine_set_t *set_libc;
+} set_enum_data_t;
+
 /* Given a generic operator type and its location in a module, checks its
  * args and converts to a corresponding nothrow operator type or to
  * HEAP_ROUTINE_INVALID if a placement operator.
  */
 static routine_type_t
 distinguish_operator_type(routine_type_t generic_type,  const char *name,
-                          const module_data_t *mod, drsym_info_t *info)
+                          const module_data_t *mod, drsym_info_t *info,
+                          set_enum_data_t *edata)
 {
     size_t bufsz = 256; /* even w/ class names, should be big enough for most operators */
     char *buf;
@@ -1767,14 +1791,59 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
         /* MSVC++ has 3-arg and 4-arg operators which we assume
          * are all non-placement non-nothrow:
          *   operator new(unsigned int, _HeapManager*, int)
-         *   operator new(unsigned int,int,char const *,int)
-         * Other apps have their own custom multi-arg operators,
-         * though, with some taking void* and being placement and some
-         * very similar-looking ones taking void* and not being
-         * placement.  Let's try decoding.
+         *   operator new(unsigned int, std::_DebugHeapTag_t*, char*, int)
+         *   operator new(unsigned int, _ConcRTNewMoniker, char*, int)
+         *   operator new(unsigned int, int, char const *,int)
+         * We check for them here.
          */
-        WARN("WARNING: unknown 3+-arg overload of %s in %s @"PFX"\n",
-             name, modname, mod->start + info->start_offs);
+        if (func_type->arg_types[1]->kind == DRSYM_TYPE_PTR) {
+            drsym_ptr_type_t *arg_type = (drsym_ptr_type_t *) func_type->arg_types[1];
+            LOG(3, "operator %s 2nd arg is pointer to kind=%d size=%d type=%s\n",
+                name, arg_type->elt_type->kind, arg_type->elt_type->size,
+                (arg_type->elt_type->kind == DRSYM_TYPE_COMPOUND ?
+                 ((drsym_compound_type_t *)arg_type->elt_type)->name : ""));
+            if (arg_type->elt_type->kind == DRSYM_TYPE_COMPOUND &&
+                (strcmp(((drsym_compound_type_t *)arg_type->elt_type)->name,
+                        "std::_DebugHeapTag_t") == 0 ||
+                 strcmp(((drsym_compound_type_t *)arg_type->elt_type)->name,
+                        "_HeapManager") == 0)) {
+                specific_type = generic_type;
+                known = true;
+            }
+        } else if (func_type->arg_types[1]->kind == DRSYM_TYPE_COMPOUND &&
+                   strcmp(((drsym_compound_type_t *)func_type->arg_types[1])->name,
+                          "_ConcRTNewMoniker") == 0) {
+            specific_type = generic_type;
+            known = true;
+            /* It seems that _concrt_new collapses array and non-array operators,
+             * so we don't want to check for mismatch.
+             */
+            LOG(3, "operator %s @"PFX" is _ConcRTNewMoniker => not checking mismatches\n",
+                name, mod->start + info->start_offs);
+            edata->indiv_check_mismatch = false;
+        } else if (func_type->num_args == 4) {
+            /* Check for operator new(unsigned int, int, char const *,int) */
+            if (func_type->arg_types[0]->kind == DRSYM_TYPE_INT &&
+                func_type->arg_types[1]->kind == DRSYM_TYPE_INT &&
+                func_type->arg_types[2]->kind == DRSYM_TYPE_PTR &&
+                func_type->arg_types[3]->kind == DRSYM_TYPE_INT) {
+                drsym_ptr_type_t *arg_type = (drsym_ptr_type_t *) func_type->arg_types[2];
+                if (arg_type->elt_type->kind == DRSYM_TYPE_INT &&
+                    arg_type->elt_type->size == 1) {
+                    specific_type = generic_type;
+                    known = true;
+                }
+            }
+        }
+       if (!known) {
+            /* Other apps have their own custom multi-arg operators,
+             * with some taking void* and being placement and some
+             * very similar-looking ones taking void* and not being
+             * placement.  Let's try decoding.
+             */
+            WARN("WARNING: unknown 3+-arg overload of %s in %s @"PFX"\n",
+                 name, modname, mod->start + info->start_offs);
+        }
     }
     if (!known) {
         /* XXX DRi#860: drsyms does not yet provide arg types for Linux/Mingw.
@@ -1800,6 +1869,12 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
              * (otherwise we wouldn't replace a whole bunch of operators).
              * We assume that only the app itself and its dlls will have weird
              * operators, and that we'll have type info.
+             *
+             * XXX: actually not intercepting operator new and intercepting
+             * corresponding operator delete can end up w/ false positives
+             * (i#1239) so there is a big downside!  We now handle all MSVC
+             * variants but we may want to consider disabling the whole set if
+             * we end up ignoring any.
              */
             if (have_types IF_WINDOWS(&& !modname_is_libc_or_libcpp(modname))) {
                 specific_type = HEAP_ROUTINE_INVALID;
@@ -1816,26 +1891,6 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
     return specific_type;
 }
 #endif
-
-/* for passing data to sym callback, and simpler to use for
- * non-USE_DRSYMS as well
- */
-typedef struct _set_enum_data_t {
-    alloc_routine_set_t *set;
-    heapset_type_t set_type;
-    const possible_alloc_routine_t *possible;
-    uint num_possible;
-    bool *processed;
-    bool use_redzone;
-    bool check_mismatch;
-    /* if a wildcard lookup */
-    const char *wildcard_name;
-    const module_data_t *mod;
-    bool is_libc;
-    bool is_libcpp;
-    /* points at libc set, for pairing up dbgcrt and crt */
-    alloc_routine_set_t *set_libc;
-} set_enum_data_t;
 
 static void
 add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
@@ -1889,7 +1944,8 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         }
     }
     add_alloc_routine(pc, edata->possible[idx].type, edata->possible[idx].name,
-                      edata->set, edata->mod->start, modname);
+                      edata->set, edata->mod->start, modname,
+                      edata->indiv_check_mismatch);
     if (edata->processed != NULL)
         edata->processed[idx] = true;
     LOG(1, "intercepting %s @"PFX" type %d in module %s\n",
@@ -1946,7 +2002,7 @@ enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
                 /* Distinguish placement and nothrow new and delete. */
                 routine_type_t op_type = distinguish_operator_type
                     (edata->possible[i].type, edata->possible[i].name, edata->mod,
-                     info);
+                     info, edata);
                 if (op_type == HEAP_ROUTINE_INVALID)
                     modoffs = 0; /* skip */
                 else if (op_type != edata->possible[i].type) {
@@ -2128,6 +2184,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
     edata.num_possible = num_possible;
     edata.use_redzone = use_redzone;
     edata.check_mismatch = check_mismatch;
+    edata.indiv_check_mismatch = true;
     edata.mod = mod;
     edata.processed = NULL;
     edata.wildcard_name = NULL;
