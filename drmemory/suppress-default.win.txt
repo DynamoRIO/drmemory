@@ -726,3 +726,18 @@ MSVCP110*.dll!std::num_get<char,std::istreambuf_iterator<char,std::char_traits<c
 INVALID HEAP ARGUMENT
 name=default i#960 CRT mismatch
 MSVCR*.dll!*
+
+##################################################
+# i#1240: real mismatches in VS2010 CRT
+# We can rely on symbols here as without them we wouldn't see the operator stubs.
+# For /MD*, the i#960 suppression already covers it.
+
+INVALID HEAP ARGUMENT
+name=default i#1240 CRT mismatch A
+*!Concurrency::details::Hash<*
+
+# Hash destructor is inlined into another class
+INVALID HEAP ARGUMENT
+name=default i#1240 CRT mismatch B
+*!Concurrency::details::ContextBase::~ContextBase
+

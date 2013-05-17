@@ -2358,6 +2358,7 @@ replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type,
 static void *
 replace_operator_new(size_t size)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW,
                                        (app_pc)replace_operator_new);
 }
@@ -2365,6 +2366,7 @@ replace_operator_new(size_t size)
 static void *
 replace_operator_new_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW,
                                        (app_pc)replace_operator_new_nothrow);
 }
@@ -2373,6 +2375,7 @@ replace_operator_new_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 static void *
 replace_operator_new_array(size_t size)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW_ARRAY,
                                        (app_pc)replace_operator_new_array);
 }
@@ -2380,6 +2383,7 @@ replace_operator_new_array(size_t size)
 static void *
 replace_operator_new_array_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW_ARRAY,
                                        (app_pc)replace_operator_new_array_nothrow);
 }
@@ -2406,6 +2410,7 @@ replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller,
 static void
 replace_operator_delete(void *ptr)
 {
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete, false);
 }
@@ -2413,6 +2418,7 @@ replace_operator_delete(void *ptr)
 static void
 replace_operator_delete_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete, false);
 }
@@ -2420,6 +2426,7 @@ replace_operator_delete_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 static void
 replace_operator_delete_array(void *ptr)
 {
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
                                    (app_pc)replace_operator_delete_array, false);
 }
@@ -2427,6 +2434,7 @@ replace_operator_delete_array(void *ptr)
 static void
 replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
+     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
                                    (app_pc)replace_operator_delete_array_nothrow, false);
 }
@@ -2434,6 +2442,7 @@ replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 static void *
 replace_operator_new_nomatch(size_t size)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_UNKNOWN,
                                        (app_pc)replace_operator_new_nomatch);
 }
@@ -2441,6 +2450,7 @@ replace_operator_new_nomatch(size_t size)
 static void *
 replace_operator_new_nothrow_nomatch(size_t size, int /*std::nothrow_t*/ ignore)
 {
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
     return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_UNKNOWN,
                                        (app_pc)replace_operator_new_nothrow);
 }
@@ -2448,6 +2458,7 @@ replace_operator_new_nothrow_nomatch(size_t size, int /*std::nothrow_t*/ ignore)
 static void
 replace_operator_delete_nomatch(void *ptr)
 {
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete_nomatch, true);
 }
@@ -2455,6 +2466,7 @@ replace_operator_delete_nomatch(void *ptr)
 static void
 replace_operator_delete_nothrow_nomatch(void *ptr, int /*std::nothrow_t*/ ignore)
 {
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
     replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete_nothrow_nomatch, true);
 }
