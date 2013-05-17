@@ -125,14 +125,14 @@ static const uint free_list_sizes[] = {
 
 /* Values stored in chunk header flags */
 enum {
-    CHUNK_FREED       = MALLOC_RESERVED_1,
-    CHUNK_MMAP        = MALLOC_RESERVED_2,
-    /* MALLOC_RESERVED_{3,4} are used for types */
-    CHUNK_PRE_US      = MALLOC_RESERVED_5,
-    CHUNK_PREV_FREE   = MALLOC_RESERVED_6,
-    CHUNK_DELAY_FREE  = MALLOC_RESERVED_7,
+    CHUNK_FREED       = MALLOC_RESERVED_1,          /* 0x0001 */
+    CHUNK_MMAP        = MALLOC_RESERVED_2,          /* 0x0002 */
+    /* MALLOC_RESERVED_{3,4} are used for types */  /* 0x000C */
+    CHUNK_PRE_US      = MALLOC_RESERVED_5,          /* 0x0100 */
+    CHUNK_PREV_FREE   = MALLOC_RESERVED_6,          /* 0x0200 */
+    CHUNK_DELAY_FREE  = MALLOC_RESERVED_7,          /* 0x0400 */
 #ifdef WINDOWS
-    CHUNK_LAYER_RTL   = MALLOC_RESERVED_8,
+    CHUNK_LAYER_RTL   = MALLOC_RESERVED_8,          /* 0x0800 */
 #endif
 
     /* meta-flags */
@@ -1862,7 +1862,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         !TEST(CHUNK_PRE_US, head->flags)) {
         LOG(2, "\t%s: in-place realloc from %d to %d bytes\n", __FUNCTION__,
             chunk_request_size(head), size);
-        /* XXX: if shrinking a lot, should free and re-malloc to save space */
+        /* XXX: if shrinking a lot, should free and re-malloc, or split, to save space */
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_remove(ptr);
         if (chunk_request_size(head) < size && TEST(ALLOC_ZERO, flags))

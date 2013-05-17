@@ -1928,8 +1928,10 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
                         if (addr - prev_end < 8) {
                             BUFPRINT(buf, bufsz, *sofar, len,
                                      "%srefers to %d byte(s) beyond last valid byte in prior malloc"NL,
-                                     /* +1 since beyond last valid (so don't have +0) */
-                                     INFO_PFX, addr + 1 - prev_end);
+                                     /* I used to have +1 to avoid "0 bytes" but
+                                      * I think that's more confusing then it helps
+                                      */
+                                     INFO_PFX, addr - prev_end);
                         }
                         if (!options.brief) {
                             BUFPRINT(buf, bufsz, *sofar, len,
@@ -1983,18 +1985,12 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             }
         }
     }
-    /* XXX: end might be the requested size, so estimate the padding -- should
-     * we return the padding instead for -replace_malloc?
+    /* We can't assert anything about end vs addr as there could be a lot of
+     * padding on a realloc-shrunk object (i#1232).
      */
-    ASSERT(!found || (addr < (byte *)ALIGN_FORWARD(end, MALLOC_CHUNK_ALIGNMENT) +
-                      options.redzone_size &&
-                      addr+sz >= start - options.redzone_size),
+    ASSERT(!found || addr+sz >= start - options.redzone_size,
            "bug in delay free overlap calc");
-    if (found &&
-        /* don't report overlap if only overlaps redzones: prev/next analysis
-         * should mention that instead
-         */
-        addr < end && addr+sz >= start) {
+    if (found) {
         /* Note that due to the finite size of the delayed
          * free list (and realloc not on it: PR 493888) and
          * new malloc entries replacing invalid we can't
@@ -2003,15 +1999,40 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         if (invalid_heap_arg && addr == start) {
             BUFPRINT(buf, bufsz, *sofar, len,
                      "%smemory was previously freed", INFO_PFX);
-        } else if (options.brief) {
-            BUFPRINT(buf, bufsz, *sofar, len, "%srefers to ", INFO_PFX);
-            if (addr > start)
-                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) into ", addr - start);
-            BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
+        } else if (addr < end && addr+sz >= start) {
+            if (options.brief) {
+                BUFPRINT(buf, bufsz, *sofar, len, "%srefers to ", INFO_PFX);
+                if (addr > start)
+                    BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) into ", addr - start);
+                BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
+            } else {
+                BUFPRINT(buf, bufsz, *sofar, len,
+                         "%s"PFX"-"PFX" overlaps memory "PFX"-"PFX" that was freed",
+                         INFO_PFX, addr, addr+sz, start, end);
+            }
         } else {
-            BUFPRINT(buf, bufsz, *sofar, len,
-                     "%s"PFX"-"PFX" overlaps memory "PFX"-"PFX" that was freed",
-                     INFO_PFX, addr, addr+sz, start, end);
+            /* Refers to padding or redzone, so an overflow/underflow and not
+             * really a "use-after-freee".
+             */
+            if (options.brief)
+                BUFPRINT(buf, bufsz, *sofar, len, "%srefers to ", INFO_PFX);
+            else {
+                BUFPRINT(buf, bufsz, *sofar, len, "%s"PFX"-"PFX" is ", INFO_PFX,
+                         addr, addr+sz);
+            }
+            if (addr < start)
+                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) before ", start - addr);
+            else {
+                ASSERT(addr >= end, "check above should have caught this");
+                /* XXX: not doing the +1: doesn't "0 bytes beyond" seem ok? */
+                BUFPRINT(buf, bufsz, *sofar, len, "%d byte(s) beyond ", addr - end);
+            }
+            if (options.brief)
+                BUFPRINT(buf, bufsz, *sofar, len, "memory that was freed");
+            else {
+                BUFPRINT(buf, bufsz, *sofar, len, "memory "PFX"-"PFX" that was freed",
+                         start, end);
+            }
         }
         if (pcs != NULL) {
             symbolized_callstack_t scs;

@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -32,6 +33,7 @@ main()
     void *p[NUM_MALLOC];
     int i;
     char c;
+    char *x;
 
     for (i = 0; i < NUM_MALLOC; i++) {
         /* Make allocations and free right away.  Normally the next alloc
@@ -47,11 +49,16 @@ main()
     }
 
     /* Ensure we report this as a freed access (PR 572716) */
-    {
-        char *x = malloc(64);
-        free(x);
-        *(x+32) = 0xe; /* i#924-c#4: avoid corrupting free_list */
-    }
+    x = malloc(64);
+    free(x);
+    *(x+32) = 0xe; /* i#924-c#4: avoid corrupting free_list */
+
+    /* Ensure we report "%d bytes from freed memory" for an access to
+     * the redzone or padding
+     */
+    x = malloc(2);
+    free(x);
+    *(x+2) = 0xe;
 
     printf("all done\n");
     return 0;

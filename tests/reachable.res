@@ -30,18 +30,18 @@ cs2bug.cpp:87
 %OPTIONAL # Not present on Linux when wrapping b/c operator new turns 0 into 1
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
 cs2bug.cpp:97
-refers to 1 byte(s) beyond last valid byte in prior malloc
+refers to 0 byte(s) beyond last valid byte in prior malloc
 %ENDOPTIONAL
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
 cs2bug.cpp:101
 %ANYLINE
 # Linux wrap will say "1", else "2"
+refers to 0 byte(s) beyond last valid byte in prior malloc
 refers to 1 byte(s) beyond last valid byte in prior malloc
-refers to 2 byte(s) beyond last valid byte in prior malloc
 %ENDANYLINE
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
 cs2bug.cpp:105
-refers to 1 byte(s) beyond last valid byte in prior malloc
+refers to 0 byte(s) beyond last valid byte in prior malloc
 ##################################################
 # test_mismatch_dtr()
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
