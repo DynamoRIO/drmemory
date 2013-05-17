@@ -1435,8 +1435,9 @@ find_debug_delete_interception(app_pc mod_start, app_pc mod_end, size_t modoffs)
                  * lib depending on a still-not-yet-processed libc (if app doesn't
                  * use libc), so we assume that any call to libc is a call to
                  * free.  We can't rely on this being the 2nd call as there's
-                 * not always a call to the destructor.  No destructor should
-                 * live in libc.
+                 * not always a call to the destructor.  No app destructor should
+                 * live in libc (XXX: there are some C++ classes in msvcr*.dll
+                 * though!).
                  */
                 (pc_is_in_libc(tgt) && !pc_is_in_libc(mod_start))) {
                 LOG(2, "%s: found cti to free? "PFX"\n", __FUNCTION__, tgt);

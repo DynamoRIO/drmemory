@@ -219,6 +219,8 @@ static drsys_sysnum_t sysnum_CreateThreadEx = {-1,0};
 static drsys_sysnum_t sysnum_CreateUserProcess = {-1,0};
 static drsys_sysnum_t sysnum_DeviceIoControlFile = {-1,0};
 static drsys_sysnum_t sysnum_QuerySystemInformation = {-1,0};
+static drsys_sysnum_t sysnum_QuerySystemInformationWow64 = {-1,0};
+static drsys_sysnum_t sysnum_QuerySystemInformationEx = {-1,0};
 static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 static drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
 
@@ -2793,10 +2795,12 @@ static syscall_info_t syscall_ntdll_info[] = {
     /* args seem to be identical to NtQuerySystemInformation */
     {{0,0},"NtWow64GetNativeSystemInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 4,
      {
-        {1, -2, W},
-        {1, -3, WI},
-        {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-     }
+         {0, sizeof(SYSTEM_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, -2, W},
+         {1, -3, WI},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }, &sysnum_QuerySystemInformationWow64
     },
     {{0,0},"NtWow64QueryInformationProcess64", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 5,
      {
@@ -3039,7 +3043,18 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtNotifyChangeSession", UNKNOWN, RNTST, 8, },
     {{0,0},"NtOpenKeyTransactedEx", UNKNOWN, RNTST, 5, },
     {{0,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtQuerySystemInformationEx", UNKNOWN, RNTST, 6, },
+    /* One info class reads data, which is special-cased */
+    {{0,0},"NtQuerySystemInformationEx", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 6,
+     {
+         {0, sizeof(SYSTEM_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, -2, R},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -4, W},
+         {3, -5, WI},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }, &sysnum_QuerySystemInformationEx
+    },
     {{0,0},"NtQueueApcThreadEx", UNKNOWN, RNTST, 6, },
     {{0,0},"NtSerializeBoot", UNKNOWN, RNTST, 0, },
     {{0,0},"NtSetIoCompletionEx", UNKNOWN, RNTST, 6, },
@@ -4312,15 +4327,17 @@ handle_QuerySystemInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
      * not a big deal as we'll report any uninit prior to that.
      */
     SYSTEM_INFORMATION_CLASS cls = (SYSTEM_INFORMATION_CLASS) pt->sysarg[0];
+    uint out_index =
+        drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx) ? 3 : 1;
     if (cls == SystemSessionProcessesInformation) {
         SYSTEM_SESSION_PROCESS_INFORMATION buf;
         if (ii->arg->pre) {
-            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)pt->sysarg[1],
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *)pt->sysarg[out_index],
                                     sizeof(buf), "SYSTEM_SESSION_PROCESS_INFORMATION",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
         }
-        if (safe_read((byte *) pt->sysarg[1], sizeof(buf), &buf)) {
+        if (safe_read((byte *) pt->sysarg[out_index], sizeof(buf), &buf)) {
             if (!report_memarg_type(ii, 1, SYSARG_WRITE,
                                     buf.Buffer, buf.SizeOfBuf, "Buffer",
                                     DRSYS_TYPE_STRUCT, NULL))
@@ -5132,7 +5149,9 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
         handle_SetInformationProcess(drcontext, pt, ii);
-    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation) ||
+             drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
+             drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
         handle_QuerySystemInformation(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
@@ -5213,7 +5232,9 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
         handle_SetInformationProcess(drcontext, pt, ii);
-    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation))
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation) ||
+             drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
+             drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
         handle_QuerySystemInformation(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);

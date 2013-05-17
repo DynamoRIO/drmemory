@@ -9,6 +9,9 @@
  ****************************************************************************
  ****************************************************************************/
 
+#ifndef _NTEXAPI_H_
+#define _NTEXAPI_H_ 1
+
 NTSTATUS NTAPI
 NtEnumerateBootEntries(
     __out_bcount_opt(*BufferLength) PVOID Buffer,
@@ -66,3 +69,16 @@ NtSetDriverEntryOrder(
     __in_ecount(Count) PULONG Ids,
     __in ULONG Count
     );
+
+NTSTATUS
+NTAPI
+NtQuerySystemInformationEx(
+    __in SYSTEM_INFORMATION_CLASS SystemInformationClass,
+    __in_bcount(QueryInformationLength) PVOID QueryInformation,
+    __in ULONG QueryInformationLength,
+    __out_bcount_opt(SystemInformationLength) PVOID SystemInformation,
+    __in ULONG SystemInformationLength,
+    __out_opt PULONG ReturnLength
+    );
+
+#endif /* _NTEXAPI_H_ 1 */
