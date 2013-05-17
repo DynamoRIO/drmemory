@@ -741,3 +741,15 @@ INVALID HEAP ARGUMENT
 name=default i#1240 CRT mismatch B
 *!Concurrency::details::ContextBase::~ContextBase
 
+##################################################
+# i#1241: Python suppressions
+# Can be in libpython* or python executable so we use "*python*"
+
+UNADDRESSABLE ACCESS
+name=default i#1241 python malloc
+*python*!PyObject_Free
+
+UNADDRESSABLE ACCESS
+name=default i#1241 python malloc
+*python*!PyObject_Realloc
+

@@ -30,15 +30,15 @@ name=default (libc bitfield)
 libc.so.*!maybe_split_for_insert
 
 ##################################################
-# Python suppressions (PR 523512)
+# i#1241: Python suppressions
 # Can be in libpython* or python executable so we use "*python*"
 
 UNADDRESSABLE ACCESS
-name=default (python malloc)
+name=default i#1241 python malloc
 *python*!PyObject_Free
 
 UNADDRESSABLE ACCESS
-name=default (python malloc)
+name=default i#1241 python malloc
 *python*!PyObject_Realloc
 
 ##################################################
