@@ -65,6 +65,8 @@ check_reachability(bool at_exit);
 /* Returns true if the overlap is in any portion of freed memory,
  * including padding and redzones.  The returned bounds can be used to
  * rule out padding and redzones if desired.
+ * For -no_replace_malloc, the returned pcs is a clone and must be
+ * freed with packed_callstack_free().
  */
 bool
 overlaps_delayed_free(byte *start, byte *end,

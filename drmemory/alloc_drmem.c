@@ -354,12 +354,17 @@ alloc_callstack_free(void *p)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) p;
     uint count;
+    LOG(4, "%s: force-free pcs "PFX"\n", pcs, __FUNCTION__);
     /* For -replace_malloc, we need to force-remove here.  With wrapping, we rely
      * on the malloc hashtable exist to free all references to these callstacks.
      * For replacing, there's no reason to iterate the heap just to clean these up.
      */
     do {
         count = packed_callstack_free(pcs);
+        /* XXX: we may need to widen the refcount to 64-bit: an app could
+         * conceivably allocate 4 billion mallocs from one call site!
+         */
+        ASSERT(count < UINT_MAX - 1, "underflow in count: likely double-free");
     } while (count > 0 && options.replace_malloc && process_exiting);
 }
 
@@ -372,6 +377,7 @@ shared_callstack_free(packed_callstack_t *pcs)
     /* We need to synchronize removal from the table w/ additions */
     hashtable_lock(&alloc_stack_table);
     count = packed_callstack_free(pcs);
+    LOG(4, "%s: freed pcs "PFX" => refcount %d\n", __FUNCTION__, pcs, count);
     ASSERT(count != 0, "refcount should not hit 0 in malloc_table");
     if (count == 1) {
         /* One ref left, which must be the alloc_stack_table.
@@ -457,6 +463,7 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * and the refcount hits 1 we remove from alloc_stack_table.
      */
     packed_callstack_add_ref(pcs);
+    LOG(4, "%s: created pcs "PFX"\n", __FUNCTION__, pcs);
     hashtable_unlock(&alloc_stack_table);
     return pcs;
 }
@@ -1052,6 +1059,11 @@ overlaps_delayed_free(byte *start, byte *end,
                 *free_start = info.base;
             if (free_end != NULL)
                 *free_end = info.base + info.request_size;
+            /* There can be a race where this client_data is freed (due to
+             * the delay-free or freed chunk being re-used), but our alloc_stack_table
+             * refcount keeps it alive for the process lifetime.  So I see no
+             * reason to hold a lock, and esp not to clone it here.
+             */
             if (pcs != NULL)
                 *pcs = (packed_callstack_t *) info.client_data;
         } else

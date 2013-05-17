@@ -1804,6 +1804,7 @@ packed_callstack_add_ref(packed_callstack_t *pcs)
 {
     ASSERT(pcs != NULL, "invalid args");
     ATOMIC_INC32(pcs->refcount);
+    ASSERT(pcs->refcount > 0, "refcount overflowed");
 }
 
 packed_callstack_t *

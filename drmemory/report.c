@@ -2027,7 +2027,8 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         } else
             BUFPRINT(buf, bufsz, *sofar, len, NL);
     }
-    if (pcs != NULL)
+    /* For wrapping we pass in a clone */
+    if (pcs != NULL && !options.replace_malloc)
         packed_callstack_free(pcs);
     if (!invalid_heap_arg && alloc_in_heap_routine(drcontext)) {
         BUFPRINT(buf, bufsz, *sofar, len,
