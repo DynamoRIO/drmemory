@@ -3521,6 +3521,32 @@ drsyscall_os_get_sysparam_location(cls_syscall_t *pt, uint argnum, drsys_arg_t *
 }
 
 bool
+os_syscall_ret_small_write_last(syscall_info_t *info, ptr_int_t res)
+{
+    /* i#486, i#932: syscalls that return the capacity needed in an OUT
+     * param will still write to it when returning STATUS_BUFFER_TOO_SMALL
+     */
+    if (!TEST(SYSINFO_RET_SMALL_WRITE_LAST, info->flags))
+        return false;
+    if (info->return_type == DRSYS_TYPE_NTSTATUS) {
+        return (res == STATUS_BUFFER_TOO_SMALL ||
+                res == STATUS_BUFFER_OVERFLOW || /* warning, not error, value */
+                res == STATUS_INFO_LENGTH_MISMATCH);
+    }
+    /* i#1246: it seems weird for a bool return value to do this, b/c what happens
+     * if the OUT param for the size is bogus?  There's no other return status.
+     * On a bogus param addr we'll raise UNADDR -- maybe not so bad?
+     * What else can we do?  Rely on options.is_byte_addressable, or query mem
+     * prot -- but then we need the arg value, and drsys_syscall_succeeded() is
+     * supposed to not rely on that.
+     */
+    if (info->return_type == SYSARG_TYPE_BOOL32 ||
+        info->return_type == SYSARG_TYPE_BOOL8)
+        return (!res);
+    return false;
+}
+
+bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
 {
     bool success;
@@ -3528,6 +3554,8 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
         return success;
     /* if info==NULL we assume specially handled and we don't need to look it up */
     if (info != NULL) {
+        if (os_syscall_ret_small_write_last(info, res))
+            return true;
         if (TEST(SYSINFO_RET_ZERO_FAIL, info->flags) ||
             info->return_type == SYSARG_TYPE_BOOL32 ||
             info->return_type == SYSARG_TYPE_BOOL8 ||
@@ -3540,13 +3568,6 @@ os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res)
          */
         if (TEST(SYSINFO_RET_MINUS1_FAIL, info->flags))
             return (res != -1);
-        /* i#486, i#932: syscalls that return the capacity needed in an OUT
-         * param will still write to it when returning STATUS_BUFFER_TOO_SMALL
-         */
-        if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, info->flags) &&
-            (res == STATUS_BUFFER_TOO_SMALL ||
-             res == STATUS_INFO_LENGTH_MISMATCH))
-            return true;
     }
     if (res == STATUS_BUFFER_OVERFLOW) {
         /* Data is filled in so consider success (i#358) */

@@ -383,6 +383,11 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
 bool
 os_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t res);
 
+#ifdef WINDOWS
+bool
+os_syscall_ret_small_write_last(syscall_info_t *info, ptr_int_t res);
+#endif
+
 bool
 os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT);
 

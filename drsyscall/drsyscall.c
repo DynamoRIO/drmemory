@@ -1294,10 +1294,7 @@ process_post_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
                "inlined should not be written");
 #ifdef WINDOWS
         /* i#486, i#531, i#932: for too-small buffer, only last param written */
-        if (TEST(SYSINFO_RET_SMALL_WRITE_LAST, sysinfo->flags) &&
-            (result == STATUS_BUFFER_TOO_SMALL ||
-             result == STATUS_BUFFER_OVERFLOW ||
-             result == STATUS_INFO_LENGTH_MISMATCH) &&
+        if (os_syscall_ret_small_write_last(sysinfo, result) &&
             i+1 < MAX_ARGS_IN_ENTRY &&
             !sysarg_invalid(&sysinfo->arg[i+1]))
             continue;
