@@ -223,6 +223,7 @@ static drsys_sysnum_t sysnum_QuerySystemInformationWow64 = {-1,0};
 static drsys_sysnum_t sysnum_QuerySystemInformationEx = {-1,0};
 static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 static drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
+static drsys_sysnum_t sysnum_PowerInformation = {-1,0};
 
 /* FIXME i#97: IIS syscalls!
  * FIXME i#98: fill in data on rest of Vista and Win7 syscalls!
@@ -1529,11 +1530,15 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtPowerInformation", OK, RNTST, 5,
      {
          {0, sizeof(POWER_INFORMATION_LEVEL), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, -2, R},
+         /* Some info classes do not need to define every field of the input buffer
+          * (i#1247), necessitating special-casing instead of listing "{1, -2, R}" here.
+          * We still list an entry (w/ default struct type) for non-memarg iterator.
+          */
+         {1, -2, SYSARG_NON_MEMARG, },
          {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {3, -4, W},
          {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }
+     }, &sysnum_PowerInformation
     },
     {{0,0},"NtPrivilegeCheck", OK, RNTST, 3,
      {
@@ -4431,6 +4436,65 @@ handle_SetInformationProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_inf
     }
 }
 
+static void
+handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* Normally the buffer is all defined, but some info classes only write some fields */
+    POWER_INFORMATION_LEVEL level = (POWER_INFORMATION_LEVEL) pt->sysarg[0];
+    if (level == PowerRequestCreate) {
+        /* i#1247: fields depend on flags */
+        POWER_REQUEST_CREATE *real_req = (POWER_REQUEST_CREATE *) pt->sysarg[1];
+        size_t sz = (size_t) pt->sysarg[2];
+        POWER_REQUEST_CREATE safe_req;
+        if (ii->arg->pre) {
+            /* Version and Flags must be defined */
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) real_req,
+                                    offsetof(REASON_CONTEXT, Reason),
+                                    "REASON_CONTEXT Version+Flags",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (safe_read((byte *)real_req, sizeof(safe_req), &safe_req)) {
+                if (safe_req.Flags == POWER_REQUEST_CONTEXT_SIMPLE_STRING ||
+                    safe_req.Flags == POWER_REQUEST_CONTEXT_DETAILED_STRING) {
+                    /* XXX: the array of strings and the resource ID seem to
+                     * not be passed to the kernel for DETAILED_STRING!
+                     * Only the name of the module.
+                     */
+                    syscall_arg_t arg_info = {1, sizeof(UNICODE_STRING), SYSARG_READ, 0};
+                    handle_unicode_string_access(ii, &arg_info,
+                                                 (byte *)&real_req->ReasonString,
+                                                 sizeof(real_req->ReasonString),
+                                                 false/*honor len*/);
+                    if (ii->abort)
+                        return;
+                } else {
+                    /* An unknown flag: we observe 0x80000000 in i#1247.
+                     * That flag has no further initialized fields.
+                     * We live with false negatives for other unknown flags.
+                     */
+#                   define POWER_REQUEST_CONTEXT_UNKNOWN_NOINPUT 0x80000000
+                    if (safe_req.Flags != POWER_REQUEST_CONTEXT_UNKNOWN_NOINPUT) {
+                        WARN("WARNING: unknown REASON_CONTEXT.Flags value 0x%x\n",
+                             safe_req.Flags);
+                    }
+                }
+            }
+        }
+    } else {
+        /* XXX: check the rest of the codes and see whether any are not
+         * fully initialized or have weird output buffers.
+         * Some are documented under CallNtPowerInformation.
+         */
+        if (ii->arg->pre) {
+            /* In table this would be "{1, -2, R}" */
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) pt->sysarg[1],
+                                    pt->sysarg[2], "InputBuffer",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+        }
+    }
+}
+
 /***************************************************************************
  * IOCTLS
  */
@@ -5174,6 +5238,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
         handle_QuerySystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_PowerInformation))
+        handle_PowerInformation(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
 }
@@ -5257,6 +5323,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
         handle_QuerySystemInformation(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_PowerInformation))
+        handle_PowerInformation(drcontext, pt, ii);
     else
         wingdi_shadow_process_syscall(drcontext, pt, ii);
     DOLOG(2, { syscall_diagnostics(drcontext, pt); });

@@ -135,4 +135,23 @@ typedef enum _SECTION_INHERIT {
 } SECTION_INHERIT;
 
 
+/***************************************************************************
+ * Derived independently
+ */
+
+/* Used by NtPowerInformation.PowerRequestCreate, which is used by
+ * kernel32!PowerCreateRequest
+ */
+typedef struct _POWER_REQUEST_CREATE {
+    /* First two fields match those in REASON_CONTEXT */
+    ULONG Version;
+    DWORD Flags;
+    /* XXX: it seems that REASON_CONTEXT.Reason.Detailed.* is all just
+     * ignored and only the name of the module is passed to the kernel
+     * (name of exe, if NULL).  Why have the array then?  Where is the
+     * resource ID passed?
+     */
+    UNICODE_STRING ReasonString;
+} POWER_REQUEST_CREATE;
+
 #endif /* _WDMDDK_ */
