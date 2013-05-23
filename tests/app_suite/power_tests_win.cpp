@@ -38,6 +38,10 @@ TEST(PowerTest, PowerCreateRequest) {
     h = PowerCreateRequest(&cxt);
     EXPECT_NE(h, (HANDLE) NULL);
 
+    PowerSetRequest(h, PowerRequestAwayModeRequired);
+    PowerClearRequest(h, PowerRequestAwayModeRequired);
+    CloseHandle(h);
+
     cxt.Version = POWER_REQUEST_CONTEXT_VERSION;
     cxt.Flags = POWER_REQUEST_CONTEXT_DETAILED_STRING;
     LPWSTR array[] = {L"Reason1", L"Reason2"};

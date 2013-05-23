@@ -4480,6 +4480,25 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
                 }
             }
         }
+    } else if (level == PowerRequestAction) {
+        if (ii->arg->pre) {
+            /* POWER_REQUEST_ACTION struct.  If it ends up used anywhere
+             * else we should move this to a type handler.
+             */
+            POWER_REQUEST_ACTION *act = (POWER_REQUEST_ACTION *) pt->sysarg[1];
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) act,
+                                    offsetof(POWER_REQUEST_ACTION, Unknown1) +
+                                    sizeof(act->Unknown1),
+                                    "POWER_REQUEST_ACTION 1st 3 fields",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) &act->Unknown2,
+                                    sizeof(act->Unknown2),
+                                    "POWER_REQUEST_ACTION 4th field",
+                                    DRSYS_TYPE_POINTER, NULL))
+                return;
+        }
+        
     } else {
         /* XXX: check the rest of the codes and see whether any are not
          * fully initialized or have weird output buffers.

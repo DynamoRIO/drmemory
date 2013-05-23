@@ -154,4 +154,15 @@ typedef struct _POWER_REQUEST_CREATE {
     UNICODE_STRING ReasonString;
 } POWER_REQUEST_CREATE;
 
+/* Used by NtPowerInformation.PowerRequestAction, which is used by
+ * kernel32!Power{Set,Clear}Request
+ */
+typedef struct _POWER_REQUEST_ACTION {
+    HANDLE PowerRequest;
+    POWER_REQUEST_TYPE RequestType;
+    BOOLEAN Unknown1;
+    PVOID Unknown2;
+} POWER_REQUEST_ACTION;
+
+
 #endif /* _WDMDDK_ */
