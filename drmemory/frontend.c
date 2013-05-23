@@ -157,17 +157,38 @@ static const char ms_symsrv[] = "http://msdl.microsoft.com/download/symbols";
 
 #define prefix "~~Dr.M~~ "
 
+static bool
+on_vista_or_later(void)
+{
+    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
+            win_ver.dwMajorVersion >= 6 &&
+            win_ver.dwMinorVersion >= 0);
+}
+
+static bool
+on_win8_or_later(void)
+{
+    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
+            win_ver.dwMajorVersion >= 6 &&
+            win_ver.dwMinorVersion >= 2);
+}
+
 static void
 pause_if_in_cmd(void)
 {
 #ifdef WINDOWS
-    if (dr_using_console()) {
+    if (dr_using_console() ||
+        /* i#1157: on win8 dr_using_console() always returns false, so we
+         * always pause unless -batch
+         */
+        (on_win8_or_later() && !batch)) {
         /* If someone double-clicked drmemory.exe, ensure the message
          * stays up instead of the cmd window disappearing (i#1129).
          * Yes, someone already in cmd will have to hit a key, but
          * that's ok.
          */
         fprintf(stderr, "\n<press enter>\n");
+        fflush(stderr);
         getchar();
     }
 #endif
@@ -308,22 +329,6 @@ char_to_tchar(const char *str, TCHAR *wbuf, size_t wbuflen/*# elements*/)
     /* XXX: propagate to caller?  or make fatal error? */
     assert(res > 0);
     wbuf[wbuflen - 1] = L'\0';
-}
-
-static bool
-on_vista_or_later(void)
-{
-    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
-            win_ver.dwMajorVersion >= 6 &&
-            win_ver.dwMinorVersion >= 0);
-}
-
-static bool
-on_win8_or_later(void)
-{
-    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
-            win_ver.dwMajorVersion >= 6 &&
-            win_ver.dwMinorVersion >= 2);
 }
 
 /* On failure returns INVALID_HANDLE_VALUE.
