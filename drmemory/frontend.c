@@ -976,8 +976,6 @@ _tmain(int argc, TCHAR *targv[])
     win_ver.dwOSVersionInfoSize = sizeof(win_ver);
     if (!GetVersionEx(&win_ver))
         fatal("unable to determine Windows version");
-    if (on_win8_or_later())
-        warn("Windows 8 support is still experimental.  Please report problems.");
 
 #ifdef _UNICODE
     /* To simplify our (soon-to-be) cross-platform code we convert to utf8 up front.
