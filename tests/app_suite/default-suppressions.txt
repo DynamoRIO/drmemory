@@ -111,6 +111,7 @@ ntdll.dll!...
 KERNEL*.dll!*
 
 # on win8:
+# (this is also suppressing i#1250 win8 leaks)
 LEAK
 name=i#1140 closed-MessageBox E
 combase.dll!*

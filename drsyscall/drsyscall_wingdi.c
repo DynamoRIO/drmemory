@@ -236,6 +236,7 @@ static drsys_sysnum_t sysnum_UserGetRawInputDeviceInfo = {-1,0};
 static drsys_sysnum_t sysnum_UserTrackMouseEvent = {-1,0};
 static drsys_sysnum_t sysnum_UserLoadKeyboardLayoutEx = {-1,0};
 static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1,0};
+static drsys_sysnum_t sysnum_UserMessageCall = {-1,0};
 
 /* forward decl so "extern" */
 extern syscall_info_t syscall_usercall_info[];
@@ -829,7 +830,26 @@ syscall_info_t syscall_user32_info[] = {
          {0,}/*can be R or W*/
      }, &sysnum_UserMenuItemInfo
     },
-    {{0,0},"NtUserMessageCall", OK, SYSARG_TYPE_BOOL32, 7, },
+    /* i#1249: NtUserMessageCall has a lot of sub-actions based on both 2nd
+     * param and 6th param.  However, enough are identical for our purposes that
+     * we handle in code.  That's based on an early examination: if more and
+     * more need special handling we may want to switch to a secondary table(s).
+     */
+    {{0,0},"NtUserMessageCall", OK, SYSARG_TYPE_BOOL32, 7,
+     {
+         {0, sizeof(HANDLE),  SYSARG_INLINED,    DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT),    SYSARG_INLINED,    DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(WPARAM),  SYSARG_INLINED,    DRSYS_TYPE_UNSIGNED_INT},
+         /* For some WM_ codes this is a pointer: special-cased.
+          * XXX: non-memarg client would want secondary table(s)!
+          */
+         {3, sizeof(LPARAM),  SYSARG_INLINED,    DRSYS_TYPE_SIGNED_INT},
+         /* 4th param is sometimes IN and sometimes OUT so we special-case it */
+         {4, sizeof(LRESULT), SYSARG_NON_MEMARG, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD),   SYSARG_INLINED,    DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(BOOL),    SYSARG_INLINED,    DRSYS_TYPE_BOOL},
+     }, &sysnum_UserMessageCall
+    },
     {{0,0},"NtUserMinMaximize", OK, SYSARG_TYPE_UINT32, 3, },
     {{0,0},"NtUserModifyUserStartupInfoFlags", OK, SYSARG_TYPE_UINT32, 2, },
     {{0,0},"NtUserMonitorFromPoint", OK, DRSYS_TYPE_HANDLE, 2, },
@@ -4650,6 +4670,148 @@ handle_UserTrackMouseEvent(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_
 }
 
 static void
+handle_UserMessageCall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* i#1249: behavior depends on both 2nd param (WM_* and other message codes)
+     * and 6th param (major action requested: FNID_* codes).
+     * See comments in table: if enough of these turn out to be different we
+     * might want a secondary table(s) instead.
+     */
+#   define ORD_WPARAM 2
+#   define ORD_LPARAM 3
+#   define ORD_RESULT 4
+    UINT msg = (DWORD) pt->sysarg[1];
+    WPARAM wparam = (WPARAM) pt->sysarg[ORD_WPARAM];
+    LPARAM lparam = (LPARAM) pt->sysarg[ORD_LPARAM];
+    ULONG_PTR result = (ULONG_PTR) pt->sysarg[ORD_RESULT];
+    DWORD type = (DWORD) pt->sysarg[5];
+    BOOL ansi = (BOOL) pt->sysarg[6];
+    bool result_written = true;
+
+    /* First, handle result param: whether read or written */
+    if (type == FNID_SENDMESSAGECALLBACK ||
+        type == FNID_SENDMESSAGEFF ||
+        type == FNID_SENDMESSAGEWTOOPTION)
+        result_written = false;
+    if (!report_memarg_type(ii, ORD_RESULT, result_written ? SYSARG_WRITE : SYSARG_READ,
+                            (byte *) result, sizeof(result), "ResultInfo",
+                            DRSYS_TYPE_UNSIGNED_INT, "ULONG_PTR"))
+        return;
+
+    /* Now handle memory params in the msg code.  We assume all FNID_* take in
+     * codes in the same namespace and that we can ignore "type" here.
+     * Some will fail on these codes (e.g., FNID_SCROLLBAR won't accept WM_GETTEXT)
+     * but we'll live with doing the wrong unaddr check pre-syscall for that.
+     */
+    switch (msg) {
+    case WM_COPYDATA: {
+        COPYDATASTRUCT safe;
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ,
+                                (byte *) lparam, sizeof(COPYDATASTRUCT),
+                                "WM_COPYDATA", DRSYS_TYPE_STRUCT, "COPYDATASTRUCT"))
+            return;
+        if (safe_read((byte *) lparam, sizeof(safe), &safe) &&
+            !report_memarg_type(ii, ORD_LPARAM, SYSARG_READ,
+                                (byte *) safe.lpData, safe.cbData,
+                                "COPYDATASTRUCT.lpData", DRSYS_TYPE_VOID, NULL))
+            return;
+      break;
+    }
+    /* XXX: I'm assuming WM_CREATE and WM_NCCREATE are only passed from the
+     * kernel to the app and never the other way so I'm not handling here
+     * (CREATESTRUCT is complex to handle).
+     */
+    case WM_GETMINMAXINFO: {
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ|SYSARG_WRITE,
+                                (byte *) lparam, sizeof(MINMAXINFO),
+                                "WM_GETMINMAXINFO", DRSYS_TYPE_STRUCT, "MINMAXINFO"))
+            return;
+        break;
+    }
+    case WM_GETTEXT: {
+        if (ansi) {
+            handle_cstring(ii, ORD_LPARAM, SYSARG_WRITE, "WM_GETTEXT buffer",
+                           (byte *) lparam, wparam, NULL, true);
+        } else {
+            handle_cwstring(ii, "WM_GETTEXT buffer", (byte *) lparam,
+                            wparam*sizeof(wchar_t), ORD_LPARAM, SYSARG_WRITE, NULL, true);
+        }
+        if (ii->abort)
+            return;
+        break;
+    }
+    case WM_SETTEXT: {
+        if (ansi) {
+            handle_cstring(ii, ORD_LPARAM, SYSARG_READ, "WM_SETTEXT string",
+                           (byte *) lparam, 0, NULL, true);
+        } else {
+            handle_cwstring(ii, "WM_GETTEXT string", (byte *) lparam, 0,
+                            ORD_LPARAM, SYSARG_READ, NULL, true);
+        }
+        if (ii->abort)
+            return;
+        break;
+    }
+    case WM_NCCALCSIZE: {
+        BOOL complex = (BOOL) wparam;
+        if (complex) {
+            NCCALCSIZE_PARAMS safe;
+            if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ|SYSARG_WRITE,
+                                    (byte *) lparam, sizeof(NCCALCSIZE_PARAMS),
+                                    "WM_NCCALCSIZE", DRSYS_TYPE_STRUCT,
+                                    "NCCALCSIZE_PARAMS"))
+                return;
+            if (safe_read((byte *) lparam, sizeof(safe), &safe) &&
+                !report_memarg_type(ii, ORD_LPARAM, SYSARG_WRITE,
+                                    (byte *) safe.lppos, sizeof(WINDOWPOS),
+                                    "NCCALCSIZE_PARAMS.lppos", DRSYS_TYPE_STRUCT,
+                                    "WINDOWPOS"))
+                return;
+        } else {
+            if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ|SYSARG_WRITE,
+                                    (byte *) lparam, sizeof(RECT),
+                                    "WM_NCCALCSIZE", DRSYS_TYPE_STRUCT, "RECT"))
+                return;
+        }
+        break;
+    }
+    case WM_STYLECHANGED: {
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ,
+                                (byte *) lparam, sizeof(STYLESTRUCT),
+                                "WM_STYLECHANGED", DRSYS_TYPE_STRUCT, "STYLESTRUCT"))
+            return;
+        break;
+    }
+    case WM_STYLECHANGING: {
+        /* XXX: only some fields are written */
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ|SYSARG_WRITE,
+                                (byte *) lparam, sizeof(STYLESTRUCT),
+                                "WM_STYLECHANGING", DRSYS_TYPE_STRUCT, "STYLESTRUCT"))
+            return;
+        break;
+    }
+    case WM_WINDOWPOSCHANGED: {
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ,
+                                (byte *) lparam, sizeof(WINDOWPOS),
+                                "WM_WINDOWPOSCHANGED", DRSYS_TYPE_STRUCT, "WINDOWPOS"))
+            return;
+        break;
+    }
+    case WM_WINDOWPOSCHANGING: {
+        /* XXX: only some fields are written */
+        if (!report_memarg_type(ii, ORD_LPARAM, SYSARG_READ|SYSARG_WRITE,
+                                (byte *) lparam, sizeof(WINDOWPOS),
+                                "WM_WINDOWPOSCHANGING", DRSYS_TYPE_STRUCT, "WINDOWPOS"))
+            return;
+        break;
+    }
+    }
+#   undef ORD_WPARAM
+#   undef ORD_LPARAM
+#   undef ORD_RESULT
+}
+
+static void
 handle_GdiHfontCreate(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     ENUMLOGFONTEXDVW dvw;
@@ -4808,6 +4970,8 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
          * Also check whether it's defined after first deciding whether
          * we're on SP1: use core's method of checking for export?
          */
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserMessageCall)) {
+        handle_UserMessageCall(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiCreatePaletteInternal)) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (ii->arg->pre) {

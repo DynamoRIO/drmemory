@@ -858,7 +858,7 @@ bool
 handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
                byte *start, size_t size/*in bytes*/, char *safe, bool check_addr)
 {
-    /* the kernel wrote a wide string to the buffer: only up to the terminating
+    /* the kernel wrote a string to the buffer: only up to the terminating
      * null should be marked as defined
      */
     uint i;

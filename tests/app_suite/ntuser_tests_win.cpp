@@ -290,3 +290,23 @@ TEST(NtUserTests, Msgbox) {
     success = CloseHandle(thread);
     ASSERT_EQ(success, TRUE);
 }
+
+TEST(NtUserTests, WindowMessages) {
+    const char *title = "Test Window";
+    HWND hwnd = CreateWindowEx(0 /* style */, "Button" /* class */, title,
+                               WS_OVERLAPPEDWINDOW,
+                               CW_USEDEFAULT, CW_USEDEFAULT,
+                               CW_USEDEFAULT, CW_USEDEFAULT,
+                               (HWND) NULL, /* no parent */
+                               (HMENU) NULL, (HINSTANCE) NULL, NULL);
+    ASSERT_NE(hwnd, (HWND) NULL);
+
+    char buf[64];
+    LRESULT res = SendMessage(hwnd, WM_GETTEXT, (WPARAM) sizeof(buf), (LPARAM) buf);
+    ASSERT_EQ(res, strlen(title));
+    ASSERT_STREQ(buf, title);
+
+    /* XXX: test more message types */
+
+    DestroyWindow(hwnd);
+}
