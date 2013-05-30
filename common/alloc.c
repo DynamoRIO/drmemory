@@ -1742,7 +1742,8 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
         name, modname, mod->start + info->start_offs, generic_type, err,
         err == DRSYM_SUCCESS ? func_type->num_args : -1);
 
-    if (err != DRSYM_SUCCESS) {
+    /* i#1255: be paranoid and watch for non-func type */
+    if (err != DRSYM_SUCCESS || func_type->type.kind != DRSYM_TYPE_FUNC) {
         /* Fall through to no-arg-type handling below */
         have_types = false;
     } else if (func_type->num_args == 1) {
