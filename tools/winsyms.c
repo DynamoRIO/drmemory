@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -221,7 +221,7 @@ main(int argc, char *argv[])
                         base = load_module(proc, modpath);
                         if (base == 0) {
                             if (verbose)
-                                printf("Error loading %s\n", dll);
+                                printf("Error loading %s\n", modpath);
                             else {
                                 if (show_func)
                                     printf("?\n");
