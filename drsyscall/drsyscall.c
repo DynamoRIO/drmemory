@@ -671,6 +671,12 @@ report_memarg_ex(sysarg_iter_info_t *ii,
     ASSERT(sz > 0, "drsyscall shouldn't report empty memargs");
 #endif
 
+    /* Support making handler code simpler by allowing them to invoke us
+     * w/o conditionals on whether it's an IN param and this is post-syscall.
+     */
+    if (!ii->pt->pre && !TEST(DRSYS_PARAM_OUT, mode))
+        return true;
+
     arg->type = type;
     if (type_name == NULL && type != DRSYS_TYPE_UNKNOWN &&
         type != DRSYS_TYPE_INVALID) {
