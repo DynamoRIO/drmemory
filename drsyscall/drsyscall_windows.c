@@ -4449,8 +4449,8 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
         if (ii->arg->pre) {
             /* Version and Flags must be defined */
             if (!report_memarg_type(ii, 1, SYSARG_READ, (byte *) real_req,
-                                    offsetof(REASON_CONTEXT, Reason),
-                                    "REASON_CONTEXT Version+Flags",
+                                    offsetof(POWER_REQUEST_CREATE, ReasonString),
+                                    "POWER_REQUEST_CREATE Version+Flags",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
             if (safe_read((byte *)real_req, sizeof(safe_req), &safe_req)) {
@@ -4474,7 +4474,7 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
                      */
 #                   define POWER_REQUEST_CONTEXT_UNKNOWN_NOINPUT 0x80000000
                     if (safe_req.Flags != POWER_REQUEST_CONTEXT_UNKNOWN_NOINPUT) {
-                        WARN("WARNING: unknown REASON_CONTEXT.Flags value 0x%x\n",
+                        WARN("WARNING: unknown POWER_REQUEST_CREATE.Flags value 0x%x\n",
                              safe_req.Flags);
                     }
                 }

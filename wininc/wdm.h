@@ -139,6 +139,50 @@ typedef enum _SECTION_INHERIT {
  * Derived independently
  */
 
+#if (_WIN32_WINNT < _WIN32_WINNT_WIN7) || (_MSC_VER < 1500)
+typedef enum _POWER_REQUEST_TYPE {
+    PowerRequestDisplayRequired,
+    PowerRequestSystemRequired,
+    PowerRequestAwayModeRequired
+} POWER_REQUEST_TYPE, *PPOWER_REQUEST_TYPE;
+
+typedef enum {
+    SetPowerSettingValue = SystemPowerLoggingEntry + 1,
+    NotifyUserPowerSetting,
+    PowerInformationLevelUnused0,
+    PowerInformationLevelUnused1,
+    SystemVideoState,
+    TraceApplicationPowerMessage,
+    TraceApplicationPowerMessageEnd,
+    ProcessorPerfStates,
+    ProcessorIdleStates,
+    ProcessorCap,
+    SystemWakeSource,
+    SystemHiberFileInformation,
+    TraceServicePowerMessage,
+    ProcessorLoad,
+    PowerShutdownNotification,
+    MonitorCapabilities,
+    SessionPowerInit,
+    SessionDisplayState,
+    PowerRequestCreate,
+    PowerRequestAction,
+    GetPowerRequestList,
+    ProcessorInformationEx,
+    NotifyUserModeLegacyPowerEvent,
+    GroupPark,
+    ProcessorIdleDomains,
+    WakeTimerList,
+    SystemHiberFileSize,
+    PowerInformationLevelMaximum
+} POWER_INFORMATION_LEVEL;
+#endif
+
+#ifndef POWER_REQUEST_CONTEXT_SIMPLE_STRING
+# define POWER_REQUEST_CONTEXT_SIMPLE_STRING    0x00000001
+# define POWER_REQUEST_CONTEXT_DETAILED_STRING  0x00000002
+#endif
+
 /* Used by NtPowerInformation.PowerRequestCreate, which is used by
  * kernel32!PowerCreateRequest
  */
