@@ -942,56 +942,27 @@ virtual_free(void *base)
     return NT_SUCCESS(res);
 }
 
-/* XXX DRi#877: should we add an import iterator to DR's API? */
 bool
 module_imports_from_msvc(const module_data_t *mod)
 {
-    IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *) mod->start;
-    IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *) (mod->start + dos->e_lfanew);
-    IMAGE_DATA_DIRECTORY *dir;
-    IMAGE_IMPORT_DESCRIPTOR *imports, *imports_end;
+    bool res = false;
+    dr_module_import_iterator_t *iter =
+        dr_module_import_iterator_start(mod->handle);
 # ifdef DEBUG
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
         modname = "";
 # endif
-    ASSERT(nt != NULL && nt->Signature == IMAGE_NT_SIGNATURE, "invalid mod header");
-
-    /* Could be paranoid and de-ref this (and dos and nt) inside a TRY
-     * but these should be present: I'm actually more nervous about making
-     * a too-big DR_TRY_EXCEPT b/c it can't nest
-     */
-    dir = (nt->OptionalHeader.Magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC ?
-           (nt->OptionalHeader.DataDirectory) :
-           (((IMAGE_NT_HEADERS64 *)nt)->OptionalHeader.DataDirectory))
-        + IMAGE_DIRECTORY_ENTRY_IMPORT;
-    if (dir == NULL || dir->Size <= 0)
-        return false;
-    imports = (IMAGE_IMPORT_DESCRIPTOR *) (mod->start + dir->VirtualAddress);
-    imports_end = (IMAGE_IMPORT_DESCRIPTOR *)
-        (mod->start + dir->VirtualAddress + dir->Size);
-
-    while (imports->OriginalFirstThunk != 0 && imports < imports_end) {
-        IMAGE_THUNK_DATA *lookup;
-        IMAGE_THUNK_DATA *address;
-        const char *impname;
-        bool matches = false, partial = false;
-        DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-            impname = (const char *) (mod->start + imports->Name);
-            LOG(3, "module %s imports from %s\n", modname, impname);
-            if (text_matches_pattern(impname, "msvc*.dll", true/*ignore case*/))
-                matches = true;
-        }, {
-            partial = true; /* partial map */
-        });
-        /* Can't return out of DR_TRY_EXCEPT */
-        if (matches)
-            return true;
-        if (partial)
-            return false;
-        imports++;
+    while (dr_module_import_iterator_hasnext(iter)) {
+        dr_module_import_t *imp = dr_module_import_iterator_next(iter);
+        LOG(3, "module %s imports from %s\n", modname, imp->modname);
+        if (text_matches_pattern(imp->modname, "msvc*.dll", FILESYS_CASELESS)) {
+            res = true;
+            break;
+        }
     }
-    return false;
+    dr_module_import_iterator_stop(iter);
+    return res;
 }
 #endif /* WINDOWS */
 
