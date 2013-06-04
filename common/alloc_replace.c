@@ -637,6 +637,7 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
 {
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
+    ASSERT(new_commit_size > cur_commit_size, "this routine does not support shrinking");
 #ifdef LINUX
     byte *newmap = (byte *) dr_raw_mremap(map, cur_commit_size, new_commit_size,
                                           0/*can't move*/, NULL/*ignored*/);
@@ -644,9 +645,15 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
         return false;
     return true;
 #else
+    /* i#1258: we have to tweak [map + cur_commit_size, map + new_commit_size)
+     * and not re-commit [map, map + new_commit_size) b/c the latter will
+     * modify the prot bits on existing pages, which the app might have
+     * changed from the arena default!
+     */
     return (dr_custom_alloc(NULL, DR_ALLOC_NON_HEAP | DR_ALLOC_NON_DR |
                             DR_ALLOC_COMMIT_ONLY | DR_ALLOC_FIXED_LOCATION,
-                            new_commit_size, prot, map) != NULL);
+                            new_commit_size - cur_commit_size, prot,
+                            map + cur_commit_size) != NULL);
 #endif
 }
 
