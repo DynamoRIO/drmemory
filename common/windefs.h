@@ -18,8 +18,18 @@
 
 #define WIN_ALLOC_SIZE (64*1024)
 
-/* we statically link with ntdll.lib from DDK */
+/* We statically link with ntdll.lib from DDK.
+ * We can only do this for routines we want to invoke in a client/privlib
+ * context, though.
+ */
 #define GET_NTDLL(NtFunction, signature) NTSYSAPI NTSTATUS NTAPI NtFunction signature
+
+/* For routines we want to invoke in an app context, we must dynamically
+ * look them up to avoid DR's privlib import redirection.
+ */
+#define DECLARE_NTDLL(NtFunction, signature) \
+    typedef NTSYSAPI NTSTATUS (NTAPI * NtFunction##_t) signature;      \
+    static NtFunction##_t NtFunction
 
 #define CBRET_INTERRUPT_NUM 0x2b
 

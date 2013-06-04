@@ -322,15 +322,34 @@ typedef struct _rtl_process_heap_entry_t {
 # else
 typedef PROCESS_HEAP_ENTRY rtl_process_heap_entry_t;
 # endif
-GET_NTDLL(RtlLockHeap, (IN HANDLE Heap));
-GET_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
-GET_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
-                               OUT HANDLE *Heaps));
-GET_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
-                        OUT rtl_process_heap_entry_t *Info));
-GET_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
-                        IN ULONG flags,
-                        IN PVOID ptr));
+DECLARE_NTDLL(RtlLockHeap, (IN HANDLE Heap));
+DECLARE_NTDLL(RtlUnlockHeap, (IN HANDLE Heap));
+DECLARE_NTDLL(RtlGetProcessHeaps, (IN ULONG count,
+                                   OUT HANDLE *Heaps));
+DECLARE_NTDLL(RtlWalkHeap, (IN HANDLE Heap,
+                            OUT rtl_process_heap_entry_t *Info));
+DECLARE_NTDLL(RtlSizeHeap, (IN HANDLE Heap,
+                            IN ULONG flags,
+                            IN PVOID ptr));
+
+static void
+heap_walk_init(void)
+{
+    module_data_t *mod = dr_lookup_module_by_name("ntdll.dll");
+    ASSERT(mod != NULL, "failed to look up ntdll");
+    RtlLockHeap = (RtlLockHeap_t) dr_get_proc_address(mod->handle, "RtlLockHeap");
+    ASSERT(RtlLockHeap != NULL, "failed to look up required ntdll routine");
+    RtlUnlockHeap = (RtlUnlockHeap_t) dr_get_proc_address(mod->handle, "RtlUnlockHeap");
+    ASSERT(RtlUnlockHeap != NULL, "failed to look up required ntdll routine");
+    RtlGetProcessHeaps = (RtlGetProcessHeaps_t)
+        dr_get_proc_address(mod->handle, "RtlGetProcessHeaps");
+    ASSERT(RtlGetProcessHeaps != NULL, "failed to look up required ntdll routine");
+    RtlWalkHeap = (RtlWalkHeap_t) dr_get_proc_address(mod->handle, "RtlWalkHeap");
+    ASSERT(RtlWalkHeap != NULL, "failed to look up required ntdll routine");
+    RtlSizeHeap = (RtlSizeHeap_t) dr_get_proc_address(mod->handle, "RtlSizeHeap");
+    ASSERT(RtlSizeHeap != NULL, "failed to look up required ntdll routine");
+    dr_free_module_data(mod);
+}
 
 /* allocated_end is the end of the last valid chunk seen.
  * If there are sub-regions, this will be in the final sub-region seen.
@@ -651,6 +670,9 @@ heap_region_init(void (*region_add_cb)(app_pc, app_pc, dr_mcontext_t *mc),
     cb_add = region_add_cb;
     cb_remove = region_remove_cb;
     heap_tree = rb_tree_create(heap_info_delete);
+#ifdef WINDOWS
+    heap_walk_init();
+#endif
 }
 
 void

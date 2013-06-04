@@ -662,20 +662,6 @@ GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
                          IN POBJECT_ATTRIBUTES ObjectAttributes,
                          IN PCLIENT_ID ClientId));
 
-GET_NTDLL(NtClose, (IN HANDLE Handle));
-
-GET_NTDLL(NtAllocateVirtualMemory, (IN HANDLE ProcessHandle,
-                                    IN OUT PVOID *BaseAddress,
-                                    IN ULONG ZeroBits,
-                                    IN OUT PULONG AllocationSize,
-                                    IN ULONG AllocationType,
-                                    IN ULONG Protect));
-
-GET_NTDLL(NtFreeVirtualMemory, (IN HANDLE ProcessHandle,
-                                IN OUT PVOID *BaseAddress,
-                                IN OUT PULONG FreeSize,
-                                IN ULONG FreeType));
-
 TEB *
 get_TEB(void)
 {
@@ -914,32 +900,6 @@ get_highest_user_address(void)
             highest_user_address = (app_pc) POINTER_MAX;
     }
     return highest_user_address;
-}
-
-/* We now use dr_custom_alloc() instead, where possible */
-bool
-virtual_alloc(void **base, size_t size, uint memtype, uint prot)
-{
-    NTSTATUS res;
-    ULONG actual_size;
-    ASSERT_TRUNCATE(actual_size, ULONG, size);
-    actual_size = (ULONG)size;
-    ASSERT(base != NULL && ALIGNED(*base, PAGE_SIZE), "base not page-aligned");
-    res = NtAllocateVirtualMemory(NT_CURRENT_PROCESS, base, 0, &actual_size,
-                                  memtype, prot);
-    LOG(2, "%s size=%d => "PFX" "PIFX"\n", __FUNCTION__, size, *base, res);
-    return NT_SUCCESS(res);
-}
-
-/* We now use dr_custom_free() instead, where possible */
-bool
-virtual_free(void *base)
-{
-    NTSTATUS res;
-    ULONG size = 0; /* must be 0 for MEM_RELEASE */
-    res = NtFreeVirtualMemory(NT_CURRENT_PROCESS, &base, &size, MEM_RELEASE);
-    LOG(2, "%s "PFX" => "PIFX"\n", __FUNCTION__, base, res);
-    return NT_SUCCESS(res);
 }
 
 bool
