@@ -23,7 +23,7 @@
 
 #include "gtest/gtest.h"
 
-#if (_WIN32_WINNT >= _WIN32_WINNT_WIN7) && (_MSC_VER >= 1500)
+#if (_WIN32_WINNT >= _WIN32_WINNT_WIN7) && (_MSC_VER > 1500)
 TEST(PowerTest, PowerCreateRequest) {
     REASON_CONTEXT cxt;
     cxt.Version = POWER_REQUEST_CONTEXT_VERSION;

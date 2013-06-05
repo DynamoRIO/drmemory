@@ -139,13 +139,15 @@ typedef enum _SECTION_INHERIT {
  * Derived independently
  */
 
-#if (_WIN32_WINNT < _WIN32_WINNT_WIN7) || (_MSC_VER < 1500)
+#if (_WIN32_WINNT < _WIN32_WINNT_WIN7) || (_MSC_VER < 1600)
 typedef enum _POWER_REQUEST_TYPE {
     PowerRequestDisplayRequired,
     PowerRequestSystemRequired,
     PowerRequestAwayModeRequired
 } POWER_REQUEST_TYPE, *PPOWER_REQUEST_TYPE;
+#endif
 
+#if (_MSC_VER < 1500)
 typedef enum {
     SetPowerSettingValue = SystemPowerLoggingEntry + 1,
     NotifyUserPowerSetting,
@@ -162,7 +164,14 @@ typedef enum {
     TraceServicePowerMessage,
     ProcessorLoad,
     PowerShutdownNotification,
+#endif
+#if (_MSC_VER == 1500)
+typedef enum {
+    MonitorCapabilities = PowerShutdownNotification + 1,
+#else
     MonitorCapabilities,
+#endif
+#if (_MSC_VER <= 1500)
     SessionPowerInit,
     SessionDisplayState,
     PowerRequestCreate,
