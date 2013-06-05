@@ -77,6 +77,51 @@ struct _umbra_map_t {
 
 
 /***************************************************************************
+ * ITERATION
+ */
+
+/* i#1260: to handle pointer overflow, we have to be careful when we
+ * iterate over addresses.  We use this helper macro, which uses closed
+ * intervals (i.e., end pointers as inclusive).
+ *
+ * XXX: kind of ugly to have a macro: but a callback would cost an
+ * indirect call per loop iter, and an iterator would have call costs
+ * as well.  These loops can be performance-critical parts of Dr. Memory.
+ *
+ * Usage: APP_RANGE_LOOP(IN app_pc app_addr, IN size_t app_size,
+ *                       OUT app_pc app_blk_base, OUT app_pc app_blk_end,
+ *                       OUT app_pc app_src_end,
+ *                       OUT app_pc start, OUT app_pc end, OUT size_t iter_size,
+ *                       { loop_body... })
+ *
+ * Each iteration operates on the app address range [start, end].
+ * iter_size is the distance from start to end.
+ * [app_blk_base, app_blk_end] is the map->app_block_size-bounded region.
+ * app_src_end is the closed end of app_addr+app_size.
+ *
+ * The loop_body cannot declare variables: declare those outside.
+ */
+
+#define APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,\
+                       start, end, iter_size, loop_body) do {                     \
+    app_src_end = app_addr + (app_size - 1); /* closed, to avoid overflow */      \
+    for (app_blk_base = (app_pc) ALIGN_BACKWARD(app_addr, map->app_block_size);   \
+         /* While the end is closed, we need to detect the loop end, so we rely   \
+          * on the closed end never being aligned and thus allowing a < here      \
+          * and an overflow check on the increment.                               \
+          */                                                                      \
+         app_blk_base < app_src_end;                                              \
+         app_blk_base = POINTER_OVERFLOW_ON_ADD(app_blk_end, 1) ?                 \
+             app_src_end : app_blk_end + 1) {                                     \
+        app_blk_end = app_blk_base + (map->app_block_size - 1);                   \
+        start       = app_addr > app_blk_base ? app_addr : app_blk_base;          \
+        end         = app_src_end  < app_blk_end  ? app_src_end  : app_blk_end;   \
+        iter_size   = (end - start + 1);                                          \
+        loop_body                                                                 \
+    }                                                                             \
+} while (0);
+
+/***************************************************************************
  * UTILITY ROUTINES
  */
 

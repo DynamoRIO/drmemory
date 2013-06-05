@@ -594,24 +594,22 @@ umbra_create_shadow_memory_arch(umbra_map_t *map,
                                 ptr_uint_t value,
                                 size_t value_size)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size;
+    size_t size, iter_size;
     byte  *shadow_blk, *res;
 
     if (value_size != 1 || value >= UCHAR_MAX)
         return DRMF_ERROR_FEATURE_NOT_AVAILABLE;
+    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
     /* check if the new app memory will violate the memory layout */
     if (!umbra_add_app_segment(app_addr, app_size, map))
         return DRMF_ERROR_NOMEM;
-    app_src_end = app_addr + app_size;
     umbra_map_lock(map);
-    for (app_blk_base = (app_pc)ALIGN_BACKWARD(app_addr, map->app_block_size);
-         app_blk_base < app_src_end;
-         app_blk_base = app_blk_end) {
-        app_blk_end = app_blk_base + map->app_block_size;
-        start       = app_addr > app_blk_base ? app_addr : app_blk_base;
-        end         = app_src_end  < app_blk_end  ? app_src_end  : app_blk_end;
+    APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_blk  = (byte *)umbra_xl8_app_to_shadow(map, app_blk_base);
         if (!umbra_shadow_block_exist(map, shadow_blk)) {
             umbra_map_lock(map);
@@ -631,12 +629,12 @@ umbra_create_shadow_memory_arch(umbra_map_t *map,
             }
             umbra_map_unlock(map);
         }
-        if (umbra_shadow_set_range_arch(map, start, end-start, &size,
+        if (umbra_shadow_set_range_arch(map, start, iter_size, &size,
                                         value, value_size) != DRMF_SUCCESS) {
             umbra_map_unlock(map);
             return DRMF_ERROR;
         }
-    }
+    });
     umbra_map_unlock(map);
     return DRMF_SUCCESS;
 }
@@ -660,23 +658,21 @@ umbra_read_shadow_memory_arch(IN    umbra_map_t *map,
                               INOUT size_t *shadow_size,
                               IN    byte    *buffer)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size, shdw_size;
+    size_t size, shdw_size, iter_size;
     byte *shadow_start;
 
     if (*shadow_size < umbra_map_scale_app_to_shadow(map, app_size)) {
         *shadow_size = 0;
         return DRMF_ERROR_INVALID_SIZE;
     }
-    app_src_end   = app_addr + app_size;
+    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
     shdw_size = 0;
-    for (app_blk_base = (app_pc)ALIGN_BACKWARD(app_addr, map->app_block_size);
-         app_blk_base < app_src_end;
-         app_blk_base = app_blk_end) {
-        app_blk_end  = app_blk_base + map->app_block_size;
-        start        = app_addr > app_blk_base ? app_addr : app_blk_base;
-        end          = app_src_end  < app_blk_end  ? app_src_end  : app_blk_end;
+    APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
@@ -688,11 +684,11 @@ umbra_read_shadow_memory_arch(IN    umbra_map_t *map,
                 DRMF_SUCCESS)
                 return DRMF_ERROR_NOMEM;
         }
-        size = umbra_map_scale_app_to_shadow(map, end - start);
+        size = umbra_map_scale_app_to_shadow(map, iter_size);
         memcpy(buffer, shadow_start, size);
         shdw_size += size;
         buffer    += size;
-    }
+    });
     *shadow_size = shdw_size;
     return DRMF_SUCCESS;
 }
@@ -704,23 +700,21 @@ umbra_write_shadow_memory_arch(IN    umbra_map_t *map,
                                INOUT size_t *shadow_size,
                                IN    byte   *buffer)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size, shdw_size;
+    size_t size, shdw_size, iter_size;
     byte  *shadow_start;
 
     if (*shadow_size < umbra_map_scale_app_to_shadow(map, app_size)) {
         *shadow_size = 0;
         return DRMF_ERROR_INVALID_SIZE;
     }
-    app_src_end   = app_addr + app_size;
+    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
     shdw_size = 0;
-    for (app_blk_base = (app_pc)ALIGN_BACKWARD(app_addr, map->app_block_size);
-         app_blk_base < app_src_end;
-         app_blk_base = app_blk_end) {
-        app_blk_end = app_blk_base + map->app_block_size;
-        start       = app_addr > app_blk_base ? app_addr : app_blk_base;
-        end         = app_src_end  < app_blk_end  ? app_src_end  : app_blk_end;
+    APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
@@ -732,11 +726,11 @@ umbra_write_shadow_memory_arch(IN    umbra_map_t *map,
                 DRMF_SUCCESS)
                 return DRMF_ERROR_NOMEM;
         }
-        size = umbra_map_scale_app_to_shadow(map, end - start);
+        size = umbra_map_scale_app_to_shadow(map, iter_size);
         memmove(shadow_start, buffer, size);
         shdw_size += size;
         buffer    += size;
-    }
+    });
     *shadow_size = shdw_size;
     return DRMF_SUCCESS;
 }
@@ -749,21 +743,20 @@ umbra_shadow_set_range_arch(IN   umbra_map_t *map,
                             IN   ptr_uint_t   value,
                             IN   size_t       value_size)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size, shdw_size;
+    size_t size, shdw_size, iter_size;
     byte  *shadow_start;
 
     if (value_size != 1 || value > UCHAR_MAX)
         return DRMF_ERROR_NOT_IMPLEMENTED;
+    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
 
-    app_src_end   = app_addr + app_size;
     shdw_size = 0;
-    app_blk_base = (app_pc)ALIGN_BACKWARD(app_addr, map->app_block_size);
-    for (; app_blk_base < app_src_end; app_blk_base = app_blk_end) {
-        app_blk_end = app_blk_base + map->app_block_size;
-        start       = app_addr > app_blk_base ? app_addr : app_blk_base;
-        end         = app_src_end  < app_blk_end  ? app_src_end  : app_blk_end;
+    APP_RANGE_LOOP(app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
@@ -775,10 +768,10 @@ umbra_shadow_set_range_arch(IN   umbra_map_t *map,
                 DRMF_SUCCESS)
                 return DRMF_ERROR_NOMEM;
         }
-        size = umbra_map_scale_app_to_shadow(map, end - start);
+        size = umbra_map_scale_app_to_shadow(map, iter_size);
         memset(shadow_start, value, size);
         shdw_size += size;
-    }
+    });
     *shadow_size = shdw_size;
     return DRMF_SUCCESS;
 }
@@ -790,32 +783,32 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
                              IN  size_t  app_size,
                              OUT size_t *shadow_size)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
-    size_t size, app_sz, shadow_sz, shdw_size;
+    size_t size, app_sz, shadow_sz, shdw_size, iter_size, tail_size = 0;
     byte *shadow_start, *overlap_tail = NULL;
     drmf_status_t res = DRMF_SUCCESS;
 
-    app_src_end = app_src + app_size;
-    if (app_src < app_dst && app_src_end > app_dst) {
+    if (POINTER_OVERFLOW_ON_ADD(app_src, app_size-1) || /* just hitting top is ok */
+        POINTER_OVERFLOW_ON_ADD(app_dst, app_size-1))   /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
+
+    app_sz = app_size;
+    if (app_src < app_dst && app_src + (app_size-1) >= app_dst) {
         /* overlap that must be handled */
-        app_sz = app_src_end - app_dst;
-        overlap_tail = global_alloc(app_sz, HEAPSTAT_SHADOW);
-        if (umbra_read_shadow_memory_arch(map, app_dst, app_sz,
+        tail_size = app_src + (app_sz-1) - app_dst + 1;
+        overlap_tail = global_alloc(tail_size, HEAPSTAT_SHADOW);
+        if (umbra_read_shadow_memory_arch(map, app_dst, tail_size,
                                           &shadow_sz, overlap_tail) != DRMF_SUCCESS)
             ASSERT(false, "fail to read shadow memory");
-        app_src_end = app_dst;
+        app_sz = app_dst - app_src;
     }
     /* the other side overlap is covered by memmove */
-    app_sz    = 0;
     shdw_size = 0;
     shadow_sz = 0;
-    for (app_blk_base = (app_pc)ALIGN_BACKWARD(app_src, map->app_block_size);
-         app_blk_base < app_src_end;
-         app_blk_base = app_blk_end) {
-        app_blk_end = app_blk_base + map->app_block_size;
-        start       = app_src > app_blk_base ? app_src : app_blk_base;
-        end         = app_src_end < app_blk_end ? app_src_end : app_blk_end;
+    APP_RANGE_LOOP(app_src, app_sz, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
@@ -827,11 +820,10 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
                 DRMF_SUCCESS)
                 return DRMF_ERROR_NOMEM;
         }
-        app_sz = end - start;
-        shadow_sz = umbra_map_scale_app_to_shadow(map, app_sz);
+        shadow_sz = umbra_map_scale_app_to_shadow(map, iter_size);
         if (umbra_write_shadow_memory(map,
                                       app_dst,
-                                      app_sz,
+                                      iter_size,
                                       &size,
                                       shadow_start) != DRMF_SUCCESS) {
             shdw_size += size;
@@ -840,19 +832,19 @@ umbra_shadow_copy_range_arch(IN  umbra_map_t *map,
         } else {
             ASSERT(size == shadow_sz, "copy size mismatch");
         }
-        app_dst   += app_sz;
+        app_dst   += iter_size;
         shdw_size += shadow_sz;
-    }
+    });
     *shadow_size = shdw_size;
     if (overlap_tail != NULL) {
         if (umbra_write_shadow_memory(map,
                                       app_dst + (app_dst - app_src),
-                                      app_src + app_size - app_dst,
+                                      tail_size,
                                       &shadow_sz,
                                       overlap_tail) != DRMF_SUCCESS) {
             res = DRMF_ERROR_INVALID_PARAMETER;
         }
-        global_free(overlap_tail, app_src + app_size - app_dst, HEAPSTAT_SHADOW);
+        global_free(overlap_tail, tail_size, HEAPSTAT_SHADOW);
     }
     return res;
 }
@@ -865,22 +857,20 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
                                   IN    size_t value_size,
                                   OUT   bool  *found)
 {
+    /* i#1260: end pointers are all closed (i.e., inclusive) to handle overflow */
     app_pc app_blk_base, app_blk_end, app_src_end;
     app_pc start, end;
     byte  *shadow_start, *shadow_addr;
-    size_t shadow_size; 
+    size_t shadow_size, iter_size;
 
     if (value > USHRT_MAX || value_size != 1)
         return DRMF_ERROR_NOT_IMPLEMENTED;
+    if (POINTER_OVERFLOW_ON_ADD(app_addr, app_size-1)) /* just hitting top is ok */
+        return DRMF_ERROR_INVALID_SIZE;
 
     *found  = false;
-    app_src_end = *app_addr + app_size;
-    for (app_blk_base = (app_pc)ALIGN_BACKWARD(*app_addr, map->app_block_size);
-         app_blk_base < app_src_end;
-         app_blk_base = app_blk_end) {
-        app_blk_end = app_blk_base + map->app_block_size;
-        start       = *app_addr > app_blk_base ? *app_addr : app_blk_base;
-        end         =  app_src_end  < app_blk_end  ?  app_src_end  : app_blk_end;
+    APP_RANGE_LOOP(*app_addr, app_size, app_blk_base, app_blk_end, app_src_end,
+                   start, end, iter_size, {
         shadow_start = umbra_xl8_app_to_shadow(map, start);
         if (!umbra_shadow_block_exist(map, shadow_start)) {
             if (!TEST(UMBRA_MAP_CREATE_SHADOW_ON_TOUCH, map->options.flags))
@@ -899,7 +889,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
             }
             continue;
         }
-        shadow_size = umbra_map_scale_app_to_shadow(map, end - start);
+        shadow_size = umbra_map_scale_app_to_shadow(map, iter_size);
         shadow_addr = memchr(shadow_start, (int)value, shadow_size);
         if (shadow_addr != NULL) {
             *app_addr = start +
@@ -907,7 +897,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
             *found = true;
             return DRMF_SUCCESS;
         }
-    }
+    });
     return DRMF_SUCCESS;
 }
 
