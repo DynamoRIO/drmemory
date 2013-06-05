@@ -164,12 +164,11 @@ typedef enum {
     TraceServicePowerMessage,
     ProcessorLoad,
     PowerShutdownNotification,
+    MonitorCapabilities,
 #endif
 #if (_MSC_VER == 1500)
 typedef enum {
     MonitorCapabilities = PowerShutdownNotification + 1,
-#else
-    MonitorCapabilities,
 #endif
 #if (_MSC_VER <= 1500)
     SessionPowerInit,
