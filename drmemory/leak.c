@@ -1254,7 +1254,7 @@ prepare_thread_for_scan(void *drcontext, bool *was_app_state OUT)
          * We treat it all as defined (instead of calling set_teb_initial_shadow())
          * b/c it is all initialized and we can be more liberal wrt leaks.
          */
-        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        TEB *teb = get_TEB_from_handle(dr_get_dr_thread_handle(drcontext));
         if (teb == NULL) {
             /* can happen due to permissions problems (i#442).
              * we use a cached teb value placed at thread exit (i#547).
@@ -1277,7 +1277,7 @@ restore_thread_after_scan(void *drcontext, bool was_app_state)
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
     if (drmgr_get_tls_field(drcontext, tls_idx_drmem) == NULL && op_have_defined_info) {
         /* Re-mark as unaddr */
-        TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
+        TEB *teb = get_TEB_from_handle(dr_get_dr_thread_handle(drcontext));
         if (teb == NULL) /* see above */
             teb = (TEB *) get_thread_tls_value(drcontext, SPILL_SLOT_1);
         ASSERT(teb != NULL, "invalid param");

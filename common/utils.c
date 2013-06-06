@@ -712,6 +712,8 @@ get_TEB_from_tid(thread_id_t tid)
     NTSTATUS res;
     OBJECT_ATTRIBUTES oa;
     CLIENT_ID cid;
+    /* i#1254: this will fail in a sandboxed process */
+    ASSERT(false, "use get_TEB_from_handle(dr_get_dr_thread_handle(drcontext)) instead!");
     /* these aren't really HANDLEs */
     cid.UniqueProcess = (HANDLE) dr_get_process_id();
     cid.UniqueThread = (HANDLE) tid;

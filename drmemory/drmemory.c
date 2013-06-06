@@ -1079,10 +1079,9 @@ set_thread_initial_structures(void *drcontext)
     byte *stack_reserve;
     size_t stack_reserve_sz;
     IF_DEBUG(bool ok;)
-    TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
-
-    /* cache TEB since can't get it from syscall for some threads (i#442) */
     tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
+    TEB *teb = get_TEB_from_handle(dr_get_dr_thread_handle(drcontext));
+    /* cache TEB since can't get it from syscall for some threads (i#442) */
     pt->teb = teb;
 
     mc.size = sizeof(mc);
