@@ -1564,7 +1564,8 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
          */
         drsym_info_t syminfo;
         syminfo.struct_size = sizeof(syminfo);
-        syminfo.name_size = sizeof(syminfo.name);  /* Don't need name. */
+        syminfo.name = NULL;  /* Don't need name. */
+        syminfo.file = NULL;
         drsym_lookup_address(info->full_path, 0, &syminfo, DRSYM_DEFAULT_FLAGS);
     }
 # endif /* WINDOWS */

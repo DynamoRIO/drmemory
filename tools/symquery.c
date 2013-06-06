@@ -245,25 +245,28 @@ static void
 lookup_address(const char *dllpath, size_t modoffs)
 {
     drsym_error_t symres;
-    drsym_info_t *sym;
-    char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
-    sym = (drsym_info_t *) sbuf;
-    sym->struct_size = sizeof(*sym);
-    sym->name_size = MAX_FUNC_LEN;
-    symres = drsym_lookup_address(dllpath, modoffs, sym, DRSYM_DEMANGLE);
+    drsym_info_t sym;
+    char name[MAX_FUNC_LEN];
+    char file[MAXIMUM_PATH];
+    sym.struct_size = sizeof(sym);
+    sym.name = name;
+    sym.name_size = MAX_FUNC_LEN;
+    sym.file = file;
+    sym.file_size = MAXIMUM_PATH;
+    symres = drsym_lookup_address(dllpath, modoffs, &sym, DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (verbose)
-            print_debug_kind(sym->debug_kind);
-        if (sym->name_available_size >= sym->name_size)
-            printf("WARNING: function name longer than max: %s\n", sym->name);
+            print_debug_kind(sym.debug_kind);
+        if (sym.name_available_size >= sym.name_size)
+            printf("WARNING: function name longer than max: %s\n", sym.name);
         if (show_func)
-            printf("%s+0x%x\n", sym->name, (uint)(modoffs - sym->start_offs));
+            printf("%s+0x%x\n", sym.name, (uint)(modoffs - sym.start_offs));
 
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
             printf("??:0\n");
         } else {
-            printf("%s:%"INT64_FORMAT"u+0x%x\n", sym->file, sym->line,
-                   (uint)sym->line_offs);
+            printf("%s:%"INT64_FORMAT"u+0x%x\n", sym.file, sym.line,
+                   (uint)sym.line_offs);
         }
     } else {
         if (verbose)

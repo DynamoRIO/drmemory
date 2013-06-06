@@ -1607,72 +1607,73 @@ distinguish_operator_no_argtypes(routine_type_t generic_type,
          * below.  Else, we continue.
          */
         drsym_error_t symres;
-        drsym_info_t *sym;
+        drsym_info_t sym;
 #       define MAX_MANGLED_OPERATOR 64
-        char sbuf[sizeof(*sym) + MAX_MANGLED_OPERATOR];
-        sym = (drsym_info_t *) sbuf;
-        sym->struct_size = sizeof(*sym);
-        sym->name_size = MAX_MANGLED_OPERATOR;
+        char name[MAX_MANGLED_OPERATOR];
+        sym.struct_size = sizeof(sym);
+        sym.name = name;
+        sym.name_size = BUFFER_SIZE_BYTES(name);
+        sym.file = NULL;
         ASSERT(strlen(MANGLED_NAME_DELETE_ARRAY_NOTHROW) < MAX_MANGLED_OPERATOR,
                "need more space for mangled name lookup");
         /* XXX: share this sequence with callstack.c */
         STATS_INC(symbol_address_lookups);
-        symres = drsym_lookup_address(mod->full_path, modoffs, sym, DRSYM_LEAVE_MANGLED);
+        symres = drsym_lookup_address(mod->full_path, modoffs, &sym, DRSYM_LEAVE_MANGLED);
         LOG(3, "looking at mangled name for %s\n", name);
         if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-            /* We don't care if sym->name_available_size >= sym->name_size b/c
+            /* We don't care if sym.name_available_size >= sym.name_size b/c
              * that means the name is too long for anything we're looking for.
              */
             /* Could make an array to shorten this code but then have to assume
              * things about type enum sequence and not clear it's cleaner
              */
             if (generic_type == HEAP_ROUTINE_NEW) {
-                if (strcmp(sym->name, MANGLED_NAME_NEW) == 0) {
+                if (strcmp(sym.name, MANGLED_NAME_NEW) == 0) {
                     *specific_type = generic_type;
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_NEW_NOTHROW) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_NEW_NOTHROW) == 0) {
                     *specific_type = convert_operator_to_nothrow(generic_type);
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_NEW_PLACEMENT) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_NEW_PLACEMENT) == 0) {
                     *specific_type = HEAP_ROUTINE_INVALID;
                     known = true;
                 }
             } else if (generic_type == HEAP_ROUTINE_NEW_ARRAY) {
-                if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY) == 0) {
+                if (strcmp(sym.name, MANGLED_NAME_NEW_ARRAY) == 0) {
                     *specific_type = generic_type;
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY_NOTHROW) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_NEW_ARRAY_NOTHROW) == 0) {
                     *specific_type = convert_operator_to_nothrow(generic_type);
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_NEW_ARRAY_PLACEMENT) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_NEW_ARRAY_PLACEMENT) == 0) {
                     *specific_type = HEAP_ROUTINE_INVALID;
                     known = true;
                 }
             } else if (generic_type == HEAP_ROUTINE_DELETE) {
-                if (strcmp(sym->name, MANGLED_NAME_DELETE) == 0) {
+                if (strcmp(sym.name, MANGLED_NAME_DELETE) == 0) {
                     *specific_type = generic_type;
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_NOTHROW) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_DELETE_NOTHROW) == 0) {
                     *specific_type = convert_operator_to_nothrow(generic_type);
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_PLACEMENT) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_DELETE_PLACEMENT) == 0) {
                     *specific_type = HEAP_ROUTINE_INVALID;
                     known = true;
                 }
             } else if (generic_type == HEAP_ROUTINE_DELETE_ARRAY) {
-                if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY) == 0) {
+                if (strcmp(sym.name, MANGLED_NAME_DELETE_ARRAY) == 0) {
                     *specific_type = generic_type;
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0) {
                     *specific_type = convert_operator_to_nothrow(generic_type);
                     known = true;
-                } else if (strcmp(sym->name, MANGLED_NAME_DELETE_ARRAY_PLACEMENT) == 0) {
+                } else if (strcmp(sym.name, MANGLED_NAME_DELETE_ARRAY_PLACEMENT) == 0) {
                     *specific_type = HEAP_ROUTINE_INVALID;
                     known = true;
                 }
             }
             LOG(3, "\tmangled name is %s => known=%d type=%d\n",
-                sym->name, known, *specific_type);
+                sym.name, known, *specific_type);
         }
     }
     if (!known) {

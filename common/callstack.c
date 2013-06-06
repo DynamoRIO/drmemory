@@ -494,39 +494,42 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
                      modname_info_t *name_info IN, size_t modoffs)
 {
     drsym_error_t symres;
-    drsym_info_t *sym;
+    drsym_info_t sym;
     const char *modpath = name_info->path;
-    char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
-    sym = (drsym_info_t *) sbuf;
-    sym->struct_size = sizeof(*sym);
-    sym->name_size = MAX_FUNC_LEN;
+    char name[MAX_FUNC_LEN];
+    char file[MAXIMUM_PATH];
+    sym.struct_size = sizeof(sym);
+    sym.name = name;
+    sym.name_size = BUFFER_SIZE_BYTES(name);
+    sym.file = file;
+    sym.file_size = BUFFER_SIZE_BYTES(file);
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     STATS_INC(symbol_address_lookups);
-    symres = drsym_lookup_address(modpath, modoffs, sym, DRSYM_DEMANGLE);
+    symres = drsym_lookup_address(modpath, modoffs, &sym, DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX") kind="PIFX"\n",
-            modpath, modoffs, sym->name, modoffs - sym->start_offs,
-            sym->start_offs, sym->end_offs, sym->debug_kind);
-        if (sym->name_available_size >= sym->name_size) {
+            modpath, modoffs, sym.name, modoffs - sym.start_offs,
+            sym.start_offs, sym.end_offs, sym.debug_kind);
+        if (sym.name_available_size >= sym.name_size) {
             DO_ONCE({ 
                 WARN("WARNING: at least one function name longer than max: %s\n",
-                     sym->name);
+                     sym.name);
             });
             STATS_INC(symbol_names_truncated);
         }
-        frame->has_symbols = TEST(DRSYM_SYMBOLS, sym->debug_kind);
-        dr_snprintf(frame->func, MAX_FUNC_LEN, sym->name);
+        frame->has_symbols = TEST(DRSYM_SYMBOLS, sym.debug_kind);
+        dr_snprintf(frame->func, MAX_FUNC_LEN, sym.name);
         NULL_TERMINATE_BUFFER(frame->func);
-        frame->funcoffs = (modoffs - sym->start_offs);
+        frame->funcoffs = (modoffs - sym.start_offs);
         if (symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
             frame->fname[0] = '\0';
             frame->line = 0;
             frame->lineoffs = 0;
         } else {
-            dr_snprintf(frame->fname, MAX_FILENAME_LEN, sym->file);
+            dr_snprintf(frame->fname, MAX_FILENAME_LEN, sym.file);
             NULL_TERMINATE_BUFFER(frame->fname);
-            frame->line = sym->line;
-            frame->lineoffs = sym->line_offs;
+            frame->line = sym.line;
+            frame->lineoffs = sym.line_offs;
         }
     }
 
@@ -542,8 +545,8 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
     bool res;
     ssize_t len = 0;
     drsym_error_t symres;
-    drsym_info_t *sym;
-    char sbuf[sizeof(*sym) + MAX_FUNC_LEN];
+    drsym_info_t sym;
+    char name[MAX_FUNC_LEN];
     module_data_t *data;
     uint flags = use_custom_flags ? custom_flags : op_print_flags;
     const char *modname;
@@ -554,27 +557,28 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
     modname = dr_module_preferred_name(data);
     if (modname == NULL)
         modname = "";
-    sym = (drsym_info_t *) sbuf;
-    sym->struct_size = sizeof(*sym);
-    sym->name_size = MAX_FUNC_LEN;
+    sym.struct_size = sizeof(sym);
+    sym.name = name;
+    sym.name_size = BUFFER_SIZE_BYTES(name);
+    sym.file = NULL;
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     STATS_INC(symbol_address_lookups);
-    symres = drsym_lookup_address(data->full_path, addr - data->start, sym,
+    symres = drsym_lookup_address(data->full_path, addr - data->start, &sym,
                                   DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
-        if (sym->name_available_size >= sym->name_size) {
+        if (sym.name_available_size >= sym.name_size) {
             DO_ONCE({ 
                 LOG(1, "WARNING: at least one symbol name longer than max: %s\n",
-                    sym->name);
+                    sym.name);
             });
             STATS_INC(symbol_names_truncated);
         }
         /* I like having +0x%x to show offs within func but we'll match addr2line */
-        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!%s", modname, sym->name);
+        BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, " %s!%s", modname, sym.name);
         if (TEST(PRINT_SYMBOL_OFFSETS, flags)) {
             /* no assert for any of these bufprints: for just printing we'll truncate */
             BUFPRINT_NO_ASSERT(buf, bufsz, *sofar, len, "+"PIFX,
-                               addr - data->start - sym->start_offs);
+                               addr - data->start - sym.start_offs);
         }
         res = true;
     } else {
