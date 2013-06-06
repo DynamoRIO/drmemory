@@ -824,7 +824,10 @@ memory_walk(void)
     app_pc pc = NULL;
     MEMORY_BASIC_INFORMATION mbi;
     uint type = 0;
+    void *drcontext = dr_get_current_drcontext();
     LOG(2, "walking memory looking for images\n");
+    ASSERT(!dr_using_app_state(drcontext), "state error");
+    dr_switch_to_app_state_ex(drcontext, DR_STATE_STACK_BOUNDS);
     /* Strategy: walk through every block in memory 
      */
     while (dr_virtual_query(pc, &mbi, sizeof(mbi)) == sizeof(mbi)) {
@@ -878,6 +881,7 @@ memory_walk(void)
             break;
         pc += mbi.RegionSize;
     }
+    dr_switch_to_dr_state_ex(drcontext, DR_STATE_STACK_BOUNDS);
 #else /* WINDOWS */
     /* Full memory walk should cover module innards.
      * If not we could do module iterator plus mmap_walk().
@@ -1084,6 +1088,9 @@ set_thread_initial_structures(void *drcontext)
     /* cache TEB since can't get it from syscall for some threads (i#442) */
     pt->teb = teb;
 
+    ASSERT(!dr_using_app_state(drcontext), "state error");
+    dr_switch_to_app_state(drcontext);
+
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL; /* only need xsp */
     /* FIXME: we currently assume the whole TEB except the 64 tls slots are
@@ -1153,6 +1160,7 @@ set_thread_initial_structures(void *drcontext)
     } else {
         set_initial_range((byte *)stack_reserve, (byte *)teb->StackBase);
     }
+    dr_switch_to_dr_state(drcontext);
 #else /* WINDOWS */
     /* Anything to do here?  most per-thread user address space structures
      * will be written by user-space code, which we will observe.
@@ -1312,12 +1320,15 @@ set_initial_layout(void)
         TEB *teb = get_TEB();
         dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
         byte *stop;
+        void *drcontext = dr_get_current_drcontext();
         IF_DEBUG(bool ok;)
         mc.size = sizeof(mc);
         mc.flags = DR_MC_CONTROL; /* only need xsp */
         IF_DEBUG(ok = )
-            dr_get_mcontext(dr_get_current_drcontext(), &mc);
+            dr_get_mcontext(drcontext, &mc);
         ASSERT(ok, "unable to get mcontext for thread");
+        ASSERT(!dr_using_app_state(drcontext), "state error");
+        dr_switch_to_app_state_ex(drcontext, DR_STATE_STACK_BOUNDS);
         ASSERT(mc.xsp <= (reg_t)teb->StackBase && mc.xsp > (reg_t)teb->StackLimit,
                "initial xsp for thread invalid");
         /* i#1196: zero out the DR retaddrs beyond TOS from DR init code using
@@ -1330,6 +1341,7 @@ set_initial_layout(void)
         stop = (byte *) MAX(teb->StackLimit, (byte *)mc.xsp - PAGE_SIZE*2);
         LOG(1, "zeroing beyond TOS "PFX"-"PFX" to remove DR addresses\n", stop, mc.xsp);
         memset(stop, 0, ((byte *)mc.xsp - stop));
+        dr_switch_to_dr_state_ex(drcontext, DR_STATE_STACK_BOUNDS);
     }
 #else
     if (options.shadowing) {
