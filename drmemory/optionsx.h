@@ -673,3 +673,6 @@ OPTION_CLIENT_BOOL(internal, pattern_opt_elide_overlap, false,
 OPTION_CLIENT_BOOL(internal, track_origins_unaddr, false,
                    "Report possible origins of unaddressable errors caused by using uninitialized variables as pointers",
                    "Report possible origins of unaddressable errors caused by using uninitialized variables as pointers by reporting the alloc context of the memory being referenced by uninitialized pointers. This can result in additional overhead.")
+OPTION_CLIENT(internal, native_until_thread, uint, 0, 0, UINT_MAX,
+              "Run natively until the Nth thread is created",
+              "Run natively until the Nth thread is created.  This is an experimental option and should be used with care.  This option is only supported with the -unaddr_only, -light, or -no_check_uninitialized modes.")

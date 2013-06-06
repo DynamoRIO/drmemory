@@ -6152,6 +6152,7 @@ handle_create_post(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
      *               PVOID Lock OPTIONAL,
      *               PRTL_HEAP_PARAMETERS Parameters OPTIONAL);
      */
+    LOG(2, "RtlCreateHeap => "PFX"\n", mc->xax);
     if (mc->xax != 0) {
         HANDLE heap = (HANDLE) mc->xax;
         heap_region_set_heap((byte *)heap, heap);

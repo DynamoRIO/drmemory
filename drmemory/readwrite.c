@@ -4119,9 +4119,16 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
     bb_info_t *bi;
 #ifdef TOOL_DR_MEMORY
     static bool first_bb = true;
+#endif
+
+    if (go_native)
+        return DR_EMIT_GO_NATIVE;
+
+#ifdef TOOL_DR_MEMORY
     /* No way to get app xsp at init or thread init (i#117) so we do it here */
     if (first_bb) {
-        set_initial_layout();
+        if (options.native_until_thread == 0)
+            set_initial_layout();
         first_bb = false;
     }
 #endif
@@ -4146,6 +4153,9 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
                          bool for_trace, bool translating, void *user_data)
 {
     bb_info_t *bi = (bb_info_t *) user_data;
+
+    if (go_native)
+        return DR_EMIT_GO_NATIVE;
 
     LOG(4, "ilist before analysis:\n");
     DOLOG(4, instrlist_disassemble(drcontext, tag, bb, LOGFILE_GET(drcontext)););
@@ -4243,6 +4253,9 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     uint opc;
     bool has_gpr, has_mem, has_noignorable_mem;
     fastpath_info_t mi;
+
+    if (go_native)
+        return DR_EMIT_GO_NATIVE;
 
     if (!instr_ok_to_mangle(inst))
         goto instru_event_bb_insert_done;
@@ -4510,6 +4523,9 @@ instru_event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
                               bool for_trace, bool translating, void *user_data)
 {
     bb_info_t *bi = (bb_info_t *) user_data;
+
+    if (go_native)
+        return DR_EMIT_GO_NATIVE;
 
 #ifdef TOOL_DR_MEMORY
     /* XXX i#777: should do reverse scan during analysis and store info */

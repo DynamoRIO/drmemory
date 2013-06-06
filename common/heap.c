@@ -506,12 +506,29 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
 #ifdef WINDOWS
     /* We have two choices: RtlEnumProcessHeaps or RtlGetProcessHeaps.
      * The results are identical: the former invokes a callback while
-     * the latter requires a passed-in array.
+     * the latter requires a passed-in array.  I've also tried
+     * RtlQueryProcessDebugInformation() and it produces the same
+     * list of heaps.
      */
     uint cap_heaps = 10;
     byte **heaps = global_alloc(cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
     uint i;
-    uint num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
+    uint num_heaps;
+    void *drcontext = dr_get_current_drcontext();
+
+    /* Make sure we swap to the app PEB, especially if we're invoked
+     * later on for -native_until_thread!
+     *
+     * XXX: we assume that the callbacks during this iterator we won't run any
+     * significant privlib code for which we'd want the private PEB:
+     * if that's not the case we'll have to swap back and forth around
+     * the callbacks.
+     */
+    bool was_app_state = dr_using_app_state(drcontext);
+    if (!was_app_state)
+        dr_switch_to_app_state_ex(drcontext, DR_STATE_PEB);
+
+    num_heaps = RtlGetProcessHeaps(cap_heaps, heaps);
     LOG(2, "walking %d heaps\n", num_heaps);
     if (num_heaps > cap_heaps) {
         global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
@@ -535,6 +552,8 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
         walk_individual_heap(heaps[i], cb_region, cb_chunk, NULL);
     }
     global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
+    if (!was_app_state)
+        dr_switch_to_dr_state_ex(drcontext, DR_STATE_PEB);
 #else /* WINDOWS */
     /* Once we have early injection (PR 204554) we won't need this.
      * For now we assume Lea's dlmalloc, the Linux glibc malloc that uses the

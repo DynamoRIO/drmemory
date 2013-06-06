@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -97,6 +97,8 @@ dump_statistics(void);
 
 extern uint num_nudges;
 #endif /* STATISTICS */
+
+volatile bool go_native;
 
 #ifdef LINUX
 

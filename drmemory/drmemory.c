@@ -107,6 +107,8 @@ client_id_t client_id;
 int cls_idx_drmem = -1;
 int tls_idx_drmem = -1;
 
+volatile bool go_native;
+
 static void
 event_context_init(void *drcontext, bool new_depth);
 
@@ -528,6 +530,7 @@ create_thread_logfile(void *drcontext)
 static void 
 event_thread_init(void *drcontext)
 {
+    static volatile int thread_count;
     tls_drmem_t *pt = (tls_drmem_t *)
         thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
     memset(pt, 0, sizeof(*pt));
@@ -537,24 +540,63 @@ event_thread_init(void *drcontext)
     create_thread_logfile(drcontext);
     LOGPT(2, PT_GET(drcontext), "in event_thread_init()\n");
     instrument_thread_init(drcontext);
-    if (options.shadowing) {
+    if (options.shadowing && !go_native) {
         /* For 1st thread we can't get mcontext so we wait for 1st bb.
          * For subsequent we can.  Xref i#117/PR 395156.
          * FIXME: other threads injected or created early like
          * we've seen on Windows could mess this up.
          */
-        static bool first_time = true;
-        if (first_time) /* 1st thread: no lock needed */
-            first_time = false;
-        else
+        if (options.native_until_thread > 0)
             set_thread_initial_structures(drcontext);
-        shadow_thread_init(drcontext);
+        else {
+            static bool first_time = true;
+            if (first_time) /* 1st thread: no lock needed */
+                first_time = false;
+            else
+                set_thread_initial_structures(drcontext);
+        }
     }
+    if (options.shadowing)
+        shadow_thread_init(drcontext);
     syscall_thread_init(drcontext);
     if (!options.perturb_only)
         report_thread_init(drcontext);
     if (options.perturb)
         perturb_thread_init();
+
+    if (options.native_until_thread > 0) {
+        int local_count = dr_atomic_add32_return_sum(&thread_count, 1);
+        NOTIFY("@@@@@@@@@@@@@ new thread #%d %d" NL,
+               local_count, dr_get_thread_id(drcontext));
+        if (go_native && local_count == options.native_until_thread) {
+            void **drcontexts = NULL;
+            uint num_threads, i;
+            go_native = false;
+            NOTIFY("thread %d suspending all threads" NL, dr_get_thread_id(drcontext));
+            if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL,
+                                                DR_SUSPEND_NATIVE)) {
+                NOTIFY("suspended %d threads" NL, num_threads);
+                for (i = 0; i < num_threads; i++) {
+                    if (dr_is_thread_native(drcontexts[i])) {
+                        NOTIFY("\txxx taking over thread #%d %d" NL,
+                               i, dr_get_thread_id(drcontexts[i]));
+                        dr_retakeover_suspended_native_thread(drcontexts[i]);
+                    } else {
+                        NOTIFY("\tthread #%d %d under DR" NL,
+                               i, dr_get_thread_id(drcontexts[i]));
+                    }
+                    if (options.shadowing)
+                        set_thread_initial_structures(drcontexts[i]);
+                }
+                set_initial_layout();
+                if (!dr_resume_all_other_threads(drcontexts, num_threads)) {
+                    ASSERT(false, "failed to resume threads");
+                }
+            } else {
+                ASSERT(false, "failed to suspend threads");
+            }
+        }
+    }
 }
 
 static void 
@@ -573,7 +615,7 @@ event_thread_exit(void *drcontext)
         close_file(f);
     }
 #ifdef WINDOWS
-    if (options.shadowing) {
+    if (options.shadowing && !go_native) {
         /* the kernel de-allocs teb so we need to explicitly handle it */
         /* use cached teb since can't query for some threads (i#442) */
         tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
@@ -1002,7 +1044,7 @@ set_thread_initial_structures(void *drcontext)
     byte *stack_reserve;
     size_t stack_reserve_sz;
     IF_DEBUG(bool ok;)
-    TEB *teb = get_TEB();
+    TEB *teb = get_TEB_from_tid(dr_get_thread_id(drcontext));
 
     /* cache TEB since can't get it from syscall for some threads (i#442) */
     tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
@@ -1095,7 +1137,6 @@ set_initial_structures(void *drcontext)
 {
 #ifdef WINDOWS
     app_pc pc;
-    TEB *teb = get_TEB();
     /* We can't use teb->ProcessEnvironmentBlock b/c i#249 points it at private PEB */
     PEB *peb = get_app_PEB();
     RTL_USER_PROCESS_PARAMETERS *pparam = peb->ProcessParameters;
@@ -1179,7 +1220,8 @@ set_initial_structures(void *drcontext)
     /* FIXME: vdso, if not covered by memory_walk() */
 #endif /* WINDOWS */
 
-    set_thread_initial_structures(drcontext);
+    if (options.native_until_thread == 0)
+        set_thread_initial_structures(drcontext);
 }
 
 static void

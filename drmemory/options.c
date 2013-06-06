@@ -26,6 +26,7 @@
 #include "options.h"
 #include "shadow.h"
 #include "pattern.h"
+#include "drmemory.h"
 #include <string.h>
 
 /***************************************************************************
@@ -471,4 +472,7 @@ options_init(const char *opstr)
             options.callstack_use_top_fp = false;
     }
 #endif
+    if (options.native_until_thread > 0) {
+        go_native = true;
+    }
 }
