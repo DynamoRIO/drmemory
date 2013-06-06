@@ -157,6 +157,7 @@ uint movs4_src_undef;
 uint movs4_med_fast;
 uint cmps1_src_undef;
 uint cmps1_med_fast;
+uint num_bbs;
 #endif
 
 #ifdef TOOL_DR_MEMORY
@@ -4123,6 +4124,11 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
 
     if (go_native)
         return DR_EMIT_GO_NATIVE;
+
+#ifdef STATISTICS
+    if (!translating && !for_trace)
+        STATS_INC(num_bbs);
+#endif
 
 #ifdef TOOL_DR_MEMORY
     /* No way to get app xsp at init or thread init (i#117) so we do it here */

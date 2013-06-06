@@ -1633,10 +1633,9 @@ report_thread_exit(void *drcontext)
 
 /***************************************************************************/
 
-static void
-print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar, bool error)
+void
+print_timestamp_elapsed(char *buf, size_t bufsz, size_t *sofar)
 {
-    /* PR 465163: include timestamp and thread id in callstacks */
     ssize_t len = 0;
     uint64 timestamp = dr_get_milliseconds() - timestamp_start;
     uint64 abssec = timestamp / 1000;
@@ -1644,10 +1643,19 @@ print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar, bool error)
     uint sec = (uint) (abssec % 60);
     uint min = (uint) (abssec / 60);
     uint hour = min / 60;
-    thread_id_t tid = dr_get_thread_id(dr_get_current_drcontext());
     min %= 60;
-    BUFPRINT(buf, bufsz, *sofar, len, "@%u:%02d:%02d.%03d in thread %d"NL,
-             hour, min, sec, msec, tid);
+    BUFPRINT(buf, bufsz, *sofar, len, "%u:%02d:%02d.%03d", hour, min, sec, msec);
+}
+
+static void
+print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar, bool error)
+{
+    /* PR 465163: include timestamp and thread id in callstacks */
+    ssize_t len = 0;
+    thread_id_t tid = dr_get_thread_id(dr_get_current_drcontext());
+    BUFPRINT(buf, bufsz, *sofar, len, "@");
+    print_timestamp_elapsed(buf, bufsz, sofar);
+    BUFPRINT(buf, bufsz, *sofar, len, " in thread %d"NL, tid);
     if (error && options.show_threads && !options.show_all_threads)
         report_delayed_thread(tid);
 }
@@ -2933,8 +2941,10 @@ report_child_thread(void *drcontext, thread_id_t child)
 
         if (options.show_all_threads) {
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                     "\nNEW THREAD: child thread %d created by parent thread %d\n",
+                     "\nNEW THREAD: child thread %d created by parent thread %d @",
                      child, dr_get_thread_id(drcontext));
+            print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, false);
+            BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
                             NULL, 0, false);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");

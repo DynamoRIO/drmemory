@@ -173,6 +173,7 @@ dump_statistics(void)
     int i;
     dr_fprintf(f_global, "Statistics:\n");
     dr_fprintf(f_global, "nudges: %d\n", num_nudges);
+    dr_fprintf(f_global, "basic blocks: %d\n", num_bbs);
     dr_fprintf(f_global, "adjust_esp:%10u slow; %10u fast\n", adjust_esp_executions,
                adjust_esp_fastpath);
     dr_fprintf(f_global, "slow_path invocations: %10u\n", slowpath_executions);
@@ -449,6 +450,7 @@ event_exit(void)
     /* Dump heap stats after most cleanup is done */
     heap_dump_stats(f_global);
 #endif
+    print_timestamp_elapsed_to_file(f_global, "Exiting ");
 
     /* To help postprocess.pl to perform sideline processing of errors, we add
      * a few markers to the log files.
@@ -531,6 +533,8 @@ static void
 event_thread_init(void *drcontext)
 {
     static volatile int thread_count;
+    int local_count;
+    static bool first_thread = true;
     tls_drmem_t *pt = (tls_drmem_t *)
         thread_alloc(drcontext, sizeof(*pt), HEAPSTAT_MISC);
     memset(pt, 0, sizeof(*pt));
@@ -548,13 +552,8 @@ event_thread_init(void *drcontext)
          */
         if (options.native_until_thread > 0)
             set_thread_initial_structures(drcontext);
-        else {
-            static bool first_time = true;
-            if (first_time) /* 1st thread: no lock needed */
-                first_time = false;
-            else
-                set_thread_initial_structures(drcontext);
-        }
+        else if (!first_thread)
+            set_thread_initial_structures(drcontext);
     }
     if (options.shadowing)
         shadow_thread_init(drcontext);
@@ -564,8 +563,42 @@ event_thread_init(void *drcontext)
     if (options.perturb)
         perturb_thread_init();
 
+    if (options.native_until_thread > 0 || options.show_all_threads)
+        local_count = dr_atomic_add32_return_sum(&thread_count, 1);
+
+    if (options.show_all_threads && !first_thread) {
+        dr_mcontext_t mc;
+        app_pc start_addr;
+#ifdef USE_DRSYMS
+        char buf[128];
+        size_t sofar = 0;
+        ssize_t len;
+#endif
+        IF_DEBUG(bool ok;)
+        mc.size = sizeof(mc);
+        mc.flags = DR_MC_INTEGER | DR_MC_CONTROL;
+        IF_DEBUG(ok = )
+            dr_get_mcontext(drcontext, &mc);
+        ASSERT(ok, "unable to get mcontext for new thread");
+        start_addr = (app_pc) IF_X64_ELSE(mc.rcx, mc.eax);
+#ifdef USE_DRSYMS
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                 "Thread #%d @", local_count);
+        print_timestamp_elapsed(buf, BUFFER_SIZE_ELEMENTS(buf), &sofar);
+# ifdef STATISTICS
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len, " #bbs=%d", num_bbs);
+# endif
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                 " start="PFX" ", start_addr);
+        print_symbol(start_addr, buf, BUFFER_SIZE_ELEMENTS(buf), &sofar,
+                     true, PRINT_SYMBOL_OFFSETS);
+        LOG(1, "%s\n", buf);
+#else
+        LOG(1, "New thread #%d: start addr "PFX"\n", local_count, start_addr);
+#endif
+    }
+
     if (options.native_until_thread > 0) {
-        int local_count = dr_atomic_add32_return_sum(&thread_count, 1);
         NOTIFY("@@@@@@@@@@@@@ new thread #%d %d" NL,
                local_count, dr_get_thread_id(drcontext));
         if (go_native && local_count == options.native_until_thread) {
@@ -597,6 +630,8 @@ event_thread_init(void *drcontext)
             }
         }
     }
+    if (first_thread) /* 1st thread: no lock needed */
+        first_thread = false;
 }
 
 static void 

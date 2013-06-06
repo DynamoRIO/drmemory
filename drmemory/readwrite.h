@@ -152,6 +152,7 @@ extern uint movs4_src_undef;
 extern uint movs4_med_fast;
 extern uint cmps1_src_undef;
 extern uint cmps1_med_fast;
+extern uint num_bbs;
 #endif
 
 extern hashtable_t bb_table;
