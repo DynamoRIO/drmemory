@@ -110,6 +110,17 @@ TEST(StringTests, strstr) {
     delete [] p;
 }
 
+TEST(StringTests, wcsstr) {
+    ASSERT_STREQ(wcsstr(L"abcaddccdx", L"cd"), L"cdx");
+    ASSERT_STREQ(wcsstr(L"xyzabcxyz", L"xyz"), L"xyzabcxyz");
+    ASSERT_EQ(wcsstr(L"xy", L"xyz"), (wchar_t *)NULL);
+    ASSERT_STREQ(wcsstr(L"abcd", L""), L"abcd");
+
+    /* Test i#350 where VS2012 wcsstr is optimized */
+    std::wstring s2(L"foo\r\nbar");
+    ASSERT_STREQ(wcsstr(s2.c_str(), L"\r\n"), L"\r\nbar");
+}
+
 #ifdef LINUX
 TEST(StringTests, strcasecmp) {
     char *s = new char[3];

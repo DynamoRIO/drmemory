@@ -91,7 +91,8 @@
     REPLACE_DEF(strspn, NULL)      \
     REPLACE_DEF(strcspn, NULL)     \
     REPLACE_DEF(stpcpy, NULL)      \
-    REPLACE_DEF(strstr, NULL)
+    REPLACE_DEF(strstr, "wcsstr")  \
+    REPLACE_DEF(wcsstr, NULL)
 
 /* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
  * wcsncat, wmemmove.
@@ -638,6 +639,27 @@ replace_strstr(const char *haystack, const char *needle)
             n++;
             if (*n == '\0')
                 return (char *) (hs - (n - 1 - needle));
+        }
+        hs++;
+    }
+    return NULL;
+}
+
+IN_REPLACE_SECTION wchar_t *
+replace_wcsstr(const wchar_t *haystack, const wchar_t *needle)
+{
+    register const wchar_t *hs = haystack;
+    register const wchar_t *n = needle;
+    /* empty needle should return haystack */
+    if (*n == '\0')
+        return (wchar_t *) haystack;
+    while (*hs != '\0') {
+        if (*hs != *n)
+            n = needle;
+        if (*hs == *n) {
+            n++;
+            if (*n == '\0')
+                return (wchar_t *) (hs - (n - 1 - needle));
         }
         hs++;
     }
