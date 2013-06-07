@@ -124,9 +124,13 @@ SymLoadModuleExW(__in HANDLE hProcess, __in_opt HANDLE hFile, __in_opt PCWSTR Im
  *   is module load event where DR has already used a bunch of stack,
  *   and PR 486382 does name-to-addr symbol lookup).
  *   update: DR's default is now 56K so this is no longer needed.
+ * i#1263: on larger apps our shadow memory routinely exceeds DR's
+ *   default 128MB reservation.  DR is more efficient when all its
+ *   allocations are inside its reservation.
+ * DRi#1081: we disable reset until the DR bug is fixed.
  */
 #define DEFAULT_DR_OPS \
-    "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256"
+    "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -vm_size 256M -no_enable_reset"
 
 #define DRMEM_CLIENT_ID 0
 

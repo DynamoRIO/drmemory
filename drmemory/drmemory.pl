@@ -107,7 +107,11 @@ $batch = 0; # batch mode: no popups please
 # to save space we use -bb_single_restore_prefix
 # PR 415155: our code expansion causes us to exceed max bb size sometimes
 # XXX: for pattern mode, we should be able to use traces for better performance.
-$def_dr_ops = "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256";
+# i#1263: on larger apps our shadow memory routinely exceeds DR's
+#   default 128MB reservation.  DR is more efficient when all its
+#   allocations are inside its reservation.
+# DRi#1081: we disable reset until the DR bug is fixed.
+$def_dr_ops = "-disable_traces -bb_single_restore_prefix -max_bb_instrs 256 -vm_size 256M -no_enable_reset";
 $user_ops = "";
 $nudge_pid = "";
 $pid_file = "";
