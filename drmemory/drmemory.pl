@@ -271,7 +271,9 @@ if ($use_debug_force) {
 if (!$use_dr_debug && ! -e "$dr_home/$lib_arch/release/$drlibname") {
     $use_dr_debug = 1;
     print "$prefix WARNING: using debug DynamoRIO since release not found\n"
-        unless ($user_ops =~ /-quiet/);
+        unless ($user_ops =~ /-quiet/ ||
+                # don't warn when DR is built with drmem
+                -d "$drmemory_home/dynamorio");
 }
 $dr_debug = ($use_dr_debug) ? "-debug" : "";
 $dr_libdir = ($use_dr_debug) ? "debug" : "release";
@@ -405,7 +407,7 @@ if ($aggregate || $just_postprocess) {
     if ($ENV{'SHELL'} =~ /\/ash/) {
         # PR 470752: ash forks on exec!  so we bypass drrun and set env vars below
     } else {
-        @appcmdline = ("$drrun", "-dr_home", "$dr_home",
+        @appcmdline = ("$drrun", "-quiet", "-dr_home", "$dr_home",
                        "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
                        "0", "$ops",
                        # put DR logs inside drmem logdir (i#874)
