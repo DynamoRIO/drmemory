@@ -471,6 +471,10 @@ options_init(const char *opstr)
         if (!option_specified.callstack_use_top_fp && !HAVE_STALE_RETADDRS())
             options.callstack_use_top_fp = false;
     }
+# ifdef X64
+    if (options.pattern == 0)
+        usage_error("currently only -unaddr_only is supported for 64-bit", "");
+# endif
 #endif
     if (options.native_until_thread > 0) {
         go_native = true;
