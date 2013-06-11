@@ -851,14 +851,6 @@ reg_offs_in_dword(reg_id_t reg)
         return 0;
 }
 
-reg_id_t
-reg_32_to_8h(reg_id_t reg)
-{
-    ASSERT(reg >= REG_EAX && reg <= REG_EBX,
-           "reg_32_to_8h: passed non-32-bit a-d reg");
-    return (reg - REG_EAX) + REG_AH;
-}
-
 bool
 opc_is_push(uint opc)
 {

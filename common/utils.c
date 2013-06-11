@@ -1112,6 +1112,57 @@ drmem_strndup(const char *src, size_t max, heapstat_t type)
 }
 
 /***************************************************************************
+ * REGISTER CONVERSION UTILITIES
+ */
+
+static reg_id_t
+reg_32_to_8h(reg_id_t reg)
+{
+    ASSERT(reg >= REG_EAX && reg <= REG_EBX,
+           "reg_32_to_8h: passed non-32-bit a-d reg");
+    return (reg - REG_EAX) + REG_AH;
+}
+
+reg_id_t
+reg_ptrsz_to_16(reg_id_t reg)
+{
+#ifdef X64
+    ASSERT(reg >= DR_REG_START_64 && reg <= DR_REG_STOP_64,
+           "wrong register for conversion");
+    reg = reg_64_to_32(reg);
+#else
+    ASSERT(reg >= DR_REG_START_32 && reg < DR_REG_STOP_32,
+           "wrong register for conversion");
+#endif
+    return reg_32_to_16(reg);
+}
+
+reg_id_t
+reg_ptrsz_to_8(reg_id_t reg)
+{
+#ifdef X64
+    ASSERT(reg >= DR_REG_START_64 && reg <= DR_REG_STOP_64,
+           "wrong register for conversion");
+    reg = reg_64_to_32(reg);
+#else
+    ASSERT(reg >= DR_REG_START_32 && reg < DR_REG_STOP_32,
+           "wrong register for conversion");
+#endif
+    return reg_32_to_8(reg);
+}
+
+reg_id_t
+reg_ptrsz_to_8h(reg_id_t reg)
+{
+    ASSERT(reg >= DR_REG_XAX && reg <= DR_REG_XBX,
+           "wrong register for conversion");
+#ifdef X64
+    reg = reg_64_to_32(reg);
+#endif
+    return reg_32_to_8h(reg);
+}
+
+/***************************************************************************
  * HASHTABLE
  */
 

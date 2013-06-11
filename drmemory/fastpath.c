@@ -2406,9 +2406,9 @@ add_check_partial_undefined(void *drcontext, instrlist_t *bb, instr_t *inst,
  *     - reg3 has not been touched
  *     - reg2 has been clobbered (this routine no longer computes the offset
  *       within the shadow block: caller can do so via
- *         "movzx reg2, reg_32_to_16(orig_addr); shr reg2, 2"
+ *         "movzx reg2, reg_ptrsz_to_16(orig_addr); shr reg2, 2"
  * If !get_value and !need_offs and !zero_rest_of_offs:
- *   reg1, reg3, and reg3 can be any 32-bit regs
+ *   reg1, reg3, and reg3 can be any pointer-sized regs
  * Else, they should be a,b,c,d for 8-bit sub-reg
  */
 void
@@ -2428,11 +2428,11 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
      * 3) Result points to 8K shadow chunk
      */
     reg_id_t reg1_8h = REG_NULL;
-    reg_id_t reg2_8h = reg_32_to_8h(reg2);
-    reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8(reg3);
+    reg_id_t reg2_8h = reg_ptrsz_to_8h(reg2);
+    reg_id_t reg3_8 = (reg3 == REG_NULL) ? REG_NULL : reg_ptrsz_to_8(reg3);
     ASSERT(reg3 != REG_NULL || !need_offs, "spill error");
     if (need_offs || zero_rest_of_offs)
-        reg1_8h = reg_32_to_8h(reg1);
+        reg1_8h = reg_ptrsz_to_8h(reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg1);
     mark_matching_scratch_reg(drcontext, bb, mi, reg2);
     mark_eflags_used(drcontext, bb, mi->bb);
@@ -2451,7 +2451,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          * PR 624474: we handle OPSZ_10 fld on fastpath if 16-byte aligned
          */
         PRE(bb, inst,
-            INSTR_CREATE_test(drcontext, opnd_create_reg(reg_32_to_8(reg1)),
+            INSTR_CREATE_test(drcontext, opnd_create_reg(reg_ptrsz_to_8(reg1)),
                               OPND_CREATE_INT8(mi->memsz == 4 ? 0x3 :
                                                (mi->memsz == 8 ? 0x3 :
                                                 ((mi->memsz == 16 || mi->memsz == 10) ?
@@ -2495,7 +2495,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         PRE(bb, inst,
             INSTR_CREATE_movzx(drcontext, opnd_create_reg(reg3),
-                               opnd_create_reg(reg_32_to_16(reg1))));
+                               opnd_create_reg(reg_ptrsz_to_16(reg1))));
     }
 
     /* translate app address in r1 to shadow address in r1 */
@@ -2520,7 +2520,7 @@ add_shadow_table_lookup(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* addr is already in reg1 */
     }
     if (need_offs) {
-        reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_32_to_8h(reg3);
+        reg_id_t reg3_8h = (reg3 == REG_NULL) ? REG_NULL : reg_ptrsz_to_8h(reg3);
         IF_DRHEAP(ASSERT(false, "shouldn't get here"));
         mi->memoffs = (!mi->need_offs && zero_rest_of_offs) ?
             opnd_create_reg(reg3_8h) :
@@ -2801,7 +2801,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             }
             memoffs = opnd_create_null();
             opreg1 = opnd_create_reg(scratch8);
-            opreg2 = opnd_create_reg(reg_32_to_8h(reg_to_pointer_sized(scratch8)));
+            opreg2 = opnd_create_reg(reg_ptrsz_to_8h(reg_to_pointer_sized(scratch8)));
             ASSERT(!opnd_uses_reg(dst.shadow, reg_to_pointer_sized(scratch8)) &&
                    !opnd_uses_reg(src.shadow, reg_to_pointer_sized(scratch8)),
                    "internal scratch reg error");
@@ -2822,7 +2822,8 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     reg_to_pointer_sized(scratch8)) {
                     ASSERT(reg_is_8bit_high(opnd_get_reg(mi->memoffs)), "subdword error");
                     memoffs = opnd_create_reg(REG_CH);
-                    opreg2 = opnd_create_reg(reg_32_to_8h(reg_to_pointer_sized(scratch8)));
+                    opreg2 = opnd_create_reg
+                        (reg_ptrsz_to_8h(reg_to_pointer_sized(scratch8)));
                 }
             } else {
                 opreg2 = opnd_create_reg(REG_CH);
@@ -3916,11 +3917,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                       mi->memop,
                       mi->mem2mem ? mi->src[0].app :
                       (mi->load2x ? mi->src[1].app : opnd_create_null()));
-    mi->reg1_8 = reg_32_to_8(mi->reg1.reg);
-    mi->reg2_16 = reg_32_to_16(mi->reg2.reg);
-    mi->reg2_8 = reg_32_to_8(mi->reg2.reg);
-    mi->reg2_8h = reg_32_to_8h(mi->reg2.reg);
-    mi->reg3_8 = (mi->reg3.reg == REG_NULL) ? REG_NULL : reg_32_to_8(mi->reg3.reg);
+    mi->reg1_8 = reg_ptrsz_to_8(mi->reg1.reg);
+    mi->reg2_16 = reg_ptrsz_to_16(mi->reg2.reg);
+    mi->reg2_8 = reg_ptrsz_to_8(mi->reg2.reg);
+    mi->reg2_8h = reg_ptrsz_to_8h(mi->reg2.reg);
+    mi->reg3_8 = (mi->reg3.reg == REG_NULL) ? REG_NULL : reg_ptrsz_to_8(mi->reg3.reg);
 
 #ifdef TOOL_DR_MEMORY
     /* point at the locations of shadow values for operands */
@@ -4646,7 +4647,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                        OPND_CREATE_MEM8(mi->reg1.reg, 0)));
                 /* optimization: avoid redundant load below for mi->num_to_propagate>1 */
                 if (opnd_same(mi->src[0].shadow, OPND_CREATE_MEM8(mi->reg1.reg, 0)))
-                    mi->src[0].shadow = opnd_create_reg(reg_32_to_8(scratch));
+                    mi->src[0].shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));
                 if (mi->memsz < 4 && mi->need_offs) {
                     /* PR 503782: check just the bytes referenced.  We've zeroed the
                      * rest of mi->memoffs and in 8h position it's doing x256 already.
@@ -4681,7 +4682,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                         INSTR_CREATE_jcc(drcontext, OP_jne,
                                          opnd_create_instr(heap_unaddr)));
                     mi->need_slowpath = true;
-                    heap_unaddr_shadow = opnd_create_reg(reg_32_to_8(scratch));
+                    heap_unaddr_shadow = opnd_create_reg(reg_ptrsz_to_8(scratch));
                 } else {
                     add_jcc_slowpath(drcontext, bb, inst,
                                      (check_ignore_unaddr || mi->memsz < 4) ?
@@ -4892,7 +4893,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
         /* FIXME: for insert_shadow_op() for shifts, need to
          * either do the bitwise or into mi->reg1_8, then call:
-         *   insert_shadow_op(drcontext, bb, inst, mi->reg1_8, reg_32_to_8h(mi->reg1.reg));
+         *   insert_shadow_op(drcontext, bb, inst, mi->reg1_8,
+         *                    reg_ptrsz_to_8h(mi->reg1.reg));
          * and then store into dst_reg?  lots of work if not a shift, so have
          * insert_shadow_op() handle both mem8 or reg8?
          */

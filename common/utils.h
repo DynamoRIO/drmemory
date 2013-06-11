@@ -771,6 +771,19 @@ text_contains_any_string(const char *text, const char *patterns, bool ignore_cas
                          const char **matched);
 
 /***************************************************************************
+ * REGISTER CONVERSION UTILITIES
+ */
+
+reg_id_t
+reg_ptrsz_to_16(reg_id_t reg);
+
+reg_id_t
+reg_ptrsz_to_8(reg_id_t reg);
+
+reg_id_t
+reg_ptrsz_to_8h(reg_id_t reg);
+
+/***************************************************************************
  * HASHTABLE
  *
  * hashtable was moved and generalized so we need to initialize it

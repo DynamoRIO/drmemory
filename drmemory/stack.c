@@ -1208,7 +1208,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     /* compute offs within shadow block */
     PRE(bb, NULL,
         INSTR_CREATE_movzx(drcontext, opnd_create_reg(mi.reg2.reg),
-                           opnd_create_reg(reg_32_to_16(mi.reg2.reg))));
+                           opnd_create_reg(reg_ptrsz_to_16(mi.reg2.reg))));
     PRE(bb, NULL,
         INSTR_CREATE_shr(drcontext, opnd_create_reg(mi.reg2.reg), OPND_CREATE_INT8(2)));
     /* calculate start of shadow block */

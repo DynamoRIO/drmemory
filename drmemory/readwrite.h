@@ -310,9 +310,6 @@ reg_is_16bit(reg_id_t reg);
 bool
 reg_offs_in_dword(reg_id_t reg);
 
-reg_id_t
-reg_32_to_8h(reg_id_t reg);
-
 bool
 opc_is_push(uint opc);
 
