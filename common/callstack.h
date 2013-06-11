@@ -120,6 +120,10 @@ enum {
      * some stack var that happens to look like another fp,ra pair
      */
     FP_DO_NOT_CHECK_FIRST_RETADDR     = 0x0100,
+    /* i#1265: normally we skip the "push ebp" of 32-bit Linux vsyscall
+     * on a 64-bit kernel, as it too often leads to skipped frames.
+     */
+    FP_DO_NOT_SKIP_VSYSCALL_PUSH      = 0x0200,
     FP_SEARCH_AGGRESSIVE              = (FP_SHOW_NON_MODULE_FRAMES |
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };

@@ -277,6 +277,10 @@ test_static_iterator(void)
 static
 void exit_event(void)
 {
+    drsys_gateway_t gateway;
+    if (drsys_syscall_gateway(&gateway) != DRMF_SUCCESS ||
+        gateway == DRSYS_GATEWAY_UNKNOWN)
+        ASSERT(false, "drsys failed to determine syscall gateway");
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
     dr_fprintf(STDERR, "TEST PASSED\n");

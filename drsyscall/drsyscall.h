@@ -369,6 +369,17 @@ typedef struct _drsys_options_t {
 /** Type of iterator callbacks. */
 typedef bool (*drsys_iter_cb_t)(drsys_arg_t *arg, void *user_data);
 
+/** Indicates the primary method of invoking the kernel for a system call. */
+typedef enum {
+    DRSYS_GATEWAY_UNKNOWN,
+    DRSYS_GATEWAY_INT,
+    DRSYS_GATEWAY_SYSENTER,
+    DRSYS_GATEWAY_SYSCALL,
+#ifdef WINDOWS
+    DRSYS_GATEWAY_WOW64,
+#endif
+} drsys_gateway_t;
+
 /***************************************************************************
  * TOP-LEVEL
  */
@@ -587,6 +598,24 @@ drsys_sysnums_equal(drsys_sysnum_t *num1, drsys_sysnum_t *num2)
     return (num1->number == num2->number &&
             num1->secondary == num2->secondary);
 }
+
+DR_EXPORT
+/**
+ * Returns the primary method used to invoke the kernel for a system call.
+ * Prior to the first system call invoked by the application, this
+ * will return DRSYS_GATEWAY_UNKNOWN.
+ * Although this is the typical method, other methods may be used
+ * within the same application (e.g., on Linux, even when
+ * DRSYS_GATEWAY_SYSENTER or DRSYS_GATEWAY_SYSCALL is used for most
+ * system calls, DRSYS_GATEWAY_INT is still used for certain
+ * stack-sensitive or multi-argument system calls).
+ *
+ * @param[out]  method   The gateway method in use by the application.
+ *
+ * \return whether successful.
+ */
+drmf_status_t
+drsys_syscall_gateway(drsys_gateway_t *method);
 
 /***************************************************************************
  * DYNAMIC QUERIES

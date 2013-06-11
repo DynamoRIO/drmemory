@@ -68,6 +68,7 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
  - The GDI error on using a DC by more than one thread is now off by
    default.  It can be enabled with the -check_gdi_multithread option.
  - Various bug fixes.
+ - Added drsys_syscall_gateway() to the Dr. Syscall library.
 
 The changes between version 1.5.1 and version 1.5.0 include:
  - Re-organized and improved the documentation.

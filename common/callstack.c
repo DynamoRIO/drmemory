@@ -1222,6 +1222,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
     bool have_appdata = false;
     bool scanned = false;
     bool last_frame = false;
+    byte *tos = (mc == NULL ? NULL : (byte *) mc->xsp);
+
+    if (mc == NULL)
+        goto print_callstack_done;
 
     ASSERT(num == 0 || num == 1, "only 1 frame can already be printed");
     ASSERT((buf != NULL && sofar != NULL && pcs == NULL) ||
@@ -1229,17 +1233,16 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
            "print_callstack: can't pass buf and pcs");
 
 #ifdef DEBUG
-    if (mc != NULL && op_callstack_dump_stack > 0)
+    if (mc != NULL && op_callstack_dump_stack > 0) {
         dump_app_stack(drcontext, pt, mc, op_callstack_dump_stack,
                        (pcs == NULL ? NULL : PCS_FRAME_LOC(pcs, 0).addr));
+    }
 #endif
 
-    if (mc != NULL) {
-        LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
-               mc->xbp, mc->xsp,
-               (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->xbp));
-    }
-    if (mc != NULL && mc->xsp != 0 &&
+    LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
+        mc->xbp, mc->xsp,
+        (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->xbp));
+    if (mc->xsp != 0 &&
         (!ALIGNED(mc->xbp, sizeof(void*)) ||
          mc->xbp < mc->xsp || 
          mc->xbp - mc->xsp > op_stack_swap_threshold ||
@@ -1267,8 +1270,26 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp),
             op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp +
                                                                   sizeof(void*)));
-        pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
-                                         &custom_retaddr);
+#if defined(LINUX) && !defined(X64)
+        if (pcs != NULL && pcs->first_is_syscall &&
+            !TEST(FP_DO_NOT_SKIP_VSYSCALL_PUSH, op_fp_flags)) {
+            /* i#1265: skip the vsyscall sysenter "push ebp" to avoid skipping
+             * over a frame, as the libc routine that invoked the syscall often
+             * doesn't have a fp.  We want to only apply this when in vsyscall,
+             * but even w/ a sysenter/syscall gateway there are still syscalls
+             * that use OP_int: thus we check for TOS holding a retaddr (should
+             * be relatively rare to get here so overhead not critical).
+             */
+            drsys_gateway_t gateway;
+            if (drsys_syscall_gateway(&gateway) == DRMF_SUCCESS &&
+                (gateway == DRSYS_GATEWAY_SYSENTER || gateway == DRSYS_GATEWAY_SYSCALL) &&
+                safe_read(tos, sizeof(custom_retaddr), &custom_retaddr) &&
+                !is_retaddr(custom_retaddr, true/*exclude tool*/)) {
+                tos += sizeof(app_pc);
+            }
+        }
+#endif
+        pc = (ptr_uint_t *) find_next_fp(pt, tos, true/*top frame*/, &custom_retaddr);
         scanned = true;
     }
     while (pc != NULL) {
@@ -1280,7 +1301,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         LOG(4, "print_callstack: pc="PFX" => FP="PFX", RA="PFX"\n",
             pc, appdata.next_fp, appdata.retaddr);
         /* if we scanned and took the top dword as retaddr, don't use beyond-TOS as FP */
-        if ((reg_t)pc < mc->xsp)
+        if ((byte *)pc < tos)
             appdata.next_fp = NULL;
         if (custom_retaddr != NULL) {
             /* Support frames where there's a gap between ebp and retaddr (PR 475715) */
@@ -1423,6 +1444,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         if (pc == NULL)
             LOG(4, "truncating callstack: can't find next fp\n");
     }
+ print_callstack_done:
     if (num == 0 && buf != NULL && print_fps) {
         BUFPRINT(buf, bufsz, *sofar, len,
                  FP_PREFIX"<call stack frame ptr "PFX" unreadable>"NL, pc);

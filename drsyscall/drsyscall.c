@@ -114,36 +114,36 @@ map_to_exported_type(uint sysarg_type, size_t *sz_out OUT);
  * SYSTEM CALLS
  */
 
-typedef enum {
-    SYSCALL_GATEWAY_UNKNOWN,
-    SYSCALL_GATEWAY_INT,
-    SYSCALL_GATEWAY_SYSENTER,
-    SYSCALL_GATEWAY_SYSCALL,
-#ifdef WINDOWS
-    SYSCALL_GATEWAY_WOW64,
-#endif
-} syscall_gateway_t;
+static drsys_gateway_t syscall_gateway = DRSYS_GATEWAY_UNKNOWN;
 
-static syscall_gateway_t syscall_gateway = SYSCALL_GATEWAY_UNKNOWN;
+DR_EXPORT
+drmf_status_t
+drsys_syscall_gateway(drsys_gateway_t *method)
+{
+    if (method == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *method = syscall_gateway;
+    return DRMF_SUCCESS;
+}
 
 bool
 is_using_sysenter(void)
 {
-    return (syscall_gateway == SYSCALL_GATEWAY_SYSENTER);
+    return (syscall_gateway == DRSYS_GATEWAY_SYSENTER);
 }
 
 /* we assume 1st syscall reflects primary gateway */
 bool
 is_using_sysint(void)
 {
-    return (syscall_gateway == SYSCALL_GATEWAY_INT);
+    return (syscall_gateway == DRSYS_GATEWAY_INT);
 }
 
 #ifdef WINDOWS
 bool
 is_using_wow64(void)
 {
-    return (syscall_gateway == SYSCALL_GATEWAY_WOW64);
+    return (syscall_gateway == DRSYS_GATEWAY_WOW64);
 }
 #endif
 
@@ -151,38 +151,38 @@ static void
 check_syscall_gateway(instr_t *inst)
 {
     if (instr_get_opcode(inst) == OP_sysenter) {
-        if (syscall_gateway == SYSCALL_GATEWAY_UNKNOWN
+        if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN
             /* some syscalls use int, but consider sysenter the primary */
-            IF_LINUX(|| syscall_gateway == SYSCALL_GATEWAY_INT))
-            syscall_gateway = SYSCALL_GATEWAY_SYSENTER;
+            IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_INT))
+            syscall_gateway = DRSYS_GATEWAY_SYSENTER;
         else {
-            ASSERT(syscall_gateway == SYSCALL_GATEWAY_SYSENTER,
+            ASSERT(syscall_gateway == DRSYS_GATEWAY_SYSENTER,
                    "multiple system call gateways not supported");
         }
     } else if (instr_get_opcode(inst) == OP_syscall) {
-        if (syscall_gateway == SYSCALL_GATEWAY_UNKNOWN)
-            syscall_gateway = SYSCALL_GATEWAY_SYSCALL;
+        if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
+            syscall_gateway = DRSYS_GATEWAY_SYSCALL;
         else {
-            ASSERT(syscall_gateway == SYSCALL_GATEWAY_SYSCALL
+            ASSERT(syscall_gateway == DRSYS_GATEWAY_SYSCALL
                    /* some syscalls use int */
-                   IF_LINUX(|| syscall_gateway == SYSCALL_GATEWAY_INT),
+                   IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_INT),
                    "multiple system call gateways not supported");
         }
     } else if (instr_get_opcode(inst) == OP_int) {
-        if (syscall_gateway == SYSCALL_GATEWAY_UNKNOWN)
-            syscall_gateway = SYSCALL_GATEWAY_INT;
+        if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
+            syscall_gateway = DRSYS_GATEWAY_INT;
         else {
-            ASSERT(syscall_gateway == SYSCALL_GATEWAY_INT
-                   IF_LINUX(|| syscall_gateway == SYSCALL_GATEWAY_SYSENTER
-                            || syscall_gateway == SYSCALL_GATEWAY_SYSCALL),
+            ASSERT(syscall_gateway == DRSYS_GATEWAY_INT
+                   IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_SYSENTER
+                            || syscall_gateway == DRSYS_GATEWAY_SYSCALL),
                    "multiple system call gateways not supported");
         }
 #ifdef WINDOWS
     } else if (instr_is_wow64_syscall(inst)) {
-        if (syscall_gateway == SYSCALL_GATEWAY_UNKNOWN)
-            syscall_gateway = SYSCALL_GATEWAY_WOW64;
+        if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN)
+            syscall_gateway = DRSYS_GATEWAY_WOW64;
         else {
-            ASSERT(syscall_gateway == SYSCALL_GATEWAY_WOW64,
+            ASSERT(syscall_gateway == DRSYS_GATEWAY_WOW64,
                    "multiple system call gateways not supported");
         }
 #endif
