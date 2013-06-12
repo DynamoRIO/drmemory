@@ -1956,6 +1956,36 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         } else
             break;
     }
+    /* in pattern mode, we walk the whole hashtable to find the region */
+    if (options.pattern != 0 && options.redzone_size > 0 &&
+        region_in_redzone(addr, sz, &pcs, &start, &end, NULL, NULL)) {
+        BUFPRINT(buf, bufsz, *sofar, len,
+                 "%srefers to %d bytes(s) %s malloc"NL,
+                 INFO_PFX,
+                 addr >= end ? (addr - end) : (start - addr+sz-1),
+                 addr >= end ? "beyond last valid byte in prior" : "before next");
+        if (!options.brief) {
+            BUFPRINT(buf, bufsz, *sofar, len,
+                     "%s%s malloc: "PFX"-"PFX"",
+                     INFO_PFX,
+                     addr >= end ? "prev lower" : "next higher",
+                     start, end);
+            if (pcs != NULL) {
+                symbolized_callstack_t scs;
+                BUFPRINT(buf, bufsz, *sofar, len, " here:"NL);
+                /* to get var-align we need to convert to symbolized.
+                 * if we remove var-align feature, should use direct
+                 * packed_callstack_print and avoid this extra work
+                 */
+                packed_callstack_to_symbolized(pcs, &scs);
+                symbolized_callstack_print(&scs, buf, bufsz, sofar,
+                                           info_cstack_pfx, for_log);
+                symbolized_callstack_free(&scs);
+            } else
+                BUFPRINT(buf, bufsz, *sofar, len, NL);
+        }
+    }
+
     /* Look at both delay free list and at malloc entries marked
      * invalid.  The latter will find frees beyond the limit of the
      * delay list as well as free-by-realloc (xref i#69: we now
@@ -2045,10 +2075,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         if (pcs != NULL) {
             symbolized_callstack_t scs;
             BUFPRINT(buf, bufsz, *sofar, len, " here:"NL);
-            /* to get var-align we need to convert to symbolized.
-             * if we remove var-align feature, should use direct packed_callstack_print
-             * and avoid this extra work
-             */
+            /* Not ideal: see comment about using packed_callstack_print above */
             packed_callstack_to_symbolized(pcs, &scs);
             symbolized_callstack_print(&scs, buf, bufsz, sofar, info_cstack_pfx,
                                        for_log);
