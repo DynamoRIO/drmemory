@@ -663,14 +663,17 @@ if (TOOL_DR_MEMORY)
   # XXX: would be nice to ensure pcaches are actually generated and used,
   # but how?  annotations would be the cleanest way but that requires
   # a bunch of annotations that are only used for tests.
-  newtest_ex(pcache free.c "" "-light;-persist_code"
+  # XXX: we use pattern mode as the default light mode, which does not work with
+  # persistent cache (i#1184), so we use "-no_check_uninitialized -no_count_leaks"
+  # instead.
+  newtest_ex(pcache free.c "" "-no_check_uninitialized;-no_count_leaks;-persist_code"
     # do not load any stale pcaches from prior runs, in first run
     "-no_use_persisted -no_coarse_disk_merge -no_coarse_lone_merge" OFF "addronly" OFF)
   if (WIN32)
     # we make a separate executable to avoid ASLR
     append_link_flags(pcache "/dynamicbase:no")
   endif ()
-  newtest_nobuild(pcache-use pcache "" "-light;-persist_code" "" OFF "addronly")
+  newtest_nobuild(pcache-use pcache "" "-no_check_uninitialized;-no_count_leaks;-persist_code" "" OFF "addronly")
   # when running tests in parallel, have to generate pcaches first
   set_property(TEST pcache-use APPEND PROPERTY DEPENDS pcache)
   newtest_ex(track_origins track_origins.c "" "-light;-track_origins_unaddr" ""

@@ -341,10 +341,11 @@ options_init(const char *opstr)
         usage_error("-snapshots must be power of 2", "");
 #else
     if (options.light) {
-        /* we can switch to pattern mode later */
         options.check_uninitialized = false;
         if (!option_specified.count_leaks && !option_specified.check_leaks)
             options.count_leaks = false;
+        if (!option_specified.pattern)
+            options.pattern = DEFAULT_PATTERN;
     }
     if (options.unaddr_only) {
         if (!option_specified.pattern)
