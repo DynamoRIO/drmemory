@@ -84,6 +84,10 @@ name=i#837: deliberate race in test
 racecheck*!DoubleCheckedLocking::UseMe
 racecheck*!DoubleCheckedLocking::Worker?
 
+WARNING
+name=deliberate calloc failure
+*!MallocTests_CallocOverflow_Test::TestBody*
+
 ##################################################
 # i#1140: closed-MessageBox leaks: not analyzed
 

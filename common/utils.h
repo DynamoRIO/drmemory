@@ -609,6 +609,9 @@ void
 hashtable_cluster_stats(hashtable_t *table, const char *name);
 #endif
 
+bool
+unsigned_multiply_will_overflow(size_t m, size_t n);
+
 /***************************************************************************
  * WINDOWS SYSCALLS
  */

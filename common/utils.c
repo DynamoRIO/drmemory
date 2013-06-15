@@ -467,6 +467,44 @@ print_to_cmd(char *buf)
 }
 #endif
 
+bool
+unsigned_multiply_will_overflow(size_t m, size_t n)
+{
+    /* There are several methods, but we'd like to avoid a divide (for performance,
+     * and for future ARM support where divides need software support).
+     * XXX: should we just do assembly "mul; seto al"?
+     */
+#ifdef X64
+    /* First split m and n into their top and bottom 32-bit words: {m,n}{1,0}.
+     * Now m*n == ((m1<<32)+m0)*((n1<<32)+n0)
+     *         == (m1<<32)*(n1<<32) + (m1<<32)*n0 + m0*(n1<<32) + m0*n0
+     *         == (m1*n1)<<64 + (m1*n0 + m0*n1)<<32 + m0*n0
+     */
+    size_t m0 = m & 0xffffffffU;
+    size_t m1 = (m >> 32) & 0xffffffffU;
+    size_t n0 = n & 0xffffffffU;
+    size_t n1 = (n >> 32) & 0xffffffffU;
+    uint64 middle;
+    /* Will any one term overflow on its own?
+     * First one must be zero before the <<64:
+     */
+    if (m1 > 0 && n1 > 0)
+        return true;
+    /* Either m1 or n1 is zero, so add can't overflow, and <<32 => cmp to UINT_MAX: */
+    middle = (uint64)m1*n0 + (uint64)m0*n1;
+    if (middle > UINT_MAX)
+        return true;
+    /* Ensure final sum doesn't overflow */
+    if (middle + (uint64)m0*n0 < middle)
+        return true;
+    return false;
+#else
+    /* Easiest and fastest to just do a 64-bit multiply */
+    uint64 ans = (uint64)m * n;
+    return (ans > UINT_MAX);
+#endif
+}
+
 /***************************************************************************
  * STRING PARSING
  *

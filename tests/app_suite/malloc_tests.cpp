@@ -52,3 +52,12 @@ TEST(MallocTests, ReverseBrk) {
             free(big[i]);
     }
 }
+
+TEST(MallocTests, CallocOverflow) {
+    /* Ensure our calloc replacement or wrapping handles overflow */
+#ifdef X64
+    ASSERT_EQ(NULL, calloc(0x100000LLU, 0x100000000001LLU));
+#else
+    ASSERT_EQ(NULL, calloc(0x00067000U, 0x00002800U));
+#endif
+}

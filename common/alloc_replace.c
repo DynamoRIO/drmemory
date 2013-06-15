@@ -2262,10 +2262,16 @@ replace_calloc(size_t nmemb, size_t size)
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_calloc %d %d\n", nmemb, size);
-    res = replace_alloc_common(arena, nmemb * size,
-                               ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
-                               drcontext, &mc, (app_pc)replace_calloc,
-                               MALLOC_ALLOCATOR_MALLOC);
+    if (unsigned_multiply_will_overflow(nmemb, size)) {
+        LOG(2, "calloc size will overflow => returning NULL\n");
+        client_handle_alloc_failure(UINT_MAX, (app_pc)replace_calloc, &mc);
+        res = NULL;
+    } else {
+        res = replace_alloc_common(arena, nmemb * size,
+                                   ALLOC_SYNCHRONIZE | ALLOC_ZERO | ALLOC_INVOKE_CLIENT,
+                                   drcontext, &mc, (app_pc)replace_calloc,
+                                   MALLOC_ALLOCATOR_MALLOC);
+    }
     LOG(2, "\treplace_calloc %d %d => "PFX"\n", nmemb, size, res);
     exit_client_code(drcontext, false/*need swap*/);
     return (void *) res;

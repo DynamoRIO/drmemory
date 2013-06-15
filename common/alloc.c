@@ -6032,8 +6032,12 @@ handle_calloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     /* we need to handle calloc allocating by itself, or calling malloc */
     ASSERT(!pt->in_calloc, "recursive calloc not handled");
     pt->in_calloc = true;
-    ASSERT((count == 0 || each == 0) ||
-           (count * each >= count && count * each >= each), "calloc overflow");
+    if (unsigned_multiply_will_overflow(count, each)) {
+        LOG(1, "WARNING: calloc "PIFX"x"PIFX" overflows: expecting alloc failure\n",
+            count, each);
+        pt->expect_lib_to_fail = true;
+        return;
+    }
     if (redzone_size(routine) > 0) {
         /* we may end up with more extra than we need, but it should be
          * fine: we'll only get off if we can't obtain the actual
