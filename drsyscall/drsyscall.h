@@ -205,10 +205,11 @@ typedef enum {
     DRSYS_TYPE_LARGE_INTEGER,       /**< LARGE_INTEGER structure. */
     DRSYS_TYPE_ULARGE_INTEGER,      /**< ULARGE_INTEGER structure. */
     DRSYS_TYPE_IO_STATUS_BLOCK,     /**< IO_STATUS_BLOCK structure. */
-
     DRSYS_TYPE_FUNCTION,            /**< Function of unspecified signature. */
+    DRSYS_TYPE_BITMAPINFO,          /**< BITMAPINFO structure. */
+
     /* Additional types may be added in the future. */
-    DRSYS_TYPE_LAST = DRSYS_TYPE_FUNCTION,
+    DRSYS_TYPE_LAST = DRSYS_TYPE_BITMAPINFO,
 } drsys_param_type_t;
 
 /** Describes a system call parameter or memory region. */

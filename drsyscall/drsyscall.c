@@ -95,6 +95,7 @@ const char * const param_type_names[] = {
     "ULARGE_INTEGER",           /* DRSYS_TYPE_ULARGE_INTEGER */
     "IO_STATUS_BLOCK",          /* DRSYS_TYPE_IO_STATUS_BLOCK */
     "<function>",               /* DRSYS_TYPE_FUNCTION */
+    "BITMAPINFO",               /* DRSYS_TYPE_BITMAPINFO */
 };
 #define NUM_PARAM_TYPE_NAMES \
     (sizeof(param_type_names)/sizeof(param_type_names[0]))

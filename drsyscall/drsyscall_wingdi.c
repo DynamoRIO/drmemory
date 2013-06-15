@@ -1754,7 +1754,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {{0,0},"NtGdiSetDIBitsToDeviceInternal", OK, SYSARG_TYPE_SINT32, 16,
      {
          {9, -12, R,},
-         {10, sizeof(BITMAPINFO), R,},
+         {10, sizeof(BITMAPINFO), R|CT, SYSARG_TYPE_BITMAPINFO},
      }
     },
     {{0,0},"NtGdiGetFontResourceInfoInternalW", OK, SYSARG_TYPE_BOOL32, 7,
@@ -2794,7 +2794,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {{0,0},"NtGdiGetDIBitsInternal", OK, SYSARG_TYPE_SINT32, 9,
      {
          {4, -7, W,},
-         {5, sizeof(BITMAPINFO), R|W,},
+         {5, sizeof(BITMAPINFO), R|W|CT, SYSARG_TYPE_BITMAPINFO},
      }
     },
     {{0,0},"NtGdiOffsetRgn", OK, SYSARG_TYPE_SINT32, 3, },
@@ -3818,6 +3818,72 @@ handle_menuiteminfow_access(sysarg_iter_info_t *ii,
     return true; /* handled */
 }
 
+bool
+handle_bitmapinfo_access(sysarg_iter_info_t *ii,
+                         const syscall_arg_t *arg_info,
+                         app_pc start, uint size)
+{
+    /* bmiColors is variable-length and the number of entries in the
+     * array depends on the values of the biBitCount and biClrUsed 
+     * members of the BITMAPINFOHEADER struct.
+     */
+    BITMAPINFOHEADER bmi;
+    size = sizeof(bmi);
+
+    if (safe_read(start, sizeof(bmi), &bmi)) {
+        if (bmi.biSize != sizeof(bmi))
+            WARN("WARNING: biSize: %d != sizeof(bmi): %d", bmi.biSize, sizeof(bmi));
+        switch(bmi.biBitCount) {
+        case 0:
+            break;
+        case 1:
+            /* bmiColors contains two entries */
+            size += 2*sizeof(RGBQUAD);
+            break;
+        case 4:
+            /* If bmiClrUsed is 0 then bmiColors contains 16 entries,
+             * otherwise bmiColors contains the number in bmiClrUsed.
+             */
+            if (bmi.biClrUsed == 0)
+                size += 16*sizeof(RGBQUAD);
+            else
+                size += bmi.biClrUsed*sizeof(RGBQUAD);
+            break;
+        case 8:
+            /* Same as case 4, except max of 256 entries */
+            if (bmi.biClrUsed == 0)
+                size += 256*sizeof(RGBQUAD);
+            else
+                size += bmi.biClrUsed*sizeof(RGBQUAD);
+            break;
+        case 16:
+        case 32:
+            /* If biCompression is BI_RGB, then bmiColors is not used. If it is
+             * BI_BITFIELDS, then it contains 3 DWORD color masks. If it's a
+             * palette-based device, the color table starts immediately following
+             * the 3 DWORD color masks.
+             */
+            if (bmi.biCompression == BI_BITFIELDS)
+                size += 3*sizeof(DWORD);
+            if (bmi.biClrUsed != 0)
+                size += bmi.biClrUsed*sizeof(RGBQUAD);
+            break;
+        case 24:
+            /* bmiColors is not used unless used on pallete-based devices */
+            if (bmi.biClrUsed != 0)
+                size += bmi.biClrUsed*sizeof(RGBQUAD);
+            break;
+        default:
+            WARN("WARNING: biBitCount should not be %d\n", bmi.biBitCount);
+            break;
+        }
+    }
+
+    if (!report_memarg(ii, arg_info, start, size, NULL))
+        return true;
+    return true;
+}
+
 static void
 handle_logfont(sysarg_iter_info_t *ii,
                byte *start, size_t size, int ordinal, uint arg_flags, LOGFONTW *safe)
@@ -4090,6 +4156,8 @@ wingdi_process_arg(sysarg_iter_info_t *iter_info,
         return handle_clsmenuname_access(iter_info, arg_info, start, size);
     case SYSARG_TYPE_MENUITEMINFOW:
         return handle_menuiteminfow_access(iter_info, arg_info, start, size);
+    case SYSARG_TYPE_BITMAPINFO:
+        return handle_bitmapinfo_access(iter_info, arg_info, start, size);
     }
     return false; /* not handled */
 }
