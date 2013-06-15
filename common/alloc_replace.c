@@ -2333,23 +2333,20 @@ replace_malloc_usable_size(void *ptr)
  * reading it from CLS.
  */
 static inline void *
-replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type,
-                            app_pc caller)
+replace_operator_new_common(void *drcontext, dr_mcontext_t *mc, size_t size,
+                            bool abort_on_oom, uint alloc_type, app_pc caller)
 {
     void *res;
-    void *drcontext = enter_client_code();
     /* b/c we replace at the operator level and we don't analyze the
      * replaced operator to see which libc it's using we have to assume
      * our stored default is ok (xref i#964, i#939)
      */
     arena_header_t *arena = arena_for_libc_alloc(drcontext);
-    dr_mcontext_t mc;
-    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "replace_operator_new size=%d abort_on_oom=%d type=%d\n",
         size, abort_on_oom, alloc_type);
     res = (void *) replace_alloc_common(arena, size,
                                         ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT,
-                                        drcontext, &mc, caller, alloc_type);
+                                        drcontext, mc, caller, alloc_type);
     LOG(2, "\treplace_operator_new %d => "PFX"\n", size, res);
     if (abort_on_oom && res == NULL) {
         /* XXX i#957: we should throw a C++ exception but for now we just abort */
@@ -2358,57 +2355,79 @@ replace_operator_new_common(size_t size, bool abort_on_oom, uint alloc_type,
         dr_exit_process(1);
         ASSERT(false, "should not reach here");
     }
-    exit_client_code(drcontext, false/*need swap*/);
     return res;
 }
 
 static void *
 replace_operator_new(size_t size)
 {
+    void *res;
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW,
-                                       (app_pc)replace_operator_new);
+    res = replace_operator_new_common(drcontext, &mc, size, true, MALLOC_ALLOCATOR_NEW,
+                                      (app_pc)replace_operator_new);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void *
 replace_operator_new_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 {
+    void *res;
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW,
-                                       (app_pc)replace_operator_new_nothrow);
+    res = replace_operator_new_common(drcontext, &mc, size, false, MALLOC_ALLOCATOR_NEW,
+                                      (app_pc)replace_operator_new_nothrow);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 /* we need separate array versions for type mismatch detection (NYI) */
 static void *
 replace_operator_new_array(size_t size)
 {
+    void *res;
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_NEW_ARRAY,
-                                       (app_pc)replace_operator_new_array);
+    res = replace_operator_new_common(drcontext, &mc, size, true,
+                                      MALLOC_ALLOCATOR_NEW_ARRAY,
+                                      (app_pc)replace_operator_new_array);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void *
 replace_operator_new_array_nothrow(size_t size, int /*std::nothrow_t*/ ignore)
 {
-    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_NEW_ARRAY,
-                                       (app_pc)replace_operator_new_array_nothrow);
-}
-
-static inline void
-replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller,
-                               bool ignore_mismatch)
-{
+    void *res;
     void *drcontext = enter_client_code();
-    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     dr_mcontext_t mc;
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
+    res = replace_operator_new_common(drcontext, &mc, size, false,
+                                      MALLOC_ALLOCATOR_NEW_ARRAY,
+                                      (app_pc)replace_operator_new_array_nothrow);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
+}
+
+/* caller must call enter_client_code() + get mc to ensure a single cstack frame */
+static inline void
+replace_operator_delete_common(void *drcontext, dr_mcontext_t *mc, void *ptr,
+                               uint alloc_type, app_pc caller, bool ignore_mismatch)
+{
+    arena_header_t *arena = arena_for_libc_alloc(drcontext);
     LOG(2, "replace_operator_delete "PFX"%s\n", ptr,
         ignore_mismatch ? " (ignore mismatches)" : "");
     replace_free_common(arena, ptr, ALLOC_SYNCHRONIZE | ALLOC_INVOKE_CLIENT |
                         (ignore_mismatch ? ALLOC_IGNORE_MISMATCH : 0), drcontext,
-                        &mc, caller, alloc_type);
-    exit_client_code(drcontext, false/*need swap*/);
+                        mc, caller, alloc_type);
 }
 
 /* We do not bother to report mismatches on nothrow vs regular so we
@@ -2417,65 +2436,103 @@ replace_operator_delete_common(void *ptr, uint alloc_type, app_pc caller,
 static void
 replace_operator_delete(void *ptr)
 {
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete, false);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static void
 replace_operator_delete_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete, false);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static void
 replace_operator_delete_array(void *ptr)
 {
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
                                    (app_pc)replace_operator_delete_array, false);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static void
 replace_operator_delete_array_nothrow(void *ptr, int /*std::nothrow_t*/ ignore)
 {
-     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
+    LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW_ARRAY,
                                    (app_pc)replace_operator_delete_array_nothrow, false);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static void *
 replace_operator_new_nomatch(size_t size)
 {
+    void *res;
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, true, MALLOC_ALLOCATOR_UNKNOWN,
-                                       (app_pc)replace_operator_new_nomatch);
+    res = replace_operator_new_common(drcontext, &mc, size, true,
+                                      MALLOC_ALLOCATOR_UNKNOWN,
+                                      (app_pc)replace_operator_new_nomatch);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void *
 replace_operator_new_nothrow_nomatch(size_t size, int /*std::nothrow_t*/ ignore)
 {
+    void *res;
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PIFX"\n", __FUNCTION__, size);
-    return replace_operator_new_common(size, false, MALLOC_ALLOCATOR_UNKNOWN,
-                                       (app_pc)replace_operator_new_nothrow);
+    res = replace_operator_new_common(drcontext, &mc, size, false,
+                                      MALLOC_ALLOCATOR_UNKNOWN,
+                                      (app_pc)replace_operator_new_nothrow);
+    exit_client_code(drcontext, false/*need swap*/);
+    return res;
 }
 
 static void
 replace_operator_delete_nomatch(void *ptr)
 {
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete_nomatch, true);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 static void
 replace_operator_delete_nothrow_nomatch(void *ptr, int /*std::nothrow_t*/ ignore)
 {
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_NEW,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_NEW,
                                    (app_pc)replace_operator_delete_nothrow_nomatch, true);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 
 #ifdef WINDOWS
@@ -2487,9 +2544,13 @@ replace_operator_combined_delete(void *ptr)
      * mismatch checking.
      * XXX: it would be nice to check malloc vs delete*
      */
+    void *drcontext = enter_client_code();
+    dr_mcontext_t mc;
+    INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     LOG(2, "%s "PFX"\n", __FUNCTION__, ptr);
-    replace_operator_delete_common(ptr, MALLOC_ALLOCATOR_UNKNOWN,
+    replace_operator_delete_common(drcontext, &mc, ptr, MALLOC_ALLOCATOR_UNKNOWN,
                                    (app_pc)replace_operator_combined_delete, true);
+    exit_client_code(drcontext, false/*need swap*/);
 }
 #endif /* WINDOWS */
 
