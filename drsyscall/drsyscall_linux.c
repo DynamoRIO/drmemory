@@ -1170,7 +1170,7 @@ static syscall_info_t syscall_info[] = {
     {{PACKNUM(246,283),0},"kexec_load", OK, RLONG, 4, /* FIXME 2, sizeof(struct kexec_segment), U, */},
     {{PACKNUM(247,284),0},"waitid", OK, RLONG, 5,
      {
-         {2, sizeof(struct siginfo), W},
+         {2, sizeof(siginfo_t), W},
          {4, sizeof(struct rusage), W},
      }
     },

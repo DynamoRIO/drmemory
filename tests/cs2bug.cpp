@@ -32,7 +32,7 @@
 # include <assert.h>
 /* just use single-arg handlers */
 typedef void (*handler_t)(int);
-typedef void (*handler_3_t)(int, struct siginfo *, void *);
+typedef void (*handler_3_t)(int, siginfo_t *, void *);
 #endif
 
 #include <setjmp.h>
