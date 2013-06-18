@@ -93,7 +93,7 @@ name=deliberate calloc failure
 
 LEAK
 name=i#1140 closed-MessageBox A
-KERNELBASE.dll!LocalAlloc    
+KERNELBASE.dll!LocalAlloc
 MSCTF.dll!*
 
 LEAK
@@ -105,7 +105,7 @@ LEAK
 name=i#1140 closed-MessageBox C
 UxTheme.dll!...
 USER32.dll!...
-USER32.dll!DispatchClientMessage
+USER32.dll!*Message
 
 # with -replace_malloc I see this too:
 LEAK
@@ -133,12 +133,33 @@ USER32.dll!*
 # i#1127: win8-specific leaks: not analyzed
 
 LEAK
-name=i#1127 win8 A
+name=i#1227 win8 A
 combase.dll!...
 ole32.dll!CoInitialize
 
 LEAK
-name=i#1127 win8 B
+name=i#1227 win8 B
 ntdll.dll!...
 ntdll.dll!LdrLoadDll
 KERNELBASE.dll!LoadLibraryExW
+
+# Top frame is gdi32!CreateFontIndirectExW w/ syms.
+LEAK
+name=i#1227 win8 C
+GDI32.dll!*
+GDI32.dll!CreateFontIndirectW
+
+# Xref i#753, though there's no setupapi.dll here.
+# Top frame is ntdll!LdrpSearchResourceSection_U w/ syms.
+LEAK
+name=i#1227 win8 D
+ntdll.dll!...
+KERNELBASE.dll!FindResourceExW
+user32.dll!*
+
+# Top frame is uxtheme!gCThemeWnd::Attach w/ syms.
+LEAK
+name=i#1227 win8 E
+uxtheme.dll!...
+user32.dll!*
+

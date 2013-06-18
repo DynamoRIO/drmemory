@@ -701,12 +701,13 @@ KERNEL*.dll!TlsGetValue
 
 ##################################################
 # i#1140: MessageBox leaks we need to analyze
+# This one is expanded to handle missing symbols.
 
 LEAK
 name=default i#1140 MessageBox
-IMM32.dll!ImmLocalAlloc
+IMM32.dll!Imm*
 IMM32.dll!...
-USER32.dll!FocusSetIMCContext
+USER32.dll!*
 
 ##################################################
 # i#1155: real bug in VS2012 istream
