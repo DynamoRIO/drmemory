@@ -761,3 +761,12 @@ name=default i#1241 python malloc
 INVALID HEAP ARGUMENT
 name=default i#1275 CRT mismatch
 *!Concurrency::details::ContextBase::CancellationBeaconStack::~CancellationBeaconStack
+
+##################################################
+# i#1276: leak due to encoded pointer in VS2012 CRT
+# XXX: once we properly handle the encoded pointers, remove this suppression.
+
+LEAK
+name=default i#1276 CRT encoded pointer
+*!Concurrency::details::SubAllocator::Alloc
+
