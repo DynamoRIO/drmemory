@@ -69,6 +69,12 @@ void
 leak_exit();
 
 void
+leak_module_load(void *drcontext, const module_data_t *info, bool loaded);
+
+void
+leak_module_unload(void *drcontext, const module_data_t *info);
+
+void
 leak_scan_for_leaks(bool at_exit);
 
 /* User must call from client_handle_malloc() and client_handle_realloc() */

@@ -138,6 +138,8 @@ static app_pc rtl_encode_ptr;
 static app_pc rtl_encode_sysptr;
 static void leak_wrap_pre_encode_ptr(void *wrapcxt, void OUT **user_data);
 static void leak_wrap_post_encode_ptr(void *wrapcxt, void *user_data);
+/* i#1276: handle VS2012 Concurrency::details::Security::EncodePointer */
+static app_pc crt_encode_ptr;
 #endif
 
 void
@@ -221,6 +223,36 @@ leak_exit(void)
             drwrap_unwrap(rtl_encode_sysptr, leak_wrap_pre_encode_ptr,
                           leak_wrap_post_encode_ptr);
         }
+    }
+#endif
+}
+
+void
+leak_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+    if (op_check_encoded_pointers) {
+        /* i#1276: VS2012 Concurrency::details::Security::EncodePointer does
+         * its own xor, but it has the same signature so we use the same
+         * drwrap handlers.
+         */
+        crt_encode_ptr = lookup_symbol(info,
+                                       "Concurrency::details::Security::EncodePointer");
+        if (crt_encode_ptr != NULL &&
+            !drwrap_wrap(crt_encode_ptr, leak_wrap_pre_encode_ptr,
+                         leak_wrap_post_encode_ptr))
+            ASSERT(false, "failed to wrap encoded CRT ptr routine");
+    }
+#endif
+}
+
+void
+leak_module_unload(void *drcontext, const module_data_t *info)
+{
+#if defined(WINDOWS) && defined(USE_DRSYMS)
+    if (crt_encode_ptr != NULL) {
+        drwrap_unwrap(crt_encode_ptr, leak_wrap_pre_encode_ptr,
+                      leak_wrap_post_encode_ptr);
     }
 #endif
 }
