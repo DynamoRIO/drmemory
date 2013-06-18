@@ -27,20 +27,15 @@
 #include <stdio.h>
 #include <string.h>
 
+/* Pull in BUFFER_SIZE_ELEMENTS, IF_WINDOWS, TESTALL, and other useful macros */
+#include "utils.h"
+#undef sscanf /* we can use sscanf */
+
 #define MAX_FUNC_LEN 256
 
-#define EXPANDSTR(x) #x
-#define STRINGIFY(x) EXPANDSTR(x)
 #define MAX_PATH_STR STRINGIFY(MAXIMUM_PATH)
 
-#define TEST(mask, var) (((mask) & (var)) != 0)
-#define TESTANY TEST
-#define TESTALL(mask, var) (((mask) & (var)) == (mask))
-
-#ifdef WINDOWS
-# define IF_WINDOWS_ELSE(x, y) x
-#else
-# define IF_WINDOWS_ELSE(x, y) y
+#ifndef WINDOWS
 # define _stricmp strcasecmp
 #endif
 
@@ -93,6 +88,7 @@ int
 main(int argc, char *argv[])
 {
     char *dll = NULL;
+    IF_WINDOWS(char dll_local[MAXIMUM_PATH];)
     int i;
     /* module + address per line */
     char line[MAXIMUM_PATH*2];
@@ -110,20 +106,30 @@ main(int argc, char *argv[])
 
     for (i = 1; i < argc; i++) {
         if (_stricmp(argv[i], "-e") == 0) {
+            IF_WINDOWS(int res;)
             if (i+1 >= argc) {
                 PRINT_USAGE(argv[0]);
                 return 1;
             }
             i++;
+#ifdef WINDOWS
+            /* Handle relative paths */
+            res = GetFullPathName(argv[i], BUFFER_SIZE_ELEMENTS(dll_local),
+                                  dll_local, NULL);
+            NULL_TERMINATE_BUFFER(dll_local);
+            dll = dll_local;
+#else
             dll = argv[i];
+#endif
             if (
 #ifdef WINDOWS
+                res <= 0 || res >= BUFFER_SIZE_ELEMENTS(dll_local) - 1/*null*/ ||
                 _access(dll, 4/*read*/) == -1
 #else
                 !dr_file_exists(dll)
 #endif
                 ) {
-                printf("ERROR: invalid path %s\n", dll);
+                printf("ERROR: invalid path %s\n", argv[i]);
                 return 1;
             }
         } else if (_stricmp(argv[i], "-f") == 0) {
