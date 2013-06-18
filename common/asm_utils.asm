@@ -59,7 +59,6 @@
 
 START_FILE
 
-
 /* void get_stack_registers(reg_t *xsp OUT, reg_t *xbp OUT);
  *
  * Returns the current values of xsp and xbp.
@@ -185,17 +184,19 @@ syscall_0args:
  * from C as we can easily clobber our own local variables.
  */
 #define FUNCNAME zero_stack
-        DECLARE_FUNC(FUNCNAME)
+        DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         /* we don't bother to be SEH64 compliant */
         mov      REG_XCX, ARG1
-        push     REG_XDI
+        PUSH_SEH(REG_XDI)
+        END_PROLOG
         mov      REG_XDI, REG_XSP
         sub      REG_XDI, ARG_SZ
         mov      REG_XAX, 0
         std
         rep stosd
         cld
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
         pop      REG_XDI
         ret
         END_FUNC(FUNCNAME)

@@ -979,6 +979,10 @@ if (WIN32)
   # annoying to have ASLR and not on module list
   # plus, now we require the same base for pcache
   set(new_flags "/dynamicbase:no")
+
+  # DRi#893: asm code is producing safeseh compilation failures w/ VS2012
+  set(new_flags "${new_flags} /safeseh:no")
+
   if (NOT DEFINED GENERATE_PDBS OR GENERATE_PDBS)
     set(new_flags "${new_flags} /debug")
   endif ()

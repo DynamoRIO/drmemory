@@ -678,8 +678,9 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XCX, ARG2
         mov      REG_XDX, ARG3
         /* save callee-saved regs */
-        push     REG_XDI
-        push     REG_XSI
+        PUSH_SEH(REG_XDI)
+        PUSH_SEH(REG_XSI)
+        END_PROLOG
         mov      REG_XSI, REG_XCX /* gpr_pre */
         mov      REG_XDI, REG_XDX /* gpr_post */
         mov      REG_XCX, REG_XAX /* array */
@@ -742,6 +743,7 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      PTRSZ [REG_XDI + 7*ARG_SZ /* xsi  */], REG_XSI
         mov      PTRSZ [REG_XDI + 8*ARG_SZ /* xdi  */], REG_XDI
         /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
         pop      REG_XSI
         pop      REG_XDI
         ret
@@ -753,6 +755,7 @@ GLOBAL_LABEL(FUNCNAME:)
 /* void float_test_asm(double *zero); */
         DECLARE_FUNC(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
+        /* leaf function so no SEH64 prologue/epilogue needed */
         mov      REG_XAX, ARG1
         cvttsd2si eax, QWORD [REG_XAX]
         ret
@@ -766,10 +769,12 @@ GLOBAL_LABEL(FUNCNAME:)
 GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XAX, ARG1
         mov      REG_XCX, ARG2
-        push     REG_XDI
+        PUSH_SEH(REG_XDI)
+        END_PROLOG
         mov      di, cx
         xor      edx, edx
         div      di
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
         pop      REG_XDI
         ret
         END_FUNC(FUNCNAME)
