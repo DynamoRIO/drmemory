@@ -163,3 +163,13 @@ name=i#1227 win8 E
 uxtheme.dll!...
 user32.dll!*
 
+##################################################
+# i#1250: win8-specific CreateWindowEx leaks: not analyzed
+# (xref some suppressed by i#1140 suppressions above)
+
+LEAK
+name=i#1250 win8 CreateWindowEx
+combase.dll!...
+imm32.dll!...
+user32.dll!CreateWindowExW
+
