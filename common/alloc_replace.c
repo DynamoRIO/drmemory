@@ -442,7 +442,6 @@ exit_client_code(void *drcontext, bool in_app_mode)
 
     drwrap_replace_native_fini(drcontext);
 
-#ifndef X64
     /* i#1217: yet another point where we zero out data to avoid stale retaddrs
      * on our callstacks.  For 32-bit, dr_write_saved_reg() called by
      * drwrap_replace_native_fini() has the app retaddr on the stack.  We clear
@@ -463,7 +462,6 @@ exit_client_code(void *drcontext, bool in_app_mode)
      * Thus we must use an asm routine.
      */
     zero_stack(ZERO_APP_STACK_SZ);
-#endif
 }
 
 #ifdef DEBUG
