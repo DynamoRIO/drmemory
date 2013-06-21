@@ -446,13 +446,18 @@ exit_client_code(void *drcontext, bool in_app_mode)
     /* i#1217: yet another point where we zero out data to avoid stale retaddrs
      * on our callstacks.  For 32-bit, dr_write_saved_reg() called by
      * drwrap_replace_native_fini() has the app retaddr on the stack.  We clear
-     * it here.  Since this is 32-bit, we assume it's safe to write beyond TOS.
-     * drwrap_replace_native_fini() currently uses 12 bytes of stack and
-     * dr_write_saved_reg() uses 32, but we only care about the params.
+     * it here.
+     * For 32-bit, we assume it's safe to write beyond TOS.
+     * For 64-bit, this is not a leaf routine, so we similarly assume it's safe:
+     * but it's more fragile (xref i#1278).
+     * drwrap_replace_native_fini() currently uses 12 bytes of stack for 32-bit
+     * and 56 for 64-bit (and dr_write_saved_reg() uses 32, but we
+     * only care about its param slots).
+     *
      * XXX: if we knew whether we had DrMem definedness info we could avoid
      * this work for full mode.
      */
-#   define ZERO_APP_STACK_SZ   32
+#   define ZERO_APP_STACK_SZ   IF_X64_ELSE(64, 32)
     /* We can't call memset() or any regular function b/c it will clobber its
      * own stack, nor can we have a loop here as we can clobber our own locals.
      * Thus we must use an asm routine.
