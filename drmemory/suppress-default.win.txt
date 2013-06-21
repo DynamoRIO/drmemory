@@ -763,3 +763,13 @@ INVALID HEAP ARGUMENT
 name=default i#1275 CRT mismatch
 *!Concurrency::details::ContextBase::CancellationBeaconStack::~CancellationBeaconStack
 
+##################################################
+# i#1279: leak in LdrpGetNewTlsVector
+# Without syms though the top frames are unreliable.
+# But we should reach LdrInitializeThunk solely inside ntdll,
+# which makes this clearly not an app leak.
+
+LEAK
+name=default i#1279 LdrpGetNewTlsVector
+ntdll.dll!...
+ntdll.dll!LdrInitializeThunk
