@@ -2835,10 +2835,10 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
     if (text_matches_pattern(symbolized_callstack_frame_modname(&scs, i),
                              DRMEMORY_LIBNAME, FILESYS_CASELESS))
         i++;
-    if (scs.num_frames >= 4 &&
+    if (scs.num_frames >= 3 &&
         text_matches_pattern(symbolized_callstack_frame_modname(&scs, i++),
                              "kernel*.dll", FILESYS_CASELESS)) {
-        bool crt_init;
+        bool crt_init = false;
         IF_DEBUG(const char *modname = symbolized_callstack_frame_modname(&scs, i);)
         modbase = symbolized_callstack_frame_modbase(&scs, i++);
         LOG(2, "checking for CRT heap created by %s base="PFX"\n", modname, modbase);
