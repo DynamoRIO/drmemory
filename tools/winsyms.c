@@ -318,10 +318,10 @@ unload_module(HANDLE proc, DWORD64 base)
 static void
 query_available(HANDLE proc, DWORD64 base)
 {
-    IMAGEHLP_MODULE64 info; 
+    IMAGEHLP_MODULEW64 info; 
     memset(&info, 0, sizeof(info)); 
     info.SizeOfStruct = sizeof(info); 
-    if (SymGetModuleInfo64(proc, base, &info)) {
+    if (SymGetModuleInfoW64(proc, base, &info)) {
         switch(info.SymType) {
         case SymNone: 
             printf("No symbols found\n");
@@ -330,7 +330,7 @@ query_available(HANDLE proc, DWORD64 base)
             printf("Only export symbols found\n"); 
             break; 
         case SymPdb: 
-            printf("Loaded pdb symbols from %s\n", info.LoadedPdbName);
+            printf("Loaded pdb symbols from %S\n", info.LoadedPdbName);
             break;
         case SymDeferred: 
             printf("Symbol load deferred\n");

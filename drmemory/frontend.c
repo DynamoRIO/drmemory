@@ -629,7 +629,7 @@ static BOOL
 fetch_module_symbols(HANDLE proc, const char *modpath)
 {
     DWORD64 base;
-    IMAGEHLP_MODULE64 mod_info;
+    IMAGEHLP_MODULEW64 mod_info;
     BOOL got_pdbs = FALSE;
     TCHAR wmodpath[MAXIMUM_PATH];
     char_to_tchar(modpath, wmodpath, BUFFER_SIZE_ELEMENTS(wmodpath));
@@ -655,12 +655,12 @@ fetch_module_symbols(HANDLE proc, const char *modpath)
     /* Check that we actually got pdbs. */
     memset(&mod_info, 0, sizeof(mod_info));
     mod_info.SizeOfStruct = sizeof(mod_info);
-    if (SymGetModuleInfo64(proc, base, &mod_info)) {
+    if (SymGetModuleInfoW64(proc, base, &mod_info)) {
         switch (mod_info.SymType) {
         case SymPdb:
         case SymDeferred:
             if (verbose) {
-                sym_info("  pdb for %s stored at %s",
+                sym_info("  pdb for %s stored at %S",
                      modpath, mod_info.LoadedPdbName);
             }
             got_pdbs = TRUE;
