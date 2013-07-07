@@ -1100,6 +1100,15 @@ get_prev_size_field(chunk_header_t *head)
         return head->u.unfree.prev_size_shr * CHUNK_MIN_SIZE;
 }
 
+#define GCC_VERSION (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
+
+/* XXX: i#1269 index above array bounds warning on x64 build using gcc 4.8.1 */
+#if defined(X64) && GCC_VERSION > 40801
+#  define IF_GCC_WARN(x)
+#else
+#  define IF_GCC_WARN(x) x
+#endif
+
 static inline uint
 bucket_index(chunk_header_t *head)
 {
@@ -1107,7 +1116,9 @@ bucket_index(chunk_header_t *head)
     /* pivot around small vs large first to avoid walking whole list for small: */
     uint start = (head->alloc_size > free_list_sizes[6]) ? (NUM_FREE_LISTS - 1) : 6;
     /* our buckets guarantee that all allocs in that bucket have at least that size */
-    for (bucket = start; head->alloc_size < free_list_sizes[bucket];
+    for (bucket = start; head->alloc_size < free_list_sizes[bucket] 
+         /* if bucket is 0 this cond breaks to avoid free_list_sizes[-1] */
+         IF_GCC_WARN(&& bucket > 0);
          bucket--)
         ; /* nothing */
     ASSERT(head->alloc_size >= free_list_sizes[bucket], "bucket invariant violated");
