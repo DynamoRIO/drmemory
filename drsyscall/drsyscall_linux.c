@@ -113,10 +113,15 @@
 #include <termios.h>
 #include <linux/serial.h>
 #include <linux/ax25.h>
-#include <linux/cdk.h>
 #include <linux/cdrom.h>
 #include <linux/cyclades.h>
 #include <linux/fs.h>
+
+/* linux/cdk.h was removed from the kernel in 3.6 */
+#define STL_BINTR   0x00007314
+#define STL_BSTART  0x00007315
+#define STL_BSTOP   0x00007316
+#define STL_BRESET  0x00007317
 
 /* i#911: linux/ext2_fs.h references a now-removed type umode_t in
  * FC16 (in flux apparently) so we define on our own:
