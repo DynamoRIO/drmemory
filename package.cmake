@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -174,6 +174,8 @@ if (arg_cpackappend)
 endif ()
 
 set(build_package ON)
+# some packagers request an official source tarball, so we create one (i#1287):
+set(build_source_package ON)
 include("${runsuite_include_path}/runsuite_common_post.cmake")
 
 # copy the final archive into cur dir
