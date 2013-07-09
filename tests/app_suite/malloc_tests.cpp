@@ -20,7 +20,7 @@
  */
 
 #include "gtest/gtest.h"
-#include "utils.h"
+#include "app_suite_utils.h"
 #include <stdlib.h>
 
 #ifdef TOOL_DR_MEMORY

@@ -20,7 +20,7 @@
  */
 
 #include "gtest/gtest.h"
-#include "utils.h"
+#include "app_suite_utils.h"
 #include <locale.h>
 
 TEST(StringTests, Memmove) {

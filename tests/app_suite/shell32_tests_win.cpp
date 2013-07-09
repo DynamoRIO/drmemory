@@ -26,7 +26,7 @@
 
 #include "os_version_win.h"
 #include "gtest/gtest.h"
-#include "utils.h"
+#include "app_suite_utils.h"
 
 namespace {
 const wchar_t *kTempLinkName = L"app_suite_shell_link.lnk";
