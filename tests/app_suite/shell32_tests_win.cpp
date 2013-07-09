@@ -26,9 +26,7 @@
 
 #include "os_version_win.h"
 #include "gtest/gtest.h"
-
-#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
-#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
+#include "utils.h"
 
 namespace {
 const wchar_t *kTempLinkName = L"app_suite_shell_link.lnk";

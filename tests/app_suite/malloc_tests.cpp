@@ -20,6 +20,7 @@
  */
 
 #include "gtest/gtest.h"
+#include "utils.h"
 #include <stdlib.h>
 
 #ifdef TOOL_DR_MEMORY
@@ -31,9 +32,6 @@
  */
 # define ARRAY_SIZE 4
 #endif
-
-#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
-#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
 
 TEST(MallocTests, ReverseBrk) {
     unsigned int i = 0, j;

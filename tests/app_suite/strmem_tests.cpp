@@ -20,10 +20,8 @@
  */
 
 #include "gtest/gtest.h"
+#include "utils.h"
 #include <locale.h>
-
-#define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
-#define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
 
 TEST(StringTests, Memmove) {
     const char input[128] = "0123456789abcdefg";  // strlen(input) = 17.
