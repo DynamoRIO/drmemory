@@ -1462,6 +1462,12 @@ static syscall_info_t syscall_info[] = {
      }
     }, /* == accept4 */
 
+    {{PACKNUM(306,344),0},"syncfs", OK, RLONG, 1,
+     {    
+         {0, sizeof(int),SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+
     /* FIXME i#1019: add recently added linux syscalls */
 };
 
