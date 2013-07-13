@@ -21,6 +21,7 @@
 
 #include "gtest/gtest.h"
 #include <stdio.h>
+#include <unistd.h>
 
 TEST(FSTests, SyncFS){
     FILE* tempfile;
@@ -33,5 +34,5 @@ TEST(FSTests, SyncFS){
     ASSERT_EQ(syncfs(fd), 0);
 
     fclose(tempfile);
-    unlink("tempfile");
+    unlink("syncfs_test_file");
 }
