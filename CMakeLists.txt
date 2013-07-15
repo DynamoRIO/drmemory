@@ -655,7 +655,8 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
   endif (UNIX)
   if (EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drwrap.${LIB_EXT}" OR
       EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drutil.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}")
+      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}" OR
+      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drx.${LIB_EXT}")
     message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic extensions: please re-build with static extension libraries")
   endif ()
   if (STATIC_DRSYMS AND EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drsyms.${LIB_EXT}")
@@ -699,6 +700,7 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   set(DR_EXT_DRWRAP_STATIC ON CACHE BOOL "static drwrap")
   set(DR_EXT_DRUTIL_STATIC ON CACHE BOOL "static drutil")
   set(DR_EXT_DRMGR_STATIC ON CACHE BOOL "static drmgr")
+  set(DR_EXT_DRX_STATIC ON CACHE BOOL "static drx")
   if (STATIC_DRSYMS)
     # N.B.: static drsyms gives us kernel32 imports from elftoolchain
     # libc use.  If we end up needing late kernel32 use for early
@@ -970,6 +972,7 @@ configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
 use_DynamoRIO_extension(${client_target} drmgr)
+use_DynamoRIO_extension(${client_target} drx)
 use_DynamoRIO_extension(${client_target} drutil)
 use_DynamoRIO_extension(${client_target} drwrap)
 set_target_properties(${client_target} PROPERTIES
