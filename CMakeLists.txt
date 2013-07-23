@@ -272,13 +272,10 @@ if ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
   set(DEFINES ${DEFINES} -DDEBUG -DSTATISTICS)
   set(DEBUG_BUILD ON) # "DEBUG" conflicts w/ DR
 else ()
-  if (UNIX)
-    # has enough debug info
-    set(CMAKE_BUILD_TYPE "Release")
-  else (UNIX)
-    # we want pdb for release build
-    set(CMAKE_BUILD_TYPE "RelWithDebInfo")
-  endif (UNIX)
+  # We want Windows pdb and Unix line #s for release build.
+  # We make separate debug info for Unix, and are fine shipping it to users
+  # in any case as we're open-source.
+  set(CMAKE_BUILD_TYPE "RelWithDebInfo")
   set(DEBUG_BUILD OFF)
 endif ()
 
