@@ -419,7 +419,20 @@ if (WIN32)
   # Plus, we don't want system32, but NO_SYSTEM_ENVIRONMENT_PATH also
   # excludes Program Files, so we avoid find_file() in general.
   if (dbghelp_hint)
+    # DRi#1219: exclude VS2005 x64 dbghelp as it is buggy
+    list(LENGTH dbghelp_hint dbghelp_max)
+    math(EXPR dbghelp_max "${dbghelp_max} - 1")
+    set(dbghelp_index 0)
     list(GET dbghelp_hint 0 dbghelp_default)
+    while (X64 AND dbghelp_default MATCHES "Visual Studio 8" AND
+        ${dbghelp_index} LESS ${dbghelp_max})
+      math(EXPR dbghelp_index "${dbghelp_index} + 1")
+      list(GET dbghelp_hint ${dbghelp_index} dbghelp_default)
+    endwhile()
+    if (X64 AND dbghelp_default MATCHES "Visual Studio 8")
+      message(STATUS "Unable to find non-VS2005 dbghelp.dll")
+      set(dbghelp_default "DBGHELP_DLL-NOTFOUND")
+    endif ()
   else ()
     set(dbghelp_default "DBGHELP_DLL-NOTFOUND")
   endif ()
