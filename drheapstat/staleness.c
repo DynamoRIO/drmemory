@@ -471,7 +471,7 @@ staleness_get_snap_bytes(stale_snap_allocs_t *snaps, uint idx)
         return snaps->data.sm.main[idx].u.val.bytes_asked_for;
 }
 
-uint
+uint64
 staleness_get_snap_last_access(stale_snap_allocs_t *snaps, uint idx)
 {
     ASSERT(idx < snaps->num_entries, "idx out of range");

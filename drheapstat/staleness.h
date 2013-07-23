@@ -160,7 +160,7 @@ staleness_get_snap_cstack_id(stale_snap_allocs_t *snaps, uint idx);
 uint
 staleness_get_snap_bytes(stale_snap_allocs_t *snaps, uint idx);
 
-uint
+uint64
 staleness_get_snap_last_access(stale_snap_allocs_t *snaps, uint idx);
 
 #endif /* _DRHEAPSTAT_H_ */
