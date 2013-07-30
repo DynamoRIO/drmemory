@@ -583,7 +583,8 @@ OPTION_CLIENT_BOOL(internal, statistics, false,
 OPTION_CLIENT(internal, stats_dump_interval, uint, 500000, 1, UINT_MAX,
               "How often to dump statistics, in units of slowpath executions",
               "How often to dump statistics, in units of slowpath executions")
-OPTION_CLIENT_BOOL(internal, define_unknown_regions, true,
+/* We don't want or need this on Linux (xref i#1295) */
+OPTION_CLIENT_BOOL(internal, define_unknown_regions, IF_WINDOWS_ELSE(true, false),
                    "Mark unknown regions as defined",
                    "Handle memory allocated by other processes (or that we miss due to unknown system calls or other problems) by treating as fully defined.  Xref PR 464106.")
 OPTION_CLIENT_BOOL(internal, replace_libc , true,

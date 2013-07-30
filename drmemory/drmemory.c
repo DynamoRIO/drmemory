@@ -921,7 +921,11 @@ memory_walk(void)
              * mmap regions of two different client libraries won't get merged.
              * Still check when doing multiple clients.
              */
-            /* PR 483720: app memory merged to the end of drmem's bss. */
+            /* PR 483720: app memory merged to the end of drmem's bss.
+             * XXX: i#1295 should remove the need for this on the drmem lib,
+             * but we leave this in place for running w/o default options.
+             * We still need the DR lib bss split code.
+             */
             if (info.base_pc >= libdrmem_base && info.base_pc < libdrmem_end &&
                 end > libdrmem_end) {
                 LOG(2, "  Dr. Memory library memory ends @ "PFX", merged by kernel\n",
