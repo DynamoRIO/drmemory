@@ -1461,19 +1461,14 @@ static syscall_info_t syscall_info[] = {
          {2,sizeof(int),W, DRSYS_TYPE_SIGNED_INT},
      }
     }, /* == accept4 */
+
     {{PACKNUM(306,344),0},"syncfs", OK, RLONG, 1,
      {    
          {0, sizeof(int),SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{PACKNUM(313,350),0},"finit_module", OK, RLONG, 3,
-     {
-         {0,sizeof(int),SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT}, 
-         {1,0, R|CT, CSTRING},
-         {2,sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT}, 
-     }
-    },
-        /* FIXME i#1019: add recently added linux syscalls */
+
+    /* FIXME i#1019: add recently added linux syscalls */
 };
 
 #define NUM_SYSCALL_STATIC_ENTRIES (sizeof(syscall_info)/sizeof(syscall_info[0]))
