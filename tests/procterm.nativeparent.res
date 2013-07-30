@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -18,19 +18,6 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-ERRORS FOUND:
-      0 unique,     0 total unaddressable access(es)
-      0 unique,     0 total uninitialized access(es)
-      0 unique,     0 total invalid heap argument(s)
-      0 unique,     0 total warning(s)
-      1 unique,     1 total,     42 byte(s) of leak(s)
-      0 unique,     0 total,      0 byte(s) of possible leak(s)
-child has exited with status 0
-app exiting
-ERRORS FOUND:
-      1 unique,     1 total unaddressable access(es)
-      0 unique,     0 total uninitialized access(es)
-      0 unique,     0 total invalid heap argument(s)
-      0 unique,     0 total warning(s)
-      0 unique,     0 total,      0 byte(s) of leak(s)
-      0 unique,     0 total,      0 byte(s) of possible leak(s)
+Error #1: LEAK 42 direct bytes + 0 indirect bytes
+procterm.c:36
+procterm.c:82

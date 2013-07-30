@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -229,6 +229,11 @@ non_module_test(void)
      *
      *  83 f8 06             cmp    %eax $0x00000000
      *  c2                   ret
+     *
+     * XXX: this won't execute natively if NX/DEP is enabled!
+     * We should mark it +x.
+     * It works under DR b/c of a hole in DR where its code cache
+     * is +x (i#329).
      */
     char buf[4] = { 0x83, 0xf8, 0x00, 0xc3 };
     int uninit;

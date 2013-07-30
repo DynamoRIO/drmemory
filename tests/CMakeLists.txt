@@ -458,6 +458,10 @@ else (UNIX)
   newtest(winthreads winthreads.c)
   if (TOOL_DR_MEMORY)
     newtest(procterm procterm.c)
+    newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
+      OFF "procterm.nativeparent")
+    # these tests share a temp file so they can't run in parallel
+    set_property(TEST procterm.nativeparent APPEND PROPERTY DEPENDS procterm)
   endif (TOOL_DR_MEMORY)
 endif (UNIX)
 

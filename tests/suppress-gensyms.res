@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -185,7 +185,7 @@ Error #15: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
 suppress.c:59
 suppress!do_uninit_cb
-suppress.c:258
+suppress.c:263
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames
@@ -213,7 +213,7 @@ Error #16: UNINITIALIZED READ: reading register
 suppress!do_uninit_read
 suppress.c:59
 suppress!do_uninit_cb
-suppress.c:258
+suppress.c:263
 # Drop the dll module name as it's different on Linux, and the source file name
 # tells us which module it was.
 !callback_with_n_frames

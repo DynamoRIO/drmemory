@@ -288,9 +288,22 @@ options_init(const char *opstr)
     if (option_specified.stack_swap_threshold)
         stack_swap_threshold_fixed = true;
 
+#ifndef TOOL_DR_HEAPSTAT
     /* Set dependent options after all processing in case overruled
      * by a later negative option.
      */
+    if (options.native_parent) {
+        /* no reason to do any extra work */
+        options.leaks_only = true;
+        options.count_leaks = false;
+        options.track_allocs = false;
+        /* Avoid conflicts below.  We want to support the user passing this
+         * as the child processes will use the original options.
+         */
+        options.light = false;
+        options.pattern = 0;
+    }
+#endif
     if (options.leaks_only || options.perturb_only) {
         /* for performance use only DR's slots */
         options.num_spill_slots = 0;
@@ -477,7 +490,7 @@ options_init(const char *opstr)
         usage_error("currently only -unaddr_only is supported for 64-bit", "");
 # endif
 #endif
-    if (options.native_until_thread > 0) {
+    if (options.native_until_thread > 0 || options.native_parent) {
         go_native = true;
     }
 }

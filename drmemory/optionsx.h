@@ -676,3 +676,6 @@ OPTION_CLIENT_BOOL(internal, track_origins_unaddr, false,
 OPTION_CLIENT(internal, native_until_thread, uint, 0, 0, UINT_MAX,
               "Run natively until the Nth thread is created",
               "Run natively until the Nth thread is created.  This is an experimental option and should be used with care.  This option is only supported with the -unaddr_only, -light, or -no_check_uninitialized modes.")
+OPTION_CLIENT_BOOL(internal, native_parent, false,
+                   "Run this process natively, but follow into children.",
+                   "Run natively the entire execution of the initial process, but configure child processes to execute normally.  This mode also watches for process termination and implements -soft_kills (unless termination is not done via standard system call wrapper).")

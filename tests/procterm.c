@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -55,6 +55,12 @@ main(int argc, char** argv)
             fprintf(stderr, "ERROR on CreateProcess\n"); 
         else {
             int status, count = 0;
+
+            /* make an error, to test -native_parent by its absence */
+            char *alloc = malloc(3);
+            *(alloc + 3) = 1;
+            free(alloc);
+
             /* wait for child to allocate its memory */
             while (count < MAX_ATTEMPTS && _access(TEMP_FILE, 4/*read*/) == -1) {
                 Sleep(SLEEP_PER_ATTEMPT);

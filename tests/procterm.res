@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -18,6 +18,8 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+# We don't list the unaddr b/c runtest.cmake will pick the child's results
+# file (since larger).  We rely on .out detecting the unaddr.
 Error #1: LEAK 42 direct bytes + 0 indirect bytes
 procterm.c:36
-procterm.c:76
+procterm.c:82

@@ -957,6 +957,8 @@ _tmain(int argc, TCHAR *targv[])
     bool use_drmem_debug = false;
     char *pidfile = NULL;
     process_id_t nudge_pid = 0;
+    bool native_parent = false;
+    size_t native_parent_pos = 0; /* holds cliops_sofar of "-native_parent" */
 
     char *app_name;
     char full_app_name[MAXIMUM_PATH];
@@ -1190,6 +1192,13 @@ _tmain(int argc, TCHAR *targv[])
                 usage("invalid arguments");
             nudge_pid = strtoul(argv[++i], NULL, 10);
         }        
+        else if (strcmp(argv[i], "-native_parent") == 0) {
+            native_parent = true;
+            native_parent_pos = cliops_sofar;
+            /* also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "-native_parent ");
+        }
         else if (strcmp(argv[i], "-dr_ops") == 0) {
             if (i >= argc - 1)
                 usage("invalid arguments");
@@ -1488,6 +1497,38 @@ _tmain(int argc, TCHAR *targv[])
         fatal("failed to register DynamoRIO client configuration");
         goto error; /* actually won't get here */
     }
+
+    if (native_parent) {
+        /* Create a regular config file without -native_parent so the children will
+         * run normally.
+         */
+        info("configuring child processes");
+        if (dr_process_is_registered(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
+                                     NULL, NULL, NULL, NULL)) {
+            if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
+                == DR_SUCCESS)
+                warn("overriding existing registration");
+            else {
+                fatal("failed to override existing registration");
+                goto error; /* actually won't get here */
+            }
+        }
+        if (dr_register_process(process, 0, false/*local*/, dr_root,
+                                DR_MODE_CODE_MANIPULATION, use_dr_debug,
+                                DR_PLATFORM_DEFAULT, dr_ops) != DR_SUCCESS) {
+            fatal("failed to register child DynamoRIO configuration");
+            goto error; /* actually won't get here */
+        }
+        /* clear out "-native_parent" */
+        memset(client_ops + native_parent_pos, ' ', strlen("-native_parent"));
+        if (dr_register_client(process, 0, false/*local*/, DR_PLATFORM_DEFAULT,
+                               DRMEM_CLIENT_ID, 0, client_path, client_ops)
+            != DR_SUCCESS) {
+            fatal("failed to register child DynamoRIO client configuration");
+            goto error; /* actually won't get here */
+        }
+    }
+
     if (!dr_inject_process_inject(inject_data, false/*!force*/, NULL)) {
         fatal("unable to inject");
         goto error; /* actually won't get here */
@@ -1505,6 +1546,11 @@ _tmain(int argc, TCHAR *targv[])
         end_time = time(NULL);
         wallclock = difftime(end_time, start_time);
         dr_inject_print_stats(inject_data, (int) wallclock, true/*time*/, true/*mem*/);
+    }
+    if (native_parent) {
+        if (dr_unregister_process(process, 0, false/*local*/, DR_PLATFORM_DEFAULT)
+            != DR_SUCCESS)
+            warn("failed to unregister child processes");
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
     process_results_file(logdir, pid, app_name);
