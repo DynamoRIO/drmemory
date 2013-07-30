@@ -1523,13 +1523,24 @@ nudge_leak_scan(void *drcontext)
 static void
 event_nudge(void *drcontext, uint64 argument)
 {
-    if (argument == NUDGE_LEAK_SCAN)
+    /* we pass any extra info in the top 32 bits */
+    uint code = (uint) argument;
+    uint param = (uint) (argument >> 32);
+    if (code == NUDGE_LEAK_SCAN)
         nudge_leak_scan(drcontext);
-    else if (argument == NUDGE_TERMINATE) {
+    else if (code == NUDGE_TERMINATE) {
         /* clean exit (as opposed to parent terminating w/ no cleanup) */
-        ELOGF(0, f_global, "TERMINATION NUDGE\n");
-        dr_exit_process(0);
-        ASSERT(false, "should not reach here");
+        static int nudge_term_count;
+        /* we might get multiple (NtTerminateProcess + NtTerminateJobObject) */
+        uint count = atomic_add32_return_sum(&nudge_term_count, 1);
+        ELOGF(0, f_global, "TERMINATION NUDGE (exit code %d, count %d)\n",
+              param, count);
+        if (count == 1) {
+            dr_exit_process(param);
+            ASSERT(false, "should not reach here");
+        }
+    } else {
+        WARN("WARNING: unknown nudge code %d param %d\n", code, param);
     }
 }
 

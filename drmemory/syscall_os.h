@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -34,6 +34,9 @@ typedef struct _cls_syscall_t {
     HDC paintDC;
     /* for handle leak checks (i#974) */
     void *handle_info;
+    /* for job object termination (i#1297) */
+    DWORD job_limit_flags_orig;
+    DWORD *job_limit_flags_loc;
 #endif
 } cls_syscall_t;
 

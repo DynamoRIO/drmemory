@@ -700,6 +700,12 @@ GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
                          IN POBJECT_ATTRIBUTES ObjectAttributes,
                          IN PCLIENT_ID ClientId));
 
+GET_NTDLL(NtQueryInformationJobObject, (IN HANDLE JobHandle,
+                                        IN JOBOBJECTINFOCLASS JobInformationClass,
+                                        OUT PVOID JobInformation,
+                                        IN ULONG JobInformationLength,
+                                        OUT PULONG ReturnLength OPTIONAL));
+
 TEB *
 get_TEB(void)
 {
@@ -736,7 +742,8 @@ get_tid_from_handle(HANDLE h)
     res = NtQueryInformationThread(h, ThreadBasicInformation,
                                    &info, sizeof(THREAD_BASIC_INFORMATION), &got);
     if (!NT_SUCCESS(res) || got != sizeof(THREAD_BASIC_INFORMATION)) {
-        ASSERT(false, "internal error");
+        LOG(1, "%s: failed with 0x%08x %d vs %d\n", __FUNCTION__,
+            res, got, sizeof(THREAD_BASIC_INFORMATION));
         return INVALID_THREAD_ID;
     }
     return (thread_id_t) info.ClientId.UniqueThread;
@@ -963,6 +970,28 @@ module_imports_from_msvc(const module_data_t *mod)
     }
     dr_module_import_iterator_stop(iter);
     return res;
+}
+
+ssize_t
+num_job_object_pids(HANDLE job)
+{
+    JOBOBJECT_BASIC_PROCESS_ID_LIST empty;
+    NTSTATUS res;
+    res = NtQueryInformationJobObject(job, JobObjectBasicProcessIdList,
+                                      &empty, sizeof(empty), NULL);
+    if (NT_SUCCESS(res) || res == STATUS_BUFFER_OVERFLOW)
+        return empty.NumberOfAssignedProcesses;
+    else
+        return -1;
+}
+
+bool
+get_job_object_pids(HANDLE job, JOBOBJECT_BASIC_PROCESS_ID_LIST *list, size_t list_sz)
+{
+    NTSTATUS res;
+    res = NtQueryInformationJobObject(job, JobObjectBasicProcessIdList,
+                                      list, list_sz, NULL);
+    return NT_SUCCESS(res);
 }
 #endif /* WINDOWS */
 

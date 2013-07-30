@@ -66,7 +66,7 @@ main(int argc, char** argv)
                 Sleep(SLEEP_PER_ATTEMPT);
                 count++;
             }
-            TerminateProcess(pi.hProcess, 42);
+            TerminateProcess(pi.hProcess, 0);
             WaitForSingleObject(pi.hProcess, INFINITE);
             GetExitCodeProcess(pi.hProcess, (LPDWORD) &status);
             fprintf(stderr, "child has exited with status %d\n", status);

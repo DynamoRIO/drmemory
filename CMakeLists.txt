@@ -639,7 +639,7 @@ else ()
 endif ()
 
 # when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "4.1.0")
+set(DynamoRIO_VERSION_REQUIRED "4.1.2220")
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
