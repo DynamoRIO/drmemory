@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 
 #define BUFSZ 1024
 
@@ -117,12 +118,53 @@ void access_filesystem(void)
     rmdir(tmpdir);                      CHECKERRNO();
 }
 
+void uninit_finit_module(void)
+{
+    padded_str_t stack_str;
+    int fd;
+
+    char kmod_file[100]; 
+    char orig_dir[100];
+
+    /* find the folder holding the kernel module */
+    int n = readlink("/proc/self/exe", orig_dir, 100) - 1;
+    while(orig_dir[n] != '/')
+    {
+        orig_dir[n] = '\0';
+        n--;
+    }
+    strncpy(kmod_file, orig_dir, 100);
+    strncat(kmod_file, "test_kernel_module.ko", 25);
+    fd = open(kmod_file, O_RDONLY);
+    
+    /* XXX: If root, we drop to uid of nobody,
+     * non-standard but 99 many distros */
+    if(geteuid() == 0) {
+        setuid(99);
+    }
+
+    syscall(SYS_finit_module, fd, stack_str.str, 0);
+}
+
+void unaddr_finit_module(void)
+{
+    padded_str_t *dangling_ptr;
+    dangling_ptr = malloc(sizeof(padded_str_t));
+
+    strncpy(dangling_ptr->str, "param=dummy ", 12);
+    free(dangling_ptr);
+
+    syscall(SYS_finit_module, -1, dangling_ptr->str, 0);
+}
+
 int main(void)
 {
     access_filesystem();
     unaddr_open();
     uninit_open(1);
     uninit_open(0);
+    unaddr_finit_module();
+    uninit_finit_module();
     printf("done\n");
     return 0;
 }

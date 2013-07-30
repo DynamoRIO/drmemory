@@ -2,7 +2,6 @@
 # Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
-
 # Dr. Memory: the memory debugger
 # 
 # This library is free software; you can redistribute it and/or
@@ -397,6 +396,47 @@ function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess 
     "${postprocess}" "${resbase}")
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
+
+function(add_finit_module_test)
+  # simple kernel module for finit_module syscall test
+  set(kernel_module_bin "${CMAKE_CURRENT_BINARY_DIR}/test_kernel_module")
+  set(kernel_module_src "${CMAKE_CURRENT_SOURCE_DIR}/test_kernel_module")
+  set (kofile test_kernel_module.ko)
+
+add_custom_command(OUTPUT "${kernel_module_bin}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${kernel_module_bin})
+
+add_custom_command(OUTPUT "${kernel_module_bin}/Makefile"
+      COMMAND ${CMAKE_COMMAND} -E copy
+      "${kernel_module_src}/Makefile" ${kernel_module_bin}
+      DEPENDS "${kernel_module_bin}"
+      )
+  
+  add_custom_command(OUTPUT "${kernel_module_bin}/test_kernel_module.c"
+      COMMAND ${CMAKE_COMMAND} -E copy
+      "${kernel_module_src}/test_kernel_module.c" ${kernel_module_bin}
+      DEPENDS "${kernel_module_bin}/Makefile"
+      )
+  
+  add_custom_command ( OUTPUT ${kofile}
+    COMMAND ${CMAKE_MAKE_PROGRAM}
+    WORKING_DIRECTORY ${kernel_module_bin}
+    COMMENT "Building test kernel module..."
+    DEPENDS "${kernel_module_bin}/test_kernel_module.c"
+  )
+
+  add_custom_target (test_kernel_module ALL DEPENDS ${kofile})
+
+  add_custom_command(TARGET test_kernel_module POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy "${kernel_module_bin}/${kofile}"
+      "${CMAKE_CURRENT_BINARY_DIR}")
+
+  add_custom_command(TARGET test_kernel_module POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E remove_directory ${kernel_module_bin})
+
+endfunction(add_finit_module_test)
+
+add_finit_module_test()
 
 if (NOT X64)
 # FIXME i#111, i#217: 64-bit is only supported in pattern mode
