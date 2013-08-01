@@ -354,7 +354,7 @@ alloc_callstack_free(void *p)
 {
     packed_callstack_t *pcs = (packed_callstack_t *) p;
     uint count;
-    LOG(4, "%s: force-free pcs "PFX"\n", pcs, __FUNCTION__);
+    LOG(4, "%s: force-free pcs "PFX"\n", __FUNCTION__, pcs);
     /* For -replace_malloc, we need to force-remove here.  With wrapping, we rely
      * on the malloc hashtable exist to free all references to these callstacks.
      * For replacing, there's no reason to iterate the heap just to clean these up.
