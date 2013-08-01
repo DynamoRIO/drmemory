@@ -237,6 +237,8 @@ static drsys_sysnum_t sysnum_UserTrackMouseEvent = {-1,0};
 static drsys_sysnum_t sysnum_UserLoadKeyboardLayoutEx = {-1,0};
 static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1,0};
 static drsys_sysnum_t sysnum_UserMessageCall = {-1,0};
+static drsys_sysnum_t sysnum_UserCreateAcceleratorTable = {-1,0};
+static drsys_sysnum_t sysnum_UserCopyAcceleratorTable = {-1,0};
 
 /* forward decl so "extern" */
 extern syscall_info_t syscall_usercall_info[];
@@ -379,14 +381,16 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserCopyAcceleratorTable", OK, SYSARG_TYPE_UINT32, 3,
      {
-         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
-     }
+         /* special-cased b/c ACCEL has padding */
+         {1, -2, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
+     }, &sysnum_UserCopyAcceleratorTable,
     },
     {{0,0},"NtUserCountClipboardFormats", OK, SYSARG_TYPE_UINT32, 0, },
     {{0,0},"NtUserCreateAcceleratorTable", OK, DRSYS_TYPE_HANDLE, 2,
      {
-         {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
-     }
+         /* special-cased b/c ACCEL has padding */
+         {0, -1, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
+     }, &sysnum_UserCreateAcceleratorTable,
     },
     {{0,0},"NtUserCreateCaret", OK, SYSARG_TYPE_BOOL32, 4, },
     {{0,0},"NtUserCreateDesktop", OK, DRSYS_TYPE_HANDLE, 5,
@@ -4880,6 +4884,49 @@ handle_UserMessageCall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
 }
 
 static void
+handle_accel_array(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
+                   ACCEL *array, ULONG count, uint arg_flags)
+{
+    ULONG i;
+    /* first field is BYTE followed by WORD so we have padding to skip */
+    for (i = 0; i < count; i++) {
+        if (!report_memarg_ex(ii, 0, mode_from_flags(arg_flags),
+                              (byte *) &array[i].fVirt, sizeof(array[i].fVirt),
+                              "ACCEL.fVirst", DRSYS_TYPE_UNSIGNED_INT, NULL,
+                              DRSYS_TYPE_STRUCT))
+            return;
+        if (!report_memarg_ex(ii, 0, mode_from_flags(arg_flags),
+                              (byte *) &array[i].key, sizeof(array[i].key),
+                              "ACCEL.key", DRSYS_TYPE_SIGNED_INT, NULL,
+                              DRSYS_TYPE_STRUCT))
+            return;
+        if (!report_memarg_ex(ii, 0, mode_from_flags(arg_flags),
+                              (byte *) &array[i].cmd, sizeof(array[i].cmd),
+                              "ACCEL.cmd", DRSYS_TYPE_SIGNED_INT, NULL,
+                              DRSYS_TYPE_STRUCT))
+            return;
+    }    
+}
+
+static void
+handle_UserCreateAcceleratorTable(void *drcontext, cls_syscall_t *pt,
+                                  sysarg_iter_info_t *ii)
+{
+    ACCEL *array = (ACCEL *) pt->sysarg[0];
+    ULONG count = (ULONG) pt->sysarg[1];
+    handle_accel_array(drcontext, pt, ii, array, count, SYSARG_READ);
+}
+
+static void
+handle_UserCopyAcceleratorTable(void *drcontext, cls_syscall_t *pt,
+                                sysarg_iter_info_t *ii)
+{
+    ACCEL *array = (ACCEL *) pt->sysarg[0];
+    ULONG count = (ULONG) pt->sysarg[1];
+    handle_accel_array(drcontext, pt, ii, array, count, SYSARG_WRITE);
+}
+
+static void
 handle_GdiHfontCreate(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     ENUMLOGFONTEXDVW dvw;
@@ -5040,6 +5087,11 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
          */
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserMessageCall)) {
         handle_UserMessageCall(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum,
+                                   &sysnum_UserCreateAcceleratorTable)) {
+        handle_UserCreateAcceleratorTable(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserCopyAcceleratorTable)) {
+        handle_UserCopyAcceleratorTable(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiCreatePaletteInternal)) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (ii->arg->pre) {

@@ -434,6 +434,9 @@ report_memarg(sysarg_iter_info_t *iter_info,
 bool
 report_sysarg(sysarg_iter_info_t *iter_info, int ordinal, uint arg_flags);
 
+drsys_param_mode_t
+mode_from_flags(uint arg_flags);
+
 bool
 handle_cstring(sysarg_iter_info_t *ii, int ordinal, uint arg_flags, const char *id,
                byte *start, size_t size/*in bytes*/, char *safe, bool check_addr);

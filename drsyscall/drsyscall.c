@@ -709,7 +709,7 @@ report_memarg_ex(sysarg_iter_info_t *ii,
     return ii->pt->first_iter || !ii->abort;
 }
 
-static drsys_param_mode_t
+drsys_param_mode_t
 mode_from_flags(uint arg_flags)
 {
     drsys_param_mode_t mode = 0;
