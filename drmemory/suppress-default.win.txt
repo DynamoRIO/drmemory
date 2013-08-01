@@ -773,3 +773,18 @@ LEAK
 name=default i#1279 LdrpGetNewTlsVector
 ntdll.dll!...
 ntdll.dll!LdrInitializeThunk
+
+##################################################
+# i#1300: real bug in Perflib
+# The actual bug is entirely in ADVAPI32.dll!GetPerflibKeyValue,
+# but we need symbols to see that.  We've only observed that being
+# called from pdh.dll, so we match any registry query from pdh.
+# On Win7 kernel32.dll frames are in between, but they are not present
+# on XP64.
+
+UNINITIALIZED READ
+name=default i#1300 real Perflib bug
+system call NtQueryValueKey UNICODE_STRING.*
+ADVAPI32.dll!...
+...
+pdh.dll!*
