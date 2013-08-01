@@ -596,7 +596,7 @@ client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
                 shadow_copy_range(old_mal->base, new_mal->base, old_mal->request_size);
             shadow_set_range(new_mal->base + old_mal->request_size,
                              new_mal->base + new_mal->request_size,
-                             SHADOW_UNDEFINED);
+                             new_mal->zeroed ? SHADOW_DEFINED : SHADOW_UNDEFINED);
         } else {
             if (new_mal->base != old_mal->base)
                 shadow_copy_range(old_mal->base, new_mal->base, new_mal->request_size);

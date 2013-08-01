@@ -854,7 +854,8 @@ header_from_ptr_include_pre_us(void *ptr)
 
 /* The base param must be non-NULL for pre-us; else, it can be NULL */
 static inline void
-header_to_info(chunk_header_t *head, malloc_info_t *info, byte *pre_us_base)
+header_to_info(chunk_header_t *head, malloc_info_t *info, byte *pre_us_base,
+               alloc_flags_t flags /* pass 0 if not a new alloc notification */)
 {
     info->struct_size = sizeof(*info);
     info->pre_us = TEST(CHUNK_PRE_US, head->flags);
@@ -863,8 +864,8 @@ header_to_info(chunk_header_t *head, malloc_info_t *info, byte *pre_us_base)
     info->request_size = chunk_request_size(head);
     info->pad_size = head->alloc_size;
     info->has_redzone = !info->pre_us;
-    info->zeroed = false;
-    info->realloc = false;
+    info->zeroed = TEST(ALLOC_ZERO, flags);
+    info->realloc = TEST(ALLOC_IS_REALLOC, flags);
     info->client_flags = head->flags & MALLOC_POSSIBLE_CLIENT_FLAGS;
     info->client_data = head->user_data;
 }
@@ -1569,7 +1570,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
         head = find_free_list_entry(arena, request_size, aligned_size);
         if (head != NULL) {
             malloc_info_t info;
-            header_to_info(head, &info, NULL);
+            header_to_info(head, &info, NULL, 0);
             client_handle_free_reuse(drcontext, &info, mc);
         }
     }
@@ -1785,7 +1786,7 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
      * would we ever want to keep the alloc callstack for freed entries,
      * or we always want to replace w/ free callstack?
      */
-    header_to_info(head, &info, NULL);
+    header_to_info(head, &info, NULL, 0);
     client_remove_malloc_pre(&info);
     if (TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
         if (head->user_data != NULL)
@@ -1877,7 +1878,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
 #ifdef WINDOWS
     check_type_match(ptr, head, alloc_type, flags, mc, caller);
 #endif
-    header_to_info(head, &old_info, ptr);
+    header_to_info(head, &old_info, ptr, 0);
     if (head->alloc_size >= size &&
         head->alloc_size - size <= REQUEST_DIFF_MAX &&
         !TEST(CHUNK_PRE_US, head->flags)) {
@@ -1892,7 +1893,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         if (chunk_request_size(head) >= LARGE_MALLOC_MIN_SIZE)
             malloc_large_add(ptr, chunk_request_size(head));
         res = ptr;
-        header_to_info(head, &new_info, NULL);
+        header_to_info(head, &new_info, NULL, flags | ALLOC_IS_REALLOC);
         client_handle_realloc(drcontext, &old_info, &new_info, false, mc);
     } else if (!TEST(ALLOC_IN_PLACE_ONLY, flags) || head->alloc_size >= size) {
         size_t old_request_size = chunk_request_size(head);
@@ -1911,7 +1912,7 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
                                 sub_flags /*no client */ | ALLOC_IS_REALLOC |
                                 ALLOC_IGNORE_MISMATCH,
                                 drcontext, mc, caller, alloc_type);
-            header_to_info(head, &new_info, NULL);
+            header_to_info(head, &new_info, NULL, flags | ALLOC_IS_REALLOC);
             client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
         }
     }
@@ -1983,7 +1984,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
         chunk_header_t *head = header_from_mmap_base(iter_arena_start);
-        header_to_info(head, &info, NULL);
+        header_to_info(head, &info, NULL, 0);
         ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
         LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
             info.base + chunk_request_size(head));
@@ -2003,7 +2004,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
             ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
         if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
-            header_to_info(head, &info, NULL);
+            header_to_info(head, &info, NULL, 0);
             if (!data->cb(&info, data->data)) {
                 iterator_unlock(arena, false/*!in alloc*/);
                 return false;
@@ -2060,7 +2061,7 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
             if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
                 LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
                     start, start + chunk_request_size(head), start + head->alloc_size);
-                header_to_info(head, &info, start);
+                header_to_info(head, &info, start, 0);
                 if (!cb(&info, iter_data))
                     break;
             }
@@ -2086,7 +2087,7 @@ overlap_helper(chunk_header_t *head,
         !TEST(negative_flags, head->flags)) {
         LOG(4, "overlap_helper match for "PFX"\n", ptr_from_header(head));
         if (info != NULL)
-            header_to_info(head, info, NULL);
+            header_to_info(head, info, NULL, 0);
         return true;
     }
     return false;
@@ -2652,7 +2653,7 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
                      * re-using the memory won't be immediate, so we go w/
                      * a simple no-delay policy on the frees
                      */
-                    header_to_info(head, &info, NULL);
+                    header_to_info(head, &info, NULL, 0);
                     client_handle_free(&info, info.base, mc,
                                        (app_pc)replace_RtlDestroyHeap, NULL,
                                        true/*not delayed*/ _IF_WINDOWS((HANDLE)arena));
