@@ -173,3 +173,11 @@ combase.dll!...
 imm32.dll!...
 user32.dll!CreateWindowExW
 
+##################################################
+# i#1023: RPC binding leaks
+# Seen reliably in PDH.PerfDataLog test.
+LEAK
+name=default i#1023: RPC binding leaks
+RPCRT4.dll!AllocWrapper
+RPCRT4.dll!...
+RPCRT4.dll!*BindingCopy
