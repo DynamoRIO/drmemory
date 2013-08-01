@@ -775,16 +775,24 @@ ntdll.dll!...
 ntdll.dll!LdrInitializeThunk
 
 ##################################################
+# i#1298: real bug in MSVCRT stat()
+# The actual bug is in _stat64i32() called from stat(), but for /MD we
+# might not have symbols.  We limit to the comparison to ':' (0x3a)
+# and avoid missing an uninit in the rest of the string via instruction=.
+
+UNINITIALIZED READ
+name=default i#1298 real MSVCRT stat bug
+instruction=cmp * $0x3a
+*!*
+*!stat
+
+##################################################
 # i#1300: real bug in Perflib
-# The actual bug is entirely in ADVAPI32.dll!GetPerflibKeyValue,
-# but we need symbols to see that.  We've only observed that being
-# called from pdh.dll, so we match any registry query from pdh.
-# On Win7 kernel32.dll frames are in between, but they are not present
-# on XP64.
+# We match any registry query from pdh to avoid issues with missing symbols.
 
 UNINITIALIZED READ
 name=default i#1300 real Perflib bug
 system call NtQueryValueKey UNICODE_STRING.*
 ADVAPI32.dll!...
-...
+KERNEL32.dll!...
 pdh.dll!*
