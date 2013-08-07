@@ -10,38 +10,28 @@
  ****************************************************************************
  ****************************************************************************/
 
-#ifndef _NTIFS_
-#define _NTIFS_
+#ifndef _NTDDK_
+#define _NTDDK_
 
 /***************************************************************************
- * from DDK/WDK ntifs.h
+ * from DDK/WDK ntddk.h
  */
 
-//
-// Object Information Classes
-//
-
-typedef enum _OBJECT_INFORMATION_CLASS {
-    ObjectBasicInformation = 0,
-    ObjectTypeInformation = 2
-} OBJECT_INFORMATION_CLASS;
-
-//
-// File Information
-//
-
-typedef struct _FILE_LINK_INFORMATION {
-    BOOLEAN ReplaceIfExists;
-    HANDLE RootDirectory;
+typedef struct _FILE_NAME_INFORMATION {
     ULONG FileNameLength;
     WCHAR FileName[1];
-} FILE_LINK_INFORMATION, *PFILE_LINK_INFORMATION;
+} FILE_NAME_INFORMATION, *PFILE_NAME_INFORMATION;
 
-typedef struct _FILE_RENAME_INFORMATION {
-    BOOLEAN ReplaceIfExists;
-    HANDLE RootDirectory;
-    ULONG FileNameLength;
-    WCHAR FileName[1];
-} FILE_RENAME_INFORMATION, *PFILE_RENAME_INFORMATION;
+typedef struct _FILE_DISPOSITION_INFORMATION {
+    BOOLEAN DeleteFile;
+} FILE_DISPOSITION_INFORMATION, *PFILE_DISPOSITION_INFORMATION;
 
-#endif /* _NTIFS_ */
+typedef struct _FILE_END_OF_FILE_INFORMATION {
+    LARGE_INTEGER EndOfFile;
+} FILE_END_OF_FILE_INFORMATION, *PFILE_END_OF_FILE_INFORMATION;
+
+typedef struct _FILE_VALID_DATA_LENGTH_INFORMATION {
+    LARGE_INTEGER ValidDataLength;
+} FILE_VALID_DATA_LENGTH_INFORMATION, *PFILE_VALID_DATA_LENGTH_INFORMATION;
+
+#endif /* _NTDDK_ */

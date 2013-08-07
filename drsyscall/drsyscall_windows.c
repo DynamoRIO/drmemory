@@ -41,6 +41,7 @@
 #include "../wininc/iptypes_undocumented.h"
 #include "../wininc/ntalpctyp.h"
 #include "../wininc/wdm.h"
+#include "../wininc/ntddk.h"
 #include "../wininc/ntifs.h"
 #include "../wininc/tls.h"
 
@@ -223,6 +224,7 @@ static drsys_sysnum_t sysnum_QuerySystemInformationWow64 = {-1,0};
 static drsys_sysnum_t sysnum_QuerySystemInformationEx = {-1,0};
 static drsys_sysnum_t sysnum_SetSystemInformation = {-1,0};
 static drsys_sysnum_t sysnum_SetInformationProcess = {-1,0};
+static drsys_sysnum_t sysnum_SetInformationFile = {-1,0};
 static drsys_sysnum_t sysnum_PowerInformation = {-1,0};
 
 /* FIXME i#97: IIS syscalls!
@@ -2334,10 +2336,10 @@ static syscall_info_t syscall_ntdll_info[] = {
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
-         {2, -3, R},
+         {2, -3, SYSARG_NON_MEMARG, },
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {4, sizeof(FILE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-     }
+     }, &sysnum_SetInformationFile
     },
     {{0,0},"NtSetInformationJobObject", OK, RNTST, 4,
      {
@@ -4437,6 +4439,112 @@ handle_SetInformationProcess(void *drcontext, cls_syscall_t *pt, sysarg_iter_inf
 }
 
 static void
+handle_SetInformationFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    FILE_INFORMATION_CLASS cls = (FILE_INFORMATION_CLASS) pt->sysarg[4];
+    byte *info = (byte *)pt->sysarg[2];
+    ULONG length = (ULONG)pt->sysarg[3];
+        
+    /* In table pt->sysarg[2] would be "{2, -3, R}" */
+    if (pt->pre) {
+        /* pre-syscall */
+        /* i#1290: we split checks on fields with padding to avoid false positive
+         * UNINIT error reports.
+         * We still merge multiple fields with a single check for better performance,
+         * and the layout asusmption is checked in app_suite/fs_tests_win.cpp test.
+         */
+        switch (cls) {
+        case FileBasicInformation: {
+            /* sizeof(LARGE_INTEGER)*4 + sizeof(ULONG): 36
+             * sizeof(FILE_BASIC_INFORMATION): 40, so there are padding there.
+             */
+            FILE_BASIC_INFORMATION *basic_info;
+            basic_info = (FILE_BASIC_INFORMATION *)info;
+            if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                    (byte *)basic_info,
+                                    sizeof(LARGE_INTEGER) * 4,
+                                    "FILE_BASIC_INFORMATION.*Time",
+                                    DRSYS_TYPE_STRUCT, "FILE_BASIC_INFORMATION"))
+                return;
+            if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                    (byte *)&basic_info->FileAttributes,
+                                    sizeof(basic_info->FileAttributes),
+                                    "FILE_BASIC_INFORMATION.FileAttributes",
+                                    DRSYS_TYPE_STRUCT, "FILE_BASIC_INFORMATION"))
+                return;
+            break;
+        }
+        case FileLinkInformation:
+        case FileRenameInformation: {
+            /* FILE_RENAME_INFORMATION has the same struct as
+             * FILE_LINK_INFORMATION
+             */
+            FILE_LINK_INFORMATION *link_info;
+            ULONG name_length;
+            link_info = (FILE_LINK_INFORMATION *)info;
+            if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                    (byte *)&link_info->ReplaceIfExists,
+                                    sizeof(link_info->ReplaceIfExists),
+                                    "FILE_{LINK,RENAME}_INFORMATION.ReplaceIfExists",
+                                    DRSYS_TYPE_STRUCT,
+                                    "FILE_{LINK,RENAME}_INFORMATION"))
+                return;
+            if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                    (byte *)&link_info->RootDirectory,
+                                    offsetof(FILE_LINK_INFORMATION, FileName) -
+                                    offsetof(FILE_LINK_INFORMATION, RootDirectory),
+                                    "FILE_{LINK,RENAME}_INFORMATION.RootDirectory "
+                                    "and FileNameLength",
+                                    DRSYS_TYPE_STRUCT,
+                                    "FILE_{LINK,RENAME}_INFORMATION"))
+                return;
+            if (safe_read((ULONG *)link_info->FileNameLength,
+                          sizeof(name_length), &name_length) &&
+                name_length != 0) {
+                if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                        (byte *)&link_info->FileName, name_length,
+                                        "FILE_{LINK,RENAME}_INFORMATION.FileName",
+                                        DRSYS_TYPE_CWARRAY,
+                                        "FILE_{LINK,RENAME}_INFORMATION.FileName"))
+                    return;
+            }
+            break;
+        }
+        case FileShortNameInformation: {
+            FILE_NAME_INFORMATION *name_info;
+            ULONG name_length;
+            name_info = (FILE_NAME_INFORMATION *) info;
+            if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                    (byte *)&name_info->FileNameLength,
+                                    sizeof(name_info->FileNameLength),
+                                    "FILE_NAME_INFORMATION.FileNameLength",
+                                    DRSYS_TYPE_STRUCT, "FILE_NAME_INFORMATION"))
+                return;
+            if (safe_read((ULONG *)name_info->FileNameLength,
+                          sizeof(name_length), &name_length) &&
+                name_length > 0) {
+                if (!report_memarg_type(ii, 2, SYSARG_READ,
+                                        (byte *)&name_info->FileName,
+                                        name_length,
+                                        "FILE_NAME_INFORMATION.FileName",
+                                        DRSYS_TYPE_CWARRAY,
+                                        "FILE_NAME_INFORMATION.FileName"))
+                    return;
+            }
+            break;
+        }
+        default:
+            /* assuming no padding in the struct */
+            if (!report_memarg_type(ii, 2, SYSARG_READ, info, length,
+                                    "input FileInformation",
+                                    DRSYS_TYPE_STRUCT, NULL))
+                return;
+            break;
+        }
+    }
+}
+
+static void
 handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* Normally the buffer is all defined, but some info classes only write some fields */
@@ -5253,6 +5361,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
         handle_SetInformationProcess(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationFile))
+        handle_SetInformationFile(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))
@@ -5338,6 +5448,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_SetSystemInformation(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationProcess))
         handle_SetInformationProcess(drcontext, pt, ii);
+    else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_SetInformationFile))
+        handle_SetInformationFile(drcontext, pt, ii);
     else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformation) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationWow64) ||
              drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_QuerySystemInformationEx))

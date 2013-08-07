@@ -83,6 +83,28 @@ typedef enum _FILE_INFORMATION_CLASS {
     FileMaximumInformation
 } FILE_INFORMATION_CLASS, *PFILE_INFORMATION_CLASS;
 
+typedef struct _FILE_POSITION_INFORMATION {
+    LARGE_INTEGER CurrentByteOffset;
+} FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
+
+//
+// Support to set priority hints on a filehandle.
+//
+
+typedef enum _IO_PRIORITY_HINT {
+    IoPriorityVeryLow = 0,          // Defragging, content indexing and other background I/Os
+    IoPriorityLow,                  // Prefetching for applications.
+    IoPriorityNormal,               // Normal I/Os
+    IoPriorityHigh,                 // Used by filesystems for checkpoint I/O
+    IoPriorityCritical,             // Used by memory manager. Not available for applications.
+    MaxIoPriorityTypes
+} IO_PRIORITY_HINT;
+
+typedef struct _FILE_IO_PRIORITY_HINT_INFORMATION {
+    IO_PRIORITY_HINT   PriorityHint;
+} FILE_IO_PRIORITY_HINT_INFORMATION, *PFILE_IO_PRIORITY_HINT_INFORMATION;
+
+
 typedef enum _KEY_INFORMATION_CLASS {
     KeyBasicInformation,
     KeyNodeInformation,
