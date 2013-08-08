@@ -796,3 +796,11 @@ system call NtQueryValueKey UNICODE_STRING.*
 ADVAPI32.dll!...
 KERNEL32.dll!...
 pdh.dll!*
+
+##################################################
+# i#1302: SockSocket final 9 EA bytes are left uninit
+
+UNINITIALIZED READ
+name=default i#1302 SockSocket EA
+system call NtCreateFile parameter #9
+MSWSOCK.dll!SockSocket 
