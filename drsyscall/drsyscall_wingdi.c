@@ -239,6 +239,7 @@ static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1,0};
 static drsys_sysnum_t sysnum_UserMessageCall = {-1,0};
 static drsys_sysnum_t sysnum_UserCreateAcceleratorTable = {-1,0};
 static drsys_sysnum_t sysnum_UserCopyAcceleratorTable = {-1,0};
+static drsys_sysnum_t sysnum_UserSetScrollInfo = {-1,0};
 
 /* forward decl so "extern" */
 extern syscall_info_t syscall_usercall_info[];
@@ -1038,8 +1039,9 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserSetScrollInfo", OK, SYSARG_TYPE_UINT32, 4,
      {
-         {2, SYSARG_SIZE_IN_FIELD, R, offsetof(SCROLLINFO, cbSize)},
-     }
+         /* Special-cased b/c some fields are ignored (i#1299) */
+         {2, SYSARG_SIZE_IN_FIELD, SYSARG_NON_MEMARG, offsetof(SCROLLINFO, cbSize)},
+     }, &sysnum_UserSetScrollInfo,
     },
     {{0,0},"NtUserSetShellWindowEx", OK, SYSARG_TYPE_BOOL32, 2, },
     {{0,0},"NtUserSetSysColors", OK, SYSARG_TYPE_BOOL32, 4,
@@ -4927,6 +4929,44 @@ handle_UserCopyAcceleratorTable(void *drcontext, cls_syscall_t *pt,
 }
 
 static void
+handle_UserSetScrollInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    /* Special-cased b/c some fields are ignored (i#1299) */
+    SCROLLINFO *si = (SCROLLINFO *) pt->sysarg[2];
+    SCROLLINFO safe;
+    if (!ii->arg->pre)
+        return;
+    /* User must set cbSize and fMask */
+    if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) si,
+                            offsetof(SCROLLINFO, fMask) + sizeof(si->fMask),
+                            "SCROLLINFO cbSize+fMask",
+                            DRSYS_TYPE_STRUCT, "SCROLLINFO"))
+        return;
+    if (safe_read((byte *) si, sizeof(safe), &safe)) {
+        if (TEST(SIF_RANGE, safe.fMask) && safe.cbSize >= offsetof(SCROLLINFO, nPage)) {
+            if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) &si->nMin,
+                                    sizeof(si->nMin) + sizeof(si->nMax),
+                                    "SCROLLINFO nMin+nMax", DRSYS_TYPE_STRUCT,
+                                    "SCROLLINFO"))
+                return;
+        }
+        if (TEST(SIF_PAGE, safe.fMask) && safe.cbSize >= offsetof(SCROLLINFO, nPos)) {
+            if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) &si->nPage,
+                                    sizeof(si->nPage), "SCROLLINFO.nPage",
+                                    DRSYS_TYPE_STRUCT, "SCROLLINFO"))
+                return;
+        }
+        if (TEST(SIF_POS, safe.fMask) && safe.cbSize >= offsetof(SCROLLINFO, nTrackPos)) {
+            if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) &si->nPos,
+                                    sizeof(si->nPos), "SCROLLINFO.nPos",
+                                    DRSYS_TYPE_STRUCT, "SCROLLINFO"))
+                return;
+        }
+        /* nTrackPos is ignored on setting, even if SIF_TRACKPOS is set */
+    }
+}
+
+static void
 handle_GdiHfontCreate(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     ENUMLOGFONTEXDVW dvw;
@@ -5092,6 +5132,8 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
         handle_UserCreateAcceleratorTable(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserCopyAcceleratorTable)) {
         handle_UserCopyAcceleratorTable(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_UserSetScrollInfo)) {
+        handle_UserSetScrollInfo(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiCreatePaletteInternal)) {
         /* Entry would read: {0,cEntries * 4  + 4,R,} but see comment in ntgdi.h */
         if (ii->arg->pre) {
