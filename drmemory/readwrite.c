@@ -3961,7 +3961,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
         } else
             STATS_INC(slowpath_unaligned);
         DOLOG(3, {
-            char buf[256];
+            char buf[MAX_SYMBOL_LEN + MAX_FILENAME_LEN*2/*extra for PRINT_ABS_ADDRESS*/];
             size_t sofar = 0;
             umbra_shadow_memory_info_t info;
             umbra_shadow_memory_info_init(&info);
