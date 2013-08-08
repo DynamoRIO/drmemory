@@ -804,3 +804,12 @@ UNINITIALIZED READ
 name=default i#1302 SockSocket EA
 system call NtCreateFile parameter #9
 MSWSOCK.dll!SockSocket 
+
+##################################################
+# i#1303: real bug in ATL
+
+UNINITIALIZED READ
+name=default i#1303 real ATL bug
+KERNEL32.dll!MulDiv
+*!ATL::AtlPixelToHiMetric
+*!ATL::CAxHostWindow::OnSize
