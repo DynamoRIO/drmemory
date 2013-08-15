@@ -1796,8 +1796,7 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
     /* Mark this after client_remove_malloc_pre so client can iterate
      * and see the alloc as currently-live, matching wrapping behavior.
      */
-    if (!TEST(CHUNK_MMAP, head->flags))
-        head->flags |= CHUNK_FREED;
+    head->flags |= CHUNK_FREED; /* even if CHUNK_MMAP, so a client iter will skip */
 
     client_remove_malloc_post(&info);
 
@@ -1989,12 +1988,14 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
         chunk_header_t *head = header_from_mmap_base(iter_arena_start);
-        header_to_info(head, &info, NULL, 0);
-        ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
-        LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
-            info.base + chunk_request_size(head));
-        if (!data->cb(&info, data->data))
-            return false;
+        if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
+            header_to_info(head, &info, NULL, 0);
+            ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
+            LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
+                info.base + chunk_request_size(head));
+            if (!data->cb(&info, data->data))
+                return false;
+        }
     }
 
     if (TEST(HEAP_PRE_US, flags) || !TEST(HEAP_ARENA, flags))
