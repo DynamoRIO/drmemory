@@ -333,7 +333,13 @@ client_remove_malloc_post(malloc_info_t *info);
 void
 client_handle_malloc(void *drcontext, malloc_info_t *info, dr_mcontext_t *mc);
 
-/* for_reuse indicates whether the freed memory might be reused at any time */
+/* for_reuse indicates whether the freed memory might be reused at any time.
+ * For an in-place realloc (the old and new bases are the same), the routines
+ * client_{remove,add}_malloc_{pre,post} will not be called.
+ * For an out-of-place realloc, client_{remove,add}_malloc_{pre,post} will
+ * be called prior to this routine, but client_handle_{free,malloc} will not
+ * be called.
+ */
 void
 client_handle_realloc(void *drcontext, malloc_info_t *old_info,
                       malloc_info_t *new_info, bool for_reuse, dr_mcontext_t *mc);

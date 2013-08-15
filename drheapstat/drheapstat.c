@@ -615,7 +615,7 @@ take_snapshot(void)
  */
 static void
 account_for_bytes_pre(per_callstack_t *per, int asked_for,
-                      int extra_usable, int extra_occupied)
+                      int extra_usable, int extra_occupied, bool realloc)
 {
     /* must be synched w/ take_snapshot().  the malloc lock is always acquired
      * before the snapshot lock.
@@ -636,14 +636,16 @@ account_for_bytes_pre(per_callstack_t *per, int asked_for,
             ASSERT(per->prev_used == NULL, "prev_used should already be null");
             snaps[snap_idx].used = per->used;
         }
-        per->used->instances++;
+        if (!realloc)
+            per->used->instances++;
         snaps[snap_idx].tot_mallocs++;
     } else {
         ASSERT(asked_for+extra_usable < 0, "cannot have 0-sized usable space");
         ASSERT(per->used != NULL, "alloc must exist");
         ASSERT(per->used->instances > 0, "alloc count must be >= 0");
         ASSERT(snaps[snap_idx].tot_mallocs > 0, "alloc count must be >= 0");
-        per->used->instances--;
+        if (!realloc)
+            per->used->instances--;
         snaps[snap_idx].tot_mallocs--;
     }
     per->used->bytes_asked_for += asked_for;
@@ -802,7 +804,7 @@ client_add_malloc_pre(malloc_info_t *info, dr_mcontext_t *mc, app_pc post_call)
 #ifdef X64
     /* FIXME: assert not truncating */
 #endif
-    account_for_bytes_pre(per, info->request_size, info->pad_size, HEADER_SIZE);
+    account_for_bytes_pre(per, info->request_size, info->pad_size, HEADER_SIZE, false);
 
 #ifdef STATISTICS
     if (((malloc_count++) % STATS_DUMP_FREQ) == 0)
@@ -836,7 +838,7 @@ client_remove_malloc_pre(malloc_info_t *info)
     check_for_peak();
     dr_mutex_unlock(snapshot_lock);
     account_for_bytes_pre(per, -(ssize_t)info->request_size, -(ssize_t)info->pad_size,
-                          -(ssize_t)(HEADER_SIZE));
+                          -(ssize_t)(HEADER_SIZE), false);
     if (options.staleness)
         staleness_free_per_alloc((stale_per_alloc_t *)info->client_data);
 }
@@ -920,6 +922,24 @@ void
 client_handle_realloc(void *drcontext, malloc_info_t *old_info, malloc_info_t *new_info,
                       bool for_reuse, dr_mcontext_t *mc)
 {
+    /* We only need to act on an in-place realloc, as an out-of-place realloc
+     * will have already called client_{remove,add}_malloc_{pre,post}.
+     */
+    if (new_info->base == old_info->base) {
+        per_callstack_t *per = get_cstack_from_alloc_data(new_info->client_data);
+        ssize_t delta_req = (ssize_t)new_info->request_size - old_info->request_size;
+        ssize_t delta_pad = (ssize_t)new_info->pad_size - old_info->pad_size;
+        ssize_t delta_head = 0;
+        if (delta_req < 0) {
+            /* Just like on a free we check for a drop in the peak */
+            dr_mutex_lock(snapshot_lock);
+            check_for_peak();
+            dr_mutex_unlock(snapshot_lock);
+        }
+        account_for_bytes_pre(per, delta_req, delta_pad, delta_head, true/*realloc*/);
+        account_for_bytes_post(delta_req, delta_pad, 0);
+    }
+
     if (options.check_leaks)
         leak_handle_alloc(drcontext, new_info->base, new_info->request_size);
 }
