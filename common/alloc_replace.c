@@ -471,16 +471,6 @@ exit_client_code(void *drcontext, bool in_app_mode)
     zero_stack(ZERO_APP_STACK_SZ);
 }
 
-#ifdef DEBUG
-static bool
-on_app_stack(void)
-{
-    reg_t xsp, xbp;
-    get_stack_registers(&xsp, &xbp);
-    return !dr_memory_is_dr_internal((byte *)xsp);
-}
-#endif
-
 /* i#900: we need to mark an app lock acquisition as a safe spot.
  * This is made possible by drwrap_replace_native() using a continuation
  * strategy rather than returning to the code cache.
@@ -2027,8 +2017,9 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     return true;
 }
 
-/* We assume this is called from a client context and thus we can grab
- * DR locks.  We try to check for this via !on_app_stack().
+/* This will end up grabbing DR locks (iterator_lock()) but that's fine even
+ * in an app context, as it's not while we're marked safe-to-suspend and
+ * it's only in our own code.
  */
 static void
 alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
@@ -2043,14 +2034,6 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
     alloc_iter_data_t data = {only_live, cb, iter_data};
     uint i;
     malloc_info_t info;
-
-    /* The aborting case is dr_exit_process() on OOM.
-     * The nudge thread case is a nudge leak scan, where the nudge thread's stack
-     * is not marked as DR memory (i#1215).
-     */
-    ASSERT(!on_app_stack() ||
-           IF_WINDOWS(dr_is_nudge_thread(dr_get_current_drcontext()) ||)
-           aborting, "should be called from client context");
 
     LOG(2, "%s\n", __FUNCTION__);
 
