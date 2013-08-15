@@ -28,9 +28,9 @@ find_package(DrMemoryFramework PATHS ${framework_dir})
 add_library(drstracelib SHARED drstrace.c)
 
 # We share the framework version # for now
-set_target_properties(${client_target} PROPERTIES VERSION ${DRMF_VERSION})
+set_target_properties(drstracelib PROPERTIES VERSION ${DRMF_VERSION})
 
-set_property(TARGET ${client_target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+set_property(TARGET drstracelib PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 set_target_properties(drstracelib PROPERTIES
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")

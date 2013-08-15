@@ -3151,8 +3151,8 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 #endif
 
     if (modname != NULL &&
-        (strcmp(modname, "drmemorylib.dll") == 0 ||
-         strcmp(modname, "dynamorio.dll") == 0))
+        (strcmp(modname, DYNAMORIO_LIBNAME) == 0 ||
+         strcmp(modname, DRMEMORY_LIBNAME) == 0))
         search_syms = false;
 
 #ifdef WINDOWS

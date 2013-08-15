@@ -108,6 +108,9 @@
 #define TESTANY TEST
 #define TESTALL(mask, var) (((mask) & (var)) == (mask))
 
+#define EXPANDSTR(x) #x
+#define STRINGIFY(x) EXPANDSTR(x)
+
 #ifdef WINDOWS
 # define inline __inline
 # define INLINE_FORCED __forceinline
@@ -160,7 +163,10 @@
 
 /* Names meant for use in text_matches_pattern() where wildcards are supported */
 #define DYNAMORIO_LIBNAME IF_WINDOWS_ELSE("dynamorio.dll","libdynamorio.so*")
-#define DRMEMORY_LIBNAME IF_WINDOWS_ELSE("drmemorylib.dll","libdrmemory.so*")
+/* CLIENT_LIBNAME is assumed to be set as a preprocessor define */
+#define CLIENT_LIBNAME_BASE STRINGIFY(CLIENT_LIBNAME)
+#define DRMEMORY_LIBNAME \
+    IF_WINDOWS_ELSE(CLIENT_LIBNAME_BASE ".dll", "lib" CLIENT_LIBNAME_BASE ".so*")
 
 #define MAX_INSTR_SIZE 17
 
@@ -439,9 +445,6 @@ extern int tls_idx_util;
 
 #define PRE instrlist_meta_preinsert
 #define PREXL8 instrlist_preinsert
-
-#define EXPANDSTR(x) #x
-#define STRINGIFY(x) EXPANDSTR(x)
 
 #define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
 #define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))
