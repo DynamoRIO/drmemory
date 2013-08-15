@@ -807,9 +807,11 @@ MSWSOCK.dll!SockSocket
 
 ##################################################
 # i#1303: real bug in ATL
+# Static link has an ATL:: prefix, but dynamic link with ATL.dll
+# does not.  Dynamic w/o symbols has an unreliable second frame,
+# so we do not include static's "*!ATL::CAxHostWindow::OnSize".
 
 UNINITIALIZED READ
 name=default i#1303 real ATL bug
 KERNEL32.dll!MulDiv
-*!ATL::AtlPixelToHiMetric
-*!ATL::CAxHostWindow::OnSize
+*!*AtlPixelToHiMetric
