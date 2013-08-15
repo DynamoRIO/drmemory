@@ -1780,9 +1780,6 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
 
     check_type_match(ptr, head, free_type, flags, mc, caller);
 
-    if (!TEST(CHUNK_MMAP, head->flags))
-        head->flags |= CHUNK_FREED;
-
     /* current model is to throw the data away when we put on free list.
      * would we ever want to keep the alloc callstack for freed entries,
      * or we always want to replace w/ free callstack?
@@ -1795,6 +1792,13 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
         head->user_data = NULL;
     } else
         head->user_data = client_malloc_data_to_free_list(head->user_data, mc, caller);
+
+    /* Mark this after client_remove_malloc_pre so client can iterate
+     * and see the alloc as currently-live, matching wrapping behavior.
+     */
+    if (!TEST(CHUNK_MMAP, head->flags))
+        head->flags |= CHUNK_FREED;
+
     client_remove_malloc_post(&info);
 
     /* we ignore the return value */

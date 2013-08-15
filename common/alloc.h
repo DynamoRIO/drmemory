@@ -301,8 +301,7 @@ client_malloc_data_to_free_list(void *cur_data, dr_mcontext_t *mc, app_pc post_c
 void *
 client_malloc_data_free_split(void *cur_data);
 
-/* A lock is held around the call to this routine.
- * The return value is stored as the client data.
+/* The return value is stored as the client data.
  * In some cases this routine is re-called for an entry that has
  * already had its data set: in such cases, info->client_data is non-NULL.
  * For all new entries, mc and post_call will be non-NULL, unless
@@ -318,15 +317,13 @@ client_add_malloc_pre(malloc_info_t *info, dr_mcontext_t *mc, app_pc post_call);
 void
 client_add_malloc_post(malloc_info_t *info);
 
-/* A lock is held around the call to this routine.
- * The alloc entry has NOT been removed from the alloc hashtable yet and
- * WILL show up in hashtable iteration: use client_remove_malloc_post for
- * a proper hashtable view.
+/* The alloc entry has NOT been freed yet and WILL show up in
+ * malloc iteration: use client_remove_malloc_post to avoid this.
  */
 void
 client_remove_malloc_pre(malloc_info_t *info);
 
-/* Called after the alloc entry has been removed from the alloc hashtable.
+/* Called after the alloc entry has been freed.
  * The client data has been freed and so is not available.
  */
 void
