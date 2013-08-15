@@ -1469,6 +1469,8 @@ instr_needs_all_srcs_and_vals(instr_t *inst)
  * relies on it).  It's painful to go backward though (we'd have to walk
  * the bb table to find start of bb) so we just look for "and D->B, xor B->C"
  * and mark B and C defined which is a reasonable compromise.
+ * i#878: handle the "mov C->B, xor A->B, and D->B, xor C->B" sequence, for
+ * which we look for "and D->B, xor C->B"
  */
 static bool
 check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
@@ -1491,18 +1493,9 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
         opnd_t and_dst = instr_get_dst(inst, 0);
         opnd_t xor_src = instr_get_src(&xor, 0);
         opnd_t xor_dst = instr_get_dst(&xor, 0);
-        if (opnd_same(xor_src, and_dst) &&
+        if ((opnd_same(xor_src, and_dst) || opnd_same(xor_dst, and_dst)) &&
             /* Rule out: 1) nop; 2) xor where B and C are not completely separate */
-            !opnd_share_reg(xor_dst, xor_src) &&
-            /* Rule out OP_and's operands affecting base/index of xor (so we can
-             * rely on opnd_compute_address() below), or D==C.
-             */
-            ((opnd_is_memory_reference(xor_dst) &&
-              opnd_is_memory_reference(and_src)) ||
-             !opnd_share_reg(xor_dst, and_src)) &&
-            ((opnd_is_memory_reference(xor_dst) &&
-              opnd_is_memory_reference(and_dst)) ||
-             !opnd_share_reg(xor_dst, and_dst))) {
+            !opnd_share_reg(xor_dst, xor_src)) {
             int i;
             /* XXX: in debug build try to go backward and verify the prior mov,xor
              * instrs to find out whether any other patterns match this tail end.
@@ -1515,16 +1508,30 @@ check_xor_bitfield(void *drcontext, dr_mcontext_t *mc, instr_t *inst,
                     shadow_vals[i] = SHADOW_DEFINED;
             }
             /* Eflags will be marked defined since shadow_vals is all defined */
-            /* Now we need to set the xor dst */
+            /* i#878: we mark both xor dst and xor src b/c this pattern match code
+             * is executed at the OP_and and marking dst defined doesn't help b/c
+             * the xor then executes and propagates the uninit bits from the src.
+             */
+            if (opnd_is_reg(xor_src))
+                register_shadow_mark_defined(opnd_get_reg(xor_src));
             if (opnd_is_reg(xor_dst))
                 register_shadow_mark_defined(opnd_get_reg(xor_dst));
             else {
                 ASSERT(opnd_is_memory_reference(xor_dst), "invalid xor dst");
                 /* No need for adjust_memop: not a push or pop */
-                /* We checked above that xor_dst does not use any regs in OP_and opnds */
-                shadow_set_non_matching_range(opnd_compute_address(xor_dst, mc),
-                                              opnd_get_size(xor_dst), SHADOW_DEFINED,
-                                              SHADOW_UNADDRESSABLE);
+                /* Rule out OP_and's operands affecting base/index of xor (so we can
+                 * rely on opnd_compute_address() below), or D==C.
+                 */
+                if (((opnd_is_memory_reference(xor_dst) &&
+                      opnd_is_memory_reference(and_src)) ||
+                     !opnd_share_reg(xor_dst, and_src)) &&
+                    ((opnd_is_memory_reference(xor_dst) &&
+                      opnd_is_memory_reference(and_dst)) ||
+                     !opnd_share_reg(xor_dst, and_dst))) {
+                    shadow_set_non_matching_range(opnd_compute_address(xor_dst, mc),
+                                                  opnd_get_size(xor_dst), SHADOW_DEFINED,
+                                                  SHADOW_UNADDRESSABLE);
+                }
             }
         }
     }
