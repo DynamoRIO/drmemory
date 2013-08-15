@@ -743,12 +743,17 @@ endif (WIN32)
 
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests ""
-  "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt" "" OFF "")
+  "-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+  # i#1309: turn off some DR debug checking to speed up the test, as it times out
+  # on Dr. Heapstat w/ online symbolization.
+  "-checklevel 1" OFF "")
 # Ensure ctest itself doesn't time out app_suite (it can take >60s on the bots):
 set_tests_properties(app_suite PROPERTIES TIMEOUT 120)
-newtest_nobuild(app_suite.pattern app_suite_tests ""
-  "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
-  "" OFF "")
+if (TOOL_DR_MEMORY)
+  newtest_nobuild(app_suite.pattern app_suite_tests ""
+    "-unaddr_only;-suppress;{DRMEMORY_CTEST_SRC_DIR}/app_suite/default-suppressions.txt"
+    "" OFF "")
+endif ()
 
 # framework subdir is added at top level b/c wants DR cflags
 
