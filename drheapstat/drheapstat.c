@@ -2111,9 +2111,8 @@ event_exit(void)
     if (options.staleness)
         malloc_iterate(alloc_itercb_exit, NULL);
 
-    heap_region_exit();
-
     alloc_exit(); /* must be before deleting alloc_stack_table */
+    heap_region_exit(); /* must be after alloc_exit */
     LOG(1, "final alloc stack table size: %u bits, %u entries\n",
         alloc_stack_table.table_bits, alloc_stack_table.entries);
     hashtable_delete(&alloc_stack_table);
@@ -2253,18 +2252,9 @@ dr_init(client_id_t client_id)
      * the alloc_stack_table, so no refcounts
      */
 
-    memset(&alloc_ops, 0, sizeof(alloc_ops));
-    alloc_ops.track_allocs = true;
-    alloc_ops.track_heap = true;
-    alloc_ops.redzone_size = 0; /* no redzone */
-    alloc_ops.size_in_redzone = false;
-    alloc_ops.record_allocs = true;
-    alloc_ops.get_padded_size = true;
-    alloc_ops.cache_postcall = false;
-    alloc_ops.intercept_operators = false;
-    alloc_ops.conservative = options.conservative;
-    alloc_ops.global_lock = true; /* we want to serialize w/ our snapshots */
-    alloc_init(&alloc_ops, sizeof(alloc_ops));
+    /* must be before heap_walk() and alloc_init() */
+    if (options.check_leaks || options.staleness)
+        shadow_init();
 
     hashtable_init_ex(&alloc_stack_table, ASTACK_TABLE_HASH_BITS, HASH_CUSTOM,
                       false/*!str_dup*/, false/* !synch; + higher-level synch covered
@@ -2287,9 +2277,19 @@ dr_init(client_id_t client_id)
                       (bool (*)(void*, void*)) md5_digests_equal);
 #endif
 
-    /* must be before heap_walk() */
-    if (options.check_leaks || options.staleness)
-        shadow_init();
+    memset(&alloc_ops, 0, sizeof(alloc_ops));
+    alloc_ops.track_allocs = true;
+    alloc_ops.track_heap = true;
+    alloc_ops.redzone_size = 0; /* no redzone */
+    alloc_ops.size_in_redzone = false;
+    alloc_ops.record_allocs = true;
+    alloc_ops.get_padded_size = true;
+    alloc_ops.cache_postcall = false;
+    alloc_ops.intercept_operators = false;
+    alloc_ops.conservative = options.conservative;
+    alloc_ops.global_lock = true; /* we want to serialize w/ our snapshots */
+    alloc_ops.replace_malloc = true;
+    alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     /* must be after heap_region_init and snapshot_init */
     heap_walk();
