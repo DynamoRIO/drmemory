@@ -2652,6 +2652,10 @@ destroy_Rtl_heap(arena_header_t *arena, dr_mcontext_t *mc, bool free_chunks)
                      * a simple no-delay policy on the frees
                      */
                     header_to_info(head, &info, NULL, 0);
+                    client_remove_malloc_pre(&info);
+                    client_remove_malloc_post(&info);
+                    if (head->user_data != NULL)
+                        client_malloc_data_free(head->user_data);
                     client_handle_free(&info, info.base, mc,
                                        (app_pc)replace_RtlDestroyHeap, NULL,
                                        true/*not delayed*/ _IF_WINDOWS((HANDLE)arena));
