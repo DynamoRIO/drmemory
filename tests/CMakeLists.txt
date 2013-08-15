@@ -439,6 +439,46 @@ newtest(patterns patterns.c)
 if (UNIX)
   newtest(signal signal.c)
   newtest(unix_syscalls unix_syscalls.c)
+
+  ##################################################
+  # kernel module
+  set(kmod_name kernel_module)
+  set(kmod_bin_dir "${CMAKE_CURRENT_BINARY_DIR}/${kmod_name}")
+  set(kmod_src_dir "${CMAKE_CURRENT_SOURCE_DIR}")
+  set(kmod_bin "${kmod_name}.ko")
+  set(kmod_src "${kmod_name}.c")
+  set(kernel_dir "/lib/modules/${CMAKE_SYSTEM_VERSION}/build" )
+  set(kbuild_cmd ${CMAKE_MAKE_PROGRAM}
+      -C ${kernel_dir}
+      M=${kmod_bin_dir}
+      modules)
+  # Creates the dir automatically
+  file(WRITE ${kmod_bin_dir}/Kbuild
+      "obj-m += ${kmod_name}.o")
+
+  add_custom_command(OUTPUT "${kmod_bin_dir}/${kmod_src}"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+      "${kmod_src_dir}/${kmod_src}"
+      "${kmod_bin_dir}")
+  add_custom_command(OUTPUT "${kmod_bin}"
+      COMMAND ${kbuild_cmd}
+      WORKING_DIRECTORY "${kmod_bin_dir}"
+      DEPENDS "${kmod_bin_dir}/${kmod_src}"
+      "${kmod_bin_dir}/Kbuild"
+      VERBATIM)
+  add_custom_target("${kmod_name}"
+      DEPENDS "${kmod_bin}")
+  add_dependencies(unix_syscalls "${kmod_name}")
+  set(kmod_build_files "${kmod_bin_dir}/modules.order"
+      "${kmod_bin_dir}/Module.symvers"
+      "${kmod_bin_dir}/${kmod_name}.c"
+      "${kmod_bin_dir}/${kmod_name}.o"
+      "${kmod_bin_dir}/${kmod_name}.ko"
+      "${kmod_bin_dir}/${kmod_name}.mod.c"
+      "${kmod_bin_dir}/${kmod_name}.mod.o")
+  set_directory_properties(PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "${kmod_build_files}")
+  ##################################################
+
   target_link_libraries(signal m)
   if (NOT VMKERNEL)
     # PR 468352: SYS_clone w/o CLONE_SETTLS not supported on ESXi

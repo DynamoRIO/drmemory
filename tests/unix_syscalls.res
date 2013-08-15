@@ -19,7 +19,13 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 10 byte(s)
-unix_syscalls.c:63
+unix_syscalls.c:65
 
 Error #2: UNINITIALIZED READ: reading 10 byte(s)
-unix_syscalls.c:82
+unix_syscalls.c:84
+
+Error #3: UNADDRESSABLE ACCESS: reading 12 byte(s)
+unix_syscalls.c:160
+
+Error #4: UNINITIALIZED READ: reading 6 byte(s)
+unix_syscalls.c:149

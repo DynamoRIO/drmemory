@@ -27,8 +27,10 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 
 #define BUFSZ 1024
+#define MAX_PATH 1024
 
 #define CHECKERRNO() do { \
     if (errno) { \
@@ -90,6 +92,9 @@ void access_filesystem(void)
     char buf[BUFSZ];
     int n;
 
+    char orig_dir[MAX_PATH];
+    getcwd(orig_dir, MAX_PATH); 
+
     errno = 0;
     chdir("/tmp/");                     CHECKERRNO();
     mkdtemp(tmpdir);                    CHECKERRNO();
@@ -115,6 +120,44 @@ void access_filesystem(void)
     unlink("qux.txt");                  CHECKERRNO();
     chdir("..");                        CHECKERRNO();
     rmdir(tmpdir);                      CHECKERRNO();
+    chdir(orig_dir);
+}
+
+void uninit_finit_module(int initialize)
+{
+    padded_str_t stack_str;
+    int fd;
+
+    char kmod_file[] = "kernel_module/kernel_module.ko";
+    fd = open(kmod_file, O_RDONLY);
+
+    if (fd == -1) {
+        printf("kernel module file not found\n");
+        return;
+    }
+
+    if (initialize) {
+        strncpy(stack_str.str, "param=dummy", 12);
+    }
+    
+    /* XXX: If root, we drop to uid of nobody,
+     * non-standard but 99 many distros */
+    if (geteuid() == 0) {
+        setuid(99);
+    }
+
+    syscall(SYS_finit_module, fd, stack_str.str, 0);
+}
+
+void unaddr_finit_module(void)
+{
+    padded_str_t *dangling_ptr;
+    dangling_ptr = malloc(sizeof(padded_str_t));
+
+    strncpy(dangling_ptr->str, "param=dummy", 12);
+    free(dangling_ptr);
+
+    syscall(SYS_finit_module, -1, dangling_ptr->str, 0);
 }
 
 int main(void)
@@ -123,6 +166,9 @@ int main(void)
     unaddr_open();
     uninit_open(1);
     uninit_open(0);
+    unaddr_finit_module();
+    uninit_finit_module(0);
+    uninit_finit_module(1);
     printf("done\n");
     return 0;
 }
