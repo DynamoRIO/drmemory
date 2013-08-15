@@ -134,6 +134,7 @@ enum {
 #ifdef WINDOWS
     CHUNK_LAYER_RTL   = MALLOC_RESERVED_8,          /* 0x0800 */
 #endif
+    CHUNK_SKIP_ITER   =                                0x1000,
 
     /* meta-flags */
 #ifdef WINDOWS
@@ -375,12 +376,20 @@ typedef enum {
     ALLOC_SYNCHRONIZE      = 0x0001, /* malloc, free, and realloc */
     ALLOC_ZERO             = 0x0002, /* malloc and realloc */
     ALLOC_IS_REALLOC       = 0x0004, /* malloc and free */
-    ALLOC_INVOKE_CLIENT    = 0x0008, /* malloc and free */
-    ALLOC_IN_PLACE_ONLY    = 0x0010, /* realloc */
-    ALLOC_ALLOW_NULL       = 0x0020, /* realloc: do not fail on NULL */
-    ALLOC_ALLOW_EMPTY      = 0x0040, /* realloc: size==0 does re-allocate */
-    ALLOC_IGNORE_MISMATCH  = 0x0080, /* free, realloc, size */
-    ALLOC_IS_QUERY         = 0x0100, /* check_type_match */
+    /* Routines that free the client_data (client_malloc_data_free(),
+     * client_handle_free_reuse()) and routines reporting on invalid
+     * heap args or OOM are called regardless of these flags' values.
+     */
+    /* Whether to invoke client_{add,remove}_malloc_{pre,post} */
+    ALLOC_INVOKE_CLIENT_DATA   = 0x0008, /* malloc and free */
+    /* Whether to invoke client_handle_{malloc,free} */
+    ALLOC_INVOKE_CLIENT_ACTION = 0x0010, /* malloc and free */
+    ALLOC_INVOKE_CLIENT    = ALLOC_INVOKE_CLIENT_DATA | ALLOC_INVOKE_CLIENT_ACTION,
+    ALLOC_IN_PLACE_ONLY    = 0x0020, /* realloc */
+    ALLOC_ALLOW_NULL       = 0x0040, /* realloc: do not fail on NULL */
+    ALLOC_ALLOW_EMPTY      = 0x0080, /* realloc: size==0 does re-allocate */
+    ALLOC_IGNORE_MISMATCH  = 0x0100, /* free, realloc, size */
+    ALLOC_IS_QUERY         = 0x0200, /* check_type_match */
 } alloc_flags_t;
 
 /***************************************************************************
@@ -688,9 +697,12 @@ notify_client_alloc(void *drcontext, byte *ptr, chunk_header_t *head,
                            head->alloc_size, false/*!pre_us*/, true/*redzone*/,
                            TEST(ALLOC_ZERO, flags), TEST(ALLOC_IS_REALLOC, flags),
                            0, head->user_data };
-    head->user_data = client_add_malloc_pre(&info, mc, caller);
-    client_add_malloc_post(&info);
-    if (TEST(ALLOC_INVOKE_CLIENT, flags)) {
+    if (TEST(ALLOC_INVOKE_CLIENT_DATA, flags)) {
+        head->user_data = client_add_malloc_pre(&info, mc, caller);
+        info.client_data = head->user_data;
+        client_add_malloc_post(&info);
+    }
+    if (TEST(ALLOC_INVOKE_CLIENT_ACTION, flags)) {
         ASSERT(drcontext != NULL, "invalid arg");
         client_handle_malloc(drcontext, &info, mc);
     }
@@ -1511,9 +1523,9 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
     return head;
 }
 
-/* ALLOC_INVOKE_CLIENT in flags only applies to successful allocation
- * and only client_handle_malloc(): client is still notified on
- * failure, and is notified of post-malloc.
+/* As noted in the flag definitions, ALLOC_INVOKE_CLIENT_* in flags
+ * only applies to successful allocation: client is still notified on failure
+ * and when client user data is freed or shifted.
  */
 static byte *
 replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t flags,
@@ -1597,7 +1609,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
         }
         if (arena == NULL)
             arena = arena_extend(last_arena, add_size);
-        if (arena == NULL) {
+        if (arena == NULL) {  /* ignore ALLOC_INVOKE_CLIENT */
             client_handle_alloc_failure(request_size, caller, mc);
             goto replace_alloc_common_done;
         }
@@ -1764,7 +1776,7 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
                 }
             }
 #endif
-            if (!valid) {
+            if (!valid) { /* call regardless of ALLOC_INVOKE_CLIENT */
                 client_invalid_heap_arg(caller, (byte *)ptr, mc,
                                         /* XXX: we might be replacing RtlHeapFree or
                                          * _free_dbg but it's not worth trying to
@@ -1785,10 +1797,11 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
      * or we always want to replace w/ free callstack?
      */
     header_to_info(head, &info, NULL, 0);
-    client_remove_malloc_pre(&info);
+    if (TEST(ALLOC_INVOKE_CLIENT_DATA, flags))
+        client_remove_malloc_pre(&info);
     if (TESTANY(CHUNK_MMAP | CHUNK_PRE_US, head->flags)) {
         if (head->user_data != NULL)
-            client_malloc_data_free(head->user_data);
+            client_malloc_data_free(head->user_data); /* ignores ALLOC_INVOKE_CLIENT */
         head->user_data = NULL;
     } else
         head->user_data = client_malloc_data_to_free_list(head->user_data, mc, caller);
@@ -1798,10 +1811,10 @@ replace_free_common(arena_header_t *arena, void *ptr, alloc_flags_t flags,
      */
     head->flags |= CHUNK_FREED; /* even if CHUNK_MMAP, so a client iter will skip */
 
-    client_remove_malloc_post(&info);
-
-    /* we ignore the return value */
-    if (TEST(ALLOC_INVOKE_CLIENT, flags)) {
+    if (TEST(ALLOC_INVOKE_CLIENT_DATA, flags))
+        client_remove_malloc_post(&info);
+    if (TEST(ALLOC_INVOKE_CLIENT_ACTION, flags)) {
+        /* we ignore the return value */
         client_handle_free(&info, (byte *)ptr, mc, caller, NULL,
                            false/*reuse delayed*/ _IF_WINDOWS(NULL));
     }
@@ -1912,11 +1925,28 @@ replace_realloc_common(arena_header_t *arena, byte *ptr, size_t size,
         if (res != NULL) {
             head = header_from_ptr(res);
             memcpy(res, ptr, MIN(size, old_request_size));
+            /* Prevent client iteration in client_remove_malloc_{pre,post} from
+             * seeing the new alloc and complaining that it has not yet had
+             * client_add_malloc_{pre,post} called on it yet.
+             */
+            head->flags |= CHUNK_SKIP_ITER;
             replace_free_common(arena, ptr,
-                                sub_flags /*no client */ | ALLOC_IS_REALLOC |
+                                sub_flags | ALLOC_IS_REALLOC |
+                                /* we do want client_remove_malloc_{pre,post} as they
+                                 * must be called around the actual free -- but
+                                 * no client_handle_free()
+                                 */
+                                ALLOC_INVOKE_CLIENT_DATA /* not _ACTION */ |
                                 ALLOC_IGNORE_MISMATCH,
                                 drcontext, mc, caller, alloc_type);
+            head->flags &= ~CHUNK_SKIP_ITER;
             header_to_info(head, &new_info, NULL, flags | ALLOC_IS_REALLOC);
+            /* We delay client_add_malloc_{pre,post} until here, to avoid a client
+             * iterating inside the event and seeing both the new and old allocs!
+             */
+            notify_client_alloc(drcontext, (byte *)res, head,
+                                flags | ALLOC_IS_REALLOC | ALLOC_INVOKE_CLIENT_DATA,
+                                mc, caller);
             client_handle_realloc(drcontext, &old_info, &new_info, was_mmap, mc);
         }
     }
@@ -1972,6 +2002,13 @@ typedef struct _alloc_iter_data_t {
     void *data;
 } alloc_iter_data_t;
 
+static inline bool
+skip_chunk_in_iter(alloc_iter_data_t *data, chunk_header_t *head)
+{
+    return (data->only_live && TEST(CHUNK_FREED, head->flags)) ||
+        TEST(CHUNK_SKIP_ITER, head->flags);
+}
+
 static bool
 alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
                      _IF_WINDOWS(HANDLE heap), void *iter_data)
@@ -1988,7 +2025,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
     /* We rely on the heap region lock to avoid races accessing this */
     if (TEST(HEAP_MMAP, flags)) {
         chunk_header_t *head = header_from_mmap_base(iter_arena_start);
-        if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
+        if (!skip_chunk_in_iter(data, head)) {
             header_to_info(head, &info, NULL, 0);
             ASSERT(TEST(CHUNK_MMAP, head->flags), "mmap chunk inconsistent");
             LOG(2, "%s: "PFX"-"PFX"\n", __FUNCTION__, info.base,
@@ -2009,7 +2046,7 @@ alloc_iter_own_arena(byte *iter_arena_start, byte *iter_arena_end, uint flags
         head = header_from_ptr(cur);
         LOG(3, "\tchunk %s "PFX"-"PFX"\n", TEST(CHUNK_FREED, head->flags) ? "freed" : "",
             ptr_from_header(head), ptr_from_header(head) + head->alloc_size);
-        if (!data->only_live || !TEST(CHUNK_FREED, head->flags)) {
+        if (!skip_chunk_in_iter(data, head)) {
             header_to_info(head, &info, NULL, 0);
             if (!data->cb(&info, data->data)) {
                 iterator_unlock(arena, false/*!in alloc*/);
@@ -2057,7 +2094,7 @@ alloc_iterate(malloc_iter_cb_t cb, void *iter_data, bool only_live)
         for (he = pre_us_table.table[i]; he != NULL; he = he->next) {
             chunk_header_t *head = (chunk_header_t *) he->payload;
             byte *start = he->key;
-            if (!only_live || !TEST(CHUNK_FREED, head->flags)) {
+            if (!skip_chunk_in_iter(&data, head)) {
                 LOG(3, "\tpre-us "PFX"-"PFX"-"PFX"\n",
                     start, start + chunk_request_size(head), start + head->alloc_size);
                 header_to_info(head, &info, start, 0);
@@ -3683,8 +3720,8 @@ malloc_replace__add(app_pc start, app_pc end, app_pc real_end,
     LOG(3, "new pre-us alloc "PFX"-"PFX"-"PFX"\n", start, end, real_end);
     ASSERT(new_entry, "should be no pre-us dups");
     notify_client_alloc(NULL, start, head,
-                        0 /* no invoke: caller can do that on its own */,
-                        mc, post_call);
+                        /* no client action: caller can do that on its own */
+                        ALLOC_INVOKE_CLIENT_DATA, mc, post_call);
 }
 
 static bool
