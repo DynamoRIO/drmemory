@@ -1706,8 +1706,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
             NULL_TERMINATE_BUFFER(frame->modname);
             dr_snprintf(frame->modoffs, MAX_PFX_LEN, PIFX, offs);
             NULL_TERMINATE_BUFFER(frame->modoffs);
-            /* XXX i#926: have Dr. Heapstat do online symbolization of leak cstacks */
-#if defined(USE_DRSYMS) && defined(TOOL_DR_MEMORY)
+#ifdef USE_DRSYMS
             /* PR 543863: subtract one from retaddrs in callstacks so the line#
              * is for the call and not for the next source code line, but only
              * for symbol lookup so we still display a valid instr addr.

@@ -2832,7 +2832,6 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
 #   define CRT_HEAP_INIT_ROUTINE "_heap_init"
     INITIALIZE_MCONTEXT_FOR_REPORT(&mc);
     DOLOG(2, { report_callstack(drcontext, &mc); });
-    /* XXX optimization: we don't need to symbolize the functions */
     packed_callstack_record(&pcs, &mc, NULL/*skip replace_ frame*/);
     packed_callstack_to_symbolized(pcs, &scs);
     /* Look for 2 frames of ntdll (trying to rule out qsort or
@@ -2841,7 +2840,8 @@ check_for_CRT_heap(void *drcontext, arena_header_t *new_arena)
      */
     LOG(2, "symbolized callstack:\n");
     for (i = 0; i < scs.num_frames; i++)
-        LOG(2, "  #%d = %s\n", i, symbolized_callstack_frame_modname(&scs, i));
+        LOG(2, "  #%d = %s!%s\n", i, symbolized_callstack_frame_modname(&scs, i),
+            symbolized_callstack_frame_func(&scs, i));
     i = 0;
     /* Sometimes the replace_RtlCreateHeap still ends up on the stack */
     if (text_matches_pattern(symbolized_callstack_frame_modname(&scs, i),

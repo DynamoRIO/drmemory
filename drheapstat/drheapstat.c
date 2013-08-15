@@ -1081,6 +1081,11 @@ client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool maybe_reachable, void *client_data,
                   bool count_reachable, bool show_reachable)
 {
+    /* XXX i#926: we now have online symbolization of leak callstacks, but
+     * we're re-symbolizing in postleaks.pl until we can produce a proper
+     * error report here including suppression checking.  We should refactor
+     * Dr. Memory leak reporting (and checking) into a library for sharing.
+     */
     per_callstack_t *per = get_cstack_from_alloc_data(client_data);
     ssize_t len = 0;
     size_t sofar = 0;

@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -956,7 +956,11 @@ sub parse_error($arr_ref, $err_str)
             push @{$error{"modoffs"}}, $1;
             push @{$error{"is_module"}}, 0;
             $supp .= "$1\n";
-        } elsif ($line =~ /^#\s*\d+\s+\S+!\?\s*\((\w+)\s+(<[^>]+>)\)/) {
+        } elsif ($line =~ /^#\s*\d+\s+\S+!\?\s*\((\w+)\s+(<[^>]+>)\)/ ||
+                 # Handle Dr. Heapstat w/ symbolized callstacks: for now
+                 # we re-symbolize here for leaks, until we have i#926
+                 # and this whole script goes away.
+                 $line =~ /^#\s*\d+\s+\S+!.*\s*\((\w+)\s+(<[^>]+>)\)/) {
             if ($1 ne "0x00000000") {
                 push @{$error{"addr"}}, $1;
                 push @{$error{"modoffs"}}, $2;
