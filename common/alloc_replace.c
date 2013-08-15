@@ -250,6 +250,13 @@ static byte *pre_us_brk;
 static byte *cur_brk;
 #endif
 
+#ifdef WINDOWS
+/* For alloc_ops.global_lock (xref i#949).  Each arena's dr_lock points
+ * at this lock when alloc_ops.global_lock is true.
+ */
+static void *global_lock;
+#endif
+
 /* header at the top of each arena (an "arena" for this code is a contiguous
  * piece of memory parceled out into individual malloc "chunks")
  */
@@ -897,7 +904,10 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
          */
         dr_recurlock_mark_as_app(arena->lock);
 #ifdef WINDOWS
-        arena->dr_lock = dr_recurlock_create();
+        if (alloc_ops.global_lock)
+            arena->dr_lock = global_lock;
+        else
+            arena->dr_lock = dr_recurlock_create();
 #endif
         /* to avoid complications of storing and freeing DR heap we inline these
          * in the main arena's header
@@ -950,7 +960,8 @@ arena_free(arena_header_t *arena)
     if (TEST(ARENA_MAIN, arena->flags)) {
         dr_recurlock_destroy(arena->lock);
 #ifdef WINDOWS
-        dr_recurlock_destroy(arena->dr_lock);
+        if (!alloc_ops.global_lock)
+            dr_recurlock_destroy(arena->dr_lock);
 #endif
     }
     arena_deallocate(arena);
@@ -3864,6 +3875,11 @@ alloc_replace_init(void)
 
     hashtable_init(&pre_us_table, PRE_US_TABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
 
+#ifdef WINDOWS
+    if (alloc_ops.global_lock)
+        global_lock = dr_recurlock_create();
+#endif
+
 #ifdef LINUX
     /* we waste pre-brk space of pre-us allocator, and we assume we're
      * now completely replacing the pre-us allocator.
@@ -3993,6 +4009,9 @@ alloc_replace_exit(void)
     heap_region_iterate(free_arena_at_exit, NULL);
 
 #ifdef WINDOWS
+    if (alloc_ops.global_lock)
+        dr_recurlock_destroy(global_lock);
+
     hashtable_delete_with_stats(&crtheap_mod_table, "crtheap");
     hashtable_delete_with_stats(&crtheap_handle_table, "crtheap handles");
 #endif
