@@ -39,7 +39,11 @@
 /* for diagnostics: eventually provide some runtime option,
  * -logmask or something: for now have to modify this constant
  */
-#define SYSCALL_VERBOSE 2
+#ifdef TOOL_DR_MEMORY
+# define SYSCALL_VERBOSE 2
+#else
+# define SYSCALL_VERBOSE 3
+#endif
 
 /* syscall numbers are most natural in decimal on linux but hex on windows */
 #ifdef LINUX

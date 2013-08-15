@@ -1875,6 +1875,20 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (drsys_get_mcontext(drcontext, &mc) != DRMF_SUCCESS)
         ASSERT(false, "drsys_get_mcontext failed");
 
+    DOLOG(2, {
+        drsys_sysnum_t sysnum_full;
+        drsys_syscall_t *syscall;
+        const char *name;
+        if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
+            ASSERT(false, "shouldn't fail");
+        if (drsys_syscall_number(syscall, &sysnum_full) != DRMF_SUCCESS)
+            ASSERT(false, "drsys_get_sysnum failed");
+        if (drsys_syscall_name(syscall, &name) != DRMF_SUCCESS)
+            ASSERT(false, "drsys_syscall_name failed");
+        LOG(2, "system call #%d==%d.%d %s\n", sysnum,
+            sysnum_full.number, sysnum_full.secondary, name);
+    });
+
     handle_pre_alloc_syscall(drcontext, sysnum, mc);
 
 #ifdef LINUX
