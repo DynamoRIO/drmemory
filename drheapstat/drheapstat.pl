@@ -345,6 +345,9 @@ if ($is_unix) {
 } else {
     system(@appcmdline); # array to handle spaces in paths
     my $status = $?;
+    # Strangely I see dr_abort()'s -1 retval of 0x7f becoming 0x7f00 here so we
+    # work around it:
+    $status = -1 if ($status == 0x7f00);
     $child->join() if ($using_threads);
     exit $status;
 }
