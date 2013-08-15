@@ -540,7 +540,7 @@ alloc_itercb_snapshot(malloc_info_t *info, void *iter_data)
     return true;
 }
 
-/* The malloc lock is held by caller */
+/* The malloc lock must be held by the caller */
 stale_snap_allocs_t *
 staleness_take_snapshot(uint64 cur_stamp)
 {

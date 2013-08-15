@@ -84,7 +84,7 @@ static uint timer_real;
 /* Needed to compute the current partial snapshot (PR 548013) */
 uint64 timestamp_last_snapshot;
 
-static bool sideline_exit;
+static volatile bool sideline_exit;
 /* FIXME i#297: DR synchs + terminates our sideline thread prior to
  * calling our exit event so we have no chance to clean up its memory.
  * DR then asserts about leaks.  Using a targeted solution for now.
@@ -529,7 +529,7 @@ difference_exceeds_percent(uint64 new_val, uint64 old_val, uint percent)
 
 /* If the current snap_idx snapshot is larger than the current peak,
  * makes a new peak snapshot (PR 476018).
- * Assumes snapshot lock is held.
+ * Assumes snapshot lock and malloc_lock are held.
  */
 static void
 check_for_peak(void)
@@ -567,6 +567,7 @@ check_for_peak(void)
     }
 }
 
+/* Caller must hold malloc_lock() */
 static void
 take_snapshot(void)
 {
@@ -841,7 +842,9 @@ client_remove_malloc_pre(malloc_info_t *info)
     /* FIXME: assert not truncating */
 #endif
     /* To avoid repeatedly redoing the peak snapshot we wait until a drop (PR 476018) */
+    dr_mutex_lock(snapshot_lock);
     check_for_peak();
+    dr_mutex_unlock(snapshot_lock);
     account_for_bytes_pre(per, -(ssize_t)info->request_size, -(ssize_t)info->pad_size,
                           -(ssize_t)(HEADER_SIZE));
     if (options.staleness)
