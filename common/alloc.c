@@ -2898,11 +2898,6 @@ alloc_init(alloc_options_t *ops, size_t ops_size)
 void
 alloc_exit(void)
 {
-    /* Check for leaks.
-     * FIXME: provide a hashtable iterator instead of breaking abstraction
-     * barrier here.
-     */
-    uint i;
     if (alloc_ops.track_allocs) {
         /* Must free this before alloc_replace_exit() frees crtheap_mod_table */
         hashtable_delete_with_stats(&alloc_routine_table, "alloc routine table");
@@ -2915,28 +2910,9 @@ alloc_exit(void)
     if (!alloc_ops.track_allocs)
         return;
 
-    if (!alloc_ops.replace_malloc) {
-        malloc_info_t info;
-        LOG(1, "final malloc table size: %u bits, %u entries\n",
-            malloc_table.table_bits, malloc_table.entries);
-        /* we can't hold malloc_table.lock b/c report_leak() acquires it
-         * for malloc_get_caller()
-         */
-        for (i = 0; i < HASHTABLE_SIZE(malloc_table.table_bits); i++) {
-            hash_entry_t *he;
-            for (he = malloc_table.table[i]; he != NULL; he = he->next) {
-                malloc_entry_t *e = (malloc_entry_t *) he->payload;
-                if (MALLOC_VISIBLE(e->flags) && !malloc_entry_is_native(e)) {
-                    malloc_entry_to_info(e, &info);
-                    client_exit_iter_chunk(&info);
-                }
-            }
-        }
-    }
-
     if (alloc_ops.track_allocs) {
         if (!alloc_ops.replace_malloc)
-            hashtable_delete(&malloc_table);
+            hashtable_delete_with_stats(&malloc_table, "malloc table");
         rb_tree_destroy(large_malloc_tree);
         dr_mutex_destroy(large_malloc_lock);
 #ifdef USE_DRSYMS

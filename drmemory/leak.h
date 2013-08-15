@@ -81,11 +81,6 @@ leak_scan_for_leaks(bool at_exit);
 void
 leak_handle_alloc(void *drcontext, app_pc base, size_t size);
 
-/* User must call from client_exit_iter_chunk() */
-void
-leak_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
-                     void *client_data);
-
 #ifdef WINDOWS
 /* User must call from client_remove_malloc_on_destroy() */
 void

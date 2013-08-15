@@ -276,16 +276,6 @@ leak_handle_alloc(void *drcontext, app_pc base, size_t size)
 #endif
 }
 
-/* User must call from client_exit_iter_chunk() */
-void
-leak_exit_iter_chunk(app_pc start, app_pc end, bool pre_us, uint client_flags,
-                     void *client_data)
-{
-    /* we now need our reachability_data_t passed in so we must do
-     * our own post-leak-scan iter instead of using the exit-time iter
-     */
-}
-
 #ifdef WINDOWS
 /* User must call from client_remove_malloc_on_destroy() */
 void

@@ -280,10 +280,6 @@ alloc_replace_overlaps_malloc(byte *start, byte *end,
  * CLIENT CALLBACKS
  */
 
-/* called for each live malloc chunk at process exit */
-void                                                             
-client_exit_iter_chunk(malloc_info_t *info);
-
 /* called when malloc chunk data is being free so user data can also be freed */
 void
 client_malloc_data_free(void *data);

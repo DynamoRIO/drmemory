@@ -2467,18 +2467,6 @@ handle_removed_heap_region(app_pc start, app_pc end, dr_mcontext_t *mc)
  */
 
 void
-client_exit_iter_chunk(malloc_info_t *mal)
-{
-    /* don't report leaks if we never scanned (could have bailed for PR 574018) */
-    if (!options.track_allocs)
-        return;
-    if (options.count_leaks) {
-        leak_exit_iter_chunk(mal->base, mal->base + mal->request_size, mal->pre_us,
-                             mal->client_flags, mal->client_data);
-    }
-}
-
-void
 client_found_leak(app_pc start, app_pc end, size_t indirect_bytes,
                   bool pre_us, bool reachable,
                   bool maybe_reachable, void *client_data,

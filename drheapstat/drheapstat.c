@@ -317,16 +317,6 @@ get_cstack_from_alloc_data(void *client_data)
 }
 
 void
-client_exit_iter_chunk(malloc_info_t *info)
-{
-    if (options.check_leaks)
-        leak_exit_iter_chunk(info->base, info->base + info->request_size,
-                             info->pre_us, info->client_flags, info->client_data);
-    if (options.staleness)
-        staleness_free_per_alloc((stale_per_alloc_t *)info->client_data);
-}
-
-void
 alloc_callstack_free(void *p)
 {
     per_callstack_t *per = (per_callstack_t *) p;
@@ -2071,6 +2061,14 @@ event_thread_exit(void *drcontext)
     thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
 }
 
+static bool
+alloc_itercb_exit(malloc_info_t *info, void *iter_data)
+{
+    if (options.staleness)
+        staleness_free_per_alloc((stale_per_alloc_t *)info->client_data);
+    return true;
+}
+
 static void 
 event_exit(void)
 {
@@ -2090,7 +2088,11 @@ event_exit(void)
         leak_exit();
     }
 
+    if (options.staleness)
+        malloc_iterate(alloc_itercb_exit, NULL);
+
     heap_region_exit();
+
     alloc_exit(); /* must be before deleting alloc_stack_table */
     LOG(1, "final alloc stack table size: %u bits, %u entries\n",
         alloc_stack_table.table_bits, alloc_stack_table.entries);
