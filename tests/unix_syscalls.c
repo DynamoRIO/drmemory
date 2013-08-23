@@ -27,7 +27,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include <sys/syscall.h>
+#include "sysnum_linux.h"
 
 #define BUFSZ 1024
 #define MAX_PATH 1024
