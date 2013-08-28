@@ -56,6 +56,7 @@ static const char *op_srcfile_hide;
 static void (*op_missing_syms_cb)(const char *);
 static bool op_old_retaddrs_zeroed;
 static const char *op_tool_lib_ignore;
+static const char *op_system_mod_pattern;
 #ifdef DEBUG
 static uint op_callstack_dump_stack;
 #endif
@@ -167,6 +168,8 @@ typedef struct _modname_info_t {
     uint id;
     /* i#589: don't show module! for executable or other modules */
     bool hide_modname;
+    /* i#1310: distinguish system from app libs */
+    bool is_system;
     /* Avoid repeated warnings about symbols */
     bool warned_no_syms;
 } modname_info_t;
@@ -271,6 +274,8 @@ struct _symbolized_frame_t {
     bool is_module;
     /* i#589: don't show module! for executable or other modules */
     bool hide_modname;
+    /* i#1310: distinguish system from app libs */
+    bool is_system;
     /* i#635 i#603: Print offsets for frames without symbols. */
     bool has_symbols;
     /* i#446: Unique id of the module. */
@@ -328,7 +333,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_srcfile_prefix,
                void (*missing_syms_cb)(const char *),
                bool old_retaddrs_zeroed,
-               const char *tool_lib_ignore
+               const char *tool_lib_ignore,
+               const char *system_mod_pattern
                _IF_DEBUG(uint callstack_dump_stack))
 {
     tls_idx_callstack = drmgr_register_tls_field();
@@ -349,6 +355,7 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
     op_missing_syms_cb = missing_syms_cb;
     op_old_retaddrs_zeroed = old_retaddrs_zeroed;
     op_tool_lib_ignore = tool_lib_ignore;
+    op_system_mod_pattern = system_mod_pattern;
 #ifdef DEBUG
     op_callstack_dump_stack = callstack_dump_stack;
 #endif
@@ -474,6 +481,7 @@ init_symbolized_frame(symbolized_frame_t *frame OUT, uint frame_num)
     memset(&frame->loc, 0, sizeof(frame->loc));
     frame->is_module = false;
     frame->hide_modname = false;
+    frame->is_system = false;
     frame->has_symbols = false;
     frame->modid = 0;
     frame->modbase = NULL;
@@ -866,6 +874,7 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
                 "<name unavailable>" : name_info->name;
             frame->is_module = true;
             frame->hide_modname = name_info->hide_modname;
+            frame->is_system = name_info->is_system;
             frame->modbase = mod_start;
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
             NULL_TERMINATE_BUFFER(frame->modname);
@@ -1700,6 +1709,7 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
                 "<name unavailable>" : info->name;
             frame->is_module = true;
             frame->hide_modname = info->hide_modname;
+            frame->is_system = info->is_system;
             frame->modid = info->id;
             /* Lazily compute frame->modbase so leave it NULL here */
             dr_snprintf(frame->modname, MAX_MODULE_LEN, "%s", modname);
@@ -2049,6 +2059,15 @@ symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame)
     return scs->frames[frame].func;
 }
 
+bool
+symbolized_callstack_frame_is_system(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return false;
+    return scs->frames[frame].is_system;
+}
+
 /***************************************************************************
  * MODULES
  */
@@ -2087,6 +2106,11 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->hide_modname =
             (op_modname_hide != NULL &&
              text_matches_any_pattern(name_info->name, op_modname_hide, IGNORE_FILE_CASE));
+        /* we cache this value to avoid re-matching on every frame */
+        name_info->is_system =
+            (op_system_mod_pattern != NULL && name_info->path != NULL &&
+             text_matches_any_pattern(name_info->path, op_system_mod_pattern,
+                                      IGNORE_FILE_CASE));
         name_info->warned_no_syms = false;
         hashtable_add(&modname_table, (void*)name_info->path, (void*)name_info);
         /* We need an entry for every 16M of module size */
@@ -2103,7 +2127,8 @@ add_new_module(void *drcontext, const module_data_t *info)
                 name_info->index = -1;
                 break;
             }
-            LOG(2, "modname_array %d = %s\n", modname_array_end, name);
+            LOG(2, "modname_array %d = %s%s\n", modname_array_end, name,
+                name_info->is_system ? " (system lib)" : " (app lib)");
             modname_array[modname_array_end] = name_info;
             modname_array_end++;
             if (sz <= MAX_MODOFFS_STORED)

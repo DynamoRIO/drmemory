@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -32,6 +32,7 @@ bool op_ignore_asserts = true;
 file_t f_global = INVALID_FILE;
 int tls_idx_util = -1;
 file_t f_results = INVALID_FILE;
+file_t f_potential = INVALID_FILE;
 
 typedef int heapstat_t;
 

@@ -2245,7 +2245,8 @@ dr_init(client_id_t client_id)
                    IF_WINDOWS_ELSE(is_in_seh_unwind, NULL),
                    NULL, NULL, NULL, NULL, NULL,
                    options.zero_retaddr,
-                   IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*")
+                   IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*"),
+                   NULL
                    _IF_DEBUG(0));
     heap_region_init(client_heap_add, client_heap_remove);
     /* We keep callstacks around forever and only free when we delete

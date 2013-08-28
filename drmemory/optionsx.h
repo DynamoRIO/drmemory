@@ -247,6 +247,12 @@ OPTION_CLIENT_STRING(client, callstack_srcfile_hide, "",
 OPTION_CLIENT_STRING(client, callstack_srcfile_prefix, "",
                      ",-separated list of path prefixes to remove",
                      "Callstack frame source paths that match any of these ,-separated prefixes will be printed without the leading portion up to and including the match.")
+OPTION_CLIENT_STRING(client, report_blacklist, "",
+                     ",-separated list of path patterns to treat as non-app libs",
+                     "Error reports whose top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -blacklist_num_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -blacklist_num_frames is 0.  Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
+OPTION_CLIENT(client, blacklist_num_frames, uint, 4, 0, 16384,
+                     "The number of frames to match vs -report_blacklist",
+                     "The number of frames, starting from the top, that must match -report_blacklist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables all error separation.")
 # endif
 #endif
 
@@ -364,10 +370,10 @@ OPTION_CLIENT_SCOPE(drmemscope, redzone_size, uint, 16, 0, 32*1024,
                     "Buffer on either side of each malloc.  This should be a multiple of 8.")
 OPTION_CLIENT_SCOPE(drmemscope, report_max, int, 20000, -1, INT_MAX,
                     "Maximum non-leak errors to report (-1=no limit)",
-                    "Maximum non-leak errors to report (-1=no limit).")
+                    "Maximum non-leak errors to report (-1=no limit).  This includes 'potential' errors listed separately.")
 OPTION_CLIENT_SCOPE(drmemscope, report_leak_max, int, 10000, -1, INT_MAX,
                     "Maximum leaks to report (-1=no limit)",
-                    "Maximum leaks to report (-1=no limit).")
+                    "Maximum leaks to report (-1=no limit).  This includes 'potential' leaks listed separately.")
 OPTION_CLIENT_BOOL(drmemscope, show_duplicates, false,
                    "Print details on each duplicate error",
                    "Print details on each duplicate error rather than only showing unique error details")

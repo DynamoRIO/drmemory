@@ -86,6 +86,7 @@ file_t f_fork = INVALID_FILE;
 file_t f_results;
 file_t f_missing_symbols;
 file_t f_suppress;
+file_t f_potential;
 #endif
 static uint num_threads;
 
@@ -465,6 +466,7 @@ event_exit(void)
     close_file(f_results);
     close_file(f_missing_symbols);
     close_file(f_suppress);
+    close_file(f_potential);
 #endif
     dr_fprintf(f_global, "LOG END\n");
     close_file(f_global);
@@ -1409,7 +1411,7 @@ create_global_logfile(void)
 
 #ifdef USE_DRSYMS
     if (!options.perturb_only) {
-        f_results = open_logfile("results.txt", false, -1);
+        f_results = open_logfile(RESULTS_FNAME, false, -1);
         f_missing_symbols = open_logfile("missing_symbols.txt", false, -1);
         print_version(f_results, true);
         if (options.resfile == dr_get_process_id()) {
@@ -1423,13 +1425,15 @@ create_global_logfile(void)
             if (outf == INVALID_FILE)
                 usage_error("Cannot write to \"%s\", aborting\n", fname);
             else {
-                dr_fprintf(outf, "%s%cresults.txt", logsubdir, DIRSEP);
+                dr_fprintf(outf, "%s%c" RESULTS_FNAME, logsubdir, DIRSEP);
 # undef dr_close_file
                 dr_close_file(outf);
 # define dr_close_file DO_NOT_USE_dr_close_file
             }
         }
         f_suppress = open_logfile("suppress.txt", false, -1);
+        f_potential = open_logfile(RESULTS_POTENTIAL_FNAME, false, -1);
+        print_version(f_potential, true);
     }
 #else
     /* PR 453867: we need to tell postprocess.pl when to fork a new copy.
@@ -1504,6 +1508,7 @@ nudge_leak_scan(void *drcontext)
     IF_DEBUG(int local_count =)
         atomic_add32_return_sum(&nudge_count, 1);
     LOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
+    LOGF(0, f_potential, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
 #endif
 #ifdef STATISTICS
     dump_statistics();

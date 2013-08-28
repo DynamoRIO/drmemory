@@ -974,6 +974,7 @@ _tmain(int argc, TCHAR *targv[])
     bool persisting = false;
     bool exit0 = false;
     bool dr_logdir_specified = false;
+    bool doubledash_present = false;
 
     time_t start_time, end_time;
 
@@ -1081,6 +1082,12 @@ _tmain(int argc, TCHAR *targv[])
     /* parse command line */
     /* FIXME PR 487993: use optionsx.h to construct this parsing code */
     for (i=1; i<argc; i++) {
+        if (strcmp(argv[i], "--") == 0) {
+            doubledash_present = true;
+            break;
+        }
+    }
+    for (i=1; i<argc; i++) {
 
         /* note that we pass unknown args to client, until -- */
         if (strcmp(argv[i], "--") == 0) {
@@ -1091,7 +1098,7 @@ _tmain(int argc, TCHAR *targv[])
          * we explicitly parse -logdir and -suppress, and all the other
          * client ops that take args take numbers so this should be safe.
          */
-        else if (argv[i][0] != '-' && ends_in_exe(argv[i])) {
+        else if (argv[i][0] != '-' && !doubledash_present && ends_in_exe(argv[i])) {
             /* leave i alone: this is the app itself */
             break;
 	}
@@ -1451,6 +1458,18 @@ _tmain(int argc, TCHAR *targv[])
         info("persist_dir is \"%s\"", persist_dir);
         BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
                  drops_sofar, len, "-persist_dir `%s` ", persist_dir);
+    }
+
+    /* Easier for the front-end to get the $SYSTEMROOT env var, so we set the
+     * default value here.
+     */
+    if (strstr(client_ops, "-report_blacklist") == NULL) {
+        bool ok = get_env_var(_T("SYSTEMROOT"), buf, BUFFER_SIZE_ELEMENTS(buf));
+        if (ok) {
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     /* Add .dll to still report errors in app */
+                     cliops_sofar, len, "-report_blacklist %s*.dll ", buf);
+        }
     }
 
     /* Set _NT_SYMBOL_PATH for the app. */

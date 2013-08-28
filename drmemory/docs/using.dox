@@ -364,6 +364,24 @@ If you would like to attach a debugger at the point an error is first
 detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
 options (see \ref page_options).
 
+Current versions of Dr. Memory can end up reporting uninitialized read and
+leak errors in system library code on large Windows applications.  Future
+Dr. Memory versions will eliminate these errors, but for now these likely
+false positive errors are listed in a separate file from the normal \p
+results.txt: \p potential_errors.txt.  The count of such errors is listed
+in the <tt>ERRORS IGNORED</tt> section of the main error summary.  It is
+possible that some of these errors are in fact application errors, though
+they are suspected of being false positives due to being reported in
+several layers of system library code.  The pattern checking used to
+identify system libraries whose errors should be reported separately can be
+tuned via the options \p -report_blacklist and \p -blacklist_num_frames.
+Running with <tt>-blacklist_num_frames 0</tt> will disable this error
+separation completely and report all errors as application errors in \p
+results.txt.  Conversely, if many such potential errors are reported and
+additional performance is desired at the risk of not detecting all
+application errors, Dr. Memory's \ref page_light can be used to disable
+checking for uninitialized reads and leaks.
+
 ********************
 \section sec_children Controlling Child Processes
 

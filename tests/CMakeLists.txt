@@ -693,8 +693,14 @@ if (TOOL_DR_MEMORY)
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
+    # XXX: running with -blacklist_num_frames 0 to avoid half the leaks being
+    # split as "potential errors" (from i#1310) to preserve the test as-is for
+    # now.   We should revisit when we make handle leaks on by default.
     newtest_ex(handle handle.cpp ""
-      "-light;-check_handle_leaks;-callstack_max_frames;100" "" OFF "" OFF)
+      "-light;-check_handle_leaks;-callstack_max_frames;100;-blacklist_num_frames;0"
+      "" OFF "" OFF)
+
+    newtest_ex(blacklist blacklist.cpp "" "-blacklist_num_frames;1" "" OFF "" OFF)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -753,10 +759,11 @@ newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
   "${nudge_test_args}--;${infloop_path}" "" OFF "")
 if (TOOL_DR_MEMORY AND WIN32)
-    set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
-    newtest_nobuild(nudge_handle run_in_bg_tgt
-      "-out;./nudge-handle-out"
-      "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")
+  # See above for why passing -blacklist_num_frames 0.
+  set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;-blacklist_num_frames;0")
+  newtest_nobuild(nudge_handle run_in_bg_tgt
+    "-out;./nudge-handle-out"
+    "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")
 endif (TOOL_DR_MEMORY AND WIN32)
 
 newtest(leakcycle leakcycle.cpp)
@@ -806,7 +813,7 @@ else (NOT X64)
   if (WIN32)
     # FIXME i#672: see earlier comment on # callstack frames
     newtest_ex(handle handle.cpp ""
-      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100" ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100;-blacklist_num_frames;0" ""
       OFF "" OFF)
   endif (WIN32)
 endif (NOT X64)

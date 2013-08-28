@@ -208,7 +208,8 @@ callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
                const char *callstack_srcfile_prefix,
                void (*missing_syms_cb)(const char *),
                bool old_retaddrs_zeroed,
-               const char *tool_lib_ignore
+               const char *tool_lib_ignore,
+               const char *system_mod_pattern
                _IF_DEBUG(uint callstack_dump_stack));
 
 void
@@ -347,6 +348,9 @@ symbolized_callstack_frame_modbase(const symbolized_callstack_t *scs, uint frame
 
 char *
 symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
+
+bool
+symbolized_callstack_frame_is_system(const symbolized_callstack_t *scs, uint frame);
 
 /****************************************************************************
  * Printing routines
