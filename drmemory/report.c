@@ -1156,7 +1156,32 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
     return suppressed;
 }
 
-/***************************************************************************/
+/***************************************************************************
+ * Callstack per-module data
+ */
+
+typedef struct _per_callstack_module_t {
+    bool on_blacklist;
+} per_callstack_module_t;
+
+static void *
+callstack_module_load_cb(const char *path, byte *base)
+{
+    per_callstack_module_t *mod = (per_callstack_module_t *)
+        global_alloc(sizeof(*mod), HEAPSTAT_CALLSTACK);
+    /* We cache this value in the callstack module to avoid re-matching on every frame */
+    mod->on_blacklist = (path != NULL &&
+                         text_matches_any_pattern(path, options.report_blacklist,
+                                                  IGNORE_FILE_CASE));
+    return (void *) mod;
+}
+
+static void
+callstack_module_unload_cb(const char *path, void *data)
+{
+    per_callstack_module_t *mod = (per_callstack_module_t *) data;
+    global_free(mod, sizeof(*mod), HEAPSTAT_CALLSTACK);
+}
 
 static bool
 error_is_likely_false_positive(error_callstack_t *ecs)
@@ -1167,9 +1192,11 @@ error_is_likely_false_positive(error_callstack_t *ecs)
      */
     uint i;
     for (i = 0; i < options.blacklist_num_frames; i++) {
-        if (!symbolized_callstack_frame_is_system(&ecs->scs, i) &&
+        per_callstack_module_t *mod = (per_callstack_module_t *)
+            symbolized_callstack_frame_data(&ecs->scs, i);
+        if ((mod == NULL || !mod->on_blacklist) &&
             /* system call counts */
-            (i > 0 || symbolized_callstack_frame_is_module(&ecs->scs, 0)))
+            (i > 0 || symbolized_callstack_frame_is_module(&ecs->scs, i)))
             break;
     }
     return (i > 0 && i >= options.blacklist_num_frames);
@@ -1184,7 +1211,9 @@ leak_is_likely_false_positive(error_callstack_t *ecs)
      */
     uint i, start = (options.replace_malloc ? 1 : 0);
     for (i = 0; i < options.blacklist_num_frames; i++) {
-        if (!symbolized_callstack_frame_is_system(&ecs->scs, start + i))
+        per_callstack_module_t *mod = (per_callstack_module_t *)
+            symbolized_callstack_frame_data(&ecs->scs, start + i);
+        if (mod == NULL || !mod->on_blacklist)
             break;
     }
     return (i > 0 && i >= options.blacklist_num_frames);
@@ -1368,8 +1397,9 @@ report_init(void)
     /* i#1231: we don't zero for full mode but we want the cache */
     callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
     callstack_ops.tool_lib_ignore = DRMEMORY_LIBNAME;
-    callstack_ops.system_mod_pattern = options.report_blacklist;
     callstack_ops.dump_app_stack = options.callstack_dump_stack;
+    callstack_ops.module_load = callstack_module_load_cb;
+    callstack_ops.module_unload = callstack_module_unload_cb;
     callstack_init(&callstack_ops);
 
 #ifdef USE_DRSYMS

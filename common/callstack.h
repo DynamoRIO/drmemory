@@ -187,6 +187,8 @@ enum {
  */
 #define MAX_ERROR_INITIAL_LINES 512
 
+#define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
+
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
 extern uint find_next_fp_cache_hits;
@@ -215,7 +217,17 @@ typedef struct _callstack_options_t {
     bool old_retaddrs_zeroed;
     const char *tool_lib_ignore;
     uint dump_app_stack;       /* debug-build-only */
-    const char *system_mod_pattern;
+
+    /* Callbacks invoked on module load and unload, allowing the user to store
+     * per-module data.  The return value of module_load is the data to store.
+     * It is propagated into each symbolized callstack frame that comes from
+     * that module, and can be queried with symbolized_callstack_frame_data.
+     * It should be freed in module_unload.
+     */
+    void * (*module_load)(const char * /*module path*/, byte * /*module base*/);
+    void (*module_unload)(const char * /*module path*/,
+                          void * /*user data returned by module_load()*/);
+
     /* Add new options here */
 } callstack_options_t;
 
@@ -359,8 +371,9 @@ symbolized_callstack_frame_modbase(const symbolized_callstack_t *scs, uint frame
 char *
 symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
 
-bool
-symbolized_callstack_frame_is_system(const symbolized_callstack_t *scs, uint frame);
+/* Returns the data stored for this frame's module by callstack_options_t.module_load */
+void *
+symbolized_callstack_frame_data(const symbolized_callstack_t *scs, uint frame);
 
 /****************************************************************************
  * Printing routines
