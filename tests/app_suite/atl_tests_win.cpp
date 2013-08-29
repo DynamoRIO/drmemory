@@ -19,6 +19,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+/* i#1317: we exclude this test if MFC is not available */
+#ifdef MFC_SUPPORTED /* around whole file */
+
 #include "gtest/gtest.h"
 
 #define UNICODE 1
@@ -72,3 +75,5 @@ TEST(ATLTests, CAxWindowTest) {
     /* Just create the window and it will end up hitting i#1303 */
     MyWindow window;
 }
+
+#endif /* MFC_SUPPORTED: around whole file */

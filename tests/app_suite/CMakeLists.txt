@@ -68,3 +68,11 @@ if (UNIX)
   find_package(Threads REQUIRED)
   target_link_libraries(app_suite_tests ${CMAKE_THREAD_LIBS_INIT})
 endif (UNIX)
+
+if (WIN32)
+  # i#1317: VS Express doesn't have MFC, and we need it for atl_tests_win.cpp
+  find_package(MFC)
+  if (MFC_FOUND)
+    append_compile_flags(app_suite_tests "-DMFC_SUPPORTED")
+  endif ()
+endif (WIN32)
