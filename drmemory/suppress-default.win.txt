@@ -815,3 +815,26 @@ UNINITIALIZED READ
 name=default i#1303 real ATL bug
 KERNEL32.dll!MulDiv
 *!*AtlPixelToHiMetric
+
+##################################################
+# i#1316: real bug in UxTheme.dll on WinXP
+# These are in internal non-exported routines, and the nearest
+# exported routine varies by version, so if the user has no symbols
+# then we can't reliably use a func name here.
+# The exported GetThemeBackgroundContentRect should be enough.
+# There are three instructions accessing the region, so we use
+# callstack only.
+# 
+# For reference, the callstack with debug symbol:
+# UxTheme.dll!CImageFile::GetDrawnImageSize
+# UxTheme.dll!CImageFile::GetScaledContentMargins
+# UxTheme.dll!CImageFile::GetBackgroundContentRect
+# UxTheme.dll!GetThemeBackgroundContentRect
+
+UNINITIALIZED READ
+name=default i#1316 real UxTheme.dll bug
+UxTheme.dll!*
+UxTheme.dll!*
+UxTheme.dll!*
+UxTheme.dll!GetThemeBackgroundContentRect
+
