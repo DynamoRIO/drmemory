@@ -2158,6 +2158,7 @@ dr_init(client_id_t client_id)
     const char *opstr = dr_get_options(client_id);
     alloc_options_t alloc_ops;
     drsys_options_t ops = { sizeof(ops), 0, };
+    callstack_options_t callstack_ops = { sizeof(callstack_ops), 0 };
     drmgr_priority_t priority = {sizeof(priority), "drheapstat", NULL, NULL, 1000};
 
     ASSERT(opstr != NULL, "error obtaining option string");
@@ -2225,29 +2226,28 @@ dr_init(client_id_t client_id)
 
     snapshot_init();
 
-    callstack_init(options.callstack_max_frames, 0x10000 /*stack_swap_threshold*/,
-                   /* default flags: but if we have apps w/ DGC we may
-                    * want to expose some flags as options */
-                   0,
-                   /* scan forward 1 page: good compromise bet perf (scanning
-                    * can be the bottleneck) and good callstacks
-                    */
-                   PAGE_SIZE,
-                   /* XXX i#926: symbolize and suppress leaks online (and then
-                    * use options.callstack_style here)
-                    */
-                   PRINT_FOR_POSTPROCESS,
-                   NULL, /* get_syscall_name */
-                   /* XXX: may need better callstack heuristics w/o shadow info
-                    * if user turns off stack zeroing from -leaks_only
-                    */
-                   NULL,
-                   IF_WINDOWS_ELSE(is_in_seh_unwind, NULL),
-                   NULL, NULL, NULL, NULL, NULL,
-                   options.zero_retaddr,
-                   IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*"),
-                   NULL
-                   _IF_DEBUG(0));
+    callstack_ops.max_frames = options.callstack_max_frames;
+    callstack_ops.stack_swap_threshold = 0x10000;
+    /* default flags: but if we have apps w/ DGC we may
+     * want to expose some flags as options
+     */
+    callstack_ops.fp_flags = 0;
+    /* scan forward 1 page: good compromise bet perf (scanning
+     * can be the bottleneck) and good callstacks
+     */
+    callstack_ops.fp_scan_sz = PAGE_SIZE;
+    /* XXX i#926: symbolize and suppress leaks online (and then
+     * use options.callstack_style here)
+     */
+    callstack_ops.print_flags = PRINT_FOR_POSTPROCESS;
+    callstack_ops.ignore_xbp = IF_WINDOWS_ELSE(is_in_seh_unwind, NULL);
+    /* XXX: may need better callstack heuristics w/o shadow info
+     * if user turns off stack zeroing from -leaks_only
+     */
+    callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
+    callstack_ops.tool_lib_ignore = IF_WINDOWS_ELSE("drheapstat.dll","libdrheapstat.so*");
+    callstack_init(&callstack_ops);
+
     heap_region_init(client_heap_add, client_heap_remove);
     /* We keep callstacks around forever and only free when we delete
      * the alloc_stack_table, so no refcounts

@@ -196,21 +196,31 @@ extern uint cstack_is_retaddr_backdecode;
 extern uint cstack_is_retaddr_unreadable;
 #endif
 
+typedef struct _callstack_options_t {
+    size_t struct_size;        /* for compatibility checking */
+    uint max_frames;
+    uint stack_swap_threshold;
+    uint fp_flags;             /* set of FP_ flags */
+    size_t fp_scan_sz;
+    uint print_flags;          /* set of PRINT_ flags */
+    /* optional: only needed if packed_callstack_record is passed a pc<64K */
+    const char *(*get_syscall_name)(drsys_sysnum_t);
+    bool (*is_dword_defined)(byte *);
+    bool (*ignore_xbp)(void *, dr_mcontext_t *);
+    const char *truncate_below;
+    const char *modname_hide;
+    const char *srcfile_hide;
+    const char *srcfile_prefix;
+    void (*missing_syms_cb)(const char *);
+    bool old_retaddrs_zeroed;
+    const char *tool_lib_ignore;
+    uint dump_app_stack;       /* debug-build-only */
+    const char *system_mod_pattern;
+    /* Add new options here */
+} callstack_options_t;
+
 void
-callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
-               uint fp_flags, size_t fp_scan_sz, uint print_flags,
-               const char *(*get_syscall_name)(drsys_sysnum_t),
-               bool (*is_dword_defined)(byte *),
-               bool (*ignore_xbp)(void *, dr_mcontext_t *),
-               const char *frame_truncate_below,
-               const char *callstack_modname_hide,
-               const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix,
-               void (*missing_syms_cb)(const char *),
-               bool old_retaddrs_zeroed,
-               const char *tool_lib_ignore,
-               const char *system_mod_pattern
-               _IF_DEBUG(uint callstack_dump_stack));
+callstack_init(callstack_options_t *options);
 
 void
 callstack_exit(void);

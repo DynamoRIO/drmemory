@@ -39,27 +39,8 @@
 #endif
 #include <limits.h>
 
-/* global options: xref PR 612970 on using generalized per-file options */
-static uint op_max_frames;
-static uint op_stack_swap_threshold;
-static uint op_fp_flags; /* set of FP_ flags */
-static uint op_print_flags; /* set of PRINT_ flags */
-static size_t op_fp_scan_sz;
-/* optional: only needed if packed_callstack_record is passed a pc<64K */
-static const char * (*op_get_syscall_name)(drsys_sysnum_t);
-static bool (*op_is_dword_defined)(byte *);
-static bool (*op_ignore_xbp)(void *drcontext, dr_mcontext_t *mc);
-static const char *op_truncate_below;
-static const char *op_modname_hide;
-static const char *op_srcfile_prefix;
-static const char *op_srcfile_hide;
-static void (*op_missing_syms_cb)(const char *);
-static bool op_old_retaddrs_zeroed;
-static const char *op_tool_lib_ignore;
-static const char *op_system_mod_pattern;
-#ifdef DEBUG
-static uint op_callstack_dump_stack;
-#endif
+/* Options all have 0 as default value */
+static callstack_options_t ops;
 
 #define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
 
@@ -86,7 +67,7 @@ typedef struct _fpscan_cache_entry {
     app_pc retaddr;
 } fpscan_cache_entry;
 
-/* XXX: perhaps this should be based on op_max_frames, though if someone
+/* XXX: perhaps this should be based on ops.max_frames, though if someone
  * asks for a ton of frames and optimizes his app with FPO he can't expect
  * great performance.
  */
@@ -316,49 +297,20 @@ max_callstack_size(void)
     max_addr_sym_len += 1/*' '*/ + MAX_SYMBOL_LEN + 1/*\n*/ +
         strlen(LINE_PREFIX) + MAX_FILE_LINE_LEN;
 #endif
-    return ((op_max_frames+1)/*for the ... line: over-estimate*/
+    return ((ops.max_frames+1)/*for the ... line: over-estimate*/
             *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
 
 /* XXX i#823: move these params to an options struct when refactoring for DrCallstack */
 void
-callstack_init(uint callstack_max_frames, uint stack_swap_threshold,
-               uint fp_flags, size_t fp_scan_sz, uint print_flags,
-               const char *(*get_syscall_name)(drsys_sysnum_t),
-               bool (*is_dword_defined)(byte *),
-               bool (*ignore_xbp)(void *, dr_mcontext_t *),
-               const char *callstack_truncate_below,
-               const char *callstack_modname_hide,
-               const char *callstack_srcfile_hide,
-               const char *callstack_srcfile_prefix,
-               void (*missing_syms_cb)(const char *),
-               bool old_retaddrs_zeroed,
-               const char *tool_lib_ignore,
-               const char *system_mod_pattern
-               _IF_DEBUG(uint callstack_dump_stack))
+callstack_init(callstack_options_t *options)
 {
     tls_idx_callstack = drmgr_register_tls_field();
     ASSERT(tls_idx_callstack > -1, "unable to reserve TLS slot");
 
-    op_max_frames = callstack_max_frames;
-    op_stack_swap_threshold = stack_swap_threshold;
-    op_fp_flags = fp_flags;
-    op_fp_scan_sz = fp_scan_sz;
-    op_print_flags = print_flags;
-    op_get_syscall_name = get_syscall_name;
-    op_is_dword_defined = is_dword_defined;
-    op_ignore_xbp = ignore_xbp;
-    op_truncate_below = callstack_truncate_below;
-    op_modname_hide = callstack_modname_hide;
-    op_srcfile_hide = callstack_srcfile_hide;
-    op_srcfile_prefix = callstack_srcfile_prefix;
-    op_missing_syms_cb = missing_syms_cb;
-    op_old_retaddrs_zeroed = old_retaddrs_zeroed;
-    op_tool_lib_ignore = tool_lib_ignore;
-    op_system_mod_pattern = system_mod_pattern;
-#ifdef DEBUG
-    op_callstack_dump_stack = callstack_dump_stack;
-#endif
+    ASSERT(options->struct_size <= sizeof(ops), "option struct too large");
+    memcpy(&ops, options, options->struct_size);
+
     hashtable_init_ex(&modname_table, MODNAME_TABLE_HASH_BITS, HASH_STRING_NOCASE,
                       false/*!str_dup*/, false/*!synch*/, modname_info_free, NULL, NULL);
     modname_table_initialized = true;
@@ -375,7 +327,7 @@ void
 callstack_exit(void)
 {
     ASSERT(libdr_base != NULL, "never found DR lib");
-    ASSERT(!(op_tool_lib_ignore != NULL && libtoolbase == NULL), "never found tool lib");
+    ASSERT(!(ops.tool_lib_ignore != NULL && libtoolbase == NULL), "never found tool lib");
 
     hashtable_delete(&modname_table);
 
@@ -556,7 +508,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
     drsym_info_t sym;
     char name[MAX_FUNC_LEN];
     module_data_t *data;
-    uint flags = use_custom_flags ? custom_flags : op_print_flags;
+    uint flags = use_custom_flags ? custom_flags : ops.print_flags;
     const char *modname;
     data = dr_lookup_module(addr);
     if (data == NULL)
@@ -628,8 +580,9 @@ frame_include_srcfile(symbolized_frame_t *frame IN)
 {
     return (frame->fname[0] != '\0' &&
             /* i#589: support hiding source files matching pattern */
-            (op_srcfile_hide == NULL ||
-             !text_matches_any_pattern(frame->fname, op_srcfile_hide, IGNORE_FILE_CASE)));
+            (ops.srcfile_hide == NULL ||
+             !text_matches_any_pattern(frame->fname,
+                                       ops.srcfile_hide, IGNORE_FILE_CASE)));
 }
 
 /* We provide control over many aspects of callstack formatting (i#290)
@@ -659,11 +612,11 @@ print_file_and_line(symbolized_frame_t *frame IN,
                      prefix == NULL ? "" : prefix);
         } else
             BUFPRINT(buf, bufsz, *sofar, len, " [");
-        if (op_srcfile_prefix != NULL) {
+        if (ops.srcfile_prefix != NULL) {
             /* i#575: support truncating source file prefix */
             const char *matched;
             const char *match =
-                text_contains_any_string(fname, op_srcfile_prefix,
+                text_contains_any_string(fname, ops.srcfile_prefix,
                                          IGNORE_FILE_CASE, &matched);
             if (match != NULL) {
                 fname = match + strlen(matched);
@@ -712,7 +665,7 @@ print_frame(symbolized_frame_t *frame IN,
 {
     ssize_t len = 0;
     size_t align_sym = 0, align_mod = 0, align_moffs = 0;
-    uint flags = use_custom_flags ? custom_flags : op_print_flags;
+    uint flags = use_custom_flags ? custom_flags : ops.print_flags;
     bool include_srcfile = frame_include_srcfile(frame);
     bool print_addrs, later_info;
 
@@ -920,9 +873,9 @@ print_address_common(char *buf, size_t bufsz, size_t *sofar,
     if (address_to_frame(&frame, NULL, pc, mod_in, skip_non_module, sub1_sym, 0)) {
         frame.num = frame_num;
         print_frame(&frame, buf, bufsz, sofar, for_log, PRINT_FOR_LOG, 0, NULL);
-        if (last_frame != NULL && op_truncate_below != NULL) {
+        if (last_frame != NULL && ops.truncate_below != NULL) {
             *last_frame = text_matches_any_pattern((const char *)frame.func,
-                                                   op_truncate_below, false);
+                                                   ops.truncate_below, false);
         }
         return true;
     }
@@ -963,7 +916,7 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
         ((pc >= libdr_base && pc < libdr_end) ||
          (pc >= libtoolbase && pc < libtoolend)))
         return false;
-    if (!TEST(FP_SEARCH_DO_NOT_DISASM, op_fp_flags)) {
+    if (!TEST(FP_SEARCH_DO_NOT_DISASM, ops.fp_flags)) {
         /* The is_in_module() check is more expensive than our 3 derefs here.
          * We do not bother to cache frequent/recent values.
          */
@@ -1044,7 +997,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
      */
     if (pt != NULL && pt->stack_lowest_frame != NULL &&
         ((fp >= pt->stack_lowest_frame &&
-          (fp - pt->stack_lowest_frame) < op_stack_swap_threshold) ||
+          (fp - pt->stack_lowest_frame) < ops.stack_swap_threshold) ||
          /* if hit a zero or bad fp near the lowest frame, don't scan.
           * some apps like perlbmk have some weird loader callstacks
           * and then a solid bottom frame so try not to scan every time.
@@ -1064,7 +1017,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
      * which could result in greater speedup: but is also more complex
      * to implement.
      */
-    if (op_old_retaddrs_zeroed) {
+    if (ops.old_retaddrs_zeroed) {
         uint i;
         for (i = 0; i < FPSCAN_CACHE_ENTRIES; i++) {
             if (orig_fp == pt->fpcache[i].input_fp) {
@@ -1073,8 +1026,8 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                               sizeof(ra), &ra) &&
                     ra == pt->fpcache[i].retaddr &&
                     /* i#1231: we don't zero for full mode but we want the cache */
-                    (op_is_dword_defined == NULL ||
-                     op_is_dword_defined(pt->fpcache[i].output_fp + sizeof(app_pc)))) {
+                    (ops.is_dword_defined == NULL ||
+                     ops.is_dword_defined(pt->fpcache[i].output_fp + sizeof(app_pc)))) {
                     if (retaddr != NULL)
                         *retaddr = ra;
                     LOG(4, "find_next_fp: cache hit "PFX" => "PFX", ra="PFX"\n",
@@ -1102,8 +1055,8 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
         app_pc sp;
         app_pc slot0 = 0, slot1;
         bool match, match_next_frame, fp_defined = false;
-        size_t ret_offs = TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) ? sizeof(app_pc) : 0;
-        app_pc stop = tos + op_fp_scan_sz;
+        size_t ret_offs = TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) ? sizeof(app_pc) : 0;
+        app_pc stop = tos + ops.fp_scan_sz;
 #ifdef WINDOWS
         /* if on original thread stack, stop at limit (i#588) */
         TEB *teb = get_TEB();
@@ -1112,16 +1065,16 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
 #endif
         /* Scan one page worth and look for potential fp,retaddr pair */
         STATS_INC(find_next_fp_scans);
-        /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) */
+        /* We only look at fp if TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) */
         for (sp = tos; sp < stop; sp+=sizeof(app_pc)) {
             match = false;
             match_next_frame = false;
             if (retaddr != NULL)
                 *retaddr = NULL;
-            if (TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
+            if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
                 ASSERT((app_pc)ALIGN_BACKWARD(sp, PAGE_SIZE) == buf_pg, "buf error");
-                if (op_is_dword_defined != NULL)
-                    fp_defined = op_is_dword_defined(sp);
+                if (ops.is_dword_defined != NULL)
+                    fp_defined = ops.is_dword_defined(sp);
                 if (fp_defined)
                     slot0 = *((app_pc*)&page_buf[sp - buf_pg]);
             }
@@ -1134,13 +1087,13 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                 }
             }
             LOG(5, "find_next_fp: considering sp="PFX"\n", sp);
-            if (TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) && !fp_defined)
+            if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) && !fp_defined)
                 continue;
-            if (op_is_dword_defined != NULL &&
-                !op_is_dword_defined(sp + ret_offs))
+            if (ops.is_dword_defined != NULL &&
+                !ops.is_dword_defined(sp + ret_offs))
                 continue; /* retaddr not defined */
-            if (!TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags) ||
-                (slot0 > tos && slot0 - tos < op_stack_swap_threshold)) {
+            if (!TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) ||
+                (slot0 > tos && slot0 - tos < ops.stack_swap_threshold)) {
                 slot1 = *((app_pc*)&page_buf[(sp + ret_offs) - buf_pg]);
                 /* We should only consider retaddr in code section but
                  * let's keep it simple for now.
@@ -1151,7 +1104,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                 if (is_retaddr(slot1, true/*i#1217*/))
                     match = true;
 #ifdef WINDOWS
-                else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
+                else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
                     /* PR 475715: msvcr80!malloc pushes ebx and then ebp!  It then
                      * uses ebp as scratch, so we end up here for the top frame
                      * of a leak callstack.
@@ -1171,14 +1124,14 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
             if (match) {
                 app_pc parent_ret_ptr = slot0 + ret_offs;
                 app_pc parent_ret;
-                if (!TEST(FP_SEARCH_REQUIRE_FP, op_fp_flags)) {
+                if (!TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
                     /* caller expects fp,ra pair */
                     LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
                         orig_fp, sp - sizeof(app_pc), slot1);
                     fpcache_update(pt, orig_fp, sp - sizeof(app_pc), slot1);
                     return sp - sizeof(app_pc);
                 }
-                if ((TEST(FP_SEARCH_MATCH_SINGLE_FRAME, op_fp_flags) &&
+                if ((TEST(FP_SEARCH_MATCH_SINGLE_FRAME, ops.fp_flags) &&
                      !match_next_frame)) {
                     LOG(4, "find_next_fp "PFX" => "PFX", ra="PFX"\n",
                         orig_fp, sp, slot1);
@@ -1242,46 +1195,46 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
            "print_callstack: can't pass buf and pcs");
 
 #ifdef DEBUG
-    if (mc != NULL && op_callstack_dump_stack > 0) {
-        dump_app_stack(drcontext, pt, mc, op_callstack_dump_stack,
+    if (mc != NULL && ops.dump_app_stack > 0) {
+        dump_app_stack(drcontext, pt, mc, ops.dump_app_stack,
                        (pcs == NULL ? NULL : PCS_FRAME_LOC(pcs, 0).addr));
     }
 #endif
 
     LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
         mc->xbp, mc->xsp,
-        (op_is_dword_defined == NULL) ? 0 : op_is_dword_defined((byte*)mc->xbp));
+        (ops.is_dword_defined == NULL) ? 0 : ops.is_dword_defined((byte*)mc->xbp));
     if (mc->xsp != 0 &&
         (!ALIGNED(mc->xbp, sizeof(void*)) ||
          mc->xbp < mc->xsp || 
-         mc->xbp - mc->xsp > op_stack_swap_threshold ||
-         (op_ignore_xbp != NULL &&
-          op_ignore_xbp(drcontext, mc)) ||
+         mc->xbp - mc->xsp > ops.stack_swap_threshold ||
+         (ops.ignore_xbp != NULL &&
+          ops.ignore_xbp(drcontext, mc)) ||
 #ifdef WINDOWS
          /* don't trust ebp when in Windows syscall wrapper */
          (pcs != NULL && pcs->first_is_syscall) ||
 #endif
          /* avoid stale fp,ra pair (i#640) */
-         (op_is_dword_defined != NULL &&
-          (!op_is_dword_defined((byte*)mc->xbp) ||
-           !op_is_dword_defined((byte*)mc->xbp + sizeof(void*)))) ||
+         (ops.is_dword_defined != NULL &&
+          (!ops.is_dword_defined((byte*)mc->xbp) ||
+           !ops.is_dword_defined((byte*)mc->xbp + sizeof(void*)))) ||
          (mc->xbp != 0 &&
           (!safe_read((byte *)mc->xbp, sizeof(appdata), &appdata) ||
            /* check the very first retaddr since ebp might point at
             * a misleading stack slot
             */
-           (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, op_fp_flags) &&
+           (!TEST(FP_DO_NOT_CHECK_FIRST_RETADDR, ops.fp_flags) &&
             !is_retaddr(appdata.retaddr, false/*include drmem*/)))))) {
         /* We may start out in the middle of a frameless function that is
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
         LOG(4, "find_next_fp b/c starting w/ non-fp ebp "PFX" (def=%d %d)\n", mc->xbp,
-            op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp),
-            op_is_dword_defined == NULL ? 0 : op_is_dword_defined((byte*)mc->xbp +
+            ops.is_dword_defined == NULL ? 0 : ops.is_dword_defined((byte*)mc->xbp),
+            ops.is_dword_defined == NULL ? 0 : ops.is_dword_defined((byte*)mc->xbp +
                                                                   sizeof(void*)));
 #if defined(LINUX) && !defined(X64)
         if (pcs != NULL && pcs->first_is_syscall &&
-            !TEST(FP_DO_NOT_SKIP_VSYSCALL_PUSH, op_fp_flags)) {
+            !TEST(FP_DO_NOT_SKIP_VSYSCALL_PUSH, ops.fp_flags)) {
             /* i#1265: skip the vsyscall sysenter "push ebp" to avoid skipping
              * over a frame, as the libc routine that invoked the syscall often
              * doesn't have a fp.  We want to only apply this when in vsyscall,
@@ -1345,11 +1298,11 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 *sofar = prev_sofar;
         } else if ((pcs == NULL &&
                     print_address_common(buf, bufsz, sofar, appdata.retaddr, NULL,
-                                         !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
+                                         !TEST(FP_SHOW_NON_MODULE_FRAMES, ops.fp_flags),
                                          true, for_log, &last_frame, num)) ||
                    (pcs != NULL &&
                     address_to_frame(NULL, pcs, appdata.retaddr, NULL,
-                                     !TEST(FP_SHOW_NON_MODULE_FRAMES, op_fp_flags),
+                                     !TEST(FP_SHOW_NON_MODULE_FRAMES, ops.fp_flags),
                                      true, pcs->num_frames))) {
             num++;
             if (last_frame)
@@ -1380,7 +1333,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         }
         first_iter = false;
         /* pcs->num_frames could be larger if frames were printed before this routine */
-        if (num >= op_max_frames || (pcs != NULL && pcs->num_frames >= op_max_frames)) {
+        if (num >= ops.max_frames || (pcs != NULL && pcs->num_frames >= ops.max_frames)) {
             if (buf != NULL)
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"..."NL);
             LOG(4, "truncating callstack: hit max frames %d %d\n", 
@@ -1402,7 +1355,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
              * its heuristics but are actually loader data structures; they make
              * all callstacks erroneously long.
              */
-            if (!TEST(FP_STOP_AT_BAD_ZERO_FRAME, op_fp_flags)) {
+            if (!TEST(FP_STOP_AT_BAD_ZERO_FRAME, ops.fp_flags)) {
                 LOG(4, "find_next_fp b/c hit zero fp\n");
                 pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
                                                  false/*!top*/, NULL);
@@ -1419,7 +1372,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                   * return false, so we cast it to ptr_uint_t.
                   */
                  (ptr_uint_t)(appdata.next_fp - (app_pc)pc) >=
-                 op_stack_swap_threshold);
+                 ops.stack_swap_threshold);
             app_pc next_fp = appdata.next_fp;
             if (!out_of_range &&
                 !safe_read((byte *)next_fp, sizeof(appdata), &appdata)) {
@@ -1427,15 +1380,15 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 break;
             }
             if (out_of_range ||
-                (!TEST(FP_DO_NOT_CHECK_RETADDR, op_fp_flags) &&
+                (!TEST(FP_DO_NOT_CHECK_RETADDR, ops.fp_flags) &&
                  /* checking retaddr on regular fp chain walk is a 40% perf hit
                   * on cfrac and roboop so we avoid it if we've never had to
                   * do a scan, trusting the fp's to be genuine (overridden by
                   * FP_CHECK_RETADDR_PRE_SCAN)
                   */
-                 (scanned || TEST(FP_CHECK_RETADDR_PRE_SCAN, op_fp_flags)) &&
+                 (scanned || TEST(FP_CHECK_RETADDR_PRE_SCAN, ops.fp_flags)) &&
                  !is_retaddr(appdata.retaddr, false/*include drmem*/))) {
-                if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, op_fp_flags)) {
+                if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, ops.fp_flags)) {
                     LOG(4, "find_next_fp "PFX" b/c hit bad non-zero fp "PFX"\n",
                         ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
                     pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
@@ -1552,11 +1505,12 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
     if (modname_array_end < MAX_MODNAMES_STORED) {
         pcs->is_packed = true;
         pcs->frames.packed = (packed_frame_t *)
-            global_alloc(sizeof(*pcs->frames.packed) * op_max_frames, HEAPSTAT_CALLSTACK);
+            global_alloc(sizeof(*pcs->frames.packed) * ops.max_frames,
+                         HEAPSTAT_CALLSTACK);
     } else {
         pcs->is_packed = false;
         pcs->frames.full = (full_frame_t *)
-            global_alloc(sizeof(*pcs->frames.full) * op_max_frames, HEAPSTAT_CALLSTACK);
+            global_alloc(sizeof(*pcs->frames.full) * ops.max_frames, HEAPSTAT_CALLSTACK);
     }
     if (loc != NULL) {
         if (loc->type == APP_LOC_SYSCALL) {
@@ -1595,7 +1549,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             frames_out = (packed_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
             memcpy(frames_out, pcs->frames.packed, sz_out);
         }
-        global_free(pcs->frames.packed, sizeof(*pcs->frames.packed) * op_max_frames,
+        global_free(pcs->frames.packed, sizeof(*pcs->frames.packed) * ops.max_frames,
                     HEAPSTAT_CALLSTACK);
         pcs->frames.packed = frames_out;
     } else {
@@ -1607,7 +1561,7 @@ packed_callstack_record(packed_callstack_t **pcs_out/*out*/, dr_mcontext_t *mc,
             frames_out = (full_frame_t *) global_alloc(sz_out, HEAPSTAT_CALLSTACK);
             memcpy(frames_out, pcs->frames.full, sz_out);
         }
-        global_free(pcs->frames.full, sizeof(*pcs->frames.full) * op_max_frames,
+        global_free(pcs->frames.full, sizeof(*pcs->frames.full) * ops.max_frames,
                     HEAPSTAT_CALLSTACK);
         pcs->frames.full = frames_out;
     }
@@ -1685,8 +1639,8 @@ packed_frame_to_symbolized(packed_callstack_t *pcs IN, symbolized_frame_t *frame
          * we use func since modname is too short in windows.
          */
         BUFPRINT(frame->func, MAX_FUNC_LEN, sofar, len, "system call ");
-        if (op_get_syscall_name != NULL)
-            name = (*op_get_syscall_name)(frame->loc.u.syscall.sysnum);
+        if (ops.get_syscall_name != NULL)
+            name = (*ops.get_syscall_name)(frame->loc.u.syscall.sysnum);
         /* strip syscall # if have name, to be independent of windows ver */
         ASSERT(name != NULL, "syscall name should not be NULL");
         if (name[0] != '\0' && name[0] != '<' /* "<unknown>" */) {
@@ -1747,8 +1701,8 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
     for (i = 0; i < pcs->num_frames && (num_frames == 0 || i < num_frames); i++) {
         packed_frame_to_symbolized(pcs, &frame, i);
         print_frame(&frame, buf, bufsz, sofar, false, 0, 0, prefix);
-        if (op_truncate_below != NULL &&
-            text_matches_any_pattern((const char *)frame.func, op_truncate_below, false))
+        if (ops.truncate_below != NULL &&
+            text_matches_any_pattern((const char *)frame.func, ops.truncate_below, false))
             break;
     }
 }
@@ -1766,9 +1720,9 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
     for (i = 0; i < pcs->num_frames; i++) {
         packed_frame_to_symbolized(pcs, &scs->frames[i], i);
         /* we truncate for real and not just on printing (i#700) */
-        if (op_truncate_below != NULL &&
+        if (ops.truncate_below != NULL &&
             text_matches_any_pattern((const char *)scs->frames[i].func,
-                                     op_truncate_below, false)) {
+                                     ops.truncate_below, false)) {
             /* not worth re-allocating */
             scs->num_frames = i + 1;
             break;
@@ -1973,7 +1927,7 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
 {
     uint i;
     size_t max_flen = 0;
-    uint print_flags = for_log ? PRINT_FOR_POSTPROCESS : op_print_flags;
+    uint print_flags = for_log ? PRINT_FOR_POSTPROCESS : ops.print_flags;
     ASSERT(scs != NULL, "invalid args");
     if (TEST(PRINT_ALIGN_COLUMNS, print_flags)) {
         for (i = 0; i < scs->num_frames; i++) {
@@ -1985,7 +1939,7 @@ symbolized_callstack_print(const symbolized_callstack_t *scs IN,
     for (i = 0; i < scs->num_frames; i++) {
         print_frame(&scs->frames[i], buf, bufsz, sofar, for_log, print_flags,
                     max_flen, prefix);
-        /* op_truncate_below should have been done when symbolized cstack created.
+        /* ops.truncate_below should have been done when symbolized cstack created.
          * too much of a perf hit to assert on every single frame.
          */
     }
@@ -2104,12 +2058,13 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->id = modname_unique_id++;
         /* we cache this value to avoid re-matching on every frame */
         name_info->hide_modname =
-            (op_modname_hide != NULL &&
-             text_matches_any_pattern(name_info->name, op_modname_hide, IGNORE_FILE_CASE));
+            (ops.modname_hide != NULL &&
+             text_matches_any_pattern(name_info->name, ops.modname_hide,
+                                      IGNORE_FILE_CASE));
         /* we cache this value to avoid re-matching on every frame */
         name_info->is_system =
-            (op_system_mod_pattern != NULL && name_info->path != NULL &&
-             text_matches_any_pattern(name_info->path, op_system_mod_pattern,
+            (ops.system_mod_pattern != NULL && name_info->path != NULL &&
+             text_matches_any_pattern(name_info->path, ops.system_mod_pattern,
                                       IGNORE_FILE_CASE));
         name_info->warned_no_syms = false;
         hashtable_add(&modname_table, (void*)name_info->path, (void*)name_info);
@@ -2218,8 +2173,8 @@ callstack_module_load(void *drcontext, const module_data_t *info, bool loaded)
     if (text_matches_pattern(name_info->name, DYNAMORIO_LIBNAME, FILESYS_CASELESS)) {
         ASSERT(libdr_base == NULL, "duplicate DR lib");
         callstack_module_get_text_bounds(info, loaded, &libdr_base, &libdr_end);
-    } else if (op_tool_lib_ignore != NULL &&
-               text_matches_pattern(name_info->name, op_tool_lib_ignore,
+    } else if (ops.tool_lib_ignore != NULL &&
+               text_matches_pattern(name_info->name, ops.tool_lib_ignore,
                                     FILESYS_CASELESS)) {
         ASSERT(libtoolbase == NULL, "duplicate tool lib");
         callstack_module_get_text_bounds(info, loaded, &libtoolbase, &libtoolend);
@@ -2409,8 +2364,8 @@ warn_no_symbols(modname_info_t *name_info)
     if (!name_info->warned_no_syms) {
         name_info->warned_no_syms = true;
         WARN("WARNING: unable to load symbols for %s\n", name_info->path);
-        if (op_missing_syms_cb != NULL) {
-            op_missing_syms_cb(name_info->path);
+        if (ops.missing_syms_cb != NULL) {
+            ops.missing_syms_cb(name_info->path);
         }
     }
 }

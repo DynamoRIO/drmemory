@@ -1277,6 +1277,7 @@ void
 report_init(void)
 {
     char *c;
+    callstack_options_t callstack_ops = { sizeof(callstack_ops), 0 };
 
     timestamp_start = dr_get_milliseconds();
     print_timestamp(f_global, timestamp_start, "start time");
@@ -1330,40 +1331,46 @@ report_init(void)
 #endif
 
     /* must be BEFORE read_suppression_file (PR 474542) */
-    callstack_init(options.callstack_max_frames,
-                   /* I used to use options.stack_swap_threshold but that
-                    * was decreased for PR 525807 and anything smaller than
-                    * ~0x20000 leads to bad callstacks on gcc b/c of a huge
-                    * initial frame
-                    */
-                   0x20000,
-                   /* default flags: but if we have apps w/ DGC we may
-                    * want to expose some flags as options */
-                   0,
-                   options.callstack_max_scan,
-                   IF_DRSYMS_ELSE(options.callstack_style, PRINT_FOR_POSTPROCESS),
-                   get_syscall_name,
-                   options.shadowing ? is_dword_defined : NULL,
-                   callstack_ignore_initial_xbp,
+    callstack_ops.max_frames = options.callstack_max_frames;
+    callstack_ops.stack_swap_threshold = 0x10000;
+    /* I used to use options.stack_swap_threshold but that
+     * was decreased for PR 525807 and anything smaller than
+     * ~0x20000 leads to bad callstacks on gcc b/c of a huge
+     * initial frame
+     */
+    callstack_ops.stack_swap_threshold = 0x20000,
+    /* default flags: but if we have apps w/ DGC we may
+     * want to expose some flags as options
+     */
+    callstack_ops.fp_flags = 0;
+    callstack_ops.fp_scan_sz = options.callstack_max_scan;
+    callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,
+                                               PRINT_FOR_POSTPROCESS);
+    callstack_ops.get_syscall_name = get_syscall_name;
+    callstack_ops.is_dword_defined = options.shadowing ? is_dword_defined : NULL;
+    callstack_ops.ignore_xbp = callstack_ignore_initial_xbp;
 #ifdef USE_DRSYMS
-                   /* pass NULL since callstack.c uses that as quick check */
-                   (options.callstack_truncate_below[0] == '\0') ? NULL :
-                   options.callstack_truncate_below,
-                   (options.callstack_modname_hide[0] == '\0') ? NULL :
-                   options.callstack_modname_hide,
-                   (options.callstack_srcfile_hide[0] == '\0') ? NULL :
-                   options.callstack_srcfile_hide,
-                   (options.callstack_srcfile_prefix[0] == '\0') ? NULL :
-                   options.callstack_srcfile_prefix,
-#else
-                   NULL, NULL, NULL, NULL,
+    /* pass NULL since callstack.c uses that as quick check */
+    callstack_ops.truncate_below =
+        (options.callstack_truncate_below[0] == '\0') ? NULL :
+        options.callstack_truncate_below;
+    callstack_ops.modname_hide =
+        (options.callstack_modname_hide[0] == '\0') ? NULL :
+        options.callstack_modname_hide;
+    callstack_ops.srcfile_hide =
+        (options.callstack_srcfile_hide[0] == '\0') ? NULL :
+        options.callstack_srcfile_hide;
+    callstack_ops.srcfile_prefix =
+        (options.callstack_srcfile_prefix[0] == '\0') ? NULL :
+        options.callstack_srcfile_prefix;
 #endif
-                   missing_syms_cb,
-                    /* i#1231: we don't zero for full mode but we want the cache */
-                   options.zero_retaddr,
-                   DRMEMORY_LIBNAME,
-                   options.report_blacklist
-                   _IF_DEBUG(options.callstack_dump_stack));
+    callstack_ops.missing_syms_cb = missing_syms_cb;
+    /* i#1231: we don't zero for full mode but we want the cache */
+    callstack_ops.old_retaddrs_zeroed = options.zero_retaddr;
+    callstack_ops.tool_lib_ignore = DRMEMORY_LIBNAME;
+    callstack_ops.system_mod_pattern = options.report_blacklist;
+    callstack_ops.dump_app_stack = options.callstack_dump_stack;
+    callstack_init(&callstack_ops);
 
 #ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();
