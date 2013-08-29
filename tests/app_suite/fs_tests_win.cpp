@@ -23,8 +23,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <string>
-#include <Winternl.h>
 #include <windows.h>
+#include <Winternl.h>
 
 TEST(FSTests, Stat){
     /* Test i#1298 default suppression of real error in MSVCRT stat() */

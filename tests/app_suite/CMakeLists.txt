@@ -47,10 +47,20 @@ add_executable(app_suite_tests
 
 if (UNIX)
   append_compile_flags(app_suite_tests "-DLINUX")
-else (UNIX)
+elseif (WIN32)
   # Work around googletest VS2012 failures by upping _VARIADIC_MAX from 5 (i#1141)
   append_compile_flags(app_suite_tests "-DWIN32 -D_VARIADIC_MAX=10")
-endif (UNIX)
+  # i#1283 set _WIN32_WINNT for app_suite power_tests_win test
+  # XXX: we did not do every-version-set to avoid over-specifying, however,
+  # we could hit similar problems of different win-versions in the future
+  if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.1")
+    # pre-win7, set _WIN32_WINNT to be _WIN32_WINNT_WINXP
+    append_compile_flags(app_suite_tests "-D_WIN32_WINNT=0x0501")
+  else ()
+    # pre-win7, set _WIN32_WINNT to be _WIN32_WINNT_WIN7
+    append_compile_flags(app_suite_tests "-D_WIN32_WINNT=0x0601")
+  endif ()
+endif ()
 
 if (UNIX)
   # googletest requires -lpthread on Linux unless we define GTEST_HAS_PTHREAD=0

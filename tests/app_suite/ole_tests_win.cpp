@@ -20,6 +20,7 @@
  */
 
 #if _MSC_VER <= 1400
+# undef  _WIN32_WINNT
 # define _WIN32_WINNT 0x0400 /* == NT4 */ /* not set for VS2005 */
 #endif
 
