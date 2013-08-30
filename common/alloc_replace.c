@@ -1611,6 +1611,7 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
             arena = arena_extend(last_arena, add_size);
         if (arena == NULL) {  /* ignore ALLOC_INVOKE_CLIENT */
             client_handle_alloc_failure(request_size, caller, mc);
+            arena = last_arena; /* for cleanup */
             goto replace_alloc_common_done;
         }
         /* remember that arena->next_chunk always has a redzone preceding it */
