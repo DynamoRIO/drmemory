@@ -700,6 +700,7 @@ if (TOOL_DR_MEMORY)
       "-light;-check_handle_leaks;-callstack_max_frames;100;-blacklist_num_frames;0"
       "" OFF "" OFF)
 
+    # XXX i#1320: have runtest.cmake check potential_errors.txt too
     newtest_ex(blacklist blacklist.cpp "" "-blacklist_num_frames;1" "" OFF "" OFF)
   endif (WIN32)
 
@@ -787,6 +788,21 @@ if (WIN32)
     COMMAND ${CMAKE_COMMAND} -E remove ${nosyms_pdb} VERBATIM)
 
 endif (WIN32)
+
+if (TOOL_DR_MEMORY)
+  # We call this "whitelist_app" to more easily pattern-match vs its lib.
+  # XXX i#1320: have runtest.cmake check potential_errors.txt too.
+  newtest_ex(whitelist_app whitelist.cpp ""
+    # Exclude the lib's errors
+    "-report_whitelist;*whitelist_app*;-whitelist_num_frames;1"
+    "" OFF "whitelist" OFF)
+  tobuild_lib(whitelist_lib whitelist_lib.cpp "" "")
+  target_link_libraries(whitelist_app whitelist_lib)
+  newtest_nobuild(whitelist_justlib whitelist_app ""
+    # Exclude the app's errors
+    "-report_whitelist;*whitelist_lib*;-whitelist_num_frames;1"
+    "" OFF "whitelist_justlib")
+endif (TOOL_DR_MEMORY)
 
 add_subdirectory(app_suite)
 newtest_nobuild(app_suite app_suite_tests ""

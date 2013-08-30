@@ -1162,6 +1162,7 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
 
 typedef struct _per_callstack_module_t {
     bool on_blacklist;
+    bool on_whitelist;
 } per_callstack_module_t;
 
 static void *
@@ -1169,10 +1170,16 @@ callstack_module_load_cb(const char *path, byte *base)
 {
     per_callstack_module_t *mod = (per_callstack_module_t *)
         global_alloc(sizeof(*mod), HEAPSTAT_CALLSTACK);
-    /* We cache this value in the callstack module to avoid re-matching on every frame */
-    mod->on_blacklist = (path != NULL &&
+    /* We cache in the callstack module to avoid re-matching on every frame */
+    /* XXX: what about '\' vs '/' ? */
+    mod->on_blacklist = (path != NULL && options.report_blacklist[0] != '\0' &&
                          text_matches_any_pattern(path, options.report_blacklist,
                                                   IGNORE_FILE_CASE));
+    mod->on_whitelist = (path != NULL && options.report_whitelist[0] != '\0' &&
+                         text_matches_any_pattern(path, options.report_whitelist,
+                                                  IGNORE_FILE_CASE));
+    LOG(1, "%s: %s => black=%d white=%d\n", __FUNCTION__, path,
+        mod->on_blacklist, mod->on_whitelist);
     return (void *) mod;
 }
 
@@ -1183,40 +1190,64 @@ callstack_module_unload_cb(const char *path, void *data)
     global_free(mod, sizeof(*mod), HEAPSTAT_CALLSTACK);
 }
 
+/* Returns whether the error should be treated as a false positive */
+static bool
+check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
+{
+    uint i;
+    /* We don't support combining black + white: for us, if white is set,
+     * we only report what's on white and ignore black.
+     * XXX: I'd report a usage error if user sets both, except
+     * currently the blacklist default is passed in from frontend
+     * (for ease of getting $SYSTEMROOT env var).
+     */
+    if (options.whitelist_num_frames > 0 &&
+        options.report_whitelist[0] != '\0') {
+        for (i = 0; i < options.whitelist_num_frames; i++) {
+            per_callstack_module_t *mod = (per_callstack_module_t *)
+                symbolized_callstack_frame_data(&ecs->scs, start + i);
+            if (mod != NULL && mod->on_whitelist)
+                return false; /* report as true positive */
+        }
+        /* if no frame matches whitelist, treat as false positive! */
+        return true;
+    }
+    if (options.blacklist_num_frames > 0 &&
+        options.report_blacklist[0] != '\0') {
+        for (i = 0; i < options.blacklist_num_frames; i++) {
+            per_callstack_module_t *mod = (per_callstack_module_t *)
+                symbolized_callstack_frame_data(&ecs->scs, start + i);
+            if (mod == NULL || !mod->on_blacklist)
+                break;
+        }
+        /* if all frames match blacklist, treat as false positive! */
+        return (i > 0 && i >= options.blacklist_num_frames);
+    }
+    return false;
+}
+
 static bool
 error_is_likely_false_positive(error_callstack_t *ecs)
 {
     /* i#1310: separate callstacks that are likely false positives.
-     * We look for the top two frames being system libs and not
-     * app libs.
+     * We look for the top N frames being on the blacklist or whitelist.
+     * We skip the top frame if a system call.
      */
-    uint i;
-    for (i = 0; i < options.blacklist_num_frames; i++) {
-        per_callstack_module_t *mod = (per_callstack_module_t *)
-            symbolized_callstack_frame_data(&ecs->scs, i);
-        if ((mod == NULL || !mod->on_blacklist) &&
-            /* system call counts */
-            (i > 0 || symbolized_callstack_frame_is_module(&ecs->scs, i)))
-            break;
-    }
-    return (i > 0 && i >= options.blacklist_num_frames);
+    uint start = 0;
+    if (!symbolized_callstack_frame_is_module(&ecs->scs, 0)) /* syscall, we assume */
+        start = 1;
+    return check_blacklist_and_whitelist(ecs, start);
 }
 
 static bool
 leak_is_likely_false_positive(error_callstack_t *ecs)
 {
     /* i#1310: separate callstacks that are likely false positives.
-     * We look for the top two frames being system libs and not
-     * app libs.  We skip the top frame for -replace_malloc.
+     * We look for the top N frames being on the blacklist or whitelist.
+     * We skip the top frame for -replace_malloc.
      */
-    uint i, start = (options.replace_malloc ? 1 : 0);
-    for (i = 0; i < options.blacklist_num_frames; i++) {
-        per_callstack_module_t *mod = (per_callstack_module_t *)
-            symbolized_callstack_frame_data(&ecs->scs, start + i);
-        if (mod == NULL || !mod->on_blacklist)
-            break;
-    }
-    return (i > 0 && i >= options.blacklist_num_frames);
+    uint start = (options.replace_malloc ? 1 : 0);
+    return check_blacklist_and_whitelist(ecs, start);
 }
 
 /***************************************************************************/
@@ -2469,12 +2500,14 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     report_free_buf(drcontext, errbuf, errbufsz);
 
  report_error_done:
-    if (etp->errtype == ERROR_UNADDRESSABLE && reporting && options.pause_at_unaddressable)
-        wait_for_user("pausing at unaddressable access error");
-    else if (etp->errtype == ERROR_UNDEFINED && reporting && options.pause_at_uninitialized)
-        wait_for_user("pausing at uninitialized read error");
-    else if (reporting && options.pause_at_error)
-        wait_for_user("pausing at error");
+    if (reporting && !err->potential) { /* don't pause at a "potential error" */
+        if (etp->errtype == ERROR_UNADDRESSABLE && options.pause_at_unaddressable)
+            wait_for_user("pausing at unaddressable access error");
+        else if (etp->errtype == ERROR_UNDEFINED && options.pause_at_uninitialized)
+            wait_for_user("pausing at uninitialized read error");
+        else if (options.pause_at_error)
+            wait_for_user("pausing at error");
+    }
 
     symbolized_callstack_free(&ecs.scs);
 }

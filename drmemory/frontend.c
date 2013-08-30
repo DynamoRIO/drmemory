@@ -1467,8 +1467,10 @@ _tmain(int argc, TCHAR *targv[])
         bool ok = get_env_var(_T("SYSTEMROOT"), buf, BUFFER_SIZE_ELEMENTS(buf));
         if (ok) {
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-                     /* Add .dll to still report errors in app */
-                     cliops_sofar, len, "-report_blacklist %s*.dll ", buf);
+                     /* Add .d?? to still report errors in app .exe but not
+                      * in *.dll or *.drv.
+                      */
+                     cliops_sofar, len, "-report_blacklist %s*.d?? ", buf);
         }
     }
 

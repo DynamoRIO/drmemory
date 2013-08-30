@@ -18,5 +18,9 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
+
+Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
+whitelist_lib.cpp:50
+
 # XXX i#1320: ideally we would also test that potential_errors.txt is
 # created and has the right contents.

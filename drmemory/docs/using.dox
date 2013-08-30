@@ -364,23 +364,56 @@ If you would like to attach a debugger at the point an error is first
 detected, use the \p -pause_at_unaddressable or \p -pause_at_uninitialized
 options (see \ref page_options).
 
+**********
+\subsection sec_potential_errors Application Versus System Library Errors
+
 Current versions of Dr. Memory can end up reporting uninitialized read and
 leak errors in system library code on large Windows applications.  Future
 Dr. Memory versions will eliminate these errors, but for now these likely
 false positive errors are listed in a separate file from the normal \p
-results.txt: \p potential_errors.txt.  The count of such errors is listed
-in the <tt>ERRORS IGNORED</tt> section of the main error summary.  It is
-possible that some of these errors are in fact application errors, though
-they are suspected of being false positives due to being reported in
-several layers of system library code.  The pattern checking used to
-identify system libraries whose errors should be reported separately can be
-tuned via the options \p -report_blacklist and \p -blacklist_num_frames.
-Running with <tt>-blacklist_num_frames 0</tt> will disable this error
-separation completely and report all errors as application errors in \p
-results.txt.  Conversely, if many such potential errors are reported and
-additional performance is desired at the risk of not detecting all
-application errors, Dr. Memory's \ref page_light can be used to disable
-checking for uninitialized reads and leaks.
+results.txt called \p potential_errors.txt.  The count of such errors is
+listed in the <tt>ERRORS IGNORED</tt> section of the main error summary.
+For example:
+\verbatim
+ERRORS IGNORED:
+     17 potential error(s) (suspected false positives)
+         (details: D:\drmemory\logs\DrMemory-myapp.exe.5144.000\potential_errors.txt)
+     24 potential leak(s) (suspected false positives)
+         (details: D:\drmemory\logs\DrMemory-myapp.exe.5144.000\potential_errors.txt)
+\endverbatim
+
+It is possible that some of these errors are in fact application errors in
+parameters passed to system library routines where those parameters are not
+used or read until deep into a system library callstack, though they are
+suspected of being false positives due to being reported in several layers
+of system library code.  The pattern checking used to identify system
+libraries whose errors should be reported separately can be tuned via two
+features, a blacklist and a whitelist.  Each feature contains patterns
+against which file paths are matched.  These patterns can contain \p * or
+\p ? wildcards.
+
+The whitelist takes precedence and if set the blacklist is ignored.  The
+whitelist is empty by default.  The option \p -report_whitelist contains a
+;-separated sequence of patterns against which library or executable paths
+are matched.  The option \p -whitelist_num_frames controls how many of the
+top frames in each callstack are matched.  If a whitelist pattern appears
+in any of those top frames, an error is reported normally.  Otherwise, it
+is separated as a potential error.  The expected usage model is to populate
+the whitelist with a list of paths in which application libraries or
+executables reside, to limit the error reports to those paths.
+
+The blacklist is controlled by parallel options \p -report_blacklist and \p
+-blacklist_num_frames.  Running with <tt>-blacklist_num_frames 0</tt> will
+disable the blacklist and report all errors as application errors in \p
+results.txt.  When non-zero, it controls how many of the top frames must
+all match the blacklist before an error is separated as a potential error.
+The blacklist is only enabled by default on Windows, where it is set to \p
+$SYSTEMROOT*.d??.
+
+If many false positives are being reported and additional performance is
+desired at the risk of not detecting all application errors, Dr. Memory's
+\ref page_light can be used to disable checking for uninitialized reads and
+leaks.
 
 ********************
 \section sec_children Controlling Child Processes

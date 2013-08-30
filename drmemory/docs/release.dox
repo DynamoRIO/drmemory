@@ -66,6 +66,10 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    they are in fact true application errors, however.  This separation of
    errors can be disabled with the option -blacklist_num_frames 0, and
    tuned via the options -report_blacklist and -blacklist_num_frames.
+ - Added options -report_whitelist and -whitelist_num_frames to support
+   only displaying errors whose top N frames reference a whitelisted
+   module.  Any error that does not match the whitelist is separated
+   as a "potential error" (see the prior blacklist entry).
  - Added option -check_prefetch to make it easier to turn off the warnings
    on prefetching unaddressable memory.
  - Added checks for mixing of C library heap routines with Windows API heap
