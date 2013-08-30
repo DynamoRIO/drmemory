@@ -2752,6 +2752,7 @@ pre_existing_heap_init(HANDLE heap)
         /* i#1221: ntdll!CsrPortHeap passed in shared memory here.
          * We can't use our own memory.
          */
+        byte *alloc_base = (byte *) mbi.AllocationBase;
         byte *alloc_end = heap_allocated_end(heap);
         /* Go to next page to be safe */
         alloc_end = (byte *) ALIGN_FORWARD(alloc_end + PAGE_SIZE, PAGE_SIZE);
@@ -2760,10 +2761,19 @@ pre_existing_heap_init(HANDLE heap)
                "pre-us mapped heap has no room left");
         arena = (arena_header_t *) alloc_end;
         arena->commit_end = (byte *)heap + mbi.RegionSize;
-        arena->reserve_end = arena->commit_end;
+
+        /* i#1282: we may need to extend the committed part of the heap */
+        if (dr_virtual_query(arena->commit_end, &mbi, sizeof(mbi)) == sizeof(mbi) &&
+            (byte *)mbi.AllocationBase == alloc_base &&
+            mbi.State == MEM_RESERVE)
+            arena->reserve_end = (byte *)mbi.BaseAddress + mbi.RegionSize;
+        else
+            arena->reserve_end = arena->commit_end;
+
         arena_init(arena, NULL);
         arena->flags |= ARENA_PRE_US_MAPPED;
-        LOG(2, "new arena inside mmapped pre-us Heap "PFX" is "PFX"\n", heap, arena);
+        LOG(2, "new arena inside mmapped pre-us Heap "PFX" is "PFX"-"PFX"-"PFX"\n",
+            heap, arena, arena->commit_end, arena->reserve_end);
     } else {
         arena = (arena_header_t *)
             create_Rtl_heap(PAGE_SIZE, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
