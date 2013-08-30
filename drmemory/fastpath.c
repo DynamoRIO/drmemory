@@ -289,7 +289,6 @@ instr_needs_slowpath(instr_t *inst)
      * defined they can stay on fastpath (PR 495277) 
      */
     switch (opc) {
-    case OP_sysenter:
     case OP_popa:
         return true;
     case OP_bswap:

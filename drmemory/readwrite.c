@@ -865,12 +865,10 @@ bool
 opc_is_pop(uint opc)
 {
     return (opc == OP_pop || opc == OP_popf || opc == OP_popa || opc == OP_leave ||
-            opc == OP_ret || opc == OP_ret_far || opc == OP_iret
-#ifdef WINDOWS
-            /* b/c DR hides the post-sysenter ret we treat it as a ret */
-            || opc == OP_sysenter
-#endif
-            );
+            opc == OP_ret || opc == OP_ret_far || opc == OP_iret);
+    /* DRi#537 made the post-sysenter ret visible so we no
+     * longer need to treat OP_sysenter as a ret.
+     */
 }
 
 bool
@@ -967,12 +965,10 @@ opc_loads_into_eip(uint opc)
 {
     return (opc == OP_ret || opc == OP_ret_far || opc == OP_iret ||
             opc == OP_call_ind || opc == OP_jmp_ind ||
-            opc == OP_call_far_ind || opc == OP_jmp_far_ind
-#ifdef WINDOWS
-            /* b/c DR hides the post-sysenter ret we treat it as a ret */
-            || opc == OP_sysenter
-#endif
-            );
+            opc == OP_call_far_ind || opc == OP_jmp_far_ind);
+    /* DRi#537 made the post-sysenter ret visible so we no
+     * longer need to treat OP_sysenter as a ret.
+     */
 }
 
 /* can 2nd dst be treated as simply an extension of the 1st */
@@ -2187,21 +2183,9 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
     ASSERT(!options.check_uninitialized, "should not be called");
 
     opc = instr_get_opcode(inst);
-    num_srcs = (IF_WINDOWS_ELSE(opc == OP_sysenter, false)) ? 1 :
-        ((opc == OP_lea) ? 0 : num_true_srcs(inst, mc));
+    num_srcs = (opc == OP_lea) ? 0 : num_true_srcs(inst, mc);
     for (i = 0; i < num_srcs; i++) {
-        if (opc == OP_sysenter) {
-#ifdef WINDOWS
-            /* special case: we pretend the sysenter instr itself does the
-             * ret that is hidden by DR.
-             */
-            opnd = OPND_CREATE_MEM32(DR_REG_XSP, 0);
-#else
-            ASSERT(false, "sysenter has no sources");
-            opnd = opnd_create_null();
-#endif
-        } else
-            opnd = instr_get_src(inst, i);
+        opnd = instr_get_src(inst, i);
         if (opnd_uses_nonignorable_memory(opnd)) {
             opnd = adjust_memop(inst, opnd, false, &sz, &pushpop_stackop);
             if (pushpop_stackop && options.check_stack_bounds)
@@ -2463,21 +2447,11 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     for (i = 0; i < OPND_SHADOW_ARRAY_LEN; i++)
         shadow_vals[i] = SHADOW_DEFINED;
 
-    num_srcs = (IF_WINDOWS_ELSE(opc == OP_sysenter, false)) ? 1 :
-        ((opc == OP_lea) ? 2 : num_true_srcs(&inst, mc));
+    num_srcs = (opc == OP_lea) ? 2 : num_true_srcs(&inst, mc);
  check_srcs:
     for (i = 0; i < num_srcs; i++) {
         bool regular_op = false;
-        if (opc == OP_sysenter) {
-#ifdef WINDOWS
-            /* special case: we pretend the sysenter instr itself does the
-             * ret that is hidden by DR.
-             */
-            opnd = OPND_CREATE_MEM32(DR_REG_XSP, 0);
-#else
-            ASSERT(false, "sysenter has no sources");
-#endif
-        } else if (opc == OP_lea) {
+        if (opc == OP_lea) {
             /* special case: treat address+base as propagatable sources 
              * code below can handle REG_NULL
              */
@@ -4323,14 +4297,10 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         /* we treat interrupts and syscalls, including the call*
          * for a wow64 syscall, as though they do not write to the
          * stack or esp (for call*, since we never see the
-         * corresponding ret instruction): for sysenter though
-         * we treat is as though it performs the ret that DR misses
-         * (on Windows).
+         * corresponding ret instruction), including for sysenter
+         * now that we have DRi#537.
          */
-#ifdef WINDOWS
-        if (instr_get_opcode(inst) != OP_sysenter)
-#endif
-            goto instru_event_bb_insert_done;
+        goto instru_event_bb_insert_done;
     }
 #ifdef WINDOWS
     ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");

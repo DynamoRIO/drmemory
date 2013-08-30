@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -554,7 +554,9 @@ needs_esp_adjust(instr_t *inst, sp_adjust_action_t sp_action)
          (opc == OP_sub && opnd_is_immed_int(instr_get_src(inst, 0)) &&
           opnd_get_immed_int(instr_get_src(inst, 0)) <= 0)))
         return false;
-    /* We consider sysenter a pop for the hidden ret.  We ignore its write to esp. */
+    /* We no longer consider sysenter a special ret, but it still writes esp
+     * according to DR, so we explicitly ignore it here.
+     */
     if (opc == OP_sysenter)
         return false;
     /* We ignore stack changes due to int* */
