@@ -1617,12 +1617,12 @@ replace_alloc_common(arena_header_t *arena, size_t request_size, alloc_flags_t f
         /* remember that arena->next_chunk always has a redzone preceding it */
         head = (chunk_header_t *)
             (arena->next_chunk - redzone_beyond_header - header_size);
-        LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
-            arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
         head->alloc_size = aligned_size;
         head->magic = HEADER_MAGIC;
         head->user_data = NULL; /* b/c we pass the old to client */
         head->flags = 0;
+        LOG(2, "\tcarving out new chunk @"PFX" => head="PFX", res="PFX"\n",
+            arena->next_chunk - alloc_ops.redzone_size, head, ptr_from_header(head));
         orig_next_chunk = arena->next_chunk;
         arena->next_chunk += add_size;
         if (arena->prev_free_sz != 0) {
