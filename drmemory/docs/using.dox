@@ -393,17 +393,17 @@ against which file paths are matched.  These patterns can contain \p * or
 \p ? wildcards.
 
 The whitelist takes precedence and if set the blacklist is ignored.  The
-whitelist is empty by default.  The option \p -report_whitelist contains a
+whitelist is empty by default.  The option \p -lib_whitelist contains a
 ;-separated sequence of patterns against which library or executable paths
-are matched.  The option \p -whitelist_num_frames controls how many of the
+are matched.  The option \p -lib_whitelist_frames controls how many of the
 top frames in each callstack are matched.  If a whitelist pattern appears
 in any of those top frames, an error is reported normally.  Otherwise, it
 is separated as a potential error.  The expected usage model is to populate
 the whitelist with a list of paths in which application libraries or
 executables reside, to limit the error reports to those paths.
 
-The blacklist is controlled by parallel options \p -report_blacklist and \p
--blacklist_num_frames.  Running with <tt>-blacklist_num_frames 0</tt> will
+The blacklist is controlled by parallel options \p -lib_blacklist and \p
+-lib_blacklist_frames.  Running with <tt>-lib_blacklist_frames 0</tt> will
 disable the blacklist and report all errors as application errors in \p
 results.txt.  When non-zero, it controls how many of the top frames must
 all match the blacklist before an error is separated as a potential error.

@@ -693,15 +693,15 @@ if (TOOL_DR_MEMORY)
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
-    # XXX: running with -blacklist_num_frames 0 to avoid half the leaks being
+    # XXX: running with -lib_blacklist_frames 0 to avoid half the leaks being
     # split as "potential errors" (from i#1310) to preserve the test as-is for
     # now.   We should revisit when we make handle leaks on by default.
     newtest_ex(handle handle.cpp ""
-      "-light;-check_handle_leaks;-callstack_max_frames;100;-blacklist_num_frames;0"
+      "-light;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0"
       "" OFF "" OFF)
 
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
-    newtest_ex(blacklist blacklist.cpp "" "-blacklist_num_frames;1" "" OFF "" OFF)
+    newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" OFF)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -760,8 +760,8 @@ newtest_nobuild(nudge run_in_bg_tgt
   "-out;./nudge-out"
   "${nudge_test_args}--;${infloop_path}" "" OFF "")
 if (TOOL_DR_MEMORY AND WIN32)
-  # See above for why passing -blacklist_num_frames 0.
-  set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;-blacklist_num_frames;0")
+  # See above for why passing -lib_blacklist_frames 0.
+  set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;-lib_blacklist_frames;0")
   newtest_nobuild(nudge_handle run_in_bg_tgt
     "-out;./nudge-handle-out"
     "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")
@@ -794,13 +794,13 @@ if (TOOL_DR_MEMORY)
   # XXX i#1320: have runtest.cmake check potential_errors.txt too.
   newtest_ex(whitelist_app whitelist.cpp ""
     # Exclude the lib's errors
-    "-report_whitelist;*whitelist_app*;-whitelist_num_frames;1"
+    "-lib_whitelist;*whitelist_app*;-lib_whitelist_frames;1"
     "" OFF "whitelist" OFF)
   tobuild_lib(whitelist_lib whitelist_lib.cpp "" "")
   target_link_libraries(whitelist_app whitelist_lib)
   newtest_nobuild(whitelist_justlib whitelist_app ""
     # Exclude the app's errors
-    "-report_whitelist;*whitelist_lib*;-whitelist_num_frames;1"
+    "-lib_whitelist;*whitelist_lib*;-lib_whitelist_frames;1"
     "" OFF "whitelist_justlib")
 endif (TOOL_DR_MEMORY)
 
@@ -829,7 +829,7 @@ else (NOT X64)
   if (WIN32)
     # FIXME i#672: see earlier comment on # callstack frames
     newtest_ex(handle handle.cpp ""
-      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100;-blacklist_num_frames;0" ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0" ""
       OFF "" OFF)
   endif (WIN32)
 endif (NOT X64)

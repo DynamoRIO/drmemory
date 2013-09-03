@@ -31,7 +31,7 @@
 static void
 test_system_lib()
 {
-    /* We run with -blacklist_num_frames 0, where this should be marked "potential": */
+    /* We run with -lib_blacklist_frames 0, where this should be marked "potential": */
     MEMORY_BASIC_INFORMATION mbi;
     void **uninit = (void **) malloc(sizeof(*uninit));
     VirtualQuery(*uninit, &mbi, sizeof(mbi));

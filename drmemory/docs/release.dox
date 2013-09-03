@@ -64,9 +64,9 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    potential_errors.txt.  These are errors that are suspected of being
    false positives or limited to system libraries.  It is possible that
    they are in fact true application errors, however.  This separation of
-   errors can be disabled with the option -blacklist_num_frames 0, and
-   tuned via the options -report_blacklist and -blacklist_num_frames.
- - Added options -report_whitelist and -whitelist_num_frames to support
+   errors can be disabled with the option -lib_blacklist_frames 0, and
+   tuned via the options -lib_blacklist and -lib_blacklist_frames.
+ - Added options -lib_whitelist and -lib_whitelist_frames to support
    only displaying errors whose top N frames reference a whitelisted
    module.  Any error that does not match the whitelist is separated
    as a "potential error" (see the prior blacklist entry).

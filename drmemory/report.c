@@ -1172,11 +1172,11 @@ callstack_module_load_cb(const char *path, byte *base)
         global_alloc(sizeof(*mod), HEAPSTAT_CALLSTACK);
     /* We cache in the callstack module to avoid re-matching on every frame */
     /* XXX: what about '\' vs '/' ? */
-    mod->on_blacklist = (path != NULL && options.report_blacklist[0] != '\0' &&
-                         text_matches_any_pattern(path, options.report_blacklist,
+    mod->on_blacklist = (path != NULL && options.lib_blacklist[0] != '\0' &&
+                         text_matches_any_pattern(path, options.lib_blacklist,
                                                   IGNORE_FILE_CASE));
-    mod->on_whitelist = (path != NULL && options.report_whitelist[0] != '\0' &&
-                         text_matches_any_pattern(path, options.report_whitelist,
+    mod->on_whitelist = (path != NULL && options.lib_whitelist[0] != '\0' &&
+                         text_matches_any_pattern(path, options.lib_whitelist,
                                                   IGNORE_FILE_CASE));
     LOG(1, "%s: %s => black=%d white=%d\n", __FUNCTION__, path,
         mod->on_blacklist, mod->on_whitelist);
@@ -1201,9 +1201,9 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
      * currently the blacklist default is passed in from frontend
      * (for ease of getting $SYSTEMROOT env var).
      */
-    if (options.whitelist_num_frames > 0 &&
-        options.report_whitelist[0] != '\0') {
-        for (i = 0; i < options.whitelist_num_frames; i++) {
+    if (options.lib_whitelist_frames > 0 &&
+        options.lib_whitelist[0] != '\0') {
+        for (i = 0; i < options.lib_whitelist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
             if (mod != NULL && mod->on_whitelist)
@@ -1212,16 +1212,16 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
         /* if no frame matches whitelist, treat as false positive! */
         return true;
     }
-    if (options.blacklist_num_frames > 0 &&
-        options.report_blacklist[0] != '\0') {
-        for (i = 0; i < options.blacklist_num_frames; i++) {
+    if (options.lib_blacklist_frames > 0 &&
+        options.lib_blacklist[0] != '\0') {
+        for (i = 0; i < options.lib_blacklist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
             if (mod == NULL || !mod->on_blacklist)
                 break;
         }
         /* if all frames match blacklist, treat as false positive! */
-        return (i > 0 && i >= options.blacklist_num_frames);
+        return (i > 0 && i >= options.lib_blacklist_frames);
     }
     return false;
 }
@@ -1444,8 +1444,16 @@ report_init(void)
          dr_get_process_id(), dr_get_application_name());
     LOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
          "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
-    LOGF(0, f_potential, "Run with -blacklist_num_frames 0 to treat these as regular "
-         "errors."NL);
+    if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
+        LOGF(0, f_potential,
+             "These errors did not match the whitelist '%s' for %d frames"NL,
+             options.lib_whitelist, options.lib_whitelist_frames);
+    } else if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
+        LOGF(0, f_potential, "These errors matched the blacklist '%s' for %d frames"NL,
+             options.lib_blacklist, options.lib_blacklist_frames);
+        LOGF(0, f_potential, "Run with -lib_blacklist_frames 0 to treat these as regular "
+             "errors."NL);
+    }
     LOGF(0, f_potential, "If these are all false positives, consider running with -light "
          "to skip all uninitialized reads and leaks for higher performance."NL);
 #endif

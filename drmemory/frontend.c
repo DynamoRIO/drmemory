@@ -1461,16 +1461,16 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* Easier for the front-end to get the $SYSTEMROOT env var, so we set the
-     * default value here.
+     * default value here.  We add a space to rule out -lib_blacklist_frames.
      */
-    if (strstr(client_ops, "-report_blacklist") == NULL) {
+    if (strstr(client_ops, "-lib_blacklist ") == NULL) {
         bool ok = get_env_var(_T("SYSTEMROOT"), buf, BUFFER_SIZE_ELEMENTS(buf));
         if (ok) {
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      /* Add .d?? to still report errors in app .exe but not
                       * in *.dll or *.drv.
                       */
-                     cliops_sofar, len, "-report_blacklist %s*.d?? ", buf);
+                     cliops_sofar, len, "-lib_blacklist %s*.d?? ", buf);
         }
     }
 

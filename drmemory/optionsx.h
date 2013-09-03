@@ -247,18 +247,18 @@ OPTION_CLIENT_STRING(client, callstack_srcfile_hide, "",
 OPTION_CLIENT_STRING(client, callstack_srcfile_prefix, "",
                      ",-separated list of path prefixes to remove",
                      "Callstack frame source paths that match any of these ,-separated prefixes will be printed without the leading portion up to and including the match.")
-OPTION_CLIENT_STRING(client, report_blacklist, "",
+OPTION_CLIENT_STRING(client, lib_blacklist, "",
                      ",-separated list of path patterns to treat as non-app libs",
-                     "Error reports whose top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -blacklist_num_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -blacklist_num_frames is 0.  The -report_whitelist takes priority over this blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist. Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
-OPTION_CLIENT(client, blacklist_num_frames, uint, 4, 0, 16384,
-                     "The number of frames to match vs -report_blacklist",
-                     "The number of frames, starting from the top, that must match -report_blacklist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables blacklist-based error separatiobn.")
-OPTION_CLIENT_STRING(client, report_whitelist, "",
+                     "Error reports whose top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -lib_blacklist_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -lib_blacklist_frames is 0.  The -lib_whitelist takes priority over this blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist. Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
+OPTION_CLIENT(client, lib_blacklist_frames, uint, 4, 0, 16384,
+                     "The number of frames to match vs -lib_blacklist",
+                     "The number of frames, starting from the top, that must match -lib_blacklist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables blacklist-based error separatiobn.")
+OPTION_CLIENT_STRING(client, lib_whitelist, "",
                      ",-separated list of path patterns for which to report errors",
-                     "Error reports where not a single one of the top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -whitelist_num_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -whitelist_num_frames is 0 or if -report_whitelist is empty.  This whitelist takes priority over -report_blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist.  Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
-OPTION_CLIENT(client, whitelist_num_frames, uint, 4, 0, 16384,
-                     "The number of frames to match vs -report_whitelist",
-                     "The number of frames, starting from the top, that must not match -report_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables whitelist-based error separation.")
+                     "Error reports where not a single one of the top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -lib_whitelist_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -lib_whitelist_frames is 0 or if -lib_whitelist is empty.  This whitelist takes priority over -lib_blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist.  Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
+OPTION_CLIENT(client, lib_whitelist_frames, uint, 4, 0, 16384,
+                     "The number of frames to match vs -lib_whitelist",
+                     "The number of frames, starting from the top, that must not match -lib_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables whitelist-based error separation.")
 # endif
 #endif
 
