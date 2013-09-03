@@ -80,9 +80,23 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
  - Added checks for mixing of C library heap routines with Windows API heap
    routines on the same allocation, under a new on-by-default new option
    -check_heap_mismatch.
+ - Switched to replacing the malloc implementation with Dr. Memory's own
+   allocator, rather than wrapping the system allocator, for improved
+   performance and stability and improved interoperability with
+   the Visual Studio debug C library.
  - The GDI error on using a DC by more than one thread is now off by
    default.  It can be enabled with the -check_gdi_multithread option.
  - Added drsys_syscall_gateway() to the Dr. Syscall library.
+ - Extended -soft_kills to handle the most common job termination sequences.
+ - Further reduced false positives in Windows system libraries by
+   continuing to make progress on Windows system call handling.
+ - Added a source file package to the release process.
+ - Improved Windows 8 support.
+ - Improved Visual Studio 2012 support.
+ - Added non-ASCII symbol support.
+ - Added the total execution time to the logfile.
+ - Added default suppressions for real bugs in the Visual Studio C
+   and C++ libraries detected by Dr. Memory.
  - Various bug fixes.
 
 The changes between version 1.5.1 and version 1.5.0 include:
@@ -100,7 +114,7 @@ The changes between version 1.5.1 and version 1.5.0 include:
    thus reduce false negatives in leak reporting.  See
    the -strings_vs_pointers option.
  - Added a new, experimental lightweight mode: \p -unaddr_only.
- - Added non-ASCII support.
+ - Added non-ASCII application support.
  - Added option \p -show_duplicates to list details on duplicate errors.
  - Eliminated reliance on the WDK/DDK when building from sources.
  - Fixed PATH limit issue with the NSIS installer.
@@ -260,13 +274,11 @@ The changes between version 1.1.0 and 1.0.1 include:
 Dr. Memory is still under development.  It has some missing features and undoubtedly
 some bugs.  The missing features include:
 
- - Windows 8 support is experimental.  Only non-graphical, non-networked
-   applications (i.e., applications making few system calls) are expected
-   to have no false positives in this release.  Future releases will add
-   full support.
  - Windows system call parameters are not all known, which can
    result in false positives and false negatives, especially on Vista or
    Windows 7 or Windows 8, or with code that interacts with the network.
+   Often, these false positives are solely in system library code.
+   Dr. Memory attempts to separate such errors into potential_errors.txt.
  - The malloc in the Cygwin C library is not yet tracked separately from
    the Windows API malloc which can lead to false negatives.
  - Definedness is tracked at the byte level, not at the bit level,
