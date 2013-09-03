@@ -106,11 +106,13 @@ If a problem in the Dr. Memory tool itself is encountered, try the
 following steps to help diagnose the issue:
 
  - Run the debug version of Dr. Memory and of its underlying engine
-   DynamoRIO by passing "-debug -dr_debug" to drmemory.exe.  Are any messages
-   reported?
+   DynamoRIO by passing "-debug -dr_debug -pause_at_assert" to
+   drmemory.exe.  Are any messages reported?
  - Try running light mode ("-light").  Does the issue appear there?
  - Try running "-leaks_only -no_count_leaks -no_track_allocs".  Does that work?
  - Try a recent build from http://build.chromium.org/p/client.drmemory/builds/
+ - Try disabling anti-virus or other invasive software, as it may not
+   interoperate well with Dr. Memory (see \ref sec_interop).
 
 To supply data for analyzing and fixing a bug, reproduce the problem using
 these options to Dr. Memory:

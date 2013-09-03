@@ -308,6 +308,13 @@ some bugs.  The missing features include:
  - On a 32-bit Windows 7 kernel, error reports are not visible in the \p cmd window.
    Send stderr to a file to view them inlined with program output.
 
+\subsection sec_interop Interoperability
+
+Dr. Memory may have conflicts with security software or with other software
+that injects into the same process as Dr. Memory.  There are known
+interoperability problems with some anti-virus applications, including
+Avast 8.0.
+
 ****************************************************************************
 ****************************************************************************
 */
