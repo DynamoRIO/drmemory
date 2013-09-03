@@ -70,6 +70,11 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    only displaying errors whose top N frames reference a whitelisted
    module.  Any error that does not match the whitelist is separated
    as a "potential error" (see the prior blacklist entry).
+ - Removed -srcfilter option and replaced with new options -src_whitelist
+   and -src_whitelist_frames to support only displaying errors whose top N
+   frames reference a whitelisted source file.  Any error that does not
+   match the whitelist is separated as a "potential error" (see the earlier
+   blacklist entry).
  - Added option -check_prefetch to make it easier to turn off the warnings
    on prefetching unaddressable memory.
  - Added checks for mixing of C library heap routines with Windows API heap
@@ -77,8 +82,8 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    -check_heap_mismatch.
  - The GDI error on using a DC by more than one thread is now off by
    default.  It can be enabled with the -check_gdi_multithread option.
- - Various bug fixes.
  - Added drsys_syscall_gateway() to the Dr. Syscall library.
+ - Various bug fixes.
 
 The changes between version 1.5.1 and version 1.5.0 include:
  - Re-organized and improved the documentation.

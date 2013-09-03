@@ -2011,6 +2011,15 @@ symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame)
     return scs->frames[frame].func;
 }
 
+char *
+symbolized_callstack_frame_file(const symbolized_callstack_t *scs, uint frame)
+{
+    ASSERT(scs != NULL, "invalid args");
+    if (scs->num_frames <= frame)
+        return NULL;
+    return scs->frames[frame].fname;
+}
+
 void *
 symbolized_callstack_frame_data(const symbolized_callstack_t *scs, uint frame)
 {

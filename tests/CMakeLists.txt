@@ -802,6 +802,15 @@ if (TOOL_DR_MEMORY)
     # Exclude the app's errors
     "-lib_whitelist;*whitelist_lib*;-lib_whitelist_frames;1"
     "" OFF "whitelist_justlib")
+  newtest_nobuild(whitelist_src whitelist_app ""
+    # Test -src_whitelist
+    "-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
+    "" OFF "whitelist")
+  newtest_nobuild(whitelist_srclib whitelist_app ""
+    # Test -src_whitelist in combination with -lib_whitelist.
+    # Not a great test as the lib selects both errors anyway.
+    "-lib_whitelist;*whitelist*;-lib_whitelist_frames;1;-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
+    "" OFF "whitelist")
 endif (TOOL_DR_MEMORY)
 
 add_subdirectory(app_suite)

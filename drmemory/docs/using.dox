@@ -410,6 +410,11 @@ all match the blacklist before an error is separated as a potential error.
 The blacklist is only enabled by default on Windows, where it is set to \p
 $SYSTEMROOT*.d??.
 
+An additional whitelist based on source file paths is available under the
+options \p -src_whitelist and \p -src_whitelist_frames.  If combined with
+\p -lib_whitelist, the library-based whitelist acts first, with the source
+file-based whitelist filtering the errors that remain.
+
 If many false positives are being reported and additional performance is
 desired at the risk of not detecting all application errors, Dr. Memory's
 \ref page_light can be used to disable checking for uninitialized reads and

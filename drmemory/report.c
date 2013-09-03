@@ -1192,6 +1192,24 @@ callstack_module_unload_cb(const char *path, void *data)
 
 /* Returns whether the error should be treated as a false positive */
 static bool
+check_src_whitelist(error_callstack_t *ecs, uint start)
+{
+    uint i;
+    if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
+        for (i = 0; i < options.src_whitelist_frames; i++) {
+            char *file = symbolized_callstack_frame_file(&ecs->scs, start + i);
+            if (file != NULL && text_matches_any_pattern(file, options.src_whitelist,
+                                                         IGNORE_FILE_CASE))
+                return false; /* report as true positive */
+        }
+        /* if no frame matches whitelist, treat as false positive! */
+        return true;
+    }
+    return false;
+}
+
+/* Returns whether the error should be treated as a false positive */
+static bool
 check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
 {
     uint i;
@@ -1201,19 +1219,20 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
      * currently the blacklist default is passed in from frontend
      * (for ease of getting $SYSTEMROOT env var).
      */
-    if (options.lib_whitelist_frames > 0 &&
-        options.lib_whitelist[0] != '\0') {
+    if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
         for (i = 0; i < options.lib_whitelist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
             if (mod != NULL && mod->on_whitelist)
-                return false; /* report as true positive */
+                /* report as true positive, unless not on -src_whitelist */
+                return check_src_whitelist(ecs, start);
         }
         /* if no frame matches whitelist, treat as false positive! */
         return true;
     }
-    if (options.lib_blacklist_frames > 0 &&
-        options.lib_blacklist[0] != '\0') {
+    if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')
+        return check_src_whitelist(ecs, start);
+    if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
         for (i = 0; i < options.lib_blacklist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
@@ -1444,10 +1463,18 @@ report_init(void)
          dr_get_process_id(), dr_get_application_name());
     LOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
          "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
-    if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
-        LOGF(0, f_potential,
-             "These errors did not match the whitelist '%s' for %d frames"NL,
-             options.lib_whitelist, options.lib_whitelist_frames);
+    if ((options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') ||
+        (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')) {
+        if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
+            LOGF(0, f_potential,
+                 "These errors did not match the lib whitelist '%s' for %d frames"NL,
+                 options.lib_whitelist, options.lib_whitelist_frames);
+        }
+        if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
+            LOGF(0, f_potential,
+                 "These errors did not match the src whitelist '%s' for %d frames"NL,
+                 options.src_whitelist, options.src_whitelist_frames);
+        }
     } else if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
         LOGF(0, f_potential, "These errors matched the blacklist '%s' for %d frames"NL,
              options.lib_blacklist, options.lib_blacklist_frames);

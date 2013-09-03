@@ -33,7 +33,7 @@
  *   o groups: just going to eliminate the feature
  *   o during-run summary + counts: just going to eliminate the feature
  *   o -aggregate: not supporting on Windows
- *   o -srcfilter: not supporting on Windows
+ *   o -srcfilter: not supporting on Windows; now replaced with -src_whitelist.
  * - Very large symbol files that do not fit in the app address space
  *   are not yet supported: drsyms will eventually have symbol server
  *   support for those (PR 243532).

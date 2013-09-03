@@ -371,6 +371,9 @@ symbolized_callstack_frame_modbase(const symbolized_callstack_t *scs, uint frame
 char *
 symbolized_callstack_frame_func(const symbolized_callstack_t *scs, uint frame);
 
+char *
+symbolized_callstack_frame_file(const symbolized_callstack_t *scs, uint frame);
+
 /* Returns the data stored for this frame's module by callstack_options_t.module_load */
 void *
 symbolized_callstack_frame_data(const symbolized_callstack_t *scs, uint frame);

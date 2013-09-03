@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -49,7 +49,14 @@ suppress specific reports:
 ********************
 \page page_suppress Suppressing Errors
 
-Dr. Memory generates a file named \p suppress.txt alongside the \p
+If Dr. Memory is reporting numerous errors that appear to be false
+positives and originate in libraries that are not part of your application,
+consider using the blacklist and whitelist options to isolate them, which
+may be more effective than suppressing individual errors.  See \ref
+sec_potential_errors for more information.
+
+To aid in suppressing individual errors, Dr. Memory generates a file named
+\p suppress.txt alongside the \p
 results.txt file.  To suppress errors from being reported in future runs,
 edit this file to contain just the errors you wish to suppress.  Then pass
 the file to \p \FRONT_END with the -suppress option:
@@ -153,20 +160,17 @@ and matches the Windows module!function standards used by other tools.  We
 recommend converting to the Dr. Memory format from a legacy format.
 
 Another method of ignoring errors is to filter the reported errors to focus
-on particular source files.  Use the \p -srcfilter option to do this:
-
-\verbatim
-drmemory.exe -srcfilter hello.c -- ./hello
-\endverbatim
-
-The \p -srcfilter option is not available in the Windows version of Dr. Memory.
+on particular source files or particular libraries, using Dr. Memory's
+whitelisting options.  See \ref sec_potential_errors for further
+information on whitelists.
 
 To get more information on what errors are being suppressed, run with
 \p -log_suppressed_errors.  All suppressed reports will be printed to the global
 logfile.
 
-Dr. Memory comes with a set of default suppressions to avoid known false
-positives in system libraries.  These can be disabled with the option
+Dr. Memory comes with a set of default suppressions to avoid certain known
+false positives (and known true positives, i.e., actual bugs) in the C and
+C++ libraries and other locations.  These can be disabled with the option
 -no_default_suppress.
 
 ********************
