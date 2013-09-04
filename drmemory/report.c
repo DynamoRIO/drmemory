@@ -1491,8 +1491,9 @@ report_init(void)
         ELOGF(0, f_potential, "Run with -lib_blacklist_frames 0 to treat these as "
               "regular errors."NL);
     }
-    ELOGF(0, f_potential, "If these are all false positives, consider running with "
-          "-light to skip all uninitialized reads and leaks for higher performance."NL);
+    ELOGF(0, f_potential, "If these are all false positives and your focus is "
+          "unaddressable errors, consider running with -light to skip all "
+          "uninitialized reads and leaks for higher performance."NL);
 #endif
 
     if (options.default_suppress) {
