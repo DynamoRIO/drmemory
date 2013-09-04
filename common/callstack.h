@@ -187,8 +187,6 @@ enum {
  */
 #define MAX_ERROR_INITIAL_LINES 512
 
-#define IGNORE_FILE_CASE IF_WINDOWS_ELSE(true, false)
-
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
 extern uint find_next_fp_cache_hits;

@@ -580,7 +580,7 @@ frame_include_srcfile(symbolized_frame_t *frame IN)
             /* i#589: support hiding source files matching pattern */
             (ops.srcfile_hide == NULL ||
              !text_matches_any_pattern(frame->fname,
-                                       ops.srcfile_hide, IGNORE_FILE_CASE)));
+                                       ops.srcfile_hide, FILESYS_CASELESS)));
 }
 
 /* We provide control over many aspects of callstack formatting (i#290)
@@ -615,7 +615,7 @@ print_file_and_line(symbolized_frame_t *frame IN,
             const char *matched;
             const char *match =
                 text_contains_any_string(fname, ops.srcfile_prefix,
-                                         IGNORE_FILE_CASE, &matched);
+                                         FILESYS_CASELESS, &matched);
             if (match != NULL) {
                 fname = match + strlen(matched);
                 if (fname[0] == DIRSEP IF_WINDOWS(|| fname[0] == ALT_DIRSEP))
@@ -2067,7 +2067,7 @@ add_new_module(void *drcontext, const module_data_t *info)
         name_info->hide_modname =
             (ops.modname_hide != NULL &&
              text_matches_any_pattern(name_info->name, ops.modname_hide,
-                                      IGNORE_FILE_CASE));
+                                      FILESYS_CASELESS));
         if (ops.module_load != NULL)
             name_info->user_data = ops.module_load(name_info->path, info->start);
         name_info->warned_no_syms = false;

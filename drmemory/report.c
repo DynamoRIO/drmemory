@@ -1174,10 +1174,10 @@ callstack_module_load_cb(const char *path, byte *base)
     /* XXX: what about '\' vs '/' ? */
     mod->on_blacklist = (path != NULL && options.lib_blacklist[0] != '\0' &&
                          text_matches_any_pattern(path, options.lib_blacklist,
-                                                  IGNORE_FILE_CASE));
+                                                  FILESYS_CASELESS));
     mod->on_whitelist = (path != NULL && options.lib_whitelist[0] != '\0' &&
                          text_matches_any_pattern(path, options.lib_whitelist,
-                                                  IGNORE_FILE_CASE));
+                                                  FILESYS_CASELESS));
     LOG(1, "%s: %s => black=%d white=%d\n", __FUNCTION__, path,
         mod->on_blacklist, mod->on_whitelist);
     return (void *) mod;
@@ -1199,7 +1199,7 @@ check_src_whitelist(error_callstack_t *ecs, uint start)
         for (i = 0; i < options.src_whitelist_frames; i++) {
             char *file = symbolized_callstack_frame_file(&ecs->scs, start + i);
             if (file != NULL && text_matches_any_pattern(file, options.src_whitelist,
-                                                         IGNORE_FILE_CASE))
+                                                         FILESYS_CASELESS))
                 return false; /* report as true positive */
         }
         /* if no frame matches whitelist, treat as false positive! */
