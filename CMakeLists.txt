@@ -309,6 +309,10 @@ else (UNIX)
       string(REGEX REPLACE "/GZ" "" ${var} "${${var}}")
       # avoid warnings (i#925)
       string(REGEX REPLACE "/GX" "/EHsc" ${var} "${${var}}")
+      if (NOT DEBUG_BUILD)
+        # RelWithDebInfo asks for /Ob1 but we want full inlining
+        string(REGEX REPLACE "/Ob1" "/Ob2" ${var} "${${var}}")
+      endif ()
     endforeach ()
   endforeach ()
   # disable stack protection: "unresolved external symbol ___security_cookie"
@@ -996,8 +1000,19 @@ if (WIN32)
   # plus, now we require the same base for pcache
   set(new_flags "/dynamicbase:no")
 
+  # This flag is added by VS generators so we may as well add for Ninja
+  set(new_flags "/nxcompat")
+
   # DRi#893: asm code is producing safeseh compilation failures w/ VS2012
   set(new_flags "${new_flags} /safeseh:no")
+
+  # Reduce size by stripping out unused code (we don't seem to need /Gy for this,
+  # and VS generators seem to set it already, so we add here for Ninja).
+  set(new_flags "${new_flags} /opt:ref")
+  if (NOT DEBUG_BUILD)
+    # Match DR's settings, though again it's not clear the benefit w/o /Gy.
+    set(new_flags "${new_flags} /opt:icf")
+  endif()
 
   if (NOT DEFINED GENERATE_PDBS OR GENERATE_PDBS)
     set(new_flags "${new_flags} /debug")
