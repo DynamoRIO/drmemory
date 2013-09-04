@@ -247,21 +247,21 @@ OPTION_CLIENT_STRING(client, callstack_srcfile_prefix, "",
 OPTION_CLIENT_STRING(client, lib_blacklist, "",
                      ",-separated list of path patterns to treat as non-app libs",
                      "Error reports whose top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -lib_blacklist_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -lib_blacklist_frames is 0.  The -lib_whitelist takes priority over this blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist. Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
-OPTION_CLIENT(client, lib_blacklist_frames, uint, 4, 0, 16384,
+OPTION_CLIENT(client, lib_blacklist_frames, uint, 4, 0, 4096,
                      "The number of frames to match vs -lib_blacklist",
-                     "The number of frames, starting from the top, that must match -lib_blacklist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables blacklist-based error separatiobn.")
+                     "The number of frames, starting from the top, that must match -lib_blacklist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables blacklist-based error separation.  If the top frame is a system call or a replace_* Dr. Memory routine, it is ignored and matching starts from the second frame.")
 OPTION_CLIENT_STRING(client, lib_whitelist, "",
                      ",-separated list of path patterns for which to report errors",
                      "Error reports where not a single one of the top N frames' module paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -lib_whitelist_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -lib_whitelist_frames is 0 or if -lib_whitelist is empty.  This whitelist takes priority over -lib_blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist.  Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each module.  The default on Windows is set to $SYSTEMROOT*.dll if not otherwise specified.")
-OPTION_CLIENT(client, lib_whitelist_frames, uint, 4, 0, 16384,
+OPTION_CLIENT(client, lib_whitelist_frames, uint, 4, 0, 4096,
                      "The number of frames to match vs -lib_whitelist",
-                     "The number of frames, starting from the top, that must not match -lib_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -lib_whitelist-based error separation.")
+                     "The number of frames, starting from the top, that must not match -lib_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -lib_whitelist-based error separation.  If the top frame is a system call or a replace_* Dr. Memory routine, it is ignored and matching starts from the second frame.")
 OPTION_CLIENT_STRING(client, src_whitelist, "",
                      ",-separated list of source patterns for which to report errors",
                      "Error reports where not a single one of the top N frames' source file paths match any of these ,-separated patterns will be separated by default as merely potential errors, where N is -src_whitelist_frames.  These errors are reported to potential_errors.txt rather than results.txt.  This feature is disabled if -src_whitelist_frames is 0 or if -src_whitelist is empty.  This whitelist takes priority over -lib_blacklist: i.e., if any top frame matches the whitelist, the error will be reported normally, even if all frames also match the blacklist.  If combined with -lib_whitelist, the -lib_whitelist will perform its check first, followed by -src_whitelist.  Each pattern can use * and ? wildcards (which have the same semantics as in suppression files) and is matched against the full path of each source file.")
-OPTION_CLIENT(client, src_whitelist_frames, uint, 4, 0, 16384,
+OPTION_CLIENT(client, src_whitelist_frames, uint, 4, 0, 4096,
                      "The number of frames to match vs -src_whitelist",
-                     "The number of frames, starting from the top, that must not match -src_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -src_whitelist-based error separation.")
+                     "The number of frames, starting from the top, that must not match -src_whitelist in a callstack in order for an error report to be separated from the regularly reported errors.  Setting this value to 0 disables -src_whitelist-based error separation.  If the top frame is a system call or a replace_* Dr. Memory routine, it is ignored and matching starts from the second frame.")
 # endif
 #endif
 

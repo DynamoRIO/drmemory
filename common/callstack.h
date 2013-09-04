@@ -222,7 +222,8 @@ typedef struct _callstack_options_t {
      * that module, and can be queried with symbolized_callstack_frame_data.
      * It should be freed in module_unload.
      */
-    void * (*module_load)(const char * /*module path*/, byte * /*module base*/);
+    void * (*module_load)(const char * /*module path*/, const char * /* module name */,
+                          byte * /*module base*/);
     void (*module_unload)(const char * /*module path*/,
                           void * /*user data returned by module_load()*/);
 

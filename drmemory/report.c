@@ -1163,10 +1163,11 @@ report_in_suppressed_module(uint type, app_loc_t *loc, const char *instruction)
 typedef struct _per_callstack_module_t {
     bool on_blacklist;
     bool on_whitelist;
+    bool in_tool;
 } per_callstack_module_t;
 
 static void *
-callstack_module_load_cb(const char *path, byte *base)
+callstack_module_load_cb(const char *path, const char *modname, byte *base)
 {
     per_callstack_module_t *mod = (per_callstack_module_t *)
         global_alloc(sizeof(*mod), HEAPSTAT_CALLSTACK);
@@ -1178,6 +1179,8 @@ callstack_module_load_cb(const char *path, byte *base)
     mod->on_whitelist = (path != NULL && options.lib_whitelist[0] != '\0' &&
                          text_matches_any_pattern(path, options.lib_whitelist,
                                                   FILESYS_CASELESS));
+    mod->in_tool = (path != NULL &&
+                    text_matches_pattern(modname, DRMEMORY_LIBNAME, FILESYS_CASELESS));
     LOG(1, "%s: %s => black=%d white=%d\n", __FUNCTION__, path,
         mod->on_blacklist, mod->on_whitelist);
     return (void *) mod;
@@ -1196,7 +1199,7 @@ check_src_whitelist(error_callstack_t *ecs, uint start)
 {
     uint i;
     if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
-        for (i = 0; i < options.src_whitelist_frames; i++) {
+        for (i = 0; i < ecs->scs.num_frames && i < options.src_whitelist_frames; i++) {
             char *file = symbolized_callstack_frame_file(&ecs->scs, start + i);
             if (file != NULL && text_matches_any_pattern(file, options.src_whitelist,
                                                          FILESYS_CASELESS))
@@ -1220,7 +1223,7 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
      * (for ease of getting $SYSTEMROOT env var).
      */
     if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
-        for (i = 0; i < options.lib_whitelist_frames; i++) {
+        for (i = 0; i < ecs->scs.num_frames && i < options.lib_whitelist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
             if (mod != NULL && mod->on_whitelist)
@@ -1233,7 +1236,7 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
     if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')
         return check_src_whitelist(ecs, start);
     if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
-        for (i = 0; i < options.lib_blacklist_frames; i++) {
+        for (i = 0; i < ecs->scs.num_frames && i < options.lib_blacklist_frames; i++) {
             per_callstack_module_t *mod = (per_callstack_module_t *)
                 symbolized_callstack_frame_data(&ecs->scs, start + i);
             if (mod == NULL || !mod->on_blacklist)
@@ -1255,6 +1258,13 @@ error_is_likely_false_positive(error_callstack_t *ecs)
     uint start = 0;
     if (!symbolized_callstack_frame_is_module(&ecs->scs, 0)) /* syscall, we assume */
         start = 1;
+    else {
+        /* Skip replace_ string/mem routines in our tool library */
+        per_callstack_module_t *mod = (per_callstack_module_t *)
+            symbolized_callstack_frame_data(&ecs->scs, 0);
+        if (mod != NULL && mod->in_tool)
+            start = 1;
+    }
     return check_blacklist_and_whitelist(ecs, start);
 }
 

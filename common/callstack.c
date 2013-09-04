@@ -2069,7 +2069,7 @@ add_new_module(void *drcontext, const module_data_t *info)
              text_matches_any_pattern(name_info->name, ops.modname_hide,
                                       FILESYS_CASELESS));
         if (ops.module_load != NULL)
-            name_info->user_data = ops.module_load(name_info->path, info->start);
+            name_info->user_data = ops.module_load(name_info->path, name, info->start);
         name_info->warned_no_syms = false;
         hashtable_add(&modname_table, (void*)name_info->path, (void*)name_info);
         /* We need an entry for every 16M of module size */
