@@ -1534,9 +1534,6 @@ if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   endif (WIN32)
   install(DIRECTORY "${PROJECT_BINARY_DIR}/symlink/"
     DESTINATION "bin")
-
-  # create top-level html file that redirects
-  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/docs/${toolname}.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../${toolname}/docs/html/index.html\\\">\n</head><body></body>\")")
 endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
 
 # create empty logs dir for release package

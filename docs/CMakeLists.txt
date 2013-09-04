@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -155,6 +155,11 @@ install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/html
   DESTINATION "${toolname}/docs"
   )
+
+# drmemory/docs/html/index.html is hard to find, so add a more-visible
+# access point:
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/docs\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/docs/${toolname}.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../${toolname}/docs/html/index.html\\\">\n</head><body></body>\")")
 
 # IE for some reason won't initially load an .ico in a web page from a server,
 # though will show it via file: or after pointing straight at image from server.
