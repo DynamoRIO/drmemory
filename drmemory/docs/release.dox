@@ -75,6 +75,8 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    frames reference a whitelisted source file.  Any error that does not
    match the whitelist is separated as a "potential error" (see the earlier
    blacklist entry).
+ - Added full support for applications linked with the debug Visual Studio
+   C library.
  - Added option -check_prefetch to make it easier to turn off the warnings
    on prefetching unaddressable memory.
  - Added checks for mixing of C library heap routines with Windows API heap

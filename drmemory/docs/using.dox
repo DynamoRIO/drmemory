@@ -105,8 +105,19 @@ or cmd shell.
 First we give cross-plaform guidelines for how to build your application,
 before giving specific compiler parameters for each platform.
 
+********************
+\section sec_prep_general For All Platforms
+
+These cross-platform steps apply to both Linux and Windows.
+
+********************
+\subsection sec_prep_32bit 32-bit
+
 Currently, Dr. Memory only supports 32-bit applications, so be sure to
 compile your target application as 32-bit.
+
+********************
+\subsection sec_prep_debuginfo Debug Information
 
 In order to obtain line number information, compile your target
 application with debugging information enabled.
@@ -114,6 +125,9 @@ On Linux, Dr. Memory supports ELF files with DWARF2 line information.  On
 Windows, Dr. Memory supports PDB debug information (produced by Visual
 Studio) as well as PECOFF files with DWARF2 line information (produced by
 MinGW gcc).
+
+********************
+\subsection sec_prep_callstacks Callstack Quality
 
 You'll get better callstacks in error reports if you disable inlining.
 Dr. Memory should be able to determine callstacks in the presence of frame
@@ -159,34 +173,18 @@ General", the "Debug Information Format" entry should say "Program Database
 (/Zi)".
 
 **********
-\subsection sec_prep_win_libc Release C Library Recommended
+\subsection sec_prep_win_libc C Library Interactions
 
-While the debug C library (specified with the \p /MDd or \p /MTd flags) is
-supported, its use requires Dr. Memory to disable some of its error
-detection.  The debug C library also prevents Dr. Memory from controlling
-the redzone size it places around heap allocations.  The debug C heap
-checks will mostly be disabled as they overlap and can conflict with
-Dr. Memory's checks.  It is recommended that the release version of the
-heap routines be used.  Additionally, when using static debug versions of
-msvcrt (the \p /MTd flag), if your application does not have symbols then
-Dr. Memory will not be able to identify and avoid conflicts with the C
-library's own heap debugging facilities, which may lead to false positives
-and/or false negatives.  Be sure to build with debugging information
-included.
+All combinations of the debug or release C library, linked statically or
+dynamically, are supported.  When using static versions of msvcrt (the \p
+/MTd or \p /MT flags), if your application does not have symbols then
+Dr. Memory will not be able to identify memory allocation calls, which may
+lead to false positives and/or false negatives.  Be sure to build with
+debugging information included.
 
-Thus, we recommend building your application with either the release DLL
-(\p /MD) or the release static (\p /MT) C library.  From the Visual Studio
-IDE, the release library can be selected from Visual Studio's configuration
-dialog (press Alt-F7 to bring it up) under the "Configuration Properties |
-C/C++ | Code Generation | Runtime Library" settings.  Change
-"Multi-threaded Debug DLL (/MDd)" to "Multi-threaded DLL (/MD)".
-
-If your application is C++ and you are using Visual Studio 2008 or older,
-another step is necessary when using /MD to avoid the C++ Debug DLL: under
-"Configuration Properties | C/C++ | Preprocessor", remove "_DEBUG" from the
-list of "Preprocessor Definitions".  It probably says
-"WIN32;_DEBUG;_CONSOLE" by default. Change it to "WIN32;_CONSOLE".
-You should not need this step on Visual Studio 2010 or higher.
+The debug C library (specified with the \p /MDd or \p /MTd flags) contains
+its own redzone and heap error checks.  Dr. Memory completely replaces
+these checks with its own, more complete checks.
 
 **********
 \subsection sec_prep_win_rtc Disable Runtime Checks
