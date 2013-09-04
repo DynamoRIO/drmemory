@@ -518,8 +518,8 @@ create_thread_logfile(void *drcontext)
 {
     file_t f;
     uint which_thread = atomic_add32_return_sum((volatile int *)&num_threads, 1) - 1;
-    LOGF(0, f_global, "new thread #%d id=%d\n",
-         which_thread, dr_get_thread_id(drcontext));
+    ELOGF(0, f_global, "new thread #%d id=%d\n",
+          which_thread, dr_get_thread_id(drcontext));
 
     if (!options.thread_logs) {
         f = f_global;
@@ -1468,7 +1468,7 @@ event_fork(void *drcontext)
      * over them and close them all
      */
     create_thread_logfile(drcontext);
-    LOGF(0, f_global, "new logfile after fork\n");
+    ELOGF(0, f_global, "new logfile after fork\n");
     LOG(0, "new logfile after fork fd=%d\n", PT_GET(drcontext));
     if (!options.shadowing) {
         /* notify postprocess (PR 574018) */
@@ -1505,10 +1505,9 @@ nudge_leak_scan(void *drcontext)
     /* PR 474554: use nudge/signal for mid-run summary/output */
 #ifdef USE_DRSYMS
     static int nudge_count;
-    IF_DEBUG(int local_count =)
-        atomic_add32_return_sum(&nudge_count, 1);
-    LOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
-    LOGF(0, f_potential, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
+    int local_count = atomic_add32_return_sum(&nudge_count, 1);
+    ELOGF(0, f_results, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
+    ELOGF(0, f_potential, NL"==========================================================================="NL"SUMMARY AFTER NUDGE #%d:"NL, local_count);
 #endif
 #ifdef STATISTICS
     dump_statistics();
@@ -1523,10 +1522,17 @@ nudge_leak_scan(void *drcontext)
     if (options.count_leaks || options.check_leaks || options.leak_scan) {
         report_leak_stats_checkpoint();
         check_reachability(false/*!at exit*/);
-        report_summary();
+    }
+    /* Provide a summary even if not checking for leaks */
+    report_summary();
+    if (options.count_leaks || options.check_leaks || options.leak_scan) {
         report_leak_stats_revert();
     }
     ELOGF(0, f_global, "NUDGE\n");
+#ifdef USE_DRSYMS
+    ELOGF(0, f_results, NL"==========================================================================="NL);
+    ELOGF(0, f_potential, NL"==========================================================================="NL);
+#endif
 }
 
 static void

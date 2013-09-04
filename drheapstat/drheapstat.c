@@ -2041,8 +2041,8 @@ event_thread_init(void *drcontext)
     drmgr_set_tls_field(drcontext, tls_idx_heapstat, (void *)pt);
 
     utils_thread_init(drcontext);
-    LOGF(0, f_global, "new thread #%d id=%d\n",
-         which_thread, dr_get_thread_id(drcontext));
+    ELOGF(0, f_global, "new thread #%d id=%d\n",
+          which_thread, dr_get_thread_id(drcontext));
     if (!options.thread_logs) {
         f = f_global;
     } else {

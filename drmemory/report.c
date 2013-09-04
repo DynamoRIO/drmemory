@@ -1464,35 +1464,35 @@ report_init(void)
 
 #ifdef USE_DRSYMS
     suppress_file_lock = dr_mutex_create();
-    LOGF(0, f_results, "Dr. Memory results for pid %d: \"%s\""NL,
-         dr_get_process_id(), dr_get_application_name());
+    ELOGF(0, f_results, "Dr. Memory results for pid %d: \"%s\""NL,
+          dr_get_process_id(), dr_get_application_name());
 # ifdef WINDOWS
     ELOGF(0, f_results, "Application cmdline: \"%S\""NL, get_app_commandline());
 # endif
-    LOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
-         dr_get_process_id(), dr_get_application_name());
-    LOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
-         "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
+    ELOGF(0, f_suppress, "# File for suppressing errors found in pid %d: \"%s\""NL NL,
+          dr_get_process_id(), dr_get_application_name());
+    ELOGF(0, f_potential, "Dr. Memory errors that are likely to be false positives, "
+          "for pid %d: \"%s\""NL, dr_get_process_id(), dr_get_application_name());
     if ((options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') ||
         (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0')) {
         if (options.lib_whitelist_frames > 0 && options.lib_whitelist[0] != '\0') {
-            LOGF(0, f_potential,
-                 "These errors did not match the lib whitelist '%s' for %d frames"NL,
-                 options.lib_whitelist, options.lib_whitelist_frames);
+            ELOGF(0, f_potential,
+                  "These errors did not match the lib whitelist '%s' for %d frames."NL,
+                  options.lib_whitelist, options.lib_whitelist_frames);
         }
         if (options.src_whitelist_frames > 0 && options.src_whitelist[0] != '\0') {
-            LOGF(0, f_potential,
-                 "These errors did not match the src whitelist '%s' for %d frames"NL,
-                 options.src_whitelist, options.src_whitelist_frames);
+            ELOGF(0, f_potential,
+                  "These errors did not match the src whitelist '%s' for %d frames."NL,
+                  options.src_whitelist, options.src_whitelist_frames);
         }
     } else if (options.lib_blacklist_frames > 0 && options.lib_blacklist[0] != '\0') {
-        LOGF(0, f_potential, "These errors matched the blacklist '%s' for %d frames"NL,
-             options.lib_blacklist, options.lib_blacklist_frames);
-        LOGF(0, f_potential, "Run with -lib_blacklist_frames 0 to treat these as regular "
-             "errors."NL);
+        ELOGF(0, f_potential, "These errors matched the blacklist '%s' for %d frames."NL,
+              options.lib_blacklist, options.lib_blacklist_frames);
+        ELOGF(0, f_potential, "Run with -lib_blacklist_frames 0 to treat these as "
+              "regular errors."NL);
     }
-    LOGF(0, f_potential, "If these are all false positives, consider running with -light "
-         "to skip all uninitialized reads and leaks for higher performance."NL);
+    ELOGF(0, f_potential, "If these are all false positives, consider running with "
+          "-light to skip all uninitialized reads and leaks for higher performance."NL);
 #endif
 
     if (options.default_suppress) {
@@ -1776,7 +1776,7 @@ report_exit(void)
 {
     uint i;
 #ifdef USE_DRSYMS
-    LOGF(0, f_results, NL"==========================================================================="NL"FINAL SUMMARY:"NL);
+    ELOGF(0, f_results, NL"==========================================================================="NL"FINAL SUMMARY:"NL);
     dr_mutex_destroy(suppress_file_lock);
 #endif
     report_summary();
