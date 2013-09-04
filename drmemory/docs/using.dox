@@ -169,8 +169,20 @@ required on that front.
 To include debug information, use the \p /Zi flag to the Visual Studio
 compiler.  From the IDE, Press Alt-F7 to bring up the configuration
 properties of your build target. Under "Configuration Properties | C/C++ |
-General", the "Debug Information Format" entry should say "Program Database
-(/Zi)".
+General", the "Debug Information Format" entry should either say "Program
+Database (/Zi)" or "Program Database for Edit and Continue (/ZI)".
+Additionally, under "Configuration Properties | Linker | Debugging", the
+"Generate Debug Info" entry should say "Yes (/DEBUG)".
+
+To disable inlining as recommended above, use the \p /Ob0 parameter.  In
+the Visual Studio IDE, press Alt-F7 and then under "Configuration
+Properties | C/C++ | Optimization" ensure "Inline Function Expansion" says
+"Disabled (/Ob0)".
+
+To disable frame pointer optimization as recommended above, use the \p Oy-
+parameter.  In the Visual Studio IDE, press Alt-F7 and then under
+"Configuration Properties | C/C++ | Optimization" ensure "Omit Frame
+Pointers" says "No (/Oy-)".
 
 **********
 \subsection sec_prep_win_libc C Library Interactions
@@ -180,7 +192,7 @@ dynamically, are supported.  When using static versions of msvcrt (the \p
 /MTd or \p /MT flags), if your application does not have symbols then
 Dr. Memory will not be able to identify memory allocation calls, which may
 lead to false positives and/or false negatives.  Be sure to build with
-debugging information included.
+debugging information included using the instructions above.
 
 The debug C library (specified with the \p /MDd or \p /MTd flags) contains
 its own redzone and heap error checks.  Dr. Memory completely replaces
@@ -202,14 +214,6 @@ Properties | C/C++ | Code Generation" ensure "Basic Runtime Checks" says
 
 **********
 \subsection sec_prep_win_sum Parameter Summary
-
-To disable inlining, use the \p /Ob0 parameter.  In the Visual Studio IDE,
-press Alt-F7 and then under "Configuration Properties | C/C++ |
-Optimization" ensure "Inline Function Expansion" says "Disabled (/Ob0)".
-
-To disable frame pointer optimization, use the \p Oy- parameter.  In the
-Visual Studio IDE, press Alt-F7 and then under "Configuration Properties |
-C/C++ | Optimization" ensure "Omit Frame Pointers" says "No (/Oy-)".
 
 Here is a sample command line for Visual Studio:
 
