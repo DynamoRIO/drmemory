@@ -298,6 +298,11 @@ be printed to the Output Window.  You can double-click on a source file on
 any callstack frame in order to automatically open up that file to the line
 number indicated.
 
+To pass arguments to your application, in the External Tools dialog box
+entry for Dr. Memory, either directly add them for all runs, or check the
+"Prompt for arguments" checkbox to be prompted for arguments on each
+invocation.
+
 ********************
 \section sec_invocation Invoking Dr. Memory from the Command Line
 
