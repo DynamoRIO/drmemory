@@ -838,3 +838,11 @@ UxTheme.dll!*
 UxTheme.dll!*
 UxTheme.dll!GetThemeBackgroundContentRect
 
+##################################################
+# i#1324: deliberate uninit in mingw runtime
+
+UNINITIALIZED READ
+name=default i#1324 mingw runtime
+*!__mingw_glob
+*!__mingw_CRTStartup
+
