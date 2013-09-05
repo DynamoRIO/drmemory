@@ -247,6 +247,13 @@ enum {
     PREFIX_STYLE_BLANK,
 };
 
+#ifdef TOOL_DR_MEMORY
+# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.M~~ "
+#else
+# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.H~~ "
+#endif
+#define PREFIX_BLANK                "         "
+
 void
 print_prefix_to_buffer(char *buf, size_t bufsz, size_t *sofar);
 

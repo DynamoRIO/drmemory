@@ -159,7 +159,7 @@ static char symsrv_path[MAX_SYMSRV_PATH];
 /* URL of the MS symbol server. */
 static const char ms_symsrv[] = "http://msdl.microsoft.com/download/symbols";
 
-#define prefix "~~Dr.M~~ "
+static const char *prefix = PREFIX_DEFAULT_MAIN_THREAD;
 
 static bool
 on_vista_or_later(void)
@@ -213,6 +213,14 @@ pause_if_in_cmd(void)
     } \
 } while (0)
 
+#define warn_prefix(msg, ...) do { \
+    if (!quiet) { \
+        fprintf(stderr, "%s", prefix); \
+        fprintf(stderr, "WARNING: " msg "\n", __VA_ARGS__); \
+        fflush(stderr); \
+    } \
+} while (0)
+
 #define info(msg, ...) do { \
     if (verbose) { \
         fprintf(stderr, "INFO: " msg "\n", __VA_ARGS__); \
@@ -225,7 +233,8 @@ pause_if_in_cmd(void)
  */
 #define sym_info(msg, ...) do { \
     if (!quiet) { \
-        fprintf(stderr, prefix msg "\n", __VA_ARGS__); \
+        fprintf(stderr, "%s", prefix); \
+        fprintf(stderr, msg "\n", __VA_ARGS__); \
         fflush(stderr); \
     } \
 } while (0)
@@ -1136,7 +1145,23 @@ _tmain(int argc, TCHAR *targv[])
             /* also parsed by the client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "%s ", argv[i]);
+            /* XXX: share this logic w/ the client */
             batch = true;
+            prefix = PREFIX_BLANK;
+            continue;
+        }
+        else if (strcmp(argv[i], "-prefix_style") == 0) {
+            int style;
+            if (i >= argc - 1)
+                usage("invalid arguments");
+            style = atoi(argv[++i]);
+            if (style == PREFIX_STYLE_NONE)
+                prefix = "";
+            else if (style == PREFIX_STYLE_BLANK)
+                prefix = PREFIX_BLANK;
+            /* also parsed by the client */
+            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+                     cliops_sofar, len, "%s %s ", argv[i-1], argv[i]);
             continue;
         }
         else if (strcmp(argv[i], "-fetch_symbols") == 0) {
@@ -1595,5 +1620,11 @@ _tmain(int argc, TCHAR *targv[])
         free(argv[i]);
     free(argv);
 #endif
+    if (errcode != 0) {
+        /* We use a prefix to integrate better with tool output, esp inside
+         * the VS IDE as an External Tool.
+         */
+        warn_prefix("application exited with abnormal code 0x%x", errcode);
+    }
     return (exit0 ? 0 : errcode);
 }

@@ -61,13 +61,6 @@ uint symbol_address_lookups;
 # endif
 #endif
 
-#ifdef TOOL_DR_MEMORY
-# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.M~~ "
-#else
-# define PREFIX_DEFAULT_MAIN_THREAD "~~Dr.H~~ "
-#endif
-#define PREFIX_BLANK "         "
-
 #ifdef WINDOWS
 static dr_os_version_info_t os_version = {sizeof(os_version),};
 #endif
