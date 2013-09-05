@@ -477,7 +477,7 @@ exit_client_code(void *drcontext, bool in_app_mode)
      * own stack, nor can we have a loop here as we can clobber our own locals.
      * Thus we must use an asm routine.
      */
-    zero_stack(ZERO_APP_STACK_SZ);
+    zero_pointers_on_stack(ZERO_APP_STACK_SZ);
 }
 
 /* i#900: we need to mark an app lock acquisition as a safe spot.

@@ -177,27 +177,34 @@ syscall_0args:
 #endif /* LINUX */
 
 
-/* void zero_stack(size_t count);
+/* void zero_pointers_on_stack(size_t count);
+ * assuming count must be multiple of ARG_SZ
  *
- * Sets the memory in [xsp - count - ARG_SZ, xsp - ARG_SZ) to 0.
+ * Scans the memory in [xsp - count - ARG_SZ, xsp - ARG_SZ) and set it to 0
+ * if the content looks like a pointer (> 0x10000).
  * Meant to be used to zero the stack, which is dangerous to do
  * from C as we can easily clobber our own local variables.
  */
-#define FUNCNAME zero_stack
+#define FUNCNAME zero_pointers_on_stack
         DECLARE_FUNC_SEH(FUNCNAME)
 GLOBAL_LABEL(FUNCNAME:)
         /* we don't bother to be SEH64 compliant */
         mov      REG_XCX, ARG1
-        PUSH_SEH(REG_XDI)
         END_PROLOG
-        mov      REG_XDI, REG_XSP
-        sub      REG_XDI, ARG_SZ
-        mov      REG_XAX, 0
-        std
-        rep stosd
-        cld
+        neg      REG_XCX
+        /* i#1284: we used "rep stosd" before, which is slower than
+         * the check-before-write optimization we have below.
+         * The tight loop with fewer stores has better performance.
+         */
+check_stack:
+        /* we assume no pointer pointing to address below 0x10000 */
+        cmp      PTRSZ [REG_XSP+REG_XCX-ARG_SZ], HEX(10000)
+        jbe      update_xcx /* skip store if not a pointer */
+        mov      PTRSZ [REG_XSP+REG_XCX-ARG_SZ], 0
+update_xcx:
+        add      REG_XCX, ARG_SZ
+        jne      check_stack
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
-        pop      REG_XDI
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME

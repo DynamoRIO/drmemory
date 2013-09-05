@@ -32,7 +32,11 @@ ptr_int_t
 raw_syscall(uint sysnum, uint num_args, ...);
 #endif
 
+/* Scans the memory in [xsp - count - ARG_SZ, xsp - ARG_SZ) and set it to 0
+ * if the content looks like a pointer.
+ * The count must be multiple of ARG_SZ.
+ */
 void
-zero_stack(size_t count);
+zero_pointers_on_stack(size_t count);
 
 #endif /* _ASM_UTILS_H_ */
