@@ -287,12 +287,4 @@ set_shadow_inheap(uint val);
 bool
 is_shadow_register_defined(byte val);
 
-static inline void
-umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
-{
-    info->struct_size = sizeof(*info);
-    info->app_base = NULL;
-    info->app_size = 0;
-}
-
 #endif /* _SHADOW_H_ */

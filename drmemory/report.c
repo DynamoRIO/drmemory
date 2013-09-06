@@ -67,6 +67,8 @@ static uint64 timestamp_start;
 typedef struct _tls_report_t {
     char *errbuf; /* buffer for atomic writes to global logfile */
     size_t errbufsz;
+    /* for callstack shadow xl8 cache */
+    umbra_shadow_memory_info_t xl8_info;
 } tls_report_t;
 
 static int tls_idx_report = -1;
@@ -1336,11 +1338,28 @@ up_one_dir(const char *string)
 }
 
 static bool
-is_dword_defined(byte *addr)
+is_stack_dword_defined(void *drcontext, byte *addr)
 {
-    umbra_shadow_memory_info_t info;
-    umbra_shadow_memory_info_init(&info);
-    return (shadow_get_dword(&info, addr) == SHADOW_DWORD_DEFINED);
+    umbra_shadow_memory_info_t  info;
+    umbra_shadow_memory_info_t *info_ptr;
+    uint res;
+    tls_report_t *pt = (tls_report_t *) drmgr_get_tls_field(drcontext, tls_idx_report);
+    if (pt != NULL)
+        info_ptr = &pt->xl8_info;
+    else {
+        umbra_shadow_memory_info_init(&info);
+        info_ptr = &info;
+    }
+    res = shadow_get_dword(info_ptr, addr);
+    if (!TEST(UMBRA_SHADOW_MEMORY_TYPE_NORMAL, info_ptr->shadow_type)) {
+        shadow_replace_special(addr);
+        /* The replace_special makes umbra_shadow_memory_info stale,
+         * so we need clear the cache to get the updated info again.
+         */
+        umbra_shadow_memory_info_init(info_ptr);
+        res = shadow_get_dword(info_ptr, addr);
+    }
+    return (res == SHADOW_DWORD_DEFINED);
 }
 
 static bool
@@ -1436,7 +1455,8 @@ report_init(void)
     callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,
                                                PRINT_FOR_POSTPROCESS);
     callstack_ops.get_syscall_name = get_syscall_name;
-    callstack_ops.is_dword_defined = options.shadowing ? is_dword_defined : NULL;
+    callstack_ops.is_dword_defined =
+        options.shadowing ? is_stack_dword_defined : NULL;
     callstack_ops.ignore_xbp = callstack_ignore_initial_xbp;
 #ifdef USE_DRSYMS
     /* pass NULL since callstack.c uses that as quick check */
@@ -1811,7 +1831,7 @@ report_thread_init(void *drcontext)
     drmgr_set_tls_field(drcontext, tls_idx_report, pt);
     pt->errbufsz = MAX_ERROR_INITIAL_LINES + max_callstack_size()*2;
     pt->errbuf = (char *) thread_alloc(drcontext, pt->errbufsz, HEAPSTAT_REPORT);
-
+    umbra_shadow_memory_info_init(&pt->xl8_info);
     callstack_thread_init(drcontext);
 }
 

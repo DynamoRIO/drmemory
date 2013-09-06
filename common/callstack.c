@@ -976,7 +976,8 @@ fpcache_update(tls_callstack_t *pt, byte *fp_in, byte *fp_out, app_pc retaddr)
 }
 
 static app_pc
-find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OUT*/)
+find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
+             bool top_frame, app_pc *retaddr/*OUT*/)
 {
     byte *page_buf = pt->page_buf;
     app_pc orig_fp = fp;
@@ -1025,7 +1026,8 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
                     ra == pt->fpcache[i].retaddr &&
                     /* i#1231: we don't zero for full mode but we want the cache */
                     (ops.is_dword_defined == NULL ||
-                     ops.is_dword_defined(pt->fpcache[i].output_fp + sizeof(app_pc)))) {
+                     ops.is_dword_defined(drcontext,
+                                          pt->fpcache[i].output_fp + sizeof(app_pc)))) {
                     if (retaddr != NULL)
                         *retaddr = ra;
                     LOG(4, "find_next_fp: cache hit "PFX" => "PFX", ra="PFX"\n",
@@ -1072,7 +1074,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
             if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
                 ASSERT((app_pc)ALIGN_BACKWARD(sp, PAGE_SIZE) == buf_pg, "buf error");
                 if (ops.is_dword_defined != NULL)
-                    fp_defined = ops.is_dword_defined(sp);
+                    fp_defined = ops.is_dword_defined(drcontext, sp);
                 if (fp_defined)
                     slot0 = *((app_pc*)&page_buf[sp - buf_pg]);
             }
@@ -1088,7 +1090,7 @@ find_next_fp(tls_callstack_t *pt, app_pc fp, bool top_frame, app_pc *retaddr/*OU
             if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) && !fp_defined)
                 continue;
             if (ops.is_dword_defined != NULL &&
-                !ops.is_dword_defined(sp + ret_offs))
+                !ops.is_dword_defined(drcontext, sp + ret_offs))
                 continue; /* retaddr not defined */
             if (!TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) ||
                 (slot0 > tos && slot0 - tos < ops.stack_swap_threshold)) {
@@ -1201,7 +1203,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
 
     LOG(4, "initial fp="PFX" vs sp="PFX" def=%d\n",
         mc->xbp, mc->xsp,
-        (ops.is_dword_defined == NULL) ? 0 : ops.is_dword_defined((byte*)mc->xbp));
+        (ops.is_dword_defined == NULL) ?
+        0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp));
     if (mc->xsp != 0 &&
         (!ALIGNED(mc->xbp, sizeof(void*)) ||
          mc->xbp < mc->xsp || 
@@ -1214,8 +1217,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
 #endif
          /* avoid stale fp,ra pair (i#640) */
          (ops.is_dword_defined != NULL &&
-          (!ops.is_dword_defined((byte*)mc->xbp) ||
-           !ops.is_dword_defined((byte*)mc->xbp + sizeof(void*)))) ||
+          (!ops.is_dword_defined(drcontext, (byte*)mc->xbp) ||
+           !ops.is_dword_defined(drcontext, (byte*)mc->xbp + sizeof(void*)))) ||
          (mc->xbp != 0 &&
           (!safe_read((byte *)mc->xbp, sizeof(appdata), &appdata) ||
            /* check the very first retaddr since ebp might point at
@@ -1227,9 +1230,10 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
          * using ebp for other purposes.  Heuristic: scan stack for fp + retaddr.
          */
         LOG(4, "find_next_fp b/c starting w/ non-fp ebp "PFX" (def=%d %d)\n", mc->xbp,
-            ops.is_dword_defined == NULL ? 0 : ops.is_dword_defined((byte*)mc->xbp),
-            ops.is_dword_defined == NULL ? 0 : ops.is_dword_defined((byte*)mc->xbp +
-                                                                  sizeof(void*)));
+            ops.is_dword_defined == NULL ?
+            0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp),
+            ops.is_dword_defined == NULL ?
+            0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp + sizeof(void*)));
 #if defined(LINUX) && !defined(X64)
         if (pcs != NULL && pcs->first_is_syscall &&
             !TEST(FP_DO_NOT_SKIP_VSYSCALL_PUSH, ops.fp_flags)) {
@@ -1249,7 +1253,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             }
         }
 #endif
-        pc = (ptr_uint_t *) find_next_fp(pt, tos, true/*top frame*/, &custom_retaddr);
+        pc = (ptr_uint_t *) find_next_fp(drcontext, pt, tos, true/*top frame*/,
+                                         &custom_retaddr);
         scanned = true;
     }
     while (pc != NULL) {
@@ -1322,8 +1327,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  */
                 LOG(4, "find_next_fp "PFX" b/c starting w/ non-fp ebp "PFX"\n",
                     mc->xsp, mc->xbp);
-                pc = (ptr_uint_t *) find_next_fp(pt, (app_pc)mc->xsp, true/*top frame*/,
-                                                 &custom_retaddr);
+                pc = (ptr_uint_t *) find_next_fp(drcontext, pt, (app_pc)mc->xsp,
+                                                 true/*top frame*/, &custom_retaddr);
                 scanned = true;
                 first_iter = false; /* don't loop */
                 continue;
@@ -1355,7 +1360,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
              */
             if (!TEST(FP_STOP_AT_BAD_ZERO_FRAME, ops.fp_flags)) {
                 LOG(4, "find_next_fp b/c hit zero fp\n");
-                pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
+                pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
+                                                 ((app_pc)pc) + sizeof(appdata),
                                                  false/*!top*/, NULL);
                 scanned = true;
             } else {
@@ -1389,7 +1395,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 if (!TEST(FP_STOP_AT_BAD_NONZERO_FRAME, ops.fp_flags)) {
                     LOG(4, "find_next_fp "PFX" b/c hit bad non-zero fp "PFX"\n",
                         ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
-                    pc = (ptr_uint_t *) find_next_fp(pt, ((app_pc)pc) + sizeof(appdata),
+                    pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
+                                                     ((app_pc)pc) + sizeof(appdata),
                                                      false/*!top*/, NULL);
                     scanned = true;
                 } else {

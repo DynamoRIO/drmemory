@@ -205,7 +205,7 @@ typedef struct _callstack_options_t {
     uint print_flags;          /* set of PRINT_ flags */
     /* optional: only needed if packed_callstack_record is passed a pc<64K */
     const char *(*get_syscall_name)(drsys_sysnum_t);
-    bool (*is_dword_defined)(byte *);
+    bool (*is_dword_defined)(void * /* drcontext */, byte *);
     bool (*ignore_xbp)(void *, dr_mcontext_t *);
     const char *truncate_below;
     const char *modname_hide;

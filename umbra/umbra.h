@@ -673,6 +673,15 @@ umbra_get_shared_shadow_block(IN  umbra_map_t *map,
                               IN  size_t       value_size,
                               OUT byte       **block);
 
+/** Convenience routine for initializing umbra_shadow_memory_info. */
+static inline void
+umbra_shadow_memory_info_init(umbra_shadow_memory_info_t *info)
+{
+    info->struct_size = sizeof(*info);
+    info->app_base = NULL;
+    info->app_size = 0;
+}
+
 /*@}*/ /* end doxygen group */
 
 #ifdef __cplusplus
