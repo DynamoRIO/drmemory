@@ -1603,6 +1603,8 @@ install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/$
 if (UNIX)
   install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
   install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib.so\" COPYONLY)")
+  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib.so\" COPYONLY)")
 else (UNIX)
   if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
