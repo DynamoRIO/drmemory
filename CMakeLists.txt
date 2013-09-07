@@ -1070,6 +1070,19 @@ if (WIN32)
   # hit the __aulldvrm issue.
 endif (WIN32)
 
+# Build Qt Visualizer
+if (TOOL_DR_HEAPSTAT)
+  find_package(Qt5Widgets QUIET)
+  if (NOT Qt5Widgets_FOUND)
+    message(STATUS "Could NOT find Qt 5: Dr. Heapstat visualizer will not be built")
+    message(STATUS
+      "Point CMake variable Qt5Widgets_DIR at the Qt5WidgetsConfig.cmake directory")
+  else (NOT Qt5Widgets_FOUND)
+    message(STATUS "Found Qt 5: Dr. Heapstat visualizer will be built")
+    add_subdirectory(drheapstat/visualizer)
+  endif (NOT Qt5Widgets_FOUND)
+endif (TOOL_DR_HEAPSTAT)
+
 #
 ##################################################
 
