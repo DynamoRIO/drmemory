@@ -846,3 +846,45 @@ name=default i#1324 mingw runtime
 *!__mingw_glob
 *!__mingw_CRTStartup
 
+##################################################
+# i#599: known reachable allocs in MSCRT
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc A
+...
+*!_mtinit*
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc B
+...
+*!_ioinit
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc C
+...
+*!_?alloc_crt
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc D
+...
+*!pre_cpp_init
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc E
+...
+MSVCR*.dll!_flsbuf
+
+REACHABLE LEAK
+name=default i#599 MSCRT un-freed alloc F
+...
+*!_Mtxinit
+
+# Regular leaks show up here too, so we suppress all
+LEAK
+name=default i#599 mingw un-freed alloc A
+...
+*!__mingw_CRTStartup
+
+REACHABLE LEAK
+name=default i#599 mingw un-freed alloc B
+*!*mingwthr_add_key_dtor
