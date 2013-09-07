@@ -160,6 +160,23 @@ void unaddr_finit_module(void)
     syscall(SYS_finit_module, -1, dangling_ptr->str, 0);
 }
 
+void unaddr_uninit_execve(void)
+{
+    char *argv[] = {
+        malloc(10 * sizeof(char)),
+        NULL
+    };
+    free(argv[0]);
+
+    char *envp[] = {
+        malloc(10 * sizeof(char)),
+        NULL
+    };
+
+    execve("", argv, envp);
+    free(envp[0]);
+}
+
 int main(void)
 {
     access_filesystem();
@@ -169,6 +186,7 @@ int main(void)
     unaddr_finit_module();
     uninit_finit_module(0);
     uninit_finit_module(1);
+    unaddr_uninit_execve();
     printf("done\n");
     return 0;
 }

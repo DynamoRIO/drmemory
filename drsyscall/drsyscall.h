@@ -180,7 +180,7 @@ typedef enum {
     DRSYS_TYPE_CWSTRING,    /**< Null-terminated string of wide characters. */
     DRSYS_TYPE_CARRAY,      /**< Non-null-terminated string of characters. */
     DRSYS_TYPE_CWARRAY,     /**< Non-null-terminated string of wide characters. */
-    DRSYS_TYPE_CSTRARRAY,   /**< Double-null-terminated array of C strings. */
+    DRSYS_TYPE_CSTRARRAY,   /**< Null-terminated array of C strings. */
     DRSYS_TYPE_UNICODE_STRING,      /**< UNICODE_STRING structure. */
     DRSYS_TYPE_LARGE_STRING,        /**< LARGE_STRING structure. */
     DRSYS_TYPE_OBJECT_ATTRIBUTES,   /**< OBJECT_ATTRIBUTES structure. */

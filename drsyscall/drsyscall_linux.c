@@ -359,7 +359,9 @@ static syscall_info_t syscall_info[] = {
     },
     {{PACKNUM(59,11),0},"execve", OK, RLONG, 3,
      {
-         {0,0, R|CT, CSTRING},/* FIXME: char** argv and envp */
+         {0, 0, R|CT, CSTRING},
+         {1, sizeof(char **), R|CT, DRSYS_TYPE_CSTRARRAY},
+         {2, sizeof(char **), R|CT, DRSYS_TYPE_CSTRARRAY},
      }
     },
     {{PACKNUM(80,12),0},"chdir", OK, RLONG, 1,
@@ -2455,6 +2457,20 @@ check_iov(cls_syscall_t *pt, sysarg_iter_info_t *ii,
     }
 }
 
+/* checks an array of cstrings */
+static void
+check_strarray(sysarg_iter_info_t *ii, char **array, int ordinal, const char *id)
+{
+    char *str;
+    int i = 0;
+#   define STR_ARRAY_MAX_ITER 64*1024 /* safety check */
+    while (safe_read(&array[i], sizeof(str), &str) && str != NULL
+           && i < STR_ARRAY_MAX_ITER) {
+        handle_cstring(ii, ordinal, SYSARG_READ, id, (app_pc)str, 0, NULL, false);
+        i++;
+    }
+}
+
 /* checks entire struct so caller need do nothing */
 static void
 check_msghdr(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
@@ -3749,6 +3765,17 @@ handle_msgbuf_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
 }
 
 static bool
+handle_strarray_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+                       app_pc start, uint size)
+{
+    char id[16];
+    dr_snprintf(id, BUFFER_SIZE_ELEMENTS(id), "%s%d", "parameter #", arg_info->param);
+    NULL_TERMINATE_BUFFER(id);
+    check_strarray(ii, (char **)start, arg_info->param, id);
+    return true; /* check_strarray checks whole array */
+}
+
+static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const syscall_arg_t *arg_info,
                              app_pc start, uint size)
@@ -3765,6 +3792,8 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
         return handle_msghdr_access(ii, arg_info, start, size);
     case SYSARG_TYPE_MSGBUF:
         return handle_msgbuf_access(ii, arg_info, start, size);
+    case DRSYS_TYPE_CSTRARRAY:
+        return handle_strarray_access(ii, arg_info, start, size);
     }
     return false;
 }
