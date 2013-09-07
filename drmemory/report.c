@@ -3132,6 +3132,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             /* Total size does not distinguish direct from indirect (PR 576032) */
             num_bytes_leaked[set][type] += size + indirect_size;
         } else if (type < ERROR_MAX_VAL) {
+            bool already_supp = err->suppressed;
             ASSERT(err != NULL && spec != NULL, "invalid local");
             err->suppressed = true;
             err->suppressed_by_default = spec->is_default;
@@ -3141,7 +3142,8 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
             else
                 num_suppressed_leaks_user++;
             err->suppress_spec->bytes_leaked += size + indirect_size;
-            num_total[ERROR_NORMAL][type]--;
+            if (!already_supp)
+                num_total[ERROR_NORMAL][type]--;
         }
     } else if (type < ERROR_MAX_VAL) {
         /* For -no_check_leaks, we still report leaks without callstacks and
