@@ -52,14 +52,12 @@ static uint num_suppressions_matched_user;
 static uint num_suppressed_leaks_user;
 static uint num_suppressions_matched_default;
 static uint num_suppressed_leaks_default;
-static uint num_reachable_leaks;
 static uint num_throttled_errors;
 static uint num_throttled_leaks;
 
 static uint saved_leaks_ignored;
 static uint saved_suppressed_leaks_user;
 static uint saved_suppressed_leaks_default;
-static uint saved_reachable_leaks;
 static uint saved_throttled_leaks;
 
 static uint64 timestamp_start;
@@ -96,8 +94,16 @@ enum {
     ERROR_WARNING,
     ERROR_LEAK,
     ERROR_POSSIBLE_LEAK,
+    ERROR_REACHABLE_LEAK,
+    ERROR_MAX_LEAK = ERROR_REACHABLE_LEAK,
     ERROR_MAX_VAL,
 };
+
+static inline bool
+type_is_leak(uint type)
+{
+    return (type >= ERROR_LEAK && type <= ERROR_MAX_LEAK);
+}
 
 static const char *const error_name[] = {
     "unaddressable access(es)",
@@ -110,6 +116,7 @@ static const char *const error_name[] = {
     "warning(s)",
     "leak(s)",    
     "possible leak(s)",    
+    "still-reachable allocation(s)",    
 };
 
 static const char *const suppress_name[] = {
@@ -123,6 +130,7 @@ static const char *const suppress_name[] = {
     "WARNING",
     "LEAK",    
     "POSSIBLE LEAK",    
+    "REACHABLE LEAK",    
 };
 
 #define DRMEM_VALGRIND_TOOLNAME "Dr.Memory"
@@ -179,7 +187,7 @@ typedef struct _error_toprint_t {
 
     /* For leaks: */
     size_t indirect_size;       /* Size of indirect allocs. */
-    const char *label;          /* Extra label (IGNORED or REACHABLE). */
+    const char *label;          /* Extra label (e.g., IGNORED). */
 } error_toprint_t;
 
 /* Though any one instance of an address can have only one error
@@ -1081,7 +1089,7 @@ on_suppression_list_helper(uint type, error_callstack_t *ecs,
             if (matched != NULL)
                 *matched = spec;
             spec->count_used++;
-            if (type == ERROR_LEAK || type == ERROR_POSSIBLE_LEAK)
+            if (type_is_leak(type))
                 spec->bytes_leaked += ecs->bytes_leaked;
             return true;
         }
@@ -1095,8 +1103,8 @@ on_suppression_list(uint type, error_callstack_t *ecs, suppress_spec_t **matched
     ASSERT(type >= 0 && type < ERROR_MAX_VAL, "invalid error type");
     if (on_suppression_list_helper(type, ecs, matched))
         return true;
-    /* POSSIBLE LEAK reports should be checked against LEAK suppressions */
-    if (type == ERROR_POSSIBLE_LEAK) {
+    /* qualified leak reports should be checked against LEAK suppressions */
+    if (type_is_leak(type) && type != ERROR_LEAK) {
         if (on_suppression_list_helper(ERROR_LEAK, ecs, matched))
             return true;
     }
@@ -1590,7 +1598,7 @@ report_fork_init(void)
             num_unique[set][i] = 0;
             num_total[set][i] = 0;
         }
-        for (i = ERROR_LEAK; i < ERROR_POSSIBLE_LEAK; i++) {
+        for (i = ERROR_LEAK; i < ERROR_MAX_LEAK; i++) {
             saved_unique[set][i] = 0;
             saved_total[set][i] = 0;
             num_bytes_leaked[set][i] = 0;
@@ -1607,7 +1615,6 @@ report_fork_init(void)
     num_suppressed_leaks_default = 0;
     num_throttled_errors = 0;
     num_throttled_leaks = 0;
-    num_reachable_leaks = 0;
     hashtable_clear(&error_table);
     /* Be sure to reset the error list (xref PR 519222)
      * The error list points at hashtable payloads so nothing to free 
@@ -1624,6 +1631,25 @@ report_fork_init(void)
 }
 #endif
 
+static void
+report_leak_stats(file_t f, bool notify, bool potential, uint type)
+{
+    uint set = ERROR_SET(potential);
+    size_t bytes = num_bytes_leaked[set][type];
+    if (options.check_leaks) {
+        NOTIFY_COND(notify, f,
+                    "  %5d unique, %5d total, %6d byte(s) of %s%s"NL,
+                    num_unique[set][type], num_total[set][type], bytes,
+                    potential ? POTENTIAL_PREFIX " " : "", error_name[type]);
+    } else {
+        /* We don't have dup checking */
+        NOTIFY_COND(notify, f,
+                    "  %5d total, %6d byte(s) of %s%s"NL,
+                    num_unique[set][type], bytes,
+                    potential ? POTENTIAL_PREFIX " " : "", error_name[type]);
+    }
+}
+
 /* N.B.: for PR 477013, postprocess.pl duplicates some of this syntax
  * exactly: try to keep the two in sync
  */
@@ -1636,7 +1662,9 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
     uint set = ERROR_SET(potential);
     bool found_errors = (num_reported_errors[set] > 0 ||
                          num_bytes_leaked[set][ERROR_LEAK] > 0 ||
-                         num_bytes_leaked[set][ERROR_POSSIBLE_LEAK] > 0);
+                         num_bytes_leaked[set][ERROR_POSSIBLE_LEAK] > 0 ||
+                         (options.show_reachable &&
+                          num_bytes_leaked[set][ERROR_REACHABLE_LEAK] > 0));
 
     /* Too much info to put on stderr, so just in logfile */
     dr_fprintf(f, ""NL);
@@ -1648,7 +1676,9 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
             /* possible leaks are left with id==0 and should be ignored
              * except in summary, unless -possible_leaks
              */
-            (err->errtype != ERROR_POSSIBLE_LEAK || options.possible_leaks)) {
+            (err->errtype != ERROR_POSSIBLE_LEAK || options.possible_leaks) &&
+            /* similarly with reachable leaks */
+            (err->errtype != ERROR_REACHABLE_LEAK || options.show_reachable)) {
             ASSERT(err->id > 0, "error id wrong");
             dr_fprintf(f, "\t%sError #%4d: %6d"NL,
                        potential ? POTENTIAL_PREFIX_CAP " " : "", err->id, err->count);
@@ -1663,7 +1693,7 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                 if (spec->count_used > 0 &&
                     (print_full_stats || !spec->is_default)) {
                     dr_fprintf(f, "\t%6dx", spec->count_used);
-                    if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK)
+                    if (type_is_leak(i))
                         dr_fprintf(f, " (leaked %7d bytes): ", spec->bytes_leaked);
                     else
                         dr_fprintf(f, ": ");
@@ -1681,23 +1711,10 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                 potential ? POTENTIAL_PREFIX_ALLCAP " " : "",
                 potential ? POTENTIAL_PREFIX_ALLCAP " " : "");
     for (i = 0; i < ERROR_MAX_VAL; i++) {
-        if (i == ERROR_LEAK || i == ERROR_POSSIBLE_LEAK) {
-            if (options.count_leaks) {
-                size_t bytes = (i == ERROR_LEAK) ?
-                    num_bytes_leaked[set][ERROR_LEAK] :
-                    num_bytes_leaked[set][ERROR_POSSIBLE_LEAK];
-                if (options.check_leaks) {
-                    NOTIFY_COND(notify, f,
-                                "  %5d unique, %5d total, %6d byte(s) of %s%s"NL,
-                                num_unique[set][i], num_total[set][i], bytes,
-                                potential ? POTENTIAL_PREFIX " " : "", error_name[i]);
-                } else {
-                    /* We don't have dup checking */
-                    NOTIFY_COND(notify, f,
-                                "  %5d total, %6d byte(s) of %s%s"NL,
-                                num_unique[set][i], bytes,
-                                potential ? POTENTIAL_PREFIX " " : "", error_name[i]);
-                }
+        if (type_is_leak(i)) {
+            if (options.count_leaks &&
+                (options.show_reachable || i != ERROR_REACHABLE_LEAK)) {
+                report_leak_stats(f, notify, potential, i);
                 if (i == ERROR_LEAK && !options.check_leaks) {
                     NOTIFY_COND(notify, f,
                                 "         (re-run with \"-check_leaks\" for details)"NL);
@@ -1723,8 +1740,15 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
     }
     if (!potential) {
         /* -brief doesn't list the count of potential errors */
-        if (!options.brief || num_throttled_errors > 0 || num_throttled_leaks > 0)
-            NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
+        if (!options.brief) {
+            if (num_throttled_errors > 0 || num_throttled_leaks > 0 ||
+                (!options.show_reachable && num_reported_errors > 0) ||
+                num_reported_errors[ERROR_POTENTIAL] > 0 ||
+                num_total_leaks[ERROR_POTENTIAL] > 0)
+                NOTIFY_COND(notify, f, "ERRORS IGNORED:"NL);
+            else
+                NOTIFY_COND(notify, f, "NO ERRORS IGNORED"NL);
+        }
         if (!options.brief && num_reported_errors[ERROR_POTENTIAL] > 0) {
             NOTIFY_COND(notify, f,
                         "  %5d potential error(s) (suspected false positives)"NL,
@@ -1758,9 +1782,8 @@ report_summary_to_file(file_t f, bool stderr_too, bool print_full_stats, bool po
                     dr_fprintf(f, "  %5d ignored assumed-innocuous system leak(s)"NL,
                                num_leaks_ignored);
                 }
-                NOTIFY_COND(notify, f, "  %5d still-reachable allocation(s)"NL,
-                            num_reachable_leaks);
                 if (!options.show_reachable) {
+                    report_leak_stats(f, notify, potential, ERROR_REACHABLE_LEAK);
                     NOTIFY_COND(notify, f,
                                 "         (re-run with \"-show_reachable\" for details)"
                                 NL);
@@ -1984,8 +2007,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
              * malloc routine as the top frame (i#639).  we ensure it has ebp.
              */
             (!options.replace_malloc ||
-             (type != ERROR_INVALID_HEAP_ARG && type != ERROR_LEAK &&
-              type != ERROR_POSSIBLE_LEAK &&
+             (type != ERROR_INVALID_HEAP_ARG && !type_is_leak(type) &&
               /* ditto for warnings reported from malloc routines */
               (type != ERROR_WARNING ||
                (modpath != NULL &&
@@ -2672,15 +2694,9 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
                  suppress_name[etp->errtype], etp->msg);
 #endif
     } else if (etp->errtype >= ERROR_LEAK &&
-               etp->errtype <= ERROR_MAX_VAL) {
-        /* For REACHABLE and IGNORED leak reporting. */
-        /* XXX: Instead of a string label, we should make ERROR_REACHABLE_LEAK
-         * and maybe ERROR_IGNORED_LEAK enums.
-         */
+               etp->errtype <= ERROR_MAX_LEAK) {
         if (etp->label != NULL)
             BUFPRINT(buf, bufsz, sofar, len, etp->label);
-        if (etp->errtype == ERROR_POSSIBLE_LEAK)
-            BUFPRINT(buf, bufsz, sofar, len, "POSSIBLE ");
         BUFPRINT(buf, bufsz, sofar, len, "LEAK %d ", etp->sz);
         if (etp->indirect_size > 0 || !options.brief)
             BUFPRINT(buf, bufsz, sofar, len, "direct ");
@@ -2698,7 +2714,15 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
                  "UNKNOWN ERROR TYPE: REPORT THIS BUG"NL);
     }
 
-    symbolized_callstack_print(&ecs->scs, buf, bufsz, &sofar, NULL, for_log);
+    if (ecs->scs.num_frames == 0) {
+        if (type_is_leak(etp->errtype)) {
+            BUFPRINT(buf, bufsz, sofar, len,
+                     "<memory was allocated before tool took control>"NL);
+        } else {
+            BUFPRINT(buf, bufsz, sofar, len, "<empty callstack>"NL);
+        }
+    } else
+        symbolized_callstack_print(&ecs->scs, buf, bufsz, &sofar, NULL, for_log);
 
     /* Print the timestamp for non-leak reports, unless -brief. */
     if (etp->errtype < ERROR_LEAK && !options.brief) {
@@ -2729,11 +2753,9 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
                  INFO_PFX, ecs->instruction);
     }
 
-    if (!for_log && !options.check_leaks &&
-        (etp->errtype == ERROR_LEAK || etp->errtype == ERROR_POSSIBLE_LEAK)) {
+    if (!for_log && !options.check_leaks && type_is_leak(etp->errtype)) {
         BUFPRINT(buf, bufsz, sofar, len,
-                 "   (run with -check_leaks to obtain a callstack)"NL,
-                 (etp->errtype == ERROR_LEAK) ? "check" : "possible");
+                 "   (run with -check_leaks to obtain a callstack)"NL);
     }
 
     if (for_log)
@@ -2898,7 +2920,7 @@ report_leak_stats_checkpoint(void)
     saved_suppressed_leaks_user = num_suppressed_leaks_user;
     saved_suppressed_leaks_default = num_suppressed_leaks_default;
     for (set = 0; set < ERROR_SET_NUM; set++) {
-        for (i = ERROR_LEAK; i < ERROR_POSSIBLE_LEAK; i++) {
+        for (i = ERROR_LEAK; i <= ERROR_MAX_LEAK; i++) {
             saved_unique[set][i] = num_unique[set][i];
             saved_total[set][i] = num_total[set][i];
             saved_bytes_leaked[set][i] = num_bytes_leaked[set][i];
@@ -2906,7 +2928,6 @@ report_leak_stats_checkpoint(void)
         saved_total_leaks[set] = num_total_leaks[set];
     }
     saved_throttled_leaks = num_throttled_leaks;
-    saved_reachable_leaks = num_reachable_leaks;
     dr_mutex_unlock(error_lock);
 }
 
@@ -2922,7 +2943,7 @@ report_leak_stats_revert(void)
     num_suppressed_leaks_user = saved_suppressed_leaks_user;
     num_suppressed_leaks_default = saved_suppressed_leaks_default;
     for (set = 0; set < ERROR_SET_NUM; set++) {
-        for (i = ERROR_LEAK; i < ERROR_POSSIBLE_LEAK; i++) {
+        for (i = ERROR_LEAK; i <= ERROR_MAX_LEAK; i++) {
             num_unique[set][i] = saved_unique[set][i];
             num_total[set][i] = saved_total[set][i];
             num_bytes_leaked[set][i] = saved_bytes_leaked[set][i];
@@ -2930,14 +2951,12 @@ report_leak_stats_revert(void)
         num_total_leaks[set] = saved_total_leaks[set];
     }
     num_throttled_leaks = saved_throttled_leaks;
-    num_reachable_leaks = saved_reachable_leaks;
     /* Clear leak error counts */
     for (i = 0; i < HASHTABLE_SIZE(error_table.table_bits); i++) {
         hash_entry_t *he;
         for (he = error_table.table[i]; he != NULL; he = he->next) {
             stored_error_t *err = (stored_error_t *) he->payload;
-            if (err->errtype == ERROR_LEAK ||
-                err->errtype == ERROR_POSSIBLE_LEAK) {
+            if (type_is_leak(err->errtype)) {
                 err->count = 0;
             }
         }
@@ -2969,19 +2988,10 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     error_callstack_t ecs;
     error_callstack_init(&ecs);
 
-    /* Only consider report_leak_max for check_leaks, and don't count
-     * reachable toward the max
-     */
-    if (reachable) {
-        /* if show_reachable and past report_leak_max, we'll inc
-         * this counter and num_throttled_leaks: oh well.
-         */
-        if (count_reachable)
-            num_reachable_leaks++;
-        if (!show_reachable)
-            return;
-        label = "REACHABLE ";
-    } else if (!known_malloc) {
+    /* Ignore reachable on extra iter from leak scan */
+    if (reachable && !count_reachable)
+        return;
+    if (!known_malloc) {
         /* This is really a curiosity for developers: not an error for
          * addressable memory to remain within a heap region.
          */
@@ -3001,14 +3011,18 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
     num_total_leaks[ERROR_NORMAL]++;
 
     /* we need to know the type prior to dup checking */
-    if (label != NULL) {  /* REACHABLE or STILL-ADDRESSABLE */
+    if (reachable && !early) {
+        label = "REACHABLE ";
+        type = ERROR_REACHABLE_LEAK;
+    } else if (label != NULL) {  /* STILL-ADDRESSABLE */
         type = ERROR_MAX_VAL;
-    } else if (early && !reachable && options.ignore_early_leaks) {
-        /* early reachable are listed as reachable, not ignored */
+    } else if (early && options.ignore_early_leaks) {
+        /* early reachable are ignored, since no callstack to act on */
         label = "IGNORED ";
         num_leaks_ignored++;
         type = ERROR_MAX_VAL;
     } else if (maybe_reachable) {
+        label = "POSSIBLE ";
         type = ERROR_POSSIBLE_LEAK;
     } else {
         type = ERROR_LEAK;
@@ -3069,7 +3083,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         if (locked_malloc)
             alloc_callstack_unlock();
 
-        /* only real and possible leaks can be suppressed */
+        /* only real, possible, and reachable leaks can be suppressed */
         if (type < ERROR_MAX_VAL)
             reporting = !on_suppression_list(type, &ecs, &spec);
 
@@ -3080,11 +3094,15 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
              * last nudge, but we do re-print the callstacks so it's
              * easy to see all the nudges at that point.
              */
-            if (err->id == 0 && (!maybe_reachable || options.possible_leaks)) {
+            if ((maybe_reachable && !options.possible_leaks) ||
+                (reachable && !options.show_reachable))
+                reporting = false;
+            if (err->id == 0) {
                 if (leak_is_likely_false_positive(&ecs)) {
                     err->potential = true;
                     set = ERROR_POTENTIAL;
-                    acquire_error_number(err);
+                    if (reporting)
+                        acquire_error_number(err);
                     /* Fix up the stats */
                     num_total_leaks[ERROR_NORMAL]--;
                     num_total_leaks[ERROR_POTENTIAL]++;
@@ -3093,14 +3111,19 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
                     num_total[ERROR_POTENTIAL][type]++;
                     LOG(2, "Leak starts with system libs => hiding\n");
                 } else {
-                    acquire_error_number(err);
-                    report_error_suppression(type, &ecs, err->id);
+                    if (reporting) {
+                        acquire_error_number(err);
+                        report_error_suppression(type, &ecs, err->id);
+                    }
                 }
+                if (!reporting)
+                    num_unique[ERROR_SET(err->potential)][err->errtype]++;
             } else {
                 /* num_unique was set to 0 after nudge */
 #ifdef STATISTICS /* for num_nudges */
                 ASSERT(err->id == 0 || num_nudges > 0 ||
-                       (maybe_reachable && !options.possible_leaks),
+                       (maybe_reachable && !options.possible_leaks) ||
+                       (reachable && !options.show_reachable),
                        "invalid dup error report!");
 #endif
                 num_unique[ERROR_SET(err)][err->errtype]++;
@@ -3119,11 +3142,6 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
                 num_suppressed_leaks_user++;
             err->suppress_spec->bytes_leaked += size + indirect_size;
             num_total[ERROR_NORMAL][type]--;
-        } else if (reachable && show_reachable) {
-            /* We don't attempt to suppress reachable leaks if the user sets
-             * -show_reachable.
-             */
-            reporting = true;
         }
     } else if (type < ERROR_MAX_VAL) {
         /* For -no_check_leaks, we still report leaks without callstacks and
@@ -3134,7 +3152,7 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
         num_bytes_leaked[set][type] += size + indirect_size;
         if (type == ERROR_LEAK ||
             (type == ERROR_POSSIBLE_LEAK && options.possible_leaks) ||
-            (reachable && show_reachable)) {
+            (type == ERROR_REACHABLE_LEAK && show_reachable)) {
             reporting = true;
         }
     }
@@ -3144,6 +3162,9 @@ report_leak(bool known_malloc, app_pc addr, size_t size, size_t indirect_size,
 
     /* If possible leak checking is off, don't report them, just log them. */
     if (maybe_reachable && !options.possible_leaks)
+        reporting = false;
+    /* Ditto for reachable */
+    if (reachable && !options.show_reachable)
         reporting = false;
 
     etp.errtype = type;

@@ -882,7 +882,7 @@ sub parse_error($arr_ref, $err_str)
             $line =~ /^Error #\s*(\d+)+: (INVALID HEAP ARGUMENT)(.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (REPORTED WARNING:.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (POSSIBLE LEAK)(\s+\d+.*)$/ ||
-            $line =~ /^(\s*)(REACHABLE LEAK)(\s+\d+.*)$/ ||
+            $line =~ /^Error #\s*(\d+)+: (REACHABLE LEAK)(\s+\d+.*)$/ ||
             $line =~ /^Error #\s*(\d+)+: (LEAK)(\s+\d+.*)$/) {
             $client_errnum_to_name[$1] = $err_str;
             $error{"name"} = $2;
@@ -912,8 +912,9 @@ sub parse_error($arr_ref, $err_str)
                 } else {
                     die "Error: unknown leak detail text ".$error{"details"}."\n";
                 }
-            } elsif ($line =~ /^(\s*)(REACHABLE LEAK)(\s+\d+.*)$/) {
-                # nothing special to do
+            } elsif ($line =~ /^Error #\s*(\d+)+: (REACHABLE LEAK)(\s+\d+.*)$/) {
+                # nothing special to do: no first-class support for reachable
+                # leaks like we do w/ online syms.
             } else {
                 die "Unrecognized error type: \"$line\"";
             }
@@ -1980,7 +1981,7 @@ sub is_line_start_of_error($line)
         $line =~ /^Error #\s*\d+: REPORTED (WARNING)/ ||
         $line =~ /^Error #\s*\d+: (LEAK)/ ||
         $line =~ /^Error #\s*\d+: (POSSIBLE LEAK)/ ||
-        $line =~ /^(REACHABLE LEAK)/) {
+        $line =~ /^Error #\s*\d+: (REACHABLE LEAK)/) {
         return $1;
     }
     return 0;

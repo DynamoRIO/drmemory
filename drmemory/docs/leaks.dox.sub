@@ -71,16 +71,28 @@ Dr. Memory reports the number of leaks, possible leaks, and still-reachable
 allocations.  The callstack for the allocation of each leak and possible leak
 is gathered by default and listed with other errors in the results file.
 To also see all of the reachable allocations, use the \p -show_reachable 
-runtime option.  Reachable allocations will be in the \p global.pid.log file inside
-the log directory, labeled as <tt>REACHABLE LEAK</tt>.
+runtime option.  Reachable allocations are labeled as <tt>REACHABLE LEAK</tt>.
 
 Here are example lines from Dr. Memory's output summary:
 
 \code
-~~Dr.M~~       9 unique,   282 total,   5860 byte(s) of leak(s)
+~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~       5 unique,     5 total,    574 byte(s) of leak(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
-~~Dr.M~~     125 still-reachable allocation(s)
+~~Dr.M~~ ERRORS IGNORED:
+~~Dr.M~~       5 unique,     8 total,    205 byte(s) of still-reachable allocation(s)
 ~~Dr.M~~          (re-run with "-show_reachable" for details)
+\endcode
+
+And with \p -show_reachable, where the callstack for each still-reachable
+allocation will be in \p results.txt:
+
+\code
+~~Dr.M~~ ERRORS FOUND:
+~~Dr.M~~       5 unique,     5 total,    574 byte(s) of leak(s)
+~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
+~~Dr.M~~       5 unique,     8 total,    205 byte(s) of still-reachable allocation(s)
+~~Dr.M~~ NO ERRORS IGNORED
 \endcode
 
 There are known sources of false positives where a memory allocation may

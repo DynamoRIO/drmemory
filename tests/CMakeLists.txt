@@ -497,7 +497,10 @@ if (UNIX)
 else (UNIX)
   newtest(winthreads winthreads.c)
   if (TOOL_DR_MEMORY)
-    newtest(procterm procterm.c)
+    # We turn off blacklist b/c it results in potential errors in the child,
+    # causing runtest.cmake to pick the child's log instead of parent's
+    # (it does it by size)!
+    newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" OFF)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
     # these tests share a temp file so they can't run in parallel
