@@ -77,8 +77,6 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    blacklist entry).
  - Added full support for applications linked with the debug Visual Studio
    C library.
- - Added option -check_prefetch to make it easier to turn off the warnings
-   on prefetching unaddressable memory.
  - Added checks for mixing of C library heap routines with Windows API heap
    routines on the same allocation, under a new on-by-default new option
    -check_heap_mismatch.
@@ -86,6 +84,10 @@ The changes between \TOOL_VERSION and version 1.5.1 include:
    allocator, rather than wrapping the system allocator, for improved
    performance and stability and improved interoperability with
    the Visual Studio debug C library.
+ - Improved still-reachable allocation reporting, adding suppression
+   support, de-duplication, and hiding of system allocations.
+ - Added option -check_prefetch to make it easier to turn off the warnings
+   on prefetching unaddressable memory.
  - The GDI error on using a DC by more than one thread is now off by
    default.  It can be enabled with the -check_gdi_multithread option.
  - Added drsys_syscall_gateway() to the Dr. Syscall library.
