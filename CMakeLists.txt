@@ -709,20 +709,18 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
     set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
   endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
-  # for efficiency, have all our extensions be static.  we have the same
+  # for efficiency, have all our (DR's) extensions be static.  we have the same
   # LGPL license as drutil and drwrap so it works out.
-  set(DR_EXT_DRWRAP_STATIC ON CACHE BOOL "static drwrap")
-  set(DR_EXT_DRUTIL_STATIC ON CACHE BOOL "static drutil")
-  set(DR_EXT_DRMGR_STATIC ON CACHE BOOL "static drmgr")
-  set(DR_EXT_DRX_STATIC ON CACHE BOOL "static drx")
-  if (STATIC_DRSYMS)
+  set(BUILD_EXT_STATIC ON CACHE BOOL "static DR extensions")
+  # Since drsysms defaults to static here, we check for requested
+  # dynamic instead of requested static
+  if (NOT STATIC_DRSYMS)
     # N.B.: static drsyms gives us kernel32 imports from elftoolchain
     # libc use.  If we end up needing late kernel32 use for early
     # injection we may want to go back to dynamic drsyms (and delayed
     # dr_enable_console_printing()).
-    set(DR_EXT_DRSYMS_STATIC ON CACHE BOOL "static drsyms")
-  endif (STATIC_DRSYMS)
-
+    set(DR_EXT_DRSYMS_STATIC OFF CACHE BOOL "non-static drsyms")
+  endif (NOT STATIC_DRSYMS)
   # We do not want DR install, except for the targets we need for our
   # multi-export-set install of the DRMF.
   set(DO_DR_INSTALL OFF)
