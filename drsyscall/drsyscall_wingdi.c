@@ -380,7 +380,8 @@ syscall_info_t syscall_user32_info[] = {
          {0, -1, R},
      }
     },
-    {{0,0},"NtUserCopyAcceleratorTable", OK, SYSARG_TYPE_UINT32, 3,
+    /* XXX: should all uint return types have SYSINFO_RET_ZERO_FAIL? */
+    {{0,0},"NtUserCopyAcceleratorTable", OK|SYSINFO_RET_ZERO_FAIL, SYSARG_TYPE_UINT32, 3,
      {
          /* special-cased b/c ACCEL has padding */
          {1, -2, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
@@ -4894,7 +4895,7 @@ handle_accel_array(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
     for (i = 0; i < count; i++) {
         if (!report_memarg_ex(ii, 0, mode_from_flags(arg_flags),
                               (byte *) &array[i].fVirt, sizeof(array[i].fVirt),
-                              "ACCEL.fVirst", DRSYS_TYPE_UNSIGNED_INT, NULL,
+                              "ACCEL.fVirt", DRSYS_TYPE_UNSIGNED_INT, NULL,
                               DRSYS_TYPE_STRUCT))
             return;
         if (!report_memarg_ex(ii, 0, mode_from_flags(arg_flags),
@@ -4923,8 +4924,8 @@ static void
 handle_UserCopyAcceleratorTable(void *drcontext, cls_syscall_t *pt,
                                 sysarg_iter_info_t *ii)
 {
-    ACCEL *array = (ACCEL *) pt->sysarg[0];
-    ULONG count = (ULONG) pt->sysarg[1];
+    ACCEL *array = (ACCEL *) pt->sysarg[1];
+    ULONG count = (ULONG) pt->sysarg[2];
     handle_accel_array(drcontext, pt, ii, array, count, SYSARG_WRITE);
 }
 
