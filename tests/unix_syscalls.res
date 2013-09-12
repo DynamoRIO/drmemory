@@ -6,7 +6,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -21,32 +21,52 @@
 Error #1: UNADDRESSABLE ACCESS: reading 10 byte(s)
 system call open
 unaddr_open
-unix_syscalls.c:65
+unix_syscalls.c:66
 overlaps memory that was freed
 
 Error #2: UNINITIALIZED READ: reading 10 byte(s)
 system call open
 uninit_open
-unix_syscalls.c:84
+unix_syscalls.c:85
 
 Error #3: UNADDRESSABLE ACCESS: reading 12 byte(s)
 system call finit_module
 unaddr_finit_module
-unix_syscalls.c:160
+unix_syscalls.c:161
 overlaps memory that was freed
 
 Error #4: UNINITIALIZED READ: reading 6 byte(s)
 system call finit_module
 uninit_finit_module
-unix_syscalls.c:149
+unix_syscalls.c:150
 
 Error #5: UNADDRESSABLE ACCESS: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-unix_syscalls.c:176
+unix_syscalls.c:177
 overlaps memory that was freed
 
 Error #6: UNINITIALIZED READ: reading 1 byte(s)
 system call execve
 unaddr_uninit_execve
-unix_syscalls.c:176
+unix_syscalls.c:177
+
+Error #7: UNINITIALIZED READ: reading 20 byte(s)
+system call process_vm_readv
+unaddr_process_vm_readv_writev
+unix_syscalls.c:211
+
+Error #8: UNADDRESSABLE ACCESS: writing 2 byte(s)
+system call process_vm_readv
+unaddr_process_vm_readv_writev
+unix_syscalls.c:211
+
+Error #9: UNINITIALIZED READ: reading 10 byte(s)
+system call process_vm_writev
+unaddr_process_vm_readv_writev
+unix_syscalls.c:213
+
+Error #10: UNADDRESSABLE ACCESS: reading 2 byte(s)
+system call process_vm_writev
+unaddr_process_vm_readv_writev
+unix_syscalls.c:213

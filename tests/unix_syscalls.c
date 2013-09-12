@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -27,6 +27,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/uio.h>
 #include "sysnum_linux.h"
 
 #define BUFSZ 1024
@@ -93,7 +94,7 @@ void access_filesystem(void)
     int n;
 
     char orig_dir[MAX_PATH];
-    getcwd(orig_dir, MAX_PATH); 
+    getcwd(orig_dir, MAX_PATH);
 
     errno = 0;
     chdir("/tmp/");                     CHECKERRNO();
@@ -139,7 +140,7 @@ void uninit_finit_module(int initialize)
     if (initialize) {
         strncpy(stack_str.str, "param=dummy", 12);
     }
-    
+
     /* XXX: If root, we drop to uid of nobody,
      * non-standard but 99 many distros */
     if (geteuid() == 0) {
@@ -177,6 +178,48 @@ void unaddr_uninit_execve(void)
     free(envp[0]);
 }
 
+void unaddr_process_vm_readv_writev(int readv)
+{
+    struct iovec *local;
+    struct iovec *remote;
+
+    char *buf_local1;
+    char *buf_local2;
+    char *buf_remote;
+
+    buf_local1 = malloc(10 * sizeof(char));
+    buf_local2 = malloc(10 * sizeof(char));
+    buf_remote = malloc(20 * sizeof(char));
+
+    local = malloc(2*sizeof(struct iovec));
+    remote = malloc(sizeof(struct iovec));
+
+    local[0].iov_base = buf_local1;
+    local[0].iov_len = 12;
+
+    local[1].iov_base = buf_local2;
+    local[1].iov_len = 10;
+
+    remote[0].iov_base = buf_remote;
+    remote[0].iov_len = 20;
+
+    free(buf_local2);
+
+    ssize_t n;
+
+    if (readv) {
+        n = syscall(SYS_process_vm_readv, getpid(), local, 2, remote, 1, 0);
+    } else {
+        n = syscall(SYS_process_vm_writev, getpid(), local, 2, remote, 1, 0);
+    }
+    printf("transferred %d bytes\n", n);
+
+    free(local);
+    free(remote);
+    free(buf_local1);
+    free(buf_remote);
+}
+
 int main(void)
 {
     access_filesystem();
@@ -187,6 +230,8 @@ int main(void)
     uninit_finit_module(0);
     uninit_finit_module(1);
     unaddr_uninit_execve();
+    unaddr_process_vm_readv_writev(1 /*readv*/);
+    unaddr_process_vm_readv_writev(0 /*writev*/);
     printf("done\n");
     return 0;
 }

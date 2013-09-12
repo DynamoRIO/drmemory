@@ -6,7 +6,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -20,8 +20,8 @@
 #
 done
 ~~Dr.M~~ ERRORS FOUND:
-~~Dr.M~~       3 unique,     3 total unaddressable access(es)
-~~Dr.M~~       3 unique,     3 total uninitialized access(es)
+~~Dr.M~~       5 unique,     7 total unaddressable access(es)
+~~Dr.M~~       5 unique,     5 total uninitialized access(es)
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
 ~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)

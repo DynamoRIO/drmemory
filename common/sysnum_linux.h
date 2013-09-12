@@ -1,5 +1,6 @@
 /* **********************************************************
- * Copyright (c) 2009 VMware, Inc.  All rights reserved.
+ * Copyright (c) 2013 Google, Inc. All rights reserved.
+ * Copyright (c) 2009 VMware, Inc. All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -329,6 +330,8 @@
 # define __NR_dup3                               292
 # define __NR_pipe2                              293
 # define __NR_inotify_init1                      294
+# define __NR_process_vm_readv                   310
+# define __NR_process_vm_writev                  311
 # define __NR_finit_module                       313
 
 #else /* X64 */
@@ -666,6 +669,8 @@
 # define __NR_dup3               330
 # define __NR_pipe2              331
 # define __NR_inotify_init1      332
+# define __NR_process_vm_readv   347
+# define __NR_process_vm_writev  348
 # define __NR_finit_module       350
 
 #endif /* X64 */
@@ -933,7 +938,10 @@
 #define SYS_waitid __NR_waitid
 #define SYS_write __NR_write
 #define SYS_writev __NR_writev
+#define SYS_process_vm_readv __NR_process_vm_readv
+#define SYS_process_vm_writev __NR_process_vm_writev
 #define SYS_finit_module __NR_finit_module
+
 #ifdef X64
 # define SYS_accept __NR_accept
 # define SYS_arch_prctl __NR_arch_prctl

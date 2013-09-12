@@ -1464,15 +1464,36 @@ static syscall_info_t syscall_info[] = {
      }
     }, /* == accept4 */
     {{PACKNUM(306,344),0},"syncfs", OK, RLONG, 1,
-     {    
+     {
          {0, sizeof(int),SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
+    {{PACKNUM(310,347),0},"process_vm_readv", OK, RLONG, 6,
+     {
+         {0, sizeof(pid_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, -2, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct iovec)},
+         {2, sizeof(unsigned long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -4, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct iovec)},
+         {4, sizeof(unsigned long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{PACKNUM(311,348),0},"process_vm_writev", OK, RLONG, 6,
+     {
+         {0, sizeof(pid_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, -2, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct iovec)},
+         {2, sizeof(unsigned long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -4, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(struct iovec)},
+         {4, sizeof(unsigned long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    /* FIXME i#1019: add recently added linux syscalls */
     {{PACKNUM(313,350),0},"finit_module", OK, RLONG, 3,
      {
-         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT}, 
+         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, 0, R|CT, CSTRING},
-         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT}, 
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
 /* FIXME i#1019: add recently added linux syscalls */
@@ -2420,7 +2441,7 @@ check_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii,
 }
 
 /* scatter-gather buffer vector handling.
- * ignores bytes_read unless arg_flags == SYSARG_WRITE.
+ * loops until bytes checked == bytes_read
  */
 static void
 check_iov(cls_syscall_t *pt, sysarg_iter_info_t *ii,
@@ -2438,13 +2459,11 @@ check_iov(cls_syscall_t *pt, sysarg_iter_info_t *ii,
         return;
     for (i = 0; i < iov_len; i++) {
         if (safe_read(&iov[i], sizeof(iov_copy), &iov_copy)) {
-            if (arg_flags == SYSARG_WRITE) {
-                if (bytes_so_far + iov_copy.iov_len > bytes_read) {
-                    done = true;
-                    iov_copy.iov_len = (bytes_read - bytes_so_far);
-                }
-                bytes_so_far += iov_copy.iov_len;
+            if (bytes_so_far + iov_copy.iov_len > bytes_read) {
+                done = true;
+                iov_copy.iov_len = (bytes_read - bytes_so_far);
             }
+            bytes_so_far += iov_copy.iov_len;
             LOG(3, "check_iov: iov entry %d, buf="PFX", len="PIFX"\n",
                 i, iov_copy.iov_base, iov_copy.iov_len);
             if (iov_copy.iov_len > 0 &&
@@ -3168,6 +3187,70 @@ handle_shmctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
 }
 
 static void
+handle_pre_process_vm_readv_writev(void *drcontext, sysarg_iter_info_t *ii)
+{
+    int arg_flags_local;
+    if(!strcmp(ii->pt->sysinfo->name, "process_vm_readv")) {
+        arg_flags_local = SYSARG_WRITE;
+
+        pid_t pid = (pid_t)(ii->pt->sysarg[0]);
+        if (pid == dr_get_process_id()) {
+            struct iovec *riov;
+            riov = (struct iovec *)(ii->pt->sysarg[3]);
+            unsigned long riovcnt = ii->pt->sysarg[4];
+
+            /* size_t-1 is the max size_t value */
+            check_iov(ii->pt, ii, riov, (size_t)riovcnt, (size_t)-1, 3, SYSARG_READ,
+                    "remote_iov");
+        }
+    } else { /* process_vm_writev */
+        arg_flags_local = SYSARG_READ;
+    }
+
+    struct iovec *liov;
+    liov = (struct iovec *)(ii->pt->sysarg[1]);
+    unsigned long liovcnt = ii->pt->sysarg[2];
+
+    /* XXX: Passing (size_t)-1 (max size_t val) we check every member of the array,
+     * but we are unable to know the true size of it. The liovcnt parameter
+     * of the syscall holds the size but it can still be out of array bounds.
+     */
+    check_iov(ii->pt, ii, liov, (size_t)liovcnt, (size_t)-1, 1, arg_flags_local,
+              "local_iov");
+}
+
+static void
+handle_post_process_vm_readv(void *drcontext, sysarg_iter_info_t *ii)
+{
+    long res = dr_syscall_get_result(drcontext);
+
+    if (res > 0) {
+        struct iovec *liov;
+        liov = (struct iovec *)(ii->pt->sysarg[1]);
+        unsigned long liovcnt = ii->pt->sysarg[2];
+
+        check_iov(ii->pt, ii, liov, (size_t)liovcnt, res, 1, SYSARG_WRITE,
+                  "local_iov");
+    }
+}
+
+static void
+handle_post_process_vm_writev(void *drcontext, sysarg_iter_info_t *ii)
+{
+    long res = dr_syscall_get_result(drcontext);
+    pid_t pid = (pid_t)(ii->pt->sysarg[0]);
+
+    if (res > 0 && pid == dr_get_process_id()) {
+        struct iovec *riov;
+        riov = (struct iovec *)(ii->pt->sysarg[3]);
+        unsigned long riovcnt = ii->pt->sysarg[4];
+
+        check_iov(ii->pt, ii, riov, (size_t)riovcnt, res, 3, SYSARG_WRITE,
+                  "remote_iov");
+    }
+}
+
+static void
 check_msgbuf(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
              byte *ptr, size_t len, int ordinal, uint arg_flags)
 {
@@ -3648,6 +3731,10 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         }
         break;
     }
+    case SYS_process_vm_readv:
+    case SYS_process_vm_writev:
+        handle_pre_process_vm_readv_writev(drcontext, ii);
+        break;
     }
     /* If you add any handling here: need to check ii->abort first */
 }
@@ -3709,10 +3796,18 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         }
         break;
     }
-    case SYS_prctl:
+    case SYS_prctl: {
         handle_post_prctl(drcontext, pt, ii);
         break;
-    };
+    }
+    case SYS_process_vm_readv: {
+        handle_post_process_vm_readv(drcontext, ii);
+        break;
+    }
+    case SYS_process_vm_writev:
+        handle_post_process_vm_writev(drcontext, ii);
+        break;
+    }
     /* If you add any handling here: need to check ii->abort first */
 }
 
