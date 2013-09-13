@@ -793,7 +793,6 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
  * with either the top bit set or equal to zero.
  */
 #define STRING_SINGLE_MAX_LEN   128
-#define IS_ASCII(c) ((c) < 0x80)
 
 #ifdef WINDOWS
 static bool
@@ -804,8 +803,6 @@ is_part_of_string_wide(wchar_t *s, wchar_t *max_scan)
         (wchar_t *) ALIGN_FORWARD(s, PAGE_SIZE);
     wchar_t *start;
     for (start = s; s < stop; s++) {
-        if (!IS_ASCII(*s))
-            return false;
         if (*s == 0) {
             if (start < s) {
                 count++;
@@ -815,6 +812,8 @@ is_part_of_string_wide(wchar_t *s, wchar_t *max_scan)
                     break;
             } /* else, several nulls in a row */
             start = s + 1;
+        } else if (!IS_ASCII(*s)) {
+            return false;
         } else if (s - start >= STRING_SINGLE_MAX_LEN)
             return true;
     }
@@ -829,8 +828,6 @@ is_part_of_string_ascii(byte *s, byte *max_scan)
     byte *stop = (max_scan != NULL) ? max_scan : (byte *) ALIGN_FORWARD(s, PAGE_SIZE);
     byte *start;
     for (start = s; s < stop; s++) {
-        if (!IS_ASCII(*s))
-            return false;
         if (*s == 0) {
             if (start < s) {
                 count++;
@@ -840,6 +837,8 @@ is_part_of_string_ascii(byte *s, byte *max_scan)
                     break;
             } /* else, several nulls in a row */
             start = s + 1;
+        } else if (!IS_ASCII(*s)) {
+            return false;
         } else if (s - start >= STRING_SINGLE_MAX_LEN)
             return true;
     }

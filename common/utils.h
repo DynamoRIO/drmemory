@@ -541,6 +541,13 @@ atomic_add32_return_sum(volatile int *x, int val)
 #define MIN(x,y) ((x) < (y) ? (x) : (y))
 #define MAX(x,y) ((x) > (y) ? (x) : (y))
 
+/* IS_ASCII excludes null char */
+#define IS_ASCII(c) ((byte)(c) < 0x80 && (byte)(c) != 0)
+#define IS_WCHAR_AT(ptr) \
+    (IS_ASCII(*((byte*)(ptr))) && *(((byte*)(ptr))+1) == 0)
+#define IS_WCHARx2_AT(ptr) \
+    (IS_WCHAR_AT(ptr) && IS_WCHAR_AT(((wchar_t*)(ptr))+1))
+
 /***************************************************************************
  * UTILITY ROUTINES
  */

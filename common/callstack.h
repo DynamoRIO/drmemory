@@ -190,6 +190,7 @@ enum {
 #ifdef STATISTICS
 extern uint find_next_fp_scans;
 extern uint find_next_fp_cache_hits;
+extern uint find_next_fp_strings;
 extern uint symbol_names_truncated;
 extern uint cstack_is_retaddr;
 extern uint cstack_is_retaddr_backdecode;

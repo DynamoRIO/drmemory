@@ -52,6 +52,7 @@ static callstack_options_t ops;
 #ifdef STATISTICS
 uint find_next_fp_scans;
 uint find_next_fp_cache_hits;
+uint find_next_fp_strings;
 uint symbol_names_truncated;
 uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
@@ -1057,6 +1058,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
         bool match, match_next_frame, fp_defined = false;
         size_t ret_offs = TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) ? sizeof(app_pc) : 0;
         app_pc stop = tos + ops.fp_scan_sz;
+        IF_NOT_X64(uint conseq_wchar = 0;)
 #ifdef WINDOWS
         /* if on original thread stack, stop at limit (i#588) */
         TEB *teb = get_TEB();
@@ -1087,24 +1089,55 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
                 }
             }
             LOG(5, "find_next_fp: considering sp="PFX"\n", sp);
-            if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) && !fp_defined)
+            if (TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) && !fp_defined) {
+                IF_NOT_X64(conseq_wchar = 0;)
                 continue;
+            }
             if (ops.is_dword_defined != NULL &&
-                !ops.is_dword_defined(drcontext, sp + ret_offs))
+                !ops.is_dword_defined(drcontext, sp + ret_offs)) {
+                IF_NOT_X64(conseq_wchar = 0;)
                 continue; /* retaddr not defined */
+            }
             if (!TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags) ||
                 (slot0 > tos && slot0 - tos < ops.stack_swap_threshold)) {
-                slot1 = *((app_pc*)&page_buf[(sp + ret_offs) - buf_pg]);
+                byte *buf_ptr = (byte *) &page_buf[(sp + ret_offs) - buf_pg];
+                slot1 = *((app_pc*)buf_ptr);
                 /* We should only consider retaddr in code section but
                  * let's keep it simple for now.
                  * We ignore DGC: perhaps a dr_is_executable_memory() could
                  * be used instead of checking modules.
                  * OPT: keep all modules in hashtable for quicker check
                  * that doesn't require alloc+free of heap */
-                if (is_retaddr(slot1, true/*i#1217*/))
+#ifndef X64
+                if (IS_WCHARx2_AT(buf_ptr))
+                    conseq_wchar += 2;
+                else
+                    conseq_wchar = 0;
+#endif
+                if (is_retaddr(slot1, true/*i#1217*/)) {
                     match = true;
+#ifndef X64
+                    if (conseq_wchar > 0) {
+                        /* i#1331: rule out wide strings that have
+                         * address-look-alike sequences in the middle.
+                         */
+#                       define STACK_WIDE_STRING_MIN_LEN 16
+                        wchar_t *str = (wchar_t*) (buf_ptr + sizeof(app_pc));
+                        while (buf_ptr - page_buf < PAGE_SIZE && IS_WCHAR_AT(str)) {
+                            conseq_wchar++;
+                            str++;
+                        }
+                        if (conseq_wchar >= STACK_WIDE_STRING_MIN_LEN &&
+                            *str == L'\0') { /* terminating null */
+                            LOG(2, "find_next_fp: ra "PFX"@"PFX" really wchar '%S'\n",
+                                slot1, sp, str - conseq_wchar);
+                            STATS_INC(find_next_fp_strings);
+                            match = false;
+                        }
+                    }
+#endif
 #ifdef WINDOWS
-                else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
+                } else if (top_frame && TEST(FP_SEARCH_REQUIRE_FP, ops.fp_flags)) {
                     /* PR 475715: msvcr80!malloc pushes ebx and then ebp!  It then
                      * uses ebp as scratch, so we end up here for the top frame
                      * of a leak callstack.
@@ -1118,8 +1151,8 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
                         ASSERT(retaddr != NULL, "invalid arg");
                         *retaddr = slot1;
                     }
-                }
 #endif
+                }
             }
             if (match) {
                 app_pc parent_ret_ptr = slot0 + ret_offs;
