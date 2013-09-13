@@ -205,7 +205,7 @@ else (UNIX)
     "${CMAKE_CXX_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
   string(REGEX REPLACE "/O2" "/Od" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
-  # removing RTC initially just for tests/unload but on app_suite it's thwarting
+  # removing RTC initially just for tests/unloadtest but on app_suite it's thwarting
   # drmem's checks while not detecting many simple uninits through its own checks
   string(REGEX REPLACE "/RTC." "" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
@@ -514,29 +514,30 @@ else (UNIX)
   tobuild_lib(unloadlib unload.lib.c "/DUSE_CUSTOM_MALLOC" "/nodefaultlib /noentry")
 endif (UNIX)
 get_relative_location(unloadlib unloadlib_path)
-# We need 50 iters to hit i#545
-newtest_ex(unload unload.c "${unloadlib_path};50" "" "" OFF "" OFF)
+# We need 50 iters to hit i#545.
+# We name it "unloadtest" to avoid security software issues with "unload.exe".
+newtest_ex(unloadtest unload.c "${unloadlib_path};50" "" "" OFF "unload" OFF)
 if (UNIX)
-  target_link_libraries(unload dl)
+  target_link_libraries(unloadtest dl)
 endif (UNIX)
 if (WIN32)
   tobuild_lib(unloadlibMTd unload.lib.c "/D_DEBUG /MTd" "")
   get_relative_location(unloadlibMTd unloadlibMTd_path)
-  newtest_nobuild(unloadMTd unload "${unloadlibMTd_path};2" "" "" OFF "unload")
+  newtest_nobuild(unloadMTd unloadtest "${unloadlibMTd_path};2" "" "" OFF "unload")
 
   if (TOOL_DR_MEMORY) # XXX; not working in drheapstat: figure out why
     tobuild_lib(unloadlibMD unload.lib.c "/MD" "")
     get_relative_location(unloadlibMD unloadlibMD_path)
     # Turning off leaks to avoid libc globals like environ ptr that
     # show up as possible leaks.  XXX: may be worth investigating further.
-    newtest_nobuild(unloadMD unload "${unloadlibMD_path};2" "-no_count_leaks"
+    newtest_nobuild(unloadMD unloadtest "${unloadlibMD_path};2" "-no_count_leaks"
       "" OFF "unloadMD")
     
     tobuild_lib(unloadlibMDd unload.lib.c "/D_DEBUG /MDd" "")
     get_relative_location(unloadlibMDd unloadlibMDd_path)
     # Turning off leaks to avoid libc globals like environ ptr that
     # show up as possible leaks.  XXX: may be worth investigating further.
-    newtest_nobuild(unloadMDd unload "${unloadlibMDd_path};2" "-no_count_leaks"
+    newtest_nobuild(unloadMDd unloadtest "${unloadlibMDd_path};2" "-no_count_leaks"
       "" OFF "unloadMD")
   endif (TOOL_DR_MEMORY)
 endif (WIN32)
