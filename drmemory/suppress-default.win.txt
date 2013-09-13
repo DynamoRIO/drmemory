@@ -888,3 +888,13 @@ name=default i#599 mingw un-freed alloc A
 REACHABLE LEAK
 name=default i#599 mingw un-freed alloc B
 *!*mingwthr_add_key_dtor
+
+##################################################
+# i#1329: NtUserMessageCall COPYDATASTRUCT.lpData
+# Padding in the data used for WM_COPYDATA.
+
+UNINITIALIZED READ
+name=default i#1329 WM_COPYDATA padding
+system call NtUserMessageCall COPYDATASTRUCT.lpData
+USER32.dll!SendMessageW
+SHELL32.dll!SHAppBarMessage
