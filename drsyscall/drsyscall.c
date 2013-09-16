@@ -646,6 +646,17 @@ drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type OUT
  * REGULAR SYSCALL HANDLING
  */
 
+static const char *
+arg_type_name(drsys_param_type_t type, const char *type_name)
+{
+    if (type_name == NULL && type != DRSYS_TYPE_UNKNOWN &&
+        type != DRSYS_TYPE_INVALID) {
+        ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
+        return param_type_names[type];
+    } else
+        return type_name;
+}
+
 /* Assumes that arg fields on the context (drcontext, sysnum, pre, and
  * mc) have already been filled in.
  *
@@ -679,12 +690,7 @@ report_memarg_ex(sysarg_iter_info_t *ii,
         return true;
 
     arg->type = type;
-    if (type_name == NULL && type != DRSYS_TYPE_UNKNOWN &&
-        type != DRSYS_TYPE_INVALID) {
-        ASSERT(type < NUM_PARAM_TYPE_NAMES, "invalid type enum val");
-        arg->type_name = param_type_names[type];
-    } else
-        arg->type_name = type_name;
+    arg->type_name = arg_type_name(type, type_name);
     arg->containing_type = containing_type;
     arg->arg_name = id;
 
@@ -815,8 +821,9 @@ report_memarg(sysarg_iter_info_t *ii,
     return report_memarg_field(ii, arg_info, ptr, sz, id, DRSYS_TYPE_STRUCT, NULL);
 }
 
-bool
-report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
+/* Caller must fill in ii->arg fields, except for ii->arg->pre. */
+static bool
+report_sysarg_iter(sysarg_iter_info_t *ii)
 {
     drsys_arg_t *arg = ii->arg;
     /* For arg iteration post-syscall we masquerade as pre so the complex-type
@@ -824,13 +831,6 @@ report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
      */
     bool set_pre = arg->pre;
     arg->pre = ii->pt->pre;
-    arg->ordinal = ordinal;
-    arg->size = sizeof(reg_t);
-    drsyscall_os_get_sysparam_location(ii->pt, ordinal, arg);
-    arg->value = ii->pt->sysarg[ordinal];
-    arg->type = DRSYS_TYPE_UNKNOWN;
-    arg->type_name = NULL;
-    arg->mode = mode_from_flags(arg_flags);
 
     /* We can't short-circuit on first iter b/c we have too much code that
      * stores extra info in pre for post that's after several reports.
@@ -844,6 +844,54 @@ report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
         ASSERT(ii->pt->first_iter, "other than 1st iter, shouldn't report after abort");
     arg->pre = set_pre;
     return ii->pt->first_iter || !ii->abort;
+}
+
+static void
+set_return_arg_vals(void *drcontext, drsys_arg_t *arg/*IN/OUT*/, bool have_retval,
+                    size_t sz, drsys_param_type_t type, const char *type_name)
+{
+    arg->ordinal = -1;
+    arg->size = sz;
+    arg->reg = DR_REG_NULL;
+    arg->start_addr = NULL;
+    if (have_retval)
+        arg->value = dr_syscall_get_result(drcontext);
+    else
+        arg->value = 0;
+    arg->type = type;
+    arg->type_name = arg_type_name(type, type_name);
+    arg->mode = DRSYS_PARAM_RETVAL | DRSYS_PARAM_INLINED;
+}
+
+bool
+report_sysarg_return(void *drcontext, sysarg_iter_info_t *ii,
+                     size_t sz, drsys_param_type_t type, const char *type_name)
+{
+    set_return_arg_vals(drcontext, ii->arg, ii->pt != NULL && !ii->pt->pre,
+                        sz, type, type_name);
+    return report_sysarg_iter(ii);
+}
+
+bool
+report_sysarg_type(sysarg_iter_info_t *ii, int ordinal, uint arg_flags,
+                   size_t sz, drsys_param_type_t type, const char *type_name)
+{
+    drsys_arg_t *arg = ii->arg;
+    arg->ordinal = ordinal;
+    arg->size = sz;
+    drsyscall_os_get_sysparam_location(ii->pt, ordinal, arg);
+    arg->value = ii->pt->sysarg[ordinal];
+    arg->type = type;
+    arg->type_name = arg_type_name(type, type_name);
+    arg->mode = mode_from_flags(arg_flags);
+    return report_sysarg_iter(ii);
+}
+
+bool
+report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
+{
+    return report_sysarg_type(ii, ordinal, arg_flags,
+                              sizeof(reg_t), DRSYS_TYPE_UNKNOWN, NULL);
 }
 
 bool
@@ -1565,20 +1613,15 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
             break;
     }
 
-    /* return value */
-    arg->ordinal = -1;
-    arg->reg = DR_REG_NULL;
-    arg->start_addr = NULL;
-    if (pt != NULL && !pt->pre)
-        arg->value = dr_syscall_get_result(drcontext);
-    else
-        arg->value = 0;
-    arg->size = sizeof(reg_t);
-    /* get exported type and size if different from reg_t */
-    arg->type = map_to_exported_type(sysinfo->return_type, &arg->size);
-    arg->type_name = param_type_names[arg->type];
-    arg->mode = DRSYS_PARAM_RETVAL | DRSYS_PARAM_INLINED;
-    (*cb)(arg, user_data);
+    if (pt == NULL || !TEST(SYSINFO_RET_TYPE_VARIES, sysinfo->flags)) {
+        /* return value */
+        arg->size = sizeof(reg_t);
+        /* get exported type and size if different from reg_t */
+        arg->type = map_to_exported_type(sysinfo->return_type, &arg->size);
+        set_return_arg_vals(drcontext, arg, pt != NULL && !pt->pre,
+                            arg->size, arg->type, NULL);
+        (*cb)(arg, user_data);
+    }
 
     return DRMF_SUCCESS;
 }

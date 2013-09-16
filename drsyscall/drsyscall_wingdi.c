@@ -380,7 +380,6 @@ syscall_info_t syscall_user32_info[] = {
          {0, -1, R},
      }
     },
-    /* XXX: should all uint return types have SYSINFO_RET_ZERO_FAIL? */
     {{0,0},"NtUserCopyAcceleratorTable", OK|SYSINFO_RET_ZERO_FAIL, SYSARG_TYPE_UINT32, 3,
      {
          /* special-cased b/c ACCEL has padding */
@@ -1755,6 +1754,7 @@ static drsys_sysnum_t sysnum_GdiExtTextOutW = {-1,0};
 static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 static drsys_sysnum_t sysnum_GdiDescribePixelFormat = {-1,0};
 static drsys_sysnum_t sysnum_GdiGetRasterizerCaps = {-1,0};
+static drsys_sysnum_t sysnum_GdiPolyPolyDraw = {-1,0};
 
 syscall_info_t syscall_gdi32_info[] = {
     {{0,0},"NtGdiInit", OK, SYSARG_TYPE_BOOL32, 0, },
@@ -1890,11 +1890,17 @@ syscall_info_t syscall_gdi32_info[] = {
      }
     },
     {{0,0},"NtGdiFontIsLinked", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtGdiPolyPolyDraw", OK, DRSYS_TYPE_UNSIGNED_INT, 5,
+    /* Return value is really either BOOL or HRGN: dynamic iterator gets it right,
+     * and we document the limitations of the static iterators.
+     */
+    {{0,0},"NtGdiPolyPolyDraw", OK|SYSINFO_RET_ZERO_FAIL|SYSINFO_RET_TYPE_VARIES,
+     DRSYS_TYPE_UNSIGNED_INT, 5,
      {
-         {1, sizeof(POINT), R,},
+         /* Params 0 and 1 are special-cased as they vary */
          {2, -3, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(ULONG)},
-     }
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(INT),   SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }, &sysnum_GdiPolyPolyDraw
     },
     {{0,0},"NtGdiDoPalette", OK, SYSARG_TYPE_SINT32, 6,
      {
@@ -5093,6 +5099,67 @@ handle_GdiOpenDCW(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
                        sizeof(PUMDHPDEV *), "PUMDHPDEV*", DRSYS_TYPE_STRUCT, NULL);
 }
 
+/* Params 0 and 1 and the return type vary */
+static void
+handle_GdiPolyPolyDraw(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
+{
+    ULONG *counts = (ULONG *) pt->sysarg[2];
+    ULONG num_counts = (ULONG) pt->sysarg[3];
+    int ifunc = (int) pt->sysarg[4];
+    ULONG num_points = 0;
+    ULONG i;
+    if (ifunc == GdiPolyPolyRgn) {
+        /* Param 0 == fill mode enum value:
+         *   {0, sizeof(POLYFUNCTYPE), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT}
+         */
+        report_sysarg_type(ii, 0, SYSARG_READ, sizeof(POLYFUNCTYPE),
+                           DRSYS_TYPE_SIGNED_INT, "POLYFUNCTYPE");
+    } else {
+        /* Param 0 == HDC:
+         *   {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE}
+         */
+        report_sysarg_type(ii, 0, SYSARG_READ, sizeof(HDC), DRSYS_TYPE_HANDLE, "HDC");
+    }
+    /* The length of the POINT array has to be dynamically computed */
+    for (i = 0; i < num_counts; i++) {
+        ULONG count;
+        if (safe_read(&counts[i], sizeof(count), &count)) {
+            num_points += count;
+        }
+    }
+    /* Param 1 == POINT*.
+     * XXX: how indicate an array of structs?
+     */
+    report_sysarg_type(ii, 1, SYSARG_READ, sizeof(PPOINT), DRSYS_TYPE_STRUCT, "POINT");
+    if (!report_memarg_type(ii, 1, SYSARG_READ,
+                            (byte *) pt->sysarg[1], num_points * sizeof(POINT),
+                            "PPOINT", DRSYS_TYPE_STRUCT, "POINT"))
+        return;
+
+    switch (ifunc) {
+    case GdiPolyBezier:
+    case GdiPolyLineTo:
+    case GdiPolyBezierTo:
+        if (num_counts != 1)
+            WARN("WARNING: NtGdiPolyPolyDraw: expected 1 count for single polygons\n");
+        break;
+    case GdiPolyPolygon:
+    case GdiPolyPolyLine:
+    case GdiPolyPolyRgn:
+        break;
+    default:
+        WARN("WARNING: NtGdiPolyPolyDraw: unknown ifunc %d\n", ifunc);
+    }
+
+    if (ifunc == GdiPolyPolyRgn) {
+        /* Returns HRGN */
+        report_sysarg_return(drcontext, ii, sizeof(HRGN), DRSYS_TYPE_HANDLE, "HRGN");
+    } else {
+        /* Returns BOOL */
+        report_sysarg_return(drcontext, ii, sizeof(BOOL), DRSYS_TYPE_BOOL, NULL);
+    }
+}
+
 void
 wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
@@ -5168,6 +5235,8 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
         }
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiOpenDCW)) {
         handle_GdiOpenDCW(drcontext, pt, ii);
+    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiPolyPolyDraw)) {
+        handle_GdiPolyPolyDraw(drcontext, pt, ii);
     } 
 }
 
@@ -5183,6 +5252,7 @@ wingdi_syscall_succeeded(drsys_sysnum_t sysnum, syscall_info_t *info, ptr_int_t 
         *success = (res == 1);
         return true;
     }
+    /* XXX: should all uint return types have SYSINFO_RET_ZERO_FAIL? */
     return false;
 }
 

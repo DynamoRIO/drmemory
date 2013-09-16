@@ -232,6 +232,8 @@ enum {
     SYSINFO_SECONDARY_TABLE     = 0x00000020,
     /* Return value indicates failure only when -1 */
     SYSINFO_RET_MINUS1_FAIL     = 0x00000040,
+    /* Return type varies dynamically and handler must call report_sysarg_return() */
+    SYSINFO_RET_TYPE_VARIES     = 0x00000080,
 };
 
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
@@ -434,6 +436,14 @@ bool
 report_memarg(sysarg_iter_info_t *iter_info,
               const syscall_arg_t *arg_info,
               app_pc ptr, size_t sz, const char *id);
+
+bool
+report_sysarg_return(void *drcontext, sysarg_iter_info_t *ii,
+                     size_t sz, drsys_param_type_t type, const char *type_name);
+
+bool
+report_sysarg_type(sysarg_iter_info_t *ii, int ordinal, uint arg_flags,
+                   size_t sz, drsys_param_type_t type, const char *type_name);
 
 bool
 report_sysarg(sysarg_iter_info_t *iter_info, int ordinal, uint arg_flags);

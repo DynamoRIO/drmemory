@@ -561,6 +561,12 @@ DR_EXPORT
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
  * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
+ * \note Some system calls have varying return types, which depend on
+ * the parameters passed in (e.g., on Windows, NtGdiPolyPolyDraw
+ * returns either a BOOL or an HRGN).  The dynamic argument iterator
+ * drsys_iterate_args can be used to identify the precise return type
+ * for a particular instance.
+ *
  * @param[in]  syscall  The handle for the system call to query.
  * @param[out] type     The system call return type.
  *
@@ -719,6 +725,12 @@ DR_EXPORT
  * the types are known and not any values.
  * The return value is included at the end of the iteration, with a
  * drsys_arg_t.ordinal value of -1.
+ *
+ * \note Some system calls have varying return types, which depend on
+ * the parameters passed in (e.g., on Windows, NtGdiPolyPolyDraw
+ * returns either a BOOL or an HRGN).  The dynamic argument iterator
+ * drsys_iterate_args can be used to identify the precise return type
+ * for a particular instance.
  *
  * @param[in] syscall    The handle for the system call to query.
  * @param[in] cb         The callback to invoke for each system call parameter.
