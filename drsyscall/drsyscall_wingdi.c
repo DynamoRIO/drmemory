@@ -492,7 +492,7 @@ syscall_info_t syscall_user32_info[] = {
          {2, SYSARG_SIZE_IN_FIELD, W, offsetof(DISPLAY_DEVICEW, cb)},
      }
     },
-    {{0,0},"NtUserEnumDisplayMonitors", OK, SYSARG_TYPE_BOOL32, 5,
+    {{0,0},"NtUserEnumDisplayMonitors", OK, SYSARG_TYPE_BOOL32, 4,
      {
          {1, sizeof(RECT), R,},/*experimentally this matches win32 API version so no more mem args*/
      }
