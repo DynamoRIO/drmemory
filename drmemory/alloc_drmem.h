@@ -27,6 +27,8 @@
 #ifndef _ALLOC_DRMEM_H_
 #define _ALLOC_DRMEM_H_ 1
 
+#define DR_REG_PTR_RETURN DR_REG_XAX
+
 #ifdef LINUX
 extern hashtable_t sighand_table;
 #endif

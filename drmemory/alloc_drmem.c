@@ -30,6 +30,7 @@
 #include "heap.h"
 #include "redblack.h"
 #include "leak.h"
+#include "alloc_drmem.h"
 #ifdef LINUX
 # include "sysnum_linux.h"
 # include <signal.h>
@@ -1336,6 +1337,8 @@ client_stack_dealloc(byte *start, byte *end)
 {
     if (options.shadowing && (options.check_uninitialized || options.check_stack_bounds))
         shadow_set_range(start, end, SHADOW_UNADDRESSABLE);
+    if (options.shadowing && options.check_uninitialized)
+        register_shadow_set_dword(DR_REG_PTR_RETURN, SHADOW_DEFINED);
 }
 
 /***************************************************************************

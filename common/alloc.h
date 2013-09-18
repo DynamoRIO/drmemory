@@ -466,7 +466,9 @@ client_remove_malloc_routine(void *client_data);
 void
 client_stack_alloc(byte *start, byte *end, bool defined);
 
-/* Called when data is being removed from the app stack */
+/* Called when data is being removed from the app stack.
+ * A pointer-sized value has also been placed in the return value register.
+ */
 void
 client_stack_dealloc(byte *start, byte *end);
 
