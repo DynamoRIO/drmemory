@@ -19,7 +19,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
 # CMakeLists.txt
-# 
+#
 # Configures dhvis build
 #
 
@@ -27,11 +27,12 @@ cmake_minimum_required(VERSION 2.8.10)
 
 # Embedded DynamoRIO
 if (NOT USER_SPECIFIED_DynamoRIO_DIR)
-  set(dhvis_interface_PATH 
+  set(dhvis_interface_PATH
     ${CMAKE_CURRENT_SOURCE_DIR}/../../dynamorio/ext/drgui)
+  include_directories(${dhvis_interface_PATH})
 else () # Pre-built DynamoRIO
-  set(dhvis_interface_PATH 
-    ${DynamoRIO_DIR}/../ext/include) 
+  set(dhvis_interface_PATH
+    ${DynamoRIO_DIR}/../ext/include)
 endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 
 # Sources and MOC
@@ -39,14 +40,14 @@ set(dhvis_MOC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.h)
 
-set(dhvis_MOC_HEADERS 
+set(dhvis_MOC_HEADERS
   ${dhvis_MOC_HEADERS}
   ${dhvis_interface_PATH}/drgui_tool_interface.h
-  ${dhvis_interface_PATH}/drgui_options_interface.h) 
+  ${dhvis_interface_PATH}/drgui_options_interface.h)
 
 qt5_wrap_cpp(dhvis_MOC_OUTFILES ${dhvis_MOC_HEADERS})
 
-set(dhvis_SOURCES 
+set(dhvis_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.cpp)
 

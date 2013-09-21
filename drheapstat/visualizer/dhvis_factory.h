@@ -26,6 +26,7 @@
 
 #ifndef DHVIS_FACTORY_H
 #define DHVIS_FACTORY_H
+#define DrHeapstat_Visualizer_iid "DrMemory.DrHeapstat.Visualizer"
 
 #include "drgui_tool_interface.h"
 
@@ -35,6 +36,7 @@ struct dhvis_options_t;
 class dhvis_factory_t : public drgui_tool_interface_t
 {
     Q_OBJECT
+    Q_PLUGIN_METADATA(IID DrHeapstat_Visualizer_iid)
     Q_INTERFACES(drgui_tool_interface_t)
 
 public:

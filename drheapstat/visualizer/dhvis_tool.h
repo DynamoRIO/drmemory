@@ -31,6 +31,8 @@
 #include <QUrl>
 #include <QMap>
 
+#include "dhvis_structures.h"
+
 class QGraphicsView;
 class QGraphicsScene;
 class QDir;
@@ -49,10 +51,6 @@ class QTreeWidget;
 class QTreeWidgetItem;
 class QGroupBox;
 class QStackedLayout;
-
-struct dhvis_options_t;
-struct dhvis_snapshot_listing_t;
-struct dhvis_callstack_listing_t;
 
 class dhvis_tool_t : public QWidget
 {
@@ -74,6 +72,14 @@ private:
     void create_layout(void);
 
     bool dr_check_dir(QDir dir);
+
+    bool dr_check_file(QFile& file);
+
+    void read_log_data(void);
+
+    void read_callstack_log(QFile &callstack_log);
+
+    void read_snapshot_log(QFile &snapshot_log);
 
     /* GUI */
     QGridLayout *main_layout;
@@ -97,6 +103,12 @@ private:
 
     /* Options */
     dhvis_options_t *options;
+
+    /* Data */
+    QVector<dhvis_callstack_listing_t *> callstacks;
+    QVector<dhvis_snapshot_listing_t *> snapshots;
+    QString time_unit;
+    frame_map_t frames;
 };
 
 #endif

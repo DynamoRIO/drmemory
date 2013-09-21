@@ -20,7 +20,7 @@
  */
 
 /* dhvis_structures.h
- * 
+ *
  * Defines the structures used by the Dr. Heapstat visualizer
  *
  */
@@ -29,28 +29,34 @@
 #define DHVIS_STRUCTURES_H
 
 #include <QMap>
+#include <QVector>
 
 struct dhvis_callstack_listing_t;
 
+/* Many of the frames are the same, so we keep track of
+ * the uniques by address.
+ */
+typedef QMap<quint64, QString> frame_map_t;
+
 struct dhvis_snapshot_listing_t {
     QVector<dhvis_callstack_listing_t *> assoc_callstacks;
-    qreal snapshot_num;
-    qreal tot_mallocs;
-    qreal tot_bytes_asked_for;
-    qreal tot_bytes_usable;
-    qreal tot_bytes_occupied;
-    qreal num_time;
+    quint64 snapshot_num;
+    quint64 tot_mallocs;
+    quint64 tot_bytes_asked_for;
+    quint64 tot_bytes_usable;
+    quint64 tot_bytes_occupied;
+    quint64 num_time;
     bool is_peak;
 };
 
 struct dhvis_callstack_listing_t {
     QList<QString *> frame_data;
-    qreal callstack_num;
-    qreal instances;
-    qreal bytes_asked_for;
-    qreal extra_usable;
-    qreal extra_occupied;
-    qreal cur_snap_num;
+    quint64 callstack_num;
+    quint64 instances;
+    quint64 bytes_asked_for;
+    quint64 extra_usable;
+    quint64 extra_occupied;
+    quint64 cur_snap_num;
 };
 
 struct dhvis_options_t {
