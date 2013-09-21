@@ -20,8 +20,8 @@
  */
 
 /* dhvis_tool.h
- * 
- * Defines the DR. Heapstat visualizer
+ *
+ * Defines the Dr. Heapstat visualizer
  */
 
 #ifndef DHVIS_TOOL_H
@@ -90,11 +90,11 @@ private:
 
     QGridLayout *right_side;
     QLabel *right_title;
-    
+
     QTabWidget *frames_tab_area;
 
     QString log_dir_loc;
-    
+
     /* Options */
     dhvis_options_t *options;
 };

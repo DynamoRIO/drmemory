@@ -20,7 +20,7 @@
  */
 
 /* dhvis_factory.cpp
- * 
+ *
  * Provides the Dr. Heapstat visualizer factory
  */
 
@@ -38,7 +38,7 @@
 /* Public
  * Constructor
  */
-dhvis_factory_t::dhvis_factory_t(void) 
+dhvis_factory_t::dhvis_factory_t(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     /* XXX i#1319: Create and connect options page */
@@ -48,7 +48,7 @@ dhvis_factory_t::dhvis_factory_t(void)
 /* Public
  * Destructor
  */
-dhvis_factory_t::~dhvis_factory_t(void) 
+dhvis_factory_t::~dhvis_factory_t(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     /* XXX i#1319: Delete options page*/
@@ -63,8 +63,8 @@ dhvis_factory_t::~dhvis_factory_t(void)
 /* Public
  * Returns provided tool names during loading
  */
-QStringList 
-dhvis_factory_t::tool_names(void) const 
+QStringList
+dhvis_factory_t::tool_names(void) const
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     return QStringList() << "Dr. Heapstat";
@@ -74,7 +74,7 @@ dhvis_factory_t::tool_names(void) const
  * Returns a new instance of the tool
  */
 QWidget *
-dhvis_factory_t::create_instance(void) 
+dhvis_factory_t::create_instance(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     tool_instances.append(new dhvis_tool_t(options));
@@ -85,7 +85,7 @@ dhvis_factory_t::create_instance(void)
  * Refreshes and returns the options page
  */
 drgui_options_interface_t *
-dhvis_factory_t::create_options_page(void) 
+dhvis_factory_t::create_options_page(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     /* XXX i#1319: return the options page */

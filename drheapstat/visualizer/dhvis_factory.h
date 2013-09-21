@@ -20,7 +20,7 @@
  */
 
 /* dhvis_factory.h
- * 
+ *
  * Defines the Dr. Heapstat visualizer factory
  */
 
@@ -32,7 +32,7 @@
 class dhvis_tool_t;
 struct dhvis_options_t;
 
-class dhvis_factory_t : public drgui_tool_interface_t 
+class dhvis_factory_t : public drgui_tool_interface_t
 {
     Q_OBJECT
     Q_INTERFACES(drgui_tool_interface_t)

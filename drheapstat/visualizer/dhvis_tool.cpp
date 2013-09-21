@@ -20,8 +20,8 @@
  */
 
 /* dhvis_tool.cpp
- * 
- * Provides the DR. Heapstat visualizer
+ *
+ * Provides the Dr. Heapstat visualizer
  */
 
 #define __CLASS__ "dhvis_tool_t::"
@@ -58,7 +58,7 @@
 /* Public
  * Constructor
  */
-dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_) 
+dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     log_dir_text_changed = false;
@@ -70,7 +70,7 @@ dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
 /* Public
  * Destructor
  */
-dhvis_tool_t::~dhvis_tool_t(void) 
+dhvis_tool_t::~dhvis_tool_t(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     delete_data();
@@ -88,8 +88,8 @@ dhvis_tool_t::delete_data(void)
 /* Private
  * Creates and connects the GUI
  */
-void 
-dhvis_tool_t::create_layout(void) 
+void
+dhvis_tool_t::create_layout(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     main_layout = new QGridLayout;
@@ -98,12 +98,12 @@ dhvis_tool_t::create_layout(void)
     controls_layout = new QHBoxLayout;
     /* Logdir text box */
     log_dir_line_edit = new QLineEdit(this);
-    connect(log_dir_line_edit, SIGNAL(textEdited(const QString &)), 
+    connect(log_dir_line_edit, SIGNAL(textEdited(const QString &)),
             this, SLOT(dir_text_changed_slot()));
     controls_layout->addWidget(log_dir_line_edit);
     /* Load button */
     load_results_button = new QPushButton(tr("Load Results"), this);
-    connect(load_results_button, SIGNAL(clicked()), 
+    connect(load_results_button, SIGNAL(clicked()),
             this, SLOT(choose_dir()));
     controls_layout->addWidget(load_results_button);
     controls_layout->setAlignment(load_results_button, Qt::AlignLeft);
@@ -114,7 +114,7 @@ dhvis_tool_t::create_layout(void)
     left_side = new QGridLayout;
     /* Graph */
     graph_title = new QLabel(QString(tr("Memory consumption over "
-                                        "full process lifetime")), 
+                                        "full process lifetime")),
                              this);
     left_side->addWidget(graph_title, 0, 0);
     left_side->setRowStretch(1, 5);
@@ -126,7 +126,7 @@ dhvis_tool_t::create_layout(void)
                                         "callstacks")),
                              this);
     right_side->addWidget(right_title, 0, 0);
-    
+
     /* Frames tab area */
     frames_tab_area = new QTabWidget(this);
 
@@ -144,8 +144,8 @@ dhvis_tool_t::create_layout(void)
 /* Private Slot
  * Chooses dirs for QLineEdit QPushButton pairs
  */
-void 
-dhvis_tool_t::choose_dir(void) 
+void
+dhvis_tool_t::choose_dir(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     bool *dir_text_changed = NULL;
@@ -162,7 +162,7 @@ dhvis_tool_t::choose_dir(void)
     if (*dir_text_changed) /* enter dir_loc */{
         QString test_dir = line_edit->text();
         if (dr_check_dir(QDir(test_dir))) {
-            *dir_loc = test_dir;            
+            *dir_loc = test_dir;
         } else {
             /* Reset dir_text_changed */
             *dir_text_changed = false;
@@ -171,7 +171,7 @@ dhvis_tool_t::choose_dir(void)
     } else /* open dir_loc */ {
         QString test_dir;
         do {
-        test_dir = QFileDialog::getExistingDirectory(this, 
+        test_dir = QFileDialog::getExistingDirectory(this,
                                                      tr("Open Directory"),
                                                      options->def_load_dir,
                                                      0);
@@ -194,8 +194,8 @@ dhvis_tool_t::choose_dir(void)
 /* Private Slot
  * Changes text_changed status of log_dir
  */
-void 
-dhvis_tool_t::dir_text_changed_slot(void) 
+void
+dhvis_tool_t::dir_text_changed_slot(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     /* Determine which button sent signal */
@@ -206,23 +206,23 @@ dhvis_tool_t::dir_text_changed_slot(void)
 /* Private
  * Checks validity of directories
  */
-bool 
-dhvis_tool_t::dr_check_dir(QDir dir) 
+bool
+dhvis_tool_t::dr_check_dir(QDir dir)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    QString error_msg = "\'"; 
+    QString error_msg = "\'";
     error_msg += dir.canonicalPath() + "\'<br>";
     bool retVal = true;
 
-    if (!dir.exists() || 
-        !dir.isReadable()) {   
-        qDebug() << "WARNING: Failed to open directory: " 
+    if (!dir.exists() ||
+        !dir.isReadable()) {
+        qDebug() << "WARNING: Failed to open directory: "
                  << dir.canonicalPath();
         error_msg += "is an invalid directory<br>";
         retVal = false;
     }
     if (!retVal) {
-        QMessageBox msg_box(QMessageBox::Warning, 
+        QMessageBox msg_box(QMessageBox::Warning,
                             tr("Invalid Directory"),
                             error_msg, 0, this);
         msg_box.exec();
