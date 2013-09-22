@@ -84,6 +84,7 @@ struct dhvis_callstack_listing_t {
 struct dhvis_options_t {
     QString def_load_dir;
     int snap_vertical_ticks;
+    int num_callstacks_per_page;
     bool square_graph;
     bool anti_aliasing_enabled;
     bool snap_stale_unit_num;

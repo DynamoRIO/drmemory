@@ -49,6 +49,7 @@
 #include <QGroupBox>
 #include <QProcess>
 #include <QStackedLayout>
+#include <QUrl>
 
 #include <algorithm>
 #include <cmath>
@@ -101,6 +102,7 @@ dhvis_tool_t::delete_data(void)
     delete snapshot_graph;
 
     /* Reset environment */
+    callstacks_display_page = 0;
     current_snapshot_num = -1;
     current_snapshot_index= -1;
 
@@ -153,10 +155,45 @@ dhvis_tool_t::create_layout(void)
                                         "a given point: Individual "
                                         "callstacks")),
                              this);
+
+    /* Set up callstack table*/
+    callstacks_table = new QTableWidget(this);
+    connect(callstacks_table, SIGNAL(currentCellChanged(int, int, int, int)),
+            this, SLOT(refresh_frames_text_edit(int, int, int, int)));
+
+    /* Mid-layout buttons */
+    callstacks_page_buttons = new QHBoxLayout;
+    prev_page_button = new QPushButton(tr("Prev Page"), this);
+    prev_page_button->setEnabled(false);
+    page_display_label = new QLabel("", this);
+    connect(prev_page_button, SIGNAL(clicked()),
+            this, SLOT(show_prev_page()));
+    next_page_button = new QPushButton(tr("Next Page"), this);
+    next_page_button->setEnabled(false);
+    connect(next_page_button, SIGNAL(clicked()),
+            this, SLOT(show_next_page()));
+
+    callstacks_page_buttons->addWidget(prev_page_button);
+    callstacks_page_buttons->addWidget(page_display_label);
+    callstacks_page_buttons->addStretch(1);
+    callstacks_page_buttons->addWidget(next_page_button);
+
     right_side->addWidget(right_title, 0, 0);
+    right_side->addWidget(callstacks_table, 1, 0);
+    right_side->addLayout(callstacks_page_buttons,2,0);
 
     /* Frames tab area */
     frames_tab_area = new QTabWidget(this);
+
+    /* Frames text box */
+    right_side->addLayout(callstacks_page_buttons,2,0);
+    frames_text_edit = new QTextBrowser(this);
+    frames_text_edit->setOpenLinks(false);
+    frames_text_edit->setLineWrapMode(QTextEdit::NoWrap);
+    connect(frames_text_edit, SIGNAL(anchorClicked(QUrl)),
+            this, SLOT(anchor_clicked(QUrl)));
+
+    frames_tab_area->addTab(frames_text_edit, tr("List View"));
 
     right_side->addWidget(frames_tab_area, 3, 0);
     right_side->setRowStretch(1, 3);
@@ -681,5 +718,224 @@ dhvis_tool_t::highlight_changed(quint64 snapshot, quint64 index)
     if (current_snapshot_num != snapshot && current_snapshot_index != index) {
         current_snapshot_num = snapshot;
         current_snapshot_index = index;
+        callstacks_display_page = 0;
+        fill_callstacks_table();
     }
+}
+
+/* Private Slot
+ * Fills callstacks_table with gathered data
+ */
+void
+dhvis_tool_t::fill_callstacks_table(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+
+    /* Settings */
+    callstacks_table->clear();
+    callstacks_table->setRowCount(0);
+    callstacks_table->setColumnCount(5);
+    QStringList table_headers;
+    table_headers << tr("Call Stack") << tr("Symbol") << tr("Alloc")
+                  << tr("+Pad") << tr("+Head");
+    callstacks_table->setHorizontalHeaderLabels(table_headers);
+    callstacks_table->setSortingEnabled(false);
+    callstacks_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    callstacks_table->setSelectionBehavior(QAbstractItemView::SelectRows);
+    callstacks_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    callstacks_table->verticalHeader()->hide();
+    callstacks_table->horizontalHeader()
+                    ->setSectionResizeMode(QHeaderView::ResizeToContents);
+    callstacks_table->horizontalHeader()
+                    ->setSectionResizeMode(1, QHeaderView::Stretch);
+
+    /* Put data into callstack_table */
+    int row_count = -1;
+    int max_rows = options->num_callstacks_per_page;
+    QVector<dhvis_callstack_listing_t *> *vec;
+    vec = &snapshots[current_snapshot_index]->assoc_callstacks;
+
+    const int MAX = options->num_callstacks_per_page;
+    foreach (dhvis_callstack_listing_t *this_callstack, *vec) {
+        row_count++;
+        if (row_count < callstacks_display_page * MAX)
+            continue;
+        else if (row_count >= (callstacks_display_page + 1) * MAX)
+            break;
+        callstacks_table->insertRow(row_count % max_rows);
+        /* Callstack number */
+        QTableWidgetItem *num = new QTableWidgetItem;
+        num->setData(Qt::DisplayRole, this_callstack->callstack_num);
+        callstacks_table->setItem(row_count % max_rows, 0, num);
+        /* Symbols */
+        QTableWidgetItem *symbols = new QTableWidgetItem;
+        QString symbol_display;
+        const QList<QString *> *frames = &(this_callstack->frame_data);
+        /* Only show first 3 (skip 0) frames' func_name
+         * We skip 0 because it is always Dr. Heapstat's replace_malloc() function
+         * Example '# num exe_name!func_name [path/file_name:line_num] (address)'
+         */
+        QRegExp reg_exp("!.+(?:\\[|\\(0x)");
+        static const unsigned int LAST_FUNC = 3;
+        for (unsigned int i = 1; i <= LAST_FUNC && i < frames->count(); i++) {
+            QString *frame = frames->at(i);
+            QString func_name = "?";
+            int reg_index = reg_exp.indexIn(*frame);
+            if (frame->contains(QRegExp("<not in a module>"))) {
+                symbol_display.append("<not in a module>");
+                break;
+            }
+            if (reg_index < 0) {
+                qDebug() << "Malformed frame: " << *frame;
+                continue;
+            }
+            func_name = reg_exp.cap(0);
+            /* Strip leading ! and trailing chars */
+            func_name.remove(0,1);
+            func_name.remove(QRegExp("\\s+(?:\\[.+|\\(0x)"));
+            symbol_display.append(func_name);
+            if (i != LAST_FUNC)
+                symbol_display.append(" <-- ");
+        }
+        symbols->setData(Qt::DisplayRole, symbol_display);
+        callstacks_table->setItem(row_count % max_rows, 1, symbols);
+        /* Memory data */
+        QTableWidgetItem *asked = new QTableWidgetItem;
+        asked->setData(Qt::DisplayRole,
+                      (double)(this_callstack->bytes_asked_for));
+        callstacks_table->setItem(row_count % max_rows, 2, asked);
+
+        QTableWidgetItem *padding = new QTableWidgetItem;
+        padding->setData(Qt::DisplayRole,
+                        (double)(this_callstack->extra_usable));
+        callstacks_table->setItem(row_count % max_rows, 3, padding);
+
+        QTableWidgetItem *headers = new QTableWidgetItem;
+        headers->setData(Qt::DisplayRole,
+                        (double)(this_callstack->extra_occupied));
+        callstacks_table->setItem(row_count % max_rows, 4, headers);
+    }
+    /* Re-sort added data (descending bytes alloc'd)*/
+    callstacks_table->setSortingEnabled(true);
+    callstacks_table->sortItems(2, Qt::DescendingOrder);
+    /* Current page info */
+    qreal display_num = callstacks_display_page *
+                        options->num_callstacks_per_page;
+    qreal total = snapshots[current_snapshot_index]->assoc_callstacks.count();
+    if (total == 0) {
+        page_display_label->setText(tr("No callstacks in snapshot %1")
+                                    .arg(current_snapshot_num));
+    } else {
+        /* +1 to adjust base from 0 to 1 for display */
+        page_display_label->setText(tr("Displaying callstacks %1 to %2 of %3")
+                                    .arg(display_num + 1)
+                                    .arg(display_num +
+                                         callstacks_table->rowCount())
+                                    .arg(total));
+    }
+    /* Enable navigation buttons? */
+    if (display_num + callstacks_table->rowCount() <  total)
+        next_page_button->setEnabled(true);
+    else
+        next_page_button->setEnabled(false);
+    if (callstacks_display_page == 0)
+        prev_page_button->setEnabled(false);
+    else
+        prev_page_button->setEnabled(true);
+    /* Select first row */
+    callstacks_table->setCurrentCell(0, 0);
+}
+
+/* Private Slot
+ * Decrements page for callstacks_table
+ */
+void
+dhvis_tool_t::show_prev_page(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    callstacks_display_page--;
+    fill_callstacks_table();
+}
+
+/* Private Slot
+ * Increments page for callstacks_table
+ */
+void
+dhvis_tool_t::show_next_page(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    callstacks_display_page++;
+    fill_callstacks_table();
+}
+
+/* Private Slot
+ * Refreshes the frame views with data from the new callstack
+ */
+void
+dhvis_tool_t::refresh_frames_text_edit(int current_row, int current_column,
+                                       int previous_row, int previous_column)
+{
+    Q_UNUSED(current_column);
+    Q_UNUSED(previous_column);
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    if (current_row != previous_row &&
+        callstacks_table->selectedItems().size() != 0) {
+        load_frames_text_edit(current_row);
+    }
+}
+
+/* Private
+ * Loads frame data into frames_text_edit for requested callstack
+ */
+void
+dhvis_tool_t::load_frames_text_edit(int current_row)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+
+    frames_text_edit->clear();
+    /* Again, -1 since callstack_num starts at 1, index starts at 0 */
+    int callstack_index = callstacks_table->item(current_row,0)
+                                          ->data(Qt::DisplayRole)
+                                          .toInt() - 1;
+    QList<QString *> frames = callstacks.at(callstack_index)->frame_data;
+    frames_text_edit->insertPlainText(QString(tr("Callstack #")));
+    frames_text_edit->insertPlainText(QString::number(callstack_index + 1));
+    frames_text_edit->insertHtml(QString("<br>"));
+    /* Add frame data */
+    for (int i = 0; i < frames.size(); i++) {
+        const QString *frame = frames[i];
+        /* Change file name and line number to a link
+         * Example [path/file_name:line_num]
+         */
+        QRegExp pattern("\\[.+:[0-9]+\\]");
+        int index = pattern.indexIn(*frame);
+        QString file_name = "";
+        QString data = *frame;
+        if (index > -1) {
+            file_name = pattern.cap(0);
+            /* Remove brackets*/
+            file_name.remove(0,1);
+            file_name.chop(1);
+            QString file_link = "<a href=\"" + file_name + "\">" +
+                                file_name + "</a>";
+            data.replace(file_name, file_link);
+        }
+        frames_text_edit->insertHtml(QString("<br>"));
+        frames_text_edit->insertHtml("# " + QString::number(i) + " " +
+                                     data);
+    }
+}
+
+/* Private Slot
+ * Open code editor from frames_text_browser
+ */
+void
+dhvis_tool_t::anchor_clicked(QUrl link)
+{
+    QStringList data = link.path().split(':');
+    /* Get the file_name and line_num */
+    QFile file_name(data.at(0));
+    int line_num = data.at(1).toInt();
+
+    emit code_editor_requested(file_name, line_num);
 }

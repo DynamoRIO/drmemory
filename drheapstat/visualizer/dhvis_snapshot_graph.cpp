@@ -83,11 +83,12 @@ dhvis_snapshot_graph_t::create_layout(void)
     /* Stale controls */
     QHBoxLayout *stale_controls_layout = new QHBoxLayout;
     stale_num_spin_box = new QDoubleSpinBox(this);
+    stale_spin_box_label = new QLabel("");
     if (time_unit != NULL && options != NULL) {
-        stale_num_spin_box->setSuffix(create_stale_suffix(0));
+        if (options->snap_stale_unit_num)
+            stale_num_spin_box->setSingleStep(.1);
+        stale_spin_box_label->setText(create_stale_suffix(0));
     }
-    if (options != NULL && options->snap_stale_unit_num)
-        stale_num_spin_box->setSingleStep(.1);
     if (snapshots != NULL) {
         quint64 max;
         if (options->snap_stale_unit_num)
@@ -114,6 +115,7 @@ dhvis_snapshot_graph_t::create_layout(void)
     stale_controls_layout->addWidget(stale_for_radio);
     stale_controls_layout->addWidget(stale_since_radio);
     stale_controls_layout->addWidget(stale_num_spin_box);
+    stale_controls_layout->addWidget(stale_spin_box_label);
 
     /* Zoom reset button */
     reset_graph_zoom_button = new QPushButton(tr("Reset Graph Zoom"));
@@ -651,21 +653,18 @@ dhvis_snapshot_graph_t::update_settings(void)
     set_heap_data(snapshots);
     /* Update stale spin box */
     if (options->snap_stale_unit_num) {
-        /* If changed to snapshot num unit */
-        if (!stale_num_spin_box->suffix().contains(QRegExp("snapshots"
-                                                           ".+" +
-                                                           *time_unit))) {
-            stale_num_spin_box->setValue(stale_num /
-                                         avg_time_between_snapshots);
-            stale_num_spin_box->setSuffix(create_stale_suffix(stale_num));
-        }
+        stale_num_spin_box->setMaximum(snapshots->size() - 1);
+        stale_num_spin_box->setValue(stale_num /
+                                     avg_time_between_snapshots);
+        stale_spin_box_label->setText(create_stale_suffix(stale_num));
+        stale_num_spin_box->setDecimals(1);
+        stale_num_spin_box->setSingleStep(.1);
     } else {
-        /* If changed to time unit */
-        if (!stale_num_spin_box->suffix().contains(QRegExp(*time_unit +
-                                                           ".+ snapshots"))) {
-            stale_num_spin_box->setValue(stale_num);
-            stale_num_spin_box->setSuffix(create_stale_suffix(stale_num));
-        }
+        stale_num_spin_box->setMaximum(snapshots->back()->num_time);
+        stale_num_spin_box->setValue(stale_num);
+        stale_spin_box_label->setText(create_stale_suffix(stale_num));
+        stale_num_spin_box->setDecimals(0);
+        stale_num_spin_box->setSingleStep(1);
     }
 }
 
@@ -710,14 +709,16 @@ dhvis_snapshot_graph_t::select_stale_type(bool checked)
     qreal new_val = 0;
     if (sender() == stale_since_radio && checked) {
         stale_type = false;
-        new_val = snapshots->back()->num_time;
+        if (options->snap_stale_unit_num)
+            new_val = snapshots->size() - 1;
+        else
+            new_val = snapshots->back()->num_time;
     }
     else if (sender() == stale_for_radio && checked) {
         stale_type = true;
         new_val = 0;
     } else
         return;
-    set_stale_num(new_val);
     stale_num_spin_box->setValue(new_val);
     current_graph_modified = true;
     set_heap_data(snapshots);
@@ -732,11 +733,16 @@ dhvis_snapshot_graph_t::set_stale_num(const qreal &new_num)
     if (is_null())
         return;
     if (stale_num != new_num) {
+        QString stale_suffix;
         /* Keep everything else on a time_unit base */
-        if (options->snap_stale_unit_num)
+        if (options->snap_stale_unit_num) {
             stale_num = new_num * avg_time_between_snapshots;
-        else
+            stale_suffix = " snapshots";
+        }
+        else {
             stale_num = new_num;
+            stale_suffix = *time_unit;
+        }
         /* Calculate fitting sums of each snaphot */
         dhvis_snapshot_listing_t *snapshot;
         foreach (dhvis_snapshot_listing_t *snapshot, *snapshots) {
@@ -763,7 +769,7 @@ dhvis_snapshot_graph_t::set_stale_num(const qreal &new_num)
             }
         }
         /* Modify the suffix */
-        stale_num_spin_box->setSuffix(create_stale_suffix(stale_num));
+        stale_spin_box_label->setText(create_stale_suffix(stale_num));
         current_graph_modified = true;
         set_heap_data(snapshots);
     }

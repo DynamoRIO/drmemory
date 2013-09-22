@@ -32,6 +32,8 @@
 #include <QRadioButton>
 #include <QPicture>
 
+class QLabel;
+
 struct dhvis_options_t;
 
 class dhvis_graph_t : public QWidget
@@ -93,8 +95,9 @@ protected:
      */
     bool stale_type;
     QDoubleSpinBox *stale_num_spin_box;
-    QRadioButton *stale_for_radio,
-                 *stale_since_radio;
+    QLabel *stale_spin_box_label;
+    QRadioButton *stale_for_radio;
+    QRadioButton *stale_since_radio;
 
     /* Data */
     QString *time_unit;

@@ -72,6 +72,8 @@ dhvis_options_page_t::write_settings(void)
                       snap_stale_unit_num_check_box->isChecked());
     settings.setValue("Snapshot_vertical_ticks",
                       snap_num_tabs_spin_box->value());
+    settings.setValue("Number_of_callstacks_per_page",
+                      num_callstacks_per_page_spin_box->value());
     settings.endGroup();
 
     /* Adjust info */
@@ -98,6 +100,9 @@ dhvis_options_page_t::read_settings(void)
                                                    true).toBool();
     options->snap_vertical_ticks = settings.value("Snapshot_vertical_ticks",
                                                   10).toInt();
+    options->num_callstacks_per_page = settings.value("Number_of_"
+                                                      "callstacks_per_page",
+                                                      50).toInt();
     settings.endGroup();
 
     /* Adjust GUI to reflect new settings */
@@ -106,6 +111,7 @@ dhvis_options_page_t::read_settings(void)
     anti_aliasing_check_box->setChecked(options->anti_aliasing_enabled);
     snap_stale_unit_num_check_box->setChecked(options->snap_stale_unit_num);
     snap_num_tabs_spin_box->setValue(options->snap_vertical_ticks);
+    num_callstacks_per_page_spin_box->setValue(options->num_callstacks_per_page);
 }
 
 /* Private
@@ -134,6 +140,11 @@ dhvis_options_page_t::create_layout(void)
 
     anti_aliasing_check_box = new QCheckBox(tr("Anti-aliasing"));
 
+    num_callstacks_per_page_spin_box = new QSpinBox(this);
+    QLabel *callstack_spin_box_label = new QLabel(tr(" callstacks per page"));
+    num_callstacks_per_page_spin_box->setMinimum(1);
+    num_callstacks_per_page_spin_box->setMaximum(500);
+
     /* Snapshot Graph */
     QGroupBox *snap_graph_group = new QGroupBox(tr("Snapshot Graph"), this);
     square_graph_check_box = new QCheckBox(tr("Square graph"));
@@ -151,7 +162,9 @@ dhvis_options_page_t::create_layout(void)
     general_layout->addWidget(load_dir_label, 0, 0);
     general_layout->addWidget(def_load_dir_line_edit, 1, 0);
     general_layout->addWidget(find_def_load_dir_button, 1, 1);
-    general_layout->addWidget(anti_aliasing_check_box, 3, 0);
+    general_layout->addWidget(anti_aliasing_check_box, 2, 0);
+    general_layout->addWidget(num_callstacks_per_page_spin_box, 3, 0);
+    general_layout->addWidget(callstack_spin_box_label, 3, 1);
     general_group->setLayout(general_layout);
 
     QGridLayout *snap_graph_layout = new QGridLayout;

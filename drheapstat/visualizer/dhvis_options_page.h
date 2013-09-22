@@ -67,6 +67,7 @@ private:
     QCheckBox *anti_aliasing_check_box;
     QCheckBox *snap_stale_unit_num_check_box;
     QSpinBox *snap_num_tabs_spin_box;
+    QSpinBox *num_callstacks_per_page_spin_box;
 };
 
 #endif

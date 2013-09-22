@@ -29,7 +29,7 @@
 
 #include <QWidget>
 #include <QMap>
-
+#include <QUrl>
 #include "dhvis_structures.h"
 
 class QGraphicsView;
@@ -71,6 +71,18 @@ private slots:
 
     void highlight_changed(quint64 snapshot, quint64 index);
 
+    void show_prev_page(void);
+
+    void show_next_page(void);
+
+    void refresh_frames_text_edit(int current_row, int current_column,
+                                  int previous_row, int previous_column);
+
+    void anchor_clicked(QUrl link);
+
+signals:
+    void code_editor_requested(QFile &file, int line_num);
+
 private:
     void delete_data(void);
 
@@ -94,6 +106,10 @@ private:
 
     void draw_snapshot_graph(void);
 
+    void fill_callstacks_table(void);
+
+    void load_frames_text_edit(int current_row);
+
     /* GUI */
     QGridLayout *main_layout;
 
@@ -111,7 +127,14 @@ private:
     QGridLayout *right_side;
     QLabel *right_title;
 
+    QTableWidget *callstacks_table;
+    QHBoxLayout *callstacks_page_buttons;
+    QPushButton *prev_page_button;
+    QLabel *page_display_label;
+    QPushButton *next_page_button;
+
     QTabWidget *frames_tab_area;
+    QTextBrowser *frames_text_edit;
 
     QString log_dir_loc;
 
@@ -125,6 +148,7 @@ private:
     frame_map_t frames;
     int current_snapshot_num;
     int current_snapshot_index;
+    int callstacks_display_page;
 };
 
 #endif
