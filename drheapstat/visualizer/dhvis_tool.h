@@ -51,6 +51,8 @@ class QTreeWidgetItem;
 class QGroupBox;
 class QStackedLayout;
 
+class dhvis_snapshot_graph_t;
+
 class dhvis_tool_t : public QWidget
 {
     Q_OBJECT
@@ -66,6 +68,8 @@ private slots:
     void choose_dir(void);
 
     void dir_text_changed_slot(void);
+
+    void highlight_changed(quint64 snapshot, quint64 index);
 
 private:
     void delete_data(void);
@@ -88,6 +92,8 @@ private:
 
     void sort_stale_data(void);
 
+    void draw_snapshot_graph(void);
+
     /* GUI */
     QGridLayout *main_layout;
 
@@ -98,6 +104,7 @@ private:
 
     QGridLayout *left_side;
     QLabel *graph_title;
+    dhvis_snapshot_graph_t *snapshot_graph;
 
     QTabWidget *dhrun_tab_widget;
 
@@ -116,6 +123,8 @@ private:
     QVector<dhvis_snapshot_listing_t *> snapshots;
     QString time_unit;
     frame_map_t frames;
+    int current_snapshot_num;
+    int current_snapshot_index;
 };
 
 #endif

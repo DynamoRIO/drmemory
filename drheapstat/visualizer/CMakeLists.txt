@@ -38,6 +38,8 @@ endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
 # Sources and MOC
 set(dhvis_MOC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_options_page.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_graph.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_snapshot_graph.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.h)
 
@@ -51,6 +53,8 @@ qt5_wrap_cpp(dhvis_MOC_OUTFILES ${dhvis_MOC_HEADERS})
 set(dhvis_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_structures.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_options_page.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_graph.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_snapshot_graph.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.cpp)
 

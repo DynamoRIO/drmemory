@@ -40,6 +40,18 @@ typedef QMap<quint64, QVector<stale_pair_t> > stale_map_t;
 #define STALE_BYTES first
 #define STALE_LAST_ACCESS second
 
+#define GRAPH_MARK_WIDTH 5
+/* Fix scale for text; it appears upside down because Qt defaults to the
+ * origin being at top left, with increasing 'y' going down. I adjust it
+ * to bottom left for graphing with icreasing 'y' going up.
+ */
+#define DHVIS_DRAW_TEXT(painter, command) do { \
+                                              (painter)->save(); \
+                                              (painter)->scale(1, -1); \
+                                              (command); \
+                                              (painter)->restore(); \
+                                          } while (0)
+
 /* Many of the frames are the same, so we keep track of
  * the uniques by address.
  */
@@ -71,6 +83,10 @@ struct dhvis_callstack_listing_t {
 
 struct dhvis_options_t {
     QString def_load_dir;
+    int snap_vertical_ticks;
+    bool square_graph;
+    bool anti_aliasing_enabled;
+    bool snap_stale_unit_num;
 };
 
 bool sort_snapshots(dhvis_snapshot_listing_t *a,

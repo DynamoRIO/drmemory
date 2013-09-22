@@ -53,6 +53,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "dhvis_snapshot_graph.h"
 #include "dhvis_tool.h"
 
 /* Public
@@ -64,6 +65,8 @@ dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
     log_dir_text_changed = false;
     log_dir_loc =  "";
     options = options_;
+    current_snapshot_num = -1;
+    current_snapshot_index= -1;
     create_layout();
 }
 
@@ -95,6 +98,13 @@ dhvis_tool_t::delete_data(void)
         delete tmp;
     }
     snapshots.clear();
+    delete snapshot_graph;
+
+    /* Reset environment */
+    current_snapshot_num = -1;
+    current_snapshot_index= -1;
+
+    snapshot_graph = NULL;
 }
 
 /* Private
@@ -128,8 +138,14 @@ dhvis_tool_t::create_layout(void)
     graph_title = new QLabel(QString(tr("Memory consumption over "
                                         "full process lifetime")),
                              this);
+    snapshot_graph = new dhvis_snapshot_graph_t(NULL, NULL, NULL);
+    QSpacerItem *space_holder = new QSpacerItem(graph_title->width(),
+                                                snapshot_graph->height());
     left_side->addWidget(graph_title, 0, 0);
+    left_side->addWidget(snapshot_graph, 1, 0);
+    left_side->addItem(space_holder, 2, 0);
     left_side->setRowStretch(1, 5);
+    left_side->setRowStretch(2, 5);
 
     /* Right side */
     right_side = new QGridLayout;
@@ -294,6 +310,12 @@ dhvis_tool_t::read_log_data(void)
     read_snapshot_log(snapshot_log);
     read_staleness_log(staleness_log);
 
+    /* Sort all of the information properly */
+    sort_log_data();
+
+    /* Setup views and current_info */
+    draw_snapshot_graph();
+
     qApp->restoreOverrideCursor();
 }
 
@@ -316,7 +338,7 @@ dhvis_tool_t::read_callstack_log(QFile &callstack_log)
         } while (!line.isNull());
         /* Allocate space now */
         callstacks.resize(tot_callstacks);
-        for (int i = 0; i < tot_callstacks; i++) {
+        for (quint64 i = 0; i < tot_callstacks; i++) {
             callstacks[i] = new dhvis_callstack_listing_t;
         }
         /* Reset log */
@@ -325,7 +347,7 @@ dhvis_tool_t::read_callstack_log(QFile &callstack_log)
             return;
         }
         /* We assume that the snapshots are listed in increasing order
-         * by their snapshot number
+         * by their snapshot number.
          */
         quint64 counter = 0;
         line = "";
@@ -414,7 +436,7 @@ dhvis_tool_t::read_snapshot_log(QFile &snapshot_log)
         QTextStream in_log(&snapshot_log);
         QString line = in_log.readLine();
         /* We assume that the snapshots are listed in increasing order
-         * by their snapshot number
+         * by their snapshot number.
          */
         quint64 counter = 0;
         do /* Read file */ {
@@ -470,7 +492,7 @@ dhvis_tool_t::read_snapshot_log(QFile &snapshot_log)
             for (unsigned int i = 0; i < this_snapshot->tot_mallocs;) {
                 line = in_log.readLine();
                 /* tot_mallocs counts reallocs, while instances do not;
-                 * so we can't assume that they will sum properly
+                 * so we can't assume that they will sum properly.
                  */
                 if (line.contains("SNAPSHOT #") ||
                     line.contains("LOG END")) {
@@ -606,7 +628,7 @@ dhvis_tool_t::sort_stale_data(void)
     /* Sort each snapshots stale_callstacks by stale_bytes
      * for staleness_graphing (greatest first)
      */
-    for (int i = 0; i < snapshots.count(); i++) {
+    for (quint64 i = 0; i < snapshots.count(); i++) {
         dhvis_snapshot_listing_t *s = snapshots[i];
         foreach (dhvis_callstack_listing_t *c, s->stale_callstacks) {
             c->cur_snap_num = s->snapshot_num;
@@ -624,4 +646,40 @@ void
 dhvis_tool_t::update_settings(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    snapshot_graph->update_settings();
+    if (snapshot_graph != NULL && !snapshot_graph->is_null())
+        highlight_changed(current_snapshot_num, current_snapshot_index);
+}
+
+/* Private Slot
+ * Handles creation/deletion of the snapshot graph
+ */
+void
+dhvis_tool_t::draw_snapshot_graph(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    /* Remove */
+    left_side->removeWidget(snapshot_graph);
+    /* Create (previous is deleted in read_log_data()) */
+    snapshot_graph = new dhvis_snapshot_graph_t(&snapshots, &time_unit,
+                                                options);
+    /* Format(QWidget*, row, col, row_span, col_span) */
+    left_side->addWidget(snapshot_graph, 1, 0, 1, 2);
+    connect(snapshot_graph, SIGNAL(highlight_changed(quint64, quint64)),
+            this, SLOT(highlight_changed(quint64, quint64)));
+
+    snapshot_graph->update_settings();
+}
+
+/* Private Slot
+ * Updates widgets dependent on current_snapshot_num
+ */
+void
+dhvis_tool_t::highlight_changed(quint64 snapshot, quint64 index)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    if (current_snapshot_num != snapshot && current_snapshot_index != index) {
+        current_snapshot_num = snapshot;
+        current_snapshot_index = index;
+    }
 }

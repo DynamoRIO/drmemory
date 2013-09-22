@@ -32,6 +32,8 @@
 #include <QSettings>
 #include <QLabel>
 #include <QFileDialog>
+#include <QCheckBox>
+#include <QSpinBox>
 
 #include "dhvis_options_page.h"
 
@@ -62,6 +64,14 @@ dhvis_options_page_t::write_settings(void)
     settings.beginGroup("Dr._Heapstat_Visualizer");
     settings.setValue("Default_load_directory",
                       def_load_dir_line_edit->text());
+    settings.setValue("Square_graph",
+                      square_graph_check_box->isChecked());
+    settings.setValue("Anti-aliasing",
+                      anti_aliasing_check_box->isChecked());
+    settings.setValue("Snapshot_graph_stale_unit_is_num_snaps",
+                      snap_stale_unit_num_check_box->isChecked());
+    settings.setValue("Snapshot_vertical_ticks",
+                      snap_num_tabs_spin_box->value());
     settings.endGroup();
 
     /* Adjust info */
@@ -81,10 +91,21 @@ dhvis_options_page_t::read_settings(void)
     settings.beginGroup("Dr._Heapstat_Visualizer");
     options->def_load_dir = settings.value("Default_load_directory",
                                            QString("")).toString();
+    options->square_graph = settings.value("Square_graph", false).toBool();
+    options->anti_aliasing_enabled = settings.value("Anti-aliasing", true).toBool();
+    options->snap_stale_unit_num = settings.value("Snapshot_graph_"
+                                                  "stale_unit_is_num_snaps",
+                                                   true).toBool();
+    options->snap_vertical_ticks = settings.value("Snapshot_vertical_ticks",
+                                                  10).toInt();
     settings.endGroup();
 
     /* Adjust GUI to reflect new settings */
     def_load_dir_line_edit->setText(options->def_load_dir);
+    square_graph_check_box->setChecked(options->square_graph);
+    anti_aliasing_check_box->setChecked(options->anti_aliasing_enabled);
+    snap_stale_unit_num_check_box->setChecked(options->snap_stale_unit_num);
+    snap_num_tabs_spin_box->setValue(options->snap_vertical_ticks);
 }
 
 /* Private
@@ -111,6 +132,18 @@ dhvis_options_page_t::create_layout(void)
     connect(find_def_load_dir_button, SIGNAL(clicked()),
             this, SLOT(choose_def_load_dir()));
 
+    anti_aliasing_check_box = new QCheckBox(tr("Anti-aliasing"));
+
+    /* Snapshot Graph */
+    QGroupBox *snap_graph_group = new QGroupBox(tr("Snapshot Graph"), this);
+    square_graph_check_box = new QCheckBox(tr("Square graph"));
+    QString snap_stale_unit_label(tr("Use elapsed snapshots as the stale "
+                                     "for/since unit"));
+    snap_stale_unit_num_check_box = new QCheckBox(snap_stale_unit_label);
+    snap_num_tabs_spin_box = new QSpinBox(this);
+    QLabel *tabs_spin_box_label = new QLabel(tr(" vertical scale ticks"));
+    snap_num_tabs_spin_box->setMinimum(1);
+
     /* Layout */
     QVBoxLayout *main_layout = new QVBoxLayout;
 
@@ -118,9 +151,18 @@ dhvis_options_page_t::create_layout(void)
     general_layout->addWidget(load_dir_label, 0, 0);
     general_layout->addWidget(def_load_dir_line_edit, 1, 0);
     general_layout->addWidget(find_def_load_dir_button, 1, 1);
+    general_layout->addWidget(anti_aliasing_check_box, 3, 0);
     general_group->setLayout(general_layout);
 
+    QGridLayout *snap_graph_layout = new QGridLayout;
+    snap_graph_layout->addWidget(square_graph_check_box, 0, 0);
+    snap_graph_layout->addWidget(snap_stale_unit_num_check_box, 1, 0);
+    snap_graph_layout->addWidget(snap_num_tabs_spin_box, 2, 0);
+    snap_graph_layout->addWidget(tabs_spin_box_label, 2, 1);
+    snap_graph_group->setLayout(snap_graph_layout);
+
     main_layout->addWidget(general_group);
+    main_layout->addWidget(snap_graph_group);
     main_layout->addStretch(1);
 
     setLayout(main_layout);
