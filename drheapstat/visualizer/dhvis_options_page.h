@@ -19,51 +19,50 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* dhvis_factory.h
+/* dhvis_options_page.h
  *
- * Defines the Dr. Heapstat visualizer factory
+ * Defines the Dr. Heapstat visualizer options page
  */
 
-#ifndef DHVIS_FACTORY_H
-#define DHVIS_FACTORY_H
-#define DrHeapstat_Visualizer_iid "DrMemory.DrHeapstat.Visualizer"
+#ifndef DHVIS_OPTIONS_H
+#define DHVIS_OPTIONS_H
 
-#include "drgui_tool_interface.h"
 #include "drgui_options_interface.h"
+#include "dhvis_structures.h"
 
-class dhvis_tool_t;
-class dhvis_options_page_t;
-struct dhvis_options_t;
+class QSpinBox;
+class QLineEdit;
+class QCheckBox;
 
-class dhvis_factory_t : public drgui_tool_interface_t
+class dhvis_options_page_t : public drgui_options_interface_t
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID DrHeapstat_Visualizer_iid)
-    Q_INTERFACES(drgui_tool_interface_t)
+    Q_INTERFACES(drgui_options_interface_t)
 
 public:
-    dhvis_factory_t(void);
-
-    ~dhvis_factory_t(void);
+    dhvis_options_page_t(void);
 
     QStringList tool_names(void) const;
 
-    QWidget *create_instance(void);
+    void set_options(dhvis_options_t *options);
 
-    drgui_options_interface_t *create_options_page(void);
+signals:
+    void settings_changed(void);
 
-    void open_file(const QString &path, int line_num);
-
-public slots:
-    void update_settings(void);
+private slots:
+    void choose_def_load_dir(void);
 
 private:
-    /* GUI */
-    QVector<dhvis_tool_t *> tool_instances;
+    void create_layout(void);
 
-    /* Options */
+    void write_settings(void);
+
+    void read_settings(void);
+
     dhvis_options_t *options;
-    dhvis_options_page_t *options_page;
+
+    /* GUI */
+    QLineEdit *def_load_dir_line_edit;
 };
 
 #endif

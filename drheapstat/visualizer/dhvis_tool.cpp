@@ -616,3 +616,12 @@ dhvis_tool_t::sort_stale_data(void)
                   stale_callstacks_sorter);
     }
 }
+
+/* Public
+ * Updates widgets after a settings change
+ */
+void
+dhvis_tool_t::update_settings(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+}

@@ -30,6 +30,7 @@
 
 #include "drgui_tool_interface.h"
 #include "drgui_options_interface.h"
+#include "dhvis_options_page.h"
 #include "dhvis_tool.h"
 #include "dhvis_factory.h"
 
@@ -39,8 +40,12 @@
 dhvis_factory_t::dhvis_factory_t(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    /* XXX i#1319: Create and connect options page */
+    options_page = new dhvis_options_page_t;
+    connect(options_page, SIGNAL(settings_changed()),
+            this, SLOT(update_settings()));
     options = new dhvis_options_t;
+    /* loads settings */
+    create_options_page();
 }
 
 /* Public
@@ -49,7 +54,7 @@ dhvis_factory_t::dhvis_factory_t(void)
 dhvis_factory_t::~dhvis_factory_t(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    /* XXX i#1319: Delete options page*/
+    delete options_page;
     delete options;
     while (tool_instances.count() > 0) {
         dhvis_tool_t *tmp = tool_instances.back();
@@ -65,7 +70,7 @@ QStringList
 dhvis_factory_t::tool_names(void) const
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    return QStringList() << "Dr. Heapstat";
+    return QStringList() << "Dr. Heapstat Visualizer";
 }
 
 /* Public
@@ -86,8 +91,8 @@ drgui_options_interface_t *
 dhvis_factory_t::create_options_page(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    /* XXX i#1319: return the options page */
-    return NULL;
+    options_page->set_options(options);
+    return options_page;
 }
 
 /* Public
@@ -99,4 +104,16 @@ dhvis_factory_t::open_file(const QString &path, int line_num)
     Q_UNUSED(path);
     Q_UNUSED(line_num);
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+}
+
+/* Public slot
+ * Tells each tab to update after settings change
+ */
+void
+dhvis_factory_t::update_settings(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    foreach (dhvis_tool_t *tool, tool_instances) {
+        tool->update_settings();
+    }
 }

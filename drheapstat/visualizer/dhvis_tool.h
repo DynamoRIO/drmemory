@@ -60,6 +60,8 @@ public:
 
     ~dhvis_tool_t(void);
 
+    void update_settings(void);
+
 private slots:
     void choose_dir(void);
 
