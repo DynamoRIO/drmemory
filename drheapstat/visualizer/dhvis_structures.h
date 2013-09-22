@@ -32,6 +32,7 @@
 #include <QVector>
 
 struct dhvis_callstack_listing_t;
+struct dhvis_frame_data_t;
 
 /* Need to typedef because ',' confuses Qt's foreach macro */
 typedef QPair<quint64, quint64> stale_pair_t;
@@ -55,7 +56,7 @@ typedef QMap<quint64, QVector<stale_pair_t> > stale_map_t;
 /* Many of the frames are the same, so we keep track of
  * the uniques by address.
  */
-typedef QMap<quint64, QString> frame_map_t;
+typedef QMap<quint64, dhvis_frame_data_t *> frame_map_t;
 
 struct dhvis_snapshot_listing_t {
     QVector<dhvis_callstack_listing_t *> assoc_callstacks;
@@ -71,7 +72,7 @@ struct dhvis_snapshot_listing_t {
 };
 
 struct dhvis_callstack_listing_t {
-    QList<QString *> frame_data;
+    QList<dhvis_frame_data_t *> frame_data;
     quint64 callstack_num;
     quint64 instances;
     quint64 bytes_asked_for;
@@ -79,6 +80,16 @@ struct dhvis_callstack_listing_t {
     quint64 extra_occupied;
     quint64 cur_snap_num;
     stale_map_t staleness_info;
+};
+
+struct dhvis_frame_data_t {
+    QMap<quint64, QVector<dhvis_callstack_listing_t *> > assoc_callstacks;
+    QString exec_name;
+    QString func_name;
+    QString file_path;
+    QString file_name;
+    QString line_num;
+    QString address;
 };
 
 struct dhvis_options_t {

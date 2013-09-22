@@ -110,6 +110,8 @@ private:
 
     void load_frames_text_edit(int current_row);
 
+    dhvis_frame_data_t *extract_frame_data(const QString &frame);
+
     /* GUI */
     QGridLayout *main_layout;
 

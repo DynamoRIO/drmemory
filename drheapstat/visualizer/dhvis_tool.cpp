@@ -101,6 +101,14 @@ dhvis_tool_t::delete_data(void)
     snapshots.clear();
     delete snapshot_graph;
 
+    frame_map_t::iterator frame_itr;
+    frame_itr = frames.begin();
+    while (frame_itr != frames.end()) {
+        delete *frame_itr;
+        frame_itr = frames.erase(frame_itr);
+    }
+    frames.clear();
+
     /* Reset environment */
     callstacks_display_page = 0;
     current_snapshot_num = -1;
@@ -433,22 +441,25 @@ dhvis_tool_t::read_callstack_log(QFile &callstack_log)
                 if (line.contains(QRegExp("^#\\s*[0-9]+"))) {
                     /* Get address */
                     QString address = "";
-                    QRegExp reg_exp;
-                    reg_exp.setPattern("0x(\\w+) <.+0x\\w+>");
+                    QRegExp reg_exp("0x(\\w+) <.+0x\\w+>");
                     if (reg_exp.indexIn(line) < 0)
                         qDebug() << "Malformed frame: " << line;
                     else
                         address = reg_exp.cap(1);
-                    /* The frame number is not necessarily the same between callstacks,
-                     * so we strip it and use the index of the frame in the callstack's
-                     * list to regenerate it for display
-                     */
-                    line.remove(QRegExp("#\\s*[0-9]+"));
 
                     bool ok;
-                    frames[address.toULongLong(&ok, 16)] = line;
-                    this_callstack->frame_data
-                                  .append(&frames[address.toULongLong(&ok, 16)]);
+                    quint64 int_addr = address.toULongLong(&ok, 16);
+                    if (!ok) {
+                        qDebug() << "Malformed address: " << address;
+                        continue;
+                    }
+                    dhvis_frame_data_t *frame_data;
+                    frame_map_t::iterator itr = frames.find(int_addr);
+                    if (itr == frames.end()) {
+                        frame_data = extract_frame_data(line);
+                        frames[int_addr] = frame_data;
+                    }
+                    this_callstack->frame_data.append(frames[int_addr]);
                 } else
                     qDebug() << "Malformed frame: " << line;
             }
@@ -770,30 +781,14 @@ dhvis_tool_t::fill_callstacks_table(void)
         /* Symbols */
         QTableWidgetItem *symbols = new QTableWidgetItem;
         QString symbol_display;
-        const QList<QString *> *frames = &(this_callstack->frame_data);
+        const QList<dhvis_frame_data_t *> *frames = &(this_callstack->frame_data);
         /* Only show first 3 (skip 0) frames' func_name
          * We skip 0 because it is always Dr. Heapstat's replace_malloc() function
-         * Example '# num exe_name!func_name [path/file_name:line_num] (address)'
          */
-        QRegExp reg_exp("!.+(?:\\[|\\(0x)");
         static const unsigned int LAST_FUNC = 3;
         for (unsigned int i = 1; i <= LAST_FUNC && i < frames->count(); i++) {
-            QString *frame = frames->at(i);
-            QString func_name = "?";
-            int reg_index = reg_exp.indexIn(*frame);
-            if (frame->contains(QRegExp("<not in a module>"))) {
-                symbol_display.append("<not in a module>");
-                break;
-            }
-            if (reg_index < 0) {
-                qDebug() << "Malformed frame: " << *frame;
-                continue;
-            }
-            func_name = reg_exp.cap(0);
-            /* Strip leading ! and trailing chars */
-            func_name.remove(0,1);
-            func_name.remove(QRegExp("\\s+(?:\\[.+|\\(0x)"));
-            symbol_display.append(func_name);
+            dhvis_frame_data_t *frame = frames->at(i);
+            symbol_display.append(frame->func_name);
             if (i != LAST_FUNC)
                 symbol_display.append(" <-- ");
         }
@@ -897,32 +892,31 @@ dhvis_tool_t::load_frames_text_edit(int current_row)
     int callstack_index = callstacks_table->item(current_row,0)
                                           ->data(Qt::DisplayRole)
                                           .toInt() - 1;
-    QList<QString *> frames = callstacks.at(callstack_index)->frame_data;
+    QList<dhvis_frame_data_t *> frames = callstacks.at(callstack_index)->frame_data;
     frames_text_edit->insertPlainText(QString(tr("Callstack #")));
     frames_text_edit->insertPlainText(QString::number(callstack_index + 1));
     frames_text_edit->insertHtml(QString("<br>"));
     /* Add frame data */
     for (int i = 0; i < frames.size(); i++) {
-        const QString *frame = frames[i];
+        const dhvis_frame_data_t *frame = frames[i];
         /* Change file name and line number to a link
          * Example [path/file_name:line_num]
          */
-        QRegExp pattern("\\[.+:[0-9]+\\]");
-        int index = pattern.indexIn(*frame);
         QString file_name = "";
-        QString data = *frame;
-        if (index > -1) {
-            file_name = pattern.cap(0);
-            /* Remove brackets*/
-            file_name.remove(0,1);
-            file_name.chop(1);
-            QString file_link = "<a href=\"" + file_name + "\">" +
-                                file_name + "</a>";
-            data.replace(file_name, file_link);
+        if (frame->file_path != "?" && frame->file_name != "?" &&
+            frame->line_num != "?") {
+            file_name = frame->file_path + frame->file_name + ":" +
+                        frame->line_num;
+            file_name = "[<a href=\"" + file_name + "\">" + file_name +
+                        "</a>] ";
         }
-        frames_text_edit->insertHtml(QString("<br>"));
-        frames_text_edit->insertHtml("# " + QString::number(i) + " " +
-                                     data);
+        QString data = "# " + QString::number(i) + " " +
+                       frame->exec_name + "!" +
+                       frame->func_name + " " +
+                       file_name;
+        frames_text_edit->insertHtml(QString("<br>") + data);
+        /* Since the address contains '<', we can't use insertHTML. */
+        frames_text_edit->insertPlainText("(" + frame->address + ")");
     }
 }
 
@@ -938,4 +932,55 @@ dhvis_tool_t::anchor_clicked(QUrl link)
     int line_num = data.at(1).toInt();
 
     emit code_editor_requested(file_name, line_num);
+}
+
+/* Private
+ * Extracts important info from a frame
+ * XXX i#1332: This function will not be needed after this issue is resolved.
+ */
+dhvis_frame_data_t *
+dhvis_tool_t::extract_frame_data(const QString &frame)
+{
+    /*              1     2     |----------------3----------------|     4
+     * Example: '# num exe_name!func_name [path/file_name:line_num] (address)'
+     */
+    QRegExp reg_exp("#\\s*(\\d+)\\s+(.+)\\!(.*(?!(?:\\s+\\[)|(?:\\s+\\()))"
+                    ".*\\((0x\\w+ <.+0x\\w+>)\\)");
+    reg_exp.indexIn(frame);
+    dhvis_frame_data_t *frame_data = new dhvis_frame_data_t;
+    /* Because callstacks share frames, but the frame is likely to be in a different
+     * position across callstacks, we do not save the position in the callstack. We
+     * use the order they are read to determine they're position.
+     */
+    frame_data->exec_name = reg_exp.cap(2);
+    int index = reg_exp.cap(3).lastIndexOf('[');
+    /* Cover case where func is 'operator new []' with no symbols after */
+    if (index == reg_exp.cap(3).lastIndexOf("[]"))
+        index++;
+    /* Trimming removes leading and trailing spaces */
+    frame_data->func_name = reg_exp.cap(3).left(index - 1).trimmed();
+    /* Frame may not be symbolized */
+    if (index > frame_data->func_name.size()) {
+        /* Remove the leading and trailing brackets and spaces */
+        QString full_path = reg_exp.cap(3).mid(index + 1);
+        full_path = full_path.left(full_path.lastIndexOf(']'));
+        /* We do not check the OS here because a user may load a data_set
+         * that was collected from a different computer.
+         */
+        int last_index = full_path.lastIndexOf('\\');
+        if (last_index == -1)
+            last_index = full_path.lastIndexOf('/');
+        /* +1 to include the / or \ in the path */
+        frame_data->file_path = full_path.left(last_index + 1);
+        frame_data->file_name = full_path.mid(last_index + 1);
+        index = frame_data->file_name.lastIndexOf(':');
+        frame_data->line_num = frame_data->file_name.mid(index + 1);
+        frame_data->file_name = frame_data->file_name.left(index);
+    } else {
+        frame_data->file_path = frame_data->file_name
+                              = frame_data->line_num = "?";
+    }
+    frame_data->address = reg_exp.cap(4);
+
+    return frame_data;
 }
