@@ -27,6 +27,7 @@
 #define __CLASS__ "dhvis_tool_t::"
 
 #include <QApplication>
+#include <QWidget>
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QGridLayout>
@@ -281,14 +282,17 @@ dhvis_tool_t::read_log_data(void)
     /* Find log files */
     QFile callstack_log(dr_log_dir.absoluteFilePath("callstack.log"));
     QFile snapshot_log(dr_log_dir.absoluteFilePath("snapshot.log"));
+    QFile staleness_log(dr_log_dir.absoluteFilePath("staleness.log"));
     if (!dr_check_file(callstack_log) ||
-        !dr_check_file(snapshot_log))
+        !dr_check_file(snapshot_log) ||
+        !dr_check_file(staleness_log))
         return;
     /* Delete current memory */
     delete_data();
 
     read_callstack_log(callstack_log);
     read_snapshot_log(snapshot_log);
+    read_staleness_log(staleness_log);
 
     qApp->restoreOverrideCursor();
 }
@@ -507,4 +511,108 @@ dhvis_tool_t::read_snapshot_log(QFile &snapshot_log)
         peak_snapshot->is_peak = true;
     }
     qDebug() << "INFO: snapshot.log read";
+}
+
+/* Private
+ * Processes snapshot.log
+ */
+void
+dhvis_tool_t::read_staleness_log(QFile &staleness_log)
+{
+    if (staleness_log.open(QFile::ReadOnly)) {
+        QTextStream in_log(&staleness_log);
+        QString line = "";
+        quint64 counter = 0;
+        do /* Read file */ {
+            while (!line.isNull() &&
+                   !line.contains("SNAPSHOT #") &&
+                   !line.contains("LOG END")) {
+                line = in_log.readLine();
+            }
+            if (line.isNull())
+                break;
+            /* Read in data for callstacks */
+            do {
+                line = in_log.readLine();
+                if (line.contains("SNAPSHOT #") ||
+                    line.contains("LOG END"))
+                    break;
+                /* Example: 27,35,300 */
+                QRegExp reg_exp("^(\\d+),(\\d+),(\\d+)$");
+                reg_exp.indexIn(line);
+                if (reg_exp.captureCount() != 3) {
+                    qDebug() << "Malformed staleness: " << line;
+                    break;
+                }
+                /* Get referenced callstack and subtract 1 since the
+                 * callstack # starts at 1 in the logfile; while the array
+                 * index starts at 0.
+                 */
+                quint64 callstack_index = reg_exp.cap(1).toULongLong() - 1;
+                dhvis_callstack_listing_t *this_callstack;
+                this_callstack = callstacks.at(callstack_index);
+                /* Add to snapshot's vector */
+                if (!snapshots[counter]->stale_callstacks
+                                       .contains(this_callstack)) {
+                    snapshots[counter]->stale_callstacks
+                                      .append(this_callstack);
+                }
+                /* Map with snapshot_num as key */
+                quint64 num_bytes = reg_exp.cap(2).toULongLong();
+                quint64 last_access = reg_exp.cap(3).toULongLong();
+                stale_pair_t tmp_pair(num_bytes, last_access);
+                this_callstack->staleness_info[counter].append(tmp_pair);
+            }  while (!line.contains("SNAPSHOT #") &&
+                      !line.contains("LOG END"));
+
+            counter++;
+        } while (!line.isNull() &&
+                 !line.contains("LOG END"));
+
+        staleness_log.close();
+    }
+    qDebug() << "INFO: staleness.log read";
+}
+
+/* Private
+ * Sorts the log data properly
+ */
+void
+dhvis_tool_t::sort_log_data(void)
+{
+    /* Sort snapshots by time */
+    std::sort(snapshots.begin(),
+              snapshots.end(),
+              sort_snapshots);
+    /* Sort each callstack's staleness info (greatest first) */
+    foreach (dhvis_callstack_listing_t *c, callstacks) {
+        stale_map_t::iterator itr = c->staleness_info.begin();
+        while (itr != c->staleness_info.end()) {
+            std::sort(itr.value().begin(),
+                      itr.value().end(),
+                      stale_pair_sorter);
+            ++itr;
+        }
+    }
+    sort_stale_data();
+}
+
+/* Private
+ * Sort staleness info
+ */
+void
+dhvis_tool_t::sort_stale_data(void)
+{
+    /* Sort each snapshots stale_callstacks by stale_bytes
+     * for staleness_graphing (greatest first)
+     */
+    for (int i = 0; i < snapshots.count(); i++) {
+        dhvis_snapshot_listing_t *s = snapshots[i];
+        foreach (dhvis_callstack_listing_t *c, s->stale_callstacks) {
+            c->cur_snap_num = s->snapshot_num;
+        }
+        std::sort(s->stale_callstacks.begin(),
+                  s->stale_callstacks.end(),
+                  stale_callstacks_sorter);
+    }
 }

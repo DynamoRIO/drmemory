@@ -28,7 +28,6 @@
 #define DHVIS_TOOL_H
 
 #include <QWidget>
-#include <QUrl>
 #include <QMap>
 
 #include "dhvis_structures.h"
@@ -80,6 +79,12 @@ private:
     void read_callstack_log(QFile &callstack_log);
 
     void read_snapshot_log(QFile &snapshot_log);
+
+    void read_staleness_log(QFile &staleness_log);
+
+    void sort_log_data(void);
+
+    void sort_stale_data(void);
 
     /* GUI */
     QGridLayout *main_layout;

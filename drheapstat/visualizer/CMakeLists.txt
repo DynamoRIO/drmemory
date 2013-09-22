@@ -48,6 +48,7 @@ set(dhvis_MOC_HEADERS
 qt5_wrap_cpp(dhvis_MOC_OUTFILES ${dhvis_MOC_HEADERS})
 
 set(dhvis_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_structures.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.cpp)
 

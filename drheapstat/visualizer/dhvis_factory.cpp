@@ -30,10 +30,8 @@
 
 #include "drgui_tool_interface.h"
 #include "drgui_options_interface.h"
-#include "dhvis_structures.h"
 #include "dhvis_tool.h"
 #include "dhvis_factory.h"
-
 
 /* Public
  * Constructor
