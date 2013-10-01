@@ -2774,11 +2774,13 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 INSTR_CREATE_mov_imm(drcontext,
                                      spill_slot_opnd(drcontext, SPILL_SLOT_1),
                                      decode_pc_opnd));
-            /* FIXME: this hardcoded address will be wrong if this
-             * fragment is shifted, or copied into a trace is created =>
-             * requires -disable_traces (or registering for trace event)
-             * and shared caches (since they're not shifted: but what if
-             * this particular fragment is thread-private?!?)
+            /* XXX: this hardcoded address will be wrong if this
+             * fragment is shifted, but DR now disables shifting in the
+             * presence of clients (i#784, DRi#696).
+             * The old trace API would end up copying this, but the new one
+             * copies from the app code, so there's no problem there.
+             * And so long as we're never at a "safe spot" in the lean procedure,
+             * DR won't relocate us or remove our return point out from underneath us.
              */
             PRE(bb, inst,
                 INSTR_CREATE_mov_imm(drcontext,
