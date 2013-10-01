@@ -179,8 +179,9 @@ typedef struct _error_toprint_t {
     /* For warnings and invalid heap args: */
     const char *msg;            /* Free-form message. */
 
-    /* Auxiliary callstack and a prefix message describing it, with INFO_PFX
-     * prior to each newline:
+    /* Auxiliary callstack and a prefix message describing it, with
+     * INFO_PFX starting each msg line and aux_cstack_pfx starting each
+     * callstack newline:
      */
     const char *aux_msg;
     packed_callstack_t *aux_pcs;
@@ -280,6 +281,7 @@ stored_error_cmp(stored_error_t *err1, stored_error_t *err2)
 
 /* We use a different prefix for the callstack, for Visual Studio (i#800) */
 static const char *info_cstack_pfx;
+static const char *aux_cstack_pfx;
 
 /* To provide thread callstacks (i#312), we don't want to symbolize and
  * print at thread creation time b/c the symbolization is a noticeable
@@ -1571,10 +1573,14 @@ report_init(void)
                           (void (*)(void*)) packed_callstack_free, NULL, NULL);
     }
 
-    if (options.prefix_style == PREFIX_STYLE_BLANK)
+    if (options.prefix_style == PREFIX_STYLE_BLANK) {
         info_cstack_pfx = "      ";
-    else
+        /* Extra indent the width of "Note: " */
+        aux_cstack_pfx  = "           ";
+    } else {
         info_cstack_pfx = INFO_PFX;
+        aux_cstack_pfx  = INFO_PFX;
+    }
 }
 
 #ifdef LINUX
@@ -2744,7 +2750,7 @@ print_error_to_buffer(char *buf, size_t bufsz, error_toprint_t *etp,
          * and avoid this extra work
          */
         packed_callstack_to_symbolized(etp->aux_pcs, &scs);
-        symbolized_callstack_print(&scs, buf, bufsz, &sofar, INFO_PFX, for_log);
+        symbolized_callstack_print(&scs, buf, bufsz, &sofar, aux_cstack_pfx, for_log);
         symbolized_callstack_free(&scs);
     }
 
