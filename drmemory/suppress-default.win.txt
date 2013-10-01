@@ -575,7 +575,7 @@ msvcrt.dll!__getmainargs
 # XXX: need to analyze
 
 POSSIBLE LEAK
-name=default i#781: strcpy_s possible leak in CRT
+name=default i#790: strcpy_s possible leak in CRT
 msvcrt.dll!strcpy_s
 msvcrt.dll!...
 *!__mingw_CRTStartup
