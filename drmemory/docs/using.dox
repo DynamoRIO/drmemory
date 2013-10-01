@@ -265,8 +265,14 @@ next step is to execute it on your workload of choice under Dr. memory.
 ********************
 \section sec_vstudio Dr. Memory as a Visual Studio Tool
 
-To run Dr. Memory within Visual Studio, add it as an External Tool.  For
-Visual Studio 2005 through 2012, select the <tt>Tools | External
+To run Dr. Memory within Visual Studio, add it as an External Tool, which
+creates a new menu entry for launching the tool.
+
+If using Visual Studio Express 2010 or later, first enable the full menu
+system by selecting <tt>Tools | Settings | Expert Settings</tt> (this step
+is not necessary for Visual Studio Professional).
+
+Next, for Visual Studio 2005 through 2012, select the <tt>Tools | External
 Tools...</tt> menu option to open the External Tools dialog box.  Click Add
 and fill in the fields as follows (adjusting the path to \p drmemory.exe if
 you installed it somewhere else):
