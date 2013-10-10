@@ -59,7 +59,10 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.5.1 include:
+The changes between \TOOL_VERSION and version 1.6.0 include:
+ - Added -handle_leaks_only feature for low-overhead handle leak checking
+
+The changes between version 1.6.0 and version 1.5.1 include:
  - Added a separate category of error report, "potential errors", stored in
    potential_errors.txt.  These are errors that are suspected of being
    false positives or limited to system libraries.  It is possible that

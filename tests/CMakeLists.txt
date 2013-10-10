@@ -703,7 +703,7 @@ if (TOOL_DR_MEMORY)
     newtest_ex(handle handle.cpp ""
       "-light;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0"
       "" OFF "" OFF)
-
+    newtest_nobuild(handle_only handle "" "-handle_leaks_only;-callstack_max_frames;100;-lib_blacklist_frames;0" "" OFF "handle")
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
     newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" OFF)
   endif (WIN32)

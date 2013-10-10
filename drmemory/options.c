@@ -222,6 +222,16 @@ option_read_bool(const char *s, char *word, void *var_in /* really bool* */,
     return s;
 }
 
+static inline void
+option_disable_memory_checks()
+{
+    /* for performance use only DR's slots */
+    options.num_spill_slots = 0;
+    options.shadowing = false;
+    options.check_uninitialized = false;
+    options.pattern = 0;
+}
+
 void
 options_init(const char *opstr)
 {
@@ -305,11 +315,18 @@ options_init(const char *opstr)
     }
 #endif
     if (options.leaks_only || options.perturb_only) {
-        /* for performance use only DR's slots */
-        options.num_spill_slots = 0;
-        options.shadowing = false;
-        options.check_uninitialized = false;
+        option_disable_memory_checks();
     }
+#ifdef WINDOWS
+    if (options.handle_leaks_only) {
+        option_disable_memory_checks();
+        /* disable memory alloc tracking */
+        options.track_allocs = false;
+        /* disable leak scan */
+        options.leaks_only = false;
+        options.check_handle_leaks = true;
+    }
+#endif
     /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath
      * XXX: there is nothing fundamentally impossible, it is just we didn't
      * bother to make it work as such combination is not very useful.
@@ -397,6 +414,10 @@ options_init(const char *opstr)
         options.check_alignment    = false;
         if (options.leaks_only)
             usage_error("-leaks_only cannot be used with pattern mode", "");
+#ifdef WINDOWS
+        if (options.handle_leaks_only)
+            usage_error("-handle_leaks_only cannot be used with pattern mode", ""); 
+#endif
     }
     if (options.replace_malloc) {
         options.replace_realloc = false; /* no need for it */
