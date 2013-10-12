@@ -860,11 +860,8 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     char_to_tchar(resfile, wresfile, BUFFER_SIZE_ELEMENTS(wresfile));
 
     if (!quiet &&
-        /* On vista, or win7+ with i#440, output works from client, even during exit,
-         * for WOW64.  When the app bitwidth matches the kernel, it doesn't work
-         * (i#1158, DRi#556).
-         */
-        !on_vista_or_later() || !dr_is_wow64()) {
+        /* On vista, or win7+ with i#440, output works from client, even during exit */
+        !on_vista_or_later()) {
         /* Even with console-writing support from DR, the client cannot write
          * to a cmd console from the exit event: nor can it write for a graphical
          * application (xref i#261/PR 562198).  Thus when within cmd we always
@@ -1338,13 +1335,6 @@ _tmain(int argc, TCHAR *targv[])
     if (full_app_name[0] != '\0')
         app_name = full_app_name;
     info("targeting application: \"%s\"", app_name);
-
-    if (!quiet && on_vista_or_later() && !dr_is_wow64()) {
-        /* FIXME i#1158: even app output is not working when the app bitwidth matches
-         * the kernel.  For now we warn about it (and provide the error summary).
-         */
-        warn("console output may not be visible from cmd on this platform");
-    }
 
     /* note that we want target app name as part of cmd line
      * (FYI: if we were using WinMain, the pzsCmdLine passed in
