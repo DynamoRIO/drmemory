@@ -68,6 +68,7 @@ dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
     options = options_;
     current_snapshot_num = -1;
     current_snapshot_index= -1;
+    show_occur = false;
     create_layout();
 }
 
@@ -93,12 +94,14 @@ dhvis_tool_t::delete_data(void)
         delete tmp;
     }
     callstacks.clear();
+
     while (snapshots.count() > 0) {
         dhvis_snapshot_listing_t *tmp = snapshots.back();
         snapshots.pop_back();
         delete tmp;
     }
     snapshots.clear();
+
     delete snapshot_graph;
 
     frame_map_t::iterator frame_itr;
@@ -109,12 +112,22 @@ dhvis_tool_t::delete_data(void)
     }
     frames.clear();
 
+    QMap<int, QTreeWidget *>::iterator tree_itr;
+    tree_itr = frame_trees.begin();
+    while (tree_itr != frame_trees.end()) {
+        delete *tree_itr;
+        tree_itr = frame_trees.erase(tree_itr);
+    }
+
+    frame_trees.clear();
+
     /* Reset environment */
     callstacks_display_page = 0;
     current_snapshot_num = -1;
     current_snapshot_index= -1;
 
     snapshot_graph = NULL;
+    frames_tree_widget = NULL;
 }
 
 /* Private
@@ -180,10 +193,14 @@ dhvis_tool_t::create_layout(void)
     next_page_button->setEnabled(false);
     connect(next_page_button, SIGNAL(clicked()),
             this, SLOT(show_next_page()));
+    reset_visible_button = new QPushButton(tr("Reset visible"), this);
+    connect(reset_visible_button, SIGNAL(clicked()),
+            this, SLOT(reset_callstacks_view()));
 
     callstacks_page_buttons->addWidget(prev_page_button);
     callstacks_page_buttons->addWidget(page_display_label);
     callstacks_page_buttons->addStretch(1);
+    callstacks_page_buttons->addWidget(reset_visible_button);
     callstacks_page_buttons->addWidget(next_page_button);
 
     right_side->addWidget(right_title, 0, 0);
@@ -192,6 +209,8 @@ dhvis_tool_t::create_layout(void)
 
     /* Frames tab area */
     frames_tab_area = new QTabWidget(this);
+    connect(frames_tab_area, SIGNAL(currentChanged(int)),
+            this, SLOT(load_frames_tree(int)));
 
     /* Frames text box */
     right_side->addLayout(callstacks_page_buttons,2,0);
@@ -201,7 +220,31 @@ dhvis_tool_t::create_layout(void)
     connect(frames_text_edit, SIGNAL(anchorClicked(QUrl)),
             this, SLOT(anchor_clicked(QUrl)));
 
+    /* Frames tree widget */
+    frames_tree_tab_widget = new QWidget;
+    frames_tree_layout = new QVBoxLayout(frames_tree_tab_widget);
+    tree_stack = new QStackedLayout;
+    frames_tree_widget = new QTreeWidget;
+    connect(frames_tree_widget, SIGNAL(itemDoubleClicked(QTreeWidgetItem *, int)),
+            this, SLOT(frames_tree_double_clicked(QTreeWidgetItem *, int)));
+    frames_tree_widget->setHeaderHidden(true);
+
+    /* Tree control buttons */
+    frames_tree_controls_layout = new QHBoxLayout;
+    expand_all_button = new QPushButton(tr("Expand all"), this);
+    connect(expand_all_button, SIGNAL(clicked()),
+            frames_tree_widget, SLOT(expandAll()));
+    collapse_all_button = new QPushButton(tr("Collapse all"), this);
+    connect(collapse_all_button, SIGNAL(clicked()),
+            frames_tree_widget, SLOT(collapseAll()));
+    frames_tree_controls_layout->addStretch(1);
+    frames_tree_controls_layout->addWidget(expand_all_button);
+    frames_tree_controls_layout->addWidget(collapse_all_button);
+    frames_tree_layout->addLayout(tree_stack);
+    frames_tree_layout->addLayout(frames_tree_controls_layout);
+
     frames_tab_area->addTab(frames_text_edit, tr("List View"));
+    frames_tab_area->addTab(frames_tree_tab_widget, tr("Tree View"));
 
     right_side->addWidget(frames_tab_area, 3, 0);
     right_side->setRowStretch(1, 3);
@@ -731,6 +774,7 @@ dhvis_tool_t::highlight_changed(quint64 snapshot, quint64 index)
         current_snapshot_index = index;
         callstacks_display_page = 0;
         fill_callstacks_table();
+        load_frames_tree(frames_tab_area->currentIndex());
     }
 }
 
@@ -741,7 +785,9 @@ void
 dhvis_tool_t::fill_callstacks_table(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-
+    if (current_snapshot_index < 0 ||
+        current_snapshot_index >= snapshots.count())
+        return;
     /* Settings */
     callstacks_table->clear();
     callstacks_table->setRowCount(0);
@@ -764,7 +810,10 @@ dhvis_tool_t::fill_callstacks_table(void)
     int row_count = -1;
     int max_rows = options->num_callstacks_per_page;
     QVector<dhvis_callstack_listing_t *> *vec;
-    vec = &snapshots[current_snapshot_index]->assoc_callstacks;
+    if (show_occur)
+        vec = &visible_assoc_callstacks;
+    else
+        vec = &snapshots[current_snapshot_index]->assoc_callstacks;
 
     const int MAX = options->num_callstacks_per_page;
     foreach (dhvis_callstack_listing_t *this_callstack, *vec) {
@@ -816,7 +865,7 @@ dhvis_tool_t::fill_callstacks_table(void)
     /* Current page info */
     qreal display_num = callstacks_display_page *
                         options->num_callstacks_per_page;
-    qreal total = snapshots[current_snapshot_index]->assoc_callstacks.count();
+    qreal total =  vec->count();
     if (total == 0) {
         page_display_label->setText(tr("No callstacks in snapshot %1")
                                     .arg(current_snapshot_num));
@@ -829,14 +878,9 @@ dhvis_tool_t::fill_callstacks_table(void)
                                     .arg(total));
     }
     /* Enable navigation buttons? */
-    if (display_num + callstacks_table->rowCount() <  total)
-        next_page_button->setEnabled(true);
-    else
-        next_page_button->setEnabled(false);
-    if (callstacks_display_page == 0)
-        prev_page_button->setEnabled(false);
-    else
-        prev_page_button->setEnabled(true);
+    next_page_button->setEnabled(display_num + callstacks_table->rowCount() <  total);
+    prev_page_button->setEnabled(callstacks_display_page != 0);
+    reset_visible_button->setEnabled(show_occur);
     /* Select first row */
     callstacks_table->setCurrentCell(0, 0);
 }
@@ -983,4 +1027,294 @@ dhvis_tool_t::extract_frame_data(const QString &frame)
     frame_data->address = reg_exp.cap(4);
 
     return frame_data;
+}
+
+/* Private Slot
+ * Used to restrict loading the frames_tree when it is requested in the
+ * tab interface. This reduces lag while highlighting snapshots if the
+ * 'Tree View' tab is not open.
+ */
+void
+dhvis_tool_t::load_frames_tree(int new_index)
+{
+    if (frames_tab_area->currentIndex() == TREE_TAB_INDEX)
+        load_frames_tree();
+}
+
+/* Private
+ * Loads frame data into frames_tree_widget for requested callstack
+ * XXX i#1332: All of the processing here can take a while on large data sets.
+ * XXX i#1319: Currently, the tree copies the data, using extra resources.
+               This also creates a siginificant lag.
+ */
+void
+dhvis_tool_t::load_frames_tree(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    /* Disconnect from buttons */
+    if (frames_tree_widget != NULL) {
+        disconnect(expand_all_button, SIGNAL(clicked()),
+                   frames_tree_widget, SLOT(expandAll()));
+        disconnect(collapse_all_button, SIGNAL(clicked()),
+                   frames_tree_widget, SLOT(collapseAll()));
+    }
+    /* Load if available */
+    if (frame_trees.find(current_snapshot_num) != frame_trees.end()) {
+        frames_tree_widget = *frame_trees.find(current_snapshot_num);
+    } else {
+        frames_tree_widget = new QTreeWidget;
+        tree_stack->addWidget(frames_tree_widget);
+        connect(frames_tree_widget,
+                SIGNAL(itemDoubleClicked(QTreeWidgetItem *, int)),
+                this,
+                SLOT(frames_tree_double_clicked(QTreeWidgetItem *, int)));
+        /* Settings */
+        frames_tree_widget->setColumnCount(NUM_COLUMNS);
+        frames_tree_widget->setAnimated(true);
+        frames_tree_widget->setHeaderHidden(false);
+        frames_tree_widget->setAlternatingRowColors(true);
+        frames_tree_widget->setSortingEnabled(true);
+        /* Set header labels */
+        QStringList header_labels;
+        header_labels.insert(EXEC_INDEX, QString(50, ' '));
+        header_labels.insert(LINE_NUM_INDEX, tr("Line #"));
+        header_labels.insert(ADDRESS_INDEX, tr("Address%1")
+                                            .arg(QString(6, ' ')));
+        header_labels.insert(OCCUR_INDEX, tr("Occurrences"));
+        header_labels.insert(PATH_INDEX,  tr("Path"));
+        frames_tree_widget->setHeaderLabels(header_labels);
+        frames_tree_widget->header()
+                          ->resizeSections(QHeaderView::ResizeToContents);
+
+        const dhvis_snapshot_listing_t *this_snapshot =
+            snapshots.at(current_snapshot_index);
+        frame_tree_map_t frame_data_map;
+        foreach (dhvis_callstack_listing_t *this_callstack,
+                 this_snapshot->assoc_callstacks) {
+            /* Again, -1 since callstack_num starts at 1, index starts at 0. */
+            quint64 callstack_index = this_callstack->callstack_num - 1;
+            const QList<dhvis_frame_data_t *> &frames = this_callstack->frame_data;
+            /* Gather data */
+            foreach (dhvis_frame_data_t *frame, frames) {
+                frame_tree_map_t::iterator exec_itr;
+                exec_itr = frame_data_map.find(frame->exec_name);
+                /* With QMap a found insert is replaced, which we do not want. */
+                if (exec_itr == frame_data_map.end()) {
+                    exec_itr = frame_data_map.insert(frame->exec_name,
+                                                     frame_tree_inner_map_t());
+                }
+                /* Store */
+                frame_tree_pair_t tmp_pair(frame->file_path, frame->file_name);
+                QStringList tmp_list;
+                tmp_list.insert(FUNC_INDEX, frame->func_name);
+                tmp_list.insert(LINE_NUM_INDEX, frame->line_num);
+                tmp_list.insert(ADDRESS_INDEX, frame->address);
+                tmp_list.insert(OCCUR_INDEX, QString::number(1));
+                frame_tree_inner_map_t::iterator pair_itr = exec_itr->find(tmp_pair);
+                QVector<dhvis_callstack_listing_t *> &assoc =
+                    frame->assoc_callstacks[current_snapshot_num];
+                /* Insert a file underneath an executable. */
+                if (pair_itr == exec_itr->end()) {
+                    QVector<QStringList> tmp_vec;
+                    tmp_vec.append(tmp_list);
+                    exec_itr->insert(tmp_pair, tmp_vec);
+                } else {
+                    /* The file already exists, so insert a frame underneath
+                     * the file.
+                     */
+                    int i;
+                    for (i = 0; i < pair_itr->count(); i++) {
+                        /* If the frame already exists then append this callstack
+                         * to the assoc_callstacks list for the frame.
+                         */
+                        if (pair_itr->at(i)[ADDRESS_INDEX] == tmp_list[ADDRESS_INDEX] ) {
+                            if (!assoc.contains(this_callstack)) {
+                                assoc.append(this_callstack);
+                                quint64 size = assoc.size();
+                                (*pair_itr)[i][OCCUR_INDEX] = QString::number(size);
+                            }
+                            break;
+                        }
+                    }
+                    if (i == pair_itr->count()) {
+                        pair_itr->append(tmp_list);
+                        assoc.append(this_callstack);
+                    }
+                }
+            }
+        }
+        fill_frames_tree(frame_data_map);
+    }
+    /* Connect viewable widget */
+    connect(expand_all_button, SIGNAL(clicked()),
+            frames_tree_widget, SLOT(expandAll()));
+    connect(collapse_all_button, SIGNAL(clicked()),
+            frames_tree_widget, SLOT(collapseAll()));
+    /* Show the widget */
+    tree_stack->setCurrentWidget(frames_tree_widget);
+}
+
+/* Private
+ * Fills the frames tree with newly loaded data
+ */
+void
+dhvis_tool_t::fill_frames_tree(frame_tree_map_t &frame_data_map)
+{
+    /* Put into tree
+     * Example
+     * + exec_name
+     *     + file_name                               tot_occur     path
+     *         + func_name    line_num    address    occurences
+     */
+    frame_tree_map_t::const_iterator exec_itr;
+    exec_itr = frame_data_map.constBegin();
+    while (exec_itr != frame_data_map.constEnd()) {
+        QTreeWidgetItem *exec_name;
+        exec_name = new QTreeWidgetItem((QTreeWidget *)NULL,
+                                        QStringList(exec_itr.key()));
+        frame_tree_inner_map_t::const_iterator file_itr;
+        file_itr = exec_itr.value().constBegin();
+        /* File names */
+        while (file_itr != exec_itr.value().constEnd()) {
+            QStringList tmp_list;
+            tmp_list.insert(FILE_INDEX, file_itr.key().second);
+            tmp_list.insert(PATH_INDEX, file_itr.key().first);
+            /* Insert buffer space between columns */
+            while (PATH_INDEX != tmp_list.count() - 1) {
+                tmp_list.insert(tmp_list.count() - 1, QString());
+            }
+            QTreeWidgetItem *file_name;
+            file_name = new QTreeWidgetItem((QTreeWidget *)NULL,
+                                            tmp_list);
+            /* Function names */
+            /* XXX i#1319: Do not double count callstacks for the total */
+            quint64 tot_occur = 0;
+            QFont link_font;
+            link_font.setUnderline(true);
+            foreach (QStringList info, file_itr.value()) {
+                QTreeWidgetItem *func_name;
+                func_name = new QTreeWidgetItem((QTreeWidget *)NULL,
+                                                info);
+                /* Make line_num and num_occur look like links */
+                func_name->setForeground(LINE_NUM_INDEX, QBrush(Qt::blue));
+                func_name->setForeground(OCCUR_INDEX, QBrush(Qt::blue));
+                func_name->setFont(LINE_NUM_INDEX, link_font);
+                func_name->setFont(OCCUR_INDEX, link_font);
+                /* Add tool tips */
+                func_name->setToolTip(LINE_NUM_INDEX,
+                                      "Opens an editor at this line");
+                func_name->setToolTip(OCCUR_INDEX,
+                                      "View occurrences in the callstacks "
+                                      "table");
+                file_name->addChild(func_name);
+                tot_occur += info[OCCUR_INDEX].toULongLong();
+            }
+            file_name->setData(OCCUR_INDEX, Qt::DisplayRole, tot_occur);
+            /* Set tot_occur font */
+            file_name->setForeground(OCCUR_INDEX, QBrush(Qt::blue));
+            file_name->setFont(OCCUR_INDEX, link_font);
+            /* Add tool tip */
+            file_name->setToolTip(OCCUR_INDEX,
+                                  "View all occurrences in the callstacks "
+                                  "table");
+            exec_name->addChild(file_name);
+            ++file_itr;
+        }
+        frames_tree_widget->addTopLevelItem(exec_name);
+        ++exec_itr;
+    }
+    /* Select first */
+    frames_tree_widget->setCurrentItem(frames_tree_widget->itemAt(0, 0));
+
+    /* Add to map */
+    frame_trees[current_snapshot_num] = frames_tree_widget;
+}
+
+/* Private Slot
+ * Specifies behavior of an item in frames_tree_widget when it is
+ * double clicked
+ */
+void
+dhvis_tool_t::frames_tree_double_clicked(QTreeWidgetItem *item,
+                                         int column)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    /* Open line num */
+    if (item->childCount() == 0 && column == LINE_NUM_INDEX) {
+        /* Open file with path/file_name */
+        QFile code_file(item->parent()->text(PATH_INDEX)
+                            .append(item->parent()->text(FILE_INDEX)));
+        int line_num = item->text(LINE_NUM_INDEX).toInt();
+        emit code_editor_requested(code_file, line_num);
+        return;
+    } else if (column == OCCUR_INDEX && item->text(OCCUR_INDEX) > 0) {
+        /* Set callstacks_table to show specific occurrences */
+        show_occur = true;
+        callstacks_display_page = 0;
+        /* Display a file's associated callstacks */
+        if (item->childCount() > 0) {
+            quint64 false_count = 0;
+            visible_assoc_callstacks.clear();
+            foreach (QTreeWidgetItem *child, item->takeChildren()) {
+                /* Unfortuantely, the only way to access the children of
+                 * an item is to remove them with takeChildren(), so we must
+                 * re-add each child.
+                 */
+                item->addChild(child);
+                QString tmp_addr = child->text(ADDRESS_INDEX).split(" ").at(0);
+                tmp_addr.remove(0,2);
+                bool ok;
+                quint64 addr_int = tmp_addr.toULongLong(&ok, 16);
+                if (!ok) {
+                    false_count++;
+                    continue;
+                }
+                foreach (dhvis_callstack_listing_t *c,
+                         frames[addr_int]->assoc_callstacks[current_snapshot_num]) {
+                    if (!visible_assoc_callstacks.contains(c))
+                        visible_assoc_callstacks.append(c);
+                }
+            }
+            if (false_count == item->childCount())
+                show_occur = false;
+        } else {
+            /* Display a frame's associated callstacks */
+            QString tmp_addr = item->text(ADDRESS_INDEX).split(" ").at(0);
+            tmp_addr.remove(0,2);
+            bool ok;
+            quint64 addr_int = tmp_addr.toULongLong(&ok, 16);
+            if (!ok) {
+                show_occur = false;
+            } else {
+                visible_assoc_callstacks =
+                    frames[addr_int]->assoc_callstacks[current_snapshot_num];
+            }
+        }
+        fill_callstacks_table();
+        return;
+    }
+    /* Determine if an item should be modifiable when double clicked, or
+     * display its children. The purpose of is to allow a user to select the text
+     * in an item. Unfortunately, the only way to do this is to make the item modifiable
+     * as the ItemIsSelectable flag refers to the item as a whole, and not the text
+     * that it contains.
+     * N.B. Editing the text does NOT modify the data, it ONLY modifies the view.
+     */
+    Qt::ItemFlags cur_flags = item->flags();
+    if (item->childCount() == 0 || column == PATH_INDEX) {
+        item->setFlags(cur_flags | Qt::ItemIsEditable);
+    } else if ((cur_flags & Qt::ItemIsEditable) != 0) {
+        item->setFlags(cur_flags ^ Qt::ItemIsEditable);
+    }
+}
+
+/* Private Slot
+ * Resets the callstacks table to show all callstacks for a given snapshot
+ */
+void
+dhvis_tool_t::reset_callstacks_view(void)
+{
+    show_occur = false;
+    callstacks_display_page = 0;
+    fill_callstacks_table();
 }

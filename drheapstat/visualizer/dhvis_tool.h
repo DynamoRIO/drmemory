@@ -53,6 +53,12 @@ class QStackedLayout;
 
 class dhvis_snapshot_graph_t;
 
+typedef QPair<QString /* path */ , QString /* file_name */ > frame_tree_pair_t;
+typedef QMap<frame_tree_pair_t,
+             QVector<QStringList /* func_name, line_num, address, occur_num */ > >
+        frame_tree_inner_map_t;
+typedef QMap<QString /* exe_name */ , frame_tree_inner_map_t > frame_tree_map_t;
+
 class dhvis_tool_t : public QWidget
 {
     Q_OBJECT
@@ -79,6 +85,12 @@ private slots:
                                   int previous_row, int previous_column);
 
     void anchor_clicked(QUrl link);
+
+    void load_frames_tree(int new_index);
+
+    void frames_tree_double_clicked(QTreeWidgetItem *item, int column);
+
+    void reset_callstacks_view(void);
 
 signals:
     void code_editor_requested(QFile &file, int line_num);
@@ -112,6 +124,10 @@ private:
 
     dhvis_frame_data_t *extract_frame_data(const QString &frame);
 
+    void load_frames_tree(void);
+
+    void fill_frames_tree(frame_tree_map_t &frame_data_map);
+
     /* GUI */
     QGridLayout *main_layout;
 
@@ -134,9 +150,29 @@ private:
     QPushButton *prev_page_button;
     QLabel *page_display_label;
     QPushButton *next_page_button;
+    QPushButton *reset_visible_button;
 
     QTabWidget *frames_tab_area;
     QTextBrowser *frames_text_edit;
+
+    QWidget *frames_tree_tab_widget;
+    QVBoxLayout *frames_tree_layout;
+    QStackedLayout *tree_stack;
+    static const int TREE_TAB_INDEX = 1;
+    QTreeWidget *frames_tree_widget;
+    /* frames_tree_widget column indices */
+    static const int NUM_COLUMNS = 5;
+    static const int EXEC_INDEX = 0;
+    static const int FILE_INDEX = 0;
+    static const int FUNC_INDEX = 0;
+    static const int LINE_NUM_INDEX = 1;
+    static const int ADDRESS_INDEX = 2;
+    static const int OCCUR_INDEX = 3;
+    static const int PATH_INDEX = 4;
+
+    QHBoxLayout *frames_tree_controls_layout;
+    QPushButton *expand_all_button;
+    QPushButton *collapse_all_button;
 
     QString log_dir_loc;
 
@@ -144,13 +180,16 @@ private:
     dhvis_options_t *options;
 
     /* Data */
+    QVector<dhvis_callstack_listing_t *> visible_assoc_callstacks;
     QVector<dhvis_callstack_listing_t *> callstacks;
     QVector<dhvis_snapshot_listing_t *> snapshots;
-    QString time_unit;
+    QMap<int, QTreeWidget *> frame_trees;
     frame_map_t frames;
+    QString time_unit;
     int current_snapshot_num;
     int current_snapshot_index;
     int callstacks_display_page;
+    bool show_occur;
 };
 
 #endif
