@@ -52,6 +52,7 @@ class QGroupBox;
 class QStackedLayout;
 
 class dhvis_snapshot_graph_t;
+class dhvis_stale_graph_t;
 
 typedef QPair<QString /* path */ , QString /* file_name */ > frame_tree_pair_t;
 typedef QMap<frame_tree_pair_t,
@@ -128,6 +129,8 @@ private:
 
     void fill_frames_tree(frame_tree_map_t &frame_data_map);
 
+    void draw_staleness_graph(void);
+
     /* GUI */
     QGridLayout *main_layout;
 
@@ -174,6 +177,8 @@ private:
     QPushButton *expand_all_button;
     QPushButton *collapse_all_button;
 
+    dhvis_stale_graph_t *staleness_graph;
+
     QString log_dir_loc;
 
     /* Options */
@@ -184,6 +189,7 @@ private:
     QVector<dhvis_callstack_listing_t *> callstacks;
     QVector<dhvis_snapshot_listing_t *> snapshots;
     QMap<int, QTreeWidget *> frame_trees;
+    QMap<quint64, dhvis_stale_graph_t *> stale_graphs;
     frame_map_t frames;
     QString time_unit;
     int current_snapshot_num;

@@ -40,6 +40,7 @@ set(dhvis_MOC_HEADERS
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_options_page.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_graph.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_snapshot_graph.h
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_stale_graph.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.h
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.h)
 
@@ -55,6 +56,7 @@ set(dhvis_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_options_page.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_graph.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_snapshot_graph.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_stale_graph.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_tool.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dhvis_factory.cpp)
 

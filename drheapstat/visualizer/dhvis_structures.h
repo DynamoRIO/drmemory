@@ -80,6 +80,7 @@ struct dhvis_callstack_listing_t {
     quint64 extra_occupied;
     quint64 cur_snap_num;
     stale_map_t staleness_info;
+    QMap<quint64, quint64> staleness_sum_info;
 };
 
 struct dhvis_frame_data_t {
@@ -95,10 +96,14 @@ struct dhvis_frame_data_t {
 struct dhvis_options_t {
     QString def_load_dir;
     int snap_vertical_ticks;
+    int stale_vertical_ticks;
     int num_callstacks_per_page;
+    int num_stale_per_page;
     bool square_graph;
     bool anti_aliasing_enabled;
     bool snap_stale_unit_num;
+    bool stale_sum_enabled;
+    bool stale_stale_unit_num;
 };
 
 bool sort_snapshots(dhvis_snapshot_listing_t *a,
@@ -108,5 +113,8 @@ bool stale_callstacks_sorter(dhvis_callstack_listing_t *a,
                              dhvis_callstack_listing_t *b);
 
 bool stale_pair_sorter(stale_pair_t a, stale_pair_t b);
+
+bool stale_sum_sorter(dhvis_callstack_listing_t *a,
+                      dhvis_callstack_listing_t *b);
 
 #endif

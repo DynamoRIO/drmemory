@@ -43,8 +43,8 @@ sort_snapshots(dhvis_snapshot_listing_t *a,
 
 /* Non-member
  * Helper for std::sort
- * Sort each snapshot's stale_callstacks by stale_bytes
- * for staleness graphing (greatest first).
+ * Sort each snapshot's stale_callstacks by stale_bytes for staleness graphing
+ * (greatest first), with a secondary order of sequential callstack_num.
  */
 bool
 stale_callstacks_sorter(dhvis_callstack_listing_t *a,
@@ -75,4 +75,22 @@ bool
 stale_pair_sorter(stale_pair_t a, stale_pair_t b)
 {
     return a.STALE_BYTES > b.STALE_BYTES;
+}
+
+
+/* Non-member
+ * Helper for std::sort which defines sorting a snapshot's stale_callstacks by
+ * the sum of stale_bytes, with a secondary order of sequential callstack_num.
+ */
+bool
+stale_sum_sorter(dhvis_callstack_listing_t *a,
+                 dhvis_callstack_listing_t *b)
+{
+    /* Already sorted */
+    qreal a_max = a->staleness_sum_info[a->cur_snap_num];
+    qreal b_max = b->staleness_sum_info[b->cur_snap_num];
+
+    if (a_max == b_max)
+        return a->callstack_num < b->callstack_num;
+    return a_max > b_max;
 }

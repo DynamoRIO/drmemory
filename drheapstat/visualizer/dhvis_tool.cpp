@@ -55,6 +55,7 @@
 #include <cmath>
 
 #include "dhvis_snapshot_graph.h"
+#include "dhvis_stale_graph.h"
 #include "dhvis_tool.h"
 
 /* Public
@@ -121,6 +122,15 @@ dhvis_tool_t::delete_data(void)
 
     frame_trees.clear();
 
+    QMap<quint64, dhvis_stale_graph_t *>::iterator stale_itr;
+    stale_itr = stale_graphs.begin();
+    while (stale_itr != stale_graphs.end()) {
+        delete *stale_itr;
+        stale_itr = stale_graphs.erase(stale_itr);
+    }
+
+    stale_graphs.clear();
+
     /* Reset environment */
     callstacks_display_page = 0;
     current_snapshot_num = -1;
@@ -128,6 +138,7 @@ dhvis_tool_t::delete_data(void)
 
     snapshot_graph = NULL;
     frames_tree_widget = NULL;
+    staleness_graph = NULL;
 }
 
 /* Private
@@ -243,8 +254,14 @@ dhvis_tool_t::create_layout(void)
     frames_tree_layout->addLayout(tree_stack);
     frames_tree_layout->addLayout(frames_tree_controls_layout);
 
+    /* Staleness graph */
+    staleness_graph = new dhvis_stale_graph_t(NULL, NULL,
+                                              NULL, -1,
+                                              -1, NULL);
+
     frames_tab_area->addTab(frames_text_edit, tr("List View"));
     frames_tab_area->addTab(frames_tree_tab_widget, tr("Tree View"));
+    frames_tab_area->addTab(staleness_graph, tr("Staleness Graph"));
 
     right_side->addWidget(frames_tab_area, 3, 0);
     right_side->setRowStretch(1, 3);
@@ -738,6 +755,7 @@ dhvis_tool_t::update_settings(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     snapshot_graph->update_settings();
+    staleness_graph->update_settings();
     if (snapshot_graph != NULL && !snapshot_graph->is_null())
         highlight_changed(current_snapshot_num, current_snapshot_index);
 }
@@ -775,6 +793,7 @@ dhvis_tool_t::highlight_changed(quint64 snapshot, quint64 index)
         callstacks_display_page = 0;
         fill_callstacks_table();
         load_frames_tree(frames_tab_area->currentIndex());
+        draw_staleness_graph();
     }
 }
 
@@ -1051,6 +1070,8 @@ void
 dhvis_tool_t::load_frames_tree(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    if (snapshots.isEmpty() || callstacks.isEmpty())
+        return;
     /* Disconnect from buttons */
     if (frames_tree_widget != NULL) {
         disconnect(expand_all_button, SIGNAL(clicked()),
@@ -1317,4 +1338,35 @@ dhvis_tool_t::reset_callstacks_view(void)
     show_occur = false;
     callstacks_display_page = 0;
     fill_callstacks_table();
+}
+
+/* Private
+ * Loads and displays the staleness graph
+ */
+void
+dhvis_tool_t::draw_staleness_graph(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    /* Remove */
+    int old_tab_index = frames_tab_area->currentIndex();
+    frames_tab_area->removeTab(2);
+    if (staleness_graph != NULL &&
+        staleness_graph->is_null())
+        delete staleness_graph;
+    /* Create a staleness graph for the snapshot if there isn't one already. */
+    int index = current_snapshot_num;
+    if (!stale_graphs.contains(index)) {
+        stale_graphs[index] = new dhvis_stale_graph_t(&callstacks,
+                                                      &snapshots,
+                                                      &time_unit,
+                                                      current_snapshot_num,
+                                                      current_snapshot_index,
+                                                      options);
+    }
+    /* Load and display the graph */
+    staleness_graph = stale_graphs[index];
+    frames_tab_area->addTab(staleness_graph, tr("Staleness Graph"));
+    frames_tab_area->setCurrentIndex(old_tab_index);
+
+    staleness_graph->update_settings();
 }

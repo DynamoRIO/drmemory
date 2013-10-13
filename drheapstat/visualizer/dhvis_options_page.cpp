@@ -74,6 +74,14 @@ dhvis_options_page_t::write_settings(void)
                       snap_num_tabs_spin_box->value());
     settings.setValue("Number_of_callstacks_per_page",
                       num_callstacks_per_page_spin_box->value());
+    settings.setValue("Sum_stale_blocks",
+                      stale_sum_check_box->isChecked() == true);
+    settings.setValue("Staleness_vertical_ticks",
+                      stale_num_tabs_spin_box->value());
+    settings.setValue("Number_of_stale_bars_per_page",
+                      num_stale_per_page_spin_box->value());
+    settings.setValue("Staleness_graph_stale_unit_is_num_snaps",
+                      stale_stale_unit_num_check_box->isChecked());
     settings.endGroup();
 
     /* Adjust info */
@@ -103,6 +111,14 @@ dhvis_options_page_t::read_settings(void)
     options->num_callstacks_per_page = settings.value("Number_of_"
                                                       "callstacks_per_page",
                                                       50).toInt();
+    options->stale_sum_enabled = settings.value("Sum_stale_blocks", true).toBool();
+    options->stale_vertical_ticks = settings.value("Staleness_vertical_ticks",
+                                                   10).toInt();
+    options->num_stale_per_page = settings.value("Number_of_stale_bars_per_page",
+                                                 50).toInt();
+    options->stale_stale_unit_num = settings.value("Staleness_graph_"
+                                                   "stale_unit_is_num_snaps",
+                                                    true).toBool();
     settings.endGroup();
 
     /* Adjust GUI to reflect new settings */
@@ -112,6 +128,10 @@ dhvis_options_page_t::read_settings(void)
     snap_stale_unit_num_check_box->setChecked(options->snap_stale_unit_num);
     snap_num_tabs_spin_box->setValue(options->snap_vertical_ticks);
     num_callstacks_per_page_spin_box->setValue(options->num_callstacks_per_page);
+    stale_sum_check_box->setChecked(options->stale_sum_enabled);
+    stale_num_tabs_spin_box->setValue(options->stale_vertical_ticks);
+    num_stale_per_page_spin_box->setValue(options->num_stale_per_page);
+    stale_stale_unit_num_check_box->setChecked(options->stale_stale_unit_num);
 }
 
 /* Private
@@ -155,6 +175,22 @@ dhvis_options_page_t::create_layout(void)
     QLabel *tabs_spin_box_label = new QLabel(tr(" vertical scale ticks"));
     snap_num_tabs_spin_box->setMinimum(1);
 
+    /* Staleness Graph*/
+    QGroupBox *stale_graph_group = new QGroupBox(tr("Staleness Graph"), this);
+    stale_sum_check_box = new QCheckBox(tr("Graph sum of stale blocks"));
+
+    stale_num_tabs_spin_box = new QSpinBox(this);
+    QLabel *tabs_spin_box_label_ = new QLabel(tr(" vertical scale ticks"));
+    stale_num_tabs_spin_box->setMinimum(1);
+    QString stale_stale_unit_label(tr("Use elapsed snapshots as the stale "
+                                     "for/since unit"));
+    stale_stale_unit_num_check_box = new QCheckBox(stale_stale_unit_label);
+
+    num_stale_per_page_spin_box = new QSpinBox(this);
+    QLabel *stale_spin_box_label = new QLabel(tr(" callstacks per page"));
+    num_stale_per_page_spin_box->setMinimum(1);
+    num_stale_per_page_spin_box->setMaximum(500);
+
     /* Layout */
     QVBoxLayout *main_layout = new QVBoxLayout;
 
@@ -174,8 +210,18 @@ dhvis_options_page_t::create_layout(void)
     snap_graph_layout->addWidget(tabs_spin_box_label, 2, 1);
     snap_graph_group->setLayout(snap_graph_layout);
 
+    QGridLayout *stale_graph_layout = new QGridLayout;
+    stale_graph_layout->addWidget(stale_sum_check_box, 1, 0);
+    stale_graph_layout->addWidget(stale_stale_unit_num_check_box, 2, 0);
+    stale_graph_layout->addWidget(stale_num_tabs_spin_box, 3, 0);
+    stale_graph_layout->addWidget(tabs_spin_box_label_, 3, 1);
+    stale_graph_layout->addWidget(num_stale_per_page_spin_box, 4, 0);
+    stale_graph_layout->addWidget(stale_spin_box_label, 4, 1);
+    stale_graph_group->setLayout(stale_graph_layout);
+
     main_layout->addWidget(general_group);
     main_layout->addWidget(snap_graph_group);
+    main_layout->addWidget(stale_graph_group);
     main_layout->addStretch(1);
 
     setLayout(main_layout);
