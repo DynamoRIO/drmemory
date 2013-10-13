@@ -647,6 +647,8 @@ void
 dhvis_snapshot_graph_t::update_settings(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    if (is_null())
+        return;
     highlighted_snapshot();
     current_graph_modified = true;
     num_tabs = options->snap_vertical_ticks;
@@ -673,7 +675,7 @@ dhvis_snapshot_graph_t::update_settings(void)
  */
 bool
 dhvis_snapshot_graph_t::is_null(void) {
-    return snapshots == NULL;
+    return snapshots == NULL || options == NULL;
 }
 
 /* Private Slot
