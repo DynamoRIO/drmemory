@@ -80,7 +80,7 @@ QWidget *
 dhvis_factory_t::create_instance(void)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
-    tool_instances.append(new dhvis_tool_t(options));
+    new_tool_instance(new dhvis_tool_t(options), tool_names().at(0));
     return tool_instances.back();
 }
 
@@ -116,4 +116,28 @@ dhvis_factory_t::update_settings(void)
     foreach (dhvis_tool_t *tool, tool_instances) {
         tool->update_settings();
     }
+}
+
+/* Private Slot
+ * Adds a new tool to the list
+ */
+void
+dhvis_factory_t::new_tool_instance(QWidget *tool, QString tool_name)
+{
+    connect(tool, SIGNAL(new_instance_requested(QWidget *, QString)),
+            this, SLOT(new_tool_instance(QWidget *, QString)));
+    connect(tool, SIGNAL(load_log_dir(dhvis_tool_t *, QString)),
+            this, SLOT(load_log_dir(dhvis_tool_t *, QString)));
+    tool_instances.append((dhvis_tool_t *)tool);
+
+    emit new_instance_requested(tool, tool_name);
+}
+
+/* Private Slot
+ * Loads the data into the tool
+ */
+void
+dhvis_factory_t::load_log_dir(dhvis_tool_t *tool, QString log_dir)
+{
+    tool->set_log_dir_loc(log_dir);
 }

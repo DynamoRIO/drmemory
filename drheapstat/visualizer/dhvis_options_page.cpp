@@ -82,6 +82,8 @@ dhvis_options_page_t::write_settings(void)
                       num_stale_per_page_spin_box->value());
     settings.setValue("Staleness_graph_stale_unit_is_num_snaps",
                       stale_stale_unit_num_check_box->isChecked());
+    settings.setValue("Default_Dr._Heapstat_log_dir",
+                      exec_log_dir_line_edit->text());
     settings.endGroup();
 
     /* Adjust info */
@@ -119,6 +121,8 @@ dhvis_options_page_t::read_settings(void)
     options->stale_stale_unit_num = settings.value("Staleness_graph_"
                                                    "stale_unit_is_num_snaps",
                                                     true).toBool();
+    options->dhrun_log_dir = settings.value("Default_Dr._Heapstat_log_dir",
+                                            QString("")).toString();
     settings.endGroup();
 
     /* Adjust GUI to reflect new settings */
@@ -132,6 +136,7 @@ dhvis_options_page_t::read_settings(void)
     stale_num_tabs_spin_box->setValue(options->stale_vertical_ticks);
     num_stale_per_page_spin_box->setValue(options->num_stale_per_page);
     stale_stale_unit_num_check_box->setChecked(options->stale_stale_unit_num);
+    exec_log_dir_line_edit->setText(options->dhrun_log_dir);
 }
 
 /* Private
@@ -154,9 +159,9 @@ dhvis_options_page_t::create_layout(void)
     QGroupBox *general_group = new QGroupBox(tr("General"), this);
     QLabel *load_dir_label = new QLabel(tr("Default loading directory:"));
     def_load_dir_line_edit = new QLineEdit(this);
-    QPushButton *find_def_load_dir_button = new QPushButton(tr("Select"));
+    find_def_load_dir_button = new QPushButton(tr("Select"));
     connect(find_def_load_dir_button, SIGNAL(clicked()),
-            this, SLOT(choose_def_load_dir()));
+            this, SLOT(choose_dir()));
 
     anti_aliasing_check_box = new QCheckBox(tr("Anti-aliasing"));
 
@@ -191,6 +196,14 @@ dhvis_options_page_t::create_layout(void)
     num_stale_per_page_spin_box->setMinimum(1);
     num_stale_per_page_spin_box->setMaximum(500);
 
+    /* Run Dr. Heapstat */
+    QGroupBox *dhrun_group = new QGroupBox(tr("Run Dr. Heapsat"), this);
+    QLabel *exec_log_dir_label = new QLabel(tr("Dr. Heapstat log directory:"));
+    exec_log_dir_line_edit = new QLineEdit(this);
+    exec_log_dir_button = new QPushButton(tr("Select"));
+    connect(exec_log_dir_button, SIGNAL(clicked()),
+            this, SLOT(choose_dir()));
+
     /* Layout */
     QVBoxLayout *main_layout = new QVBoxLayout;
 
@@ -219,28 +232,38 @@ dhvis_options_page_t::create_layout(void)
     stale_graph_layout->addWidget(stale_spin_box_label, 4, 1);
     stale_graph_group->setLayout(stale_graph_layout);
 
+    QGridLayout *dhrun_layout = new QGridLayout;
+    dhrun_layout->addWidget(exec_log_dir_label, 0, 0);
+    dhrun_layout->addWidget(exec_log_dir_line_edit, 1, 0);
+    dhrun_layout->addWidget(exec_log_dir_button, 1, 1);
+    dhrun_group->setLayout(dhrun_layout);
+
     main_layout->addWidget(general_group);
     main_layout->addWidget(snap_graph_group);
     main_layout->addWidget(stale_graph_group);
+    main_layout->addWidget(dhrun_group);
     main_layout->addStretch(1);
 
     setLayout(main_layout);
 }
 
 /* Private Slot
- * User chooses def_load_dir
+ * Does basic checking on a user selected directory
  */
 void
-dhvis_options_page_t::choose_def_load_dir(void)
+dhvis_options_page_t::choose_dir(void)
 {
-   QString test_dir;
-   test_dir = QFileDialog::getExistingDirectory(this,
-                                                tr("Open Directory"),
-                                                options->def_load_dir,
-                                                QFileDialog::ShowDirsOnly);
-   if (test_dir.isEmpty()) {
-       return;
-   }
-   /* Set text box text */
-   def_load_dir_line_edit->setText(test_dir);
+    QString test_dir;
+    test_dir = QFileDialog::getExistingDirectory(this,
+                                                 tr("Open Directory"),
+                                                 options->def_load_dir,
+                                                 QFileDialog::ShowDirsOnly);
+    if (test_dir.isEmpty()) {
+        return;
+    }
+    /* Set text box text */
+    if (sender() == find_def_load_dir_button)
+        def_load_dir_line_edit->setText(test_dir);
+    else if (sender() == exec_log_dir_button)
+        exec_log_dir_line_edit->setText(test_dir);
 }

@@ -57,6 +57,11 @@ public:
 public slots:
     void update_settings(void);
 
+private slots:
+    void new_tool_instance(QWidget *tool, QString tool_name);
+
+    void load_log_dir(dhvis_tool_t *tool, QString log_dir);
+
 private:
     /* GUI */
     QVector<dhvis_tool_t *> tool_instances;

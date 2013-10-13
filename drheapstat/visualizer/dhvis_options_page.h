@@ -33,6 +33,7 @@
 class QSpinBox;
 class QLineEdit;
 class QCheckBox;
+class QPushButton;
 
 class dhvis_options_page_t : public drgui_options_interface_t
 {
@@ -50,7 +51,7 @@ signals:
     void settings_changed(void);
 
 private slots:
-    void choose_def_load_dir(void);
+    void choose_dir(void);
 
 private:
     void create_layout(void);
@@ -63,6 +64,7 @@ private:
 
     /* GUI */
     QLineEdit *def_load_dir_line_edit;
+    QLineEdit *exec_log_dir_line_edit;
     QCheckBox *square_graph_check_box;
     QCheckBox *anti_aliasing_check_box;
     QCheckBox *snap_stale_unit_num_check_box;
@@ -72,6 +74,9 @@ private:
     QSpinBox *stale_num_tabs_spin_box;
     QSpinBox *num_callstacks_per_page_spin_box;
     QSpinBox *num_stale_per_page_spin_box;
+
+    QPushButton *find_def_load_dir_button;
+    QPushButton *exec_log_dir_button;
 };
 
 #endif

@@ -71,6 +71,8 @@ public:
 
     void update_settings(void);
 
+    void set_log_dir_loc(const QString &log_dir);
+
 private slots:
     void choose_dir(void);
 
@@ -93,8 +95,16 @@ private slots:
 
     void reset_callstacks_view(void);
 
+    void exec_dr_heap(void);
+
+    void choose_file(void);
+
 signals:
     void code_editor_requested(QFile &file, int line_num);
+
+    void new_instance_requested(QWidget *tool, QString tool_name);
+
+    void load_log_dir(dhvis_tool_t *tool, QString log_dir);
 
 private:
     void delete_data(void);
@@ -144,6 +154,28 @@ private:
     dhvis_snapshot_graph_t *snapshot_graph;
 
     QTabWidget *dhrun_tab_widget;
+    QWidget *dhrun_widget;
+    QGridLayout *dhrun_layout;
+    QLabel *dhrun_loc_label;
+    QLineEdit *dhrun_loc_line_edit;
+    QPushButton *dhrun_loc_button;
+    bool dhrun_loc_text_changed;
+    QString dh_loc;
+
+    QLabel *dhrun_target_label;
+    QLineEdit *dhrun_target_line_edit;
+    QPushButton *dhrun_target_button;
+    bool dhrun_target_text_changed;
+    QString dh_target;
+
+    QLabel *dh_args_label;
+    QLineEdit *dh_args_line_edit;
+    QLabel *target_args_label;
+    QLineEdit *target_args_line_edit;
+    QPushButton *dhrun_exec_push_button;
+
+    QTextBrowser *dhrun_stdout_output_browser;
+    QTextBrowser *dhrun_stderr_output_browser;
 
     QGridLayout *right_side;
     QLabel *right_title;

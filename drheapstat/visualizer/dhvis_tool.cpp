@@ -65,6 +65,8 @@ dhvis_tool_t::dhvis_tool_t(dhvis_options_t *options_)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     log_dir_text_changed = false;
+    dhrun_loc_text_changed = false;
+    dhrun_target_text_changed = false;
     log_dir_loc =  "";
     options = options_;
     current_snapshot_num = -1;
@@ -177,9 +179,59 @@ dhvis_tool_t::create_layout(void)
                                                 snapshot_graph->height());
     left_side->addWidget(graph_title, 0, 0);
     left_side->addWidget(snapshot_graph, 1, 0);
-    left_side->addItem(space_holder, 2, 0);
-    left_side->setRowStretch(1, 5);
-    left_side->setRowStretch(2, 5);
+    left_side->setRowStretch(1, 4);
+
+    /* Run Dr. Heapstat */
+    dhrun_tab_widget = new QTabWidget(this);
+    dhrun_widget = new QWidget(this);
+    dhrun_layout = new QGridLayout;
+    dhrun_loc_label = new QLabel(tr("Dr. Heapstat location"), this);
+    dhrun_loc_line_edit = new QLineEdit(this);
+    connect(dhrun_loc_line_edit, SIGNAL(textEdited(const QString &)),
+            this, SLOT(dir_text_changed_slot()));
+    dhrun_loc_button = new QPushButton(tr("Find"), this);
+    connect(dhrun_loc_button, SIGNAL(clicked()),
+            this, SLOT(choose_file()));
+
+    dhrun_target_label = new QLabel(tr("Target location"), this);
+    dhrun_target_line_edit = new QLineEdit(this);
+    connect(dhrun_target_line_edit, SIGNAL(textEdited(const QString &)),
+            this, SLOT(dir_text_changed_slot()));
+    dhrun_target_button = new QPushButton(tr("Find"), this);
+    connect(dhrun_target_button, SIGNAL(clicked()),
+            this, SLOT(choose_file()));
+
+    dh_args_label = new QLabel(tr("Dr. Heapstat options"), this);
+    dh_args_line_edit = new QLineEdit(this);
+    target_args_label = new QLabel(tr("Target options"));
+    target_args_line_edit = new QLineEdit(this);
+    dhrun_exec_push_button = new QPushButton(tr("Run"), this);
+    connect(dhrun_exec_push_button, SIGNAL(clicked()),
+            this, SLOT(exec_dr_heap()));
+
+    int row = 0;
+    dhrun_layout->addWidget(dhrun_loc_label, row++, 0);
+    dhrun_layout->addWidget(dhrun_loc_line_edit, row, 0, 1, 2);
+    dhrun_layout->addWidget(dhrun_loc_button, row++, 2);
+    dhrun_layout->addWidget(dhrun_target_label, row++, 0);
+    dhrun_layout->addWidget(dhrun_target_line_edit, row, 0, 1, 2);
+    dhrun_layout->addWidget(dhrun_target_button, row++, 2);
+    dhrun_layout->addWidget(dh_args_label, row, 0);
+    dhrun_layout->addWidget(target_args_label, row++, 1);
+    dhrun_layout->addWidget(dh_args_line_edit, row, 0);
+    dhrun_layout->addWidget(target_args_line_edit, row, 1);
+    dhrun_layout->addWidget(dhrun_exec_push_button, row++, 2);
+    dhrun_widget->setLayout(dhrun_layout);
+
+    /* Dr. Heapstat Output */
+    dhrun_stdout_output_browser = new QTextBrowser(this);
+    dhrun_stderr_output_browser = new QTextBrowser(this);
+
+    dhrun_tab_widget->addTab(dhrun_widget, tr("Run Dr. Heapstat"));
+    dhrun_tab_widget->addTab(dhrun_stdout_output_browser, tr("Output"));
+    dhrun_tab_widget->addTab(dhrun_stderr_output_browser, tr("Errors"));
+
+    left_side->addWidget(dhrun_tab_widget, 4, 0, 1, 2);
 
     /* Right side */
     right_side = new QGridLayout;
@@ -292,7 +344,7 @@ dhvis_tool_t::choose_dir(void)
     } else {
         return;
     }
-    if (*dir_text_changed) /* enter dir_loc */{
+    if (*dir_text_changed) /* enter dir_loc */ {
         QString test_dir = line_edit->text();
         if (dr_check_dir(QDir(test_dir))) {
             *dir_loc = test_dir;
@@ -394,8 +446,6 @@ dhvis_tool_t::dr_check_file(QFile &file)
 void
 dhvis_tool_t::read_log_data(void)
 {
-    /* Set cursor to hourglass */
-    qApp->setOverrideCursor(Qt::WaitCursor);
     /* Check log_dir */
     QDir dr_log_dir(log_dir_loc);
     if (!dr_check_dir(dr_log_dir))
@@ -408,6 +458,10 @@ dhvis_tool_t::read_log_data(void)
         !dr_check_file(snapshot_log) ||
         !dr_check_file(staleness_log))
         return;
+
+    /* Set cursor to hourglass */
+    qApp->setOverrideCursor(Qt::WaitCursor);
+
     /* Delete current memory */
     delete_data();
 
@@ -900,6 +954,7 @@ dhvis_tool_t::fill_callstacks_table(void)
     next_page_button->setEnabled(display_num + callstacks_table->rowCount() <  total);
     prev_page_button->setEnabled(callstacks_display_page != 0);
     reset_visible_button->setEnabled(show_occur);
+
     /* Select first row */
     callstacks_table->setCurrentCell(0, 0);
 }
@@ -1369,4 +1424,153 @@ dhvis_tool_t::draw_staleness_graph(void)
     frames_tab_area->setCurrentIndex(old_tab_index);
 
     staleness_graph->update_settings();
+}
+
+/* Private Slot
+ * Launches the target under Dr. Heapstat
+ */
+void
+dhvis_tool_t::exec_dr_heap(void)
+{
+    QProcess *drh_process = new QProcess(this);
+    QStringList args;
+    /* Prepare args */
+    if (!dh_args_line_edit->text().isEmpty())
+        args << dh_args_line_edit->text();
+    args << QString("-logdir ").append(options->dhrun_log_dir);
+    args << "--";
+    if (!dh_target.isEmpty())
+        args << dh_target;
+    if (!target_args_line_edit->text().isEmpty())
+        args << target_args_line_edit->text();
+
+    /* Set cursor to hourglass */
+    qApp->setOverrideCursor(Qt::WaitCursor);
+
+    /* Start and wait to finish */
+    drh_process->start(dh_loc, args);
+    if (!drh_process->waitForStarted()) {
+        qApp->restoreOverrideCursor();
+        return;
+    } if (!drh_process->waitForFinished()) {
+        qApp->restoreOverrideCursor();
+        return;
+    }
+
+    /* Get and display output from streams */
+    QByteArray stdout_result = drh_process->readAllStandardOutput();
+    QByteArray stderr_result = drh_process->readAllStandardError();
+    dhrun_stdout_output_browser->clear();
+    dhrun_stdout_output_browser->insertPlainText(stdout_result);
+    dhrun_stderr_output_browser->clear();
+    dhrun_stderr_output_browser->insertPlainText(stderr_result);
+
+    qApp->restoreOverrideCursor();
+
+    /* Ask to load log data in this tab or in a new one */
+    QMessageBox msg_box;
+    msg_box.setText(tr("Dr. Heapstat was executed successfully."));
+    msg_box.setInformativeText(tr("Where do you want to load the log data?"));
+    QAbstractButton *new_tab = msg_box.addButton(tr("New tab"), QMessageBox::YesRole);
+    QAbstractButton *this_tab = msg_box.addButton(tr("This tab"), QMessageBox::NoRole);
+    msg_box.setStandardButtons(QMessageBox::Cancel);
+
+    /* Extract and load a log directory for each process launched by the app */
+    QString log_out(stderr_result);
+    QStringList log_dirs;
+    int last_index_of_log = 0;
+    QRegExp reg_exp("log dir is ([^~]+)");
+    while ((last_index_of_log = reg_exp.indexIn(log_out, last_index_of_log)) != -1) {
+        log_dirs.push_back(reg_exp.cap(1));
+        last_index_of_log += reg_exp.matchedLength();
+    }
+    if (log_dirs.count() == 0) {
+        QMessageBox::warning(this, "Unable to find log directory",
+            "The log directory was not successfully extracted from "
+            "Dr. Heapstat's output. Please load the data manually",
+            QMessageBox::Ok);
+        return;
+    }
+    /* Ask to load each of the found log directories */
+    int cap_count = 0;
+    foreach (QString log_dir, log_dirs) {
+        QString trimmed_log = log_dir.trimmed();
+        msg_box.exec();
+        if (msg_box.clickedButton() == new_tab) {
+            dhvis_tool_t *new_tool = new dhvis_tool_t(options);
+            emit new_instance_requested(new_tool, "Dr. Heapstat Visualizer");
+            emit load_log_dir(new_tool, trimmed_log);
+        } else if (msg_box.clickedButton() == this_tab) {
+            set_log_dir_loc(trimmed_log);
+        }
+        cap_count++;
+    }
+}
+
+/* Private Slot
+ * Chooses files for QLineEdit QPushButton pairs
+ */
+void
+dhvis_tool_t::choose_file(void)
+{
+    qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
+    bool *file_text_changed = NULL;
+    QString *file_loc = NULL;
+    QString file_types;
+    QLineEdit *line_edit = NULL;
+    /* Determine which button sent signal */
+    if (sender() == dhrun_loc_button) {
+        file_text_changed = &dhrun_loc_text_changed;
+        file_loc = &dh_loc;
+        line_edit = dhrun_loc_line_edit;
+        file_types = tr("Executables (*.exe *.pl);;All Files (*)");
+    } else if (sender() == dhrun_target_button) {
+        file_text_changed = &dhrun_target_text_changed;
+        file_loc = &dh_target;
+        line_edit = dhrun_target_line_edit;
+        file_types = tr("Executables (*.exe *.pl);;All Files (*)");
+    } else {
+        return;
+    }
+
+    if (*file_text_changed) /* Enterered file */ {
+        QFile test_file(line_edit->text());
+        if (dr_check_file(test_file)) {
+            *file_loc = line_edit->text();
+        } else {
+            /* Reset file_text_changed */
+            *file_text_changed = false;
+            return;
+        }
+    } else /* Navigate to file_loc */ {
+        QFileDialog file_dialog;
+        QFile test_file;
+        do {
+            test_file.setFileName(
+                file_dialog.getOpenFileName(this,
+                                            tr("Open File"),
+                                            options->def_load_dir,
+                                            file_types,
+                                            NULL,
+                                            QFileDialog::DontUseNativeDialog));
+            if (test_file.fileName().isEmpty())
+                return;
+        } while (!dr_check_file(test_file));
+        *file_loc = test_file.fileName();
+        line_edit->setText(*file_loc);
+    }
+
+    /* Reset file_text_changed */
+    *file_text_changed = false;
+}
+
+/* Public
+ * Sets log_dir_loc and loads the log data
+ */
+void
+dhvis_tool_t::set_log_dir_loc(const QString &log_dir)
+{
+    log_dir_loc = log_dir;
+    log_dir_line_edit->setText(log_dir_loc);
+    read_log_data();
 }

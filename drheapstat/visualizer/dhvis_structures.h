@@ -95,6 +95,7 @@ struct dhvis_frame_data_t {
 
 struct dhvis_options_t {
     QString def_load_dir;
+    QString dhrun_log_dir;
     int snap_vertical_ticks;
     int stale_vertical_ticks;
     int num_callstacks_per_page;
