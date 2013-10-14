@@ -35,8 +35,8 @@
 #include <QCheckBox>
 #include <QPushButton>
 #include <QLabel>
-#include <QHBoxLayout>
 #include <cmath>
+#include <QHBoxLayout>
 
 #include "dhvis_color_scheme.h"
 #include "dhvis_structures.h"
@@ -180,10 +180,16 @@ dhvis_snapshot_graph_t::set_heap_data(QVector<dhvis_snapshot_listing_t *> *vec)
         /* Get avg time between snapshots */
         avg_time_between_snapshots = 0;
         for (quint64 i = 0; i < snapshots->count() - 1; i++) {
-            avg_time_between_snapshots += snapshots->at(i + 1)->num_time -
-                                          snapshots->at(i)->num_time;
+            avg_time_between_snapshots += abs(snapshots->at(i + 1)->num_time -
+                                              snapshots->at(i)->num_time);
         }
         avg_time_between_snapshots /= snapshots->count();
+        /* Avoid integer division truncating to 0.
+         * Note, this should not happen normally, and is only a corner-case
+         * for very small apps.
+         */
+        if (avg_time_between_snapshots < snapshots->count())
+            avg_time_between_snapshots = 1;
     }
     max_height();
     max_width();
@@ -431,13 +437,16 @@ dhvis_snapshot_graph_t::data_point_y(const quint64 &y)
  */
 void
 dhvis_snapshot_graph_t::draw_helper(QPainter *painter, qreal &total_percent,
-                                    QPoint *prev_point, quint64 *data,
-                                    bool first)
+                                    QVector<QPoint> &prev_points, int loc,
+                                    quint64 *data, bool first)
 {
+    static const int COINCIDENT_POINT_ADJUSTMENT = 3;
+    static const int POINT_MARKER_DIAMETER = 3;
+    QPoint *prev_point = &(prev_points[loc]);
     qreal dp_x = data_point_x(total_percent - view_start_mark);
     qreal dp_y = data_point_y(*data);
 
-    /* Place first point at correct loc */
+    /* Place first point at correct loc on y-axis */
     if (first) {
         if (!options->square_graph) {
             qreal slope = (dp_y - prev_point->y()) /
@@ -452,17 +461,26 @@ dhvis_snapshot_graph_t::draw_helper(QPainter *painter, qreal &total_percent,
     /* Square graph */
     if (options->square_graph == true) {
         QPoint mid_point(prev_point->x(), dp_y);
+        fix_point_coincidence(prev_points, &mid_point, COINCIDENT_POINT_ADJUSTMENT,
+                              false);
         painter->drawLine(*prev_point, mid_point);
-        painter->drawRect(prev_point->x() - 1.5, dp_y - 1.5, 3, 3);
+        painter->drawRect(prev_point->x() - (POINT_MARKER_DIAMETER / 2.0),
+                          mid_point.y() - (POINT_MARKER_DIAMETER / 2.0),
+                          POINT_MARKER_DIAMETER, POINT_MARKER_DIAMETER);
         prev_point->setX(mid_point.x());
         prev_point->setY(mid_point.y());
     }
 
     QPoint this_point(dp_x, dp_y);
+    fix_point_coincidence(prev_points, &this_point, COINCIDENT_POINT_ADJUSTMENT,
+                          true);
+
     painter->drawLine(*prev_point, this_point);
-    painter->drawRect(dp_x - 1.5, dp_y - 1.5, 3, 3);
-    prev_point->setX(dp_x);
-    prev_point->setY(dp_y);
+    painter->drawRect(this_point.x() - (POINT_MARKER_DIAMETER / 2.0),
+                      this_point.y() - (POINT_MARKER_DIAMETER / 2.0),
+                      POINT_MARKER_DIAMETER, POINT_MARKER_DIAMETER);
+    prev_point->setX(this_point.x());
+    prev_point->setY(this_point.y());
 }
 
 /* Private
@@ -479,9 +497,8 @@ dhvis_snapshot_graph_t::draw_helper(QPainter *painter, qreal &total_percent,
         (_pen).setColor(_color); \
         (_painter)->setPen(_pen); \
         draw_helper(_painter, _total_percent, \
-                    &(_prev_points).data()[_loc], \
-                    _num, \
-                    _first); \
+                    _prev_points, _loc, \
+                    _num, _first); \
     } while (0)
 
 void
@@ -532,6 +549,11 @@ dhvis_snapshot_graph_t::draw_heap_data(QPainter *painter)
             last = true;
         }
 
+        if (staleness_line == true) {
+            DHVIS_DRAW_POINTS(data_point_pen, STALENESS_LINE_COLOR, painter,
+                              total_percent, prev_points, 3,
+                              &snapshot->tot_bytes_stale, first);
+        }
         if (mem_alloc_line == true) {
             DHVIS_DRAW_POINTS(data_point_pen, MEM_ALLOC_LINE_COLOR, painter,
                               total_percent, prev_points, 0,
@@ -546,11 +568,6 @@ dhvis_snapshot_graph_t::draw_heap_data(QPainter *painter)
             DHVIS_DRAW_POINTS(data_point_pen, HEADERS_LINE_COLOR, painter,
                               total_percent, prev_points, 2,
                               &snapshot->tot_bytes_occupied, first);
-        }
-        if (staleness_line == true) {
-            DHVIS_DRAW_POINTS(data_point_pen, STALENESS_LINE_COLOR, painter,
-                              total_percent, prev_points, 3,
-                              &snapshot->tot_bytes_stale, first);
         }
         first = false;
 
@@ -770,6 +787,10 @@ dhvis_snapshot_graph_t::set_stale_num(const qreal &new_num)
                 }
             }
         }
+        /* The valueChanged(int) signal is only emitted if the value is different
+         * from the last one, so it is safe to call setValue(int) here.
+         */
+        stale_num_spin_box->setValue(new_num);
         /* Modify the suffix */
         stale_spin_box_label->setText(create_stale_suffix(stale_num));
         current_graph_modified = true;
@@ -788,4 +809,39 @@ dhvis_snapshot_graph_t::create_stale_suffix(const qreal &num) {
         return QString(tr(" ticks (%1 snapshots)")
                        .arg(num / avg_time_between_snapshots, 0, 'f', 1));
     }
+}
+
+/* Private
+ * Checks for a pair of coincident points and adjusts the given point
+ * by the given offset if such a pair is found.
+ */
+bool
+dhvis_snapshot_graph_t::fix_point_coincidence(QVector<QPoint> &points, QPoint *next,
+                                              int offset, bool exact)
+{
+    /* Check for a pair of coincident points and if one is found adjust the new point
+     * to avoid overlapping lines.
+     */
+    for (int i = 0; i < points.size() && exact; i++) {
+        if (points[i].x() + offset > next->x() &&
+            points[i].x() - offset < next->x() &&
+            points[i].y() + offset > next->y() &&
+            points[i].y() - offset < next->y()) {
+            next->setY(next->y() + offset);
+            return true;
+        }
+    }
+
+    /* For a square graph we do not store the previous mid_point, so we
+     * just check the stored y-values against the y-value of the mid_point.
+     */
+    if (options->square_graph && !exact) {
+        for (int i = 0; i < points.size(); i++) {
+            if (points[i].y() == next->y()) {
+                next->setY(next->y() + offset);
+                return true;
+            }
+        }
+    }
+    return false;
 }

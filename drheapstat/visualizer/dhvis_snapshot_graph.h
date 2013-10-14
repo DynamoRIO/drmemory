@@ -79,8 +79,8 @@ private:
     void set_heap_data(QVector<dhvis_snapshot_listing_t *> *vec);
 
     void draw_helper(QPainter *painter, qreal &total_percent,
-                     QPoint *prev_point, quint64 *data,
-                     bool first_point);
+                     QVector<QPoint> &prev_points, int loc,
+                     quint64 *data, bool stored);
 
     void draw_heap_data(QPainter *painter);
 
@@ -100,6 +100,9 @@ private:
 
     QString create_stale_suffix(const qreal &num);
 
+    bool fix_point_coincidence(QVector<QPoint> &points, QPoint *next, int offset,
+                               bool exact);
+
     /* GUI */
     QGridLayout *control_layout;
     QPushButton *reset_graph_zoom_button;
@@ -115,7 +118,7 @@ private:
 
     /* Data */
     QVector<dhvis_snapshot_listing_t *> *snapshots;
-    int avg_time_between_snapshots;
+    quint64 avg_time_between_snapshots;
 };
 
 #endif
