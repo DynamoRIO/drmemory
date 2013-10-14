@@ -141,6 +141,8 @@ private:
 
     void draw_staleness_graph(void);
 
+    void insert_total_row(void);
+
     /* GUI */
     QGridLayout *main_layout;
 
@@ -228,6 +230,10 @@ private:
     int current_snapshot_index;
     int callstacks_display_page;
     bool show_occur;
+    /* For a given snapshot, file, or frame */
+    quint64 total_requested_usage;
+    quint64 total_pad_usage;
+    quint64 total_header_usage;
 };
 
 #endif

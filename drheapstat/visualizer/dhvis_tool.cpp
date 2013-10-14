@@ -268,7 +268,7 @@ dhvis_tool_t::create_layout(void)
 
     right_side->addWidget(right_title, 0, 0);
     right_side->addWidget(callstacks_table, 1, 0);
-    right_side->addLayout(callstacks_page_buttons,2,0);
+    right_side->addLayout(callstacks_page_buttons, 2, 0);
 
     /* Frames tab area */
     frames_tab_area = new QTabWidget(this);
@@ -888,6 +888,9 @@ dhvis_tool_t::fill_callstacks_table(void)
     else
         vec = &snapshots[current_snapshot_index]->assoc_callstacks;
 
+    total_requested_usage = 0;
+    total_pad_usage = 0;
+    total_header_usage = 0;
     const int MAX = options->num_callstacks_per_page;
     foreach (dhvis_callstack_listing_t *this_callstack, *vec) {
         row_count++;
@@ -919,19 +922,27 @@ dhvis_tool_t::fill_callstacks_table(void)
         /* Memory data */
         QTableWidgetItem *asked = new QTableWidgetItem;
         asked->setData(Qt::DisplayRole,
-                      (double)(this_callstack->bytes_asked_for));
+                       this_callstack->bytes_asked_for);
         callstacks_table->setItem(row_count % max_rows, 2, asked);
 
         QTableWidgetItem *padding = new QTableWidgetItem;
         padding->setData(Qt::DisplayRole,
-                        (double)(this_callstack->extra_usable));
+                         this_callstack->extra_usable);
         callstacks_table->setItem(row_count % max_rows, 3, padding);
 
         QTableWidgetItem *headers = new QTableWidgetItem;
         headers->setData(Qt::DisplayRole,
-                        (double)(this_callstack->extra_occupied));
+                         this_callstack->extra_occupied);
         callstacks_table->setItem(row_count % max_rows, 4, headers);
+
+        if (show_occur) {
+            total_requested_usage += this_callstack->bytes_asked_for;
+            total_pad_usage += this_callstack->extra_usable;
+            total_header_usage += this_callstack->extra_occupied;
+        }
     }
+    /* Insert a row at the top with the total usage information */
+    insert_total_row();
     /* Re-sort added data (descending bytes alloc'd)*/
     callstacks_table->setSortingEnabled(true);
     callstacks_table->sortItems(2, Qt::DescendingOrder);
@@ -954,9 +965,8 @@ dhvis_tool_t::fill_callstacks_table(void)
     next_page_button->setEnabled(display_num + callstacks_table->rowCount() <  total);
     prev_page_button->setEnabled(callstacks_display_page != 0);
     reset_visible_button->setEnabled(show_occur);
-
-    /* Select first row */
-    callstacks_table->setCurrentCell(0, 0);
+    /* Select first frame (skip the total) */
+    callstacks_table->setCurrentCell(1, 0);
 }
 
 /* Private Slot
@@ -1010,6 +1020,8 @@ dhvis_tool_t::load_frames_text_edit(int current_row)
     int callstack_index = callstacks_table->item(current_row,0)
                                           ->data(Qt::DisplayRole)
                                           .toInt() - 1;
+    if (callstack_index == -1)
+        return;
     QList<dhvis_frame_data_t *> frames = callstacks.at(callstack_index)->frame_data;
     frames_text_edit->insertPlainText(QString(tr("Callstack #")));
     frames_text_edit->insertPlainText(QString::number(callstack_index + 1));
@@ -1330,6 +1342,9 @@ dhvis_tool_t::frames_tree_double_clicked(QTreeWidgetItem *item,
         /* Display a file's associated callstacks */
         if (item->childCount() > 0) {
             quint64 false_count = 0;
+            total_requested_usage = 0;
+            total_pad_usage = 0;
+            total_header_usage = 0;
             visible_assoc_callstacks.clear();
             foreach (QTreeWidgetItem *child, item->takeChildren()) {
                 /* Unfortuantely, the only way to access the children of
@@ -1347,8 +1362,12 @@ dhvis_tool_t::frames_tree_double_clicked(QTreeWidgetItem *item,
                 }
                 foreach (dhvis_callstack_listing_t *c,
                          frames[addr_int]->assoc_callstacks[current_snapshot_num]) {
-                    if (!visible_assoc_callstacks.contains(c))
+                    if (!visible_assoc_callstacks.contains(c)) {
                         visible_assoc_callstacks.append(c);
+                        total_requested_usage += c->bytes_asked_for;
+                        total_pad_usage += c->extra_usable;
+                        total_header_usage += c->extra_occupied;
+                    }
                 }
             }
             if (false_count == item->childCount())
@@ -1573,4 +1592,39 @@ dhvis_tool_t::set_log_dir_loc(const QString &log_dir)
     log_dir_loc = log_dir;
     log_dir_line_edit->setText(log_dir_loc);
     read_log_data();
+}
+
+/* Private
+ * Inserts a row at the top of the callstacks table which displays total memory usage
+ */
+void
+dhvis_tool_t::insert_total_row(void)
+{
+    if (!show_occur) {
+        total_requested_usage = snapshots[current_snapshot_index]->tot_bytes_asked_for;
+        total_pad_usage = snapshots[current_snapshot_index]->tot_bytes_usable;
+        total_header_usage = snapshots[current_snapshot_index]->tot_bytes_occupied;
+    }
+    callstacks_table->insertRow(0);
+    QTableWidgetItem *num = new QTableWidgetItem;
+    num->setData(Qt::DisplayRole, "--");
+    callstacks_table->setItem(0, 0, num);
+    QTableWidgetItem *label = new QTableWidgetItem;
+    label->setData(Qt::DisplayRole,
+                   "Total Memory Usage");
+    callstacks_table->setItem(0, 1, label);
+    QTableWidgetItem *asked = new QTableWidgetItem;
+    asked->setData(Qt::DisplayRole,
+                   total_requested_usage);
+    callstacks_table->setItem(0, 2, asked);
+
+    QTableWidgetItem *padding = new QTableWidgetItem;
+    padding->setData(Qt::DisplayRole,
+                     total_pad_usage);
+    callstacks_table->setItem(0, 3, padding);
+
+    QTableWidgetItem *headers = new QTableWidgetItem;
+    headers->setData(Qt::DisplayRole,
+                     total_header_usage);
+    callstacks_table->setItem(0, 4, headers);
 }
