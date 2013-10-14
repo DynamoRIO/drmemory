@@ -106,6 +106,7 @@ protected:
     dhvis_options_t *options;
     int num_tabs;
 
+    static const int AXIS_SUFFIX_PADDING = 12;
     static const int EXTRA_AXIS_PADDING = 5;
 };
 

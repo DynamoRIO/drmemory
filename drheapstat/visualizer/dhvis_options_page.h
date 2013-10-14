@@ -70,6 +70,7 @@ private:
     QCheckBox *snap_stale_unit_num_check_box;
     QCheckBox *stale_sum_check_box;
     QCheckBox *stale_stale_unit_num_check_box;
+    QCheckBox *format_bytes_check_box;
     QSpinBox *snap_num_tabs_spin_box;
     QSpinBox *stale_num_tabs_spin_box;
     QSpinBox *num_callstacks_per_page_spin_box;

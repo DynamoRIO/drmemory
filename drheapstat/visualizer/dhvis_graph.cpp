@@ -167,8 +167,9 @@ dhvis_graph_t::draw_y_axis(QPainter *painter)
 
     /* Draw scale */
     qreal y_axis_mark = 0;
-    qreal cur_value = 0;
+    quint64 cur_value = 0;
     qreal max_val = height_max;
+    QString display_num = "";
     for (int count = 0; count <= num_tabs; count++) {
         /* Ensure max is correct */
         if (count == num_tabs) {
@@ -179,9 +180,12 @@ dhvis_graph_t::draw_y_axis(QPainter *painter)
                           -(y_axis_mark + text_height / 2),
                           text_width,
                           text_height);
+        display_num = QString::number(cur_value);
+        if (options->format_bytes)
+            display_num = format_bytes(cur_value);
         DHVIS_DRAW_TEXT(painter,
                         painter->drawText(text_space,
-                                          QString::number(round(cur_value)),
+                                          display_num,
                                           QTextOption(Qt::AlignRight)));
         /* Draw a cross-graph line and save painter since a different
          * color is used.

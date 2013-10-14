@@ -105,6 +105,7 @@ struct dhvis_options_t {
     bool snap_stale_unit_num;
     bool stale_sum_enabled;
     bool stale_stale_unit_num;
+    bool format_bytes;
 };
 
 bool sort_snapshots(dhvis_snapshot_listing_t *a,
@@ -117,5 +118,7 @@ bool stale_pair_sorter(stale_pair_t a, stale_pair_t b);
 
 bool stale_sum_sorter(dhvis_callstack_listing_t *a,
                       dhvis_callstack_listing_t *b);
+
+QString format_bytes(const quint64 &data);
 
 #endif

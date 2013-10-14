@@ -94,3 +94,35 @@ stale_sum_sorter(dhvis_callstack_listing_t *a,
         return a->callstack_num < b->callstack_num;
     return a_max > b_max;
 }
+
+/* Non-member
+ * Takes in a number of bytes and formats it into B, KB, MB or GB.
+ * XXX i#1319: Perhaps add an option for base-2 vs base-10
+ */
+QString format_bytes(const quint64 &data)
+{
+    static const quint64 THOUSAND_DIGIT_MARKER = 1000;
+    static const quint64 MILLION_DIGIT_MARKER = THOUSAND_DIGIT_MARKER * 1000;
+    static const quint64 BILLION_DIGIT_MARKER = MILLION_DIGIT_MARKER * 1000;
+    quint64 digit_marker = 0;
+    QString string_data = QString::number(data);
+    QString suffix = "";
+
+    if (data > BILLION_DIGIT_MARKER) {
+        suffix = " GB";
+        digit_marker = BILLION_DIGIT_MARKER;
+    } else if (data > MILLION_DIGIT_MARKER) {
+        suffix = " MB";
+        digit_marker = MILLION_DIGIT_MARKER;
+    } else if (data >  THOUSAND_DIGIT_MARKER) {
+        suffix = " KB";
+        digit_marker = THOUSAND_DIGIT_MARKER;
+    } else {
+        suffix = " B";
+        digit_marker = 1;
+    }
+
+    string_data = QString::number(data / digit_marker) + suffix;
+
+    return string_data;
+}

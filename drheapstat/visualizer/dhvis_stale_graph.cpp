@@ -182,7 +182,10 @@ dhvis_stale_graph_t::set_heap_data(QVector<dhvis_callstack_listing_t *> *c_vec,
 
     QFontMetrics fm(font());
     text_height = fm.height();
-    text_width = fm.width(maximum_value);
+    int buffer = 0;
+    if (options != NULL && options->format_bytes)
+        buffer = AXIS_SUFFIX_PADDING;
+    text_width = fm.width(maximum_value) + buffer;
 
     left_bound = graph_outer_margin + text_width + EXTRA_AXIS_PADDING;
     right_bound = left_bound + x_axis_width();

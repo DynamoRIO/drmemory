@@ -84,6 +84,8 @@ dhvis_options_page_t::write_settings(void)
                       stale_stale_unit_num_check_box->isChecked());
     settings.setValue("Default_Dr._Heapstat_log_dir",
                       exec_log_dir_line_edit->text());
+    settings.setValue("Format_bytes_for_display",
+                      format_bytes_check_box->isChecked());
     settings.endGroup();
 
     /* Adjust info */
@@ -123,6 +125,7 @@ dhvis_options_page_t::read_settings(void)
                                                     true).toBool();
     options->dhrun_log_dir = settings.value("Default_Dr._Heapstat_log_dir",
                                             QString("")).toString();
+    options->format_bytes = settings.value("Format_bytes_for_display", false).toBool();
     settings.endGroup();
 
     /* Adjust GUI to reflect new settings */
@@ -137,6 +140,7 @@ dhvis_options_page_t::read_settings(void)
     num_stale_per_page_spin_box->setValue(options->num_stale_per_page);
     stale_stale_unit_num_check_box->setChecked(options->stale_stale_unit_num);
     exec_log_dir_line_edit->setText(options->dhrun_log_dir);
+    format_bytes_check_box->setChecked(options->format_bytes);
 }
 
 /* Private
@@ -164,6 +168,8 @@ dhvis_options_page_t::create_layout(void)
             this, SLOT(choose_dir()));
 
     anti_aliasing_check_box = new QCheckBox(tr("Anti-aliasing"));
+
+    format_bytes_check_box = new QCheckBox(tr("Format bytes for display"));
 
     num_callstacks_per_page_spin_box = new QSpinBox(this);
     QLabel *callstack_spin_box_label = new QLabel(tr(" callstacks per page"));
@@ -212,8 +218,9 @@ dhvis_options_page_t::create_layout(void)
     general_layout->addWidget(def_load_dir_line_edit, 1, 0);
     general_layout->addWidget(find_def_load_dir_button, 1, 1);
     general_layout->addWidget(anti_aliasing_check_box, 2, 0);
-    general_layout->addWidget(num_callstacks_per_page_spin_box, 3, 0);
-    general_layout->addWidget(callstack_spin_box_label, 3, 1);
+    general_layout->addWidget(format_bytes_check_box, 3, 0);
+    general_layout->addWidget(num_callstacks_per_page_spin_box, 4, 0);
+    general_layout->addWidget(callstack_spin_box_label, 4, 1);
     general_group->setLayout(general_layout);
 
     QGridLayout *snap_graph_layout = new QGridLayout;
