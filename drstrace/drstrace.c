@@ -171,6 +171,7 @@ event_pre_syscall(void *drcontext, int sysnum)
     bool known;
     drsys_param_type_t ret_type;
     const char *name;
+    drmf_status_t res;
 
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
@@ -183,8 +184,9 @@ event_pre_syscall(void *drcontext, int sysnum)
 
     OUTPUT("%s%s\n", name, known ? "" : " (details not all known)");
 
-    if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
-        ASSERT(false, "drsys_iterate_args failed");
+    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL);
+    if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
+        ASSERT(false, "drsys_iterate_args failed pre-syscall");
 
     return true;
 }
@@ -194,6 +196,7 @@ event_post_syscall(void *drcontext, int sysnum)
 {
     drsys_syscall_t *syscall;
     bool success = false;
+    drmf_status_t res;
 
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
@@ -203,8 +206,9 @@ event_post_syscall(void *drcontext, int sysnum)
         ASSERT(false, "drsys_syscall_succeeded failed");
 
     OUTPUT("    %s =>\n", success ? "succeeded" : "failed");
-    if (drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL) != DRMF_SUCCESS)
-        ASSERT(false, "drsys_iterate_args failed");
+    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL);
+    if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
+        ASSERT(false, "drsys_iterate_args failed post-syscall");
 }
 
 static bool
