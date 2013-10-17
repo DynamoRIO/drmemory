@@ -230,6 +230,10 @@ void dr_init(client_id_t id)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
 
+#ifdef WINDOWS
+    dr_enable_console_printing();
+#endif
+
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
     drmgr_register_post_syscall_event(event_post_syscall);
