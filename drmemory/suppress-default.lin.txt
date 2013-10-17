@@ -42,17 +42,37 @@ name=default i#1241 python malloc
 *python*!PyObject_Realloc
 
 ##################################################
-# loader suppressions (PR 525272)
+# loader suppressions (PR 525272, i#79, i#1236)
 
-# PR 530857: this is a real bug in the loader
-# if have debuginfo shows up as elf_dynamic_do_rel{,a}
-# else shows up as _dl_relocate_object
-# or on FC12 I see ".L259" and ".L202"!
+# There are a few different variants here, but w/o symbols for ld-linux
+# we have to resort to suppressing for any 3 frames with the top N being
+# ld-linux.so and the bottom 3-N being libc.
+
+# A notable variant is PR 530857: this is a real bug in the loader!
+# If have debuginfo shows up as elf_dynamic_do_rel{,a}
+# Else shows up as _dl_relocate_object
+# Or on FC12 I see ".L259" and ".L202"!
+# ld-linux.so.2!...
+# ld-linux.so.2!dl_open_worker
+# ld-linux.so.2!_dl_catch_error
+
 UNINITIALIZED READ
-name=default (ld-linux real bug)
-ld-linux.so.2!...
-ld-linux.so.2!dl_open_worker
-ld-linux.so.2!_dl_catch_error
+name=default (ld-linux_3_libc_0)
+ld-linux.so.2!*
+ld-linux.so.2!*
+ld-linux.so.2!*
+
+UNINITIALIZED READ
+name=default (ld-linux_2_libc_1)
+ld-linux.so.2!*
+ld-linux.so.2!*
+libc.so.*!*
+
+UNINITIALIZED READ
+name=default (ld-linux_1_libc_2)
+ld-linux.so.2!*
+libc.so.*!*
+libc.so.*!*
 
 ##########
 # loader has own copy of strlen and not exported so we aren't able to
@@ -63,38 +83,10 @@ ld-linux.so.2!_dl_catch_error
 UNADDRESSABLE ACCESS
 name=default (ld-linux strlen)
 ld-linux.so.2!*
-ld-linux.so.2!_dl_map_object_from_fd
-ld-linux.so.2!_dl_map_object
-
-UNINITIALIZED READ
-name=default (ld-linux strlen)
 ld-linux.so.2!*
-ld-linux.so.2!_dl_map_object_from_fd
-ld-linux.so.2!_dl_map_object
-
-UNINITIALIZED READ
-name=default (ld-linux strlen)
-ld-linux.so.2!*
-ld-linux.so.2!_dl_map_object
-
-UNINITIALIZED READ
-name=default (ld-linux strlen)
-ld-linux.so.2!*
-ld-linux.so.2!_dl_open
-libdl.so.2!dlopen_doit
-ld-linux.so.2!_dl_catch_error
-
-# On FC16 addr2line does not crash and subsequent frames
-# do not match those above.
-UNINITIALIZED READ
-name=default (ld-linux strchr)
-ld-linux.so.2!strchr
 ld-linux.so.2!*
 
-UNINITIALIZED READ
-name=default (ld-linux strlen)
-ld-linux.so.2!strlen
-ld-linux.so.2!*
+# uninits in strlen and strchr are covered by the general callstacks above
 
 ##########
 # i#79: with more recent versions of the loader we see both uninit and
@@ -106,13 +98,6 @@ name=default i#79 (ld-linux)
 ...
 ld-linux.so.2!_dl_rtld_di_serinfo
 ld-linux.so.2!*
-
-UNINITIALIZED READ
-name=default i#79 (ld-linux)
-...
-ld-linux.so.2!_dl_make_stack_executable
-...
-ld-linux.so.2!_dl_rtld_di_serinfo
 
 UNADDRESSABLE ACCESS
 name=default i#79 (ld-linux)
@@ -129,26 +114,13 @@ libc.so.*!_Unwind_IteratePhdrCallback
 ##################################################
 # loader deliberately stores index+1 (PR 535646):
 
-POSSIBLE LEAK
-name=default (ld-linux stores index+1)
-ld-linux.so.2!allocate_dtv
+# This is in ld-linux.so.2!allocate_dtv, but w/o symbols
+# we have several variants and we end up suppressing
+# any ld-linux allocation.
 
-# some versions have this
 POSSIBLE LEAK
 name=default (ld-linux stores index+1)
-ld-linux.so.2!allocate_and_init
-
-# with no debug symbols this shows up as:
-POSSIBLE LEAK
-name=default (ld-linux stores index+1)
-ld-linux.so.2!*_dl_allocate_tls
-
-# in Ubuntu 11.11 with no debug symbols this shows up as:
-POSSIBLE LEAK
-name=default (ld-linux stores index+1)
-ld-linux.so.2!_dl_mcount
-ld-linux.so.2!_dl_allocate_tls_storage
-libpthread.so.0!allocate_stack
+ld-linux.so.2!*
 
 ##################################################
 # i#717: eglibc loader seems to have a one time leak
