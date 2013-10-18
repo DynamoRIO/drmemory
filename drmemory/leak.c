@@ -46,6 +46,13 @@ enum {
     MALLOC_INDIRECTLY_REACHABLE = MALLOC_CLIENT_4,
 };
 
+/* the lowest possbile pointer value */
+#ifdef WINDOWS
+# define LOWEST_POINTER ((byte *)(16*PAGE_SIZE))
+#else
+# define LOWEST_POINTER ((byte *)(PAGE_SIZE))
+#endif
+
 /* For queueing up regions to scan */
 typedef struct _pc_entry_t {
     app_pc start;
@@ -90,6 +97,8 @@ typedef struct _reachability_data_t {
     rb_tree_t *alloc_tree;
     /* Tree for storing beyond-TOS ranges for -leaks_only */
     rb_tree_t *stack_tree;
+    /* Lowest possible pointer value */
+    byte *low_ptr;
 } reachability_data_t;
 
 #ifdef STATISTICS
@@ -539,7 +548,7 @@ is_text(byte *ptr)
     static byte *last_start = NULL;
     static byte *last_end = NULL;
     static bool last_ans = false;
-    if (ptr < (byte *)PAGE_SIZE)
+    if (ptr < LOWEST_POINTER)
         return false;
     if (ptr >= last_start && ptr < last_end)
         return last_ans;
@@ -564,7 +573,7 @@ is_image(byte *ptr)
     static byte *last_start = NULL;
     static byte *last_end = NULL;
     static bool last_ans = false;
-    if (ptr < (byte *)PAGE_SIZE)
+    if (ptr < LOWEST_POINTER)
         return false;
     if (ptr >= last_start && ptr < last_end) {
         LOG(4, "is_image match "PFX": cached in "PFX"-"PFX" => %d\n",
@@ -598,7 +607,7 @@ is_image(byte *ptr)
 static bool
 is_vtable(byte *ptr)
 {
-    if (ptr < (byte *)PAGE_SIZE)
+    if (ptr < LOWEST_POINTER)
         return false;
     if (ALIGNED(ptr, sizeof(void*)) && is_image(ptr)) {
         /* We have no symbols so we use heuristics: see if looks like
@@ -699,9 +708,9 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
                 /* risky perhaps but v4: */ *(byte **)pointer, *(byte **)chunk_start);
             if (leak_safe_read_heap(pointer, (void **) &val1) &&
             /* PR 570839: check for non-addresses to avoid call cost */
-                val1 > (byte *)PAGE_SIZE && is_vtable(val1)) {
+                val1 > LOWEST_POINTER && is_vtable(val1)) {
                 if (leak_safe_read_heap(chunk_start, (void **) &val2) &&
-                    val2 > (byte *)PAGE_SIZE && is_vtable(val2)) {
+                    val2 > LOWEST_POINTER && is_vtable(val2)) {
                     LOG(3, "\tmid-chunk "PFX" is multi-inheritance parent ptr => ok\n",
                         pointer);
                     STATS_INC(midchunk_postinheritance_ptrs);
@@ -892,6 +901,14 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, byte *defined_end,
     }
 #endif
 
+    /* skip any small value that cannot be a pointer
+     * Note: there are several places (e.g., is_text, is_vtable, and is_image)
+     * doing the similar checks against LOWEST_POINTER, which might benefit from
+     * using data->low_ptr. However, it might not worth the effort passing extra
+     * param around.
+     */
+    if (pointer < data->low_ptr)
+        return;
     /* We look in rbtree first since likely to miss both so why do hash lookup */
     node = rb_in_node(data->alloc_tree, pointer);
     if (node != NULL) {
@@ -1050,8 +1067,7 @@ check_reachability_helper(byte *start, byte *end, bool skip_heap,
 #endif
             /* PR 483063: bounds should be page-aligned, but be paranoid */
             query_end = (byte *) ALIGN_FORWARD(info.base_pc + info.size, PAGE_SIZE);
-            LOG(4, "query "PFX"-"PFX" prot=%x\n",
-                info.base_pc, query_end, info.prot);
+            LOG(4, "query "PFX"-"PFX" prot=%x\n", info.base_pc, query_end, info.prot);
             if (!TEST(DR_MEMPROT_READ, info.prot) ||
                 /* we skip r-x regions.  FIXME PR 475518: if we have info on
                  * what's been modified since it was loaded we can avoid
@@ -1317,6 +1333,7 @@ leak_scan_for_leaks(bool at_exit)
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     reachability_data_t data;
     void *my_drcontext = dr_get_current_drcontext();
+    dr_mem_info_t mem_info;
 #ifdef DEBUG
     static bool called_at_exit;
     if (at_exit) {
@@ -1371,6 +1388,12 @@ leak_scan_for_leaks(bool at_exit)
     data.primary_scan = true;
     data.alloc_tree = rb_tree_create(NULL);
     data.stack_tree = rb_tree_create(NULL);
+    /* get the lowest allocated memory */
+    dr_query_memory_ex(NULL, &mem_info);
+    if (mem_info.prot == DR_MEMPROT_NONE)
+        data.low_ptr = mem_info.base_pc + mem_info.size;
+    else
+        data.low_ptr = NULL;
 
     /* Build tree for interval lookup for mid-chunk pointers (PR 476482).
      * Since doing this just once, we could use an array, but tree may be
