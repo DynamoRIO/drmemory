@@ -442,12 +442,14 @@ extern int tls_idx_util;
         peak_##stat = stats_peak_local_val_; \
 } while (0)
 # define DOSTATS(x) x
+# define _IF_STATS(x) , x
 #else
 # define STATS_INC(stat) /* nothing */
 # define STATS_DEC(stat) /* nothing */
 # define STATS_ADD(stat, val) /* nothing */
 # define STATS_PEAK(stat) /* nothing */
 # define DOSTATS(x) /* nothing */
+# define _IF_STATS(x) /* nothing */
 #endif
 
 #define PRE instrlist_meta_preinsert

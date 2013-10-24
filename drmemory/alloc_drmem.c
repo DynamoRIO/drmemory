@@ -353,20 +353,11 @@ alloc_callstack_unlock(void)
 void
 alloc_callstack_free(void *p)
 {
-    packed_callstack_t *pcs = (packed_callstack_t *) p;
-    uint count;
-    LOG(4, "%s: force-free pcs "PFX"\n", __FUNCTION__, pcs);
     /* For -replace_malloc, we need to force-remove here.  With wrapping, we rely
      * on the malloc hashtable exist to free all references to these callstacks.
      * For replacing, there's no reason to iterate the heap just to clean these up.
      */
-    do {
-        count = packed_callstack_free(pcs);
-        /* XXX: we may need to widen the refcount to 64-bit: an app could
-         * conceivably allocate 4 billion mallocs from one call site!
-         */
-        ASSERT(count < UINT_MAX - 1, "underflow in count: likely double-free");
-    } while (count > 0 && options.replace_malloc && process_exiting);
+    packed_callstack_destroy(p);
 }
 
 void
@@ -413,7 +404,6 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * every-alloc scheme).
      */
     packed_callstack_t *pcs;
-    packed_callstack_t *existing;
     if (existing_data != NULL)
         pcs = (packed_callstack_t *) existing_data;
     else {
@@ -437,33 +427,8 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * remove, ensuring pcs doesn't disappear underneath us.
      */
     hashtable_lock(&alloc_stack_table);
-    existing = hashtable_lookup(&alloc_stack_table, (void *)pcs);
-    if (existing == NULL) {
-        /* avoid calling lookup twice by not calling hashtable_add() */
-        IF_DEBUG(void *prior =)
-            hashtable_add_replace(&alloc_stack_table, (void *)pcs, (void *)pcs);
-        ASSERT(prior == NULL, "just did lookup: cannot happen");
-        DOLOG(3, {
-            LOG(3, "@@@ unique callstack #%d\n", alloc_stack_count);
-            packed_callstack_log(pcs, INVALID_FILE);
-        });
-        STATS_INC(alloc_stack_count);
-    } else {
-        IF_DEBUG(uint count;)
-        if (existing_data == NULL) {    /* PR 533755 */
-            IF_DEBUG(count = )
-                packed_callstack_free(pcs);
-            ASSERT(count == 0, "refcount should be 0");
-        }
-        else
-            ASSERT(pcs == existing, "invalid params");
-        pcs = existing;
-    }
-    /* The alloc_stack_table is one reference, and the others are all
-     * in the malloc_table.  Once all malloc_table entries are gone
-     * and the refcount hits 1 we remove from alloc_stack_table.
-     */
-    packed_callstack_add_ref(pcs);
+    pcs = packed_callstack_add_to_table(&alloc_stack_table, pcs
+                                        _IF_STATS(&alloc_stack_count));
     LOG(4, "%s: created pcs "PFX"\n", __FUNCTION__, pcs);
     hashtable_unlock(&alloc_stack_table);
     return pcs;

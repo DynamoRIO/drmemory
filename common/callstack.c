@@ -1954,6 +1954,55 @@ packed_callstack_num_frames(packed_callstack_t *pcs)
     return pcs->num_frames;
 }
 
+/* destroy the packted callstack */
+void
+packed_callstack_destroy(packed_callstack_t *pcs)
+{
+    uint count;
+    LOG(4, "%s: force-free pcs "PFX"\n", __FUNCTION__, pcs);
+    /* There might be callstack left not deleted by the app (e.g., leaks),
+     * so we need to force-remove here.
+     */
+    do {
+        count = packed_callstack_free(pcs);
+        /* XXX: do we need widen the refcount, it seems unlikely to do 4 billion
+         * handle creation system calls from one call site.
+         */
+        ASSERT(count < UINT_MAX - 1, "underflow in count: likely double-free");
+    } while (count > 0);
+}
+
+/* add the packed callstack into the hashtable, assuming the caller is holding the lock */
+packed_callstack_t *
+packed_callstack_add_to_table(hashtable_t *table, packed_callstack_t *pcs
+                              _IF_STATS(uint *callstack_count))
+{
+    packed_callstack_t *existing;
+
+    existing = hashtable_lookup(table, (void *)pcs);
+    if (existing == NULL) {
+        /* avoid calling lookup twice by not calling hashtable_add() */
+        IF_DEBUG(void *prior =)
+            hashtable_add_replace(table, (void *)pcs, (void *)pcs);
+        ASSERT(prior == NULL, "just did lookup: cannot happen");
+        DOLOG(3, {
+            LOG(3, "@@@ unique callstack #%d\n", *callstack_count);
+            packed_callstack_log(pcs, INVALID_FILE);
+        });
+        STATS_INC(*callstack_count);
+    } else {
+        IF_DEBUG(uint count =) packed_callstack_free(pcs);
+        ASSERT(count == 0, "refcount should be 0");
+        pcs = existing;
+    }
+    /* The callstack in table is one reference, and the other references
+     * will add its reference count. Once all other references are gone
+     * and the refcount hits 1, we can remove it from the table.
+     */
+    packed_callstack_add_ref(pcs);
+    return pcs;
+}
+
 /***************************************************************************
  * SYMBOLIZED CALLSTACKS
  */

@@ -46,14 +46,41 @@ typedef struct _handle_create_info_t {
 #define HANDLE_VERBOSE_2 2
 #define HANDLE_VERBOSE_3 3
 
+/* Hashtable for handle create/delete callstack */
+#define HSTACK_TABLE_HASH_BITS 8
+static hashtable_t handle_stack_table;
+#ifdef STATISTICS
+uint handle_stack_count;
+#endif
 /* Table of handle entries: [handle, hci]
  * there are multiple handle namespaces: kernel object, gdi object, user object,
  * and they are disjoint, so we have different hashtables for each type.
  */
+/* we use handle_stack_table lock for synchronizing all table operations */
 #define HANDLE_TABLE_HASH_BITS 6
 static hashtable_t kernel_handle_table;
 static hashtable_t gdi_handle_table;
 static hashtable_t user_handle_table;
+
+static void
+handle_table_lock(void)
+{
+    /* we use handle_stack_table lock for synchronizing all table operations */
+    hashtable_lock(&handle_stack_table);
+}
+
+static void
+handle_table_unlock(void)
+{
+    /* we use handle_stack_table lock for synchronizing all table operations */
+    hashtable_unlock(&handle_stack_table);
+}
+
+void
+handle_callstack_free(void *p)
+{
+    packed_callstack_destroy((packed_callstack_t *)p);
+}
 
 static handle_create_info_t *
 handle_create_info_clone(handle_create_info_t *src)
@@ -65,9 +92,9 @@ handle_create_info_clone(handle_create_info_t *src)
     return dst;
 }
 
+/* the caller must hold the lock */
 static handle_create_info_t *
 handle_create_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
-                         
 {
     handle_create_info_t *hci;
     hci = global_alloc(sizeof(*hci), HEAPSTAT_CALLSTACK);
@@ -77,13 +104,17 @@ handle_create_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
     else
         pc_to_loc(&hci->loc, pc);
     packed_callstack_record(&hci->pcs, mc, &hci->loc);
+    hci->pcs = packed_callstack_add_to_table(&handle_stack_table, hci->pcs
+                                             _IF_STATS(&handle_stack_count));
     return hci;
 }
 
 static void
 handle_create_info_free(handle_create_info_t *hci)
 {
-    packed_callstack_free(hci->pcs);
+    uint count;
+    count = packed_callstack_free(hci->pcs);
+    LOG(4, "%s: freed pcs "PFX" => refcount %d\n", __FUNCTION__, hci->pcs, count);
     global_free(hci, sizeof(*hci), HEAPSTAT_CALLSTACK);
 }
 
@@ -156,7 +187,7 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
 {
     uint i;
     char msg[HANDLECHECK_PRE_MSG_SIZE];
-    hashtable_lock(table);
+    handle_table_lock();
     for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
         hash_entry_t *entry, *next;
         for (entry = table->table[i]; entry != NULL; entry = next) {
@@ -168,7 +199,7 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
             report_handle_leak(drcontext, msg, &hci->loc, hci->pcs);
         }
     }
-    hashtable_unlock(table);
+    handle_table_unlock();
 }
 
 static void
@@ -222,6 +253,11 @@ handlecheck_init(void)
     hashtable_init_ex(&user_handle_table, HANDLE_TABLE_HASH_BITS, HASH_INTPTR,
                       false/*!str_dup*/, false/*!synch*/,
                       handle_create_info_free, NULL, NULL);
+    hashtable_init_ex(&handle_stack_table, HSTACK_TABLE_HASH_BITS, HASH_CUSTOM,
+                      false /*!str_dup*/, false /*!sync*/,
+                      handle_callstack_free,
+                      (uint (*)(void*)) packed_callstack_hash,
+                      (bool (*)(void*, void *)) packed_callstack_cmp);
 }
 
 void
@@ -229,9 +265,10 @@ handlecheck_exit(void)
 {
     ASSERT(options.check_handle_leaks, "incorrectly called");
     handlecheck_iterate_handles();
-    hashtable_delete_with_stats(&kernel_handle_table, "Kernel Handle Table");
-    hashtable_delete_with_stats(&gdi_handle_table,    "GDI Handle table");
-    hashtable_delete_with_stats(&user_handle_table,   "USER Handle table");
+    hashtable_delete_with_stats(&kernel_handle_table, "Kernel handle table");
+    hashtable_delete_with_stats(&gdi_handle_table,    "GDI handle table");
+    hashtable_delete_with_stats(&user_handle_table,   "USER handle table");
+    hashtable_delete_with_stats(&handle_stack_table,  "Handle stack table");
 }
 
 void
@@ -252,13 +289,13 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
                                          _IF_DEBUG((void *)handle)
                                          _IF_DEBUG("created"));
     ASSERT(table != NULL, "fail to get handle table");
-    hci = handle_create_info_alloc(sysnum, pc, mc);;
+    handle_table_lock();
+    hci = handle_create_info_alloc(sysnum, pc, mc);
     DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
-    hashtable_lock(table);
     if (!handlecheck_handle_add(table, handle, hci)) {
         LOG(HANDLE_VERBOSE_1, "WARNING: fail to add handle "PFX"\n", handle);
     }
-    hashtable_unlock(table);
+    handle_table_unlock();
 }
 
 void *
@@ -277,11 +314,11 @@ handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
                                          _IF_DEBUG("deleted"));
     ASSERT(table != NULL, "fail to get handle table");
     DOLOG(HANDLE_VERBOSE_3, { report_callstack(drcontext, mc); });
-    hashtable_lock(table);
+    handle_table_lock();
     if (!handlecheck_handle_remove(table, handle, &hci)) {
         LOG(HANDLE_VERBOSE_1, "WARNING: fail to remove handle "PFX"\n", handle);
     }
-    hashtable_unlock(table);
+    handle_table_unlock();
     return (void *)hci;
 }
 
@@ -307,21 +344,21 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
     if (success) {
         /* closed handle successfully, free the handle info now */
         handle_create_info_free(hci);
-        return;
+    } else {
+        /* failed to delete handle, add handle back */
+        ASSERT(handle != INVALID_HANDLE_VALUE, "add back invalid handle value");
+        table = handlecheck_get_handle_table(type
+                                             _IF_DEBUG((void *)handle)
+                                             _IF_DEBUG("added back"));
+        ASSERT(table != NULL, "fail to get handle table");
+        DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
+        handle_table_lock();
+        if (!handlecheck_handle_add(table, handle, hci)) {
+            LOG(HANDLE_VERBOSE_1,
+                "WARNING: failed to add handle "PFX" back\n", handle);
+        }
+        handle_table_unlock();
     }
-    /* failed to delete handle, add handle back */
-    ASSERT(handle != INVALID_HANDLE_VALUE, "add back invalid handle value");
-    table = handlecheck_get_handle_table(type
-                                         _IF_DEBUG((void *)handle)
-                                         _IF_DEBUG("added back"));
-    ASSERT(table != NULL, "fail to get handle table");
-    DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
-    hashtable_lock(table);
-    if (!handlecheck_handle_add(table, handle, hci)) {
-        LOG(HANDLE_VERBOSE_1,
-            "WARNING: failed to add handle "PFX" back\n", handle);
-    }
-    hashtable_unlock(table);
 }
 
 #ifdef STATISTICS

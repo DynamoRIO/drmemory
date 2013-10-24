@@ -293,6 +293,15 @@ packed_callstack_crc32(packed_callstack_t *pcs, uint crc[2]);
 uint
 packed_callstack_num_frames(packed_callstack_t *pcs);
 
+/* destroy the packted callstack */
+void
+packed_callstack_destroy(packed_callstack_t *pcs);
+
+/* add the packed callstack into the hashtable, assuming the caller is holding the lock */
+packed_callstack_t *
+packed_callstack_add_to_table(hashtable_t *table, packed_callstack_t *pcs
+                              _IF_STATS(uint *callstack_count));
+
 /* The user must call this from a DR dr_register_module_load_event() event */
 void
 callstack_module_load(void *drcontext, const module_data_t *info, bool loaded);
