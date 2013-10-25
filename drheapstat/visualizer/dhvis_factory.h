@@ -48,7 +48,7 @@ public:
 
     QStringList tool_names(void) const;
 
-    QWidget *create_instance(void);
+    QWidget *create_instance(const QStringList &args = QStringList());
 
     drgui_options_interface_t *create_options_page(void);
 
@@ -60,7 +60,7 @@ public slots:
 private slots:
     void new_tool_instance(QWidget *tool, QString tool_name);
 
-    void load_log_dir(dhvis_tool_t *tool, QString log_dir);
+    void load_log_dir(dhvis_tool_t *tool, const QString &log_dir);
 
 private:
     /* GUI */

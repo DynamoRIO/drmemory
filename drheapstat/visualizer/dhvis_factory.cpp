@@ -77,10 +77,13 @@ dhvis_factory_t::tool_names(void) const
  * Returns a new instance of the tool
  */
 QWidget *
-dhvis_factory_t::create_instance(void)
+dhvis_factory_t::create_instance(const QStringList &args)
 {
     qDebug().nospace() << "INFO: Entering " << __CLASS__ << __FUNCTION__;
     new_tool_instance(new dhvis_tool_t(options), tool_names().at(0));
+    /* Automatically load the requested logs */
+    if (args.count() == 1)
+        load_log_dir(tool_instances.back(), args.at(0));
     return tool_instances.back();
 }
 
@@ -137,7 +140,7 @@ dhvis_factory_t::new_tool_instance(QWidget *tool, QString tool_name)
  * Loads the data into the tool
  */
 void
-dhvis_factory_t::load_log_dir(dhvis_tool_t *tool, QString log_dir)
+dhvis_factory_t::load_log_dir(dhvis_tool_t *tool, const QString &log_dir)
 {
     tool->set_log_dir_loc(log_dir);
 }
