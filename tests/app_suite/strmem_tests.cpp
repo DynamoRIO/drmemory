@@ -199,4 +199,12 @@ TEST(StringTests, strcspn) {
     ASSERT_EQ(8UL, strcspn("a; b;cd:", ""));
 }
 
+TEST(StringTests, strnlen) {
+    const char *str = "string";
+    ASSERT_EQ(strlen(str), strnlen(str, 7));
+    ASSERT_EQ(strlen(str), strnlen(str, 6));
+    ASSERT_EQ(5U, strnlen(str, 5));
+    ASSERT_EQ(0U, strnlen(str, 0));
+}
+
 #endif /* LINUX */

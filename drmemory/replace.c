@@ -68,6 +68,7 @@
     REPLACE_DEF(strrchr, "wcsrchr")\
     IF_LINUX(REPLACE_DEF(strchrnul, NULL)) \
     REPLACE_DEF(strlen, "wcslen")  \
+    REPLACE_DEF(strnlen, "wcsnlen")  \
     REPLACE_DEF(strcmp, "wcscmp")  \
     REPLACE_DEF(strncmp, "wcsncmp")\
     REPLACE_DEF(strcpy, NULL)      \
@@ -376,6 +377,24 @@ replace_wcslen(const wchar_t *str)
 {
     register const wchar_t *s = str;
     while (*s != L'\0')
+        s++;
+    return (s - str);
+}
+
+IN_REPLACE_SECTION size_t
+replace_strnlen(const char *str, size_t max)
+{
+    register const char *s = str;
+    while ((s - str) < max && *s != '\0')
+        s++;
+    return (s - str);
+}
+
+IN_REPLACE_SECTION size_t
+replace_wcsnlen(const wchar_t *str, size_t max)
+{
+    register const wchar_t *s = str;
+    while ((s - str) < max && *s != L'\0')
         s++;
     return (s - str);
 }
@@ -936,8 +955,8 @@ replace_routine(bool add, const module_data_t *mod,
  * for each return possibility.  Xref PR 623449.
  */
 static void
-replace_all_strlen(bool add, const module_data_t *mod,
-                   int index, app_pc indir, app_pc resolved)
+replace_all_indirect(bool add, const module_data_t *mod,
+                     int index, app_pc indir, app_pc resolved)
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t inst;
@@ -1222,7 +1241,7 @@ replace_in_module(const module_data_t *mod, bool add)
                 LOG(2, "export %s indirected from "PFX" to "PFX"\n",
                     replace_routine_name[i], info.address, addr);
                 if (mod->start == libc)
-                    replace_all_strlen(add, mod, i, orig_addr, addr);
+                    replace_all_indirect(add, mod, i, orig_addr, addr);
             }
         }
         if (addr != NULL) {
