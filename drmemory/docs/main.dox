@@ -126,6 +126,13 @@ and provide the resulting
 <tt>&lt;installpath&gt;/drmemory/logs/dynamorio/</tt> directory.  The ldmp should
 compress nicely.
 
+If there is no ldmp produced, try asking for an ldmp on application faults
+and not just tool faults:
+
+\code
+  -dr_ops "-dumpcore_mask 0x48bff"
+\endcode
+
 Additionally, if the run is pretty short, run with the "-verbose 2" option
 and attach the resulting <tt>global.&lt;pid&gt;.log</tt> file from the same
 directory as the results.txt file (compress it if large).
