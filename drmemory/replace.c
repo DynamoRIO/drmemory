@@ -71,7 +71,7 @@
     REPLACE_DEF(strnlen, "wcsnlen")  \
     REPLACE_DEF(strcmp, "wcscmp")  \
     REPLACE_DEF(strncmp, "wcsncmp")\
-    REPLACE_DEF(strcpy, NULL)      \
+    REPLACE_DEF(strcpy, "wcscpy")  \
     REPLACE_DEF(strncpy, NULL)     \
     REPLACE_DEF(strcat, NULL)      \
     REPLACE_DEF(strncat, NULL)     \
@@ -84,6 +84,7 @@
     REPLACE_DEF(wcslen, NULL)      \
     REPLACE_DEF(wcscmp, NULL)      \
     REPLACE_DEF(wcsncmp, NULL)     \
+    REPLACE_DEF(wcscpy, NULL)      \
     REPLACE_DEF(wmemcmp, NULL)     \
     REPLACE_DEF(wcschr, NULL)      \
     REPLACE_DEF(wcsrchr, NULL)     \
@@ -95,7 +96,7 @@
     REPLACE_DEF(strstr, "wcsstr")  \
     REPLACE_DEF(wcsstr, NULL)
 
-/* XXX i#350: add wrappers for wcscpy, wcsncpy, wcscat,
+/* XXX i#350: add wrappers for wcsncpy, wcscat,
  * wcsncat, wmemmove.
  */
 
@@ -551,6 +552,17 @@ replace_strcpy(char *dst, const char *src)
 {
     register const char *s = (char *) src;
     register char *d = (char *) dst;
+    while (*s != '\0')
+        *d++ = *s++;
+    *d = '\0';
+    return dst;
+}
+
+IN_REPLACE_SECTION wchar_t *
+replace_wcscpy(wchar_t *dst, const wchar_t *src)
+{
+    register const wchar_t *s = (wchar_t *) src;
+    register wchar_t *d = (wchar_t *) dst;
     while (*s != '\0')
         *d++ = *s++;
     *d = '\0';

@@ -93,6 +93,14 @@ TEST(StringTests, strncpy) {
         ASSERT_EQ(buf[i], '\0');
 }
 
+TEST(StringTests, wcscpy) {
+    wchar_t buf[64];
+    const wchar_t *src = L"source";
+    wchar_t *dst = wcscpy(buf, src);
+    ASSERT_EQ(dst, buf);
+    ASSERT_STREQ(dst, L"source");
+}
+
 TEST(StringTests, strstr) {
     ASSERT_STREQ(strstr("abcaddccdx", "cd"), "cdx");
     ASSERT_STREQ(strstr("xyzabcxyz", "xyz"), "xyzabcxyz");
