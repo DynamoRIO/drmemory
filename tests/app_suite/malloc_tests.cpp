@@ -22,6 +22,14 @@
 #include "gtest/gtest.h"
 #include "app_suite_utils.h"
 #include <stdlib.h>
+#ifdef WIN32
+#  include <windows.h>
+#else
+#  include <sys/mman.h>
+#endif
+
+#define ALIGN_BACKWARD(ptr, align) (((size_t)ptr) & (~((size_t)(align)-1)))
+#define PAGE_SIZE 4096
 
 #ifdef TOOL_DR_MEMORY
 # define ARRAY_SIZE 512
@@ -57,5 +65,37 @@ TEST(MallocTests, CallocOverflow) {
     ASSERT_EQ(NULL, calloc(0x100000LLU, 0x100000000001LLU));
 #else
     ASSERT_EQ(NULL, calloc(0x00067000U, 0x00002800U));
+#endif
+}
+
+TEST(MallocTests, Executable) {
+    /* We test executing code on the heap and then allocating more heap from
+     * that same page, to ensure DrMem's allocator handles DR making that
+     * page read-only for cache consistency (i#1354).
+     */
+#ifdef WIN32
+    HANDLE myheap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);
+    unsigned char *p = (unsigned char *) HeapAlloc(myheap, 0, 8);
+    void (*gencode)(void) = (void (*)(void)) p;
+    *p = 0xc3; /* ret */
+    gencode();
+    void *p2 = HeapAlloc(myheap, 0, 8);
+    HeapFree(myheap, 0, p);
+    HeapFree(myheap, 0, p2);
+    HeapDestroy(myheap);
+#else
+    /* SELinux blocks mprotect on the brk region of the heap so we instead
+     * allocate enough to get a separate mmap
+     */
+    unsigned char *p = (unsigned char *) malloc(256*1024);
+    int res = mprotect((void *)ALIGN_BACKWARD(p, PAGE_SIZE), PAGE_SIZE,
+                       PROT_READ|PROT_WRITE|PROT_EXEC);
+    ASSERT_EQ(res, 0);
+    void (*gencode)(void) = (void (*)(void)) p;
+    *p = 0xc3; /* ret */
+    gencode();
+    void *p2 = malloc(8);
+    free(p);
+    free(p2);
 #endif
 }
