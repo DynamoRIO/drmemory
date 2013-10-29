@@ -1313,10 +1313,6 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN8,0},"NtUserGetDisplayAutoRotationPreferences", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{WIN8,WIN8},"NtUserGetGlobalIMEStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserGetPointerCursorId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
-    {{WIN8,0},"NtUserGetPointerDeviceCursors", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
-    {{WIN8,0},"NtUserGetPointerDeviceProperties", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
-    {{WIN8,0},"NtUserGetPointerDeviceRects", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
-    {{WIN8,0},"NtUserGetPointerDevices", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserGetPointerDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserGetPointerDeviceCursors", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{WIN8,0},"NtUserGetPointerDeviceProperties", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
@@ -1337,8 +1333,6 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN8,0},"NtUserGetWindowFeedbackSetting", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{WIN8,0},"NtUserHandleDelegatedInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserHidePointerContactVisualization", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
-    {{WIN8,0},"NtUserInitializeClientPfnArrays", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
-    {{WIN8,0},"NtUserInitializeTouchInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserInitializeTouchInjection", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserInjectTouchInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserInternalClipCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
@@ -1664,6 +1658,10 @@ num_usercall_syscalls(void)
 extern void
 name2num_entry_add(const char *name, drsys_sysnum_t num, bool dup_Zw);
 
+/* used to handle the single zero-secondary syscall (i#1364) */
+static drsys_sysnum_t sysnum_secondary_zero = {0/*filled in at init time*/, -1};
+static bool found_secondary_zero;
+
 static void
 wingdi_secondary_syscall_setup(void *drcontext)
 {
@@ -1673,14 +1671,31 @@ wingdi_secondary_syscall_setup(void *drcontext)
         uint secondary = (uint)
             hashtable_lookup(&usercall_table, (void *)syslist->name);
         if (secondary != 0) {
+            drsys_sysnum_t *num_to_store = &syslist->num;
             const char *skip_primary;
             IF_DEBUG(bool ok =)
                 os_syscall_get_num(usercall_primary[i], &syslist->num);
             ASSERT(ok, "failed to get syscall number");
             ASSERT(syslist->num.secondary == 0, "primary should have no secondary");
-            syslist->num.secondary = secondary - 1/*+1 in table*/;
+            syslist->num.secondary = secondary - 1/*+1 in usercall table*/;
 
-            hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+            ASSERT(syslist->num.secondary != -1, "secondary collision with sentinel");
+            if (syslist->num.secondary == 0) {
+                /* i#1364: to avoid colliding w/ the primary entry in the main
+                 * syscall table, we store the ".0" secondary under number -1
+                 * and resolve in syscall_lookup().  We need a pointer to a
+                 * sysnum for the table, so we use a global one as there's only
+                 * one secondary zero.
+                 */
+                ASSERT(!found_secondary_zero, "only 1 zero secondary supported");
+                found_secondary_zero = true;
+                num_to_store = &sysnum_secondary_zero;
+                ASSERT(num_to_store->secondary == -1, "invalid secondary sentinel");
+                num_to_store->number = syslist->num.number;
+            }
+            IF_DEBUG(ok =)
+                hashtable_add(&systable, (void *) num_to_store, (void *) syslist);
+            ASSERT(ok, "no dups in systable");
 
             /* Add with and without the primary prefix */
             name2num_entry_add(syslist->name, syslist->num, false/*no dup*/);
@@ -1692,8 +1707,9 @@ wingdi_secondary_syscall_setup(void *drcontext)
 
             if (syslist->num_out != NULL)
                 *syslist->num_out = syslist->num;
-            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d (0x%04x)\n",
-                syslist->name, syslist->num, syslist->num);
+            LOG(SYSCALL_VERBOSE, "usercall %-35s = %3d.%d (0x%04x.%x)\n",
+                syslist->name, syslist->num.number, syslist->num.secondary,
+                syslist->num.number, syslist->num.secondary);
         } else {
             LOG(SYSCALL_VERBOSE, "WARNING: could not find usercall %s\n", syslist->name);
         }

@@ -3319,8 +3319,13 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         ok = os_syscall_get_num(syslist->name, &syslist->num);
     }
     if (ok) {
+        IF_DEBUG(bool ok;)
         dr_recurlock_lock(systable_lock);
-        hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+        IF_DEBUG(ok =)
+            hashtable_add(&systable, (void *) &syslist->num, (void *) syslist);
+        /* We do have a dup with GetThreadDesktop on many platforms */
+        ASSERT(ok || strcmp(syslist->name, "GetThreadDesktop") == 0,
+               "no dups in sys num to call table");
         dr_recurlock_unlock(systable_lock);
 
         LOG((info != NULL && info->start == ntdll_base) ? 2 : SYSCALL_VERBOSE,
@@ -3426,8 +3431,8 @@ drsyscall_os_init(void *drcontext)
         return DRMF_ERROR;
     ntdll_base = data->start;
 
-    /* Add all entries at process init time, to support drsys_name_to_number()
-     * for secondary win32k.sys and drsys_number_to_name() in dr_init.
+    /* Add all entries at process init time, to support drsys_name_to_syscall()
+     * for secondary win32k.sys and drsys_number_to_syscall() in dr_init.
      */
     for (i = 0; i < NUM_NTDLL_SYSCALLS; i++)
         add_syscall_entry(drcontext, data, &syscall_ntdll_info[i], NULL, true);

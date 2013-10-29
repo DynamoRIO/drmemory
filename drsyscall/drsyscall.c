@@ -195,7 +195,7 @@ DR_EXPORT
 drmf_status_t
 drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT)
 {
-    syscall_info_t *sysinfo = syscall_lookup(sysnum);
+    syscall_info_t *sysinfo = syscall_lookup(sysnum, true/*resolve 2ndary*/);
     if (syscall == NULL)
         return DRMF_ERROR_INVALID_PARAMETER;
     /* All unknown-detail syscalls are now in the tables, so we only return
@@ -219,7 +219,7 @@ drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT)
     ok = os_syscall_get_num(name, &sysnum);
     if (!ok)
         return DRMF_ERROR_NOT_FOUND;
-    sysinfo = syscall_lookup(sysnum);
+    sysinfo = syscall_lookup(sysnum, true/*resolve 2ndary*/);
     if (sysinfo == NULL) {
         ASSERT(false, "name2num should return num in systable");
         return DRMF_ERROR_NOT_FOUND;
@@ -254,11 +254,22 @@ sysnum_cmp(void *v1, void *v2)
 }
 
 syscall_info_t *
-syscall_lookup(drsys_sysnum_t num)
+syscall_lookup(drsys_sysnum_t num, bool resolve_secondary)
 {
     syscall_info_t *res;
     dr_recurlock_lock(systable_lock);
     res = (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
+    /* i#1364: to distinguish the first table's primary.0 entry from the secondary
+     * table's first entry we store the latter as number -1 in the num2syscall
+     * table.  We assume -1 is a sentinel separate from any real secondary.
+     * We have to store the initial entry for our pre-syscall lookup before
+     * we even know the secondary code.
+     */
+    if (res != NULL && resolve_secondary && TEST(SYSINFO_SECONDARY_TABLE, res->flags)) {
+        ASSERT(num.secondary == 0, "should hit secondary on 0 entry only");
+        num.secondary = -1;
+        res = (syscall_info_t *) hashtable_lookup(&systable, (void *) &num);
+    }
     dr_recurlock_unlock(systable_lock);
     return res;
 }
@@ -1445,7 +1456,7 @@ get_sysinfo(cls_syscall_t *pt, int initial_num, drsys_sysnum_t *sysnum OUT)
     ASSERT(sysnum != NULL, "invalid param");
     sysnum->number = initial_num;
     sysnum->secondary = 0;
-    sysinfo = syscall_lookup(*sysnum);
+    sysinfo = syscall_lookup(*sysnum, false/*don't resolve 2ndary yet*/);
     if (sysinfo != NULL) {
         if (TEST(SYSINFO_SECONDARY_TABLE, sysinfo->flags)) {
             uint code;
@@ -1453,7 +1464,7 @@ get_sysinfo(cls_syscall_t *pt, int initial_num, drsys_sysnum_t *sysnum OUT)
             code = pt->sysarg[sysinfo->arg[0].param];
             sysnum->secondary = code;
             /* get a new sysinfo */
-            sysinfo = syscall_lookup(*sysnum);
+            sysinfo = syscall_lookup(*sysnum, true/*resolve 2ndary*/);
         }
     }
     return sysinfo;

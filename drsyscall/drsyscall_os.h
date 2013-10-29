@@ -332,7 +332,7 @@ void
 drsyscall_os_exit(void);
 
 syscall_info_t *
-syscall_lookup(drsys_sysnum_t num);
+syscall_lookup(drsys_sysnum_t num, bool resolve_secondary);
 
 void
 drsyscall_os_thread_init(void *drcontext);

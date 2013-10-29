@@ -206,7 +206,7 @@ test_static_queries(void)
 #endif
     ASSERT(res == DRMF_SUCCESS, "drsys_name_to_syscall failed");
     res = drsys_syscall_number(syscall, &num);
-    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_number failed");
+    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_syscall_number failed");
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS || !known)
         ASSERT(false, "syscall should be known");
     if (drsys_syscall_type(syscall, &type) != DRMF_SUCCESS ||
@@ -222,14 +222,23 @@ test_static_queries(void)
     if (drsys_name_to_syscall("ZwContinue", &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_name_to_syscall failed");
     res = drsys_syscall_number(syscall, &num);
-    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_number failed");
+    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_name_to_syscall failed");
     /* test not found */
     res = drsys_name_to_syscall("NtContinueBogus", &syscall);
-    ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_number should have failed");
+    ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_syscall should have failed");
+    /* test secondary */
+    if (drsys_name_to_syscall("NtUserCallOneParam.RELEASEDC", &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_name_to_syscall failed");
+    res = drsys_syscall_number(syscall, &num);
+    ASSERT(res == DRMF_SUCCESS && num.secondary > 0, "drsys_syscall_number failed");
+    if (drsys_name_to_syscall("RELEASEDC", &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_name_to_syscall failed");
+    res = drsys_syscall_number(syscall, &num);
+    ASSERT(res == DRMF_SUCCESS && num.secondary > 0, "drsys_syscall_number failed");
 #else
     /* test not found */
     res = drsys_name_to_syscall("fstatfr", &syscall);
-    ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_number should have failed");
+    ASSERT(res == DRMF_ERROR_NOT_FOUND, "drsys_name_to_syscall should have failed");
 #endif
 
     /* test number to name */
@@ -238,7 +247,20 @@ test_static_queries(void)
     if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_number_to_syscall failed");
     res = drsys_syscall_name(syscall, &name);
-    ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_number_to_name failed");
+    ASSERT(res == DRMF_SUCCESS && name != NULL, "drsys_syscall_name failed");
+
+#ifdef WINDOWS
+    /* test secondary number to name, in particular where secondary==0 */
+    if (drsys_name_to_syscall("NtUserCallNoParam.CREATEMENU", &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_name_to_syscall failed");
+    res = drsys_syscall_number(syscall, &num);
+    ASSERT(res == DRMF_SUCCESS && num.secondary == 0, "drsys_syscall_number failed");
+    if (drsys_number_to_syscall(num, &syscall) != DRMF_SUCCESS)
+        ASSERT(false, "drsys_number_to_syscall failed");
+    res = drsys_syscall_name(syscall, &name);
+    ASSERT(res == DRMF_SUCCESS && strcmp(name, "NtUserCallNoParam.CREATEMENU") == 0,
+           "drsys_syscall_name failed");
+#endif
 }
 
 static bool

@@ -88,7 +88,7 @@ enum {
     /**
      * Priority of the drsyscall module load event.  This
      * event must take place before any user of drsyscall in order
-     * to populate the tables used by drsys_name_to_number().
+     * to populate the tables used by drsys_name_to_syscall().
      */
     DRMGR_PRIORITY_MODLOAD_DRSYS      = -100,
 };

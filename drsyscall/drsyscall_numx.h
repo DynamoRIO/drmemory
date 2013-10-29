@@ -353,7 +353,7 @@ USER32(NtUserGetScrollBarInfo                            , 0x11a0, 0x11b0, 0x11a
 USER32(NtUserGetSystemMenu                               , 0x11a1, 0x11b1, 0x11b0, 0x1060, 0x11bf, 0x1061, 0x11c5, 0x1061, 0x118e, 0x00071061, 0x1061, 0x1190, 0x00071062, 0x1062)
 USER32(NtUserGetThreadDesktop                            ,   NONE, 0x11b2, 0x11b1, 0x1084, 0x11c0, 0x1085, 0x11c6, 0x1083, 0x118d, 0x00051083, 0x1083, 0x118f, 0x00051084, 0x1084)
 /* i#487: this has a different sysnum on some platforms */
-USER32(GetThreadDesktop                                  ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE,   NONE)
+USER32(GetThreadDesktop                                  ,   NONE,   NONE,   NONE, 0x205c,   NONE, 0x2062,   NONE,   NONE,   NONE,       NONE,   NONE,   NONE,       NONE,   NONE)
 USER32(NtUserGetThreadState                              , 0x11a3, 0x11b3, 0x11b2, 0x1000, 0x11c1, 0x1000, 0x11c7, 0x1000, 0x118c, 0x00041001, 0x1001, 0x118e, 0x00041002, 0x1002)
 USER32(NtUserGetTitleBarInfo                             , 0x11a4, 0x11b4, 0x11b3, 0x1090, 0x11c2, 0x1091, 0x11c8, 0x108f, 0x118b, 0x0007108f, 0x108f, 0x118d, 0x00071090, 0x1090)
 USER32(NtUserGetTopLevelWindow                           ,   NONE,   NONE,   NONE,   NONE,   NONE,   NONE, 0x11c9, 0x12c2, 0x118a, 0x00001341, 0x1341, 0x118c, 0x0000136c, 0x136c)
