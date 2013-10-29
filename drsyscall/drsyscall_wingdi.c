@@ -1196,7 +1196,11 @@ syscall_info_t syscall_user32_info[] = {
     /***************************************************/
     /* Added in Vista */
     /* XXX: add min OS version: but we have to distinguish the service packs! */
-    {{0,0},"NtUserGetProp", OK, RNTST, 2, },
+    /* XXX: NtUserGetProp's return value should match GetProp == HANDLE, but it
+     * returns -1 and pointer-looking values in addition to NULL and 2, so I'm
+     * not sure what it is -- the type may vary.
+     */
+    {{0,0},"NtUserGetProp", OK, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserAddClipboardFormatListener", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserCheckAccessForIntegrityLevel", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserCreateDesktopEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
@@ -4543,7 +4547,7 @@ syscall_info_t syscall_gdi32_info[] = {
      {
          {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, -1, SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {2, -1, R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtGdiMakeObjectXferable", OK, SYSARG_TYPE_BOOL32, 2,
