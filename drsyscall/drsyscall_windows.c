@@ -61,86 +61,86 @@ dr_os_version_info_t win_ver = {sizeof(win_ver),};
 #define KERNEL32 USER32
 
 static const char * const sysnum_names[] = {
-#define USER32(name, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   #name,
+#define USER32(name, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   #name,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 #define NUM_SYSNUM_NAMES (sizeof(sysnum_names)/sizeof(sysnum_names[0]))
 
 static const int win8x64_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w8x64,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w8x64,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win8wow_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w8wow,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w8wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win8x86_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w8x86,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w8x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win7wow_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w7wow,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w7wow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win7x86_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w7x86,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w7x86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistawow_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   vwow,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   vwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int vistax86_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   vx86,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   vx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXPwow_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   xpwow,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   xpwow,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2003_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w2k3,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w2k3,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int winXP_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   xpx86,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   xpx86,
 #include "drsyscall_numx.h"
 #undef USER32
 };
 
 static const int win2K_sysnums[] = {
-#define USER32(n, w8x64, w8wow, w8x86, w7wow, w7x86, vwow, vx86, xpwow, w2k3,\
-     xpx86, w2K)   w2K,
+#define USER32(n, w2K, xpx86, w2k3, xpwow, vx86, vwow, w7x86, w7wow,\
+     w8x86, w8wow, w8x64)   w2K,
 #include "drsyscall_numx.h"
 #undef USER32
 };
