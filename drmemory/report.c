@@ -2401,8 +2401,9 @@ print_error_report(void *drcontext, char *buf, size_t bufsz, bool reporting,
     /* Next, print to the log to support postprocessing.  Only print suppressed
      * errors if -log_suppressed_errors or at higher verbosity.
      */
-    if (IF_DRSYMS_ELSE((reporting || options.log_suppressed_errors ||
-                        options.verbose >= 2), true)) {
+    if (etp->errtype < ERROR_MAX_VAL
+        IF_DRSYMS(&& (reporting || options.log_suppressed_errors ||
+                      options.verbose >= 2))) {
         print_error_to_buffer(buf, bufsz, etp, err, ecs, true/*for log*/);
         report_error_from_buffer(f_global, buf, false);
         if (options.thread_logs) {
