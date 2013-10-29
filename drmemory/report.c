@@ -1301,7 +1301,7 @@ convert_commas_to_nulls(char *buf, size_t bufsz)
     /* ensure double-null-terminated */
     char *c = buf + strlen(buf) + 1;
     if (c - buf >= bufsz - 1) {
-        ASSERT(false, "callstack_truncate_below too big");
+        ASSERT(false, ",-separated option string is too big");
         c -= 2; /* put 2nd null before orig null */
     }
     *c = '\0';
@@ -1428,6 +1428,13 @@ report_init(void)
                             BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_hide));
     convert_commas_to_nulls(options.callstack_srcfile_prefix,
                             BUFFER_SIZE_ELEMENTS(options.callstack_srcfile_prefix));
+    /* text_matches_any_pattern also wants these w/ nulls, not commas */
+    convert_commas_to_nulls(options.lib_blacklist,
+                            BUFFER_SIZE_ELEMENTS(options.lib_blacklist));
+    convert_commas_to_nulls(options.lib_whitelist,
+                            BUFFER_SIZE_ELEMENTS(options.lib_whitelist));
+    convert_commas_to_nulls(options.src_whitelist,
+                            BUFFER_SIZE_ELEMENTS(options.src_whitelist));
 #endif
 
 #ifdef WINDOWS
