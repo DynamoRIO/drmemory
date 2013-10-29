@@ -23,6 +23,9 @@
 use strict;
 
 my %name_map = (
+    # special case
+    'GetThreadDesktop' => 'NtUserGetThreadDesktop-SPECIALCASED',
+
     'NtUserControlMagnification' => 'NtUserMagControl',
     'NtUserGetMagnificationLensCtxInformation' => 'NtUserMagGetContextInformation',
     'NtUserSetMagnificationLensCtxInformation' => 'NtUserMagSetContextInformation',
@@ -42,6 +45,10 @@ my %name_map = (
     'NtUserShutdownReasonDestroy' => 'NtUserShutdownBlockReasonDestroy',
     'NtUsergDispatchTableValues' => 'NtUserProcessConnect',
     
+    # win8.1
+    'NtUserPhysicalToLogicalPointForPerMonitorDPI' => 'NtUserPerMonitorDPIPhysicalToLogicalPoint',
+     'NtUserLogicalToPhysicalPointForPerMonitorDPI' => 'NtUserLogicalToPerMonitorDPIPhysicalPoint',
+
     # imm32
     'NtUserImmDisableIme' => 'NtUserDisableThreadIme',
     'NtUserImmDisableIME' => 'NtUserDisableThreadIme',
@@ -86,6 +93,21 @@ my %user32_delete = (
     'NtUserTestWindowProcess' => 1,
     );
 
+my %imm32_only = (
+    # These we list only under imm32 as on some platforms the wrapper is not
+    # in user32:
+    'NtUserAssociateInputContext' => 1,
+    'NtUserBuildHimcList' => 1,
+    'NtUserCreateInputContext' => 1,
+    'NtUserDestroyInputContext' => 1,
+    'NtUserGetAppImeLevel' => 1,
+    'NtUserGetImeInfoEx' => 1,
+    'NtUserQueryInputContext' => 1,
+    'NtUserSetAppImeLevel' => 1,
+    'NtUserSetImeInfoEx' => 1,
+    'NtUserSetThreadLayoutHandles' => 1,
+    );
+
 my $os = 0;
 my %nums;
 my %sysnums;
@@ -113,14 +135,16 @@ while (<IN>) {
         s/^$prefix\((\w+)\s*,//;
         my $name = $1;
         my @matches = split ',', $_;
+        $name = $name_map{$name} if (defined($name_map{$name}));
         if ($old_os == 0) {
             $old_os = @matches;
         } else {
             die "Count mismatch in table\n" unless ($old_os == @matches);
         }
         for (my $m = 0; $m < @matches; $m++) {
-            $nums{$name}[$new_os + $m] = $matches[$m];
-            $big[$new_os + $m] = (length($matches[$m]) > 6);
+            # we append to the end, so old OS entries go first
+            $nums{$name}[$m] = $matches[$m];
+            $big[$m] = (length($matches[$m]) > 6);
         }
     }
 }
@@ -132,6 +156,7 @@ if ($prefix =~ /USER32/ || $prefix =~ /IMM32/) {
 } elsif ($prefix =~ /GDI32/) {
     $name_prefix = "NtGdi";
 }
+$os = $old_os;
 while ($#ARGV >= 0) {
     open(IN,"<$ARGV[0]") || die"Error opening $ARGV[0]\n";
     while (<IN>) {
@@ -164,6 +189,13 @@ while ($#ARGV >= 0) {
             next if ($name =~ /^NtGdiD3DKMT/);
 
             next if ($prefix =~ /USER32/ && defined($user32_delete{$name}));
+            next if ($prefix =~ /USER32/ && defined($imm32_only{$name}));
+            # XXX: there could be new imm32-only wrappers that we'll miss this way!
+            next if ($prefix =~ /IMM32/ && !defined($imm32_only{$name}));
+  
+            # assume the gdi ones are also all in gdi32.dll, and ditto for reverse
+            next if ($prefix =~ /USER32/ && $name =~ /^NtGdi/);
+            next if ($prefix =~ /GDI32/ && $name !~ /^NtGdi/);
 
             if (defined($sysnums{$os,$sysnum}) &&
                 $sysnums{$os,$sysnum} ne $name) {
@@ -178,9 +210,12 @@ while ($#ARGV >= 0) {
     $os++;
 }
 
-$os += $old_os;
-
 foreach my $n (sort (keys %nums)) { 
+    if ($n eq 'NtUserGetThreadDesktop-SPECIALCASED') {
+        # preserve the comment and extra entry
+        $n = 'GetThreadDesktop';
+        printf "/* i#487: this has a different sysnum on some platforms */\n";
+    }
     printf "%s(%-50s", $prefix, $n;
     for (my $i = 0; $i < $os; $i++) {
         if (defined($nums{$n}[$i])) {
