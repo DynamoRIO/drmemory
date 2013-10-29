@@ -55,6 +55,10 @@
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS)
 
+#define WIN7  DR_WINDOWS_VERSION_7
+#define WIN8  DR_WINDOWS_VERSION_8
+#define WIN81 DR_WINDOWS_VERSION_8_1
+
 /* FIXME i#1089: fill in info on all the inlined args for all of
  * syscalls in this file.
  */
@@ -270,14 +274,14 @@ syscall_info_t syscall_user32_info[] = {
          {3, sizeof(UINT), W},
      }
     },
-    {{0,DR_WINDOWS_VERSION_7},"NtUserBuildHwndList", OK, RNTST, 7,
+    {{0,WIN7},"NtUserBuildHwndList", OK, RNTST, 7,
      {
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
          {5, -6, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
          {6, sizeof(ULONG), R|W,},
      }
     },
-    {{DR_WINDOWS_VERSION_8,0},"NtUserBuildHwndList", OK, RNTST, 8,
+    {{WIN8,0},"NtUserBuildHwndList", OK, RNTST, 8,
      {
          {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
          /* i#1153: size of buffer seems to be a separate inline param inserted
@@ -1183,7 +1187,7 @@ syscall_info_t syscall_user32_info[] = {
     /* FIXME i#1095: fill in the unknown info, esp Vista+ */
     {{0,0},"NtUserCallUserpExitWindowsEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserCallUserpRegisterLogonProcess", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
-    {{0,0},"NtUserDeviceEventWorker", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{0,WIN8},"NtUserDeviceEventWorker", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserEndTask", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserLogon", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserRegisterServicesProcess", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
@@ -1216,7 +1220,8 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserRegisterSessionPort", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserRemoveClipboardFormatListener", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserSetMirrorRendering", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
-    {{0,0},"NtUserSetProcessDPIAware", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{0,WIN8}, "NtUserSetProcessDPIAware", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
+    {{WIN81,0},"NtUserSetProcessDPIAwareness", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserSetWindowRgnEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserShowSystemCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
     {{0,0},"NtUserShutdownBlockReasonCreate", UNKNOWN, DRSYS_TYPE_UNKNOWN, },
@@ -1278,7 +1283,8 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserCanBrokerForceForeground", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{0,0},"NtUserCheckProcessForClipboardAccess", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserCheckProcessSession", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
-    {{0,0},"NtUserCreateDCompositionHwndTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{0,WIN8}, "NtUserCreateDCompositionHwndTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN81,0},"NtUserCreateDCompositionHwndTarget", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{0,0},"NtUserDeferWindowPosAndBand", UNKNOWN, DRSYS_TYPE_UNKNOWN, 10, },
     {{0,0},"NtUserDelegateCapturePointers", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{0,0},"NtUserDelegateInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 6, },
@@ -1299,7 +1305,7 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserGetDesktopID", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserGetDisplayAutoRotationPreferencesByProcessId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{0,0},"NtUserGetDisplayAutoRotationPreferences", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
-    {{0,0},"NtUserGetGlobalIMEStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{0,WIN8},"NtUserGetGlobalIMEStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserGetPointerCursorId", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserGetPointerDeviceCursors", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
     {{0,0},"NtUserGetPointerDeviceProperties", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
@@ -1332,7 +1338,8 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserInternalClipCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserIsMouseInPointerEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserIsMouseInputEnabled", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
-    {{0,0},"NtUserLayoutCompleted", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{0,WIN8}, "NtUserLayoutCompleted", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN81,0},"NtUserLayoutCompleted", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{0,0},"NtUserPromotePointer", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserQueryBSDRWindow", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserRegisterBSDRWindow", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
@@ -1353,7 +1360,8 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserSetProcessUIAccessZorder", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserSetThreadInputBlocked", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserSetWindowBand", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
-    {{0,0},"NtUserSetWindowCompositionTransition", UNKNOWN, DRSYS_TYPE_UNKNOWN, 6, },
+    {{0,WIN8}, "NtUserSetWindowCompositionTransition", UNKNOWN, DRSYS_TYPE_UNKNOWN, 6, },
+    {{WIN81,0},"NtUserSetWindowCompositionTransition", UNKNOWN, DRSYS_TYPE_UNKNOWN, 7, },
     {{0,0},"NtUserSetWindowFeedbackSetting", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{0,0},"NtUserSignalRedirectionStartComplete", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtUserSlicerControl", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
@@ -1361,6 +1369,31 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserUpdateDefaultDesktopThumbnail", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{0,0},"NtUserWaitAvailableMessageEx", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{0,0},"NtUserWaitForRedirectionStartComplete", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+
+    /***************************************************/
+    /* Added in Windows 8.1 */
+    /* FIXME i#1360: fill in details */
+    {{WIN81,0},"NtUserClearForeground", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
+    {{WIN81,0},"NtUserCompositionInputSinkLuidFromPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserEnableTouchPad", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtUserGetCursorDims", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtUserGetDpiForMonitor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN81,0},"NtUserGetHimetricScaleFactorFromPixelLocation", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
+    {{WIN81,0},"NtUserGetOwnerTransformedMonitorRect", UNKNOWN, DRSYS_TYPE_UNKNOWN, 4, },
+    {{WIN81,0},"NtUserGetPhysicalDeviceRect", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserGetPointerInputTransform", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN81,0},"NtUserGetPrecisionTouchPadConfiguration", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtUserGetProcessDpiAwareness", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserLinkDpiCursor", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN81,0},"NtUserLogicalToPerMonitorDPIPhysicalPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserPerMonitorDPIPhysicalToLogicalPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserRegisterTouchPadCapable", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtUserReportInertia", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
+    {{WIN81,0},"NtUserSetActivationFilter", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtUserSetPrecisionTouchPadConfiguration", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtUserTransformPoint", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN81,0},"NtUserTransformRect", UNKNOWN, DRSYS_TYPE_UNKNOWN, 3, },
+    {{WIN81,0},"NtUserUpdateWindowInputSinkHints", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
 };
 #define NUM_USER32_SYSCALLS \
     (sizeof(syscall_user32_info)/sizeof(syscall_user32_info[0]))
@@ -4747,6 +4780,20 @@ syscall_info_t syscall_gdi32_info[] = {
     {{0,0},"NtGdiDdDDIWaitForVerticalBlankEvent2", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
     {{0,0},"NtGdiDwmCreatedBitmapRemotingOutput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{0,0},"NtGdiSetUMPDSandboxState", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+
+    /***************************************************/
+    /* Added in Windows 8.1 */
+    /* FIXME i#1360: fill in details */
+    {{WIN81,0},"NtGdiDdDDICacheHybridQueryValue", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtGdiDdDDICheckMultiPlaneOverlaySupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtGdiDdDDIGetCachedHybridQueryValue", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtGdiDdDDINetDispGetNextChunkInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 7, },
+    {{WIN81,0},"NtGdiDdDDINetDispQueryMiracastDisplayDeviceStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtGdiDdDDINetDispQueryMiracastDisplayDeviceSupport", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtGdiDdDDINetDispStartMiracastDisplayDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtGdiDdDDINetDispStopMiracastDisplayDevice", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN81,0},"NtGdiDdDDIPresentMultiPlaneOverlay", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
+    {{WIN81,0},"NtGdiGetCurrentDpiInfo", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
 };
 #define NUM_GDI32_SYSCALLS \
     (sizeof(syscall_gdi32_info)/sizeof(syscall_gdi32_info[0]))

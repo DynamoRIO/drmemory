@@ -294,7 +294,9 @@ static drsys_sysnum_t sysnum_PowerInformation = {-1,0};
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS) /* they all return NTSTATUS */
 
-#define WIN7 DR_WINDOWS_VERSION_7
+#define WIN7  DR_WINDOWS_VERSION_7
+#define WIN8  DR_WINDOWS_VERSION_8
+#define WIN81 DR_WINDOWS_VERSION_8_1
 
 /* A non-SYSARG_INLINED type is by default DRSYS_TYPE_STRUCT, unless
  * a different type is specified with |HT.
@@ -3035,7 +3037,9 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtThawRegistry", UNKNOWN, RNTST, 0, },
     {{0,0},"NtThawTransactions", UNKNOWN, RNTST, 0, },
     {{0,0},"NtTraceControl", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 2, },
+    {{0,WIN7},   "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 2, },
+    {{WIN8,WIN8},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
+    {{WIN81,0},  "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 5, },
     {{0,0},"NtWorkerFactoryWorkerReady", UNKNOWN, RNTST, 1, },
 
     /***************************************************/
@@ -3149,6 +3153,16 @@ static syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
+
+    /***************************************************/
+    /* Added in Windows 8.1 */
+    /* FIXME i#1360: fill in details */
+    {{WIN81,0},"NtCancelTimer2", UNKNOWN, RNTST, 2, },
+    {{WIN81,0},"NtCreateTimer2", UNKNOWN, RNTST, 5, },
+    {{WIN81,0},"NtGetCompleteWnfStateSubscription", UNKNOWN, RNTST, 6, },
+    {{WIN81,0},"NtSetTimer2", UNKNOWN, RNTST, 4, },
+    {{WIN81,0},"NtSetWnfProcessNotificationEvent", UNKNOWN, RNTST, 1, },
+    {{WIN81,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
 
 };
 #define NUM_NTDLL_SYSCALLS (sizeof(syscall_ntdll_info)/sizeof(syscall_ntdll_info[0]))
