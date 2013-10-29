@@ -225,6 +225,10 @@ typedef DWORD LFTYPE;
 
 /* TYPES *********************************************************************/
 
+#if (_MSC_VER < 1600)
+DECLARE_HANDLE(HLSURF);
+#endif
+
 typedef PVOID KERNEL_PVOID;
 typedef PVOID PUMDHPDEV;
 typedef D3DNTHAL_CONTEXTCREATEDATA D3DNTHAL_CONTEXTCREATEI;
