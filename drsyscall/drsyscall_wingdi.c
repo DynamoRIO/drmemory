@@ -1417,56 +1417,56 @@ num_user32_syscalls(void)
 #define NONE -1
 
 static const char * const usercall_names[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   #type"."#name,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   #type"."#name,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 #define NUM_USERCALL_NAMES (sizeof(usercall_names)/sizeof(usercall_names[0]))
 
 static const char * const usercall_primary[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   #type,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   #type,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win8_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w8,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   w8,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win7_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w7,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   w7,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winvistaSP2_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   vistaSP2,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   vistaSP2,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winvistaSP01_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   vistaSP01,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   vistaSP01,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win2003_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w2003,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   w2003,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int winxp_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   xp,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   xp,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
 
 static const int win2k_usercall_nums[] = {
-#define USERCALL(type, name, w8, w7, vistaSP2, vistaSP01, w2003, xp, w2k)   w2k,
+#define USERCALL(type, name, w2k, xp, w2003, vistaSP01, vistaSP2, w7, w8)   w2k,
 #include "drsyscall_usercallx.h"
 #undef USERCALL
 };
