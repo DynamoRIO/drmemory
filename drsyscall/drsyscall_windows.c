@@ -2844,6 +2844,7 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /***************************************************/
     /* added in Windows Vista SP0 */
+    /* XXX: add min OS version: but we have to distinguish the service packs! */
     {{0,0},"NtAcquireCMFViewOwnership", UNKNOWN, RNTST, 3, },
     {{0,0},"NtAlpcAcceptConnectPort", OK, RNTST, 9,
      {
@@ -3044,6 +3045,7 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /***************************************************/
     /* added in Windows Vista SP1 */
+    /* XXX: add min OS version: but we have to distinguish the service packs! */
     {{0,0},"NtRenameTransactionManager", UNKNOWN, RNTST, 2, },
     {{0,0},"NtReplacePartitionUnit", UNKNOWN, RNTST, 3, },
     {{0,0},"NtWow64CsrVerifyRegion", OK, RNTST, 2, },
@@ -3062,21 +3064,21 @@ static syscall_info_t syscall_ntdll_info[] = {
 
     /***************************************************/
     /* added in Windows 7 */
-    {{0,0},"NtAllocateReserveObject", OK, RNTST, 3,
+    {{WIN7,0},"NtAllocateReserveObject", OK, RNTST, 3,
      {
         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
-    {{0,0},"NtCreateProfileEx", UNKNOWN, RNTST, 10, },
-    {{0,0},"NtDisableLastKnownGood", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtDrawText", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtEnableLastKnownGood", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtNotifyChangeSession", UNKNOWN, RNTST, 8, },
-    {{0,0},"NtOpenKeyTransactedEx", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6, },
+    {{WIN7,0},"NtCreateProfileEx", UNKNOWN, RNTST, 10, },
+    {{WIN7,0},"NtDisableLastKnownGood", UNKNOWN, RNTST, 0, },
+    {{WIN7,0},"NtDrawText", UNKNOWN, RNTST, 1, },
+    {{WIN7,0},"NtEnableLastKnownGood", UNKNOWN, RNTST, 0, },
+    {{WIN7,0},"NtNotifyChangeSession", UNKNOWN, RNTST, 8, },
+    {{WIN7,0},"NtOpenKeyTransactedEx", UNKNOWN, RNTST, 5, },
+    {{WIN7,0},"NtQuerySecurityAttributesToken", UNKNOWN, RNTST, 6, },
     /* One info class reads data, which is special-cased */
-    {{0,0},"NtQuerySystemInformationEx", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 6,
+    {{WIN7,0},"NtQuerySystemInformationEx", OK|SYSINFO_RET_SMALL_WRITE_LAST, RNTST, 6,
      {
          {0, sizeof(SYSTEM_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, -2, R},
@@ -3087,17 +3089,17 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_QuerySystemInformationEx
     },
-    {{0,0},"NtQueueApcThreadEx", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtSerializeBoot", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtSetIoCompletionEx", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtSetTimerEx", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtUmsThreadYield", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtWow64GetCurrentProcessorNumberEx", OK, RNTST, 1,
+    {{WIN7,0},"NtQueueApcThreadEx", UNKNOWN, RNTST, 6, },
+    {{WIN7,0},"NtSerializeBoot", UNKNOWN, RNTST, 0, },
+    {{WIN7,0},"NtSetIoCompletionEx", UNKNOWN, RNTST, 6, },
+    {{WIN7,0},"NtSetTimerEx", UNKNOWN, RNTST, 4, },
+    {{WIN7,0},"NtUmsThreadYield", UNKNOWN, RNTST, 1, },
+    {{WIN7,0},"NtWow64GetCurrentProcessorNumberEx", OK, RNTST, 1,
      {
         {0, sizeof(PROCESSOR_NUMBER), W},
      }
     },
-    {{0,WIN7},"NtWow64InterlockedPopEntrySList", OK, RNTST, 1,
+    {{WIN7,WIN7},"NtWow64InterlockedPopEntrySList", OK, RNTST, 1,
      {
         {0, sizeof(SLIST_HEADER), R|W},
      }
@@ -3106,42 +3108,42 @@ static syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* Added in Windows 8 */
     /* FIXME i#1153: fill in details */
-    {{0,0},"NtAddAtomEx", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtAdjustTokenClaimsAndDeviceGroups", UNKNOWN, RNTST, 16, },
-    {{0,0},"NtAlertThreadByThreadId", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtAlpcConnectPortEx", UNKNOWN, RNTST, 11, },
-    {{0,0},"NtAssociateWaitCompletionPacket", UNKNOWN, RNTST, 8, },
-    {{0,0},"NtCancelWaitCompletionPacket", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCreateDirectoryObjectEx", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtCreateIRTimer", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCreateLowBoxToken", UNKNOWN, RNTST, 9, },
-    {{0,0},"NtCreateTokenEx", UNKNOWN, RNTST, 17, },
-    {{0,0},"NtCreateWaitCompletionPacket", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtCreateWnfStateName", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtDeleteWnfStateData", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtDeleteWnfStateName", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtFilterBootOption", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtFilterTokenEx", UNKNOWN, RNTST, 14, },
-    {{0,0},"NtFlushBuffersFileEx", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtGetCachedSigningLevel", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtQueryWnfStateData", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtQueryWnfStateNameInformation", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtSetCachedSigningLevel", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtSetInformationVirtualMemory", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtSetIRTimer", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtSubscribeWnfStateChange", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtUnmapViewOfSectionEx", UNKNOWN, RNTST, 3,
+    {{WIN8,0},"NtAddAtomEx", UNKNOWN, RNTST, 4, },
+    {{WIN8,0},"NtAdjustTokenClaimsAndDeviceGroups", UNKNOWN, RNTST, 16, },
+    {{WIN8,0},"NtAlertThreadByThreadId", UNKNOWN, RNTST, 1, },
+    {{WIN8,0},"NtAlpcConnectPortEx", UNKNOWN, RNTST, 11, },
+    {{WIN8,0},"NtAssociateWaitCompletionPacket", UNKNOWN, RNTST, 8, },
+    {{WIN8,0},"NtCancelWaitCompletionPacket", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtCreateDirectoryObjectEx", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtCreateIRTimer", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtCreateLowBoxToken", UNKNOWN, RNTST, 9, },
+    {{WIN8,0},"NtCreateTokenEx", UNKNOWN, RNTST, 17, },
+    {{WIN8,0},"NtCreateWaitCompletionPacket", UNKNOWN, RNTST, 3, },
+    {{WIN8,0},"NtCreateWnfStateName", UNKNOWN, RNTST, 7, },
+    {{WIN8,0},"NtDeleteWnfStateData", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtDeleteWnfStateName", UNKNOWN, RNTST, 1, },
+    {{WIN8,0},"NtFilterBootOption", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtFilterTokenEx", UNKNOWN, RNTST, 14, },
+    {{WIN8,0},"NtFlushBuffersFileEx", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtGetCachedSigningLevel", UNKNOWN, RNTST, 6, },
+    {{WIN8,0},"NtQueryWnfStateData", UNKNOWN, RNTST, 6, },
+    {{WIN8,0},"NtQueryWnfStateNameInformation", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtSetCachedSigningLevel", UNKNOWN, RNTST, 5, },
+    {{WIN8,0},"NtSetInformationVirtualMemory", UNKNOWN, RNTST, 6, },
+    {{WIN8,0},"NtSetIRTimer", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtSubscribeWnfStateChange", UNKNOWN, RNTST, 4, },
+    {{WIN8,0},"NtUnmapViewOfSectionEx", UNKNOWN, RNTST, 3,
      {
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
          /* FIXME i#1153: what is the 3rd arg?  Observed to be 0. */
      }
     },
-    {{0,0},"NtUnsubscribeWnfStateChange", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtUpdateWnfStateData", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtWaitForAlertByThreadId", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtWow64AllocateVirtualMemory64", UNKNOWN, RNTST, 7,
+    {{WIN8,0},"NtUnsubscribeWnfStateChange", UNKNOWN, RNTST, 1, },
+    {{WIN8,0},"NtUpdateWnfStateData", UNKNOWN, RNTST, 7, },
+    {{WIN8,0},"NtWaitForAlertByThreadId", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtWaitForWnfNotifications", UNKNOWN, RNTST, 2, },
+    {{WIN8,0},"NtWow64AllocateVirtualMemory64", UNKNOWN, RNTST, 7,
      {
          /* XXX: I'm asuming the base and size pointers point at 64-bit values */
          {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
@@ -3291,7 +3293,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
     /* Windows version-specific entry feature */
     if (syslist->num.number != 0 && win_ver.version < syslist->num.number)
         return;
-    if (syslist->num.secondary != 0 && win_ver.version > syslist->num.number)
+    if (syslist->num.secondary != 0 && win_ver.version > syslist->num.secondary)
         return;
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
