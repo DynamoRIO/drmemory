@@ -55,9 +55,13 @@
 #define RET (SYSARG_POST_SIZE_RETVAL)
 #define RNTST (DRSYS_TYPE_NTSTATUS)
 
-#define WIN7  DR_WINDOWS_VERSION_7
-#define WIN8  DR_WINDOWS_VERSION_8
-#define WIN81 DR_WINDOWS_VERSION_8_1
+#define WINNT    DR_WINDOWS_VERSION_NT
+#define WIN2K    DR_WINDOWS_VERSION_2000
+#define WIN2K3   DR_WINDOWS_VERSION_2003
+#define WINVISTA DR_WINDOWS_VERSION_VISTA
+#define WIN7     DR_WINDOWS_VERSION_7
+#define WIN8     DR_WINDOWS_VERSION_8
+#define WIN81    DR_WINDOWS_VERSION_8_1
 
 /* FIXME i#1089: fill in info on all the inlined args for all of
  * syscalls in this file.
@@ -1815,7 +1819,6 @@ static drsys_sysnum_t sysnum_GdiCheckBitmapBits = {-1,0};
 static drsys_sysnum_t sysnum_GdiHfontCreate = {-1,0};
 static drsys_sysnum_t sysnum_GdiDoPalette = {-1,0};
 static drsys_sysnum_t sysnum_GdiExtTextOutW = {-1,0};
-static drsys_sysnum_t sysnum_GdiOpenDCW = {-1,0};
 static drsys_sysnum_t sysnum_GdiDescribePixelFormat = {-1,0};
 static drsys_sysnum_t sysnum_GdiGetRasterizerCaps = {-1,0};
 static drsys_sysnum_t sysnum_GdiPolyPolyDraw = {-1,0};
@@ -3376,13 +3379,28 @@ syscall_info_t syscall_gdi32_info[] = {
          {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtGdiOpenDCW", OK, DRSYS_TYPE_HANDLE, 7/*8 on Vista+*/,
+    {{0,WIN2K3},"NtGdiOpenDCW", OK, DRSYS_TYPE_HANDLE, 7,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(DEVMODEW)/*really var-len*/, R|CT, SYSARG_TYPE_DEVMODEW},
          {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-     }, &sysnum_GdiOpenDCW
+         {4, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {5, sizeof(DRIVER_INFO_2W), R|HT, DRSYS_TYPE_STRUCT},
+         {6, sizeof(PUMDHPDEV *), W|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{WINVISTA,0},"NtGdiOpenDCW", OK, DRSYS_TYPE_HANDLE, 8,
+     {
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(DEVMODEW)/*really var-len*/, R|CT, SYSARG_TYPE_DEVMODEW},
+         {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {5, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {6, sizeof(DRIVER_INFO_2W), R|HT, DRSYS_TYPE_STRUCT},
+         {7, sizeof(PUMDHPDEV *), W|HT, DRSYS_TYPE_STRUCT},
+     }
     },
     {{0,0},"NtGdiGetDCDword", OK, SYSARG_TYPE_BOOL32, 3,
      {
@@ -3901,7 +3919,16 @@ syscall_info_t syscall_gdi32_info[] = {
          {1, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtGdiHfontCreate", OK, DRSYS_TYPE_HANDLE, 5,
+    {{0,WINNT},"NtGdiHfontCreate", OK, DRSYS_TYPE_HANDLE, 5,
+     {
+         {0, sizeof(EXTLOGFONTW), R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LFTYPE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(FLONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+     }
+    },
+    {{WIN2K,0},"NtGdiHfontCreate", OK, DRSYS_TYPE_HANDLE, 5,
      {
          /*special-cased*/
          {0, -1, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ENUMLOGFONTEXDVW)},
@@ -3911,17 +3938,6 @@ syscall_info_t syscall_gdi32_info[] = {
          {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      },&sysnum_GdiHfontCreate
     },
-#if 0 /* for _WIN32_WINNT < 0x0500 == NT which we ignore for now */
-    {{0,0},"NtGdiHfontCreate", OK, DRSYS_TYPE_HANDLE, 5,
-     {
-         {0, sizeof(EXTLOGFONTW), R|HT, DRSYS_TYPE_STRUCT},
-         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(LFTYPE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {3, sizeof(FLONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
-     }
-    },
-#endif
     {{0,0},"NtGdiSetFontEnumeration", OK, SYSARG_TYPE_UINT32, 1,
      {
          {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -6409,33 +6425,6 @@ handle_GdiDoPalette(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     }
 }
 
-static void
-handle_GdiOpenDCW(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
-{
-    /* An extra arg "BOOL bDisplay" was added as arg #4 in Vista so
-     * we have to special-case the subsequent args, which for Vista+ are:
-     *   {6,sizeof(DRIVER_INFO_2W),R,}, {7,sizeof(PUMDHPDEV *),W,},
-     */
-    uint num_driver = 5;
-    uint num_pump = 6;
-    if (win_ver.version >= DR_WINDOWS_VERSION_VISTA) {
-        if (ii->arg->pre) {
-            if (!report_sysarg(ii, 7, SYSARG_WRITE))
-                return;
-        }
-        num_driver = 6;
-        num_pump = 7;
-    }
-    if (ii->arg->pre) {
-        if (!report_memarg_type(ii, num_driver, SYSARG_READ,
-                                (byte *) pt->sysarg[num_driver], sizeof(DRIVER_INFO_2W),
-                                "DRIVER_INFO_2W", DRSYS_TYPE_STRUCT, NULL))
-            return;
-    }
-    report_memarg_type(ii, num_pump, SYSARG_WRITE, (byte *) pt->sysarg[num_pump],
-                       sizeof(PUMDHPDEV *), "PUMDHPDEV*", DRSYS_TYPE_STRUCT, NULL);
-}
-
 /* Params 0 and 1 and the return type vary */
 static void
 handle_GdiPolyPolyDraw(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
@@ -6575,8 +6564,6 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
                                cwc*sizeof(INT), "pdx extra size from ETO_PDY",
                                DRSYS_TYPE_STRUCT, NULL);
         }
-    } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiOpenDCW)) {
-        handle_GdiOpenDCW(drcontext, pt, ii);
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiPolyPolyDraw)) {
         handle_GdiPolyPolyDraw(drcontext, pt, ii);
     } 
