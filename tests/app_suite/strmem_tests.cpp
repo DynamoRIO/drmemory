@@ -209,10 +209,13 @@ TEST(StringTests, strcspn) {
 
 TEST(StringTests, strnlen) {
     const char *str = "string";
-    ASSERT_EQ(strlen(str), strnlen(str, 7));
-    ASSERT_EQ(strlen(str), strnlen(str, 6));
-    ASSERT_EQ(5U, strnlen(str, 5));
-    ASSERT_EQ(0U, strnlen(str, 0));
+    /* i#1368: type cast to avoid compilation error on some old gcc,
+     * but somehow strcspn/strspn above do not need the cast.
+     */
+    ASSERT_EQ((unsigned long)strlen(str), (unsigned long)strnlen(str, 7));
+    ASSERT_EQ((unsigned long)strlen(str), (unsigned long)strnlen(str, 6));
+    ASSERT_EQ(5UL, (unsigned long)strnlen(str, 5));
+    ASSERT_EQ(0UL, (unsigned long)strnlen(str, 0));
 }
 
 #endif /* LINUX */
