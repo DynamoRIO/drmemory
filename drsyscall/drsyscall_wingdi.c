@@ -1333,7 +1333,12 @@ syscall_info_t syscall_user32_info[] = {
     {{WIN8,0},"NtUserGetQueueEventStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 0, },
     {{WIN8,0},"NtUserGetRawPointerDeviceData", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{WIN8,0},"NtUserGetTouchValidationStatus", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },
-    {{WIN8,0},"NtUserGetWindowBand", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
+    {{WIN8,0},"NtUserGetWindowBand", OK, DRSYS_TYPE_BOOL, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{WIN8,0},"NtUserGetWindowFeedbackSetting", UNKNOWN, DRSYS_TYPE_UNKNOWN, 5, },
     {{WIN8,0},"NtUserHandleDelegatedInput", UNKNOWN, DRSYS_TYPE_UNKNOWN, 2, },
     {{WIN8,0},"NtUserHidePointerContactVisualization", UNKNOWN, DRSYS_TYPE_UNKNOWN, 1, },

@@ -28,6 +28,13 @@ NtUserGetProcessUIContextInformation(
     __out PROCESS_UI_CONTEXT  *ContextInformation
     );
 
+/* This can be observed just starting up calc.exe on Windows 8.1, called from
+ * C:\Program Files (x86)\Common Files\Microsoft Shared\Ink\tiptsf.dll
+ */
+BOOL
+NTAPI
+NtUserGetWindowBand(__in HANDLE hwnd,
+                    __out DWORD *value);
 
 #endif /* _NTUSER_WIN8_ */
 
