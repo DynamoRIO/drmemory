@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -34,6 +34,8 @@ enum WinVersion {
     WIN_XP,
     WIN_VISTA,
     WIN_7,
+    WIN_8,
+    WIN_8_1,
     WIN_HIGHER,
 };
 

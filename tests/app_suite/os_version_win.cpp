@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -34,8 +34,12 @@ WinVersion GetWindowsVersion() {
     if (!success) {
         return WIN_UNKNOWN;
     }
-    if (os_ver.dwMajorVersion >= 6 && os_ver.dwMinorVersion > 1) {
-        return WIN_UNKNOWN;
+    if (os_ver.dwMajorVersion >= 6 && os_ver.dwMinorVersion > 3) {
+        return WIN_HIGHER;
+    } else if (os_ver.dwMajorVersion == 6 && os_ver.dwMinorVersion == 3) {
+        return WIN_8_1;
+    } else if (os_ver.dwMajorVersion == 6 && os_ver.dwMinorVersion == 2) {
+        return WIN_8;
     } else if (os_ver.dwMajorVersion == 6 && os_ver.dwMinorVersion == 1) {
         return WIN_7;
     } else if (os_ver.dwMajorVersion == 6 && os_ver.dwMinorVersion == 0) {
