@@ -1826,6 +1826,12 @@ packed_callstack_free(packed_callstack_t *pcs)
     return refcount;
 }
 
+uint
+packed_callstack_refcount(packed_callstack_t *pcs)
+{
+    return pcs->refcount;
+}
+
 void
 packed_callstack_add_ref(packed_callstack_t *pcs)
 {

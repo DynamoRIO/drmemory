@@ -272,6 +272,9 @@ packed_callstack_log(packed_callstack_t *pcs, file_t f);
 uint
 packed_callstack_free(packed_callstack_t *pcs);
 
+uint
+packed_callstack_refcount(packed_callstack_t *pcs);
+
 void
 packed_callstack_add_ref(packed_callstack_t *pcs);
 
