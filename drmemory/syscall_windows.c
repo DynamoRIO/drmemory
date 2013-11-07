@@ -111,6 +111,10 @@ vsyscall_pc(void *drcontext, byte *entry)
         pc = decode(drcontext, pc, &instr);
         ASSERT(instr_valid(&instr), "unknown system call sequence");
         opc = instr_get_opcode(&instr);
+        if (opc == OP_call) {
+            /* i#1367: Windows 8+ uses co-located sysenter callees: no vsyscall here. */
+            break;
+        }
         ASSERT(opc_is_in_syscall_wrapper(opc), "unknown system call sequence");
         /* safety check: should only get 11 or 12 bytes in */
         if (pc - entry > 20) {
