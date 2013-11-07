@@ -697,13 +697,13 @@ if (TOOL_DR_MEMORY)
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
-    # XXX: running with -lib_blacklist_frames 0 to avoid half the leaks being
-    # split as "potential errors" (from i#1310) to preserve the test as-is for
-    # now.   We should revisit when we make handle leaks on by default.
+    # We need defined infomation for better callstacks, so use full mode here.
+    # i#1371, using full module for better callstack.
     newtest_ex(handle handle.cpp ""
-      "-light;-check_handle_leaks;-callstack_max_frames;100;-lib_blacklist_frames;0"
+      "-no_count_leaks;-check_handle_leaks;-callstack_max_frames;100"
       "" OFF "" OFF)
-    newtest_nobuild(handle_only handle "" "-handle_leaks_only;-callstack_max_frames;100;-lib_blacklist_frames;0" "" OFF "handle")
+    newtest_nobuild(handle_only handle ""
+      "-handle_leaks_only;-callstack_max_frames;100" "" OFF "handle")
     # XXX i#1320: have runtest.cmake check potential_errors.txt too
     newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" OFF)
   endif (WIN32)
@@ -765,7 +765,7 @@ newtest_nobuild(nudge run_in_bg_tgt
   "${nudge_test_args}--;${infloop_path}" "" OFF "")
 if (TOOL_DR_MEMORY AND WIN32)
   # See above for why passing -lib_blacklist_frames 0.
-  set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;-lib_blacklist_frames;0")
+  set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
   newtest_nobuild(nudge_handle run_in_bg_tgt
     "-out;./nudge-handle-out"
     "${nudge_handle_test_args}--;${infloop_path}" "" OFF "")

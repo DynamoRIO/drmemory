@@ -650,6 +650,7 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
              */
             handlecheck_delete_handle_post_syscall
                 (drcontext, (HANDLE)syscall_get_param(drcontext, idx),
+		 sysnum, mc,
                  syscall_handle_type(syscall_type), pt->handle_info, res);
             pt->handle_info = NULL;
         }

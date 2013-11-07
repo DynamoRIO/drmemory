@@ -23,13 +23,13 @@ starting
 # On Windows, the prefixes for messages from the nudge handle use ~~TID~~
 # prefixes due to the injected thread. Just match the trailing tildes.
 # First nudge error report.
-~~ ERRORS FOUND:
+~~ NO ERRORS FOUND:
 ~~       0 unique,     0 total invalid heap argument(s)
 ~~       0 unique,     0 total GDI usage error(s)
-~~       1 unique,     1 total handle leak(s)
+~~       0 unique,     0 total handle leak(s)
 ~~       0 unique,     0 total warning(s)
 # Second nudge error report.  We don't match the output of it, just that it was
 # here.
-~~ ERRORS FOUND:
+~~ NO ERRORS FOUND:
 # On exit error report.  We don't get this on Windows because we use DRkill to
 # end infloop.exe.

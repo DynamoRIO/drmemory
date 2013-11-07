@@ -33,15 +33,6 @@ Error #9: HANDLE LEAK:
 Error #10: HANDLE LEAK:
 Error #11: HANDLE LEAK:
 Error #12: HANDLE LEAK:
-Error #13: HANDLE LEAK:
-Error #14: HANDLE LEAK:
-Error #15: HANDLE LEAK:
-Error #16: HANDLE LEAK:
-Error #17: HANDLE LEAK:
-Error #18: HANDLE LEAK:
-Error #19: HANDLE LEAK:
-Error #20: HANDLE LEAK:
-Error #21: HANDLE LEAK:
 
 system call NtUserGetDC
 system call NtGdiCreatePen
@@ -54,11 +45,6 @@ system call NtOpenFile
 system call NtUserCreateWindowEx
 system call NtCreateSection
 system call NtOpenProcess
-system call NtGdiGetStockObject
-system call NtGdiHfontCreate
-system call NtUserFindExistingCursorIcon
-system call NtUserGetAncestor
-system call NtUserGetThreadDesktop
 system call NtDuplicateObject
 
 test_file_handles

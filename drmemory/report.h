@@ -83,7 +83,8 @@ report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
 
 void
 report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
-                   packed_callstack_t *pcs);
+                   packed_callstack_t *pcs, packed_callstack_t *aux_pcs,
+                   bool potential);
 #endif
 
 /* saves the values of all counts that are modified in report_leak() */

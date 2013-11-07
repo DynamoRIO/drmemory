@@ -162,9 +162,8 @@ test_file_handles(bool close)
         if (test_done)
             break;
     } while (FindNextFile(hFind, &ffd) != 0);
-    if (GetLastError() != ERROR_NO_MORE_FILES) {
-        printf("fail to find the next file\n");
-        return;
+    if (GetLastError() == ERROR_NO_MORE_FILES) {
+        printf("failed to find the next file\n");
     }
     if (close)
         FindClose(hFind);
@@ -186,7 +185,6 @@ test_window_handles(bool close)
                           NULL);
     if (!hWnd) {
         printf("fail to create window\n");
-        return;
     }
     if (close) {
         DestroyWindow(hWnd);
@@ -229,20 +227,24 @@ test_process_handles(bool close)
 int
 main()
 {
+    int i;
+    /* To test -filter_handle_leaks, we must call those test routines with
+     * and without closing handles at the same place with the same callstack.
+     */
     printf("test gdi handles\n");
-    test_gdi_handles(true);   // create and close
-    test_gdi_handles(false);  // create but not close, error raised
+    for (i = 0; i < 2; i++)
+        test_gdi_handles((i == 0)/* close handle? */);
     printf("test file handles\n");
-    test_file_handles(true);
-    test_file_handles(false);
+    for (i = 0; i < 2; i++)
+        test_file_handles((i == 0)/* close handle? */);
     printf("test thread handles\n");
-    test_thread_handles(true);
-    test_thread_handles(false);
+    for (i = 0; i < 2; i++)
+        test_thread_handles((i == 0)/* close handle? */);
     printf("test window handles\n");
-    test_window_handles(true);
-    test_window_handles(false);
+    for (i = 0; i < 2; i++)
+        test_window_handles((i == 0)/* close handle? */);
     printf("test process handles\n");
-    test_process_handles(true);
-    test_process_handles(false);
+    for (i = 0; i < 2; i++)
+        test_process_handles((i == 0)/* close handle? */);
     return 0;
 }

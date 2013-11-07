@@ -189,6 +189,9 @@ typedef struct _error_toprint_t {
     /* For leaks: */
     size_t indirect_size;       /* Size of indirect allocs. */
     const char *label;          /* Extra label (e.g., IGNORED). */
+
+    /* For handle leaks */
+    bool potential;             /* Whether a potential leak. */
 } error_toprint_t;
 
 /* Though any one instance of an address can have only one error
@@ -1261,13 +1264,20 @@ check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
 }
 
 static bool
-error_is_likely_false_positive(error_callstack_t *ecs)
+error_is_likely_false_positive(error_callstack_t *ecs, error_toprint_t *etp)
 {
     /* i#1310: separate callstacks that are likely false positives.
      * We look for the top N frames being on the blacklist or whitelist.
      * We skip the top frame if a system call.
      */
     uint start = 0;
+    if (etp->potential) /* tool specific potential error */
+        return true;
+#ifdef WINDOWS
+    if (etp->errtype == ERROR_HANDLE_LEAK &&
+        options.filter_handle_leaks /* tool specific filtering */)
+        return false;
+#endif
     if (!symbolized_callstack_frame_is_module(&ecs->scs, 0)) /* syscall, we assume */
         start = 1;
     else {
@@ -2578,7 +2588,7 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
             else
                 num_suppressions_matched_user++;
             num_total[ERROR_NORMAL][etp->errtype]--;
-        } else if (error_is_likely_false_positive(&ecs)) {
+        } else if (error_is_likely_false_positive(&ecs, etp)) {
             err->potential = true;
             acquire_error_number(err);
             /* Adjust counter set by record_error() */
@@ -2916,11 +2926,29 @@ report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
     report_error(&etp, mc, NULL);
 }
 
+#define HANDLE_MSG_SZ 0x100
 void
 report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
-                   packed_callstack_t *pcs)
+                   packed_callstack_t *pcs, packed_callstack_t *aux_pcs,
+                   bool potential)
 {
-    report_misc_error(ERROR_HANDLE_LEAK, loc, NULL, msg, NULL, 0, false, pcs);
+    error_toprint_t etp = {0};
+    char buf[HANDLE_MSG_SZ];
+    etp.errtype = ERROR_HANDLE_LEAK;
+    etp.loc     = loc;
+    etp.addr    = NULL;
+    etp.msg     = msg;
+    etp.aux_pcs = aux_pcs;
+    etp.potential = potential;
+    if (aux_pcs != NULL) {
+        ssize_t len   = 0;
+        size_t  sofar = 0;
+        BUFPRINT(buf, BUFFER_SIZE_ELEMENTS(buf), sofar, len,
+                 "%shandles created with the same callstack are closed here:"NL,
+                 INFO_PFX);
+        etp.aux_msg = buf;
+    }
+    report_error(&etp, NULL, pcs);
 }
 #endif
 

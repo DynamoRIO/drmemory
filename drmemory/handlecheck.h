@@ -50,6 +50,7 @@ handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
 
 void
 handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
+				       drsys_sysnum_t sysnum, dr_mcontext_t *mc,
                                        int type, void *handle_info,
                                        bool success);
 

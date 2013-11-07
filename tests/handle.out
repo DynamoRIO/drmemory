@@ -23,5 +23,5 @@
 ~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
 ~~Dr.M~~       0 unique,     0 total GDI usage error(s)
 # The exact number varies quite a bit by platform.
-#~~Dr.M~~      22 unique,    22 total handle leak(s)
+#~~Dr.M~~      12 unique,    12 total handle leak(s)
 ~~Dr.M~~       0 unique,     0 total warning(s)
