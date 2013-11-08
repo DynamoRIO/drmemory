@@ -469,6 +469,9 @@ OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, false,
 OPTION_CLIENT_BOOL(internal, filter_handle_leaks, true,
                    "Filter handle leaks for better error reports",
                    "Filter handle leaks and only report those that are more likely to be real leaks.  The rest of the leaks are reported to potential_errors.txt rather than results.txt.  The blacklist (-lib_blacklist) will not be applied here.")
+OPTION_CLIENT(internal, handle_leak_threshold, uint, 50, 1, 65535,
+              "Report leaks of handles created more often than this threshold",
+              "Only applies for -filter_handle_leaks.  Report leaks of handles created more often than this threshold.")
 OPTION_CLIENT_BOOL(drmemscope, check_heap_mismatch, true,
                    "Whether to check for Windows API vs C library mismatches",
                    "Whether to check for Windows API vs C library mismatches")

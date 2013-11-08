@@ -278,25 +278,26 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
             next  = entry->next;
             pair  = hashtable_lookup(&open_close_table, (void *)hci->pcs);
             count = packed_callstack_refcount(hci->pcs) - 1/* hashtable refcount */;
-            /* For each left-open-handle, we check if there is any handle being opened
-             * with the same callstack and being closed somewhere.
-             * If we see such cases, it means that all handles opened at that site should
-             * probably be closed.
-             */
+            /* i#1373: use heuristics for better handle leak reports */
             if (options.filter_handle_leaks) {
                 if (pair != NULL) {
-                    count--; /* pair table refcount */
-                } else {
-                    /* If we did not see a open close pair, which means any handles
-                     * opened by this callstack have never being closed, so this
-                     * handle might be left open on purpose, and we report it as a
-                     * potential error.
+                    /* Heuristic 1: for each left-open-handle, we check if there is
+                     * any handle being opened with the same callstack and being closed
+                     * somewhere. If we see such cases, it means that all handles opened
+                     * at that site should probably be closed.
                      */
+                    count--; /* pair table refcount */
+                } else if (count >= options.handle_leak_threshold) {
+                    /* Heuristic 2: if too many handles opened from the same callstack
+                     * left open, it should be paid attention to, so report it.
+                     */
+                } else {
+                    /* no heuristic is applied, report it as potential error */
                     potential = true;
                 }
             }
             dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                        "%s Handle "PFX" and %d similar handles are opened"
+                        "%s Handle "PFX" and %d similar handles were opened"
                         " but not closed:", name, handle, count);
             report_handle_leak(drcontext, msg, &hci->loc, hci->pcs,
                                (pair == NULL) ? NULL : pair->close.pcs,
