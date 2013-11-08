@@ -182,6 +182,15 @@ should_mark_stack_frames_defined(app_pc pc);
 
 static void
 register_shadow_mark_defined(reg_id_t reg);
+
+#  ifdef WINDOWS
+static ptr_uint_t note_base;
+enum {
+    NOTE_NULL = 0,
+    NOTE_ZERO_RETADDR,
+    NOTE_MAX_VALUE,
+};
+#  endif /* WINDOWS */
 #endif /* TOOL_DR_MEMORY */
 
 /***************************************************************************
@@ -3110,6 +3119,10 @@ instrument_init(void)
          &priority)) {
         ASSERT(false, "drmgr registration failed");
     }
+#  ifdef WINDOWS
+    note_base = drmgr_reserve_note_range(NOTE_MAX_VALUE);
+    ASSERT(note_base != DRMGR_NOTE_NONE, "failed to get note value");
+#  endif /* WINDOWS */
 #endif
 
     /* we need bb event for leaks_only */
@@ -4013,6 +4026,106 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 }
 
 #ifdef TOOL_DR_MEMORY
+
+# ifdef WINDOWS
+/* i#1371: _SEH_epilog4 returns at different stack spot instead of actual retaddr
+ * USER32!_SEH_epilog4:
+ * 74af616a 8b4df0           mov     ecx, [ebp-0x10]
+ * 74af616d 64890d00000000   mov     fs:[00000000], ecx
+ * 74af6174 59               pop     ecx
+ * 74af6175 5f               pop     edi
+ * 74af6176 5f               pop     edi
+ * 74af6177 5e               pop     esi
+ * 74af6178 5b               pop     ebx
+ * 74af6179 8be5             mov     esp, ebp
+ * 74af617b 5d               pop     ebp
+ * 74af617c 51               push    ecx
+ * 74af617d c3               ret
+ */
+static void
+bb_mark_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
+{
+    instr_t *instr, *next_pop;
+    opnd_t   opnd;
+    reg_id_t ret_reg; /* register that holds return addr */
+
+    /* ret */
+    instr = instrlist_last(ilist);
+    if (instr == NULL || !instr_is_return(instr))
+        return;
+    /* push  ecx */
+    instr = instr_get_prev(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_push)
+        return;
+    /* opnd must be reg */
+    opnd = instr_get_src(instr, 0);
+    if (!opnd_is_reg(opnd))
+        return;
+    ret_reg = opnd_get_reg(opnd);
+
+    /* mov  ecx, [ebp-0x10] */
+    instr = instrlist_first(ilist);
+    if (instr == NULL || instr_get_opcode(instr) != OP_mov_ld)
+        return;
+    /* mov  [fs:00000000], ecx */
+    instr = instr_get_next(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_mov_st)
+        return;
+    /* opnd must be [fs:00000000] */
+    opnd = instr_get_dst(instr, 0);
+    if (!opnd_is_far_base_disp(opnd) ||
+        !opnd_is_abs_addr(opnd)  /*rule out base or index*/||
+        opnd_get_disp(opnd) != 0 /*disp must be 0*/)
+        return;
+    /* pop ecx */
+    instr = instr_get_next(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_pop)
+        return;
+    opnd = instr_get_dst(instr, 0);
+    /* opnd must be the same reg used by the push above */
+    if (!opnd_is_reg(opnd) || opnd_get_reg(opnd) != ret_reg)
+        return;
+    /* reg opnd must be pointer size */
+    ASSERT(opnd_get_size(opnd) == OPSZ_PTR, "wrong opnd size");
+    /* pop edi */
+    instr = instr_get_next(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_pop)
+        return;
+    next_pop = instr;
+#  ifdef DEBUG
+    /* pop edi */
+    instr = instr_get_next(instr);
+    ASSERT(instr != NULL && instr_get_opcode(instr) == OP_pop,
+           "need more check to identify SEH_epilog");
+#  endif
+    instr = INSTR_CREATE_label(drcontext);
+    instr_set_note(instr, (void *)(note_base + NOTE_ZERO_RETADDR));
+    PRE(ilist, next_pop, instr);
+    LOG(1, "found SEH_epilog at "PFX"\n", dr_fragment_app_pc(tag));
+}
+# endif /* WINDOWS */
+
+static void
+insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst)
+{
+    if (instr_is_return(inst)) {
+        dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
+        LOG(2, "zero retaddr for normal ret");
+# ifdef WINDOWS
+    } else if (instr_get_opcode(inst) == OP_pop) {
+        instr_t *label = instr_get_next(inst);
+        if (label != NULL && instr_is_label(label) &&
+            instr_get_note(label) == (void *)(note_base+NOTE_ZERO_RETADDR)) {
+            PRE(bb, label,
+                INSTR_CREATE_mov_st(drcontext,
+                                    OPND_CREATE_MEMPTR(REG_XSP, -XSP_SZ),
+                                    OPND_CREATE_INT32(0)));
+            LOG(2, "zero retaddr in SEH_epilog");
+        }
+# endif /* WINDOWS */
+    }
+}
+
 /* PR 580123: add fastpath for rep string instrs by converting to normal loop */
 static void
 convert_repstr_to_loop(void *drcontext, instrlist_t *bb, bb_info_t *bi,
@@ -4220,6 +4333,10 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
     }
 
     bi->first_instr = true;
+#ifdef WINDOWS
+    if (options.zero_retaddr)
+        bb_mark_SEH_epilog(drcontext, tag, bb);
+#endif
 
     return DR_EMIT_DEFAULT;
 }
@@ -4308,8 +4425,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     ASSERT(!instr_is_wow64_syscall(inst), "syscall identification error");
 #endif
     if (!INSTRUMENT_MEMREFS() && (!options.leaks_only || !options.count_leaks)) {
-        if (options.zero_retaddr && instr_is_return(inst))
-            dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
+        if (options.zero_retaddr)
+            insert_zero_retaddr(drcontext, bb, inst);
         goto instru_event_bb_insert_done;
     }
     if (instr_is_interrupt(inst))
@@ -4426,10 +4543,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
         bi->added_instru = true;
     }
-    if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized &&
-        instr_is_return(inst)) {
-        dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
-    }
+    if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized)
+        insert_zero_retaddr(drcontext, bb, inst);
 
     /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
     if (INSTRUMENT_MEMREFS())
@@ -4481,7 +4596,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
                 });
         }
     }
-    
+
  instru_event_bb_insert_done:
     if (bi->first_instr && instr_ok_to_mangle(inst))
         bi->first_instr = false;

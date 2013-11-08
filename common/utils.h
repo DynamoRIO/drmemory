@@ -464,8 +464,10 @@ extern int tls_idx_util;
 
 #ifdef X64
 # define POINTER_MAX ULLONG_MAX
+# define XSP_SZ 8
 #else
 # define POINTER_MAX UINT_MAX
+# define XSP_SZ 4
 #endif
 
 /* C standard has pointer overflow as undefined so cast to unsigned (i#302) */
