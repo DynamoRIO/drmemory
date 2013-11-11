@@ -287,8 +287,16 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
                      * at that site should probably be closed.
                      */
                     count--; /* pair table refcount */
+                    if (count <= 1) {
+                        /* Report it as a potential error if there is only one live handle
+                         * from the same call site, as it could be left open on purpose.
+                         * Also, we currently want to avoid noise and false positives and
+                         * focus on significant leaks.
+                         */
+                        potential = true;
+                    }
                 } else if (count >= options.handle_leak_threshold) {
-                    /* Heuristic 2: if too many handles opened from the same callstack
+                    /* Heuristic 2: if too many handles created from the same callstack
                      * left open, it should be paid attention to, so report it.
                      */
                 } else {
@@ -298,7 +306,7 @@ handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name
             }
             dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
                         "%s Handle "PFX" and %d similar handles were opened"
-                        " but not closed:", name, handle, count);
+                        " but not closed:", name, handle, count-1/*exclude self*/);
             report_handle_leak(drcontext, msg, &hci->loc, hci->pcs,
                                (pair == NULL) ? NULL : pair->close.pcs,
                                potential);

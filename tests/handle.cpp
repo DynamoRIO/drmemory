@@ -232,19 +232,19 @@ main()
      * and without closing handles at the same place with the same callstack.
      */
     printf("test gdi handles\n");
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 3/* make sure there is more than one leak */; i++)
         test_gdi_handles((i == 0)/* close handle? */);
     printf("test file handles\n");
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 3; i++)
         test_file_handles((i == 0)/* close handle? */);
     printf("test thread handles\n");
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 3; i++)
         test_thread_handles((i == 0)/* close handle? */);
     printf("test window handles\n");
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 3; i++)
         test_window_handles((i == 0)/* close handle? */);
     printf("test process handles\n");
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 3; i++)
         test_process_handles((i == 0)/* close handle? */);
     return 0;
 }
