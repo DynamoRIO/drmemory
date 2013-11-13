@@ -1812,6 +1812,27 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
           004010b1 8507             test    [edi],eax
           004010b3 8be7             mov     esp,edi
 
+        FIXME i#1374: we also see handle!_chkstk:
+          00a6cc30 51               push    ecx
+          00a6cc31 8d4c2404         lea     ecx,[esp+0x4]
+          00a6cc35 2bc8             sub     ecx,eax
+          00a6cc37 1bc0             sbb     eax,eax
+          00a6cc39 f7d0             not     eax
+          00a6cc3b 23c8             and     ecx,eax
+          00a6cc3d 8bc4             mov     eax,esp
+          00a6cc3f 2500f0ffff       and     eax,0xfffff000
+          00a6cc44 3bc8             cmp     ecx,eax
+          00a6cc46 720a             jb      handle!_chkstk+0x22 (00a6cc52)
+          00a6cc48 8bc1             mov     eax,ecx
+          00a6cc4a 59               pop     ecx
+          00a6cc4b 94               xchg    eax,esp
+          00a6cc4c 8b00             mov     eax,[eax]
+          00a6cc4e 890424           mov     [esp],eax
+          00a6cc51 c3               ret
+          00a6cc52 2d00100000       sub     eax,0x1000
+          00a6cc57 8500             test    [eax],eax
+          00a6cc59 ebe9             jmp     handle!_chkstk+0x14 (00a6cc44)
+        need add pattern match for these 3-instruction sequence.
     */
     /* For now we do an exact pattern match but of course this
      * won't generalize well for other versions of alloca: OTOH we

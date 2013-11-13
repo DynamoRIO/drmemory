@@ -454,6 +454,7 @@ extern int tls_idx_util;
 
 #define PRE instrlist_meta_preinsert
 #define PREXL8 instrlist_preinsert
+#define POST instrlist_meta_postinsert
 
 #define BUFFER_SIZE_BYTES(buf)      sizeof(buf)
 #define BUFFER_SIZE_ELEMENTS(buf)   (BUFFER_SIZE_BYTES(buf) / sizeof((buf)[0]))

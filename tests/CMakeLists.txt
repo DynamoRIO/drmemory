@@ -697,10 +697,8 @@ if (TOOL_DR_MEMORY)
     # FIXME i#672: some handle is created with deep call stack, so we increase
     # the max frames for suppression. In long term, we should implement
     # i#672, i.e. separate max frames per error type, to solve this problem.
-    # We need defined infomation for better callstacks, so use full mode here.
-    # i#1371, using full module for better callstack.
     newtest_ex(handle handle.cpp ""
-      "-no_count_leaks;-check_handle_leaks;-callstack_max_frames;100"
+      "-light;-check_handle_leaks;-callstack_max_frames;100"
       "" OFF "" OFF)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only;-callstack_max_frames;100" "" OFF "handle")

@@ -187,7 +187,8 @@ register_shadow_mark_defined(reg_id_t reg);
 static ptr_uint_t note_base;
 enum {
     NOTE_NULL = 0,
-    NOTE_ZERO_RETADDR,
+    NOTE_SEH_EPILOG_RETADDR,
+    NOTE_CHKSTK_RETADDR,
     NOTE_MAX_VALUE,
 };
 #  endif /* WINDOWS */
@@ -4043,7 +4044,7 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
  * 74af617d c3               ret
  */
 static void
-bb_mark_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
+bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
 {
     instr_t *instr, *next_pop;
     opnd_t   opnd;
@@ -4051,8 +4052,7 @@ bb_mark_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
 
     /* ret */
     instr = instrlist_last(ilist);
-    if (instr == NULL || !instr_is_return(instr))
-        return;
+    ASSERT(instr_is_return(instr), "should not be called");
     /* push  ecx */
     instr = instr_get_prev(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_push)
@@ -4099,29 +4099,158 @@ bb_mark_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
            "need more check to identify SEH_epilog");
 #  endif
     instr = INSTR_CREATE_label(drcontext);
-    instr_set_note(instr, (void *)(note_base + NOTE_ZERO_RETADDR));
+    instr_set_note(instr, (void *)(note_base + NOTE_SEH_EPILOG_RETADDR));
     PRE(ilist, next_pop, instr);
     LOG(1, "found SEH_epilog at "PFX"\n", dr_fragment_app_pc(tag));
+}
+
+#  ifndef X64
+/* handle!_chkstk:
+ * ...
+ * 00a6cc4b 94               xchg    eax,esp
+ * 00a6cc4c 8b00             mov     eax,[eax]
+ * 00a6cc4e 890424           mov     [esp],eax
+ * 00a6cc51 c3               ret
+ * or
+ * ntdll!_alloca_probe
+ * ...
+ * 7d610434 8500             test    [eax],eax
+ * 7d610436 94               xchg    eax,esp
+ * 7d610437 8b00             mov     eax,[eax]
+ * 7d610439 50               push    eax
+ * 7d61043a c3               ret
+ */
+static bool
+bb_check__chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
+{
+    instr_t *instr, *mov_ld;
+    uint opc;
+    opnd_t opnd;
+
+    /* ret */
+    instr = instrlist_last(ilist);
+    ASSERT(instr_is_return(instr), "should not be called");
+
+    /* mov [esp],eax  or  push eax */
+    instr = instr_get_prev(instr);
+    if (instr == NULL)
+        return false;
+    opc = instr_get_opcode(instr);
+    if (opc != OP_push && opc != OP_mov_st)
+        return false;
+    opnd = instr_get_src(instr, 0);
+    if (!opnd_is_reg_pointer_sized(opnd) ||
+        /* could it be register other than eax? */
+        opnd_get_reg(opnd) != DR_REG_XAX)
+        return false;
+
+    /* mov  eax,[eax] */
+    instr = instr_get_prev(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_mov_ld)
+        return false;
+    /* src: [eax] */
+    opnd = instr_get_src(instr, 0);
+    if (!opnd_is_near_base_disp(opnd)       ||
+        opnd_get_base(opnd)  != DR_REG_XAX  ||
+        opnd_get_index(opnd) != DR_REG_NULL ||
+        opnd_get_disp(opnd)  != 0)
+        return false;
+    /* dst: eax */
+    opnd = instr_get_dst(instr, 0);
+    if (opnd_get_reg(opnd) != DR_REG_XAX)
+        return false;
+    mov_ld = instr;
+
+    /* xchg  eax,esp */
+    instr = instr_get_prev(instr);
+    if (instr == NULL || instr_get_opcode(instr) != OP_xchg ||
+        !opnd_is_reg(instr_get_src(instr, 0)) ||
+        !opnd_is_reg(instr_get_src(instr, 1)))
+        return false;
+    if ((opnd_get_reg(instr_get_src(instr, 0)) != DR_REG_XAX &&
+         opnd_get_reg(instr_get_src(instr, 0)) != DR_REG_XSP) ||
+        (opnd_get_reg(instr_get_src(instr, 1)) != DR_REG_XAX &&
+         opnd_get_reg(instr_get_src(instr, 1)) != DR_REG_XSP))
+        return false;
+    ASSERT(!opnd_same(instr_get_src(instr, 0), instr_get_src(instr, 1)),
+           "xchg same opnd");
+
+    /* insert label after mov [eax] => eax */
+    instr = INSTR_CREATE_label(drcontext);
+    instr_set_note(instr, (void *)(note_base + NOTE_CHKSTK_RETADDR));
+    POST(ilist, mov_ld, instr);
+    LOG(1, "found _chkstk at "PFX"\n", dr_fragment_app_pc(tag));
+    return true;
+}
+#  endif /* !X64 */
+
+static void
+bb_check_special_retaddr(void *drcontext, void *tag, instrlist_t *ilist)
+{
+    instr_t *instr = instrlist_last(ilist);
+    if (instr == NULL || !instr_is_return(instr))
+        return;
+#  ifndef X64
+    if (bb_check__chkstk(drcontext, tag, ilist))
+        return;
+#  endif /* !X64 */
+    bb_check_SEH_epilog(drcontext, tag, ilist);
 }
 # endif /* WINDOWS */
 
 static void
-insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst)
+insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *bi)
 {
     if (instr_is_return(inst)) {
         dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
         LOG(2, "zero retaddr for normal ret");
 # ifdef WINDOWS
     } else if (instr_get_opcode(inst) == OP_pop) {
+        /* SEH_epilog */
         instr_t *label = instr_get_next(inst);
         if (label != NULL && instr_is_label(label) &&
-            instr_get_note(label) == (void *)(note_base+NOTE_ZERO_RETADDR)) {
+            instr_get_note(label) == (void *)(note_base+NOTE_SEH_EPILOG_RETADDR)) {
             PRE(bb, label,
                 INSTR_CREATE_mov_st(drcontext,
                                     OPND_CREATE_MEMPTR(REG_XSP, -XSP_SZ),
                                     OPND_CREATE_INT32(0)));
-            LOG(2, "zero retaddr in SEH_epilog");
+            LOG(2, "zero retaddr in SEH_epilog\n");
         }
+#  ifndef X64
+    } else if (instr_get_opcode(inst) == OP_mov_ld /* mov [eax] => eax */) {
+        /* _chkstk */
+        instr_t *label = instr_get_next(inst);
+        if (label != NULL && instr_is_label(label) &&
+            instr_get_note(label) == (void *)(note_base+NOTE_CHKSTK_RETADDR)) {
+            instr_t *instr;
+            /* mov eax => edx 
+             * Make a copy of original stack pointer value (eax) into edx
+             * before eax is clobbered by "mov [eax] => eax", assuming edx
+             * is dead based on the calling convention.
+             * XXX: this is fragile as we assume the value stored in edx
+             * will not be clobered by other instrumentation.
+             */
+            /* if edx is used as scratch register */
+            if (bi->reg1.reg == DR_REG_XDX || bi->reg2.reg == DR_REG_XDX) {
+                LOG(1, "edx is used as scratch register, skip zero retaddr");
+                return;
+            }
+            ASSERT(!instr_uses_reg(inst, DR_REG_XDX), "edx is not dead");
+            PRE(bb, inst,
+                INSTR_CREATE_mov_ld(drcontext,
+                                    opnd_create_reg(DR_REG_XDX),
+                                    opnd_create_reg(DR_REG_XAX)));
+            /* mov 0 [edx]
+             * Clear the return address pointed at the original stack pointer
+             * (edx) after "mov [eax] => eax" read the value.
+             */
+            POST(bb, inst,
+                 INSTR_CREATE_mov_st(drcontext,
+                                     OPND_CREATE_MEMPTR(REG_XDX, 0),
+                                     OPND_CREATE_INT32(0)));
+            LOG(2, "zero retaddr in _chkstk\n");
+        }
+#  endif /* !x64 */
 # endif /* WINDOWS */
     }
 }
@@ -4335,7 +4464,7 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
     bi->first_instr = true;
 #ifdef WINDOWS
     if (options.zero_retaddr)
-        bb_mark_SEH_epilog(drcontext, tag, bb);
+        bb_check_special_retaddr(drcontext, tag, bb);
 #endif
 
     return DR_EMIT_DEFAULT;
@@ -4426,7 +4555,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
 #endif
     if (!INSTRUMENT_MEMREFS() && (!options.leaks_only || !options.count_leaks)) {
         if (options.zero_retaddr)
-            insert_zero_retaddr(drcontext, bb, inst);
+            insert_zero_retaddr(drcontext, bb, inst, bi);
         goto instru_event_bb_insert_done;
     }
     if (instr_is_interrupt(inst))
@@ -4544,7 +4673,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         bi->added_instru = true;
     }
     if (options.zero_retaddr && !ZERO_STACK() && !options.check_uninitialized)
-        insert_zero_retaddr(drcontext, bb, inst);
+        insert_zero_retaddr(drcontext, bb, inst, bi);
 
     /* None of the "goto instru_event_bb_insert_dones" above need to be processed here */
     if (INSTRUMENT_MEMREFS())
