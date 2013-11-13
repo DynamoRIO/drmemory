@@ -903,3 +903,16 @@ name=default i#1329 WM_COPYDATA padding
 system call NtUserMessageCall COPYDATASTRUCT.lpData
 USER32.dll!SendMessageW
 SHELL32.dll!SHAppBarMessage
+
+##################################################
+# i#1381: NtGdiDrawStream buffer on win8.1
+# Suppress what we believe is a real bug in
+# UxTheme.dll!CImageFile::DrawBackgroundDS where it does not initialize the
+# final 4 bytes of the buffer passed to NtGdiDrawStream on Windows 8.1.
+
+UNINITIALIZED READ
+name=default i#1381 NtGdiDrawStream buffer on win8.1
+system call NtGdiDrawStream parameter #2
+GDI32.dll!...
+UxTheme.dll!*
+UxTheme.dll!*
