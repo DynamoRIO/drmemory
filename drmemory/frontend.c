@@ -143,7 +143,7 @@ static bool top_stats;
 static bool fetch_symbols = false;  /* Off by default for 1.5.0 release. */
 static bool fetch_crt_syms_only = true;
 
-static OSVERSIONINFO win_ver;
+static dr_os_version_info_t win_ver;
 
 enum {
     /* _NT_SYMBOL_PATH typically has a local path and a URL. */
@@ -164,17 +164,19 @@ static const char *prefix = PREFIX_DEFAULT_MAIN_THREAD;
 static bool
 on_vista_or_later(void)
 {
-    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
-            win_ver.dwMajorVersion >= 6 &&
-            win_ver.dwMinorVersion >= 0);
+    return (win_ver.version >= DR_WINDOWS_VERSION_VISTA);
 }
 
 static bool
 on_win8_or_later(void)
 {
-    return (win_ver.dwPlatformId == VER_PLATFORM_WIN32_NT &&
-            win_ver.dwMajorVersion >= 6 &&
-            win_ver.dwMinorVersion >= 2);
+    return (win_ver.version >= DR_WINDOWS_VERSION_8);
+}
+
+static bool
+on_supported_version(void)
+{
+    return (win_ver.version <= DR_WINDOWS_VERSION_8_1);
 }
 
 static void
@@ -987,11 +989,22 @@ _tmain(int argc, TCHAR *targv[])
 
     time_t start_time, end_time;
 
-    dr_standalone_init();
+    if (dr_standalone_init() == NULL) {
+        /* We assume this is due to a new version of Windows */
+        fatal("this version of Windows is not supported by Dr. Memory.");
+    }
 
-    win_ver.dwOSVersionInfoSize = sizeof(win_ver);
-    if (!GetVersionEx(&win_ver))
+    /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is 
+     * 6.2 (Win8)!  Thus we use DR's version.
+     */
+    win_ver.size = sizeof(win_ver);
+    if (!dr_get_os_version(&win_ver))
         fatal("unable to determine Windows version");
+    /* This will likely be caught by the DR failure, but we allow a separate
+     * check in case DrMem has a different version requirement from DR.
+     */
+    if (!on_supported_version())
+        fatal("this version of Windows is not supported by Dr. Memory.");
 
 #ifdef _UNICODE
     /* To simplify our (soon-to-be) cross-platform code we convert to utf8 up front.
