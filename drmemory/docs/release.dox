@@ -61,6 +61,7 @@ The Dr. Memory distribution contains the following:
 The current version is \TOOL_VERSION.
 The changes between \TOOL_VERSION and version 1.6.0 include:
  - Added -handle_leaks_only feature for low-overhead handle leak checking
+ - Added the -crash_at_unaddressable and -crash_at_error options
 
 The changes between version 1.6.0 and version 1.5.1 include:
  - Added a separate category of error report, "potential errors", stored in

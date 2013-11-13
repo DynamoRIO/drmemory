@@ -175,6 +175,7 @@
 #define INVALID_THREAD_ID 0
 
 #define ASSERT_NOT_IMPLEMENTED() ASSERT(false, "Not Yet Implemented")
+#define ASSERT_NOT_REACHED() ASSERT(false, "Shouldn't be reached")
 
 #define CHECK_TRUNCATE_RANGE_uint(val)   ((val) >= 0 && (val) <= UINT_MAX)
 #define CHECK_TRUNCATE_RANGE_int(val)    ((val) <= INT_MAX && ((int64)(val)) >= INT_MIN)
@@ -633,6 +634,9 @@ hashtable_cluster_stats(hashtable_t *table, const char *name);
 
 bool
 unsigned_multiply_will_overflow(size_t m, size_t n);
+
+void
+crash_process(void);
 
 /***************************************************************************
  * WINDOWS SYSCALLS

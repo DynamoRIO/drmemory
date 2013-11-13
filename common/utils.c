@@ -37,6 +37,7 @@
 # include "../wininc/ndk_extypes.h" /* for SYSTEM_INFORMATION_CLASS */
 #else
 # include <string.h>
+#  include <signal.h> /* for SIGSEGV */
 #endif
 #include <stddef.h> /* for offsetof */
 #include <ctype.h> /* for tolower */
@@ -495,6 +496,16 @@ unsigned_multiply_will_overflow(size_t m, size_t n)
     /* Easiest and fastest to just do a 64-bit multiply */
     uint64 ans = (uint64)m * n;
     return (ans > UINT_MAX);
+#endif
+}
+
+void
+crash_process(void)
+{
+#ifdef WINDOWS
+    dr_exit_process(STATUS_ACCESS_VIOLATION);
+#else
+    dr_exit_process(SIGSEGV << 8);
 #endif
 }
 

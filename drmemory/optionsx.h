@@ -197,6 +197,12 @@ OPTION_CLIENT_BOOL(client, pause_at_assert, false,
 OPTION_CLIENT_BOOL(client, pause_via_loop, false,
                    "Pause via loop (not wait for stdin)",
                    "Used in conjunction with -pause_at_uninitialized and -pause_at_uninitialized on Linux, this option causes "TOOLNAME" to pause via an infinite loop instead of waiting for stdin.  "TOOLNAME" will not continue beyond the first such error found.")
+OPTION_CLIENT_BOOL(drmemscope, crash_at_unaddressable, false,
+                   "Crash at the first reported unaddressable access",
+                   ""TOOLNAME" terminates the process in a crash at the point of the first unaddressable access error that is identified.")
+OPTION_CLIENT_BOOL(drmemscope, crash_at_error, false,
+                   "Crash at the first reported error of any type",
+                   ""TOOLNAME" terminates the process in a crash at the point of the first error that is identified.")
 
 #ifdef TOOL_DR_MEMORY
 OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,

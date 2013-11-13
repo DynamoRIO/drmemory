@@ -2612,6 +2612,7 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
     report_free_buf(drcontext, errbuf, errbufsz);
 
  report_error_done:
+    symbolized_callstack_free(&ecs.scs);
     if (reporting && !err->potential) { /* don't pause at a "potential error" */
         if (etp->errtype == ERROR_UNADDRESSABLE && options.pause_at_unaddressable)
             wait_for_user("pausing at unaddressable access error");
@@ -2619,9 +2620,16 @@ report_error(error_toprint_t *etp, dr_mcontext_t *mc, packed_callstack_t *pcs)
             wait_for_user("pausing at uninitialized read error");
         else if (options.pause_at_error)
             wait_for_user("pausing at error");
+        else if (options.crash_at_error ||
+                 (options.crash_at_unaddressable &&
+                  etp->errtype == ERROR_UNADDRESSABLE)) {
+            NOTIFY(NL);
+            NOTIFY("TERMINATING PROCESS after first %serror found"NL,
+                   options.crash_at_error ? "" : "unaddressable ");
+            crash_process();
+            ASSERT_NOT_REACHED();
+        }
     }
-
-    symbolized_callstack_free(&ecs.scs);
 }
 
 static void
