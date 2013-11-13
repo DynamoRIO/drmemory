@@ -25,7 +25,6 @@ starting
 # First nudge error report.
 ~~ NO ERRORS FOUND:
 ~~       0 unique,     0 total invalid heap argument(s)
-~~       0 unique,     0 total GDI usage error(s)
 ~~       0 unique,     0 total handle leak(s)
 ~~       0 unique,     0 total warning(s)
 # Second nudge error report.  We don't match the output of it, just that it was

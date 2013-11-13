@@ -316,6 +316,10 @@ options_init(const char *opstr)
 #endif
     if (options.leaks_only || options.perturb_only) {
         option_disable_memory_checks();
+#ifdef WINDOWS
+        if (!option_specified.check_gdi)
+            options.check_gdi = false;
+#endif /* WINDOWS */
     }
 #ifdef WINDOWS
     if (options.handle_leaks_only) {
@@ -325,6 +329,8 @@ options_init(const char *opstr)
         /* disable leak scan */
         options.leaks_only = false;
         options.check_handle_leaks = true;
+        if (!option_specified.check_gdi)
+            options.check_gdi = false;
     }
 #endif
     /* i#677: drmemory -leaks_only does not work with -no_esp_fastpath
