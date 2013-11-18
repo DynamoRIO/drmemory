@@ -78,6 +78,12 @@ static drsys_sysnum_t sysnum_DuplicateObject = {-1, 0};
 /* i#988-c#7: system calls that return existing handles */
 static drsys_sysnum_t sysnum_UserSetClipboardData = {-1, 0};
 static drsys_sysnum_t sysnum_UserRemoveProp = {-1, 0};
+/* i#988-c#12: system calls that return existing handles */
+static drsys_sysnum_t sysnum_GdiExtSelectClipRgn = {-1, 0};
+static drsys_sysnum_t sysnum_GdiSelectBrush = {-1, 0};
+static drsys_sysnum_t sysnum_GdiSelectPen = {-1, 0};
+static drsys_sysnum_t sysnum_GdiSelectBitmap = {-1, 0};
+static drsys_sysnum_t sysnum_GdiSelectFont = {-1, 0};
 
 static bool
 opc_is_in_syscall_wrapper(uint opc)
@@ -167,6 +173,16 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtUserSetClipboardData", &sysnum_UserSetClipboardData,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtUserRemoveProp", &sysnum_UserRemoveProp,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    /* i#988-c#12: system calls that return existing handles */
+    get_sysnum("NtGdiExtSelectClipRgn", &sysnum_GdiExtSelectClipRgn,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiSelectBrush", &sysnum_GdiSelectBrush, true);
+    get_sysnum("NtGdiSelectPen", &sysnum_GdiSelectPen,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiSelectBitmap", &sysnum_GdiSelectBitmap,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtGdiSelectFont", &sysnum_GdiSelectFont,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
 
     syscall_wingdi_init(drcontext, ntdll_base);
@@ -378,6 +394,13 @@ syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
     if (drsys_sysnums_equal(&sysnum, &sysnum_UserSetClipboardData) &&
         drsys_pre_syscall_arg(drcontext, 1, &arg) == DRMF_SUCCESS &&
         arg != (ptr_uint_t)NULL)
+        return false;
+    /* i#988-c#12: GdiSelect* system calls return existing handles */
+    if (drsys_sysnums_equal(&sysnum, &sysnum_GdiExtSelectClipRgn) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBrush) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectPen) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBitmap) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectFont))
         return false;
     return true;
 }
