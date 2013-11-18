@@ -4029,6 +4029,76 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 #ifdef TOOL_DR_MEMORY
 
 # ifdef WINDOWS
+/* Return prev app (non-meta) instr or NULL if no prev app instr.
+ * It gives warning on seeing any non-label non-app instructions,
+ * so it should be used in app2app or analysis stage only.
+ */
+static instr_t *
+instr_get_prev_app_instr(instr_t *instr)
+{
+    ASSERT(instr != NULL, "instr must not be NULL");
+    instr = instr_get_prev(instr);
+    /* quick check to avoid loop overhead */
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    for (; instr != NULL; instr = instr_get_prev(instr)) {
+        if (!instr_ok_to_mangle(instr)) {
+            if (!instr_is_label(instr))
+                WARN("WARNING: see non-label non-app instruction.\n");
+            continue;
+        }
+        return instr;
+    }
+    return NULL;
+}
+
+/* Return next non-meta (app) instr or NULL if no next app instr.
+ * It gives warning on seeing any non-lable meta instructions,
+ * so it should be used in app2app or analysis stage only.
+ */
+static instr_t *
+instr_get_next_app_instr(instr_t *instr)
+{
+    ASSERT(instr != NULL, "instr must not be NULL");
+    instr = instr_get_next(instr);
+    /* quick check to avoid loop overhead */
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (!instr_ok_to_mangle(instr)) {
+            if (!instr_is_label(instr))
+                WARN("WARNING: see non-label meta instruction.\n");
+            continue;
+        }
+        return instr;
+    }
+    return NULL;
+}
+
+static instr_t *
+instrlist_first_app_instr(instrlist_t *ilist)
+{
+    instr_t *instr;
+    ASSERT(ilist != NULL, "instrlist must not be NULL");
+    instr = instrlist_first(ilist);
+    ASSERT(instr != NULL, "instrlist is empty");
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    return instr_get_next_app_instr(instr);
+}
+
+static instr_t *
+instrlist_last_app_instr(instrlist_t *ilist)
+{
+    instr_t *instr;
+    ASSERT(ilist != NULL, "instrlist must not be NULL");
+    instr = instrlist_last(ilist);
+    ASSERT(instr != NULL, "instrlist is empty");
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    return instr_get_prev_app_instr(instr);
+}
+
 /* i#1371: _SEH_epilog4 returns at different stack spot instead of actual retaddr
  * USER32!_SEH_epilog4:
  * 74af616a 8b4df0           mov     ecx, [ebp-0x10]
@@ -4051,10 +4121,11 @@ bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
     reg_id_t ret_reg; /* register that holds return addr */
 
     /* ret */
-    instr = instrlist_last(ilist);
-    ASSERT(instr_is_return(instr), "should not be called");
+    instr = instrlist_last_app_instr(ilist);
+    if (instr == NULL || !instr_is_return(instr))
+        return;
     /* push  ecx */
-    instr = instr_get_prev(instr);
+    instr = instr_get_prev_app_instr(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_push)
         return;
     /* opnd must be reg */
@@ -4064,21 +4135,21 @@ bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
     ret_reg = opnd_get_reg(opnd);
 
     /* mov  ecx, [ebp-0x10] */
-    instr = instrlist_first(ilist);
+    instr = instrlist_first_app_instr(ilist);
     if (instr == NULL || instr_get_opcode(instr) != OP_mov_ld)
         return;
     /* mov  [fs:00000000], ecx */
-    instr = instr_get_next(instr);
+    instr = instr_get_next_app_instr(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_mov_st)
         return;
     /* opnd must be [fs:00000000] */
     opnd = instr_get_dst(instr, 0);
     if (!opnd_is_far_base_disp(opnd) ||
-        !opnd_is_abs_addr(opnd)  /*rule out base or index*/||
-        opnd_get_disp(opnd) != 0 /*disp must be 0*/)
+        !opnd_is_abs_addr(opnd)  /* rule out base or index */||
+        opnd_get_disp(opnd) != 0 /* disp must be 0 */)
         return;
     /* pop ecx */
-    instr = instr_get_next(instr);
+    instr = instr_get_next_app_instr(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_pop)
         return;
     opnd = instr_get_dst(instr, 0);
@@ -4088,13 +4159,13 @@ bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
     /* reg opnd must be pointer size */
     ASSERT(opnd_get_size(opnd) == OPSZ_PTR, "wrong opnd size");
     /* pop edi */
-    instr = instr_get_next(instr);
+    instr = instr_get_next_app_instr(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_pop)
         return;
     next_pop = instr;
 #  ifdef DEBUG
     /* pop edi */
-    instr = instr_get_next(instr);
+    instr = instr_get_next_app_instr(instr);
     ASSERT(instr != NULL && instr_get_opcode(instr) == OP_pop,
            "need more check to identify SEH_epilog");
 #  endif
@@ -4119,83 +4190,132 @@ bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
  * 7d610437 8b00             mov     eax,[eax]
  * 7d610439 50               push    eax
  * 7d61043a c3               ret
+ * or
+ * hello!_alloca_probe+0x20 [intel\chkstk.asm @ 85]:
+ * 85 0040db70 2bc8             sub     ecx,eax
+ * 86 0040db72 8bc4             mov     eax,esp
+ * 88 0040db74 8501             test    [ecx],eax
+ * 90 0040db76 8be1             mov     esp,ecx
+ * 92 0040db78 8b08             mov     ecx,[eax]
+ * 93 0040db7a 8b4004           mov     eax,[eax+0x4]
+ * 95 0040db7d 50               push    eax
+ * 97 0040db7e c3               ret
  */
-static bool
-bb_check__chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
+static void
+bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
 {
-    instr_t *instr, *mov_ld;
-    uint opc;
+    instr_t *instr, *store = NULL, *load = NULL;
+    int opc;
     opnd_t opnd;
 
     /* ret */
-    instr = instrlist_last(ilist);
-    ASSERT(instr_is_return(instr), "should not be called");
+    instr = instrlist_last_app_instr(ilist);
+    if (instr == NULL || !instr_is_return(instr))
+        return;
 
     /* mov [esp],eax  or  push eax */
-    instr = instr_get_prev(instr);
+    instr = instr_get_prev_app_instr(instr);
     if (instr == NULL)
-        return false;
+        return;
     opc = instr_get_opcode(instr);
     if (opc != OP_push && opc != OP_mov_st)
-        return false;
+        return;
+    /* dst: [esp] */
+    if (opc == OP_mov_st &&
+        !opnd_same(OPND_CREATE_MEMPTR(DR_REG_XSP, 0), instr_get_dst(instr, 0)))
+        return;
+    /* src: eax */
     opnd = instr_get_src(instr, 0);
-    if (!opnd_is_reg_pointer_sized(opnd) ||
-        /* could it be register other than eax? */
-        opnd_get_reg(opnd) != DR_REG_XAX)
-        return false;
+    if (!opnd_is_reg(opnd) || opnd_get_reg(opnd) != DR_REG_XAX)
+        return;
+    store = instr;
 
-    /* mov  eax,[eax] */
-    instr = instr_get_prev(instr);
+    /* mov eax,[eax]  or  mov eax,[eax+0x4] */
+    instr = instr_get_prev_app_instr(instr);
     if (instr == NULL || instr_get_opcode(instr) != OP_mov_ld)
-        return false;
-    /* src: [eax] */
+        return;
+    /* dst: eax */
+    if (opnd_get_reg(instr_get_dst(instr, 0)) != DR_REG_XAX)
+        return;
+    /* src: [eax]/[eax+4] */
     opnd = instr_get_src(instr, 0);
     if (!opnd_is_near_base_disp(opnd)       ||
         opnd_get_base(opnd)  != DR_REG_XAX  ||
-        opnd_get_index(opnd) != DR_REG_NULL ||
-        opnd_get_disp(opnd)  != 0)
-        return false;
-    /* dst: eax */
-    opnd = instr_get_dst(instr, 0);
-    if (opnd_get_reg(opnd) != DR_REG_XAX)
-        return false;
-    mov_ld = instr;
+        opnd_get_index(opnd) != DR_REG_NULL)
+        return;
+    if (opnd_get_disp(opnd) != 0 && opnd_get_disp(opnd) != 4)
+        WARN("WARNING: disp in [eax, disp] is not 0 or 4\n");
+    load = instr;
 
-    /* xchg  eax,esp */
-    instr = instr_get_prev(instr);
-    if (instr == NULL || instr_get_opcode(instr) != OP_xchg ||
-        !opnd_is_reg(instr_get_src(instr, 0)) ||
-        !opnd_is_reg(instr_get_src(instr, 1)))
-        return false;
-    if ((opnd_get_reg(instr_get_src(instr, 0)) != DR_REG_XAX &&
-         opnd_get_reg(instr_get_src(instr, 0)) != DR_REG_XSP) ||
-        (opnd_get_reg(instr_get_src(instr, 1)) != DR_REG_XAX &&
-         opnd_get_reg(instr_get_src(instr, 1)) != DR_REG_XSP))
-        return false;
-    ASSERT(!opnd_same(instr_get_src(instr, 0), instr_get_src(instr, 1)),
-           "xchg same opnd");
-
-    /* insert label after mov [eax] => eax */
-    instr = INSTR_CREATE_label(drcontext);
-    instr_set_note(instr, (void *)(note_base + NOTE_CHKSTK_RETADDR));
-    POST(ilist, mov_ld, instr);
+    /* We might start a bb right here due to relocation, so we pattern match
+     * up till here.
+     *
+     * To zero the return address, we need the original stack pointer value,
+     * which will be clobbered by the app instruction "mov eax,[eax]".
+     * So we need insert code before to save the value: "lea edx, [eax]",
+     * and insert code after to clear the stack: "mov [edx], 0".
+     * Here we assume edx is dead based on the calling convention.
+     *
+     * We could insert non-app instruction in later stage, but it may mess up
+     * with the register stealing component, which may steal edx as scratch
+     * register. So we should either have a way to tell the register stealing
+     * component (drreg) not to use edx, or we insert fake app instrction.
+     * Since we do not have drreg ready yet, we will insert fake app instr.
+     */
+    /* insert "lea edx, [eax]" or "lea edx, [eax+4]" */
+    ASSERT(load != NULL, "a");
+    ASSERT(instr_get_app_pc(load) != NULL, "load should not be NULL");
+    opnd_set_size(&opnd, OPSZ_lea);
+    PREXL8(ilist, load,
+           INSTR_XL8(INSTR_CREATE_lea(drcontext,
+                                      opnd_create_reg(DR_REG_XDX),
+                                      opnd),
+                     instr_get_app_pc(load)));
+    /* insert "mov [edx],0" */
+    ASSERT(store != NULL && instr_get_app_pc(store) != NULL,
+           "store should not be NULL");
+    /* Note that we use store (the next instr)'s pc, because if there is
+     * fault or relocation on this instruction, we do not want to reexecute
+     * "mov eax, [eax]". In contrast, it should be ok to skip "mov [edx], 0".
+     * XXX: this may confuse a client/user when a fault happens there,
+     * as its translation is the store instruction "mov [esp], eax".
+     */
+    POSTXL8(ilist, load,
+            INSTR_XL8(INSTR_CREATE_mov_st(drcontext,
+                                          OPND_CREATE_MEMPTR(DR_REG_XDX, 0),
+                                          OPND_CREATE_INT32(0)),
+                      instr_get_app_pc(store)));
     LOG(1, "found _chkstk at "PFX"\n", dr_fragment_app_pc(tag));
-    return true;
-}
-#  endif /* !X64 */
 
-static void
-bb_check_special_retaddr(void *drcontext, void *tag, instrlist_t *ilist)
-{
-    instr_t *instr = instrlist_last(ilist);
-    if (instr == NULL || !instr_is_return(instr))
+#   ifdef DEBUG
+    /* debug-only extra pattern verification */
+    /* skip newly inserted "lea edx, [eax]" */
+    instr = instr_get_prev_app_instr(load);
+    ASSERT(instr != NULL, "instrumented code is gone");
+    instr = instr_get_prev_app_instr(instr);
+    if (instr == NULL)
         return;
-#  ifndef X64
-    if (bb_check__chkstk(drcontext, tag, ilist))
+    if (instr_get_opcode(instr) == OP_xchg) {
+        /* xchg eax,esp */
+        if (!(instr_writes_to_exact_reg(instr, DR_REG_XSP) &&
+              instr_writes_to_exact_reg(instr, DR_REG_XAX))) {
+            WARN("Wrong xchg instr\n");
+        }
         return;
-#  endif /* !X64 */
-    bb_check_SEH_epilog(drcontext, tag, ilist);
+    } else {
+        /* find any instr writing to stack pointer before reading from it */
+        for (instr  = instr_get_prev_app_instr(instr);
+             instr != NULL;
+             instr  = instr_get_prev_app_instr(instr)) {
+            ASSERT(!instr_reads_from_reg(instr, DR_REG_XSP),
+                   "see wrong pattern");
+            if (instr_writes_to_exact_reg(instr, DR_REG_XSP))
+                return;
+        }
+    }
+#   endif /* DEBUG */
 }
+#  endif /* !X64 */
 # endif /* WINDOWS */
 
 static void
@@ -4207,6 +4327,9 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
 # ifdef WINDOWS
     } else if (instr_get_opcode(inst) == OP_pop) {
         /* SEH_epilog */
+        /* Assuming it is forward instrumentation, i.e., there is no instruction
+         * inserted between the pop and the label yet.
+         */
         instr_t *label = instr_get_next(inst);
         if (label != NULL && instr_is_label(label) &&
             instr_get_note(label) == (void *)(note_base+NOTE_SEH_EPILOG_RETADDR)) {
@@ -4216,41 +4339,6 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
                                     OPND_CREATE_INT32(0)));
             LOG(2, "zero retaddr in SEH_epilog\n");
         }
-#  ifndef X64
-    } else if (instr_get_opcode(inst) == OP_mov_ld /* mov [eax] => eax */) {
-        /* _chkstk */
-        instr_t *label = instr_get_next(inst);
-        if (label != NULL && instr_is_label(label) &&
-            instr_get_note(label) == (void *)(note_base+NOTE_CHKSTK_RETADDR)) {
-            instr_t *instr;
-            /* mov eax => edx 
-             * Make a copy of original stack pointer value (eax) into edx
-             * before eax is clobbered by "mov [eax] => eax", assuming edx
-             * is dead based on the calling convention.
-             * XXX: this is fragile as we assume the value stored in edx
-             * will not be clobered by other instrumentation.
-             */
-            /* if edx is used as scratch register */
-            if (bi->reg1.reg == DR_REG_XDX || bi->reg2.reg == DR_REG_XDX) {
-                LOG(1, "edx is used as scratch register, skip zero retaddr");
-                return;
-            }
-            ASSERT(!instr_uses_reg(inst, DR_REG_XDX), "edx is not dead");
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext,
-                                    opnd_create_reg(DR_REG_XDX),
-                                    opnd_create_reg(DR_REG_XAX)));
-            /* mov 0 [edx]
-             * Clear the return address pointed at the original stack pointer
-             * (edx) after "mov [eax] => eax" read the value.
-             */
-            POST(bb, inst,
-                 INSTR_CREATE_mov_st(drcontext,
-                                     OPND_CREATE_MEMPTR(REG_XDX, 0),
-                                     OPND_CREATE_INT32(0)));
-            LOG(2, "zero retaddr in _chkstk\n");
-        }
-#  endif /* !x64 */
 # endif /* WINDOWS */
     }
 }
@@ -4368,6 +4456,12 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
     if (options.repstr_to_loop && INSTRUMENT_MEMREFS())
         convert_repstr_to_loop(drcontext, bb, bi, translating);
 
+#if defined(WINDOWS) && !defined(X64)
+    /* i#1374: we need insert non-meta instr for handling zero_retaddr in _chkstk */
+    if (options.zero_retaddr)
+        bb_handle_chkstk(drcontext, tag, bb);
+#endif /* WINDOWS && !X64 */
+
     return DR_EMIT_DEFAULT;
 }
 
@@ -4464,7 +4558,7 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
     bi->first_instr = true;
 #ifdef WINDOWS
     if (options.zero_retaddr)
-        bb_check_special_retaddr(drcontext, tag, bb);
+        bb_check_SEH_epilog(drcontext, tag, bb);
 #endif
 
     return DR_EMIT_DEFAULT;
