@@ -265,6 +265,7 @@ packed_callstack_print(packed_callstack_t *pcs, uint num_frames,
                        char *buf, size_t bufsz, size_t *sofar, const char *prefix);
 
 #ifdef DEBUG
+/* writes callstack to f, using the main logfile if passed INVALID_FILE */
 void
 packed_callstack_log(packed_callstack_t *pcs, file_t f);
 #endif

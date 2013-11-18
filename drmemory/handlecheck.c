@@ -202,10 +202,22 @@ handlecheck_handle_add(hashtable_t *table, HANDLE handle,
     void *res;
 
     STATS_INC(num_handle_add);
+    /* We replace the old callstack with new callstack if we see
+     * duplicated handle in the table.
+     */
     res = hashtable_add_replace(table, (void *)handle, (void *)hci);
     if (res != NULL) {
+        DOLOG(HANDLE_VERBOSE_2, {
+            handle_callstack_info_t *old;
+            LOG(HANDLE_VERBOSE_2,
+                "WARNING: duplicated handle "PFX"\n", handle);
+            LOG(HANDLE_VERBOSE_2, "  old callstack:\n");
+            old = (handle_callstack_info_t *)res;
+            packed_callstack_log(old->pcs, INVALID_FILE);
+            LOG(HANDLE_VERBOSE_2, "  new callstack:\n");
+            packed_callstack_log(hci->pcs, INVALID_FILE);
+        });
         handle_callstack_info_free(res);
-        LOG(HANDLE_VERBOSE_1, "Error: duplicated handle in handle table\n");
         return false;
     }
     return true;
@@ -402,19 +414,22 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
         LOG(HANDLE_VERBOSE_1, "WARNING: application opened an invalid handle\n");
         return;
     }
-    if (handle == (HANDLE)0) {
-        LOG(HANDLE_VERBOSE_1, "WARNING: handle value is 0\n");
-    }
     table = handlecheck_get_handle_table(type
                                          _IF_DEBUG((void *)handle)
                                          _IF_DEBUG("opened"));
     ASSERT(table != NULL, "fail to get handle table");
     handle_table_lock();
     hci = handle_callstack_info_alloc(sysnum, pc, mc);
+    DOLOG(HANDLE_VERBOSE_2, {
+        if (handle == (HANDLE)0) {
+            LOG(HANDLE_VERBOSE_2,
+                "WARNING: application created a handle with value 0 at:\n");
+            packed_callstack_log(hci->pcs, INVALID_FILE);
+        }
+    });
     DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
-    if (!handlecheck_handle_add(table, handle, hci)) {
+    if (!handlecheck_handle_add(table, handle, hci))
         LOG(HANDLE_VERBOSE_1, "WARNING: fail to add handle "PFX"\n", handle);
-    }
     handle_table_unlock();
 }
 
@@ -426,7 +441,7 @@ handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
     handle_callstack_info_t *hci;
 
     if (handle == INVALID_HANDLE_VALUE) {
-        LOG(HANDLE_VERBOSE_1, "WARNING: invalid handle to delete\n");
+        LOG(HANDLE_VERBOSE_1, "WARNING: deleting an invalid handle\n");
         return NULL;
     }
     table = handlecheck_get_handle_table(type
@@ -436,7 +451,11 @@ handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
     DOLOG(HANDLE_VERBOSE_3, { report_callstack(drcontext, mc); });
     handle_table_lock();
     if (!handlecheck_handle_remove(table, handle, &hci)) {
-        LOG(HANDLE_VERBOSE_1, "WARNING: fail to remove handle "PFX"\n", handle);
+        DOLOG(HANDLE_VERBOSE_1, {
+            LOG(HANDLE_VERBOSE_1,
+                "WARNING: fail to remove handle "PFX" at:\n", handle);
+            report_callstack(drcontext, mc);
+        });
     }
     handle_table_unlock();
     return (void *)hci;
@@ -453,7 +472,7 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
     if (handle_info == NULL) {
         if (success) {
             LOG(HANDLE_VERBOSE_1,
-                "WARNING: delete handle succeeded unexpectedly");
+                "WARNING: delete handle succeeded unexpectedly\n");
         } else {
             LOG(HANDLE_VERBOSE_1,
                 "WARNING: no handle info for adding back\n");
