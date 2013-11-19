@@ -496,17 +496,20 @@ if (UNIX)
   target_link_libraries(loader dl)
 else (UNIX)
   newtest(winthreads winthreads.c)
-  if (TOOL_DR_MEMORY)
-    # We turn off blacklist b/c it results in potential errors in the child,
-    # causing runtest.cmake to pick the child's log instead of parent's
-    # (it does it by size)!
-    newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" OFF)
+endif (UNIX)
+
+if (TOOL_DR_MEMORY)
+  # We turn off blacklist b/c it results in potential errors in the child,
+  # causing runtest.cmake to pick the child's log instead of parent's
+  # (it does it by size)!
+  newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" OFF)
+  if (WIN32)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
     # these tests share a temp file so they can't run in parallel
     set_property(TEST procterm.nativeparent APPEND PROPERTY DEPENDS procterm)
-  endif (TOOL_DR_MEMORY)
-endif (UNIX)
+  endif (WIN32)
+endif (TOOL_DR_MEMORY)
 
 if (UNIX)
   tobuild_lib(unloadlib unload.lib.c "-fno-builtin" "")

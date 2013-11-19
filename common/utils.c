@@ -704,12 +704,6 @@ GET_NTDLL(NtOpenThread, (OUT PHANDLE ThreadHandle,
                          IN POBJECT_ATTRIBUTES ObjectAttributes,
                          IN PCLIENT_ID ClientId));
 
-GET_NTDLL(NtQueryInformationJobObject, (IN HANDLE JobHandle,
-                                        IN JOBOBJECTINFOCLASS JobInformationClass,
-                                        OUT PVOID JobInformation,
-                                        IN ULONG JobInformationLength,
-                                        OUT PULONG ReturnLength OPTIONAL));
-
 TEB *
 get_TEB(void)
 {
@@ -976,27 +970,6 @@ module_imports_from_msvc(const module_data_t *mod)
     return res;
 }
 
-ssize_t
-num_job_object_pids(HANDLE job)
-{
-    JOBOBJECT_BASIC_PROCESS_ID_LIST empty;
-    NTSTATUS res;
-    res = NtQueryInformationJobObject(job, JobObjectBasicProcessIdList,
-                                      &empty, sizeof(empty), NULL);
-    if (NT_SUCCESS(res) || res == STATUS_BUFFER_OVERFLOW)
-        return empty.NumberOfAssignedProcesses;
-    else
-        return -1;
-}
-
-bool
-get_job_object_pids(HANDLE job, JOBOBJECT_BASIC_PROCESS_ID_LIST *list, size_t list_sz)
-{
-    NTSTATUS res;
-    res = NtQueryInformationJobObject(job, JobObjectBasicProcessIdList,
-                                      list, list_sz, NULL);
-    return NT_SUCCESS(res);
-}
 #endif /* WINDOWS */
 
 reg_t

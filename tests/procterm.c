@@ -21,7 +21,15 @@
 
 /* test the -soft_kills option (i#544) */
 
-#include "windows.h"
+#ifdef WINDOWS
+# include "windows.h"
+#else
+# include <sys/wait.h>
+# include <stdlib.h>
+# include <unistd.h>
+# include <string.h>
+# include <signal.h>
+#endif
 #include <stdio.h>
 
 /* we use a file for IPC.  this means we can't run this test twice in parallel. */
@@ -30,15 +38,32 @@
 #define SLEEP_PER_ATTEMPT 100
 #define MAX_ATTEMPTS 100 /* @ 100ms each => 10 seconds */
 
+/* We rely on the child's results.txt being larger than the parent's.
+ * On Linux, the child is forked, and so is missing some lines at the top.
+ * Thus we need a deeper callstack.
+ */
+static void *
+allocate_something_helper2(void)
+{
+    return malloc(42);
+}
+
+static void *
+allocate_something_helper1(void)
+{
+    return allocate_something_helper2();
+}
+
 static void *
 allocate_something(void)
 {
-    return malloc(42);
+    return allocate_something_helper1();
 }
 
 int
 main(int argc, char** argv)
 {
+#ifdef WINDOWS
     STARTUPINFO si = { sizeof(STARTUPINFO) };
     PROCESS_INFORMATION pi;
     /* first remove file so we aren't fooled by prior runs */
@@ -66,7 +91,7 @@ main(int argc, char** argv)
                 Sleep(SLEEP_PER_ATTEMPT);
                 count++;
             }
-            TerminateProcess(pi.hProcess, 0);
+            TerminateProcess(pi.hProcess, 9); /* 9 to match Linux SIGKILL */
             WaitForSingleObject(pi.hProcess, INFINITE);
             GetExitCodeProcess(pi.hProcess, (LPDWORD) &status);
             fprintf(stderr, "child has exited with status %d\n", status);
@@ -95,6 +120,59 @@ main(int argc, char** argv)
         /* now wait until parent kills us */
         Sleep(30000);
     }
+#else /* WINDOWS */
+
+    /* Based on DR's drx-test.c */
+    int pipefd[2];
+    pid_t cpid;
+    char buf = 0;
+
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(1);
+    }
+
+    cpid = fork();
+    if (cpid == -1) {
+        perror("fork");
+        exit(1);
+    } else if (cpid > 0) {
+        /* parent */
+        int status;
+        close(pipefd[1]); /* close unused write end */
+
+        /* make an error to match Windows error count */
+        char *alloc = malloc(3);
+        *(alloc + 3) = 1;
+        free(alloc);
+
+        if (read(pipefd[0], &buf, sizeof(buf)) <= 0) {
+            perror("pipe read failed");
+            exit(1);
+        }
+        kill(cpid, SIGKILL);
+        wait(&status); /* wait for child */
+        close(pipefd[0]);
+        fprintf(stderr, "child has exited with status %d\n", status);
+    } else {
+        /* child */
+        int iter = 0;
+        close(pipefd[0]); /* close unused read end */
+
+        /* leak something and let's ensure -soft_kills performs the leak scan */
+        allocate_something();
+
+        write(pipefd[1], &buf, sizeof(buf));
+        close(pipefd[1]);
+
+        /* spin until parent kills us or we time out */
+        while (iter++ < 12) {
+            sleep(5);
+        }
+    }
+
+#endif /* LINUX */
+
     fprintf(stderr, "app exiting\n");
     return 0;
 }

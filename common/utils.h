@@ -708,12 +708,6 @@ virtual_free(void *base);
 bool
 module_imports_from_msvc(const module_data_t *mod);
 
-ssize_t
-num_job_object_pids(HANDLE job);
-
-bool
-get_job_object_pids(HANDLE job, JOBOBJECT_BASIC_PROCESS_ID_LIST *list, size_t list_sz);
-
 #endif /* WINDOWS */
 
 reg_t

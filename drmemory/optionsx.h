@@ -544,11 +544,9 @@ OPTION_CLIENT_BOOL(drmemscope, persist_code, false,
 OPTION_CLIENT_STRING(drmemscope, persist_dir, "<install>/logs/codecache",
                      "Directory for code cache files",
                      "Destination for code cache files.  When using a unique log directory for each run, symbols will not be shared across runs because the default cache location is inside the log directory.  Use this option to set a shared directory.")
-#ifdef WINDOWS
 OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
                    "Ensure external processes terminated by this one exit cleanly",
                    "Ensure external processes terminated by this one exit cleanly.  Often applications forcibly terminate child processes, which can prevent proper leak checking and error and suppression summarization as well as generation of symbol and code cache files needed for performance.  When this option is enabled, every termination call to another process will be replaced with a directive to the Dr. Memory running in that process to perform a clean shutdown.  If there is no DynamoRIO-based tool in the target process, the regular termination call will be carried out.")
-#endif
 
 /****************************************************************************
  * Un-documented client options, for developer use only

@@ -25,7 +25,7 @@ ERRORS FOUND:
       0 unique,     0 total warning(s)
       1 unique,     1 total,     42 byte(s) of leak(s)
       0 unique,     0 total,      0 byte(s) of possible leak(s)
-child has exited with status 0
+child has exited with status 9
 app exiting
 ERRORS FOUND:
       1 unique,     1 total unaddressable access(es)

@@ -21,5 +21,6 @@
 # We don't list the unaddr b/c runtest.cmake will pick the child's results
 # file (since larger).  We rely on .out detecting the unaddr.
 Error #1: LEAK 42 direct bytes + 0 indirect bytes
-procterm.c:36
-procterm.c:82
+procterm.c:48
+procterm.c:54
+procterm.c:60

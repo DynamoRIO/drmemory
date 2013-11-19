@@ -34,9 +34,6 @@ typedef struct _cls_syscall_t {
     HDC paintDC;
     /* for handle leak checks (i#974) */
     void *handle_info;
-    /* for job object termination (i#1297) */
-    DWORD job_limit_flags_orig;
-    DWORD *job_limit_flags_loc;
 #endif
 } cls_syscall_t;
 

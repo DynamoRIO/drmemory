@@ -44,12 +44,6 @@
 static int
 syscall_handle_type(drsys_syscall_type_t drsys_type);
 
-static void
-soft_kills_init(void);
-
-static void
-soft_kills_exit(void);
-
 /***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
  */
@@ -59,9 +53,6 @@ soft_kills_exit(void);
  */
 static drsys_sysnum_t sysnum_CreateThread = {-1,0};
 static drsys_sysnum_t sysnum_CreateThreadEx = {-1,0};
-static drsys_sysnum_t sysnum_TerminateProcess = {-1,0};
-static drsys_sysnum_t sysnum_TerminateJobObject = {-1,0};
-static drsys_sysnum_t sysnum_SetInformationJobObject = {-1,0};
 
 /* For handle leak checking */
 static drsys_sysnum_t sysnum_Close = {-1,0};
@@ -147,11 +138,6 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtCreateThread", &sysnum_CreateThread, false/*reqd*/);
     get_sysnum("NtCreateThreadEx", &sysnum_CreateThreadEx,
                get_windows_version() <= DR_WINDOWS_VERSION_2003);
-    get_sysnum("NtTerminateProcess", &sysnum_TerminateProcess, false/*reqd*/);
-    get_sysnum("NtTerminateJobObject", &sysnum_TerminateJobObject,
-               false/* present since 2K and we don't support NT */);
-    get_sysnum("NtSetInformationJobObject", &sysnum_SetInformationJobObject,
-               false/* present since 2K and we don't support NT */);
     get_sysnum("NtClose", &sysnum_Close, false/*reqd*/);
     get_sysnum("NtUserDestroyAcceleratorTable",
                &sysnum_UserDestroyAcceleratorTable,
@@ -189,16 +175,11 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
 
     if (options.check_handle_leaks)
         handlecheck_init();
-
-    if (options.soft_kills)
-        soft_kills_init();
 }
 
 void
 syscall_os_exit(void)
 {
-    if (options.soft_kills)
-        soft_kills_exit();
     /* must be called before systable delete */
     if (options.check_handle_leaks)
         handlecheck_exit();
@@ -406,193 +387,6 @@ syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
 }
 
 /***************************************************************************
- * SOFT KILLS
- */
-
-/* XXX i#1231: we should try to share Dr. Memory's code w/ other tools
- * like bbcov by placing it in an Extension.
- */
-
-enum {
-    SYS_NUM_PARAMS_TerminateProcess        = 2,
-    SYS_NUM_PARAMS_TerminateJobObject      = 2,
-    SYS_NUM_PARAMS_SetInformationJobObject = 4,
-};
-
-enum {
-    SYS_WOW64_IDX_TerminateProcess        = 0,
-    SYS_WOW64_IDX_TerminateJobObject      = 0,
-    SYS_WOW64_IDX_SetInformationJobObject = 7,
-};
-
-static void
-soft_kills_init(void)
-{
-    if (options.native_parent || options.native_until_thread > 0) {
-        /* Ensure that DR intercepts these when we're native */
-        bool ok = dr_syscall_intercept_natively("NtTerminateProcess",
-                                                sysnum_TerminateProcess.number,
-                                                SYS_NUM_PARAMS_TerminateProcess,
-                                                SYS_WOW64_IDX_TerminateProcess);
-        ASSERT(ok, "failure to watch syscall while native");
-        ok = dr_syscall_intercept_natively("NtTerminateJobObject",
-                                           sysnum_TerminateJobObject.number,
-                                           SYS_NUM_PARAMS_TerminateJobObject,
-                                           SYS_WOW64_IDX_TerminateJobObject);
-        ASSERT(ok, "failure to watch syscall while native");
-        ok = dr_syscall_intercept_natively("NtSetInformationJobObject",
-                                           sysnum_SetInformationJobObject.number,
-                                           SYS_NUM_PARAMS_SetInformationJobObject,
-                                           SYS_WOW64_IDX_SetInformationJobObject);
-        ASSERT(ok, "failure to watch syscall while native");
-    }
-}
-
-static void
-soft_kills_exit(void)
-{
-    /* nothing yet */
-}
-
-/* Returns whether to execute the system call */
-static bool
-soft_kills_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                       dr_mcontext_t *mc, drsys_syscall_t *syscall)
-{
-    ASSERT(options.soft_kills, "caller should check option");
-    /* i#544: give child processes a chance for clean exit for leak scan
-     * and option summary and symbol and code cache generation.
-     *
-     * XXX: a child under DR but not DrMem will be left alive: but that's
-     * a risk we can live with.
-     */
-    if (drsys_sysnums_equal(&sysnum, &sysnum_TerminateProcess)) {
-        HANDLE proc = (HANDLE) syscall_get_param(drcontext, 0);
-        process_id_t pid = dr_convert_handle_to_pid(proc);
-        if (pid != INVALID_PROCESS_ID && pid != dr_get_process_id()) {
-            uint64 exit_code = syscall_get_param(drcontext, 1);
-            dr_config_status_t res =
-                dr_nudge_client_ex(pid, client_id,
-                                   /* preserve exit code */
-                                   NUDGE_TERMINATE | (exit_code << 32), 0);
-            LOG(1, "TerminateProcess => nudge pid=%d exit_code=%d res=%d\n",
-                pid, (uint)exit_code, res);
-            if (res == DR_SUCCESS) {
-                /* skip syscall since target will terminate itself */
-                dr_syscall_set_result(drcontext, 0/*success*/);
-                return false; /* skip syscall */
-            }
-            /* else failed b/c target not under DR control or maybe some other error:
-             * let syscall go through
-             */
-        }
-    }
-    else if (drsys_sysnums_equal(&sysnum, &sysnum_TerminateJobObject)) {
-        /* There are several ways a process in a job can be killed:
-         *
-         *   1) NtTerminateJobObject
-         *   2) The last handle is closed + JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is set
-         *   3) JOB_OBJECT_LIMIT_ACTIVE_PROCESS is hit
-         *   4) Time limit and JOB_OBJECT_TERMINATE_AT_END_OF_JOB is hit
-         *
-         * XXX: we only handle #1 and #2.
-         */
-        HANDLE job = (HANDLE) syscall_get_param(drcontext, 0);
-        NTSTATUS exit_code = (NTSTATUS) syscall_get_param(drcontext, 1);
-        ssize_t num_jobs = num_job_object_pids(job);
-        void *res;
-        if (num_jobs > 0) {
-            JOBOBJECT_BASIC_PROCESS_ID_LIST *list;
-            size_t sz = sizeof(*list) + (num_jobs- 1)*sizeof(list->ProcessIdList[0]);
-            byte *buf = thread_alloc(drcontext, sz, HEAPSTAT_MISC);
-            list = (JOBOBJECT_BASIC_PROCESS_ID_LIST *) buf;
-            LOG(1, "TerminateJobObject on job "PFX" w/ %d process(es) => skipping\n",
-                job, num_jobs);
-            if (get_job_object_pids(job, list, sz)) {
-                uint i;
-                for (i = 0; i < num_jobs; i++) {
-                    process_id_t pid = list->ProcessIdList[i];
-                    dr_config_status_t res =
-                        dr_nudge_client_ex(pid, client_id,
-                                           /* preserve exit code */
-                                           NUDGE_TERMINATE | ((uint64)exit_code << 32),
-                                           0);
-                    LOG(1, "TerminateJobObject => nudge pid=%d exit_code=%d res=%d\n",
-                        pid, exit_code, res);
-                    if (res != DR_SUCCESS) {
-                        WARN("WARNING: TerminateJobObject nudge failed pid=%d res=%d\n",
-                             pid, res);
-                    }
-                }
-            }
-            thread_free(drcontext, buf, sz, HEAPSTAT_MISC);
-
-            /* XXX: it's not clear whether we should skip the syscall if some
-             * of the nudges failed, or how to handle some target processes
-             * not being under DrMem, in which case this syscall going through
-             * might be required for the app to run correctly.
-             */
-            dr_syscall_set_result(drcontext, 0/*success*/);
-            return false; /* skip syscall */
-        } else
-            WARN("WARNING: TerminateJobObject failed to query\n");
-    }
-    else if (drsys_sysnums_equal(&sysnum, &sysnum_SetInformationJobObject)) {
-        JOBOBJECTINFOCLASS class = (JOBOBJECTINFOCLASS) syscall_get_param(drcontext, 1);
-        ULONG sz = (ULONG) syscall_get_param(drcontext, 3);
-        /* MSDN claims that JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE requires an
-         * extended info struct, which we trust, though it seems odd as it's
-         * a flag in the basic struct.
-         */
-        JOBOBJECT_EXTENDED_LIMIT_INFORMATION info;
-        if (class == JobObjectExtendedLimitInformation &&
-            sz >= sizeof(info) &&
-            safe_read((byte *)syscall_get_param(drcontext, 2), sizeof(info), &info)) {
-            if (TEST(JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-                     info.BasicLimitInformation.LimitFlags)) {
-                /* Remove the kill-on-close flag from the syscall arg.
-                 * We restore in post-syscall in case app uses the memory
-                 * for something else.  There is of course a race where another
-                 * thread could use it and get the wrong value: -soft_kills isn't
-                 * perfect.
-                 */
-                JOBOBJECT_EXTENDED_LIMIT_INFORMATION *ptr =
-                    (JOBOBJECT_EXTENDED_LIMIT_INFORMATION *)
-                    syscall_get_param(drcontext, 2);
-                ULONG new_flags = info.BasicLimitInformation.LimitFlags &
-                    (~JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE);
-                pt->job_limit_flags_orig = info.BasicLimitInformation.LimitFlags;
-                pt->job_limit_flags_loc = &ptr->BasicLimitInformation.LimitFlags;
-                ASSERT(sizeof(pt->job_limit_flags_orig) ==
-                       sizeof(ptr->BasicLimitInformation.LimitFlags), "size mismatch");
-                LOG(1, "Removing JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE from limits\n");
-                if (!dr_safe_write(pt->job_limit_flags_loc,
-                                   sizeof(ptr->BasicLimitInformation.LimitFlags),
-                                   &new_flags, NULL))
-                    WARN("WARNING: failed to write to job limit flags\n");
-            }
-        }
-    }
-    return true;
-}
-
-/* Returns whether to execute the system call */
-static void
-soft_kills_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
-                        dr_mcontext_t *mc, drsys_syscall_t *syscall)
-{
-    ASSERT(options.soft_kills, "caller should check option");
-    if (drsys_sysnums_equal(&sysnum, &sysnum_SetInformationJobObject) &&
-        pt->job_limit_flags_loc != NULL) {
-        if (!dr_safe_write(pt->job_limit_flags_loc,
-                           sizeof(pt->job_limit_flags_orig),
-                           &pt->job_limit_flags_orig, NULL))
-            WARN("WARNING: failed to restore job limit flags\n");
-        pt->job_limit_flags_loc = NULL;
-    }
-}
-
-/***************************************************************************
  * TOP LEVEL
  */
 
@@ -600,10 +394,6 @@ bool
 os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
                       dr_mcontext_t *mc, drsys_syscall_t *syscall)
 {
-    if (options.soft_kills) {
-        if (!soft_kills_pre_syscall(drcontext, pt, sysnum, mc, syscall))
-            return false;
-    }
     if (options.check_handle_leaks) {
         int idx = syscall_deletes_handle(drcontext, sysnum);
         if (idx != -1) {
@@ -688,8 +478,6 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
             DRMF_SUCCESS)
             LOG(1, "unknown system call args for #%d\n", sysnum.number);
     }
-    if (options.soft_kills)
-        soft_kills_post_syscall(drcontext, pt, sysnum, mc, syscall);
     wingdi_shared_process_syscall(false/*!pre*/, drcontext, sysnum, pt, mc, syscall);
 }
 

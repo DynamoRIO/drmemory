@@ -54,6 +54,7 @@
 
 #include "dr_api.h"
 #include "drwrap.h"
+#include "drx.h"
 #include "drmemory.h"
 #include "readwrite.h"
 #include "fastpath.h"
@@ -441,6 +442,8 @@ event_exit(void)
         symcache_exit();
 #endif
     utils_exit();
+
+    drx_exit();
 
     drmgr_unregister_tls_field(tls_idx_drmem);
     drmgr_unregister_cls_field(event_context_init, event_context_exit, cls_idx_drmem);
@@ -1559,6 +1562,34 @@ event_nudge(void *drcontext, uint64 argument)
     }
 }
 
+static bool
+event_soft_kill(process_id_t pid, int exit_code)
+{
+    /* i#544: give child processes a chance for clean exit for leak scan
+     * and option summary and symbol and code cache generation.
+     *
+     * XXX: a child under DR but not DrMem will be left alive: but that's
+     * a risk we can live with.
+     */
+    dr_config_status_t res =
+        dr_nudge_client_ex(pid, client_id,
+                           /* preserve exit code */
+                           NUDGE_TERMINATE | ((uint64)exit_code << 32),
+                           0);
+    LOG(1, "killing another process => nudge pid=%d exit_code=%d res=%d\n",
+        pid, exit_code, res);
+    if (res == DR_SUCCESS) {
+        /* skip syscall since target will terminate itself */
+        return true;
+    } else {
+        WARN("WARNING: soft kills nudge failed pid=%d res=%d\n", pid, res);
+    }
+    /* else failed b/c target not under DR control or maybe some other error:
+     * let syscall go through, if possible
+     */
+    return false;
+}
+
 static void
 event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
@@ -1722,6 +1753,8 @@ dr_init(client_id_t id)
     cls_idx_drmem = drmgr_register_cls_field(event_context_init, event_context_exit);
     ASSERT(cls_idx_drmem > -1, "unable to reserve CLS");
 
+    drx_init();
+
     /* we deliberately do not request safe drwrap retaddr+arg accesses b/c
      * that's a perf hit and we can live w/ the risk of not doing it
      */
@@ -1770,6 +1803,8 @@ dr_init(client_id_t id)
         drmgr_register_module_unload_event(event_module_unload);
     }
     dr_register_nudge_event(event_nudge, client_id);
+    if (options.soft_kills)
+        drx_register_soft_kills(event_soft_kill);
 #ifdef LINUX
     dr_register_fork_init_event(event_fork);
     drmgr_register_signal_event(event_signal);
