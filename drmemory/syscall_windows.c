@@ -42,7 +42,7 @@
 #include "../wininc/ntalpctyp.h"
 
 static int
-syscall_handle_type(drsys_syscall_type_t drsys_type);
+syscall_handle_type(drsys_syscall_type_t drsys_type, drsys_sysnum_t sysnum);
 
 /***************************************************************************
  * SYSTEM CALLS FOR WINDOWS
@@ -66,15 +66,25 @@ static drsys_sysnum_t sysnum_GdiDeleteObjectApp = {-1,0};
 static drsys_sysnum_t sysnum_GdiDdReleaseDC= {-1, 0};
 /* i#1112: NtDuplicateObject may delete a handle */
 static drsys_sysnum_t sysnum_DuplicateObject = {-1, 0};
-/* i#988-c#7: system calls that return existing handles */
+/* i#988: system calls that return existing handles */
 static drsys_sysnum_t sysnum_UserSetClipboardData = {-1, 0};
 static drsys_sysnum_t sysnum_UserRemoveProp = {-1, 0};
-/* i#988-c#12: system calls that return existing handles */
+static drsys_sysnum_t sysnum_UserFindExistingCursorIcon = {-1, 0};
+static drsys_sysnum_t sysnum_UserGetThreadDesktop = {-1, 0};
+static drsys_sysnum_t sysnum_UserGetAncestor = {-1, 0};
 static drsys_sysnum_t sysnum_GdiExtSelectClipRgn = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectBrush = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectPen = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectBitmap = {-1, 0};
 static drsys_sysnum_t sysnum_GdiSelectFont = {-1, 0};
+/* i#1386: mismatch between system call type and handle type */
+/* syscall added above:
+ * sysnum_UserCallOneParam_RELEASEDC
+ * sysnum_UserGetThreadDesktop
+ */
+static drsys_sysnum_t sysnum_UserGetDC = {-1, 0};
+static drsys_sysnum_t sysnum_UserGetProcessWindowStation = {-1, 0};
+static drsys_sysnum_t sysnum_UserGetWindowDC = {-1, 0};
 
 static bool
 opc_is_in_syscall_wrapper(uint opc)
@@ -156,11 +166,17 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtGdiDdReleaseDC", &sysnum_GdiDdReleaseDC,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtDuplicateObject", &sysnum_DuplicateObject, false/*reqd*/);
+    /* i#988: system calls that return existing handles */
     get_sysnum("NtUserSetClipboardData", &sysnum_UserSetClipboardData,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtUserRemoveProp", &sysnum_UserRemoveProp,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
-    /* i#988-c#12: system calls that return existing handles */
+    get_sysnum("NtUserFindExistingCursorIcon",
+               &sysnum_UserFindExistingCursorIcon,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    get_sysnum("NtUserGetThreadDesktop",
+               &sysnum_UserGetThreadDesktop, false/*reqd*/);
+    get_sysnum("NtUserGetAncestor", &sysnum_UserGetAncestor, false/*reqd*/);
     get_sysnum("NtGdiExtSelectClipRgn", &sysnum_GdiExtSelectClipRgn,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtGdiSelectBrush", &sysnum_GdiSelectBrush, true);
@@ -170,6 +186,11 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
     get_sysnum("NtGdiSelectFont", &sysnum_GdiSelectFont,
                get_windows_version() <= DR_WINDOWS_VERSION_2000);
+    /* i#1386: mismatch between system call type and handle type */
+    get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
+    get_sysnum("NtUserGetProcessWindowStation",
+               &sysnum_UserGetProcessWindowStation, false/*reqd*/);
+    get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
 
     syscall_wingdi_init(drcontext, ntdll_base);
 
@@ -284,7 +305,7 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
                  * is newly created.
                  */
                 handlecheck_create_handle(arg->drcontext, handle,
-                                          syscall_handle_type(syscall_type),
+                                          syscall_handle_type(syscall_type, arg->sysnum),
                                           arg->sysnum, NULL, arg->mc);
             } else {
                 DODEBUG({
@@ -300,7 +321,7 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
              * in which case, we won't iterate the args.
              */
             handlecheck_create_handle(arg->drcontext, (HANDLE)arg->value,
-                                      syscall_handle_type(syscall_type),
+                                      syscall_handle_type(syscall_type, arg->sysnum),
                                       arg->sysnum, NULL, arg->mc);
 
         }
@@ -363,10 +384,17 @@ static bool
 syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
 {
     ptr_uint_t arg;
-    /* i#988-c#8: the return value is the hData value that was passed to
-     * SetProp.
-     */
-    if (drsys_sysnums_equal(&sysnum, &sysnum_UserRemoveProp))
+    /* i#988: syscalls return existing handles */
+    if (drsys_sysnums_equal(&sysnum, &sysnum_UserRemoveProp) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserFindExistingCursorIcon) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserGetAncestor) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_UserGetThreadDesktop) ||
+        /* i#988-c#12: GdiSelect* system calls return existing handles */
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiExtSelectClipRgn) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBrush) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectPen) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBitmap) ||
+        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectFont))
         return false;
     /* i#988-c#7: If the arg1 hMem is not NULL and the function succeeds,
      * the return value is the handle to the data passed in, so it does
@@ -375,13 +403,6 @@ syscall_creates_handle(void *drcontext, drsys_sysnum_t sysnum)
     if (drsys_sysnums_equal(&sysnum, &sysnum_UserSetClipboardData) &&
         drsys_pre_syscall_arg(drcontext, 1, &arg) == DRMF_SUCCESS &&
         arg != (ptr_uint_t)NULL)
-        return false;
-    /* i#988-c#12: GdiSelect* system calls return existing handles */
-    if (drsys_sysnums_equal(&sysnum, &sysnum_GdiExtSelectClipRgn) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBrush) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectPen) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectBitmap) ||
-        drsys_sysnums_equal(&sysnum, &sysnum_GdiSelectFont))
         return false;
     return true;
 }
@@ -407,7 +428,7 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
             pt->handle_info =
                 handlecheck_delete_handle(drcontext,
                                           (HANDLE)syscall_get_param(drcontext, idx),
-                                          syscall_handle_type(syscall_type),
+                                          syscall_handle_type(syscall_type, sysnum),
                                           sysnum, NULL, mc);
         }
     }
@@ -468,7 +489,7 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
             handlecheck_delete_handle_post_syscall
                 (drcontext, (HANDLE)syscall_get_param(drcontext, idx),
 		 sysnum, mc,
-                 syscall_handle_type(syscall_type), pt->handle_info, res);
+                 syscall_handle_type(syscall_type, sysnum), pt->handle_info, res);
             pt->handle_info = NULL;
         }
         /* find the OUT params, including return value */
@@ -492,10 +513,18 @@ os_process_syscall_memarg(drsys_arg_t *arg)
  */
 
 static int
-syscall_handle_type(drsys_syscall_type_t drsys_type)
+syscall_handle_type(drsys_syscall_type_t drsys_type, drsys_sysnum_t sysnum)
 {
-    if (drsys_type == DRSYS_SYSCALL_TYPE_USER)
+    if (drsys_type == DRSYS_SYSCALL_TYPE_USER) {
+        if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetDC) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCallOneParam_RELEASEDC) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserGetWindowDC))
+            return HANDLE_TYPE_GDI;
+        if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetProcessWindowStation) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserGetThreadDesktop))
+            return HANDLE_TYPE_KERNEL;
         return HANDLE_TYPE_USER;
+    }
     else if (drsys_type == DRSYS_SYSCALL_TYPE_GRAPHICS)
         return HANDLE_TYPE_GDI;
     else
