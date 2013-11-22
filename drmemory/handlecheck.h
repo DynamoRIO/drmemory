@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -41,11 +41,13 @@ void
 handlecheck_exit(void);
 
 void
-handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
+handlecheck_create_handle(void *drcontext,
+                          HANDLE proc_handle, HANDLE handle, int type,
                           drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc);
 
 void *
-handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
+handlecheck_delete_handle(void *drcontext,
+                          HANDLE proc_handle, HANDLE handle, int type,
                           drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc);
 
 void
@@ -55,7 +57,8 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
                                        bool success);
 
 void
-handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg);
+handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
+                                   HANDLE proc_handle);
 
 #ifdef STATISTICS
 void

@@ -1071,7 +1071,10 @@ typedef struct _KEY_VALUE_PARTIAL_INFORMATION {
     UCHAR   Data[1];            // Variable size
 } KEY_VALUE_PARTIAL_INFORMATION, *PKEY_VALUE_PARTIAL_INFORMATION;
 
-
+/* "A process has requested access to an object, but has not been
+ * granted those access rights."
+ */
+#define STATUS_ACCESS_DENIED             ((NTSTATUS)0xC0000022L)
 /* "The data was too large to fit into the specified buffer." */
 #define STATUS_BUFFER_OVERFLOW           ((NTSTATUS)0x80000005L)
 /* "The buffer is too small to contain the entry. No information has

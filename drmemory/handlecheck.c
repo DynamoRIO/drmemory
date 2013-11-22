@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -46,6 +46,8 @@ typedef struct _open_close_pair_t {
     handle_callstack_info_t open;  /* handle open info */
     handle_callstack_info_t close; /* handle close info */
 } open_close_pair_t;
+
+static handle_callstack_info_t other_proc_hci;
 
 #define HANDLE_VERBOSE_1 1
 #define HANDLE_VERBOSE_2 2
@@ -203,7 +205,9 @@ handlecheck_handle_add(hashtable_t *table, HANDLE handle,
 
     STATS_INC(num_handle_add);
     /* We replace the old callstack with new callstack if we see
-     * duplicated handle in the table.
+     * duplicated handle in the table, b/c we might have missed a
+     * close, and it's best to take the latest creation of that
+     * handle value.
      */
     res = hashtable_add_replace(table, (void *)handle, (void *)hci);
     if (res != NULL) {
@@ -246,7 +250,8 @@ handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
 #define HANDLECHECK_PRE_MSG_SIZE 0x100
 
 void
-handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg)
+handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
+                                   HANDLE proc_handle)
 {
     handle_callstack_info_t *hci;
     char msg[HANDLECHECK_PRE_MSG_SIZE];
@@ -263,10 +268,16 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg)
      * value. We could passing our own ptr to get the value, which may have
      * transparency problems.
      */
+    /* i#1380: DuplicateHandle may leak the handle in another process by setting
+     * the target process handle to other than the current process. We report the
+     * leak regardless of which process the handle belongs to.
+     */
     dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                "Syscall %s leaks handle with NULL handle pointer.",
-                name);
-    report_handle_leak(dr_get_current_drcontext(), msg, &hci->loc, hci->pcs,
+                "Syscall %s leaks handle with NULL handle pointer in %s process "
+                PFX".", name,
+                is_current_process(proc_handle) ? "its own" : "another",
+                proc_handle);
+    report_handle_leak(arg->drcontext, msg, &hci->loc, hci->pcs,
                        NULL /* aux_pcs */, false /* potential */);
     /* add the pair info */
     handle_callstack_info_free(hci);
@@ -404,14 +415,21 @@ handlecheck_exit(void)
 }
 
 void
-handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
+handlecheck_create_handle(void *drcontext,
+                          HANDLE proc_handle, HANDLE handle, int type,
                           drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     handle_callstack_info_t *hci;
     hashtable_t *table;
 
-    if (handle == INVALID_HANDLE_VALUE) {
-        LOG(HANDLE_VERBOSE_1, "WARNING: application opened an invalid handle\n");
+    /* i#1380: ignore the handle created in another process */
+    if (proc_handle != NT_CURRENT_PROCESS && !is_current_process(proc_handle)) {
+        LOG(HANDLE_VERBOSE_2, "Create handle "PFX" in another process "PFX"\n",
+            handle, proc_handle);
+        return;
+    }
+    if (handle == INVALID_HANDLE_VALUE || handle == (HANDLE) NULL) {
+        ASSERT(false, "syscall succeeds but returns invalid handle value");
         return;
     }
     table = handlecheck_get_handle_table(type
@@ -420,13 +438,6 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
     ASSERT(table != NULL, "fail to get handle table");
     handle_table_lock();
     hci = handle_callstack_info_alloc(sysnum, pc, mc);
-    DOLOG(HANDLE_VERBOSE_2, {
-        if (handle == (HANDLE)0) {
-            LOG(HANDLE_VERBOSE_2,
-                "WARNING: application created a handle with value 0 at:\n");
-            packed_callstack_log(hci->pcs, INVALID_FILE);
-        }
-    });
     DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
     if (!handlecheck_handle_add(table, handle, hci))
         LOG(HANDLE_VERBOSE_1, "WARNING: fail to add handle "PFX"\n", handle);
@@ -434,7 +445,8 @@ handlecheck_create_handle(void *drcontext, HANDLE handle, int type,
 }
 
 void *
-handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
+handlecheck_delete_handle(void *drcontext,
+                          HANDLE proc_handle, HANDLE handle, int type,
                           drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     hashtable_t *table;
@@ -443,6 +455,12 @@ handlecheck_delete_handle(void *drcontext, HANDLE handle, int type,
     if (handle == INVALID_HANDLE_VALUE) {
         LOG(HANDLE_VERBOSE_1, "WARNING: deleting an invalid handle\n");
         return NULL;
+    }
+    /* i#1380: ignore the handle closed in another process */
+    if (proc_handle != NT_CURRENT_PROCESS && !is_current_process(proc_handle)) {
+        LOG(HANDLE_VERBOSE_2, "Close handle "PFX" in a different process "PFX"\n",
+            handle, proc_handle);
+        return (void *)&other_proc_hci;
     }
     table = handlecheck_get_handle_table(type
                                          _IF_DEBUG((void *)handle)
@@ -469,17 +487,21 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
     handle_callstack_info_t *hci;
     hashtable_t *table;
 
-    if (handle_info == NULL) {
+    hci = (handle_callstack_info_t *)handle_info;
+    /* i#1380: ignore handle deleted in other process */
+    if (hci == &other_proc_hci)
+        return;
+    if (hci == NULL) {
         if (success) {
-            LOG(HANDLE_VERBOSE_1,
+            LOG(HANDLE_VERBOSE_2,
                 "WARNING: delete handle succeeded unexpectedly\n");
         } else {
-            LOG(HANDLE_VERBOSE_1,
+            LOG(HANDLE_VERBOSE_2,
                 "WARNING: no handle info for adding back\n");
         }
         return;
     }
-    hci = (handle_callstack_info_t *)handle_info;
+
     if (success) {
         /* add the pair info */
         if (options.filter_handle_leaks) {

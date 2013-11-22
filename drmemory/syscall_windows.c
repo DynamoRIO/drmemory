@@ -281,6 +281,22 @@ syscall_could_leak_handle(drsys_sysnum_t sysnum)
     return false;
 }
 
+static HANDLE
+syscall_get_src_proc_handle(void *drcontext, drsys_sysnum_t sysnum)
+{
+    if (drsys_sysnums_equal(&sysnum, &sysnum_DuplicateObject))
+        return (HANDLE) syscall_get_param(drcontext, 0);
+    return NT_CURRENT_PROCESS;
+}
+
+static HANDLE
+syscall_get_tgt_proc_handle(void *drcontext, drsys_sysnum_t sysnum)
+{
+    if (drsys_sysnums_equal(&sysnum, &sysnum_DuplicateObject))
+        return (HANDLE) syscall_get_param(drcontext, 2);
+    return NT_CURRENT_PROCESS;
+}
+
 /* This is only called from os_shared_post_syscall with check_handle_leaks
  * on successful system calls.
  * If we add any arg iteration w/o check_handle_leaks or failed system call,
@@ -298,15 +314,19 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
             HANDLE handle;
             if (arg->value == (ptr_uint_t)NULL &&
                 syscall_could_leak_handle(arg->sysnum)) {
-                handlecheck_report_leak_on_syscall((dr_mcontext_t *)user_data,
-                                                   arg);
+                handlecheck_report_leak_on_syscall
+                    ((dr_mcontext_t *)user_data, arg,
+                     syscall_get_tgt_proc_handle(arg->drcontext, arg->sysnum));
             } else if (safe_read((void *)arg->value, sizeof(HANDLE), &handle)) {
                 /* assuming any handle arg written by the syscall
                  * is newly created.
                  */
-                handlecheck_create_handle(arg->drcontext, handle,
-                                          syscall_handle_type(syscall_type, arg->sysnum),
-                                          arg->sysnum, NULL, arg->mc);
+                handlecheck_create_handle
+                    (arg->drcontext,
+                     syscall_get_tgt_proc_handle(arg->drcontext, arg->sysnum),
+                     handle,
+                     syscall_handle_type(syscall_type, arg->sysnum),
+                     arg->sysnum, NULL, arg->mc);
             } else {
                 DODEBUG({
                     const char *sysname = "<unknown>";
@@ -320,9 +340,12 @@ post_syscall_iter_arg_cb(drsys_arg_t *arg, void *user_data)
             /* i#988-c#7,c#8: handle in return may not be newly created,
              * in which case, we won't iterate the args.
              */
-            handlecheck_create_handle(arg->drcontext, (HANDLE)arg->value,
-                                      syscall_handle_type(syscall_type, arg->sysnum),
-                                      arg->sysnum, NULL, arg->mc);
+            handlecheck_create_handle
+                (arg->drcontext,
+                 syscall_get_tgt_proc_handle(arg->drcontext, arg->sysnum),
+                 (HANDLE)arg->value,
+                 syscall_handle_type(syscall_type, arg->sysnum),
+                 arg->sysnum, NULL, arg->mc);
 
         }
     }
@@ -420,14 +443,15 @@ os_shared_pre_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum,
         if (idx != -1) {
             /* i#974: multiple threads may create/delete handles in parallel,
              * so we remove the handle from table at pre-syscall by simply
-             * assuming the syscall will success, and add it back if fail.
+             * assuming the syscall will succeed, and add it back if it fails.
              */
             drsys_syscall_type_t syscall_type = DRSYS_SYSCALL_TYPE_KERNEL;
             if (drsys_syscall_type(syscall, &syscall_type) != DRMF_SUCCESS)
                 WARN("WARNING: failed to get syscall type\n");
             pt->handle_info =
                 handlecheck_delete_handle(drcontext,
-                                          (HANDLE)syscall_get_param(drcontext, idx),
+                                          syscall_get_src_proc_handle(drcontext, sysnum),
+                                          (HANDLE) syscall_get_param(drcontext, idx),
                                           syscall_handle_type(syscall_type, sysnum),
                                           sysnum, NULL, mc);
         }

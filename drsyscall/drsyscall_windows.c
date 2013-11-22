@@ -4242,8 +4242,15 @@ drsys_handle_is_current_process(HANDLE h, bool *current)
     res = NtQueryInformationProcess(h, ProcessBasicInformation,
                                     &info, sizeof(PROCESS_BASIC_INFORMATION), &got);
     if (!NT_SUCCESS(res) || got != sizeof(PROCESS_BASIC_INFORMATION)) {
-        ASSERT(false, "internal error");
-        return DRMF_ERROR; /* better to have false positives than negatives? */
+        /* Each handle has privileges associated with it, and it seems possible
+         * to obtain a handle to your own process that has no query privilege,
+         * so we relax the assert if it is access denied.
+         */
+        if (res == STATUS_ACCESS_DENIED)
+            return DRMF_ERROR_ACCESS_DENIED;
+        ASSERT(false , "internal error");
+        /* better to have false positives than negatives? */
+        return DRMF_ERROR;
     }
     *current = (info.UniqueProcessId == getpid());
     return DRMF_SUCCESS;
