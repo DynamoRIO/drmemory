@@ -26,6 +26,7 @@
 #include "callstack.h"
 #include "syscall.h"
 #include "drsyscall.h"
+#include "../wininc/ndk_extypes.h"
 
 #ifndef WINDOWS
 # error WINDOWS-only
@@ -78,6 +79,118 @@ uint open_close_count;
 static hashtable_t kernel_handle_table;
 static hashtable_t gdi_handle_table;
 static hashtable_t user_handle_table;
+
+/* handle enumeration data structures and routines */
+GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
+                                     OUT PVOID  info,
+                                     IN  ULONG  info_size,
+                                     OUT PULONG bytes_received));
+
+#define SYSTEM_HANDLE_INFORMATION_SIZE_INIT 0x10000
+#define SYSTEM_HANDLE_INFORMATION_LIST_SIZE(x) \
+    (sizeof(SYSTEM_HANDLE_INFORMATION) + sizeof(SYSTEM_HANDLE_ENTRY) * ((x) - 1))
+
+static void
+free_system_handle_list(SYSTEM_HANDLE_INFORMATION *list, uint size)
+{
+    global_free(list, size, HEAPSTAT_MISC);
+}
+
+static void
+free_process_handle_list(SYSTEM_HANDLE_INFORMATION *list)
+{
+    free_system_handle_list(list, SYSTEM_HANDLE_INFORMATION_LIST_SIZE(list->Count));
+}
+
+#ifdef DEBUG
+static void
+print_handle_list(SYSTEM_HANDLE_INFORMATION *list)
+{
+    int i;
+    SYSTEM_HANDLE_ENTRY *handle = &list->Handle[0];
+    LOG(HANDLE_VERBOSE_1, "Total number of handles: %d\n", list->Count);
+    for (i = 0; i < list->Count; i++) {
+        LOG(HANDLE_VERBOSE_1,
+            "handle["PFX"]: pid="PFX", value="PFX", type="PFX", obj="PFX"\n",
+            i, handle[i].OwnerPid, handle[i].HandleValue,
+            handle[i].ObjectType, handle[i].ObjectPointer);
+    }
+}
+#endif
+
+/* the caller must free the list by calling free_system_handle_list */
+static SYSTEM_HANDLE_INFORMATION *
+get_system_handle_list(OUT size_t *size_out)
+{
+    NTSTATUS res;
+    SYSTEM_HANDLE_INFORMATION *list;
+    size_t size = SYSTEM_HANDLE_INFORMATION_SIZE_INIT;
+
+    if (size_out == NULL) {
+        ASSERT(false, "size_out must not be NULL");
+        return NULL;
+    }
+    do {
+        list = (SYSTEM_HANDLE_INFORMATION *) global_alloc(size, HEAPSTAT_MISC);
+        ASSERT(list != NULL, "failed to alloc memory for handle list");
+        res = NtQuerySystemInformation(SystemHandleInformation, list, size, NULL);
+        if (res == STATUS_INFO_LENGTH_MISMATCH) {
+            global_free(list, size, HEAPSTAT_MISC);
+            list = NULL;
+            size *= 2;
+        }
+    } while (res == STATUS_INFO_LENGTH_MISMATCH);
+    if (!NT_SUCCESS(res) && list == NULL) {
+        ASSERT(false, "fail to get system handle information");
+        list = NULL;
+        *size_out = 0;
+    } else {
+        *size_out = size;
+    }
+    DOLOG(HANDLE_VERBOSE_3, { print_handle_list(list); });
+
+    return list;
+}
+
+/* the caller must free the list by calling free_process_handle_list */
+static SYSTEM_HANDLE_INFORMATION *
+get_process_handle_list()
+{
+    SYSTEM_HANDLE_INFORMATION *sys_list, *our_list = NULL;
+    SYSTEM_HANDLE_ENTRY *h_our, *h_sys;
+    size_t sys_list_size, our_list_size, i, count;
+    uint pid = dr_get_process_id();
+
+    sys_list = get_system_handle_list(&sys_list_size);
+    ASSERT(sys_list != NULL, "fail to get system handle list");
+    h_sys = &sys_list->Handle[0];
+    for (i = 0, count = 0; i < sys_list->Count; i++, h_sys++) {
+        if (h_sys->OwnerPid == pid)
+            count++;
+    }
+
+    ASSERT(count != 0, "no handle in current process!");
+    our_list_size = SYSTEM_HANDLE_INFORMATION_LIST_SIZE(count);
+    our_list = (SYSTEM_HANDLE_INFORMATION *)
+        global_alloc(our_list_size, HEAPSTAT_MISC);
+    our_list->Count = count;
+    h_sys = &sys_list->Handle[0];
+    h_our = &our_list->Handle[0];
+    for (i = 0; i < count; h_sys++) {
+        if (h_sys->OwnerPid == pid) {
+            *h_our = *h_sys;
+            ASSERT(h_our == &our_list->Handle[0] ||
+                   h_our->HandleValue > (h_our - 1)->HandleValue,
+                   "handle is not stored in the sorted order");
+            h_our++;
+            i++;
+        }
+    }
+    free_system_handle_list(sys_list, sys_list_size);
+    ASSERT(our_list != NULL, "fail to get process handle list");
+    DOLOG(HANDLE_VERBOSE_3, { print_handle_list(our_list); });
+    return our_list;
+}
 
 #ifdef DEBUG
 static void
@@ -284,71 +397,123 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
 }
 
 static void
-handlecheck_iterate_handle_table(void *drcontext, hashtable_t *table, char *name)
+handlecheck_check_open_handle(const char *name,
+                              HANDLE handle,
+                              handle_callstack_info_t *hci)
 {
-    uint i;
+    open_close_pair_t *pair = NULL;
+    bool potential = false;
+    uint count;
     char msg[HANDLECHECK_PRE_MSG_SIZE];
-    handle_table_lock();
-    hashtable_lock(&open_close_table);
-    for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
-        hash_entry_t *entry, *next;
-        for (entry = table->table[i]; entry != NULL; entry = next) {
-            HANDLE handle = (HANDLE)entry->key;
-            handle_callstack_info_t *hci = (handle_callstack_info_t *) entry->payload;
-            open_close_pair_t *pair;
-            bool potential = false;
-            uint count;
-            next  = entry->next;
-            pair  = hashtable_lookup(&open_close_table, (void *)hci->pcs);
-            count = packed_callstack_refcount(hci->pcs) - 1/* hashtable refcount */;
-            /* i#1373: use heuristics for better handle leak reports */
-            if (options.filter_handle_leaks) {
-                if (pair != NULL) {
-                    /* Heuristic 1: for each left-open-handle, we check if there is
-                     * any handle being opened with the same callstack and being closed
-                     * somewhere. If we see such cases, it means that all handles opened
-                     * at that site should probably be closed.
-                     */
-                    count--; /* pair table refcount */
-                    if (count <= 1) {
-                        /* Report it as a potential error if there is only one live handle
-                         * from the same call site, as it could be left open on purpose.
-                         * Also, we currently want to avoid noise and false positives and
-                         * focus on significant leaks.
-                         */
-                        potential = true;
-                    }
-                } else if (count >= options.handle_leak_threshold) {
-                    /* Heuristic 2: if too many handles created from the same callstack
-                     * left open, it should be paid attention to, so report it.
-                     */
-                } else {
-                    /* no heuristic is applied, report it as potential error */
-                    potential = true;
-                }
+
+    ASSERT(hci != NULL, "handle callstack info must not be NULL");
+    count = packed_callstack_refcount(hci->pcs) - 1 /* hashtable refcount */;
+    /* i#1373: use heuristics for better handle leak reports */
+    if (options.filter_handle_leaks) {
+        pair = hashtable_lookup(&open_close_table, (void *)hci->pcs);
+        if (pair != NULL) {
+            /* Heuristic 1: for each left-open-handle, we check if there is
+             * any handle being opened with the same callstack and being closed
+             * somewhere. If we see such cases, it means that all handles opened
+             * at that site should probably be closed.
+             */
+            count--; /* pair table refcount */
+            if (count <= 1) {
+                /* Report it as a potential error if there is only one live handle
+                 * from the same call site, as it could be left open on purpose.
+                 * Also, we currently want to avoid noise and false positives and
+                 * focus on significant leaks.
+                 */
+                potential = true;
             }
-            dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                        "%s Handle "PFX" and %d similar handles were opened"
-                        " but not closed:", name, handle, count-1/*exclude self*/);
-            report_handle_leak(drcontext, msg, &hci->loc, hci->pcs,
-                               (pair == NULL) ? NULL : pair->close.pcs,
-                               potential);
+        } else if (count >= options.handle_leak_threshold) {
+            /* Heuristic 2: if too many handles created from the same callstack
+             * left open, it should be paid attention to, so report it.
+             */
+        } else {
+            /* no heuristic is applied, report it as potential error */
+            potential = true;
         }
     }
-    hashtable_unlock(&open_close_table);
-    handle_table_unlock();
+    dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
+                "%s Handle "PFX" and %d similar handles were opened"
+                " but not closed:", name, handle, count-1/*exclude self*/);
+    report_handle_leak(dr_get_current_drcontext(), msg, &hci->loc, hci->pcs,
+                       (pair == NULL) ? NULL : pair->close.pcs,
+                       potential);
+}
+
+/* caller must hold handle table lock and open/close table lock */
+static void
+handlecheck_iterate_handle_table(hashtable_t *table, const char *name)
+{
+    uint i;
+    hash_entry_t *entry;
+    for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
+        for (entry = table->table[i]; entry != NULL; entry = entry->next) {
+            handlecheck_check_open_handle(name,
+                                          (HANDLE)entry->key,
+                                          (handle_callstack_info_t *)entry->payload);
+        }
+    }
+}
+
+/* caller must hold handle table lock and open/close table lock */
+static void
+handlecheck_enumerate_handles(void)
+{
+    SYSTEM_HANDLE_INFORMATION *list;
+    SYSTEM_HANDLE_ENTRY *entry;
+    uint i;
+    /* i#1380: there could be handles closed by other process, i.e., some
+     * handle in the table might be closed already, so we have to query the
+     * existing handle list from system.
+     */
+    LOG(HANDLE_VERBOSE_3, "get process handle list\n");
+    list = get_process_handle_list();
+    /* iterate the list and report handle leaks */
+    entry = &list->Handle[0];
+    for (i = 0; i < list->Count; i++, entry++) {
+        void *res;
+        res = hashtable_lookup(&kernel_handle_table, (void *)entry->HandleValue);
+        if (res == NULL) {
+            /* There might be handles not in the table, for example,
+             * handles created by DR or handles created before we attach.
+             */
+            ASSERT(hashtable_lookup(&user_handle_table,
+                                    (void *)entry->HandleValue) == NULL,
+                   "kernel handle in user handle table");
+            ASSERT(hashtable_lookup(&gdi_handle_table,
+                                    (void *)entry->HandleValue) == NULL,
+                   "kernel handle in gdi handle table");
+            continue;
+        }
+        handlecheck_check_open_handle("KERNEL", (HANDLE)entry->HandleValue,
+                                      (handle_callstack_info_t *)res);
+    }
+    free_process_handle_list(list);
 }
 
 static void
 handlecheck_iterate_handles(void)
 {
     void *drcontext = dr_get_current_drcontext();
-    LOG(HANDLE_VERBOSE_3, "iterating kernel handle table");
-    handlecheck_iterate_handle_table(drcontext, &kernel_handle_table, "Kernel");
-    LOG(HANDLE_VERBOSE_3, "iterating gdi handle table");
-    handlecheck_iterate_handle_table(drcontext, &gdi_handle_table, "GDI");
-    LOG(HANDLE_VERBOSE_3, "iterating user handle table");
-    handlecheck_iterate_handle_table(drcontext, &user_handle_table, "USER");
+
+    handle_table_lock();
+    hashtable_lock(&open_close_table);
+
+    /* kernel handles */
+    LOG(HANDLE_VERBOSE_3, "enumerating kernel handles");
+    handlecheck_enumerate_handles();
+    /* user handles */
+    LOG(HANDLE_VERBOSE_3, "iterating user handles");
+    handlecheck_iterate_handle_table(&user_handle_table, "USER");
+    /* gdi handles */
+    LOG(HANDLE_VERBOSE_3, "iterating gdi handles");
+    handlecheck_iterate_handle_table(&gdi_handle_table, "GDI");
+
+    hashtable_unlock(&open_close_table);
+    handle_table_unlock();
 }
 
 static inline hashtable_t *
@@ -469,11 +634,9 @@ handlecheck_delete_handle(void *drcontext,
     DOLOG(HANDLE_VERBOSE_3, { report_callstack(drcontext, mc); });
     handle_table_lock();
     if (!handlecheck_handle_remove(table, handle, &hci)) {
-        DOLOG(HANDLE_VERBOSE_1, {
-            LOG(HANDLE_VERBOSE_1,
-                "WARNING: fail to remove handle "PFX" at:\n", handle);
-            report_callstack(drcontext, mc);
-        });
+        LOG(HANDLE_VERBOSE_1,
+            "WARNING: fail to remove handle "PFX" at:\n", handle);
+        DOLOG(HANDLE_VERBOSE_2, { report_callstack(drcontext, mc); });
     }
     handle_table_unlock();
     return (void *)hci;

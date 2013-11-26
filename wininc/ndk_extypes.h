@@ -197,5 +197,20 @@ typedef enum _SHUTDOWN_ACTION
     ShutdownPowerOff
 } SHUTDOWN_ACTION;
 
+// System Information Class: SystemHandleInformation (16)
+typedef struct _SYSTEM_HANDLE_ENTRY {
+    ULONG  OwnerPid;
+    BYTE   ObjectType;
+    BYTE   HandleFlags;
+    USHORT HandleValue;
+    PVOID  ObjectPointer;
+    ULONG  AccessMask;
+} SYSTEM_HANDLE_ENTRY, *PSYSTEM_HANDLE_ENTRY;
+
+typedef struct _SYSTEM_HANDLE_INFORMATION {
+     ULONG               Count;
+     SYSTEM_HANDLE_ENTRY Handle[1];
+} SYSTEM_HANDLE_INFORMATION, *PSYSTEM_HANDLE_INFORMATION;
+
 
 #endif /* _EXTYPES_H */
