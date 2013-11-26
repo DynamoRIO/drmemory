@@ -168,6 +168,24 @@ get_process_handle_list()
         if (h_sys->OwnerPid == pid)
             count++;
     }
+    if (count == 0) {
+        /* i#1389: NtQuerySystemInformation SystemHandleInformation returns
+         * a truncated process id from the real pid, i.e., higher 16-bit of
+         * the real pid is cleared.
+         * Assuming every prcess will have at least one handle, any pid value
+         * that is not found in the list must be greater than 0x10000.
+         */
+        ASSERT(pid > 0x10000, "pid not found for unknown reason");
+        /* we truncate the real pid to match the pid value returned from
+         * NtQuerySystemInformation SystemHandleInformation
+         */
+        pid = pid & 0xffff;
+        h_sys = &sys_list->Handle[0];
+        for (i = 0, count = 0; i < sys_list->Count; i++, h_sys++) {
+            if (h_sys->OwnerPid == pid)
+                count++;
+        }
+    }
 
     ASSERT(count != 0, "no handle in current process!");
     our_list_size = SYSTEM_HANDLE_INFORMATION_LIST_SIZE(count);
