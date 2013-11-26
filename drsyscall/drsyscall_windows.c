@@ -2963,80 +2963,351 @@ static syscall_info_t syscall_ntdll_info[] = {
         {2, -3, R},
      }
     },
-    {{0,0},"NtCancelIoFileEx", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtCancelIoFileEx", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(IO_STATUS_BLOCK), R|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+         {2, sizeof(IO_STATUS_BLOCK), W|HT, DRSYS_TYPE_IO_STATUS_BLOCK},
+     }
+    },
     {{0,0},"NtCancelSynchronousIoFile", UNKNOWN, RNTST, 3, },
     {{0,0},"NtClearAllSavepointsTransaction", UNKNOWN, RNTST, 1, },
     {{0,0},"NtClearSavepointTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCommitComplete", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCommitEnlistment", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCommitTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtCreateEnlistment", UNKNOWN, RNTST, 8, },
+    {{0,0},"NtCommitComplete", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtCommitEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtCommitTransaction", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtCreateEnlistment", OK, RNTST, 8,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(NOTIFICATION_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+     }
+    },
     {{0,0},"NtCreateKeyTransacted", UNKNOWN, RNTST, 8, },
     {{0,0},"NtCreatePrivateNamespace", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtCreateResourceManager", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtCreateTransaction", UNKNOWN, RNTST, 10, },
-    {{0,0},"NtCreateTransactionManager", UNKNOWN, RNTST, 6, },
+    {{0,0},"NtCreateResourceManager", OK, RNTST, 7,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+     }
+    },
+    {{0,0},"NtCreateTransaction", OK, RNTST, 10,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {8, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {9, sizeof(UNICODE_STRING), R|HT, SYSARG_TYPE_UNICODE_STRING},
+     }
+    },
+    {{0,0},"NtCreateTransactionManager", OK, RNTST, 6, 
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtCreateWorkerFactory", UNKNOWN, RNTST, 10, },
     {{0,0},"NtDeletePrivateNamespace", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtEnumerateTransactionObject", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtEnumerateTransactionObject", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(KTMOBJECT_TYPE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtFlushInstallUILanguage", UNKNOWN, RNTST, 2, },
     {{0,0},"NtFlushProcessWriteBuffers", OK, RNTST, 0, },
     {{0,0},"NtFreezeRegistry", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtFreezeTransactions", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtFreezeTransactions", OK, RNTST, 2,
+     {
+         {0, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
     {{0,0},"NtGetMUIRegistryInfo", UNKNOWN, RNTST, 3, },
     {{0,0},"NtGetNextProcess", UNKNOWN, RNTST, 5, },
     {{0,0},"NtGetNextThread", UNKNOWN, RNTST, 6, },
     {{0,0},"NtGetNlsSectionPtr", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtGetNotificationResourceManager", UNKNOWN, RNTST, 7, },
+    {{0,0},"NtGetNotificationResourceManager", OK, RNTST, 7,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
+         {1, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtInitializeNlsFiles", UNKNOWN, RNTST, 3, },
     {{0,0},"NtIsUILanguageComitted", UNKNOWN, RNTST, 0, },
     {{0,0},"NtListTransactions", UNKNOWN, RNTST, 3, },
     {{0,0},"NtMarshallTransaction", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtOpenEnlistment", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtOpenEnlistment", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+     }
+    },
     {{0,0},"NtOpenKeyTransacted", UNKNOWN, RNTST, 4, },
     {{0,0},"NtOpenPrivateNamespace", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtOpenResourceManager", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtOpenResourceManager", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+     }
+    },
     {{0,0},"NtOpenSession", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtOpenTransaction", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtOpenTransactionManager", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtPrepareComplete", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtPrepareEnlistment", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtPrePrepareComplete", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtPrePrepareEnlistment", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtPropagationComplete", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtPropagationFailed", UNKNOWN, RNTST, 3, },
+    {{0,0},"NtOpenTransaction", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtOpenTransactionManager", OK, RNTST, 6, 
+     {
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtPrepareComplete", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtPrepareEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtPrePrepareComplete", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtPrePrepareEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtPropagationComplete", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -2, R|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtPropagationFailed", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(NTSTATUS), SYSARG_INLINED, DRSYS_TYPE_NTSTATUS},
+     }
+    },
     {{0,0},"NtPullTransaction", UNKNOWN, RNTST, 7, },
-    {{0,0},"NtQueryInformationEnlistment", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtQueryInformationResourceManager", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtQueryInformationTransaction", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtQueryInformationTransactionManager", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtQueryInformationEnlistment", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtQueryInformationResourceManager", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtQueryInformationTransaction", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtQueryInformationTransactionManager", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtQueryInformationWorkerFactory", UNKNOWN, RNTST, 5, },
     {{0,0},"NtQueryLicenseValue", UNKNOWN, RNTST, 5, },
-    {{0,0},"NtReadOnlyEnlistment", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRecoverEnlistment", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRecoverResourceManager", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtRecoverTransactionManager", UNKNOWN, RNTST, 1, },
-    {{0,0},"NtRegisterProtocolAddressInformation", UNKNOWN, RNTST, 5, },
+    {{0,0},"NtReadOnlyEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtRecoverEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+     }
+    },
+    {{0,0},"NtRecoverResourceManager", OK, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtRecoverTransactionManager", OK, RNTST, 1,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtRegisterProtocolAddressInformation", OK, RNTST, 5,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(CRM_PROTOCOL_ID), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, -2, R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtReleaseCMFViewOwnership", UNKNOWN, RNTST, 0, },
     {{0,0},"NtReleaseWorkerFactoryWorker", UNKNOWN, RNTST, 1, },
     {{0,0},"NtRemoveIoCompletionEx", UNKNOWN, RNTST, 6, },
-    {{0,0},"NtRollbackComplete", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRollbackEnlistment", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtRollbackComplete", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     },
+    },
+    {{0,0},"NtRollbackEnlistment", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
     {{0,0},"NtRollbackSavepointTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRollbackTransaction", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtRollforwardTransactionManager", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtRollbackTransaction", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtRollforwardTransactionManager", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
     {{0,0},"NtSavepointComplete", UNKNOWN, RNTST, 2, },
     {{0,0},"NtSavepointTransaction", UNKNOWN, RNTST, 3, },
-    {{0,0},"NtSetInformationEnlistment", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtSetInformationResourceManager", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtSetInformationTransaction", UNKNOWN, RNTST, 4, },
-    {{0,0},"NtSetInformationTransactionManager", UNKNOWN, RNTST, 4, },
+    {{0,0},"NtSetInformationEnlistment", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ENLISTMENT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtSetInformationResourceManager", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RESOURCEMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtSetInformationTransaction", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(TRANSACTION_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtSetInformationTransactionManager", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(TRANSACTIONMANAGER_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     },
+    },
     {{0,0},"NtSetInformationWorkerFactory", UNKNOWN, RNTST, 4, },
     {{0,0},"NtShutdownWorkerFactory", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtSinglePhaseReject", UNKNOWN, RNTST, 2, },
-    {{0,0},"NtStartTm", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtThawRegistry", UNKNOWN, RNTST, 0, },
-    {{0,0},"NtThawTransactions", UNKNOWN, RNTST, 0, },
+    {{0,0},"NtSinglePhaseReject", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+     }
+    },
+    {{0,0},"NtStartTm", OK, RNTST, 0, },
+    {{0,0},"NtThawRegistry", OK, RNTST, 0, },
+    {{0,0},"NtThawTransactions", OK, RNTST, 0, },
     {{0,0},"NtTraceControl", UNKNOWN, RNTST, 6, },
     {{0,WIN7},   "NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 2, },
     {{WIN8,WIN8},"NtWaitForWorkViaWorkerFactory", UNKNOWN, RNTST, 4, },
@@ -3046,7 +3317,12 @@ static syscall_info_t syscall_ntdll_info[] = {
     /***************************************************/
     /* added in Windows Vista SP1 */
     /* XXX: add min OS version: but we have to distinguish the service packs! */
-    {{0,0},"NtRenameTransactionManager", UNKNOWN, RNTST, 2, },
+    {{0,0},"NtRenameTransactionManager", OK, RNTST, 2,
+     {
+         {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(GUID), R|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
     {{0,0},"NtReplacePartitionUnit", UNKNOWN, RNTST, 3, },
     {{0,0},"NtWow64CsrVerifyRegion", OK, RNTST, 2, },
     {{0,0},"NtWow64WriteVirtualMemory64", OK, RNTST, 7,
