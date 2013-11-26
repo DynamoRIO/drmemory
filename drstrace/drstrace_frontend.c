@@ -124,11 +124,14 @@ static void
 print_usage(void)
 {
     fprintf(stderr, "usage: drstrace [options] -- <app and args to run>\n");
-    /* FIXME: have an optionsx.h or what?  Shared frontend lib (i#1079) could help
+    /* XXX: have an optionsx.h?  Shared frontend lib (i#1079) could help
      * solve that by providing usage and options parsing for its provided
      * options.
      */
-    fprintf(stderr, "NYI: option list not here yet\n");
+    fprintf(stderr, "-logdir <dir>   Specify log directory where system call data\n");
+    fprintf(stderr, "                will be written, in a separate file per process.\n");
+    fprintf(stderr, "                If set to \"-\" (the default value), data for\n");
+    fprintf(stderr, "                all processes are printed to stderr.\n");
 }
 
 #define usage(msg, ...) do {                                    \
@@ -394,6 +397,8 @@ _tmain(int argc, TCHAR *targv[])
     BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
              drops_sofar, len, "%s ", DEFAULT_DR_OPS);
 
+    client_ops[0] = '\0';
+
     /* parse command line */
     /* FIXME PR 487993: use optionsx.h to construct this parsing code */
     for (i=1; i<argc; i++) {
@@ -590,10 +595,6 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     pid = dr_inject_get_process_id(inject_data);
-
-    /* we need to locate the results file, but only for top-level process (i#328) */
-    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-             cliops_sofar, len, "-resfile %d ", pid);
 
     process = dr_inject_get_image_name(inject_data);
     /* we don't care if this app is already registered for DR b/c our

@@ -25,12 +25,11 @@
  * + named constants for flags
  * + callstacks
  * + timestamps
- * + follow child processes
- * + logfile per process
  */
 
 #include "dr_api.h"
 #include "drmgr.h"
+#include "drx.h"
 #include "drsyscall.h"
 #include "windefs.h"
 #include "utils.h"
@@ -39,18 +38,36 @@
 # include <windows.h>
 #endif
 
-/* Indirected so we can send to a per-process file or sthg w/ later features.
- * When we do that we may want ASSERT to go to both places.
- */
+/* Where to write the trace */
+static file_t outf;
+
 #define OUTPUT(fmt, ...) \
-    dr_fprintf(STDERR, fmt, __VA_ARGS__)
+    dr_fprintf(outf, fmt, __VA_ARGS__)
+
+static uint verbose;
+
+#define ALERT(level, fmt, ...) do {          \
+    if (verbose >= (level))                   \
+        dr_fprintf(STDERR, fmt, __VA_ARGS__); \
+} while (0)
+
+/* Checks for both debug and release builds: */
+#define USAGE_CHECK(x, msg) DR_ASSERT_MSG(x, msg)
 
 #undef ASSERT /* we don't want msgbox */
 #define ASSERT(cond, msg) \
     ((void)((!(cond)) ? \
-     (dr_fprintf(STDERR, "ASSERT FAILURE: %s:%d: %s (%s)", \
-                 __FILE__,  __LINE__, #cond, msg),         \
+     (OUTPUT(STDERR, "ASSERT FAILURE: %s:%d: %s (%s)", \
+             __FILE__,  __LINE__, #cond, msg),         \
       dr_abort(), 0) : 0))
+
+#define OPTION_MAX_LENGTH MAXIMUM_PATH
+
+typedef struct _drstrace_options_t {
+    char logdir[MAXIMUM_PATH];
+} drstrace_options_t;
+
+static drstrace_options_t options;
 
 static void
 print_unicode_string(UNICODE_STRING *us)
@@ -217,19 +234,85 @@ event_filter_syscall(void *drcontext, int sysnum)
     return true; /* intercept everything */
 }
 
+static void
+open_log_file(void)
+{
+    char buf[MAXIMUM_PATH];
+    if (strcmp(options.logdir, "-") == 0)
+        outf = STDERR;
+    else {
+        outf = drx_open_unique_appid_file(options.logdir, dr_get_process_id(),
+                                          "drstrace", "log",
+#ifndef WINDOWS
+                                          DR_FILE_CLOSE_ON_FORK |
+#endif
+                                          DR_FILE_ALLOW_LARGE,
+                                          buf, BUFFER_SIZE_ELEMENTS(buf));
+        ASSERT(outf != INVALID_FILE, "failed to open log file");
+        ALERT(1, "log file is %s\n", buf);
+    }
+}
+
+#ifndef WINDOWS
+static void
+event_fork(void *drcontext)
+{
+    /* The old file was closed by DR b/c we passed DR_FILE_CLOSE_ON_FORK */
+    open_log_file();
+}
+#endif
+
 static
 void exit_event(void)
 {
+    if (outf != STDERR)
+        dr_close_file(outf);
     if (drsys_exit() != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to exit");
+    drx_exit();
     drmgr_exit();
+}
+
+static void
+options_init(client_id_t id)
+{
+    const char *opstr = dr_get_options(id);
+    const char *s;
+    char token[OPTION_MAX_LENGTH];
+
+    /* default values */
+    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
+
+    for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
+         s != NULL;
+         s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token))) {
+        if (strcmp(token, "-logdir") == 0) {
+            s = dr_get_token(s, options.logdir,
+                             BUFFER_SIZE_ELEMENTS(options.logdir));
+            USAGE_CHECK(s != NULL, "missing logdir path");
+        } else if (strcmp(token, "-verbose") == 0) {
+            s = dr_get_token(s, token, BUFFER_SIZE_ELEMENTS(token));
+            USAGE_CHECK(s != NULL, "missing -verbose number");
+            if (s != NULL) {
+                int res = dr_sscanf(token, "%u", &verbose);
+                USAGE_CHECK(res == 1, "invalid -verbose number");
+            }
+        } else {
+            ALERT(0, "UNRECOGNIZED OPTION: \"%s\"\n", token);
+            USAGE_CHECK(false, "invalid option");
+        }
+    }
 }
 
 DR_EXPORT
 void dr_init(client_id_t id)
 {
     drsys_options_t ops = { sizeof(ops), 0, };
+
+    options_init(id);
+
     drmgr_init();
+    drx_init();
     if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
@@ -243,4 +326,6 @@ void dr_init(client_id_t id)
     drmgr_register_post_syscall_event(event_post_syscall);
     if (drsys_filter_all_syscalls() != DRMF_SUCCESS)
         ASSERT(false, "drsys_filter_all_syscalls should never fail");
+
+    open_log_file();
 }

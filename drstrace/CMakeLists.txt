@@ -44,6 +44,7 @@ configure_DynamoRIO_client(drstracelib)
 # to test the shared, public version:
 use_DynamoRIO_extension(drstracelib drmf_drsyscall)
 use_DynamoRIO_extension(drstracelib drmgr)
+use_DynamoRIO_extension(drstracelib drx)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib
