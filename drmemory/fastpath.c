@@ -3674,7 +3674,7 @@ event_signal_instrument(void *drcontext, dr_siginfo_t *info)
                    handle_zeroing_fault(drcontext, target, info->raw_mcontext,
                                         info->mcontext)) {
             return DR_SIGNAL_SUPPRESS;
-        } else if (options.leaks_only) {
+        } else if (!options.shadowing) {
             return DR_SIGNAL_DELIVER;
         } else if (is_in_special_shadow_block(target)) {
             ASSERT(info->raw_mcontext_valid, "raw mc should always be valid for SEGV");
@@ -3727,7 +3727,7 @@ event_exception_instrument(void *drcontext, dr_exception_t *excpt)
             handle_zeroing_fault(drcontext, target, excpt->raw_mcontext,
                                  excpt->mcontext)) {
             return false;
-        } else if (options.leaks_only) {
+        } else if (!options.shadowing) {
             return true;
         } else if (excpt->record->ExceptionInformation[0] == 1 /* write */ &&
                    is_in_special_shadow_block(target)) {
