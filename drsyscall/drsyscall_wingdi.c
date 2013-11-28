@@ -262,137 +262,280 @@ static hashtable_t usercall_table;
 /* FIXME i#1093: figure out the failure codes for all the int and uint return values */
 
 syscall_info_t syscall_user32_info[] = {
-    {{0,0},"NtUserActivateKeyboardLayout", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserAlterWindowStyle", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserAttachThreadInput", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserBeginPaint", OK, DRSYS_TYPE_HANDLE, 2,
+    {{0,0},"NtUserActivateKeyboardLayout", OK, DRSYS_TYPE_HANDLE, 2,
      {
-         {1, sizeof(PAINTSTRUCT), W,},
+         {0, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserBitBltSysBmp", OK, SYSARG_TYPE_BOOL32, 8, },
-    {{0,0},"NtUserBlockInput", OK, SYSARG_TYPE_BOOL32, 1, },
+    {{0,0},"NtUserAlterWindowStyle", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserAssociateInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserAttachThreadInput", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserBeginPaint", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PAINTSTRUCT), W|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtUserBitBltSysBmp", OK, SYSARG_TYPE_BOOL32, 8,
+     {
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {6, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {7, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserBlockInput", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserBuildHimcList", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 4,
      {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, -1, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(HIMC)},
-         {3, sizeof(UINT), W},
+         {3, sizeof(UINT), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,WIN7},"NtUserBuildHwndList", OK, RNTST, 7,
      {
-         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
+         {0, sizeof(HDESK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, -6, WI|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
-         {6, sizeof(ULONG), R|W,},
+         {6, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{WIN8,0},"NtUserBuildHwndList", OK, RNTST, 8,
      {
-         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL,},
+         {0, sizeof(HDESK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          /* i#1153: size of buffer seems to be a separate inline param inserted
           * at 5th position.
           */
+         {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {6, -5, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(HWND)},
-         {7, sizeof(ULONG), W,},
+         {7, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+
      }
     },
     {{0,0},"NtUserBuildMenuItemList", OK, SYSARG_TYPE_UINT32, 4,
      {
-         {1, -2, W,},
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserBuildNameList", OK, RNTST, 4,
      {
-         {2, -1, W,},
-         {2, -3, WI,},
-         {3, sizeof(ULONG), W,},
+         {0, sizeof(HWINSTA), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -1, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -3, WI|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserBuildPropList", OK, RNTST, 4,
      {
-         {1, -2, W,},
-         {1, -3, WI,},
-         {3, sizeof(DWORD), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
+         {1, -3, WI|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserCalcMenuBar", OK, SYSARG_TYPE_UINT32, 5, },
+    {{0,0},"NtUserCalcMenuBar", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     /* i#389: NtUserCall* take in a code and perform a variety of tasks */
     {{0,0},"NtUserCallHwnd", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 2,
      {
-         {1,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
-    {{0,0},"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 2,
+    {{0,0},"NtUserCallHwndLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_BOOL32, 2,
      {
-         {1,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndOpt", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_HANDLE, 2,
      {
-         {1,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndParam", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
-         {2,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         /* This type varies: sometimes timer id, BOOL, or HANDLE. Since the entry
+          * in the secondary table is used, we have UINT as a placeholder here.
+          */
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallHwndParamLock", OK|SYSINFO_SECONDARY_TABLE, SYSARG_TYPE_UINT32, 3,
      {
-         {2,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         /* This type varies so use UINT as placeholder. */
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallMsgFilter", UNKNOWN, SYSARG_TYPE_BOOL32, 2,
      {
-         {0, sizeof(MSG), R|W,},
+         {0, sizeof(MSG), R|W|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtUserCallNextHookEx", UNKNOWN, DRSYS_TYPE_SIGNED_INT, 4, },
+    {{0,0},"NtUserCallNextHookEx", UNKNOWN, DRSYS_TYPE_SIGNED_INT, 4,
+     {
+         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(WPARAM), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LPARAM), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserCallNoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 1,
      {
-         {0,}
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
     {{0,0},"NtUserCallOneParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 2,
      {
-         {1,}
-     }, (drsys_sysnum_t*)syscall_usercall_info},
-    {{0,0},"NtUserCallTwoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 3,
-     {
-         {2,}
+        /* This type varies so use UINT as placeholder. */
+         {0, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, (drsys_sysnum_t*)syscall_usercall_info
     },
-    {{0,0},"NtUserChangeClipboardChain", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserCallTwoParam", OK|SYSINFO_SECONDARY_TABLE, DRSYS_TYPE_UNSIGNED_INT, 3,
+     {
+         /* Param types 1 and 2 vary so use UINT as placeholder. */
+         {0, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }, (drsys_sysnum_t*)syscall_usercall_info
+    },
+    {{0,0},"NtUserChangeClipboardChain", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserChangeDisplaySettings", OK, SYSARG_TYPE_SINT32, 5,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(DEVMODEW)/*really var-len*/, R|CT, SYSARG_TYPE_DEVMODEW},
-         {4, -5, W,},
+         {2, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, -5, W|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtUserCheckDesktopByThreadId", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserCheckImeHotKey", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserCheckMenuItem", OK|SYSINFO_RET_MINUS1_FAIL, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserCheckWindowThreadDesktop", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserChildWindowFromPointEx", OK, DRSYS_TYPE_HANDLE, 4, },
+    {{0,0},"NtUserCheckDesktopByThreadId", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserCheckImeHotKey", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserCheckMenuItem", OK|SYSINFO_RET_MINUS1_FAIL, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserCheckWindowThreadDesktop", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserChildWindowFromPointEx", OK, DRSYS_TYPE_HANDLE, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserClipCursor", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0, sizeof(RECT), R,},
+         {0, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserCloseClipboard", OK, SYSARG_TYPE_BOOL32, 0, },
-    {{0,0},"NtUserCloseDesktop", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserCloseWindowStation", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserConsoleControl", OK, SYSARG_TYPE_UINT32, 3, },
+    {{0,0},"NtUserCloseDesktop", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HDESK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserCloseWindowStation", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWINSTA), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserConsoleControl", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserConvertMemHandle", OK, DRSYS_TYPE_HANDLE, 2,
      {
-         {0, -1, R},
+         {0, -1, R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserCopyAcceleratorTable", OK|SYSINFO_RET_ZERO_FAIL, SYSARG_TYPE_UINT32, 3,
      {
+         {0, sizeof(HACCEL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          /* special-cased b/c ACCEL has padding */
          {1, -2, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserCopyAcceleratorTable,
     },
     {{0,0},"NtUserCountClipboardFormats", OK, SYSARG_TYPE_UINT32, 0, },
@@ -400,126 +543,312 @@ syscall_info_t syscall_user32_info[] = {
      {
          /* special-cased b/c ACCEL has padding */
          {0, -1, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(ACCEL)},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserCreateAcceleratorTable,
     },
-    {{0,0},"NtUserCreateCaret", OK, SYSARG_TYPE_BOOL32, 4, },
+    {{0,0},"NtUserCreateCaret", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HBITMAP), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserCreateDesktop", OK, DRSYS_TYPE_HANDLE, 5,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {2, sizeof(DEVMODEW)/*really var-len*/, R|CT, SYSARG_TYPE_DEVMODEW},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserCreateInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserCreateInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserCreateLocalMemHandle", OK, RNTST, 4,
      {
-         {1, -2, W},
-         {3, sizeof(UINT), W},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserCreateWindowEx", OK, DRSYS_TYPE_HANDLE, 15,
      {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(LARGE_STRING), R|CT, SYSARG_TYPE_LARGE_STRING},
          {2, sizeof(LARGE_STRING), R|CT, SYSARG_TYPE_LARGE_STRING},
          {3, sizeof(LARGE_STRING), R|CT, SYSARG_TYPE_LARGE_STRING},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {6, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {7, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {8, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {9, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {10, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {11, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {12, sizeof(LPVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {13, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {14, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
     {{0,0},"NtUserCreateWindowStation", OK, DRSYS_TYPE_HANDLE, 7,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserCreateWindowStation
     },
-    {{0,0},"NtUserCtxDisplayIOCtl", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserDdeGetQualityOfService", OK, SYSARG_TYPE_BOOL32, 3,
+    {{0,0},"NtUserCtxDisplayIOCtl", OK, SYSARG_TYPE_UINT32, 3,
      {
-         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), W,},
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserDdeInitialize", OK, SYSARG_TYPE_UINT32, 5, },
+    {{0,0},"NtUserDdeGetQualityOfService", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), W|CT, SYSARG_TYPE_SECURITY_QOS},
+     }
+    },
+    {{0,0},"NtUserDdeInitialize", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserDdeSetQualityOfService", OK, SYSARG_TYPE_BOOL32, 3,
      {
-         {1, sizeof(SECURITY_QUALITY_OF_SERVICE), R,},
-         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(SECURITY_QUALITY_OF_SERVICE), R|CT, SYSARG_TYPE_SECURITY_QOS},
+         {2, sizeof(SECURITY_QUALITY_OF_SERVICE), W|CT, SYSARG_TYPE_SECURITY_QOS},
      }
     },
     {{0,0},"NtUserDefSetText", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(LARGE_STRING), R|CT, SYSARG_TYPE_LARGE_STRING},
      }
     },
-    {{0,0},"NtUserDeferWindowPos", OK, DRSYS_TYPE_HANDLE, 8, },
-    {{0,0},"NtUserDeleteMenu", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserDestroyAcceleratorTable", OK, SYSARG_TYPE_BOOL8, 1, },
-    {{0,0},"NtUserDestroyCursor", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserDestroyInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserDestroyMenu", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserDestroyWindow", OK, SYSARG_TYPE_BOOL8, 1, },
-    {{0,0},"NtUserDisableThreadIme", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserDispatchMessage", OK, DRSYS_TYPE_SIGNED_INT, 1,
+    {{0,0},"NtUserDeferWindowPos", OK, DRSYS_TYPE_HANDLE, 8,
      {
-         {0, sizeof(MSG), R,},
+         {0, sizeof(HDWP), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {6, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {7, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserDragDetect", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserDragObject", OK, SYSARG_TYPE_UINT32, 5, },
+    {{0,0},"NtUserDeleteMenu", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserDestroyAcceleratorTable", OK, SYSARG_TYPE_BOOL8, 1,
+     {
+         {0, sizeof(HACCEL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserDestroyCursor", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserDestroyInputContext", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserDestroyMenu", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserDestroyWindow", OK, SYSARG_TYPE_BOOL8, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserDisableThreadIme", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserDispatchMessage", OK, DRSYS_TYPE_SIGNED_INT, 1,
+     {
+         {0, sizeof(MSG), R|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtUserDragDetect", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(POINT), SYSARG_INLINED, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtUserDragObject", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(HCURSOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserDrawAnimatedRects", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {2, sizeof(RECT), R,},
-         {3, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserDrawCaption", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {2, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserDrawCaptionTemp", OK, SYSARG_TYPE_BOOL32, 7,
      {
-         {2, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(HFONT), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(HICON), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {5, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {6, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserDrawIconEx", OK, SYSARG_TYPE_BOOL32, 11, /*XXX: 10th arg is pointer?*/ },
+    {{0,0},"NtUserDrawIconEx", OK, SYSARG_TYPE_BOOL32, 11,
+     {
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(HICON), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {6, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(HBRUSH), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {8, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {10, sizeof(DRAWICONEXDATA), W|HT, DRSYS_TYPE_STRUCT},
+     }
+    },
     {{0,0},"NtUserDrawMenuBarTemp", OK, SYSARG_TYPE_UINT32, 5,
      {
-         {2, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(HFONT), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtUserEmptyClipboard", OK, SYSARG_TYPE_BOOL32, 0, },
-    {{0,0},"NtUserEnableMenuItem", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserEnableScrollBar", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserEndDeferWindowPosEx", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserEnableMenuItem", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserEnableScrollBar", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserEndDeferWindowPosEx", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HDWP), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserEndMenu", OK, SYSARG_TYPE_BOOL32, 0, },
     {{0,0},"NtUserEndPaint", OK, SYSARG_TYPE_BOOL32, 2,
      {
-         {1, sizeof(PAINTSTRUCT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PAINTSTRUCT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserEnumDisplayDevices", OK, RNTST, 4,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, SYSARG_SIZE_IN_FIELD, W, offsetof(DISPLAY_DEVICEW, cb)},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserEnumDisplayMonitors", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {1, sizeof(RECT), R,},/*experimentally this matches win32 API version so no more mem args*/
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(MONITORENUMPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {3, sizeof(LPARAM), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtUserEnumDisplaySettings", OK, RNTST, 4,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(DEVMODEW)/*really var-len*/, W|CT, SYSARG_TYPE_DEVMODEW},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserEvent", OK, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserExcludeUpdateRgn", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserFillWindow", OK, SYSARG_TYPE_BOOL32, 4, },
-    {{0,0},"NtUserFindExistingCursorIcon", OK, DRSYS_TYPE_HANDLE, 4, },
+    {{0,0},"NtUserEvent", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserExcludeUpdateRgn", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserFillWindow", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(HBRUSH), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserFindExistingCursorIcon", OK, DRSYS_TYPE_HANDLE, 4,
+     {
+         {0, sizeof(HMODULE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HRSRC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserFindWindowEx", OK, DRSYS_TYPE_HANDLE, 5,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserFlashWindowEx", OK, SYSARG_TYPE_BOOL32, 1,
@@ -529,60 +858,100 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserGetAltTabInfo", OK, SYSARG_TYPE_BOOL32, 6,
      {
-         {2, SYSARG_SIZE_IN_FIELD, W, offsetof(ALTTABINFO, cbSize)},
-         /*buffer is ansi or unicode so special-cased*/
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(ALTTABINFO), R|HT, DRSYS_TYPE_STRUCT},
+         /* The buffer is ansi or unicode so memarg and non-memarg are special-cased. */
+         {4, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_UserGetAltTabInfo
     },
-    {{0,0},"NtUserGetAncestor", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserGetAppImeLevel", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserGetAsyncKeyState", OK, SYSARG_TYPE_SINT16, 1, },
+    {{0,0},"NtUserGetAncestor", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetAppImeLevel", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetAsyncKeyState", OK, SYSARG_TYPE_SINT16, 1,
+     {
+         {0, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetAtomName", OK, SYSARG_TYPE_UINT32, 2,
      {
+         {0, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
          {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/},
      }
     },
-    {{0,0},"NtUserGetCPD", OK, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    {{0,0},"NtUserGetCPD", OK, DRSYS_TYPE_UNSIGNED_INT, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(GETCPD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetCaretBlinkTime", OK, SYSARG_TYPE_UINT32, 0, },
     {{0,0},"NtUserGetCaretPos", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0, sizeof(POINT), W,},
+         {0, sizeof(POINT), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserGetClassInfo", OK, SYSARG_TYPE_BOOL32, 5,
      {
+         {0, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {2, sizeof(WNDCLASSEXW), W|CT, SYSARG_TYPE_WNDCLASSEXW},
          {3, sizeof(PWSTR)/*pointer to existing string (ansi or unicode) is copied*/, W,},
+         {4, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtUserGetClassInfoEx", OK, SYSARG_TYPE_BOOL32, 5,
      {
+         {0, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {2, sizeof(WNDCLASSEXW), W|CT, SYSARG_TYPE_WNDCLASSEXW},
          {3, sizeof(PWSTR)/*pointer to existing string (ansi or unicode) is copied*/, W,},
+         {4, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUserGetClassLong", OK, DRSYS_TYPE_UNSIGNED_INT, 3, },
+    /* XXX: Filled in based on ROS and should verify correct. */
+    {{0,0},"NtUserGetClassLong", OK, DRSYS_TYPE_UNSIGNED_INT, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserGetClassName", OK, SYSARG_TYPE_SINT32, 3,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {2, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/},
      }
     },
     {{0,0},"NtUserGetClipCursor", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0, sizeof(RECT), W,},
+         {0, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserGetClipboardData", OK, DRSYS_TYPE_HANDLE, 2,
      {
-         {1, sizeof(GETCLIPBDATA), W,},
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(GETCLIPBDATA), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     /* XXX: reactos now has this as LPWSTR instead of PUNICODE_STRING */
     {{0,0},"NtUserGetClipboardFormatName", OK, SYSARG_TYPE_SINT32, 3,
      {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
          /*3rd param is max count but should be able to ignore*/
+         {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtUserGetClipboardOwner", OK, DRSYS_TYPE_HANDLE, 0, },
@@ -590,12 +959,33 @@ syscall_info_t syscall_user32_info[] = {
     {{0,0},"NtUserGetClipboardViewer", OK, DRSYS_TYPE_HANDLE, 0, },
     {{0,0},"NtUserGetComboBoxInfo", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, SYSARG_SIZE_IN_FIELD, W, offsetof(COMBOBOXINFO, cbSize)},
      }
     },
-    {{0,0},"NtUserGetControlBrush", OK, DRSYS_TYPE_HANDLE, 3, },
-    {{0,0},"NtUserGetControlColor", OK, DRSYS_TYPE_HANDLE, 4, },
-    {{0,0},"NtUserGetCursorFrameInfo", OK, DRSYS_TYPE_HANDLE, 4, },
+    {{0,0},"NtUserGetControlBrush", OK, DRSYS_TYPE_HANDLE, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetControlColor", OK, DRSYS_TYPE_HANDLE, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetCursorFrameInfo", OK, DRSYS_TYPE_HANDLE, 4,
+     {
+         {0, sizeof(HCURSOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), R|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(INT), R|HT, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetCursorInfo", OK, SYSARG_TYPE_BOOL32, 1,
      {
          {0, SYSARG_SIZE_IN_FIELD, W, offsetof(CURSORINFO, cbSize)},
@@ -603,70 +993,112 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserGetDC", OK, DRSYS_TYPE_HANDLE, 1,
      {
-         {0,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtUserGetDCEx", OK, DRSYS_TYPE_HANDLE, 3,
      {
-         {0,}
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetDoubleClickTime", OK, SYSARG_TYPE_UINT32, 0, },
     {{0,0},"NtUserGetForegroundWindow", OK, DRSYS_TYPE_HANDLE, 0, },
     {{0,0},"NtUserGetGUIThreadInfo", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, SYSARG_SIZE_IN_FIELD, W, offsetof(GUITHREADINFO, cbSize)},
      }
     },
-    {{0,0},"NtUserGetGuiResources", OK, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserGetGuiResources", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetIconInfo", OK, SYSARG_TYPE_BOOL32, 6,
      {
-         {1, sizeof(ICONINFO), W,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ICONINFO), W|HT, DRSYS_TYPE_STRUCT},
          {2, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING_NOLEN/*i#490*/},
          {3, sizeof(UNICODE_STRING), W|CT, SYSARG_TYPE_UNICODE_STRING},
-         {4, sizeof(DWORD), W,},
+         {4, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtUserGetIconSize", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {2, sizeof(LONG), W,},
-         {3, sizeof(LONG), W,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LONG), W|HT, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(LONG), W|HT, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtUserGetImeHotKey", OK, SYSARG_TYPE_UINT32, 4, },
-    /* FIXME i#487: 1st param is OUT but shape is unknown */
-    {{0,0},"NtUserGetImeInfoEx", UNKNOWN|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserGetImeHotKey", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    /* FIXME i#487: 1st param is OUT but shape is unknown. 2nd param seems to be an
+     * info class, but not fully known.
+     */
+    {{0,0},"NtUserGetImeInfoEx", UNKNOWN|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetInternalWindowPos", OK, SYSARG_TYPE_UINT32, 3,
      {
-         {1, sizeof(RECT), W,},
-         {2, sizeof(POINT), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(POINT), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserGetKeyNameText", OK, SYSARG_TYPE_UINT32, 3,
      {
+         {0, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
          {1, RET, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtUserGetKeyState", OK, SYSARG_TYPE_SINT16, 1, },
-    {{0,0},"NtUserGetKeyboardLayout", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserGetKeyboardLayoutList", OK, DRSYS_TYPE_HANDLE, 2,
+    {{0,0},"NtUserGetKeyState", OK, SYSARG_TYPE_SINT16, 1,
      {
+         {0, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetKeyboardLayout", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetKeyboardLayoutList", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, -0, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(HKL)},
          {1, RET, W|SYSARG_NO_WRITE_IF_COUNT_0|SYSARG_SIZE_IN_ELEMENTS, sizeof(HKL)},
      }
     },
-    {{0,0},"NtUserGetKeyboardLayoutName", OK, DRSYS_TYPE_HANDLE, 1,
+    {{0,0},"NtUserGetKeyboardLayoutName", OK, SYSARG_TYPE_BOOL32, 1,
      {
          {0, KL_NAMELENGTH*sizeof(wchar_t), W|CT, SYSARG_TYPE_CSTRING_WIDE},
      }
     },
     {{0,0},"NtUserGetKeyboardState", OK, SYSARG_TYPE_UINT32, 1,
      {
-         {0, sizeof(BYTE), W,},
+         {0, sizeof(BYTE), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserGetKeyboardType", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserGetKeyboardType", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetLastInputInfo", OK, SYSARG_TYPE_BOOL32, 1,
      {
          {0, SYSARG_SIZE_IN_FIELD, W, offsetof(LASTINPUTINFO, cbSize)},
@@ -674,27 +1106,52 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserGetLayeredWindowAttributes", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {1, sizeof(COLORREF), W,},
-         {2, sizeof(BYTE), W,},
-         {3, sizeof(DWORD), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(COLORREF), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BYTE), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserGetListBoxInfo", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserGetListBoxInfo", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserGetMenuBarInfo", OK, SYSARG_TYPE_BOOL32, 4,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {3, SYSARG_SIZE_IN_FIELD, W, offsetof(MENUBARINFO, cbSize)},
      }
     },
-    {{0,0},"NtUserGetMenuDefaultItem", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserGetMenuIndex", OK, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserGetMenuDefaultItem", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserGetMenuIndex", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserGetMenuItemRect", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {3, sizeof(RECT), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserGetMessage", OK, RNTST, 4,
      {
-         {0, sizeof(MSG), W,},
+         {0, sizeof(MSG), W|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetMinMaxInfo", OK, SYSARG_TYPE_BOOL32, 3,
@@ -704,144 +1161,292 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserGetMonitorInfo", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(HMONITOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, SYSARG_SIZE_IN_FIELD, W, offsetof(MONITORINFO, cbSize)},
      }
     },
     {{0,0},"NtUserGetMouseMovePointsEx", OK, SYSARG_TYPE_UINT32, 5,
      {
-         {1, -0, R,},
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, -0, R|HT, DRSYS_TYPE_STRUCT},
          {2, -3, W|SYSARG_SIZE_IN_ELEMENTS, -0},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetObjectInformation", OK|SYSINFO_RET_SMALL_WRITE_LAST, SYSARG_TYPE_BOOL32, 5,
      {
-         {2, -3, W},
-         {2, -4, WI},
-         {4, sizeof(DWORD), W},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {2, -4, WI|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetOpenClipboardWindow", OK, DRSYS_TYPE_HANDLE, 0, },
     {{0,0},"NtUserGetPriorityClipboardFormat", OK, SYSARG_TYPE_SINT32, 2,
      {
          {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(UINT)},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtUserGetProcessWindowStation", OK, DRSYS_TYPE_HANDLE, 0, },
     {{0,0},"NtUserGetRawInputBuffer", OK, SYSARG_TYPE_UINT32, 3,
      {
-         {0,}
+        /* param #0 has both mem and non-memarg handled in code */
+         {1, sizeof(UINT), SYSARG_NON_MEMARG, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, /*special-cased; FIXME: i#485: see handler*/ &sysnum_UserGetRawInputBuffer
     },
     {{0,0},"NtUserGetRawInputData", OK, SYSARG_TYPE_UINT32, 5,
      {
-         {2, -3, WI,},
+         {0, sizeof(HRAWINPUT), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, WI|HT, DRSYS_TYPE_STRUCT},
          {2, RET, W},
          /*arg 3 is R or W => special-cased*/
+         {3, sizeof(UINT), SYSARG_NON_MEMARG, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserGetRawInputData
     },
     {{0,0},"NtUserGetRawInputDeviceInfo", OK, SYSARG_TYPE_UINT32, 4,
      {
-         {0,}
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_NON_MEMARG, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserGetRawInputDeviceInfo
     },
     {{0,0},"NtUserGetRawInputDeviceList", OK, SYSARG_TYPE_UINT32, 3,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, -2},
-         {1, sizeof(UINT), R|W,/*really not written when #0!=NULL but harmless; ditto below and probably elsewhere in table*/},
+         /*really not written when #0!=NULL but harmless; ditto below and probably elsewhere in table*/
+         {1, sizeof(UINT), R|W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetRegisteredRawInputDevices", OK, SYSARG_TYPE_UINT32, 3,
      {
          {0, -1, WI|SYSARG_SIZE_IN_ELEMENTS, -2},
-         {1, sizeof(UINT), R|W,},
+         {1, sizeof(UINT), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserGetScrollBarInfo", OK, SYSARG_TYPE_BOOL32, 3,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, SYSARG_SIZE_IN_FIELD, W, offsetof(SCROLLBARINFO, cbSize)},
      }
     },
-    {{0,0},"NtUserGetSystemMenu", OK, DRSYS_TYPE_HANDLE, 2, },
+    {{0,0},"NtUserGetSystemMenu", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     /* FIXME i#487: on WOW64 XP and Vista (but not win7) this makes a 0x2xxx syscall
      * instead of invoking NtUserGetThreadDesktop: is it really different?
      */
-    {{0,0},"NtUserGetThreadDesktop", OK|SYSINFO_REQUIRES_PREFIX, DRSYS_TYPE_HANDLE, 2, },
+    {{0,0},"NtUserGetThreadDesktop", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"GetThreadDesktop", OK, RNTST, 2, },
-    {{0,0},"NtUserGetThreadState", OK, DRSYS_TYPE_UNSIGNED_INT, 1, },
+    {{0,0},"NtUserGetThreadState", OK, DRSYS_TYPE_UNSIGNED_INT, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserGetTitleBarInfo", OK, SYSARG_TYPE_BOOL8, 2,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, SYSARG_SIZE_IN_FIELD, W, offsetof(TITLEBARINFO, cbSize)},
      }
     },
     {{0,0},"NtUserGetUpdateRect", OK, SYSARG_TYPE_BOOL32, 3,
      {
-         {1, sizeof(RECT), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUserGetUpdateRgn", OK, SYSARG_TYPE_SINT32, 3, },
+    {{0,0},"NtUserGetUpdateRgn", OK, SYSARG_TYPE_SINT32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserGetWOWClass", OK, DRSYS_TYPE_POINTER, 2,
      {
+         {0, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtUserGetWindowDC", OK, DRSYS_TYPE_HANDLE, 1,
      {
-         {0,}
-     }, 
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
     },
     {{0,0},"NtUserGetWindowPlacement", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, SYSARG_SIZE_IN_FIELD, W, offsetof(WINDOWPLACEMENT, length)},
      }
     },
-    {{0,0},"NtUserHardErrorControl", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserHideCaret", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserHiliteMenuItem", OK, SYSARG_TYPE_BOOL32, 4, },
-    {{0,0},"NtUserImpersonateDdeClientWindow", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserInitTask", OK, SYSARG_TYPE_UINT32, 12, },
-    {{0,0},"NtUserInitialize", OK, RNTST, 3, },
+    {{0,0},"NtUserHardErrorControl", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserHideCaret", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserHiliteMenuItem", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserImpersonateDdeClientWindow", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserInitTask", OK, SYSARG_TYPE_UINT32, 12,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {8, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {10, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {11, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserInitialize", OK, RNTST, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     /* FIXME i#487: not sure whether these are arrays and if so how long they are */
     {{0,0},"NtUserInitializeClientPfnArrays", UNKNOWN, RNTST, 4,
      {
-         {0, sizeof(PFNCLIENT), R,},
-         {1, sizeof(PFNCLIENT), R,},
-         {2, sizeof(PFNCLIENTWORKER), R,},
+         {0, sizeof(PFNCLIENT), R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(PFNCLIENT), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(PFNCLIENTWORKER), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtUserInternalGetWindowText", OK, SYSARG_TYPE_SINT32, 3,
      {
-         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},{1,0, W|CT, SYSARG_TYPE_CSTRING_WIDE},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, -2, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
+         {1, 0, W|CT, SYSARG_TYPE_CSTRING_WIDE},
+         {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{0,0},"NtUserInvalidateRect", OK, SYSARG_TYPE_BOOL32, 3,
      {
-         {1, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUserInvalidateRgn", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserIsClipboardFormatAvailable", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserKillTimer", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserInvalidateRgn", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserIsClipboardFormatAvailable", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserKillTimer", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserLoadKeyboardLayoutEx", OK, DRSYS_TYPE_HANDLE, 7,
      {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {3, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {4, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserLoadKeyboardLayoutEx
     },
-    {{0,0},"NtUserLockWindowStation", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserLockWindowUpdate", OK, SYSARG_TYPE_BOOL32, 1, },
+    {{0,0},"NtUserLockWindowStation", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWINSTA), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserLockWindowUpdate", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserLockWorkStation", OK, SYSARG_TYPE_BOOL32, 0, },
     {{0,0},"NtUserMNDragLeave", OK, SYSARG_TYPE_UINT32, 0, },
-    {{0,0},"NtUserMNDragOver", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserMapVirtualKeyEx", OK, SYSARG_TYPE_UINT32, 4, },
+    {{0,0},"NtUserMNDragOver", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserMapVirtualKeyEx", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserMenuInfo", OK, SYSARG_TYPE_BOOL32, 3,
      {
-         {0,}/*can be R or W*/
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(MENUINFO), SYSARG_NON_MEMARG, DRSYS_TYPE_STRUCT},/*can be R or W*/
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_UserMenuInfo
     },
-    {{0,0},"NtUserMenuItemFromPoint", OK, SYSARG_TYPE_SINT32, 4, },
+    {{0,0},"NtUserMenuItemFromPoint", OK, SYSARG_TYPE_SINT32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserMenuItemInfo", OK, SYSARG_TYPE_BOOL32, 5,
      {
-         {0,}/*can be R or W*/
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(MENUITEMINFO), SYSARG_NON_MEMARG, DRSYS_TYPE_STRUCT},/*can be R or W*/
+         {4, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_UserMenuItemInfo
     },
     /* i#1249: NtUserMessageCall has a lot of sub-actions based on both 2nd
@@ -864,62 +1469,215 @@ syscall_info_t syscall_user32_info[] = {
          {6, sizeof(BOOL),    SYSARG_INLINED,    DRSYS_TYPE_BOOL},
      }, &sysnum_UserMessageCall
     },
-    {{0,0},"NtUserMinMaximize", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserModifyUserStartupInfoFlags", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserMonitorFromPoint", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserMonitorFromRect", OK, DRSYS_TYPE_HANDLE, 2,
+    {{0,0},"NtUserMinMaximize", OK, SYSARG_TYPE_UINT32, 3,
      {
-         {0, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUserMonitorFromWindow", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserMoveWindow", OK, SYSARG_TYPE_BOOL32, 6, },
-    {{0,0},"NtUserNotifyIMEStatus", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserNotifyProcessCreate", OK, SYSARG_TYPE_UINT32, 4, },
-    {{0,0},"NtUserNotifyWinEvent", OK, DRSYS_TYPE_VOID, 4, },
-    {{0,0},"NtUserOpenClipboard", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserModifyUserStartupInfoFlags", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserMonitorFromPoint", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(POINT), SYSARG_INLINED, DRSYS_TYPE_STRUCT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserMonitorFromRect", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserMonitorFromWindow", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserMoveWindow", OK, SYSARG_TYPE_BOOL32, 6,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserNotifyIMEStatus", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserNotifyProcessCreate", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserNotifyWinEvent", OK, DRSYS_TYPE_VOID, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserOpenClipboard", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserOpenDesktop", OK, DRSYS_TYPE_HANDLE, 3,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserOpenInputDesktop", OK, DRSYS_TYPE_HANDLE, 3, },
+    {{0,0},"NtUserOpenInputDesktop", OK, DRSYS_TYPE_HANDLE, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {2, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserOpenWindowStation", OK, DRSYS_TYPE_HANDLE, 2,
      {
          {0, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserPaintDesktop", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserPaintMenuBar", OK, SYSARG_TYPE_UINT32, 6, },
+    {{0,0},"NtUserPaintDesktop", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserPaintMenuBar", OK, SYSARG_TYPE_UINT32, 6,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserPeekMessage", OK, RNTST, 5,
      {
-         {0, sizeof(MSG), W,},
+         {0, sizeof(MSG), W|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserPostMessage", OK, SYSARG_TYPE_BOOL32, 4, },
-    {{0,0},"NtUserPostThreadMessage", OK, SYSARG_TYPE_BOOL32, 4, },
-    {{0,0},"NtUserPrintWindow", OK, SYSARG_TYPE_BOOL32, 3, },
+    {{0,0},"NtUserPostMessage", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(WPARAM), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(LPARAM), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserPostThreadMessage", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(WPARAM), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(LPARAM), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserPrintWindow", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     /* FIXME i#487: lots of pointers inside USERCONNECT */
     {{0,0},"NtUserProcessConnect", UNKNOWN, RNTST, 3,
      {
-         {1, sizeof(USERCONNECT), W,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(USERCONNECT), W|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserQueryInformationThread", OK, SYSARG_TYPE_UINT32, 5, },
-    {{0,0},"NtUserQueryInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserQuerySendMessage", OK, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserQueryUserCounters", OK, SYSARG_TYPE_UINT32, 5, },
-    {{0,0},"NtUserQueryWindow", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserRealChildWindowFromPoint", OK, DRSYS_TYPE_HANDLE, 3, },
+    {{0,0},"NtUserQueryInformationThread", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserQueryInputContext", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserQuerySendMessage", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserQueryUserCounters", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserQueryWindow", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserRealChildWindowFromPoint", OK, DRSYS_TYPE_HANDLE, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserRealInternalGetMessage", OK, SYSARG_TYPE_BOOL32, 6,
      {
-         {0, sizeof(MSG), W,},
+         {0, sizeof(MSG), W|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    {{0,0},"NtUserRealWaitMessageEx", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserRealWaitMessageEx", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserRedrawWindow", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {1, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {2, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserRegisterClassExWOW", OK|SYSINFO_RET_ZERO_FAIL, DRSYS_TYPE_ATOM, 7,
@@ -928,20 +1686,37 @@ syscall_info_t syscall_user32_info[] = {
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {2, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {3, sizeof(CLSMENUNAME), R|CT, SYSARG_TYPE_CLSMENUNAME},
-         {6, sizeof(DWORD), R,},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(DWORD), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserRegisterHotKey", OK, SYSARG_TYPE_BOOL32, 4, },
+    {{0,0},"NtUserRegisterHotKey", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserRegisterRawInputDevices", OK, SYSARG_TYPE_BOOL32, 3,
      {
          {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, -2},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserRegisterTasklist", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserRegisterTasklist", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserRegisterUserApiHook", OK, SYSARG_TYPE_BOOL32, 4,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
          {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtUserRegisterWindowMessage", OK, SYSARG_TYPE_UINT32, 1,
@@ -949,240 +1724,692 @@ syscall_info_t syscall_user32_info[] = {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtUserRemoteConnect", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserRemoteRedrawRectangle", OK, SYSARG_TYPE_UINT32, 4, },
+    {{0,0},"NtUserRemoteConnect", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserRemoteRedrawRectangle", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserRemoteRedrawScreen", OK, SYSARG_TYPE_UINT32, 0, },
     {{0,0},"NtUserRemoteStopScreenUpdates", OK, SYSARG_TYPE_UINT32, 0, },
-    {{0,0},"NtUserRemoveMenu", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserRemoveProp", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserResolveDesktop", OK, SYSARG_TYPE_UINT32, 4, },
-    {{0,0},"NtUserResolveDesktopForWOW", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserRemoveMenu", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserRemoveProp", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
+     }
+    },
+    {{0,0},"NtUserResolveDesktop", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserResolveDesktopForWOW", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     /* FIXME i#487: not sure whether #2 is in or out */
     {{0,0},"NtUserSBGetParms", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {2, sizeof(SBDATA), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(SBDATA), W|HT, DRSYS_TYPE_STRUCT},
          {3, SYSARG_SIZE_IN_FIELD, W, offsetof(SCROLLINFO, cbSize)},
      }
     },
     {{0,0},"NtUserScrollDC", OK, SYSARG_TYPE_BOOL32, 7,
      {
-         {3, sizeof(RECT), R,},
-         {4, sizeof(RECT), R,},
-         {6, sizeof(RECT), W,},
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {5, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {6, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserScrollWindowEx", OK, SYSARG_TYPE_UINT32, 8,
      {
-         {3, sizeof(RECT), R,},
-         {4, sizeof(RECT), R,},
-         {6, sizeof(RECT), W,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {5, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {6, sizeof(RECT), W|HT, DRSYS_TYPE_STRUCT},
+         {7, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserSelectPalette", OK, DRSYS_TYPE_HANDLE, 3, },
+    {{0,0},"NtUserSelectPalette", OK, DRSYS_TYPE_HANDLE, 3,
+     {
+         {0, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HPALETTE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserSendInput", OK, SYSARG_TYPE_UINT32, 3,
      {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, -0, R|SYSARG_SIZE_IN_ELEMENTS, -2},
+         {2, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{0,0},"NtUserSetActiveWindow", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserSetAppImeLevel", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetCapture", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserSetClassLong", OK, DRSYS_TYPE_UNSIGNED_INT, 4, },
-    {{0,0},"NtUserSetClassWord", OK, SYSARG_TYPE_UINT16, 3, },
+    {{0,0},"NtUserSetActiveWindow", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetAppImeLevel", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetCapture", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetClassLong", OK, DRSYS_TYPE_UNSIGNED_INT, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(ULONG_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserSetClassWord", OK, SYSARG_TYPE_UINT16, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(WORD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserSetClipboardData", OK, DRSYS_TYPE_HANDLE, 3,
      {
-         {2, sizeof(SETCLIPBDATA), R},
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(SETCLIPBDATA), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtUserSetClipboardViewer", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserSetConsoleReserveKeys", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetCursor", OK, DRSYS_TYPE_HANDLE, 1, },
+    {{0,0},"NtUserSetClipboardViewer", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetConsoleReserveKeys", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetCursor", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(HCURSOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserSetCursorContents", OK, SYSARG_TYPE_BOOL32, 2,
      {
-         {1, sizeof(ICONINFO), R,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ICONINFO), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserSetCursorIconData", OK, SYSARG_TYPE_BOOL32, 6,
      {
-         {1, sizeof(BOOL), R,},
-         {2, sizeof(POINT), R,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOL), R|HT, DRSYS_TYPE_BOOL},
+         {2, sizeof(POINT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(HMODULE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {4, sizeof(HRSRC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {5, sizeof(HRSRC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
-    {{0,0},"NtUserSetDbgTag", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetFocus", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserSetImeHotKey", OK, SYSARG_TYPE_UINT32, 5, },
-    {{0,0},"NtUserSetImeInfoEx", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1, },
-    {{0,0},"NtUserSetImeOwnerWindow", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetInformationProcess", OK, SYSARG_TYPE_UINT32, 4, },
-    {{0,0},"NtUserSetInformationThread", OK, RNTST, 4, },
+    {{0,0},"NtUserSetDbgTag", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetFocus", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetImeHotKey", OK, SYSARG_TYPE_UINT32, 5,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetImeInfoEx", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetImeOwnerWindow", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetInformationProcess", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetInformationThread", OK, RNTST, 4,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(USERTHREADINFOCLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserSetInternalWindowPos", OK, SYSARG_TYPE_UINT32, 4,
      {
-         {2, sizeof(RECT), R,},
-         {3, sizeof(POINT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(POINT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserSetKeyboardState", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0,256*sizeof(BYTE), R,},
+         {0, 256*sizeof(BYTE), R|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserSetLayeredWindowAttributes", OK, SYSARG_TYPE_BOOL32, 4, },
-    {{0,0},"NtUserSetLogonNotifyWindow", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserSetMenu", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserSetMenuContextHelpId", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserSetMenuDefaultItem", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserSetMenuFlagRtoL", OK, SYSARG_TYPE_BOOL32, 1, },
+    {{0,0},"NtUserSetLayeredWindowAttributes", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(COLORREF), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BYTE), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetLogonNotifyWindow", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetMenu", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserSetMenuContextHelpId", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetMenuDefaultItem", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetMenuFlagRtoL", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserSetObjectInformation", OK, SYSARG_TYPE_BOOL32, 4,
      {
-         {2, -3, R,},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserSetParent", OK, DRSYS_TYPE_HANDLE, 2, },
-    {{0,0},"NtUserSetProcessWindowStation", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserSetProp", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserSetRipFlags", OK, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserSetParent", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetProcessWindowStation", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWINSTA), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetProp", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ATOM), SYSARG_INLINED, DRSYS_TYPE_ATOM},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetRipFlags", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserSetScrollBarInfo", OK, SYSARG_TYPE_BOOL32, 3,
      {
-         {2, sizeof(SETSCROLLBARINFO), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(SETSCROLLBARINFO), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserSetScrollInfo", OK, SYSARG_TYPE_UINT32, 4,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          /* Special-cased b/c some fields are ignored (i#1299) */
          {2, SYSARG_SIZE_IN_FIELD, SYSARG_NON_MEMARG, offsetof(SCROLLINFO, cbSize)},
+         {3, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }, &sysnum_UserSetScrollInfo,
     },
-    {{0,0},"NtUserSetShellWindowEx", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserSetShellWindowEx", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     {{0,0},"NtUserSetSysColors", OK, SYSARG_TYPE_BOOL32, 4,
      {
+         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, -0, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(INT)},
          {2, -0, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(COLORREF)},
+         {3, sizeof(FLONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserSetSystemCursor", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserSetSystemMenu", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserSetSystemTimer", OK, DRSYS_TYPE_UNSIGNED_INT, 4, },
-    {{0,0},"NtUserSetThreadDesktop", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserSetThreadLayoutHandles", OK|SYSINFO_IMM32_DLL, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetThreadState", OK, SYSARG_TYPE_UINT32, 2, },
-    {{0,0},"NtUserSetTimer", OK, DRSYS_TYPE_UNSIGNED_INT, 4, },
+    {{0,0},"NtUserSetSystemCursor", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HCURSOR), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetSystemMenu", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetSystemTimer", OK, DRSYS_TYPE_UNSIGNED_INT, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(TIMERPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+     }
+    },
+    {{0,0},"NtUserSetThreadDesktop", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HDESK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSetThreadLayoutHandles", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetThreadState", OK, SYSARG_TYPE_UINT32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetTimer", OK, DRSYS_TYPE_UNSIGNED_INT, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT_PTR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(TIMERPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+     }
+    },
     {{0,0},"NtUserSetWinEventHook", OK, DRSYS_TYPE_HANDLE, 8,
      {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HMODULE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {3, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {4, sizeof(WINEVENTPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserSetWindowFNID", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserSetWindowLong", OK, SYSARG_TYPE_SINT32, 4, },
+    {{0,0},"NtUserSetWindowFNID", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(WORD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetWindowLong", OK, SYSARG_TYPE_SINT32, 4,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserSetWindowPlacement", OK, SYSARG_TYPE_BOOL32, 2,
      {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, SYSARG_SIZE_IN_FIELD, R, offsetof(WINDOWPLACEMENT, length)},
      }
     },
-    {{0,0},"NtUserSetWindowPos", OK, SYSARG_TYPE_BOOL32, 7, },
-    {{0,0},"NtUserSetWindowRgn", OK, SYSARG_TYPE_SINT32, 3, },
-    {{0,0},"NtUserSetWindowStationUser", OK, SYSARG_TYPE_UINT32, 4, },
-    {{0,0},"NtUserSetWindowWord", OK, SYSARG_TYPE_UINT16, 3, },
-    {{0,0},"NtUserSetWindowsHookAW", OK, DRSYS_TYPE_HANDLE, 3, },
-    {{0,0},"NtUserSetWindowsHookEx", OK, DRSYS_TYPE_HANDLE, 6,
+    {{0,0},"NtUserSetWindowPos", OK, SYSARG_TYPE_BOOL32, 7,
      {
-         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {6, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserShowCaret", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserShowScrollBar", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserShowWindow", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserShowWindowAsync", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserSoundSentry", OK, SYSARG_TYPE_BOOL32, 0, },
-    {{0,0},"NtUserSwitchDesktop", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserSystemParametersInfo", OK, SYSARG_TYPE_BOOL32, 1/*rest are optional*/,
+    {{0,0},"NtUserSetWindowRgn", OK, SYSARG_TYPE_SINT32, 3,
      {
-         {0,},/*special-cased*/
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HRGN), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserSetWindowStationUser", OK, SYSARG_TYPE_UINT32, 4,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetWindowWord", OK, SYSARG_TYPE_UINT16, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(INT), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(WORD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSetWindowsHookAW", OK, DRSYS_TYPE_HANDLE, 3,
+     {
+         {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(HOOKPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserSetWindowsHookEx", OK, DRSYS_TYPE_HANDLE, 6,
+     {
+         {0, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(HOOKPROC), SYSARG_INLINED, DRSYS_TYPE_FUNCTION},
+         {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserShowCaret", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserShowScrollBar", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserShowWindow", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserShowWindowAsync", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserSoundSentry", OK, SYSARG_TYPE_BOOL32, 0, },
+    {{0,0},"NtUserSwitchDesktop", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HDESK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserSystemParametersInfo", OK, SYSARG_TYPE_BOOL32, 4,
+     {
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, -3, SYSARG_NON_MEMARG, DRSYS_TYPE_STRUCT},
+         {3, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }, &sysnum_UserSystemParametersInfo
     },
-    {{0,0},"NtUserTestForInteractiveUser", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserTestForInteractiveUser", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     /* there is a pointer in MENUINFO but it's user-defined */
     {{0,0},"NtUserThunkedMenuInfo", OK, SYSARG_TYPE_BOOL32, 2,
      {
-         {1, sizeof(MENUINFO), R,},
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(MENUINFO), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserThunkedMenuItemInfo", OK, SYSARG_TYPE_BOOL32, 6,
      {
-         {4,0, R|CT, SYSARG_TYPE_MENUITEMINFOW},
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {3, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {4, 0, R|CT, SYSARG_TYPE_MENUITEMINFOW},
          {5, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
     {{0,0},"NtUserToUnicodeEx", OK, SYSARG_TYPE_SINT32, 7,
      {
-         {2,0x100*sizeof(BYTE), R,},
+         {0, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, 0x100*sizeof(BYTE), R|HT, DRSYS_TYPE_UNSIGNED_INT},
          {3, -4, W|SYSARG_SIZE_IN_ELEMENTS, sizeof(wchar_t)},
+         {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {5, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtUserTrackMouseEvent", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         {0,}
+         /* Memarg and non-memarg are both special-cased */ 
+         {0,},
      }, &sysnum_UserTrackMouseEvent
     },
     {{0,0},"NtUserTrackPopupMenuEx", OK, SYSARG_TYPE_BOOL32, 6,
      {
+         {0, sizeof(HMENU), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {4, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {5, SYSARG_SIZE_IN_FIELD, R, offsetof(TPMPARAMS, cbSize)},
      }
     },
     {{0,0},"NtUserTranslateAccelerator", OK, SYSARG_TYPE_SINT32, 3,
      {
-         {2, sizeof(MSG), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HACCEL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(MSG), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtUserTranslateMessage", OK, SYSARG_TYPE_BOOL32, 2,
      {
-         {0, sizeof(MSG), R,},
+         {0, sizeof(MSG), R|HT, DRSYS_TYPE_STRUCT},
+         {1, sizeof(UINT), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtUserUnhookWinEvent", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserUnhookWindowsHookEx", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserUnloadKeyboardLayout", OK, SYSARG_TYPE_BOOL32, 1, },
-    {{0,0},"NtUserUnlockWindowStation", OK, SYSARG_TYPE_BOOL32, 1, },
+    {{0,0},"NtUserUnhookWinEvent", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWINEVENTHOOK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserUnhookWindowsHookEx", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HHOOK), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserUnloadKeyboardLayout", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtUserUnlockWindowStation", OK, SYSARG_TYPE_BOOL32, 1,
+     {
+         {0, sizeof(HWINSTA), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     /* FIXME i#487: CLSMENUNAME format is not fully known */
     {{0,0},"NtUserUnregisterClass", UNKNOWN, SYSARG_TYPE_BOOL32, 3,
      {
          {0, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-         {2, sizeof(CLSMENUNAME), W|CT, SYSARG_TYPE_CLSMENUNAME,},
+         {1, sizeof(HINSTANCE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(CLSMENUNAME), W|CT, SYSARG_TYPE_CLSMENUNAME},
      }
     },
-    {{0,0},"NtUserUnregisterHotKey", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserUnregisterHotKey", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserUnregisterUserApiHook", OK, SYSARG_TYPE_BOOL32, 0, },
-    {{0,0},"NtUserUpdateInputContext", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserUpdateInstance", OK, SYSARG_TYPE_UINT32, 3, },
+    {{0,0},"NtUserUpdateInputContext", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserUpdateInstance", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserUpdateLayeredWindow", OK, SYSARG_TYPE_BOOL32, 10,
      {
-         {2, sizeof(POINT), R,},
-         {3, sizeof(SIZE), R,},
-         {5, sizeof(POINT), R,},
-         {7, sizeof(BLENDFUNCTION), R,},
-         {9, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(POINT), R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(SIZE), R|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(HDC), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {5, sizeof(POINT), R|HT, DRSYS_TYPE_STRUCT},
+         {6, sizeof(COLORREF), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {7, sizeof(BLENDFUNCTION), R|HT, DRSYS_TYPE_STRUCT},
+         {8, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {9, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtUserUpdatePerUserSystemParameters", OK, SYSARG_TYPE_BOOL32, 2, },
-    {{0,0},"NtUserUserHandleGrantAccess", OK, SYSARG_TYPE_BOOL32, 3, },
-    {{0,0},"NtUserValidateHandleSecure", OK, SYSARG_TYPE_BOOL32, 2, },
+    {{0,0},"NtUserUpdatePerUserSystemParameters", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserUserHandleGrantAccess", OK, SYSARG_TYPE_BOOL32, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserValidateHandleSecure", OK, SYSARG_TYPE_BOOL32, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
     {{0,0},"NtUserValidateRect", OK, SYSARG_TYPE_BOOL32, 2,
      {
-         {1, sizeof(RECT), R,},
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(RECT), R|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{0,0},"NtUserValidateTimerCallback", OK, RNTST, 3, },
-    {{0,0},"NtUserVkKeyScanEx", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserWaitForInputIdle", OK, SYSARG_TYPE_UINT32, 3, },
-    {{0,0},"NtUserWaitForMsgAndEvent", OK, SYSARG_TYPE_UINT32, 1, },
+    {{0,0},"NtUserValidateTimerCallback", OK, RNTST, 3,
+     {
+         {0, sizeof(HWND), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(WPARAM), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(LPARAM), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserVkKeyScanEx", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(WCHAR), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(HKL), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserWaitForInputIdle", OK, SYSARG_TYPE_UINT32, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+     }
+    },
+    {{0,0},"NtUserWaitForMsgAndEvent", OK, SYSARG_TYPE_UINT32, 1,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtUserWaitMessage", OK, SYSARG_TYPE_BOOL32, 0, },
-    {{0,0},"NtUserWin32PoolAllocationStats", OK, SYSARG_TYPE_UINT32, 6, },
-    {{0,0},"NtUserWindowFromPhysicalPoint", OK, DRSYS_TYPE_HANDLE, 1, },
-    {{0,0},"NtUserWindowFromPoint", OK, DRSYS_TYPE_HANDLE, 2, },
+    {{0,0},"NtUserWin32PoolAllocationStats", OK, SYSARG_TYPE_UINT32, 6,
+     {
+         {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
+    {{0,0},"NtUserWindowFromPhysicalPoint", OK, DRSYS_TYPE_HANDLE, 1,
+     {
+         {0, sizeof(POINT), SYSARG_INLINED, DRSYS_TYPE_STRUCT},
+     }
+    },
+    {{0,0},"NtUserWindowFromPoint", OK, DRSYS_TYPE_HANDLE, 2,
+     {
+         {0, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {1, sizeof(LONG), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+     }
+    },
     {{0,0},"NtUserYieldTask", OK, SYSARG_TYPE_UINT32, 0, },
-
     {{0,0},"NtUserUserConnectToServer", OK, RNTST, 3,
      {
-         {0,0, R|CT, SYSARG_TYPE_CSTRING_WIDE},
+         {0, 0, R|CT, SYSARG_TYPE_CSTRING_WIDE},
          {1, -2, WI},
          {2, sizeof(ULONG), R|W},
      }
@@ -1597,19 +2824,19 @@ syscall_info_t syscall_usercall_info[] = {
     {{0,0},"NtUserCallHwndParam.SETWINDOWSTATE", UNKNOWN, SYSARG_TYPE_UINT32, 3, },
 
     /* XXX: confirm the rest: assuming for now all just take HWND */
-    {{0,0},"NtUserCallHwndLock.WINDOWHASSHADOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.ARRANGEICONICWINDOWS", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.DRAWMENUBAR", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.CHECKIMESHOWSTATUSINTHRD", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.GETSYSMENUHANDLE", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.REDRAWFRAME", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.REDRAWFRAMEANDHOOK", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.SETDLGSYSMENU", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.SETFOREGROUNDWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.SETSYSMENU", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.UPDATECKIENTRECT", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.UPDATEWINDOW", OK, SYSARG_TYPE_UINT32, 2, /*HWND*/},
-    {{0,0},"NtUserCallHwndLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_UINT32, 2, },
+    {{0,0},"NtUserCallHwndLock.WINDOWHASSHADOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.ARRANGEICONICWINDOWS", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.DRAWMENUBAR", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.CHECKIMESHOWSTATUSINTHRD", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.GETSYSMENUHANDLE", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.REDRAWFRAME", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.REDRAWFRAMEANDHOOK", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.SETDLGSYSMENU", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.SETFOREGROUNDWINDOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.SETSYSMENU", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.UPDATECKIENTRECT", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.UPDATEWINDOW", OK, SYSARG_TYPE_BOOL32, 2, /*HWND*/},
+    {{0,0},"NtUserCallHwndLock.UNKNOWN", UNKNOWN, SYSARG_TYPE_BOOL32, 2, },
 
     {{0,0},"NtUserCallTwoParam.ENABLEWINDOW", OK, DRSYS_TYPE_UNSIGNED_INT, 3, /*HWND, BOOL*/},
     {{0,0},"NtUserCallTwoParam.REDRAWTITLE", UNKNOWN, DRSYS_TYPE_UNSIGNED_INT, 3, },
@@ -5960,7 +7187,7 @@ static void
 handle_UserMenuInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     /* 3rd param is bool saying whether it's Set or Get */
-    BOOL set = (BOOL) pt->sysarg[3];
+    BOOL set = (BOOL) pt->sysarg[2];
     MENUINFO info;
     /* user must set cbSize for set or get */
     if (ii->arg->pre) {
@@ -5970,9 +7197,9 @@ handle_UserMenuInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
             return;
     }
     if (ii->arg->pre || !set) {
-        if (safe_read((byte *) pt->sysarg[3], sizeof(info), &info)) {
-            if (!report_memarg_type(ii, 3, set ? SYSARG_READ : SYSARG_WRITE,
-                                    (byte *) pt->sysarg[3], info.cbSize, "MENUINFOW",
+        if (safe_read((byte *) pt->sysarg[1], sizeof(info), &info)) {
+            if (!report_memarg_type(ii, 1, set ? SYSARG_READ : SYSARG_WRITE,
+                                    (byte *) pt->sysarg[1], info.cbSize, "MENUINFOW",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
         } else
@@ -6000,6 +7227,8 @@ handle_UserGetAltTabInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t 
     report_memarg_type(ii, 3, SYSARG_WRITE, (byte *) pt->sysarg[3],
                        count * (ansi ? sizeof(char) : sizeof(wchar_t)),
                        "pszItemText", ansi ? DRSYS_TYPE_CARRAY : DRSYS_TYPE_CWARRAY, NULL);
+    report_sysarg_type(ii, 3, SYSARG_READ, count * (ansi ? sizeof(char) : sizeof(wchar_t)),
+                       ansi ? DRSYS_TYPE_CARRAY : DRSYS_TYPE_CWARRAY, "pszItemText");
 }
 
 static void
@@ -6023,6 +7252,7 @@ handle_UserGetRawInputBuffer(void *drcontext, cls_syscall_t *pt, sysarg_iter_inf
             size = (size * dr_syscall_get_result(drcontext)) +
                 /* param #2 holds header size */
                 (UINT) pt->sysarg[2];
+            report_sysarg_type(ii, 0, SYSARG_READ, size, DRSYS_TYPE_STRUCT, "pData");
             if (!report_memarg_type(ii, 0, SYSARG_WRITE, buf, size, "pData",
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
@@ -6061,6 +7291,7 @@ handle_UserGetRawInputDeviceInfo(void *drcontext, cls_syscall_t *pt,
              */
             size *= sizeof(wchar_t);
         }
+        report_sysarg_type(ii, 2, SYSARG_READ, size, DRSYS_TYPE_STRUCT, "pData");
         if (!report_memarg_type(ii, 2, SYSARG_WRITE, (byte *) pt->sysarg[2], size,
                                 "pData", DRSYS_TYPE_STRUCT, NULL))
             return;
@@ -6079,11 +7310,13 @@ handle_UserGetRawInputDeviceInfo(void *drcontext, cls_syscall_t *pt,
 static void
 handle_UserTrackMouseEvent(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
-    DWORD dwFlags = (BOOL) pt->sysarg[3];
     TRACKMOUSEEVENT *safe;
     byte buf[offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags)];
     /* user must set cbSize and dwFlags */
     if (ii->arg->pre) {
+        report_sysarg_type(ii, 0, SYSARG_READ, offsetof(TRACKMOUSEEVENT, dwFlags) +
+                           sizeof(safe->dwFlags), DRSYS_TYPE_STRUCT,
+                           "TRACKMOUSEEVENT cbSize+dwFlags");
         if (!report_memarg_type(ii, 0, SYSARG_READ, (byte *) pt->sysarg[0],
                                 offsetof(TRACKMOUSEEVENT, dwFlags) + sizeof(safe->dwFlags),
                                 "TRACKMOUSEEVENT cbSize+dwFlags",
@@ -6097,6 +7330,8 @@ handle_UserTrackMouseEvent(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_
         flags = TEST(TME_QUERY, safe->dwFlags) ? SYSARG_WRITE : SYSARG_READ;
         if ((flags == SYSARG_WRITE || ii->arg->pre) &&
             safe->cbSize > BUFFER_SIZE_BYTES(buf)) {
+            report_sysarg_type(ii, 0, SYSARG_READ, safe->cbSize - BUFFER_SIZE_BYTES(buf),
+                               DRSYS_TYPE_STRUCT, "TRACKMOUSEEVENT cbSize+dwFlags");
             if (!report_memarg_type(ii, 0, flags,
                                     ((byte *)pt->sysarg[0]) + BUFFER_SIZE_BYTES(buf),
                                     safe->cbSize - BUFFER_SIZE_BYTES(buf),

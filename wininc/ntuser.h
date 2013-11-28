@@ -1839,7 +1839,8 @@ NtUserEndPaint(
   HWND hWnd, 
   CONST PAINTSTRUCT* lPs);
 
-BOOL
+/* MS has this marked BOOL: xref i#1139  */
+NTSTATUS
 NTAPI
 NtUserEnumDisplayDevices (
   PUNICODE_STRING lpDevice, /* device name */
