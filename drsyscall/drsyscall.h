@@ -207,9 +207,10 @@ typedef enum {
     DRSYS_TYPE_IO_STATUS_BLOCK,     /**< IO_STATUS_BLOCK structure. */
     DRSYS_TYPE_FUNCTION,            /**< Function of unspecified signature. */
     DRSYS_TYPE_BITMAPINFO,          /**< BITMAPINFO structure. */
+    DRSYS_TYPE_ALPC_CONTEXT_ATTRIBUTES,/**< ALPC_CONTEXT_ATTRIBUTES structure. */
 
     /* Additional types may be added in the future. */
-    DRSYS_TYPE_LAST = DRSYS_TYPE_BITMAPINFO,
+    DRSYS_TYPE_LAST = DRSYS_TYPE_ALPC_CONTEXT_ATTRIBUTES,
 } drsys_param_type_t;
 
 /** Describes a system call parameter or memory region. */

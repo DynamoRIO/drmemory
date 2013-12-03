@@ -2848,119 +2848,192 @@ static syscall_info_t syscall_ntdll_info[] = {
     {{0,0},"NtAcquireCMFViewOwnership", UNKNOWN, RNTST, 3, },
     {{0,0},"NtAlpcAcceptConnectPort", OK, RNTST, 9,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {3, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {4, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
-        {6, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {7, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W},
-        {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {4, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
+         {5, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+         {6, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {7, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|HT, DRSYS_TYPE_STRUCT},
+         {8, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
     {{0,0},"NtAlpcCancelMessage", OK, RNTST, 3,
      {
-        {2, sizeof(ALPC_CONTEXT_ATTRIBUTES), R},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ALPC_CONTEXT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_CONTEXT_ATTRIBUTES},
      }
     },
     {{0,0},"NtAlpcConnectPort", OK, RNTST, 11,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
-        {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {3, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
-        {5, sizeof(SID), R},
-        {6, -7, WI},
-        {7, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
-        {8, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W},
-        {9, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W},
-        {10, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(UNICODE_STRING), R|CT, SYSARG_TYPE_UNICODE_STRING},
+         {2, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {3, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(SID), R|HT, DRSYS_TYPE_STRUCT},
+         {6, -7, WI|HT, SYSARG_TYPE_PORT_MESSAGE},
+         {7, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {8, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|HT, DRSYS_TYPE_STRUCT},
+         {9, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|HT, DRSYS_TYPE_STRUCT},
+         {10, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtAlpcCreatePort", OK, RNTST, 3,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
-        {2, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {2, sizeof(ALPC_PORT_ATTRIBUTES), R|CT, SYSARG_TYPE_ALPC_PORT_ATTRIBUTES},
      }
     },
     {{0,0},"NtAlpcCreatePortSection", OK, RNTST, 6,
      {
-        {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlpcCreateResourceReserve", OK, RNTST, 4,
      {
-        {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(SIZE_T), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {3, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
      }
     },
     {{0,0},"NtAlpcCreateSectionView", OK, RNTST, 3,
      {
-        {2, sizeof(ALPC_DATA_VIEW), R|W},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ALPC_DATA_VIEW), R|W|HT, DRSYS_TYPE_STRUCT},
      }
     },
     {{0,0},"NtAlpcCreateSecurityContext", OK, RNTST, 3,
      {
-        {2, sizeof(ALPC_SECURITY_ATTRIBUTES), R|W|CT, SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(ALPC_SECURITY_ATTRIBUTES), R|W|CT, SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES},
      }
     },
-    {{0,0},"NtAlpcDeletePortSection", OK, RNTST, 3, },
-    {{0,0},"NtAlpcDeleteResourceReserve", OK, RNTST, 3, },
+    {{0,0},"NtAlpcDeletePortSection", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtAlpcDeleteResourceReserve", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     /* XXX: ok for shadowing purposes, but we should look at tracking
      * the allocation once we understand NtAlpcCreateSectionView
      */
-    {{0,0},"NtAlpcDeleteSectionView", OK, RNTST, 3, },
-    {{0,0},"NtAlpcDeleteSecurityContext", OK, RNTST, 3, },
-    {{0,0},"NtAlpcDisconnectPort", OK, RNTST, 2, },
+    {{0,0},"NtAlpcDeleteSectionView", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
+     }
+    },
+    {{0,0},"NtAlpcDeleteSecurityContext", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
+    {{0,0},"NtAlpcDisconnectPort", OK, RNTST, 2,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+     }
+    },
     {{0,0},"NtAlpcImpersonateClientOfPort", OK, RNTST, 3,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {2, sizeof(PVOID), SYSARG_INLINED, DRSYS_TYPE_UNKNOWN},
      }
     },
     {{0,0},"NtAlpcOpenSenderProcess", OK, RNTST, 6,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtAlpcOpenSenderThread", OK, RNTST, 6,
      {
-        {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
-        {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
+         {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
+         {1, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(OBJECT_ATTRIBUTES), R|CT, SYSARG_TYPE_OBJECT_ATTRIBUTES},
      }
     },
     {{0,0},"NtAlpcQueryInformation", OK, RNTST, 5,
      {
-        {2, -3, W},
-        {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, W|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {4, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtAlpcQueryInformationMessage", OK, RNTST, 6,
      {
-        {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
-        {3, -4, W},
-        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE},
+         {2, sizeof(ALPC_MESSAGE_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {3, -4, W|HT, DRSYS_TYPE_STRUCT},
+         {4, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3, },
+    {{0,0},"NtAlpcRevokeSecurityContext", OK, RNTST, 3,
+     {
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+     }
+    },
     /* FIXME i#98:
      * + #2 should be {2, sizeof(PORT_MESSAGE), R|CT, SYSARG_TYPE_PORT_MESSAGE}
-     *   but it seems to have custom data that is not all IN
-     * + #3 and #6 are void* buffers but where is their size stored?
-     * + #4 could be {4, sizeof(PORT_MESSAGE), W|CT, SYSARG_TYPE_PORT_MESSAGE}
-     *   but I'm assuming #5 points at size of OUT PORT_MESSAGE
+     * + #4 should be {4, -5, R|WI|HT, SYSARG_TYPE_PORT_MESSAGE}
+     * The issue is w/ synchronous calls where the same PORT_MESSAGE buffer is used
+     * for both receive/send.
      */
     {{0,0},"NtAlpcSendWaitReceivePort", UNKNOWN, RNTST, 8,
      {
-        {4, -5, WI},
-        {5, sizeof(ULONG), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-        {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
+         {2, sizeof(PORT_MESSAGE), SYSARG_NON_MEMARG, SYSARG_TYPE_PORT_MESSAGE},
+         {3, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|HT, DRSYS_TYPE_STRUCT},
+         {4, -5, SYSARG_NON_MEMARG, SYSARG_TYPE_PORT_MESSAGE},
+         {5, sizeof(ULONG), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {6, sizeof(ALPC_MESSAGE_ATTRIBUTES), R|W|HT, DRSYS_TYPE_STRUCT},
+         {7, sizeof(LARGE_INTEGER), R|HT, DRSYS_TYPE_LARGE_INTEGER},
      }
     },
     {{0,0},"NtAlpcSetInformation", OK, RNTST, 4,
      {
-        {2, -3, R},
+         {0, sizeof(HANDLE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
+         {1, sizeof(ALPC_PORT_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
+         {2, -3, R|HT, DRSYS_TYPE_STRUCT},
+         {3, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
     {{0,0},"NtCancelIoFileEx", OK, RNTST, 3,
@@ -4410,6 +4483,34 @@ handle_alpc_security_attributes_access(sysarg_iter_info_t *ii,
 }
 
 static bool
+handle_alpc_context_attributes_access(sysarg_iter_info_t *ii,
+                                       const syscall_arg_t *arg_info,
+                                       app_pc start, uint size)
+{
+    /* XXX i#1390: This structure is only used in NtAlpcCancelMessage, and right now only
+     * uses three of its fields: MessageContext, MessageID, and CallbackID. This was
+     * checked on win7 x86. We should look for updates that use the other fields.
+     */
+    ALPC_CONTEXT_ATTRIBUTES *aca = (ALPC_CONTEXT_ATTRIBUTES *) start;
+    ASSERT(size == sizeof(ALPC_CONTEXT_ATTRIBUTES), "invalid size");
+
+    if (ii->arg->pre) {
+        if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
+                              start, size, "ALPC_CONTEXT_ATTRIBUTES",
+                              DRSYS_TYPE_ALPC_CONTEXT_ATTRIBUTES, NULL,
+                              DRSYS_TYPE_INVALID))
+            return true;
+    }
+    if (!report_memarg(ii, arg_info, (byte *) &aca->MessageContext, sizeof(aca->MessageContext),
+        "ALPC_CONTEXT_ATTRIBUTES.MessageContext"))
+        return true;
+    if (!report_memarg(ii, arg_info, (byte *) &aca->MessageID, sizeof(aca->MessageID) +
+        sizeof(aca->CallbackID), "ALPC_CONTEXT_ATTRIBUTES MessageID..CallbackID"))
+        return true;
+    return true;
+}
+
+static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
                              const syscall_arg_t *arg_info,
                              app_pc start, uint size)
@@ -4440,6 +4541,8 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
         return handle_alpc_port_attributes_access(ii, arg_info, start, size);
     case SYSARG_TYPE_ALPC_SECURITY_ATTRIBUTES:
         return handle_alpc_security_attributes_access(ii, arg_info, start, size);
+    case SYSARG_TYPE_ALPC_CONTEXT_ATTRIBUTES:
+        return handle_alpc_context_attributes_access(ii, arg_info, start, size);
     }
     return wingdi_process_arg(ii, arg_info, start, size);
 }
