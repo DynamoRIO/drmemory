@@ -556,7 +556,9 @@ is_text(byte *ptr)
     last_ans = (dr_query_memory_ex(ptr, &info) &&
                 info.type == DR_MEMTYPE_IMAGE &&
                 TESTALL(DR_MEMPROT_READ | DR_MEMPROT_EXEC, info.prot) &&
-                !TEST(DR_MEMPROT_WRITE, info.prot));
+                (!TEST(DR_MEMPROT_WRITE, info.prot) ||
+                 /* i#: allow pretend-writable from hooking, etc. */
+                 TEST(DR_MEMPROT_PRETEND_WRITE, info.prot)));
     last_start = info.base_pc;
     last_end = info.base_pc + info.size;
     return last_ans;
@@ -707,7 +709,7 @@ is_midchunk_pointer_legitimate(byte *pointer, byte *chunk_start, byte *chunk_end
             LOG(4, "\tmid="PFX", top="PFX"\n",
                 /* risky perhaps but v4: */ *(byte **)pointer, *(byte **)chunk_start);
             if (leak_safe_read_heap(pointer, (void **) &val1) &&
-            /* PR 570839: check for non-addresses to avoid call cost */
+                /* PR 570839: check for non-addresses to avoid call cost */
                 val1 > LOWEST_POINTER && is_vtable(val1)) {
                 if (leak_safe_read_heap(chunk_start, (void **) &val2) &&
                     val2 > LOWEST_POINTER && is_vtable(val2)) {
