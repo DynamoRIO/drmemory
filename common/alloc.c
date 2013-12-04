@@ -3102,6 +3102,8 @@ module_is_libc(const module_data_t *mod, bool *is_libc, bool *is_libcpp, bool *i
             *is_libcpp = true;
             if (text_matches_pattern(modname, "msvcp*d.dll", true/*ignore case*/))
                 *is_debug = true;
+        } else if (text_matches_pattern(modname, "libstdc++*.dll", true/*ignore case*/)) {
+            *is_libcpp = true;
         }
 #endif
     }

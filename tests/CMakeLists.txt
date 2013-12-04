@@ -54,12 +54,25 @@ include_directories("../third_party/valgrind")
 if (WIN32)
   # if MinGW gcc is available, we do some extra tests
   # (we do not yet support Cygwin)
-  find_program(GCC mingw32-g++.exe DOC "path to MinGW g++.exe" PATHS "c:/mingw/bin")
+  # Look for version installed with Cygwin first just b/c my machines have a
+  # more recent MinGW there.
+  find_program(GCC i686-pc-mingw32-g++.exe DOC "path to MinGW g++.exe"
+    PATHS "c:/cygwin/bin")
+  if (NOT GCC)
+    find_program(GCC mingw32-g++.exe DOC "path to MinGW g++.exe" PATHS "c:/mingw/bin")
+  endif (NOT GCC)
   if (NOT GCC)
     message(STATUS "MinGW gcc not found: some tests will be disabled")
   else (NOT GCC)
     message(STATUS "Found MinGW gcc at ${GCC}")
   endif (NOT GCC)
+  find_program(mingwlib libstdc++-6.dll
+    HINTS "c:/cygwin/usr/i686-pc-mingw32/sys-root/mingw/bin" "c:/mingw/bin"
+    DOC "path to MinGW libstdc++-6.dll")
+  if (mingwlib)
+    get_filename_component(mingw_path ${mingwlib} PATH)
+    message(STATUS "Found ${mingwlib}, enabling shared lib MinGW test")
+  endif ()
 endif (WIN32)
 
 function(append_compile_flags target newflags)
@@ -259,7 +272,7 @@ set(cmd_script -P "./runtest.cmake")
 # The resbase arg support specifying a different .res and .out name
 # to use.
 function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resbase
-    ignore_exit_code)
+    ignore_exit_code path_append)
   if (${exe} MATCHES ".exe$")
     set(exepath ${exe})
   else ()
@@ -345,6 +358,7 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
     -D DRMEMORY_CTEST_DR_DIR:STRING=${DynamoRIO_DIR}
     -D CMAKE_SYSTEM_VERSION:STRING=${CMAKE_SYSTEM_VERSION}
     -D ignore_exit_code:BOOL=${ignore_exit_code}
+    -D path_append:STRING=${path_append}
     # runtest.cmake will add the -profdir arg
     -D postcmd:STRING=${postcmd}
     ${cmd_script})
@@ -352,14 +366,14 @@ endfunction(newtest_nobuild_ex)
 
 function(newtest_nobuild test exe test_ops drmem_ops dr_ops postprocess resbase)
   newtest_nobuild_ex(${test} ${exe} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}" OFF)
+    "${postprocess}" "${resbase}" OFF "")
 endfunction(newtest_nobuild)
 
 function(newtest_ex test source test_ops drmem_ops dr_ops postprocess resbase
     ignore_exit_code)
   tobuild(${test} ${source})
   newtest_nobuild_ex(${test} ${test} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}" ${ignore_exit_code})
+    "${postprocess}" "${resbase}" ${ignore_exit_code} "")
 endfunction(newtest_ex)
 
 function(newtest test source)
@@ -379,7 +393,8 @@ function(newtest_custbuild test source cust_flags resbase)
   append_test_compile_flags(${test} ${cust_flags})
 endfunction(newtest_custbuild)
 
-function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess resbase)
+function(newtest_gcc test source depender gcc_ops test_ops drmem_ops dr_ops
+    postprocess resbase path_append)
   add_custom_target(target_${test} DEPENDS ${test}.exe)
   set(exepath ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${test}.exe)
   add_custom_command(OUTPUT ${test}.exe
@@ -389,12 +404,12 @@ function(newtest_gcc test source depender test_ops drmem_ops dr_ops postprocess 
     ARGS -D exename=${exepath}
        -D gcc=${GCC}
        -D source=${CMAKE_CURRENT_SOURCE_DIR}/${source}
-       -D args=
+       -D args=${gcc_ops}
        -P ${CMAKE_CURRENT_SOURCE_DIR}/rungcc.cmake
     VERBATIM # recommended: p260
     )
-  newtest_nobuild(${test} ${exepath} "${test_ops}" "${drmem_ops}" "${dr_ops}"
-    "${postprocess}" "${resbase}")
+  newtest_nobuild_ex(${test} ${exepath} "${test_ops}" "${drmem_ops}" "${dr_ops}"
+    "${postprocess}" "${resbase}" OFF "${path_append}")
   add_dependencies(${depender} target_${test})
 endfunction(newtest_gcc)
 
@@ -581,7 +596,7 @@ if (TOOL_DR_MEMORY)
     endif ()
   endif ()
   newtest_nobuild_ex(wrap_operators operators "" "-no_replace_malloc"
-    "" OFF "operators" OFF)
+    "" OFF "operators" OFF "")
 
   # shared by all suppress tests
   tobuild(suppress suppress.c)
@@ -682,16 +697,21 @@ if (TOOL_DR_MEMORY)
       append_test_compile_flags(operatorsMDd "/MDd")
       newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
         # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
-        ON)
+        ON "")
       newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
-          "-no_replace_malloc" "" OFF operators OFF)
+          "-no_replace_malloc" "" OFF operators OFF "")
     endif (USE_DRSYMS)
 
     if (GCC)
       # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)
       # With i#805, -no_callstack_use_top_fp is set automatically
-      newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "" "" "" "" cs2bug)
-    endif (GCC)
+      newtest_gcc(cs2bugMinGW cs2bug.cpp cs2bug "-static-libgcc\;-static-libstdc++"
+        "" "" "" "" cs2bug "")
+      if (mingwlib)
+        newtest_gcc(cs2bugMinGW_shared cs2bug.cpp cs2bug "" "" "" "" "" cs2bug
+          ${mingw_path})
+      endif ()
+   endif (GCC)
 
     newtest_ex(gdi gdi.cpp ""
       "-suppress;{DRMEMORY_CTEST_SRC_DIR}/gdi.suppress;-check_gdi_multithread" ""

@@ -34,6 +34,7 @@
 # * CMAKE_SYSTEM_VERSION
 # * ignore_exit_code = whether to consider non-zero exit code of test
 #     process to be a test failure
+# * path_append = string to add to PATH before running cmd
 #
 # these allow for parameterization for more portable tests (PR 544430)
 # env vars will override; else passed-in default settings will be used:
@@ -94,6 +95,14 @@ endif()
 
 ##################################################
 # run the test
+
+if (NOT path_append STREQUAL "")
+  if (UNIX)
+    set(ENV{PATH} "$ENV{PATH}:${path_append}")
+  else (UNIX)
+    set(ENV{PATH} "$ENV{PATH};${path_append}")
+  endif (UNIX)
+endif ()
 
 # used for sleeping, and for nudge test
 find_program(PERL perl)

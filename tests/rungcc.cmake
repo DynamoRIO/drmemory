@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -25,7 +25,7 @@
 # * args = extra args to gcc
 
 set(GCC ${gcc})
-if (${GCC} MATCHES "cygwin")
+if (${GCC} MATCHES "cygwin/g")
   # cygwin sets up /c/cygwin/bin/gcc.exe -> /etc/alternatives/gcc -> /usr/bin/gcc-3.exe
   # we just hardcode -4 and -3: too lazy to go get cygwin tools and resolve
   # the chain of links.
@@ -44,15 +44,16 @@ endif()
 # We don't want dynamic C++ library b/c then we need machine to have
 # libgcc_s_dw2-1.dll and libstdc++-6.dll on path and we want to support
 # a non-intrusive mingw installation.
-set(CMD_BASE ${GCC} -ggdb -fno-omit-frame-pointer ${args}
+set(CMD_BASE ${GCC} -ggdb -fno-omit-frame-pointer ${args} -DWINDOWS
   -o ${exename} ${source} ${stdcpp})
-execute_process(COMMAND ${CMD_BASE} -static-libgcc -static-libstdc++
+execute_process(COMMAND ${CMD_BASE}
   RESULT_VARIABLE cmd_result
   ERROR_VARIABLE cmd_err)
 if (cmd_result)
   if (cmd_err MATCHES "unrecognized option")
     # Older g++ doesn't have the -static-* params, but also doesn't depend on
     # a dll (static by default maybe?)
+    string(REPLACE "-static-libgcc -static-libstdc++" "" CMD_BASE ${CMD_BASE})
     execute_process(COMMAND ${CMD_BASE}
       RESULT_VARIABLE cmd_result
       ERROR_VARIABLE cmd_err)
