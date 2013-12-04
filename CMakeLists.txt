@@ -1726,7 +1726,7 @@ else (UNIX)
 endif (UNIX)
 
 set(CPACK_PACKAGE_NAME "${toolname_cap_spc}")
-set(CPACK_PACKAGE_VENDOR "VMware")
+set(CPACK_PACKAGE_VENDOR "Google")
 set(CPACK_PACKAGE_DESCRIPTION_FILE "${PROJECT_SOURCE_DIR}/README")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "${toolname_cap_spc} Memory Debugging Tool")
 set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/license.txt")
