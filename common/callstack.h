@@ -124,6 +124,24 @@ enum {
      * on a 64-bit kernel, as it too often leads to skipped frames.
      */
     FP_DO_NOT_SKIP_VSYSCALL_PUSH      = 0x0200,
+    /* i#703: avoid skipping interior frames due to FPO by never walking the
+     * frame pointer chain and scanning every time.  This adds overhead of course.
+     */
+    FP_DO_NOT_WALK_FP                 = 0x0400,
+    /* i#703: avoid skipping interior frames due to FPO by verifying
+     * that the next retaddr actually calls the current one's
+     * containing function.  This adds overhead of course.
+     */
+    FP_VERIFY_CALL_TARGET             = 0x0800,
+    /* Identical to FP_VERIFY_CALL_TARGET except this only checks targets on
+     * cross-module calls.
+     */
+    FP_VERIFY_CROSS_MODULE_TARGET     = 0x1000,
+    /* Only applies if either FP_VERIFY_CALL_TARGET or FP_VERIFY_CROSS_MODULE_TARGET
+     * is enabled.  This controls whether to verify call targets while scanning,
+     * as opposed to during the fp walk.
+     */
+    FP_VERIFY_TARGET_IN_SCAN          = 0x2000,
     FP_SEARCH_AGGRESSIVE              = (FP_SHOW_NON_MODULE_FRAMES |
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };

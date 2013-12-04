@@ -420,10 +420,10 @@ options_init(const char *opstr)
         options.check_alignment    = false;
         if (options.leaks_only)
             usage_error("-leaks_only cannot be used with pattern mode", "");
-#ifdef WINDOWS
+# ifdef WINDOWS
         if (options.handle_leaks_only)
             usage_error("-handle_leaks_only cannot be used with pattern mode", ""); 
-#endif
+# endif
     }
     if (options.replace_malloc) {
         options.replace_realloc = false; /* no need for it */
@@ -516,7 +516,9 @@ options_init(const char *opstr)
     if (options.pattern == 0)
         usage_error("currently only -unaddr_only is supported for 64-bit", "");
 # endif
-#endif
+    if (!options.callstack_use_fp)
+        options.callstack_use_top_fp = false;
+#endif /* TOOL_DR_MEMORY */
     if (options.native_until_thread > 0 || options.native_parent) {
         go_native = true;
     }

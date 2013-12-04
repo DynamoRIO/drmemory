@@ -277,6 +277,12 @@ OPTION_CLIENT_BOOL(client, callstack_use_top_fp, true,
 OPTION_CLIENT_BOOL(client, callstack_use_top_fp_selectively, true,
               "Use the top-level ebp/rbp register as the first frame pointer in certain situations",
               "Whether to trust the top-level ebp/rbp register to hold the next frame pointer in certain situations.  When enabled, this overrides -callstack_use_top_fp if it is enabled; but if -callstack_use_top_fp is disabled then the top fp is never used.  When this option is enabled, in full or -leaks_only modes then the top fp is not used for all non-leak errors, while in -light mode the top fp is only not used for non-leak errors where the top frame is in an application module.  See the -callstack_use_top_fp option for further information about the top frame pointer.")
+OPTION_CLIENT_BOOL(client, callstack_use_fp, true,
+              "Use frame pointers to walk the callstack",
+              "Whether to use frame pointers at all.  The -callstack_use_top_fp and -callstack_use_top_fp_selectively options control whether to use the top frame pointer.  This option controls whether to continue walking the frame pointer chain.  Turning this off may be necessary if a mixture of frame pointer optimized code and un-optimized code is in use in the application, to avoid skipping interior callstack frames.")
+OPTION_CLIENT_BOOL(client, callstack_conservative, false,
+              "Perform extra checks for more accurate callstacks",
+              "By default, callstack walking is tuned for performance.  It is possible to miss some frames when application code is optimized.  Enabling this option causes extra checks to be performed to attempt to create more accurate callstacks.  These checks add extra overhead.")
 /* by default scan forward a fraction of a page: good compromise bet perf (scanning
  * can be the bottleneck) and good callstacks
  */

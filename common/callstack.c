@@ -892,6 +892,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
 
 #define OP_CALL_DIR 0xe8
 #define OP_CALL_IND 0xff
+#define OP_JMP_IND 0xff
 #define OP_SEG_FS   0x64
 #define WOW64_SYSOFFS  0xc0
 
@@ -967,6 +968,61 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
         return true;
 }
 
+/* Checks that the call preceding next_retaddr targets the function containing
+ * frame_addr.  If it can't tell, it returns true.
+ */
+static bool
+check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr,
+                            bool cross_module_only)
+{
+    app_pc frame_mod_start, ra_mod_start;
+    modname_info_t *frame_name, *ra_name;
+    app_pc pc = next_retaddr, call_target = NULL;
+    bool res = true;
+    symbolized_frame_t frame_sym;
+    if (!module_lookup(frame_addr, &frame_mod_start, NULL, &frame_name))
+        return true; /* no info */
+    if (cross_module_only &&
+        (!module_lookup(next_retaddr, &ra_mod_start, NULL, &ra_name) ||
+         frame_mod_start == ra_mod_start))
+        return true;
+#ifdef USE_DRSYMS
+    frame_sym.funcoffs = 0;
+    lookup_func_and_line(&frame_sym, frame_name, frame_addr - frame_mod_start);
+    DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+        /* We only support a direct call or a 32-bit memory indirect: not
+         * feasible to figure out register values in prior frames.
+         */
+        if (*(pc - 5) == OP_CALL_DIR) {
+            pc = *(int*)(pc - 4) + pc;
+            /* Follow "call; jmp*", where jmp* is 0xff /4 */
+            if (*pc == OP_JMP_IND &&
+                ((*(pc + 1) >> 3) == 0x14 || *(pc + 1) == 0x25)) {
+                app_pc indir = *(app_pc*)(pc + 2);
+                call_target = *(app_pc*)indir;
+            } else
+                call_target = pc;
+        } else if (*(pc - 6) == OP_CALL_IND &&
+                 ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)) {
+            app_pc indir = *(app_pc*)(pc - 4);
+            call_target = *(app_pc*)indir;
+        }
+    }, { /* EXCEPT */
+        res = false;
+        LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
+        STATS_INC(cstack_is_retaddr_unreadable);
+    });
+    if (res && call_target != NULL) {
+        LOG(3, "check: frame="PFX" (func "PFX"), ra="PFX", ra targets "PFX"\n",
+            frame_addr, frame_addr - frame_sym.funcoffs, next_retaddr, call_target);
+        res = (frame_sym.funcoffs != 0 && call_target == frame_addr - frame_sym.funcoffs);
+    }
+    return res;
+#else
+    return true; /* no info */
+#endif
+}
+
 static void
 fpcache_update(tls_callstack_t *pt, byte *fp_in, byte *fp_out, app_pc retaddr)
 {
@@ -977,7 +1033,7 @@ fpcache_update(tls_callstack_t *pt, byte *fp_in, byte *fp_out, app_pc retaddr)
 }
 
 static app_pc
-find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
+find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
              bool top_frame, app_pc *retaddr/*OUT*/)
 {
     byte *page_buf = pt->page_buf;
@@ -1154,6 +1210,14 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp,
 #endif
                 }
             }
+            if (match && prior_ra != NULL &&
+                TEST(FP_VERIFY_TARGET_IN_SCAN, ops.fp_flags) &&
+                TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET,
+                        ops.fp_flags) &&
+                !check_retaddr_targets_frame(prior_ra, slot1,
+                                             TEST(FP_VERIFY_CROSS_MODULE_TARGET,
+                                                  ops.fp_flags)))
+                match = false;
             if (match) {
                 app_pc parent_ret_ptr = slot0 + ret_offs;
                 app_pc parent_ret;
@@ -1286,7 +1350,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             }
         }
 #endif
-        pc = (ptr_uint_t *) find_next_fp(drcontext, pt, tos, true/*top frame*/,
+        /* XXX: take in top frame (cur func) for prior_ra to find_next_fp? */
+        pc = (ptr_uint_t *) find_next_fp(drcontext, pt, tos, NULL, true/*top frame*/,
                                          &custom_retaddr);
         scanned = true;
     }
@@ -1360,7 +1425,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                  */
                 LOG(4, "find_next_fp "PFX" b/c starting w/ non-fp ebp "PFX"\n",
                     mc->xsp, mc->xbp);
-                pc = (ptr_uint_t *) find_next_fp(drcontext, pt, (app_pc)mc->xsp,
+                pc = (ptr_uint_t *) find_next_fp(drcontext, pt, (app_pc)mc->xsp, NULL,
                                                  true/*top frame*/, &custom_retaddr);
                 scanned = true;
                 first_iter = false; /* don't loop */
@@ -1395,7 +1460,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 LOG(4, "find_next_fp b/c hit zero fp\n");
                 pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
                                                  ((app_pc)pc) + sizeof(appdata),
-                                                 false/*!top*/, NULL);
+                                                 appdata.retaddr, false/*!top*/, NULL);
                 scanned = true;
             } else {
                 LOG(4, "truncating callstack: zero frame ptr\n");
@@ -1410,6 +1475,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                   */
                  (ptr_uint_t)(appdata.next_fp - (app_pc)pc) >=
                  ops.stack_swap_threshold);
+            app_pc prior_ra = appdata.retaddr;
             app_pc next_fp = appdata.next_fp;
             if (!out_of_range &&
                 !safe_read((byte *)next_fp, sizeof(appdata), &appdata)) {
@@ -1430,12 +1496,24 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                         ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
                     pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
                                                      ((app_pc)pc) + sizeof(appdata),
-                                                     false/*!top*/, NULL);
+                                                     prior_ra, false/*!top*/, NULL);
                     scanned = true;
                 } else {
                     LOG(4, "truncating callstack: bad frame ptr "PFX"\n", next_fp);
                     break;
                 }
+            } else if (TEST(FP_DO_NOT_WALK_FP, ops.fp_flags) ||
+                       (TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET,
+                                ops.fp_flags) &&
+                        !check_retaddr_targets_frame(prior_ra, appdata.retaddr,
+                                                     TEST(FP_VERIFY_CROSS_MODULE_TARGET,
+                                                          ops.fp_flags)))) {
+                LOG(4, "find_next_fp "PFX" b/c not walking fp, or skips "PFX"\n",
+                    ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
+                pc = (ptr_uint_t *) find_next_fp(drcontext, pt,
+                                                 ((app_pc)pc) + sizeof(appdata),
+                                                 prior_ra, false/*!top*/, NULL);
+                scanned = true;
             } else {
                 have_appdata = true;
                 pc = (ptr_uint_t *) next_fp;

@@ -63,6 +63,7 @@ The changes between \TOOL_VERSION and version 1.6.0 include:
  - Added Windows 8.1 support
  - Added -handle_leaks_only feature for low-overhead handle leak checking
  - Added the -crash_at_unaddressable and -crash_at_error options
+ - Added the -no_callstack_use_fp and -callstack_conservative options
 
 The changes between version 1.6.0 and version 1.5.1 include:
  - Added a separate category of error report, "potential errors", stored in

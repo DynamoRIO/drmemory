@@ -136,8 +136,9 @@ callstacks in an optimized application consider disabling FPO.
 
 If your application links with a static library that was built with frame
 pointer optimizations and you observe missing frames on your callstacks,
-try running with the Dr. Memory runtime option \p -no_callstack_use_top_fp.
-This will add some additional overhead on malloc-intensive applications,
+try running with the Dr. Memory runtime options \p -no_callstack_use_top_fp,
+\p -no_callstack_use_fp, and \p -callstack_conservative.
+These will add some additional overhead on malloc-intensive applications,
 but should eliminate skipped frames.
 
 ********************

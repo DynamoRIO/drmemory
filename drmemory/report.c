@@ -1478,6 +1478,15 @@ report_init(void)
      * want to expose some flags as options
      */
     callstack_ops.fp_flags = 0;
+    if (!options.callstack_use_fp)
+        callstack_ops.fp_flags |= FP_DO_NOT_WALK_FP;
+    if (options.callstack_conservative) {
+        /* We don't expose FP_VERIFY_CROSS_MODULE_TARGET, although it can be a big
+         * perf win over FP_VERIFY_CALL_TARGET (see i#703 numbers) -- so should we
+         * have -callstack_mostly_conservative?.
+         */
+        callstack_ops.fp_flags |= FP_VERIFY_CALL_TARGET | FP_VERIFY_TARGET_IN_SCAN;
+    }
     callstack_ops.fp_scan_sz = options.callstack_max_scan;
     callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,
                                                PRINT_FOR_POSTPROCESS);
