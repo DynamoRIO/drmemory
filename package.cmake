@@ -28,6 +28,12 @@
 
 cmake_minimum_required (VERSION 2.2)
 
+# set from an including package script
+if (NOT DEFINED arg_sub_package)
+  set(arg_sub_package OFF) # build DrMem as a sub-package of containing script
+  set(arg_sub_script "")   # path to this script file
+endif ()
+
 # arguments are a ;-separated list (must escape as \; from ctest_run_script())
 set(arg_build "")      # build #
 set(arg_DR_dir "")     # DynamoRIO dir: else builds from local sources
@@ -96,11 +102,17 @@ else ()
   set(runsuite_include_path "${CTEST_SCRIPT_DIRECTORY}/dynamorio/suite")
 endif()
 
-set(CTEST_PROJECT_NAME "DrMemory")
-set(cpack_project_name "DrMemory")
-set(run_tests OFF)
-set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}")
-include("${runsuite_include_path}/runsuite_common_pre.cmake")
+if (arg_sub_package)
+  set(sub_entry "BUILDING_SUB_PACKAGE:BOOL=ON")
+  get_filename_component(CTEST_SOURCE_DIRECTORY "${arg_sub_script}" PATH)
+else ()
+  set(sub_entry "")
+  set(CTEST_PROJECT_NAME "DrMemory")
+  set(cpack_project_name "DrMemory")
+  set(run_tests OFF)
+  set(CTEST_SOURCE_DIRECTORY "${CTEST_SCRIPT_DIRECTORY}")
+  include("${runsuite_include_path}/runsuite_common_pre.cmake")
+endif ()
 
 # i#1099: be sure to set BUILDING_PACKAGE
 set(base_cache "
@@ -109,6 +121,7 @@ set(base_cache "
   UNIQUE_BUILD_NUMBER:STRING=${arg_ubuild}
   BUILD_TOOL_TESTS:BOOL=OFF
   BUILDING_PACKAGE:BOOL=ON
+  ${sub_entry}
   ${arg_cacheappend}
   ${base_cache}
   ")
@@ -150,12 +163,6 @@ if (NOT arg_drmem_only)
       " OFF ON "")
   endif (arg_x64_build)
 endif (NOT arg_drmem_only)
-testbuild_ex("drmemory-${name_sfx}release-32" OFF "
-  CMAKE_BUILD_TYPE:STRING=Release
-  " OFF ON "")
-testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
-  CMAKE_BUILD_TYPE:STRING=Debug
-  " OFF ON "")
 if (arg_x64_build)
   testbuild_ex("drmemory-${name_sfx}release-64" ON "
     CMAKE_BUILD_TYPE:STRING=Release
@@ -164,6 +171,13 @@ if (arg_x64_build)
     CMAKE_BUILD_TYPE:STRING=Debug
     " OFF ON "")
 endif (arg_x64_build)
+# 32-bit last, to match DR for embedded packaging
+testbuild_ex("drmemory-${name_sfx}release-32" OFF "
+  CMAKE_BUILD_TYPE:STRING=Release
+  " OFF ON "")
+testbuild_ex("drmemory-${name_sfx}debug-32" OFF "
+  CMAKE_BUILD_TYPE:STRING=Debug
+  " OFF ON "")
 
 if (arg_cpackappend)
   # ${last_package_build_dir} is a global var set in parent scope by
@@ -173,14 +187,16 @@ if (arg_cpackappend)
     "\n${arg_cpackappend}\n")
 endif ()
 
-set(build_package ON)
-# some packagers request an official source tarball, so we create one (i#1287):
-set(build_source_package ON)
-include("${runsuite_include_path}/runsuite_common_post.cmake")
+if (NOT arg_sub_package)
+  set(build_package ON)
+  # some packagers request an official source tarball, so we create one (i#1287):
+  set(build_source_package ON)
+  include("${runsuite_include_path}/runsuite_common_post.cmake")
 
-# copy the final archive into cur dir
-# "cmake -E copy" only takes one file so use 'z' => .tar.gz or .zip
-file(GLOB results ${last_build_dir}/DrMemory-*)
-foreach (f ${results})
-  execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${f} "${arg_outdir}")
-endforeach (f)
+  # copy the final archive into cur dir
+  # "cmake -E copy" only takes one file so use 'z' => .tar.gz or .zip
+  file(GLOB results ${last_build_dir}/DrMemory-*)
+  foreach (f ${results})
+    execute_process(COMMAND ${CMAKE_COMMAND} -E copy ${f} "${arg_outdir}")
+  endforeach (f)
+endif ()

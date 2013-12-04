@@ -153,22 +153,22 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
 
 install(DIRECTORY
   ${CMAKE_CURRENT_BINARY_DIR}/html
-  DESTINATION "${toolname}/docs"
+  DESTINATION "${INSTALL_PREFIX}${toolname}/docs"
   )
 
 # drmemory/docs/html/index.html is hard to find, so add a more-visible
 # access point:
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/docs\")")
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/docs/${toolname}.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../${toolname}/docs/html/index.html\\\">\n</head><body></body>\")")
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}docs\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}docs/${toolname}.html\" \"<html>\n<head>\n<meta http-equiv=\\\"refresh\\\" content=\\\"0; URL=../${toolname}/docs/html/index.html\\\">\n</head><body></body>\")")
 
 # IE for some reason won't initially load an .ico in a web page from a server,
 # though will show it via file: or after pointing straight at image from server.
 # doxygen fails to copy image referenced only in footer.html
 install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/favicon.png
-  DESTINATION "${toolname}/docs/html"
+  DESTINATION "${INSTALL_PREFIX}${toolname}/docs/html"
   )
 install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/favicon.ico
-  DESTINATION "${toolname}/docs/html"
+  DESTINATION "${INSTALL_PREFIX}${toolname}/docs/html"
   )

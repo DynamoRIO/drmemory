@@ -478,6 +478,12 @@ if (WIN32)
 
 endif (WIN32)
 
+if (BUILDING_SUB_PACKAGE)
+  set(INSTALL_PREFIX "drmemory/")
+else ()
+  set(INSTALL_PREFIX "")
+endif()
+
 # To run out of build dir we put libs and scripts in dirs that match install layout
 # except minus the toolname prefix dir.
 # The CPack NSIS interface requires a bin/ dir, so for the Windows package
@@ -486,25 +492,25 @@ endif (WIN32)
 # that we have drsyms on Linux and once we're sure we don't need to
 # support the old layout.
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  set(INSTALL_BIN_PREFIX ".")
+  set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}.")
   set(BUILD_BIN_PREFIX ".")
 elseif (PERL_TO_EXE)
   # We are only releasing Dr. Memory so no toolnames: would need to create
   # shortcut or .bat file to run from right dir
   if (X64)
-    set(INSTALL_BIN_PREFIX "bin64")
+    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}bin64")
     set(BUILD_BIN_PREFIX "bin64")
   else (X64)
-    set(INSTALL_BIN_PREFIX "bin")
+    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}bin")
     set(BUILD_BIN_PREFIX "bin")
   endif (X64)
 else (PERL_TO_EXE)
   # When installed we now use a bin dir for scripts
   if (X64)
-    set(INSTALL_BIN_PREFIX "${toolname}/bin64")
+    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}${toolname}/bin64")
     set(BUILD_BIN_PREFIX "bin64")
   else (X64)
-    set(INSTALL_BIN_PREFIX "${toolname}/bin")
+    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}${toolname}/bin")
     set(BUILD_BIN_PREFIX "bin")
   endif (X64)
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
@@ -677,6 +683,10 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
     message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic drsyms: please re-build with static drsyms")
   endif ()
 
+  if (BUILDING_SUB_PACKAGE)
+    message(FATAL_ERROR "Sub-package not supported with pre-built DR")
+  endif ()
+
   message(STATUS "Attempting to use pre-built DynamoRIO: ${DynamoRIO_DIR}")
   find_package(DynamoRIO ${DynamoRIO_VERSION_REQUIRED})
   if (NOT DynamoRIO_FOUND)
@@ -722,7 +732,8 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DR_EXT_DRSYMS_STATIC OFF CACHE BOOL "non-static drsyms")
   endif (NOT STATIC_DRSYMS)
   # We do not want DR install, except for the targets we need for our
-  # multi-export-set install of the DRMF.
+  # multi-export-set install of the DRMF.  We need those targets
+  # even for BUILDING_SUB_PACKAGE.
   set(DO_DR_INSTALL OFF)
   set(DO_DR_INSTALL_TARGETS ON)
   # Stick the binaries somewhere outside of the install dir.
@@ -1302,9 +1313,9 @@ endif (BUILD_TOOL_TESTS)
 
 set(DRMF_BASEDIR "drmf")
 set(DRMF_BINBASE "${LIB_ARCH}/${build_type}")
-set(DRMF_INSTALL ${DRMF_BASEDIR})
-set(DRMF_INSTALL_BIN ${DRMF_BASEDIR}/${DRMF_BINBASE})
-set(DRMF_INSTALL_INC ${DRMF_BASEDIR}/include)
+set(DRMF_INSTALL "${INSTALL_PREFIX}${DRMF_BASEDIR}")
+set(DRMF_INSTALL_BIN "${DRMF_INSTALL}/${DRMF_BINBASE}")
+set(DRMF_INSTALL_INC "${DRMF_INSTALL}/include")
 set(framework_dir "${PROJECT_BINARY_DIR}/${DRMF_BASEDIR}")
 set(framework_incdir "${framework_dir}/include")
 set(framework_bindir "${framework_dir}/${DRMF_BINBASE}")
@@ -1404,7 +1415,6 @@ if (install_override)
   set(CMAKE_INSTALL_PREFIX "${PROJECT_BINARY_DIR}/../${EXP_DIR}" 
     CACHE PATH "install path" FORCE)
 endif (install_override)
-set(INSTALL_PREFIX "${CMAKE_INSTALL_PREFIX}")
 
 install(TARGETS ${client_target}
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
@@ -1449,13 +1459,16 @@ if (WIN32)
   endif (USE_DRSYMS AND TOOL_DR_MEMORY)
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/README
-    DESTINATION "."
+    DESTINATION "${INSTALL_PREFIX}."
     RENAME "README.txt")
 else (WIN32)
   install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/README
-    DESTINATION ".")
+    DESTINATION "${INSTALL_PREFIX}.")
 endif (WIN32)
+install(FILES
+  ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
+  DESTINATION "${INSTALL_PREFIX}.")
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1490,7 +1503,7 @@ else (TOOL_DR_HEAPSTAT)
   if (UNIX)
     install(FILES
       ${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/valgrind2drmemory.pl
-      DESTINATION "bin"
+      DESTINATION "${INSTALL_PREFIX}bin"
       PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
   endif (UNIX)
@@ -1544,89 +1557,91 @@ if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
     endif (symlink_result OR symlink_error)
   endif (WIN32)
   install(DIRECTORY "${PROJECT_BINARY_DIR}/symlink/"
-    DESTINATION "bin")
+    DESTINATION "${INSTALL_PREFIX}bin")
 endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
 
 # create empty logs dir for release package
 # be sure to escape ",$ since evaluated at install time not configure time
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs\")")
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs\")")
 # CPack seems to ignore empty dirs so add a README file
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/README\" \"Default destination for log files.\n\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/README\" \"Default destination for log files.\n\")")
 # ditto for pcaches
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache\")")
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache/README\" \"Default destination for code cache files.\n\")")
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README\" \"Default destination for code cache files.\n\")")
 # ditto for DR logdir
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/dynamorio\")")
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${toolname}/logs/codecache/README\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
+install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/dynamorio\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
 
-# Include DR so user doesn't have to download separately (PR 457417).
-# We don't need docs/, include/, or 64-bit.
-# We do include 32-bit debug lib (and default DR log dir) for
-# debugging in the field: it does take space but we'd probably regret
-# not supplying it.
-set(DR_install_dir "dynamorio")
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}\")")
+if (NOT BUILDING_SUB_PACKAGE)
+  # Include DR so user doesn't have to download separately (PR 457417).
+  # We don't need docs/, include/, or 64-bit.
+  # We do include 32-bit debug lib (and default DR log dir) for
+  # debugging in the field: it does take space but we'd probably regret
+  # not supplying it.
+  set(DR_install_dir "dynamorio")
+  install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}\")")
 
-if (UNIX)
-  # FIXME: CPACK_INSTALLED_DIRECTORIES resolves symlinks instead of preserving
-  # (filed as http://www.itk.org/Bug/view.php?id=10096).
-  # So, since we're bundling a particular version anyway, we just take the .so
-  # file itself and discard all the version-named files
-  if (DEBUG_BUILD)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
-    # Include both .debug files.  These have version #s so we glob.
-    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)\nendforeach()")
-    # ext dir is currently empty but we need it to avoid drrun error (i#427)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug\")")
-    # CPack seems to ignore empty dirs so add a README file
-    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README\" \"Currently empty.\n\")")
-  else (DEBUG_BUILD)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
-    # Include both .debug files.  These have version #s so we glob.
-    # Note that addr2line/gdb will still find the 1.x.debug since the name is
-    # stored in the library.
-    install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)\nendforeach()")
-    # ext dir is currently empty but we need it to avoid drrun error (i#427)
-    install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release\")")
-    # CPack seems to ignore empty dirs so add a README file
-    install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README\" \"Currently empty.\n\")")
-  endif (DEBUG_BUILD)
-endif (UNIX)
+  if (UNIX)
+    # FIXME: CPACK_INSTALLED_DIRECTORIES resolves symlinks instead of preserving
+    # (filed as http://www.itk.org/Bug/view.php?id=10096).
+    # So, since we're bundling a particular version anyway, we just take the .so
+    # file itself and discard all the version-named files
+    if (DEBUG_BUILD)
+      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
+      # Include both .debug files.  These have version #s so we glob.
+      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)\nendforeach()")
+      # ext dir is currently empty but we need it to avoid drrun error (i#427)
+      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug\")")
+      # CPack seems to ignore empty dirs so add a README file
+      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README\" \"Currently empty.\n\")")
+    else (DEBUG_BUILD)
+      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
+      # Include both .debug files.  These have version #s so we glob.
+      # Note that addr2line/gdb will still find the 1.x.debug since the name is
+      # stored in the library.
+      install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/release/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)\nendforeach()")
+      # ext dir is currently empty but we need it to avoid drrun error (i#427)
+      install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release\")")
+      # CPack seems to ignore empty dirs so add a README file
+      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README\" \"Currently empty.\n\")")
+    endif (DEBUG_BUILD)
+  endif (UNIX)
 
-# can't find way to package external individual files (can do whole dir)
-# and we don't need entire DR docs/, include/, etc. so we do these
-# files individually
-if (EXISTS "${DynamoRIO_SOURCE_DIR}/License.txt")
-  set(DR_LICENSE_DIR "${DynamoRIO_SOURCE_DIR}")
-else ()
-  set(DR_LICENSE_DIR "${DynamoRIO_DIR}/..")
-endif ()
-install(CODE "configure_file(\"${DR_LICENSE_DIR}/License.txt\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/License.txt\" COPYONLY)")
-install(CODE "configure_file(\"${DR_LICENSE_DIR}/ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
-# rather whan whole README, which talks about running samples, etc.:
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
-# on Windows we don't need all the ${BIN_ARCH}/ tools, and they take up space
-install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
-if (UNIX)
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib.so\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib.so\" COPYONLY)")
-else (UNIX)
-  if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinject.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinject.exe\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun.exe\" COPYONLY)")
-  endif (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfiglib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfiglib.dll\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinjectlib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinjectlib.dll\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
-  install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
-endif (UNIX)
+  # can't find way to package external individual files (can do whole dir)
+  # and we don't need entire DR docs/, include/, etc. so we do these
+  # files individually
+  if (EXISTS "${DynamoRIO_SOURCE_DIR}/License.txt")
+    set(DR_LICENSE_DIR "${DynamoRIO_SOURCE_DIR}")
+  else ()
+    set(DR_LICENSE_DIR "${DynamoRIO_DIR}/..")
+  endif ()
+  install(CODE "configure_file(\"${DR_LICENSE_DIR}/License.txt\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/License.txt\" COPYONLY)")
+  install(CODE "configure_file(\"${DR_LICENSE_DIR}/ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
+  # rather whan whole README, which talks about running samples, etc.:
+  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
+  # on Windows we don't need all the ${BIN_ARCH}/ tools, and they take up space
+  install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
+  if (UNIX)
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib.so\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib.so\" COPYONLY)")
+  else (UNIX)
+    if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinject.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinject.exe\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun.exe\" COPYONLY)")
+    endif (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfiglib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfiglib.dll\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drinjectlib.dll\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drinjectlib.dll\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRcontrol.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRcontrol.exe\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/DRview.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/DRview.exe\" COPYONLY)")
+  endif (UNIX)
+endif (NOT BUILDING_SUB_PACKAGE)
 
 # DRMF install rules
 install(FILES ${framework_incdir}/drmemory_framework.h DESTINATION ${DRMF_INSTALL_INC})
@@ -1727,7 +1742,7 @@ string(REGEX REPLACE
 string(REGEX REPLACE 
   "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" CPACK_PACKAGE_VERSION_PATCH "${TOOL_VERSION_NUMBER}")
 
-if (WIN32)
+if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
   # For Unix we do this file-by-file above b/c here we'd get duplicate
   # files due to cpack not preserving symlinks (filed as
@@ -1754,7 +1769,7 @@ if (WIN32)
         "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/release;${DR_install_dir}/ext/${LIB_ARCH}/release")
     endif (DEBUG_BUILD)
   endif (NOT USER_SPECIFIED_DynamoRIO_DIR)
-endif (WIN32)
+endif (WIN32 AND NOT BUILDING_SUB_PACKAGE)
 
 # CPack tarballs do not allow setting a different name for the base
 # directory and the file: I tried a ton of CPack variables for "install
