@@ -27,6 +27,7 @@
 #include "syscall.h"
 #include "drsyscall.h"
 #include "../wininc/ndk_extypes.h"
+#include "../wininc/ndk_psfuncs.h" /* for PROCESSINFOCLASS */
 
 #ifndef WINDOWS
 # error WINDOWS-only
@@ -85,6 +86,11 @@ GET_NTDLL(NtQuerySystemInformation, (IN  SYSTEM_INFORMATION_CLASS info_class,
                                      OUT PVOID  info,
                                      IN  ULONG  info_size,
                                      OUT PULONG bytes_received));
+GET_NTDLL(NtQueryInformationProcess, (IN HANDLE ProcessHandle,
+                                      IN PROCESSINFOCLASS ProcessInformationClass,
+                                      OUT PVOID ProcessInformation,
+                                      IN ULONG ProcessInformationLength,
+                                      OUT PULONG ReturnLength OPTIONAL));
 
 #define SYSTEM_HANDLE_INFORMATION_SIZE_INIT 0x10000
 #define SYSTEM_HANDLE_INFORMATION_LIST_SIZE(x) \
@@ -152,57 +158,117 @@ get_system_handle_list(OUT size_t *size_out)
     return list;
 }
 
-/* the caller must free the list by calling free_process_handle_list */
+static ULONG
+get_process_handle_count(void)
+{
+    NTSTATUS res;
+    ULONG got, count = 0;
+    res = NtQueryInformationProcess(NT_CURRENT_PROCESS, ProcessHandleCount,
+                                    &count, sizeof(count), &got);
+    LOG(HANDLE_VERBOSE_2, "Process handle count: "PFX"\n",(ptr_uint_t)count);
+    if (!NT_SUCCESS(res))
+        return 0;
+    ASSERT(got == sizeof(ULONG), "fail to get handle count");
+    return count;
+}
+
+/* Returns NULL if fail to find the list.
+ * The caller must free the list by calling free_process_handle_list.
+ */
 static SYSTEM_HANDLE_INFORMATION *
-get_process_handle_list()
+get_process_handle_list(void)
 {
     SYSTEM_HANDLE_INFORMATION *sys_list, *our_list = NULL;
-    SYSTEM_HANDLE_ENTRY *h_our, *h_sys;
-    size_t sys_list_size, our_list_size, i, count;
+    SYSTEM_HANDLE_ENTRY *h_our, *h_sys, *h_start;
+    size_t sys_list_size, our_list_size;
     uint pid = dr_get_process_id();
+    uint num_matched_pid;
+    ULONG proc_h_cnt, i;
 
     sys_list = get_system_handle_list(&sys_list_size);
-    ASSERT(sys_list != NULL, "fail to get system handle list");
-    h_sys = &sys_list->Handle[0];
-    for (i = 0, count = 0; i < sys_list->Count; i++, h_sys++) {
-        if (h_sys->OwnerPid == pid)
-            count++;
+    if (sys_list == NULL) {
+        ASSERT(false, "fail to get system handle list");
+        return NULL;
     }
-    if (count == 0) {
-        /* i#1389: NtQuerySystemInformation SystemHandleInformation returns
-         * a truncated process id from the real pid, i.e., higher 16-bit of
-         * the real pid is cleared.
-         * Assuming every prcess will have at least one handle, any pid value
-         * that is not found in the list must be greater than 0x10000.
-         */
-        ASSERT(pid > 0x10000, "pid not found for unknown reason");
-        /* we truncate the real pid to match the pid value returned from
-         * NtQuerySystemInformation SystemHandleInformation
-         */
-        pid = pid & 0xffff;
-        h_sys = &sys_list->Handle[0];
-        for (i = 0, count = 0; i < sys_list->Count; i++, h_sys++) {
-            if (h_sys->OwnerPid == pid)
-                count++;
+    /* i#1389: NtQuerySystemInformation SystemHandleInformation returns
+     * a truncated process id from the real pid, i.e., higher 16-bit of
+     * the real pid is cleared. So it is possible that there are several
+     * processes having the same pid in the list. We use the handle count
+     * obtained by get_process_handle_count to find the most likely
+     * process handle list.
+     * Assuming a process' handles are stored contiguously in the list, and
+     * two processes having the same pid are not stored next to each other.
+     * We count the number of handles of each matched pid chunk for comparison.
+     */
+    proc_h_cnt = get_process_handle_count();
+    if (proc_h_cnt == 0) {
+        free_system_handle_list(sys_list, sys_list_size);
+        return NULL;
+    }
+    do {
+        SYSTEM_HANDLE_ENTRY *h_sys_end = &sys_list->Handle[0] + sys_list->Count;
+        ULONG count;
+        num_matched_pid = 0;
+        h_start = NULL;
+        /* iterate over the whole handle list */
+        for (h_sys = &sys_list->Handle[0]; h_sys < h_sys_end; h_sys++) {
+            /* if pid is matched, count the handles in that chunk */
+            if (h_sys->OwnerPid == pid) {
+                num_matched_pid++;
+                for (h_start = h_sys, count = 0;
+                     h_sys < h_sys_end && h_sys->OwnerPid == pid;
+                     h_sys++)
+                    count++;
+                if (count == proc_h_cnt) {
+                    /* found the most likely process handle list */
+                    break;
+                }
+            }
         }
+        if (h_start != NULL) {
+            /* We saw matched pid but not matched count.
+             * If there is only one matched pid in the list, we will use it.
+             * Otherwise, we use our own kernel handle table instead.
+             */
+            if (num_matched_pid == 1) {
+                /* use the only matched one */
+                proc_h_cnt = count;
+            } else {
+                /* fail to find one, use our own table */
+                h_start = NULL;
+            }
+            break;
+        } else {
+            if (pid < 0x10000) {
+                /* fail for unknown reason */
+                ASSERT(false, "fail to find the process in the handle list");
+                break;
+            }
+            /* i#1389: we truncate the real pid to match the pid value returned
+             * from NtQuerySystemInformation SystemHandleInformation and try again.
+             */
+            pid = pid & 0xffff;
+        }
+    } while (true);
+
+    if (h_start == NULL) {
+        LOG(HANDLE_VERBOSE_1, "fail to find the process handle list");
+        free_system_handle_list(sys_list, sys_list_size);
+        return NULL;
     }
 
-    ASSERT(count != 0, "no handle in current process!");
-    our_list_size = SYSTEM_HANDLE_INFORMATION_LIST_SIZE(count);
+    our_list_size = SYSTEM_HANDLE_INFORMATION_LIST_SIZE(proc_h_cnt);
     our_list = (SYSTEM_HANDLE_INFORMATION *)
         global_alloc(our_list_size, HEAPSTAT_MISC);
-    our_list->Count = count;
-    h_sys = &sys_list->Handle[0];
+    our_list->Count = proc_h_cnt;
+    h_sys = h_start;
     h_our = &our_list->Handle[0];
-    for (i = 0; i < count; h_sys++) {
-        if (h_sys->OwnerPid == pid) {
-            *h_our = *h_sys;
-            ASSERT(h_our == &our_list->Handle[0] ||
-                   h_our->HandleValue > (h_our - 1)->HandleValue,
-                   "handle is not stored in the sorted order");
-            h_our++;
-            i++;
-        }
+    for (i = 0; i < proc_h_cnt; h_sys++, h_our++, i++) {
+        *h_our = *h_sys;
+        ASSERT(h_sys->OwnerPid == pid, "wrong handle list");
+        ASSERT(h_our == &our_list->Handle[0] ||
+               h_our->HandleValue > (h_our - 1)->HandleValue,
+               "handle is not stored in the sorted order");
     }
     free_system_handle_list(sys_list, sys_list_size);
     ASSERT(our_list != NULL, "fail to get process handle list");
@@ -477,7 +543,7 @@ handlecheck_iterate_handle_table(hashtable_t *table, const char *name)
 }
 
 /* caller must hold handle table lock and open/close table lock */
-static void
+static bool
 handlecheck_enumerate_handles(void)
 {
     SYSTEM_HANDLE_INFORMATION *list;
@@ -489,6 +555,8 @@ handlecheck_enumerate_handles(void)
      */
     LOG(HANDLE_VERBOSE_3, "get process handle list\n");
     list = get_process_handle_list();
+    if (list == NULL)
+        return false;
     /* iterate the list and report handle leaks */
     entry = &list->Handle[0];
     for (i = 0; i < list->Count; i++, entry++) {
@@ -510,6 +578,7 @@ handlecheck_enumerate_handles(void)
                                       (handle_callstack_info_t *)res);
     }
     free_process_handle_list(list);
+    return true;
 }
 
 static void
@@ -522,7 +591,13 @@ handlecheck_iterate_handles(void)
 
     /* kernel handles */
     LOG(HANDLE_VERBOSE_3, "enumerating kernel handles");
-    handlecheck_enumerate_handles();
+    if (!handlecheck_enumerate_handles()) {
+        /* i#1389: kernel handle enumeration may fail, in which case
+         * we iterate kernel handle table instead
+         */
+        LOG(HANDLE_VERBOSE_3, "iterating kernel handles");
+        handlecheck_iterate_handle_table(&kernel_handle_table, "KERNEL");
+    }
     /* user handles */
     LOG(HANDLE_VERBOSE_3, "iterating user handles");
     handlecheck_iterate_handle_table(&user_handle_table, "USER");
