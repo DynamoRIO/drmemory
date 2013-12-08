@@ -951,9 +951,12 @@ set_shadow_opnds(fastpath_info_t *mi)
     }
 }
 
-/* Identifies other cases where we check definedness rather than propagating  */
+/* Identifies other cases where we check definedness rather than propagating.
+ * Called prior to obtaining scratch regs, and thus prior to setting
+ * mi->src and mi->dst.
+ */
 static void
-set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
+set_check_definedness_pre_regs(void *drcontext, instr_t *inst, fastpath_info_t *mi)
 {
     int opc = instr_get_opcode(inst);
     ASSERT(mi != NULL, "invalid args");
@@ -975,6 +978,17 @@ set_check_definedness(void *drcontext, instr_t *inst, fastpath_info_t *mi)
         (!opnd_is_immed_int(instr_get_src(inst, 0)) ||
          opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0))
          mi->check_definedness = true;
+}
+
+/* Identifies other cases where we check definedness rather than propagating.
+ * Called after obtaining scratch regs, and thus after setting
+ * mi->src and mi->dst.
+ */
+static void
+set_check_definedness_post_regs(void *drcontext, instr_t *inst, fastpath_info_t *mi)
+{
+    int opc = instr_get_opcode(inst);
+    ASSERT(mi != NULL, "invalid args");
     /* cwde, etc. aren't handled in fastpath */
     if (!opnd_is_null(mi->src[0].app) && mi->src_opsz < mi->opsz &&
         opc != OP_movzx && opc != OP_movsx)
@@ -1996,8 +2010,9 @@ needs_shadow_op(instr_t *inst)
  * Keep in sync w/ needs_shadow_op().
  */
 static void
-insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
-                 reg_id_t reg8, reg_id_t scratch8)
+insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
+                 reg_id_t reg8, reg_id_t scratch8,
+                 scratch_reg_info_t *si8/*for scratch8*/)
 {
     /* FIXME: doesn't support non-immed-int operands yet: for those we
      * go to slowpath (xref PR 574918).  Also requires a scratch reg for %8!=0
@@ -2018,6 +2033,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
             } else {
                 /* need to merge partial bytes */
                 ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
+                mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
                                         opnd_create_reg(reg8)));
@@ -2046,12 +2062,32 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (shift > opsz*8)
                 shift = opsz*8;
             if (shift % 8 == 0) {
-                PRE(bb, inst,
-                    INSTR_CREATE_shr(drcontext, opnd_create_reg(reg8),
-                                     OPND_CREATE_INT8((shift / 8)*2)));
+                if (opc == OP_shr) {
+                    PRE(bb, inst,
+                        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg8),
+                                         OPND_CREATE_INT8((shift / 8)*2)));
+                } else {
+                    /* shift-in bits come from top bit */
+                    ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
+                    mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
+                    while (shift > 0) {
+                        PRE(bb, inst,
+                            INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
+                                                opnd_create_reg(reg8)));
+                        PRE(bb, inst,
+                            INSTR_CREATE_sar(drcontext, opnd_create_reg(reg8),
+                                             OPND_CREATE_INT8(2)));
+                        PRE(bb, inst,
+                            INSTR_CREATE_or(drcontext, opnd_create_reg(reg8),
+                                            opnd_create_reg(scratch8)));
+                        shift -= 8;
+                    }
+                }
             } else {
                 /* need to merge partial bytes */
                 ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
+                mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
+                ASSERT(opc != OP_sar, "NYI");
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
                                         opnd_create_reg(reg8)));
@@ -2695,7 +2731,8 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      * is in src.  We now perform any shifting, and then write to dest.
      */
     if (opnd_is_reg(src.shadow)) {
-        insert_shadow_op(drcontext, bb, inst, opnd_get_reg(src.shadow), scratch8);
+        insert_shadow_op(drcontext, bb, mi, inst, opnd_get_reg(src.shadow), scratch8,
+                         si8);
     } else
         ASSERT(opnd_is_immed_int(src.shadow), "invalid shadow src");
     if (src_opsz == 4) {
@@ -3891,6 +3928,20 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
         mi->need_nonoffs_reg3 = true;
 
+#ifdef TOOL_DR_MEMORY
+    /* other cases where we check definedness rather than propagating */
+    set_check_definedness_pre_regs(drcontext, inst, mi);
+
+    if (!mi->need_offs && options.check_uninitialized && !mi->check_definedness &&
+        /* We need a scratch reg in insert_shadow_op().
+         * XXX: would be better to request down there -- feasible with drreg?
+         */
+        (needs_shadow_op(inst) &&
+         opnd_is_immed_int(instr_get_src(inst, 0)) &&
+         (opc == OP_sar || opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0)))
+        mi->need_nonoffs_reg3 = true;
+#endif
+
     check_appval = (opc == OP_and || opc == OP_test || opc == OP_or) &&
         /* only for word size so no conflict w/ reg3 */
         mi->src_opsz == 4;
@@ -3927,7 +3978,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     set_shadow_opnds(mi);
 
     /* other cases where we check definedness rather than propagating */
-    set_check_definedness(drcontext, inst, mi);
+    set_check_definedness_post_regs(drcontext, inst, mi);
 
     mark_defined =
         !options.check_uninitialized ||

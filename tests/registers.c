@@ -748,6 +748,12 @@ GLOBAL_LABEL(FUNCNAME:)
         sub   DWORD [REG_XCX + 32],edx
         sub   edx, DWORD [REG_XCX + 32]
 
+        /* test sar (i#1399) */
+        mov   eax,0
+        mov   ah, BYTE [REG_XCX + 44] /* ah undef */
+        sar   ax,8
+        cmp   ah,0 /* uninit */
+
         /* restore callee-saved regs */
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         pop      REG_XSI
