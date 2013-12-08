@@ -2740,7 +2740,19 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi, opnd_t *deco
              * their code cache forms.
              */
         } else {
-            LOG(1, "unknown generated app instr");
+            DOLOG(1, {
+                if (instr_get_opcode(inst) == OP_mov_st &&
+                    opnd_is_immed_int(instr_get_src(inst, 0)) &&
+                    opnd_is_base_disp(instr_get_dst(inst, 0)) &&
+                    opnd_get_base(instr_get_dst(inst, 0)) == DR_REG_XDX) {
+                    /* this is the stack zero from bb_handle_chkstk() */
+                } else {
+                    void *drcontext = dr_get_current_drcontext();
+                    LOG(1, "unknown generated app instr: ");
+                    instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext));
+                    LOG(1, "\n");
+                }
+            });
             /* To try and handle any generated app2app we point at the
              * cache instr.  We'll have to construct fake instrs to point
              * at if we end up encountering any mangled instrs.
@@ -4277,6 +4289,7 @@ bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
     /* Note that we use store (the next instr)'s pc, because if there is
      * fault or relocation on this instruction, we do not want to reexecute
      * "mov eax, [eax]". In contrast, it should be ok to skip "mov [edx], 0".
+     * This is pattern-matched in instr_shared_slowpath_decode_pc().
      * XXX: this may confuse a client/user when a fault happens there,
      * as its translation is the store instruction "mov [esp], eax".
      */

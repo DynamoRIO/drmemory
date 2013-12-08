@@ -2169,8 +2169,12 @@ add_alloca_exception(void *drcontext, app_pc pc)
     LOG(2, "adding "PFX" to ignore_unaddr_table from thread "SZFMT
         ", exists: %d\n", pc, dr_get_thread_id(drcontext), !success);
     if (!success) {
-        /* this can happen on concurrent execution prior to the flush */
-        ELOG(0, "WARNING: ignore_unaddr_table entry came to slowpath\n");
+        /* This can happen on concurrent execution prior to the flush.
+         * In fact, with the delayed flush, these message tend to clutter
+         * the log, so downgrading.
+         */
+        LOG(1, "ignore_unaddr_table entry came to slowpath: likely no problem"
+            " (delay flush just hasn't started yet)\n");
     } else {
         success = dr_delay_flush_region(pc, 1, 0, NULL);
         ASSERT(success, "ignore_unaddr_table flush failed");
