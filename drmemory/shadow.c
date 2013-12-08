@@ -1484,9 +1484,12 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
     ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     val = *(((byte*)sr) + reg_shadow_offs(reg));
-    if (sz == OPSZ_1)
-        val &= 0x3;
-    else if (sz == OPSZ_2)
+    if (sz == OPSZ_1) {
+        if (reg_is_8bit_high(reg))
+            val = (val & 0xc) >> 2;
+        else
+            val &= 0x3;
+    } else if (sz == OPSZ_2)
         val &= 0xf;
     else
         ASSERT(sz == OPSZ_4, "internal shadow reg error");

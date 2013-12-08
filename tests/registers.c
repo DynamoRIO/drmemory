@@ -726,6 +726,24 @@ GLOBAL_LABEL(FUNCNAME:)
         movzx edx,ah
         cmp   edx,0 /* NOT uninit */
 
+        /* test movzx upper bits (i#1396) */
+        mov   edx, DWORD [REG_XCX + 40] /* edx all undef */
+        mov   eax,0
+        movzx edx, ax
+        cmp   edx,0 /* NOT uninit */
+        mov   edx, DWORD [REG_XCX + 40] /* edx all undef */
+        mov   eax, edx /* eax all undef */
+        movzx ax, dl
+        cmp   ah,0 /* NOT uninit */
+        mov   edx, DWORD [REG_XCX + 40] /* edx all undef */
+        mov   eax, edx /* eax all undef */
+        movzx eax, dl
+        cmp   ah,0 /* NOT uninit */
+        mov   edx, DWORD [REG_XCX + 40] /* edx all undef */
+        mov   WORD [REG_XCX + 66],0
+        movzx edx, WORD [REG_XCX + 66]
+        cmp   edx,0 /* NOT uninit */
+
         /* ALU */
         sub   DWORD [REG_XCX + 32],edx
         sub   edx, DWORD [REG_XCX + 32]
