@@ -301,11 +301,12 @@ lookup_symbol(const char *dllpath, const char *sym)
 }
 
 static bool
-search_cb(const char *name, size_t modoffs, void *data)
+search_cb(drsym_info_t *info, drsym_error_t status, void *data)
 {
     const char *match = (const char *) data;
-    if (match == NULL || strcmp(name, match) == 0)
-        printf("%s +0x%x\n", name, (uint)modoffs);
+    if (match == NULL || strcmp(info->name, match) == 0)
+        printf("%s +0x%x-0x%x\n", info->name, (uint)info->start_offs,
+               (uint)info->end_offs);
     return true; /* keep iterating */
 }
 
@@ -317,11 +318,12 @@ enumerate_symbols(const char *dllpath, const char *match, bool search, bool sear
         get_and_print_debug_kind(dllpath);
 #ifdef WINDOWS
     if (search)
-        symres = drsym_search_symbols(dllpath, match, searchall, search_cb, NULL);
+        symres = drsym_search_symbols_ex(dllpath, match, searchall, search_cb,
+                                         sizeof(drsym_info_t), NULL);
     else {
 #endif
-        symres = drsym_enumerate_symbols(dllpath, search_cb, (void *)match,
-                                         DRSYM_DEMANGLE);
+        symres = drsym_enumerate_symbols_ex(dllpath, search_cb, sizeof(drsym_info_t),
+                                            (void *)match, DRSYM_DEMANGLE);
 #ifdef WINDOWS
     }
 #endif
