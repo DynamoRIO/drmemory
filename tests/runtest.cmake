@@ -518,6 +518,11 @@ if (resmatch)
   string(REGEX REPLACE " 0x[0-9a-f]+" "" results "${results}")
   # canonicalize by removing ".exe" (XXX: maybe should have regex in .res instead?)
   string(REGEX REPLACE "\\.exe!" "!" results "${results}")
+  # canonicalize asm file name, which varies by VS vs ninja vs gcc
+  #   ninja: registers.c_asm.asm.obj.s:1097
+  #      VS: registers.c_asm.asm.s:1080
+  #     gcc: registers.c_asm.asm:720
+  string(REGEX REPLACE "c_asm\\.asm[\\.a-z]*" "c_asm.asm" results "${results}")
 
   string(REGEX MATCHALL "([^\n]+)\n" lines "${resmatch}")
   set(require_in_order 1)

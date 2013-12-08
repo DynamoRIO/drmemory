@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -24,15 +24,15 @@
 # while pattern mode reports "writing 1 byte(s)" error.
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS:
-registers.c:490
+registers.c:366
 Error #2: UNADDRESSABLE ACCESS:
-registers.c:502
+registers.c:378
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS:
-registers.c:532
+registers.c:408
 Error #2: UNADDRESSABLE ACCESS:
-registers.c:543
+registers.c:419
 %endif
 Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes

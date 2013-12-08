@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -21,66 +21,66 @@
 #
 %if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:99
+registers.c:100
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:106
+registers.c:107
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
-registers.c:126
+registers.c:127
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c:376
+registers.c_asm.asm:1080
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c:393
+registers.c_asm.asm:1097
 Error #6: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:464
+registers.c:340
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:164
+registers.c:165
 Error #8: UNINITIALIZED READ: reading register eflags
-registers.c:210
+registers.c:211
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c:214
+registers.c:215
 Error #10: UNINITIALIZED READ: reading register cl
-registers.c:219
+registers.c:220
 Error #11: UNINITIALIZED READ: reading register ecx
-registers.c:253
+registers.c:254
 Error #12: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:283
+registers.c:284
 Error #13: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:490
+registers.c:366
 Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:502
+registers.c:378
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:116
+registers.c:117
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:123
+registers.c:124
 Error #3: UNINITIALIZED READ: reading register eax
-registers.c:126
+registers.c:127
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c:437
+registers.c_asm.asm:720
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c:454
+registers.c_asm.asm:737
 Error #6: UNINITIALIZED READ: reading register eax
-registers.c:464
+registers.c:340
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:188
+registers.c:189
 Error #8: UNINITIALIZED READ: reading register eflags
-registers.c:226
+registers.c:227
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c:230
+registers.c:231
 Error #10: UNINITIALIZED READ: reading register cl
-registers.c:235
+registers.c:236
 Error #11: UNINITIALIZED READ: reading register ecx
-registers.c:264
+registers.c:265
 Error #12: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:289
+registers.c:290
 Error #13: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:532
+registers.c:408
 Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:543
+registers.c:419
 %endif
 Error #15: UNINITIALIZED READ: reading register eax
-registers.c:607
+registers.c:483
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
 : LEAK 15 direct bytes + 0 indirect bytes

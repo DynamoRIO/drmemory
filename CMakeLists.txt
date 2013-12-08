@@ -827,7 +827,11 @@ endif ()
 # assembly support
 
 # set up assembly support and CMAKE_CPP
+set(old_debug ${DEBUG})
+set(DEBUG ON) # ensure we get debug info
 include(${DynamoRIO_DIR}/cpp2asm_support.cmake)
+set(DEBUG ${old_debug})
+
 if (UNIX)
   if (NOT CMAKE_ASM_SUPPORTS_INTEL_SYNTAX)
     message(FATAL_ERROR "${CMAKE_ASM_COMPILER} does not support required flags")

@@ -55,6 +55,7 @@ static int array[128];
  */
 void float_test_asm(double *zero);
 void regtest_asm(int array[128], gpr_t *gpr_pre, gpr_t *gpr_post);
+void subdword_test2_asm(char *undef, int *val1, int *val2);
 
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
@@ -333,132 +334,7 @@ subdword_test2(void)
     char *undef = (char *) malloc(128);
     int val1, val2;
     printf("before subdword test2!\n");
-#ifdef WINDOWS
-    /* XXX i#403: add asm_defines.asm and write cross-os asm: this is getting
-     * hard to maintain w/ two copies
-     */
-    __asm {
-        mov   ecx, undef
-
-        /* shift uninit bits away */
-        mov   eax, 0
-        add   ax, word ptr [ecx + 32]
-        shl   eax, 8
-        movzx edx, al
-        mov   val1, edx
-        shr   eax, 8
-        movzx edx, al
-        mov   val2, edx
-
-        /* test sub-dword offs mismatch (i#396) */
-        mov   eax, 0
-        mov   al, byte ptr [ecx + 32] /* so al undef, ah def */
-        mov   byte ptr [ecx + 0], ah
-        cmp   byte ptr [ecx + 0], 0 /* NOT uninit */
-
-        mov   dl,ah /* test reg-reg sub-dword mismatch-offs */
-        cmp   dl,0 /* NOT uninit */
-
-        xchg  al,ah /* now ah undef */
-        mov   byte ptr [ecx + 66],0x64
-        imul  byte ptr [ecx + 66] /* reads al, writes ax */
-        cmp   ax,0 /* NOT uninit */
-
-        mov   edx,0
-        mov   byte ptr [ecx + 67],0x64
-        div   byte ptr [ecx + 66] /* 3 srcs and 2 dsts */
-        cmp   ax,0 /* NOT uninit */
-
-        mov   al, byte ptr [ecx + 32] /* al undef */
-        mov   ah,4 /* al still undef */
-        mov   byte ptr [ecx + 66],0x64
-        idiv  byte ptr [ecx + 66] /* writes ah and al: test double dest */
-        cmp   ax,0 /* uninit */
-
-        mov   edx, dword ptr [ecx + 64]
-        mov   dx,0 /* now edx bottom 16 defined, top 16 undef */
-        mov   word ptr [ecx + 66],0
-        add   dx,word ptr [ecx + 66] /* def, unless use wrong edx subdw offs */
-        cmp   dx,0 /* NOT uninit */
-
-        sub   word ptr [ecx + 66],dx /* def, unless use wrong edx subdw offs */
-        cmp   dx,0 /* NOT uninit */
-
-        /* test movzx offs mismatch (i#396) */
-        mov   eax,0
-        mov   al, byte ptr [ecx + 32] /* al undef */
-        movzx dx,ah
-        cmp   dx,0 /* NOT uninit */
-        movzx dx,al
-        cmp   dx,0 /* uninit */
-        movzx edx,ah
-        cmp   edx,0 /* NOT uninit */
-
-        /* ALU */
-        sub   dword ptr [ecx + 32],edx
-        sub   edx, dword ptr [ecx + 32]
-    }
-#else
-    asm("mov   %0, %%ecx" : : "g"(undef) : "ecx");
-
-    /* shift uninit bits away */
-    asm("mov   $0, %eax");
-    asm("add   32(%ecx), %ax");
-    asm("shl   $8,%eax");
-    asm("movzx %al,%edx");
-    asm("mov   %%edx, %0" : "=m"(val1));
-    asm("shr   $8,%eax");
-    asm("movzx %al,%edx");
-    asm("mov   %%edx, %0" : "=m"(val2));
-
-    /* test sub-dword offs mismatch (i#396) */
-    asm("mov   $0,%eax");
-    asm("mov   32(%ecx),%al"); /* so al undef, ah def */
-    asm("mov   %ah,0(%ecx)");
-    asm("cmpb  $0, 0(%ecx)"); /* NOT uninit */
-
-    asm("mov   %ah,%dl"); /* test reg-reg sub-dword mismatch-offs */
-    asm("cmpb  $0, %dl"); /* NOT uninit */
-
-    asm("xchg  %ah,%al"); /* now ah undef */
-    asm("movb  $0x64,66(%ecx)");
-    asm("imulb 66(%ecx)"); /* reads al, writes ax */
-    asm("cmp   $0, %ax"); /* NOT uninit */
-
-    asm("mov   $0, %edx");
-    asm("movb  $0x64,67(%ecx)");
-    asm("divw  66(%ecx)"); /* 3 srcs and 2 dsts */
-    asm("cmp   $0, %ax"); /* NOT uninit */
-
-    asm("mov   32(%ecx),%al"); /* al undef */
-    asm("mov   $4,%ah"); /* al still undef */
-    asm("movb  $0x64,66(%ecx)");
-    asm("idivb 66(%ecx)"); /* writes ah and al: test double dest */
-    asm("cmp   $0, %ax"); /* uninit */
-
-    asm("mov   64(%ecx),%edx");
-    asm("mov   $0, %dx"); /* now edx bottom 16 defined, top 16 undef */
-    asm("movw  $0, 66(%ecx)");
-    asm("add   66(%ecx),%dx"); /* def, unless use wrong edx subdw offs */
-    asm("cmp   $0, %dx"); /* NOT uninit */
-
-    asm("sub   %dx,66(%ecx)"); /* def, unless use wrong edx subdw offs */
-    asm("cmp   $0, %dx"); /* NOT uninit */
-
-    /* test movzx offs mismatch (i#396) */
-    asm("mov   $0,%eax");
-    asm("mov   32(%ecx),%al"); /* al undef */
-    asm("movzx %ah,%dx");
-    asm("cmp   $0, %dx"); /* NOT uninit */
-    asm("movzx %al,%dx");
-    asm("cmp   $0, %dx"); /* uninit */
-    asm("movzx %ah,%edx");
-    asm("cmp   $0, %edx"); /* NOT uninit */
-
-    /* ALU */
-    asm("sub   %edx,32(%ecx)");
-    asm("sub   32(%ecx),%edx");
-#endif
+    subdword_test2_asm(undef, &val1, &val2);
     if (val1 == 0) /* NOT uninit */
         array[0] = val1;
     if (val2 == 0) /* uninit */
@@ -775,6 +651,88 @@ GLOBAL_LABEL(FUNCNAME:)
         xor      edx, edx
         div      di
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME subdword_test2_asm
+/* void subdword_test2_asm(char *undef, int *val1, int *val2) */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        mov      REG_XDX, ARG3
+        /* save callee-saved regs */
+        PUSH_SEH(REG_XDI)
+        PUSH_SEH(REG_XSI)
+        END_PROLOG
+        /* now put args into registers unused in legacy code below */
+        mov      REG_XDI, REG_XAX /* val1 */
+        mov      REG_XSI, REG_XDX /* val2 */
+
+        /* shift uninit bits away */
+        mov   eax, 0
+        add   ax, word ptr [REG_XCX + 32]
+        shl   eax, 8
+        movzx edx, al
+        mov   DWORD [REG_XDI], edx
+        shr   eax, 8
+        movzx edx, al
+        mov   DWORD [REG_XSI], edx
+
+        /* test sub-dword offs mismatch (i#396) */
+        mov   eax, 0
+        mov   al, BYTE [REG_XCX + 32] /* so al undef, ah def */
+        mov   BYTE [REG_XCX + 0], ah
+        cmp   BYTE [REG_XCX + 0], 0 /* NOT uninit */
+
+        mov   dl,ah /* test reg-reg sub-dword mismatch-offs */
+        cmp   dl,0 /* NOT uninit */
+
+        xchg  al,ah /* now ah undef */
+        mov   BYTE [REG_XCX + 66], HEX(64)
+        imul  BYTE [REG_XCX + 66] /* reads al, writes ax */
+        cmp   ax,0 /* NOT uninit */
+
+        mov   edx,0
+        mov   BYTE [REG_XCX + 67], HEX(64)
+        div   BYTE [REG_XCX + 66] /* 3 srcs and 2 dsts */
+        cmp   ax,0 /* NOT uninit */
+
+        mov   al, BYTE [REG_XCX + 32] /* al undef */
+        mov   ah,4 /* al still undef */
+        mov   BYTE [REG_XCX + 66], HEX(64)
+        idiv  BYTE [REG_XCX + 66] /* writes ah and al: test double dest */
+        cmp   ax,0 /* uninit */
+
+        mov   edx, DWORD [REG_XCX + 64]
+        mov   dx,0 /* now edx bottom 16 defined, top 16 undef */
+        mov   WORD [REG_XCX + 66],0
+        add   dx,WORD [REG_XCX + 66] /* def, unless use wrong edx subdw offs */
+        cmp   dx,0 /* NOT uninit */
+
+        sub   WORD [REG_XCX + 66],dx /* def, unless use wrong edx subdw offs */
+        cmp   dx,0 /* NOT uninit */
+
+        /* test movzx offs mismatch (i#396) */
+        mov   eax,0
+        mov   al, BYTE [REG_XCX + 32] /* al undef */
+        movzx dx,ah
+        cmp   dx,0 /* NOT uninit */
+        movzx dx,al
+        cmp   dx,0 /* uninit */
+        movzx edx,ah
+        cmp   edx,0 /* NOT uninit */
+
+        /* ALU */
+        sub   DWORD [REG_XCX + 32],edx
+        sub   edx, DWORD [REG_XCX + 32]
+
+        /* restore callee-saved regs */
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        pop      REG_XSI
         pop      REG_XDI
         ret
         END_FUNC(FUNCNAME)
