@@ -57,8 +57,8 @@ static uint verbose;
 #undef ASSERT /* we don't want msgbox */
 #define ASSERT(cond, msg) \
     ((void)((!(cond)) ? \
-     (OUTPUT(STDERR, "ASSERT FAILURE: %s:%d: %s (%s)", \
-             __FILE__,  __LINE__, #cond, msg),         \
+     (dr_fprintf(STDERR, "ASSERT FAILURE: %s:%d: %s (%s)", \
+                 __FILE__,  __LINE__, #cond, msg),         \
       dr_abort(), 0) : 0))
 
 #define OPTION_MAX_LENGTH MAXIMUM_PATH
