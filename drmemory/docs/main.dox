@@ -71,6 +71,11 @@ following sections:
   <br>Release notes for this release, including current limitations and
   changes since prior releases.
 
+- \ref page_tools
+  <br>The Dr. Memory package includes additional tools beyond the core
+  Dr. Memory memory monitoring tool.  These additional tools include a
+  system call tracer for Windows and a symbol query tool.
+
 - \ref page_drmf
   <br>The Dr. Memory Framework, an SDK enabling new tools to be built that
   leverage Dr. Memory's powerful capabilities for shadowing memory and

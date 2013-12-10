@@ -1,0 +1,211 @@
+/* **********************************************************
+ * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * **********************************************************/
+
+/* Dr. Memory: the memory debugger
+ *
+ * This library is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; 
+ * version 2.1 of the License, and no later version.
+
+ * This library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * Library General Public License for more details.
+
+ * You should have received a copy of the GNU Lesser General Public
+ * License along with this library; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+/**
+ ****************************************************************************
+ ****************************************************************************
+\page page_tools Additional Tools
+
+The Dr. Memory package includes additional tools beyond the core Dr. Memory
+memory monitoring tool.  These additional tools include:
+
+- \subpage page_drstrace
+- \subpage page_symquery
+
+****************************************************************************
+*/
+/**
+ ****************************************************************************
+\page page_drstrace System Call Tracer for Windows
+
+\p drstrace is a system call tracing tool for Windows.  It uses the \ref
+page_drmf to monitor all system calls executed by a target application.
+
+To use \p drstrace, simply launch it on the target application of your
+choice.  By default, its output is sent to stderr, but you can specify a
+log directory in which to create a file containing the output per process.
+For example:
+
+\code
+bin/drstrace.exe -logdir . -- calc
+\endcode
+
+This command will result in data written to a file named
+<tt>drstrace.calc.exe.&lt;pid&gt;.&lt;counter&gt;.log</tt> in the current
+directory.  For example: \p drstrace.calc.exe.13408.0000.log.
+
+Here is some example output from that file:
+
+\code
+NtOpenKey
+        arg 0: 0x002defb4 (type=HANDLE*, size=0x4)
+        arg 1: 0x1 (type=unsigned int, size=0x4)
+        arg 2: len=0x18, root=0x0, name=144/146 "\Registry\Machine\Software\Microsoft\Windows\Windows Error Reporting\WMR", att=0x40, sd=0x00000000, sqos=0x00000000 (type=OBJECT_ATTRIBUTES*, size=0x4)
+    succeeded =>
+        arg 0: 0x002defb4 => 0xe4 (type=HANDLE*, size=0x4)
+        retval: 0x0 (type=NTSTATUS, size=0x4)
+NtQueryValueKey
+        arg 0: 0xe4 (type=HANDLE, size=0x4)
+        arg 1: 14/16 "Disable" (type=UNICODE_STRING*, size=0x4)
+        arg 2: 0x2 (type=int, size=0x4)
+        arg 3: 0x002dee40 (type=<struct>*, size=0x4)
+        arg 4: 0x13 (type=unsigned int, size=0x4)
+        arg 5: 0x002dee3c (type=unsigned int*, size=0x4)
+    succeeded =>
+        arg 3: <NYI> (type=<struct>*, size=0x4)
+        arg 5: 0x002dee3c => 0x10 (type=unsigned int*, size=0x4)
+        retval: 0x0 (type=NTSTATUS, size=0x4)
+NtClose
+        arg 0: 0xe4 (type=HANDLE, size=0x4)
+    succeeded =>
+        retval: 0x0 (type=NTSTATUS, size=0x4)
+\endcode
+
+****************************************************************************
+*/
+/**
+ ****************************************************************************
+\page page_symquery Symbol Query Tool
+
+\p symquery is a symbol querying tool that operates on both Linux and
+Windows and supports the Windows PDB, Linux ELF, and Windows PECOFF formats
+with DWARF2 line information.
+
+The usage summary is as follows:
+
+\code
+% bin/symquery.exe
+Usage:
+Look up addresses for one module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-f] [-v] -a [<address relative to module base> ...]
+Look up addresses for multiple modules:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe [-f] [-v] -q <pairs of [module_path;address relative to module base] on stdin>
+Look up exact symbols for one module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] [--enum] -s [<symbol1> <symbol2> ...]
+Look up symbols matching wildcard patterns (glob-style: *,?) for one module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --search -s [<symbol1> <symbol2> ...]
+Look up private symbols matching wildcard patterns (glob-style: *,?) for one module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --searchall -s [<symbol1> <symbol2> ...]
+List all symbols in a module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --list
+List all source lines in a module:
+  D:\derek\drmemory\git\build_x86_dbg\bin\symquery.exe -e <module> [-v] --lines
+Optional parameters:
+  -f = show function name
+  -v = verbose
+  --enum = look up via external enum rather than drsyms-internal enum
+\endcode
+
+When converting from an address to a symbol or function and line number,
+the address must be an offset from the module base, and not an absolute
+address.
+
+Searching for symbols using wildcards is only supported on Windows.
+
+On Windows, when using --search, export symbols may not show up (this is an
+artifact of the underlying use of the \p dbghelp library to read PDB
+files).  We recommend using --searchall, unless the extra overhead is an
+issue (only relevant for very large PDB files).
+
+Below are some examples.
+
+addr2line-like functionality:
+
+\code
+% bin/symquery.exe -e tests/free.exe -a 0x1077
+d:\checkout\drmemory\git\src\tests\free.c:48+0x7
+\endcode
+
+\code
+% bin/symquery.exe -e tests/free.exe -f -a 0x1077
+main+0x67
+d:\checkout\drmemory\git\src\tests\free.c:48+0x7
+\endcode
+
+On Linux:
+\code
+% bin/symquery -e tests/free -v -f -a 0x6d5
+<debug info: type=ELF symtab, has symbols, has line numbers>
+main+0xb9
+/home/user/checkout/src/tests/free.c:61+0x7
+\endcode
+
+Looking for symbols with wildcards:
+
+\code
+% bin/symquery.exe -e c:/windows/syswow64/kernel32.dll -v --searchall -s Heap*
+<debug info: type=PDB, has symbols, NO line numbers>
+HeapDestroyStub +0x13557-0x13557
+HeapUnlockStub +0x9444f-0x9444f
+HeapQueryInformationStub +0x9442f-0x9442f
+HeapSummary +0xbeb4c-0xbeb4c
+HeapSetInformation +0x155fe-0x155fe
+HeapLock +0xbeb36-0xbeb36
+Heap32ListFirst +0x95651-0x95651
+HeapValidateStub +0x2b11b-0x2b11b
+HeapWalk +0xbeb62-0xbeb62
+HeapCreate +0x149da-0x149da
+HeapCompact +0x146c4-0x146c4
+Heap32Next +0x9597e-0x9597e
+HeapCreateStub +0x149cd-0x149cd
+HeapWalkStub +0x9445f-0x9445f
+HeapCompactStub +0x146b7-0x146b7
+HeapSetInformationStub +0x155f1-0x155f1
+HeapFree +0x11499-0x11499
+HeapDestroy +0x13564-0x13564
+HeapQueryInformation +0xbeb41-0xbeb41
+Heap32ListNext +0x956fb-0x956fb
+HeapSummaryStub +0x9443f-0x9443f
+HeapUnlock +0xbeb57-0xbeb57
+HeapLockStub +0x9441f-0x9441f
+Heap32First +0x95793-0x95793
+HeapValidate +0x2b128-0x2b128
+\endcode
+
+\code
+% bin/symquery.exe -e c:/windows/syswow64/kernel32.dll --searchall -s *HeapFree
+WerpHeapFree +0x3b998-0x3b998
+MFHeapFree +0xb2361-0xb2361
+HeapFree +0x11499-0x11499
+\endcode
+
+\code
+% bin/symquery.exe -e c:/windows/syswow64/kernel32.dll --list | grep HeapFree
+WerpHeapFree +0x3b998-0x3b998
+MFHeapFree +0xb2361-0xb2361
+HeapFree +0x11499-0x11499
+\endcode
+
+\code
+% bin/symquery.exe -e C:/Windows/system32/MSVCP100D.dll -v --searchall -s "std::_DebugHeapDelete<*>"
+<debug info: type=PDB, has symbols, NO line numbers>
+std::_DebugHeapDelete<std::_Fac_node> +0x62bb0-0x62bb0
+std::_DebugHeapDelete<std::locale> +0x17ff0-0x17ff0
+std::_DebugHeapDelete<std::ios_base::_Iosarray> +0x142e0-0x142e0
+std::_DebugHeapDelete<std::ios_base::_Fnarray> +0x14300-0x14300
+std::_DebugHeapDelete<std::locale::facet> +0x13d20-0x13d20
+std::_DebugHeapDelete<void> +0x46c00-0x46c00
+std::_DebugHeapDelete<_RTL_CRITICAL_SECTION> +0x635a0-0x635a0
+\endcode
+
+****************************************************************************
+****************************************************************************
+*/

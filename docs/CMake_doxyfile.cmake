@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -196,6 +196,8 @@ endif (WIN32)
 if (TOOL_DR_MEMORY)
   string(REGEX REPLACE
     "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")
+  string(REGEX REPLACE
+    "main.dox" "main.dox tools.dox" string "${string}")
 endif (TOOL_DR_MEMORY)
 
 file(WRITE ${outfile} "${string}")
