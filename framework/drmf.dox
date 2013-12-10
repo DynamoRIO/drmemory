@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.   All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.   All rights reserved.
  * **********************************************************/
 
 /*
@@ -65,14 +65,22 @@ You can pass a required version to \p find_package:
 find_package(DrMemoryFramework 1.0)
 \endcode
 
+To point CMake at the framework, set the DrMemoryFramework_DIR variable to
+point at the \p drmf subdirectory of the Dr. Memory package that you are
+using.  For example:
+
+\code
+cmake -G"Ninja" -DDynamoRIO_DIR=c:/path/to/DynamoRIO-Windows-4.1.0-8/cmake -DDrMemoryFramework_DIR=c:/pat/to/DrMemory-Windows-1.6.0-2/drmf ../mysrcs/
+\endcode
+
 Once the package is located, use the standard method of using an Extension
 for each component your client uses.  The two steps combined will look like
 this example in your client's \p CMakeLists.txt file:
 
 \code
 find_package(DrMemoryFramework)
-use_DynamoRIO_extension(clientname drmf_drsyscall)
-use_DynamoRIO_extension(clientname drmf_umbra)
+use_DynamoRIO_extension(clientname drsyscall)
+use_DynamoRIO_extension(clientname umbra)
 \endcode
 
 That will automatically set up the include paths and library dependences.

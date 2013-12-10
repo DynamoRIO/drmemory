@@ -42,7 +42,7 @@ configure_DynamoRIO_client(drstracelib)
 
 # We could link with the internal static lib but it's a good exercise
 # to test the shared, public version:
-use_DynamoRIO_extension(drstracelib drmf_drsyscall)
+use_DynamoRIO_extension(drstracelib drmf_drsyscall) # drmf_ prefix b/c internal
 use_DynamoRIO_extension(drstracelib drmgr)
 use_DynamoRIO_extension(drstracelib drx)
 add_dependencies(drstracelib drsyscall)

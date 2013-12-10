@@ -56,7 +56,7 @@ function(add_drmf_test test_name src_app src_client ext_list pass_regex)
   configure_DynamoRIO_client(${client_name})
 
   foreach (ext ${ext_list})
-    use_DynamoRIO_extension(${client_name} drmf_${ext})
+    use_DynamoRIO_extension(${client_name} drmf_${ext}) # drmf_ prefix b/c internal
     use_DynamoRIO_extension(${client_name} drmgr)
     # We use the namespace prefix to allow us to avoid target conflicts
     # (else we'd need a completely separate build for these tests),
