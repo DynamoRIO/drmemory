@@ -163,13 +163,8 @@ if (X64)
 else ()
   set(BIN_ARCH "bin")
 endif ()
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${BIN_ARCH}")
-else ()
-  file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}")
-endif ()
+file(RELATIVE_PATH bin_relative "${CMAKE_CURRENT_BINARY_DIR}"
+  "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${BIN_ARCH}")
 # 2) parameterize dirs outside of build dir
 set(src_param_pattern "{DRMEMORY_CTEST_SRC_DIR}")
 set(DR_param_pattern "{DRMEMORY_CTEST_DR_DIR}")

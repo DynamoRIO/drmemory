@@ -44,7 +44,7 @@ The Dr. Memory distribution contains the following:
 
  - The front-end script to launch Dr. Memory: \p drmemory.pl on Linux and
    Cygwin, \p drmemory.exe on Windows.
- - The back-end of Dr. Memory, contained in the \p bin32 and \p dynamorio
+ - The back-end of Dr. Memory, contained in the \p bin and \p dynamorio
    subdirectories.  Dr. Memory runs on top of the DynamoRIO tool engine
    (see http://dynamorio.org for more information on DynamoRIO).
  - Documentation for Dr. Memory (you're looking at it).

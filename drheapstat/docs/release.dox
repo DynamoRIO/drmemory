@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2013 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -44,7 +45,7 @@ The Dr. Heapstat distribution contains the following:
  - The front-end script to launch Dr. Heapstat: \p drheapstat.pl on Linux,
    \p drheapstat.exe on Windows.
  - FIXME: vis tool: invoked via same front-end?
- - The back-end of Dr. Heapstat, contained in the \p bin32 and \p dynamorio
+ - The back-end of Dr. Heapstat, contained in the \p bin and \p dynamorio
    subdirectories.  Dr. Heapstat runs on top of the DynamoRIO tool engine
    (see http://dynamorio.org for more information on DynamoRIO).
  - Documentation for Dr. Heapstat (you're looking at it).

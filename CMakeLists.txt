@@ -505,29 +505,20 @@ elseif (PERL_TO_EXE)
     set(BUILD_BIN_PREFIX "bin")
   endif (X64)
 else (PERL_TO_EXE)
-  # When installed we now use a bin dir for scripts
-  if (X64)
-    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}${toolname}/bin64")
-    set(BUILD_BIN_PREFIX "bin64")
-  else (X64)
-    set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}${toolname}/bin")
-    set(BUILD_BIN_PREFIX "bin")
-  endif (X64)
+  # Unified layout: match Windows since we're moving toward C-based frontends
+  # that won't have auxiliary scripts we want to hide.
+  set(INSTALL_BIN_PREFIX "${INSTALL_PREFIX}.")
+  set(BUILD_BIN_PREFIX ".")
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  # For NSIS we have everything in top-level bin/
-  # Once we have x64 we'll need to address: fix CPack?
-  if (X64)
-    set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin64")
-    set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin64")
-  else (X64)
-    set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin")
-    set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin")
-  endif (X64)
-else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/${BIN_ARCH}")
-  set(BUILD_BIN "${BUILD_BIN_PREFIX}/${BIN_ARCH}")
-endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
+# For NSIS we have everything in top-level bin/
+# Once we have x64 we'll need to address: fix CPack?
+if (X64)
+  set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin64")
+  set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin64")
+else (X64)
+  set(INSTALL_BIN "${INSTALL_BIN_PREFIX}/bin")
+  set(BUILD_BIN "${BUILD_BIN_PREFIX}/bin")
+endif (X64)
 if (DEBUG_BUILD)
   set(build_type "debug")
 else (DEBUG_BUILD)
@@ -574,7 +565,7 @@ endif (UNIX)
 
 # I would share this name w/ drmemory.pl but it's a pain to configure_file
 # or generate the perl script as we also have to compile it for pp.
-set(options_for_perl "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/options-perl.pl")
+set(options_for_perl "${PROJECT_BINARY_DIR}/${BUILD_BIN}/options-perl.pl")
 add_custom_target(options_perl ALL DEPENDS "${options_for_perl}")
 add_custom_command(
   OUTPUT "${options_for_perl}"
@@ -1174,13 +1165,13 @@ file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/codecache")
 file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/logs/dynamorio")
 if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/${toolname}.pl"
-    "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl" @ONLY)
+    "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl" @ONLY)
   if (NOT USE_DRSYMS OR TOOL_DR_HEAPSTAT)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl"
       "${PROJECT_BINARY_DIR}/${BUILD_BIN}/postprocess.pl" COPYONLY)
     set(script_aux "${CMAKE_CURRENT_SOURCE_DIR}/${tooldir}/postprocess.pl")
   endif ()
-  set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/${toolname}.pl"
+  set(script_main "${PROJECT_BINARY_DIR}/${BUILD_BIN}/${toolname}.pl"
     "${options_for_perl}")
 endif ()
 if (WIN32)
@@ -1260,9 +1251,9 @@ else (WIN32)
   if (USER_SPECIFIED_DynamoRIO_DIR)
     # already built so we can copy at config time
     configure_file("${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig" COPYONLY)
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig" COPYONLY)
   else (USER_SPECIFIED_DynamoRIO_DIR)
-    set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/drconfig")
+    set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig")
     add_custom_target(drconfig_copy_tgt ALL DEPENDS "${drconfig_copy}")
     add_custom_command(OUTPUT "${drconfig_copy}" 
       DEPENDS drconfig
@@ -1272,7 +1263,7 @@ else (WIN32)
   endif (USER_SPECIFIED_DynamoRIO_DIR)
   if (TOOL_DR_MEMORY)
     configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/valgrind2drmemory.pl"
-      "${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/valgrind2drmemory.pl" COPYONLY)
+      "${PROJECT_BINARY_DIR}/${BUILD_BIN}/valgrind2drmemory.pl" COPYONLY)
   endif (TOOL_DR_MEMORY)
 endif (WIN32)
 if (TOOL_DR_HEAPSTAT)
@@ -1480,7 +1471,7 @@ if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   install(FILES
     ${script_main}
-    DESTINATION "${INSTALL_BIN_PREFIX}"
+    DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
@@ -1506,7 +1497,7 @@ else (TOOL_DR_HEAPSTAT)
     PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
   if (UNIX)
     install(FILES
-      ${PROJECT_BINARY_DIR}/${BUILD_BIN_PREFIX}/valgrind2drmemory.pl
+      ${PROJECT_BINARY_DIR}/${BUILD_BIN}/valgrind2drmemory.pl
       DESTINATION "${INSTALL_PREFIX}bin"
       PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
       WORLD_READ WORLD_EXECUTE)
@@ -1528,41 +1519,6 @@ install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   PATTERN "*.debug"
   PATTERN "*.pdb"
   )
-
-# FIXME: support multi-tool package for Windows perl2exe by creating
-# batch file: for now assuming single-tool when perl2exe
-if (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
-  # b/c there's no way to change permissions other than an install rule,
-  # and b/c the $ and @ uses make it hard to configure_file, and
-  # I can find no way to generate a symlink at install time, we generate
-  # this file at build time.
-  # only the DIRECTORY install rule preserves symlinks so we put
-  # it in its own dir:
-  file(MAKE_DIRECTORY "${PROJECT_BINARY_DIR}/symlink")
-  file(REMOVE "${PROJECT_BINARY_DIR}/symlink/${toolname}.pl")
-  if (WIN32)
-    # cmake -E create_symlink not supported
-    if (USE_DRSYMS) # disabled by above: leaving for example of how to make .bat
-      file(WRITE "${PROJECT_BINARY_DIR}/symlink/${toolname}.bat"
-        "\"%~dp0..\\drmemory\\${BIN_ARCH}\\drmemory.exe\" %*\n")
-    else (USE_DRSYMS)
-      file(WRITE "${PROJECT_BINARY_DIR}/symlink/${toolname}.pl"
-        "#!/usr/bin/perl\nuse File::Basename;\n(\$nm,\$mypath,\$sfx) = fileparse(\$0);\nexec(\"\$mypath/../${toolname}/bin/${toolname}.pl\", @ARGV);\n")
-    endif (USE_DRSYMS)
-  else (WIN32)
-    execute_process(COMMAND ${CMAKE_COMMAND} -E create_symlink
-      "../${toolname}/bin/${toolname}.pl"
-      "${PROJECT_BINARY_DIR}/symlink/${toolname}.pl"
-      RESULT_VARIABLE symlink_result
-      ERROR_VARIABLE symlink_error
-      OUTPUT_QUIET)
-    if (symlink_result OR symlink_error)
-      message(FATAL_ERROR "*** ${toolname}.pl symlink failed: ***\n${symlink_error}")
-    endif (symlink_result OR symlink_error)
-  endif (WIN32)
-  install(DIRECTORY "${PROJECT_BINARY_DIR}/symlink/"
-    DESTINATION "${INSTALL_PREFIX}bin")
-endif (NOT PERL_TO_EXE AND TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS OR UNIX)
 
 # create empty logs dir for release package
 # be sure to escape ",$ since evaluated at install time not configure time
