@@ -76,12 +76,8 @@ if ($is_vmk || $vs_vmk) {
     &vmk_init() if ($is_vmk);
 }
 
-# when using perl->exe, or if we set scripts up in bin/, we have a bin subdir
 $perl2exe = (-e "$scriptpath/drheapstat.exe") ? 1 : 0;
-$drmem_bin_subdir = ($scriptpath =~ m|/drheapstat/bin/?$|);
-# handle the top-level bin symlink being dereferenced (PR 527580)
-$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/bin32");
-$default_home = $symlink_deref ? "$scriptpath" : "$scriptpath/../";
+$default_home = "$scriptpath/..";
 $default_home = abs_path($default_home);
 $default_home = &canonicalize_path($default_home);
 $bindir = "bin";
@@ -104,8 +100,7 @@ $verbose = 0;
 $version = 0;
 $drheapstat_home = $default_home;
 # normally we're packaged with a DR release laid out in "dynamorio":
-$dr_home = ($drmem_bin_subdir || $symlink_deref) ?
-    "$default_home/../dynamorio" : "$default_home/dynamorio";
+$dr_home = "$default_home/dynamorio";
 $use_debug = 0;
 $use_dr_debug = 0;
 $user_ops = "";
@@ -203,16 +198,16 @@ $logdir = &canonicalize_path($logdir);
 $exename = &canonicalize_path($exename);
 $profdir = &canonicalize_path($profdir);
 
-my $win32_a2l = "$drheapstat_home/winsyms.exe";
+my $win32_a2l = "$drheapstat_home/$bindir/winsyms.exe";
 
 launch_vistool() if ($visualize);
 show_leaks() if ($view_leaks);
 
-if (!$use_debug && ! -e "$drheapstat_home/release/$drmemlibname") {
+if (!$use_debug && ! -e "$drheapstat_home/$bindir/release/$drmemlibname") {
     $use_debug = 1;
     # try to avoid warning for devs running from build dir
     print "$prefix WARNING: using debug Dr. Heapstat since release not found\n"
-        unless ($user_ops =~ /-quiet/ || -e "$drmemory_home/CMakeCache.txt");
+        unless ($user_ops =~ /-quiet/ || -e "$drheapstat_home/CMakeCache.txt");
 }
 $libdir = ($use_debug) ? "debug" : "release";
 
@@ -222,8 +217,8 @@ $dr_libdir = ($use_dr_debug) ? "debug" : "release";
 die "$drlibname not found in $dr_home/lib32/$dr_libdir\n$usage\n"
     if (! -e "$dr_home/lib32/$dr_libdir/$drlibname");
 
-die "$drmemlibname not found in $drheapstat_home/$libdir\n$usage\n"
-    if (! -e "$drheapstat_home/$libdir/$drmemlibname");
+die "$drmemlibname not found in $drheapstat_home/$bindir/$libdir\n$usage\n"
+    if (! -e "$drheapstat_home/$bindir/$libdir/$drmemlibname");
 
 nudge($nudge_pid) if ($nudge_pid ne "");
 
@@ -248,13 +243,10 @@ push @appcmdline, @ARGV;
 if (!logdir_ok($logdir)) {
     print "$prefix Specified logdir $logdir is invalid\n" if ($logdir ne '');
     # default log dir is the "logs" dir from install package
-    # we replace to avoid ugly "bin/../logs" in path.
-    if ($drmem_bin_subdir || ! -e "$default_home/../drheapstat/logs") {
-        $logdir = $default_home;
-        $logdir =~ s/bin/logs/;
+    if (! -e "$default_home/drheapstat/logs") {
+        $logdir = "$default_home/logs";
     } else {
-        $logdir = $default_home;
-        $logdir =~ s|bin|drheapstat/logs|;
+        $logdir = "$default_home/drheapstat/logs";
     }
     if ($is_vmk) {
         # . may not have much space so try /scratch first
@@ -282,7 +274,7 @@ if ($is_unix) {
         # PR 470752: ash forks on exec!  so we bypass drrun and set env vars below
     } else {
         @appcmdline = ("$drrun", "-dr_home", "$dr_home",
-                       "-client", "$drheapstat_home/$libdir/$drmemlibname",
+                       "-client", "$drheapstat_home/$bindir/$libdir/$drmemlibname",
                        "0", "$ops", "-ops", "$def_dr_ops $dr_ops",
                        @appcmdline);
         splice @appcmdline, 1, 0, "$dr_debug" if ($dr_debug ne '');
@@ -309,7 +301,7 @@ if ($is_unix) {
 
     # use array to support paths with spaces (system() splits single arg on spaces)
     @deploycmdline = ("$drrun", "-pidfile", "$pid_file", "-quiet", "-root", "$dr_home",
-                   "-client", "$drheapstat_home/$libdir/$drmemlibname",
+                   "-client", "$drheapstat_home/$bindir/$libdir/$drmemlibname",
                    "0", "$ops", "-ops", "$def_dr_ops $dr_ops");
     push @deploycmdline, ("$dr_debug") if ($dr_debug ne "");
     @appcmdline = (@deploycmdline, @appcmdline);
@@ -343,7 +335,7 @@ if ($is_unix) {
         $ENV{'DYNAMORIO_LOGDIR'} = (-d "$drheapstat_home/logs") ?
             "$drheapstat_home/logs" : $ENV{'PWD'};
         $ENV{'DYNAMORIO_OPTIONS'} = "-code_api -client_lib ".
-            "\"$drheapstat_home/$libdir/$drmemlibname;0;$ops\" $def_dr_ops $dr_ops";
+            "\"$drheapstat_home/$bindir/$libdir/$drmemlibname;0;$ops\" $def_dr_ops $dr_ops";
         $ENV{'DYNAMORIO_RUNUNDER'} = "1";
     }
     exec(@appcmdline); # array to handle spaces in paths
@@ -529,7 +521,7 @@ sub launch_vistool() {
     die "Must use -x with -visualize.\n$usage" if ($exename eq "");
     die "Must use -profdir with -visualize.\n$usage" if ($profdir eq "");
 
-    my $pp = "$drheapstat_home/postprocess.pl";
+    my $pp = "$drheapstat_home/$bindir/postprocess.pl";
     my @cmd = ($pp, "-x", $exename, "-profdir", $profdir);
     push @cmd, "-v" if ($verbose);
     push @cmd, "-use_vmtree" if ($use_vmtree);
@@ -550,7 +542,7 @@ sub show_leaks() {
     # For now we have not integreated with the vistool and we simply
     # run Dr. Memory's postprocess.pl, which is copied as postleaks.pl
     # Xref PR 536878.
-    my $pp = "$drheapstat_home/postleaks.pl";
+    my $pp = "$drheapstat_home/$bindir/postleaks.pl";
     my @cmd = ("$^X", $pp, "-x", $exename, "-leaks_only",
                "-p", "", "-batch", "-l", $profdir);
     push @cmd, "-v" if ($verbose);

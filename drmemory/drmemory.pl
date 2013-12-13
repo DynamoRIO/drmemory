@@ -209,8 +209,8 @@ die "Not supported with drsyms"
     if ($use_drsyms && ($aggregate || $skip_postprocess || $just_postprocess));
 
 # Now that we know the app to run, get its arch
-$bin_arch = "bin32";
 $lib_arch = "lib32";
+$bin_arch = "bin32";
 $bindir = "bin";
 
 if (`uname -m` =~ /x86_64/) {
@@ -224,12 +224,8 @@ if (`uname -m` =~ /x86_64/) {
     }
 }
 
-$perl2exe = (-e "$scriptpath/$bin_arch/postprocess.exe") ? 1 : 0;
-# when using perl->exe we do not have a drmemory/bin subdir
-$drmem_bin_subdir = ($scriptpath =~ m|/drmemory/bin/?$|);
-# handle the top-level bin symlink being dereferenced (PR 527580)
-$symlink_deref = !$drmem_bin_subdir && (! -e "$scriptpath/$bin_arch");
-$default_home = $symlink_deref ? "$scriptpath" : "$scriptpath/../";
+$perl2exe = (-e "$scriptpath/postprocess.exe") ? 1 : 0;
+$default_home = "$scriptpath/..";
 $default_home = abs_path($default_home);
 $default_home = &canonicalize_path($default_home);
 
@@ -239,8 +235,7 @@ $drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
 $drmemory_home = $default_home if ($drmemory_home eq '');
 # normally we're packaged with a DR release laid out in "dynamorio":
 if ($dr_home eq '') {
-    $dr_home = ($drmem_bin_subdir || $symlink_deref) ?
-        "$default_home/../dynamorio" : "$default_home/dynamorio";
+    $dr_home = "$default_home/dynamorio";
 }
 
 $dr_home = &canonicalize_path($dr_home);
@@ -250,13 +245,13 @@ for ($i = 0; $i <= $#suppfiles; $i++) {
 }
 $logdir = &canonicalize_path($logdir);
 
-if (!$use_debug && ! -e "$drmemory_home/release/$drmemlibname") {
+if (!$use_debug && ! -e "$drmemory_home/$bindir/release/$drmemlibname") {
     $use_debug = 1;
     # set var for warning after 64-bit check
     $use_debug_force = 1;
 }
 $libdir = ($use_debug) ? "debug" : "release";
-if (! -e "$drmemory_home/$libdir/$drmemlibname") {
+if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname") {
     if ($bin_arch eq 'bin64') {
         die "$prefix This Dr. Memory release does not support 64-bit applications.\n".
             "$prefix Please recompile with -m32.\n";
@@ -294,8 +289,8 @@ if (!($aggregate || $just_postprocess)) {
         if (! -e "$dr_home/$lib_arch/$dr_libdir/$drlibname");
 }
 # even for post-run symbols, need drmem lib for replaced routine symbols    
-die "$drmemlibname not found in $drmemory_home/$libdir\n$usage\n"
-    if (! -e "$drmemory_home/$libdir/$drmemlibname");
+die "$drmemlibname not found in $drmemory_home/$bindir/$libdir\n$usage\n"
+    if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname");
 
 nudge($nudge_pid) if ($nudge_pid ne "");
 
@@ -345,13 +340,10 @@ if ($aggregate) {
 if (!logdir_ok($logdir)) {
     print "$prefix Specified logdir $logdir is invalid\n" if ($logdir ne '');
     # default log dir is the "logs" dir from install package
-    # we replace to avoid ugly "bin/../logs" in path.
-    if ($drmem_bin_subdir || ! -e "$default_home/../drmemory/logs") {
-        $logdir = $default_home;
-        $logdir =~ s/bin/logs/;
+    if (! -e "$default_home/drmemory/logs") {
+        $logdir = "$default_home/logs";
     } else {
-        $logdir = $default_home;
-        $logdir =~ s|bin|drmemory/logs|;
+        $logdir = "$default_home/drmemory/logs";
     }
     if ($is_vmk) {
         # . may not have much space so try /scratch first
@@ -376,7 +368,7 @@ if ($is_unix) {
     $app_is_win32 = 1;
 }
 
-my $win32_a2l = "$drmemory_home/winsyms.exe";
+my $win32_a2l = "$drmemory_home/$bindir/winsyms.exe";
 
 # it's difficult to get " or ' past drrun so we use `
 $ops = "-logdir `$logdir` $suppress_drmem $user_ops";
@@ -414,7 +406,7 @@ if ($aggregate || $just_postprocess) {
         # PR 470752: ash forks on exec!  so we bypass drrun and set env vars below
     } else {
         @appcmdline = ("$drrun", "-quiet", "-dr_home", "$dr_home",
-                       "-client", "$drmemory_home/$libdir/$drmemlibname",
+                       "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
                        "0", "$ops",
                        # put DR logs inside drmem logdir (i#874)
                        "-logdir", "$logdir/dynamorio",
@@ -461,7 +453,7 @@ if ($aggregate || $just_postprocess) {
 
     # use array to support paths with spaces (system() splits single arg on spaces)
     @deploycmdline = ("$drrun", "-pidfile", "$pid_file", "-quiet", "-root", "$dr_home",
-                   "-client", "$drmemory_home/$libdir/$drmemlibname",
+                   "-client", "$drmemory_home/$bindir/$libdir/$drmemlibname",
                    "0", "$ops", "-ops", "$def_dr_ops $dr_ops");
     push @deploycmdline, ("$dr_debug") if ($dr_debug ne "");
     @appcmdline = (@deploycmdline, @appcmdline);
@@ -627,9 +619,9 @@ sub post_process()
     # we don't need the prefix since sending to a file instead of stdout
     my @postcmd;
     if ($perl2exe) {
-        @postcmd = ("$drmemory_home/postprocess.exe");
+        @postcmd = ("$drmemory_home/$bindir/postprocess.exe");
     } else {
-        @postcmd = ("$^X", "$drmemory_home/postprocess.pl");
+        @postcmd = ("$^X", "$drmemory_home/$bindir/postprocess.pl");
     }
     push @postcmd, "-v" if ($verbose);
     push @postcmd, ("-p", "", "-c", "$libcmd");
