@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -88,10 +88,14 @@ endif ()
 # log/assert/notify infrastructure.
 add_library(drsyscall_int STATIC ${srcs})
 configure_DynamoRIO_client(drsyscall_int)
-use_DynamoRIO_extension(drsyscall_int drmgr)
+use_DynamoRIO_extension(drsyscall_int drmgr_static)
 use_DynamoRIO_extension(drsyscall_int drcontainers)
 if (DEBUG_BUILD)
-  use_DynamoRIO_extension(drsyscall_int drsyms)
+  if (STATIC_DRSYMS)
+    use_DynamoRIO_extension(drsyscall_int drsyms_static)
+  else ()
+    use_DynamoRIO_extension(drsyscall_int drsyms)
+  endif ()
 endif (DEBUG_BUILD)
 if (UNIX)
   append_property_string(TARGET drsyscall_int COMPILE_FLAGS "-fPIC")

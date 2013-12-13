@@ -640,7 +640,7 @@ else ()
 endif ()
 
 # when updating this, also update the svn:externals prop on trunk/
-set(DynamoRIO_VERSION_REQUIRED "4.1.2426")
+set(DynamoRIO_VERSION_REQUIRED "4.1.2437")
 
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
@@ -654,24 +654,6 @@ if (USER_SPECIFIED_DynamoRIO_DIR)
   # and finds some other version from what was requested
   if (NOT EXISTS "${DynamoRIO_DIR}/DynamoRIOConfig.cmake")
     message(FATAL_ERROR "${DynamoRIO_DIR}/DynamoRIOConfig.cmake does not exist: invalid DynamoRIO_DIR")
-  endif ()
-
-  # ensure was built w/ static ext libs
-  if (UNIX)
-    set(LIB_EXT "so")
-    set(LIB_PFX "lib")
-  else (UNIX)
-    set(LIB_EXT "dll")
-    set(LIB_PFX "")
-  endif (UNIX)
-  if (EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drwrap.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drutil.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drmgr.${LIB_EXT}" OR
-      EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drx.${LIB_EXT}")
-    message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic extensions: please re-build with static extension libraries")
-  endif ()
-  if (STATIC_DRSYMS AND EXISTS "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/${build_type}/${LIB_PFX}drsyms.${LIB_EXT}")
-    message(FATAL_ERROR "${DynamoRIO_DIR} was built with dynamic drsyms: please re-build with static drsyms")
   endif ()
 
   if (BUILDING_SUB_PACKAGE)
@@ -710,18 +692,6 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
     set(DEBUG ON CACHE BOOL "DynamoRIO option: debug build")
     set(INTERNAL ON CACHE BOOL "DynamoRIO option: internal build")
   endif ("${CMAKE_BUILD_TYPE}" MATCHES "Debug")
-  # for efficiency, have all our (DR's) extensions be static.  we have the same
-  # LGPL license as drutil and drwrap so it works out.
-  set(BUILD_EXT_STATIC ON CACHE BOOL "static DR extensions")
-  # Since drsysms defaults to static here, we check for requested
-  # dynamic instead of requested static
-  if (NOT STATIC_DRSYMS)
-    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
-    # libc use.  If we end up needing late kernel32 use for early
-    # injection we may want to go back to dynamic drsyms (and delayed
-    # dr_enable_console_printing()).
-    set(DR_EXT_DRSYMS_STATIC OFF CACHE BOOL "non-static drsyms")
-  endif (NOT STATIC_DRSYMS)
   # We do not want DR install, except for the targets we need for our
   # multi-export-set install of the DRMF.  We need those targets
   # even for BUILDING_SUB_PACKAGE.
@@ -992,10 +962,12 @@ endif (STATIC_DRSYMS)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)
-use_DynamoRIO_extension(${client_target} drmgr)
-use_DynamoRIO_extension(${client_target} drx)
-use_DynamoRIO_extension(${client_target} drutil)
-use_DynamoRIO_extension(${client_target} drwrap)
+# For efficiency, we use the static versions of DR's extensions.  We have the same
+# LGPL license as drutil and drwrap so it works out.
+use_DynamoRIO_extension(${client_target} drmgr_static)
+use_DynamoRIO_extension(${client_target} drx_static)
+use_DynamoRIO_extension(${client_target} drutil_static)
+use_DynamoRIO_extension(${client_target} drwrap_static)
 set_target_properties(${client_target} PROPERTIES
   # dlls are put in runtime dir but we want lib dir
   RUNTIME_OUTPUT_DIRECTORY${location_suffix} "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
@@ -1036,7 +1008,15 @@ if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set_property(TARGET ${toolname} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 if (USE_DRSYMS)
-  use_DynamoRIO_extension(${client_target} drsyms)
+  if (STATIC_DRSYMS)
+    use_DynamoRIO_extension(${client_target} drsyms_static)
+  else ()
+    # N.B.: static drsyms gives us kernel32 imports from elftoolchain
+    # libc use.  If we end up needing late kernel32 use for early
+    # injection we may want to go back to dynamic drsyms (and delayed
+    # dr_enable_console_printing()).
+    use_DynamoRIO_extension(${client_target} drsyms)
+  endif ()
 endif (USE_DRSYMS)
 if (WIN32)
   # We need to link with ntdll.lib and dbghelp.lib which we get from DR
@@ -1130,7 +1110,7 @@ else ()
 endif ()
 set(DynamoRIO_RPATH ON)
 configure_DynamoRIO_standalone(symquery)
-use_DynamoRIO_extension(symquery drsyms)
+use_DynamoRIO_extension(symquery drsyms_static)
 set(DynamoRIO_RPATH ${old_rpath})
 
 # should go into a configure.h if we get enough of these
