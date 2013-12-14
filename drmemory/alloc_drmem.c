@@ -1875,10 +1875,10 @@ is_alloca_pattern(void *drcontext, app_pc pc, app_pc next_pc, instr_t *inst,
              /* prev instr is "xchg esp, eax" */
              safe_read(pc-1, sizeof(prev_byte), &prev_byte) &&
              prev_byte == 0x94) {
-            match = true;
-            /* do NOT mark addressable as the next instr, a push, will do so */
-            *now_addressable = false;
-        }
+        match = true;
+        /* do NOT mark addressable as the next instr, a push, will do so */
+        *now_addressable = false;
+    }
     /* cygwin alloca */
     else if (instr_get_opcode(inst) == OP_or &&
              opnd_is_base_disp(instr_get_dst(inst, 0)) &&

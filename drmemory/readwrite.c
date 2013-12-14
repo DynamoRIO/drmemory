@@ -2741,11 +2741,12 @@ instr_shared_slowpath_decode_pc(instr_t *inst, fastpath_info_t *mi, opnd_t *deco
              */
         } else {
             DOLOG(1, {
-                if (instr_get_opcode(inst) == OP_mov_st &&
-                    opnd_is_immed_int(instr_get_src(inst, 0)) &&
+                if (instr_get_opcode(inst) == OP_xchg &&
+                    opnd_is_reg(instr_get_dst(inst, 1)) &&
+                    opnd_get_reg(instr_get_dst(inst, 1)) == DR_REG_XAX &&
                     opnd_is_base_disp(instr_get_dst(inst, 0)) &&
-                    opnd_get_base(instr_get_dst(inst, 0)) == DR_REG_XDX) {
-                    /* this is the stack zero from bb_handle_chkstk() */
+                    opnd_get_base(instr_get_dst(inst, 0)) == DR_REG_XAX) {
+                    /* this is the retaddr clobber from bb_handle_chkstk() */
                 } else {
                     void *drcontext = dr_get_current_drcontext();
                     LOG(1, "unknown generated app instr: ");
@@ -4216,7 +4217,7 @@ bb_check_SEH_epilog(void *drcontext, app_pc tag, instrlist_t *ilist)
 static void
 bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
 {
-    instr_t *instr, *store = NULL, *load = NULL;
+    instr_t *instr, *load = NULL;
     int opc;
     opnd_t opnd;
 
@@ -4240,7 +4241,6 @@ bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
     opnd = instr_get_src(instr, 0);
     if (!opnd_is_reg(opnd) || opnd_get_reg(opnd) != DR_REG_XAX)
         return;
-    store = instr;
 
     /* mov eax,[eax]  or  mov eax,[eax+0x4] */
     instr = instr_get_prev_app_instr(instr);
@@ -4258,54 +4258,55 @@ bb_handle_chkstk(void *drcontext, app_pc tag, instrlist_t *ilist)
     if (opnd_get_disp(opnd) != 0 && opnd_get_disp(opnd) != 4)
         WARN("WARNING: disp in [eax, disp] is not 0 or 4\n");
     load = instr;
+#   ifdef DEBUG
+    instr = instr_get_prev_app_instr(instr); /* go to prev before we kill load */
+#   endif
 
     /* We might start a bb right here due to relocation, so we pattern match
      * up till here.
      *
      * To zero the return address, we need the original stack pointer value,
      * which will be clobbered by the app instruction "mov eax,[eax]".
-     * So we need insert code before to save the value: "lea edx, [eax]",
-     * and insert code after to clear the stack: "mov [edx], 0".
-     * Here we assume edx is dead based on the calling convention.
+     * We have no dead registers (not even edx, as some calling conventions
+     * have it live: i#1405).  We could use some clever rewrites of the
+     * original code to use a push or pop through memory (see i#1405c#3) to
+     * perform the memory-to-memory copy the app is doing here, but
+     * those result in us reporting unaddrs due to accessing beyond TOS.
+     * Instead, we note that we don't need to zero: we just need a non-retaddr
+     * in the slot.  Thus, we replace the load with xchg, which will place
+     * a stack address in the slot, which does not look like a retaddr.
+     * The xchg locks the bus, but that's compared to 2 extra stores (spill
+     * reg plus zero slot) and 1 extra load (restore reg).  Plus, it's much
+     * simpler.
      *
-     * We could insert non-app instruction in later stage, but it may mess up
-     * with the register stealing component, which may steal edx as scratch
-     * register. So we should either have a way to tell the register stealing
-     * component (drreg) not to use edx, or we insert fake app instrction.
-     * Since we do not have drreg ready yet, we will insert fake app instr.
+     *   A: mov     eax,dword ptr [eax]
+     *   B: mov     dword ptr [esp],eax  (OR push eax)
+     *   C: ret
+     * =>
+     *   A: xchg    eax,dword ptr [eax]
+     *   B: mov     dword ptr [esp],eax  (OR push eax)
+     *   C: ret
+     *
+     * If we decide to go to a register-spilling solution, we should move this
+     * to the insert phase (and integrate properly with register stealing).
      */
-    /* insert "lea edx, [eax]" or "lea edx, [eax+4]" */
-    ASSERT(load != NULL, "a");
-    ASSERT(instr_get_app_pc(load) != NULL, "load should not be NULL");
-    opnd_set_size(&opnd, OPSZ_lea);
-    PREXL8(ilist, load,
-           INSTR_XL8(INSTR_CREATE_lea(drcontext,
-                                      opnd_create_reg(DR_REG_XDX),
-                                      opnd),
-                     instr_get_app_pc(load)));
-    /* insert "mov [edx],0" */
-    ASSERT(store != NULL && instr_get_app_pc(store) != NULL,
-           "store should not be NULL");
-    /* Note that we use store (the next instr)'s pc, because if there is
-     * fault or relocation on this instruction, we do not want to reexecute
-     * "mov eax, [eax]". In contrast, it should be ok to skip "mov [edx], 0".
-     * This is pattern-matched in instr_shared_slowpath_decode_pc().
+
+    /* This is pattern-matched in instr_shared_slowpath_decode_pc().
      * XXX: this may confuse a client/user when a fault happens there,
-     * as its translation is the store instruction "mov [esp], eax".
+     * as its translation is the load instruction "mov eax, [eax+X]".
      */
-    POSTXL8(ilist, load,
-            INSTR_XL8(INSTR_CREATE_mov_st(drcontext,
-                                          OPND_CREATE_MEMPTR(DR_REG_XDX, 0),
-                                          OPND_CREATE_INT32(0)),
-                      instr_get_app_pc(store)));
-    LOG(1, "found _chkstk at "PFX"\n", dr_fragment_app_pc(tag));
+    PREXL8(ilist, load,
+           INSTR_XL8(INSTR_CREATE_xchg(drcontext, opnd, opnd_create_reg(DR_REG_XAX)),
+                     instr_get_app_pc(load)));
+    instrlist_remove(ilist, load);
+    instr_destroy(drcontext, load);
+
+    LOG(2, "found _chkstk at "PFX"\n", dr_fragment_app_pc(tag));
 
 #   ifdef DEBUG
     /* debug-only extra pattern verification */
     /* skip newly inserted "lea edx, [eax]" */
-    instr = instr_get_prev_app_instr(load);
     ASSERT(instr != NULL, "instrumented code is gone");
-    instr = instr_get_prev_app_instr(instr);
     if (instr == NULL)
         return;
     if (instr_get_opcode(instr) == OP_xchg) {
@@ -4336,7 +4337,7 @@ insert_zero_retaddr(void *drcontext, instrlist_t *bb, instr_t *inst, bb_info_t *
 {
     if (instr_is_return(inst)) {
         dr_clobber_retaddr_after_read(drcontext, bb, inst, 0);
-        LOG(2, "zero retaddr for normal ret");
+        LOG(2, "zero retaddr for normal ret\n");
 # ifdef WINDOWS
     } else if (instr_get_opcode(inst) == OP_pop) {
         /* SEH_epilog */
