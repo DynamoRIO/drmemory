@@ -1289,6 +1289,8 @@ add_alloc_routine(app_pc pc, routine_type_t type, const char *name,
          * calling into msvcr*.dll, and in that case the asymmetry will result
          * in false positives.
          */
+        WARN("WARNING: new/delete has no local wrapper => "
+             "disabling mismatch detection for %s\n", modname);
         e->set->check_mismatch = false;
     }
     IF_DEBUG(is_new = )
