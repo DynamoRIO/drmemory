@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -56,7 +56,10 @@ open($fh_out, "> $outfile") || die "Unable to write $outfile\n";
                 "Memcheck:Param" => "UNINITIALIZED READ", # XXX: could be unaddr!
                 "Memcheck:Leak" => "LEAK",
                 "Memcheck:Free" => "INVALID HEAP ARGUMENT",
-                "Memcheck:Overlap" => "WARNING" # XXX i#156: NYI
+                "Memcheck:Overlap" => "WARNING", # XXX i#156: NYI
+                # Custom types added at Google
+                "Memcheck:Uninitialized" => "UNINITIALIZED READ",
+                "Memcheck:Unaddressable" => "UNADDRESSABLE ACCESS",
     );
 
 while (next_line($fh_in, $fh_out, 1)) {
@@ -118,14 +121,14 @@ print "Had problems with $prob_count frames\n";
 sub next_line($fh_in, $fh_out, $fh_out, $eof_ok) {
     my ($fh_in, $fh_out, $eof_ok) = @_;
     while (<$fh_in>) {
-        # skip but preserve comments and blank lines
-        if (/^\s*\#/ || /^\s*$/) {
-            print $fh_out $_;
-            next;
-        }
         # throw out leading and trailing whitespace
         s/^\s*//;
         s/\s*$//;
+        # skip but preserve comments and blank lines
+        if (/^\s*\#/ || /^\s*$/) {
+            print $fh_out "$_\n";
+            next;
+        }
         return $_;
     }
     die "File ended unexpectedly\n" if (!$eof_ok);
@@ -265,6 +268,9 @@ sub convert_fun($f) {
         # than false neg?
         $ans = "* # WARNING: failed on $ans";
     }
+    # Remove parameter types, which DrMemory won't match against.
+    # Seems like a very small risk of over-matching a different overload.
+    $ans =~ s/\([^)]+\)//;
     print "=> \"$ans\"\n" if ($verbose);
     return $ans;
 }
