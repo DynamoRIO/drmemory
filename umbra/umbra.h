@@ -175,7 +175,7 @@ typedef struct _umbra_shadow_memory_info_t {
     /** Size of the shadow memory block */
     size_t shadow_size;
     /** Type of the shadow memory block */
-    uint   shadow_type;
+    umbra_shadow_memory_type_t shadow_type;
 } umbra_shadow_memory_info_t;
 
 /** Opaque "Umbra map handle" type.  See #umbra_map_t. */
@@ -212,8 +212,8 @@ typedef struct _umbra_map_options_t {
     /** For shadow mapping scaling. */
     umbra_map_scale_t scale;
 
-    /** For fine-grained control, see #umbra_map_flags_t. */
-    uint flags;
+    /** For fine-grained control. */
+    umbra_map_flags_t flags;
 
     /**
      * Specify the value of shadow memory that is allocated but not initialized
@@ -243,16 +243,16 @@ typedef struct _umbra_map_options_t {
     size_t     redzone_value_size;
 #endif
 
-    /** Application memory creation callback, see #app_memory_create_cb_t. */
+    /** Application memory creation callback. */
     app_memory_create_cb_t app_memory_create_cb;
 
-    /** Application memory pre deletion callback, see #app_memory_delete_cb_t. */
+    /** Application memory pre deletion callback. */
     app_memory_pre_delete_cb_t app_memory_pre_delete_cb;
 
-    /** Application memory post deletion callback, see #app_memory_delete_cb_t. */
+    /** Application memory post deletion callback. */
     app_memory_post_delete_cb_t app_memory_post_delete_cb;
 #ifdef LINUX
-    /** Application memory re-map callback, see #app_memory_delete_cb_t. */
+    /** Application memory re-map callback. */
     app_memory_mremap_cb_t app_memory_mremap_cb;
 #endif
 } umbra_map_options_t;
@@ -285,8 +285,8 @@ DR_EXPORT
 /**
  * Create a shadow memory mapping according to the mapping options \p ops,
  * and return the opaque pointer in \p map_out.
- * @param[in]   The mapping object to use.
- * @param[out]  The mapping options.
+ * @param[in]   ops      The mapping object to use.
+ * @param[out]  map_out  The mapping options.
  */
 drmf_status_t
 umbra_create_mapping(IN  umbra_map_options_t *ops,
@@ -304,7 +304,7 @@ DR_EXPORT
  * Create shadow memory for application memory using mapping scheme \p map.
  * 
  * @param[in] map         The mapping object to use.
- * @param[in] flags       Options, see #umbra_shadow_creation_flags_t.
+ * @param[in] flags       Shadow memory creation options.
  * @param[in] app_addr    Application memory address.
  * @param[in] app_size    Application memory size.
  * @param[in] value       The initial value in shadow memory.
@@ -320,7 +320,7 @@ DR_EXPORT
  */
 drmf_status_t
 umbra_create_shadow_memory(IN  umbra_map_t *map,
-                           IN  uint         flags,
+                           IN  umbra_shadow_memory_flags_t flags,
                            IN  app_pc       app_addr,
                            IN  size_t       app_size,
                            IN  ptr_uint_t   value,
@@ -349,7 +349,7 @@ DR_EXPORT
  * the application address) for address translation from application memory to
  * shadow memory.
  *
- * @param[out]  num_args  Number of scratch register required for translation.
+ * @param[out]  num_regs  Number of scratch register required for translation.
  */
 drmf_status_t
 umbra_num_scratch_regs_for_translation(OUT  int *num_regs);
@@ -545,9 +545,8 @@ DR_EXPORT
  * Get shadow memory type for address \p shadow_addr.
  *
  * @param[in]  map          The mapping object to use.
- * @param[in]  shadow_addr  The shadow memory address for \app_addr.
- * @param[out] shadow_type  The type of the shadow memory at \p shadow_addr,
- *                          see #umbra_shadow_memory_type.
+ * @param[in]  shadow_addr  The shadow memory address for \p app_addr.
+ * @param[out] shadow_type  The type of the shadow memory at \p shadow_addr.
  *
  * \note: this routine has high runtime overhead since it may need iterate all
  * shadow memory to determine the shadow memory type for \p shadow_addr.
@@ -555,7 +554,7 @@ DR_EXPORT
 drmf_status_t
 umbra_get_shadow_memory_type(IN  umbra_map_t *map,
                              IN  byte *shadow_addr,
-                             OUT uint *shadow_type);
+                             OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
 /**
@@ -571,8 +570,7 @@ DR_EXPORT
  *
  * @param[in]  map          The mapping object to use.
  * @param[in]  shadow_addr  The shadow memory address.
- * @param[out] shadow_type  The type of the shadow memory at \p shadow_addr,
- *                          see #umbra_shadow_memory_type.
+ * @param[out] shadow_type  The type of the shadow memory at \p shadow_addr.
  *
  * \note: This is a routine for efficient check if \p shadow_addr is in a
  * special shared shadow memory. UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN is set
@@ -582,7 +580,7 @@ DR_EXPORT
 drmf_status_t
 umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
                               IN  byte *shadow_addr,
-                              OUT uint *shadow_type);
+                              OUT umbra_shadow_memory_type_t *shadow_type);
 
 DR_EXPORT
 /**
@@ -590,7 +588,7 @@ DR_EXPORT
  *
  * @param[in]     map          The mapping object to use.
  * @param[in]     app_addr     The application memory address.
- * @param[out]    shadow_addr  The shadow memory address for \app_addr.
+ * @param[out]    shadow_addr  The shadow memory address for \p app_addr.
  * @param[in,out] shadow_info  The information about the shadow memory for
  *                             \p app_addr.
  *

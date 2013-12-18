@@ -56,6 +56,12 @@ file(GLOB sub_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.sub")
 file(GLOB in_files "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.dox.in")
 file(GLOB imgs "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.png")
 
+# XXX: share w/ list of paths in CMake_doxyfile ${headers}
+set(headers
+  ${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.h
+  ${PROJECT_SOURCE_DIR}/umbra/umbra.h
+  ${PROJECT_SOURCE_DIR}/framework/public.h)
+
 # some defines are set by DR config files so we must add here
 if (WIN32)
   set(DEFINES ${DEFINES} -DWINDOWS)
@@ -80,6 +86,7 @@ set(doxyfile ${CMAKE_CURRENT_BINARY_DIR}/Doxyfile)
 add_custom_command(
   OUTPUT ${doxyfile}
   DEPENDS ${dox_files}
+          ${headers}
           ${CMAKE_CURRENT_SOURCE_DIR}/Doxyfile.in
           ${CMAKE_CURRENT_SOURCE_DIR}/CMake_doxyfile.cmake
           ${PROJECT_SOURCE_DIR}/${tooldir}/docs/options-base.dox.in
@@ -120,8 +127,10 @@ add_custom_command(
   ARGS -D DOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
        -Ddoxygen_ver=${DOXYGEN_VERSION}
        -Dversion_number=${TOOL_VERSION_NUMBER}
-       -Dmodule_string_long="Modules" # N/A
-       -Dmodule_string_short="Module" # N/A
+       -Dmodule_string_long="DRMF Modules"
+       -Dmodule_string_short="DRMF Module"
+       -Dfiles_string="DRMF Files"
+       -Dstructs_string="DRMF Data Structures"
        -Dhome_url="http://www.drmemory.org"
        -Dhome_title="Dr. Memory Home Page"
        # XXX: once we have a logo (in progress), put it here

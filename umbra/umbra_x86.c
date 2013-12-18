@@ -854,7 +854,7 @@ umbra_iterate_shadow_memory_arch(umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared_arch(IN  umbra_map_t *map,
                                    IN  byte *shadow_addr,
-                                   OUT uint *shadow_type)
+                                   OUT umbra_shadow_memory_type_t *shadow_type)
 {
     bool redzone;
     if (shadow_table_is_in_special_block(map, shadow_addr,
@@ -871,7 +871,7 @@ umbra_shadow_memory_is_shared_arch(IN  umbra_map_t *map,
 drmf_status_t
 umbra_get_shadow_memory_type_arch(umbra_map_t *map,
                                   byte *shadow_addr,
-                                  uint *shadow_type)
+                                  umbra_shadow_memory_type_t *shadow_type)
 {
     uint i;
     bool redzone;

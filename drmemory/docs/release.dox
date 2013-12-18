@@ -59,7 +59,18 @@ The Dr. Memory distribution contains the following:
 \section sec_changes Changes Since Prior Releases
 
 The current version is \TOOL_VERSION.
-The changes between \TOOL_VERSION and version 1.6.0 include:
+The changes between \TOOL_VERSION and version 1.6.1a include:
+ - Clarified the final parameter to umbra_get_shadow_memory_type() and
+   umbra_shadow_memory_is_shared() to be #umbra_shadow_memory_type_t
+   rather than uint.
+ - Clarified the 2nd parameter to umbra_create_shadow_memory() to be
+   #umbra_shadow_memory_flags_t rather than uint.
+ - Clarified the #umbra_shadow_memory_info_t shadow_type field to be
+   #umbra_shadow_memory_type_t rather than uint.
+ - Clarified the #umbra_map_options_t flags field to be
+   #umbra_map_flags_t rather than uint.
+
+The changes between version 1.6.1 and version 1.6.0 include:
  - Added Windows 8.1 support
  - Added -handle_leaks_only feature for low-overhead handle leak checking
  - Added the -crash_at_unaddressable and -crash_at_error options

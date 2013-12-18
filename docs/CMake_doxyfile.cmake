@@ -194,10 +194,13 @@ if (WIN32)
 endif (WIN32)
 
 if (TOOL_DR_MEMORY)
+  # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
+  set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h")
+  set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
   string(REGEX REPLACE
     "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")
   string(REGEX REPLACE
-    "main.dox" "main.dox tools.dox" string "${string}")
+    "main.dox" "main.dox tools.dox ${headers}" string "${string}")
 endif (TOOL_DR_MEMORY)
 
 file(WRITE ${outfile} "${string}")

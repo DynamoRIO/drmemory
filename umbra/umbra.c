@@ -651,7 +651,7 @@ DR_EXPORT
 drmf_status_t
 umbra_get_shadow_memory_type(IN  umbra_map_t *map,
                              IN  byte *shadow_addr,
-                             OUT uint *shadow_type)
+                             OUT umbra_shadow_memory_type_t *shadow_type)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");
@@ -665,7 +665,7 @@ umbra_get_shadow_memory_type(IN  umbra_map_t *map,
 drmf_status_t
 umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
                               IN  byte *shadow_addr,
-                              OUT uint *shadow_type)
+                              OUT umbra_shadow_memory_type_t *shadow_type)
 {
     if (map == NULL || map->magic != UMBRA_MAP_MAGIC) {
         ASSERT(false, "invalid umbra_map");

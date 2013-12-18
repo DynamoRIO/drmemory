@@ -230,7 +230,7 @@ shadow_value_byte_2_dword(uint val)
 bool
 is_in_special_shadow_block(app_pc pc)
 {
-    uint shadow_type;
+    umbra_shadow_memory_type_t shadow_type;
     if (umbra_shadow_memory_is_shared(umbra_map, pc,
                                       &shadow_type) != DRMF_SUCCESS)
         ASSERT(false, "fail to get shadow memory type");

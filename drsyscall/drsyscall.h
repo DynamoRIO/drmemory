@@ -451,12 +451,12 @@ DR_EXPORT
  * libraries containing their wrappers have not yet been loaded.
  *
  * @param[in]  name    The system call name to look up.
- * @param[out] sysnum  The system call handle.
+ * @param[out] syscall  The system call handle.
  *
  * \return success code.
  */
 drmf_status_t
-drsys_name_to_syscall(const char *name, drsys_syscall_t **syscall OUT);
+drsys_name_to_syscall(const char *name, OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -472,7 +472,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_number_to_syscall(drsys_sysnum_t sysnum, drsys_syscall_t **syscall OUT);
+drsys_number_to_syscall(drsys_sysnum_t sysnum, OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -487,7 +487,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_name(drsys_syscall_t *syscall, const char **name OUT);
+drsys_syscall_name(drsys_syscall_t *syscall, OUT const char **name);
 
 DR_EXPORT
 /**
@@ -502,7 +502,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_number(drsys_syscall_t *syscall, drsys_sysnum_t *sysnum OUT);
+drsys_syscall_number(drsys_syscall_t *syscall, OUT drsys_sysnum_t *sysnum);
 
 DR_EXPORT
 /**
@@ -517,7 +517,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT);
+drsys_syscall_type(drsys_syscall_t *syscall, OUT drsys_syscall_type_t *type);
 
 DR_EXPORT
 /**
@@ -532,7 +532,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_is_known(drsys_syscall_t *syscall, bool *known OUT);
+drsys_syscall_is_known(drsys_syscall_t *syscall, OUT bool *known);
 
 DR_EXPORT
 /**
@@ -543,7 +543,7 @@ DR_EXPORT
  * drsys_number_to_syscall(), or syscall_arg_t.syscall.
  *
  * On Windows, System calls that return an error code like
- * STATUS_BUFFER_TOO_SMALL but that still write an OUT param are
+ * STATUS_BUFFER_TOO_SMALL OUT but that still write an param are
  * considered to have succeeded.
  *
  * @param[in]  syscall  The handle for the system call to query.
@@ -553,7 +553,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, bool *success OUT);
+drsys_syscall_succeeded(drsys_syscall_t *syscall, reg_t result, OUT bool *success);
 
 DR_EXPORT
 /**
@@ -574,7 +574,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_syscall_return_type(drsys_syscall_t *syscall, drsys_param_type_t *type OUT);
+drsys_syscall_return_type(drsys_syscall_t *syscall, OUT drsys_param_type_t *type);
 
 #ifdef WINDOWS
 DR_EXPORT
@@ -643,7 +643,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_cur_syscall(void *drcontext, drsys_syscall_t **syscall OUT);
+drsys_cur_syscall(void *drcontext, OUT drsys_syscall_t **syscall);
 
 DR_EXPORT
 /**
@@ -660,7 +660,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_pre_syscall_arg(void *drcontext, uint argnum, ptr_uint_t *value OUT);
+drsys_pre_syscall_arg(void *drcontext, uint argnum, OUT ptr_uint_t *value);
 
 DR_EXPORT
 /**
@@ -682,7 +682,7 @@ DR_EXPORT
  * \return success code.
  */
 drmf_status_t
-drsys_get_mcontext(void *drcontext, dr_mcontext_t **mc OUT);
+drsys_get_mcontext(void *drcontext, OUT dr_mcontext_t **mc);
 
 
 /***************************************************************************
