@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -25,6 +25,20 @@
 /* Dr. Memory Framework shared header */
 
 #include "dr_api.h"
+
+/**
+ * @file drmemory_framework.h
+ * @brief Shared header for Dr. Memory Framework
+ */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * \addtogroup drmf Dr. Memory Framework
+ */
+/*@{*/ /* begin doxygen group */
 
 #define EXPANDSTR(x) #x
 #define STRINGIFY(x) EXPANDSTR(x)
@@ -59,5 +73,12 @@ typedef enum {
     DRMF_ERROR_NOT_ENOUGH_REGS,    /**< Operation failed: not enough registers for use */
     DRMF_ERROR_ACCESS_DENIED,      /**< Operation failed: access denied */
 } drmf_status_t;
+
+
+/*@}*/ /* end doxygen group */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* _DRMEMORY_FRAMEWORK_H_ */
