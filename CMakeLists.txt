@@ -4,17 +4,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -110,7 +110,7 @@ if (TOOL_DR_HEAPSTAT)
         message(FATAL_ERROR "Can't find Java interpreter: please set JAVA var")
       endif (JAVA_RUNTIME)
     endif (NOT DEFINED JAVA)
-    
+
     # There is no standard install path so the user must tell us where they
     # installed the Flex SDK, either via env var FLEXROOT or FLEX_SDK CMake var.
     set(FLEX_SDK "$ENV{FLEXROOT}" CACHE PATH "Path to Flex SDK.")
@@ -571,7 +571,7 @@ add_custom_command(
   OUTPUT "${options_for_perl}"
   DEPENDS "${PROJECT_SOURCE_DIR}/common/options-perl.c"
   "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
-  COMMAND ${CMAKE_CPP} 
+  COMMAND ${CMAKE_CPP}
   ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-perl.c"
   -I${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_perl}"
   VERBATIM)
@@ -1087,7 +1087,7 @@ endif (NOT cur_flags)
 set_property(SOURCE common/alloc_unopt.c
   PROPERTY COMPILE_FLAGS "${cur_flags} ${DISABLE_OPTS}")
 
-# Though the swf file isn't an executable it is in ${BIN_ARCH} because it isn't 
+# Though the swf file isn't an executable it is in ${BIN_ARCH} because it isn't
 # exposed to the users; it isn't in lib because, well, it isn't a lib.
 if (TOOL_DR_HEAPSTAT AND BUILD_VISUALIZER)
   add_custom_target(vistool ALL DEPENDS "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf")
@@ -1235,7 +1235,7 @@ else (WIN32)
   else (USER_SPECIFIED_DynamoRIO_DIR)
     set(drconfig_copy "${PROJECT_BINARY_DIR}/${BUILD_BIN}/drconfig")
     add_custom_target(drconfig_copy_tgt ALL DEPENDS "${drconfig_copy}")
-    add_custom_command(OUTPUT "${drconfig_copy}" 
+    add_custom_command(OUTPUT "${drconfig_copy}"
       DEPENDS drconfig
       COMMAND ${CMAKE_COMMAND}
       ARGS -E copy "${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig"
@@ -1387,7 +1387,7 @@ if (install_override)
   else (X64)
     set(EXP_DIR exports32)
   endif (X64)
-  set(CMAKE_INSTALL_PREFIX "${PROJECT_BINARY_DIR}/../${EXP_DIR}" 
+  set(CMAKE_INSTALL_PREFIX "${PROJECT_BINARY_DIR}/../${EXP_DIR}"
     CACHE PATH "install path" FORCE)
 endif (install_override)
 
@@ -1493,7 +1493,7 @@ install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   )
 install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   DESTINATION "${INSTALL_BIN}"
-  FILE_PERMISSIONS OWNER_READ OWNER_EXECUTE 
+  FILE_PERMISSIONS OWNER_READ OWNER_EXECUTE
   GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
   FILES_MATCHING
   PATTERN "*.debug"
@@ -1675,11 +1675,11 @@ set(CPACK_RESOURCE_FILE_README "${PROJECT_SOURCE_DIR}/README")
 set(CPACK_SOURCE_IGNORE_FILES "~$" "/.svn" "/.git")
 
 set(CPACK_PACKAGE_VERSION "${TOOL_VERSION_NUMBER}")
-string(REGEX REPLACE 
+string(REGEX REPLACE
   "^([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MAJOR "${TOOL_VERSION_NUMBER}")
-string(REGEX REPLACE 
+string(REGEX REPLACE
   "^[0-9]+\\.([0-9]+)\\..*" "\\1" CPACK_PACKAGE_VERSION_MINOR "${TOOL_VERSION_NUMBER}")
-string(REGEX REPLACE 
+string(REGEX REPLACE
   "^[0-9]+\\.[0-9]+\\.([0-9]+)" "\\1" CPACK_PACKAGE_VERSION_PATCH "${TOOL_VERSION_NUMBER}")
 
 if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
@@ -1700,11 +1700,11 @@ if (WIN32 AND NOT BUILDING_SUB_PACKAGE)
     # don't take time and space copying: user can pass same dr to frontend,
     # so we only copy for package target
     if (DEBUG_BUILD)
-      set(CPACK_INSTALLED_DIRECTORIES 
+      set(CPACK_INSTALLED_DIRECTORIES
         "${DynamoRIO_DIR}/../${LIB_ARCH};${DR_install_dir}/${LIB_ARCH}"
         "${DynamoRIO_DIR}/../ext/${LIB_ARCH};${DR_install_dir}/ext/${LIB_ARCH}")
     else (DEBUG_BUILD)
-      set(CPACK_INSTALLED_DIRECTORIES 
+      set(CPACK_INSTALLED_DIRECTORIES
         "${DynamoRIO_DIR}/../${LIB_ARCH}/release;${DR_install_dir}/${LIB_ARCH}/release"
         "${DynamoRIO_DIR}/../ext/${LIB_ARCH}/release;${DR_install_dir}/ext/${LIB_ARCH}/release")
     endif (DEBUG_BUILD)
@@ -1734,7 +1734,7 @@ if (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   set(CPACK_PACKAGE_EXECUTABLES "${toolname}" "${toolname_cap_spc} (drag your app here)")
   set(CPACK_CREATE_DESKTOP_LINKS "${toolname}")
 endif (PERL_TO_EXE OR WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-set(CPACK_NSIS_MENU_LINKS 
+set(CPACK_NSIS_MENU_LINKS
   # We automatically get an entry for ${toolname}.exe since it's in the
   # CPACK_PACKAGE_EXECUTABLES list, even though we don't want one.
   "bin/" "Explore ${toolname_cap_spc} (drag your app onto ${toolname}.exe)"

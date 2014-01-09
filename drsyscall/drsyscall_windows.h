@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -56,7 +56,7 @@ bool
 wingdi_process_arg(sysarg_iter_info_t *iter_info,
                    const syscall_arg_t *arg_info, app_pc start, uint size);
 
-/* Returns true if the success value is known, in which case it is placed in *success. 
+/* Returns true if the success value is known, in which case it is placed in *success.
  * Returns false if the caller should determine whether successful.
  */
 bool

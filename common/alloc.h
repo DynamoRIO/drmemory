@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -327,7 +327,7 @@ client_remove_malloc_post(malloc_info_t *info);
 
 /* real_size is the actual size of memory allocated by allocator.
  * If alloc_options.get_padded_size, the padded_size is passed in;
- * otherwise, an inaccurate real_size is passed in, 
+ * otherwise, an inaccurate real_size is passed in,
  * possibly (app_size + redzone_size*2).
  */
 void

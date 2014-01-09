@@ -158,7 +158,7 @@ print_arg(drsys_arg_t *arg)
         }
     }
     }
-    
+
     OUTPUT(" (%s%s%stype=%s%s, size="PIFX")\n",
            (arg->arg_name == NULL) ? "" : "name=",
            (arg->arg_name == NULL) ? "" : arg->arg_name,

@@ -7,7 +7,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -52,21 +52,21 @@ name=uninit_test4 mixed and ...
 suppress.exe!uninit_test4
 
 # uninitialized read: ... + mod!func suppression
-# "..." should match one frame 
+# "..." should match one frame
 UNINITIALIZED READ
 name=uninit_test5 ... match 1
 ...
 suppress.exe!uninit_test5
 
-# uninitialized read: ... + mod!func suppression 
-# "..." should match five frames 
+# uninitialized read: ... + mod!func suppression
+# "..." should match five frames
 UNINITIALIZED READ
 name=uninit_test6 ... match 6
 suppress.exe!do_uninit_read
 ...
 suppress.exe!uninit_test6
 
-# uninitialized read: ... + ? + mod!off suppression 
+# uninitialized read: ... + ? + mod!off suppression
 UNINITIALIZED READ
 name=uninit_test7 ... + ? + mod!off suppression
 ...
@@ -102,12 +102,12 @@ supp*!unaddr_test2
 UNADDRESSABLE ACCESS
 name=unaddr_test3 instruction
 # test trailing spaces here
-instruction=mov    (%eax) -> %e?x   
+instruction=mov    (%eax) -> %e?x
 suppress.exe!unaddr_test3
 suppress.exe!test
 suppress.exe!main
 
-# unaddressable access: top frame based mod!func suppression 
+# unaddressable access: top frame based mod!func suppression
 UNADDRESSABLE ACCESS
 name=unaddr_test4 top
 suppress.exe!unaddr_test4
@@ -126,24 +126,24 @@ LEAK
 name=leak_test2 *
 suppress.exe!l*2
 
-# leak: full callstack based mod!func suppression 
+# leak: full callstack based mod!func suppression
 LEAK
 name=leak_test3 ?
 sup?re?s.e?e!l??k_test3
 suppress.exe!test
 suppress.exe!main
 
-# leak: top frame based mod!func suppression 
+# leak: top frame based mod!func suppression
 LEAK
 name=leak_test4 top
 suppress.exe!leak_test4
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 POSSIBLE LEAK
 name=possible_leak_test1 top
 suppress.exe!possible_leak_test1
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 LEAK
 name=possible_leak_test2 w/ leak supp
 suppress.exe!possible_leak_test2

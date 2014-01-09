@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -269,7 +269,7 @@ static drsys_sysnum_t sysnum_PowerInformation = {-1,0};
  * Don't forget to re-add the #if 1 below after re-generating
  *
  * Updated version generated via:
- * ./mksystable.pl < ../../win32lore/syscalls/metasploit/metasploit-syscalls-fix.html | sort 
+ * ./mksystable.pl < ../../win32lore/syscalls/metasploit/metasploit-syscalls-fix.html | sort
  * metasploit-syscalls-fix.html has these changes:
  * - added IN/OUT to NtTranslateFilePath
  * - removed dups (in some cases not clear which alternative was better):
@@ -897,7 +897,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {6, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {7, sizeof(BOOLEAN), SYSARG_INLINED, DRSYS_TYPE_BOOL},
          {8, sizeof(RTL_USER_PROCESS_PARAMETERS), R},
-         /*XXX i#98: arg 9 is in/out but not completely known*/ 
+         /*XXX i#98: arg 9 is in/out but not completely known*/
          {10, sizeof(create_proc_thread_info_t), R/*rest handled manually*/, },
      }, &sysnum_CreateUserProcess
     },
@@ -3103,7 +3103,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {9, sizeof(UNICODE_STRING), R|HT, SYSARG_TYPE_UNICODE_STRING},
      }
     },
-    {{0,0},"NtCreateTransactionManager", OK, RNTST, 6, 
+    {{0,0},"NtCreateTransactionManager", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3185,7 +3185,7 @@ static syscall_info_t syscall_ntdll_info[] = {
          {5, sizeof(ULONG), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{0,0},"NtOpenTransactionManager", OK, RNTST, 6, 
+    {{0,0},"NtOpenTransactionManager", OK, RNTST, 6,
      {
          {0, sizeof(HANDLE), W|HT, DRSYS_TYPE_HANDLE},
          {1, sizeof(ACCESS_MASK), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
@@ -3626,7 +3626,7 @@ check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *
     if (info != NULL) {
         drsys_sysnum_t num_from_wrapper;
         bool ok = syscall_num_from_name(drcontext, info, syslist->name,
-                                        optional_prefix, 
+                                        optional_prefix,
                                         drsys_ops.verify_sysnums,
                                         &num_from_wrapper);
         ASSERT(!ok/*no syms*/ || drsys_sysnums_equal(&syslist->num, &num_from_wrapper),
@@ -3648,7 +3648,7 @@ add_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *sy
         optional_prefix = NULL;
     if (info != NULL) {
         ok = syscall_num_from_name(drcontext, info, syslist->name,
-                                   optional_prefix, 
+                                   optional_prefix,
                                    /* it's a perf hit to do one-at-a-time symbol
                                     * lookup for hundreds of syscalls, so we rely
                                     * on our tables unless asked.
@@ -4423,7 +4423,7 @@ handle_cstring_wide_access(sysarg_iter_info_t *ii,
 {
     return handle_cwstring(ii, NULL, start, size, arg_info->param, arg_info->flags, NULL,
                            /* let normal check ensure full size is addressable (since
-                            * OUT user must pass in max size) 
+                            * OUT user must pass in max size)
                             */
                            false);
 }
@@ -4435,7 +4435,7 @@ handle_alpc_port_attributes_access(sysarg_iter_info_t *ii,
 {
     ALPC_PORT_ATTRIBUTES *apa = (ALPC_PORT_ATTRIBUTES *) start;
     ASSERT(size == sizeof(ALPC_PORT_ATTRIBUTES), "invalid size");
-    
+
     if (ii->arg->pre) {
         if (!report_memarg_ex(ii, arg_info->param, DRSYS_PARAM_BOUNDS,
                               start, size, "ALPC_PORT_ATTRIBUTES",
@@ -4876,7 +4876,7 @@ handle_SetInformationFile(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t
     FILE_INFORMATION_CLASS cls = (FILE_INFORMATION_CLASS) pt->sysarg[4];
     byte *info = (byte *)pt->sysarg[2];
     ULONG length = (ULONG)pt->sysarg[3];
-        
+
     /* In table pt->sysarg[2] would be "{2, -3, R}" */
     if (pt->pre) {
         /* pre-syscall */
@@ -5038,7 +5038,7 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
                                     DRSYS_TYPE_POINTER, NULL))
                 return;
         }
-        
+
     } else {
         /* XXX: check the rest of the codes and see whether any are not
          * fully initialized or have weird output buffers.
@@ -5549,7 +5549,7 @@ handle_AFD_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
          */
         WARN("WARNING: unknown AFD ioctl "PIFX" => op %d\n", full_code, opcode);
         /* XXX: should perhaps dump a callstack too at higher verbosity */
-        /* assume full thing must be defined */ 
+        /* assume full thing must be defined */
         CHECK_DEF(ii, inbuf, insz, "AFD InputBuffer");
         break;
     }

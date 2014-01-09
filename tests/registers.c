@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -181,7 +181,7 @@ repstr_test(void)
     asm("jne   stos_error");
     asm("stos_error:");
     /* should be no error on the movs, and the stos should make a2[7] defined,
-     * but the cmps should hit error on a1[7] 
+     * but the cmps should hit error on a1[7]
      */
     asm("mov   %0, %%edi" : : "g"(a1) : "edi");
     asm("mov   %0, %%esi" : : "g"(a2) : "esi");

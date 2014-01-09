@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -321,7 +321,7 @@ md5_transform(uint state[4], const byte block[MD5_BLOCK_LENGTH])
  * constant value.
  */
 void
-get_md5_for_region(const byte *region_start, uint len, 
+get_md5_for_region(const byte *region_start, uint len,
                    byte digest[MD5_RAW_BYTES] /* OUT */)
 {
     md5_context_t md5_cxt;
@@ -329,7 +329,7 @@ get_md5_for_region(const byte *region_start, uint len,
     ASSERT(region_start != NULL, "invalid param");
     ASSERT(len != 0, "useless to md5 zero length");
 
-    if (region_start != NULL && len != 0) 
+    if (region_start != NULL && len != 0)
         md5_update(&md5_cxt, region_start, len);
     md5_final(digest, &md5_cxt);
 }
@@ -348,7 +348,7 @@ md5_hash(const byte digest[MD5_RAW_BYTES])
     uint i;
     for (i = 0; i < MD5_RAW_BYTES/sizeof(uint); i++) {
         ASSERT(i*sizeof(uint)+3 < MD5_RAW_BYTES, "overflow");
-        hash ^= (digest[i*sizeof(uint)+3] << 24) | 
+        hash ^= (digest[i*sizeof(uint)+3] << 24) |
             (digest[i*sizeof(uint)+2] << 16) |
             (digest[i*sizeof(uint)+1] << 8) |
             (digest[i*sizeof(uint)]);

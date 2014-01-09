@@ -4,17 +4,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -331,7 +331,7 @@ function(newtest_nobuild_ex test exe test_ops drmem_ops dr_ops postprocess resba
   string(REGEX REPLACE " " "@@" postcmd "${postcmd}")
   string(REGEX REPLACE ";" "@" postcmd "${postcmd}")
   if ("${resbase}" STREQUAL "")
-    set(resbase "${test}") 
+    set(resbase "${test}")
     string(REGEX REPLACE "_FLAKY$" "" resbase "${resbase}")
   endif ("${resbase}" STREQUAL "")
   if (X64)
@@ -467,7 +467,7 @@ if (UNIX)
       "obj-m += ${kmod_name}.o")
 
   add_custom_command(OUTPUT "${kmod_bin_dir}/${kmod_src}"
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different 
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${kmod_src_dir}/${kmod_src}"
       "${kmod_bin_dir}")
   add_custom_command(OUTPUT "${kmod_bin}"
@@ -545,7 +545,7 @@ if (WIN32)
     # show up as possible leaks.  XXX: may be worth investigating further.
     newtest_nobuild(unloadMD unloadtest "${unloadlibMD_path};2" "-no_count_leaks"
       "" OFF "unloadMD")
-    
+
     tobuild_lib(unloadlibMDd unload.lib.c "/D_DEBUG /MDd" "")
     get_relative_location(unloadlibMDd unloadlibMDd_path)
     # Turning off leaks to avoid libc globals like environ ptr that

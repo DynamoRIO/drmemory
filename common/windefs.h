@@ -599,7 +599,7 @@ typedef struct _GDI_TEB_BATCH
  * XXX: should share with dynamorio's ntdll.h.
  */
 typedef struct _TEB {                               /* offset: 32bit / 64bit */
-    /* We lay out NT_TIB, which is declared in winnt.h */    
+    /* We lay out NT_TIB, which is declared in winnt.h */
     PVOID /* PEXCEPTION_REGISTRATION_RECORD */ExceptionList;/* 0x000 / 0x000 */
     PVOID                     StackBase;                    /* 0x004 / 0x008 */
     PVOID                     StackLimit;                   /* 0x008 / 0x010 */
@@ -907,7 +907,7 @@ typedef struct _REMOTE_PORT_VIEW {
  */
 
 //
-// Trace header for all legacy events. 
+// Trace header for all legacy events.
 //
 
 typedef struct _EVENT_TRACE_HEADER {        // overlays WNODE_HEADER
@@ -979,7 +979,7 @@ typedef enum { /* NOTE - these are speculative */
     THREAD_INFO_ELEMENT_TEB             = 0x4, /* buffer is TEB * - OUT */
     THREAD_INFO_ELEMENT_NT_PATH_TO_EXE  = 0x5, /* buffer is wchar * path to exe
                                                 * [ i.e. L"\??\c:\foo.exe" ] - IN */
-    THREAD_INFO_ELEMENT_EXE_STUFF       = 0x6, /* buffer is exe_stuff_t (see above) 
+    THREAD_INFO_ELEMENT_EXE_STUFF       = 0x6, /* buffer is exe_stuff_t (see above)
                                                 * - INOUT */
     THREAD_INFO_ELEMENT_UNKNOWN_1       = 0x9, /* Unknown - ptr_uint_t sized
                                                 * [ observed 1 ] - IN */
@@ -1001,7 +1001,7 @@ typedef struct _exe_stuff_t { /* NOTE - this is speculative */
 
 typedef struct _create_proc_thread_info_t { /* NOTE - this is speculative */
     size_t struct_size; /* observed 0x34 or 0x44 (0x68 on 64-bit) = sizeof(this struct) */
-    /* Observed - first thread_info_elm_t always 
+    /* Observed - first thread_info_elm_t always
      * flags = 0x20005
      * buffer_size = varies (sizeof buffer string in bytes)
      * buffer = wchar * : nt path to executable i.e. "\??\c:\foo.exe" - IN */

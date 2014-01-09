@@ -47,7 +47,7 @@
  * 1B-2-1B mapping:
  *   SHDW(app) = (app & 0x000000FF'FFFFFFFF) + 0x00000020'00000000)
  * and the result:
- * shdw1 = SHDW(app1): [0x00000020'00000000, 0x00000030'00000000) 
+ * shdw1 = SHDW(app1): [0x00000020'00000000, 0x00000030'00000000)
  * shdw2 = SHDW(app2): [0x00000110'00000000, 0x00000120'00000000)
  * and
  * shdw1'= SHDW(shdw1): [0x00000040'00000000, 0x00000050'00000000)
@@ -56,7 +56,7 @@
  * Here we call [0x00000000'00000000, 0x00000100'00000000) a unit, and each unit
  * has 16 (NUM_SEGMENTS = 0x100'00000000/0x10'00000000) segments
  * with size of 0x10'00000000.
- * 
+ *
  * Linux:
  * app1: [0x00000000'00000000, 0x00000100'00000000): exec, heap, data
  * app2: [0x00007F00'00000000, 0x00007FFF'F0000000): lib, map, stack, vdso
@@ -64,7 +64,7 @@
  * 1B-2-1B mapping:
  *   SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000200'00000000)
  * and the result:
- * shdw1 = SHDW(app1): [0x00000200'00000000, 0x00000300'00000000) 
+ * shdw1 = SHDW(app1): [0x00000200'00000000, 0x00000300'00000000)
  * shdw2 = SHDW(app2): [0x00001100'00000000, 0x000011FF'F0000000)
  * shdw3 = SHDW(app3): [0x000011FF'F0000000, 0x000011FF'FF601000]
  * and
@@ -136,7 +136,7 @@
  * but it might work with other mapping schemes.
  * Now we hardcode the app segments that are supported and check conflicts
  * for certain mapping, and abort on conflict for case like scale-up on PIE.
- * 
+ *
  * For multiple maps:
  *  We only need put them into different units.
  *  For example, on Windows:
@@ -536,7 +536,7 @@ umbra_map_arch_init(umbra_map_t *map, umbra_map_options_t *ops)
          * from app2:  [0x000007F0'00000000, 0x00000800'00000000)
          * to  shdw2: [0x00000210'00000000, 0x00000220'00000000)
          * conflict!
-         * 
+         *
          * Thus, 2 units apart is necessary.
          * Double check for two SCALE_UP_2X:
          *       app1: [0x00000000'00000000, 0x00000010'00000000)
@@ -908,7 +908,7 @@ umbra_num_scratch_regs_for_translation_arch()
 }
 
 /* code sequence:
- * 
+ *
  */
 drmf_status_t
 umbra_insert_app_to_shadow_arch(void *drcontext,
@@ -1101,7 +1101,7 @@ umbra_handle_fault(void *drcontext, byte *target, dr_mcontext_t *raw_mc,
                 target <  app_segments[i].shadow_end[j]) {
                 umbra_map_t *map = app_segments[i].map[j];
                 app_pc app_addr = (app_pc)
-                    app_segments[i].app_base + 
+                    app_segments[i].app_base +
                     umbra_map_scale_shadow_to_app
                     (map, target - app_segments[i].shadow_base[j]);
                 umbra_create_shadow_memory_arch(map, 0, app_addr, 8,

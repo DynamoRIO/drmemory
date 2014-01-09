@@ -3659,7 +3659,7 @@ typedef BOOL
   IN ULONG  cj,
   OUT DRVENABLEDATA  *pded);
 
-typedef DHPDEV 
+typedef DHPDEV
 (APIENTRY *PFN_DrvEnablePDEV)(
   IN DEVMODEW  *pdm,
   IN LPWSTR  pwszLogAddress,

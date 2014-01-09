@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -25,18 +25,18 @@
 /*
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are met:
- * 
+ *
  * * Redistributions of source code must retain the above copyright notice,
  *   this list of conditions and the following disclaimer.
- * 
+ *
  * * Redistributions in binary form must reproduce the above copyright notice,
  *   this list of conditions and the following disclaimer in the documentation
  *   and/or other materials provided with the distribution.
- * 
+ *
  * * Neither the name of VMware, Inc. nor the names of its contributors may be
  *   used to endorse or promote products derived from this software without
  *   specific prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -134,9 +134,9 @@ syscall_ready:
         push     REG_XBP
         push     REG_XSI
         push     REG_XDI
-        /* add 16 to skip the 4 pushes 
-         * FIXME: rather than this dispatch, could have separate routines 
-         * for each #args, or could just blindly read upward on the stack. 
+        /* add 16 to skip the 4 pushes
+         * FIXME: rather than this dispatch, could have separate routines
+         * for each #args, or could just blindly read upward on the stack.
          * for dispatch, if assume size of mov instr can do single ind jmp */
         mov      ecx, [16+ 8 + esp] /* num_args */
         cmp      ecx, 0

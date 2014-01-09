@@ -217,7 +217,7 @@ shadow_table_create_special_block(umbra_map_t *map,
                                              &map->special_blocks[num_blks]);
     /* update the num_special_blocks */
     map->num_special_blocks = num_blks + 1;
-    block = map->special_blocks[num_blks].start; 
+    block = map->special_blocks[num_blks].start;
     umbra_map_unlock(map);
     return block;
 }
@@ -415,7 +415,7 @@ shadow_table_init(umbra_map_t *map)
         for (i = 0; i < SHADOW_TABLE_ENTRIES; i++)
             shadow_table_set_block(map, i, map->default_block.start);
     } else {
-        byte *start = 
+        byte *start =
             shadow_table_create_special_block(map, map->options.default_value,
                                               map->options.default_value_size);
         for (i = 0; i < SHADOW_TABLE_ENTRIES; i++)
@@ -770,7 +770,7 @@ umbra_value_in_shadow_memory_arch(IN    umbra_map_t *map,
     size_t iter_size;
     byte  *shadow_start, *shadow_addr;
     ptr_uint_t val;
-    size_t valsz, shadow_size; 
+    size_t valsz, shadow_size;
 
     if (value > USHRT_MAX || value_size != 1)
         return DRMF_ERROR_NOT_IMPLEMENTED;
@@ -964,7 +964,7 @@ umbra_create_shared_shadow_block_arch(IN  umbra_map_t *map,
     *block = shadow_table_create_special_block(map, value, value_size);
     if (*block == NULL)
         return DRMF_ERROR_NOMEM;
-    return DRMF_SUCCESS;    
+    return DRMF_SUCCESS;
 }
 
 drmf_status_t

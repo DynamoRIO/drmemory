@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -79,10 +79,10 @@ gdicheck_init(void)
 
     drmgr_register_module_load_event(gdicheck_module_load);
 
-    hashtable_init_ex(&dc_table, DC_TABLE_HASH_BITS, HASH_INTPTR, 
+    hashtable_init_ex(&dc_table, DC_TABLE_HASH_BITS, HASH_INTPTR,
                       false/*!str_dup*/, true/*synch*/,
                       per_dc_free, NULL, NULL);
-    hashtable_init(&selected_table, SELECTED_TABLE_HASH_BITS, HASH_INTPTR, 
+    hashtable_init(&selected_table, SELECTED_TABLE_HASH_BITS, HASH_INTPTR,
                       false/*!str_dup*/);
 }
 

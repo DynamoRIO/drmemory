@@ -57,7 +57,7 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
                    arg->ordinal, arg->arg_name == NULL ? "\"\"" : arg->arg_name,
                    arg->type, arg->type_name == NULL ? "\"\"" : arg->type_name,
                    arg->start_addr, arg->size);
-    } 
+    }
 
     return true; /* keep going */
 }

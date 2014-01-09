@@ -2,8 +2,8 @@
  ****************************************************************************
  ***
  ***   This header was created to make information necessary for userspace
- ***   to call into the Windows kernel available to Dr. Memory.  It contains 
- ***   only constants, structures, and macros, and thus, contains no 
+ ***   to call into the Windows kernel available to Dr. Memory.  It contains
+ ***   only constants, structures, and macros, and thus, contains no
  ***   copyrightable information.
  ***
  ****************************************************************************
@@ -61,7 +61,7 @@ typedef struct _ALPC_MESSAGE_ATTRIBUTES
     ULONG ValidAttributes;
 } ALPC_MESSAGE_ATTRIBUTES, *PALPC_MESSAGE_ATTRIBUTES;
 
-typedef enum _ALPC_PORT_INFORMATION_CLASS 
+typedef enum _ALPC_PORT_INFORMATION_CLASS
 {
     AlpcBasicInformation,
     AlpcPortInformation,
@@ -76,7 +76,7 @@ typedef enum _ALPC_PORT_INFORMATION_CLASS
     AlpcCompletionListRundownInformation
 } ALPC_PORT_INFORMATION_CLASS;
 
-typedef enum _ALPC_MESSAGE_INFORMATION_CLASS 
+typedef enum _ALPC_MESSAGE_INFORMATION_CLASS
 {
     AlpcMessageSidInformation,
     AlpcMessageTokenModifiedIdInformation

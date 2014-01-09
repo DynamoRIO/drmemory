@@ -4,17 +4,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -111,7 +111,7 @@ if (NOT PERL)
 endif (NOT PERL)
 
 # use perl since /bin/sleep not on all platforms
-# select(undef, undef, undef, X) sleeps for X seconds where X can be non-int. 
+# select(undef, undef, undef, X) sleeps for X seconds where X can be non-int.
 set(SLEEP_SHORT ${PERL} -e "select(undef, undef, undef, 0.1)")
 set(TIMEOUT_SHORT "100")  # *0.1 = 10 seconds
 set(TIMEOUT_SHORT_APP "200")  # *0.1 = 20 seconds
@@ -334,10 +334,10 @@ foreach (str ${patterns})
     string(REGEX REPLACE "(^|\n)%if !CYGWIN[^%]+\n%endif\n" "\\1" ${str} "${${str}}")
     # distinguish pre-vista from post-vista
     if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1" 
+      string(REGEX REPLACE "(^|\n)%if CYGWIN_VISTAPLUS[^%]+\n%endif\n" "\\1"
         ${str} "${${str}}")
     else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
-      string(REGEX REPLACE "(^|\n)%if CYGWIN_PREVISTA[^%]+\n%endif\n" "\\1" 
+      string(REGEX REPLACE "(^|\n)%if CYGWIN_PREVISTA[^%]+\n%endif\n" "\\1"
         ${str} "${${str}}")
     endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.0")
   else (WIN32 AND NOT USE_DRSYMS AND "${${str}}" MATCHES "%if CYGWIN")
@@ -347,12 +347,12 @@ foreach (str ${patterns})
       # distinguish pre-win8 from win8
       if ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
         string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "" ${str} "${${str}}")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1" 
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "\\1"
           ${str} "${${str}}")
       else ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" "" 
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_PRE_8[^%]+\n%endif\n" ""
           ${str} "${${str}}")
-        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "\\1" 
+        string(REGEX REPLACE "(^|\n)%if WINDOWS_8[^%]+\n%endif\n" "\\1"
           ${str} "${${str}}")
       endif ("${CMAKE_SYSTEM_VERSION}" STRLESS "6.2")
     elseif (UNIX)
@@ -477,7 +477,7 @@ if (resmatch)
     endif ()
   endwhile ()
   string(REGEX MATCHALL "${data_prefix}([^\n]+)[\n]" resfiles "${cmd_err}")
-  
+
   set(maxlen 0)
   foreach (resfile ${resfiles})
     # for execve test we have multiple: could use name but that's not
@@ -512,7 +512,7 @@ if (resmatch)
       set(resfile_using ${resfile})
     endif ()
   endforeach (resfile)
-  
+
   # remove absolute addresses (from PR 535568)
   string(REGEX REPLACE " 0x[0-9a-f]+-0x[0-9a-f]+" "" results "${results}")
   string(REGEX REPLACE " 0x[0-9a-f]+" "" results "${results}")

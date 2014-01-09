@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -855,7 +855,7 @@ replace_init(void)
         replace_routine_size =
             ALIGN_FORWARD(get_function_entry((app_pc)replace_final_routine), PAGE_SIZE) -
             PAGE_START(get_function_entry((app_pc)replace_memset));
-        
+
         /* PR 485412: we support passing in addresses of libc routines to
          * be replaced if statically included in the executable and if
          * we have no symbols available
@@ -1226,7 +1226,7 @@ replace_in_module(const module_data_t *mod, bool add)
     }
 #endif
     ASSERT(options.replace_libc, "should not be called if op not on");
-    /* step 1: find and replace symbols in exports 
+    /* step 1: find and replace symbols in exports
      * if we find an export we can't mark as processed b/c
      * there can be other symbols of same name.
      */
@@ -1268,8 +1268,8 @@ replace_in_module(const module_data_t *mod, bool add)
     }
 
 #ifdef USE_DRSYMS
-    /* step 2, find and replace symbols in symcache 
-     * i#617: some modules have multiple addresses for one symbol: 
+    /* step 2, find and replace symbols in symcache
+     * i#617: some modules have multiple addresses for one symbol:
      * e.g., unit_tests.exe: strlen, strchr, and strrchr,
      * so we always need check if we can find it in the symcache.
      * We assume that we have all the entries of a symbol if we can find one

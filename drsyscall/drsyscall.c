@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -1106,7 +1106,7 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
     }
 #endif
     default:
-        ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family); 
+        ELOGF(0, f_global, "WARNING: unknown sockaddr type %d\n", family);
         IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
@@ -1299,7 +1299,7 @@ process_pre_syscall_reads_and_writes(cls_syscall_t *pt, sysarg_iter_info_t *ii)
         if (ii->abort)
             break;
 
-        /* FIXME PR 406355: we don't record which params are optional 
+        /* FIXME PR 406355: we don't record which params are optional
          * FIXME: some OUT params may not be written if the IN is bogus:
          * we should check here since harder to undo post-syscall on failure.
          */
@@ -1578,7 +1578,7 @@ drsys_iterate_args_common(void *drcontext, cls_syscall_t *pt, syscall_info_t *sy
 
     arg->arg_name = NULL;
     arg->containing_type = DRSYS_TYPE_INVALID;
-    
+
     /* Treat all parameters as IN.
      * There are no inlined OUT params anyway: have to at least set
      * to NULL, unless truly ignored based on another parameter.
@@ -2089,7 +2089,7 @@ drsys_exit(void)
     if (drsys_ops.syscall_driver)
         driver_exit();
 #endif
- 
+
     hashtable_delete(&filtered_table);
 
     drsyscall_os_exit();

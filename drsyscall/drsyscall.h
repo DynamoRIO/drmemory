@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -154,7 +154,7 @@ typedef enum {
 
 /* Keep this in synch with param_type_names[] */
 /**
- * Indicates the data type of a parameter. 
+ * Indicates the data type of a parameter.
  * For the non-memarg iterators, a pointer type is implied whenever the
  * mode is DRSYS_PARAM_OUT.  Thus, a system call parameter of type DRSYS_TYPE_INT
  * and mode DRSYS_PARAM_OUT can be assumed to be a pointer to an int.
@@ -199,7 +199,7 @@ typedef enum {
     DRSYS_TYPE_NONCLIENTMETRICSW,   /**< NONCLIENTMETRICSW structure. */
     DRSYS_TYPE_ICONMETRICSW,        /**< ICONMETRICSW structure. */
     DRSYS_TYPE_SERIALKEYSW,         /**< SERIALKEYSW structure. */
-    DRSYS_TYPE_SOCKADDR,            /**< struct sockaddr. */ 
+    DRSYS_TYPE_SOCKADDR,            /**< struct sockaddr. */
     DRSYS_TYPE_MSGHDR,              /**< struct msghdr. */
     DRSYS_TYPE_MSGBUF,              /**< struct msgbuf. */
     DRSYS_TYPE_LARGE_INTEGER,       /**< LARGE_INTEGER structure. */

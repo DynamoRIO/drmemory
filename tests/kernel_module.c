@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -29,7 +29,7 @@
 
 static char*  param = "dummy";
 
-static int __init 
+static int __init
 drmem_test_init(void)
 {
     printk(KERN_INFO "DrMemory test kernel module init \n");
@@ -37,7 +37,7 @@ drmem_test_init(void)
     return 0;
 }
 
-static void __exit 
+static void __exit
 drmem_test_cleanup(void)
 {
     printk(KERN_INFO "DrMemory test kernel module exit \n");

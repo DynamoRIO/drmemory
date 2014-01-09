@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -33,7 +33,7 @@
 
 #ifdef WINDOWS
 # define IF_WINDOWS(x) x
-# define IF_WINDOWS_(x) x, 
+# define IF_WINDOWS_(x) x,
 # define _IF_WINDOWS(x) , x
 # define IF_WINDOWS_ELSE(x,y) x
 # define IF_LINUX(x)
@@ -54,7 +54,7 @@
 # define IF_X86_32(x)
 # define IF_X86_32_(x)
 #else
-# define IF_X64(x) 
+# define IF_X64(x)
 # define IF_X86_32(x) x
 # define IF_X86_32_(x) x,
 #endif
@@ -72,7 +72,7 @@
 #ifdef VMX86_SERVER
 # define IF_VMX86(x) x
 #else
-# define IF_VMX86(x) 
+# define IF_VMX86(x)
 #endif
 
 #ifdef USE_DRSYMS
@@ -80,7 +80,7 @@
 # define IF_NOT_DRSYMS(x)
 # define IF_DRSYMS_ELSE(x, y) x
 #else
-# define IF_DRSYMS(x) 
+# define IF_DRSYMS(x)
 # define IF_NOT_DRSYMS(x) x
 # define IF_DRSYMS_ELSE(x, y) y
 #endif
@@ -90,7 +90,7 @@
 # define IF_DRHEAP(x)
 # define IF_DRMEM_ELSE(x, y) x
 #else
-# define IF_DRMEM(x) 
+# define IF_DRMEM(x)
 # define IF_DRHEAP(x) x
 # define IF_DRMEM_ELSE(x, y) y
 #endif
@@ -123,9 +123,9 @@
 # define DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", off) )
 # define END_DO_NOT_OPTIMIZE ACTUAL_PRAGMA( optimize("g", on) )
 /* START_PACKED_STRUCTURE can't be used after typedef (b/c MSVC compiler
- * has bug where it accepts #pragma but not __pragma there) and thus the 
+ * has bug where it accepts #pragma but not __pragma there) and thus the
  * struct have to be typedef-ed in two steps.
- * see example struct _packed_frame_t at common/callstack.c 
+ * see example struct _packed_frame_t at common/callstack.c
  */
 # define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
 # define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
@@ -239,7 +239,7 @@ extern bool op_use_symcache;
 /* dr_fprintf() now prints to the console after dr_enable_console_printing() */
 #define PRINT_CONSOLE(...) dr_fprintf(STDERR, __VA_ARGS__)
 
-/* for notifying user 
+/* for notifying user
  * XXX: should add messagebox, controlled by option
  */
 enum {

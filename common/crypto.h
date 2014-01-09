@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -87,7 +87,7 @@ void
 md5_final(byte digest[16], md5_context_t *ctx);
 
 void
-get_md5_for_region(const byte *region_start, uint len, 
+get_md5_for_region(const byte *region_start, uint len,
                    byte digest[MD5_RAW_BYTES] /* OUT */);
 
 bool

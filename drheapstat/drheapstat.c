@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -124,7 +124,7 @@ static void reset_real_timer(void);
 static void event_thread_exit(void *drcontext);
 
 #ifdef STATISTICS
-static void 
+static void
 dump_statistics(void);
 # define STATS_DUMP_FREQ 10000
 uint alloc_stack_count;
@@ -478,7 +478,7 @@ copy_snapshot(per_snapshot_t *dst, per_snapshot_t *src, bool new_live)
         /* We fill this in at snapshot time */
         dst->stale = NULL;
     }
-    
+
     hashtable_lock(&alloc_stack_table);
     if (new_live) {
         for (i = 0; i < HASHTABLE_SIZE(alloc_stack_table.table_bits); i++) {
@@ -490,7 +490,7 @@ copy_snapshot(per_snapshot_t *dst, per_snapshot_t *src, bool new_live)
             }
         }
     }
-    
+
     prev_u = NULL;
     for (u = src->used; u != NULL; u = u->next) {
         nxt_u = (heap_used_t *) global_alloc(sizeof(*nxt_u), HEAPSTAT_SNAPSHOT);
@@ -871,7 +871,7 @@ snapshot_dump_all(void)
      */
     /* We do dump the partially-full current snapshot (PR 548013) */
     if (options.time_clock) {
-        uint64 diff = ((dr_get_milliseconds() - timestamp_last_snapshot) 
+        uint64 diff = ((dr_get_milliseconds() - timestamp_last_snapshot)
                        / TIME_BASE_FREQ) + 1 /* round up */;
         snaps[snap_idx].stamp = stamp + diff;
     } else if (options.time_allocs)
@@ -1262,7 +1262,7 @@ insert_instr_counter(void *drcontext, instrlist_t *bb,
     instrlist_meta_preinsert
         (bb, where, INSTR_CREATE_sub(drcontext, OPND_CREATE_ABSMEM
                                      ((byte *)&instr_count, OPSZ_4),
-                                     (instrs_in_bb <= CHAR_MAX) ? 
+                                     (instrs_in_bb <= CHAR_MAX) ?
                                      OPND_CREATE_INT8(instrs_in_bb) :
                                      OPND_CREATE_INT32(instrs_in_bb)));
     /* TODO: for better perf could not bother to check threshold
@@ -1355,7 +1355,7 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
     if (options.staleness) {
         /* We want to spill AFTER any clean call in case it changes mcontext */
         ii->bi.spill_after = instr_get_prev(inst);
-        
+
         /* update liveness of whole-bb spilled regs */
         fastpath_pre_instrument(drcontext, bb, inst, &ii->bi);
 
@@ -1369,7 +1369,7 @@ event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                                              LOGFILE_GET(drcontext)); });
                 LOG(3, "\n");
                 ii->bi.shared_memop = opnd_create_null();
-                /* Restore whole-bb spilled regs (PR 489221) 
+                /* Restore whole-bb spilled regs (PR 489221)
                  * FIXME: optimize via liveness analysis
                  */
                 mi.reg1 = ii->bi.reg1;
@@ -1433,7 +1433,7 @@ event_bb_instru2instru(void *drcontext, void *tag, instrlist_t *bb,
  * FIXME: make per-thread to avoid races (or use locked inc)
  * may want some of these to be 64-bit
  */
-static void 
+static void
 dump_statistics(void)
 {
     int i;
@@ -1453,7 +1453,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "\nPer-opcode slow path executions:\n");
     for (i = 0; i <= OP_LAST; i++) {
         if (slowpath_count[i] > 0) {
-            dr_fprintf(f_global, "\t%3u %10s: %12"UINT64_FORMAT_CODE"\n", 
+            dr_fprintf(f_global, "\t%3u %10s: %12"UINT64_FORMAT_CODE"\n",
                        i, decode_opcode_name(i), slowpath_count[i]);
         }
     }
@@ -1531,7 +1531,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
                         "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
     } else if (which_thread >= 0) {
         IF_DEBUG(len = )
-            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
                         "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
                           which_thread, dr_get_thread_id(dr_get_current_drcontext()));
         /* have DR close on fork so we don't have to track and iterate */
@@ -1547,7 +1547,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     ASSERT(f != INVALID_FILE, "unable to open log file");
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
-        dr_log(drcontext, LOG_ALL, 1, 
+        dr_log(drcontext, LOG_ALL, 1,
                "DrMemory: log for thread %d is %s\n",
                dr_get_thread_id(drcontext), logname);
         NOTIFY("thread logfile is %s"NL, logname);
@@ -1565,7 +1565,7 @@ create_global_logfile(void)
     /* PR 408644: pick a new subdir inside base logdir */
     /* PR 453867: logdir must have pid in its name */
     do {
-        dr_snprintf(logsubdir, BUFFER_SIZE_ELEMENTS(logsubdir), 
+        dr_snprintf(logsubdir, BUFFER_SIZE_ELEMENTS(logsubdir),
                     "%s%cDrHeapstat-%s.%d.%03d",
                     options.logdir, DIRSEP, appnm == NULL ? "null" : appnm,
                     dr_get_process_id(), count);
@@ -1601,7 +1601,7 @@ create_global_logfile(void)
     if (options.staleness)
         f_staleness = open_logfile("staleness.log", false, -1);
 
-    /* For long running multi-process apps like sfcbd, this can mean a lot of 
+    /* For long running multi-process apps like sfcbd, this can mean a lot of
      * index files.  With each file being 1 MB minimum on esxi, space can be
      * used up fast.  On ther other hand computing nudge index in postprocess
      * each time can be time consuming with large number of snapshots, thereby
@@ -1767,7 +1767,7 @@ sideline_run(void *arg)
 }
 
 #ifdef LINUX
-static void 
+static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
@@ -2030,7 +2030,7 @@ event_fragment_delete(void *drcontext, void *tag)
     alloc_fragment_delete(drcontext, tag);
 }
 
-static void 
+static void
 event_thread_init(void *drcontext)
 {
     uint which_thread = atomic_add32_return_sum((volatile int *)&num_threads, 1) - 1;
@@ -2063,7 +2063,7 @@ event_thread_init(void *drcontext)
         instrument_thread_init(drcontext);
 }
 
-static void 
+static void
 event_thread_exit(void *drcontext)
 {
     tls_heapstat_t *pt = (tls_heapstat_t *)
@@ -2089,7 +2089,7 @@ alloc_itercb_exit(malloc_info_t *info, void *iter_data)
     return true;
 }
 
-static void 
+static void
 event_exit(void)
 {
     LOGF(2, f_global, "in event_exit\n");
@@ -2152,7 +2152,7 @@ event_exit(void)
     close_file(f_nudge);
 }
 
-DR_EXPORT void 
+DR_EXPORT void
 dr_init(client_id_t client_id)
 {
     const char *opstr = dr_get_options(client_id);

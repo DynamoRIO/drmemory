@@ -70,7 +70,7 @@ option.
 Dr. Memory reports the number of leaks, possible leaks, and still-reachable
 allocations.  The callstack for the allocation of each leak and possible leak
 is gathered by default and listed with other errors in the results file.
-To also see all of the reachable allocations, use the \p -show_reachable 
+To also see all of the reachable allocations, use the \p -show_reachable
 runtime option.  Reachable allocations are labeled as <tt>REACHABLE LEAK</tt>.
 
 Here are example lines from Dr. Memory's output summary:

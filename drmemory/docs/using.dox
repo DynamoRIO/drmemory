@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -335,7 +335,7 @@ drmemory.exe or \p drmemory.pl) and the path style.
 If as part of \ref page_install you did not add Dr. Memory to your path,
 you'll need to specify the full path to Dr. Memory.
 
-On Windows, you can also drag-and-drop your application onto \p drmemory.exe in 
+On Windows, you can also drag-and-drop your application onto \p drmemory.exe in
 Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
 installation.
 
@@ -477,7 +477,7 @@ and supply the list of log directories, or a single directory containing
 the log directories as sub-directories to aggregate all of them:
 
 \verbatim
-drmemory.pl -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000 
+drmemory.pl -aggregate DrMemory-myapp.1234.000 DrMemory-myapp.1235.000
 \endverbatim
 
 \verbatim

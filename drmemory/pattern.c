@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -76,7 +76,7 @@ pattern_opnd_needs_check(opnd_t opnd)
     ASSERT(options.pattern != 0, "should not be called");
     ASSERT(opnd_is_memory_reference(opnd), "not a memory reference");
     ASSERT(!options.check_stack_access, "no stack check");
-    /* We are only interested in heap objects in pattern mode, 
+    /* We are only interested in heap objects in pattern mode,
      * so no absolute address or pc relative address.
      */
     if (opnd_is_abs_addr(opnd))
@@ -94,7 +94,7 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
 {
     /* xlat accesses memory (xbx, al), which is not a legeal memory operand,
      * and we use (xbx, xax) to emulate (xbx, al) instead:
-     * save xax; movzx xax, al; ...; restore xax; ...; xlat 
+     * save xax; movzx xax, al; ...; restore xax; ...; xlat
      */
     if (pre) {
         /* we do not rely on whole_bb_spills_enabled to save eax!
@@ -102,7 +102,7 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
          * aflags save; mov 0 => [mem], mov 1 => eax; xlat;
          * the value in spill_slot_5 is out-of-date!
          */
-        spill_reg(drcontext, ilist, app, DR_REG_XAX, 
+        spill_reg(drcontext, ilist, app, DR_REG_XAX,
                   whole_bb_spills_enabled() ?
                   /* when whole_bb_spills_enabled, app's xax value is stored
                    * in SPILL_SLOT_5 in save_aflags_if_live, so are we here
@@ -124,7 +124,7 @@ pattern_handle_xlat(void *drcontext, instrlist_t *ilist, instr_t *app, bool pre)
  * The instr sequence instrumented here is used in fault handling for
  * checking if it is the instrumented code. So if it is changed here,
  * the checking code in
- * - ill_instr_is_instrumented and 
+ * - ill_instr_is_instrumented and
  * - segv_instr_is_instrumented
  * must be updated too.
  */
@@ -155,7 +155,7 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
                            _IF_DEBUG(int max_refs /* size for both arrays */))
 {
     opnd_size_t ref_size;
-    
+
     ASSERT(max_refs >= 4 /* the max refs we might fill in */,
            "refs/opnds array is too small");
     /* refs[0] holds the actual app's memory reference opnd */
@@ -248,7 +248,7 @@ pattern_create_check_opnds(bb_info_t *bi, opnd_t *refs, opnd_t *opnds
 }
 
 static void
-pattern_insert_check_code(void *drcontext, instrlist_t *ilist, 
+pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
                           instr_t *app, opnd_t ref, bb_info_t *bi)
 {
     opnd_t refs[MAX_NUM_CHECKS_PER_REF], opnds[MAX_NUM_CHECKS_PER_REF];
@@ -275,7 +275,7 @@ pattern_insert_check_code(void *drcontext, instrlist_t *ilist,
 static void
 pattern_insert_aflags_label(void *drcontext, instrlist_t *ilist, instr_t *where,
                             bool save, bool with_eax)
-                            
+
 {
     instr_t *label = INSTR_CREATE_label(drcontext);
     ptr_uint_t note = note_base;
@@ -423,7 +423,7 @@ pattern_opt_elide_overlap_ignore_refs(bb_info_t *bi, int num_refs, opnd_t *refs)
     return false;
 }
 
-/* optimize the checks by removing un-necessary checks, 
+/* optimize the checks by removing un-necessary checks,
  * The heuristic is that if there are two checks closer to each other
  * than redzone size, there are no checks needed in between.
  */
@@ -479,7 +479,7 @@ pattern_opt_elide_overlap_update_checks(void *drcontext, bb_info_t *bi,
         /* on the left */
         if ((reg_cover->right.disp - disp) <= options.redzone_size) {
             /* remove the left one's instrumentation */
-            pattern_remove_check(drcontext, ilist, 
+            pattern_remove_check(drcontext, ilist,
                                  reg_cover->left.start, reg_cover->left.end);
         } else {
             /* move the left one to right */
@@ -599,21 +599,21 @@ pattern_instrument_check(void *drcontext, instrlist_t *ilist, instr_t *app,
  * - a non-meta cbr must end the block
  *   we insert a fake non-meta jmp instead
  * - violates assumptions in many parts of DR: non-precise flushing,
- *   signal delivery, trace building, etc.. 
- *   + We add translation to all the related instructions to make sure the 
+ *   signal delivery, trace building, etc..
+ *   + We add translation to all the related instructions to make sure the
  *   translation for signal delivery work.
  *   + For non-precise flush, we have to wait till the exit of the bb,
  *   which is similar to not expanding rep-string.
  *   + Such loop optimization should NOT be applied in a trace.
- * 
- * The optimization relies on how drutil (a DynamoRIO extension) expands 
+ *
+ * The optimization relies on how drutil (a DynamoRIO extension) expands
  * a rep string into a loop, the loop should look exactly the same as below:
  *    rep movs
  * =>
  *    jecxz  zero
  *    jmp    iter
  *  zero:
- *    mov    $0x00000001 -> %ecx 
+ *    mov    $0x00000001 -> %ecx
  *    jmp    pre_loop
  *  iter:
  *    movs   %ds:(%esi) %esi %edi -> %es:(%edi) %esi %edi
@@ -722,7 +722,7 @@ pattern_instrument_repstr(void *drcontext, instrlist_t *ilist,
     instr_set_ok_to_mangle(loop, false);
     /* post_loop */
     PRE(ilist, NULL, post_loop);
-    next_pc = instr_get_app_pc(stringop) + 
+    next_pc = instr_get_app_pc(stringop) +
         instr_length(drcontext, stringop) + 1 /* rep prefix */;
     /* restore aflags before post_loop if necessary */
     restore_aflags_if_live(drcontext, ilist, post_loop, NULL, bi);
@@ -747,7 +747,7 @@ pattern_aflags_liveness_update_on_reverse_scan(instr_t *instr, int liveness)
     if (TESTALL(EFLAGS_WRITE_6, flags))
         return LIVE_DEAD;
     /* XXX: we can also track whether OF is live, to avoid seto/add
-     * in aflags save/restore. 
+     * in aflags save/restore.
      * We need refactor the existing code for easier reuse.
      */
     return liveness;
@@ -784,7 +784,7 @@ pattern_find_aflags_save_label(instr_t *restore, ptr_uint_t note_restore,
         if (note != (note_base + NOTE_SAVE_AFLAGS) &&
             note != (note_base + NOTE_SAVE_AFLAGS_WITH_EAX))
             continue;
-        ASSERT((note         == (note_base + NOTE_SAVE_AFLAGS) && 
+        ASSERT((note         == (note_base + NOTE_SAVE_AFLAGS) &&
                 note_restore == (note_base + NOTE_RESTORE_AFLAGS)) ||
                (note         == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX) &&
                 note_restore == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)),
@@ -879,7 +879,7 @@ pattern_insert_aflags_pair(void *drcontext, instrlist_t *ilist,
     save = pattern_find_aflags_save_label(restore, note_restore, &note_save);
     ASSERT(save != NULL, "Mis-match on aflags save/restore");
     prev = instr_get_prev(save);
-    pattern_insert_save_aflags(drcontext, ilist, save, eax_live != LIVE_DEAD, 
+    pattern_insert_save_aflags(drcontext, ilist, save, eax_live != LIVE_DEAD,
                                note_save == (note_base + NOTE_SAVE_AFLAGS_WITH_EAX));
     pattern_insert_restore_aflags(drcontext, ilist, restore,
                                   note_restore == (note_base +
@@ -896,7 +896,7 @@ pattern_insert_aflags_pair(void *drcontext, instrlist_t *ilist,
  * To minimize the runtime overhead, we perform the reverse scan to update the
  * register and aflag's liveness. In forward scan, the instruction list has to be
  * traversed multiple passes for liveness analysis.
- * XXX: we might have to let reverse scan pass go away w/ drmgr, which supports 
+ * XXX: we might have to let reverse scan pass go away w/ drmgr, which supports
  * forward per-instr instrumentation only.
  */
 void
@@ -928,8 +928,8 @@ pattern_instrument_reverse_scan(void *drcontext, instrlist_t *ilist)
          * 1. DONE: only save/restore aflags when necessary
          * 2. DONE: only save/restore eax when necessary
          * 3. TODO: fine tune the aflags liveness, i.e. overflow flags
-         * 3. TODO: group aflags save/restore if aflags and eax not touched 
-         *    (can be relaxed later) 
+         * 3. TODO: group aflags save/restore if aflags and eax not touched
+         *    (can be relaxed later)
          */
         if (note == (note_base + NOTE_RESTORE_AFLAGS) ||
             note == (note_base + NOTE_RESTORE_AFLAGS_WITH_EAX)) {
@@ -951,7 +951,7 @@ pattern_ill_instr_is_instrumented(byte *pc)
     /* check if our code sequence */
     if (!safe_read(pc - JNZ_SHORT_LENGTH - 2 /* 2 bytes of cmp immed value */,
                    BUFFER_SIZE_BYTES(buf), buf)   ||
-        (buf[2] != JNZ_SHORT_OPCODE) || 
+        (buf[2] != JNZ_SHORT_OPCODE) ||
         (buf[3] != UD2A_LENGTH)      ||
         ((*(ushort *)&buf[0] != (ushort)options.pattern) &&
          (*(ushort *)&buf[0] != (ushort)pattern_reverse)) ||
@@ -1002,7 +1002,7 @@ pattern_handle_ill_fault(void *drcontext,
          memopidx++) {
         app_loc_t loc;
         size_t size = 0;
-        opnd_t opnd = is_write ? 
+        opnd_t opnd = is_write ?
             instr_get_dst(&instr, pos) : instr_get_src(&instr, pos);
         if (!opnd_uses_nonignorable_memory(opnd))
             continue;
@@ -1015,7 +1015,7 @@ pattern_handle_ill_fault(void *drcontext,
         pattern_handle_mem_ref(&loc, addr, size, mc, is_write);
     }
     instr_free(drcontext, &instr);
-    /* we are not skipping all cmps for this instr, which is ok because we 
+    /* we are not skipping all cmps for this instr, which is ok because we
      * clobberred the pattern if a 2nd memref was unaddr.
      */
     LOG(2, "pattern check ud2a triggered@"PFX" => skip to "PFX"\n",
@@ -1070,7 +1070,7 @@ pattern_segv_instr_is_instrumented(byte *pc, byte *next_next_pc,
  * - instrumented code, i.e. pattern check code
  *   + trigger the segv before app
  *   + skip the check and continue
- * 
+ *
  * i#1070: this function is also used for guard page violation handling,
  * in which case, we should restore the guard page if the violation is caused
  * by us.
@@ -1155,7 +1155,7 @@ pattern_addr_in_malloc_tree(byte *addr, size_t size)
         app_size = (size_t)data;
         ASSERT(app_size + options.redzone_size * 2 <= real_size,
                "wrong node information");
-        if (addr <  start + options.redzone_size || 
+        if (addr <  start + options.redzone_size ||
             addr >= start + options.redzone_size + app_size)
             res = true;
     }
@@ -1171,8 +1171,8 @@ pattern_insert_malloc_tree(malloc_info_t *info)
     if (!info->has_redzone)
         return;
     dr_rwlock_write_lock(pattern_malloc_tree_rwlock);
-    /* due to padding, the real_size might be larger than 
-     * (app_size + redzone_size*2), which makes the size of 
+    /* due to padding, the real_size might be larger than
+     * (app_size + redzone_size*2), which makes the size of
      * rear redzone not fixed, so store app_size in rb_tree.
      */
     IF_DEBUG(node =)
@@ -1203,7 +1203,7 @@ pattern_remove_malloc_tree(malloc_info_t *info)
                "wrong real_base in pattern malloc tree");
         ASSERT(size == info->pad_size + options.redzone_size * 2,
                "Wrong real_size in pattern malloc tree");
-        /* XXX i#786: we simply remove the memory here, which can be 
+        /* XXX i#786: we simply remove the memory here, which can be
          * improved by invalidating/removing malloc rbtree instead,
          * though we still need do the lookup to change the node status.
          */
@@ -1452,7 +1452,7 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
     if (safe_read(addr, check_sz, &val) &&
         ((ushort)val == (ushort)options.pattern ||
          (ushort)val == (ushort)pattern_reverse) &&
-        (check_sz == 4 ? 
+        (check_sz == 4 ?
          (val == options.pattern || val == pattern_reverse)  : true) &&
         /* we first do a pre-check to avoid expensive lookup
          * XXX: we might miss the use-after-free error that accessing
@@ -1467,8 +1467,8 @@ pattern_handle_mem_ref(app_loc_t *loc, byte *addr, size_t size,
         (pattern_addr_in_redzone(addr, size) ||
          overlaps_delayed_free(addr, addr + size, NULL, NULL, NULL, false/*any*/))) {
         /* XXX: i#786: the actually freed memory is neither in malloc tree
-         * nor in delayed free rbtree, in which case we cannot detect. We 
-         * can maintain the information in pattern malloc tree, i.e. mark 
+         * nor in delayed free rbtree, in which case we cannot detect. We
+         * can maintain the information in pattern malloc tree, i.e. mark
          * the tree node as invalid on free and remove/change the tree
          * node on re-use of the memory.
          */

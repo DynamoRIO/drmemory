@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -113,8 +113,8 @@ uint encoded_pointers_scanned;
 # endif
 #endif
 
-/* FIXME PR 487993: switch to file-private sets of options and option parsing */ 
-static bool op_have_defined_info; 
+/* FIXME PR 487993: switch to file-private sets of options and option parsing */
+static bool op_have_defined_info;
 static bool op_check_leaks_on_destroy;
 static bool op_midchunk_new_ok;
 static bool op_midchunk_inheritance_ok;
@@ -152,7 +152,7 @@ static app_pc crt_encode_ptr;
 #endif
 
 void
-leak_init(bool have_defined_info, 
+leak_init(bool have_defined_info,
           bool check_leaks_on_destroy,
           bool midchunk_new_ok,
           bool midchunk_inheritance_ok,
@@ -168,7 +168,7 @@ leak_init(bool have_defined_info,
     module_data_t *mod;
 #endif
 
-    op_have_defined_info = have_defined_info; 
+    op_have_defined_info = have_defined_info;
     op_check_leaks_on_destroy = check_leaks_on_destroy;
     op_midchunk_new_ok = midchunk_new_ok;
     op_midchunk_inheritance_ok = midchunk_inheritance_ok;
@@ -203,7 +203,7 @@ leak_init(bool have_defined_info,
                 dr_get_proc_address(mod->handle, "RtlEncodePointer");
             rtl_encode_sysptr = (app_pc)
                 dr_get_proc_address(mod->handle, "RtlEncodeSystemPointer");
-            if ((rtl_encode_ptr != NULL && 
+            if ((rtl_encode_ptr != NULL &&
                  !drwrap_wrap(rtl_encode_ptr, leak_wrap_pre_encode_ptr,
                               leak_wrap_post_encode_ptr)) ||
                 (rtl_encode_sysptr != NULL &&
@@ -381,7 +381,7 @@ get_decoded_ptr(byte *encoded)
 #endif /* WINDOWS */
 
 /***************************************************************************
- * Splitting indirectly leaked bytes from direct (PR 576032) 
+ * Splitting indirectly leaked bytes from direct (PR 576032)
  */
 
 typedef struct _unreach_entry_t {
@@ -412,7 +412,7 @@ rb_cleanup_entries(rb_node_t *node, void *iter_data)
     return true;
 }
 
-/* 
+/*
  * Design:
  * * in top-level summary, just list total bytes (direct+indirect):
  *   do not split, for simplicity
@@ -952,7 +952,7 @@ check_reachability_pointer(byte *pointer, byte *ptr_addr, byte *defined_end,
             } else {
                 /* PR 476482: we have a separate category of "possible leaks" that
                  * are not reached by chunk-head pointers but are reached by
-                 * mid-chunk pointers.  
+                 * mid-chunk pointers.
                  */
                 LOG(3, "\t("PFX" points to mid-chunk "PFX" in "PFX"-"PFX")\n",
                     ptr_addr, pointer, chunk_start, chunk_end);
@@ -1241,7 +1241,7 @@ malloc_iterate_cb(malloc_info_t *info, void *iter_data)
         ASSERT(node != NULL, "must be in rbtree");
         rb_node_fields(node, NULL, NULL, (void *)&unreach);
         client_found_leak(info->base, info->base + info->request_size,
-                          (unreach == NULL) ? 0 : unreach->indirect_bytes, 
+                          (unreach == NULL) ? 0 : unreach->indirect_bytes,
                           info->pre_us,
                           TEST(MALLOC_REACHABLE, info->client_flags),
                           TEST(MALLOC_MAYBE_REACHABLE, info->client_flags),

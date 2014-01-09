@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -470,7 +470,7 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
             modpath, modoffs, sym.name, modoffs - sym.start_offs,
             sym.start_offs, sym.end_offs, sym.debug_kind);
         if (sym.name_available_size >= sym.name_size) {
-            DO_ONCE({ 
+            DO_ONCE({
                 WARN("WARNING: at least one function name longer than max: %s\n",
                      sym.name);
             });
@@ -526,7 +526,7 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
                                   DRSYM_DEMANGLE);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (sym.name_available_size >= sym.name_size) {
-            DO_ONCE({ 
+            DO_ONCE({
                 LOG(1, "WARNING: at least one symbol name longer than max: %s\n",
                     sym.name);
             });
@@ -704,7 +704,7 @@ print_frame(symbolized_frame_t *frame IN,
 
     if (TEST(PRINT_FRAME_NUMBERS, flags))
         BUFPRINT(buf, bufsz, *sofar, len, "#%2d ", frame->num);
-    
+
     if (!frame->is_module) {
         /* we already printed the syscall string or "<not in a module>" to func */
         BUFPRINT(buf, bufsz, *sofar, len, "%-*s",
@@ -778,7 +778,7 @@ address_to_frame(symbolized_frame_t *frame OUT, packed_callstack_t *pcs OUT,
     app_pc mod_start;
     ASSERT((frame != NULL && pcs == NULL) || (frame == NULL && pcs != NULL),
            "address_to_frame: can't pass frame and pcs");
-    
+
     if (frame != NULL) {
         init_symbolized_frame(frame, frame_num);
         pc_to_loc(&frame->loc, pc);
@@ -926,11 +926,11 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
             match = (*(pc - 5) == OP_CALL_DIR ||
                      (*(pc - 2) == OP_CALL_IND &&
-                      /* indirect through mem: 0xff /2 (mod==0) 
+                      /* indirect through mem: 0xff /2 (mod==0)
                        *   => top 5 bits are 0x02, and rule out disp32 (rm==0x5)
                        */
                       ((((*(pc - 1) >> 3) == 0x02) && ((*(pc - 1) & 0x3) != 0x5)) ||
-                       /* indirect through reg: 0xff /2 (mod==3) 
+                       /* indirect through reg: 0xff /2 (mod==3)
                         *   => top 5 bits are 0xd0 (0x3 << 3 | 0x2)
                         */
                        ((*(pc - 1) & 0xf8) == 0xd0))) ||
@@ -1104,7 +1104,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
      * use try/except there like on Linux?
      * We use stack_lowest_frame, based on the stack bounds, to avoid
      * incurring a fault (checked up above).
-     * XXX: should support partial safe read for invalid page next to stack 
+     * XXX: should support partial safe read for invalid page next to stack
      */
     if (safe_read((app_pc)ALIGN_BACKWARD(fp, PAGE_SIZE), PAGE_SIZE, page_buf)) {
         app_pc buf_pg = (app_pc) ALIGN_BACKWARD(fp, PAGE_SIZE);
@@ -1260,7 +1260,7 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
 
 /* XXX i#1222: on win64, we should use SEH unwind tables to walk the callstack. */
 void
-print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
+print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
                 bool for_log)
 {
@@ -1304,7 +1304,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         0 : ops.is_dword_defined(drcontext, (byte*)mc->xbp));
     if (mc->xsp != 0 &&
         (!ALIGNED(mc->xbp, sizeof(void*)) ||
-         mc->xbp < mc->xsp || 
+         mc->xbp < mc->xsp ||
          mc->xbp - mc->xsp > ops.stack_swap_threshold ||
          (ops.ignore_xbp != NULL &&
           ops.ignore_xbp(drcontext, mc)) ||
@@ -1376,7 +1376,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             if (for_log)
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"#%2d ", num);
             if (print_fps) {
-                BUFPRINT(buf, bufsz, *sofar, len, "fp="PFX" parent="PFX" ", 
+                BUFPRINT(buf, bufsz, *sofar, len, "fp="PFX" parent="PFX" ",
                          pc, appdata.next_fp);
             }
         }
@@ -1437,7 +1437,7 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
         if (num >= ops.max_frames || (pcs != NULL && pcs->num_frames >= ops.max_frames)) {
             if (buf != NULL)
                 BUFPRINT(buf, bufsz, *sofar, len, FP_PREFIX"..."NL);
-            LOG(4, "truncating callstack: hit max frames %d %d\n", 
+            LOG(4, "truncating callstack: hit max frames %d %d\n",
                 num, pcs == NULL ? -1 : pcs->num_frames);
             break;
         }

@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -61,7 +61,7 @@ int main()
 #ifdef WINDOWS
     HANDLE thread[NUM_THREADS];
     for (i = 0; i < NUM_THREADS; i++) {
-        thread[i] = CreateThread(NULL, 0, thread_func, NULL, 0, 0); 
+        thread[i] = CreateThread(NULL, 0, thread_func, NULL, 0, 0);
         if (thread[i] == NULL) {
             fprintf(stderr, "CreateThread failed\n");
             exit(1);

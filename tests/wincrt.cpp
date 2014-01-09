@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -41,8 +41,8 @@ oob_read_test(void)
     char *foo = (char*) malloc(8);
     use(foo+48);
     use(foo+25);
-    use(foo+8); 
-    use(foo-1); 
+    use(foo+8);
+    use(foo-1);
 #ifdef _DEBUG
     /* i#763: test crtdbg redzone */
     use(foo-30);
@@ -62,7 +62,7 @@ crtdbg_test(void)
     /* note that _free_dbg complains if type doesn't match, but _msize_dbg does not */
     size_t sz = _msize_dbg(p, _CLIENT_BLOCK);
     _free_dbg(p, _CLIENT_BLOCK);
-    
+
     _free_dbg(NULL, _NORMAL_BLOCK);
     _free_dbg(NULL, _CLIENT_BLOCK);
 #endif
@@ -80,7 +80,7 @@ public:
 };
 
 static void
-deletedbg_test(void) 
+deletedbg_test(void)
 {
     hasdtr *has = new hasdtr[4];
     has[0].y = 0;

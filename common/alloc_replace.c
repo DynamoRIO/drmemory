@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -1130,7 +1130,7 @@ bucket_index(chunk_header_t *head)
     /* pivot around small vs large first to avoid walking whole list for small: */
     uint start = (head->alloc_size > free_list_sizes[6]) ? (NUM_FREE_LISTS - 1) : 6;
     /* our buckets guarantee that all allocs in that bucket have at least that size */
-    for (bucket = start; head->alloc_size < free_list_sizes[bucket] 
+    for (bucket = start; head->alloc_size < free_list_sizes[bucket]
          /* if bucket is 0 this cond breaks to avoid free_list_sizes[-1] */
          IF_GCC_WARN(&& bucket > 0);
          bucket--)
@@ -2996,7 +2996,7 @@ replace_RtlCreateHeap(ULONG flags, void *base, size_t reserve_sz,
         set_app_error_code(drcontext, ERROR_INVALID_PARAMETER);
     }
     exit_client_code(drcontext, true/*already swapped*/);
-    return (HANDLE) new_arena;    
+    return (HANDLE) new_arena;
 }
 
 static BOOL WINAPI
@@ -3149,7 +3149,7 @@ replace_RtlSizeHeap(HANDLE heap, ULONG flags, PVOID ptr)
     if (arena == NULL)
         report_invalid_heap(heap, &mc, (app_pc)replace_RtlSizeHeap);
     else {
-        res = replace_size_common(arena, ptr, 
+        res = replace_size_common(arena, ptr,
                                   ((!TEST(HEAP_NO_SERIALIZE, arena->flags) &&
                                     !TEST(HEAP_NO_SERIALIZE, flags)) ?
                                    ALLOC_SYNCHRONIZE : 0),
@@ -3516,35 +3516,35 @@ func_interceptor(routine_type_t type, bool check_mismatch,
     else if (type == HEAP_ROUTINE_NEW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new : replace_operator_new_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_NEW_ARRAY) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new_array : replace_operator_new_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_NEW_NOTHROW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new_nothrow :
              replace_operator_new_nothrow_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_NEW_ARRAY_NOTHROW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_new_array_nothrow :
              replace_operator_new_nothrow_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_DELETE) {
         *routine = (void *)
             (check_mismatch ? replace_operator_delete : replace_operator_delete_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_DELETE_ARRAY) {
         *routine = (void *)
             (check_mismatch ? replace_operator_delete_array :
              replace_operator_delete_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_DELETE_NOTHROW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_delete_nothrow :
              replace_operator_delete_nothrow_nomatch);
-    } 
+    }
     else if (type == HEAP_ROUTINE_DELETE_ARRAY_NOTHROW) {
         *routine = (void *)
             (check_mismatch ? replace_operator_delete_array_nothrow :
@@ -3858,7 +3858,7 @@ malloc_replace__unlock(void)
 #endif
 }
 
-static void 
+static void
 alloc_replace_thread_init(void *drcontext)
 {
     if (!process_initialized) {

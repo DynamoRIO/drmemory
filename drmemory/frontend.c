@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -994,7 +994,7 @@ _tmain(int argc, TCHAR *targv[])
         fatal("this version of Windows is not supported by Dr. Memory.");
     }
 
-    /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is 
+    /* i#1377: we can't trust GetVersionEx() b/c it pretends 6.3 (Win8.1) is
      * 6.2 (Win8)!  Thus we use DR's version.
      */
     win_ver.size = sizeof(win_ver);
@@ -1064,7 +1064,7 @@ _tmain(int argc, TCHAR *targv[])
         } else {
             have_env = get_env_var(_T("USERPROFILE"), buf, BUFFER_SIZE_ELEMENTS(buf));
             if (have_env) {
-                _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir), 
+                _snprintf(logdir, BUFFER_SIZE_ELEMENTS(logdir),
                           "%s/Application Data/Dr. Memory", buf);
                 NULL_TERMINATE_BUFFER(logdir);
             }
@@ -1236,7 +1236,7 @@ _tmain(int argc, TCHAR *targv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             nudge_pid = strtoul(argv[++i], NULL, 10);
-        }        
+        }
         else if (strcmp(argv[i], "-native_parent") == 0) {
             native_parent = true;
             native_parent_pos = cliops_sofar;
@@ -1391,14 +1391,14 @@ _tmain(int argc, TCHAR *targv[])
         NULL_TERMINATE_BUFFER(default_dr_root);
         dr_root = default_dr_root;
     }
-    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
               "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root,
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
     if (!file_is_readable(buf)) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
                       "%s/"LIB_ARCH"/%s/dynamorio.dll", dr_root, "debug");
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf)) {
@@ -1411,13 +1411,13 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* once we have 64-bit we'll need to address the NSIS "bin/" requirement */
-    _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+    _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
               "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root, DIRSEP, DIRSEP,
               use_drmem_debug ? "debug" : "release", DIRSEP);
     NULL_TERMINATE_BUFFER(client_path);
     if (!file_is_readable(client_path)) {
         if (!use_drmem_debug) {
-            _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+            _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
                       "%s%c"BIN_ARCH"%c%s%cdrmemorylib.dll", drmem_root,
                       DIRSEP, DIRSEP, "debug", DIRSEP);
             NULL_TERMINATE_BUFFER(client_path);
@@ -1426,7 +1426,7 @@ _tmain(int argc, TCHAR *targv[])
                 goto error; /* actually won't get here */
             }
             /* try to avoid warning for devs running from build dir */
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path),
                       "%s%cCMakeCache.txt", drmem_root, DIRSEP);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf))

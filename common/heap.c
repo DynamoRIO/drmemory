@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -284,7 +284,7 @@ get_libcpp_base(void)
  *       // jmp 7fe`fda6321f
  *       ...
  *   } else if (TEST(rtl_heap_entry->flags, 2)) {
- *       // jmp 7fe`fda63263 
+ *       // jmp 7fe`fda63263
  *       if (TEST(rtl_heap_entry->flags, 0x100)) {
  *           heap_entry->wFlags = 0;
  *       } else {

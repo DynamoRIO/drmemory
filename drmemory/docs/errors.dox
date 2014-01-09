@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -69,7 +69,7 @@ allocated as an "unaddressable access".  An allocation is:
  - A call to mmap (or mremap) (or Windows equivalents VirtualAlloc or
    MapViewOfFile) outside of a heap or stack region.
  - A call to malloc (or calloc or realloc, or Windows equivalents
-   HeapAlloc or HeapReAlloc or the Local or Global versions) inside of a 
+   HeapAlloc or HeapReAlloc or the Local or Global versions) inside of a
    heap region
  - An extension of the stack in a stack region, either via raw instructions
    or via alloca.
@@ -237,7 +237,7 @@ Error #4: INVALID HEAP ARGUMENT: free 0x00001234
 Elapsed time = 0:00:00.180 in thread 21848
 # 0 malloc!main                                     [/home/bruening/drmemory/git/src/tests/malloc.c:164]
 # 1 libc.so.6!__libc_start_main                     [/build/buildd/eglibc-2.11.1/csu/libc-start.c:226]
-# 2 malloc!_start                                  
+# 2 malloc!_start
 \endcode
 
 Another common example of an invalid argument is a mismatch in calling
@@ -274,7 +274,7 @@ API.  For example:
 
 \code
 Error #15: GDI Usage Error: DC 0x2d011230 that contains selected object being deleted
-# 0 system call NtGdiDeleteObjectApp                            
+# 0 system call NtGdiDeleteObjectApp
 # 1 GDI32.dll!DeleteDC                                                        +0x11     (0x76b458c5 <GDI32.dll+0x158c5>)
 # 2 chrome.dll!skia::BitmapPlatformDevice::BitmapPlatformDeviceData::ReleaseBitmapDC [c:\src\chromium\src\skia\ext\bitmap_platform_device_win.cc:58]
 # 3 chrome.dll!SkRefCnt::unref                                                 [c:\src\chromium\src\third_party\skia\include\core\skrefcnt.h:60]
@@ -320,7 +320,7 @@ Error #12: WARNING: heap allocation failed
 # 1 suppress.exe!test                                [e:\derek\drmemory\git\src\tests\suppress.c:282]
 # 2 suppress.exe!main                                [e:\derek\drmemory\git\src\tests\suppress.c:297]
 # 3 suppress.exe!__tmainCRTStartup                   [f:\sp\vctools\crt_bld\self_x86\crt\src\crt0.c:327]
-# 4 KERNEL32.dll!BaseProcessStart                   
+# 4 KERNEL32.dll!BaseProcessStart
 \endcode
 
 ****************************************************************************

@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -437,7 +437,7 @@ handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
         info = hashtable_lookup(table, (void *)handle);
         if (info != NULL)
             *hci = handle_callstack_info_clone(info);
-        else 
+        else
             *hci = NULL;
     }
     res = hashtable_remove(table, (void *)handle);

@@ -7,7 +7,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -49,7 +49,7 @@ suppress!main
   obj:suppre?s
 }
 
-# uninitialized read: top frames based mod!func suppression 
+# uninitialized read: top frames based mod!func suppression
 UNINITIALIZED READ
 name=uninit_test4 top
 suppress!do_uninit_read
@@ -99,15 +99,15 @@ s*s!unaddr_test2
 suppress!test
 suppress!main
 
-# unaddressable access: full callstack based mod!func suppression 
+# unaddressable access: full callstack based mod!func suppression
 # also tests wildcard
 UNADDRESSABLE ACCESS
 name=unaddr_test3 instruction
-instruction=mov    (%eax) -> %eax   
+instruction=mov    (%eax) -> %eax
 suppress!unaddr_*3
 supp*!test
 
-# unaddressable access: top 2 frames based mod!func suppression 
+# unaddressable access: top 2 frames based mod!func suppression
 UNADDRESSABLE ACCESS
 name=unaddr_test4 top
 suppress!unaddr_test4
@@ -129,24 +129,24 @@ suppress!l*2
 *!test
 suppress!m*
 
-# leak: full callstack based mod!func suppression 
+# leak: full callstack based mod!func suppression
 LEAK
 name=leak_test3 ?
 suppress!leak_test3
 suppress!test
 suppress!main
 
-# leak: top frame based mod!func suppression 
+# leak: top frame based mod!func suppression
 LEAK
 name=leak_test4 top
 suppress!leak_test4
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 POSSIBLE LEAK
 name=possible_leak_test1 top
 suppress!possible_leak_test1
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 LEAK
 name=possible_leak_test2 w/ leak supp
 suppress!possible_leak_test2

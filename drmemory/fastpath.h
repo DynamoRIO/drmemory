@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -73,7 +73,7 @@ typedef struct _opnd_info_t {
 #define MAX_FASTPATH_DSTS 2
 typedef struct _fastpath_info_t {
     bb_info_t *bb;
-    
+
     /* Filled in by instr_ok_for_instrument_fastpath()
      * The fastpath handles up to 3 sources and 2 dests subject to:
      * - Only one source memop

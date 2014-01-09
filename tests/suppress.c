@@ -33,7 +33,7 @@
 #endif
 
 #ifdef WINDOWS
-  /* On Windows, msvcrt!malloc() ends up calling HeapAlloc(), so there is a 
+  /* On Windows, msvcrt!malloc() ends up calling HeapAlloc(), so there is a
    * malloc+0x## frame in the error in results.txt which is the same for all
    * leak tests, so just one leak suppression info of type mod+offs for malloc
    * suppress all leak errors preventing the ability to test all types of
@@ -346,7 +346,7 @@ mod_ellipsis_test(const char *argv0)
  */
 static void test(int argc, char **argv)
 {
-    /* Must have different function names otherwise one mod!func suppression 
+    /* Must have different function names otherwise one mod!func suppression
      * will suppress all tests without room for testing other types.
      */
     uninit_test1(int_p+0);      /* 3 top frames based mod+offs suppression */

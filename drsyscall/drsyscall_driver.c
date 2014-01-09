@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -124,7 +124,7 @@ driver_thread_init(void *drcontext)
         ASSERT(iob.Information == 0, "we didn't ask for prior reg");
     }
 }
-          
+
 void
 driver_thread_exit(void *drcontext)
 {
@@ -216,7 +216,7 @@ driver_process_writes(void *drcontext, drsys_sysnum_t sysnum)
     for (i = 0; i < pt->frozen_num_writes; i++) {
         LOG(2, "driver info: syscall #0x%x write %d: "PFX"-"PFX"\n",
             sysnum, i, writes->writes[i].start,
-            (byte*)writes->writes[i].start + writes->writes[i].length);        
+            (byte*)writes->writes[i].start + writes->writes[i].length);
         shadow_set_range(writes->writes[i].start,
                          (byte*)writes->writes[i].start + writes->writes[i].length,
                          SHADOW_DEFINED);

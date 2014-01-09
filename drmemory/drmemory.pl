@@ -6,17 +6,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -288,7 +288,7 @@ if (!($aggregate || $just_postprocess)) {
     die "$drlibname not found in $dr_home/$lib_arch/$dr_libdir\n$usage\n"
         if (! -e "$dr_home/$lib_arch/$dr_libdir/$drlibname");
 }
-# even for post-run symbols, need drmem lib for replaced routine symbols    
+# even for post-run symbols, need drmem lib for replaced routine symbols
 die "$drmemlibname not found in $drmemory_home/$bindir/$libdir\n$usage\n"
     if (! -e "$drmemory_home/$bindir/$libdir/$drmemlibname");
 
@@ -310,7 +310,7 @@ if ($aggregate) {
     # rest of args are directory names
 } elsif ($just_postprocess) {
     # should be a single arg containing a directory name
-    die "A single directory expected\n$usage\n" unless 
+    die "A single directory expected\n$usage\n" unless
         ($#ARGV == 0 && -d $ARGV[0]);
 } else {
     $apppath = &canonicalize_path($ARGV[0]);
@@ -416,7 +416,7 @@ if ($aggregate || $just_postprocess) {
     }
 } else {
     $drrun = "$dr_home/$bin_arch/drrun.exe";
-    
+
     # PR 485412: pass in addresses of statically-included libc routines for
     # replacement.  We only support this for native Windows since we'd need
     # to add nm or another tool to do reverse lookup for cygwin or linux;
@@ -445,10 +445,10 @@ if ($aggregate || $just_postprocess) {
     }
     $pid_file = &canonicalize_path($pid_file);
     print "temp file for pid is $pid_file\n" if ($verbose);
-    
+
     # With new config file scheme (PR 212034) AppInit is not set for
     # normal registration and so we no longer have to suppress it here.
-    # We can also configure and run in one step using a one-time config file 
+    # We can also configure and run in one step using a one-time config file
     # that requires no unregistration.
 
     # use array to support paths with spaces (system() splits single arg on spaces)

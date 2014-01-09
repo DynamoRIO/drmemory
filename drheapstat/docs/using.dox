@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -203,7 +203,7 @@ On Windows, if you used the installer and checked the box to add \p
 <tt>\FRONT_END -- c:/path/to/my/app args to my app
 </tt>
 
-You can also drag-and-drop your application onto \p \FRONT_END in 
+You can also drag-and-drop your application onto \p \FRONT_END in
 Windows Explorer or on the Desktop if you requested a Desktop shorcut upon
 installation.
 
@@ -233,9 +233,9 @@ subdirectory in the base log directory named
 "DrHeapstat-<appname>.<pid>.NNN", where NNN is a counter that is incremented
 to ensure unique names.
 
-Set up the environment variable FLASH_PLAYER to point to a Flash 
+Set up the environment variable FLASH_PLAYER to point to a Flash
 player or browser with Flash plugin installed.  Next, ensure that a
-<tt>$HOME/.macromedia/Flash_Player/\#Security/FlashPlayerTrust</tt> directory 
+<tt>$HOME/.macromedia/Flash_Player/\#Security/FlashPlayerTrust</tt> directory
 exists (for Linux only).  Now launch the visualization tool:
 
 \par

@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -371,7 +371,7 @@ tls_base_offs(void)
 }
 
 /* Create a far memory reference opnd to access DR's TLS memory slot
- * for getting app's TLS base address. 
+ * for getting app's TLS base address.
  */
 opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
@@ -380,7 +380,7 @@ opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz)
     ASSERT(INSTRUMENT_MEMREFS(), "incorrectly called");
     ASSERT(seg == SEG_FS || seg == SEG_GS, "only fs and gs supported");
     stored_base_offs = tls_instru_base +
-        ((seg == SEG_FS) ? offsetof(tls_instru_t, app_fs_base) : 
+        ((seg == SEG_FS) ? offsetof(tls_instru_t, app_fs_base) :
          offsetof(tls_instru_t, app_gs_base));
     return opnd_create_far_base_disp_ex
         (SEG_FS, REG_NULL, REG_NULL, 1, stored_base_offs, opsz,
@@ -621,7 +621,7 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
             if (save->eflags_saved) {
                 IF_DEBUG(ptr_uint_t orig_flags = info->mcontext->xflags;)
                 uint sahf;
-                regval = save->aflags_in_eax ? info->raw_mcontext->xax : 
+                regval = save->aflags_in_eax ? info->raw_mcontext->xax :
                     get_thread_tls_value(drcontext, SPILL_SLOT_EFLAGS_EAX);
                 sahf = (regval & 0xff00) >> 8;
                 info->mcontext->xflags &= ~0xff;
@@ -934,7 +934,7 @@ static bool
 opc_is_gpr_shift_src0(uint opc)
 {
     return (opc == OP_shl || opc == OP_shr || opc == OP_sar ||
-            opc == OP_rol || opc == OP_ror || 
+            opc == OP_rol || opc == OP_ror ||
             opc == OP_rcl || opc == OP_rcr);
 }
 
@@ -1133,7 +1133,7 @@ bool
 instr_check_definedness(instr_t *inst)
 {
     uint opc = instr_get_opcode(inst);
-    return 
+    return
         /* always check conditional jumps */
         instr_is_cbr(inst) ||
         (options.check_uninit_non_moves && !opc_is_move(opc)) ||
@@ -1246,7 +1246,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
             register_shadow_set_dword(DR_REG_XCX, SHADOW_DWORD_DEFINED);
             STATS_INC(rawmemchr_exception);
             res = true;
-        } 
+        }
     } else {
         /* FIXME PR 406535: verify there's no chance of a true positive */
         static const byte RAWMEMCHR_PATTERN[9] =
@@ -1989,7 +1989,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
         shadow_get_byte(&info, (app_pc)mc->xsi+1),
         shadow_get_byte(&info, (app_pc)mc->xsi+2),
         shadow_get_byte(&info, (app_pc)mc->xsi+3),
-        mc->xdi, 
+        mc->xdi,
         shadow_get_byte(&info, (app_pc)mc->xdi),
         shadow_get_byte(&info, (app_pc)mc->xdi+1),
         shadow_get_byte(&info, (app_pc)mc->xdi+2),
@@ -2016,7 +2016,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
             return;
         }
         /* no need to initialize shadow_vals for MEMREF_CHECK_ADDRESSABLE */
-        check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc, 
+        check_mem_opnd(OP_movs, MEMREF_CHECK_ADDRESSABLE, loc,
                        opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                                  REG_NULL, 0, 0, OPSZ_PTR),
                        4, mc, shadow_vals);
@@ -2061,7 +2061,7 @@ medium_path_movs4(app_loc_t *loc, dr_mcontext_t *mc)
 
     for (i = 0; i < 4; i++)
         shadow_vals[i] = SHADOW_DEFINED;
-    check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc, 
+    check_mem_opnd(OP_movs, MEMREF_USE_VALUES, loc,
                    opnd_create_far_base_disp(SEG_DS, DR_REG_XSI,
                                              REG_NULL, 0, 0, OPSZ_4),
                    4, mc, shadow_vals);
@@ -2230,7 +2230,7 @@ slow_path_without_uninitialized(void *drcontext, dr_mcontext_t *mc, instr_t *ins
 }
 #endif /* TOOL_DR_MEMORY */
 
-/* Does everything in C code, except for handling non-push/pop writes to esp 
+/* Does everything in C code, except for handling non-push/pop writes to esp
  */
 bool
 slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *mc)
@@ -2313,7 +2313,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         pc = NULL;
     } else
         ASSERT(!options.single_arg_slowpath, "single_arg_slowpath error");
-    
+
 #ifdef TOOL_DR_MEMORY
     if (decode_pc != NULL) {
         if (*decode_pc == MOVS_4_OPCODE ||
@@ -2358,7 +2358,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             /* use this as app pc if we report an error */
             pc_to_loc(&loc, rep_pc);
         }
-    }            
+    }
 
 #ifdef STATISTICS
     STATS_INC(slowpath_count[opc]);
@@ -2462,7 +2462,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     for (i = 0; i < num_srcs; i++) {
         bool regular_op = false;
         if (opc == OP_lea) {
-            /* special case: treat address+base as propagatable sources 
+            /* special case: treat address+base as propagatable sources
              * code below can handle REG_NULL
              */
             if (i == 0)
@@ -2517,7 +2517,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                     check_register_defined(drcontext, reg, &loc, sz, mc, &inst);
                     if (options.leave_uninit) {
                         integrate_register_shadow
-                            (&inst, i, 
+                            (&inst, i,
                              /* do not combine srcs if checking after */
                              check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
                              reg, shadow, pushpop);
@@ -2525,7 +2525,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                 } else {
                     /* See above: we only propagate when not checking */
                     integrate_register_shadow
-                        (&inst, i, 
+                        (&inst, i,
                          /* do not combine srcs if checking after */
                          check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
                          reg, shadow, pushpop);
@@ -2556,7 +2556,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             check_register_defined(drcontext, REG_EFLAGS, &loc, 1, mc, &inst);
             if (options.leave_uninit) {
                 integrate_register_shadow
-                    (&inst, 0, 
+                    (&inst, 0,
                      /* do not combine srcs if checking after */
                      check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
                      REG_EFLAGS, shadow, pushpop);
@@ -2564,7 +2564,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
         } else {
             /* See above: we only propagate when not checking */
             integrate_register_shadow
-                (&inst, 0, 
+                (&inst, 0,
                  /* do not combine srcs if checking after */
                  check_srcs_after ? &shadow_vals[i*sz] : shadow_vals,
                  REG_EFLAGS, shadow, pushpop);
@@ -2661,7 +2661,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             cpt->self_translating = false;
             LOG(3, "translation test: cache="PFX", orig="PFX", xl8="PFX"\n",
                 ret_pc, pc, xl8);
-            ASSERT(xl8 == pc || 
+            ASSERT(xl8 == pc ||
                    (options.repstr_to_loop &&
                     /* Depending on -no_fastpath we'll get here for the jecxz pointing
                      * at the loop, the loop, or the stringop.
@@ -2831,7 +2831,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                     ASSERT(mi->reg3.slot == SPILL_SLOT_2, "spill assumption violated");
                     s2 = &mi->reg3;
                     s3 = &mi->reg2;
-                } 
+                }
             }
             ASSERT(s1->slot == SPILL_SLOT_1 && s2->slot == SPILL_SLOT_2, "slot error");
             r1 = (s1->dead ? (s1->reg - DR_REG_XAX + SPILL_REG_EAX_DEAD) :
@@ -2869,7 +2869,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                  */
                 mi->appclone = instr_clone(drcontext, inst);
                 mi->slow_store_retaddr =
-                    INSTR_CREATE_mov_imm(drcontext, 
+                    INSTR_CREATE_mov_imm(drcontext,
                                          (r2 == SPILL_REG_NONE) ?
                                          spill_slot_opnd(drcontext, SPILL_SLOT_2) :
                                          opnd_create_reg(s2->reg),
@@ -2888,7 +2888,7 @@ instrument_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                          opnd_create_reg(s1->reg),
                                          decode_pc_opnd));
                 PRE(bb, inst,
-                    INSTR_CREATE_mov_imm(drcontext, 
+                    INSTR_CREATE_mov_imm(drcontext,
                                          (r2 == SPILL_REG_NONE) ?
                                          spill_slot_opnd(drcontext, SPILL_SLOT_2) :
                                          opnd_create_reg(s2->reg),
@@ -3023,7 +3023,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                                  OPND_CREATE_INT32(0)));
                         } else {
                             PRE(ilist, NULL, INSTR_CREATE_mov_st
-                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1), 
+                                (drcontext, spill_slot_opnd(drcontext, SPILL_SLOT_1),
                                  OPND_CREATE_INT32(0)));
                         }
                     }
@@ -3038,7 +3038,7 @@ generate_shared_slowpath(void *drcontext, instrlist_t *ilist, byte *pc)
                          * which would require a spill, so we don't bother.
                          */
                         PRE(ilist, NULL,
-                            INSTR_CREATE_mov_st(drcontext, 
+                            INSTR_CREATE_mov_st(drcontext,
                                                 spill_slot_opnd(drcontext, SPILL_SLOT_5),
                                                 opnd_create_instr(return_point)));
                     }
@@ -3205,7 +3205,7 @@ instrument_init(void)
 #ifdef STATISTICS
     next_stats_dump = options.stats_dump_interval;
 #endif
-        
+
 #ifdef TOOL_DR_MEMORY
     if (INSTRUMENT_MEMREFS())
         replace_init();
@@ -3221,7 +3221,7 @@ instrument_exit(void)
         return;
 #ifdef TOOL_DR_MEMORY
     if (options.shadowing) {
-        nonheap_free(shared_slowpath_region, SHARED_SLOWPATH_SIZE, 
+        nonheap_free(shared_slowpath_region, SHARED_SLOWPATH_SIZE,
                      HEAPSTAT_GENCODE);
     }
 #endif
@@ -3659,7 +3659,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
                 if (safe_read((void *)mc->xdi, sz, &val)) {
                     /* Assume the real instr will fault here.
                      * FIXME: if the instr gets resumed our check won't re-execute! */
-                    break; 
+                    break;
                 }
                 eq = stringop_equal(val, mc->xax, sz);
                 mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
@@ -3689,7 +3689,7 @@ check_mem_opnd(uint opc, uint flags, app_loc_t *loc, opnd_t opnd, uint sz,
                     !safe_read((void *)mc->xdi, sz, &val2)) {
                     /* Assume the real instr will fault here.
                      * FIXME: if the instr gets resumed our check won't re-execute! */
-                    break; 
+                    break;
                 }
                 eq = stringop_equal(val1, val2, sz);
                 mc->xdi += (TEST(EFLAGS_DF, mc->xflags) ? -1 : 1) * sz;
@@ -3727,7 +3727,7 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
     bool found_bad_addr = false;
     uint bad_type = SHADOW_DEFINED; /* i.e., no error */
 #ifdef STATISTICS
-    bool was_special = options.shadowing ? 
+    bool was_special = options.shadowing ?
         shadow_get_special(addr, NULL) : false;
     bool exception = false;
 #endif
@@ -4507,7 +4507,7 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
     });
 #endif
 #ifdef TOOL_DR_MEMORY
-    DOLOG(4, { 
+    DOLOG(4, {
         if (options.shadowing) {
             LOG(4, "shadow register values:\n");
             print_shadow_registers();
@@ -4641,7 +4641,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         /* We want to spill AFTER any clean call in case it changes mcontext */
         /* XXX: examine this: how make it more in spirit of drmgr? */
         bi->spill_after = instr_get_prev(inst);
-        
+
         /* update liveness of whole-bb spilled regs */
         fastpath_pre_instrument(drcontext, bb, inst, bi);
     }
@@ -4672,7 +4672,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         goto instru_event_bb_insert_done;
     if (options.pattern != 0 && instr_is_prefetch(inst))
         goto instru_event_bb_insert_done;
-    
+
     /* if there are no gpr or mem operands, we can ignore it */
     has_gpr = false;
     has_mem = false;
@@ -4712,13 +4712,13 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (!has_gpr && !has_mem &&
         !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6, instr_get_eflags(inst)))
         goto instru_event_bb_insert_done;
-    
+
     /* for cmp/test+jcc -check_uninit_cmps don't need to instrument jcc */
     if ((options.pattern != 0 ||
          (options.shadowing && bi->eflags_defined)) &&
         opc_is_jcc(opc))
         goto instru_event_bb_insert_done;
-    
+
     if (options.pattern != 0) {
         if (!(bi->is_repstr_to_loop && options.pattern_opt_repstr)) {
             /* aggressive optimization of repstr for pattern mode will
@@ -4736,7 +4736,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             DOLOG(3, { instr_disassemble(drcontext, inst, LOGFILE_GET(drcontext)); });
             LOG(3, "\n");
             bi->shared_memop = opnd_create_null();
-            /* Restore whole-bb spilled regs (PR 489221) 
+            /* Restore whole-bb spilled regs (PR 489221)
              * FIXME: optimize via liveness analysis
              */
             mi.reg1 = bi->reg1;

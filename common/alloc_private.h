@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -174,14 +174,14 @@ is_free_routine(routine_type_t type)
 static inline bool
 is_malloc_routine(routine_type_t type)
 {
-    return (type == HEAP_ROUTINE_MALLOC 
+    return (type == HEAP_ROUTINE_MALLOC
             IF_WINDOWS(|| type == RTL_ROUTINE_MALLOC|| type == HEAP_ROUTINE_MALLOC_DBG));
 }
 
 static inline bool
 is_realloc_routine(routine_type_t type)
 {
-    return (type == HEAP_ROUTINE_REALLOC 
+    return (type == HEAP_ROUTINE_REALLOC
             IF_WINDOWS(|| type == RTL_ROUTINE_REALLOC|| type == HEAP_ROUTINE_REALLOC_DBG));
 }
 

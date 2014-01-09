@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -44,7 +44,7 @@
 /* XXX: PR 487993: should we support file-private options?
  * Then we wouldn't need op_ globals, and could move midchunk_* options
  * inside leak.c, etc.
- */ 
+ */
 
 /* Common min+max values */
 #define OPTION_FRONT_BOOL(scope, name, defval, short, long) \
@@ -305,7 +305,7 @@ OPTION_CLIENT_BOOL(client, symbol_offsets, false,
                    "Deprecated: use -callstack_style flag 0x4",
                    "Deprecated: use -callstack_style flag 0x4")
 #endif
-              
+
 OPTION_CLIENT_BOOL(client, ignore_early_leaks, true,
                    "Ignore pre-app leaks",
                    "Whether to ignore leaks from memory allocated by system code prior to "TOOLNAME" taking over.")
@@ -558,7 +558,7 @@ OPTION_CLIENT_BOOL(drmemscope, soft_kills, true,
  * Un-documented client options, for developer use only
  */
 
-OPTION_CLIENT_SCOPE(internal, resfile, uint, 0, 0, UINT_MAX, 
+OPTION_CLIENT_SCOPE(internal, resfile, uint, 0, 0, UINT_MAX,
                    "For the given pid, write the result file path to <logdir>/resfile.<pid>",
                    "Write the result file path to <logdir>/resfile.<pid> if the process id equals the passed-in option value")
 OPTION_CLIENT_BOOL(internal, stderr, true,

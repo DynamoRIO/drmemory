@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -94,14 +94,14 @@ test_file_handles(bool close)
     DWORD size;
     WIN32_FIND_DATA ffd;
     bool  create_file_tested = false;
-   
+
     size = GetCurrentDirectory(MAX_PATH, buf);
     // check size
     if (size == 0) {
         printf("fail to get current directory\n");
         return;
     }
-    // append 
+    // append
     StringCchCat(buf, MAX_PATH, TEXT("\\*"));
     // find the first file in the directory.
     hFind = FindFirstFile(buf, &ffd);
@@ -122,7 +122,7 @@ test_file_handles(bool close)
                 return;
             }
             // test DuplicateHandle
-            DuplicateHandle(GetCurrentProcess(), 
+            DuplicateHandle(GetCurrentProcess(),
                             hFile,
                             GetCurrentProcess(),
                             &dupFile1,
@@ -217,7 +217,7 @@ test_process_handles(bool close)
         if (hProcess != 0 && pe.th32ProcessID != 0) /* skip system process */
             break;
     }
-    
+
     if (close) {
         CloseHandle(hProcess);
         CloseHandle(hSnapshot);

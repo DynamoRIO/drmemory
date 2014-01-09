@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -43,7 +43,7 @@
  * - Using just module name for the file and not worrying about
  *   conflicts since this is just a performance improvement: thus some
  *   SxS or other modules may end up w/ competing cache files.
- * - i#617, we assume that we have all the entries of a symbol 
+ * - i#617, we assume that we have all the entries of a symbol
  *   if we can find one entry for that symbol in the symcache.
  * - Anyone creating synthetic symcaches (e.g., for i#192) needs to be aware
  *   of wildcard symcache entries.  i#722 added
@@ -529,7 +529,7 @@ symcache_init(const char *symcache_dir_in,
                       symcache_free_entry, NULL, NULL);
     symcache_lock = dr_mutex_create();
 
-    dr_snprintf(symcache_dir, BUFFER_SIZE_ELEMENTS(symcache_dir), 
+    dr_snprintf(symcache_dir, BUFFER_SIZE_ELEMENTS(symcache_dir),
                 "%s", symcache_dir_in);
     NULL_TERMINATE_BUFFER(symcache_dir);
     if (!dr_directory_exists(symcache_dir)) {
@@ -728,7 +728,7 @@ symcache_add(const module_data_t *mod, const char *symbol, size_t offs)
         modcache->from_file)
         modcache->appended = true;
     dr_mutex_unlock(symcache_lock);
-    return true;    
+    return true;
 }
 
 /* Returns true if the symbol is in the cache, which contains positive and

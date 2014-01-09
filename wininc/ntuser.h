@@ -1242,7 +1242,7 @@ NtUserAttachThreadInput(
 
 HDC NTAPI
 NtUserBeginPaint(
-  HWND hWnd, 
+  HWND hWnd,
   PAINTSTRUCT* lPs);
 
 BOOL
@@ -1718,7 +1718,7 @@ NtUserDeferWindowPos(
 
 BOOL NTAPI
 NtUserDefSetText(
-  HWND WindowHandle, 
+  HWND WindowHandle,
   PLARGE_STRING WindowText);
 
 BOOLEAN
@@ -1836,7 +1836,7 @@ NtUserEndDeferWindowPosEx(
 
 BOOL NTAPI
 NtUserEndPaint(
-  HWND hWnd, 
+  HWND hWnd,
   CONST PAINTSTRUCT* lPs);
 
 /* MS has this marked BOOL: xref i#1139  */
@@ -1920,7 +1920,7 @@ NtUserGetAltTabInfo(
 
 HWND NTAPI
 NtUserGetAncestor(
-  HWND hWnd, 
+  HWND hWnd,
   UINT Flags);
 
 DWORD
@@ -2276,8 +2276,8 @@ NtUserGetTitleBarInfo(
 
 BOOL NTAPI
 NtUserGetUpdateRect(
-  HWND hWnd, 
-  LPRECT lpRect, 
+  HWND hWnd,
+  LPRECT lpRect,
   BOOL fErase);
 
 int
@@ -2844,7 +2844,7 @@ typedef struct _tagFINDEXISTINGCURICONPARAM
     LONG cx;
     LONG cy;
 } FINDEXISTINGCURICONPARAM;
-  
+
 HICON
 NTAPI
 NtUserFindExistingCursorIcon(
@@ -2861,7 +2861,7 @@ NtUserSetCursorIconData(
   HMODULE hModule,
   HRSRC hRsrc,
   HRSRC hGroupRsrc);
-  
+
 HICON
 NTAPI
 NtUserFindExistingCursorIcon(

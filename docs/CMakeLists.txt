@@ -4,17 +4,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -98,7 +98,7 @@ add_custom_command(
        -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
        -Doutfile=${doxyfile}
-       -Dversion_number=${TOOL_VERSION_NUMBER} 
+       -Dversion_number=${TOOL_VERSION_NUMBER}
        -DDOXYGEN_EXECUTABLE=${DOXYGEN_EXECUTABLE}
        -DVMKERNEL=${VMKERNEL}
        -DPERL_TO_EXE=${PERL_TO_EXE}

@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -465,8 +465,8 @@ handle_esp_adjust_shared_slowpath(reg_t val/*either relative delta, or absolute*
 
 /* i#668: instrument code to handle esp adjustment via cmovcc. */
 static void
-instrument_esp_cmovcc_adjust(void *drcontext, 
-                             instrlist_t *bb, 
+instrument_esp_cmovcc_adjust(void *drcontext,
+                             instrlist_t *bb,
                              instr_t *inst,
                              instr_t *skip,
                              bb_info_t *bi)
@@ -543,7 +543,7 @@ needs_esp_adjust(instr_t *inst, sp_adjust_action_t sp_action)
         /* esp changes are all reads or writes */
         return false;
     }
-    /* -leaks_only doesn't care about shrinking the stack 
+    /* -leaks_only doesn't care about shrinking the stack
      * technically OP_leave doesn't have to shrink it: we assume it does
      * (just checking leaks: not huge risk)
      */
@@ -585,7 +585,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     opnd_t arg;
     esp_adjust_t type;
     instr_t *skip;
-    
+
     if (!needs_esp_adjust(inst, sp_action))
         return false;
 
@@ -662,7 +662,7 @@ instrument_esp_adjust_slowpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         if (opnd_is_immed_int(arg))
             opnd_set_size(&arg, OPSZ_PTR);
         if (bi->reg1.reg != REG_NULL) {
-            /* use global scratch regs 
+            /* use global scratch regs
              * FIXME: opt: generalize and use for fastpath too: but more complex
              * there since have 3 scratches and any one could be the extra local.
              */
@@ -899,7 +899,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     esp_adjust_t type = get_esp_adjust_type(opc);
     reg_id_t reg_mod;
     instr_t *skip;
-    
+
     if (!needs_esp_adjust(inst, sp_action))
         return false;
 
@@ -1027,7 +1027,7 @@ instrument_esp_adjust_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          * shared_fastpath? then need to nail down which of reg2 vs reg1 is which.
          */
         insert_spill_or_restore(drcontext, bb, inst, &mi.reg2, true/*save*/, false);
-        
+
         PRE(bb, inst,
             INSTR_CREATE_mov_st(drcontext, opnd_create_reg(REG_EDX),
                                 opnd_create_instr(retaddr)));
@@ -1132,7 +1132,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
     PRE(bb, NULL, INSTR_CREATE_mov_st
         (drcontext, spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+2),
          opnd_create_reg(REG_EAX)));
-    
+
     /* the initial address to look up in the shadow table is cur esp */
     PRE(bb, NULL,
         INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi.reg1.reg),
@@ -1573,7 +1573,7 @@ generate_shared_esp_fastpath_helper(void *drcontext, instrlist_t *bb,
             (drcontext, opnd_create_reg(REG_ECX),
              spill_slot_opnd(drcontext, esp_spill_slot_base(true/*shadow*/)+1)));
         /* we use tailcall to avoid two indirect jumps, at cost of extra eflags
-         * restore: shared_slowpath will ret to our caller 
+         * restore: shared_slowpath will ret to our caller
          */
         PRE(bb, NULL,
             INSTR_CREATE_mov_ld

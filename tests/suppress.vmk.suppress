@@ -6,7 +6,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -22,25 +22,25 @@
 # don't need this file anymore - suppress.lin.suppress will work for both linux
 # and visor.
 #
-# uninitialized read: full callstack based mod+offs suppression 
+# uninitialized read: full callstack based mod+offs suppression
 UNINITIALIZED READ
 <+0x575>
 <+0x596>
 <+0x81f>
 
-# uninitialized read: top frames based mod+offs suppression 
+# uninitialized read: top frames based mod+offs suppression
 UNINITIALIZED READ
 <+0x575>
 <+0x5a9>
 
-# uninitialized read: full callstack based mod!func suppression 
+# uninitialized read: full callstack based mod!func suppression
 UNINITIALIZED READ
 suppress!do_uninit_read
 suppress!uninit_test3
 suppress!test
 suppress!main
 
-# uninitialized read: top frames based mod!func suppression 
+# uninitialized read: top frames based mod!func suppression
 UNINITIALIZED READ
 suppress!do_uninit_read
 suppress!uninit_test4
@@ -62,54 +62,54 @@ suppress!uninit_test7
 
 #-------------------------------------------------------------------------------
 
-# unaddressable access: full callstack based mod+offs suppression 
+# unaddressable access: full callstack based mod+offs suppression
 UNADDRESSABLE ACCESS
 <+0x664>
 <+0x899>
 <+0x91c>
 
-# unaddressable access: top frame based mod+offs suppression 
+# unaddressable access: top frame based mod+offs suppression
 UNADDRESSABLE ACCESS
 <+0x68f>
 
-# unaddressable access: full callstack based mod!func suppression 
+# unaddressable access: full callstack based mod!func suppression
 # also tests wildcard
 UNADDRESSABLE ACCESS
 suppress!unaddr_*3
 supp*!test
 
-# unaddressable access: top 2 frames based mod!func suppression 
+# unaddressable access: top 2 frames based mod!func suppression
 UNADDRESSABLE ACCESS
 suppress!unaddr_test4
 suppress!test
 
 #-------------------------------------------------------------------------------
 
-# leak: full callstack based mod+offs suppression 
+# leak: full callstack based mod+offs suppression
 LEAK
 <+0x712>
 <+0x8ce>
 <+0x91c>
 
-# leak: top frame based mod+offs suppression 
+# leak: top frame based mod+offs suppression
 LEAK
 <+0x737>
 
-# leak: full callstack based mod!func suppression 
+# leak: full callstack based mod!func suppression
 LEAK
 suppress!leak_test3
 suppress!test
 suppress!main
 
-# leak: top frame based mod!func suppression 
+# leak: top frame based mod!func suppression
 LEAK
 suppress!leak_test4
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 POSSIBLE LEAK
 suppress!possible_leak_test1
 
-# possible leak: top frame based mod!func suppression 
+# possible leak: top frame based mod!func suppression
 LEAK
 suppress!possible_leak_test2
 

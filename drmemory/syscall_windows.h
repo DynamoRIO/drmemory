@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -22,12 +22,12 @@
 #ifndef _SYSCALL_WINDOWS_H_
 #define _SYSCALL_WINDOWS_H_ 1
 
-/* syscall_windows.c exports */ 
+/* syscall_windows.c exports */
 
 extern hashtable_t systable; /* windows num-to-sysinfo table */
 
 
-/* syscall_wingdi.c exports */ 
+/* syscall_wingdi.c exports */
 
 void
 syscall_wingdi_init(void *drcontext, app_pc ntdll_base);

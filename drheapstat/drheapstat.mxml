@@ -5,17 +5,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -77,14 +77,14 @@
         private var haveStale:Boolean = false;
         private var sliderInit:Boolean = false;
 
-        /* To handle large number of snapshots, the vistool queries small 
-         * sets of snapshots on the fly (as opposed to once as we did 
-         * before) from the server.  This causes performance slowdowns when 
-         * the slider's thumbs are moved too fast because too many socket 
-         * queries are generated (it is the nesting of the slider thumb 
-         * movement events coupled with socket queries that bogs the system 
+        /* To handle large number of snapshots, the vistool queries small
+         * sets of snapshots on the fly (as opposed to once as we did
+         * before) from the server.  This causes performance slowdowns when
+         * the slider's thumbs are moved too fast because too many socket
+         * queries are generated (it is the nesting of the slider thumb
+         * movement events coupled with socket queries that bogs the system
          * down).  Using the bool and the two arrays defined below, intermediate
-         * queries that end up being discarded are avoided, thus improving 
+         * queries that end up being discarded are avoided, thus improving
          * performance.  PR 581809.
          */
         private var SSQueryInProgress:Boolean = false;
@@ -111,7 +111,7 @@
             catch (e:Error) {
                 /* Errors should be just a message or Alert.show()? */
                 dbg.text += "socket open error: " + e.message + "\n";
-            }       
+            }
         }
 
         private function sendMsg(type:String):void {
@@ -120,7 +120,7 @@
             }
             catch (e:Error) {
                 dbg.text += "socket write error: " + e.message + "\n";
-            }       
+            }
             /* make log: dbg.text += "sent out message: " + type + "\n"; */
             dataSock.flush();
         }
@@ -166,12 +166,12 @@
             return fullMsg;
         }
 
-        /* When the connection with the server has been established, the 
-         * first and only thing to do without user input is to get the 
-         * summary data and display it.  This routine is the callback 
-         * handler which is invoked upon a successful socket connection.  
-         * It sends out the request for the summary.  The result is read 
-         * by the callback handler (dataSockDataHndlr) which is invoked 
+        /* When the connection with the server has been established, the
+         * first and only thing to do without user input is to get the
+         * summary data and display it.  This routine is the callback
+         * handler which is invoked upon a successful socket connection.
+         * It sends out the request for the summary.  The result is read
+         * by the callback handler (dataSockDataHndlr) which is invoked
          * when data is available from the socket to read.
          * Note: at this point the number of snapshots available is unknown, so
          * the request is sent as "from zero to zero".
@@ -180,8 +180,8 @@
             sendMsg("summary:0-0\n");
         }
 
-        /* Callback handler which is invoked when data from the server is 
-         * available to read.  It detects the type of xml sent and invokes 
+        /* Callback handler which is invoked when data from the server is
+         * available to read.  It detects the type of xml sent and invokes
          * the appropriate processing routine.
          */
         private function dataSockDataHndlr(event:Event):void {
@@ -272,7 +272,7 @@
                     appMemStaleGraphLine.displayName += " (no data available)";
                 }
                 xAxisInfoDisplay.text = "Interval between snapshots " +
-                                        "(i.e., X axis) is in " + 
+                                        "(i.e., X axis) is in " +
                                         summary.@xAxisLabel;
 
                 hSlider.minimum = 0;
@@ -355,15 +355,15 @@
                                        "        + Heap headers: " +
                                        appMemTot[graphDataIndexSelected];
             if (haveStale) {
-                snapshotInfoDisplay.text += "        Stale: " + 
+                snapshotInfoDisplay.text += "        Stale: " +
                                             appMemStale[graphDataIndexSelected];
             }
 
             /* FIXME: sorting type is hard coded for now as we do only one
              * type of sorting
              */
-            cstackHdrsStatusWindow.text = "Displaying callstacks " + 
-                                          cstackHdrsShownLo + " to " + 
+            cstackHdrsStatusWindow.text = "Displaying callstacks " +
+                                          cstackHdrsShownLo + " to " +
                                           cstackHdrsShownHi + ".  " +
                                           "Sorted by: (Mem + Pad + Headers)";
 
@@ -371,9 +371,9 @@
              * old data with a new object; gc will handle freeing
              */
             cstackHdrsShown = new ArrayCollection();
-            
+
             for each (var callstack:XML in snapshot.callstack) {
-                /* Depending upon whether staleness data is available or not, 
+                /* Depending upon whether staleness data is available or not,
                  * change what type of data gets added to cstackHdrsShown.  If
                  * using a generic value of 0 for "not available", the user gets
                  * confused as to whether staleness data was there and nothing
@@ -383,17 +383,17 @@
                  * struct that has no staleness element.
                  */
                 if (haveStale) {
-                    cstackHdrsShown.addItem({id: parseInt(callstack.@id), 
-                                             sym: callstack.@hdr, 
-                                             num: parseInt(callstack.@num), 
+                    cstackHdrsShown.addItem({id: parseInt(callstack.@id),
+                                             sym: callstack.@hdr,
+                                             num: parseInt(callstack.@num),
                                              memReq: parseInt(callstack.@memReq),
                                              memPad: parseInt(callstack.@memPad),
                                              memTot: parseInt(callstack.@memTot),
                                              memStale: parseInt(callstack.@memStale)});
                 } else {
-                    cstackHdrsShown.addItem({id: parseInt(callstack.@id), 
-                                             sym: callstack.@hdr, 
-                                             num: parseInt(callstack.@num), 
+                    cstackHdrsShown.addItem({id: parseInt(callstack.@id),
+                                             sym: callstack.@hdr,
+                                             num: parseInt(callstack.@num),
                                              memReq: parseInt(callstack.@memReq),
                                              memPad: parseInt(callstack.@memPad),
                                              memTot: parseInt(callstack.@memTot)});
@@ -410,13 +410,13 @@
                  * in the array collection if stalenes info is available.
                  */
                 if (haveStale) {
-                    srcFilesShown.addItem({name: srcFile.@name, 
+                    srcFilesShown.addItem({name: srcFile.@name,
                                            memReq: parseInt(srcFile.@memReq),
                                            memPad: parseInt(srcFile.@memPad),
                                            memTot: parseInt(srcFile.@memTot),
                                            memStale: parseInt(srcFile.@memStale)});
                 } else {
-                    srcFilesShown.addItem({name: srcFile.@name, 
+                    srcFilesShown.addItem({name: srcFile.@name,
                                            memReq: parseInt(srcFile.@memReq),
                                            memPad: parseInt(srcFile.@memPad),
                                            memTot: parseInt(srcFile.@memTot)});
@@ -498,25 +498,25 @@
         private function changeSize():void
         {
             /* Not worth zooming for less than 5 data points. */
-            if ((hSlider.values[1] - hSlider.values[0] + 1) <= 5) { 
+            if ((hSlider.values[1] - hSlider.values[0] + 1) <= 5) {
                 return;
             }
 
-            /* Don't make a query when one is already in progress.  Even 
+            /* Don't make a query when one is already in progress.  Even
              * though liveDragging is disabled, the slider can generate a lot of
-             * events if the user keeps on moving and releasing the slider 
-             * thumbs quickly.  This leads to multiple events in succession 
-             * which in turn result in multiple queries to the server.  Doing 
-             * queries when multiple events get generated just freezes the 
-             * machine (the flash player goes into rapid cpu and memory 
+             * events if the user keeps on moving and releasing the slider
+             * thumbs quickly.  This leads to multiple events in succession
+             * which in turn result in multiple queries to the server.  Doing
+             * queries when multiple events get generated just freezes the
+             * machine (the flash player goes into rapid cpu and memory
              * consumption mode and bogs the machine down).  PR 581809.
              *
-             * Note: though this fix handles the case of the user moving the 
-             * slider thumbs many times quickly using the mouse, it doesn't 
-             * handle it when they do it with the keyboard - it still hangs.  
-             * Luckily, a person using the slider thums using the keyboard and 
-             * rapidly changing it will not be a common thing, so we should be 
-             * fine.  Still need to re-think zooming to control this event 
+             * Note: though this fix handles the case of the user moving the
+             * slider thumbs many times quickly using the mouse, it doesn't
+             * handle it when they do it with the keyboard - it still hangs.
+             * Luckily, a person using the slider thums using the keyboard and
+             * rapidly changing it will not be a common thing, so we should be
+             * fine.  Still need to re-think zooming to control this event
              * overload problem.  FIXME.
              */
             if (SSQueryInProgress) {
@@ -536,12 +536,12 @@
         ]]>
     </mx:Script>
 
-    <!-- For the staleness line we want to show the area grayed out which 
-         gives the user a good visual indication of ratio of memory actually 
-         used versus stale.  In order to do this, we have to use an AreaSeries 
-         instead of LineSeries and define what color to fill the graph area 
-         with and the level of transparency.  
-         Note: defining area fill color forces defining graph line colors too, 
+    <!-- For the staleness line we want to show the area grayed out which
+         gives the user a good visual indication of ratio of memory actually
+         used versus stale.  In order to do this, we have to use an AreaSeries
+         instead of LineSeries and define what color to fill the graph area
+         with and the level of transparency.
+         Note: defining area fill color forces defining graph line colors too,
                else they show up as the same color as the fill color.
      -->
     <mx:SolidColor id="appMemStaleFillColor" color="black" alpha="0.1"/>
@@ -565,24 +565,24 @@
                     <mx:horizontalAxis>
                         <mx:CategoryAxis
                             categoryField="Time/Snapshot No"
-                            dataProvider="{xAxisData}"/> 
+                            dataProvider="{xAxisData}"/>
                     </mx:horizontalAxis>
                     <mx:series>
                         <mx:LineSeries
-                            form="curve" dataProvider="{appMemReq}" 
+                            form="curve" dataProvider="{appMemReq}"
                             visible="{showAppMemReqGraph}"
                             displayName="Memory allocated (requested) by process"/>
-                        <mx:LineSeries 
-                            form="curve" dataProvider="{appMemPad}"  
+                        <mx:LineSeries
+                            form="curve" dataProvider="{appMemPad}"
                             visible="{showAppMemPadGraph}"
                             displayName="Memory allocated by process + Padding"/>
-                        <mx:LineSeries 
-                            form="curve" dataProvider="{appMemTot}" 
+                        <mx:LineSeries
+                            form="curve" dataProvider="{appMemTot}"
                             visible="{showAppMemTotGraph}"
                             displayName="Memory allocated by process + Padding + Heap headers"/>
-                        <mx:AreaSeries 
+                        <mx:AreaSeries
                             id="appMemStaleGraphLine"
-                            form="curve" dataProvider="{appMemStale}" 
+                            form="curve" dataProvider="{appMemStale}"
                             visible="{showAppMemStaleGraph}"
                             areaStroke="{appMemStaleLineColor}"
                             areaFill="{appMemStaleFillColor}"
@@ -591,17 +591,17 @@
                 </mx:LineChart>
                 <mx:Text id="xAxisInfoDisplay" width="100%"/>
 
-                <!-- Keep liveDragging off else even the slightest fast move 
-                     of the slider will result in massive memory and cpu usage 
-                     by flex.  This happens only because a new snapshots 
-                     summary request is sent out each time there is a slider 
-                     event.  If it is just changing the binding array, then it 
+                <!-- Keep liveDragging off else even the slightest fast move
+                     of the slider will result in massive memory and cpu usage
+                     by flex.  This happens only because a new snapshots
+                     summary request is sent out each time there is a slider
+                     event.  If it is just changing the binding array, then it
                      is fine.  PR 581809.
                  -->
                 <mx:HSlider
                     id="hSlider" minimum="0" percentWidth="100"
                     dataTipPlacement="top" tickColor="black" allowTrackClick="true"
-                    snapInterval="1" tickInterval="10" labels="['0%','100%']" 
+                    snapInterval="1" tickInterval="10" labels="['0%','100%']"
                     thumbCount="2" liveDragging="false" change="changeSize();"
                     creationComplete="{hSlider.minimum = 0;
                                        hSlider.maximum = 0;
@@ -651,7 +651,7 @@
                         label="Grouping by call stacks">
                         <mx:VBox>
                             <mx:HBox width="100%">
-                                <mx:Button 
+                                <mx:Button
                                      label="Prev 50 callstacks"
                                      click="prevCstacks(event);"/>
                                 <mx:Text id="cstackHdrsStatusWindow" width="65%"/>
@@ -691,10 +691,10 @@
                                 id="cstackWindow" width="100%" height="400"/>
                         </mx:VBox>
                     </mx:VBox>
-                    <!-- There is no direct way to make the group-by-file tab 
-                         conditionally visible.  Also, the condition will be 
-                         known only after the first contact with the server, 
-                         so this tab will be visible even if -group_by_file 
+                    <!-- There is no direct way to make the group-by-file tab
+                         conditionally visible.  Also, the condition will be
+                         known only after the first contact with the server,
+                         so this tab will be visible even if -group_by_file
                          isn't specified till the first contact with the server.
                          Even afterwards, looks like I'd have to manipulate this
                          VBox object directly to make it disappear - I spent a
@@ -709,7 +709,7 @@
                             dataProvider="{srcFilesShown}">
                             <mx:columns>
                                 <mx:DataGridColumn
-                                    width="460" 
+                                    width="460"
                                     dataField="name" headerText="Source file"/>
                                 <mx:DataGridColumn
                                     textAlign="right" width="60"

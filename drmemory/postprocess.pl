@@ -6,17 +6,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -99,7 +99,7 @@ $drmem_dir = "debug";
 $vmk_grp = "";  # vmkernel group for addr2line; PR 453395.
 @dbg_sec_types = ("debug_info", # all DWARF 2 & 3 type info will have this
                   "debug_frame",# on Debian some libraries have only this
-                  "debug ",     # for DWARF 1; the extra " " is to prevent 
+                  "debug ",     # for DWARF 1; the extra " " is to prevent
                                 #   DWARF 2 matches
                   "stab");      # .stab is competing debug format to DWARF
 $no_sys_paths = 0; # look in /lib, etc. for symbol files?
@@ -367,7 +367,7 @@ if ($aggregate) {
 
             # If global log has LOG END and all logfiles have been processed, exit.
             last if ($done && $global_done);
-            
+
             # PR 426484: if app is killed, exit instead of spinning forever.
             # But do one more pass to get any final logs.
             $lastpass = 1 if (`$ps_cmd` !~ /\b$pid\b/);
@@ -406,13 +406,13 @@ foreach $apipe (keys %addr_pipes) {        # reap all the addr2line processes
     # ugly to have multi-line errors where a symbol should go in the
     # callstack, so I'm appending them all at the end.  Xref i#235.
     my $error = $addr_pipes{$apipe}{"error"};
-    my $sel = IO::Select->new(); 
+    my $sel = IO::Select->new();
     $sel->add($error);
     while (my @ready = $sel->can_read(0.1)) {
-        foreach my $handle (@ready) { 
+        foreach my $handle (@ready) {
             my ($count, $data, $per_read);
             $per_read = 4096;
-            $count = sysread($handle, $data, $per_read); 
+            $count = sysread($handle, $data, $per_read);
             if (defined($count) && $count > 0) {
                 print "WARNING: error(s) processing symbols for $apipe: $data";
             } else {
@@ -441,7 +441,7 @@ foreach $apipe (keys %addr_pipes) {        # reap all the addr2line processes
 exit 0;
 
 #-------------------------------------------------------------------------------
-# Parse errors from the logfile passed as argument.  Returns 0 if file ends 
+# Parse errors from the logfile passed as argument.  Returns 0 if file ends
 # before log ends; 1 if log has been completely processed.  If file ends
 # before end of an error log, the position of the start of the last incomplete
 # error is saved to be tried again later.  When end of log is reached, marks
@@ -503,7 +503,7 @@ sub process_all_errors()
                 }
             } elsif (/^FORK\s+child=(\d+)$/) {
                 # We should see a FORK msg w/ logdir once child starts up
-                $pending_fork{$1} = 1 if (!$handled_fork{$1}); 
+                $pending_fork{$1} = 1 if (!$handled_fork{$1});
             } elsif (/^FORKEXEC\s+child=(\d+)\s+path=(.*)/) {
                 # We need to watch for a logdir ourselves
                 $pending_forkexec{$1}{"path"} = $2;
@@ -692,7 +692,7 @@ sub process_one_error($raw_error_lines_array_ref)
     my $first_line = ${$lines}[0];
 
     # Is the callstack identical to a previously seen one?  PR 420942.
-    # Ignore the read/write info in the first line of an error - they change; 
+    # Ignore the read/write info in the first line of an error - they change;
     # in fact, they are the reason that duplicates can't be identified by a
     # direct string comparison.  Also ignore the timestamp and thread id.
     $first_line =~ s/(reading|writing).*$//;
@@ -714,7 +714,7 @@ sub process_one_error($raw_error_lines_array_ref)
 
         # If the error passes the source filter and doesn't match
         # call stack suppression specified then print it.
-        if (($srcfilter eq "" || ${$err_str_ref} =~ /$srcfilter/) && 
+        if (($srcfilter eq "" || ${$err_str_ref} =~ /$srcfilter/) &&
             !suppress($error{"type"}, $err_cstack_ref, \$is_default, $supp,
                       $error{"numbytes"})) {
             print ${$err_str_ref};
@@ -799,7 +799,7 @@ sub check_new_logdirs()
         # Could have any app name or instance count.  We could use
         # the path recorded at forkexec time but on vmkernel
         # "cmdline" will be used due to missing features.
-        my @dirs = bsd_glob("$baselogdir/DrMemory-*.$child.*"); 
+        my @dirs = bsd_glob("$baselogdir/DrMemory-*.$child.*");
         foreach my $dir (@dirs) {
             # Skip if clearly already has script processing it
             next if (-e "$dir/results.txt");
@@ -856,7 +856,7 @@ sub check_new_logdirs()
 }
 
 #-------------------------------------------------------------------------------
-# Parse the logs associated with one error report and set up the %error hash 
+# Parse the logs associated with one error report and set up the %error hash
 # with details.  Also write <mod+offs> style suppresion data.  For example,
 #
 # UNADDRESSABLE ACCESS
@@ -903,7 +903,7 @@ sub parse_error($arr_ref, $err_str)
                     $error{"name"} = "WARNING: $1";
                     $error{"type"} = "WARNING";
                 }
-            } elsif ($line =~ /^Error #\s*\d+: LEAK/ || 
+            } elsif ($line =~ /^Error #\s*\d+: LEAK/ ||
                      $line =~ /^Error #\s*\d+: POSSIBLE LEAK/) {
                 if ($error{"details"} =~ /\s(\d+) direct.*\s(\d+) indirect/) {
                     $error{"numbytes"} = $1 + $2;
@@ -967,7 +967,7 @@ sub parse_error($arr_ref, $err_str)
                 push @{$error{"modoffs"}}, $2;
                 push @{$error{"is_module"}}, 1;
             }
-            # PR 464809: must include 0 address to match generated callstack 
+            # PR 464809: must include 0 address to match generated callstack
             $supp .= "$2\n";
         }
     }
@@ -1091,7 +1091,7 @@ sub lookup_addr($error_ref, $first_retaddr)
 
         $symout =~ s/\r//g if (!$is_unix);
         ($symfile_cache{$modoffs}{"symbol"},
-         $symfile_cache{$modoffs}{"file"}) = split('\n', $symout); 
+         $symfile_cache{$modoffs}{"file"}) = split('\n', $symout);
 
         push @symlines, $symfile_cache{$modoffs}{"symbol"};
         push @symlines, $symfile_cache{$modoffs}{"file"};
@@ -1457,11 +1457,11 @@ sub get_mod_path($module_name, $modpath_ref)
 {
     my ($module, $modpath);
     ($module, $modpath) = @_;
-    
+
     # Don't search for the file when it has been already searched for.
     return if (defined(${$modpath}{$module}));
     die "get_mod_path passed empty module name" if ($module eq '');
-    
+
     my $modname = $module;
     my $fullpath = "";
     my $nondbg_fullpath = "";
@@ -1511,7 +1511,7 @@ sub get_mod_path($module_name, $modpath_ref)
         }
     }
 
-    my $set_path_msg = ($is_vmk) ? 
+    my $set_path_msg = ($is_vmk) ?
         "set DRMEMORY_LIB_PATH and/or VMTREE env vars\n" :
         "set DRMEMORY_LIB_PATH env var\n";
     if ($nondbg_fullpath eq "") {
@@ -1688,14 +1688,14 @@ sub lookup_symbol($modpath_in, $addr_in)
 # # comment line - there can also be a blank line, i.e., with just newline
 #
 # UNINITIALIZED READ
-# libc.so.6!vfprintf                            
-# libc.so.6!printf                            
-# test4-leak!main            
-# libc.so.6!__libc_start_main                            
-# test4-leak!_start            
-# test4-leak!__libc_csu_init            
+# libc.so.6!vfprintf
+# libc.so.6!printf
+# test4-leak!main
+# libc.so.6!__libc_start_main
+# test4-leak!_start
+# test4-leak!__libc_csu_init
 # <not in a module>
-# 
+#
 # Note: no leading white spaces and no paths in module names.
 #
 # The same suppression file is used for both drmemory client library and
@@ -1720,7 +1720,7 @@ sub read_suppression_info($file_in, $default_in)
     my $new_type = "";
     my $num_supp = 0;
     my $brace_line = -1;
- 
+
     # If suppression file can't be opened for reading, just ignore
     if (!open(SUPP_IN,$file)) {
         print "WARNING: Can't open suppression info file $file: $!\n".
@@ -1835,7 +1835,7 @@ sub read_suppression_info($file_in, $default_in)
     add_suppress_callstack($type, $callstack, $default, $name)
         if ($callstack ne '');
     $num_supp++ if ($callstack ne '');
-        
+
     close SUPP_IN;
     print $prefix."Loaded $num_supp suppressions from $file\n";
 }
@@ -1854,7 +1854,7 @@ sub add_suppress_callstack($type, $callstack, $default, $name)
 
     # make module name case-insensitive on windows
     if (!$is_unix) {
-        $callstack =~ s/^([^!\+\n]+)([!\+])/\U\1\2/msg; 
+        $callstack =~ s/^([^!\+\n]+)([!\+])/\U\1\2/msg;
     }
 
     # Turn into a regex for wildcard matching.

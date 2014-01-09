@@ -558,7 +558,7 @@ typedef VOID (APIENTRY *PFN_DrvMovePanning)(LONG, LONG, FLONG);
 //
 typedef struct _DRIVER_FUNCTIONS
 {
-    PFN_DrvEnablePDEV              EnablePDEV;    
+    PFN_DrvEnablePDEV              EnablePDEV;
     PFN_DrvCompletePDEV            CompletePDEV;
     PFN_DrvDisablePDEV             DisablePDEV;
     PFN_DrvEnableSurface           EnableSurface;
@@ -594,10 +594,10 @@ typedef struct _DRIVER_FUNCTIONS
     PFN_DrvStartPage               StartPage;
     PFN_DrvEndDoc                  EndDoc;
     PFN_DrvStartDoc                StartDoc;
-    PVOID                          Unknown3; 
+    PVOID                          Unknown3;
     PFN_DrvGetGlyphMode            GetGlyphMode;
     PFN_DrvSynchronize             Synchronize;
-    PVOID                          Unknown4; 
+    PVOID                          Unknown4;
     PFN_DrvSaveScreenBits          SaveScreenBits;
     PFN_DrvGetModes                GetModes;
     PFN_DrvFree                    Free;
@@ -651,7 +651,7 @@ typedef struct _DRIVER_FUNCTIONS
     PVOID                          Reserved9;
     PVOID                          Reserved10;
     PVOID                          Reserved11; /* 92 */
-    
+
     /* ReactOS specify */
     PFN_DrvEnableDriver            EnableDriver; //ReactOS Extra
 } DRIVER_FUNCTIONS, *PDRIVER_FUNCTIONS;

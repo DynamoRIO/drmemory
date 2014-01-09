@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -64,7 +64,7 @@ typedef struct _app_loc_t {
          * we may not have translated the cache pc yet so the pc field
          * is not valid unless the valid field is true.
          */
-        struct { 
+        struct {
             bool valid;
             app_pc pc;
         } addr;
@@ -421,7 +421,7 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
               app_pc pc, module_data_t *mod_in /*optional*/, bool for_log);
 
 void
-print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc, 
+print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                 bool print_fps, packed_callstack_t *pcs, int num_frames_printed,
                 bool for_log);
 

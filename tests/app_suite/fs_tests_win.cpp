@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -63,7 +63,7 @@ TEST(FSTests, FISize){
     } FILE_POSITION_INFORMATION, *PFILE_POSITION_INFORMATION;
     ASSERT_EQ(sizeof(FILE_POSITION_INFORMATION), sizeof(LARGE_INTEGER));
 
-    typedef enum _IO_PRIORITY_HINT { 
+    typedef enum _IO_PRIORITY_HINT {
         IoPriorityVeryLow   = 0,
         IoPriorityLow       = 1,
         IoPriorityNormal    = 2,

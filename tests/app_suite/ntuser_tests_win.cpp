@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -140,7 +140,7 @@ TEST(NtUserTests, CursorTest) {
 }
 
 TEST(NtUserTests, WindowRgnTest) {
-    // test NtUserCall* VALIDATERGN, 
+    // test NtUserCall* VALIDATERGN,
     HWND hwnd = ::GetDesktopWindow();
     HRGN hrgn = CreateRectRgn(0, 0, 0, 0);
     ASSERT_NE((HRGN)NULL, hrgn);
@@ -251,7 +251,7 @@ enum_windows(HWND hwnd, LPARAM param)
         // We're not allowed to call DestroyWindow() on another thread's window,
         // and calling TerminateThread() seems to destabilize our own
         // process shutdown, so we send a message:
-        LRESULT res = SendMessageTimeout(hwnd, WM_CLOSE, 0, 0, SMTO_BLOCK, 
+        LRESULT res = SendMessageTimeout(hwnd, WM_CLOSE, 0, 0, SMTO_BLOCK,
                                          0, NULL);
         printf("Found msgbox window: closing.\n");
         if (res != 0)

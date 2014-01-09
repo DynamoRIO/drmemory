@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -65,7 +65,7 @@ shadow_table_init(void)
     /* create umbra shadow map */
     memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
     umbra_map_ops.struct_size = sizeof(umbra_map_ops);
-    umbra_map_ops.flags = 
+    umbra_map_ops.flags =
         UMBRA_MAP_CREATE_SHADOW_ON_TOUCH |
         UMBRA_MAP_SHADOW_SHARED_READONLY;
     umbra_map_ops.scale = SHADOW_MAP_SCALE;
@@ -534,7 +534,7 @@ alloc_itercb_snapshot(malloc_info_t *info, void *iter_data)
             snaps->data.sm.ext_entries++;
         }
     }
-    LOG(3, "\tadding "PFX"-"PFX" stamp %"INT64_FORMAT"u to snapshot idx %d\n", 
+    LOG(3, "\tadding "PFX"-"PFX" stamp %"INT64_FORMAT"u to snapshot idx %d\n",
         info->base, info->base + info->request_size, spa->last_access, snaps->idx);
     snaps->idx++;
     return true;

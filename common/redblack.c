@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -180,7 +180,7 @@ get_next_helper(rb_tree_t *tree, void *client, rb_node_t *curr)
     if (curr->client == client) {
         return curr;
     }
-    
+
     node = get_next_helper(tree, client, curr->left);
     if (node != NIL(tree)) {
         return node;
@@ -351,7 +351,7 @@ rb_successor(rb_tree_t *tree, rb_node_t *x)
         return y;
     }
 }
-    
+
 
 /* Remove a node from the RB tree */
 void
@@ -399,7 +399,7 @@ rb_delete(rb_tree_t *tree, rb_node_t *z)
 }
 
 
-/* Binary tree insertion.  First step when inserting a node into 
+/* Binary tree insertion.  First step when inserting a node into
  * an RB tree.
  */
 static rb_node_t *
@@ -420,7 +420,7 @@ bt_insert(rb_tree_t *tree, rb_node_t *node)
 #endif
         iter = *p_iter;
         ibase = iter->base;
-#ifdef DEBUG        
+#ifdef DEBUG
         ilast = ibase + iter->size;
         if ((ibase >= nbase && ibase < nlast) ||
             (nbase >= ibase && nbase < ilast)) {
@@ -572,10 +572,10 @@ rb_next_higher_node(rb_tree_t *tree, byte *addr)
     while (iter != NIL(tree)) {
         if (addr >= iter->left->max && addr < iter->base + iter->size) {
             return iter;
-        } 
+        }
         else if (addr >= iter->right->max) {
             return NULL;
-        } 
+        }
         else if (addr < iter->base) {
             iter = iter->left;
         }
@@ -595,7 +595,7 @@ rb_next_lower_node(rb_tree_t *tree, byte *addr)
     while (iter != NIL(tree)) {
         if (addr >= iter->base && (iter->right == NIL(tree) || addr < iter->right->base)) {
             return iter;
-        } 
+        }
         else if (addr < iter->base) {
             iter = iter->left;
         }
@@ -690,7 +690,7 @@ rb_iterate(rb_tree_t *tree, bool (*iter_cb)(rb_node_t *, void *), void *iter_dat
 static void
 print_helper(rb_tree_t *tree, rb_node_t *node, FILE *fp)
 {
-    fprintf(fp, "n%d [label = \"%s %d\"]\n", 
+    fprintf(fp, "n%d [label = \"%s %d\"]\n",
             node->base,
             node->color == RED ? "R" : "B",
             node->base);
@@ -701,7 +701,7 @@ print_helper(rb_tree_t *tree, rb_node_t *node, FILE *fp)
     }
 
     if (node->right != NIL(tree)) {
-        fprintf(fp, "  n%d -> n%d\n", node->base, node->right->base);        
+        fprintf(fp, "  n%d -> n%d\n", node->base, node->right->base);
         print_helper(node->right, fp);
     }
 }

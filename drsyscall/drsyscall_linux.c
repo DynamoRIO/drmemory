@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -243,7 +243,7 @@ union semun {
 };
 
 /* not in older defines: version flag or-ed in for semctl, msgctl, shmctl */
-# define IPC_64  0x0100  
+# define IPC_64  0x0100
 #endif
 
 /* used to read entire ioctl arg at once */
@@ -2104,7 +2104,7 @@ drsyscall_os_init(void *drcontext)
     uint i;
     hashtable_init_ex(&systable, SYSTABLE_HASH_BITS, HASH_INTPTR, false/*!strdup*/,
                       false/*!synch*/, NULL, sysnum_hash, sysnum_cmp);
- 
+
     hashtable_init(&name2num_table, NAME2NUM_TABLE_HASH_BITS, HASH_STRING,
                    false/*!strdup*/);
 
@@ -2194,7 +2194,7 @@ sysparam_reg(uint argnum)
     case 3: return REG_ESI;
     case 4: return REG_EDI;
     case 5: return REG_EBP; /* for vsyscall, value is instead on stack */
-    default: 
+    default:
         ASSERT(false, "invalid syscall argnum");
     }
 #endif
@@ -2310,7 +2310,7 @@ handle_pre_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     void *arg = (void *) pt->sysarg[IOCTL_BUF_ARGNUM];
     if (arg == NULL)
         return;
-    /* easier to safe_read the whole thing at once 
+    /* easier to safe_read the whole thing at once
      * N.B.: be careful about large structs that don't all have to be set
      * causing us to fail to read when really syscall would work fine
      */
@@ -2395,7 +2395,7 @@ handle_post_ioctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
         return;
     if (result < 0)
         return;
-    /* easier to safe_read the whole thing at once 
+    /* easier to safe_read the whole thing at once
      * to save space we could use a different union that only has the
      * structs needed in post: though currently it's the same set,
      * and most likely the larger ones will be in post.
@@ -2736,9 +2736,9 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
                                     DRSYS_TYPE_STRUCT, NULL))
                 return;
         }
-        if (((request == SYS_SENDTO && 
+        if (((request == SYS_SENDTO &&
               safe_read((void *)&arg[5], sizeof(val_socklen), &val_socklen)) ||
-             (request == SYS_RECVFROM && 
+             (request == SYS_RECVFROM &&
               safe_read((void *)&arg[5], sizeof(arg[5]), &ptr2) &&
               safe_read(ptr2, sizeof(val_socklen), &val_socklen))) &&
             safe_read((void *)&arg[4], sizeof(arg[4]), &ptr1)) {
@@ -2823,7 +2823,7 @@ handle_pre_socketcall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         }
         break;
     default:
-        ELOGF(0, f_global, "WARNING: unknown socketcall request %d\n", request); 
+        ELOGF(0, f_global, "WARNING: unknown socketcall request %d\n", request);
         IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
@@ -3392,7 +3392,7 @@ handle_pre_ipc(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
         break;
     }
     default:
-        ELOGF(0, f_global, "WARNING: unknown ipc request %d\n", request); 
+        ELOGF(0, f_global, "WARNING: unknown ipc request %d\n", request);
         IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
@@ -3460,7 +3460,7 @@ handle_pre_select(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
     ptr = (app_pc) pt->sysarg[4];
     if (ptr != NULL) {
         if (!report_memarg_type(ii, 4, SYSARG_READ, ptr,
-                                (ii->arg->sysnum.number == SYS_select ? 
+                                (ii->arg->sysnum.number == SYS_select ?
                                  sizeof(struct timeval) : sizeof(struct timespec)),
                                 "select timeout", DRSYS_TYPE_STRUCT, NULL))
             return;
@@ -3535,7 +3535,7 @@ handle_pre_prctl(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
             return;
         break;
     default:
-        ELOGF(0, f_global, "WARNING: unknown prctl request %d\n", request); 
+        ELOGF(0, f_global, "WARNING: unknown prctl request %d\n", request);
         IF_DEBUG(report_callstack(ii->arg->drcontext, ii->arg->mc);)
         break;
     }
@@ -3572,8 +3572,8 @@ void
 os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii)
 {
     switch (ii->arg->sysnum.number) {
-    case SYS_clone: 
-        handle_clone(drcontext, pt, ii); 
+    case SYS_clone:
+        handle_clone(drcontext, pt, ii);
         break;
     case SYS__sysctl: {
         struct __sysctl_args *args = (struct __sysctl_args *) pt->sysarg[0];
@@ -3614,7 +3614,7 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
     }
     case SYS_fcntl:
 #ifndef X64
-    case SYS_fcntl64: 
+    case SYS_fcntl64:
 #endif
         {
         /* 3rd arg is sometimes required.  Note that SYS_open has a similar
@@ -3636,8 +3636,8 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
             }
         }
         break;
-    case SYS_ioctl: 
-        handle_pre_ioctl(drcontext, pt, ii); 
+    case SYS_ioctl:
+        handle_pre_ioctl(drcontext, pt, ii);
         break;
 #ifdef X64
     case SYS_semctl:
@@ -3651,11 +3651,11 @@ os_handle_pre_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii
         break;
 #else
     /* XXX i#1013: for mixed-mode we'll need is_sysnum() for access to these */
-    case SYS_socketcall: 
+    case SYS_socketcall:
         handle_pre_socketcall(drcontext, pt, ii);
         break;
-    case SYS_ipc: 
-        handle_pre_ipc(drcontext, pt, ii); 
+    case SYS_ipc:
+        handle_pre_ipc(drcontext, pt, ii);
         break;
 #endif
     case SYS_select: /* fall-through */
@@ -3760,8 +3760,8 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         }
         break;
     }
-    case SYS_ioctl: 
-        handle_post_ioctl(drcontext, pt, ii); 
+    case SYS_ioctl:
+        handle_post_ioctl(drcontext, pt, ii);
         break;
 #ifdef X64
     case SYS_semctl:
@@ -3774,11 +3774,11 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
         handle_shmctl(drcontext, pt, ii, 0, 1, 2);
         break;
 #else
-    case SYS_socketcall: 
-        handle_post_socketcall(drcontext, pt, ii); 
+    case SYS_socketcall:
+        handle_post_socketcall(drcontext, pt, ii);
         break;
-    case SYS_ipc: 
-        handle_post_ipc(drcontext, pt, ii); 
+    case SYS_ipc:
+        handle_post_ipc(drcontext, pt, ii);
         break;
 #endif
     case SYS_poll: {

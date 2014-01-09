@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -48,7 +48,7 @@ bool
 instr_uses_memory_we_track(instr_t *inst);
 
 /***************************************************************************
- * for drheapstat only, not drmemory files 
+ * for drheapstat only, not drmemory files
  */
 #ifdef _DRHEAPSTAT_H_
 

@@ -26,7 +26,7 @@ typedef enum _SOCKET_STATE
     SocketClosed
 } SOCKET_STATE, *PSOCKET_STATE;
 
-/* 
+/*
  * Shared Socket Information.
  * It's called shared because we send it to Kernel-Mode for safekeeping
  */

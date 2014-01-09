@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -171,7 +171,7 @@ alloc_drmem_init(void)
     alloc_ops.record_allocs = true; /* used to only need for -count_leaks */
     /* shadow mode assumes everything is unaddr and so doesn't need to know
      * padding b/c it will naturally be unaddr;
-     * while pattern mode assumes everything is addr and has to know exact 
+     * while pattern mode assumes everything is addr and has to know exact
      * bounds to mark unaddr
      */
     alloc_ops.get_padded_size = (options.pattern == 0) ? false : true;
@@ -418,7 +418,7 @@ get_shared_callstack(packed_callstack_t *existing_data, dr_mcontext_t *mc,
      * and only add to hashtable on next malloc, so that if freed
      * right away we avoid the hashtable lookup+cmp+insert+remove
      * costs
-     */ 
+     */
 
     /* Synchronization: we no longer rely on malloc_lock(), as we
      * don't enable a global lock for -replace_malloc: i#949.  Thus we
@@ -520,7 +520,7 @@ client_handle_malloc(void *drcontext, malloc_info_t *mal, dr_mcontext_t *mc)
         byte *end = mal->base + mal->request_size;
         LOG(2, "set value "PFX" at "PFX"-"PFX" in allocated block\n",
             rz_start, mal->base, end);
-        /* Must set before pattern_handle_malloc, so it is ok to overflow 
+        /* Must set before pattern_handle_malloc, so it is ok to overflow
          * to the redzone after the block.
          * In pattern mode, the redzone will be overwriten by pattern
          * value later in pattern_handle_malloc.
@@ -555,7 +555,7 @@ client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
     ASSERT(!options.replace_realloc || options.leaks_only, "shouldn't come here");
     /* Copy over old allocation's shadow values.  If new region is bigger, mark
      * the extra space at the end as undefined.  PR 486049.
-     */ 
+     */
     if (options.shadowing) {
         if (new_mal->request_size > old_mal->request_size) {
             if (new_mal->base != old_mal->base)
@@ -567,8 +567,8 @@ client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
             if (new_mal->base != old_mal->base)
                 shadow_copy_range(old_mal->base, new_mal->base, new_mal->request_size);
         }
-        
-        /* If the new region is after the old region, overlap or not, compute how 
+
+        /* If the new region is after the old region, overlap or not, compute how
          * much of the front of the old region needs to be marked unaddressable
          * and do so.  This can include the whole old region.
          */
@@ -579,8 +579,8 @@ client_handle_realloc(void *drcontext, malloc_info_t *old_mal,
                              new_mal->base : old_mal->base + old_mal->request_size,
                              SHADOW_UNADDRESSABLE);
         }
-        
-        /* If the new region is before the old region, overlap or not, compute how 
+
+        /* If the new region is before the old region, overlap or not, compute how
          * much of the end of the old region needs to be marked unaddressable
          * and do so.  This can include the whole old region.  PR 486049.
          * Note: this 'if' can't be an else of the above 'if' because there is a
@@ -819,7 +819,7 @@ client_handle_free(malloc_info_t *mal, byte *tofree, dr_mcontext_t *mc,
                  */
                 if (info->delay_free_list[idx].addr != NULL &&
                     info->delay_free_list[idx].real_size >= tot_sz) {
-                    LOG(2, "freeing delayed idx=%d "PFX" w/ size=%d (head=%d, fill=%d)\n", 
+                    LOG(2, "freeing delayed idx=%d "PFX" w/ size=%d (head=%d, fill=%d)\n",
                         idx, info->delay_free_list[idx].addr,
                         info->delay_free_list[idx].real_size,
                         info->delay_free_head, info->delay_free_fill);
@@ -1257,7 +1257,7 @@ client_handle_Ki(void *drcontext, app_pc pc, dr_mcontext_t *mc, bool is_cb)
         }
     }
     ASSERT(ALIGNED(sp, 4), "stack not aligned");
-    
+
     LOG(2, "Ki routine "PFX": marked stack "PFX"-"PFX" as defined\n",
         pc, mc->xsp, sp);
 
@@ -1657,10 +1657,10 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
      *   +0  8b 48 08             mov    0x08(%eax) -> %ecx
      *   +0  8b 48 0c             mov    0x0c(%eax) -> %ecx
      * followed by the magic constant:
-     *   +2  ba ff fe fe fe       mov    $0xfefefeff -> %edx 
+     *   +2  ba ff fe fe fe       mov    $0xfefefeff -> %edx
      * followed by an add, or an xor and then an add, and then a jcc:
-     *   +7  01 ca                add    %ecx %edx -> %edx   
-     *   +9  73 59                jnb    $0x009041c7         
+     *   +7  01 ca                add    %ecx %edx -> %edx
+     *   +9  73 59                jnb    $0x009041c7
      * since the particular registers and mem sources vary, we don't do
      * raw bit comparisons and instead do high-level operand comparisons.
      * in fact, we try to also match very similar patterns in strcat,
@@ -1673,8 +1673,8 @@ is_rawmemchr_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
      *   +4  bf ff fe fe fe       mov    $0xfefefeff,%edi
      *
      * on Windows we have __from_strstr_to_strchr in intel/strchr.asm:
-     *   +11  8b 0a               mov    (%edx) -> %ecx 
-     *   +13  bf ff fe fe 7e      mov    $0x7efefeff -> %edi 
+     *   +11  8b 0a               mov    (%edx) -> %ecx
+     *   +13  bf ff fe fe 7e      mov    $0x7efefeff -> %edi
      *
      * xref PR 485131: propagate partial-unaddr on loads?  but would still
      * complain on the jnb.
@@ -2008,7 +2008,7 @@ is_strcpy_pattern(void *drcontext, bool write, app_pc pc, app_pc next_pc,
     app_pc dpc = next_pc;
     bool match = false;
     instr_init(drcontext, &next);
-   
+
     /* Check for cygwin1!strcpy case where it reads 4 bytes for efficiency:
      * it only does so if aligned, like strlen above.
      *     cygwin1!strcpy:
@@ -2253,7 +2253,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
 
 #ifdef LINUX
 /* Until we have a private loader, we have to have exceptions for the
- * loader reading our own libraries.  Xref PR 
+ * loader reading our own libraries.  Xref PR
  */
 static bool
 is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
@@ -2493,7 +2493,7 @@ check_reachability(bool at_exit)
 }
 
 /***************************************************************************
- * malloc table iterate data 
+ * malloc table iterate data
  */
 
 typedef struct _malloc_iter_data_t {

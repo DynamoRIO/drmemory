@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -129,7 +129,7 @@ test_DC_threads(void)
     CloseHandle(thread);
     DeleteObject(mybm);
     DeleteDC(dupdc);
-    
+
     // Test DrMem check for: ReleaseDC called from the same thread that called GetDC
     thread = (HANDLE) _beginthreadex(NULL, 0, thread_release, (void*)mydc, 0, &tid);
     WaitForSingleObject(thread, INFINITE);

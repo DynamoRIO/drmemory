@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -2243,7 +2243,7 @@ syscall_info_t syscall_user32_info[] = {
     },
     {{0,0},"NtUserTrackMouseEvent", OK, SYSARG_TYPE_BOOL32, 1,
      {
-         /* Memarg and non-memarg are both special-cased */ 
+         /* Memarg and non-memarg are both special-cased */
          {0,},
      }, &sysnum_UserTrackMouseEvent
     },
@@ -3286,7 +3286,7 @@ syscall_info_t syscall_gdi32_info[] = {
          {0, sizeof(HPALETTE), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
          {1, sizeof(WORD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(WORD), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         /*special-cased: R or W depending*/ 
+         /*special-cased: R or W depending*/
          {3, -2, SYSARG_NON_MEMARG|SYSARG_SIZE_IN_ELEMENTS, sizeof(PALETTEENTRY)},
          {4, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {5, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
@@ -6007,7 +6007,7 @@ syscall_info_t syscall_gdi32_info[] = {
     {{WIN7,0},"NtGdiHLSurfGetInformation", UNKNOWN, SYSARG_TYPE_BOOL32, 4,
      {
          {0, sizeof(HLSURF), SYSARG_INLINED, DRSYS_TYPE_HANDLE},
-         /* FIXME: what's the info class? 
+         /* FIXME: what's the info class?
           * {1, sizeof(HLSURF_INFORMATION_CLASS), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
           */
          {2, -3, R|SYSARG_LENGTH_INOUT|HT, DRSYS_TYPE_STRUCT},
@@ -6422,7 +6422,7 @@ handle_bitmapinfo_access(sysarg_iter_info_t *ii,
                          app_pc start, uint size)
 {
     /* bmiColors is variable-length and the number of entries in the
-     * array depends on the values of the biBitCount and biClrUsed 
+     * array depends on the values of the biBitCount and biClrUsed
      * members of the BITMAPINFOHEADER struct.
      */
     BITMAPINFOHEADER bmi;
@@ -6819,20 +6819,20 @@ handle_UserSystemParametersInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_
     case SPI_SETKEYBOARDDELAY: get = false; uses_uiParam = true; break;
     case SPI_ICONHORIZONTALSPACING: {
         if (pvParam != NULL) {
-            get = true; 
+            get = true;
             sz = sizeof(int);
         } else {
-            get = false; 
+            get = false;
             uses_uiParam = true;
         }
         break;
     }
     case SPI_ICONVERTICALSPACING: {
         if (pvParam != NULL) {
-            get = true; 
+            get = true;
             sz = sizeof(int);
         } else {
-            get = false; 
+            get = false;
             uses_uiParam = true;
         }
         break;
@@ -7507,7 +7507,7 @@ handle_accel_array(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
                               "ACCEL.cmd", DRSYS_TYPE_SIGNED_INT, NULL,
                               DRSYS_TYPE_STRUCT))
             return;
-    }    
+    }
 }
 
 static void
@@ -7806,7 +7806,7 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_in
         }
     } else if (drsys_sysnums_equal(&ii->arg->sysnum, &sysnum_GdiPolyPolyDraw)) {
         handle_GdiPolyPolyDraw(drcontext, pt, ii);
-    } 
+    }
 }
 
 bool

@@ -5,17 +5,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -44,7 +44,7 @@ my %name_map = (
     'NtUserSetCoalescableTimer' => 'NtUserSetTimer',
     'NtUserShutdownReasonDestroy' => 'NtUserShutdownBlockReasonDestroy',
     'NtUsergDispatchTableValues' => 'NtUserProcessConnect',
-    
+
     # win8.1
     'NtUserPhysicalToLogicalPointForPerMonitorDPI' => 'NtUserPerMonitorDPIPhysicalToLogicalPoint',
      'NtUserLogicalToPhysicalPointForPerMonitorDPI' => 'NtUserLogicalToPerMonitorDPIPhysicalPoint',
@@ -192,7 +192,7 @@ while ($#ARGV >= 0) {
             next if ($prefix =~ /USER32/ && defined($imm32_only{$name}));
             # XXX: there could be new imm32-only wrappers that we'll miss this way!
             next if ($prefix =~ /IMM32/ && !defined($imm32_only{$name}));
-  
+
             # assume the gdi ones are also all in gdi32.dll, and ditto for reverse
             next if ($prefix =~ /USER32/ && $name =~ /^NtGdi/);
             next if ($prefix =~ /GDI32/ && $name !~ /^NtGdi/);
@@ -210,7 +210,7 @@ while ($#ARGV >= 0) {
     $os++;
 }
 
-foreach my $n (sort (keys %nums)) { 
+foreach my $n (sort (keys %nums)) {
     if ($n eq 'NtUserGetThreadDesktop-SPECIALCASED') {
         # preserve the comment and extra entry
         $n = 'GetThreadDesktop';
@@ -227,7 +227,7 @@ foreach my $n (sort (keys %nums)) {
                 printf ",   NONE";
             }
         }
-    } 
+    }
     print ")\n";
 }
 

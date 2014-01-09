@@ -3,17 +3,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -24,18 +24,18 @@
 
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are met:
-# 
+#
 # * Redistributions of source code must retain the above copyright notice,
 #   this list of conditions and the following disclaimer.
-# 
+#
 # * Redistributions in binary form must reproduce the above copyright notice,
 #   this list of conditions and the following disclaimer in the documentation
 #   and/or other materials provided with the distribution.
-# 
+#
 # * Neither the name of VMware, Inc. nor the names of its contributors may be
 #   used to endorse or promote products derived from this software without
 #   specific prior written permission.
-# 
+#
 # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
@@ -91,7 +91,7 @@
 #   -- svn: A         ../reviews/derek.bruening/2009/i64-cmake-review.diff
 #   -- svn: A         ../reviews/derek.bruening/2009/i64-cmake-review.notes
 #   -- ready to commit
-#   
+#
 # Want to abort (maybe decided to change LABEL) so undoing local svn add:
 #   > cmake -DAUTHOR:STRING=derek.bruening -DREVIEWER:STRING=qin.zhao -DLABEL:STRING=i64-cmake-review -DREVERT:BOOL=ON -P ./codereview.cmake
 #   -- notes file is "diff.notes"
@@ -152,7 +152,7 @@ endif (NOT SVN)
 function(run_svn)
   execute_process(COMMAND ${SVN} ${ARGV}
     WORKING_DIRECTORY ${REVIEWS}
-    RESULT_VARIABLE svn_result 
+    RESULT_VARIABLE svn_result
     ERROR_VARIABLE svn_err
     OUTPUT_VARIABLE svn_out)
   if (svn_result OR svn_err)
@@ -175,7 +175,7 @@ if (UNIX)
     message(FATAL_ERROR "date not found")
   endif (NOT DATE)
   execute_process(COMMAND ${DATE} +%Y
-    RESULT_VARIABLE date_result 
+    RESULT_VARIABLE date_result
     ERROR_VARIABLE date_err
     OUTPUT_VARIABLE year)
   if (date_result OR date_err)
@@ -190,7 +190,7 @@ else (UNIX)
   # If use forward slashes => "The syntax of the command is incorrect."
   file(TO_NATIVE_PATH "${CMD}" CMD)
   execute_process(COMMAND ${CMD} /c date /T
-    RESULT_VARIABLE date_result 
+    RESULT_VARIABLE date_result
     ERROR_VARIABLE date_err
     OUTPUT_VARIABLE date_out)
   if (date_result OR date_err)
@@ -211,7 +211,7 @@ if (REVERT)
 
   execute_process(COMMAND ${SVN} status ${DEST}.diff
     WORKING_DIRECTORY ${REVIEWS}
-    RESULT_VARIABLE svn_result 
+    RESULT_VARIABLE svn_result
     ERROR_VARIABLE svn_err
     OUTPUT_VARIABLE svn_out)
   if (svn_result OR svn_err)
@@ -256,7 +256,7 @@ else (REVERT)
   # We want context diffs with procedure names for better readability
   # svn diff does show new files for us but we pass -N just in case
   execute_process(COMMAND ${SVN} diff --diff-cmd diff -x "-c -p -N"
-    RESULT_VARIABLE svn_result 
+    RESULT_VARIABLE svn_result
     ERROR_VARIABLE svn_err
     OUTPUT_FILE "${DIFF_FILE}")
   if (svn_result OR svn_err)

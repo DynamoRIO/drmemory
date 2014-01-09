@@ -6,17 +6,17 @@
 # **********************************************************
 
 # Dr. Memory: the memory debugger
-# 
+#
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
-# 
+#
 # This library is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
 # Library General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU Lesser General Public
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
@@ -27,7 +27,7 @@
 # TODO: PR 502465 - not tested on windows
 # TODO: PR 502472 - server shouldn't hang on abnormal vistool exit
 #                   (applies to postprocess.pl & vistool)
-# TODO: PR 502473 - snapshot table not user sortable 
+# TODO: PR 502473 - snapshot table not user sortable
 #                   (applies to postprocess.pl & vistool)
 # TODO: all index and summary files created will collide when multiple vistools
 #       are supported - resolve them
@@ -81,7 +81,7 @@ my @nudge = ();
 my $stale_since = -1;   # "show me all memory that has been stale since x ticks"
 my $stale_for = -1;     # "show me all memory that has been stale for x ticks"
 
-# Directory to place the exception for drheapstat.swf.  Note, this isn't my 
+# Directory to place the exception for drheapstat.swf.  Note, this isn't my
 # because that will prevent it from being accessible in the 'die' handler.
 $flash_trust_file = "";
 #-------------------------------------------------------------------------------
@@ -92,12 +92,12 @@ $flash_trust_file = "";
 # indexed by modoffs.  PR 420921.
 #
 %symfile_cache = {};
-%mod_dbg_info_cache = {};   # FIXME: new var; add to symbol.pm before deleting 
+%mod_dbg_info_cache = {};   # FIXME: new var; add to symbol.pm before deleting
 @libsearch = ();    # Path to search libraries in
 %addr_pipes = ();   # pipes to addr2line processes for each module; PR 454803.
 $vmk_grp = "";      # vmkernel group for addr2line; PR 453395.
 @dbg_sec_types = ("debug_info", # all DWARF 2 & 3 type info will have this
-                  "debug ",     # for DWARF 1; the extra " " is to prevent 
+                  "debug ",     # for DWARF 1; the extra " " is to prevent
                                 #   DWARF 2 matches
                   "stab");      # .stab is competing debug format to DWARF
 $no_sys_paths = 0; # look in /lib, etc. for symbol files?
@@ -202,14 +202,14 @@ exit 0;
 
 #-------------------------------------------------------------------------------
 # Set up flash player related details.
-# 
+#
 # TODO: try auto detecting flash player or browser if env. var not defined?
 sub init_flash()
 {
     # TODO: try using an option for flash player so as to not have the info
     # hidden in an env. var, but also make it easy to use so that the user
     # doen't have to specify it each time (like what using an env. var does) -
-    # may be use both?  
+    # may be use both?
     # Note: can't use a default path for flash player as there isn't one esp.
     # on linux where it can be (and usually is) installed anywhere.
     die "Environment variable FLASH_PLAYER not defined.  ".
@@ -232,11 +232,11 @@ sub init_flash()
     # data from a local unix domain socket.
     $flash_trust_file = "$flash_trust_dir/drheapstat.cfg";
     die "Flash player trust file: $flash_trust_file exists.\n".
-        "Another drheapstat.pl -visualize is running: exit it\n". 
+        "Another drheapstat.pl -visualize is running: exit it\n".
         "Or the last run didn't exit cleanly: delete $flash_trust_file\n"
-        if (-e $flash_trust_file); 
+        if (-e $flash_trust_file);
 
-    open FLASH_TRUST, ">$flash_trust_file" or 
+    open FLASH_TRUST, ">$flash_trust_file" or
         die "can't open $flash_trust_file for writing: $!\n";
 
     print FLASH_TRUST "file://$vistool\n";
@@ -246,7 +246,7 @@ sub init_flash()
 #-------------------------------------------------------------------------------
 # Sets up a socket, launches vistool in a browser and waits for the vistool
 # client to connect.  Once connected, it services requests from the vistool
-# client till it terminates or requests termination of communication.  
+# client till it terminates or requests termination of communication.
 #
 # Note: server to vistool is a one-to-one communication.  If there are multiple
 # vistools running, things won't work.
@@ -366,7 +366,7 @@ sub process_nudges()
 
         if ($const_snapshots) {
             die "Can't use -from_nudge and -to_nudge for visualizing constant ".
-                "number of snapshots.\nUse -view_nudge instead.\n" 
+                "number of snapshots.\nUse -view_nudge instead.\n"
                 if ($from_nudge != -1 || $to_nudge != -1);
 
             if ($view_nudge == -1) {
@@ -450,7 +450,7 @@ sub process_nudge_index($idx_file_in)
         die "malformed nudge idx file: invalid staleness log index ".
             "$st_log_pos for nudge $nudge_num\n"
             if ($have_stale && $st_log_pos <= 0);
-        
+
         # The index file stores the file position marking the end of data
         # dumped for each nudge, i.e., the file position of the begining of new
         # data post nudge.
@@ -481,7 +481,7 @@ sub process_nudge_index($idx_file_in)
 # {snapshot,staleness,callstack}.log files.  Startup time suffers with each
 # additional log processed and users can easily be put off for large apps.
 #
-# CAUTION: Don't change the order in which logs are processed in this routine. 
+# CAUTION: Don't change the order in which logs are processed in this routine.
 #
 sub process_all_logs()
 {
@@ -559,7 +559,7 @@ sub process_callstack_log($log_file_in, $idx_file_in)
 {
     my ($log_file, $idx_file) = @_;
     my $i = 0;
-    
+
     open LOG, $log_file or die "can't open $log_file: $!\n";
     open IDX, ">$idx_file" or die "can't open $idx_file: $!\n" if ($verbose);
     while (<LOG>) {
@@ -577,7 +577,7 @@ sub process_callstack_log($log_file_in, $idx_file_in)
                 # Unlike the snapshot log, callstack log doesn't have to be
                 # sorted, so the size of the callstack entry isn't needed.  We
                 # still store it so that a common get_using_index() can be used
-                # for both snapshot and callstack logs.  
+                # for both snapshot and callstack logs.
                 $cstack_idx[$i-1]{"size"} = $pos - $cstack_idx[$i-1]{"pos"};
                 print IDX $cstack_idx[$i-1]{"pos"}." ".
                           $cstack_idx[$i-1]{"size"}."\n" if ($verbose);
@@ -717,7 +717,7 @@ sub create_snapshot_xml($snapshot_str, $staleness_str, $from, $to)
             if ($str =~ /^SNAPSHOT\s*#\s*(\d+)\s+@\s+(\d+)\s+(\w+)/) {
                 $ss_time = $2;      # Used for computing -stale_for graph data.
             } elsif ($str =~ /^(\d+),(\d+),(\d+)/) {
-                $snapshot_details{$1}{"memStale"} += $2 
+                $snapshot_details{$1}{"memStale"} += $2
                     if (is_stale($ss_time, $3));
             } elsif ($str =~ /^LOG END/ || $str =~ /^NUDGE/) {
                 # Ignore these lines.
@@ -787,7 +787,7 @@ sub create_snapshot_xml($snapshot_str, $staleness_str, $from, $to)
 # looking for the first frame whose module isn't a system library and uses the
 # source file corresponding to that symbol as the file to account against.
 # PR 584617.
-# 
+#
 # Note: this may be really slow for hostd as it has 30k callstacks per
 # snapshot.  That is part of the reason why I am grouping by the first
 # non-system library frame I see in the callstack, i.e., I reduce the symbol
@@ -805,7 +805,7 @@ sub create_file_list_xml()
 
     # FIXME: provide ENV var for a user to specify more system libraries.  Keep
     # the default to a minimum to avoid performance problems.
-    my @syslibs = ("libc.so", "libstdc++.so", "libpthreads.so", 
+    my @syslibs = ("libc.so", "libstdc++.so", "libpthreads.so",
                    "ld-linux.so", "libdl.so", "libcrypto.so",
                    "libpam.so", "libssl.so", "libcurl.so", "libz.so");
     my $xml = "";
@@ -1009,7 +1009,7 @@ sub has_log_end($file_in)
 # snapshots get reset on nudge, i.e., one peak snapshot per nudge  Thus, we
 # must loop through the whole array even if one overlapping snapshot was
 # handled.
-# 
+#
 # The argument $ss_aref is a reference to the snapshots array.  This
 # routine assumes that it is sorted by the x_axis_val field.
 #
@@ -1017,7 +1017,7 @@ sub has_log_end($file_in)
 # are duplicates, i.e., ones that have the same x-axis value.  It will do so by
 # selecting the one which represents higher memory use (instead of the most
 # recent; it's better to err on side of showing higher memory usage, when it
-# isn't clear whether older or newer is better).  Such duplicates happen 
+# isn't clear whether older or newer is better).  Such duplicates happen
 # because the client dumps the last active snapshot at process exit even if
 # there was no allocation/deallocation activity since the last snapshot dumped;
 # this is for all time units, but mostly seen in -time_{allocs,bytes}.
@@ -1038,7 +1038,7 @@ sub process_peak_snapshots($ss_aref)
             # previous one, then update the previous one with the current one
             # and delete the current one.
             if ($$ss_aref[$prev]{"totMemReq"} < $$ss_aref[$i]{"totMemReq"}) {
-                $$ss_aref[$prev] = $$ss_aref[$i] 
+                $$ss_aref[$prev] = $$ss_aref[$i]
             } else {
                 undef %{$ss_aref[$i]};  # Delete unused hash.
             }
@@ -1064,7 +1064,7 @@ sub process_peak_snapshots($ss_aref)
 #-------------------------------------------------------------------------------
 # Processes all the snapshots in {snapshot,staleness}.log depending upon the
 # $log_type specified and stores all snapshots in the LoH reference ($ss_aref)
-# passed. 
+# passed.
 #
 # FIXME: use index file just like nudge.idx, avoids a pass through a big logfile
 #
@@ -1104,7 +1104,7 @@ sub process_log($log_file, $log_type, $ss_aref)
                 $xaxis_label = $3;
             } elsif ($is_staleness_log) {       # staleness log specific
                 # We assume that staleness.log was read first, hence this check.
-                if ($$ss_aref[$i]{"id"} != $1 || 
+                if ($$ss_aref[$i]{"id"} != $1 ||
                     $$ss_aref[$i]{"x_axis_val"} != $2 ||
                     $xaxis_label != $3) {
                     die "$log_file doesn't correspond to $snapshot_logfile.\n";
@@ -1140,7 +1140,7 @@ sub process_log($log_file, $log_type, $ss_aref)
                 # start of process) since last access.
 
                 die "$logfile doesn't have a valid snapshot time for snapshot ".
-                    "at $bytes_read.\n" if ($ss_time <= 0 ); 
+                    "at $bytes_read.\n" if ($ss_time <= 0 );
 
                 $$ss_aref[$i]{"totMemStale"} += $2 if (is_stale($ss_time, $3));
             }
@@ -1195,7 +1195,7 @@ sub lookup_addr($modoffs_in, $addr_sym_disp)
 
     # Lookup symbol and file name cache.  PR 420921.
     if (defined $symfile_cache{$modoffs}) {
-        return $symfile_cache{$modoffs}{"symbol"}, 
+        return $symfile_cache{$modoffs}{"symbol"},
                $symfile_cache{$modoffs}{"file"};
     }
 
@@ -1269,7 +1269,7 @@ sub lookup_addr($modoffs_in, $addr_sym_disp)
 
     $symout =~ s/\r//g if (!$is_unix);
     ($symfile_cache{$modoffs}{"symbol"},
-     $symfile_cache{$modoffs}{"file"}) = split('\n', $symout); 
+     $symfile_cache{$modoffs}{"file"}) = split('\n', $symout);
 
     return $symfile_cache{$modoffs}{"symbol"}, $symfile_cache{$modoffs}{"file"};
 }
@@ -1344,11 +1344,11 @@ sub get_mod_path($module_name, $modpath_ref)
 {
     my ($module, $modpath);
     ($module, $modpath) = @_;
-    
+
     # Don't search for the file when it has been already searched for.
     return if (defined(${$modpath}{$module}));
     die "get_mod_path passed empty module name" if ($module eq '');
-    
+
     my $modname = $module;
     my $fullpath = "";
     my $tryagain = 1;
@@ -1376,7 +1376,7 @@ sub get_mod_path($module_name, $modpath_ref)
         }
     }
 
-    my $set_path_msg = ($is_vmk) ? 
+    my $set_path_msg = ($is_vmk) ?
         "set DRHEAPSTAT_LIB_PATH and/or VMTREE env vars\n" :
         "set DRHEAPSTAT_LIB_PATH env var\n";
     if ($fullpath eq "") {

@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -216,7 +216,7 @@ intercept_signal(int sig, handler_t handler)
 #endif
     ASSERT_NOERR(rc);
     act.sa_flags = SA_SIGINFO | SA_ONSTACK; /* send 3 args to handler */
-    
+
     /* arm the signal */
     rc = sigaction(sig, &act, NULL);
     ASSERT_NOERR(rc);
@@ -236,7 +236,7 @@ int main(int argc, char *argv[])
 #if USE_TIMER
     struct itimerval t;
 #endif
-  
+
 #ifdef USE_DYNAMO
     rc = dynamorio_app_init();
     ASSERT_NOERR(rc);

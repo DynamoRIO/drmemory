@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -218,7 +218,7 @@ typedef struct _umbra_map_options_t {
     /**
      * Specify the value of shadow memory that is allocated but not initialized
      * by the user; e.g., shadow memory padding or automatically allocated
-     * shadow memory when UMBRA_MAP_CREATE_SHADOW_ON_TOUCH 
+     * shadow memory when UMBRA_MAP_CREATE_SHADOW_ON_TOUCH
      * (see #umbra_map_flags_t) is set.
      */
     ptr_uint_t default_value;
@@ -302,7 +302,7 @@ umbra_destroy_mapping(IN  umbra_map_t *map);
 DR_EXPORT
 /**
  * Create shadow memory for application memory using mapping scheme \p map.
- * 
+ *
  * @param[in] map         The mapping object to use.
  * @param[in] flags       Shadow memory creation options.
  * @param[in] app_addr    Application memory address.
@@ -386,14 +386,14 @@ umbra_insert_app_to_shadow(IN  void        *drcontext,
 DR_EXPORT
 /**
  * Read shadow memory for application memory at \p app_addr to \p buffer.
- * 
+ *
  * @param[in]     map          The mapping object to use.
  * @param[in]     app_addr     Application memory address.
  * @param[in]     app_size     Application memory size.
  * @param[in,out] shadow_size  The max buffer size.
  *                             Return the number of bytes actually read.
  * @param[out]    buffer       The buffer holds the read value.
- * 
+ *
  */
 drmf_status_t
 umbra_read_shadow_memory(IN    umbra_map_t *map,
@@ -575,7 +575,7 @@ DR_EXPORT
  * \note: This is a routine for efficient check if \p shadow_addr is in a
  * special shared shadow memory. UMBRA_SHADOW_MEMORY_TYPE_UNKNOWN is set
  * even \p shadow_addr could be normal writable shadow memory.
- * 
+ *
  */
 drmf_status_t
 umbra_shadow_memory_is_shared(IN  umbra_map_t *map,
@@ -596,7 +596,7 @@ DR_EXPORT
  * \p sizeof(umbra_shadow_memory_info_t) for compatiblity.
  *
  * \note: \p shadow_info contains the information about the shadow memory block
- * and its application memory, so the caller can cache the information and 
+ * and its application memory, so the caller can cache the information and
  * access the shadow memory later without querying Umbra again.
  * However, if the shadow memory is a special shared memory block, it may be
  * replaced with normal shadow memory and the caller will not see it,

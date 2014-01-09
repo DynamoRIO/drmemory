@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -282,8 +282,8 @@ get_raw_tls_value(uint offset);
 #define CMP_OPCODE       0x80
 #define CMP_BASE_IMM1_LENGTH  3
 #define UD2A_OPCODE      0x0b0f
-/* N.B.: other opcodes like ADD also use 0x81, and CMP with immed opnd may use 
- * other opcode value too. 
+/* N.B.: other opcodes like ADD also use 0x81, and CMP with immed opnd may use
+ * other opcode value too.
  */
 #define CMP_IMMED_OPCODE 0x81
 #define RET_NOIMM_OPCODE 0xc3

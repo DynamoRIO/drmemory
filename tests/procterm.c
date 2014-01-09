@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -76,8 +76,8 @@ main(int argc, char** argv)
     if (argc == 1) {
         /* parent */
         if (!CreateProcess(argv[0], "procterm.exe 1", NULL, NULL, FALSE, 0,
-                           NULL, NULL, &si, &pi)) 
-            fprintf(stderr, "ERROR on CreateProcess\n"); 
+                           NULL, NULL, &si, &pi))
+            fprintf(stderr, "ERROR on CreateProcess\n");
         else {
             int status, count = 0;
 

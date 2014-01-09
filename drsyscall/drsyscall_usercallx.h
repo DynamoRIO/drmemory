@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -167,7 +167,7 @@ USERCALL(NtUserCallTwoParam, SHOWOWNEDPOPUPS               , NONE, 0x62, 0x62, 0
 USERCALL(NtUserCallTwoParam, SWITCHTOTHISWINDOW            , NONE, 0x63, 0x63, 0x64, 0x65, 0x65, 0x6b, 0x6f)
 USERCALL(NtUserCallTwoParam, UPDATEWINDOWS                 , NONE, 0x64, 0x64, 0x65, 0x66, 0x66, 0x6c, 0x70)
 USERCALL(NtUserCallHwndLockParam, VALIDATERGN              , NONE, 0x65, 0x65, 0x66, 0x67, 0x67, 0x6d, 0x71)
-/* FIXME i#1153: on win8, 1 more added between 0x5d and 0x6f */                                            
+/* FIXME i#1153: on win8, 1 more added between 0x5d and 0x6f */
 /* FIXME i#1360: on win8.1, 2 more added between 0x61 and 0x71 */
 USERCALL(NtUserCallTwoParam, CHANGEWNDMSGFILTER            , NONE, NONE, NONE, 0x67, 0x68, 0x68, 0x6f, 0x74)
 USERCALL(NtUserCallTwoParam, GETCURSORPOS                  , NONE, NONE, NONE, 0x68, 0x69, 0x69, 0x70, 0x75)

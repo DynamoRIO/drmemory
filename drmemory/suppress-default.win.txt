@@ -7,7 +7,7 @@
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public
-# License as published by the Free Software Foundation; 
+# License as published by the Free Software Foundation;
 # version 2.1 of the License, and no later version.
 #
 # This library is distributed in the hope that it will be useful,
@@ -269,7 +269,7 @@ gdiplus.dll!GdipCreateSolidFill
 
 UNINITIALIZED READ
 name=default i#511 (rc4_key bit manip)
-instruction=mov    (%ebx,%esi,1) -> %al 
+instruction=mov    (%ebx,%esi,1) -> %al
 RPCRT4.dll!rc4_key
 
 # w/o symbols.
@@ -279,15 +279,15 @@ RPCRT4.dll!rc4_key
 # w/o syms: we'll live w/ the false negative risk.
 UNINITIALIZED READ
 name=default i#511 (rc4_key bit manip)
-instruction=mov    (%ebx,%esi,1) -> %al 
+instruction=mov    (%ebx,%esi,1) -> %al
 RPCRT4.dll!UuidCreate
 
 ##################################################
 # i#529: multi-instr partial xor-with-self
 # No good symbols so we match these instructions:
-#  test   0x70(%esi) $0x00000400 
-#  test   0x70(%esi) $0x00000200 
-#  test   0x70(%ebx) $0x00000100 
+#  test   0x70(%esi) $0x00000400
+#  test   0x70(%esi) $0x00000200
+#  test   0x70(%ebx) $0x00000100
 #  test   0x70(%edi) %esi
 # On Vista, this bitfield seems to be a short, so we get "data16 test" for the
 # instruction.  These are in Ndr* routines, but without symbols we sometimes get
@@ -628,7 +628,7 @@ system call NtOpenKey
 
 # i#988-c#2 for windows creation and destroy
 HANDLE LEAK
-name=default i#988 c#2 NtConnectPort 
+name=default i#988 c#2 NtConnectPort
 system call NtConnectPort
 ...
 USER32.dll!CreateWindowEx?
@@ -653,13 +653,13 @@ ntdll.dll!TpAllocWork
 
 HANDLE LEAK
 name=default i#988 c#6 NtDuplicateObject
-system call NtDuplicateObject  
+system call NtDuplicateObject
 ...
 ntdll.dll!TpAllocWork
 
 HANDLE LEAK
-name=default i#988 c#6 NtCreateKeyedEvent 
-system call NtCreateKeyedEvent 
+name=default i#988 c#6 NtCreateKeyedEvent
+system call NtCreateKeyedEvent
 ...
 ntdll.dll!TpAllocWork
 
@@ -806,7 +806,7 @@ pdh.dll!*
 UNINITIALIZED READ
 name=default i#1302 SockSocket EA
 system call NtCreateFile parameter #9
-MSWSOCK.dll!SockSocket 
+MSWSOCK.dll!SockSocket
 
 ##################################################
 # i#1303: real bug in ATL
@@ -827,7 +827,7 @@ KERNEL32.dll!MulDiv
 # The exported GetThemeBackgroundContentRect should be enough.
 # There are three instructions accessing the region, so we use
 # callstack only.
-# 
+#
 # For reference, the callstack with debug symbol:
 # UxTheme.dll!CImageFile::GetDrawnImageSize
 # UxTheme.dll!CImageFile::GetScaledContentMargins

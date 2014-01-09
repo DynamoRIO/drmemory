@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -24,22 +24,22 @@
  * alloc.c: Dr. Memory heap tracking
  */
 
-/* Malloc/free replacement w/ own routines vs using original versions: 
- * 
- * Pro original: 
- * * Must use original versions to apply to replayed execution 
+/* Malloc/free replacement w/ own routines vs using original versions:
+ *
+ * Pro original:
+ * * Must use original versions to apply to replayed execution
  *   Note that the headers can function as mini-redzones for replay as well
- * * Don't have to duplicate all of the flags, alignment, features of 
- *   Windows heap allocators that apps might be depending on! 
- *   Windows heaps are more complex than Unix: multiple heaps, 
- *   extra features like zeroing, etc. 
- *   And never know whether some other part of system is going to 
- *   make calls into heap subsystem beyond just malloc+free. 
- * 
- * Con original: 
- * * Alloc code is instrumented but must ignore its accesses to headers 
- * * Harder to delay frees 
- * * Don't know header flags: but can find sizes by storing in redzone 
+ * * Don't have to duplicate all of the flags, alignment, features of
+ *   Windows heap allocators that apps might be depending on!
+ *   Windows heaps are more complex than Unix: multiple heaps,
+ *   extra features like zeroing, etc.
+ *   And never know whether some other part of system is going to
+ *   make calls into heap subsystem beyond just malloc+free.
+ *
+ * Con original:
+ * * Alloc code is instrumented but must ignore its accesses to headers
+ * * Harder to delay frees
+ * * Don't know header flags: but can find sizes by storing in redzone
  *   or (replay-compatible) calling malloc_usable_size() (Linux only)
  *   (RtlSizeHeap returns asked-for size)
  */
@@ -85,8 +85,8 @@ System call and library routines we need to watch:
   init time
 
 * LocalAlloc: LMEM_ZEROINIT = 0x0040
-  FIXME: LMEM_MOVEABLE is strange: LocalLock locks it to an address, and LocalReAlloc 
-  makes it moveable again: what's the purpose? 
+  FIXME: LMEM_MOVEABLE is strange: LocalLock locks it to an address, and LocalReAlloc
+  makes it moveable again: what's the purpose?
   It looks like it ends up calling RtlAllocateHeap, and LocalReAlloc calls
   RtlReAllocateHeap, so we can probably just watch the Rtl routines.
   FIXME: I don't see how 0x40 is translated to 0x8 for zeroing.
@@ -408,7 +408,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
     { "_msize", HEAP_ROUTINE_SIZE_REQUESTED },
 #endif
     { "malloc", HEAP_ROUTINE_MALLOC },
-    { "realloc", HEAP_ROUTINE_REALLOC }, 
+    { "realloc", HEAP_ROUTINE_REALLOC },
     { "free", HEAP_ROUTINE_FREE },
     { "calloc", HEAP_ROUTINE_CALLOC },
     /* for cfree we ignore 2 extra args if there are any, as glibc itself does */
@@ -437,7 +437,7 @@ static const possible_alloc_routine_t possible_libc_routines[] = {
      * XXX: there are also _base versions but they always call _impl?
      */
     { "malloc_impl", HEAP_ROUTINE_MALLOC },
-    { "realloc_impl", HEAP_ROUTINE_REALLOC }, 
+    { "realloc_impl", HEAP_ROUTINE_REALLOC },
     { "free_impl", HEAP_ROUTINE_FREE },
     { "calloc_impl", HEAP_ROUTINE_CALLOC },
     /* for VS2010 I see this (but no other _*_impl: looking at the crt
@@ -468,7 +468,7 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
      * cs2bug!`operator new'::`6'::`dynamic atexit destructor for 'nomem'' ( void )
      */
     /* We distinguish HEAP_ROUTINE_*_NOTHROW, as well as placement new, after
-     * we look these symbols up 
+     * we look these symbols up
      */
     { "operator new",      HEAP_ROUTINE_NEW },
     { "operator new[]",    HEAP_ROUTINE_NEW_ARRAY },
@@ -557,7 +557,7 @@ translate_routine_name(const char *name)
 static const possible_alloc_routine_t possible_crtdbg_routines[] = {
     { "_msize_dbg", HEAP_ROUTINE_SIZE_REQUESTED_DBG },
     { "_malloc_dbg", HEAP_ROUTINE_MALLOC_DBG },
-    { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG }, 
+    { "_realloc_dbg", HEAP_ROUTINE_REALLOC_DBG },
     { "_free_dbg", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg", HEAP_ROUTINE_CALLOC_DBG },
     /* _nh_malloc_dbg is called directly by debug operator new (i#500) */
@@ -566,7 +566,7 @@ static const possible_alloc_routine_t possible_crtdbg_routines[] = {
      * XXX: there are also _base versions but they always call _impl?
      */
     { "_malloc_dbg_impl", HEAP_ROUTINE_MALLOC_DBG },
-    { "_realloc_dbg_impl", HEAP_ROUTINE_REALLOC_DBG }, 
+    { "_realloc_dbg_impl", HEAP_ROUTINE_REALLOC_DBG },
     { "_free_dbg_impl", HEAP_ROUTINE_FREE_DBG },
     { "_calloc_dbg_impl", HEAP_ROUTINE_CALLOC_DBG },
     /* to control the debug crt options (i#51) */
@@ -801,7 +801,7 @@ alloc_routine_entry_free(void *p)
                 if (dep != NULL) {
                     if (prev == NULL)
                         e->set->set_libc->next_dep = dep->next_dep;
-                    else 
+                    else
                         prev->next_dep = dep->next_dep;
                 }
             } else {
@@ -1344,7 +1344,7 @@ disable_crtdbg(const module_data_t *mod, byte *pc)
      * disable checks on malloc and free we also disable the
      * reporting routines, which is a hack and may suppress other
      * errors we might want to see.
-     * 
+     *
      * Ideally we would also eliminate the crtdbg redzone and
      * replace w/ our size-controllable redzone as well: but we
      * would have to map the _dbg routines straight to Heap* or
@@ -1363,7 +1363,7 @@ disable_crtdbg(const module_data_t *mod, byte *pc)
         crtdbg_flag_ptr = (int *) lookup_internal_symbol(mod, CRTDBG_FLAG_NAME_ALT);
     LOG(2, "%s @"PFX"\n", CRTDBG_FLAG_NAME, crtdbg_flag_ptr);
     if (crtdbg_flag_ptr != NULL &&
-        dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr), 
+        dr_safe_write(crtdbg_flag_ptr, sizeof(*crtdbg_flag_ptr),
                       &zero, NULL)) {
         LOG(1, "disabled crtdbg checks\n");
     } else {
@@ -1731,7 +1731,7 @@ distinguish_operator_type(routine_type_t generic_type,  const char *name,
 
     buf = (char *) global_alloc(bufsz, HEAPSTAT_WRAP);
     do {
-        err = drsym_expand_type(mod->full_path, info->type_id, 
+        err = drsym_expand_type(mod->full_path, info->type_id,
                                 2 /* for func_type, arg_type, elt_type */,
                                 buf, bufsz, (drsym_type_t **)&func_type);
         if (err != DRSYM_ERROR_NOMEM)
@@ -2028,7 +2028,7 @@ enumerate_set_syms_cb(drsym_info_t *info, drsym_error_t status, void *data)
     return true; /* keep iterating */
 }
 
-/* Only supports "\w*" && prefix=="\w", "*\w" && suffix=="\w", 
+/* Only supports "\w*" && prefix=="\w", "*\w" && suffix=="\w",
  * or a wildcard for which we want to wrap all matches
  */
 static void
@@ -2375,7 +2375,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 static size_t
 redzone_size(alloc_routine_entry_t *routine)
 {
-    return ((routine->set != NULL && routine->set->use_redzone) ? 
+    return ((routine->set != NULL && routine->set->use_redzone) ?
             alloc_ops.redzone_size : 0);
 }
 
@@ -2999,7 +2999,7 @@ alloc_find_syscalls(void *drcontext, const module_data_t *info)
             if (running_on_Vista_or_later() &&
                 !drwrap_wrap_ex(addr_KiLdrThunk, alloc_wrap_Ki, NULL, (void*)0, 0))
                 ASSERT(false, "failed to wrap");
-            
+
             /* FIXME i#1153: watch NtWow64AllocateVirtualMemory64 on win8 */
             get_primary_sysnum("NtMapViewOfSection", &sysnum_mmap, false);
             get_primary_sysnum("NtUnmapViewOfSection", &sysnum_munmap, false);
@@ -3472,7 +3472,7 @@ alloc_module_unload(void *drcontext, const module_data_t *info)
                     /* e is now freed so don't de-reference it below here! */
 
                     LOG(3, "removing %s "PFX" from interception table: found=%d\n",
-                        name, pc, found); 
+                        name, pc, found);
                     DOLOG(1, {
                         if (!found) {
                             /* some dlls have malloc_usable_size and _msize
@@ -3684,10 +3684,10 @@ malloc_add_common(app_pc start, app_pc end, app_pc real_end,
     bool locked_by_me;
     malloc_info_t info;
     ASSERT((alloc_ops.redzone_size > 0 && TEST(MALLOC_PRE_US, flags)) ||
-           alloc_ops.record_allocs, 
+           alloc_ops.record_allocs,
            "internal inconsistency on when doing detailed malloc tracking");
 #ifdef USE_DRSYMS
-    IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t) 
+    IF_WINDOWS(ASSERT(ALIGN_BACKWARD(start, 64*1024) != (ptr_uint_t)
                       get_private_heap_handle(), "app using priv heap"));
 #endif
     e->start = start;
@@ -4713,7 +4713,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
             if (alloc_ops.track_heap && pt->in_heap_routine > 0)
                 heap_region_add(base, base+size, HEAP_ARENA/*FIXME:guessing*/, mc);
         }
-    } 
+    }
     else if (sysnum == SYS_mremap) {
         app_pc old_base = (app_pc) syscall_get_param(drcontext, 0);
         size_t old_size = (size_t) syscall_get_param(drcontext, 1);
@@ -5001,7 +5001,7 @@ set_auxarg(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     if (is_free_routine(type)) {
         if (type == RTL_ROUTINE_FREE) {
             /* Note that these do not reflect what's really being freed if
-             * -delay_frees > 0 
+             * -delay_frees > 0
              */
             pt->alloc_flags = (uint) drwrap_get_arg(wrapcxt, 1);
             pt->auxarg = (ptr_int_t) drwrap_get_arg(wrapcxt, 0);
@@ -5280,7 +5280,7 @@ handle_free_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
          * use our redzone or hashtable to store the size, or call RtlSizeHeap.
          * either way, we treat extra space beyond the requested as unaddressable,
          * which seems the right way to go;
-         * on linux w/o a stored size in redzone or hashtable, we do not have 
+         * on linux w/o a stored size in redzone or hashtable, we do not have
          * the requested size as malloc_usable_size() returns the padded size
          * (as opposed to RtlSizeHeap which returns the requested size),
          * so now we assume we have the hashtable and get the size from redzone
@@ -5860,7 +5860,7 @@ handle_realloc_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
             real_base -= redzone_size(routine);
             drwrap_set_arg(wrapcxt, ARGNUM_REALLOC_PTR(type), (void *)real_base);
         }
-        /* realloc(non-NULL, 0) == free(non-NULL) (PR 493870, PR 493880) 
+        /* realloc(non-NULL, 0) == free(non-NULL) (PR 493870, PR 493880)
          * However, on some malloc impls it does re-alloc a 0-sized chunk:
          * - for dlmalloc in glibc, depending on REALLOC_ZERO_BYTES_FREES
          *   define, which is set on linux and visor, but not cygwin
@@ -6346,7 +6346,7 @@ handle_validate_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
                 drwrap_set_arg(wrapcxt, 2, (void *)(block - redzone_size(routine)));
             }
         }
-    } 
+    }
 }
 
 
@@ -6389,7 +6389,7 @@ handle_create_actcxt_pre(void *drcontext, cls_alloc_t *pt, void *wrapcxt)
 /* only used if alloc_ops.track_heap */
 static void
 handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
-                    app_pc call_site, app_pc expect, 
+                    app_pc call_site, app_pc expect,
                     alloc_routine_entry_t *routine);
 
 static void
@@ -6420,7 +6420,7 @@ alloc_hook(void *wrapcxt, INOUT void **user_data)
     ASSERT(alloc_ops.track_heap, "unknown reason in alloc hook");
 
     /* if the entry was a jmp* and we didn't see the call prior to it,
-     * we did not know the retaddr, so add it now 
+     * we did not know the retaddr, so add it now
      */
     retaddr = drwrap_get_retaddr(wrapcxt);
     /* We will come here again after the flush-redirect.
@@ -6568,7 +6568,7 @@ handle_alloc_pre_ex(void *drcontext, cls_alloc_t *pt, void *wrapcxt,
     }
     if (!routine->intercept_post)
         return; /* no post wrap so don't "enter" */
-             
+
     enter_heap_routine(pt, expect, routine);
 
     if (is_free_routine(type)) {

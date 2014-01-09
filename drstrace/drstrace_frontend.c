@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -531,14 +531,14 @@ _tmain(int argc, TCHAR *targv[])
         NULL_TERMINATE_BUFFER(default_dr_root);
         dr_root = default_dr_root;
     }
-    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+    _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
               "%s/%s/%s/dynamorio.dll", dr_root, lib_arch,
               use_dr_debug ? "debug" : "release");
     NULL_TERMINATE_BUFFER(buf);
     if (!file_is_readable(buf)) {
         /* support debug build w/ integrated debug DR build and so no release */
         if (!use_dr_debug) {
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf), 
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
                       "%s/%s/%s/dynamorio.dll", dr_root, lib_arch, "debug");
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf)) {
@@ -555,13 +555,13 @@ _tmain(int argc, TCHAR *targv[])
      * just remove the 64-bit frontend in the final package (keep in build
      * dirs b/c hard to build w/ both compilers).
      */
-    _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+    _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
               "%s%c%s%c%s%cdrstracelib.dll", drstrace_root, DIRSEP, bin_arch, DIRSEP,
               use_drstrace_debug ? "debug" : "release", DIRSEP);
     NULL_TERMINATE_BUFFER(client_path);
     if (!file_is_readable(client_path)) {
         if (!use_drstrace_debug) {
-            _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path), 
+            _snprintf(client_path, BUFFER_SIZE_ELEMENTS(client_path),
                       "%s%c%s%c%s%cdrstracelib.dll", drstrace_root,
                       DIRSEP, bin_arch, DIRSEP, "debug", DIRSEP);
             NULL_TERMINATE_BUFFER(client_path);
@@ -570,7 +570,7 @@ _tmain(int argc, TCHAR *targv[])
                 goto error; /* actually won't get here */
             }
             /* try to avoid warning for devs running from build dir */
-            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path), 
+            _snprintf(buf, BUFFER_SIZE_ELEMENTS(client_path),
                       "%s%cCMakeCache.txt", drstrace_root, DIRSEP);
             NULL_TERMINATE_BUFFER(buf);
             if (!file_is_readable(buf))

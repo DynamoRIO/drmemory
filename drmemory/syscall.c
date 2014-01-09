@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -224,7 +224,7 @@ auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         } else {
             ELOGF(0, f_fork, "FORK child=%d\n", child);
         }
-    } 
+    }
 #endif
 }
 
@@ -401,7 +401,7 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
             if (heap_size >= 0 && (size_t)heap_size != arg->size) {
                 WARN("WARNING: heap buffer at "PFX" is of size %d bytes, "
                      "which does not match the sysarg %s size of %d bytes.\n",
-                     arg->start_addr, heap_size, 
+                     arg->start_addr, heap_size,
                      arg->arg_name == NULL ? "" : arg->arg_name, arg->size);
             }
         }
@@ -472,7 +472,7 @@ event_pre_syscall(void *drcontext, int sysnum)
 
     LOG(SYSCALL_VERBOSE, "system call #%d==%d.%d %s\n", sysnum,
         sysnum_full.number, sysnum_full.secondary, get_syscall_name(sysnum_full));
-    DOLOG(SYSCALL_VERBOSE, { 
+    DOLOG(SYSCALL_VERBOSE, {
         /* for sysenter, pc is at vsyscall and there's no frame for wrapper.
          * simplest soln: skip to wrapper now.
          */
@@ -684,7 +684,7 @@ syscall_exit(void)
 {
     if (auxlib != NULL && !dr_unload_aux_library(auxlib))
         LOG(1, "WARNING: unable to unload auxlib\n");
- 
+
     syscall_os_exit();
 
     if (drsys_exit() != DRMF_SUCCESS)

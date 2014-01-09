@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -39,12 +39,12 @@
  * Access to un-reserved TLS slots
  */
 /* TODO: Multiple threads:
- * 
+ *
  *   - Pathological races between mallocs and frees can result in Dr. Memory's
  *     shadow memory structures becoming mis-aligned and subsequent false
  *     positives.  However, such a scenario will always be preceded by either
  *     an invalid free error or a double free error.
- * 
+ *
  *   - General races between memory accesses and Dr. Memory's shadow memory
  *     can occur but errors will only occur with the presence of erroneous
  *     race conditions in the application.
@@ -169,7 +169,7 @@ static uint pcaches_loaded;
 static uint pcaches_mismatch;
 static uint pcaches_written;
 
-void 
+void
 dump_statistics(void)
 {
     int i;
@@ -291,7 +291,7 @@ dump_statistics(void)
     dr_fprintf(f_global, "\nPer-opcode slow path executions:\n");
     for (i = 0; i <= OP_LAST; i++) {
         if (slowpath_count[i] > 0) {
-            dr_fprintf(f_global, "\t%3u %10s: %12"UINT64_FORMAT_CODE"\n", 
+            dr_fprintf(f_global, "\t%3u %10s: %12"UINT64_FORMAT_CODE"\n",
                        i, decode_opcode_name(i), slowpath_count[i]);
         }
     }
@@ -403,7 +403,7 @@ close_file(file_t f)
 
 #define dr_close_file DO_NOT_USE_dr_close_file
 
-static void 
+static void
 event_exit(void)
 {
     LOGF(2, f_global, "in event_exit\n");
@@ -489,7 +489,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
                         "%s%c%s.%d.log", logsubdir, DIRSEP, name, dr_get_process_id());
     } else if (which_thread >= 0) {
         IF_DEBUG(len = )
-            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname), 
+            dr_snprintf(logname, BUFFER_SIZE_ELEMENTS(logname),
                         "%s%c%s.%d.%d.log", logsubdir, DIRSEP, name,
                         which_thread, dr_get_thread_id(dr_get_current_drcontext()));
         /* have DR close on fork so we don't have to track and iterate */
@@ -508,7 +508,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     }
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
-        dr_log(drcontext, LOG_ALL, 1, 
+        dr_log(drcontext, LOG_ALL, 1,
                "DrMemory: log for thread %d is %s\n",
                dr_get_thread_id(drcontext), logname);
         NOTIFY("thread logfile is %s"NL, logname);
@@ -534,7 +534,7 @@ create_thread_logfile(void *drcontext)
     utils_thread_set_file(drcontext, f);
 }
 
-static void 
+static void
 event_thread_init(void *drcontext)
 {
     static volatile int thread_count;
@@ -639,7 +639,7 @@ event_thread_init(void *drcontext)
         first_thread = false;
 }
 
-static void 
+static void
 event_thread_exit(void *drcontext)
 {
     tls_drmem_t *pt = (tls_drmem_t *) drmgr_get_tls_field(drcontext, tls_idx_drmem);
@@ -750,7 +750,7 @@ mmap_walk(app_pc start, size_t size,
            (size == 0 || pc < start+size)) {
         ASSERT(mbi.State != MEM_FREE, "memory walk error");
         if (mbi.State == MEM_RESERVE) {
-            /* set up until pc, then start accumulating again after it 
+            /* set up until pc, then start accumulating again after it
              * unlike Linux /proc/pid/maps the .bss is embedded inside the IMAGE region
              */
             LOG(2, "\tpiece "PFX"-"PFX"\n", map_base, map_end);
@@ -833,7 +833,7 @@ memory_walk(void)
     LOG(2, "walking memory looking for images\n");
     ASSERT(!dr_using_app_state(drcontext), "state error");
     dr_switch_to_app_state_ex(drcontext, DR_STATE_STACK_BOUNDS);
-    /* Strategy: walk through every block in memory 
+    /* Strategy: walk through every block in memory
      */
     while (dr_virtual_query(pc, &mbi, sizeof(mbi)) == sizeof(mbi)) {
         ASSERT(pc == mbi.BaseAddress, "memory walk error");
@@ -841,7 +841,7 @@ memory_walk(void)
          * We consider heap to be unaddressable until fine-grained allocated.
          */
         if (mbi.State != MEM_FREE) {
-            LOG(3, "mem walk: "PFX"-"PFX"\n", 
+            LOG(3, "mem walk: "PFX"-"PFX"\n",
                 mbi.BaseAddress, (app_pc)mbi.BaseAddress+mbi.RegionSize);
             if (mbi.Type == MEM_IMAGE || mbi.Type == MEM_MAPPED) {
                 ASSERT(mbi.BaseAddress == mbi.AllocationBase, "memory walk error");
@@ -910,7 +910,7 @@ memory_walk(void)
             /* leave client memory unaddressable */
             LOG(2, "  => client memory\n");
 
-            /* FIXME: Currently dr_memory_is_in_client() returns true only if 
+            /* FIXME: Currently dr_memory_is_in_client() returns true only if
              * the address argument is inside a client library, but that can
              * change in future and any memory (library, bss, mmaps, heap
              * alloc) used by a client can make it return true.  In that case
@@ -972,7 +972,7 @@ memory_walk(void)
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
             } else if (hashtable_lookup(&known_table, (void*)PAGE_START(pc)) != NULL) {
                 /* we assume there's only one entry in the known_table:
-                 * the initial stack 
+                 * the initial stack
                  */
                 LOG(2, "  => stack\n");
             } else {
@@ -1247,7 +1247,7 @@ set_initial_structures(void *drcontext)
         set_initial_range(pc, pc + sizeof(KUSER_SHARED_DATA));
     }
 #else /* WINDOWS */
-    /* We can't get app xsp at init time (i#117) so we call this on 1st bb 
+    /* We can't get app xsp at init time (i#117) so we call this on 1st bb
      * For subsequent threads we do this when handling the clone syscall
      */
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
@@ -1383,7 +1383,7 @@ create_global_logfile(void)
     /* PR 408644: pick a new subdir inside base logdir */
     /* PR 453867: logdir must have pid in its name */
     do {
-        dr_snprintf(logsubdir, BUFFER_SIZE_ELEMENTS(logsubdir), 
+        dr_snprintf(logsubdir, BUFFER_SIZE_ELEMENTS(logsubdir),
                     "%s%cDrMemory-%s.%d.%03d",
                     options.logdir, DIRSEP, appnm == NULL ? "null" : appnm,
                     dr_get_process_id(), count);
@@ -1448,7 +1448,7 @@ create_global_logfile(void)
 }
 
 #ifdef LINUX
-static void 
+static void
 event_fork(void *drcontext)
 {
     /* we want a whole new log dir to avoid clobbering the parent's */
@@ -1708,7 +1708,7 @@ check_contiguous(module_data_t *data)
 }
 #endif
 
-DR_EXPORT void 
+DR_EXPORT void
 dr_init(client_id_t id)
 {
     void *drcontext = dr_get_current_drcontext(); /* won't work on 0.9.4! */

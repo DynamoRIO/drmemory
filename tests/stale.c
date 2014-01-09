@@ -6,7 +6,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -46,10 +46,10 @@ main()
     for (i = 0; i < ARRAY_LEN; i++) {
         *(stale[i]) = i;
 #ifdef LINUX
-        struct timespec sleeptime;           
-        sleeptime.tv_sec = 0;                
+        struct timespec sleeptime;
+        sleeptime.tv_sec = 0;
         sleeptime.tv_nsec = SLEEP_MS*1000*1000;
-        nanosleep(&sleeptime, NULL); 
+        nanosleep(&sleeptime, NULL);
 #else
         SleepEx(SLEEP_MS, 0);
 #endif

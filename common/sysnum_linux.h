@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -24,7 +24,7 @@
 #define _SYSCALL_NUMS_H_ 1
 
 /* Adapted from /usr/include/asm/unistd_64.h and
- * /usr/include/asm/unistd_32.h on Fedora 10 
+ * /usr/include/asm/unistd_32.h on Fedora 10
  */
 
 #ifdef X64

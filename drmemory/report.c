@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -32,7 +32,7 @@
 #include "shadow.h"
 #include "readwrite.h"
 #include "syscall.h"
-#include "alloc.h" 
+#include "alloc.h"
 #include "report.h"
 #include "callstack.h"
 #include "heap.h"
@@ -114,9 +114,9 @@ static const char *const error_name[] = {
     "handle leak(s)",
 #endif
     "warning(s)",
-    "leak(s)",    
-    "possible leak(s)",    
-    "still-reachable allocation(s)",    
+    "leak(s)",
+    "possible leak(s)",
+    "still-reachable allocation(s)",
 };
 
 static const char *const suppress_name[] = {
@@ -128,9 +128,9 @@ static const char *const suppress_name[] = {
     "HANDLE LEAK",
 #endif
     "WARNING",
-    "LEAK",    
-    "POSSIBLE LEAK",    
-    "REACHABLE LEAK",    
+    "LEAK",
+    "POSSIBLE LEAK",
+    "REACHABLE LEAK",
 };
 
 #define DRMEM_VALGRIND_TOOLNAME "Dr.Memory"
@@ -731,7 +731,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
     spec->last_frame = frame;
     if (spec->frames == NULL)
         spec->frames = frame;
-    
+
  add_frame_done:
     global_free((byte *)line, strlen(line) + 1, HEAPSTAT_REPORT);
     return !skip_supp && IF_DRSYMS_ELSE(true, !has_symbols);
@@ -1649,7 +1649,7 @@ report_fork_init(void)
     num_throttled_leaks = 0;
     hashtable_clear(&error_table);
     /* Be sure to reset the error list (xref PR 519222)
-     * The error list points at hashtable payloads so nothing to free 
+     * The error list points at hashtable payloads so nothing to free
      */
     error_head = NULL;
     error_tail = NULL;
@@ -2110,7 +2110,7 @@ record_error(uint type, packed_callstack_t *pcs, app_loc_t *loc, dr_mcontext_t *
         ASSERT(existing != NULL, "entry must exist");
         stored_error_free(err);
         err = existing;
-        /* FIXME PR 423750: print out a line for the dup saying 
+        /* FIXME PR 423750: print out a line for the dup saying
          * "Error #n: reading 0xaddr", perhaps option-controlled if we don't
          * want to fill up logs in common-case
          */
@@ -2827,7 +2827,7 @@ report_unaddressable_access(app_loc_t *loc, app_pc addr, size_t sz, bool write,
                           &app_start, &app_end, &redzone_start, NULL) &&
         /* XXX: we really have no idea whether this came from an uninit var that
          * points at redzone_start b/c of the fill we did, or whether it's an
-         * overflow/underflow instead. So we only report possible origins 
+         * overflow/underflow instead. So we only report possible origins
          * if it points to redzone_start, which may miss some origin reports,
          * but also fewer wrong origin reports.
          */

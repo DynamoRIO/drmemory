@@ -7,7 +7,7 @@
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
- * License as published by the Free Software Foundation; 
+ * License as published by the Free Software Foundation;
  * version 2.1 of the License, and no later version.
 
  * This library is distributed in the hope that it will be useful,
@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/* addr2line for Windows 
+/* addr2line for Windows
  *
  * Uses dbghelp.dll, which comes with Windows 2000+ as version 5.0.
  * However, 5.0 does not have SymFromAddr.  Plus, XP's 5.2 has
@@ -272,7 +272,7 @@ load_module(HANDLE proc, const char *path)
      */
     if ((!single_target && stricmp(ext, ".exe") != 0) || stricmp(ext, ".pdb") == 0) {
         /* Any base will do since only loading one, but we need the size */
-        HANDLE f = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, 
+        HANDLE f = CreateFile(path, GENERIC_READ, FILE_SHARE_READ,
                               NULL, OPEN_EXISTING, 0, NULL);
         if (f == INVALID_HANDLE_VALUE)
             return 0;
@@ -318,36 +318,36 @@ unload_module(HANDLE proc, DWORD64 base)
 static void
 query_available(HANDLE proc, DWORD64 base)
 {
-    IMAGEHLP_MODULEW64 info; 
-    memset(&info, 0, sizeof(info)); 
-    info.SizeOfStruct = sizeof(info); 
+    IMAGEHLP_MODULEW64 info;
+    memset(&info, 0, sizeof(info));
+    info.SizeOfStruct = sizeof(info);
     if (SymGetModuleInfoW64(proc, base, &info)) {
         switch(info.SymType) {
-        case SymNone: 
+        case SymNone:
             printf("No symbols found\n");
-            break; 
-        case SymExport: 
-            printf("Only export symbols found\n"); 
-            break; 
-        case SymPdb: 
+            break;
+        case SymExport:
+            printf("Only export symbols found\n");
+            break;
+        case SymPdb:
             printf("Loaded pdb symbols from %S\n", info.LoadedPdbName);
             break;
-        case SymDeferred: 
+        case SymDeferred:
             printf("Symbol load deferred\n");
-            break; 
-        case SymCoff: 
-        case SymCv: 
-        case SymSym: 
-        case SymVirtual: 
-        case SymDia: 
-            printf("Symbols in image file loaded\n"); 
-            break; 
-        default: 
+            break;
+        case SymCoff:
+        case SymCv:
+        case SymSym:
+        case SymVirtual:
+        case SymDia:
+            printf("Symbols in image file loaded\n");
+            break;
+        default:
             printf("Symbols in unknown format.\n");
-            break; 
+            break;
         }
-        
-        /* could print out info.ImageName and info.LoadedImageName 
+
+        /* could print out info.ImageName and info.LoadedImageName
          * and whether info.LineNumbers
          * and warn if info.PdbUnmatched or info.DbgUnmatched
          */
@@ -416,7 +416,7 @@ lookup_symbol(HANDLE proc, const char *sym)
 }
 
 static BOOL CALLBACK
-enum_cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID Context) 
+enum_cb(PSYMBOL_INFO pSymInfo, ULONG SymbolSize, PVOID Context)
 {
     const char *match = (const char *) Context;
     if (match == NULL || strcmp(pSymInfo->Name, match) == 0)
