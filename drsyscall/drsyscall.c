@@ -1741,7 +1741,7 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     pt->mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &pt->mc);
 
-    /* save params for post-syscall access 
+    /* save params for post-syscall access
      * FIXME: it's possible for a pathological app to crash us here
      * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
      * params will hit unreadable page: should use TRY/EXCEPT

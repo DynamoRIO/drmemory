@@ -41,8 +41,8 @@ typedef struct _HLSURF_INFORMATION_PROBE {
 // the buffers are.  The idiom is that you call it once with a NULL buffer
 // pointer to find out how big the buffer should be, allocate that much,
 // then call again.  This sounds like a job for __out_bcount_opt(size), but
-// this annotation requires (size) to be known beforehand (i.e. it is a 
-// precondition).  The best we can do is to specify the size as a 
+// this annotation requires (size) to be known beforehand (i.e. it is a
+// precondition).  The best we can do is to specify the size as a
 // postcondition.
 
 #define __out_post_bcount_opt(size) __post __valid __refparam __post __byte_writableTo(size) __exceptthat __maybenull
@@ -58,7 +58,7 @@ typedef struct _HLSURF_INFORMATION_PROBE {
 
 // PRIVATE
 
-__kernel_entry W32KAPI BOOL APIENTRY 
+__kernel_entry W32KAPI BOOL APIENTRY
 NtGdiInit(
     );
 
@@ -347,7 +347,7 @@ NtGdiGetWidthTable(
     __out FLONG *pflInfo
     );
 
-__kernel_entry W32KAPI __success(return > 0) int APIENTRY 
+__kernel_entry W32KAPI __success(return > 0) int APIENTRY
 NtGdiDescribePixelFormat(
     __in HDC hdc,
     __in int ipfd,
@@ -2962,7 +2962,7 @@ NtGdiDrawStream(
 
 __kernel_entry W32KAPI BOOL APIENTRY
 NtGdiMakeObjectXferable(
-                        __in HANDLE h, 
+                        __in HANDLE h,
                         __in DWORD dwProcessId
                         );
 __kernel_entry W32KAPI BOOL APIENTRY
@@ -3016,19 +3016,19 @@ NtGdiDdDestroyFullscreenSprite(
 __kernel_entry W32KAPI ULONG APIENTRY
 NtGdiDdQueryVisRgnUniqueness();
 
-__kernel_entry 
+__kernel_entry
 W32KAPI BOOL APIENTRY NtGdiHLSurfGetInformation(
     __in HLSURF hLsurf,
     __in HLSURF_INFORMATION_CLASS InformationClass,
     __in_bcount_opt(*pulInformationLength) PVOID InformationBuffer,
-    __inout PULONG pulInformationLength    
+    __inout PULONG pulInformationLength
     );
 
-__kernel_entry 
+__kernel_entry
 W32KAPI BOOL APIENTRY NtGdiHLSurfSetInformation(
     __in HLSURF hLsurf,
     __in HLSURF_INFORMATION_CLASS InformationClass,
     __in_bcount_opt(InformationLength) PVOID InformationBuffer,
-    __in ULONG InformationLength    
+    __in ULONG InformationLength
     );
 

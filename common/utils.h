@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -356,7 +356,7 @@ extern int tls_idx_util;
          * twice which isn't a big deal \
          */ \
         assert_not_tested_printed = 1; \
-        NOTIFY("Not tested - %s @%s:%d\n", msg, __FILE__, __LINE__); \
+        NOTIFY("Not tested - %s @%s:%d"NL, msg, __FILE__, __LINE__); \
     } \
 } while (0)
 #else

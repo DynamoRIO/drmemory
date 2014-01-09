@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -102,9 +102,12 @@ file(GLOB cfiles
   ${CTEST_SOURCE_DIRECTORY}/*/*.c
   ${CTEST_SOURCE_DIRECTORY}/*/*.cpp
   ${CTEST_SOURCE_DIRECTORY}/*/*/*.c
-  ${CTEST_SOURCE_DIRECTORY}/*/*/*.cpp)
+  ${CTEST_SOURCE_DIRECTORY}/*/*/*.cpp
+  ${CTEST_SOURCE_DIRECTORY}/*/*.h
+  ${CTEST_SOURCE_DIRECTORY}/*/*/*.h)
 foreach (cfile ${cfiles})
-  if (NOT "${cfile}" MATCHES "dynamorio/")
+  if (NOT "${cfile}" MATCHES "dynamorio/" AND
+      NOT "${cfile}" MATCHES "third_party/")
     file(READ "${cfile}" string)
 
     # Check for NL instead of \n in NOTIFY*
@@ -117,6 +120,14 @@ foreach (cfile ${cfiles})
     string(REGEX MATCH "NOCHECKIN" match "${string}")
     if (NOT "${match}" STREQUAL "")
       message(FATAL_ERROR "In ${cfile}, remove NOCHECKIN: ${match}")
+    endif ()
+
+    # Check for trailing space
+    string(REGEX MATCH " \n" match "${string}")
+    if (NOT "${match}" STREQUAL "")
+      # Get more context
+      string(REGEX MATCH "\n[^\n]* \n" match "${string}")
+      message(FATAL_ERROR "In ${cfile}, remove trailing space: ${match}")
     endif ()
 
     # Check for CR.  Unfortunately file(READ) seems to throw away CR's
