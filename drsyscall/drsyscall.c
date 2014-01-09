@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -372,6 +372,7 @@ handle_pre_unknown_syscall(void *drcontext, cls_syscall_t *cpt,
             defined = is_byte_defined(arg_loc.start_addr);
 
         if (defined) {
+            /* No need for a TRY/EXCEPT b/c this mem addr is defined */
             start = (app_pc) dr_syscall_get_param(drcontext, i);
             LOG(2, "pre-unknown-syscall #"SYSNUM_FMT"."SYSNUM_FMT": param %d == "PFX"\n",
                 sysnum.number, sysnum.secondary, i, start);
@@ -1741,16 +1742,21 @@ drsys_event_pre_syscall(void *drcontext, int initial_num)
     pt->mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &pt->mc);
 
-    /* save params for post-syscall access
-     * FIXME: it's possible for a pathological app to crash us here
-     * by setting up stack so that our blind reading of SYSCALL_NUM_ARG_STORE
-     * params will hit unreadable page: should use TRY/EXCEPT
+    /* Save params for post-syscall access.
+     * We are reading beyond the # of args of some syscalls and we can
+     * (and do: i#1419) read beyond the base of the stack so we use a try.
      */
     LOG(SYSCALL_VERBOSE, "app xsp="PFX"\n", pt->mc.xsp);
-    for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
-        pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
-        LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
-    }
+    DR_TRY_EXCEPT(drcontext, {
+        for (i = 0; i < SYSCALL_NUM_ARG_STORE; i++) {
+            pt->sysarg[i] = dr_syscall_get_param(drcontext, i);
+            LOG(SYSCALL_VERBOSE, "\targ %d = "PIFX"\n", i, pt->sysarg[i]);
+        }
+    }, { /* EXCEPT */
+        /* Do nothing: we assume we're beyond the real # of args. */
+    });
+
+
     DODEBUG({
         /* release_extra_info() calls can be bypassed if syscalls or safe reads
          * fail so we always clear up front
