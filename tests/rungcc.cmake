@@ -40,6 +40,16 @@ if (${GCC} MATCHES "cygwin/g")
   endif ()
 endif()
 
+# If cygwin is installed but isn't found on the system path it will be temporarily
+# added to avoid build issues.
+set(pre_path "$ENV{PATH}")
+if (NOT pre_path MATCHES "cygwin/bin")
+  if (GCC MATCHES "cygwin/bin")
+    string(REGEX REPLACE "(^.*cygwin/bin/).*$" "\\1" suffix_path "${GCC}")
+    set(ENV{PATH} "${pre_path};${suffix_path}")
+  endif (GCC MATCHES "cygwin/bin")
+endif (NOT pre_path MATCHES "cygwin/bin")
+
 # We want -ggdb to get dwarf2 symbols instead of stabs, if using older gcc.
 # We don't want dynamic C++ library b/c then we need machine to have
 # libgcc_s_dw2-1.dll and libstdc++-6.dll on path and we want to support
