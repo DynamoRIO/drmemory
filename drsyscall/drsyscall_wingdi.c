@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -1245,15 +1245,15 @@ syscall_info_t syscall_user32_info[] = {
          {1, sizeof(BOOL), SYSARG_INLINED, DRSYS_TYPE_BOOL},
      }
     },
-    /* FIXME i#487: on WOW64 XP and Vista (but not win7) this makes a 0x2xxx syscall
-     * instead of invoking NtUserGetThreadDesktop: is it really different?
-     */
-    {{0,0},"NtUserGetThreadDesktop", OK, DRSYS_TYPE_HANDLE, 2,
+    {{0,0},"NtUserGetThreadDesktop", OK|SYSINFO_REQUIRES_PREFIX, DRSYS_TYPE_HANDLE, 2,
      {
          {0, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
          {1, sizeof(DWORD), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
+    /* XXX i#487: on WOW64 XP and Vista (but not win7) this makes a 0x2xxx syscall
+     * instead of invoking NtUserGetThreadDesktop: is it really different?
+     */
     {{0,0},"GetThreadDesktop", OK, RNTST, 2, },
     {{0,0},"NtUserGetThreadState", OK, DRSYS_TYPE_UNSIGNED_INT, 1,
      {

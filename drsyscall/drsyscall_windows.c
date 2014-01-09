@@ -3621,7 +3621,7 @@ os_syscall_get_num(const char *name, drsys_sysnum_t *num OUT)
 
 static void
 check_syscall_entry(void *drcontext, const module_data_t *info, syscall_info_t *syslist,
-                  const char *optional_prefix)
+                    const char *optional_prefix)
 {
     if (TEST(SYSINFO_REQUIRES_PREFIX, syslist->flags))
         optional_prefix = NULL;
@@ -3767,6 +3767,11 @@ drsyscall_os_init(void *drcontext)
                 skip_prefix = sysnum_names[i] + strlen("NtUser");
             else if (strstr(sysnum_names[i], "NtGdi") == sysnum_names[i])
                 skip_prefix = sysnum_names[i] + strlen("NtGdi");
+            /* We could re-arrange the add_syscall_entry() below and look up the
+             * entry to check SYSINFO_REQUIRES_PREFIX, but since GetThreadDesktop
+             * is the only one for now, we rely on having GetThreadDesktop before
+             * NtUserGetThreadDesktop to avoid the wrong # in the table (i#1418).
+             */
             if (skip_prefix != NULL) {
                 name2num_entry_add(skip_prefix, sysnum, false/*no dup*/);
             }
