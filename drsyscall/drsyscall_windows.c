@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -44,6 +44,8 @@
 #include "../wininc/ntddk.h"
 #include "../wininc/ntifs.h"
 #include "../wininc/tls.h"
+#include "../wininc/ktmtypes.h"
+#include "../wininc/winnt_recent.h"
 
 static app_pc ntdll_base;
 dr_os_version_info_t win_ver = {sizeof(win_ver),};
