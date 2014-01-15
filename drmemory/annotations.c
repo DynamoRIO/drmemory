@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -159,8 +159,8 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
 {
     instr_t *instrs[VG_PATTERN_LENGTH];
     uint i;
-    bool found_xax, found_xdx;
     instr_t *label;
+    app_pc xchg_xl8;
 
     instrs[0] = instr;
     for (i = 0; i < BUFFER_SIZE_ELEMENTS(instrs); i++) {
@@ -207,29 +207,11 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
         LOG(2, "\n");
     });
 
-    /* Scan backwards to mark "lea _zzq_args -> %xax" and "mov _zzq_default ->
-     * %xdx" as meta.  On gcc, valgrind.h uses asm constraints to materialize
-     * %xax and %xdx, so we just mark the first two instructions that store to
-     * %xax and %xdx as meta.
+    /* We leave the argument gathering code (typically "lea _zzq_args -> %xax"
+     * and "mov _zzq_default -> %xdx") as app instructions, as it writes to app
+     * registers (xref i#1423).
      */
-    found_xax = false;
-    found_xdx = false;
-    for (instr = instrs[0]; instr != NULL; instr = instr_get_prev(instr)) {
-        opnd_t dst;
-        if (instr_num_dsts(instr) != 1)
-            continue;
-        dst = instr_get_dst(instr, 0);
-        if (!found_xax && opnd_same(dst, opnd_create_reg(DR_REG_XAX))) {
-            instr_set_ok_to_mangle(instr, false);
-            found_xax = true;
-        }
-        if (!found_xdx && opnd_same(dst, opnd_create_reg(DR_REG_XDX))) {
-            instr_set_ok_to_mangle(instr, false);
-            found_xdx = true;
-        }
-        if (found_xax && found_xdx)
-            break;
-    }
+    xchg_xl8 = instr_get_app_pc(instrs[4]);
 
     /* Delete rol and xchg instructions. */
     *next_instr = instr_get_next(instrs[VG_PATTERN_LENGTH - 1]);
@@ -237,6 +219,15 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
         instrlist_remove(bb, instrs[i]);
         instr_destroy(dc, instrs[i]);
     }
+
+    /* Insert a write to %xbx, both to ensure it's marked defined by DrMem
+     * and to avoid confusion with register analysis code (%xbx is written
+     * by the clean callee).
+     */
+    instrlist_preinsert(bb, *next_instr,
+                        INSTR_XL8(INSTR_CREATE_xor(dc, opnd_create_reg(DR_REG_XBX),
+                                                   opnd_create_reg(DR_REG_XBX)),
+                                  xchg_xl8));
 
     /* Leave label so insert phase knows where to insert clean call */
     label = INSTR_CREATE_label(dc);
@@ -247,9 +238,6 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
 }
 
 /* Replace Valgrind annotations with an appropriate clean call.
- *
- * FIXME: If we switch to drmgr, we need to match the application pattern up
- * front, remove the instrs, and add the clean call in a later pass.
  *
  * XXX: match_valgrind_pattern was designed to be used inside of another bb pass
  * to minimize linked list iteration, but it has to run before

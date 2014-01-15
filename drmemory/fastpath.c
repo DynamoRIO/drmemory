@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1231,12 +1231,18 @@ should_share_addr_helper(fastpath_info_t *mi)
  * instruction.  Looks for identical memory reference base registers
  * and size==4 so that a register can be used to hold the
  * shared translation address.
+ *
+ * We do this locally b/c it only needs a small window of the next
+ * instruction.  We could do this in the analysis phase instead,
+ * though likely at higher overhead.  If we do expand xl8 sharing any
+ * further, with larger windows, we should probably move to the
+ * analysis phase.
  */
 static bool
 should_share_addr(instr_t *inst, fastpath_info_t *cur, opnd_t cur_memop)
 {
     fastpath_info_t mi;
-    instr_t *nxt = instr_get_next(inst);
+    instr_t *nxt = instr_get_next_app_instr(inst);
     int opc;
 #ifdef TOOL_DR_HEAPSTAT
     /* Not worth cost of shadow redzone and extra check + jcc slowpath
