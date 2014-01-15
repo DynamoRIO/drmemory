@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -4042,76 +4042,6 @@ check_register_defined(void *drcontext, reg_id_t reg, app_loc_t *loc, size_t sz,
 #ifdef TOOL_DR_MEMORY
 
 # ifdef WINDOWS
-/* Return prev app (non-meta) instr or NULL if no prev app instr.
- * It gives warning on seeing any non-label non-app instructions,
- * so it should be used in app2app or analysis stage only.
- */
-static instr_t *
-instr_get_prev_app_instr(instr_t *instr)
-{
-    ASSERT(instr != NULL, "instr must not be NULL");
-    instr = instr_get_prev(instr);
-    /* quick check to avoid loop overhead */
-    if (instr == NULL || instr_ok_to_mangle(instr))
-        return instr;
-    for (; instr != NULL; instr = instr_get_prev(instr)) {
-        if (!instr_ok_to_mangle(instr)) {
-            if (!instr_is_label(instr))
-                WARN("WARNING: see non-label non-app instruction.\n");
-            continue;
-        }
-        return instr;
-    }
-    return NULL;
-}
-
-/* Return next non-meta (app) instr or NULL if no next app instr.
- * It gives warning on seeing any non-lable meta instructions,
- * so it should be used in app2app or analysis stage only.
- */
-static instr_t *
-instr_get_next_app_instr(instr_t *instr)
-{
-    ASSERT(instr != NULL, "instr must not be NULL");
-    instr = instr_get_next(instr);
-    /* quick check to avoid loop overhead */
-    if (instr == NULL || instr_ok_to_mangle(instr))
-        return instr;
-    for (; instr != NULL; instr = instr_get_next(instr)) {
-        if (!instr_ok_to_mangle(instr)) {
-            if (!instr_is_label(instr))
-                WARN("WARNING: see non-label meta instruction.\n");
-            continue;
-        }
-        return instr;
-    }
-    return NULL;
-}
-
-static instr_t *
-instrlist_first_app_instr(instrlist_t *ilist)
-{
-    instr_t *instr;
-    ASSERT(ilist != NULL, "instrlist must not be NULL");
-    instr = instrlist_first(ilist);
-    ASSERT(instr != NULL, "instrlist is empty");
-    if (instr == NULL || instr_ok_to_mangle(instr))
-        return instr;
-    return instr_get_next_app_instr(instr);
-}
-
-static instr_t *
-instrlist_last_app_instr(instrlist_t *ilist)
-{
-    instr_t *instr;
-    ASSERT(ilist != NULL, "instrlist must not be NULL");
-    instr = instrlist_last(ilist);
-    ASSERT(instr != NULL, "instrlist is empty");
-    if (instr == NULL || instr_ok_to_mangle(instr))
-        return instr;
-    return instr_get_prev_app_instr(instr);
-}
-
 /* i#1371: _SEH_epilog4 returns at different stack spot instead of actual retaddr
  * USER32!_SEH_epilog4:
  * 74af616a 8b4df0           mov     ecx, [ebp-0x10]

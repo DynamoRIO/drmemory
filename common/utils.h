@@ -815,6 +815,22 @@ reg_id_t
 reg_ptrsz_to_8h(reg_id_t reg);
 
 /***************************************************************************
+ * APP INSTRS
+ */
+
+instr_t *
+instr_get_prev_app_instr(instr_t *instr);
+
+instr_t *
+instr_get_next_app_instr(instr_t *instr);
+
+instr_t *
+instrlist_first_app_instr(instrlist_t *ilist);
+
+instr_t *
+instrlist_last_app_instr(instrlist_t *ilist);
+
+/***************************************************************************
  * HASHTABLE
  *
  * hashtable was moved and generalized so we need to initialize it

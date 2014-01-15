@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1204,6 +1204,88 @@ reg_ptrsz_to_8h(reg_id_t reg)
     reg = reg_64_to_32(reg);
 #endif
     return reg_32_to_8h(reg);
+}
+
+/***************************************************************************
+ * APP INSTRS
+ */
+
+/* Return prev app (non-meta) instr or NULL if no prev app instr.
+ * It gives warning on seeing any non-label meta instructions
+ * if called during app2app or analysis phases.
+ */
+instr_t *
+instr_get_prev_app_instr(instr_t *instr)
+{
+    ASSERT(instr != NULL, "instr must not be NULL");
+    instr = instr_get_prev(instr);
+    /* quick check to avoid loop overhead */
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    for (; instr != NULL; instr = instr_get_prev(instr)) {
+        if (!instr_ok_to_mangle(instr)) {
+            if (!instr_is_label(instr) &&
+                (drmgr_current_bb_phase(dr_get_current_drcontext()) ==
+                 DRMGR_PHASE_APP2APP ||
+                 drmgr_current_bb_phase(dr_get_current_drcontext()) ==
+                 DRMGR_PHASE_ANALYSIS))
+                WARN("WARNING: see non-label non-app instruction.\n");
+            continue;
+        }
+        return instr;
+    }
+    return NULL;
+}
+
+/* Return next non-meta (app) instr or NULL if no next app instr.
+ * It gives warning on seeing any non-label meta instructions
+ * if called during app2app or analysis phases.
+ */
+instr_t *
+instr_get_next_app_instr(instr_t *instr)
+{
+    ASSERT(instr != NULL, "instr must not be NULL");
+    instr = instr_get_next(instr);
+    /* quick check to avoid loop overhead */
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    for (; instr != NULL; instr = instr_get_next(instr)) {
+        if (!instr_ok_to_mangle(instr)) {
+            if (!instr_is_label(instr) &&
+                (drmgr_current_bb_phase(dr_get_current_drcontext()) ==
+                 DRMGR_PHASE_APP2APP ||
+                 drmgr_current_bb_phase(dr_get_current_drcontext()) ==
+                 DRMGR_PHASE_ANALYSIS))
+                WARN("WARNING: see non-label meta instruction.\n");
+            continue;
+        }
+        return instr;
+    }
+    return NULL;
+}
+
+instr_t *
+instrlist_first_app_instr(instrlist_t *ilist)
+{
+    instr_t *instr;
+    ASSERT(ilist != NULL, "instrlist must not be NULL");
+    instr = instrlist_first(ilist);
+    ASSERT(instr != NULL, "instrlist is empty");
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    return instr_get_next_app_instr(instr);
+}
+
+instr_t *
+instrlist_last_app_instr(instrlist_t *ilist)
+{
+    instr_t *instr;
+    ASSERT(ilist != NULL, "instrlist must not be NULL");
+    instr = instrlist_last(ilist);
+    ASSERT(instr != NULL, "instrlist is empty");
+    if (instr == NULL || instr_ok_to_mangle(instr))
+        return instr;
+    return instr_get_prev_app_instr(instr);
 }
 
 /***************************************************************************
