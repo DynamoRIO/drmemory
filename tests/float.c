@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -37,16 +38,25 @@ main()
     f = *((float *)p1); /* error: uninitialized, but won't report until used */
     if (f < 0.f) /* use -> reported */
         d = 4.;
-    /* for doubles Dr. Memory will report right away since no shadowing
-     * of floating-point registers
+    /* For doubles Dr. Memory will report right away since no shadowing
+     * of floating-point registers: except w/ the new i#471 heuristic we need
+     * to add a use.
      */
     d = *((double *)(p1+8)); /* error: uninitialized */
+    if (d < 0.) /* use -> reported */
+        d = 4.;
     *((float*)(p1+16)) = 0.f;
     d = *((double *)(p1+16)); /* error: half uninitialized */
+    if (d < 0.) /* use -> reported */
+        d = 4.;
     *((float*)(p1+28)) = 0.f;
     d = *((double *)(p1+24)); /* error: other half uninitialized */
+    if (d < 0.) /* use -> reported */
+        d = 4.;
     /* test unaligned */
     d = *((double *)(p1+34)); /* error: uninitialized */
+    if (d < 0.) /* use -> reported */
+        d = 4.;
     free((void *)p1);
 
     printf("testing floats on stack\n");

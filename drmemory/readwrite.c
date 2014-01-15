@@ -81,6 +81,10 @@ typedef struct _stringop_entry_t {
     byte ignore_next_delete;
 } stringop_entry_t;
 
+/* pusha/popa need 8 dwords */
+#define MAX_DWORDS_TRANSFER 8
+#define OPND_SHADOW_ARRAY_LEN (MAX_DWORDS_TRANSFER * sizeof(uint))
+
 #ifdef STATISTICS
 /* per-opcode counts */
 uint64 slowpath_count[OP_LAST+1];
@@ -127,6 +131,7 @@ uint bitfield_const_exception;
 uint bitfield_xor_exception;
 uint loader_DRlib_exception;
 uint cppexcept_DRlib_exception;
+uint fldfst_exception;
 uint heap_func_ref_ignored;
 uint reg_dead;
 uint reg_xchg;
@@ -710,6 +715,16 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
          * signal/exception events below
          */
     }
+#ifdef TOOL_DR_MEMORY
+    else if (restore_memory && cpt->fld_fstp_source != NULL) {
+        /* Our i#471 heuristic could end up with a thread relocation in between
+         * the fld and the fstp.  In such a case we restore the shadow.
+         */
+        umbra_shadow_memory_info_t info;
+        shadow_set_byte(&info, cpt->fld_fstp_dest, cpt->fld_fstp_prev_shadow);
+        cpt->fld_fstp_source = NULL;
+    }
+#endif
 
     return true;
 }
@@ -1366,9 +1381,97 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     return res;
 }
 
+/* i#471/i#931 heuristic: match "fld;fstp" to avoid false pos until we have proper
+ * floating point register shadowing and propagation.
+ * Should only be called on an uninit memory read.
+ *
+ * An alternative to this uninit-exception-based approach would be to recognize
+ * "fld;fstp" during instrumentation, special-case the fld to check
+ * addressability and not definedness, and special-case the fstp to do a mem2mem
+ * propagation with a fake src taken from the fld -- but, we'd need the slowpath
+ * to recognize that too, which requires decode-backward or a hashtable; and,
+ * the current fastpath doesn't support 8-byte mem2mem propagation.  Thus, this
+ * approach here seems simpler and not much slower.
+ *
+ * XXX: this doesn't match gcc's "fld;mov;fstp" code b/c we have no way to skip
+ * the non-immediately-subsequent fstp -- we'll wait for full i#471 to handle that.
+ */
+static bool
+check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *idx)
+{
+    void *drcontext = dr_get_current_drcontext();
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+    app_pc pc;
+    opnd_t fstp_mem;
+    byte *store;
+    instr_t inst;
+    umbra_shadow_memory_info_t info;
+
+    /* Handle subsequent calls from handle_mem_ref() (one per byte).
+     * We don't short-circuit b/c we want to ensure they're all addressable.
+     */
+    if (cpt->fld_fstp_source != NULL)
+        return true;
+
+    if (!options.fld_fstp_prop)
+        return false;
+    if (loc->type == APP_LOC_SYSCALL)
+        return false;
+    if (addr == NULL) /* equals our sentinel value in cpt->fld_fstp_source */
+        return false;
+    instr_init(drcontext, &inst);
+    pc = loc_to_pc(loc);
+    if (!safe_decode(drcontext, pc, &inst, &pc))
+        return false;
+    if (instr_get_opcode(&inst) != OP_fld) {
+        instr_free(drcontext, &inst);
+        return false;
+    }
+    instr_reset(drcontext, &inst);
+    if (!safe_decode(drcontext, pc, &inst, NULL))
+        return false;
+    if (instr_get_opcode(&inst) != OP_fstp) {
+        instr_free(drcontext, &inst);
+        return false;
+    }
+    fstp_mem = instr_get_dst(&inst, 0);
+    ASSERT(opnd_is_memory_reference(fstp_mem), "fstp must write to mem");
+    store = opnd_compute_address(fstp_mem, mc);
+    if (store == NULL ||
+        /* overlap is ok, but we require the same size */
+        opnd_size_in_bytes(opnd_get_size(fstp_mem)) != sz) {
+        instr_free(drcontext, &inst);
+        return false;
+    }
+    instr_free(drcontext, &inst);
+    LOG(3, "matched fld;fstp pattern @"PFX"\n", loc_to_pc(loc));
+    /* Now disable the fstp instru fastpath by marking the dest mem as bitlevel.
+     * We'll propagate the shadow values in the fstp slowpath.
+     * Otherwise, fstp's fastpath will blindly mark the dest memory as defined.
+     * Note that we can't instead propagate here and mark base reg as
+     * undefined, as that check may be optimized out.
+     */
+    umbra_shadow_memory_info_init(&info);
+    cpt->fld_fstp_prev_shadow = shadow_get_byte(&info, store);
+    cpt->fld_fstp_dest = store;
+    DODEBUG({
+        /* fld_fstp_pc avoids an assert in slow_path() */
+        cpt->fld_fstp_pc = loc_to_pc(loc);
+    });
+    shadow_set_byte(&info, store, SHADOW_DEFINED_BITLEVEL);
+    ASSERT(cpt->fld_fstp_source == NULL, "fld_fstp_source wasn't cleared");
+    /* Point at the start addr, as we're going to propagate the whole thing
+     * (we might be midway through if the first few bytes are defined and we
+     * hit uninit bytes in the middle).
+     */
+    cpt->fld_fstp_source = addr - *idx;
+    STATS_INC(fldfst_exception);
+    return true;
+}
+
 static bool
 check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr,
-                           uint sz, uint *shadow)
+                           uint sz, uint *shadow, dr_mcontext_t *mc, uint *idx)
 {
     bool match = false;
     /* I used to have an exception for uninits in heap headers, but w/
@@ -1381,6 +1484,8 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
      * slow path to avoid the redundant decode here, which can be a
      * noticeable performance hit (PR 622253)
      */
+    if (!match && !pushpop && !write)
+        match = check_float_copy(loc, addr, sz, mc, idx);
     return match;
 }
 
@@ -1397,10 +1502,6 @@ combine_shadows(uint shadow1, uint shadow2)
     return (shadow1 == SHADOW_UNDEFINED || shadow2 == SHADOW_UNDEFINED) ?
         SHADOW_UNDEFINED : SHADOW_DEFINED;
 }
-
-/* pusha/popa need 8 dwords */
-#define MAX_DWORDS_TRANSFER 8
-#define OPND_SHADOW_ARRAY_LEN (MAX_DWORDS_TRANSFER * sizeof(uint))
 
 /* Adjusts the shadow_vals for a source op.
  * Returns whether eflags should be marked as defined.
@@ -2252,6 +2353,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
     bool always_defined;
     opnd_t memop = opnd_create_null();
     size_t instr_sz;
+    cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
 #endif
     app_loc_t loc;
 
@@ -2609,7 +2711,27 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             opnd = adjust_memop(&inst, opnd, true, &sz, &pushpop_stackop);
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            if (always_defined) {
+            if (cpt->fld_fstp_source != NULL) {
+                /* i#471 fld;fstp heuristic: fstp's dest was marked bitlevel to
+                 * get us here.  Do a special-case propagate.
+                 */
+                umbra_shadow_memory_info_t info;
+                LOG(3, "propagating fld;fstp from "PFX"\n", cpt->fld_fstp_source);
+                /* We use a fake movs in handle_mem_ref() (can't just do
+                 * shadow_copy_range() b/c we need to check base reg for
+                 * definedness, check for addressability, etc.)
+                 */
+                umbra_shadow_memory_info_init(&info);
+                shadow_set_byte(&info, cpt->fld_fstp_dest, cpt->fld_fstp_prev_shadow);
+#ifdef X64
+                /* XXX: switch this hack to a proper data structure */
+                ASSERT_NOT_IMPLEMENTED();
+#else
+                shadow_vals[0] = (uint) cpt->fld_fstp_source;
+#endif
+                flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
+                cpt->fld_fstp_source = NULL;
+            } else if (always_defined) {
                 /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
             } else if (check_definedness) {
                 flags |= MEMREF_CHECK_DEFINEDNESS;
@@ -2654,8 +2776,6 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             byte *ret_pc = (byte *) get_own_tls_value(SPILL_SLOT_2);
             /* ensure event_restore_state() returns true */
             byte *xl8;
-            cls_drmem_t *cpt = (cls_drmem_t *)
-                drmgr_get_cls_field(drcontext, cls_idx_drmem);
             cpt->self_translating = true;
             xl8 = dr_app_pc_from_cache_pc(ret_pc);
             cpt->self_translating = false;
@@ -2696,10 +2816,20 @@ slow_path(app_pc pc, app_pc decode_pc)
 {
     void *drcontext = dr_get_current_drcontext();
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
+    bool res;
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
     dr_get_mcontext(drcontext, &mc);
-    return slow_path_with_mc(drcontext, pc, decode_pc, &mc);
+    res = slow_path_with_mc(drcontext, pc, decode_pc, &mc);
+#ifdef TOOL_DR_MEMORY
+    DODEBUG({
+        cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
+        /* fld_fstp_pc avoids asserting when first set on the fld */
+        ASSERT(cpt->fld_fstp_source == NULL || pc == cpt->fld_fstp_pc,
+               "fld_fstp_source wasn't cleared");
+    });
+#endif
+    return res;
 }
 
 /* Returns whether a single pc can be used for app reporting and
@@ -3860,7 +3990,8 @@ handle_mem_ref(uint flags, app_loc_t *loc, app_pc addr, size_t sz, dr_mcontext_t
                 /* Must check for exceptions even if not reporting, since
                  * may alter value of shadow */
                 if (!check_undefined_exceptions(TEST(MEMREF_PUSHPOP, flags),
-                                                is_write, loc, addr + i, sz, &shadow) &&
+                                                is_write, loc, addr + i, sz, &shadow,
+                                                mc, &i) &&
                     TEST(MEMREF_CHECK_DEFINEDNESS, flags)) {
                     bool new_bad = true;
                     if (found_bad_addr) {

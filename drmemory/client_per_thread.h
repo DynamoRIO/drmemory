@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -28,6 +28,7 @@
 
 /* Additonal per-thread data.
  * Fields are callback-context-private on Windows.
+ * This struct is memset to 0 at init time.
  */
 typedef struct _cls_drmem_t {
     /* Dr. Heapstat must share the same struct since sharing so much
@@ -50,6 +51,14 @@ typedef struct _cls_drmem_t {
 
     /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
     bool self_translating;
+
+    /* for i#471 fld;fstp heuristic */
+    app_pc fld_fstp_source;
+    app_pc fld_fstp_dest;
+    size_t fld_fstp_prev_shadow;
+#ifdef DEBUG
+    app_pc fld_fstp_pc;
+#endif
 } cls_drmem_t;
 
 extern int cls_idx_drmem;

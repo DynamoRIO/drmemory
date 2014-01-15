@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -119,6 +119,7 @@ extern uint bitfield_const_exception;
 extern uint bitfield_xor_exception;
 extern uint loader_DRlib_exception;
 extern uint cppexcept_DRlib_exception;
+extern uint fldfst_exception;
 extern uint reg_dead;
 extern uint reg_xchg;
 extern uint reg_spill;

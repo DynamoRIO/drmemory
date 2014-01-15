@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -685,6 +685,9 @@ OPTION_CLIENT_BOOL(internal, verify_sysnums, false,
 OPTION_CLIENT_BOOL(internal, leave_uninit, false,
                    "Do not mark an uninitialized value as defined once reported",
                    "Do not mark an uninitialized value as defined once reported.  This may result in many reports for the same error.")
+OPTION_CLIENT_BOOL(internal, fld_fstp_prop, true,
+                   "Use heuristic to propagate on fld;fstp sequences",
+                   "Currently, Dr. Memory does not propagate shadow values through floating-point registers.  To avoid false positives on memory copies that use fld;fstp sequences, this option enables a heuristic that propagage just on such sequences.")
 OPTION_CLIENT_BOOL(internal, leak_scan, true,
                    "Perform leak scan",
                    "Whether to perform the leak scan.  For performance measurement purposes only.")

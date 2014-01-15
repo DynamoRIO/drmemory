@@ -421,6 +421,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     /* initialize regardless */
     initialize_fastpath_info(mi, bi);
 
+    /* now bail if no real fastpath */
     if (!options.fastpath)
         return false;
     if (instr_needs_slowpath(inst))
