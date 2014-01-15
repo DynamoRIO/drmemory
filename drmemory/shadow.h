@@ -181,7 +181,7 @@ shadow_bitlevel_addr(void);
 void
 shadow_set_range(app_pc start, app_pc end, uint val);
 
-/* Copies the values for each byte in the range [old_start, old_start+end) to
+/* Copies the values for each byte in the range [old_start, old_start+size) to
  * [new_start, new_start+size).  The two ranges can overlap.
  */
 void

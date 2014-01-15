@@ -528,7 +528,7 @@ shadow_set_range(app_pc start, app_pc end, uint val)
     }
 }
 
-/* Copies the values for each byte in the range [old_start, old_start+end) to
+/* Copies the values for each byte in the range [old_start, old_start+size) to
  * [new_start, new_start+size).  The two ranges can overlap.
  */
 void
@@ -543,12 +543,28 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
 
     LOG(2, "copy range "PFX"-"PFX" to "PFX"-"PFX"\n",
          old_start, old_start+size, new_start, new_start+size);
+    umbra_shadow_memory_info_init(&info_src);
+    umbra_shadow_memory_info_init(&info_dst);
+
     head_bit = (ptr_uint_t)old_start % SHADOW_GRANULARITY;
-    /* special case like shadow_copy_range(0x1003, 0x1001, 100),
-     * cannot be handled using shadow_set_byte(.. shadow_get_byte) or copy.
-     */
-    ASSERT(head_bit == ((ptr_uint_t)new_start % SHADOW_GRANULARITY),
-           "miss aligned app address");
+    if (head_bit != ((ptr_uint_t)new_start % SHADOW_GRANULARITY)) {
+        /* Alignments don't match (e.g., 0x...3 and 0x...1).  We use a slow,
+         * brute-force appraoch as this should be rare.  We handle overlap by
+         * copying to a temp, with the assumption that anything big like an mmap
+         * will be page-aligned and won't come here.
+         *
+         * XXX: we should add a unit test framework so we can easily write
+         * a test for this.
+         */
+        /* For simplicity we store each pair of 2 bits in one byte */
+        byte *temp = global_alloc(size, HEAPSTAT_SHADOW);
+        for (i = 0; i < size; i++)
+            temp[i] = (byte) shadow_get_byte(&info_src, old_start + i);
+        for (i = 0; i < size; i++)
+            shadow_set_byte(&info_dst, new_start + i, temp[i]);
+        global_free(temp, size, HEAPSTAT_SHADOW);
+        return;
+    }
     old_end  = old_start + size;
     tail_bit = (ptr_uint_t)old_end % SHADOW_GRANULARITY;
     /* It is 1B-2-2b mapping and umbra only support full byte copy, so we have
@@ -557,7 +573,6 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
     /* XXX: maybe umbra should support partial byte update and the code can be
      * moved into umbra.
      */
-    umbra_shadow_memory_info_init(&info_src);
     if (head_bit != 0) {
         for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
             head_val[i+head_bit] = shadow_get_byte(&info_src, old_start+i);
@@ -576,7 +591,6 @@ shadow_copy_range(app_pc old_start, app_pc new_start, size_t size)
             shdw_size != shadow_scale_app_to_shadow(copy_size))
             ASSERT(false, "fale to copy shadow memory");
     }
-    umbra_shadow_memory_info_init(&info_dst);
     if (head_bit != 0) {
         for (i = 0; i+head_bit < SHADOW_GRANULARITY; i++)
             shadow_set_byte(&info_dst, new_start+i, head_val[i+head_bit]);
