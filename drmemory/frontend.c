@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1137,6 +1137,9 @@ _tmain(int argc, TCHAR *targv[])
             /* -quiet is also parsed by the client */
             BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
                      cliops_sofar, len, "%s ", argv[i]);
+            /* now that DR has these by default we have to explicitly turn off */
+            BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                     drops_sofar, len, "-msgbox_mask 0 -stderr_mask 0 ");
             quiet = true;
             continue;
         }
@@ -1149,6 +1152,9 @@ _tmain(int argc, TCHAR *targv[])
         }
         else if (strcmp(argv[i], "-batch") == 0) {
             batch = true;
+            /* now that DR has msgboxes by default we have to explicitly turn off */
+            BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
+                     drops_sofar, len, "-msgbox_mask 0 ");
             continue;
         }
         else if (strcmp(argv[i], "-visual_studio") == 0) {
