@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -956,9 +956,9 @@ set(DynamoRIO_SET_PREFERRED_BASE ON)
 set(PREFERRED_BASE 0x73800000)
 
 set(DynamoRIO_REG_COMPATIBILITY ON)
-if (STATIC_DRSYMS)
-  set(DynamoRIO_USE_LIBC ON)
-endif (STATIC_DRSYMS)
+if (NOT STATIC_DRSYMS)
+  set(DynamoRIO_USE_LIBC OFF)
+endif (NOT STATIC_DRSYMS)
 configure_DynamoRIO_client(${client_target})
 # i#277/PR 540817: features split into DynamoRIO Extensions
 use_DynamoRIO_extension(${client_target} drcontainers)

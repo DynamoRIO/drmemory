@@ -22,6 +22,11 @@ cmake_minimum_required(VERSION 2.6)
 
 set_output_dirs(${framework_bindir})
 
+# We do not need libc, and we avoid a 10x size increase in both our
+# dll and pdb (plus we avoid stressing private library isolation) by
+# not using it (i#714).
+set(DynamoRIO_USE_LIBC OFF)
+
 option(SYSCALL_DRIVER "use a kernel driver to identify system call writes")
 option(SYSCALL_DRIVER_SRCDIR "source dir of kernel driver")
 if (SYSCALL_DRIVER)
