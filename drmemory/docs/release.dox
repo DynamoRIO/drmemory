@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -69,6 +69,7 @@ The changes between \TOOL_VERSION and version 1.6.1a include:
    #umbra_shadow_memory_type_t rather than uint.
  - Clarified the #umbra_map_options_t flags field to be
    #umbra_map_flags_t rather than uint.
+ - Added static library versions of drsyscall and umbra
 
 The changes between version 1.6.1 and version 1.6.0 include:
  - Added Windows 8.1 support

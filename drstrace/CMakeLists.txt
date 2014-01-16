@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -41,10 +41,12 @@ set(DynamoRIO_RPATH ON)
 configure_DynamoRIO_client(drstracelib)
 
 # We could link with the internal static lib but it's a good exercise
-# to test the shared, public version:
-use_DynamoRIO_extension(drstracelib drmf_drsyscall) # drmf_ prefix b/c internal
-use_DynamoRIO_extension(drstracelib drmgr) # shared b/c using shared drsyscall
-use_DynamoRIO_extension(drstracelib drx)
+# to test the public version:
+# While we seem to need the drmf_ prefix here for shared drsyscall, for static
+# that doesn't work while this does -- go figure:
+use_DynamoRIO_extension(drstracelib drsyscall_static)
+use_DynamoRIO_extension(drstracelib drmgr_static)
+use_DynamoRIO_extension(drstracelib drx_static)
 add_dependencies(drstracelib drsyscall)
 
 install(TARGETS drstracelib

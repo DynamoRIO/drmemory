@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -21,16 +21,6 @@
 cmake_minimum_required(VERSION 2.6)
 
 set_output_dirs(${framework_bindir})
-
-# Since the license is LGPL, must be SHARED and not STATIC by default.
-# SHARED is also required if multiple separate components all want to
-# use this same extension.
-option(DR_EXT_DRSYSCALL_STATIC "create drsyscall as a static, not shared, library (N.B.: ensure the LGPL license implications are acceptable for your tool, as well as ensuring no separately-linked components of your tool also use drsyscall, before enabling as a static library)")
-if (DR_EXT_DRSYSCALL_STATIC)
-  set(libtype STATIC)
-else()
-  set(libtype SHARED)
-endif ()
 
 option(SYSCALL_DRIVER "use a kernel driver to identify system call writes")
 option(SYSCALL_DRIVER_SRCDIR "source dir of kernel driver")
@@ -59,30 +49,62 @@ else (UNIX)
   endif (SYSCALL_DRIVER)
 endif (UNIX)
 
+macro(configure_drsyscall_target target)
+  if (UNIX)
+    # Avoid relocations which tend to violate security policies
+    append_property_string(TARGET ${target} COMPILE_FLAGS "-fPIC")
+  endif (UNIX)
+  # We do not prevent duplicate builds of the same files as that would require
+  # building a static library that is then linked with drmf_utils.c to
+  # create a final static library, for DR_EXT_DRSYSCALL_STATIC: and that's
+  # a pain to export w/ the proper link rules.  But we at least use the
+  # same flags and avoid compiling the same file differently.
+  set_property(TARGET ${target} PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
+  target_link_libraries(${target} ${ntimp_lib})
+  if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
+    add_dependencies(${target} ntimp_tgt)
+  endif ()
+endmacro(configure_drsyscall_target)
+
+macro(export_drsyscall_target target drmgr)
+  # We need to clear the dependents that come from DR to avoid the prefix
+  # from affecting them too.
+  set_target_properties(${target} PROPERTIES LINK_INTERFACE_LIBRARIES "")
+  # We use a prefix primarily to make it easy to test the imported targets,
+  # and to give a better "bundled extensions" feel.
+  export_target(${target} NAMESPACE drmf_)
+  # Now put in our imports w/o the namespace on them
+  set_target_properties(${target} PROPERTIES
+    LINK_INTERFACE_LIBRARIES "dynamorio;${drmgr};drcontainers")
+  install(TARGETS ${target} EXPORT ${exported_targets_name}
+    DESTINATION ${DRMF_INSTALL_BIN})
+  # Top-level installs .debug and .pdb files
+endmacro(export_drsyscall_target)
+
 # For the exported version, we don't want to print to stderr or raise
 # msgboxes, so we link in globals to suppress notification in drmf_utils.c.
-add_library(drsyscall ${libtype} ${srcs} ../framework/drmf_utils.c)
+add_library(drsyscall SHARED ${srcs} ../framework/drmf_utils.c)
 # Set a preferred base to avoid conflict if we can
 set(PREFERRED_BASE 0x77000000)
 configure_DynamoRIO_client(drsyscall)
 use_DynamoRIO_extension(drsyscall drmgr)
 use_DynamoRIO_extension(drsyscall drcontainers)
-if (UNIX)
-  # Avoid relocations which tend to violate security policies
-  append_property_string(TARGET drsyscall COMPILE_FLAGS "-fPIC")
-endif (UNIX)
-set_target_properties(drsyscall PROPERTIES
-  VERSION ${DRMF_VERSION})
-# We do not prevent duplicate builds of the same files as that would require
-# building a static library that is then linked with drmf_utils.c to
-# create a final static library, for DR_EXT_DRSYSCALL_STATIC: and that's
-# a pain to export w/ the proper link rules.  But we at least use the
-# same flags and avoid compiling the same file differently.
-set_property(TARGET drsyscall PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-target_link_libraries(drsyscall ${ntimp_lib})
-if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  add_dependencies(drsyscall ntimp_tgt)
-endif ()
+set_target_properties(drsyscall PROPERTIES VERSION ${DRMF_VERSION})
+configure_drsyscall_target(drsyscall)
+export_drsyscall_target(drsyscall "drmgr")
+install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
+
+# Since the license is LGPL, SHARED and not STATIC by default.
+# SHARED is also required if multiple separate components all want to
+# use this same extension.
+# But, we also provide a static version with a different name for those
+# who want it, in the style of DR's side-by-side static extensions.
+add_library(drsyscall_static STATIC ${srcs} ../framework/drmf_utils.c)
+configure_DynamoRIO_client(drsyscall_static)
+use_DynamoRIO_extension(drsyscall_static drmgr_static)
+use_DynamoRIO_extension(drsyscall_static drcontainers)
+configure_drsyscall_target(drsyscall_static)
+export_drsyscall_target(drsyscall_static "drmgr_static")
 
 # We build a separate static target for internal use that has our
 # log/assert/notify infrastructure.
@@ -97,27 +119,6 @@ if (DEBUG_BUILD)
     use_DynamoRIO_extension(drsyscall_int drsyms)
   endif ()
 endif (DEBUG_BUILD)
-if (UNIX)
-  append_property_string(TARGET drsyscall_int COMPILE_FLAGS "-fPIC")
-endif (UNIX)
-set_property(TARGET drsyscall_int PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
-target_link_libraries(drsyscall_int ${ntimp_lib})
-if (NOT USER_SPECIFIED_DynamoRIO_DIR AND "${CMAKE_GENERATOR}" MATCHES "Visual Studio")
-  add_dependencies(drsyscall_int ntimp_tgt)
-endif ()
+configure_drsyscall_target(drsyscall_int)
 
 # Documentation is handled as part of the main tool docs processing.
-
-# We need to clear the dependents that come from DR to avoid the prefix
-# from affecting them too.
-set_target_properties(drsyscall PROPERTIES
-  LINK_INTERFACE_LIBRARIES "")
-# We use a prefix primarly to make it easy to test the imported targets,
-# and to give a better "bundled extensions" feel.
-export_target(drsyscall NAMESPACE drmf_)
-# Now put in our imports w/o the namespace on them
-set_target_properties(drsyscall PROPERTIES
-  LINK_INTERFACE_LIBRARIES "dynamorio;drmgr;drcontainers")
-install(TARGETS drsyscall EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL_BIN})
-install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
-# Top-level installs .debug and .pdb files
