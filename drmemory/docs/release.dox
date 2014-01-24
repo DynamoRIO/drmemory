@@ -63,6 +63,7 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
  - Changed Windows PDB symbols to collapse template parameters to "<>"
    to shrink and simplify callstacks and suppressions.  The old behavior
    can be requested by passing 0x1000 to the -callstack_style option.
+ - Changed Linux and MinGW symbols to omit the "()" in C++ symbol names.
  - Clarified the final parameter to umbra_get_shadow_memory_type() and
    umbra_shadow_memory_is_shared() to be #umbra_shadow_memory_type_t
    rather than uint.
