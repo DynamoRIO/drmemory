@@ -465,7 +465,10 @@ lookup_func_and_line(symbolized_frame_t *frame OUT,
     sym.file_size = BUFFER_SIZE_BYTES(file);
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     STATS_INC(symbol_address_lookups);
-    symres = drsym_lookup_address(modpath, modoffs, &sym, DRSYM_DEMANGLE);
+    symres = drsym_lookup_address(modpath, modoffs, &sym,
+                                  DRSYM_DEMANGLE |
+                                  (TEST(PRINT_EXPAND_TEMPLATES, ops.print_flags) ?
+                                   DRSYM_DEMANGLE_PDB_TEMPLATES : 0));
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         LOG(4, "symbol %s+"PIFX" => %s+"PIFX" ("PIFX"-"PIFX") kind="PIFX"\n",
             modpath, modoffs, sym.name, modoffs - sym.start_offs,
@@ -524,7 +527,9 @@ print_symbol(byte *addr, char *buf, size_t bufsz, size_t *sofar,
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     STATS_INC(symbol_address_lookups);
     symres = drsym_lookup_address(data->full_path, addr - data->start, &sym,
-                                  DRSYM_DEMANGLE);
+                                  DRSYM_DEMANGLE |
+                                  (TEST(PRINT_EXPAND_TEMPLATES, flags) ?
+                                   DRSYM_DEMANGLE_PDB_TEMPLATES : 0));
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (sym.name_available_size >= sym.name_size) {
             DO_ONCE({

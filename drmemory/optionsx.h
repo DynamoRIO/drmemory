@@ -210,7 +210,7 @@ OPTION_CLIENT(client, callstack_max_frames, uint, 12, 0, 4096,
               "How many call stack frames to record for each error report.  A larger maximum will ensure that no call stack is truncated, but can use more memory if many stacks are large, especially if -check_leaks is enabled.")
 #endif
 
-OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0xfff,
+OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0x1fff,
               "Set of flags that controls the callstack printing style",
               "Set of flags that controls the callstack printing style: @@<ul>"
               "<li>0x0001 = show frame numbers@@"
@@ -227,6 +227,7 @@ OPTION_CLIENT(client, callstack_style, uint, 0x0301, 0, 0xfff,
               " missing@@"
               "<li>0x0400 = print unique module id@@"
               "<li>0x0800 = show @&file(line):@& instead of @&file:line@&d@@"
+              "<li>0x1000 = expand template parameters (from @&<>@&) for PDB symbols@@"
               "</ul>@@")
               /* (when adding, update the max value as well!) */
 

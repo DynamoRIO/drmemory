@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -163,6 +163,7 @@ enum {
     PRINT_NOSYMS_OFFSETS       = 0x0200,
     PRINT_MODULE_ID            = 0x0400,
     PRINT_VSTUDIO_FILE_LINE    = 0x0800,
+    PRINT_EXPAND_TEMPLATES     = 0x1000, /* PDB only */
 
     PRINT_FOR_VSTUDIO          = (PRINT_SRCFILE_NEWLINE | PRINT_VSTUDIO_FILE_LINE),
 

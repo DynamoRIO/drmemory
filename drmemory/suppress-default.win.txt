@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -33,11 +33,11 @@ ADVAPI32.dll!*
 ADVAPI32.dll!SystemFunction036
 
 ##################################################
-# i#257: real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init
+# i#257: real leak in VS2008 STL std::numpunct<>::_Init
 
 LEAK
-name=default i#257 (real leak in VS2008 STL std::numpunct<{char,wchar_t}>::_Init)
-# this frame can be inlined: *!std::_Maklocstr<char>
+name=default i#257 (real leak in VS2008 STL std::numpunct<>::_Init)
+# this frame can be inlined: *!std::_Maklocstr<>
 ...
 *!std::numpunct<*>::_Init
 
@@ -717,8 +717,8 @@ USER32.dll!*
 
 UNINITIALIZED READ
 name=default i#1155 VS2012 istream
-MSVCP110*.dll!std::_Find_elem<char>
-MSVCP110*.dll!std::num_get<char,std::istreambuf_iterator<char,std::char_traits<char> > >::_Getifld
+MSVCP110*.dll!std::_Find_elem<*>
+MSVCP110*.dll!std::num_get<*>::_Getifld
 
 ##################################################
 # i#960: real mismatches in CRT when we don't have syms and thus can't see
@@ -738,7 +738,7 @@ MSVCR*.dll!*
 
 INVALID HEAP ARGUMENT
 name=default i#1240 CRT mismatch A
-*!Concurrency::details::Hash<*
+*!Concurrency::details::Hash<*>::*
 
 # Hash destructor is inlined into another class
 INVALID HEAP ARGUMENT
