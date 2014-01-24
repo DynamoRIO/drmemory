@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -242,8 +242,8 @@ gdicheck_dc_free(HDC hdc, bool create, drsys_sysnum_t sysnum, dr_mcontext_t *mc)
     if (TEST(GDI_DC_ALLOC_GET, pdc->flags) &&
         pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
         gdicheck_report(NULL, sysnum, mc, pdc, REPORT_PREFIX
-                        "ReleaseDC for DC "PFX" called from different thread %d "
-                        "than the%s thread %d that called GetDC", hdc,
+                        "ReleaseDC for DC "PFX" called from different thread "TIDFMT" "
+                        "than the%s thread "TIDFMT" that called GetDC", hdc,
                         dr_get_thread_id(dr_get_current_drcontext()),
                         pdc->exited ? " now-exited" : "", pdc->thread);
     }
@@ -336,7 +336,8 @@ gdicheck_dc_select_obj(HDC hdc, HGDIOBJ prior_obj, HGDIOBJ new_obj,
                  !pdc->exited &&
                  pdc->thread != dr_get_thread_id(dr_get_current_drcontext())) {
             gdicheck_report(addr, sysnum, mc, pdc, REPORT_PREFIX
-                            "DC created by one thread %d and used by another %d",
+                            "DC created by one thread "TIDFMT" and used by another "
+                            TIDFMT,
                             pdc->thread, dr_get_thread_id(dr_get_current_drcontext()));
         }
         if (prior_obj == NULL || prior_obj == HGDI_ERROR) {

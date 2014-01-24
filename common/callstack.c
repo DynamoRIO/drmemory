@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -401,12 +401,13 @@ callstack_thread_init(void *drcontext)
         mc.flags = DR_MC_CONTROL; /* only need xsp */
         dr_get_mcontext(drcontext, &mc);
         if (dr_query_memory((app_pc)mc.xsp, &stack_base, &stack_size, NULL)) {
-            LOG(2, "lowest frame for thread %d = top of stack "PFX"-"PFX", sp="PFX"\n",
+            LOG(2, "lowest frame for thread "TIDFMT" = top of stack "PFX"-"PFX
+                ", sp="PFX"\n",
                 dr_get_thread_id(drcontext), stack_base, stack_base + stack_size, mc.xsp);
             pt->stack_lowest_frame = stack_base + stack_size;
         } else {
-            LOG(2, "unable to query stack: leaving lowest frame for thread %d NULL\n",
-                dr_get_thread_id(drcontext));
+            LOG(2, "unable to query stack: leaving lowest frame for thread "TIDFMT
+                " NULL\n", dr_get_thread_id(drcontext));
         }
     }
 #endif

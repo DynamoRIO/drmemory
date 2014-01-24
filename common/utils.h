@@ -341,7 +341,7 @@ extern int tls_idx_util;
 #ifdef DEBUG
 # define ASSERT(x, msg) do { \
     if (!(x)) { \
-        NOTIFY_ERROR("ASSERT FAILURE (thread %d): %s:%d: %s (%s)",  \
+        NOTIFY_ERROR("ASSERT FAILURE (thread "TIDFMT"): %s:%d: %s (%s)",  \
                      (dr_get_current_drcontext() == NULL ? 0 :      \
                       dr_get_thread_id(dr_get_current_drcontext())),\
                      __FILE__,  __LINE__, #x, msg); \

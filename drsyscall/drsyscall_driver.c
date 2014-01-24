@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -118,7 +118,7 @@ driver_thread_init(void *drcontext)
         DO_ONCE({ WARN("WARNING: failed to register w/ syscall driver: "PFX"\n", res); });
         LOG(1, "Failed to register w/ syscall driver: "PFX"\n", res);
     } else {
-        LOG(1, "Syscall driver reg for thread %d succeeded: buffer "PFX"-"PFX"\n",
+        LOG(1, "Syscall driver reg for thread "TIDFMT" succeeded: buffer "PFX"-"PFX"\n",
             dr_get_thread_id(drcontext), pt->driver_buffer,
             (byte*)pt->driver_buffer + registration.buffer_size);
         ASSERT(iob.Information == 0, "we didn't ask for prior reg");

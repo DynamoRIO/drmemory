@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -510,7 +510,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
         dr_log(drcontext, LOG_ALL, 1,
-               "DrMemory: log for thread %d is %s\n",
+               "DrMemory: log for thread "TIDFMT" is %s\n",
                dr_get_thread_id(drcontext), logname);
         NOTIFY("thread logfile is %s"NL, logname);
     }
@@ -611,7 +611,8 @@ event_thread_init(void *drcontext)
             void **drcontexts = NULL;
             uint num_threads, i;
             go_native = false;
-            NOTIFY("thread %d suspending all threads" NL, dr_get_thread_id(drcontext));
+            NOTIFY("thread "TIDFMT" suspending all threads" NL,
+                   dr_get_thread_id(drcontext));
             if (dr_suspend_all_other_threads_ex(&drcontexts, &num_threads, NULL,
                                                 DR_SUSPEND_NATIVE)) {
                 NOTIFY("suspended %d threads" NL, num_threads);

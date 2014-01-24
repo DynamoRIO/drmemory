@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1183,7 +1183,7 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
         app_pc stack_base;
         size_t stack_size;
         if (dr_query_memory((app_pc)mc->xsp, &stack_base, &stack_size, NULL)) {
-            LOG(2, "thread %d stack is "PFX"-"PFX", sp="PFX"\n",
+            LOG(2, "thread "TIDFMT" stack is "PFX"-"PFX", sp="PFX"\n",
                 dr_get_thread_id(drcontext), stack_base,
                 stack_base + stack_size, mc->xsp);
             /* store the region beyond TOS */
@@ -1195,7 +1195,8 @@ check_reachability_regs(void *drcontext, dr_mcontext_t *mc, reachability_data_t 
     for (reg = REG_START_32; reg <= REG_EDI/*STOP_32 is R15D!*/; reg++) {
         if (!op_have_defined_info || cb_is_register_defined(drcontext, reg)) {
             reg_t val = reg_get_value(reg, mc);
-            LOG(4, "thread %d reg %d: "PFX"\n", dr_get_thread_id(drcontext), reg, val);
+            LOG(4, "thread "TIDFMT" reg %d: "PFX"\n", dr_get_thread_id(drcontext),
+                reg, val);
             check_reachability_pointer((byte *)val, (byte *)(ptr_uint_t)reg/*diagnostic*/,
                                        NULL, data);
         }
@@ -1278,14 +1279,14 @@ prepare_thread_for_scan(void *drcontext, bool *was_app_state OUT)
 {
     ASSERT(was_app_state != NULL, "invalid param");
     *was_app_state = dr_using_app_state(drcontext);
-    LOG(2, "%s: thread %d was %s state\n", __FUNCTION__,
+    LOG(2, "%s: thread "TIDFMT" was %s state\n", __FUNCTION__,
         dr_get_thread_id(drcontext), *was_app_state ? "app" : "priv");
     /* Restore app's PEB and TEB fields (i#248) */
     if (!*was_app_state)
         dr_switch_to_app_state(drcontext);
 
 #if defined(TOOL_DR_MEMORY) && defined(WINDOWS)
-    LOG(3, "prepare_thread_for_scan: thread %d has TLS "PFX"\n",
+    LOG(3, "prepare_thread_for_scan: thread "TIDFMT" has TLS "PFX"\n",
         dr_get_thread_id(drcontext), drmgr_get_tls_field(drcontext, tls_idx_drmem));
     if (drmgr_get_tls_field(drcontext, tls_idx_drmem) == NULL && op_have_defined_info) {
         /* We received the exit event for this thread and marked its
@@ -1408,11 +1409,13 @@ leak_scan_for_leaks(bool at_exit)
     if (!at_exit || !op_have_defined_info) {
         /* Walk the thread's registers.  We rely on mcontext field ordering here. */
         for (i = 0; i < num_threads; i++) {
-            LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(drcontexts[i]));
+            LOG(3, "\nwalking registers of thread "TIDFMT"\n",
+                dr_get_thread_id(drcontexts[i]));
             dr_get_mcontext(drcontexts[i], &mc);
             check_reachability_regs(drcontexts[i], &mc, &data);
         }
-        LOG(3, "\nwalking registers of thread %d\n", dr_get_thread_id(my_drcontext));
+        LOG(3, "\nwalking registers of thread "TIDFMT"\n",
+            dr_get_thread_id(my_drcontext));
         dr_get_mcontext(my_drcontext, &mc);
         check_reachability_regs(my_drcontext, &mc, &data);
     }

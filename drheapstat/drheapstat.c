@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1548,7 +1548,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     if (which_thread > 0) {
         void *drcontext = dr_get_current_drcontext();
         dr_log(drcontext, LOG_ALL, 1,
-               "DrMemory: log for thread %d is %s\n",
+               "DrMemory: log for thread "TIDFMT" is %s\n",
                dr_get_thread_id(drcontext), logname);
         NOTIFY("thread logfile is %s"NL, logname);
     }
@@ -1750,7 +1750,7 @@ sideline_run(void *arg)
         timer_stale = options.stale_granularity;
     reset_clock_timer();
     ASSERT(options.time_clock || options.staleness, "thread should not be running");
-    LOG(1, "sideline thread %d running\n", dr_get_thread_id(drcontext));
+    LOG(1, "sideline thread "TIDFMT" running\n", dr_get_thread_id(drcontext));
     while (!sideline_exit) {
 #ifdef WINDOWS
         dr_sleep(timer_real);

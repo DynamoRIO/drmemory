@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -1939,7 +1939,7 @@ print_timestamp_and_thread(char *buf, size_t bufsz, size_t *sofar, bool error)
     thread_id_t tid = dr_get_thread_id(dr_get_current_drcontext());
     BUFPRINT(buf, bufsz, *sofar, len, "@");
     print_timestamp_elapsed(buf, bufsz, sofar);
-    BUFPRINT(buf, bufsz, *sofar, len, " in thread %d"NL, tid);
+    BUFPRINT(buf, bufsz, *sofar, len, " in thread "TIDFMT""NL, tid);
     if (error && options.show_threads && !options.show_all_threads)
         report_delayed_thread(tid);
 }
@@ -3321,8 +3321,8 @@ report_child_thread(void *drcontext, thread_id_t child)
 
         if (options.show_all_threads) {
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len,
-                     "\nNEW THREAD: child thread %d created by parent thread %d @",
-                     child, dr_get_thread_id(drcontext));
+                     "\nNEW THREAD: child thread "TIDFMT" created by parent thread "
+                     TIDFMT" @", child, dr_get_thread_id(drcontext));
             print_timestamp_and_thread(pt->errbuf, pt->errbufsz, &sofar, false);
             BUFPRINT(pt->errbuf, pt->errbufsz, sofar, len, "\n");
             print_callstack(pt->errbuf, pt->errbufsz, &sofar, &mc, false/*no fps*/,
@@ -3377,5 +3377,5 @@ report_delayed_thread(thread_id_t tid)
 static void
 report_main_thread(void)
 {
-    ELOG(0, "\nNEW THREAD: main thread %d\n\n", main_thread);
+    ELOG(0, "\nNEW THREAD: main thread "TIDFMT"\n\n", main_thread);
 }
