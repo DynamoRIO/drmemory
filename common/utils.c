@@ -290,7 +290,9 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         /* i#1050: use drsym_search_symbols_ex to handle cases
          * where two functions share the same address.
          */
-        symres = drsym_search_symbols_ex(mod->full_path, sym_with_mod, full,
+        symres = drsym_search_symbols_ex(mod->full_path, sym_with_mod,
+                                         (full ? DRSYM_FULL_SEARCH : 0) |
+                                         DRSYM_DEFAULT_FLAGS,
                                          callback == NULL ? search_syms_cb : callback,
                                          sizeof(drsym_info_t),
                                          callback == NULL ? &modoffs : data);

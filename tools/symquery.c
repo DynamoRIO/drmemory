@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -83,6 +83,9 @@ Optional parameters:\n\
 
 static bool show_func;
 static bool verbose;
+
+/* We could expose the templates via an option */
+static uint demangle_flags = (DRSYM_DEMANGLE | DRSYM_DEMANGLE_PDB_TEMPLATES);
 
 int
 main(int argc, char *argv[])
@@ -259,7 +262,7 @@ lookup_address(const char *dllpath, size_t modoffs)
     sym.name_size = MAX_FUNC_LEN;
     sym.file = file;
     sym.file_size = MAXIMUM_PATH;
-    symres = drsym_lookup_address(dllpath, modoffs, &sym, DRSYM_DEMANGLE);
+    symres = drsym_lookup_address(dllpath, modoffs, &sym, demangle_flags);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (verbose)
             print_debug_kind(sym.debug_kind);
@@ -289,7 +292,7 @@ lookup_symbol(const char *dllpath, const char *sym)
     drsym_error_t symres;
     if (verbose)
         get_and_print_debug_kind(dllpath);
-    symres = drsym_lookup_symbol(dllpath, sym, &modoffs, DRSYM_DEMANGLE);
+    symres = drsym_lookup_symbol(dllpath, sym, &modoffs, demangle_flags);
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         printf("+0x%x\n", (uint)modoffs);
     } else {
@@ -318,12 +321,14 @@ enumerate_symbols(const char *dllpath, const char *match, bool search, bool sear
         get_and_print_debug_kind(dllpath);
 #ifdef WINDOWS
     if (search)
-        symres = drsym_search_symbols_ex(dllpath, match, searchall, search_cb,
-                                         sizeof(drsym_info_t), NULL);
+        symres = drsym_search_symbols_ex(dllpath, match,
+                                         (searchall ? DRSYM_FULL_SEARCH : 0) |
+                                         demangle_flags,
+                                         search_cb, sizeof(drsym_info_t), NULL);
     else {
 #endif
         symres = drsym_enumerate_symbols_ex(dllpath, search_cb, sizeof(drsym_info_t),
-                                            (void *)match, DRSYM_DEMANGLE);
+                                            (void *)match, demangle_flags);
 #ifdef WINDOWS
     }
 #endif
