@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -132,6 +132,10 @@ print_usage(void)
     fprintf(stderr, "                will be written, in a separate file per process.\n");
     fprintf(stderr, "                If set to \"-\" (the default value), data for\n");
     fprintf(stderr, "                all processes are printed to stderr.\n");
+    fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
+    fprintf(stderr, "                the default, which is to trace all children).\n");
+    fprintf(stderr, "-version        Print version number.n");
+    fprintf(stderr, "-verbose <N>    Increase verbosity (default 0).\n");
 }
 
 #define usage(msg, ...) do {                                    \

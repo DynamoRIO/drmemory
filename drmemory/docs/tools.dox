@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -78,6 +78,31 @@ NtClose
     succeeded =>
         retval: 0x0 (type=NTSTATUS, size=0x4)
 \endcode
+
+\section Child Processes
+
+By default, \p drstrace traces all child processes.  The runtime option \p
+-no_follow_children overrides this and only traces the parent process.
+
+\section Limitations
+
+\subsection Window of Tracing
+
+Currently, \p drstrace starts logging only at the start of the executable's
+entry point.  Thus, system calls executed by the initialization code in
+statically imported shared libraries will not be seen.  However, the
+logging for child processes when the parent is under the control of
+\p drstrace starts earlier, during shared library initialization.  Future
+versions will provide earlier start for the initial process.
+
+\subsection Windows XP and 2000 Console Output
+
+On Windows XP and Windows 2000, when \p drstrace is run from the \p cmd
+console and its output is not sent to a file, the printed output stops
+prior to the final system call.  This is due to \p drstrace tracing past
+where the application's console state in \p csrss is cleaned up,
+preventing any further writes to the console by that process.  Use a file
+if complete output is required.
 
 ****************************************************************************
 */
