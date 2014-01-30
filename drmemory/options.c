@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -518,6 +518,9 @@ options_init(const char *opstr)
 # endif
     if (!options.callstack_use_fp)
         options.callstack_use_top_fp = false;
+    if (options.persist_code && !persistence_supported())
+        usage_error("currently -persist_code only supports -light or "
+                    "-no_check_uninitialized", "");
 #endif /* TOOL_DR_MEMORY */
     if (options.native_until_thread > 0 || options.native_parent) {
         go_native = true;

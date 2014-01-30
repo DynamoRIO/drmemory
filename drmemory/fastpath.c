@@ -1122,6 +1122,8 @@ slow_path_xl8_sharing(app_loc_t *loc, size_t inst_sz, opnd_t memop, dr_mcontext_
              * a loop we'll repeatedly flush => performance problem!
              * So we go w/ dr_unlink_flush_region(): should be ok since
              * we'll never want -coarse_units.
+             * XXX i#1426: actually we do have -coarse_units with -persist_code!
+             * To support full mode persistence we'll have to change this flush!
              */
 
             /* Flushing can be expensive so we disable sharing
