@@ -1394,7 +1394,11 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
  * approach here seems simpler and not much slower.
  *
  * XXX: this doesn't match gcc's "fld;mov;fstp" code b/c we have no way to skip
- * the non-immediately-subsequent fstp -- we'll wait for full i#471 to handle that.
+ * the non-immediately-subsequent fstp when the intervening instr determines
+ * the fstp mem addr -- we'll wait for full i#471 to handle that.
+ *   dd 40 04        fld    0x04(%eax) -> %st0
+ *   8b 45 08        mov    0x08(%ebp) -> %eax
+ *   dd 58 04        fstp   %st0 -> 0x04(%eax)
  */
 static bool
 check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *idx)
@@ -1405,6 +1409,7 @@ check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *
     opnd_t fstp_mem;
     byte *store;
     instr_t inst;
+    instr_t *inbetween = NULL;
     umbra_shadow_memory_info_t info;
 
     /* Handle subsequent calls from handle_mem_ref() (one per byte).
@@ -1428,22 +1433,54 @@ check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *
         return false;
     }
     instr_reset(drcontext, &inst);
-    if (!safe_decode(drcontext, pc, &inst, NULL))
+    if (!safe_decode(drcontext, pc, &inst, &pc))
         return false;
     if (instr_get_opcode(&inst) != OP_fstp) {
-        instr_free(drcontext, &inst);
-        return false;
+        /* We do support one non-mem instr in between, as we see this pattern
+         * in Chromium Release build:
+         *   d94724          fld     dword ptr [edi+24h]
+         *   33d2            xor     edx,edx
+         *   d95e24          fstp    dword ptr [esi+24h]
+         */
+        if (instr_compute_address(&inst, mc) != NULL) {
+            /* We could check for overlap but it doesn't seem worth it */
+            instr_free(drcontext, &inst);
+            return false;
+        }
+        /* Save instr to check whether it affects fstp's address */
+        inbetween = instr_clone(drcontext, &inst);
+        instr_reset(drcontext, &inst);
+        if (!safe_decode(drcontext, pc, &inst, &pc)) {
+            instr_destroy(drcontext, inbetween);
+            return false;
+        }
+        if (instr_get_opcode(&inst) != OP_fstp) {
+            instr_destroy(drcontext, inbetween);
+            instr_free(drcontext, &inst);
+            return false;
+        }
     }
     fstp_mem = instr_get_dst(&inst, 0);
     ASSERT(opnd_is_memory_reference(fstp_mem), "fstp must write to mem");
+    instr_free(drcontext, &inst);
+    if (inbetween != NULL) {
+        /* Bail if in-between instr writes to any reg used to construct fstp address */
+        int i, num = opnd_num_regs_used(fstp_mem);
+        for (i = 0; i < num; i++) {
+            if (instr_writes_to_reg(inbetween, opnd_get_reg_used(fstp_mem, i))) {
+                instr_destroy(drcontext, inbetween);
+                return false;
+            }
+        }
+        instr_destroy(drcontext, inbetween);
+        inbetween = NULL;
+    }
     store = opnd_compute_address(fstp_mem, mc);
     if (store == NULL ||
         /* overlap is ok, but we require the same size */
         opnd_size_in_bytes(opnd_get_size(fstp_mem)) != sz) {
-        instr_free(drcontext, &inst);
         return false;
     }
-    instr_free(drcontext, &inst);
     LOG(3, "matched fld;fstp pattern @"PFX"\n", loc_to_pc(loc));
     /* Now disable the fstp instru fastpath by marking the dest mem as bitlevel.
      * We'll propagate the shadow values in the fstp slowpath.

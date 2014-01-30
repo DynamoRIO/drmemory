@@ -48,7 +48,7 @@ TEST(FloatTests, CopyConstructor) {
 #ifdef WIN32
     /* Same thing but with a double.  This is the only one that shows up
      * on Linux for me.  However, the current heuristic only matches
-     * "fld;fstp", while gcc has a mov in between, so we make this Linux-only
+     * "fld;fstp", while gcc has a mov in between, so we make this Windows-only
      * until we have full i#471 fp reg shadowing and propagation.
      */
     struct hasdouble {
