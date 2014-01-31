@@ -721,7 +721,8 @@ MSVCP110*.dll!std::_Find_elem<*>
 MSVCP110*.dll!std::num_get<*>::_Getifld
 
 ##################################################
-# i#960: real mismatches in CRT when we don't have syms and thus can't see
+# i#960: real mismatches of Windows API layer vs C layer in CRT when we
+# don't have syms and thus can't see
 # internal alloc routines.  We don't need to suppress in static CRT b/c w/o
 # syms we won't see the libc layer at all.
 # For -replace_malloc, the app calling libc won't have MSVCR*.dll at the
@@ -730,6 +731,13 @@ MSVCP110*.dll!std::num_get<*>::_Getifld
 INVALID HEAP ARGUMENT
 name=default i#960 CRT mismatch
 MSVCR*.dll!*
+
+# Variant seen in i#1431
+INVALID HEAP ARGUMENT
+name=default i#960 CRT mismatch B
+MSVCP*.dll!*
+...
+MSVCR*.dll!exit
 
 ##################################################
 # i#1240: real mismatches in VS2010 CRT

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -360,7 +360,7 @@ static bool aborting;
 
 /* Indicates whether process initialization is fully complete, including
  * iteration of modules.  Thus, we don't set this until we get the
- * first thread init event.
+ * first bb event.
  */
 static bool process_initialized;
 
@@ -3858,13 +3858,18 @@ malloc_replace__unlock(void)
 #endif
 }
 
-static void
-alloc_replace_thread_init(void *drcontext)
+static dr_emit_flags_t
+bb_event(void *drcontext, void *tag, instrlist_t *bb,
+         bool for_trace, bool translating)
 {
-    if (!process_initialized) {
-        /* process and pre-existing modules are all initialized */
-        process_initialized = true;
-    }
+    /* process and pre-existing modules are all initialized */
+    process_initialized = true;
+
+    /* reduce overhead by removing this event now */
+    if (!drmgr_unregister_bb_app2app_event(bb_event))
+        ASSERT(false, "drmgr unregistration failed");
+
+    return DR_EMIT_DEFAULT;
 }
 
 void
@@ -3874,7 +3879,8 @@ alloc_replace_init(void)
     module_data_t *exe;
 #endif
 
-    drmgr_register_thread_init_event(alloc_replace_thread_init);
+    if (!drmgr_register_bb_app2app_event(bb_event, NULL))
+        ASSERT(false, "drmgr registration failed");
 
     if (alloc_ops.shared_redzones) {
         header_size = sizeof(chunk_header_t);
