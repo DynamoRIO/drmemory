@@ -515,6 +515,24 @@ get_full_path(const char *app, char *buf, size_t buflen/*# elements*/)
     tchar_to_char(wbuf, buf, buflen);
 }
 
+static bool
+create_dir_if_necessary(const char *dir)
+{
+    /* Using dr_ API here since available and perhaps we'll want this
+     * same frontend on linux someday.
+     */
+    if (!dr_directory_exists(dir)) {
+        if (!dr_create_dir(dir)) {
+            /* check again in case of a race */
+            if (!dr_directory_exists(dir)) {
+                fatal("cannot create %s", dir);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* i#200/PR 459481: communicate child pid via file */
 static void
 write_pid_to_file(const char *pidfile, process_id_t pid)
@@ -549,7 +567,7 @@ write_pid_to_file(const char *pidfile, process_id_t pid)
  * the app.
  */
 static void
-set_symbol_search_path(const char *logdir, bool ignore_env)
+set_symbol_search_path(const char *symdir, bool ignore_env)
 {
     char app_symsrv_path[MAX_SYMSRV_PATH];
     TCHAR wapp_symsrv_path[MAX_SYMSRV_PATH];
@@ -562,14 +580,14 @@ set_symbol_search_path(const char *logdir, bool ignore_env)
     bool has_ms_symsrv;
 
     /* If the user set a non-empty _NT_SYMBOL_PATH, then we use that.
-     * Otherwise, we set it to logs/symbols and make sure it exists.
+     * Otherwise, we set it to logs/symcache/symbols and make sure it exists.
      */
     if (ignore_env ||
         get_env_var(_T("_NT_SYMBOL_PATH"), symsrv_path,
                     BUFFER_SIZE_ELEMENTS(symsrv_path)) == 0 ||
         strlen(symsrv_path) == 0) {
         char pdb_dir[MAXIMUM_PATH];
-        _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", logdir);
+        _snprintf(pdb_dir, BUFFER_SIZE_ELEMENTS(pdb_dir), "%s/symbols", symdir);
         NULL_TERMINATE_BUFFER(pdb_dir);
         string_replace_character(pdb_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
         dr_create_dir(pdb_dir);
@@ -619,7 +637,7 @@ set_symbol_search_path(const char *logdir, bool ignore_env)
         if (!ignore_env) {
             warn("_NT_SYMBOL_PATH incorrect: using local location instead");
             /* Easiest to recurse.  Bool prevents 2nd recursion. */
-            set_symbol_search_path(logdir, true);
+            set_symbol_search_path(symdir, true);
             return;
         } else {
             warn("error parsing _NT_SYMBOL_PATH: may fail to fetch symbols");
@@ -734,7 +752,7 @@ should_fetch_symbols(const TCHAR *system_root, char *modpath)
 }
 
 static void
-fetch_missing_symbols(const char *logdir, const TCHAR *resfile)
+fetch_missing_symbols(const char *symdir, const TCHAR *resfile)
 {
     TCHAR missing_symbols[MAXIMUM_PATH];
     char line[MAXIMUM_PATH];
@@ -827,7 +845,8 @@ stream_cleanup:
  * but we live with it since extremely unlikely.
  */
 static void
-process_results_file(const char *logdir, process_id_t pid, const char *app)
+process_results_file(const char *logdir, const char *symdir,
+                     process_id_t pid, const char *app)
 {
     HANDLE f;
     TCHAR fname[MAXIMUM_PATH];
@@ -933,7 +952,7 @@ process_results_file(const char *logdir, process_id_t pid, const char *app)
     /* We provide an option to allow the user to turn this feature off. */
     if (fetch_symbols || fetch_crt_syms_only) {
         info("fetching symbols");
-        fetch_missing_symbols(logdir, wresfile);
+        fetch_missing_symbols(symdir, wresfile);
     } else {
         info("skipping symbol fetching");
     }
@@ -963,6 +982,7 @@ _tmain(int argc, TCHAR *targv[])
     char suppress[MAXIMUM_PATH];
     char scratch[MAXIMUM_PATH];
     char persist_dir[MAXIMUM_PATH];
+    char symdir[MAXIMUM_PATH];
 
     bool use_dr_debug = false;
     bool use_drmem_debug = false;
@@ -976,7 +996,7 @@ _tmain(int argc, TCHAR *targv[])
     char **app_argv;
 
     int errcode;
-    void *inject_data;
+    void *inject_data = NULL;
     int i;
     char *c;
     char buf[MAXIMUM_PATH];
@@ -1100,6 +1120,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     persist_dir[0] = '\0';
+    symdir[0] = '\0';
 
     /* parse command line */
     /* FIXME PR 487993: use optionsx.h to construct this parsing code */
@@ -1278,16 +1299,9 @@ _tmain(int argc, TCHAR *targv[])
             if (i >= argc - 1)
                 usage("invalid arguments");
             /* make absolute */
-            get_absolute_path(argv[++i], scratch, BUFFER_SIZE_ELEMENTS(scratch));
-            NULL_TERMINATE_BUFFER(scratch);
-            if (!file_is_writable(scratch)) {
-                fatal("invalid -symcache_dir: cannot find/write %s", scratch);
-                goto error; /* actually won't get here */
-            }
-            info("symcache_dir is \"%s\"", scratch);
-            /* also parsed by the client */
-            BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
-                     cliops_sofar, len, "-symcache_dir `%s` ", scratch);
+            get_absolute_path(argv[++i], symdir, BUFFER_SIZE_ELEMENTS(symdir));
+            NULL_TERMINATE_BUFFER(symdir);
+            /* further processed below */
         }
         else if (strcmp(argv[i], "-persist_code") == 0) {
             BUFPRINT(dr_ops, BUFFER_SIZE_ELEMENTS(dr_ops),
@@ -1474,25 +1488,29 @@ _tmain(int argc, TCHAR *targv[])
                  drops_sofar, len, "-logdir `%s` ", scratch);
     }
 
+    if (symdir[0] == '\0') { /* not set by user */
+        _snprintf(symdir, BUFFER_SIZE_ELEMENTS(symdir), "%s%csymcache", logdir, DIRSEP);
+        NULL_TERMINATE_BUFFER(symdir);
+        if (!create_dir_if_necessary(symdir))
+            goto error; /* actually won't get here */
+    }
+    if (!file_is_writable(symdir)) {
+        fatal("invalid -symcache_dir: cannot find/write %s", symdir);
+        goto error; /* actually won't get here */
+    }
+    info("symcache_dir is \"%s\"", symdir);
+    /* also parsed by the client */
+    BUFPRINT(client_ops, BUFFER_SIZE_ELEMENTS(client_ops),
+             cliops_sofar, len, "-symcache_dir `%s` ", symdir);
+
     if (persisting) {
         /* default -persist_dir is not DR's default so we have to set it */
         if (persist_dir[0] == '\0') { /* not set by user */
             _snprintf(persist_dir, BUFFER_SIZE_ELEMENTS(persist_dir),
                       "%s%ccodecache", logdir, DIRSEP);
             NULL_TERMINATE_BUFFER(persist_dir);
-            /* create it if not specified by user.
-             * using dr_ API here since available and perhaps we'll want this
-             * same frontend on linux someday.
-             */
-            if (!dr_directory_exists(persist_dir)) {
-                if (!dr_create_dir(persist_dir)) {
-                    /* check again in case of a race */
-                    if (!dr_directory_exists(persist_dir)) {
-                        fatal("cannot create %s", persist_dir);
-                        goto error; /* actually won't get here */
-                    }
-                }
-            }
+            if (!create_dir_if_necessary(persist_dir))
+                goto error; /* actually won't get here */
         }
         string_replace_character(persist_dir, ALT_DIRSEP, DIRSEP); /* canonicalize */
         if (!file_is_writable(persist_dir)) {
@@ -1521,7 +1539,7 @@ _tmain(int argc, TCHAR *targv[])
     }
 
     /* Set _NT_SYMBOL_PATH for the app. */
-    set_symbol_search_path(logdir, false);
+    set_symbol_search_path(symdir, false);
 
     errcode = dr_inject_process_create(app_name, app_argv, &inject_data);
     if (errcode != 0) {
@@ -1620,10 +1638,11 @@ _tmain(int argc, TCHAR *targv[])
             warn("failed to unregister child processes");
     }
     errcode = dr_inject_process_exit(inject_data, false/*don't kill process*/);
-    process_results_file(logdir, pid, app_name);
+    process_results_file(logdir, symdir, pid, app_name);
     goto cleanup;
  error:
-    dr_inject_process_exit(inject_data, false);
+    if (inject_data != NULL)
+        dr_inject_process_exit(inject_data, false);
     errcode = 1;
  cleanup:
 #ifdef _UNICODE

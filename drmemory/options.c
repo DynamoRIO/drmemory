@@ -281,6 +281,7 @@ options_init(const char *opstr)
         /* XXX: dynamically allocating option space would save some space;
          * could then just point at logdir: though we now put the "/symcache"
          * here instead of in symcache_init().
+         * Update: we now always set this in the front-end on Windows.
          */
         dr_snprintf(options.symcache_dir, BUFFER_SIZE_ELEMENTS(options.symcache_dir),
                     "%s/symcache", options.logdir);
