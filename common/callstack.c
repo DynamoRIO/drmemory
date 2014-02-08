@@ -53,6 +53,7 @@ static callstack_options_t ops;
 uint find_next_fp_scans;
 uint find_next_fp_cache_hits;
 uint find_next_fp_strings;
+uint find_next_fp_string_structs;
 uint symbol_names_truncated;
 uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
@@ -896,6 +897,49 @@ print_address(char *buf, size_t bufsz, size_t *sofar,
                                 for_log, NULL, 0);
 }
 
+#ifndef X64
+/* Walks a wide character string.  Stops if it encounters any (widened) non-ascii
+ * component, or a null wchar.
+ * Reads from start, presumed to be in a safe buffer copy of orig, up to
+ * a max of safe_wchars, at which point it goes and reads from the original
+ * memory (orig + safe_wchars), up to a total max of max_wchars.
+ * Returns 0 if no proper wide string was found; else returns the length
+ * of the null-terminated wide string it found.
+ */
+static size_t
+walk_wide_string(wchar_t *start, size_t safe_wchars,
+                 wchar_t *orig, size_t max_wchars)
+{
+    size_t len = 0;
+    wchar_t *s = start;
+    while (s - start < safe_wchars && IS_WCHAR_AT(s)) {
+        len++;
+        s++;
+    }
+    if (s - start < safe_wchars) {
+        if (*s == L'\0') /* terminating null */
+            return len;
+        else
+            return 0;
+    } else {
+        /* don't let the safe-read buffer limit prevent us identifying a wide string */
+        s = orig + (s - start);
+        DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+            while (s - orig < max_wchars && IS_WCHAR_AT(s)) {
+                len++;
+                s++;
+            }
+            if (s - orig >= max_wchars || *s != L'\0')
+                len = 0;
+        }, { /* EXCEPT */
+            len = 0;
+        });
+        return len;
+    }
+    return 0;
+}
+#endif
+
 #define OP_CALL_DIR 0xe8
 #define OP_CALL_IND 0xff
 #define OP_JMP_IND 0xff
@@ -1179,22 +1223,43 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
                 if (is_retaddr(slot1, true/*i#1217*/)) {
                     match = true;
 #ifndef X64
+                    /* Check for wide strings or *_STRING structures (i#1331, i#1271).
+                     * XXX: these are quite difficult to construct authentic tests
+                     * for so unfortunately we do not have automated tests and have
+                     * tested only by running Chromium unit_tests.
+                     */
                     if (conseq_wchar > 0) {
                         /* i#1331: rule out wide strings that have
                          * address-look-alike sequences in the middle.
                          */
 #                       define STACK_WIDE_STRING_MIN_LEN 16
+#                       define STACK_WIDE_STRING_MAX_READ 512
                         wchar_t *str = (wchar_t*) (buf_ptr + sizeof(app_pc));
-                        while (buf_ptr - page_buf < PAGE_SIZE && IS_WCHAR_AT(str)) {
-                            conseq_wchar++;
-                            str++;
-                        }
-                        if (conseq_wchar >= STACK_WIDE_STRING_MIN_LEN &&
-                            *str == L'\0') { /* terminating null */
+                        size_t len =
+                            walk_wide_string(str, (wchar_t *)(page_buf + PAGE_SIZE) - str,
+                                             (wchar_t*)(sp + ret_offs),
+                                             STACK_WIDE_STRING_MAX_READ);
+                        if (len > 0 && len + conseq_wchar >= STACK_WIDE_STRING_MIN_LEN) {
                             LOG(2, "find_next_fp: ra "PFX"@"PFX" really wchar '%S'\n",
                                 slot1, sp, str - conseq_wchar);
                             STATS_INC(find_next_fp_strings);
                             match = false;
+                        } else {
+                            /* i#1271: rule out *_STRING data struct with
+                             * 2 short fields followed by a buffer pointer.
+                             * We assume the 2 shorts will match IS_WCHARx2_AT.
+                             * str points at the buffer field.
+                             */
+                            wchar_t *strbuf;
+                            if (safe_read(str, sizeof(strbuf), &strbuf) &&
+                                walk_wide_string(strbuf, 0/*all unsafe*/, strbuf,
+                                                 STACK_WIDE_STRING_MAX_READ) >=
+                                STACK_WIDE_STRING_MIN_LEN) {
+                                LOG(2, "find_next_fp: ra "PFX"@"PFX
+                                    " really *_STRING '%S'\n", slot1, sp, strbuf);
+                                STATS_INC(find_next_fp_string_structs);
+                                match = false;
+                            }
                         }
                     }
 #endif
