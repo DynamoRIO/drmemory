@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -35,7 +35,8 @@ unaddr_finit_module
 unix_syscalls.c:161
 overlaps memory that was freed
 
-Error #4: UNINITIALIZED READ: reading 6 byte(s)
+# Number of bytes can vary depending on where 1st null char happens to be:
+Error #4: UNINITIALIZED READ: reading
 system call finit_module
 uninit_finit_module
 unix_syscalls.c:150
