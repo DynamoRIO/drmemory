@@ -54,6 +54,7 @@ uint find_next_fp_scans;
 uint find_next_fp_cache_hits;
 uint find_next_fp_strings;
 uint find_next_fp_string_structs;
+uint cstack_is_retaddr_tgt_mismatch;
 uint symbol_names_truncated;
 uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
@@ -942,6 +943,8 @@ walk_wide_string(wchar_t *start, size_t safe_wchars,
 
 #define OP_CALL_DIR 0xe8
 #define OP_CALL_IND 0xff
+#define OP_JMP_DIR_SHORT 0xeb
+#define OP_JMP_DIR_LONG 0xe9
 #define OP_JMP_IND 0xff
 #define OP_SEG_FS   0x64
 #define WOW64_SYSOFFS  0xc0
@@ -1019,24 +1022,69 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
 }
 
 /* Checks that the call preceding next_retaddr targets the function containing
- * frame_addr.  If it can't tell, it returns true.
+ * frame_addr, or that a cross-module call is indirect, depending on ops.fp_flags.
+ * If it can't tell, it returns true.
  */
 static bool
-check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr,
-                            bool cross_module_only)
+check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr)
 {
     app_pc frame_mod_start, ra_mod_start;
     modname_info_t *frame_name, *ra_name;
     app_pc pc = next_retaddr, call_target = NULL;
     bool res = true;
     symbolized_frame_t frame_sym;
+    LOG(3, "%s: checking does "PFX" => "PFX"\n", __FUNCTION__, next_retaddr, frame_addr);
+    if (TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags) &&
+        !TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
+        return true; /* no checks were requested */
     if (!module_lookup(frame_addr, &frame_mod_start, NULL, &frame_name))
         return true; /* no info */
-    if (cross_module_only &&
-        (!module_lookup(next_retaddr, &ra_mod_start, NULL, &ra_name) ||
-         frame_mod_start == ra_mod_start))
-        return true;
+    if (TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags) ||
+        !TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags)) {
+        /* check whether cross-module */
+        if (!module_lookup(next_retaddr, &ra_mod_start, NULL, &ra_name)) {
+            if (TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
+                return true; /* no module info, and no further checks */
+        } else if (frame_mod_start == ra_mod_start) {
+            if (TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
+                return true; /* only supposed to check cross-module */
+        } else if (!TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags)) {
+            /* Only allow a cross-module transition that's an indirect call.
+             * When done only on scans (and not fp walks), this has minimal
+             * overhead and rules out bogus frames, in particular from Windows
+             * system calls (i#1436).
+             */
+            DR_TRY_EXCEPT(dr_get_current_drcontext(), {
+                if (*(pc - 5) == OP_CALL_DIR) {
+                    pc = *(int*)(pc - 4) + pc;
+                    /* Follow "call; jmp*", where jmp* is 0xff /4 */
+                    if (*pc != OP_JMP_IND ||
+                        ((*(pc + 1) >> 3) != 0x14 && *(pc + 1) != 0x25))
+                        res = false;
+                }
+            }, { /* EXCEPT */
+                res = false;
+                LOG(3, "%s: can't read "PFX"\n", __FUNCTION__, pc);
+                STATS_INC(cstack_is_retaddr_unreadable);
+            });
+            LOG(3, "%s: candidate cross-module retaddr "PFX" has %s call\n", __FUNCTION__,
+                next_retaddr, res ? "indirect" : "direct");
+            DOSTATS({
+                if (!res)
+                    STATS_INC(cstack_is_retaddr_tgt_mismatch);
+            });
+            if (!res || !TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
+                return res;
+        }
+    }
+    if (!TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
+        return true; /* no further checks */
 #ifdef USE_DRSYMS
+    /* Here we check that the target of the retaddr matches the function
+     * containing frame_addr.  This is risky b/c the retaddr could target
+     * some other routine that then tailcalls to frame_addr's function.
+     * At some point it's cheaper and more accurate to read the debug info.
+     */
     frame_sym.funcoffs = 0;
     lookup_func_and_line(&frame_sym, frame_name, frame_addr - frame_mod_start);
     DR_TRY_EXCEPT(dr_get_current_drcontext(), {
@@ -1046,16 +1094,27 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr,
         if (*(pc - 5) == OP_CALL_DIR) {
             pc = *(int*)(pc - 4) + pc;
             /* Follow "call; jmp*", where jmp* is 0xff /4 */
-            if (*pc == OP_JMP_IND &&
-                ((*(pc + 1) >> 3) == 0x14 || *(pc + 1) == 0x25)) {
-                app_pc indir = *(app_pc*)(pc + 2);
+            if (*pc == OP_JMP_IND && *(pc + 1) == 0x25) {
+                int disp32 = *(int*)(pc + 2);
+                app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
                 call_target = *(app_pc*)indir;
             } else
                 call_target = pc;
-        } else if (*(pc - 6) == OP_CALL_IND &&
-                 ((*(pc - 5) >> 3) == 0x12 || *(pc - 5) == 0x15)) {
-            app_pc indir = *(app_pc*)(pc - 4);
+        } else if (*(pc - 6) == OP_CALL_IND && *(pc - 5) == 0x15) {
+            int disp32 = *(int*)(pc - 4);
+            app_pc indir = IF_X64_ELSE(pc + disp32, (app_pc) disp32);
+            LOG(3, "%s: call* @ "PFX" targets poi("PFX")\n", __FUNCTION__,
+                pc - 6, indir);
             call_target = *(app_pc*)indir;
+            /* Account for forwarding stubs like kernel32!HeapCreateStub */
+            if (*call_target == OP_JMP_DIR_SHORT ||
+                *call_target == OP_JMP_DIR_LONG) {
+                /* Bail -- too complex to find where it's going.  Sometimes
+                 * there's yet another jmp* intermediary.
+                 */
+                LOG(3, "%s: call* targets a stub: bailing\n", __FUNCTION__);
+                call_target = NULL;
+            }
         }
     }, { /* EXCEPT */
         res = false;
@@ -1067,6 +1126,10 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr,
             frame_addr, frame_addr - frame_sym.funcoffs, next_retaddr, call_target);
         res = (frame_sym.funcoffs != 0 && call_target == frame_addr - frame_sym.funcoffs);
     }
+    DOSTATS({
+        if (!res)
+            STATS_INC(cstack_is_retaddr_tgt_mismatch);
+    });
     return res;
 #else
     return true; /* no info */
@@ -1282,12 +1345,8 @@ find_next_fp(void *drcontext, tls_callstack_t *pt, app_pc fp, app_pc prior_ra,
                 }
             }
             if (match && prior_ra != NULL &&
-                TEST(FP_VERIFY_TARGET_IN_SCAN, ops.fp_flags) &&
-                TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET,
-                        ops.fp_flags) &&
-                !check_retaddr_targets_frame(prior_ra, slot1,
-                                             TEST(FP_VERIFY_CROSS_MODULE_TARGET,
-                                                  ops.fp_flags)))
+                !TEST(FP_DO_NOT_VERIFY_TARGET_IN_SCAN, ops.fp_flags) &&
+                !check_retaddr_targets_frame(prior_ra, slot1))
                 match = false;
             if (match) {
                 app_pc parent_ret_ptr = slot0 + ret_offs;
@@ -1574,11 +1633,8 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
                     break;
                 }
             } else if (TEST(FP_DO_NOT_WALK_FP, ops.fp_flags) ||
-                       (TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET,
-                                ops.fp_flags) &&
-                        !check_retaddr_targets_frame(prior_ra, appdata.retaddr,
-                                                     TEST(FP_VERIFY_CROSS_MODULE_TARGET,
-                                                          ops.fp_flags)))) {
+                       (TEST(FP_VERIFY_TARGET_IN_WALK, ops.fp_flags) &&
+                        !check_retaddr_targets_frame(prior_ra, appdata.retaddr))) {
                 LOG(4, "find_next_fp "PFX" b/c not walking fp, or skips "PFX"\n",
                     ((app_pc)pc) + sizeof(appdata), appdata.next_fp);
                 pc = (ptr_uint_t *) find_next_fp(drcontext, pt,

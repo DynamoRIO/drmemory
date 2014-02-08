@@ -1467,16 +1467,13 @@ report_init(void)
 
     /* must be BEFORE read_suppression_file (PR 474542) */
     callstack_ops.max_frames = options.callstack_max_frames;
-    callstack_ops.stack_swap_threshold = 0x10000;
     /* I used to use options.stack_swap_threshold but that
      * was decreased for PR 525807 and anything smaller than
      * ~0x20000 leads to bad callstacks on gcc b/c of a huge
      * initial frame
      */
-    callstack_ops.stack_swap_threshold = 0x20000,
-    /* default flags: but if we have apps w/ DGC we may
-     * want to expose some flags as options
-     */
+    callstack_ops.stack_swap_threshold = 0x20000;
+    /* Default callstack flags */
     callstack_ops.fp_flags = 0;
     if (!options.callstack_use_fp)
         callstack_ops.fp_flags |= FP_DO_NOT_WALK_FP;
@@ -1485,7 +1482,9 @@ report_init(void)
          * perf win over FP_VERIFY_CALL_TARGET (see i#703 numbers) -- so should we
          * have -callstack_mostly_conservative?.
          */
-        callstack_ops.fp_flags |= FP_VERIFY_CALL_TARGET | FP_VERIFY_TARGET_IN_SCAN;
+        callstack_ops.fp_flags |=
+            FP_VERIFY_CALL_TARGET |
+            FP_VERIFY_TARGET_IN_WALK;
     }
     callstack_ops.fp_scan_sz = options.callstack_max_scan;
     callstack_ops.print_flags = IF_DRSYMS_ELSE(options.callstack_style,

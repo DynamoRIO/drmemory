@@ -229,8 +229,9 @@ dump_statistics(void)
     dr_fprintf(f_global, "unique malloc stacks: %8u\n", alloc_stack_count);
     dr_fprintf(f_global, "callstack fp scans: %8u, cache hits: %8u\n",
                find_next_fp_scans, find_next_fp_cache_hits);
-    dr_fprintf(f_global, "callstack strings: %6u, structs: %6u\n",
-               find_next_fp_strings, find_next_fp_string_structs);
+    dr_fprintf(f_global, "callstack strings: %6u, structs: %6u, target mismatch: %8u\n",
+               find_next_fp_strings, find_next_fp_string_structs,
+               cstack_is_retaddr_tgt_mismatch);
     dr_fprintf(f_global, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
                cstack_is_retaddr, cstack_is_retaddr_backdecode,
                cstack_is_retaddr_unreadable);

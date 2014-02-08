@@ -99,49 +99,68 @@ enum {
     /* Showing non module works fine, but there are issues with suppression -
      * FIXME: PR 464809.
      */
-    FP_SHOW_NON_MODULE_FRAMES         = 0x0001,
-    FP_STOP_AT_BAD_NONZERO_FRAME      = 0x0002,
-    FP_STOP_AT_BAD_ZERO_FRAME         = 0x0004,
-    FP_SEARCH_MATCH_SINGLE_FRAME      = 0x0008, /* only valid w/ FP_SEARCH_REQUIRE_FP */
+    FP_SHOW_NON_MODULE_FRAMES         = 0x00000001,
+    FP_STOP_AT_BAD_NONZERO_FRAME      = 0x00000002,
+    FP_STOP_AT_BAD_ZERO_FRAME         = 0x00000004,
+    /* Only valid w/ FP_SEARCH_REQUIRE_FP */
+    FP_SEARCH_MATCH_SINGLE_FRAME      = 0x00000008,
     /* Whether to look for fp,ra pairs during scan, which doesn't work with FPO */
-    FP_SEARCH_REQUIRE_FP              = 0x0010,
+    FP_SEARCH_REQUIRE_FP              = 0x00000010,
     /* For more speed but less accuracy (esp with FPO) can not check whether
      * retaddr candidates during scan are post-OP_call
      */
-    FP_SEARCH_DO_NOT_DISASM           = 0x0020,
+    FP_SEARCH_DO_NOT_DISASM           = 0x00000020,
     /* For more speed, optionally can not check retaddrs during fp chain walk */
-    FP_DO_NOT_CHECK_RETADDR           = 0x0040,
+    FP_DO_NOT_CHECK_RETADDR           = 0x00000040,
     /* By default, avoid 40% perf hit (on cfrac and roboop) by not checking
      * retaddr during fp chain walk until have to do a scan: should be
      * safe to assume fp's are genuine up to any scan.
      */
-    FP_CHECK_RETADDR_PRE_SCAN         = 0x0080,
+    FP_CHECK_RETADDR_PRE_SCAN         = 0x00000080,
     /* We do want to check the very first retaddr since ebp might point at
      * some stack var that happens to look like another fp,ra pair
      */
-    FP_DO_NOT_CHECK_FIRST_RETADDR     = 0x0100,
+    FP_DO_NOT_CHECK_FIRST_RETADDR     = 0x00000100,
     /* i#1265: normally we skip the "push ebp" of 32-bit Linux vsyscall
      * on a 64-bit kernel, as it too often leads to skipped frames.
      */
-    FP_DO_NOT_SKIP_VSYSCALL_PUSH      = 0x0200,
+    FP_DO_NOT_SKIP_VSYSCALL_PUSH      = 0x00000200,
     /* i#703: avoid skipping interior frames due to FPO by never walking the
      * frame pointer chain and scanning every time.  This adds overhead of course.
      */
-    FP_DO_NOT_WALK_FP                 = 0x0400,
+    FP_DO_NOT_WALK_FP                 = 0x00000400,
     /* i#703: avoid skipping interior frames due to FPO by verifying
      * that the next retaddr actually calls the current one's
      * containing function.  This adds overhead of course.
+     * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
+     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
      */
-    FP_VERIFY_CALL_TARGET             = 0x0800,
+    FP_VERIFY_CALL_TARGET             = 0x00000800,
     /* Identical to FP_VERIFY_CALL_TARGET except this only checks targets on
      * cross-module calls.
+     * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
+     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
      */
-    FP_VERIFY_CROSS_MODULE_TARGET     = 0x1000,
-    /* Only applies if either FP_VERIFY_CALL_TARGET or FP_VERIFY_CROSS_MODULE_TARGET
-     * is enabled.  This controls whether to verify call targets while scanning,
-     * as opposed to during the fp walk.
+    FP_VERIFY_CROSS_MODULE_TARGET     = 0x00001000,
+    /* This controls whether to verify call targets while scanning, as
+     * opposed to during the fp walk.  The verification performed is specified
+     * by FP_VERIFY_CALL_TARGET, FP_VERIFY_CROSS_MODULE_TARGET, and
+     * FP_DO_NOT_VERIFY_CROSS_MOD_IND.
      */
-    FP_VERIFY_TARGET_IN_SCAN          = 0x2000,
+    FP_DO_NOT_VERIFY_TARGET_IN_SCAN   = 0x00002000,
+    /* This controls whether to verify call targets while walking frame
+     * pointers, as opposed to scanning.  The verification performed is specified
+     * by FP_VERIFY_CALL_TARGET, FP_VERIFY_CROSS_MODULE_TARGET, and
+     * FP_DO_NOT_VERIFY_CROSS_MOD_IND.
+     */
+    FP_VERIFY_TARGET_IN_WALK          = 0x00004000,
+    /* If not disabled, all cross-module frame transitions are checked to
+     * ensure an indirect call (or normal inter-library transition) is used,
+     * to rule out false positive frames.
+     * Either FP_DO_NOT_VERIFY_TARGET_IN_SCAN must be unset, or
+     * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
+     */
+    FP_DO_NOT_VERIFY_CROSS_MOD_IND    = 0x00008000,
     FP_SEARCH_AGGRESSIVE              = (FP_SHOW_NON_MODULE_FRAMES |
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };
@@ -211,6 +230,7 @@ extern uint find_next_fp_scans;
 extern uint find_next_fp_cache_hits;
 extern uint find_next_fp_strings;
 extern uint find_next_fp_string_structs;
+extern uint cstack_is_retaddr_tgt_mismatch;
 extern uint symbol_names_truncated;
 extern uint cstack_is_retaddr;
 extern uint cstack_is_retaddr_backdecode;
