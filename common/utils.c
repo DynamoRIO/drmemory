@@ -98,19 +98,19 @@ void
 wait_for_user(const char *message)
 {
 #ifdef WINDOWS
-    dr_messagebox(message);
+    dr_messagebox("%s in pid "PIDFMT"", message, dr_get_process_id());
 #else
     if (op_pause_via_loop) {
         /* PR 406725: on Linux, infinite loop rather than waiting for stdin */
         bool forever = true; /* make it easy to break out in gdb */
-        dr_fprintf(STDERR, "%s\n", message);
+        dr_fprintf(STDERR, "%s in pid "PIDFMT"\n", message, dr_get_process_id());
         dr_fprintf(STDERR, "<in infinite loop>\n");
         while (forever) {
             dr_thread_yield();
         }
     } else {
         char keypress;
-        dr_fprintf(STDERR, "%s\n", message);
+        dr_fprintf(STDERR, "%s in pid "PIDFMT"\n", message, dr_get_process_id());
         dr_fprintf(STDERR, "<press enter to continue>\n");
         dr_read_file(stdin->_fileno, &keypress, sizeof(keypress));
     }
@@ -120,14 +120,8 @@ wait_for_user(const char *message)
 void
 drmemory_abort(void)
 {
-    if (op_pause_at_assert) {
-        char buf[64];
-        /* very useful to have the pid */
-        dr_snprintf(buf, BUFFER_SIZE_ELEMENTS(buf),
-                    "Dr. Memory is paused at an assert in pid=%d",
-                    dr_get_process_id());
-        wait_for_user(buf);
-    }
+    if (op_pause_at_assert)
+        wait_for_user("Dr. Memory is paused at an assert");
     dr_abort();
 }
 
