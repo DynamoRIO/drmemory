@@ -1036,7 +1036,10 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
                        * stack by -replace_malloc.  We always have a syscall
                        * in an app_loc_t so we should never need it in a frame.
                        */
-                      (*(uint*)(pc - 4) != WOW64_SYSOFFS || *(pc - 7) != OP_SEG_FS)));
+                      (*(uint*)(pc - 4) != WOW64_SYSOFFS || *(pc - 7) != OP_SEG_FS)) ||
+                     /* indirect through mem: 0xff /2 + sib (w/o sib reg=5) */
+                     (*(pc - 3) == OP_CALL_IND &&
+                      (*(pc - 2) == 0x14 && ((*(pc - 1) & 0x3) != 5))));
         }, { /* EXCEPT */
             match = false;
             /* If we end up with a lot of these we could either cache
