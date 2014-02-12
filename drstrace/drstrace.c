@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2013-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -41,8 +41,20 @@
 /* Where to write the trace */
 static file_t outf;
 
-#define OUTPUT(fmt, ...) \
-    dr_fprintf(outf, fmt, __VA_ARGS__)
+/* We buffer the output via a stack-allocated buffer.  We flush prior to
+ * each system call.
+ */
+#define OUTBUF_SIZE 2048
+
+typedef struct _buf_info_t {
+    char buf[OUTBUF_SIZE];
+    size_t sofar;
+    ssize_t len;
+} buf_info_t;
+
+#define OUTPUT(buf_info, fmt, ...) \
+    BUFFERED_WRITE(outf, (buf_info)->buf, BUFFER_SIZE_ELEMENTS((buf_info)->buf), \
+                   (buf_info)->sofar, (buf_info)->len, fmt, __VA_ARGS__)
 
 static uint verbose;
 
@@ -70,86 +82,86 @@ typedef struct _drstrace_options_t {
 static drstrace_options_t options;
 
 static void
-print_unicode_string(UNICODE_STRING *us)
+print_unicode_string(buf_info_t *buf, UNICODE_STRING *us)
 {
     if (us == NULL)
-        OUTPUT("<null>");
+        OUTPUT(buf, "<null>");
     else {
-        OUTPUT("%d/%d \"%.*S\"", us->Length, us->MaximumLength,
+        OUTPUT(buf, "%d/%d \"%.*S\"", us->Length, us->MaximumLength,
                us->Length/sizeof(wchar_t),
                (us->Buffer == NULL) ? L"<null>" : us->Buffer);
     }
 }
 
-print_simple_value(drsys_arg_t *arg, bool leading_zeroes)
+print_simple_value(buf_info_t *buf, drsys_arg_t *arg, bool leading_zeroes)
 {
     bool pointer = !TEST(DRSYS_PARAM_INLINED, arg->mode);
-    OUTPUT(pointer ? PFX : (leading_zeroes ? PFX : PIFX), arg->value);
+    OUTPUT(buf, pointer ? PFX : (leading_zeroes ? PFX : PIFX), arg->value);
     if (pointer && ((arg->pre && TEST(DRSYS_PARAM_IN, arg->mode)) ||
                     (!arg->pre && TEST(DRSYS_PARAM_OUT, arg->mode)))) {
         ptr_uint_t deref = 0;
         ASSERT(arg->size <= sizeof(deref), "too-big simple type");
         /* We assume little-endian */
         if (dr_safe_read((void *)arg->value, arg->size, &deref, NULL))
-            OUTPUT((leading_zeroes ? " => "PFX : " => "PIFX), deref);
+            OUTPUT(buf, (leading_zeroes ? " => "PFX : " => "PIFX), deref);
     }
 }
 
 static void
-print_arg(drsys_arg_t *arg)
+print_arg(buf_info_t *buf, drsys_arg_t *arg)
 {
     if (arg->ordinal == -1)
-        OUTPUT("\tretval: ");
+        OUTPUT(buf, "\tretval: ");
     else
-        OUTPUT("\targ %d: ", arg->ordinal);
+        OUTPUT(buf, "\targ %d: ", arg->ordinal);
     /* XXX: add return value to dr_fprintf so we can more easily align
      * after PFX vs PIFX w/o having to print to buffer
      */
     switch (arg->type) {
-    case DRSYS_TYPE_VOID:         print_simple_value(arg, true); break;
-    case DRSYS_TYPE_POINTER:      print_simple_value(arg, true); break;
-    case DRSYS_TYPE_BOOL:         print_simple_value(arg, false); break;
-    case DRSYS_TYPE_INT:          print_simple_value(arg, false); break;
-    case DRSYS_TYPE_SIGNED_INT:   print_simple_value(arg, false); break;
-    case DRSYS_TYPE_UNSIGNED_INT: print_simple_value(arg, false); break;
-    case DRSYS_TYPE_HANDLE:       print_simple_value(arg, false); break;
-    case DRSYS_TYPE_NTSTATUS:     print_simple_value(arg, false); break;
-    case DRSYS_TYPE_ATOM:         print_simple_value(arg, false); break;
+    case DRSYS_TYPE_VOID:         print_simple_value(buf, arg, true); break;
+    case DRSYS_TYPE_POINTER:      print_simple_value(buf, arg, true); break;
+    case DRSYS_TYPE_BOOL:         print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_INT:          print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_SIGNED_INT:   print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_UNSIGNED_INT: print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_HANDLE:       print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_NTSTATUS:     print_simple_value(buf, arg, false); break;
+    case DRSYS_TYPE_ATOM:         print_simple_value(buf, arg, false); break;
     default: {
         if (arg->value == 0) {
-            OUTPUT("<null>");
+            OUTPUT(buf, "<null>");
         } else if (arg->pre && !TEST(DRSYS_PARAM_IN, arg->mode)) {
-            OUTPUT(PFX, arg->value);
+            OUTPUT(buf, PFX, arg->value);
         } else {
             switch (arg->type) {
             case DRSYS_TYPE_UNICODE_STRING: {
-                print_unicode_string((UNICODE_STRING *) arg->value);
+                print_unicode_string(buf, (UNICODE_STRING *) arg->value);
                 break;
             }
             case DRSYS_TYPE_OBJECT_ATTRIBUTES: {
                 OBJECT_ATTRIBUTES *oa = (OBJECT_ATTRIBUTES *) arg->value;
-                OUTPUT("len="PIFX", root="PIFX", name=",
+                OUTPUT(buf, "len="PIFX", root="PIFX", name=",
                        oa->Length, oa->RootDirectory);
-                print_unicode_string(oa->ObjectName);
-                OUTPUT(", att="PIFX", sd="PFX", sqos="PFX,
+                print_unicode_string(buf, oa->ObjectName);
+                OUTPUT(buf, ", att="PIFX", sd="PFX", sqos="PFX,
                        oa->Attributes, oa->SecurityDescriptor,
                        oa->SecurityQualityOfService);
                 break;
             }
             case DRSYS_TYPE_IO_STATUS_BLOCK: {
                 IO_STATUS_BLOCK *io = (IO_STATUS_BLOCK *) arg->value;
-                OUTPUT("status="PIFX", info="PIFX"", io->StatusPointer.Status,
+                OUTPUT(buf, "status="PIFX", info="PIFX"", io->StatusPointer.Status,
                        io->Information);
                 break;
             }
             case DRSYS_TYPE_LARGE_INTEGER: {
                 LARGE_INTEGER *li = (LARGE_INTEGER *) arg->value;
-                OUTPUT("0x"HEX64_FORMAT_STRING, li->QuadPart);
+                OUTPUT(buf, "0x"HEX64_FORMAT_STRING, li->QuadPart);
                 break;
             }
             default: {
                 /* FIXME i#1089: add the other types */
-                OUTPUT("<NYI>");
+                OUTPUT(buf, "<NYI>");
             }
             }
             /* XXX: we want KEY_VALUE_PARTIAL_INFORMATION, etc. like in
@@ -159,7 +171,7 @@ print_arg(drsys_arg_t *arg)
     }
     }
 
-    OUTPUT(" (%s%s%stype=%s%s, size="PIFX")\n",
+    OUTPUT(buf, " (%s%s%stype=%s%s, size="PIFX")\n",
            (arg->arg_name == NULL) ? "" : "name=",
            (arg->arg_name == NULL) ? "" : arg->arg_name,
            (arg->arg_name == NULL) ? "" : ", ",
@@ -172,11 +184,12 @@ print_arg(drsys_arg_t *arg)
 static bool
 drsys_iter_arg_cb(drsys_arg_t *arg, void *user_data)
 {
+    buf_info_t *buf = (buf_info_t *) user_data;
     ASSERT(arg->valid, "no args should be invalid");
 
     if ((arg->pre && !TEST(DRSYS_PARAM_RETVAL, arg->mode)) ||
         (!arg->pre && TESTANY(DRSYS_PARAM_OUT|DRSYS_PARAM_RETVAL, arg->mode)))
-        print_arg(arg);
+        print_arg(buf, arg);
 
     return true; /* keep going */
 }
@@ -189,6 +202,8 @@ event_pre_syscall(void *drcontext, int sysnum)
     drsys_param_type_t ret_type;
     const char *name;
     drmf_status_t res;
+    buf_info_t buf;
+    buf.sofar = 0;
 
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
@@ -199,11 +214,14 @@ event_pre_syscall(void *drcontext, int sysnum)
     if (drsys_syscall_is_known(syscall, &known) != DRMF_SUCCESS)
         ASSERT(false, "failed to find whether known");
 
-    OUTPUT("%s%s\n", name, known ? "" : " (details not all known)");
+    OUTPUT(&buf, "%s%s\n", name, known ? "" : " (details not all known)");
 
-    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL);
+    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, &buf);
     if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
         ASSERT(false, "drsys_iterate_args failed pre-syscall");
+
+    /* Flush prior to potentially waiting in the kernel */
+    FLUSH_BUFFER(outf, buf.buf, buf.sofar);
 
     return true;
 }
@@ -214,6 +232,8 @@ event_post_syscall(void *drcontext, int sysnum)
     drsys_syscall_t *syscall;
     bool success = false;
     drmf_status_t res;
+    buf_info_t buf;
+    buf.sofar = 0;
 
     if (drsys_cur_syscall(drcontext, &syscall) != DRMF_SUCCESS)
         ASSERT(false, "drsys_cur_syscall failed");
@@ -222,10 +242,11 @@ event_post_syscall(void *drcontext, int sysnum)
         DRMF_SUCCESS)
         ASSERT(false, "drsys_syscall_succeeded failed");
 
-    OUTPUT("    %s =>\n", success ? "succeeded" : "failed");
-    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, NULL);
+    OUTPUT(&buf, "    %s =>\n", success ? "succeeded" : "failed");
+    res = drsys_iterate_args(drcontext, drsys_iter_arg_cb, &buf);
     if (res != DRMF_SUCCESS && res != DRMF_ERROR_DETAILS_UNKNOWN)
         ASSERT(false, "drsys_iterate_args failed post-syscall");
+    FLUSH_BUFFER(outf, buf.buf, buf.sofar);
 }
 
 static bool
