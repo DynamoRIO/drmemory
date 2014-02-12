@@ -85,7 +85,10 @@
 #define LIB32_ARCH "lib32"
 #define LIB64_ARCH "lib64"
 
-#define DEFAULT_DR_OPS ""
+/* As this is a Windows tool, we tune it for startup and not steady-state perf.
+ * -fast_client_decode relies on drmgr, drx, and drsyscall support.
+ */
+#define DEFAULT_DR_OPS "-disable_traces -nop_initial_bblock -fast_client_decode"
 
 #define CLIENT_ID 0
 

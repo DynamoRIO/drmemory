@@ -1874,7 +1874,8 @@ drsys_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 {
     instr_t *inst;
     for (inst = instrlist_first(bb); inst != NULL; inst = instr_get_next(inst)) {
-        if (instr_is_syscall(inst))
+        /* Check for valid opcode first to handle -fast_client_decode */
+        if (instr_opcode_valid(inst) && instr_is_syscall(inst))
             check_syscall_gateway(inst);
     }
 
