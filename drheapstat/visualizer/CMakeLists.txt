@@ -65,6 +65,8 @@ set(dhvis_SOURCES
 if (WIN32)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -wd4127 -wd4512 -wd4189 -wd4481")
 endif (WIN32)
+# Set QT_NO_DEBUG to avoid errors mixing debug and release libs (i#1345)
+add_definitions(-DQT_NO_DEBUG)
 add_definitions(-DQT_PLUGIN)
 add_library(dhvis SHARED ${dhvis_SOURCES} ${dhvis_MOC_OUTFILES})
 qt5_use_modules(dhvis Widgets)
