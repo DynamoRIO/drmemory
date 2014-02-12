@@ -59,6 +59,7 @@ uint symbol_names_truncated;
 uint cstack_is_retaddr;
 uint cstack_is_retaddr_backdecode;
 uint cstack_is_retaddr_unreadable;
+uint cstack_is_retaddr_unseen;
 #endif
 
 /* Cached frame pointer values to avoid repeated scans (i#1186) */
@@ -278,6 +279,14 @@ struct _symbolized_frame_t {
 
 /***************************************************************************/
 
+/* i#1439: only allow retaddrs for calls we've seen */
+#define RETADDR_TABLE_HASH_BITS 10
+static hashtable_t retaddr_table;
+
+static dr_emit_flags_t
+event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                           bool for_trace, bool translating, OUT void **user_data);
+
 static bool
 module_lookup(byte *pc, app_pc *start OUT, size_t *size OUT, modname_info_t **name OUT);
 
@@ -302,7 +311,6 @@ max_callstack_size(void)
             *(strlen(max_line)+max_addr_sym_len)) + 1/*null*/;
 }
 
-/* XXX i#823: move these params to an options struct when refactoring for DrCallstack */
 void
 callstack_init(callstack_options_t *options)
 {
@@ -318,6 +326,17 @@ callstack_init(callstack_options_t *options)
     modtree_lock = dr_mutex_create();
     module_tree = rb_tree_create(NULL);
 
+    if (!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags)) {
+        hashtable_config_t hashconfig;
+        hashtable_init(&retaddr_table, RETADDR_TABLE_HASH_BITS,
+                       HASH_INTPTR, false/*!str_dup*/);
+        hashconfig.size = sizeof(hashconfig);
+        hashconfig.resizable = true;
+        hashconfig.resize_threshold = 60; /* default is 75 */
+        hashtable_configure(&retaddr_table, &hashconfig);
+        drmgr_register_bb_instrumentation_event(event_basic_block_analysis, NULL, NULL);
+    }
+
 #ifdef USE_DRSYMS
     IF_WINDOWS(ASSERT(using_private_peb(), "private peb not preserved"));
     /* we rely on drsym_init() being called in utils_init() */
@@ -331,6 +350,8 @@ callstack_exit(void)
     ASSERT(!(ops.tool_lib_ignore != NULL && libtoolbase == NULL), "never found tool lib");
 
     hashtable_delete(&modname_table);
+    if (!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags))
+        hashtable_delete_with_stats(&retaddr_table, "retaddr table");
 
     dr_mutex_lock(modtree_lock);
     rb_tree_destroy(module_tree);
@@ -424,6 +445,25 @@ callstack_thread_exit(void *drcontext)
     thread_free(drcontext, (void *) pt->page_buf, PAGE_SIZE, HEAPSTAT_CALLSTACK);
     drmgr_set_tls_field(drcontext, tls_idx_callstack, NULL);
     thread_free(drcontext, pt, sizeof(*pt), HEAPSTAT_MISC);
+}
+
+static dr_emit_flags_t
+event_basic_block_analysis(void *drcontext, void *tag, instrlist_t *bb,
+                           bool for_trace, bool translating, OUT void **user_data)
+{
+    instr_t *instr;
+    ASSERT(!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags), "hashtable not init!");
+    /* do nothing for translation */
+    if (translating)
+        return DR_EMIT_DEFAULT;
+    for (instr  = instrlist_first(bb); instr != NULL; instr  = instr_get_next(instr)) {
+        if (instr_ok_to_mangle(instr) && instr_is_call(instr)) {
+            app_pc retaddr = instr_get_app_pc(instr) +  instr_length(drcontext, instr);
+            /* we never remove from the table, and dups are fine */
+            hashtable_add(&retaddr_table, (void *)retaddr, (void *)tag);
+        }
+    }
+    return DR_EMIT_DEFAULT;
 }
 
 /***************************************************************************/
@@ -1016,9 +1056,23 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
             LOG(1, "%s\n", buf);
         });
 #endif
-        return match;
-    } else
-        return true;
+        if (!match)
+            return false;
+    }
+    if (!TEST(FP_SEARCH_ALLOW_UNSEEN_RETADDR, ops.fp_flags) &&
+        /* Do not check for retaddrs in tool libs which of course won't
+         * be in our table.
+         */
+        !((pc >= libdr_base && pc < libdr_end) ||
+          (pc >= libtoolbase && pc < libtoolend))) {
+        /* i#1439: only allow retaddrs for calls we've seen */
+        if (hashtable_lookup(&retaddr_table, (void *)pc) == NULL) {
+            LOG(4, "is_retaddr: never-before-seen "PFX"\n", pc);
+            STATS_INC(cstack_is_retaddr_unseen);
+            return false;
+        }
+    }
+    return true;
 }
 
 /* Checks that the call preceding next_retaddr targets the function containing
@@ -1957,6 +2011,7 @@ packed_callstack_to_symbolized(packed_callstack_t *pcs IN,
     uint i;
     scs->num_frames = pcs->num_frames;
     scs->num_frames_allocated = pcs->num_frames;
+    ASSERT(scs->num_frames > 0, "invalid empty callstack");
     scs->frames = (symbolized_frame_t *)
         global_alloc(sizeof(*scs->frames) * scs->num_frames, HEAPSTAT_CALLSTACK);
     ASSERT(pcs != NULL, "invalid args");

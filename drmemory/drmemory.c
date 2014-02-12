@@ -205,7 +205,7 @@ dump_statistics(void)
                heap_header_exception, tls_exception, alloca_exception);
     dr_fprintf(f_global, "more addr exceptions: ld DR: %5u, cpp DR: %5u\n",
                loader_DRlib_exception, cppexcept_DRlib_exception);
-    dr_fprintf(f_global, "addr con'td: strlen: %5u, strcpy: %5u, str/mem: %5u\n",
+    dr_fprintf(f_global, "addr cont'd: strlen: %5u, strcpy: %5u, str/mem: %5u\n",
                strlen_exception, strcpy_exception, strmem_unaddr_exception);
     dr_fprintf(f_global, "def exceptions:  andor: %7u, rawmemchr: %5u, strrchr: %5u\n",
                andor_exception, rawmemchr_exception, strrchr_exception);
@@ -235,6 +235,8 @@ dump_statistics(void)
     dr_fprintf(f_global, "callstack is_retaddr: %8u, backdecode: %8u, unreadable: %8u\n",
                cstack_is_retaddr, cstack_is_retaddr_backdecode,
                cstack_is_retaddr_unreadable);
+    dr_fprintf(f_global, "callstack is_retaddr cont'd: unseen %8u\n",
+               cstack_is_retaddr_unseen);
     dr_fprintf(f_global, "symbol names truncated: %8u\n", symbol_names_truncated);
 #ifdef USE_DRSYMS
     dr_fprintf(f_global, "symbol lookups: %6u cached %6u, searches: %6u cached %6u\n",

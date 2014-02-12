@@ -161,6 +161,10 @@ enum {
      * FP_VERIFY_TARGET_IN_WALK must be set, in order to enable this.
      */
     FP_DO_NOT_VERIFY_CROSS_MOD_IND    = 0x00008000,
+    /* By default we only consider retaddrs that are after call instructions
+     * that we've already executed.
+     */
+    FP_SEARCH_ALLOW_UNSEEN_RETADDR    = 0x00010000,
     FP_SEARCH_AGGRESSIVE              = (FP_SHOW_NON_MODULE_FRAMES |
                                          FP_SEARCH_MATCH_SINGLE_FRAME),
 };
@@ -235,6 +239,7 @@ extern uint symbol_names_truncated;
 extern uint cstack_is_retaddr;
 extern uint cstack_is_retaddr_backdecode;
 extern uint cstack_is_retaddr_unreadable;
+extern uint cstack_is_retaddr_unseen;
 #endif
 
 typedef struct _callstack_options_t {
