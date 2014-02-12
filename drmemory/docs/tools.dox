@@ -40,12 +40,13 @@ memory monitoring tool.  These additional tools include:
 page_drmf to monitor all system calls executed by a target application.
 
 To use \p drstrace, simply launch it on the target application of your
-choice.  By default, its output is sent to stderr, but you can specify a
-log directory in which to create a file containing the output per process.
-For example:
+choice.  By default, its output is sent to log files in the current
+directory, one per process.  A different location for these files
+can be specified with the \p -logdir parameter.
+Here is a simple example:
 
 \code
-bin/drstrace.exe -logdir . -- calc
+bin/drstrace.exe -- calc
 \endcode
 
 This command will result in data written to a file named

@@ -56,7 +56,7 @@ typedef struct _buf_info_t {
     BUFFERED_WRITE(outf, (buf_info)->buf, BUFFER_SIZE_ELEMENTS((buf_info)->buf), \
                    (buf_info)->sofar, (buf_info)->len, fmt, __VA_ARGS__)
 
-static uint verbose;
+static uint verbose = 1;
 
 #define ALERT(level, fmt, ...) do {          \
     if (verbose >= (level))                   \
@@ -270,7 +270,7 @@ open_log_file(void)
                                           DR_FILE_ALLOW_LARGE,
                                           buf, BUFFER_SIZE_ELEMENTS(buf));
         ASSERT(outf != INVALID_FILE, "failed to open log file");
-        ALERT(1, "log file is %s\n", buf);
+        ALERT(1, "<drstrace log file is %s>\n", buf);
     }
 }
 
@@ -302,7 +302,7 @@ options_init(client_id_t id)
     char token[OPTION_MAX_LENGTH];
 
     /* default values */
-    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), "-");
+    dr_snprintf(options.logdir, BUFFER_SIZE_ELEMENTS(options.logdir), ".");
 
     for (s = dr_get_token(opstr, token, BUFFER_SIZE_ELEMENTS(token));
          s != NULL;
@@ -330,6 +330,10 @@ void dr_init(client_id_t id)
 {
     drsys_options_t ops = { sizeof(ops), 0, };
 
+#ifdef WINDOWS
+    dr_enable_console_printing();
+#endif
+
     options_init(id);
 
     drmgr_init();
@@ -337,10 +341,6 @@ void dr_init(client_id_t id)
     if (drsys_init(id, &ops) != DRMF_SUCCESS)
         ASSERT(false, "drsys failed to init");
     dr_register_exit_event(exit_event);
-
-#ifdef WINDOWS
-    dr_enable_console_printing();
-#endif
 
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);

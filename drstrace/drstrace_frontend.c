@@ -133,12 +133,13 @@ print_usage(void)
      */
     fprintf(stderr, "-logdir <dir>   Specify log directory where system call data\n");
     fprintf(stderr, "                will be written, in a separate file per process.\n");
-    fprintf(stderr, "                If set to \"-\" (the default value), data for\n");
-    fprintf(stderr, "                all processes are printed to stderr.\n");
+    fprintf(stderr, "                The default value is \".\" (current dir).\n");
+    fprintf(stderr, "                If set to \"-\", data for all processes are\n");
+    fprintf(stderr, "                printed to stderr (warning: this can be slow).\n");
     fprintf(stderr, "-no_follow_children   Do not trace child processes (overrides\n");
     fprintf(stderr, "                the default, which is to trace all children).\n");
-    fprintf(stderr, "-version        Print version number.n");
-    fprintf(stderr, "-verbose <N>    Increase verbosity (default 0).\n");
+    fprintf(stderr, "-version        Print version number.\n");
+    fprintf(stderr, "-verbose <N>    Change verbosity (default 1).\n");
 }
 
 #define usage(msg, ...) do {                                    \
