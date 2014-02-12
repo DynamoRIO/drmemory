@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -27,11 +27,11 @@ registers.c:107
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
 registers.c:127
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1080
+registers.c_asm.asm:1119
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1097
+registers.c_asm.asm:1136
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1127
+registers.c_asm.asm:1166
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
 registers.c:340
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
