@@ -1394,7 +1394,13 @@ if (install_override)
     CACHE PATH "install path" FORCE)
 endif (install_override)
 
-install(TARGETS ${client_target}
+macro(install_if_32bit)
+  if (NOT X64)
+    install(${ARGV})
+  endif ()
+endmacro(install_if_32bit)
+
+install_if_32bit(TARGETS ${client_target}
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
   PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1448,11 +1454,11 @@ install(FILES
   ${CMAKE_CURRENT_SOURCE_DIR}/license.txt
   DESTINATION "${INSTALL_PREFIX}.")
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  install(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
+  install_if_32bit(TARGETS ${toolname} DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE)
 else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
-  install(FILES
+  install_if_32bit(FILES
     ${script_main}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1460,7 +1466,7 @@ else (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 endif (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
 # We put "helper" files inside ${BIN_ARCH}/ so only top-level script is visible
 if (NOT "${script_aux}" STREQUAL "")
-  install(FILES
+  install_if_32bit(FILES
     ${script_aux}
     DESTINATION "${INSTALL_BIN}"
     PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1468,7 +1474,7 @@ if (NOT "${script_aux}" STREQUAL "")
 endif ()
 if (TOOL_DR_HEAPSTAT)
   if (BUILD_VISUALIZER)
-    install(FILES
+    install_if_32bit(FILES
       ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/${toolname}.swf
       DESTINATION "${INSTALL_BIN}"
       PERMISSIONS OWNER_READ GROUP_READ WORLD_READ)
@@ -1486,6 +1492,17 @@ else (TOOL_DR_HEAPSTAT)
       WORLD_READ WORLD_EXECUTE)
   endif (UNIX)
 endif (TOOL_DR_HEAPSTAT)
+
+if (X64)
+  set(install_pdb_exclude
+    PATTERN "${toolname}lib.pdb" EXCLUDE
+    PATTERN "${toolname}lib.debug" EXCLUDE
+    PATTERN "${toolname}.pdb" EXCLUDE
+    PATTERN "${toolname}.debug" EXCLUDE)
+  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_BIN}/README.txt\" \"Dr. Memory does not yet support 64-bit applications.  The drstrace tool and the Dr. Syscall and Umbra libraries are available for 64-bit.\n\")")
+else (X64)
+  set(install_pdb_exclude "")
+endif (X64)
 install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   DESTINATION "${INSTALL_LIB}"
   FILE_PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
@@ -1493,6 +1510,7 @@ install(DIRECTORY ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/
   FILES_MATCHING
   PATTERN "*.debug"
   PATTERN "*.pdb"
+  ${install_pdb_exclude}
   )
 install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   DESTINATION "${INSTALL_BIN}"
@@ -1501,19 +1519,20 @@ install(DIRECTORY ${PROJECT_BINARY_DIR}/${BUILD_BIN}/
   FILES_MATCHING
   PATTERN "*.debug"
   PATTERN "*.pdb"
+  ${install_pdb_exclude}
   )
 
 # create empty logs dir for release package
 # be sure to escape ",$ since evaluated at install time not configure time
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs\")")
 # CPack seems to ignore empty dirs so add a README file
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/README\" \"Default destination for log files.\n\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/README.txt\" \"Default destination for log files.\n\")")
 # ditto for pcaches
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache\")")
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README\" \"Default destination for code cache files.\n\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README.txt\" \"Default destination for code cache files.\n\")")
 # ditto for DR logdir
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/dynamorio\")")
-install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
+install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README.txt\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
 
 if (NOT BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
@@ -1538,7 +1557,7 @@ if (NOT BUILDING_SUB_PACKAGE)
       # ext dir is currently empty but we need it to avoid drrun error (i#427)
       install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug\")")
       # CPack seems to ignore empty dirs so add a README file
-      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README\" \"Currently empty.\n\")")
+      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README.txt\" \"Currently empty.\n\")")
     else (DEBUG_BUILD)
       install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
@@ -1550,7 +1569,7 @@ if (NOT BUILDING_SUB_PACKAGE)
       # ext dir is currently empty but we need it to avoid drrun error (i#427)
       install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release\")")
       # CPack seems to ignore empty dirs so add a README file
-      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README\" \"Currently empty.\n\")")
+      install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/release/README.txt\" \"Currently empty.\n\")")
     endif (DEBUG_BUILD)
   endif (UNIX)
 
@@ -1565,7 +1584,7 @@ if (NOT BUILDING_SUB_PACKAGE)
   install(CODE "configure_file(\"${DR_LICENSE_DIR}/License.txt\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/License.txt\" COPYONLY)")
   install(CODE "configure_file(\"${DR_LICENSE_DIR}/ACKNOWLEDGEMENTS\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ACKNOWLEDGEMENTS\" COPYONLY)")
   # rather whan whole README, which talks about running samples, etc.:
-  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
+  install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/README.txt\" \"This is a copy of the parts of DynamoRIO needed to run ${toolname_cap_spc}.  See http://dynamorio.org for more information.\n\")")
   # on Windows we don't need all the ${BIN_ARCH}/ tools, and they take up space
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
   if (UNIX)

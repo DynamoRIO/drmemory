@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2009 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -37,7 +37,7 @@ Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
 currently targets 32-bit Windows and Linux.  64-bit is coming soon.
 
 Dr. Memory also includes a system call tracing tool for Windows and a
-symbol query utility.
+symbol query utility.  Those tools are available for 64-bit.
 
 ===========================================================================
 How do I use Dr. Memory?
