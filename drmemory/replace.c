@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -917,7 +917,7 @@ replace_routine(bool add, const module_data_t *mod,
 {
     IF_DEBUG(const char *modname = dr_module_preferred_name(mod);)
     /* look for partial map (i#730) */
-    if (addr >= mod->end) {
+    if (!dr_module_contains_addr(mod, addr)) {
         LOG(1, "NOT replacing %s @"PFX" beyond end of mapping for module %s\n",
             replace_routine_name[index], addr, modname == NULL ? "<noname>" : modname);
         return;
@@ -980,7 +980,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
         instr_reset(drcontext, &inst);
         prev_pc = pc;
         /* look for partial map (i#730) */
-        if (pc + MAX_INSTR_SIZE > mod->end) {
+        if (!dr_module_contains_addr(mod, pc + MAX_INSTR_SIZE)) {
             WARN("WARNING: decoding off end of module for %s\n",
                  replace_routine_name[index]);
             break;
@@ -1002,7 +1002,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
                 addr_got = opnd_get_immed_int(instr_get_src(&inst, 0)) + prev_pc;
                 LOG(2, "\tfound GOT "PFX" for indir func %s\n",
                     addr_got, replace_routine_name[index]);
-                if (addr_got < mod->start || addr_got > mod->end)
+                if (addr_got < mod->start || !dr_module_contains_addr(mod, addr_got))
                     addr_got = NULL;
             }
         }
@@ -1016,7 +1016,7 @@ replace_all_indirect(bool add, const module_data_t *mod,
             app_pc addr = addr_got + opnd_get_disp(instr_get_src(&inst, 0));
             LOG(2, "\tfound return value "PFX" for indir func %s @"PFX"\n",
                 addr, replace_routine_name[index], prev_pc);
-            if (addr < mod->start || addr > mod->end) {
+            if (addr < mod->start || !dr_module_contains_addr(mod, addr)) {
                 LOG(1, "WARNING: unknown code in indir func %s @"PFX"\n",
                     replace_routine_name[index], prev_pc);
                 break;

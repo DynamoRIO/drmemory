@@ -1914,7 +1914,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     }
 #endif
     /* look for partial map (i#730) */
-    if (pc >= edata->mod->end) {
+    if (!dr_module_contains_addr(edata->mod, pc)) {
         LOG(1, "NOT intercepting %s @"PFX" beyond end of mapping for module %s\n",
             edata->possible[idx].name, pc, modname);
         return;
@@ -2337,7 +2337,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
          */
         if (pc != NULL) {
             char buf[16];
-            if (pc < mod->end && safe_read(pc, sizeof(buf), buf)) {
+            if (dr_module_contains_addr(mod, pc) && safe_read(pc, sizeof(buf), buf)) {
                 instr_t inst;
                 void *drcontext = dr_get_current_drcontext();
                 instr_init(drcontext, &inst);

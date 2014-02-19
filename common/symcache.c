@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -592,6 +592,7 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
         return; /* don't support caching */
 
     /* if smaller than threshold, not worth caching */
+    /* XXX: this overcounts for non-contiguous modules */
     if (mod->end - mod->start < op_modsize_cache_threshold) {
         LOG(1, "%s: module %s too small to cache\n", __FUNCTION__, modname);
         return;
