@@ -74,12 +74,12 @@ extern const char * const param_type_names[];
 
 enum {
     /*****************************************/
-    /* syscall_arg_t.flags */
+    /* sysinfo_arg_t.flags */
     SYSARG_READ                = 0x00000001,
     SYSARG_WRITE               = 0x00000002,
     /* The data structure type has pointers or uninitialized fields
      * or padding and needs special processing according to the
-     * SYSARG_TYPE_* code stored in syscall_arg_t.misc.
+     * SYSARG_TYPE_* code stored in sysinfo_arg_t.misc.
      */
     SYSARG_COMPLEX_TYPE        = 0x00000004,
     /* the size points at the IO_STATUS_BLOCK param */
@@ -125,19 +125,19 @@ enum {
     SYSARG_NON_MEMARG          = 0x00001000,
 
     /*****************************************/
-    /* syscall_arg_t.size, using values that cannot be mistaken for
+    /* sysinfo_arg_t.size, using values that cannot be mistaken for
      * a parameter reference.
      */
     /* <available>            = -100, */
-    /* used in repeated syscall_arg_t entry for post-syscall size */
+    /* used in repeated sysinfo_arg_t entry for post-syscall size */
     SYSARG_POST_SIZE_RETVAL   = -101,
     /* Size is stored as a field of size 4 bytes with an offset given by
-     * syscall_arg_t.misc.  Can only be used by one arg per syscall.
+     * sysinfo_arg_t.misc.  Can only be used by one arg per syscall.
      */
     SYSARG_SIZE_IN_FIELD      = -102,
 
     /*****************************************/
-    /* syscall_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
+    /* sysinfo_arg_t.misc when flags has SYSARG_COMPLEX_TYPE */
     /* These occupy the same number-space as DRSYS_TYPE_*.
      * We have duplicate labels here for legacy code.
      * We have a separate namespace so we can use our own types
@@ -181,12 +181,12 @@ enum {
 };
 
 /* We encode the actual size of a write, if it can differ from the
- * requested size, as a subsequent syscall_arg_t entry with the same
+ * requested size, as a subsequent sysinfo_arg_t entry with the same
  * param#.  A negative size there refers to a parameter that should be
  * de-referenced to obtain the actual write size.  That parameter to be
  * de-referenced must have its own entry which indicates its size.
  */
-typedef struct _syscall_arg_t {
+typedef struct _sysinfo_arg_t {
     int param; /* ordinal of parameter */
     int size; /* >0 = abs size; <=0 = -param that holds size */
     uint flags; /* SYSARG_ flags */
@@ -200,7 +200,7 @@ typedef struct _syscall_arg_t {
      * - SYSARG_HAS_TYPE: holds SYSARG_TYPE_* enum value
      */
     int misc;
-} syscall_arg_t;
+} sysinfo_arg_t;
 
 #define SYSARG_MISC_HAS_TYPE(flags) \
     (TESTANY(SYSARG_COMPLEX_TYPE|SYSARG_INLINED|SYSARG_HAS_TYPE, (flags)))
@@ -255,7 +255,7 @@ typedef struct _syscall_info_t {
     uint return_type; /* not drsys_param_type_t so we can use extended SYSARG_TYPE_* */
     int arg_count;
     /* list of args that are not inlined */
-    syscall_arg_t arg[MAX_ARGS_IN_ENTRY];
+    sysinfo_arg_t arg[MAX_ARGS_IN_ENTRY];
     /* For custom handling w/o separate number lookup.
      * If SYSINFO_SECONDARY_TABLE is set in flags, this is instead
      * a pointer to a new syscall_info_t table.
@@ -377,7 +377,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
  */
 bool
 os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
-                                 const syscall_arg_t *arg_info,
+                                 const sysinfo_arg_t *arg_info,
                                  app_pc start, uint size);
 
 /* returns true if the given argument was processed in a non-standard way
@@ -385,7 +385,7 @@ os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
  */
 bool
 os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
-                                  const syscall_arg_t *arg_info,
+                                  const sysinfo_arg_t *arg_info,
                                   app_pc start, uint size);
 
 bool
@@ -406,7 +406,7 @@ bool
 sysnum_cmp(void *v1, void *v2);
 
 bool
-sysarg_invalid(syscall_arg_t *arg);
+sysarg_invalid(sysinfo_arg_t *arg);
 
 void
 store_extra_info(cls_syscall_t *pt, int index, ptr_int_t value);
@@ -429,13 +429,13 @@ report_memarg_type(sysarg_iter_info_t *iter_info,
 
 bool
 report_memarg_field(sysarg_iter_info_t *ii,
-                    const syscall_arg_t *arg_info,
+                    const sysinfo_arg_t *arg_info,
                     app_pc ptr, size_t sz, const char *id,
                     drsys_param_type_t type, const char *type_name);
 
 bool
 report_memarg(sysarg_iter_info_t *iter_info,
-              const syscall_arg_t *arg_info,
+              const sysinfo_arg_t *arg_info,
               app_pc ptr, size_t sz, const char *id);
 
 bool

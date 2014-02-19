@@ -4016,7 +4016,7 @@ drsys_syscall_type(drsys_syscall_t *syscall, drsys_syscall_type_t *type OUT)
 
 static bool
 handle_port_message_access(sysarg_iter_info_t *ii,
-                           const syscall_arg_t *arg_info,
+                           const sysinfo_arg_t *arg_info,
                            app_pc start, uint size)
 {
     /* variable-length */
@@ -4069,7 +4069,7 @@ handle_port_message_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_context_access(sysarg_iter_info_t *ii,
-                      const syscall_arg_t *arg_info,
+                      const sysinfo_arg_t *arg_info,
                       app_pc start, uint size)
 {
 #if !defined(_X86_) || defined(X64)
@@ -4187,7 +4187,7 @@ handle_context_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_exception_record_access(sysarg_iter_info_t *ii,
-                               const syscall_arg_t *arg_info,
+                               const sysinfo_arg_t *arg_info,
                                app_pc start, uint size)
 {
     const EXCEPTION_RECORD *er = (EXCEPTION_RECORD *)start;
@@ -4213,7 +4213,7 @@ handle_exception_record_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_security_qos_access(sysarg_iter_info_t *ii,
-                           const syscall_arg_t *arg_info,
+                           const sysinfo_arg_t *arg_info,
                            app_pc start, uint size)
 {
     const SECURITY_QUALITY_OF_SERVICE *s = (SECURITY_QUALITY_OF_SERVICE *)start;
@@ -4232,7 +4232,7 @@ handle_security_qos_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_security_descriptor_access(sysarg_iter_info_t *ii,
-                                  const syscall_arg_t *arg_info,
+                                  const sysinfo_arg_t *arg_info,
                                   app_pc start, uint size)
 {
     const SECURITY_DESCRIPTOR *s = (SECURITY_DESCRIPTOR *)start;
@@ -4265,7 +4265,7 @@ handle_security_descriptor_access(sysarg_iter_info_t *ii,
 }
 
 bool
-handle_unicode_string_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_unicode_string_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                              app_pc start, uint size, bool ignore_len)
 {
     UNICODE_STRING us;
@@ -4346,7 +4346,7 @@ handle_unicode_string_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_in
 
 bool
 handle_object_attributes_access(sysarg_iter_info_t *ii,
-                                const syscall_arg_t *arg_info,
+                                const sysinfo_arg_t *arg_info,
                                 app_pc start, uint size)
 {
     OBJECT_ATTRIBUTES oa;
@@ -4425,7 +4425,7 @@ handle_cwstring(sysarg_iter_info_t *ii, const char *id,
 
 static bool
 handle_cstring_wide_access(sysarg_iter_info_t *ii,
-                           const syscall_arg_t *arg_info,
+                           const sysinfo_arg_t *arg_info,
                            app_pc start, uint size/*in bytes*/)
 {
     return handle_cwstring(ii, NULL, start, size, arg_info->param, arg_info->flags, NULL,
@@ -4437,7 +4437,7 @@ handle_cstring_wide_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_alpc_port_attributes_access(sysarg_iter_info_t *ii,
-                                   const syscall_arg_t *arg_info,
+                                   const sysinfo_arg_t *arg_info,
                                    app_pc start, uint size)
 {
     ALPC_PORT_ATTRIBUTES *apa = (ALPC_PORT_ATTRIBUTES *) start;
@@ -4467,7 +4467,7 @@ handle_alpc_port_attributes_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_alpc_security_attributes_access(sysarg_iter_info_t *ii,
-                                       const syscall_arg_t *arg_info,
+                                       const sysinfo_arg_t *arg_info,
                                        app_pc start, uint size)
 {
     ALPC_SECURITY_ATTRIBUTES asa;
@@ -4491,7 +4491,7 @@ handle_alpc_security_attributes_access(sysarg_iter_info_t *ii,
 
 static bool
 handle_alpc_context_attributes_access(sysarg_iter_info_t *ii,
-                                       const syscall_arg_t *arg_info,
+                                       const sysinfo_arg_t *arg_info,
                                        app_pc start, uint size)
 {
     /* XXX i#1390: This structure is only used in NtAlpcCancelMessage, and right now only
@@ -4519,7 +4519,7 @@ handle_alpc_context_attributes_access(sysarg_iter_info_t *ii,
 
 static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
-                             const syscall_arg_t *arg_info,
+                             const sysinfo_arg_t *arg_info,
                              app_pc start, uint size)
 {
     if (!TEST(SYSARG_COMPLEX_TYPE, arg_info->flags))
@@ -4556,7 +4556,7 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
 
 bool
 os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
-                                 const syscall_arg_t *arg_info,
+                                 const sysinfo_arg_t *arg_info,
                                  app_pc start, uint size)
 {
     return os_handle_syscall_arg_access(ii, arg_info, start, size);
@@ -4564,7 +4564,7 @@ os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
 
 bool
 os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
-                                  const syscall_arg_t *arg_info,
+                                  const sysinfo_arg_t *arg_info,
                                   app_pc start, uint size)
 {
     return os_handle_syscall_arg_access(ii, arg_info, start, size);
@@ -5007,7 +5007,7 @@ handle_PowerInformation(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
                      * not be passed to the kernel for DETAILED_STRING!
                      * Only the name of the module.
                      */
-                    syscall_arg_t arg_info = {1, sizeof(UNICODE_STRING), SYSARG_READ, 0};
+                    sysinfo_arg_t arg_info = {1, sizeof(UNICODE_STRING), SYSARG_READ, 0};
                     handle_unicode_string_access(ii, &arg_info,
                                                  (byte *)&real_req->ReasonString,
                                                  sizeof(real_req->ReasonString),

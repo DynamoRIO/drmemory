@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -108,7 +108,7 @@ struct _drsys_syscall_t;
  * Opaque "system call handle" type used to refer to a particular system call.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  */
 typedef struct _drsys_syscall_t drsys_syscall_t;
 
@@ -479,7 +479,7 @@ DR_EXPORT
  * Given a system call handle, retrieves the canonical system call name.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * @param[in]  syscall  The handle for the system call to query.
  * @param[out] name     The system call name.
@@ -494,7 +494,7 @@ DR_EXPORT
  * Given a system call handle, retrieves the system call number.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * @param[in]  syscall  The handle for the system call to query.
  * @param[out] sysnum   The system call number.
@@ -509,7 +509,7 @@ DR_EXPORT
  * Identifies the type of system call.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * @param[in]  syscall  The handle for the system call to query.
  * @param[out] type     The system call type.
@@ -524,7 +524,7 @@ DR_EXPORT
  * Identifies whether the system call details for the given syscall are known.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * @param[in]  syscall  The handle for the system call to query.
  * @param[out] known    Whether known.
@@ -540,7 +540,7 @@ DR_EXPORT
  * for the given system call.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * On Windows, System calls that return an error code like
  * STATUS_BUFFER_TOO_SMALL OUT but that still write an param are
@@ -560,7 +560,7 @@ DR_EXPORT
  * Identifies the type of the return value for the specified system call.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * \note Some system calls have varying return types, which depend on
  * the parameters passed in (e.g., on Windows, NtGdiPolyPolyDraw
@@ -719,7 +719,7 @@ DR_EXPORT
  * system call.
  * The system call handle can be obtained from drsys_cur_syscall(),
  * drsys_iterate_syscalls(), drsys_name_to_syscall(),
- * drsys_number_to_syscall(), or syscall_arg_t.syscall.
+ * drsys_number_to_syscall(), or drsys_arg_t.syscall.
  *
  * Only the top-level types are enumerated (i.e., fields of structures
  * are not recursively followed).  As this is a static iteration, only

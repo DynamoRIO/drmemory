@@ -6118,7 +6118,7 @@ is_int_resource(void *ptr)
 
 bool
 handle_large_string_access(sysarg_iter_info_t *ii,
-                           const syscall_arg_t *arg_info,
+                           const sysinfo_arg_t *arg_info,
                            app_pc start, uint size)
 {
     LARGE_STRING ls;
@@ -6171,7 +6171,7 @@ handle_large_string_access(sysarg_iter_info_t *ii,
 
 bool
 handle_devmodew_access(sysarg_iter_info_t *ii,
-                       const syscall_arg_t *arg_info,
+                       const sysinfo_arg_t *arg_info,
                        app_pc start, uint size)
 {
     /* DEVMODEW is var-len by windows ver plus optional private driver data appended */
@@ -6212,7 +6212,7 @@ handle_devmodew_access(sysarg_iter_info_t *ii,
 
 bool
 handle_wndclassexw_access(sysarg_iter_info_t *ii,
-                          const syscall_arg_t *arg_info,
+                          const sysinfo_arg_t *arg_info,
                           app_pc start, uint size)
 {
     WNDCLASSEXW safe;
@@ -6266,7 +6266,7 @@ handle_wndclassexw_access(sysarg_iter_info_t *ii,
 
 bool
 handle_clsmenuname_access(sysarg_iter_info_t *ii,
-                          const syscall_arg_t *arg_info,
+                          const sysinfo_arg_t *arg_info,
                           app_pc start, uint size)
 {
     CLSMENUNAME safe;
@@ -6315,7 +6315,7 @@ handle_clsmenuname_access(sysarg_iter_info_t *ii,
 
 bool
 handle_menuiteminfow_access(sysarg_iter_info_t *ii,
-                            const syscall_arg_t *arg_info,
+                            const sysinfo_arg_t *arg_info,
                             app_pc start, uint size)
 {
     MENUITEMINFOW *real = (MENUITEMINFOW *) start;
@@ -6418,7 +6418,7 @@ handle_menuiteminfow_access(sysarg_iter_info_t *ii,
 
 bool
 handle_bitmapinfo_access(sysarg_iter_info_t *ii,
-                         const syscall_arg_t *arg_info,
+                         const sysinfo_arg_t *arg_info,
                          app_pc start, uint size)
 {
     /* bmiColors is variable-length and the number of entries in the
@@ -6741,7 +6741,7 @@ handle_cwstring_field(sysarg_iter_info_t *ii, const char *id,
 
 bool
 wingdi_process_arg(sysarg_iter_info_t *iter_info,
-                   const syscall_arg_t *arg_info, app_pc start, uint size)
+                   const sysinfo_arg_t *arg_info, app_pc start, uint size)
 {
     switch (arg_info->misc) {
     case SYSARG_TYPE_LARGE_STRING:
@@ -6804,7 +6804,7 @@ handle_UserSystemParametersInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_
         break;
     }
     case SPI_SETDESKWALLPAPER: {
-        syscall_arg_t arg = {PV_PARAM_ORDINAL, sizeof(UNICODE_STRING),
+        sysinfo_arg_t arg = {PV_PARAM_ORDINAL, sizeof(UNICODE_STRING),
                              SYSARG_READ|SYSARG_COMPLEX_TYPE,
                              SYSARG_TYPE_UNICODE_STRING};
         handle_unicode_string_access(ii, &arg, pvParam, sizeof(UNICODE_STRING), false);
@@ -7212,7 +7212,7 @@ handle_UserMenuItemInfo(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *
 {
     /* 4th param is bool saying whether it's Set or Get */
     BOOL set = (BOOL) pt->sysarg[4];
-    syscall_arg_t arg = {3, 0,
+    sysinfo_arg_t arg = {3, 0,
                          (set ? SYSARG_READ : SYSARG_WRITE)|SYSARG_COMPLEX_TYPE,
                          SYSARG_TYPE_MENUITEMINFOW};
     handle_menuiteminfow_access(ii, &arg, (byte *) pt->sysarg[3], 0);

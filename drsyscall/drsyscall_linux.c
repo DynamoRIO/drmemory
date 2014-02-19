@@ -3817,7 +3817,7 @@ os_handle_post_syscall(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *i
 
 static bool
 handle_cstring_access(sysarg_iter_info_t *ii,
-                      const syscall_arg_t *arg_info,
+                      const sysinfo_arg_t *arg_info,
                       app_pc start, uint size/*in bytes*/)
 {
     return handle_cstring(ii, arg_info->param, arg_info->flags,
@@ -3827,7 +3827,7 @@ handle_cstring_access(sysarg_iter_info_t *ii,
 }
 
 static bool
-handle_sockaddr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_sockaddr_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                        app_pc start, uint size)
 {
     cls_syscall_t *pt = (cls_syscall_t *)
@@ -3838,7 +3838,7 @@ handle_sockaddr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
 }
 
 static bool
-handle_msghdr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_msghdr_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                        app_pc start, uint size)
 {
     cls_syscall_t *pt = (cls_syscall_t *)
@@ -3849,7 +3849,7 @@ handle_msghdr_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
 }
 
 static bool
-handle_msgbuf_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_msgbuf_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                      app_pc start, uint size)
 {
     cls_syscall_t *pt = (cls_syscall_t *)
@@ -3860,7 +3860,7 @@ handle_msgbuf_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
 }
 
 static bool
-handle_strarray_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_strarray_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                        app_pc start, uint size)
 {
     char id[16];
@@ -3872,7 +3872,7 @@ handle_strarray_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
 
 static bool
 os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
-                             const syscall_arg_t *arg_info,
+                             const sysinfo_arg_t *arg_info,
                              app_pc start, uint size)
 {
     if (!TEST(SYSARG_COMPLEX_TYPE, arg_info->flags))
@@ -3895,7 +3895,7 @@ os_handle_syscall_arg_access(sysarg_iter_info_t *ii,
 
 bool
 os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
-                                 const syscall_arg_t *arg_info,
+                                 const sysinfo_arg_t *arg_info,
                                  app_pc start, uint size)
 {
     return os_handle_syscall_arg_access(ii, arg_info, start, size);
@@ -3903,7 +3903,7 @@ os_handle_pre_syscall_arg_access(sysarg_iter_info_t *ii,
 
 bool
 os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
-                                  const syscall_arg_t *arg_info,
+                                  const sysinfo_arg_t *arg_info,
                                   app_pc start, uint size)
 {
     return os_handle_syscall_arg_access(ii, arg_info, start, size);

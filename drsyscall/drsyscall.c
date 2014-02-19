@@ -784,7 +784,7 @@ map_to_exported_type(uint sysarg_type, size_t *sz_out OUT)
 }
 
 static drsys_param_type_t
-type_from_arg_info(const syscall_arg_t *arg_info)
+type_from_arg_info(const sysinfo_arg_t *arg_info)
 {
     drsys_param_type_t type = DRSYS_TYPE_INVALID;
     if (SYSARG_MISC_HAS_TYPE(arg_info->flags)) {
@@ -809,7 +809,7 @@ report_memarg_type(sysarg_iter_info_t *ii,
  */
 bool
 report_memarg_field(sysarg_iter_info_t *ii,
-                    const syscall_arg_t *arg_info,
+                    const sysinfo_arg_t *arg_info,
                     app_pc ptr, size_t sz, const char *id,
                     drsys_param_type_t type, const char *type_name)
 {
@@ -823,7 +823,7 @@ report_memarg_field(sysarg_iter_info_t *ii,
  */
 bool
 report_memarg_nonfield(sysarg_iter_info_t *ii,
-                       const syscall_arg_t *arg_info,
+                       const sysinfo_arg_t *arg_info,
                        app_pc ptr, size_t sz, const char *id)
 {
     return report_memarg_type(ii, arg_info->param, arg_info->flags,
@@ -833,7 +833,7 @@ report_memarg_nonfield(sysarg_iter_info_t *ii,
 /* For memargs, we report their fields, so the arg type is the containing type. */
 bool
 report_memarg(sysarg_iter_info_t *ii,
-              const syscall_arg_t *arg_info,
+              const sysinfo_arg_t *arg_info,
               app_pc ptr, size_t sz, const char *id)
 {
     return report_memarg_field(ii, arg_info, ptr, sz, id, DRSYS_TYPE_STRUCT, NULL);
@@ -913,7 +913,7 @@ report_sysarg(sysarg_iter_info_t *ii, int ordinal, uint arg_flags)
 }
 
 bool
-sysarg_invalid(syscall_arg_t *arg)
+sysarg_invalid(sysinfo_arg_t *arg)
 {
     return (arg->param == 0 && arg->size == 0 && arg->flags == 0);
 }
@@ -1124,7 +1124,7 @@ sysarg_get_size(void *drcontext, cls_syscall_t *pt, sysarg_iter_info_t *ii,
                 syscall_info_t *sysinfo, int argnum, bool pre, byte *start)
 {
     ptr_uint_t size = 0;
-    syscall_arg_t *arg = &sysinfo->arg[argnum];
+    sysinfo_arg_t *arg = &sysinfo->arg[argnum];
     if (arg->size == SYSARG_POST_SIZE_RETVAL) {
         /* XXX: some syscalls (in particular NtGdi* and NtUser*) return
          * the capacity needed when the input buffer is NULL or

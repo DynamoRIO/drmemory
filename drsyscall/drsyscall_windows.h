@@ -27,7 +27,7 @@
 extern dr_os_version_info_t win_ver;
 
 bool
-handle_unicode_string_access(sysarg_iter_info_t *ii, const syscall_arg_t *arg_info,
+handle_unicode_string_access(sysarg_iter_info_t *ii, const sysinfo_arg_t *arg_info,
                              app_pc start, uint size, bool ignore_len);
 
 bool
@@ -54,7 +54,7 @@ wingdi_shadow_process_syscall(void *drcontext, cls_syscall_t *pt,
 
 bool
 wingdi_process_arg(sysarg_iter_info_t *iter_info,
-                   const syscall_arg_t *arg_info, app_pc start, uint size);
+                   const sysinfo_arg_t *arg_info, app_pc start, uint size);
 
 /* Returns true if the success value is known, in which case it is placed in *success.
  * Returns false if the caller should determine whether successful.
