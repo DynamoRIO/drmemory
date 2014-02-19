@@ -41,9 +41,15 @@ set(srcs
   )
 
 if (UNIX)
-  set(srcs ${srcs}
-    drsyscall_linux.c
-    ../${asm_utils_src})
+  if (APPLE)
+    set(srcs ${srcs}
+      drsyscall_macos.c
+      ../${asm_utils_src})
+  else (APPLE)
+    set(srcs ${srcs}
+      drsyscall_linux.c
+      ../${asm_utils_src})
+  endif (APPLE)
 else (UNIX)
   set(srcs ${srcs}
     drsyscall_windows.c
