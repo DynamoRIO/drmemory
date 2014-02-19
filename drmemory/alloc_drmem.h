@@ -29,7 +29,7 @@
 
 #define DR_REG_PTR_RETURN DR_REG_XAX
 
-#ifdef LINUX
+#ifdef UNIX
 extern hashtable_t sighand_table;
 #endif
 
@@ -43,7 +43,7 @@ bool
 check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,
                                bool addr_on_stack, dr_mcontext_t *mc);
 
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info);
 

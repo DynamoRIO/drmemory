@@ -179,7 +179,7 @@
  * ENUM AND DATA STRUCTURES
  */
 
-#ifdef LINUX
+#ifdef UNIX
 /* For SHDW(app) = (app & 0x00000FFF'FFFFFFFF) + 0x00000200'00000000),
  * the segment size is: 0x100'00000000, i.e., 40 bits,
  * and there are 16 (0x1000'00000000/0x100'00000000) segments per unit.

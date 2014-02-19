@@ -198,7 +198,7 @@ typedef void (*app_memory_pre_delete_cb_t)(umbra_map_t *map,
 typedef void (*app_memory_post_delete_cb_t)(umbra_map_t *map,
                                             app_pc start, size_t size,
                                             bool success);
-#ifdef LINUX
+#ifdef UNIX
 typedef void (*app_memory_mremap_cb_t)(umbra_map_t *map,
                                        app_pc old_base, size_t old_size,
                                        app_pc new_base, size_t new_size);
@@ -251,7 +251,7 @@ typedef struct _umbra_map_options_t {
 
     /** Application memory post deletion callback. */
     app_memory_post_delete_cb_t app_memory_post_delete_cb;
-#ifdef LINUX
+#ifdef UNIX
     /** Application memory re-map callback. */
     app_memory_mremap_cb_t app_memory_mremap_cb;
 #endif

@@ -35,7 +35,7 @@
 #include "report.h"
 #include "alloc_drmem.h"
 
-#ifdef LINUX
+#ifdef UNIX
 # include <signal.h> /* for SIGSEGV */
 #endif
 

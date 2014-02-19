@@ -255,7 +255,7 @@ opnd_create_shadow_eflags_slot(void);
 opnd_t
 opnd_create_shadow_inheap_slot(void);
 
-#ifdef LINUX
+#ifdef UNIX
 opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz);
 #endif

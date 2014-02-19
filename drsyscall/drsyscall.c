@@ -36,7 +36,7 @@
  * XXX: should we move it to a new drsyscall_shared.c to avoid having
  * all these platform-specific includes in the main file?
  */
-#ifdef LINUX
+#ifdef UNIX
 # include <sys/types.h>
 # include <sys/socket.h>
 # include <linux/in.h>
@@ -160,7 +160,7 @@ check_syscall_gateway(instr_t *inst)
     if (instr_get_opcode(inst) == OP_sysenter) {
         if (syscall_gateway == DRSYS_GATEWAY_UNKNOWN
             /* some syscalls use int, but consider sysenter the primary */
-            IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_INT))
+            IF_UNIX(|| syscall_gateway == DRSYS_GATEWAY_INT))
             syscall_gateway = DRSYS_GATEWAY_SYSENTER;
         else {
             ASSERT(syscall_gateway == DRSYS_GATEWAY_SYSENTER,
@@ -172,7 +172,7 @@ check_syscall_gateway(instr_t *inst)
         else {
             ASSERT(syscall_gateway == DRSYS_GATEWAY_SYSCALL
                    /* some syscalls use int */
-                   IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_INT),
+                   IF_UNIX(|| syscall_gateway == DRSYS_GATEWAY_INT),
                    "multiple system call gateways not supported");
         }
     } else if (instr_get_opcode(inst) == OP_int) {
@@ -180,7 +180,7 @@ check_syscall_gateway(instr_t *inst)
             syscall_gateway = DRSYS_GATEWAY_INT;
         else {
             ASSERT(syscall_gateway == DRSYS_GATEWAY_INT
-                   IF_LINUX(|| syscall_gateway == DRSYS_GATEWAY_SYSENTER
+                   IF_UNIX(|| syscall_gateway == DRSYS_GATEWAY_SYSENTER
                             || syscall_gateway == DRSYS_GATEWAY_SYSCALL),
                    "multiple system call gateways not supported");
         }
@@ -696,7 +696,7 @@ report_memarg_ex(sysarg_iter_info_t *ii,
 {
     drsys_arg_t *arg = ii->arg;
 
-#ifdef LINUX
+#ifdef UNIX
     /* FIXME i#1171: this assertion fails on Windows. */
     ASSERT(sz > 0, "drsyscall shouldn't report empty memargs");
 #endif
@@ -991,7 +991,7 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
                 size_t socklen, int ordinal, uint arg_flags, const char *id)
 {
     struct sockaddr *sa = (struct sockaddr *) ptr;
-#ifdef LINUX
+#ifdef UNIX
     sa_family_t family;
 #else
     ADDRESS_FAMILY family;
@@ -1088,7 +1088,7 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
             return true;
         break;
     }
-#ifdef LINUX
+#ifdef UNIX
     case AF_NETLINK: {
         struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
         if (socklen >= offsetof(struct sockaddr_nl, nl_pad) + sizeof(snl->nl_pad) &&

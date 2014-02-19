@@ -36,7 +36,7 @@ typedef struct _cls_drmem_t {
      * across callbacks!
      */
 #ifdef TOOL_DR_MEMORY
-# ifdef LINUX
+# ifdef UNIX
     /* PR 406333: linux signal delivery */
     app_pc sigaltstack;
     size_t sigaltsize;

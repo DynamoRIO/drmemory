@@ -38,7 +38,9 @@
 #include "../drmemory/stack.h"
 #include "../drmemory/shadow.h"
 #include "../drmemory/readwrite.h"
-#ifdef LINUX
+#ifdef MACOS
+# error NYI i#1438
+#elif defined(LINUX)
 # include "sysnum_linux.h"
 # include <errno.h>
 # define _GNU_SOURCE /* for sched.h */
@@ -112,7 +114,7 @@ static void *snapshot_lock;
  * FIXME: for 64-bit Windows, 8-byte-or-smaller allocs have special headers
  * that are only 8 bytes instead of 16?
  */
-#ifdef LINUX
+#ifdef UNIX
 /* FIXME: mmap chunks have 2*size headers (xref PR 474912) */
 # define HEADER_SIZE sizeof(size_t)
 #else
@@ -152,7 +154,7 @@ static hashtable_t alloc_md5_table;
 typedef struct _tls_heapstat_t {
     char *errbuf; /* buffer for atomic writes */
     size_t errbufsz;
-# ifdef LINUX
+# ifdef UNIX
     int64 filepos; /* f_callstack file position */
 # endif
 } tls_heapstat_t;
@@ -1009,7 +1011,7 @@ client_handle_munmap_fail(app_pc base, size_t size, bool anon)
 {
 }
 
-#ifdef LINUX
+#ifdef UNIX
 void
 client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t new_size,
                      bool image)
@@ -1523,7 +1525,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     file_t f;
     char logname[MAXIMUM_PATH];
     IF_DEBUG(int len;)
-    uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
+    uint extra_flags = IF_UNIX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
         IF_DEBUG(len = )
@@ -1584,7 +1586,7 @@ create_global_logfile(void)
     }
 
     f_global = open_logfile("global", true/*pid suffix*/, -1);
-#ifdef LINUX
+#ifdef UNIX
     /* make it easier for wrapper script to find this logfile */
     dr_fprintf(f_global, "process=%d, parent=%d\n",
                dr_get_process_id(), dr_get_parent_id());
@@ -1651,7 +1653,7 @@ event_timer(void *drcontext, dr_mcontext_t *mcontext)
 {
     bool alarm_clock = false, alarm_stale = false;
     if (sideline_exit) {
-#ifdef LINUX
+#ifdef UNIX
         dr_set_itimer(ITIMER_REAL, 0, event_timer);
 #endif
        return;
@@ -1711,7 +1713,7 @@ reset_real_timer(void)
         timer_real = timer_clock;
     }
     ASSERT(timer_real >= 0, "timer internal error");
-#ifdef LINUX
+#ifdef UNIX
     if (!dr_set_itimer(ITIMER_REAL, timer_real, event_timer))
         ASSERT(false, "unable to set up timer callback\n");
 #endif
@@ -1760,13 +1762,13 @@ sideline_run(void *arg)
         dr_sleep(500);
 #endif
     }
-#ifdef LINUX
+#ifdef UNIX
     dr_set_itimer(ITIMER_REAL, 0, event_timer);
 #endif
     /* i#297: we can't clean up sideline_pt so event_exit does it */
 }
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 event_fork(void *drcontext)
 {
@@ -1824,7 +1826,7 @@ event_fork(void *drcontext)
 }
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 event_signal(void *drcontext, dr_siginfo_t *info)
 {
@@ -1864,7 +1866,7 @@ static bool
 event_filter_syscall(void *drcontext, int sysnum)
 {
     switch (sysnum) {
-#ifdef LINUX
+#ifdef UNIX
     case SYS_close:
     case SYS_fork:
     case SYS_clone:
@@ -1901,7 +1903,7 @@ event_pre_syscall(void *drcontext, int sysnum)
 
     handle_pre_alloc_syscall(drcontext, sysnum, mc);
 
-#ifdef LINUX
+#ifdef UNIX
     if (sysnum == SYS_fork ||
         (sysnum == SYS_clone &&
          !TEST(CLONE_VM, (uint) dr_syscall_get_param(drcontext, 0)))
@@ -2192,11 +2194,11 @@ dr_init(client_id_t client_id)
         ASSERT(false, "drmgr registration failed");
     drmgr_register_module_load_event(event_module_load);
     drmgr_register_module_unload_event(event_module_unload);
-#ifdef LINUX
+#ifdef UNIX
     dr_register_fork_init_event(event_fork);
 #endif
     if (ZERO_STACK()) {
-#ifdef LINUX
+#ifdef UNIX
         drmgr_register_signal_event(event_signal);
 #else
         drmgr_register_exception_event(event_exception);

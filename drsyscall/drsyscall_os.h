@@ -46,7 +46,7 @@
 #endif
 
 /* syscall numbers are most natural in decimal on linux but hex on windows */
-#ifdef LINUX
+#ifdef UNIX
 # define SYSNUM_FMT "%d"
 #else
 # define SYSNUM_FMT PIFX
@@ -59,7 +59,7 @@ enum {
      */
     EXTRA_INFO_SIZE_FROM_FIELD,
     EXTRA_INFO_SOCKADDR,
-#ifdef LINUX
+#ifdef UNIX
     EXTRA_INFO_MSG_CONTROL,
     EXTRA_INFO_MSG_CONTROLLEN,
 #endif

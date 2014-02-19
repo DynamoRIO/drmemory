@@ -225,7 +225,7 @@ malloc_iterate(malloc_iter_cb_t cb, void *iter_data);
 
 typedef size_t (*alloc_size_func_t)(void *);
 
-#ifdef LINUX
+#ifdef UNIX
 byte *
 get_brk(bool pre_us);
 
@@ -405,7 +405,7 @@ client_handle_munmap(app_pc base, size_t size, bool anon);
 void
 client_handle_munmap_fail(app_pc base, size_t size, bool anon);
 
-#ifdef LINUX
+#ifdef UNIX
 void
 client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t new_size,
                      bool image);

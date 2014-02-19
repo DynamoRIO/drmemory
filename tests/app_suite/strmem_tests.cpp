@@ -127,7 +127,7 @@ TEST(StringTests, wcsstr) {
     ASSERT_STREQ(wcsstr(s2.c_str(), L"\r\n"), L"\r\nbar");
 }
 
-#ifdef LINUX
+#ifdef UNIX
 TEST(StringTests, strcasecmp) {
     char *s = new char[3];
     s[0] = 'a';
@@ -218,4 +218,4 @@ TEST(StringTests, strnlen) {
     ASSERT_EQ(0UL, (unsigned long)strnlen(str, 0));
 }
 
-#endif /* LINUX */
+#endif /* UNIX */

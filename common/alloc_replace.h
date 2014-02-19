@@ -32,7 +32,7 @@ alloc_replace_init();
 void
 alloc_replace_exit();
 
-#ifdef LINUX
+#ifdef UNIX
 byte *
 alloc_replace_orig_brk();
 #endif

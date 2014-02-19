@@ -37,7 +37,7 @@
 #include "callstack.h"
 #include "heap.h"
 #include "alloc_drmem.h"
-#ifdef LINUX
+#ifdef UNIX
 # include <errno.h>
 #endif
 #include <limits.h>
@@ -1608,7 +1608,7 @@ report_init(void)
     }
 }
 
-#ifdef LINUX
+#ifdef UNIX
 void
 report_fork_init(void)
 {

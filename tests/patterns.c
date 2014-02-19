@@ -23,7 +23,7 @@
  * that DR handles via pattern matching.
  */
 
-#ifdef LINUX
+#ifdef UNIX
 # define _GNU_SOURCE /* strchrnul */
 #endif
 #include <string.h>
@@ -50,7 +50,7 @@ main()
 
     c = strchr(dup, 'x');
 
-#ifdef LINUX
+#ifdef UNIX
     c = strchrnul(dup, 'x');
 #endif
 

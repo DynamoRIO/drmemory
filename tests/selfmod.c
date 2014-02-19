@@ -59,7 +59,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
-#ifdef LINUX
+#ifdef UNIX
 # include <sys/mman.h>
 # include <stdint.h>
 #else
@@ -86,7 +86,7 @@ foo(int iters)
     int res;
     void *p = ecode;
     *(int *)(((char *)ecode) + 1) = iters;
-#ifdef LINUX
+#ifdef UNIX
     asm("mov %1,%%eax; call *%%eax; mov %%eax,%0" : "=m"(res) : "m"(p) : "%eax");
 #else
     __asm {
@@ -101,7 +101,7 @@ foo(int iters)
 int
 main()
 {
-#ifdef LINUX
+#ifdef UNIX
     ecode = mmap(0, sizeof(code), PROT_EXEC|PROT_READ|PROT_WRITE,
 		   MAP_ANON|MAP_PRIVATE, -1, 0);
     if (ecode == MAP_FAILED) {

@@ -29,7 +29,7 @@
 #  endif
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
 void __attribute__ ((constructor))
 my_init(void)
 {

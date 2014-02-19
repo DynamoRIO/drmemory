@@ -1406,7 +1406,7 @@ shadow_registers_thread_init(void *drcontext)
     static bool first_thread = true;
 #endif
     shadow_registers_t *sr;
-#ifdef LINUX
+#ifdef UNIX
     sr = (shadow_registers_t *)
         (dr_get_dr_segment_base(IF_X64_ELSE(SEG_GS, SEG_FS)) + tls_shadow_base);
 #else
@@ -1423,7 +1423,7 @@ shadow_registers_thread_init(void *drcontext)
         /* we are in at start for new threads */
         memset(sr, SHADOW_DWORD_UNDEFINED, sizeof(*sr));
         sr->eflags = SHADOW_UNDEFINED;
-#ifdef LINUX
+#ifdef UNIX
         /* PR 426162: post-clone, esp and eax are defined */
         sr->esp = SHADOW_DWORD_DEFINED;
         sr->eax = SHADOW_DWORD_DEFINED;

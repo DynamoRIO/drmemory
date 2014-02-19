@@ -65,6 +65,10 @@ endif ()
 enable_language(C)
 enable_language(CXX)
 
+if (UNIX)
+  set(DEFINES ${DEFINES} -DUNIX)
+endif (UNIX)
+
 option(VMKERNEL "target vmkernel")
 if (VMKERNEL)
   # if we get enough of these, should use a configure.h, but would need to
@@ -292,7 +296,8 @@ if (UNIX)
   else ()
     set(EXTRA_FLAGS "")
   endif ()
-  set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER} "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
+  set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
+    "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
 else (UNIX)
   # FIXME i#1204: fix warnings and up to /W4
   set(WARN "/W2 /WX")

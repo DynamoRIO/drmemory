@@ -83,7 +83,7 @@ typedef enum {
     HEAP_ROUTINE_NOT_HANDLED,
     /* Should collapse these two once have aligned-malloc routine support */
     HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
-#ifdef LINUX
+#ifdef UNIX
     HEAP_ROUTINE_LAST = HEAP_ROUTINE_NOT_HANDLED_NOTIFY,
 #else
     /* Debug CRT routines, which take in extra params */

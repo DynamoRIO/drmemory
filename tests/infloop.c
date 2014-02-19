@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifdef LINUX
+#ifdef UNIX
 # include <unistd.h>
 # include <signal.h>
 # include <errno.h>
@@ -33,7 +33,7 @@ typedef void (*handler_t)(int);
 typedef void (*handler_3_t)(int, siginfo_t *, void *);
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 signal_handler(int sig)
 {
@@ -107,7 +107,7 @@ foo(void)
 int
 main()
 {
-#ifdef LINUX
+#ifdef UNIX
     intercept_signal(SIGTERM, signal_handler);
 #else
     /* for nudge handle leak test */
@@ -124,7 +124,7 @@ main()
     fprintf(stderr, "starting\n");
     fflush(stderr);
 
-#ifdef LINUX
+#ifdef UNIX
     /* test register as root: the only pointer to p2's malloc will be in eax: */
     __asm("mov %0, %%eax" : : "g"(p2) : "%eax");
     __asm("movl $0, %0" : "=g"(p2));

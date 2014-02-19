@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -143,7 +143,10 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 # include "drsyms.h"
 # include "symcache.h"
 #endif
-#ifdef LINUX
+#ifdef MACOS
+# include <sys/syscall.h>
+# include <sys/mman.h>
+#elif defined(LINUX)
 # include "sysnum_linux.h"
 # include <sys/mman.h>
 #else
@@ -261,7 +264,8 @@ typedef struct _cls_alloc_t {
     /* communicating from pre to post alloc routines */
 #ifdef LINUX
     app_pc sbrk;
-#else
+#endif
+#ifdef WINDOWS
     ptr_int_t auxarg; /* heap or blocktype or generic additional arg */
 #endif
     uint alloc_flags;
@@ -498,7 +502,7 @@ static const possible_alloc_routine_t possible_cpp_routines[] = {
      * in stripped modules so that when we have drsyms we can ignore
      * these manglings.
      */
-# ifdef LINUX
+# ifdef UNIX
     { MANGLED_NAME_NEW,                  HEAP_ROUTINE_NEW },
     { MANGLED_NAME_NEW_ARRAY,            HEAP_ROUTINE_NEW_ARRAY },
     { MANGLED_NAME_NEW_NOTHROW,          HEAP_ROUTINE_NEW_NOTHROW },
@@ -543,11 +547,11 @@ translate_routine_name(const char *name)
                                            MANGLED_NAME_NEW_ARRAY_NOTHROW)) == 0)
         return "operator new[]";
     if (strcmp(name, IF_WINDOWS_ELSE("??3@YAXPAX@Z", MANGLED_NAME_DELETE)) == 0
-        IF_LINUX(|| strcmp(name, MANGLED_NAME_DELETE_NOTHROW) == 0))
+        IF_UNIX(|| strcmp(name, MANGLED_NAME_DELETE_NOTHROW) == 0))
         return "operator delete";
     else if (strcmp(name, IF_WINDOWS_ELSE("??_V@YAXPAX@Z",
                                           MANGLED_NAME_DELETE_ARRAY)) == 0
-             IF_LINUX(|| strcmp(name,  MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0))
+             IF_UNIX(|| strcmp(name,  MANGLED_NAME_DELETE_ARRAY_NOTHROW) == 0))
         return "operator delete[]";
 #endif
     return name;
@@ -2322,7 +2326,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
                                      );
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
-#ifdef LINUX
+#ifdef UNIX
         /* PR 604274: sometimes undefined symbol has a value pointing at PLT:
          * we do not want to try and intercept that.
          * Ideally DR should exclude these weird symbols: that's i#341.
@@ -2351,7 +2355,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
         if (pc != NULL)
             add_to_alloc_set(&edata, pc, i);
-#ifdef LINUX
+#ifdef UNIX
         /* libc's malloc_usable_size() is used during initial heap walk */
         if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
             mod->start == get_libc_base(NULL)) {
@@ -2553,7 +2557,7 @@ get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t
 static ssize_t
 get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t *routine)
 {
-#ifdef LINUX
+#ifdef UNIX
     /* malloc_usable_size() includes padding */
     ASSERT(routine->set != NULL &&
            routine->set->func[HEAP_ROUTINE_SIZE_USABLE] != NULL,
@@ -2658,7 +2662,7 @@ get_padded_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_
         }
     }
     return result;
-#endif /* LINUX -> WINDOWS */
+#endif /* UNIX -> WINDOWS */
 }
 
 /***************************************************************************
@@ -3092,7 +3096,9 @@ module_is_libc(const module_data_t *mod, bool *is_libc, bool *is_libcpp, bool *i
     *is_libc = false;
     *is_libcpp = false;
     if (modname != NULL) {
-#ifdef LINUX
+#ifdef MACOS
+# error NYI: i#1438
+#elif defined(LINUX)
         if (text_matches_pattern(modname, "libc*", false))
             *is_libc = true;
 #else

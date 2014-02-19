@@ -24,7 +24,7 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#ifdef LINUX
+#ifdef UNIX
 # include <unistd.h>
 # include <signal.h>
 # include <ucontext.h>
@@ -37,7 +37,7 @@ typedef void (*handler_3_t)(int, siginfo_t *, void *);
 #include <setjmp.h>
 jmp_buf mark;
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 signal_handler(int sig)
 {
@@ -166,7 +166,7 @@ main()
     /* invalid free: crashes so we have a try/except.
      * glibc catches invalid free only at certain points near real mallocs.
      */
-#ifdef LINUX
+#ifdef UNIX
     intercept_signal(SIGSEGV, signal_handler);
 #else
     SetUnhandledExceptionFilter((LPTOP_LEVEL_EXCEPTION_FILTER) our_top_handler);

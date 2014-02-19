@@ -22,7 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
-#ifdef LINUX
+#ifdef UNIX
 # include <unistd.h>
 # include <time.h>     /* for nanosleep */
 #else
@@ -45,7 +45,7 @@ main()
 
     for (i = 0; i < ARRAY_LEN; i++) {
         *(stale[i]) = i;
-#ifdef LINUX
+#ifdef UNIX
         struct timespec sleeptime;
         sleeptime.tv_sec = 0;
         sleeptime.tv_nsec = SLEEP_MS*1000*1000;

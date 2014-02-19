@@ -87,7 +87,10 @@
 #include "heap.h"
 #include <string.h> /* memcpy */
 
-#ifdef LINUX
+#ifdef MACOS
+# include <sys/syscall.h>
+# include <sys/mman.h>
+#elif defined(LINUX)
 # include "sysnum_linux.h"
 # define __USE_GNU /* for mremap */
 # include <sys/mman.h>
@@ -245,7 +248,10 @@ typedef struct _free_lists_t {
     free_header_t *last[NUM_FREE_LISTS];
 } free_lists_t;
 
-#ifdef LINUX
+#ifdef UNIX
+# ifdef MACOS
+#  error NYI i#1438: no brk on Mac
+# endif
 /* we assume we're the sole users of the brk (after pre-us allocs) */
 static byte *pre_us_brk;
 static byte *cur_brk;
@@ -603,7 +609,7 @@ arena_page_prot(uint flags)
 static byte *
 os_large_alloc(size_t commit_size _IF_WINDOWS(size_t reserve_size) _IF_WINDOWS(uint prot))
 {
-#ifdef LINUX
+#ifdef UNIX
     byte *map = (byte *)
         dr_raw_mem_alloc(commit_size, DR_MEMPROT_READ | DR_MEMPROT_WRITE, NULL);
     ASSERT(ALIGNED(commit_size, PAGE_SIZE), "must align to at least page size");
@@ -647,7 +653,10 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(new_commit_size > cur_commit_size, "this routine does not support shrinking");
-#ifdef LINUX
+#ifdef UNIX
+# ifdef MACOS
+#  error NYI i#1438: no mremap on Mac
+# endif
     byte *newmap = (byte *) dr_raw_mremap(map, cur_commit_size, new_commit_size,
                                           0/*can't move*/, NULL/*ignored*/);
     if ((ptr_int_t)newmap <= 0 && (ptr_int_t)newmap > -PAGE_SIZE)
@@ -670,7 +679,7 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
 static bool
 os_large_free(byte *map, size_t map_size)
 {
-#ifdef LINUX
+#ifdef UNIX
     bool success;
     ASSERT(ALIGNED(map, PAGE_SIZE), "invalid mmap base");
     ASSERT(ALIGNED(map_size, PAGE_SIZE), "invalid mmap size");
@@ -944,7 +953,7 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 static void
 arena_deallocate(arena_header_t *arena)
 {
-#ifdef LINUX
+#ifdef UNIX
     if (arena->reserve_end != cur_brk)
 #else
     /* For pre-us mapped we just never free */
@@ -978,7 +987,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
 {
     heapsz_t aligned_add = (heapsz_t) ALIGN_FORWARD(add_size, PAGE_SIZE);
     arena_header_t *new_arena;
-#ifdef LINUX
+#ifdef UNIX
     if (arena->commit_end == cur_brk) {
         byte *new_brk = set_brk(cur_brk + aligned_add);
         if (new_brk >= cur_brk + add_size) {
@@ -1007,7 +1016,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
             STATS_ADD(heap_capacity, (uint)(new_size - cur_size));
             STATS_PEAK(heap_capacity);
             arena->commit_end = (byte *)arena + new_size;
-#ifdef LINUX /* windows already added whole reservation */
+#ifdef UNIX /* windows already added whole reservation */
             arena->reserve_end = arena->commit_end;
             heap_region_adjust((byte *)arena, (byte *)arena + new_size);
 #endif
@@ -1026,7 +1035,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         (byte *)arena, arena->reserve_end, new_arena);
     if (new_arena == NULL)
         return NULL;
-#ifdef LINUX
+#ifdef UNIX
     new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
 #else
     new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_COMMIT;
@@ -1191,7 +1200,7 @@ consider_giving_back_memory(arena_header_t *arena, chunk_header_t *tofree)
     if (tofree->alloc_size >= ARENA_INITIAL_SIZE/2) {
         arena_header_t *sub, *prev = NULL;
         byte *ptr = ptr_from_header(tofree);
-#ifdef LINUX
+#ifdef UNIX
         if (arena->reserve_end == cur_brk) {
             sub = NULL; /* don't search */
             if (ptr + tofree->alloc_size + inter_chunk_space() == arena->next_chunk) {
@@ -1383,7 +1392,7 @@ search_free_list_bucket(arena_header_t *arena, heapsz_t aligned_size, uint bucke
     /* search for large enough chunk */
     free_header_t *cur;
     chunk_header_t *head = NULL;
-#ifdef LINUX
+#ifdef UNIX
     /* On Windows we have HEAP_NO_SERIALIZE.  Not worth passing the flags in. */
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
 #endif
@@ -1407,7 +1416,7 @@ find_free_list_entry(arena_header_t *arena, heapsz_t request_size, heapsz_t alig
 {
     chunk_header_t *head = NULL;
     uint bucket;
-#ifdef LINUX
+#ifdef UNIX
     /* On Windows we have HEAP_NO_SERIALIZE.  Not worth passing the flags in. */
     ASSERT(dr_recurlock_self_owns(arena->lock), "caller must hold lock");
 #endif
@@ -3392,7 +3401,7 @@ replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
  * drmem-facing interface
  */
 
-#ifdef LINUX
+#ifdef UNIX
 byte *
 alloc_replace_orig_brk(void)
 {
@@ -3926,7 +3935,7 @@ alloc_replace_init(void)
         global_lock = dr_recurlock_create();
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
     /* we waste pre-brk space of pre-us allocator, and we assume we're
      * now completely replacing the pre-us allocator.
      * XXX: better to not use brk and solely use mmap instead?

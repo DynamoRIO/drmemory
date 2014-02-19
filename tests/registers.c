@@ -27,7 +27,7 @@
 
 typedef unsigned char byte;
 
-#ifdef LINUX
+#ifdef UNIX
 # include <stdint.h>
 typedef intptr_t reg_t;
 #else
@@ -505,7 +505,7 @@ data16_div_test(void)
 int
 main()
 {
-#ifdef LINUX
+#ifdef UNIX
     /* test PR 408519 */
     asm("sub $2, %esp");
     asm("pushw $0");

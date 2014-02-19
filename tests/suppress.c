@@ -25,7 +25,7 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef LINUX
+#ifdef UNIX
 # include <sys/types.h>
 # include <sys/stat.h>
 # include <fcntl.h>
@@ -209,7 +209,7 @@ static void invalid_free_test1(void)
 void
 syscall_test(void)
 {
-#ifdef LINUX
+#ifdef UNIX
     int fd = open("/dev/null", O_WRONLY);
     int *uninit = (int *) malloc(sizeof(*uninit));
     write(fd, uninit, sizeof(*uninit));
@@ -237,7 +237,7 @@ non_module_test(void)
      */
     char buf[4] = { 0x83, 0xf8, 0x00, 0xc3 };
     int uninit;
-#ifdef LINUX
+#ifdef UNIX
     __asm("mov %0,%%ecx" : : "g"(&buf[0]) : "ecx");
     __asm("mov %0,%%eax" : : "m"(uninit) : "eax");
     __asm("call *%ecx");
@@ -279,7 +279,7 @@ call_into_foo(void)
 }
 
 /* Down here to avoid disturbing line numbers. */
-#ifdef LINUX
+#ifdef UNIX
 # include <dlfcn.h>
 # include <string.h>
 #endif
@@ -292,7 +292,7 @@ mod_ellipsis_test(const char *argv0)
     HANDLE bar = LoadLibrary("suppress-mod-bar.dll");
     foo_cb_with_n_frames = (cb_n_frames_t)GetProcAddress(foo, "callback_with_n_frames");
     bar_cb_with_n_frames = (cb_n_frames_t)GetProcAddress(bar, "callback_with_n_frames");
-#else /* LINUX */
+#else /* UNIX */
     char exe_dir[/*MAX_PATH*/260];
     char libname[/*MAX_PATH*/260];
     char *last_sep;
@@ -333,7 +333,7 @@ mod_ellipsis_test(const char *argv0)
 #ifdef WINDOWS
     FreeLibrary(foo);
     FreeLibrary(bar);
-#else /* LINUX */
+#else /* UNIX */
     dlclose(foo);
     dlclose(bar);
 #endif

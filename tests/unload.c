@@ -20,7 +20,7 @@
  */
 
 #include <stdio.h>
-#ifdef LINUX
+#ifdef UNIX
 # include <dlfcn.h>
 #else
 # include <windows.h>
@@ -42,7 +42,7 @@ main(int argc, char** argv)
     for (i=0; i<iters; i++) {
 #ifdef WINDOWS
         HANDLE lib = LoadLibrary(argv[1]);
-#else /* LINUX */
+#else /* UNIX */
         void *lib = dlopen(argv[1], RTLD_LAZY);
 #endif
         if (lib == NULL) {
@@ -51,7 +51,7 @@ main(int argc, char** argv)
         } else {
 #ifdef WINDOWS
             FreeLibrary(lib);
-#else /* LINUX */
+#else /* UNIX */
             dlclose(lib);
 #endif
         }

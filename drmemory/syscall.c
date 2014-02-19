@@ -30,7 +30,7 @@
 #include "syscall_os.h"
 #include "alloc.h"
 #include "perturb.h"
-#ifdef LINUX
+#ifdef UNIX
 # include "sysnum_linux.h"
 #endif
 #include "report.h"
@@ -192,7 +192,7 @@ auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
     char path[MAXIMUM_PATH];
 #endif
     cpt->sysaux_params = sysauxlib_save_params(drcontext);
-#ifdef LINUX
+#ifdef UNIX
     if (sysauxlib_is_fork(drcontext, cpt->sysaux_params, NULL)) {
         if (options.perturb)
             perturb_pre_fork();
@@ -209,7 +209,7 @@ auxlib_shared_pre_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 static void
 auxlib_shared_post_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-#if defined(LINUX) && !defined(USE_DRSYMS)
+#if defined(UNIX) && !defined(USE_DRSYMS)
     cls_syscall_t *cpt = (cls_syscall_t *) drmgr_get_cls_field(drcontext, cls_idx_syscall);
     char path[MAXIMUM_PATH];
     process_id_t child;

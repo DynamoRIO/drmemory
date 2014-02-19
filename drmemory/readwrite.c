@@ -342,7 +342,7 @@ is_spill_slot_opnd(void *drcontext, opnd_t op)
  * the non-directly-addressable DR slots (only 3 are direct)
  */
 
-#ifdef LINUX
+#ifdef UNIX
 /* Data for which we need direct addressability access from instrumentation */
 typedef struct _tls_instru_t {
     /* We store segment bases here for dynamic access from thread-shared code */
@@ -366,7 +366,7 @@ static uint tls_instru_base;
 /* we store a pointer in regular tls for access to other threads' TLS */
 static int tls_idx_instru = -1;
 
-#ifdef LINUX
+#ifdef UNIX
 static uint
 tls_base_offs(void)
 {
@@ -435,7 +435,7 @@ instru_tls_exit(void)
 static void
 instru_tls_thread_init(void *drcontext)
 {
-#ifdef LINUX
+#ifdef UNIX
     tls_instru_t *tls;
     dr_mcontext_t mc; /* do not init whole thing: memset is expensive */
     mc.size = sizeof(mc);
@@ -1233,7 +1233,7 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     pc = loc_to_pc(loc);
     ASSERT(instr_valid(inst), "unknown suspect instr");
 
-#ifdef LINUX
+#ifdef UNIX
     /* PR 406535: glibc's rawmemchr does some bit tricks that can end up using
      * undefined or unaddressable values:
      * <rawmemchr+113>:
@@ -4728,7 +4728,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         }
     }
 
-#if defined(LINUX) && defined(TOOL_DR_MEMORY)
+#if defined(UNIX) && defined(TOOL_DR_MEMORY)
     if (options.shadowing &&
         hashtable_lookup(&sighand_table, (void*)pc) != NULL) {
         instrument_signal_handler(drcontext, bb, inst, pc);

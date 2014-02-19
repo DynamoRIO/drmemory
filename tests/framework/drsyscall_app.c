@@ -23,7 +23,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#ifdef LINUX
+#ifdef UNIX
 # include <sys/types.h>
 # include <sys/stat.h>
 # include <fcntl.h>
@@ -39,7 +39,7 @@
 static void
 syscall_test(void)
 {
-#ifdef LINUX
+#ifdef UNIX
     int fd = open("/dev/null", O_WRONLY);
     int *uninit = (int *) malloc(sizeof(*uninit));
     write(fd, uninit, sizeof(*uninit));
@@ -52,7 +52,7 @@ syscall_test(void)
 #endif
 }
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 socket_test(void)
 {
@@ -85,7 +85,7 @@ int
 main(int argc, char **argv)
 {
     syscall_test();
-#ifdef LINUX
+#ifdef UNIX
     socket_test();
 #endif
     printf("done\n");

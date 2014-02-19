@@ -36,17 +36,17 @@
 # define IF_WINDOWS_(x) x,
 # define _IF_WINDOWS(x) , x
 # define IF_WINDOWS_ELSE(x,y) x
-# define IF_LINUX(x)
-# define IF_LINUX_ELSE(x,y) y
-# define IF_LINUX_(x)
+# define IF_UNIX(x)
+# define IF_UNIX_ELSE(x,y) y
+# define IF_UNIX_(x)
 #else
 # define IF_WINDOWS(x)
 # define IF_WINDOWS_(x)
 # define _IF_WINDOWS(x)
 # define IF_WINDOWS_ELSE(x,y) y
-# define IF_LINUX(x) x
-# define IF_LINUX_ELSE(x,y) x
-# define IF_LINUX_(x) x,
+# define IF_UNIX(x) x
+# define IF_UNIX_ELSE(x,y) x
+# define IF_UNIX_(x) x,
 #endif
 
 #ifdef X64
@@ -129,7 +129,7 @@
  */
 # define START_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(push,1) )
 # define END_PACKED_STRUCTURE ACTUAL_PRAGMA( pack(pop) )
-#else /* LINUX */
+#else /* UNIX */
 # define inline __inline__
 # define INLINE_FORCED inline
 # if 0 /* only available in gcc 4.4+ so not using: XXX: add HAVE_OPTIMIZE_ATTRIBUTE */
@@ -143,7 +143,7 @@
 #endif
 #define INLINE_ONCE inline
 
-#ifdef LINUX
+#ifdef UNIX
 # define DIRSEP '/'
 # define ALT_DIRSEP '/'
 # define NL "\n"
@@ -479,7 +479,7 @@ extern int tls_idx_util;
 #define POINTER_UNDERFLOW_ON_SUB(ptr, sub) \
     (((ptr_uint_t)(ptr)) - (sub) > ((ptr_uint_t)(ptr)))
 
-#ifdef LINUX
+#ifdef UNIX
 # ifdef X64
 #  define ASM_XAX "rax"
 #  define ASM_XDX "rdx"
@@ -510,7 +510,7 @@ extern int tls_idx_util;
 # endif
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
 # define ATOMIC_INC32(x) __asm__ __volatile__("lock incl %0" : "=m" (x) : : "memory")
 # define ATOMIC_DEC32(x) __asm__ __volatile__("lock decl %0" : "=m" (x) : : "memory")
 # define ATOMIC_ADD32(x, val) \

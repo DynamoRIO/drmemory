@@ -40,7 +40,7 @@
 # include "symcache.h"
 #endif
 #include <limits.h>  /* UCHAR_MAX */
-#ifdef LINUX
+#ifdef UNIX
 # include <unistd.h> /* size_t */
 #endif
 #ifdef WINDOWS
@@ -62,11 +62,11 @@
     REPLACE_DEF(memset, NULL)      \
     REPLACE_DEF(memcpy, NULL)      \
     REPLACE_DEF(memchr, NULL)      \
-    IF_LINUX(REPLACE_DEF(memrchr, NULL)) \
-    IF_LINUX(REPLACE_DEF(rawmemchr, NULL)) \
+    IF_UNIX(REPLACE_DEF(memrchr, NULL)) \
+    IF_UNIX(REPLACE_DEF(rawmemchr, NULL)) \
     REPLACE_DEF(strchr, "wcschr")  \
     REPLACE_DEF(strrchr, "wcsrchr")\
-    IF_LINUX(REPLACE_DEF(strchrnul, NULL)) \
+    IF_UNIX(REPLACE_DEF(strchrnul, NULL)) \
     REPLACE_DEF(strlen, "wcslen")  \
     REPLACE_DEF(strnlen, "wcsnlen")  \
     REPLACE_DEF(strcmp, "wcscmp")  \
@@ -151,7 +151,7 @@ static int (*app_tolower)(int) = replace_tolower_ascii;
  * If we later hide client libraries, we should probably move these
  * to a visible library.
  */
-#ifdef LINUX
+#ifdef UNIX
 asm(".section .replace, \"ax\", @progbits");
 asm(".align 0x1000");
 # define IN_REPLACE_SECTION __attribute__ ((section (".replace")))
@@ -271,7 +271,7 @@ replace_memrchr(const void *mem, int find, size_t size)
     return NULL;
 }
 
-#ifdef LINUX
+#ifdef UNIX
 IN_REPLACE_SECTION void *
 replace_rawmemchr(const void *mem, int find)
 {
@@ -349,7 +349,7 @@ replace_wcsrchr(const wchar_t *str, int find)
     return (wchar_t *) last;
 }
 
-#ifdef LINUX
+#ifdef UNIX
 IN_REPLACE_SECTION char *
 replace_strchrnul(const char *str, int find)
 {
@@ -798,7 +798,7 @@ replace_final_routine(void)
 }
 /* do not add .replace routines below here */
 
-#ifdef LINUX
+#ifdef UNIX
 asm(".section .text, \"ax\", @progbits");
 asm(".align 0x1000");
 #else
@@ -1263,7 +1263,7 @@ replace_in_module(const module_data_t *mod, bool add)
             /* We should find every single routine in libc on linux: on windows
              * the wide-char ones aren't always there
              */
-            IF_LINUX(ASSERT(mod->start != libc, "can't find libc routine to replace"));
+            IF_UNIX(ASSERT(mod->start != libc, "can't find libc routine to replace"));
         }
     }
 
@@ -1324,7 +1324,7 @@ replace_in_module(const module_data_t *mod, bool add)
             /* N.B.: if you change these regexes, bump SYMCACHE_VERSION! */
             find_syms_regex(&edata, "[msw]?????");
             find_syms_regex(&edata, "[msw]??????");
-# ifdef LINUX
+# ifdef UNIX
             find_syms_regex(&edata, "strchrnul");
             find_syms_regex(&edata, "rawmemchr");
 # endif

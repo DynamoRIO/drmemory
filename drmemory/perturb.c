@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -289,7 +289,7 @@ perturb_pre_synch_syscall(void)
 bool
 perturb_pre_syscall(void *drcontext, int sysnum)
 {
-#ifdef LINUX
+#ifdef UNIX
     switch (sysnum) {
     case SYS_clone: {
         uint flags = (uint) dr_syscall_get_param(drcontext, 0);

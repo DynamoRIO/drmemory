@@ -28,7 +28,7 @@
 #include "drmemory_framework.h"
 #include "../framework/drmf.h"
 #include "utils.h"
-#ifdef LINUX
+#ifdef UNIX
 # include "sysnum_linux.h"
 # include <sys/mman.h>
 # include <signal.h>   /* for SIGSEGV */
@@ -138,7 +138,7 @@ umbra_map_create(umbra_map_t **map_out, umbra_map_options_t *ops, uint idx)
     map->options = *ops;
     map->index = idx;
     if (ops->app_memory_create_cb != NULL ||
-#ifdef LINUX
+#ifdef UNIX
         ops->app_memory_mremap_cb != NULL ||
 #endif
         ops->app_memory_pre_delete_cb  != NULL ||
@@ -259,7 +259,7 @@ umbra_event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 }
 #endif
 
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 umbra_event_signal(void *drcontext, dr_siginfo_t *info)
 {

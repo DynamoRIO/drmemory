@@ -30,10 +30,10 @@
 
 // Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff
 # define SIZE_OOM 0x7fffffff
-#ifdef LINUX
-# define IF_LINUX_ELSE(x,y) x
+#ifdef UNIX
+# define IF_UNIX_ELSE(x,y) x
 #else
-# define IF_LINUX_ELSE(x,y) y
+# define IF_UNIX_ELSE(x,y) y
 #endif
 
 class hasdtr {
@@ -83,8 +83,8 @@ test_nothrow()
     else
         delete e;
 
-    IF_LINUX_ELSE(int, char) *p =
-        new (std::nothrow) IF_LINUX_ELSE(int, char)[SIZE_OOM];
+    IF_UNIX_ELSE(int, char) *p =
+        new (std::nothrow) IF_UNIX_ELSE(int, char)[SIZE_OOM];
     if (p == NULL)
         std::cout << "new[] returned NULL" << std::endl;
     else
@@ -101,7 +101,7 @@ test_throw()
         // On Linux if the size is too small we don't run out of memory until
         // we've constructed most of the elements, which takes a long
         // time and causes issues under drmem w/ DR doing resets, etc.
-        hasdtr *lots = new hasdtr[IF_LINUX_ELSE(SIZE_OOM,SIZE_OOM/sizeof(hasdtr))];
+        hasdtr *lots = new hasdtr[IF_UNIX_ELSE(SIZE_OOM,SIZE_OOM/sizeof(hasdtr))];
         lots[0].y = 4;
     } catch (std::bad_alloc&) {
         std::cout << "caught bad_alloc" << std::endl;

@@ -30,7 +30,7 @@
 size_t
 allocation_size(app_pc start, app_pc *base);
 
-#ifdef LINUX
+#ifdef UNIX
 app_pc
 get_heap_start(void);
 #endif

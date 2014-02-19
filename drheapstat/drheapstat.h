@@ -42,10 +42,10 @@ extern uint alloc_stack_count;
 extern uint heap_regions;
 #endif /* STATISTICS */
 
-#ifdef LINUX
+#ifdef UNIX
 /* for strchr in linux, which will bring in libc: FIXME */
 # include <string.h>
-#endif /* LINUX */
+#endif /* UNIX */
 
 struct _per_callstack_t;
 typedef struct _per_callstack_t per_callstack_t;

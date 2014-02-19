@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -46,7 +46,11 @@ add_executable(app_suite_tests
                "${GTEST_ROOT}/src/gtest_main.cc")
 
 if (UNIX)
-  append_compile_flags(app_suite_tests "-DLINUX")
+  if (APPLE)
+    append_compile_flags(app_suite_tests "-DMACOS -DUNIX")
+  else (APPLE)
+    append_compile_flags(app_suite_tests "-DLINUX -DUNIX")
+  endif (APPLE)
 elseif (WIN32)
   # Work around googletest VS2012 failures by upping _VARIADIC_MAX from 5 (i#1141)
   append_compile_flags(app_suite_tests "-DWIN32 -D_VARIADIC_MAX=10")

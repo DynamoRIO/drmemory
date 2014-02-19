@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -216,7 +216,7 @@ EXPAND_ONLY_PREDEF     = YES
 SEARCH_INCLUDES        = YES
 INCLUDE_PATH           =
 INCLUDE_FILE_PATTERNS  =
-PREDEFINED             = WINDOWS LINUX X64
+PREDEFINED             = WINDOWS UNIX LINUX MACOS X64
 EXPAND_AS_DEFINED      = IF_X64_ELSE
 SKIP_FUNCTION_MACROS   = YES
 #---------------------------------------------------------------------------

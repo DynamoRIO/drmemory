@@ -171,7 +171,7 @@ main(int argc, char** argv)
         }
     }
 
-#endif /* LINUX */
+#endif /* UNIX */
 
     fprintf(stderr, "app exiting\n");
     return 0;

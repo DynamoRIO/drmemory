@@ -40,7 +40,7 @@ report_init(void);
 void
 report_exit(void);
 
-#ifdef LINUX
+#ifdef UNIX
 void
 report_fork_init(void);
 #endif

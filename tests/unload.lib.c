@@ -56,7 +56,7 @@ realloc(void *ptr, size_t size)
 
 /* to avoid conflicts w/ libc we go /nodefaultlib /noentry */
 
-#else /* LINUX */
+#else /* UNIX */
 
 void __attribute__ ((constructor))
 my_init(void)

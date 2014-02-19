@@ -72,7 +72,7 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
     ASSERT(arg->mc != NULL, "mc check");
     ASSERT(arg->drcontext == dr_get_current_drcontext(), "dc check");
 
-#ifdef LINUX
+#ifdef UNIX
     /* the app deliberately trips i#1119 w/ a too-small sockaddr */
     if (arg->type == DRSYS_TYPE_SOCKADDR && !arg->pre) {
         static bool first = true;

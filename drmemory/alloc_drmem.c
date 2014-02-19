@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -31,8 +31,12 @@
 #include "redblack.h"
 #include "leak.h"
 #include "alloc_drmem.h"
-#ifdef LINUX
-# include "sysnum_linux.h"
+#ifdef UNIX
+# ifdef MACOS
+#  include <sys/syscall.h>
+# elif defined(LINUX)
+#  include "sysnum_linux.h"
+# endif
 # include <signal.h>
 # include <ucontext.h>
 /* 32-bit plain=736, rt=892; 64-bit plain=800, rt=440 */
@@ -50,7 +54,7 @@
 #define ASTACK_TABLE_HASH_BITS 8
 static hashtable_t alloc_stack_table;
 
-#ifdef LINUX
+#ifdef UNIX
 /* Track all signal handlers registered by app so we can instrument them */
 #define SIGHAND_HASH_BITS 6
 hashtable_t sighand_table;
@@ -208,7 +212,7 @@ alloc_drmem_init(void)
                       (uint (*)(void*)) packed_callstack_hash,
                       (bool (*)(void*, void*)) packed_callstack_cmp);
 
-#ifdef LINUX
+#ifdef UNIX
     hashtable_init(&sighand_table, SIGHAND_HASH_BITS, HASH_INTPTR, false/*!strdup*/);
     mmap_tree = rb_tree_create(NULL);
     mmap_tree_lock = dr_mutex_create();
@@ -245,7 +249,7 @@ alloc_drmem_exit(void)
     leak_exit();
     alloc_exit(); /* must be before deleting alloc_stack_table */
     hashtable_delete_with_stats(&alloc_stack_table, "alloc stack table");
-#ifdef LINUX
+#ifdef UNIX
     hashtable_delete(&sighand_table);
     rb_tree_destroy(mmap_tree);
     dr_mutex_destroy(mmap_tree_lock);
@@ -262,7 +266,7 @@ alloc_drmem_exit(void)
  * PR 418629: to determine stack bounds accurately we track mmaps
  */
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 mmap_tree_add(byte *base, size_t size)
 {
@@ -619,7 +623,7 @@ client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc)
 {
     app_loc_t loc;
     pc_to_loc(&loc, pc);
-#ifdef LINUX
+#ifdef UNIX
     LOG(1, "heap allocation failed on sz="PIFX"!  heap="PFX"-"PFX"\n",
         request_size, get_heap_start(), get_brk(false/*want full extent*/));
 # ifdef STATISTICS
@@ -1163,7 +1167,7 @@ client_handle_munmap_fail(app_pc base, size_t size, bool anon)
 #endif
 }
 
-#ifdef LINUX
+#ifdef UNIX
 void
 client_handle_mremap(app_pc old_base, size_t old_size, app_pc new_base, size_t new_size,
                      bool image)
@@ -1539,7 +1543,7 @@ client_pre_syscall(void *drcontext, int sysnum)
 void
 client_post_syscall(void *drcontext, int sysnum)
 {
-#ifdef LINUX
+#ifdef UNIX
     ptr_int_t result = dr_syscall_get_result(drcontext);
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (!options.shadowing)
@@ -1569,7 +1573,7 @@ client_post_syscall(void *drcontext, int sysnum)
 #endif
 }
 
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 event_signal_alloc(void *drcontext, dr_siginfo_t *info)
 {
@@ -1639,7 +1643,7 @@ instrument_signal_handler(void *drcontext, instrlist_t *bb, instr_t *inst,
     dr_insert_clean_call(drcontext, bb, inst, (void *)at_signal_handler,
                          false, 0);
 }
-#endif /* LINUX */
+#endif /* UNIX */
 
 /***************************************************************************
  * ADDRESSABILITY
@@ -2251,7 +2255,7 @@ is_ok_unaddressable_pattern(bool write, app_loc_t *loc, app_pc addr, uint sz,
     return match;
 }
 
-#ifdef LINUX
+#ifdef UNIX
 /* Until we have a private loader, we have to have exceptions for the
  * loader reading our own libraries.  Xref PR
  */
@@ -2290,7 +2294,7 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
     }
     return res;
 }
-#endif /* LINUX */
+#endif /* UNIX */
 
 bool
 check_unaddressable_exceptions(bool write, app_loc_t *loc, app_pc addr, uint sz,

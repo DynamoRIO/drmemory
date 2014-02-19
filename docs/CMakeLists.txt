@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -66,7 +66,12 @@ set(headers
 if (WIN32)
   set(DEFINES ${DEFINES} -DWINDOWS)
 else (WIN32)
-  set(DEFINES ${DEFINES} -DLINUX)
+  set(DEFINES ${DEFINES} -DUNIX)
+  if (APPLE)
+    set(DEFINES ${DEFINES} -DMACOS)
+  else (APPLE)
+    set(DEFINES ${DEFINES} -DLINUX)
+  endif (APPLE)
 endif (WIN32)
 
 set(options_for_docs "${PROJECT_BINARY_DIR}/docs/options-docs.dox.in")

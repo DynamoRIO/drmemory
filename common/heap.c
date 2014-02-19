@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -25,7 +25,7 @@
 #include "heap.h"
 #include "alloc.h"
 #include "redblack.h"
-#ifdef LINUX
+#ifdef UNIX
 # include <string.h> /* strncmp */
 #else
 # include "../wininc/crtdbg.h"
@@ -94,7 +94,10 @@ allocation_size(app_pc start, app_pc *base)
 #endif /* WINDOWS */
 }
 
-#ifdef LINUX
+#ifdef UNIX
+# ifdef MACOS
+#  error NYI i#1438: no brk on Mac
+# endif
 app_pc
 get_heap_start(void)
 {
@@ -204,7 +207,7 @@ get_libc_base(app_pc *libc_end_out OUT)
                 }
             }
             dr_free_module_data(data);
-#ifdef LINUX
+#ifdef UNIX
             /* Just take first, in unlikely case there are multiple */
             if (libc_base != NULL)
                 break;

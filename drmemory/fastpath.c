@@ -35,7 +35,7 @@
 #endif
 #include "pattern.h"
 
-#ifdef LINUX
+#ifdef UNIX
 # include <signal.h> /* for SIGSEGV */
 #else
 # include <stddef.h> /* for offsetof */
@@ -83,7 +83,7 @@ insert_lea(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst,
                 INSTR_CREATE_lea(drcontext, opnd_create_reg(dst), opnd));
         } else if (opnd_get_segment(opnd) == seg_tls
-                   IF_LINUX(||opnd_get_segment(opnd) == SEG_GS)) {
+                   IF_UNIX(||opnd_get_segment(opnd) == SEG_GS)) {
             /* convert to linear address. */
 #if THREAD_PRIVATE
             /* for thread private we can statically determine the fs base */
@@ -3699,7 +3699,7 @@ handle_slowpath_fault(void *drcontext, dr_mcontext_t *raw_mc, dr_mcontext_t *mc,
 #endif /* TOOL_DR_MEMORY */
 
 /* PR 448701: we fault if we write to a special block */
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 event_signal_instrument(void *drcontext, dr_siginfo_t *info)
 {

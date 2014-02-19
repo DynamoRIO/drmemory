@@ -22,10 +22,10 @@
 
 /* Options list for perl */
 
-#ifdef LINUX
-# define IF_LINUX_ELSE(x,y) x
+#ifdef UNIX
+# define IF_UNIX_ELSE(x,y) x
 #else
-# define IF_LINUX_ELSE(x,y) y
+# define IF_UNIX_ELSE(x,y) y
 #endif
 
 #define OPTION_FRONT OPTION_CLIENT

@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -26,7 +26,12 @@ set(CMAKE_BUILD_TYPE "Debug")
 set_output_dirs("${PROJECT_BINARY_DIR}/tests")
 
 if (UNIX)
-  set(arch_defs "LINUX")
+  set(arch_defs "UNIX")
+  if (APPLE)
+    set(arch_defs ${arch_defs} "MACOS")
+  else (APPLE)
+    set(arch_defs ${arch_defs} "LINUX")
+  endif (APPLE)
 else (UNIX)
   set(arch_defs "WINDOWS")
 endif (UNIX)

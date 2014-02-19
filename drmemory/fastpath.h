@@ -229,7 +229,7 @@ typedef struct _bb_saved_info_t {
 bool
 instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *bi);
 
-#ifdef LINUX
+#ifdef UNIX
 dr_signal_action_t
 event_signal_instrument(void *drcontext, dr_siginfo_t *info);
 #else

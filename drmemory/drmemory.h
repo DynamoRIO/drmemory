@@ -107,7 +107,7 @@ extern uint num_nudges;
 
 volatile bool go_native;
 
-#ifdef LINUX
+#ifdef UNIX
 
 /* for strchr in linux, which will bring in libc: FIXME */
 # include <string.h>
@@ -115,7 +115,7 @@ volatile bool go_native;
 bool
 is_in_client_or_DR_lib(app_pc pc);
 
-#endif /* LINUX */
+#endif /* UNIX */
 
 /* We can't get app xsp at init time so we call this on 1st bb */
 void

@@ -487,7 +487,7 @@ open_logfile(const char *name, bool pid_log, int which_thread)
     file_t f;
     char logname[MAXIMUM_PATH];
     IF_DEBUG(int len;)
-    uint extra_flags = IF_LINUX_ELSE(DR_FILE_ALLOW_LARGE, 0);
+    uint extra_flags = IF_UNIX_ELSE(DR_FILE_ALLOW_LARGE, 0);
     ASSERT(logsubdir[0] != '\0', "logsubdir not set up");
     if (pid_log) {
         IF_DEBUG(len = )
@@ -707,7 +707,7 @@ event_context_exit(void *drcontext, bool thread_exit)
     /* else, nothing to do: we leave the struct for re-use on next callback */
 }
 
-#ifdef LINUX
+#ifdef UNIX
 bool
 is_in_client_or_DR_lib(app_pc pc)
 {
@@ -1408,7 +1408,7 @@ create_global_logfile(void)
     }
 
     f_global = open_logfile("global", true/*pid suffix*/, -1);
-#ifdef LINUX
+#ifdef UNIX
     /* make it easier for wrapper script to find this logfile */
     dr_fprintf(f_global, "process=%d, parent=%d\n",
                dr_get_process_id(), dr_get_parent_id());
@@ -1454,7 +1454,7 @@ create_global_logfile(void)
 #endif
 }
 
-#ifdef LINUX
+#ifdef UNIX
 static void
 event_fork(void *drcontext)
 {
@@ -1686,7 +1686,7 @@ event_fragment_delete(void *drcontext, void *tag)
     alloc_fragment_delete(drcontext, tag);
 }
 
-#if defined(LINUX) && defined(DEBUG)
+#if defined(UNIX) && defined(DEBUG)
 /* Checks whether the module can be treated as a single contiguous addr range,
  * which is the case if either it really is contiguous (DR's module_data_t.contiguous)
  * or if all holes are marked no-access and are thus unusable for other allocs.
@@ -1720,7 +1720,7 @@ dr_init(client_id_t id)
 {
     void *drcontext = dr_get_current_drcontext(); /* won't work on 0.9.4! */
     const char *appnm = dr_get_application_name();
-#ifdef LINUX
+#ifdef UNIX
     dr_module_iterator_t *iter;
 #endif
     module_data_t *data;
@@ -1812,7 +1812,7 @@ dr_init(client_id_t id)
     dr_register_nudge_event(event_nudge, client_id);
     if (options.soft_kills)
         drx_register_soft_kills(event_soft_kill);
-#ifdef LINUX
+#ifdef UNIX
     dr_register_fork_init_event(event_fork);
     drmgr_register_signal_event(event_signal);
 #else

@@ -109,7 +109,7 @@ get_stack_region_bounds(byte *addr, byte **base OUT, size_t *size OUT)
     if (is_in_heap_region(addr)) {
         return malloc_large_lookup(addr, base, size);
     } else {
-#if defined(LINUX) && defined(TOOL_DR_MEMORY)
+#if defined(UNIX) && defined(TOOL_DR_MEMORY)
         /* see notes in handle_clone(): OS query not good enough */
         if (mmap_anon_lookup(addr, base, size))
             return true;

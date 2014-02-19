@@ -34,7 +34,7 @@
  */
 
 /* not part of the default in optionsx.h b/c that's what front-end passes */
-#ifdef LINUX
+#ifdef UNIX
 # define DEFAULT_LOGDIR "/tmp"
 #else
 # define DEFAULT_LOGDIR "c:"

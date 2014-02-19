@@ -33,7 +33,7 @@
 # include "drsyms.h"
 #endif
 #include "drsyscall.h"
-#ifdef LINUX
+#ifdef UNIX
 # include <string.h>
 # include <errno.h>
 #endif
@@ -368,7 +368,7 @@ callstack_exit(void)
 void
 callstack_thread_init(void *drcontext)
 {
-#ifdef LINUX
+#ifdef UNIX
     static bool first = true;
 #endif
     tls_callstack_t *pt = (tls_callstack_t *)
@@ -1746,7 +1746,10 @@ print_buffer(file_t f, char *buf)
     while (true) {
         res = dr_write_file(f, buf, sz);
         if (res < 0) {
-#ifdef LINUX
+#ifdef UNIX
+# ifdef MACOS
+#  error NYI i#1438
+# endif
             /* FIXME: haven't tested this */
             if (res == -EINTR)
                 continue;
@@ -2510,7 +2513,7 @@ callstack_module_get_text_bounds(const module_data_t *info, bool loaded,
                                  app_pc *start OUT, app_pc *end OUT)
 {
     ASSERT(loaded, "only supports fully loaded modules");
-#ifdef LINUX
+#ifdef UNIX
     /* Yes, our own x64 libs are not contiguous */
     if (!info->contiguous) {
         /* We assume the 1st segment has .text */
