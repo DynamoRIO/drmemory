@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -29,7 +29,12 @@
 #include "limits.h"
 
 // Windows compiler and gcc4.4.3 complain if the size is over 0x7fffffff
+#ifdef MACOS
+/* clang won't let it get bigger */
+# define SIZE_OOM 0xfffffff
+#else
 # define SIZE_OOM 0x7fffffff
+#endif
 #ifdef UNIX
 # define IF_UNIX_ELSE(x,y) x
 #else

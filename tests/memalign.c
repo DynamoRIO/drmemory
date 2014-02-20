@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -21,12 +21,17 @@
  */
 
 #include <stdio.h>
-#include <malloc.h>
+#ifdef MACOS
+# include <malloc/malloc.h>
+#else
+# include <malloc.h>
+#endif
 
 /* PR 406323: handle auxiliary alloc routines: memalign(), valloc(), etc. */
 
 int main()
 {
+#ifdef LINUX
     void *p;
     struct mallinfo info;
 
@@ -43,6 +48,9 @@ int main()
 
     p = malloc_get_state();
     free(p);
+#elif defined(MACOS)
+    /* FIXME i#1438: add tests of Mac-specific malloc API */
+#endif
 
     /* XXX PR 406323: add aligned-malloc tests once we have support */
 

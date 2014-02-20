@@ -21,70 +21,70 @@
 #
 %if WINDOWS
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:100
+registers.c:101
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:107
+registers.c:108
 Error #3: UNINITIALIZED READ: reading 2 byte(s)
-registers.c:127
+registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:1119
+registers.c_asm.asm:1120
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:1136
+registers.c_asm.asm:1137
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:1166
+registers.c_asm.asm:1167
 Error #7: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:340
+registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:165
+registers.c:166
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c:211
+registers.c:212
 Error #10: UNINITIALIZED READ: reading register eflags
-registers.c:215
+registers.c:216
 Error #11: UNINITIALIZED READ: reading register cl
-registers.c:220
+registers.c:221
 Error #12: UNINITIALIZED READ: reading register ecx
-registers.c:254
+registers.c:255
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:284
+registers.c:285
 Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:366
+registers.c:367
 Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:378
+registers.c:379
 %endif
 %if UNIX
 Error #1: UNINITIALIZED READ: reading register eflags
-registers.c:117
+registers.c:118
 Error #2: UNINITIALIZED READ: reading register eflags
-registers.c:124
+registers.c:125
 Error #3: UNINITIALIZED READ: reading register eax
-registers.c:127
+registers.c:128
 Error #4: UNINITIALIZED READ: reading register ax
-registers.c_asm.asm:720
+registers.c_asm.asm:721
 Error #5: UNINITIALIZED READ: reading register dx
-registers.c_asm.asm:737
+registers.c_asm.asm:738
 Error #6: UNINITIALIZED READ: reading register ah
-registers.c_asm.asm:767
+registers.c_asm.asm:768
 Error #7: UNINITIALIZED READ: reading register eax
-registers.c:340
+registers.c:341
 Error #8: UNINITIALIZED READ: reading 1 byte(s)
-registers.c:189
+registers.c:190
 Error #9: UNINITIALIZED READ: reading register eflags
-registers.c:227
+registers.c:228
 Error #10: UNINITIALIZED READ: reading register eflags
-registers.c:231
+registers.c:232
 Error #11: UNINITIALIZED READ: reading register cl
-registers.c:236
+registers.c:237
 Error #12: UNINITIALIZED READ: reading register ecx
-registers.c:265
+registers.c:266
 Error #13: UNINITIALIZED READ: reading 8 byte(s)
-registers.c:290
+registers.c:291
 Error #14: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:408
+registers.c:409
 Error #15: UNADDRESSABLE ACCESS: reading 1 byte(s)
-registers.c:419
+registers.c:420
 %endif
 Error #16: UNINITIALIZED READ: reading register eax
-registers.c:483
+registers.c:484
 %OUT_OF_ORDER
 : LEAK 15 direct bytes + 0 indirect bytes
 : LEAK 15 direct bytes + 0 indirect bytes

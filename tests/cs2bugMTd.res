@@ -20,47 +20,47 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 : UNINITIALIZED READ
-cs2bug.cpp:83
-: UNADDRESSABLE ACCESS: reading 4 byte(s)
-cs2bug.cpp:91
-: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
-cs2bug.cpp:93
-memory was allocated here:
 cs2bug.cpp:87
+: UNADDRESSABLE ACCESS: reading 4 byte(s)
+cs2bug.cpp:95
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
+cs2bug.cpp:97
+memory was allocated here:
+cs2bug.cpp:91
 %OPTIONAL # Not present on Linux when wrapping b/c operator new turns 0 into 1
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
-cs2bug.cpp:97
+cs2bug.cpp:101
 refers to 0 byte(s) beyond last valid byte in prior malloc
 %ENDOPTIONAL
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
-cs2bug.cpp:101
+cs2bug.cpp:105
 %ANYLINE
 # Linux wrap will say "1", else "2"
 refers to 0 byte(s) beyond last valid byte in prior malloc
 refers to 1 byte(s) beyond last valid byte in prior malloc
 %ENDANYLINE
 : UNADDRESSABLE ACCESS: writing 1 byte(s)
-cs2bug.cpp:105
+cs2bug.cpp:109
 refers to 0 byte(s) beyond last valid byte in prior malloc
 ##################################################
 # test_mismatch_int()
 : INVALID HEAP ARGUMENT: allocated with operator new[], freed with operator delete
-cs2bug.cpp:214
-memory was allocated here:
-cs2bug.cpp:212
-: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
-cs2bug.cpp:217
-memory was allocated here:
-cs2bug.cpp:215
-: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
-cs2bug.cpp:220
-memory was allocated here:
 cs2bug.cpp:218
-: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
-cs2bug.cpp:223
 memory was allocated here:
+cs2bug.cpp:216
+: INVALID HEAP ARGUMENT: allocated with operator new[], freed with free
 cs2bug.cpp:221
+memory was allocated here:
+cs2bug.cpp:219
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete
+cs2bug.cpp:224
+memory was allocated here:
+cs2bug.cpp:222
+: INVALID HEAP ARGUMENT: allocated with malloc, freed with operator delete[]
+cs2bug.cpp:227
+memory was allocated here:
+cs2bug.cpp:225
 ##################################################
 # leaks
 : LEAK 4 direct bytes + 0 indirect bytes
-cs2bug.cpp:82
+cs2bug.cpp:86

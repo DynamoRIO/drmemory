@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -68,7 +68,7 @@ TEST(IPCTests, Futex_Semaphore) {
 
 TEST(IPCTests, Pipe) {
     int fds[2];
-    int res = pipe2(fds, 0);
+    int res = pipe(fds);
     ASSERT_EQ(res, 0);
 
     struct pollfd pfds[2];

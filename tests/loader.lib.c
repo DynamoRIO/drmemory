@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -20,12 +21,12 @@
  */
 
 /* we want an import that cannot be satisfied */
-extern void import_does_not_exit(void);
+extern void import_does_not_exist(void);
 
 void __attribute__ ((constructor))
 my_init(void)
 {
-    import_does_not_exit();
+    import_does_not_exist();
 }
 
 void __attribute__ ((destructor))

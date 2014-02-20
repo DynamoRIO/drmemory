@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -44,6 +44,12 @@ foo(void)
     memset(buf, 0, sizeof(buf));
 }
 
+#ifdef MACOS
+# define NAME_FOO "_foo"
+#else
+# define NAME_FOO "foo"
+#endif
+
 void
 test_swap(size_t sz1, size_t sz2)
 {
@@ -67,9 +73,9 @@ test_swap(size_t sz1, size_t sz2)
     };
 #else
     __asm("mov %%esp, %0" : "=m"(stack0)); /* store orig stack */
-    __asm("mov %0, %%esp; call foo" : : "g"(stack1));
+    __asm("mov %0, %%esp; call "NAME_FOO : : "g"(stack1));
     /* this swap to stack2 looks like a big dealloc => will mark data as unaddr */
-    __asm("mov %0, %%esp; call foo" : : "g"(stack2));
+    __asm("mov %0, %%esp; call "NAME_FOO : : "g"(stack2));
     __asm("mov %0, %%esp" : : "g"(stack0)); /* restore orig stack */
 #endif
 
@@ -103,6 +109,15 @@ right()
 {
     printf("in right\n");
 }
+
+#ifdef MACOS
+# define NAME_WRONG "_wrong"
+# define NAME_RIGHT "_right"
+#else
+# define NAME_WRONG "wrong"
+# define NAME_RIGHT "right"
+#endif
+
 
 void
 test_cmovcc(void)
@@ -139,19 +154,19 @@ test_cmovcc(void)
     __asm("cmp %%esi, %%esp" :);
     __asm("cmovne %%esi, %%esp" :);
     __asm("jne correct1");
-    __asm("call wrong");
+    __asm("call "NAME_WRONG);
     __asm("jmp test2");
     __asm("correct1:");
-    __asm("call right");
+    __asm("call "NAME_RIGHT);
     __asm("test2:");
     __asm("mov %0, %%esi" : : "g" (stack1));
     __asm("cmp %%esi, %%esp" :);
     __asm("cmovne %%esi, %%esp" : );
     __asm("je correct2");
-    __asm("call wrong");
+    __asm("call "NAME_WRONG);
     __asm("jmp done");
     __asm("correct2:");
-    __asm("call right");
+    __asm("call "NAME_RIGHT);
     __asm("done:");
     __asm("mov %0, %%esi" : : "g"(orig_esi)); /* restore orig esi */
     __asm("mov %0, %%esp" : : "g"(stack0)); /* restore orig stack */

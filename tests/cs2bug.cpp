@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,6 +27,10 @@
 #ifdef UNIX
 # include <unistd.h>
 # include <signal.h>
+# ifdef MACOS
+#  define _XOPEN_SOURCE 700 /* required to get POSIX, etc. defines out of ucontext.h */
+#  define __need_struct_ucontext64 /* seems to be missing from Mac headers */
+# endif
 # include <ucontext.h>
 # include <errno.h>
 # include <assert.h>
@@ -55,7 +59,7 @@ intercept_signal(int sig, handler_t handler)
     act.sa_sigaction = (handler_3_t) handler;
     rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
     assert(rc == 0);
-    act.sa_flags = SA_NOMASK | SA_SIGINFO | SA_ONSTACK;
+    act.sa_flags = SA_NODEFER | SA_SIGINFO | SA_ONSTACK;
     rc = sigaction(sig, &act, NULL);
     assert(rc == 0);
 }

@@ -20,19 +20,19 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:108
+malloc.c:112
 Error #2: UNINITIALIZED READ
-malloc.c:118
+malloc.c:122
 Error #3: UNINITIALIZED READ
-malloc.c:131
+malloc.c:135
 Error #4: INVALID HEAP ARGUMENT
-malloc.c:175
+malloc.c:179
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:235
+malloc.c:239
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:267
+malloc.c:271
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:272
+malloc.c:276
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:273
+malloc.c:277

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -49,7 +49,7 @@ intercept_signal(int sig, handler_t handler)
     act.sa_sigaction = (handler_3_t) handler;
     rc = sigemptyset(&act.sa_mask); /* block no signals within handler */
     assert(rc == 0);
-    act.sa_flags = SA_NOMASK | SA_SIGINFO | SA_ONSTACK;
+    act.sa_flags = SA_NODEFER | SA_SIGINFO | SA_ONSTACK;
     rc = sigaction(sig, &act, NULL);
     assert(rc == 0);
 }

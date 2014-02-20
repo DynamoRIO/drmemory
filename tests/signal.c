@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -69,6 +69,10 @@
 #include <stdio.h>
 #include <math.h>
 #include <unistd.h>
+#ifdef MACOS
+# define _XOPEN_SOURCE 700 /* required to get POSIX, etc. defines out of ucontext.h */
+# define __need_struct_ucontext64 /* seems to be missing from Mac headers */
+#endif
 #include <signal.h>
 #include <ucontext.h>
 #include <sys/time.h> /* itimer */
@@ -145,6 +149,7 @@ signal_handler(int sig, siginfo_t *siginfo, ucontext_t *ucxt)
 
     switch (sig) {
 
+    case SIGBUS: /* on Mac we get SIBUS due to __PAGEZERO */
     case SIGSEGV: {
 #if VERBOSE
 	struct sigcontext *sc = (struct sigcontext *) &(ucxt->uc_mcontext);
@@ -256,7 +261,11 @@ int main(int argc, char *argv[])
 #if USE_SIGSTACK
     sigstack.ss_sp = (char *) malloc(ALT_STACK_SIZE);
     sigstack.ss_size = ALT_STACK_SIZE;
+# ifdef LINUX
     sigstack.ss_flags = SS_ONSTACK;
+# else
+    sigstack.ss_flags = 0;
+# endif
     rc = sigaltstack(&sigstack, NULL);
     ASSERT_NOERR(rc);
 # if VERBOSE
@@ -266,6 +275,8 @@ int main(int argc, char *argv[])
 #endif
 
     intercept_signal(SIGSEGV, (handler_t) signal_handler);
+    /* on Mac we get SIGBUS due to __PAGEZERO if we write to 0x4 */
+    intercept_signal(SIGBUS, (handler_t) signal_handler);
     intercept_signal(SIGUSR1, (handler_t) signal_handler);
     intercept_signal(SIGUSR2, (handler_t) SIG_IGN);
 
@@ -279,19 +290,22 @@ int main(int argc, char *argv[])
 
 #if USE_SIGSTACK
     /* now remove alt stack */
-    free(sigstack.ss_sp);
-    sigstack.ss_sp = 0;
-    sigstack.ss_size = 0;
     sigstack.ss_flags = SS_DISABLE;
     rc = sigaltstack(&sigstack, NULL);
     ASSERT_NOERR(rc);
+    /* Although "man sigaltstack" claims ss_sp and ss_size are ignored when
+     * SS_DISABLE is set, on Mac we get ENOMEM if we clear ss_sp beforehand.
+     */
+    free(sigstack.ss_sp);
+    sigstack.ss_sp = 0;
+    sigstack.ss_size = 0;
 #endif
 
     fprintf(stderr, "Generating SIGSEGV\n");
 #if USE_LONGJMP
     res = setjmp(env);
     if (res == 0) {
-	*((int *)0) = 4;
+	*((int *)4) = 4;
     }
 #else
     kill(getpid(), SIGSEGV);

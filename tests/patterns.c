@@ -1,4 +1,5 @@
 /* **********************************************************
+ * Copyright (c) 2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -23,7 +24,7 @@
  * that DR handles via pattern matching.
  */
 
-#ifdef UNIX
+#ifdef LINUX
 # define _GNU_SOURCE /* strchrnul */
 #endif
 #include <string.h>
@@ -50,7 +51,7 @@ main()
 
     c = strchr(dup, 'x');
 
-#ifdef UNIX
+#ifdef LINUX
     c = strchrnul(dup, 'x');
 #endif
 

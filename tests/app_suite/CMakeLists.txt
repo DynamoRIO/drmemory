@@ -48,6 +48,8 @@ add_executable(app_suite_tests
 if (UNIX)
   if (APPLE)
     append_compile_flags(app_suite_tests "-DMACOS -DUNIX")
+    # Avoid gtest-internal warnings
+    append_compile_flags(app_suite_tests "-Wno-unused-private-field")
   else (APPLE)
     append_compile_flags(app_suite_tests "-DLINUX -DUNIX")
   endif (APPLE)

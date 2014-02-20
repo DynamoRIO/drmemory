@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -23,6 +23,7 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#ifdef LINUX
 TEST(FSTests, SyncFS){
     FILE* tempfile;
     tempfile = fopen("syncfs_test_file", "w");
@@ -36,3 +37,4 @@ TEST(FSTests, SyncFS){
     fclose(tempfile);
     unlink("syncfs_test_file");
 }
+#endif

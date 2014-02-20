@@ -21,19 +21,19 @@
 #
 # This is malloc.res minus leaks and uninits with updated error number.
 Error #1: UNADDRESSABLE ACCESS: reading 1 byte(s)
-malloc.c:108
+malloc.c:112
 Error #2: INVALID HEAP ARGUMENT
-malloc.c:175
+malloc.c:179
 %if WINDOWS
 Error #3: WARNING: heap allocation failed
-malloc.c:187
+malloc.c:191
 Error #4: UNADDRESSABLE ACCESS: reading 4 byte(s)
-malloc.c:195
+malloc.c:199
 Error #5: INVALID HEAP ARGUMENT
 %endif
 %if WINDOWS_PRE_8
-malloc.c:199
+malloc.c:203
 %endif
 %if WINDOWS_8
-malloc.c:201
+malloc.c:205
 %endif

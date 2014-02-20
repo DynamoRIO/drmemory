@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -212,7 +212,7 @@ void unaddr_process_vm_readv_writev(int readv)
     } else {
         n = syscall(SYS_process_vm_writev, getpid(), local, 2, remote, 1, 0);
     }
-    printf("transferred %d bytes\n", n);
+    printf("transferred %ld bytes\n", (long)n);
 
     free(local);
     free(remote);

@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -60,7 +60,8 @@ void subdword_test2_asm(char *undef, int *val1, int *val2);
 static void check_reg(reg_t pre, reg_t post, const char *name)
 {
     if (pre != post) {
-        printf("mismatch %s: 0x%08x vs 0x%08x\n", name, pre, post);
+        printf("mismatch %s: 0x%08lx vs 0x%08lx\n", name,
+               (unsigned long)pre, (unsigned long)post);
     }
 }
 
@@ -490,8 +491,8 @@ void
 data16_div_test(void)
 {
     /* Declare here to avoid disturbing line numbers. */
-    ushort data16_div_test_asm(ushort a, ushort b);
-    ushort res = data16_div_test_asm(10, 5);
+    unsigned short data16_div_test_asm(unsigned short a, unsigned short b);
+    unsigned short res = data16_div_test_asm(10, 5);
     if (res != 2)
         printf("10 / 5 != 2, res: %d\n", res);
     res = data16_div_test_asm(13, 5);
@@ -674,7 +675,7 @@ GLOBAL_LABEL(FUNCNAME:)
 
         /* shift uninit bits away */
         mov   eax, 0
-        add   ax, word ptr [REG_XCX + 32]
+        add   ax, WORD [REG_XCX + 32]
         shl   eax, 8
         movzx edx, al
         mov   DWORD [REG_XDI], edx

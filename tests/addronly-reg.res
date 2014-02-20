@@ -24,15 +24,15 @@
 # while pattern mode reports "writing 1 byte(s)" error.
 %if WINDOWS
 Error #1: UNADDRESSABLE ACCESS:
-registers.c:366
+registers.c:367
 Error #2: UNADDRESSABLE ACCESS:
-registers.c:378
+registers.c:379
 %endif
 %if UNIX
 Error #1: UNADDRESSABLE ACCESS:
-registers.c:408
+registers.c:409
 Error #2: UNADDRESSABLE ACCESS:
-registers.c:419
+registers.c:420
 %endif
 Error #3: LEAK 15 direct bytes + 0 indirect bytes
 Error #4: LEAK 15 direct bytes + 0 indirect bytes

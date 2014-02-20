@@ -21,24 +21,24 @@
 #
 Error #1: INVALID HEAP ARGUMENT
 # addr2line and winsyms report slightly different results here
-malloc.c:175
+malloc.c:179
 %if WINDOWS
 Error #2: WARNING: heap allocation failed
-malloc.c:187
+malloc.c:191
 Error #3: INVALID HEAP ARGUMENT
 %endif
 %if WINDOWS_PRE_8
-malloc.c:199
+malloc.c:203
 %endif
 %if WINDOWS_8
-malloc.c:201
+malloc.c:205
 %endif
 %OUT_OF_ORDER
 : LEAK 42 direct bytes + 17 indirect bytes
-malloc.c:235
+malloc.c:239
 : LEAK 16 direct bytes + 48 indirect bytes
-malloc.c:267
+malloc.c:271
 : POSSIBLE LEAK 16 direct bytes + 0 indirect bytes
-malloc.c:272
+malloc.c:276
 : LEAK 16 direct bytes + 16 indirect bytes
-malloc.c:273
+malloc.c:277

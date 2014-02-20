@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -29,9 +29,14 @@
 # include <fcntl.h>
 # include <unistd.h>
 # include <sys/socket.h>
-# include <linux/in.h>
-# include <linux/un.h>
-# include <linux/in6.h>
+# ifdef MACOS
+#  include <netinet/in.h>
+#  include <sys/un.h>
+# else
+#  include <linux/in.h>
+#  include <linux/un.h>
+#  include <linux/in6.h>
+# endif
 #else
 # include <windows.h>
 #endif

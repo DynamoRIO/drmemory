@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 #
@@ -28,7 +28,7 @@ dlsym __gcc_personality_v0 success
 # only matching suffix of "dlopen <path>/libloaderlib.so failure"
 libloaderlib.so failure
 # only matching suffix of "dlerror loading /.*: /.*: undefined.*"
-: undefined symbol: import_does_not_exit
+: undefined symbol: import_does_not_exist
 ~~Dr.M~~ NO ERRORS FOUND:
 ~~Dr.M~~       0 unique,     0 total unaddressable access(es)
 ~~Dr.M~~       0 unique,     0 total uninitialized access(es)
