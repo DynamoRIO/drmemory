@@ -1017,7 +1017,9 @@ is_retaddr(byte *pc, bool exclude_tool_lib)
         bool match;
         STATS_INC(cstack_is_retaddr_backdecode);
         DR_TRY_EXCEPT(dr_get_current_drcontext(), {
-            match = (*(pc - 5) == OP_CALL_DIR ||
+            match = ((*(pc - 5) == OP_CALL_DIR
+                      /* rule out call to next instr used for PIC */
+                      IF_UNIX(&& *(int*)(pc - 4) != 0)) ||
                      (*(pc - 2) == OP_CALL_IND &&
                       /* indirect through mem: 0xff /2 (mod==0)
                        *   => top 5 bits are 0x02, and rule out disp32 (rm==0x5)
