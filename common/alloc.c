@@ -1218,7 +1218,7 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
             return res;
     }
     res = (app_pc) dr_get_proc_address(mod->handle, name);
-    if (res != NULL && op_use_symcache)
+    if (res != NULL && alloc_ops.use_symcache)
         drsymcache_add(mod, name, res - mod->start);
     return res;
 #else
@@ -1921,7 +1921,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
         return;
     }
 #ifdef USE_DRSYMS
-    if (op_use_symcache)
+    if (alloc_ops.use_symcache)
         drsymcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
 #endif
     if (edata->set == NULL) {
@@ -2079,7 +2079,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
                     LOG(2, "marking %s as processed since regex didn't match\n", name);
                     ASSERT(edata->wildcard_name == NULL, "shouldn't get here");
                     edata->processed[i] = true;
-                    if (op_use_symcache)
+                    if (alloc_ops.use_symcache)
                         drsymcache_add(edata->mod, edata->possible[i].name, 0);
                 }
             }
@@ -2212,7 +2212,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         memset(edata.processed, 0, sizeof(*edata.processed)*num_possible);
 
         /* First we check the symbol cache */
-        if (op_use_symcache &&
+        if (alloc_ops.use_symcache &&
             drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res) {
             size_t modoffs;
             uint count;
@@ -3079,7 +3079,7 @@ module_has_pdb(const module_data_t *info)
      * entries is a disaster (i#973).
      */
     bool res;
-    if (op_use_symcache &&
+    if (alloc_ops.use_symcache &&
         drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res)
         return (drsymcache_module_has_debug_info(info, &res) == DRMF_SUCCESS && res);
     else

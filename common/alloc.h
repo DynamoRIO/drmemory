@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -89,6 +89,9 @@ typedef struct _alloc_options_t {
      * malloc_lock() across multiple iterations.
      */
     bool global_lock;
+
+    /* Whether to query and update drsymcache for all symbol lookups */
+    bool use_symcache;
 
     /* Add new options here */
 } alloc_options_t;

@@ -26,6 +26,8 @@
 
 /* Framework-shared header */
 #include "drmemory_framework.h"
+/* Ensure users are using drmgr's module events */
+#include "drmgr.h"
 
 /**
  * @file drsymcache.h
@@ -40,16 +42,6 @@ extern "C" {
  * \addtogroup drsymcache Dr. SymCache: Symbol Lookup Cache Extension
  */
 /*@{*/ /* begin doxygen group */
-
-/* Users of drsymcache need to use the drmgr versions of these events to ensure
- * that drsymcache's actions occur at the right time.
- */
-#ifndef dr_register_module_load_event
-# define dr_register_module_load_event DO_NOT_USE_module_load_USE_drmgr_instead
-# define dr_unregister_module_load_event DO_NOT_USE_module_load_USE_drmgr_instead
-# define dr_register_module_unload_event DO_NOT_USE_module_unload_USE_drmgr_instead
-# define dr_unregister_module_unload_event DO_NOT_USE_module_unload_USE_drmgr_instead
-#endif
 
 /** Priority of drsymcache events. */
 enum {

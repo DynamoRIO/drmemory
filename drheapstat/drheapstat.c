@@ -27,6 +27,7 @@
 #include "dr_api.h"
 #include "drwrap.h"
 #include "drsyscall.h"
+#include "drsymcache.h"
 #include "umbra.h"
 #include "drheapstat.h"
 #include "alloc.h"
@@ -221,6 +222,7 @@ drheap_options_init(const char *opstr)
     op_pause_at_assert = options.pause_at_assert;
     op_pause_via_loop = options.pause_via_loop;
     op_ignore_asserts = options.ignore_asserts;
+    op_use_symcache = options.use_symcache;
 }
 
 /***************************************************************************
@@ -2129,6 +2131,11 @@ event_exit(void)
     free_shared_code();
     utils_exit();
 
+#ifdef USE_DRSYMS
+    if (options.use_symcache)
+        drsymcache_exit();
+#endif
+
 #ifdef STATISTICS
     dump_statistics();
 #endif
@@ -2226,6 +2233,17 @@ dr_init(client_id_t client_id)
     /* make it easy to tell, by looking at log file, which client executed */
     dr_log(NULL, LOG_ALL, 1, "client = Dr. Heapstat version %s\n", VERSION_STRING);
 
+#ifdef USE_DRSYMS
+    if (options.use_symcache) {
+        if (!option_specified.symcache_dir) {
+            dr_snprintf(options.symcache_dir, BUFFER_SIZE_ELEMENTS(options.symcache_dir),
+                        "%s/symcache", options.logdir);
+            NULL_TERMINATE_BUFFER(options.symcache_dir);
+        }
+        drsymcache_init(client_id, options.symcache_dir, 0);
+    }
+#endif
+
     snapshot_init();
 
     callstack_ops.max_frames = options.callstack_max_frames;
@@ -2292,6 +2310,7 @@ dr_init(client_id_t client_id)
     alloc_ops.conservative = options.conservative;
     alloc_ops.global_lock = true; /* we want to serialize w/ our snapshots */
     alloc_ops.replace_malloc = true;
+    alloc_ops.use_symcache = options.use_symcache;
     alloc_init(&alloc_ops, sizeof(alloc_ops));
 
     /* must be after heap_region_init and snapshot_init */
