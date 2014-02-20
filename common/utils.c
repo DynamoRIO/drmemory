@@ -77,13 +77,14 @@ static thread_id_t primary_thread = INVALID_THREAD_ID;
  * UTILITIES
  */
 
+#ifndef MACOS /* Mac has builtin -- though should verify in all builds */
 /* FIXME: VC8 uses intrinsic memset yet has it call out, so /nodefaultlib
  * gets a link error missing _memset.  This does not help, nor does /Oi:
  *   #pragma intrinsic ( memset)
  * So have to provide our own memset:
  * But with /O2 it actually uses the intrinsic.
  */
-#ifndef NDEBUG /* cmake Release build type */
+# ifndef NDEBUG /* cmake Release build type */
 void *
 memset(void *dst, int val, size_t size)
 {
@@ -92,6 +93,7 @@ memset(void *dst, int val, size_t size)
         *ptr++ = val;
     return dst;
 }
+# endif
 #endif
 
 void
@@ -112,7 +114,8 @@ wait_for_user(const char *message)
         char keypress;
         dr_fprintf(STDERR, "%s in pid "PIDFMT"\n", message, dr_get_process_id());
         dr_fprintf(STDERR, "<press enter to continue>\n");
-        dr_read_file(stdin->_fileno, &keypress, sizeof(keypress));
+        dr_read_file(IF_MACOS_ELSE(stdin->_file, stdin->_fileno),
+                     &keypress, sizeof(keypress));
     }
 #endif
 }
@@ -597,6 +600,7 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
     return false;
 }
 
+#ifndef MACOS /* available on Mac */
 /* not available in ntdll CRT so we supply our own */
 const char *
 strcasestr(const char *text, const char *pattern)
@@ -620,6 +624,7 @@ strcasestr(const char *text, const char *pattern)
         }
     }
 }
+#endif
 
 /* patterns is a null-separated, double-null-terminated list of strings */
 const char *

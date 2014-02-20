@@ -403,7 +403,11 @@ get_own_seg_base(void)
     seg_base = (byte *) get_TEB();
 #else
     uint offs = tls_base_offs();
-    asm("movzx %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
+# ifdef X64
+    asm("movzbq %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
+# else
+    asm("movzbl %0, %%"ASM_XAX : : "m"(offs) : ASM_XAX);
+# endif
     asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
     asm("mov %%"ASM_XAX", %0" : "=m"(seg_base) : : ASM_XAX);
 #endif
@@ -557,7 +561,11 @@ get_raw_tls_value(uint offset)
 #ifdef WINDOWS
     val = *(ptr_uint_t *)(((byte *)get_TEB()) + offset);
 #else
-    asm("movzx %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
+# ifdef X64
+    asm("movzbq %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
+# else
+    asm("movzbl %0, %%"ASM_XAX : : "m"(offset) : ASM_XAX);
+# endif
     asm("mov %%"ASM_SEG":(%%"ASM_XAX"), %%"ASM_XAX : : : ASM_XAX);
     asm("mov %%"ASM_XAX", %0" : "=m"(val) : : ASM_XAX);
 #endif

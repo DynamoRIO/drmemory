@@ -39,10 +39,15 @@
 #ifdef UNIX
 # include <sys/types.h>
 # include <sys/socket.h>
-# include <linux/in.h>
-# include <linux/in6.h>
-# include <linux/un.h>
-# include <linux/netlink.h>
+# ifdef MACOS
+#  include <netinet/in.h>
+#  include <sys/un.h>
+# else
+#  include <linux/in.h>
+#  include <linux/in6.h>
+#  include <linux/un.h>
+#  include <linux/netlink.h>
+# endif
 #else
 # include "../wininc/afd_shared.h"
 #endif
@@ -1088,7 +1093,7 @@ handle_sockaddr(cls_syscall_t *pt, sysarg_iter_info_t *ii, byte *ptr,
             return true;
         break;
     }
-#ifdef UNIX
+#ifdef LINUX
     case AF_NETLINK: {
         struct sockaddr_nl *snl = (struct sockaddr_nl *) sa;
         if (socklen >= offsetof(struct sockaddr_nl, nl_pad) + sizeof(snl->nl_pad) &&

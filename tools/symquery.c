@@ -342,7 +342,7 @@ enum_line_cb(drsym_line_info_t *info, void *data)
     printf("cu=\"%s\", file=\"%s\" line=" INT64_FORMAT_STRING ", addr="PIFX"\n",
            (info->cu_name == NULL) ? "<null>" : info->cu_name,
            (info->file == NULL) ? "<null>" : info->file,
-           info->line, info->line_addr);
+           info->line, (ptr_uint_t)info->line_addr);
     return true;
 }
 

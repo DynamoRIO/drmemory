@@ -175,7 +175,7 @@ match_valgrind_pattern(void *dc, instrlist_t *bb, instr_t *instr,
             return false;
         }
 
-        if (0 <= i && i < 4) {
+        if (i < 4) {
             /* Check the rol instr operands. */
             opnd_t src = instr_get_src(instrs[i], 0);
             opnd_t dst = instr_get_dst(instrs[i], 0);

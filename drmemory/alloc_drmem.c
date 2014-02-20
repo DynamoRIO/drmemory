@@ -34,6 +34,8 @@
 #ifdef UNIX
 # ifdef MACOS
 #  include <sys/syscall.h>
+#  define _XOPEN_SOURCE 700 /* required to get POSIX, etc. defines out of ucontext.h */
+#  define __need_struct_ucontext64 /* seems to be missing from Mac headers */
 # elif defined(LINUX)
 #  include "sysnum_linux.h"
 # endif
@@ -1416,15 +1418,15 @@ client_pre_syscall(void *drcontext, int sysnum)
     }
 #else
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-    if (sysnum == SYS_rt_sigaction
-        IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
+    if (sysnum == IF_MACOS_ELSE(SYS_sigaction, SYS_rt_sigaction)
+        IF_X86_32(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
         /* PR 406333: linux signal delivery.
          * For delivery: signal event doesn't help us since have to predict
          * which stack and size of frame: should intercept handler registration
          * and wait until enter a handler.  Can ignore SIG_IGN and SIG_DFL.
          */
         void *handler = NULL;
-        if (sysnum == SYS_rt_sigaction) {
+        if (sysnum == IF_MACOS_ELSE(SYS_sigaction, SYS_rt_sigaction)) {
             /* 2nd arg is ptr to struct w/ handler as 1st field */
             safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
@@ -1433,10 +1435,12 @@ client_pre_syscall(void *drcontext, int sysnum)
             /* 2nd arg is ptr to struct w/ handler as 1st field */
             safe_read((void *)syscall_get_param(drcontext, 1), sizeof(handler), &handler);
         }
+#  ifdef LINUX
         else if (sysnum == SYS_signal) {
             /* 2nd arg is handler */
             handler = (void *) syscall_get_param(drcontext, 1);
         }
+#  endif
 # endif
         if (handler != NULL) {
             LOG(2, "SYS_rt_sigaction/etc.: new handler "PFX"\n", handler);
@@ -1454,8 +1458,10 @@ client_pre_syscall(void *drcontext, int sysnum)
             LOG(2, "SYS_rt_sigaction/etc.: bad handler\n");
         }
     }
-    else if ((sysnum == SYS_rt_sigreturn IF_X86_32(|| sysnum == SYS_sigreturn)) &&
+    else if ((sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigreturn)
+              IF_X86_32(|| sysnum == SYS_sigreturn)) &&
              options.check_stack_bounds) {
+#ifdef LINUX
         /* PR 406333: linux signal delivery.
          * On sigreturn, whether altstack or not, invalidate
          * where frame was.  Either need to record at handler entry the base of
@@ -1469,7 +1475,7 @@ client_pre_syscall(void *drcontext, int sysnum)
         byte *sp = (byte *)mc.xsp;
         byte *new_sp;
         struct sigcontext *sc;
-        if (sysnum == SYS_rt_sigreturn) {
+        if (sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigreturn)) {
             /* first, skip signum and siginfo ptr to get ucontext ptr */
             struct ucontext *ucxt;
             if (safe_read(sp + sizeof(int) + sizeof(struct siginfo*),
@@ -1502,6 +1508,9 @@ client_pre_syscall(void *drcontext, int sysnum)
         } else {
             LOG(1, "WARNING: can't read sc->xsp at sigreturn\n");
         }
+#else
+        /* FIXME i#1438: add Mac handling */
+#endif
     }
     else if (sysnum == SYS_sigaltstack) {
         /* PR 406333: linux signal delivery */
@@ -1548,8 +1557,8 @@ client_post_syscall(void *drcontext, int sysnum)
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     if (!options.shadowing)
         return;
-    if (sysnum == SYS_rt_sigaction
-        IF_X86_32(|| sysnum == SYS_sigaction || sysnum == SYS_signal)) {
+    if (sysnum == IF_MACOS_ELSE(SYS_sigreturn, SYS_rt_sigaction)
+        IF_X86_32(|| sysnum == SYS_sigaction IF_LINUX(|| sysnum == SYS_signal))) {
         if (result != 0) {
             LOG(2, "SYS_rt_sigaction/etc. FAILED for handler "PFX"\n",
                   syscall_get_param(drcontext, 1));
@@ -2271,7 +2280,8 @@ is_loader_exception(app_loc_t *loc, app_pc addr, uint sz)
         module_data_t *data = dr_lookup_module(pc);
         if (data != NULL) {
             const char *modname = dr_module_preferred_name(data);
-            if (strncmp(modname, "ld-linux.so.", 12) == 0 ||
+            if (strncmp(modname, IF_MACOS_ELSE("dyld", "ld-linux.so."),
+                        IF_MACOS_ELSE(4, 12)) == 0 ||
                 is_in_client_or_DR_lib(pc)) {
                 /* If this happens too many times we may want to go back to
                  * marking our libs as defined and give up on catching wild

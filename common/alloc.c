@@ -146,6 +146,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #ifdef MACOS
 # include <sys/syscall.h>
 # include <sys/mman.h>
+# define MAP_ANONYMOUS MAP_ANON
 #elif defined(LINUX)
 # include "sysnum_linux.h"
 # include <sys/mman.h>
@@ -2183,9 +2184,6 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 {
     set_enum_data_t edata;
     uint i;
-#ifdef DEBUG
-    const char *modname = dr_module_preferred_name(mod);
-#endif
     edata.set = NULL;
     edata.set_type = type;
     edata.possible = possible;
@@ -2326,7 +2324,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
                                      );
         ASSERT(!expect_all || pc != NULL, "expect to find all alloc routines");
-#ifdef UNIX
+#ifdef LINUX
         /* PR 604274: sometimes undefined symbol has a value pointing at PLT:
          * we do not want to try and intercept that.
          * Ideally DR should exclude these weird symbols: that's i#341.
@@ -2347,10 +2345,13 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                 instr_free(drcontext, &inst);
             } else
                 pc = NULL;
+# ifdef DEBUG
             if (pc == NULL) {
+                const char *modname = dr_module_preferred_name(mod);
                 LOG(1, "NOT intercepting PLT or invalid %s in module %s\n",
                     possible[i].name, (modname == NULL) ? "<noname>" : modname);
             }
+# endif
         }
 #endif
         if (pc != NULL)
@@ -3097,7 +3098,8 @@ module_is_libc(const module_data_t *mod, bool *is_libc, bool *is_libcpp, bool *i
     *is_libcpp = false;
     if (modname != NULL) {
 #ifdef MACOS
-# error NYI: i#1438
+        if (text_matches_pattern(modname, "libSystem*", false))
+            *is_libc = true;
 #elif defined(LINUX)
         if (text_matches_pattern(modname, "libc*", false))
             *is_libc = true;
@@ -4236,10 +4238,12 @@ alloc_syscall_filter(void *drcontext, int sysnum)
     switch (sysnum) {
     case SYS_mmap:
     case SYS_munmap:
+# ifdef LINUX
     IF_X86_32(case SYS_mmap2:)
     case SYS_mremap:
     case SYS_brk:
     case SYS_clone:
+# endif
         return true;
     default:
         return false;
@@ -4250,7 +4254,7 @@ alloc_syscall_filter(void *drcontext, int sysnum)
 void
 handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 {
-#if defined(WINDOWS) || defined(DEBUG)
+#if defined(WINDOWS) || (defined(LINUX) && defined(DEBUG))
     cls_alloc_t *pt = drmgr_get_cls_field(drcontext, cls_idx_alloc);
 #endif
 #ifdef WINDOWS
@@ -4394,7 +4398,7 @@ handle_pre_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         if (alloc_ops.track_heap)
             heap_region_remove(base, base+size, mc);
     }
-# ifdef DEBUG
+# if defined(LINUX) && defined(DEBUG)
     else if (sysnum == SYS_brk) {
         pt->sbrk = (app_pc) dr_syscall_get_param(drcontext, 0);
     }
@@ -4661,14 +4665,14 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
 #else /* WINDOWS */
     ptr_int_t result = dr_syscall_get_result(drcontext);
     bool success = (result >= 0);
-    if (sysnum == SYS_mmap IF_X86_32(|| sysnum == SYS_mmap2)) {
+    if (sysnum == SYS_mmap IF_LINUX(IF_X86_32(|| sysnum == SYS_mmap2))) {
         unsigned long flags = 0;
         size_t size = 0;
         /* libc interprests up to -PAGE_SIZE as an error */
         bool mmap_success = (result > 0 || result < -PAGE_SIZE);
         if (mmap_success) {
             app_pc base = (app_pc) result;
-            if (sysnum == IF_X64_ELSE(SYS_mmap, SYS_mmap2)) {
+            if (sysnum == IF_LINUX_ELSE(IF_X64_ELSE(SYS_mmap, SYS_mmap2), SYS_mmap)) {
                 /* long sys_mmap2(unsigned long addr, unsigned long len,
                  *                unsigned long prot, unsigned long flags,
                  *                unsigned long fd, unsigned long pgoff)
@@ -4676,7 +4680,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                 flags = (unsigned long) syscall_get_param(drcontext, 3);
                 size = (size_t) syscall_get_param(drcontext, 1);
             }
-# ifdef X86_32
+# if defined(LINUX) && defined(X86_32)
             if (sysnum == SYS_mmap) {
                 mmap_arg_struct_t arg;
                 if (!safe_read((void *)syscall_get_param(drcontext, 0),
@@ -4720,6 +4724,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
                 heap_region_add(base, base+size, HEAP_ARENA/*FIXME:guessing*/, mc);
         }
     }
+# ifdef LINUX
     else if (sysnum == SYS_mremap) {
         app_pc old_base = (app_pc) syscall_get_param(drcontext, 0);
         size_t old_size = (size_t) syscall_get_param(drcontext, 1);
@@ -4765,6 +4770,7 @@ handle_post_alloc_syscall(void *drcontext, int sysnum, dr_mcontext_t *mc)
         } else
             heap_region_adjust(heap_start, (byte *) result);
     }
+# endif
 #endif /* WINDOWS */
     client_post_syscall(drcontext, sysnum);
 }

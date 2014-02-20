@@ -900,10 +900,12 @@ memory_walk(void)
      */
     dr_mem_info_t info;
     app_pc pc = NULL, end;
-    app_pc cur_brk = get_brk(true/*pre-us*/);
     app_pc pc_to_add;
     uint type = 0;
+# ifdef LINUX
+    app_pc cur_brk = get_brk(true/*pre-us*/);
     LOG(2, "brk="PFX"\n", cur_brk);
+# endif
     while (pc < (app_pc)POINTER_MAX && dr_query_memory_ex(pc, &info)) {
         end = info.base_pc+info.size;
         pc_to_add = NULL;
@@ -973,7 +975,7 @@ memory_walk(void)
             /* ignore replace-heap: leave unaddressable */
             LOG(2, "  => replacement heap\n");
         } else if (info.type == DR_MEMTYPE_DATA) {
-            if (end == cur_brk) {
+            if (IF_LINUX_ELSE(end == cur_brk, false)) {
                 /* this is the heap */
                 LOG(2, "  => heap\n");
                 /* we call heap_region_add in heap_iter_region from heap_walk  */
@@ -1873,12 +1875,12 @@ dr_init(client_id_t id)
          */
         if (modname != NULL) {
             if (strncmp(modname, "libdynamorio.", 13) == 0) {
-                LOG(2, "marking DR lib as defined\n");
+                LOG(2, "found DR lib\n");
                 libdr_base = data->start;
                 libdr_end = data->end;
                 ASSERT(check_contiguous(data), "lib not contiguous!");
             } else if (strncmp(modname, "libdynamorio-", 13) == 0) {
-                LOG(2, "marking DR lib2 as defined\n");
+                LOG(2, "found DR lib2\n");
                 libdr2_base = data->start;
                 libdr2_end = data->end;
                 ASSERT(check_contiguous(data), "lib not contiguous!");

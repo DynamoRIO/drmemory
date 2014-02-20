@@ -151,11 +151,15 @@ static int (*app_tolower)(int) = replace_tolower_ascii;
  * If we later hide client libraries, we should probably move these
  * to a visible library.
  */
-#ifdef UNIX
+#ifdef MACOS
+asm(".section __TEXT,__replace");
+asm(".align 12"); /* 2^12 */
+# define IN_REPLACE_SECTION __attribute__ ((section ("__TEXT,__replace")))
+#elif defined(LINUX)
 asm(".section .replace, \"ax\", @progbits");
 asm(".align 0x1000");
 # define IN_REPLACE_SECTION __attribute__ ((section (".replace")))
-#else
+#else /* WINDOWS */
 ACTUAL_PRAGMA( code_seg(".replace") )
 # define IN_REPLACE_SECTION /* nothing */
 #endif
@@ -798,7 +802,11 @@ replace_final_routine(void)
 }
 /* do not add .replace routines below here */
 
-#ifdef UNIX
+#ifdef MACOS
+asm(".section __TEXT,.text");
+asm(".align 12");
+asm(".text");
+#elif defined(LINUX)
 asm(".section .text, \"ax\", @progbits");
 asm(".align 0x1000");
 #else

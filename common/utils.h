@@ -47,6 +47,24 @@
 # define IF_UNIX(x) x
 # define IF_UNIX_ELSE(x,y) x
 # define IF_UNIX_(x) x,
+# ifdef LINUX
+#  define IF_LINUX(x) x
+#  define IF_LINUX_ELSE(x,y) x
+#  define IF_LINUX_(x) x,
+# else
+#  define IF_LINUX(x)
+#  define IF_LINUX_ELSE(x,y) y
+#  define IF_LINUX_(x) x,
+# endif
+# ifdef MACOS
+#  define IF_MACOS(x) x
+#  define IF_MACOS_ELSE(x,y) x
+#  define IF_MACOS_(x) x,
+# else
+#  define IF_MACOS(x)
+#  define IF_MACOS_ELSE(x,y) y
+#  define IF_MACOS_(x) x,
+# endif
 #endif
 
 #ifdef X64
@@ -162,11 +180,13 @@
 #endif
 
 /* Names meant for use in text_matches_pattern() where wildcards are supported */
-#define DYNAMORIO_LIBNAME IF_WINDOWS_ELSE("dynamorio.dll","libdynamorio.so*")
+#define DYNAMORIO_LIBNAME IF_WINDOWS_ELSE("dynamorio.dll", \
+    IF_MACOS_ELSE("libdynamorio.*dylib*", "libdynamorio.so*"))
 /* CLIENT_LIBNAME is assumed to be set as a preprocessor define */
 #define CLIENT_LIBNAME_BASE STRINGIFY(CLIENT_LIBNAME)
 #define DRMEMORY_LIBNAME \
-    IF_WINDOWS_ELSE(CLIENT_LIBNAME_BASE ".dll", "lib" CLIENT_LIBNAME_BASE ".so*")
+    IF_WINDOWS_ELSE(CLIENT_LIBNAME_BASE ".dll", "lib" CLIENT_LIBNAME_BASE \
+                    IF_MACOS_ELSE("*.dylib*", ".so*"))
 
 #define MAX_INSTR_SIZE 17
 
@@ -563,6 +583,10 @@ atomic_add32_return_sum(volatile int *x, int val)
 # define strcasecmp _stricmp
 #endif
 
+#ifdef memset
+# undef memset
+#endif
+
 void *
 memset(void *dst, int val, size_t size);
 
@@ -786,8 +810,10 @@ drmem_strndup(const char *src, size_t max, heapstat_t type);
 const char *
 get_option_word(const char *s, char buf[MAX_OPTION_LEN]);
 
+#ifndef MACOS /* available on Mac */
 const char *
 strcasestr(const char *text, const char *pattern);
+#endif
 
 #define FILESYS_CASELESS IF_WINDOWS_ELSE(true, false)
 

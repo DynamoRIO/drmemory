@@ -1747,9 +1747,10 @@ print_buffer(file_t f, char *buf)
         res = dr_write_file(f, buf, sz);
         if (res < 0) {
 #ifdef UNIX
-# ifdef MACOS
-#  error NYI i#1438
-# endif
+            /* DR converts Mac's +errno,CF to -errno
+             * XXX: should we document that dr_write_file() returns -errno
+             * on failure on both Linux and Mac?
+             */
             /* FIXME: haven't tested this */
             if (res == -EINTR)
                 continue;
@@ -2485,7 +2486,16 @@ callstack_module_add_region(app_pc start, app_pc end, modname_info_t *info)
 {
     IF_DEBUG(rb_node_t *node = )
         rb_insert(module_tree, start, (end - start), (void *)info);
-    ASSERT(node == NULL, "new module overlaps w/ existing");
+#ifdef DEBUG
+    if (node != NULL) {
+# ifdef MACOS
+        /* dyld shared cache shares __LINKEDIT segments */
+        LOG(2, "new module segment overlaps w/ existing");
+# else
+        ASSERT(false, "new module overlaps w/ existing");
+# endif
+    }
+#endif
     if (start < modtree_min_start || modtree_min_start == NULL)
         modtree_min_start = start;
     if (end > modtree_max_end)

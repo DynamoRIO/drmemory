@@ -33,6 +33,8 @@
 #ifdef LINUX
 # include "sysnum_linux.h"
 # include <linux/sched.h> /* CLONE_VM */
+#elif defined(MACOS)
+# include <sys/syscall.h>
 #endif
 
 enum {
@@ -270,6 +272,7 @@ perturb_pre_fork(void)
     do_delay(SYNCH_PROCESS);
 }
 
+#ifndef MACOS
 static void
 perturb_pre_thread(void)
 {
@@ -281,6 +284,7 @@ perturb_pre_synch_syscall(void)
 {
     do_delay(SYNCH_SYSCALL);
 }
+#endif
 
 /***************************************************************************
  * Insert delays before synch-related syscalls
@@ -291,6 +295,7 @@ perturb_pre_syscall(void *drcontext, int sysnum)
 {
 #ifdef UNIX
     switch (sysnum) {
+# ifdef LINUX
     case SYS_clone: {
         uint flags = (uint) dr_syscall_get_param(drcontext, 0);
         if (TEST(CLONE_VM, flags)) {
@@ -299,11 +304,14 @@ perturb_pre_syscall(void *drcontext, int sysnum)
         }
         /* else, fall through */
     }
-    case SYS_fork:
-        perturb_pre_fork();
-        break;
     case SYS_futex:
         perturb_pre_synch_syscall();
+        break;
+# elif defined(MACOS)
+    /* FIXME i#1438: add Mac thread monitoring */
+# endif
+    case SYS_fork:
+        perturb_pre_fork();
         break;
     }
 #else

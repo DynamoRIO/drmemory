@@ -1349,10 +1349,12 @@ leak_scan_for_leaks(bool at_exit)
     mc.size = sizeof(mc);
     mc.flags = DR_MC_CONTROL|DR_MC_INTEGER; /* don't need xmm */
 
+#ifndef MACOS /* XXX: no private loader yet */
     /* i#1016: ensure the thread performing the leak scan is in DR state,
      * which should be the case regardless of whether at exit or a nudge.
      */
     ASSERT(!dr_using_app_state(my_drcontext), "state error");
+#endif
 
     /* Strategy: First walk non-heap memory that is defined to find reachable
      * heap blocks.  (Ideally we would skip memory that has not been modified

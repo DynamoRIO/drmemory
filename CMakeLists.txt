@@ -365,8 +365,14 @@ if (UNIX)
   endif (NOT flag_present)
   if (HAVE_FVISIBILITY)
     # Only export functions so marked via attributes
+    if (APPLE)
+      # "internal" is not supported
+      set(VISIBILITY "hidden")
+    else (APPLE)
+      set(VISIBILITY "internal")
+    endif (APPLE)
     set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
-      "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} -fvisibility=internal")
+      "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} -fvisibility=${VISIBILITY}")
   endif (HAVE_FVISIBILITY)
 
   if (APPLE)
@@ -835,7 +841,11 @@ include_directories(${DynamoRIO_DIR})
 # XXX: even if we went to a configure.h, we wouldn't have the DR platform
 # defines there unless we duplicated them.
 if (UNIX)
-  set(DEFINES ${DEFINES} -DASSEMBLE_WITH_GAS)
+  if (APPLE)
+    set(DEFINES ${DEFINES} -DASSEMBLE_WITH_NASM)
+  else (APPLE)
+    set(DEFINES ${DEFINES} -DASSEMBLE_WITH_GAS)
+  endif (APPLE)
 else (UNIX)
   set(DEFINES ${DEFINES} -DASSEMBLE_WITH_MASM)
 endif (UNIX)
