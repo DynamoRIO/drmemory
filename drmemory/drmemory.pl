@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -50,9 +50,10 @@ use lib "$FindBin::RealBin";
 # RealBin resolves symlinks for us
 ($scriptname,$scriptpath,$suffix) = fileparse("$FindBin::RealBin/$FindBin::RealScript");
 
-# $^O is either "linux", "cygwin", or "MSWin32"
-$is_unix = ($^O eq "linux") ? 1 : 0;
+# $^O is either "linux", "cygwin", "MSWin32", or "darwin"
+$is_unix = ($^O eq "linux" || $^O eq "darwin") ? 1 : 0;
 if ($is_unix) {
+    $is_mac = ($^O eq "darwin") ? 1 : 0;
     $is_vmk = (`uname -s` =~ /VMkernel/) ? 1 : 0;
     # support post-processing on linux box vs vmk data
     $vs_vmk = (-e "$scriptpath/frontend_vmk.pm");
@@ -229,8 +230,10 @@ $default_home = "$scriptpath/..";
 $default_home = abs_path($default_home);
 $default_home = &canonicalize_path($default_home);
 
-$drlibname = $is_unix ? "libdynamorio.so" : "dynamorio.dll";
-$drmemlibname = $is_unix ? "libdrmemory.so" : "drmemory.dll";
+$drlibname = $is_unix ? ($is_mac ? "libdynamorio.dylib" : "libdynamorio.so")
+    : "dynamorio.dll";
+$drmemlibname = $is_unix ? ($is_mac ? "libdrmemory.dylib" : "libdrmemory.so")
+    : "drmemory.dll";
 
 $drmemory_home = $default_home if ($drmemory_home eq '');
 # normally we're packaged with a DR release laid out in "dynamorio":
