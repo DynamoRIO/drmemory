@@ -59,6 +59,7 @@ file(GLOB imgs "${PROJECT_SOURCE_DIR}/${toolname}/docs/*.png")
 # XXX: share w/ list of paths in CMake_doxyfile ${headers}
 set(headers
   ${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.h
+  ${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.h
   ${PROJECT_SOURCE_DIR}/umbra/umbra.h
   ${PROJECT_SOURCE_DIR}/framework/public.h)
 
@@ -107,7 +108,7 @@ add_custom_command(
   # script does not inherit any vars so we must pass them all in
   # Be sure to put a space after -D for 1st arg at least
   ARGS -D srcdir=${PROJECT_SOURCE_DIR}/${tooldir}/docs
-       -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox
+       -D srclist=${PROJECT_SOURCE_DIR}/framework/drmf.dox\;${PROJECT_SOURCE_DIR}/drsyscall/drsyscall.dox\;${PROJECT_SOURCE_DIR}/drsymcache/drsymcache.dox
        -Dcommondir=${CMAKE_CURRENT_SOURCE_DIR}
        -Doutfile=${doxyfile}
        -Dversion_number=${TOOL_VERSION_NUMBER}

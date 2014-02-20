@@ -85,6 +85,7 @@
 #include "alloc.h"
 #include "alloc_private.h"
 #include "heap.h"
+#include "drsymcache.h"
 #include <string.h> /* memcpy */
 
 #ifdef MACOS
@@ -2844,7 +2845,7 @@ libc_heap_handle(const module_data_t *mod)
                 pre_us_heap = NULL;
             LOG(3, "%s: _crtheap @"PFX" => "PFX"\n", __FUNCTION__, addr, pre_us_heap);
             if (op_use_symcache)
-                symcache_add(mod, "_crtheap", addr - mod->start);
+                drsymcache_add(mod, "_crtheap", addr - mod->start);
         }
     }
     return pre_us_heap;

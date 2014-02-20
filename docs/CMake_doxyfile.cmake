@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -196,6 +196,7 @@ endif (WIN32)
 if (TOOL_DR_MEMORY)
   # XXX: share w/ list of source paths in CMakeLists.txt ${headers}
   set(headers "${commondir}/../drsyscall/drsyscall.h ${commondir}/../umbra/umbra.h")
+  set(headers "${headers} ${commondir}/../drsymcache/drsymcache.h")
   set(headers "${headers} ${outdir}/../drmf/include/drmemory_framework.h")
   string(REGEX REPLACE
     "using.dox" "using.dox errors.dox reports.dox light.dox" string "${string}")

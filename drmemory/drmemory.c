@@ -77,7 +77,7 @@
 
 #ifdef USE_DRSYMS
 # include "drsyms.h" /* for pre-loading pdbs on Vista */
-# include "symcache.h"
+# include "drsymcache.h"
 #endif
 
 char logsubdir[MAXIMUM_PATH];
@@ -445,7 +445,7 @@ event_exit(void)
         report_exit();
 #ifdef USE_DRSYMS
     if (options.use_symcache)
-        symcache_exit();
+        drsymcache_exit();
 #endif
     utils_exit();
 
@@ -1604,6 +1604,7 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
 {
 #ifdef STATISTICS
     /* measure module processing time: mostly symbols (xref i#313) */
+    /* XXX: this no longer includes drsymcache as it has its own event now */
     print_timestamp_elapsed_to_file(f_global, "pre-module-load ");
 #endif
 #ifdef WINDOWS
@@ -1618,9 +1619,6 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     }
 #endif
 #ifdef USE_DRSYMS
-    /* must be before alloc_module_load */
-    if (options.use_symcache)
-        symcache_module_load(drcontext, info, loaded);
 # ifdef WINDOWS
     if (options.preload_symbols) {
         /* i#723: We can't load symbols for modules with dbghelp during shutdown
@@ -1647,9 +1645,6 @@ event_module_load(void *drcontext, const module_data_t *info, bool loaded)
     readwrite_module_load(drcontext, info, loaded);
     leak_module_load(drcontext, info, loaded);
 #ifdef USE_DRSYMS
-    /* Write out the symcache in case we crash or sthg before an at-exit write */
-    if (options.use_symcache)
-        symcache_module_save_symcache(info);
     /* Free resources.  Many modules will never need symbol queries again b/c
      * they won't show up in any callstack later.  Xref i#982.
      */
@@ -1674,8 +1669,6 @@ event_module_unload(void *drcontext, const module_data_t *info)
         replace_module_unload(drcontext, info);
     alloc_module_unload(drcontext, info);
 #ifdef USE_DRSYMS
-    if (options.use_symcache)
-        symcache_module_unload(drcontext, info);
     /* Free resources.  Xref i#982. */
     drsym_free_resources(info->full_path);
 #endif
@@ -1833,7 +1826,7 @@ dr_init(client_id_t id)
 
 #ifdef USE_DRSYMS
     if (options.use_symcache)
-        symcache_init(options.symcache_dir, options.symcache_minsize);
+        drsymcache_init(client_id, options.symcache_dir, options.symcache_minsize);
 #endif
 
     if (!options.perturb_only)
@@ -1853,11 +1846,6 @@ dr_init(client_id_t id)
     ASSERT(data != NULL, "cannot find ntdll.dll");
     ntdll_base = data->start;
     ntdll_end = data->end;
-# ifdef USE_DRSYMS
-    /* initialize early so we can cache sym lookup in leak_init */
-    if (options.use_symcache)
-        symcache_module_load(drcontext, data, true);
-# endif
     dr_free_module_data(data);
     ASSERT(ntdll_base != NULL, "internal error finding ntdll.dll base");
     LOG(2, "ntdll is "PFX"-"PFX"\n", ntdll_base, ntdll_end);

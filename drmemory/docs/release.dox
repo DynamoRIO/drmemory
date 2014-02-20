@@ -64,6 +64,9 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
    to shrink and simplify callstacks and suppressions.  The old behavior
    can be requested by passing 0x1000 to the -callstack_style option.
  - Changed Linux and MinGW symbols to omit the "()" in C++ symbol names.
+ - Added a new Dr. Memory Framework Extension, Dr. SymCache or drsymcache,
+   which provides persistent caching of symbol lookup data to reduce
+   startup time overhead on large applications.
  - Clarified the final parameter to umbra_get_shadow_memory_type() and
    umbra_shadow_memory_is_shared() to be #umbra_shadow_memory_type_t
    rather than uint.

@@ -30,7 +30,7 @@
 #include "utils.h"
 #ifdef USE_DRSYMS
 # include "drsyms.h"
-# include "symcache.h"
+# include "drsymcache.h"
 #endif
 #ifdef WINDOWS
 # include "windefs.h"
@@ -232,7 +232,8 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
         if (op_use_symcache) {
             uint count;
             /* if there are multiple we just return the first one */
-            if (symcache_lookup(mod, sym_pattern, 0, &modoffs, &count)) {
+            if (drsymcache_lookup(mod, sym_pattern, 0, &modoffs, &count) ==
+                DRMF_SUCCESS) {
                 STATS_INC(symbol_lookup_cache_hits);
                 if (modoffs == 0)
                     return NULL;
@@ -319,7 +320,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
     if (symres == DRSYM_SUCCESS || symres == DRSYM_ERROR_LINE_NOT_AVAILABLE) {
         if (callback == NULL) {
             if (op_use_symcache)
-                symcache_add(mod, sym_pattern, modoffs);
+                drsymcache_add(mod, sym_pattern, modoffs);
             if (modoffs == 0) /* using as sentinel: assuming no sym there */
                 return NULL;
             else
@@ -328,7 +329,7 @@ lookup_symbol_common(const module_data_t *mod, const char *sym_pattern,
             return mod->start;
     } else {
         if (symres == DRSYM_ERROR_SYMBOL_NOT_FOUND && op_use_symcache)
-            symcache_add(mod, sym_pattern, 0);
+            drsymcache_add(mod, sym_pattern, 0);
         return NULL;
     }
 }
@@ -599,32 +600,6 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
     }
     return false;
 }
-
-#ifndef MACOS /* available on Mac */
-/* not available in ntdll CRT so we supply our own */
-const char *
-strcasestr(const char *text, const char *pattern)
-{
-    const char *cur_text, *cur_pattern, *root;
-    cur_text = text;
-    root = text;
-    cur_pattern = pattern;
-    while (true) {
-        if (*cur_pattern == '\0')
-            return root;
-        if (*cur_text == '\0')
-            return NULL;
-        if ((char)tolower(*cur_text) == (char)tolower(*cur_pattern)) {
-            cur_text++;
-            cur_pattern++;
-        } else {
-            root++;
-            cur_text = root;
-            cur_pattern = pattern;
-        }
-    }
-}
-#endif
 
 /* patterns is a null-separated, double-null-terminated list of strings */
 const char *
@@ -1126,35 +1101,6 @@ nonheap_free(void *p, size_t size, heapstat_t type)
 #define dr_thread_free  DO_NOT_USE_use_thread_free
 #define dr_nonheap_alloc DO_NOT_USE_use_nonheap_alloc
 #define dr_nonheap_free  DO_NOT_USE_use_nonheap_free
-
-char *
-drmem_strdup(const char *src, heapstat_t type)
-{
-    char *dup = NULL;
-    if (src != NULL) {
-        dup = global_alloc(strlen(src)+1, type);
-        strncpy(dup, src, strlen(src)+1);
-    }
-    return dup;
-}
-
-char *
-drmem_strndup(const char *src, size_t max, heapstat_t type)
-{
-    char *dup = NULL;
-    /* deliberately not calling strlen on src since may be quite long */
-    const char *c;
-    size_t sz;
-    for (c = src; c != '\0' && (c - src < max); c++)
-        ; /* nothing */
-    sz = (c - src < max) ? c -src : max;
-    if (src != NULL) {
-        dup = global_alloc(sz + 1, type);
-        strncpy(dup, src, sz);
-        dup[sz] = '\0';
-    }
-    return dup;
-}
 
 /***************************************************************************
  * REGISTER CONVERSION UTILITIES

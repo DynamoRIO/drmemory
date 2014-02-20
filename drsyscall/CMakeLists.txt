@@ -34,6 +34,8 @@ if (SYSCALL_DRIVER)
   include_directories(${SYSCALL_DRIVER_SRCDIR})
 endif (SYSCALL_DRIVER)
 
+set(external_srcs ../framework/drmf_utils.c ../common/utils_shared.c)
+
 set(srcs
   drsyscall.c
   ../framework/version.c
@@ -94,7 +96,7 @@ endmacro(export_drsyscall_target)
 
 # For the exported version, we don't want to print to stderr or raise
 # msgboxes, so we link in globals to suppress notification in drmf_utils.c.
-add_library(drsyscall SHARED ${srcs} ../framework/drmf_utils.c)
+add_library(drsyscall SHARED ${srcs} ${external_srcs})
 # Set a preferred base to avoid conflict if we can
 set(PREFERRED_BASE 0x77000000)
 configure_DynamoRIO_client(drsyscall)
@@ -110,7 +112,7 @@ install(FILES drsyscall.h DESTINATION ${DRMF_INSTALL_INC})
 # use this same extension.
 # But, we also provide a static version with a different name for those
 # who want it, in the style of DR's side-by-side static extensions.
-add_library(drsyscall_static STATIC ${srcs} ../framework/drmf_utils.c)
+add_library(drsyscall_static STATIC ${srcs} ${external_srcs})
 configure_DynamoRIO_client(drsyscall_static)
 use_DynamoRIO_extension(drsyscall_static drmgr_static)
 use_DynamoRIO_extension(drsyscall_static drcontainers)

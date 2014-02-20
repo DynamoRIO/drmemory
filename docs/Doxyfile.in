@@ -107,7 +107,7 @@ WARN_LOGFILE           =
 # top-level pages (we insert additional filenames here in CMake_doxyfile.cmake):
 INPUT                  = using.dox \
                          options-docs.dox release.dox main.dox \
-                         drmf.dox drsyscall.dox
+                         drmf.dox drsyscall.dox drsymcache.dox
 FILE_PATTERNS          =
 RECURSIVE              = NO
 EXCLUDE                =

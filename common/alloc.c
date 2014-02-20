@@ -141,7 +141,7 @@ If the function succeeds, the return value is a pointer to the allocated memory 
 #include "redblack.h"
 #ifdef USE_DRSYMS
 # include "drsyms.h"
-# include "symcache.h"
+# include "drsymcache.h"
 #endif
 #ifdef MACOS
 # include <sys/syscall.h>
@@ -1219,7 +1219,7 @@ lookup_symbol_or_export(const module_data_t *mod, const char *name, bool interna
     }
     res = (app_pc) dr_get_proc_address(mod->handle, name);
     if (res != NULL && op_use_symcache)
-        symcache_add(mod, name, res - mod->start);
+        drsymcache_add(mod, name, res - mod->start);
     return res;
 #else
     return (app_pc) dr_get_proc_address(mod->handle, name);
@@ -1922,7 +1922,7 @@ add_to_alloc_set(set_enum_data_t *edata, byte *pc, uint idx)
     }
 #ifdef USE_DRSYMS
     if (op_use_symcache)
-        symcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
+        drsymcache_add(edata->mod, edata->possible[idx].name, pc - edata->mod->start);
 #endif
     if (edata->set == NULL) {
         void *user_data;
@@ -2080,7 +2080,7 @@ find_alloc_regex(set_enum_data_t *edata, const char *regex,
                     ASSERT(edata->wildcard_name == NULL, "shouldn't get here");
                     edata->processed[i] = true;
                     if (op_use_symcache)
-                        symcache_add(edata->mod, edata->possible[i].name, 0);
+                        drsymcache_add(edata->mod, edata->possible[i].name, 0);
                 }
             }
         }
@@ -2184,6 +2184,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 {
     set_enum_data_t edata;
     uint i;
+    bool res;
     edata.set = NULL;
     edata.set_type = type;
     edata.possible = possible;
@@ -2211,7 +2212,8 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
         memset(edata.processed, 0, sizeof(*edata.processed)*num_possible);
 
         /* First we check the symbol cache */
-        if (op_use_symcache && symcache_module_is_cached(mod)) {
+        if (op_use_symcache &&
+            drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res) {
             size_t modoffs;
             uint count;
             uint idx;
@@ -2225,8 +2227,9 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
                  * to distinguish (currently, nothrow).
                  */
                 for (idx = 0, count = 1;
-                     idx < count && symcache_lookup(mod, possible[i].name,
-                                                    idx, &modoffs, &count); idx++) {
+                     idx < count &&
+                     drsymcache_lookup(mod, possible[i].name,
+                                       idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
                     STATS_INC(symbol_search_cache_hits);
                     edata.processed[i] = true;
                     if (modoffs != 0)
@@ -2695,7 +2698,7 @@ event_post_call_entry_added(app_pc postcall)
     module_data_t *data = dr_lookup_module(postcall);
     ASSERT(alloc_ops.cache_postcall, "shouldn't get here");
     if (data != NULL) {
-        symcache_add(data, POST_CALL_SYMCACHE_NAME, postcall - data->start);
+        drsymcache_add(data, POST_CALL_SYMCACHE_NAME, postcall - data->start);
         dr_free_module_data(data);
     }
 }
@@ -3049,10 +3052,13 @@ alloc_load_symcache_postcall(const module_data_t *info)
         size_t modoffs;
         uint count;
         uint idx;
-        ASSERT(symcache_module_is_cached(info), "must have symcache");
+        IF_DEBUG(bool res;)
+        ASSERT(drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res,
+               "must have symcache");
         for (idx = 0, count = 1;
-             idx < count && symcache_lookup(info, POST_CALL_SYMCACHE_NAME,
-                                            idx, &modoffs, &count); idx++) {
+             idx < count &&
+             drsymcache_lookup(info, POST_CALL_SYMCACHE_NAME,
+                               idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
             /* XXX: drwrap_mark_as_post_call is going to go grab yet another
              * lock.  Should we expose drwrap's locks?
              */
@@ -3072,8 +3078,10 @@ module_has_pdb(const module_data_t *info)
      * b/c us thinking we have symbols and symcache having negative
      * entries is a disaster (i#973).
      */
-    if (op_use_symcache && symcache_module_is_cached(info))
-        return symcache_module_has_debug_info(info);
+    bool res;
+    if (op_use_symcache &&
+        drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res)
+        return (drsymcache_module_has_debug_info(info, &res) == DRMF_SUCCESS && res);
     else
         return module_has_debug_info(info);
 # else
@@ -3125,6 +3133,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
     alloc_routine_set_t *set_libc = NULL;
     alloc_routine_set_t *set_cpp = NULL;
     bool use_redzone = true;
+    bool res;
 #ifdef WINDOWS
     /* i#607 part C: is msvcp*d.dll present, yet we do not have symbols? */
     bool dbgcpp = false, dbgcpp_nosyms = false;
@@ -3362,7 +3371,7 @@ alloc_module_load(void *drcontext, const module_data_t *info, bool loaded)
 
 #ifdef USE_DRSYMS
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall &&
-        symcache_module_is_cached(info)) {
+        drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res) {
         dr_mutex_lock(post_call_lock);
         if (loaded) {
             alloc_load_symcache_postcall(info);
@@ -3387,6 +3396,7 @@ alloc_check_pending_module(app_pc pc)
 {
     if (alloc_ops.track_allocs && alloc_ops.cache_postcall) {
         rb_node_t *node;
+        IF_DEBUG(bool res;)
 
         /* avoid lookup on every single bb */
         static app_pc last_page;
@@ -3403,7 +3413,8 @@ alloc_check_pending_module(app_pc pc)
             mod_pending_entries--;
             info = dr_lookup_module(pc);
             ASSERT(info != NULL, "module can't disappear");
-            ASSERT(symcache_module_is_cached(info), "must have symcache");
+            ASSERT(drsymcache_module_is_cached(info, &res) == DRMF_SUCCESS && res,
+                   "must have symcache");
             alloc_load_symcache_postcall(info);
             dr_free_module_data(info);
         }

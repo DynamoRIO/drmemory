@@ -23,14 +23,11 @@
  * symcache.c: cache symbol name lookups
  */
 
-#ifndef USE_DRSYMS
-# error requires USE_DRSYMS
-#endif
-
 #include "dr_api.h"
-#include "symcache.h"
 #include "drmgr.h"
-#include "drsyms.h"
+#include "drsymcache.h"
+#include "drmemory_framework.h"
+#include "../framework/drmf.h"
 #include "utils.h"
 #include <string.h>
 
@@ -43,7 +40,7 @@
  * - Using just module name for the file and not worrying about
  *   conflicts since this is just a performance improvement: thus some
  *   SxS or other modules may end up w/ competing cache files.
- * - i#617, we assume that we have all the entries of a symbol
+ * - i#617: we assume that we have all the entries of a symbol
  *   if we can find one entry for that symbol in the symcache.
  * - Anyone creating synthetic symcaches (e.g., for i#192) needs to be aware
  *   of wildcard symcache entries.  i#722 added
@@ -88,6 +85,8 @@ static hashtable_t symcache_table;
 static void *symcache_lock;
 
 static bool initialized;
+
+static int symcache_init_count;
 
 /* Entry in the outer table */
 typedef struct _mod_cache_t {
@@ -139,6 +138,21 @@ typedef struct _offset_list_t {
 
 static char symcache_dir[MAXIMUM_PATH];
 static size_t op_modsize_cache_threshold;
+
+static void
+symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded);
+
+static void
+symcache_module_load_save(void *drcontext, const module_data_t *mod, bool loaded);
+
+static void
+symcache_module_unload(void *drcontext, const module_data_t *mod);
+
+static bool
+module_has_symbols(const module_data_t *mod)
+{
+    return (drsym_module_has_symbols(mod->full_path) == DRSYM_SUCCESS);
+}
 
 static void
 symcache_free_entry(void *v)
@@ -464,7 +478,7 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
             /* We delay the costly check for symbols until we've read the symcache
              * b/c if its entry indicates symbols we don't need to look
              */
-            if (module_has_debug_info(mod)) {
+            if (module_has_symbols(mod)) {
                 LOG(1, "module now has debug info: %s symbol cache is stale\n", modname);
                 goto symcache_read_symfile_done;
             }
@@ -510,15 +524,45 @@ symcache_read_symfile(const module_data_t *mod, const char *modname, mod_cache_t
     if (f != INVALID_FILE)
         dr_close_file(f);
     if (!res)
-        modcache->has_debug_info = module_has_debug_info(mod);
+        modcache->has_debug_info = module_has_symbols(mod);
 
     return res;
 }
 
-void
-symcache_init(const char *symcache_dir_in,
-              size_t modsize_cache_threshold)
+DR_EXPORT
+drmf_status_t
+drsymcache_init(client_id_t client_id,
+                const char *symcache_dir_in,
+                size_t modsize_cache_threshold)
 {
+#ifdef WINDOWS
+    module_data_t *mod;
+#endif
+    drmf_status_t res;
+    drmgr_priority_t pri_mod_load_cache =
+        {sizeof(pri_mod_load_cache), DRMGR_PRIORITY_NAME_DRSYMCACHE, NULL, NULL,
+         DRMGR_PRIORITY_MODLOAD_DRSYMCACHE_READ};
+    drmgr_priority_t pri_mod_unload_cache =
+        {sizeof(pri_mod_unload_cache), DRMGR_PRIORITY_NAME_DRSYMCACHE, NULL, NULL,
+         DRMGR_PRIORITY_MODUNLOAD_DRSYMCACHE};
+    drmgr_priority_t pri_mod_save_cache =
+        {sizeof(pri_mod_save_cache), DRMGR_PRIORITY_NAME_DRSYMCACHE_SAVE, NULL, NULL,
+         DRMGR_PRIORITY_MODLOAD_DRSYMCACHE_SAVE};
+
+    /* handle multiple sets of init/exit calls */
+    int count = dr_atomic_add32_return_sum(&symcache_init_count, 1);
+    if (count > 1)
+        return DRMF_WARNING_ALREADY_INITIALIZED;
+
+    res = drmf_check_version(client_id);
+    if (res != DRMF_SUCCESS)
+        return res;
+
+    drmgr_init();
+    drmgr_register_module_load_event_ex(symcache_module_load, &pri_mod_load_cache);
+    drmgr_register_module_unload_event_ex(symcache_module_unload, &pri_mod_unload_cache);
+    drmgr_register_module_load_event_ex(symcache_module_load_save, &pri_mod_save_cache);
+
     initialized = true;
 
     op_modsize_cache_threshold = modsize_cache_threshold;
@@ -542,13 +586,45 @@ symcache_init(const char *symcache_dir_in,
             }
         }
     }
+
+#ifdef WINDOWS
+    /* It's common for tools to query ntdll in their init routines so we add it
+     * early here
+     */
+    mod = dr_lookup_module_by_name("ntdll.dll");
+    if (mod != NULL) {
+        symcache_module_load(dr_get_current_drcontext(), mod, true);
+        dr_free_module_data(mod);
+    }
+#endif
+
+    return DRMF_SUCCESS;
 }
 
-void
-symcache_exit(void)
+DR_EXPORT
+drmf_status_t
+drsymcache_is_initialized(bool *is_initialized OUT)
+{
+    if (is_initialized == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    *is_initialized = initialized;
+    return DRMF_SUCCESS;
+}
+
+DR_EXPORT
+drmf_status_t
+drsymcache_exit(void)
 {
     uint i;
-    ASSERT(initialized, "symcache was not initialized");
+    /* handle multiple sets of init/exit calls */
+    int count = dr_atomic_add32_return_sum(&symcache_init_count, -1);
+    if (count > 0)
+        return DRMF_SUCCESS;
+    if (count < 0)
+        return DRMF_ERROR;
+    if (!initialized)
+        return DRMF_ERROR_NOT_INITIALIZED;
+
     dr_mutex_lock(symcache_lock);
     for (i = 0; i < HASHTABLE_SIZE(symcache_table.table_bits); i++) {
         hash_entry_t *he;
@@ -560,6 +636,13 @@ symcache_exit(void)
     hashtable_delete(&symcache_table);
     dr_mutex_unlock(symcache_lock);
     dr_mutex_destroy(symcache_lock);
+
+    drmgr_unregister_module_load_event(symcache_module_load);
+    drmgr_unregister_module_unload_event(symcache_module_unload);
+    drmgr_unregister_module_load_event(symcache_module_load_save);
+    drmgr_exit();
+
+    return DRMF_SUCCESS;
 }
 
 static void
@@ -579,7 +662,7 @@ symcache_free_list(void *v)
     global_free(olist, sizeof(*olist), HEAPSTAT_HASHTABLE);
 }
 
-void
+static void
 symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
 {
     /* look for cache file for this module.
@@ -588,6 +671,8 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     mod_cache_t *modcache;
     const char *modname = dr_module_preferred_name(mod);
     file_t f;
+    if (!initialized)
+        return;
     if (modname == NULL)
         return; /* don't support caching */
 
@@ -598,14 +683,12 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
         return;
     }
 
-    ASSERT(initialized, "symcache was not initialized");
-
     /* support initializing prior to module events => called twice */
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table,
                                                 (void *)mod->full_path);
     dr_mutex_unlock(symcache_lock);
-    if (modcache != NULL)
+    if (modcache != NULL) /* already there: e.g., ntdll, which we add early */
         return;
 
     modcache = (mod_cache_t *) global_alloc(sizeof(*modcache), HEAPSTAT_HASHTABLE);
@@ -647,14 +730,15 @@ symcache_module_load(void *drcontext, const module_data_t *mod, bool loaded)
     dr_mutex_unlock(symcache_lock);
 }
 
-static bool
+static drmf_status_t
 symcache_module_save_common(const module_data_t *mod, bool remove)
 {
     mod_cache_t *modcache;
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
-        return false; /* don't support caching */
-    ASSERT(initialized, "symcache was not initialized");
+        return DRMF_ERROR_INVALID_PARAMETER; /* don't support caching */
+    if (!initialized)
+        return DRMF_ERROR_NOT_INITIALIZED;
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache != NULL) {
@@ -663,73 +747,95 @@ symcache_module_save_common(const module_data_t *mod, bool remove)
             hashtable_remove(&symcache_table, (void *)mod->full_path);
     }
     dr_mutex_unlock(symcache_lock);
-    return true;
+    return DRMF_SUCCESS;
 }
 
-bool
-symcache_module_save_symcache(const module_data_t *mod)
+DR_EXPORT
+drmf_status_t
+drsymcache_module_save_symcache(const module_data_t *mod)
 {
+    if (mod == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
     return symcache_module_save_common(mod, false/*keep*/);
 }
 
-void
+static void
+symcache_module_load_save(void *drcontext, const module_data_t *mod, bool loaded)
+{
+    /* Write out the symcache in case we crash or sthg before an at-exit write */
+    symcache_module_save_common(mod, false/*keep*/);
+}
+
+static void
 symcache_module_unload(void *drcontext, const module_data_t *mod)
 {
     symcache_module_save_common(mod, true/*remove*/);
 }
 
-static bool
-symcache_module_has_data(const module_data_t *mod, bool require_syms)
+static drmf_status_t
+symcache_module_has_data(const module_data_t *mod, bool require_syms, bool *res)
 {
     mod_cache_t *modcache;
-    bool res = false;
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
-        return false; /* don't support caching */
-    ASSERT(initialized, "symcache was not initialized");
+        return DRMF_ERROR_INVALID_PARAMETER; /* don't support caching */
+    if (!initialized)
+        return DRMF_ERROR_NOT_INITIALIZED;
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
-    if (modcache != NULL)
-        res = (modcache->table.entries > 0 && (!require_syms || modcache->has_debug_info));
+    if (modcache != NULL) {
+        *res = (modcache->table.entries > 0 &&
+                (!require_syms || modcache->has_debug_info));
+    }
     dr_mutex_unlock(symcache_lock);
-    return res;
+    return DRMF_SUCCESS;
 }
 
-bool
-symcache_module_is_cached(const module_data_t *mod)
+DR_EXPORT
+drmf_status_t
+drsymcache_module_is_cached(const module_data_t *mod, bool *res)
 {
-    return symcache_module_has_data(mod, false/*don't need syms*/);
+    if (mod == NULL || res == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    return symcache_module_has_data(mod, false/*don't need syms*/, res);
 }
 
-bool
-symcache_module_has_debug_info(const module_data_t *mod)
+DR_EXPORT
+drmf_status_t
+drsymcache_module_has_debug_info(const module_data_t *mod, bool *res)
 {
-    return symcache_module_has_data(mod, true/*need syms*/);
+    if (mod == NULL || res == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    return symcache_module_has_data(mod, true/*need syms*/, res);
 }
 
 /* If an entry already exists and is 0, replaces it; else adds a new
  * offset for that symbol.
  */
-bool
-symcache_add(const module_data_t *mod, const char *symbol, size_t offs)
+DR_EXPORT
+drmf_status_t
+drsymcache_add(const module_data_t *mod, const char *symbol, size_t offs)
 {
     mod_cache_t *modcache;
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
-        return false; /* don't support caching */
-    ASSERT(initialized, "symcache was not initialized");
+        return DRMF_ERROR_INVALID_PARAMETER; /* don't support caching */
+    if (symbol == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
+    if (!initialized)
+        return DRMF_ERROR_NOT_INITIALIZED;
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache == NULL) {
         LOG(2, "%s: there is no cache for %s\n", __FUNCTION__, modname);
         dr_mutex_unlock(symcache_lock);
-        return false;
+        return DRMF_ERROR_NOT_FOUND;
     }
     if (symcache_symbol_add(modname, &modcache->table, symbol, offs) &&
         modcache->from_file)
         modcache->appended = true;
     dr_mutex_unlock(symcache_lock);
-    return true;
+    return DRMF_SUCCESS;
 }
 
 /* Returns true if the symbol is in the cache, which contains positive and
@@ -741,9 +847,10 @@ symcache_add(const module_data_t *mod, const char *symbol, size_t offs)
  * caller pass us an index as a stateless iterator.  The table is
  * unlikely to be changed in between so we avoid complexity there.
  */
-bool
-symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
-                size_t *offs OUT, uint *num OUT)
+DR_EXPORT
+drmf_status_t
+drsymcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
+                  size_t *offs OUT, uint *num OUT)
 {
     offset_list_t *olist;
     offset_entry_t *e;
@@ -751,22 +858,21 @@ symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
     uint i;
     const char *modname = dr_module_preferred_name(mod);
     if (modname == NULL)
-        return false; /* don't support caching */
-    ASSERT(initialized, "symcache was not initialized");
-    if (offs == NULL || num == NULL) {
-        ASSERT(false, "invalid params");
-        return false;
-    }
+        return DRMF_ERROR_INVALID_PARAMETER; /* don't support caching */
+    if (!initialized)
+        return DRMF_ERROR_NOT_INITIALIZED;
+    if (symbol == NULL || offs == NULL || num == NULL)
+        return DRMF_ERROR_INVALID_PARAMETER;
     dr_mutex_lock(symcache_lock);
     modcache = (mod_cache_t *) hashtable_lookup(&symcache_table, (void *)mod->full_path);
     if (modcache == NULL) {
         dr_mutex_unlock(symcache_lock);
-        return false;
+        return DRMF_ERROR_NOT_FOUND;
     }
     olist = (offset_list_t *) hashtable_lookup(&modcache->table, (void *)symbol);
     if (olist == NULL) {
         dr_mutex_unlock(symcache_lock);
-        return false;
+        return DRMF_ERROR_NOT_FOUND;
     }
     *num = olist->num;
     if (olist->iter_entry != NULL && olist->iter_idx <= idx) {
@@ -789,5 +895,5 @@ symcache_lookup(const module_data_t *mod, const char *symbol, uint idx,
     dr_mutex_unlock(symcache_lock);
     LOG(2, "sym lookup of %s in %s => symcache hit "PIFX"\n",
         symbol, mod->full_path, *offs);
-    return true;
+    return DRMF_SUCCESS;
 }

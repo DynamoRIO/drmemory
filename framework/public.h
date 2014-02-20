@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -72,6 +72,8 @@ typedef enum {
     DRMF_ERROR_INVALID_CALL,       /**< Operation failed: pre-req for call not met */
     DRMF_ERROR_NOT_ENOUGH_REGS,    /**< Operation failed: not enough registers for use */
     DRMF_ERROR_ACCESS_DENIED,      /**< Operation failed: access denied */
+    DRMF_WARNING_ALREADY_INITIALIZED, /**< Operation aborted: already initialized */
+    DRMF_ERROR_NOT_INITIALIZED,     /**< Operation failed: not initialized */
 } drmf_status_t;
 
 

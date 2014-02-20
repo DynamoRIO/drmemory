@@ -37,7 +37,7 @@
 #include "drmemory.h"
 #include "shadow.h"
 #ifdef USE_DRSYMS
-# include "symcache.h"
+# include "drsymcache.h"
 #endif
 #include <limits.h>  /* UCHAR_MAX */
 #ifdef UNIX
@@ -938,7 +938,7 @@ replace_routine(bool add, const module_data_t *mod,
     if (add) {
 #ifdef USE_DRSYMS
         if (options.use_symcache)
-            symcache_add(mod, replace_routine_name[index], addr - mod->start);
+            drsymcache_add(mod, replace_routine_name[index], addr - mod->start);
 #endif
         /* Replacement strategy: we assume these routines will always be entered in
          * a new bb (we're not going to request elision or indcall2direct from DR).
@@ -1287,11 +1287,14 @@ replace_in_module(const module_data_t *mod, bool add)
         size_t modoffs;
         uint count;
         uint idx;
+        bool res;
         LOG(3, "Search %s in symcache\n", replace_routine_name[i]);
-        if (options.use_symcache && symcache_module_is_cached(mod)) {
+        if (options.use_symcache &&
+            drsymcache_module_is_cached(mod, &res) == DRMF_SUCCESS && res) {
             for (idx = 0, count = 1;
-                 idx < count && symcache_lookup(mod, replace_routine_name[i],
-                                                idx, &modoffs, &count); idx++) {
+                 idx < count &&
+                 drsymcache_lookup(mod, replace_routine_name[i],
+                                   idx, &modoffs, &count) == DRMF_SUCCESS; idx++) {
                 STATS_INC(symbol_search_cache_hits);
                 edata.processed[i] = true;
                 if (modoffs != 0) {
@@ -1318,7 +1321,7 @@ replace_in_module(const module_data_t *mod, bool add)
         if (options.use_symcache) {
             for (i = 0; i < REPLACE_NUM; i++) {
                 if (!edata.processed[i])
-                    symcache_add(mod, replace_routine_name[i], 0);
+                    drsymcache_add(mod, replace_routine_name[i], 0);
             }
         }
         /* These regex cover all function names we replace.  Both

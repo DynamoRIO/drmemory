@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.   All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.   All rights reserved.
  * **********************************************************/
 
 /*
@@ -66,7 +66,7 @@ cmake -G"Ninja" -DDynamoRIO_DIR=c:/path/to/DynamoRIO-Windows-4.1.0-8/cmake -DDrM
 That will automatically set up the include path and library dependence.
 
 Your client must call \p drsys_init() prior to accessing any API
-routines \p drsyscall, and should call \p drsys_exit() at process exit
+routines in \p drsyscall, and should call \p drsys_exit() at process exit
 time.
 
 \section sec_drsyscall_events Event Replacement

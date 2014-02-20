@@ -1,0 +1,117 @@
+/* **********************************************************
+ * Copyright (c) 2014 Google, Inc.   All rights reserved.
+ * **********************************************************/
+
+/*
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice,
+ *   this list of conditions and the following disclaimer.
+ *
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * * Neither the name of Google, Inc. nor the names of its contributors may be
+ *   used to endorse or promote products derived from this software without
+ *   specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL GOOGLE, INC. OR CONTRIBUTORS BE LIABLE
+ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+ * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+ * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
+ */
+
+/**
+***************************************************************************
+***************************************************************************
+\page page_drsymcache Dr. SymCache: Symbol Lookup Cache Extension
+
+The Dr. SymCache (\p drsymcache) DynamoRIO Extension provides caching of
+symbol lookup results.  Symbol lookup can be very expensive for large
+applications, resulting in startup overhead measuring in the minutes in
+some cases.  Dr. SymCache provides a persistent caching facility that
+stores lookup results on disk and loads them again on subsequent runs.
+Dr. SymCache is part of the Dr. Memory Framework.
+
+ - \ref sec_drsymcache_setup
+ - \ref sec_drsymcache_events
+ - \ref sec_drsymcache_API
+
+\section sec_drsymcache_setup Setup
+
+To use \p drsymcache with your client, first locate the Dr. Memory
+Framework.  Then use the standard method of using an Extension with the
+name \p drsymcache.  The two steps will look like this in your client's
+\p CMakeLists.txt file:
+
+\code
+find_package(DrMemoryFramework)
+use_DynamoRIO_extension(clientname drsymcache)
+\endcode
+
+To point CMake at the framework, set the DrMemoryFramework_DIR variable to
+point at the \p drmf subdirectory of the Dr. Memory package that you are
+using.  For example:
+
+\code
+cmake -G"Ninja" -DDynamoRIO_DIR=c:/path/to/DynamoRIO-Windows-4.1.0-8/cmake -DDrMemoryFramework_DIR=c:/path/to/DrMemory-Windows-1.6.0-2/drmf ../mysrcs/
+\endcode
+
+That will automatically set up the include path and library dependence.
+
+Your client must call \p drsymcache_init() prior to accessing any API
+routines in Dr. Symcache, and should call \p drsymcache_exit() at process exit
+time.
+
+\section sec_drsymcache_events Event Replacement
+
+Dr. Symcache uses the \p drmgr Extension to ensure its events occur at the
+proper order.  A user of Dr. SymCache must use the \p drmgr versions of the
+module load and unload events.
+
+\section sec_drsymcache_API Dr. SymCache API
+
+Dr. SymCache provides persistent caching of symbol locations on disk.  It
+caches symbols on a per-application-module bases.  The only data stored for
+each symbol name is a list of offsets from the module base at which that
+symbol appears.  Negative entries (where a symbol is not present in the
+module) are indicated by storing a 0 offset.  Dr. SymCache's usage model
+assumes that if a symbol is present in its cache, then all values of that
+symbol are present.
+
+Dr. SymCache relies on the user to instruct it in which symbols and offsets
+should be cached.  It uses an in-memory cache to answer later queries about
+symbols.  At several points during execution, the in-memory cache is
+written to disk in a symbol file that is automatically loaded in subsequent
+executions.
+
+Dr. SymCache registers a high-priority module load event with \p drmgr.  In
+this event, it looks for and loads symbol files from disk.  The user can
+then query Dr. SymCache for each symbol it wants to look up, and only go to
+a full lookup (via \p drsyms or some other method) if the entry is not
+found or there is no symbol cache for the module in question yet.
+
+The on-disk symbol file contains both self-consistency checks (to guard
+against corruption or truncation) and module consistenty checks, so that it
+will be automatically invalidated and replaced if an application module
+changes (e.g., through a software updated).
+
+Symbol files are stored in a directory passed to \p drsymcache_init().  This
+directory must be writable by the applications being executed.
+
+Modules with no names (i.e., dr_module_preferred_name() returns NULL) are
+currently not supported by Dr. SymCache.  Symbol files on disk are named
+according to the dr_module_preferred_name() label for each module.  This
+leads to the current limitation that side-by-side modules with identical
+names will collide in the cache.
+
+*/

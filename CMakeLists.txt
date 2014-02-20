@@ -902,6 +902,7 @@ if (TOOL_DR_HEAPSTAT)
     common/heap.c
     common/callstack.c
     common/utils.c
+    common/utils_shared.c
     ${asm_utils_src}
     common/redblack.c
     common/crypto.c
@@ -939,6 +940,7 @@ else (TOOL_DR_HEAPSTAT)
     drmemory/leak.c
     drmemory/perturb.c
     common/utils.c
+    common/utils_shared.c
     ${asm_utils_src}
     common/redblack.c
     common/crypto.c)
@@ -959,10 +961,6 @@ set(scripts ${toolname}.pl)
 if (NOT USE_DRSYMS)
   set(scripts ${scripts} postprocess.pl)
 endif (NOT USE_DRSYMS)
-
-if (USE_DRSYMS)
-  set(srcs ${srcs} common/symcache.c)
-endif (USE_DRSYMS)
 
 if (WIN32 AND USE_DRSYMS AND TOOL_DR_MEMORY)
   # front-end needs to be name drmemory.exe and thus has drmemory.pdb, so
@@ -1414,6 +1412,12 @@ add_subdirectory(drsyscall)
 # XXX: change this and include_directories above to
 # find_package() + use_DynamoRIO_extension(drsyscall)
 target_link_libraries(${client_target} drsyscall_int)
+
+if (USE_DRSYMS)
+  add_subdirectory(drsymcache)
+  include_directories(drsymcache)
+  target_link_libraries(${client_target} drsymcache_int)
+endif (USE_DRSYMS)
 
 # Add Umbra
 add_subdirectory(umbra)

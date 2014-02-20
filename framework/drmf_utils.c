@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -24,7 +24,6 @@
  */
 
 #include "dr_api.h"
-#include <ctype.h> /* for tolower */
 
 bool op_print_stderr = false;
 uint op_verbose_level = 0;
@@ -98,29 +97,3 @@ report_callstack(void *drcontext, dr_mcontext_t *mc)
 {
 }
 #endif /* DEBUG */
-
-/* not available in ntdll CRT so we supply our own */
-/* XXX: duplicated vs utils.c: share via shared_utils.c or sthg? */
-const char *
-strcasestr(const char *text, const char *pattern)
-{
-    const char *cur_text, *cur_pattern, *root;
-    cur_text = text;
-    root = text;
-    cur_pattern = pattern;
-    while (true) {
-        if (*cur_pattern == '\0')
-            return root;
-        if (*cur_text == '\0')
-            return NULL;
-        if ((char)tolower(*cur_text) == (char)tolower(*cur_pattern)) {
-            cur_text++;
-            cur_pattern++;
-        } else {
-            root++;
-            cur_text = root;
-            cur_pattern = pattern;
-        }
-    }
-}
-
