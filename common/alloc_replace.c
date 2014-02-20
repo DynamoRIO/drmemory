@@ -248,10 +248,7 @@ typedef struct _free_lists_t {
     free_header_t *last[NUM_FREE_LISTS];
 } free_lists_t;
 
-#ifdef UNIX
-# ifdef MACOS
-#  error NYI i#1438: no brk on Mac
-# endif
+#ifdef LINUX
 /* we assume we're the sole users of the brk (after pre-us allocs) */
 static byte *pre_us_brk;
 static byte *cur_brk;
@@ -653,16 +650,30 @@ os_large_alloc_extend(byte *map, size_t cur_commit_size, size_t new_commit_size
     ASSERT(ALIGNED(cur_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(ALIGNED(new_commit_size, PAGE_SIZE), "must align to at least page size");
     ASSERT(new_commit_size > cur_commit_size, "this routine does not support shrinking");
-#ifdef UNIX
-# ifdef MACOS
-#  error NYI i#1438: no mremap on Mac
-# endif
+#ifdef LINUX
     byte *newmap = (byte *) dr_raw_mremap(map, cur_commit_size, new_commit_size,
                                           0/*can't move*/, NULL/*ignored*/);
     if ((ptr_int_t)newmap <= 0 && (ptr_int_t)newmap > -PAGE_SIZE)
         return false;
     return true;
-#else
+#elif defined(MACOS)
+    /* There is no mremap on Mac so we try to do a new mmap at the right spot.
+     * We can still free both with one munmap.
+     * We don't dare do DR_ALLOC_FIXED_LOCATION as it may clobber something.
+     */
+    byte *newmap = (byte *)
+        dr_raw_mem_alloc(new_commit_size - cur_commit_size,
+                         DR_MEMPROT_READ | DR_MEMPROT_WRITE,
+                         map + cur_commit_size);
+    if ((ptr_int_t)newmap <= 0 && (ptr_int_t)newmap > -PAGE_SIZE)
+        return false;
+    if (newmap != map + cur_commit_size) {
+        /* Didn't get the subsequent spot: bail. */
+        dr_raw_mem_free(newmap, new_commit_size - cur_commit_size);
+        return false;
+    }
+    return true;
+#else /* WINDOWS */
     /* i#1258: we have to tweak [map + cur_commit_size, map + new_commit_size)
      * and not re-commit [map, map + new_commit_size) b/c the latter will
      * modify the prot bits on existing pages, which the app might have
@@ -953,9 +964,9 @@ arena_init(arena_header_t *arena, arena_header_t *parent)
 static void
 arena_deallocate(arena_header_t *arena)
 {
-#ifdef UNIX
+#ifdef LINUX
     if (arena->reserve_end != cur_brk)
-#else
+#elif defined(WINDOWS)
     /* For pre-us mapped we just never free */
     if (!TEST(ARENA_PRE_US_MAPPED, arena->flags))
 #endif
@@ -978,6 +989,25 @@ arena_free(arena_header_t *arena)
     arena_deallocate(arena);
 }
 
+static arena_header_t *
+arena_create(arena_header_t *parent)
+{
+    arena_header_t *new_arena = (arena_header_t *)
+        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE
+                       _IF_WINDOWS(arena_page_prot(parent->flags)));
+    if (new_arena == NULL)
+        return NULL;
+#ifdef UNIX
+    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+#else
+    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_COMMIT;
+#endif
+    new_arena->reserve_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
+    heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
+    arena_init(new_arena, parent);
+    return new_arena;
+}
+
 /* Either extends arena in-place and returns it, or allocates a new arena
  * and returns that.  Returns NULL on failure to do either.
  * Expects to be passed the final sub-arena, not the master arena.
@@ -987,7 +1017,7 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
 {
     heapsz_t aligned_add = (heapsz_t) ALIGN_FORWARD(add_size, PAGE_SIZE);
     arena_header_t *new_arena;
-#ifdef UNIX
+#ifdef LINUX
     if (arena->commit_end == cur_brk) {
         byte *new_brk = set_brk(cur_brk + aligned_add);
         if (new_brk >= cur_brk + add_size) {
@@ -1028,21 +1058,9 @@ arena_extend(arena_header_t *arena, heapsz_t add_size)
         return NULL;
 #endif
     /* XXX: add stranded space at end of arena to free list */
-    new_arena = (arena_header_t *)
-        os_large_alloc(IF_WINDOWS_(ARENA_INITIAL_COMMIT) ARENA_INITIAL_SIZE
-                       _IF_WINDOWS(arena_page_prot(arena->flags)));
+    new_arena = arena_create(arena);
     LOG(1, "cur arena "PFX"-"PFX" out of space: created new one @"PFX"\n",
         (byte *)arena, arena->reserve_end, new_arena);
-    if (new_arena == NULL)
-        return NULL;
-#ifdef UNIX
-    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
-#else
-    new_arena->commit_end = (byte *)new_arena + ARENA_INITIAL_COMMIT;
-#endif
-    new_arena->reserve_end = (byte *)new_arena + ARENA_INITIAL_SIZE;
-    heap_region_add((byte *)new_arena, new_arena->reserve_end, HEAP_ARENA, NULL);
-    arena_init(new_arena, arena);
     return new_arena;
 }
 
@@ -1200,7 +1218,7 @@ consider_giving_back_memory(arena_header_t *arena, chunk_header_t *tofree)
     if (tofree->alloc_size >= ARENA_INITIAL_SIZE/2) {
         arena_header_t *sub, *prev = NULL;
         byte *ptr = ptr_from_header(tofree);
-#ifdef UNIX
+#ifdef LINUX
         if (arena->reserve_end == cur_brk) {
             sub = NULL; /* don't search */
             if (ptr + tofree->alloc_size + inter_chunk_space() == arena->next_chunk) {
@@ -3401,7 +3419,7 @@ replace_ignore_arg5(void *arg1, void *arg2, void *arg3, void *arg4, void *arg5)
  * drmem-facing interface
  */
 
-#ifdef UNIX
+#ifdef LINUX
 byte *
 alloc_replace_orig_brk(void)
 {
@@ -3935,7 +3953,7 @@ alloc_replace_init(void)
         global_lock = dr_recurlock_create();
 #endif
 
-#ifdef UNIX
+#ifdef LINUX
     /* we waste pre-brk space of pre-us allocator, and we assume we're
      * now completely replacing the pre-us allocator.
      * XXX: better to not use brk and solely use mmap instead?
@@ -3951,7 +3969,11 @@ alloc_replace_init(void)
     LOG(2, "heap orig brk="PFX"\n", pre_us_brk);
     heap_region_add((byte *)cur_arena, cur_arena->reserve_end, HEAP_ARENA, NULL);
     arena_init(cur_arena, NULL);
-#else
+#elif defined(MACOS)
+    cur_arena = arena_create(NULL);
+    ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
+    LOG(2, "initial arena="PFX"\n", cur_arena);
+#else /* WINDOWS */
     cur_arena = create_Rtl_heap(ARENA_INITIAL_COMMIT, ARENA_INITIAL_SIZE, HEAP_GROWABLE);
     ASSERT(cur_arena != NULL, "can't allocate initial heap: fatal");
     process_heap = get_app_PEB()->ProcessHeap;
