@@ -190,6 +190,13 @@ else (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
   endif (EXISTS "${PROJECT_SOURCE_DIR}/.git")
 endif (EXISTS "${PROJECT_SOURCE_DIR}/.svn")
 
+if (APPLE)
+  # clang linker disallows any but major # being >= 256 (1024 for x64) so we do
+  # mod 200 (we assume we'll never confuse versions 200 apart) and add 56 (to
+  # distinguish from real releases).
+  math(EXPR VERSION_NUMBER_PATCHLEVEL "(${VERSION_NUMBER_PATCHLEVEL} % 200) + 56")
+endif (APPLE)
+
 # XXX: for windows should we have a real .rc file?
 set(VERSION_NUMBER_DEFAULT "1.6.${VERSION_NUMBER_PATCHLEVEL}")
 # do not store the default TOOL_VERSION_NUMBER in the cache to prevent a stale one
