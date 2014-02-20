@@ -193,7 +193,7 @@ pause_if_in_cmd(void)
          * Yes, someone already in cmd will have to hit a key, but
          * that's ok.
          */
-        fprintf(stderr, "\n<press enter>\n");
+        fprintf(stderr, "\n<press enter to dismiss>\n");
         fflush(stderr);
         getchar();
     }
@@ -280,6 +280,11 @@ print_usage(bool full)
     fprintf(stderr, "Usage: drmemory.exe [options] -- <app and args to run>\n");
     if (!full) {
         fprintf(stderr, "Run with --help for full option list.\n");
+#ifdef WINDOWS
+        fprintf(stderr, "If running from the Start Menu or desktop icon, you must drag\n"
+                "your application onto drmemory.exe.  To pass arguments you must\n"
+                "instead invoke drmemory.exe from an existing shell.\n");
+#endif
         fprintf(stderr, "See http://drmemory.org/docs/ for more information.\n");
         pause_if_in_cmd();
         return;
