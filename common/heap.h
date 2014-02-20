@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2009 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -30,7 +30,7 @@
 size_t
 allocation_size(app_pc start, app_pc *base);
 
-#ifdef UNIX
+#ifdef LINUX
 app_pc
 get_heap_start(void);
 #endif

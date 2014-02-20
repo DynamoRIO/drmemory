@@ -31,6 +31,17 @@
 # include "../wininc/crtdbg.h"
 #endif
 #include <limits.h>
+#ifdef MACOS
+# include <mach/mach.h>
+# include <malloc/malloc.h>
+#endif
+
+#ifdef MACOS
+typedef struct _enum_data_t {
+    void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE));
+    void (*cb_chunk)(app_pc,app_pc);
+} enum_data_t;
+#endif
 
 /***************************************************************************
  * UTILS
@@ -94,10 +105,7 @@ allocation_size(app_pc start, app_pc *base)
 #endif /* WINDOWS */
 }
 
-#ifdef UNIX
-# ifdef MACOS
-#  error NYI i#1438: no brk on Mac
-# endif
+#ifdef LINUX
 app_pc
 get_heap_start(void)
 {
@@ -497,6 +505,38 @@ walk_individual_heap(byte *heap,
 }
 #endif /* WINDOWS */
 
+#ifdef MACOS
+static kern_return_t
+memory_reader(task_t task, vm_address_t remote_addr, vm_size_t size, void **local)
+{
+    ASSERT(task == mach_task_self(), "remote task not supported");
+    *local = (void *) remote_addr;
+    return KERN_SUCCESS;
+}
+
+static void
+enum_cb(task_t task, void *user_data, unsigned type, vm_range_t *range, unsigned count)
+{
+    uint i;
+    LOG(2, "heap chunk(s) type="PFX"\n", type);
+    if (TEST(MALLOC_PTR_IN_USE_RANGE_TYPE, type)) {
+        enum_data_t *data = (enum_data_t *) user_data;
+        for (i = 0; i < count; i++) {
+            LOG(2, "  chunk "PFX"-"PFX"\n",
+                range[i].address, range[i].address + range[i].size);
+            /* XXX: find more efficient way to do this: other types of iterators? */
+            if (data->cb_region != NULL &&
+                !is_in_heap_region((byte *)range[i].address)) {
+                data->cb_region((byte *)range[i].address,
+                                (byte *)range[i].address + range[i].size);
+            }
+            data->cb_chunk((byte *)range[i].address,
+                           (byte *)range[i].address + range[i].size);
+        }
+    }
+}
+#endif
+
 /* Walks the heap and calls the "cb_region" callback for each heap region or arena
  * and the "cb_chunk" callback for each malloc block.
  * For Windows, calls cb_heap for each heap (one heap can contain multiple regions).
@@ -557,7 +597,7 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
     global_free(heaps, cap_heaps*sizeof(*heaps), HEAPSTAT_MISC);
     if (!was_app_state)
         dr_switch_to_dr_state_ex(drcontext, DR_STATE_PEB);
-#else /* WINDOWS */
+#elif defined(LINUX)
     /* Once we have early injection (PR 204554) we won't need this.
      * For now we assume Lea's dlmalloc, the Linux glibc malloc that uses the
      * "boundary tag" method with the size of a chunk at offset 4
@@ -618,6 +658,35 @@ heap_iterator(void (*cb_region)(app_pc,app_pc _IF_WINDOWS(HANDLE)),
                 cb_chunk(user_start, pc + sz + sizeof(sz));
         }
         pc += sz;
+    }
+#else /* MACOS */
+    /* XXX: switch to methods that don't invoke library routines */
+    vm_address_t *zones;
+    unsigned int num_zones, i;
+# ifdef DEBUG
+    malloc_statistics_t stats;
+# endif
+    enum_data_t data = {cb_region, cb_chunk};
+    kern_return_t kr = malloc_get_all_zones(mach_task_self(), 0, &zones, &num_zones);
+    if (kr != KERN_SUCCESS) {
+        ASSERT(false, "malloc_get_all_zones failed");
+        return;
+    }
+    for (i = 0; i < num_zones; i++) {
+        malloc_zone_t *zone = (malloc_zone_t *) zones[i];
+        LOG(2, "heap zone %d: %p %s\n", i, zone, malloc_get_zone_name(zone));
+# ifdef DEBUG
+        malloc_zone_statistics(zone, &stats);
+        LOG(2, "\tblocks=%u, used=%ld, max used=%ld, reserved=%ld\n",
+            stats.blocks_in_use, stats.size_in_use, stats.max_size_in_use,
+            stats.size_allocated);
+# endif
+        kr = zone->introspect->enumerator
+            (mach_task_self(), (void *) &data, MALLOC_PTR_IN_USE_RANGE_TYPE,
+             (vm_address_t) zone, memory_reader, enum_cb);
+        if (kr != KERN_SUCCESS) {
+            ASSERT(false, "malloc enumeration failed");
+        }
     }
 #endif /* WINDOWS */
 }

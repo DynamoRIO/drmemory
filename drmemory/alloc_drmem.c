@@ -625,7 +625,7 @@ client_handle_alloc_failure(size_t request_size, app_pc pc, dr_mcontext_t *mc)
 {
     app_loc_t loc;
     pc_to_loc(&loc, pc);
-#ifdef UNIX
+#ifdef LINUX
     LOG(1, "heap allocation failed on sz="PIFX"!  heap="PFX"-"PFX"\n",
         request_size, get_heap_start(), get_brk(false/*want full extent*/));
 # ifdef STATISTICS
