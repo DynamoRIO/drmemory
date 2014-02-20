@@ -118,7 +118,7 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
                 /* Should be rare so we just do brute force and slow */
                 pc = shadow_prev_dword(newsp, newsp - options.stack_swap_threshold,
                                        SHADOW_UNADDRESSABLE);
-                sz = malloc_size(pc+1);
+                sz = malloc_chunk_size(pc+1);
                 if (sz > 0) { /* returns -1 on failure */
                     stack_base = pc + 1;
                     stack_size = sz;

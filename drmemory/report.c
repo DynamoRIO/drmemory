@@ -2154,14 +2154,14 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             !shadow_check_range(end, PAGE_SIZE, SHADOW_UNADDRESSABLE,
                                 &start, NULL, NULL)) {
             LOG(3, "report_heap_info: next addressable="PFX"\n", start);
-            size = malloc_size((byte*)ALIGN_FORWARD(start, MALLOC_CHUNK_ALIGNMENT));
+            size = malloc_chunk_size((byte*)ALIGN_FORWARD(start, MALLOC_CHUNK_ALIGNMENT));
             if (size <= -1) {
                 /* An earlier unaddr adjacent to real malloc could
                  * have marked as addr so try align-8 forward as our
                  * loop will miss that if all addr in between
                  */
                 start = (byte*) ALIGN_FORWARD(start+1, MALLOC_CHUNK_ALIGNMENT);
-                size = malloc_size(start);
+                size = malloc_chunk_size(start);
             }
             if (size > -1) {
                 found = true;
@@ -2204,14 +2204,14 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
             LOG(3, "\tfrom there, prev unaddressable="PFX"\n", start);
             if (start != NULL) {
                 start += 4; /* move to start of addressable */
-                size = malloc_size(start);
+                size = malloc_chunk_size(start);
                 if (size <= -1) {
                     /* An earlier unaddr adjacent to real malloc could
                      * have marked as addr so try align-8 back as our
                      * loop will miss that if all addr in between
                      */
                     start = (byte*) ALIGN_BACKWARD(start-1, MALLOC_CHUNK_ALIGNMENT);
-                    size = malloc_size(start);
+                    size = malloc_chunk_size(start);
                 }
                 if (size > -1) {
                     found = true;
@@ -2289,7 +2289,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_FORWARD(addr, MALLOC_CHUNK_ALIGNMENT);
              start < addr+sz && start < next_start; start += MALLOC_CHUNK_ALIGNMENT) {
-            size = malloc_size_invalid_only(start);
+            size = malloc_chunk_size_invalid_only(start);
             if (size > -1) {
                 found = true;
                 end = start + size;
@@ -2301,7 +2301,7 @@ report_heap_info(char *buf, size_t bufsz, size_t *sofar, app_pc addr, size_t sz,
         /* Heuristic: try 8-byte-aligned ptrs between here and valid mallocs */
         for (start = (byte *) ALIGN_BACKWARD(addr, MALLOC_CHUNK_ALIGNMENT);
              start > prev_end; start -= MALLOC_CHUNK_ALIGNMENT) {
-            size = malloc_size_invalid_only(start);
+            size = malloc_chunk_size_invalid_only(start);
             if (size > -1) {
                 end = start + size;
                 if (end > addr)

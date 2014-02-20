@@ -300,8 +300,8 @@ typedef struct _malloc_interface_t {
                        uint client_flags, dr_mcontext_t *mc, app_pc post_call);
     bool (*malloc_is_pre_us)(app_pc start);
     bool (*malloc_is_pre_us_ex)(app_pc start, bool ok_if_invalid);
-    ssize_t (*malloc_size)(app_pc start);
-    ssize_t (*malloc_size_invalid_only)(app_pc start);
+    ssize_t (*malloc_chunk_size)(app_pc start);
+    ssize_t (*malloc_chunk_size_invalid_only)(app_pc start);
     void * (*malloc_get_client_data)(app_pc start);
     uint (*malloc_get_client_flags)(app_pc start);
     bool (*malloc_set_client_flag)(app_pc start, uint client_flag);

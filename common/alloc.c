@@ -1015,7 +1015,7 @@ replace_realloc_size_post(void *wrapcxt, void *user_data)
     dr_mcontext_t *mc = drwrap_get_mcontext_ex(wrapcxt, DR_MC_INTEGER);
     ASSERT(mc->xax == 0, "replace_realloc_size_app always returns 0");
     /* should never fail for our uses */
-    mc->xax = malloc_size(pt->alloc_base);
+    mc->xax = malloc_chunk_size(pt->alloc_base);
     LOG(2, "replace_realloc_size_post "PFX" => "PIFX"\n", pt->alloc_base, mc->xax);
     drwrap_set_mcontext(wrapcxt);
 }
@@ -2546,7 +2546,7 @@ get_alloc_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, alloc_routine_entry_t
      * though currently it's debug msvcrt operator delete that's the only
      * problem, so we're ok w/ alloc calling app routine
      */
-    sz = malloc_size(real_base);
+    sz = malloc_chunk_size(real_base);
     if (sz != -1)
         return sz + 2*redzone_size(routine);
     return get_size_from_app_routine(IF_WINDOWS_(auxarg) real_base, routine);
@@ -3569,15 +3569,15 @@ malloc_is_pre_us_ex(app_pc start, bool ok_if_invalid)
 }
 
 ssize_t
-malloc_size(app_pc start)
+malloc_chunk_size(app_pc start)
 {
-    return malloc_interface.malloc_size(start);
+    return malloc_interface.malloc_chunk_size(start);
 }
 
 ssize_t
-malloc_size_invalid_only(app_pc start)
+malloc_chunk_size_invalid_only(app_pc start)
 {
-    return malloc_interface.malloc_size_invalid_only(start);
+    return malloc_interface.malloc_chunk_size_invalid_only(start);
 }
 
 void *
@@ -4193,8 +4193,8 @@ malloc_wrap_init(void)
     malloc_interface.malloc_add = malloc_wrap__add;
     malloc_interface.malloc_is_pre_us = malloc_wrap__is_pre_us;
     malloc_interface.malloc_is_pre_us_ex = malloc_wrap__is_pre_us_ex;
-    malloc_interface.malloc_size = malloc_wrap__size;
-    malloc_interface.malloc_size_invalid_only = malloc_wrap__size_invalid_only;
+    malloc_interface.malloc_chunk_size = malloc_wrap__size;
+    malloc_interface.malloc_chunk_size_invalid_only = malloc_wrap__size_invalid_only;
     malloc_interface.malloc_get_client_data = malloc_wrap__get_client_data;
     malloc_interface.malloc_get_client_flags = malloc_wrap__get_client_flags;
     malloc_interface.malloc_set_client_flag = malloc_wrap__set_client_flag;
@@ -5602,7 +5602,7 @@ get_alloc_real_size(IF_WINDOWS_(reg_t auxarg) app_pc real_base, size_t app_size,
                                              IF_WINDOWS_ELSE(8, 4));
         }
     } else {
-        /* FIXME: if no malloc_usable_size() (and can't call malloc_size()
+        /* FIXME: if no malloc_usable_size() (and can't call malloc_chunk_size()
          * as this malloc is not yet in the hashtable), then for now we
          * ignore any extra padding.  We may have to figure out which malloc
          * it is and know the header layout and/or min alloc sizes for

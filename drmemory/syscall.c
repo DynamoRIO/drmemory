@@ -397,7 +397,7 @@ drsys_iter_memarg_cb(drsys_arg_t *arg, void *user_data)
             /* Extra check for buffers allocated on the heap to help find
              * errors in syscall handling.
              */
-            ssize_t heap_size = malloc_size(arg->start_addr);
+            ssize_t heap_size = malloc_chunk_size(arg->start_addr);
             if (heap_size >= 0 && (size_t)heap_size != arg->size) {
                 WARN("WARNING: heap buffer at "PFX" is of size %d bytes, "
                      "which does not match the sysarg %s size of %d bytes.\n",

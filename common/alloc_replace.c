@@ -3979,8 +3979,8 @@ alloc_replace_init(void)
     malloc_interface.malloc_add = malloc_replace__add;
     malloc_interface.malloc_is_pre_us = malloc_replace__is_pre_us;
     malloc_interface.malloc_is_pre_us_ex = malloc_replace__is_pre_us_ex;
-    malloc_interface.malloc_size = malloc_replace__size;
-    malloc_interface.malloc_size_invalid_only = malloc_replace__size_invalid_only;
+    malloc_interface.malloc_chunk_size = malloc_replace__size;
+    malloc_interface.malloc_chunk_size_invalid_only = malloc_replace__size_invalid_only;
     malloc_interface.malloc_get_client_data = malloc_replace__get_client_data;
     malloc_interface.malloc_get_client_flags = malloc_replace__get_client_flags;
     malloc_interface.malloc_set_client_flag = malloc_replace__set_client_flag;

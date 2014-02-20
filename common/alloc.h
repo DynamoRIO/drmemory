@@ -199,11 +199,11 @@ malloc_end(app_pc start);
 
 /* Returns -1 on failure */
 ssize_t
-malloc_size(app_pc start);
+malloc_chunk_size(app_pc start);
 
 /* Returns -1 on failure.  Only looks at invalid malloc regions. */
 ssize_t
-malloc_size_invalid_only(app_pc start);
+malloc_chunk_size_invalid_only(app_pc start);
 
 void *
 malloc_get_client_data(app_pc start);
