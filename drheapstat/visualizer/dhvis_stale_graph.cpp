@@ -172,7 +172,7 @@ dhvis_stale_graph_t::set_heap_data(QVector<dhvis_callstack_listing_t *> *c_vec,
         avg_time_between_snapshots = 0;
         for (quint64 i = 0; i < snapshots->count() - 1; i++) {
             avg_time_between_snapshots +=
-                abs(snapshots->at(i + 1)->num_time - snapshots->at(i)->num_time);
+                qAbs(snapshots->at(i + 1)->num_time - snapshots->at(i)->num_time);
         }
         avg_time_between_snapshots /= snapshots->count();
         calc_visible_callstacks();
@@ -443,7 +443,7 @@ dhvis_stale_graph_t::mouseReleaseEvent(QMouseEvent *event)
          * From drawing elongated tallies in draw_x_axis
          * (i % (int)round(diff / 4))
          */
-        if (abs(view_start_mark - view_end_mark) < 2.0) {
+        if (qAbs(view_start_mark - view_end_mark) < 2.0) {
             view_end_mark = view_start_mark + 2.0;
         }
         /* Limit */

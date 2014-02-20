@@ -180,8 +180,8 @@ dhvis_snapshot_graph_t::set_heap_data(QVector<dhvis_snapshot_listing_t *> *vec)
         /* Get avg time between snapshots */
         avg_time_between_snapshots = 0;
         for (quint64 i = 0; i < snapshots->count() - 1; i++) {
-            avg_time_between_snapshots += abs(snapshots->at(i + 1)->num_time -
-                                              snapshots->at(i)->num_time);
+            avg_time_between_snapshots += qAbs(snapshots->at(i + 1)->num_time -
+                                               snapshots->at(i)->num_time);
         }
         avg_time_between_snapshots /= snapshots->count();
         /* Avoid integer division truncating to 0.
@@ -303,7 +303,7 @@ dhvis_snapshot_graph_t::mouseReleaseEvent(QMouseEvent *event)
          * from drawing elongated tallies in draw_x_axis
          * (i % (int)round(diff / 4))
          */
-        if (abs(view_start_mark - view_end_mark) < 2.0) {
+        if (qAbs(view_start_mark - view_end_mark) < 2.0) {
             view_end_mark = view_start_mark + 2.0;
         }
         /* Handle limit */
