@@ -236,7 +236,8 @@ print_debug_kind(drsym_debug_kind_t kind)
     printf("<debug info: type=%s, %s symbols, %s line numbers>\n",
            TEST(DRSYM_ELF_SYMTAB, kind) ? "ELF symtab" :
            (TEST(DRSYM_PECOFF_SYMTAB, kind) ? "PECOFF symtab" :
-            (TEST(DRSYM_PDB, kind) ? "PDB" : "no symbols")),
+            (TEST(DRSYM_MACHO_SYMTAB, kind) ? "Mach-O symtab" :
+             (TEST(DRSYM_PDB, kind) ? "PDB" : "no symbols"))),
            TEST(DRSYM_SYMBOLS, kind) ? "has" : "NO",
            TEST(DRSYM_LINE_NUMS, kind) ? "has" : "NO");
 }
