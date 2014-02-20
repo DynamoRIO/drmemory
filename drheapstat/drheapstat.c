@@ -2124,10 +2124,10 @@ event_exit(void)
     hashtable_delete(&alloc_md5_table);
 #endif
     callstack_exit();
-    if (options.staleness)
+    if (options.check_leaks || options.staleness) {
         instrument_exit();
-    if (options.check_leaks || options.staleness)
         shadow_exit();
+    }
     free_shared_code();
     utils_exit();
 
@@ -2316,7 +2316,7 @@ dr_init(client_id_t client_id)
     /* must be after heap_region_init and snapshot_init */
     heap_walk();
 
-    if (options.staleness)
+    if (options.check_leaks || options.staleness)
         instrument_init();
 
     create_shared_code();
