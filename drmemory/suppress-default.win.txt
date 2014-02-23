@@ -924,3 +924,23 @@ system call NtGdiDrawStream parameter #2
 GDI32.dll!...
 UxTheme.dll!*
 UxTheme.dll!*
+
+##################################################
+# i#1437: Handle Leaks to be investigated
+
+HANDLE LEAK
+name=default i#1437-c#1 handle leaks from SHELL32.dll!SHFileOperationW
+system call NtDuplicateObject
+...
+SHELL32.dll!*
+SHELL32.dll!SHFileOperationW
+
+##################################################
+# Handle leaks to be suppressed
+
+HANDLE LEAK
+name=default i#1437-c#3 handle leaks from callbacks of TppWorkerThread
+...
+ntdll.dll!*Callback
+ntdll.dll!TppWorkerThread
+KERNEL32.dll!BaseThreadInitThunk
