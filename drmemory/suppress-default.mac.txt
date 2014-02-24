@@ -28,3 +28,15 @@ UNINITIALIZED READ
 name=default i#243 copy through xmm
 instruction=movsd  * -> %xmm0
 libstdc++*!std::ostream::_M_insert<>
+
+##################################################
+# i#1451: bitfield in std::_Bit_reference
+
+UNINITIALIZED READ
+name=default i#1451 std::_Bit_reference bitfield
+*!std::_Bit_reference::operator bool
+*!std::_Bit_const_iterator::operator*
+...
+*!std::vector<>::*
+
+###########################################################################
