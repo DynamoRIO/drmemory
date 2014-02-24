@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -90,9 +90,6 @@ extern file_t f_fork;
 #ifdef WINDOWS
 extern app_pc ntdll_base;
 extern app_pc ntdll_end;
-#else
-extern app_pc libc_base;
-extern app_pc libc_end;
 #endif
 extern app_pc app_base;
 extern app_pc app_end;

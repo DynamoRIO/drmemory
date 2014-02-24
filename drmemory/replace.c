@@ -1222,7 +1222,7 @@ replace_in_module(const module_data_t *mod, bool add)
         return;
     }
 #else
-    if (mod->start == libc_base) {
+    if (mod->start == libc) {
         /* prefer locale-aware tolower from libc to our English version (i#181) */
         generic_func_t func = dr_get_proc_address(mod->handle, "tolower");
         if (func != NULL) {

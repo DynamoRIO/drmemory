@@ -145,8 +145,6 @@ drmem_options_init(const char *opstr)
 app_pc ntdll_base;
 app_pc ntdll_end;
 #else
-app_pc libc_base;
-app_pc libc_end;
 static app_pc libdr_base, libdr_end;
 static app_pc libdr2_base, libdr2_end;
 static app_pc libdrmem_base, libdrmem_end;
@@ -1877,11 +1875,6 @@ dr_init(client_id_t id)
                 libdrmem_base = data->start;
                 libdrmem_end = data->end;
                 ASSERT(check_contiguous(data), "lib not contiguous!");
-            } else if (strncmp(modname, "libc.", 5) == 0) {
-                libc_base = data->start;
-                libc_end = data->end;
-                ASSERT(check_contiguous(data), "lib not contiguous!");
-                LOG(1, "libc is "PFX"-"PFX"\n", libc_base, libc_end);
             }
         }
         dr_free_module_data(data);

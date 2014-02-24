@@ -2492,7 +2492,7 @@ callstack_module_add_region(app_pc start, app_pc end, modname_info_t *info)
     if (node != NULL) {
 # ifdef MACOS
         /* dyld shared cache shares __LINKEDIT segments */
-        LOG(2, "new module segment overlaps w/ existing");
+        LOG(2, "new module segment overlaps w/ existing\n");
 # else
         ASSERT(false, "new module overlaps w/ existing");
 # endif

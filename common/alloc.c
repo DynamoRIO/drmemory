@@ -2359,7 +2359,7 @@ find_alloc_routines(const module_data_t *mod, const possible_alloc_routine_t *po
 #endif
         if (pc != NULL)
             add_to_alloc_set(&edata, pc, i);
-#ifdef UNIX
+#ifdef LINUX
         /* libc's malloc_usable_size() is used during initial heap walk */
         if (possible[i].type == HEAP_ROUTINE_SIZE_USABLE &&
             mod->start == get_libc_base(NULL)) {
@@ -3092,7 +3092,7 @@ module_has_pdb(const module_data_t *info)
 
 /* This routine tries to minimize name string comparisons.  We also
  * don't want to use get_libc_base() on Windows b/c there are sometime
- * multiples libc modules and they can be loaded dynamically; nor do
+ * multiple libc modules and they can be loaded dynamically; nor do
  * we want to turn get_libc_base() into an interval tree that monitors
  * module load and unload.
  * Xref i#1059.
