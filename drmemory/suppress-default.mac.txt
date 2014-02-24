@@ -39,4 +39,12 @@ name=default i#1451 std::_Bit_reference bitfield
 ...
 *!std::vector<>::*
 
+##################################################
+# i#1452: C++ try/catch uninits
+
+UNINITIALIZED READ
+name=default i#1452 C++ try/catch
+libunwind.dylib!unw_init_local 
+libunwind.dylib!*
+
 ###########################################################################
