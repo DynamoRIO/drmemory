@@ -34,10 +34,11 @@ memory leaks, and access to un-reserved thread local storage slots (on
 Windows).
 
 Dr. Memory is based on the DynamoRIO binary translation engine.  Dr. Memory
-currently targets 32-bit Windows and Linux.  64-bit is coming soon.
+currently targets 32-bit Windows and Linux.  64-bit is coming soon, along
+with Mac OS X support.
 
 Dr. Memory also includes a system call tracing tool for Windows and a
-symbol query utility.  Those tools are available for 64-bit.
+symbol query utility.  Those tools are available for both 32-bit and 64-bit.
 
 ===========================================================================
 How do I use Dr. Memory?
@@ -57,6 +58,12 @@ Quick start for Windows:
 
 1) cl /Zi /MT /EHsc /Oy- /Ob0 /Femyapp.exe *.cpp
 2) bin\drmemory.exe -- myapp.exe args_to_my_app
+
+--------------------------------------------------
+Quick start for MacOS:
+
+1) c++ -m32 -g -fno-inline -fno-omit-frame-pointer *.cpp -o myapp
+2) bin/drmemory.pl -- ./myapp args_to_myapp
 
 ===========================================================================
 Full Documentation
