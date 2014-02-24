@@ -301,7 +301,12 @@ if (UNIX)
     # needed for linux/ipmi.h (PR 531644)
     set(EXTRA_FLAGS "-idirafter /build/toolchain/lin32/glibc-2007q3-51/usr/include")
   else ()
-    set(EXTRA_FLAGS "")
+    if (APPLE AND NOT CMAKE_COMPILER_IS_GNUCC)
+      # Ensure our binaries can run on older OSX
+      set(EXTRA_FLAGS "-mmacosx-version-min=10.7")
+    else ()
+      set(EXTRA_FLAGS "")
+    endif ()
   endif ()
   set(CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}} ${ARCH_CFLAGS} ${WARN} ${EXTRA_FLAGS}")
