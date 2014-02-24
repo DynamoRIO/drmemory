@@ -740,7 +740,7 @@ suppress_spec_add_frame(suppress_spec_t *spec, const char *cstack_start,
 static void
 read_suppression_file(file_t f, bool is_default)
 {
-    char *line, *newline, *next_line;
+    char *line, *newline, *next_line, *eof;
     suppress_spec_t *spec = NULL;
     char *cstack_start;
     int type;
@@ -767,11 +767,13 @@ read_suppression_file(file_t f, bool is_default)
     }
 
     cstack_start = (char *) map;
-    for (line = (char *) map; line < ((char *)map) + map_size; line = next_line) {
+    eof = ((char *) map) + map_size;
+    for (line = (char *) map; line < eof; line = next_line) {
         /* First, set "line" to start of line and "newline" to end (pre-whitespace) */
-        newline = strchr(line, '\r');
+        /* We have to use strnchr to avoid SIGBUS on non-Windows */
+        newline = strnchr(line, '\r', eof - line);
         if (newline == NULL)
-            newline = strchr(line, '\n');
+            newline = strnchr(line, '\n', eof - line);
         if (newline == NULL) {
             newline = ((char *)map) + map_size; /* handle EOF w/o trailing \n */
             next_line = newline + 1;

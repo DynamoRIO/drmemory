@@ -815,6 +815,9 @@ const char *
 strcasestr(const char *text, const char *pattern);
 #endif
 
+char *
+strnchr(const char *str, int find, size_t max);
+
 #define FILESYS_CASELESS IF_WINDOWS_ELSE(true, false)
 
 bool

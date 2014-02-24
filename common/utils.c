@@ -601,6 +601,23 @@ text_matches_any_pattern(const char *text, const char *patterns, bool ignore_cas
     return false;
 }
 
+char *
+strnchr(const char *str, int find, size_t max)
+{
+    register const char *s = str;
+    register char c = (char) find;
+    while (true) {
+        if (s - str >= max)
+            return NULL;
+        if (*s == c)
+            return (char *) s;
+        if (*s == '\0')
+            return NULL;
+        s++;
+    }
+    return NULL;
+}
+
 /* patterns is a null-separated, double-null-terminated list of strings */
 const char *
 text_contains_any_string(const char *text, const char *patterns, bool ignore_case,
