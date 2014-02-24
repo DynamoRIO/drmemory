@@ -704,6 +704,8 @@ endif ()
 # when updating this, also update the svn:externals prop on trunk/
 set(DynamoRIO_VERSION_REQUIRED "4.1.2437")
 
+set(DR_install_dir "dynamorio")
+
 if (USER_SPECIFIED_DynamoRIO_DIR)
   # i#67: relative dirs are not really supported in find_package: they're
   # relative to source dir not build dir, so we change that here.
@@ -770,6 +772,10 @@ else (USER_SPECIFIED_DynamoRIO_DIR)
   else ()
     set(DR_INSTALL_TARGETS_DEST ${PROJECT_BINARY_DIR}/dynamorio/installs)
   endif ()
+  # i#1449: we need cmake to remove the absolute path from the LC_LOAD_DYLIB
+  # entries, which only happens on install.  We can't easily do a two-step
+  # install b/c subdirs go after the main dir -- so we have DR cooperation.
+  set(DR_INSTALL_DEPLOY_BIN_DEST ${DR_install_dir}/${BIN_ARCH})
 
   add_subdirectory(dynamorio)
 
@@ -1633,7 +1639,6 @@ if (NOT BUILDING_SUB_PACKAGE)
   # We do include 32-bit debug lib (and default DR log dir) for
   # debugging in the field: it does take space but we'd probably regret
   # not supplying it.
-  set(DR_install_dir "dynamorio")
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}\")")
 
   if (UNIX)
@@ -1681,7 +1686,9 @@ if (NOT BUILDING_SUB_PACKAGE)
   # on Windows we don't need all the ${BIN_ARCH}/ tools, and they take up space
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
   if (UNIX)
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
+    if (USER_SPECIFIED_DynamoRIO_DIR) # else DR installs straight there (i#1449)
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
+    endif ()
     if (NOT APPLE) # FIXME DRi#1286: no nudge support yet on MacOS
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
     endif (NOT APPLE)
