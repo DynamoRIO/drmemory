@@ -46,6 +46,7 @@ if (UNIX)
   if (APPLE)
     set(srcs ${srcs}
       drsyscall_macos.c
+      table_macos_bsd.c
       ../${asm_utils_src})
   else (APPLE)
     set(srcs ${srcs}

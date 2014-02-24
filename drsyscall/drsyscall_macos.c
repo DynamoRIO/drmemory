@@ -38,41 +38,15 @@
 #define SYSTABLE_HASH_BITS 9 /* ~2x the # of entries */
 hashtable_t systable;
 
-#define OK (SYSINFO_ALL_PARAMS_KNOWN)
-#define UNKNOWN 0
-#define W (SYSARG_WRITE)
-#define R (SYSARG_READ)
-#define WI (SYSARG_WRITE | SYSARG_LENGTH_INOUT)
-#define CT (SYSARG_COMPLEX_TYPE)
-#define HT (SYSARG_HAS_TYPE)
-#define CSTRING (SYSARG_TYPE_CSTRING)
-#define RET (SYSARG_POST_SIZE_RETVAL)
-#define RLONG (DRSYS_TYPE_SIGNED_INT) /* they all return type "long" */
-static syscall_info_t syscall_info[] = {
-    /* FIXME i#1440: fill in this table for BSD syscalls */
-    {{SYS_read},"read", OK, RLONG, 3,
-     {
-         {1, -2, W},
-         {1, RET, W},
-     }
-    },
-};
-#define NUM_SYSCALL_STATIC_ENTRIES (sizeof(syscall_info)/sizeof(syscall_info[0]))
+/* The tables are in separate files as they are quite large */
+
+/* BSD syscalls */
+extern syscall_info_t syscall_info_bsd[];
+extern size_t count_syscall_info_bsd;
 
 /* FIXME i#1440: add mach syscall table */
 
 /* FIXME i#1440: add machdep syscall table */
-
-#undef OK
-#undef UNKNOWN
-#undef W
-#undef R
-#undef WI
-#undef CT
-#undef HT
-#undef CSTRING
-#undef RET
-#undef RLONG
 
 /***************************************************************************
  * PER-SYSCALL HANDLING
@@ -137,7 +111,9 @@ os_handle_post_syscall_arg_access(sysarg_iter_info_t *ii,
  * TOP_LEVEL
  */
 
-/* Table that maps syscall names to numbers.  Payload points at num in syscall_info[]. */
+/* Table that maps syscall names to numbers.  Payload points at num in syscall_info_*
+ * tables.
+ */
 #define NAME2NUM_TABLE_HASH_BITS 10 /* <500 of them */
 static hashtable_t name2num_table;
 
@@ -152,16 +128,16 @@ drsyscall_os_init(void *drcontext)
                    false/*!strdup*/);
 
     dr_recurlock_lock(systable_lock);
-    for (i = 0; i < NUM_SYSCALL_STATIC_ENTRIES; i++) {
+    for (i = 0; i < count_syscall_info_bsd; i++) {
         IF_DEBUG(bool ok =)
-            hashtable_add(&systable, (void *) &syscall_info[i].num,
-                          (void *) &syscall_info[i]);
+            hashtable_add(&systable, (void *) &syscall_info_bsd[i].num,
+                          (void *) &syscall_info_bsd[i]);
         ASSERT(ok, "no dups");
 
         IF_DEBUG(ok =)
-            hashtable_add(&name2num_table, (void *) syscall_info[i].name,
-                          (void *) &syscall_info[i].num);
-        ASSERT(ok || strcmp(syscall_info[i].name, "ni_syscall") == 0, "no dups");
+            hashtable_add(&name2num_table, (void *) syscall_info_bsd[i].name,
+                          (void *) &syscall_info_bsd[i].num);
+        ASSERT(ok || strcmp(syscall_info_bsd[i].name, "ni_syscall") == 0, "no dups");
     }
     dr_recurlock_unlock(systable_lock);
     return DRMF_SUCCESS;
