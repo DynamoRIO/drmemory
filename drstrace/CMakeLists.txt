@@ -57,7 +57,7 @@ add_dependencies(drstracelib drsyscall)
 install(TARGETS drstracelib
   RUNTIME DESTINATION "${INSTALL_LIB}" # dll
   LIBRARY DESTINATION "${INSTALL_LIB}" # .so
-  PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
 
 # XXX DRi#1078: we should add the relative dir .drpath support!
@@ -65,7 +65,7 @@ install(TARGETS drstracelib
 # target from this dir so we copy it as a file.
 get_target_property(drsys_path drsyscall LOCATION${location_suffix})
 install(FILES ${drsys_path} DESTINATION "${INSTALL_LIB}"
-  PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
 
 ##################################################
@@ -82,7 +82,7 @@ set_target_properties(drstrace PROPERTIES VERSION ${DRMF_VERSION})
 set_property(TARGET drstrace PROPERTY COMPILE_DEFINITIONS ${DEFINES_NO_D})
 
 install(TARGETS drstrace DESTINATION "${INSTALL_BIN}"
-  PERMISSIONS OWNER_READ OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
+  PERMISSIONS ${owner_access} OWNER_EXECUTE GROUP_READ GROUP_EXECUTE
   WORLD_READ WORLD_EXECUTE)
 
 ##################################################
