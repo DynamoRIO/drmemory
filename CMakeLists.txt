@@ -1601,6 +1601,14 @@ install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}
 install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/dynamorio\")")
 install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${INSTALL_PREFIX}${toolname}/logs/codecache/README.txt\" \"Default destination for DynamoRIO log files (for diagnostics only).\n\")")
 
+if (UNIX)
+  if (APPLE)
+    set(LIB_SFX ".dylib")
+  else (APPLE)
+    set(LIB_SFX ".so")
+  endif (APPLE)
+endif (UNIX)
+
 if (NOT BUILDING_SUB_PACKAGE)
   # Include DR so user doesn't have to download separately (PR 457417).
   # We don't need docs/, include/, or 64-bit.
@@ -1613,12 +1621,12 @@ if (NOT BUILDING_SUB_PACKAGE)
   if (UNIX)
     # FIXME: CPACK_INSTALLED_DIRECTORIES resolves symlinks instead of preserving
     # (filed as http://www.itk.org/Bug/view.php?id=10096).
-    # So, since we're bundling a particular version anyway, we just take the .so
+    # So, since we're bundling a particular version anyway, we just take the ${LIB_SFX}
     # file itself and discard all the version-named files
     if (DEBUG_BUILD)
       install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug\")")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)")
       # Include both .debug files.  These have version #s so we glob.
       install(CODE "file(GLOB debugfiles \"${DynamoRIO_DIR}/../${LIB_ARCH}/debug/*.debug\")\nforeach (dbg \${debugfiles})\n  configure_file(\"\${dbg}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/debug/\" COPYONLY)\nendforeach()")
       # ext dir is currently empty but we need it to avoid drrun error (i#427)
@@ -1627,8 +1635,8 @@ if (NOT BUILDING_SUB_PACKAGE)
       install(CODE "file(WRITE \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/ext/${LIB_ARCH}/debug/README.txt\" \"Currently empty.\n\")")
     else (DEBUG_BUILD)
       install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release\")")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
-      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdrpreload${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/release/libdynamorio${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/release/\" COPYONLY)")
       # Include both .debug files.  These have version #s so we glob.
       # Note that addr2line/gdb will still find the 1.x.debug since the name is
       # stored in the library.
@@ -1656,9 +1664,11 @@ if (NOT BUILDING_SUB_PACKAGE)
   install(CODE "file(MAKE_DIRECTORY \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}\")")
   if (UNIX)
     install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drrun\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drrun\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib.so\" COPYONLY)")
-    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib.so\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib.so\" COPYONLY)")
+    if (NOT APPLE) # FIXME DRi#1286: no nudge support yet on MacOS
+      install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/nudgeunix\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/nudgeunix\" COPYONLY)")
+    endif (NOT APPLE)
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrconfiglib${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrconfiglib${LIB_SFX}\" COPYONLY)")
+    install(CODE "configure_file(\"${DynamoRIO_DIR}/../${LIB_ARCH}/libdrinjectlib${LIB_SFX}\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${LIB_ARCH}/libdrinjectlib${LIB_SFX}\" COPYONLY)")
   else (UNIX)
     if (TOOL_DR_HEAPSTAT OR NOT USE_DRSYMS)
       install(CODE "configure_file(\"${DynamoRIO_DIR}/../${BIN_ARCH}/drconfig.exe\" \"\${CMAKE_INSTALL_PREFIX}/${DR_install_dir}/${BIN_ARCH}/drconfig.exe\" COPYONLY)")
