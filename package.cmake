@@ -48,6 +48,7 @@ set(arg_preload "")    # cmake file to include prior to each 32-bit build
 set(arg_preload64 "")  # cmake file to include prior to each 64-bit build
 set(arg_use_nmake OFF) # use nmake even if gnu make is present
 set(arg_cpackappend "")# string to append to CPackConfig.cmake before packaging
+set(arg_32_only OFF)   # do not include 64-bit
 
 foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^build=")
@@ -77,6 +78,9 @@ foreach (arg ${CTEST_SCRIPT_ARG})
   if (${arg} MATCHES "^drmem_only" OR
       ${arg} MATCHES "^drmemory_only")
     set(arg_drmem_only ON)
+  endif ()
+  if (${arg} MATCHES "^32_only")
+    set(arg_32_only ON)
   endif ()
 endforeach (arg)
 
@@ -157,12 +161,14 @@ if (NOT arg_drmem_only)
     CMAKE_BUILD_TYPE:STRING=Debug
     " OFF ON "")
 endif (NOT arg_drmem_only)
-testbuild_ex("drmemory-${name_sfx}release-64" ON "
-  CMAKE_BUILD_TYPE:STRING=Release
+if (NOT arg_32_only)
+  testbuild_ex("drmemory-${name_sfx}release-64" ON "
+    CMAKE_BUILD_TYPE:STRING=Release
   " OFF ON "")
-testbuild_ex("drmemory-${name_sfx}debug-64" ON "
-  CMAKE_BUILD_TYPE:STRING=Debug
+  testbuild_ex("drmemory-${name_sfx}debug-64" ON "
+    CMAKE_BUILD_TYPE:STRING=Debug
   " OFF ON "")
+endif (NOT arg_32_only)
 # 32-bit last, to match DR for embedded packaging
 testbuild_ex("drmemory-${name_sfx}release-32" OFF "
   CMAKE_BUILD_TYPE:STRING=Release
