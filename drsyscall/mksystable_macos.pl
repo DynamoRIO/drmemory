@@ -98,7 +98,7 @@ while (<STDIN>) {
         unless ($sig =~ /{\s*(\w+)\s+(\w+)\s*\(([^\)]*)\)[^,]*;/);
     my $ret = $1;
     my $name = $2;
-    next if ($name eq 'nosys');
+    next if ($name eq 'nosys' || $name eq 'enosys');
     my $args = $3;
     my $rtype = "UNKNOWN";
     my $flags = "";
@@ -112,10 +112,10 @@ while (<STDIN>) {
         $rtype = "DRSYS_TYPE_POINTER";
     } elsif ($ret eq 'uint64_t') {
         $rtype = "DRSYS_TYPE_UNSIGNED_INT";
-        $flags .= "|SYSINFO_64BIT_RET";
+        $flags .= "|SYSINFO_RET_64BIT";
     } elsif ($ret eq 'off_t') {
         $rtype = "RLONG/*64-bit*/";
-        $flags .= "|SYSINFO_64BIT_RET";
+        $flags .= "|SYSINFO_RET_64BIT";
     } else {
         die "FATAL: unknown return type \"$ret\"\n";
     }

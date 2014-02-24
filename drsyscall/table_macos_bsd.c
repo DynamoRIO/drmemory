@@ -25,7 +25,85 @@
 #include "drsyscall.h"
 #include "drsyscall_os.h"
 
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <sys/param.h>
+#include <sys/mount.h>
+#include <sys/ev.h>
+#include <sys/sem.h>
+#include <sys/msg.h>
+#include <sys/shm.h>
+#include <sys/semaphore.h>
+#include <sys/event.h>
+#include <poll.h>
+#include <security/mac.h>
+#include <mach/shared_region.h>
+
+#ifdef MACOS
+# define _XOPEN_SOURCE 700 /* required to get POSIX, etc. defines out of ucontext.h */
+# define __need_struct_ucontext64 /* seems to be missing from Mac headers */
+#endif
+#include <signal.h>
+#include <ucontext.h>
+
 #include <sys/syscall.h>
+
+/* Old syscalls that have been removed in 10.9.1 */
+#ifndef SYS_profil
+# define SYS_profil          44
+#endif
+#ifndef SYS_add_profil
+# define SYS_add_profil     176
+#endif
+#ifndef SYS_ATsocket
+# define SYS_ATsocket       206
+#endif
+#ifndef SYS_ATgetmsg
+# define SYS_ATgetmsg       207
+#endif
+#ifndef SYS_ATputmsg
+# define SYS_ATputmsg       208
+#endif
+#ifndef SYS_ATPsndreq
+# define SYS_ATPsndreq      209
+#endif
+#ifndef SYS_ATPsndrsp
+# define SYS_ATPsndrsp      210
+#endif
+#ifndef SYS_ATPgetreq
+# define SYS_ATPgetreq      211
+#endif
+#ifndef SYS_ATPgetrsp
+# define SYS_ATPgetrsp      212
+#endif
+#ifndef SYS_mkcomplex
+# define SYS_mkcomplex      216
+#endif
+#ifndef SYS_statv
+# define SYS_statv          217
+#endif
+#ifndef SYS_lstatv
+# define SYS_lstatv         218
+#endif
+#ifndef SYS_fstatv
+# define SYS_fstatv         219
+#endif
+#ifndef SYS_getaudit
+# define SYS_getaudit       355
+#endif
+#ifndef SYS_setaudit
+# define SYS_setaudit       356
+#endif
+#ifndef SYS_pid_hibernate
+# define SYS_pid_hibernate  435
+#endif
+#ifndef SYS_pid_shutdown_sockets
+# define SYS_pid_shutdown_sockets 436
+#endif
 
 #define OK (SYSINFO_ALL_PARAMS_KNOWN)
 #define UNKNOWN 0
@@ -52,7 +130,8 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_read /*3*/}, "read", OK, RLONG, 3,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {1, -2, W},
+         {1, RET, W},
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -126,7 +205,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_getfsstat /*18*/}, "getfsstat", OK, RLONG, 3,
      {
-         {0, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {0, -1, W},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
@@ -741,7 +820,7 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS_sigreturn /*184*/}, "sigreturn", OK, RLONG, 2,
      {
-         {0, sizeof(struct ucontext), W|HT, DRSYS_TYPE_STRUCT},
+         {0, sizeof(ucontext_t), W|HT, DRSYS_TYPE_STRUCT},
          {1, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
@@ -820,7 +899,7 @@ syscall_info_t syscall_info_bsd[] = {
          {5, sizeof(off_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{SYS_lseek /*199*/}, "lseek", OK|SYSINFO_64BIT_RET, RLONG/*64-bit*/, 3,
+    {{SYS_lseek /*199*/}, "lseek", OK|SYSINFO_RET_64BIT, RLONG/*64-bit*/, 3,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
          {1, sizeof(off_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -841,11 +920,11 @@ syscall_info_t syscall_info_bsd[] = {
     },
     {{SYS___sysctl /*202*/}, "__sysctl", OK, RLONG, 6,
      {
-         {0, sizeof(int), W|HT, DRSYS_TYPE_SIGNED_INT},
+         {0, -1, R|SYSARG_SIZE_IN_ELEMENTS, sizeof(int)},
          {1, sizeof(u_int), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
-         {2, sizeof(void *), W|HT, DRSYS_TYPE_POINTER},
-         {3, sizeof(size_t), W|HT, DRSYS_TYPE_UNSIGNED_INT},
-         {4, sizeof(void *), W|HT, DRSYS_TYPE_POINTER},
+         {2, -3, WI},
+         {3, sizeof(size_t), R|W|HT, DRSYS_TYPE_UNSIGNED_INT},
+         {4, -5, R},
          {5, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
@@ -923,22 +1002,22 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(u_long), SYSARG_INLINED, DRSYS_TYPE_UNSIGNED_INT},
      }
     },
-    {{SYS_statv /*217*/}, "statv", OK, RLONG, 2,
+    {{SYS_statv /*217*/}, "statv", UNKNOWN, RLONG, 2,
      {
          {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
-         {1, sizeof(struct vstat), W|HT, DRSYS_TYPE_STRUCT},
+         /* FIXME i#1440: sys/vstat.h is obsolete; may need own decl, or don't support */
      }
     },
-    {{SYS_lstatv /*218*/}, "lstatv", OK, RLONG, 2,
+    {{SYS_lstatv /*218*/}, "lstatv", UNKNOWN, RLONG, 2,
      {
          {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
-         {1, sizeof(struct vstat), W|HT, DRSYS_TYPE_STRUCT},
+         /* FIXME i#1440: sys/vstat.h is obsolete; may need own decl, or don't support */
      }
     },
-    {{SYS_fstatv /*219*/}, "fstatv", OK, RLONG, 2,
+    {{SYS_fstatv /*219*/}, "fstatv", UNKNOWN, RLONG, 2,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(struct vstat), W|HT, DRSYS_TYPE_STRUCT},
+         /* FIXME i#1440: sys/vstat.h is obsolete; may need own decl, or don't support */
      }
     },
     {{SYS_getattrlist /*220*/}, "getattrlist", OK, RLONG, 5,
@@ -1129,11 +1208,11 @@ syscall_info_t syscall_info_bsd[] = {
          {2, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{SYS_posix_spawn /*244*/}, "posix_spawn", OK, RLONG, 5,
+    {{SYS_posix_spawn /*244*/}, "posix_spawn", UNKNOWN, RLONG, 5,
      {
          {0, sizeof(pid_t), W|HT, DRSYS_TYPE_SIGNED_INT},
          {1, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
-         {2, sizeof(struct _posix_spawn_args_desc), W|HT, DRSYS_TYPE_STRUCT},
+         /* FIXME i#1440: non-public struct in arg #2 => UNKNOWN above */
          {3, sizeof(char **), W|HT, DRSYS_TYPE_CSTRARRAY},
          {4, sizeof(char **), W|HT, DRSYS_TYPE_CSTRARRAY},
      }
@@ -1595,8 +1674,6 @@ syscall_info_t syscall_info_bsd[] = {
          {4, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
-    {{SYS_enosys /*299*/}, "enosys", OK, RLONG, 0, },
-    {{SYS_enosys /*300*/}, "enosys", OK, RLONG, 0, },
     {{SYS_getsid /*310*/}, "getsid", OK, RLONG, 1,
      {
          {0, sizeof(pid_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
@@ -1767,7 +1844,7 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_fstat64 /*339*/}, "fstat64", OK, RLONG, 2,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {1, sizeof(struct stat64), W},
      }
     },
     {{SYS_lstat64 /*340*/}, "lstat64", OK, RLONG, 2,
@@ -1979,7 +2056,7 @@ syscall_info_t syscall_info_bsd[] = {
          {4, sizeof(struct timespec), W|HT, DRSYS_TYPE_STRUCT},
      }
     },
-    {{SYS_thread_selfid /*372*/}, "thread_selfid", OK|SYSINFO_64BIT_RET, DRSYS_TYPE_UNSIGNED_INT, 0, },
+    {{SYS_thread_selfid /*372*/}, "thread_selfid", OK|SYSINFO_RET_64BIT, DRSYS_TYPE_UNSIGNED_INT, 0, },
     {{SYS___mac_execve /*380*/}, "__mac_execve", OK, RLONG, 4,
      {
          {0, sizeof(char *), W|HT, DRSYS_TYPE_CSTRING},
@@ -2077,14 +2154,15 @@ syscall_info_t syscall_info_bsd[] = {
     {{SYS_read_nocancel /*396*/}, "read_nocancel", OK, RLONG, 3,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {1, -2, W},
+         {1, RET, W},
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },
     {{SYS_write_nocancel /*397*/}, "write_nocancel", OK, RLONG, 3,
      {
          {0, sizeof(int), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
-         {1, sizeof(void*), W|HT, DRSYS_TYPE_POINTER},
+         {1, -2, R},
          {2, sizeof(size_t), SYSARG_INLINED, DRSYS_TYPE_SIGNED_INT},
      }
     },

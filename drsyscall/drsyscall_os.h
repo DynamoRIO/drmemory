@@ -28,6 +28,8 @@
 #ifdef WINDOWS
 /* We need extra room for dup entries for diff in vs out size to writes. */
 # define MAX_ARGS_IN_ENTRY 18 /* 17 is max known */
+#elif defined(MACOS)
+# define MAX_ARGS_IN_ENTRY 8
 #else
 # define MAX_ARGS_IN_ENTRY 6 /* 6 is max on Linux */
 #endif
@@ -235,6 +237,8 @@ enum {
     SYSINFO_RET_MINUS1_FAIL     = 0x00000040,
     /* Return type varies dynamically and handler must call report_sysarg_return() */
     SYSINFO_RET_TYPE_VARIES     = 0x00000080,
+    /* Return value is 64-bit even in 32-bit mode */
+    SYSINFO_RET_64BIT           = 0x00000100,
 };
 
 #define SYSCALL_ARG_TRACK_MAX_SZ 2048
