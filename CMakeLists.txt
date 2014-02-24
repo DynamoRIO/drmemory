@@ -590,21 +590,33 @@ endif ()
 ##################################################
 # option sharing (PR 478146)
 
+set(CPP_IGNORE_EMPTY "")
 if (UNIX)
-  # "gcc -E" on a non-.c-extension file gives message:
-  #   "linker input file unused because linking not done"
-  # and doesn't produce any output, so we must use cpp for our .asm files.
-  # we assume it's in the same dir.
-  get_filename_component(compiler_path ${CMAKE_C_COMPILER} PATH)
-  find_program(CMAKE_CPP cpp HINTS "${compiler_path}" DOC "path to C preprocessor")
-  if (cpp-NOTFOUND OR NOT EXISTS "${CMAKE_CPP}")
-    message(FATAL_ERROR "cpp is required to build")
-  endif (cpp-NOTFOUND OR NOT EXISTS "${CMAKE_CPP}")
-  mark_as_advanced(CMAKE_CPP)
+  if (APPLE)
+    # /usr/bin/cpp is broken and won't honor -B flags
+    set(CMAKE_CPP_FOR_OPS ${CMAKE_C_COMPILER})
+    set(CPP_INC -Wp,-I,)
+    # Avoid clang warning on perl ''
+    set(CPP_IGNORE_EMPTY -Wno-invalid-pp-token)
+  else (APPLE)
+    # "gcc -E" on a non-.c-extension file gives message:
+    #   "linker input file unused because linking not done"
+    # and doesn't produce any output, so we must use cpp for our .asm files.
+    # we assume it's in the same dir.
+    get_filename_component(compiler_path ${CMAKE_C_COMPILER} PATH)
+    find_program(CMAKE_CPP_FOR_OPS cpp HINTS "${compiler_path}"
+      DOC "path to C preprocessor")
+    if (cpp-NOTFOUND OR NOT EXISTS "${CMAKE_CPP_FOR_OPS}")
+      message(FATAL_ERROR "cpp is required to build")
+    endif (cpp-NOTFOUND OR NOT EXISTS "${CMAKE_CPP_FOR_OPS}")
+    mark_as_advanced(CMAKE_CPP_FOR_OPS)
+    set(CPP_INC -I)
+  endif (APPLE)
   set(CPP_NO_LINENUM -P)
 else (UNIX)
-  set(CMAKE_CPP ${CMAKE_C_COMPILER})
+  set(CMAKE_CPP_FOR_OPS ${CMAKE_C_COMPILER})
   set(CPP_NO_LINENUM /EP)
+  set(CPP_INC /I)
 endif (UNIX)
 
 # I would share this name w/ drmemory.pl but it's a pain to configure_file
@@ -615,9 +627,10 @@ add_custom_command(
   OUTPUT "${options_for_perl}"
   DEPENDS "${PROJECT_SOURCE_DIR}/common/options-perl.c"
   "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
-  COMMAND ${CMAKE_CPP}
+  COMMAND ${CMAKE_CPP_FOR_OPS}
   ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-perl.c"
-  -I${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_perl}"
+  ${CPP_INC}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES}
+  ${CPP_IGNORE_EMPTY} > "${options_for_perl}"
   VERBATIM)
 
 # options_for_docs is built in docs/CMakeLists.txt since custom commands

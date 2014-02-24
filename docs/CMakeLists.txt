@@ -76,20 +76,14 @@ else (WIN32)
 endif (WIN32)
 
 set(options_for_docs "${PROJECT_BINARY_DIR}/docs/options-docs.dox.in")
-if (APPLE)
-  # somehow cpp takes -B
-  set(incflag "-B")
-else (APPLE)
-  set(incflag "-I")
-endif (APPLE)
 
 add_custom_command(
   OUTPUT "${options_for_docs}"
   DEPENDS "${PROJECT_SOURCE_DIR}/common/options-docs.c"
   "${PROJECT_SOURCE_DIR}/${tooldir}/optionsx.h"
-  COMMAND ${CMAKE_CPP}
+  COMMAND ${CMAKE_CPP_FOR_OPS}
   ARGS -E ${CPP_NO_LINENUM} "${PROJECT_SOURCE_DIR}/common/options-docs.c"
-  ${incflag}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_docs}"
+  ${CPP_INC}${PROJECT_SOURCE_DIR}/${tooldir} ${DEFINES} > "${options_for_docs}"
   VERBATIM)
 
 include(${DynamoRIO_DIR}/docs_doxyutils.cmake)
