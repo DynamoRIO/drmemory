@@ -1229,6 +1229,7 @@ check_src_whitelist(error_callstack_t *ecs, uint start)
 }
 
 /* Returns whether the error should be treated as a false positive */
+/* XXX: i#1454: add per-error blacklist callstack frame depth support */
 static bool
 check_blacklist_and_whitelist(error_callstack_t *ecs, uint start)
 {
@@ -1275,11 +1276,6 @@ error_is_likely_false_positive(error_callstack_t *ecs, error_toprint_t *etp)
     uint start = 0;
     if (etp->potential) /* tool specific potential error */
         return true;
-#ifdef WINDOWS
-    if (etp->errtype == ERROR_HANDLE_LEAK &&
-        options.filter_handle_leaks /* tool specific filtering */)
-        return false;
-#endif
     if (!symbolized_callstack_frame_is_module(&ecs->scs, 0)) /* syscall, we assume */
         start = 1;
     else {
