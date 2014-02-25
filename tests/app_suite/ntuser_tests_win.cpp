@@ -214,9 +214,10 @@ TEST(NtUserTests, EnumDisplayDevices) {
 TEST(NtUserTests, WindowStation) {
     BOOL success;
     HWINSTA def_ws = GetProcessWindowStation();
-
     HWINSTA ws = CreateWindowStation(NULL, 0, READ_CONTROL | DELETE, NULL);
+    HWINSTA ws2 = OpenWindowStation("winsta0", FALSE, READ_CONTROL | WRITE_DAC);
     ASSERT_NE(ws, (HWINSTA)NULL);
+    ASSERT_NE(ws2, (HWINSTA)NULL);
 
     success = SetProcessWindowStation(ws);
     ASSERT_EQ(success, TRUE);
@@ -229,6 +230,8 @@ TEST(NtUserTests, WindowStation) {
     ASSERT_EQ(success, TRUE);
 
     success = CloseWindowStation(ws);
+    ASSERT_EQ(success, TRUE);
+    success = CloseWindowStation(ws2);
     ASSERT_EQ(success, TRUE);
 }
 

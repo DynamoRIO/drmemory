@@ -82,8 +82,14 @@ static drsys_sysnum_t sysnum_GdiSelectFont = {-1, 0};
  * sysnum_UserCallOneParam_RELEASEDC
  * sysnum_UserGetThreadDesktop
  */
+/* To support handle usage check in the future, we may want to record
+ * the type information of an handle used as a syscall argument,
+ * e.g., the user syscall NtUserCloseWindowStation takes in kernel handle.
+ */
 static drsys_sysnum_t sysnum_UserGetDC = {-1, 0};
 static drsys_sysnum_t sysnum_UserGetProcessWindowStation = {-1, 0};
+static drsys_sysnum_t sysnum_UserCreateWindowStation = {-1, 0};
+static drsys_sysnum_t sysnum_UserOpenWindowStation = {-1, 0};
 static drsys_sysnum_t sysnum_UserGetWindowDC = {-1, 0};
 
 static bool
@@ -190,6 +196,12 @@ syscall_os_init(void *drcontext, app_pc ntdll_base)
     get_sysnum("NtUserGetDC", &sysnum_UserGetDC, false/*reqd*/);
     get_sysnum("NtUserGetProcessWindowStation",
                &sysnum_UserGetProcessWindowStation, false/*reqd*/);
+    get_sysnum("NtUserCreateWindowStation",
+               &sysnum_UserCreateWindowStation,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000/*reqd*/);
+    get_sysnum("NtUserOpenWindowStation",
+               &sysnum_UserOpenWindowStation,
+               get_windows_version() <= DR_WINDOWS_VERSION_2000/*reqd*/);
     get_sysnum("NtUserGetWindowDC", &sysnum_UserGetWindowDC, false/*reqd*/);
 
     syscall_wingdi_init(drcontext, ntdll_base);
@@ -545,6 +557,8 @@ syscall_handle_type(drsys_syscall_type_t drsys_type, drsys_sysnum_t sysnum)
             drsys_sysnums_equal(&sysnum, &sysnum_UserGetWindowDC))
             return HANDLE_TYPE_GDI;
         if (drsys_sysnums_equal(&sysnum, &sysnum_UserGetProcessWindowStation) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserCreateWindowStation) ||
+            drsys_sysnums_equal(&sysnum, &sysnum_UserOpenWindowStation) ||
             drsys_sysnums_equal(&sysnum, &sysnum_UserGetThreadDesktop))
             return HANDLE_TYPE_KERNEL;
         return HANDLE_TYPE_USER;
