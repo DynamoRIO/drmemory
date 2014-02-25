@@ -383,6 +383,10 @@ options_init(const char *opstr)
             options.count_leaks = false;
         if (!option_specified.pattern)
             options.pattern = DEFAULT_PATTERN;
+# ifdef WINDOWS
+        if (!option_specified.check_handle_leaks)
+            options.check_handle_leaks = false;
+# endif
     }
     if (options.unaddr_only) {
         if (!option_specified.pattern)

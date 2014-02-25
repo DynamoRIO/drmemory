@@ -289,23 +289,41 @@ versions of Windows, while others are more serious.
 Detection of these errors can be disabled with the \p -no_check_gdi runtime
 option.
 
-\if HANDLE_LEAKS_ENABLED
 ********************
-\page page_handle Handle Leak
+\page page_handle Handle Leaks
 
 Dr. Memory identifies Windows handles that are left open and reports them
 as handle leaks.  The type of handle (kernel, user, or GDI) is listed along
-with the callstack where it was opened.  For Example:
+with the callstack where it was opened.  For example:
 
 \code
-Error #1: Handle Leak: GDI Handle 0xfd011e11 is created but not closed:
-# 0 system call NtGdiCreateCompatibleDC
-# 1 test_gdi_handles                                  [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:36]
-# 2 main                                              [d:\src\workspace\drmemory\drmemory.git\tests\handle.cpp:57]
+Error #1: HANDLE LEAK: KERNEL handle 0x000000a8 and 1 similar handle(s) were opened but not closed:
+# 0 system call NtOpenFile
+# 1 KERNELBASE.dll!FindFirstFileExW     (0x751ca6bc <KERNELBASE.dll+0x1a6bc>) modid:7
+# 2 KERNELBASE.dll!FindFirstFileA       (0x751caaf7 <KERNELBASE.dll+0x1aaf7>) modid:7
+# 3 test_file_handles       [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:107] (0x010a14f7 <handle.exe+0x14f7>) modid:1
+# 4 main                    [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:239] (0x010a11f3 <handle.exe+0x11f3>) modid:1
+Note: @0:00:03.232 in thread 7196
+Note: handles created with the same callstack are closed here:
+Note: # 0 system call NtClose
+Note: # 1 KERNELBASE.dll!FindClose      (0x751ca46d <KERNELBASE.dll+0x1a46d>) modid:7
+Note: # 2 test_file_handles [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:169] (0x010a16a7 <handle.exe+0x16a7>) modid:1
+Note: # 3 main              [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:239] (0x010a11f3 <handle.exe+0x11f3>) modid:1
 \endcode
 
-Detection of these errors can be disabled with the \p -no_check_handle runtime option.
-\endif
+Another common example of a handle leak error is calling DuplicateHandle and passing NULL as TargetHandle.
+This will be reported as:
+
+\code
+Error #2: HANDLE LEAK: Syscall NtDuplicateObject leaks handle with NULL handle pointer in its own process 0xffffffff.
+# 0 system call NtDuplicateObject
+# 1 KERNELBASE.dll!DuplicateHandle             (0x751bc4d9 <KERNELBASE.dll+0xc4d9>) modid:7
+# 2 KERNEL32.dll!DuplicateHandleImplementation (0x753118a2 <KERNEL32.dll+0x118a2>)  modid:9
+# 3 test_file_handles  [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:157] (0x010a163d <handle.exe+0x163d>) modid:1
+# 4 main               [d:\src\cygwin\home\zhaoqin\workspace\drmemory\drmemory.git\tests\handle.cpp:239] (0x010a11f3 <handle.exe+0x11f3>) modid:1
+\endcode
+
+Detection of these errors can be disabled with the \p -no_check_handle_leaks runtime option.
 
 ********************
 \page page_warning Warning

@@ -77,6 +77,8 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
  - Clarified the #umbra_map_options_t flags field to be
    #umbra_map_flags_t rather than uint.
  - Added static library versions of drsyscall and umbra
+ - On Windows, handle leak detection (-check_handle_leaks) is now on by default
+   in full mode.
 
 The changes between version 1.6.1 and version 1.6.0 include:
  - Added Windows 8.1 support

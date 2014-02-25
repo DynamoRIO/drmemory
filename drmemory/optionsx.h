@@ -476,7 +476,7 @@ OPTION_CLIENT_BOOL(drmemscope, check_gdi, true,
 OPTION_CLIENT_BOOL(drmemscope, check_gdi_multithread, false,
                    "Check for GDI API usage error of one DC used by multiple threads",
                    "Check for GDI API usage error of one DC used by multiple threads.  Some system libraries violate this guideline, however, resulting in potential false positives.")
-OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, false,
+OPTION_CLIENT_BOOL(drmemscope, check_handle_leaks, true,
                    "Check for handle leak errors",
                    "Check for handle leak errors.  Any errors detected will be reported as errors of type HANDLE LEAK.")
 OPTION_CLIENT_BOOL(internal, filter_handle_leaks, true,

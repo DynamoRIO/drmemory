@@ -520,7 +520,7 @@ handlecheck_check_open_handle(const char *name,
         }
     }
     dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
-                "%s Handle "PFX" and %d similar handles were opened"
+                "%s handle "PFX" and %d similar handle(s) were opened"
                 " but not closed:", name, handle, count-1/*exclude self*/);
     report_handle_leak(dr_get_current_drcontext(), msg, &hci->loc, hci->pcs,
                        (pair == NULL) ? NULL : pair->close.pcs,
