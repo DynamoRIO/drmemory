@@ -2165,13 +2165,20 @@ register_shadow_mark_defined(reg_id_t reg)
  * take any action though, seems pretty unlikely, unlike cmovcc.
  */
 int
-num_true_srcs(instr_t *inst, dr_mcontext_t *mc)
+num_true_srcs(instr_t *inst, dr_mcontext_t *mc /*optional*/)
 {
     int opc = instr_get_opcode(inst);
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc)) {
         /* PR 530902: cmovcc should ignore src+dst unless eflags matches */
-        if (!instr_cmovcc_triggered(inst, mc->xflags))
+        if (mc != NULL && !instr_cmovcc_triggered(inst, mc->xflags))
             return 0;
+        else {
+            /* i#1456: ignore the dst-as-src added by DR, since we model the
+             * conditional nature ourselves, and don't want a false pos on an uninit
+             * dst.
+             */
+            return 1;
+        }
     }
     /* sbb with self should consider all srcs except eflags defined (thus can't
      * be in result_is_always_defined) (PR 425498, PR 425622)
@@ -2182,12 +2189,12 @@ num_true_srcs(instr_t *inst, dr_mcontext_t *mc)
 }
 
 int
-num_true_dsts(instr_t *inst, dr_mcontext_t *mc)
+num_true_dsts(instr_t *inst, dr_mcontext_t *mc /*optional*/)
 {
     int opc = instr_get_opcode(inst);
     if (opc_is_cmovcc(opc) || opc_is_fcmovcc(opc)) {
         /* PR 530902: cmovcc should ignore src+dst unless eflags matches */
-        if (!instr_cmovcc_triggered(inst, mc->xflags))
+        if (mc != NULL && !instr_cmovcc_triggered(inst, mc->xflags))
             return 0;
     }
     return instr_num_dsts(inst);

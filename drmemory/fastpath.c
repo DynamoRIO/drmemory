@@ -653,9 +653,12 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     } else {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
-        if (instr_num_dsts(inst) > 2)
+        int num_dsts = num_true_dsts(inst, NULL);
+        int num_srcs = num_true_srcs(inst, NULL);
+
+        if (num_dsts > 2)
             return false;
-        if (instr_num_srcs(inst) > 3)
+        if (num_srcs > 3)
             return false;
 
         if (opc == OP_sbb) {
@@ -670,24 +673,24 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
 
-        if (instr_num_dsts(inst) > 0) {
+        if (num_dsts > 0) {
             if (!opnd_ok_for_fastpath(instr_get_dst(inst, 0), 0, true, mi))
                 return false;
-            if (instr_num_dsts(inst) > 1) {
-                if (instr_num_dsts(inst) == 2 && opc_2nd_dst_is_extension(opc)) {
+            if (num_dsts > 1) {
+                if (num_dsts == 2 && opc_2nd_dst_is_extension(opc)) {
                     if (!opnd_ok_for_fastpath(instr_get_dst(inst, 1), 1, true, mi))
                         return false;
                 } else
                     return false;
             }
         }
-        if (instr_num_srcs(inst) > 0) {
+        if (num_srcs > 0) {
             if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
                 return false;
-            if (instr_num_srcs(inst) > 1) {
+            if (num_srcs > 1) {
                 if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
                     return false;
-                if (instr_num_srcs(inst) > 2) {
+                if (num_srcs > 2) {
                     if (!opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
                         return false;
                 }
@@ -4505,6 +4508,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     marker1 = instr_get_next(marker2);
     if (!opnd_is_null(mi->src[0].app) && !opnd_is_null(mi->src[0].shadow) &&
         !mark_defined &&
+        /* Special case: we treat cmovcc like a cmp for checking the flags,
+         * but we still want to propagate the src normally to the dest if
+         * the condition is triggered (i#1456).
+         */
+        !opc_is_cmovcc(opc) && !opc_is_fcmovcc(opc) &&
         (mi->check_definedness ||
          (mi->opnum[0] != -1 &&
           always_check_definedness(inst, mi->opnum[0])))) {

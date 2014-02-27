@@ -364,9 +364,11 @@ instr_check_definedness(instr_t *inst);
 bool
 instr_needs_all_srcs_and_vals(instr_t *inst);
 
+/* Pass NULL for mc for context-less result */
 int
 num_true_srcs(instr_t *inst, dr_mcontext_t *mc);
 
+/* Pass NULL for mc for context-less result */
 int
 num_true_dsts(instr_t *inst, dr_mcontext_t *mc);
 
