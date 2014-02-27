@@ -501,9 +501,10 @@ if (WIN32)
   endif ()
 
   set(symsrv_paths
-    "${PROGFILES}/Debugging Tools for Windows/symsrv.dll"
     "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/Remote Debugger/${ARCH_SFX}/symsrv.dll"
-    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll")
+    "${PROGFILES32}/Windows Kits/*/Debuggers/${ARCH_SFX}/symsrv.dll"
+    # Putting this last mainly b/c only older versions (like my 6.3) are here.
+    "${PROGFILES}/Debugging Tools for Windows/symsrv.dll")
   if (NOT X64)
     set(symsrv_paths ${symsrv_paths}
       "${PROGFILES}/Microsoft Visual Studio */Common7/IDE/symsrv.dll")
