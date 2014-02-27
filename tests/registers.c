@@ -503,6 +503,25 @@ data16_div_test(void)
         printf("65000 / 20 != 3250, res: %d\n", res);
 }
 
+/* i#1453: memory copy through xmm regs */
+void copy_through_xmm_asm(char *dst, char *src);
+void copy_through_xmm_asm_ebp(char *dst, char *src);
+
+void
+copy_through_xmm_test(void)
+{
+    char dst1[16];
+    char dst2[16];
+    char uninit[16];
+    uninit[0] = 'x';
+    copy_through_xmm_asm(dst1, uninit);
+    if (dst1[0] != 'x')
+        printf("copy failed\n");
+    copy_through_xmm_asm_ebp(dst2, uninit);
+    if (dst2[0] != 'x')
+        printf("copy failed\n");
+}
+
 int
 main()
 {
@@ -539,6 +558,8 @@ main()
     multi_dst_test();
 
     data16_div_test();
+
+    copy_through_xmm_test();
 
     return 0;
 }
@@ -759,6 +780,45 @@ GLOBAL_LABEL(FUNCNAME:)
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         pop      REG_XSI
         pop      REG_XDI
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+
+#define FUNCNAME copy_through_xmm_asm
+/* void copy_through_xmm_asm(char *dst, char *src); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        END_PROLOG
+
+        movdqu   xmm0, [REG_XAX] /* src */
+        movdqu   [REG_XCX], xmm0 /* dst */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME copy_through_xmm_asm_ebp
+/* void copy_through_xmm_asm(char *dst, char *src); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        push     REG_XCX /* dst */
+        END_PROLOG
+
+        movdqu   xmm0, [REG_XAX] /* src */
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movdqu   [REG_XCX], xmm0 /* dst */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
         ret
         END_FUNC(FUNCNAME)
 #undef FUNCNAME

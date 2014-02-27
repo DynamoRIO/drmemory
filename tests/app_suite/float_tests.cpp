@@ -45,11 +45,9 @@ TEST(FloatTests, CopyConstructor) {
     hasfloat tocopy = src;
     printf("value is %d\n", tocopy.x); /* avoid optimizing away the copy */
 
-#ifdef WIN32
     /* Same thing but with a double.  This is the only one that shows up
-     * on Linux for me.  However, the current heuristic only matches
-     * "fld;fstp", while gcc has a mov in between, so we make this Windows-only
-     * until we have full i#471 fp reg shadowing and propagation.
+     * on Linux for me.  We need the more advanced heuristic from i#1453
+     * as gcc has a mov in between that writes to the store's address base.
      */
     struct hasdouble {
         int x;
@@ -60,7 +58,6 @@ TEST(FloatTests, CopyConstructor) {
     src2.x = 4;
     hasdouble tocopy2 = src2;
     printf("value is %d\n", tocopy2.x);
-#endif
 }
 
 /* XXX: I tried to get this to build on Linux but failed so disabling.

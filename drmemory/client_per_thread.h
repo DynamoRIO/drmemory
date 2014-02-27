@@ -56,8 +56,9 @@ typedef struct _cls_drmem_t {
     app_pc mem2fpmm_source;
     app_pc mem2fpmm_dest;
     size_t mem2fpmm_prev_shadow;
-#ifdef DEBUG
     app_pc mem2fpmm_pc;
+#ifdef DEBUG
+    app_pc mem2fpmm_load_pc;
 #endif
 } cls_drmem_t;
 

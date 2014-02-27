@@ -1426,15 +1426,8 @@ instr_is_store_from_nongpr(instr_t *inst)
  * addressability and not definedness, and special-case the fstp to do a mem2mem
  * propagation with a fake src taken from the fld -- but, we'd need the slowpath
  * to recognize that too, which requires decode-backward or a hashtable; and,
- * the current fastpath doesn't support 8-byte mem2mem propagation.  Thus, this
+ * the current fastpath doesn't support 8-byte+ mem2mem propagation.  Thus, this
  * approach here seems simpler and not much slower.
- *
- * XXX: this doesn't match gcc's "fld;mov;fstp" code b/c we have no way to skip
- * the non-immediately-subsequent fstp when the intervening instr determines
- * the fstp mem addr -- we'll wait for full i#471 to handle that.
- *   dd 40 04        fld    0x04(%eax) -> %st0
- *   8b 45 08        mov    0x08(%ebp) -> %eax
- *   dd 58 04        fstp   %st0 -> 0x04(%eax)
  */
 static bool
 check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc,
@@ -1444,12 +1437,17 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
     app_pc pc, next_pc;
     opnd_t fstp_mem;
-    byte *store, *load;
+    byte *store_addr = NULL;
+    app_pc load_pc, store_pc = NULL;
     instr_t inst;
     umbra_shadow_memory_info_t info;
+    int num_regs;
+    bool allow_base_write, writes_ebp;
+    opnd_t overlap_write;
 
     /* Handle subsequent calls from handle_mem_ref() (one per byte).
      * We don't short-circuit b/c we want to ensure they're all addressable.
+     * This also avoid mixups on a double load;load;store;store.
      */
     if (cpt->mem2fpmm_source != NULL)
         return true;
@@ -1468,24 +1466,31 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
         instr_free(drcontext, &inst);
         return false;
     }
-    load = pc;
+    load_pc = pc;
     /* We support instructions in between the load and store, as we see
      * such patterns with several different compilers.
      */
 #   define NONGPR_MEMCOPY_MAX_DISTANCE 128
+    DOLOG(3, {
+        LOG(3, "%s: found load @"PFX", looking for store:\n", __FUNCTION__, load_pc);
+        disassemble_with_info(drcontext, pc, LOGFILE_GET(drcontext), true, true);
+    });
     do {
         instr_reset(drcontext, &inst);
         pc = next_pc;
+        DOLOG(3, {
+            disassemble_with_info(drcontext, pc, LOGFILE_GET(drcontext), true, true);
+        });
         if (!safe_decode(drcontext, pc, &inst, &next_pc))
             break;
         if (instr_is_cti(&inst) || instr_is_syscall(&inst) || !instr_opcode_valid(&inst))
             break;
         if (instr_is_store_from_nongpr(&inst)) {
-            store = pc;
+            store_pc = pc;
             break;
         }
     } while (next_pc < pc + NONGPR_MEMCOPY_MAX_DISTANCE);
-    if (store == NULL) {
+    if (store_pc == NULL) {
         instr_free(drcontext, &inst);
         return false;
     }
@@ -1499,28 +1504,73 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
      * writes to memory overlapping the load address: we'll then propagate
      * the wrong shadow value.
      */
-    pc = load;
-    while (pc < store) {
+    pc = load_pc;
+    num_regs = opnd_num_regs_used(fstp_mem);
+    allow_base_write = num_regs == 1 && opnd_is_base_disp(fstp_mem);
+    writes_ebp = false;
+    overlap_write = opnd_create_null();
+    while (pc < store_pc) {
         /* Bail if in-between instr writes to any reg used to construct fstp address */
         int i;
         instr_reset(drcontext, &inst);
         if (!safe_decode(drcontext, pc, &inst, &pc))
             return false;
-        for (i = 0; i < opnd_num_regs_used(fstp_mem); i++) {
+        if (!writes_ebp && instr_writes_to_reg(&inst, DR_REG_XBP))
+            writes_ebp = true;
+        for (i = 0; i < num_regs; i++) {
             if (instr_writes_to_reg(&inst, opnd_get_reg_used(fstp_mem, i))) {
-                instr_free(drcontext, &inst);
-                return false;
+                /* We do support a write to a reg if that's the sole addressing
+                 * reg and if the write comes from an ebp-based slot where
+                 * ebp does not change.  This is to handle cases like this
+                 * gcc code:
+                 *   dd 40 04        fld    0x04(%eax) -> %st0
+                 *   8b 45 08        mov    0x08(%ebp) -> %eax
+                 *   dd 58 04        fstp   %st0 -> 0x04(%eax)
+                 * And this VS2013 Chromium Release code:
+                 *   f30f6f00        movdqu  xmm0,xmmword ptr [eax]
+                 *   8b4508          mov     eax,dword ptr [ebp+8]
+                 *   f30f7f00        movdqu  xmmword ptr [eax],xmm0
+                 */
+                if (allow_base_write && opnd_is_null(overlap_write) &&
+                    instr_num_srcs(&inst) == 1 &&
+                    instr_num_dsts(&inst) == 1 && opnd_is_reg(instr_get_dst(&inst, 0)) &&
+                    opnd_get_reg(instr_get_dst(&inst, 0)) == opnd_get_base(fstp_mem)) {
+                    overlap_write = instr_get_src(&inst, 0);
+                } else {
+                    instr_free(drcontext, &inst);
+                    return false;
+                }
             }
         }
     }
     instr_free(drcontext, &inst);
-    store = opnd_compute_address(fstp_mem, mc);
-    if (store == NULL ||
+    if (!opnd_is_null(overlap_write)) {
+        LOG(3, "%s: checking overlap with xmm/fp store\n", __FUNCTION__);
+        if (opnd_is_base_disp(overlap_write) &&
+            opnd_get_base(overlap_write) == DR_REG_XBP &&
+            opnd_get_index(overlap_write) == DR_REG_NULL &&
+            !writes_ebp) {
+            reg_t baseval;
+            reg_t *slot = (reg_t *) opnd_compute_address(overlap_write, mc);
+            if (safe_read(slot, sizeof(baseval), &baseval)) {
+                reg_id_t basereg = opnd_get_base(fstp_mem);
+                reg_t save = reg_get_value(basereg, mc);
+                LOG(3, "%s: old %s = "PFX", new="PFX"\n", __FUNCTION__,
+                    get_register_name(basereg), save, baseval);
+                reg_set_value(basereg, mc, baseval);
+                store_addr = opnd_compute_address(fstp_mem, mc);
+                LOG(3, "%s: store addr computed to be "PFX"\n", __FUNCTION__, store_addr);
+                reg_set_value(basereg, mc, save);
+            }
+        }
+    } else
+        store_addr = opnd_compute_address(fstp_mem, mc);
+    if (store_addr == NULL ||
         /* overlap is ok, but we require the same size */
         opnd_size_in_bytes(opnd_get_size(fstp_mem)) != sz) {
         return false;
     }
-    LOG(3, "matched fld;fstp pattern @"PFX"\n", loc_to_pc(loc));
+    LOG(3, "%s: matched pattern for store addr="PFX"\n", __FUNCTION__, store_addr);
     /* Now disable the fstp instru fastpath by marking the dest mem as bitlevel.
      * We'll propagate the shadow values in the fstp slowpath.
      * Otherwise, fstp's fastpath will blindly mark the dest memory as defined.
@@ -1528,13 +1578,14 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
      * undefined, as that check may be optimized out.
      */
     umbra_shadow_memory_info_init(&info);
-    cpt->mem2fpmm_prev_shadow = shadow_get_byte(&info, store);
-    cpt->mem2fpmm_dest = store;
+    cpt->mem2fpmm_prev_shadow = shadow_get_byte(&info, store_addr);
+    cpt->mem2fpmm_dest = store_addr;
+    cpt->mem2fpmm_pc = store_pc;
     DODEBUG({
-        /* mem2fpmm_pc avoids an assert in slow_path() */
-        cpt->mem2fpmm_pc = loc_to_pc(loc);
+        /* used for a debug check in slow_path() */
+        cpt->mem2fpmm_load_pc = load_pc;
     });
-    shadow_set_byte(&info, store, SHADOW_DEFINED_BITLEVEL);
+    shadow_set_byte(&info, store_addr, SHADOW_DEFINED_BITLEVEL);
     ASSERT(cpt->mem2fpmm_source == NULL, "mem2fpmm_source wasn't cleared");
     /* Point at the start addr, as we're going to propagate the whole thing
      * (we might be midway through if the first few bytes are defined and we
@@ -2787,7 +2838,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             opnd = adjust_memop(&inst, opnd, true, &sz, &pushpop_stackop);
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            if (cpt->mem2fpmm_source != NULL) {
+            if (cpt->mem2fpmm_source != NULL && cpt->mem2fpmm_pc == pc) {
                 /* i#471 fld;fstp heuristic: fstp's dest was marked bitlevel to
                  * get us here.  Do a special-case propagate.
                  */
@@ -2900,9 +2951,10 @@ slow_path(app_pc pc, app_pc decode_pc)
 #ifdef TOOL_DR_MEMORY
     DODEBUG({
         cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-        /* mem2fpmm_pc avoids asserting when first set on the fld */
-        ASSERT(cpt->mem2fpmm_source == NULL || pc == cpt->mem2fpmm_pc,
-               "mem2fpmm_source wasn't cleared");
+        /* Try to ensure that mem2fpmm_source doesn't "escape" */
+        ASSERT(cpt->mem2fpmm_source == NULL ||
+               (pc >= cpt->mem2fpmm_load_pc && pc <= cpt->mem2fpmm_pc),
+               "mem2fpmm source escaped");
     });
 #endif
     return res;
