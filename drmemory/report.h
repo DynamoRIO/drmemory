@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -82,9 +82,9 @@ report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
                  packed_callstack_t *aux_pcs, const char *aux_msg);
 
 void
-report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
-                   packed_callstack_t *pcs, packed_callstack_t *aux_pcs,
-                   bool potential);
+report_handle_leak(void *drcontext, dr_mcontext_t *mc, const char *msg,
+                   app_loc_t *loc,  packed_callstack_t *pcs,
+                   packed_callstack_t *aux_pcs, bool potential);
 #endif
 
 /* saves the values of all counts that are modified in report_leak() */

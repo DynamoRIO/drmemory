@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2012-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2012-2014 Google, Inc.  All rights reserved.
  * **********************************************************/
 
 /* Dr. Memory: the memory debugger
@@ -351,6 +351,14 @@ handle_table_unlock(void)
     hashtable_unlock(&handle_stack_table);
 }
 
+#ifdef DEBUG
+static bool
+handle_table_lock_self_owns(void)
+{
+    return hashtable_lock_self_owns(&handle_stack_table);
+}
+#endif /* DEBUG */
+
 void
 handle_callstack_free(void *p)
 {
@@ -372,6 +380,7 @@ static handle_callstack_info_t *
 handle_callstack_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     handle_callstack_info_t *hci;
+    ASSERT(handle_table_lock_self_owns(), "caller must hold handle table lock");
     hci = global_alloc(sizeof(*hci), HEAPSTAT_CALLSTACK);
     /* assuming pc will never be NULL */
     if (pc == NULL)
@@ -453,12 +462,12 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
     handle_callstack_info_t *hci;
     char msg[HANDLECHECK_PRE_MSG_SIZE];
     const char *name;
+    app_loc_t loc;
     /* Some system call like NtDuplicateObject may leak the handle by passing
      * NULL to the out handle argument, so we assume that the leak on syscall
      * is only caused by the arg PHANDLE being NULL.
      */
     ASSERT(arg->value == (ptr_uint_t)NULL, "syscall arg value is not NULL");
-    hci = handle_callstack_info_alloc(arg->sysnum, NULL, mc);
     if (drsys_syscall_name(arg->syscall, &name) != DRMF_SUCCESS)
         name = "<unknown>";
     /* We do not have the leaked handle value, so we report leak without
@@ -474,10 +483,9 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
                 PFX".", name,
                 is_current_process(proc_handle) ? "its own" : "another",
                 proc_handle);
-    report_handle_leak(arg->drcontext, msg, &hci->loc, hci->pcs,
+    syscall_to_loc(&loc, arg->sysnum, NULL);
+    report_handle_leak(arg->drcontext, mc, msg, &loc, NULL /* pcs */,
                        NULL /* aux_pcs */, false /* potential */);
-    /* add the pair info */
-    handle_callstack_info_free(hci);
 }
 
 static void
@@ -522,7 +530,7 @@ handlecheck_check_open_handle(const char *name,
     dr_snprintf(msg, BUFFER_SIZE_ELEMENTS(msg),
                 "%s handle "PFX" and %d similar handle(s) were opened"
                 " but not closed:", name, handle, count-1/*exclude self*/);
-    report_handle_leak(dr_get_current_drcontext(), msg, &hci->loc, hci->pcs,
+    report_handle_leak(dr_get_current_drcontext(), NULL, msg, &hci->loc, hci->pcs,
                        (pair == NULL) ? NULL : pair->close.pcs,
                        potential);
 }

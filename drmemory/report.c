@@ -2942,9 +2942,9 @@ report_gdi_error(app_loc_t *loc, dr_mcontext_t *mc, const char *msg,
 
 #define HANDLE_MSG_SZ 0x100
 void
-report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
-                   packed_callstack_t *pcs, packed_callstack_t *aux_pcs,
-                   bool potential)
+report_handle_leak(void *drcontext, dr_mcontext_t *mc, const char *msg,
+                   app_loc_t *loc, packed_callstack_t *pcs,
+                   packed_callstack_t *aux_pcs, bool potential)
 {
     error_toprint_t etp = {0};
     char buf[HANDLE_MSG_SZ];
@@ -2962,7 +2962,7 @@ report_handle_leak(void *drcontext, const char *msg, app_loc_t *loc,
                  INFO_PFX);
         etp.aux_msg = buf;
     }
-    report_error(&etp, NULL, pcs);
+    report_error(&etp, mc, pcs);
 }
 #endif
 
