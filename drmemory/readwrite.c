@@ -724,13 +724,13 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
          */
     }
 #ifdef TOOL_DR_MEMORY
-    else if (restore_memory && cpt->fld_fstp_source != NULL) {
+    else if (restore_memory && cpt->mem2fpmm_source != NULL) {
         /* Our i#471 heuristic could end up with a thread relocation in between
          * the fld and the fstp.  In such a case we restore the shadow.
          */
         umbra_shadow_memory_info_t info;
-        shadow_set_byte(&info, cpt->fld_fstp_dest, cpt->fld_fstp_prev_shadow);
-        cpt->fld_fstp_source = NULL;
+        shadow_set_byte(&info, cpt->mem2fpmm_dest, cpt->mem2fpmm_prev_shadow);
+        cpt->mem2fpmm_source = NULL;
     }
 #endif
 
@@ -1389,9 +1389,37 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
     return res;
 }
 
+static bool
+instr_is_load_to_nongpr(instr_t *inst)
+{
+    int opc = instr_get_opcode(inst);
+    if (opc == OP_fld)
+        return true;
+    if (opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
+        return opnd_is_memory_reference(instr_get_src(inst, 0));
+    }
+    return false;
+}
+
+static bool
+instr_is_store_from_nongpr(instr_t *inst)
+{
+    int opc = instr_get_opcode(inst);
+    if (opc == OP_fstp || opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
+        return opnd_is_memory_reference(instr_get_dst(inst, 0));
+    }
+    return false;
+}
+
 /* i#471/i#931 heuristic: match "fld;fstp" to avoid false pos until we have proper
  * floating point register shadowing and propagation.
- * Should only be called on an uninit memory read.
+ *
+ * i#1453: generalized to handle "load memory from address A into
+ * xmmN; store xmmN into address B".
+ *
+ * Should only be called on an uninit memory read.  The general
+ * approach is to mark B as bitlevel so we come back to the slowpath
+ * on the store, where we perform the shadow copy A->B.
  *
  * An alternative to this uninit-exception-based approach would be to recognize
  * "fld;fstp" during instrumentation, special-case the fld to check
@@ -1409,80 +1437,83 @@ check_undefined_reg_exceptions(void *drcontext, app_loc_t *loc, reg_id_t reg,
  *   dd 58 04        fstp   %st0 -> 0x04(%eax)
  */
 static bool
-check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *idx)
+check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc,
+                          uint *idx)
 {
     void *drcontext = dr_get_current_drcontext();
     cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-    app_pc pc;
+    app_pc pc, next_pc;
     opnd_t fstp_mem;
-    byte *store;
+    byte *store, *load;
     instr_t inst;
-    instr_t *inbetween = NULL;
     umbra_shadow_memory_info_t info;
 
     /* Handle subsequent calls from handle_mem_ref() (one per byte).
      * We don't short-circuit b/c we want to ensure they're all addressable.
      */
-    if (cpt->fld_fstp_source != NULL)
+    if (cpt->mem2fpmm_source != NULL)
         return true;
 
-    if (!options.fld_fstp_prop)
+    if (!options.fpxmm_mem2mem_prop)
         return false;
     if (loc->type == APP_LOC_SYSCALL)
         return false;
-    if (addr == NULL) /* equals our sentinel value in cpt->fld_fstp_source */
+    if (addr == NULL) /* equals our sentinel value in cpt->mem2fpmm_source */
         return false;
     instr_init(drcontext, &inst);
     pc = loc_to_pc(loc);
-    if (!safe_decode(drcontext, pc, &inst, &pc))
+    if (!safe_decode(drcontext, pc, &inst, &next_pc))
         return false;
-    if (instr_get_opcode(&inst) != OP_fld) {
+    if (!instr_is_load_to_nongpr(&inst)) {
         instr_free(drcontext, &inst);
         return false;
     }
-    instr_reset(drcontext, &inst);
-    if (!safe_decode(drcontext, pc, &inst, &pc))
-        return false;
-    if (instr_get_opcode(&inst) != OP_fstp) {
-        /* We do support one non-mem instr in between, as we see this pattern
-         * in Chromium Release build:
-         *   d94724          fld     dword ptr [edi+24h]
-         *   33d2            xor     edx,edx
-         *   d95e24          fstp    dword ptr [esi+24h]
-         */
-        if (instr_compute_address(&inst, mc) != NULL) {
-            /* We could check for overlap but it doesn't seem worth it */
-            instr_free(drcontext, &inst);
-            return false;
-        }
-        /* Save instr to check whether it affects fstp's address */
-        inbetween = instr_clone(drcontext, &inst);
+    load = pc;
+    /* We support instructions in between the load and store, as we see
+     * such patterns with several different compilers.
+     */
+#   define NONGPR_MEMCOPY_MAX_DISTANCE 128
+    do {
         instr_reset(drcontext, &inst);
-        if (!safe_decode(drcontext, pc, &inst, &pc)) {
-            instr_destroy(drcontext, inbetween);
-            return false;
+        pc = next_pc;
+        if (!safe_decode(drcontext, pc, &inst, &next_pc))
+            break;
+        if (instr_is_cti(&inst) || instr_is_syscall(&inst) || !instr_opcode_valid(&inst))
+            break;
+        if (instr_is_store_from_nongpr(&inst)) {
+            store = pc;
+            break;
         }
-        if (instr_get_opcode(&inst) != OP_fstp) {
-            instr_destroy(drcontext, inbetween);
-            instr_free(drcontext, &inst);
-            return false;
-        }
+    } while (next_pc < pc + NONGPR_MEMCOPY_MAX_DISTANCE);
+    if (store == NULL) {
+        instr_free(drcontext, &inst);
+        return false;
     }
     fstp_mem = instr_get_dst(&inst, 0);
     ASSERT(opnd_is_memory_reference(fstp_mem), "fstp must write to mem");
     instr_free(drcontext, &inst);
-    if (inbetween != NULL) {
+    /* Second pass to ensure we can identify the memory address of the store.
+     * We're aggressive here and we risk corner cases with aliases in order to
+     * avoid having to go to suppressions to deal with these.
+     * We'll do the wrong thing if something in between the load and store
+     * writes to memory overlapping the load address: we'll then propagate
+     * the wrong shadow value.
+     */
+    pc = load;
+    while (pc < store) {
         /* Bail if in-between instr writes to any reg used to construct fstp address */
-        int i, num = opnd_num_regs_used(fstp_mem);
-        for (i = 0; i < num; i++) {
-            if (instr_writes_to_reg(inbetween, opnd_get_reg_used(fstp_mem, i))) {
-                instr_destroy(drcontext, inbetween);
+        int i;
+        instr_reset(drcontext, &inst);
+        if (!safe_decode(drcontext, pc, &inst, &pc))
+            return false;
+        for (i = 0; i < opnd_num_regs_used(fstp_mem); i++) {
+            if (instr_writes_to_reg(&inst, opnd_get_reg_used(fstp_mem, i))) {
+                instr_free(drcontext, &inst);
                 return false;
             }
         }
-        instr_destroy(drcontext, inbetween);
-        inbetween = NULL;
     }
+    instr_free(drcontext, &inst);
     store = opnd_compute_address(fstp_mem, mc);
     if (store == NULL ||
         /* overlap is ok, but we require the same size */
@@ -1497,19 +1528,19 @@ check_float_copy(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *mc, uint *
      * undefined, as that check may be optimized out.
      */
     umbra_shadow_memory_info_init(&info);
-    cpt->fld_fstp_prev_shadow = shadow_get_byte(&info, store);
-    cpt->fld_fstp_dest = store;
+    cpt->mem2fpmm_prev_shadow = shadow_get_byte(&info, store);
+    cpt->mem2fpmm_dest = store;
     DODEBUG({
-        /* fld_fstp_pc avoids an assert in slow_path() */
-        cpt->fld_fstp_pc = loc_to_pc(loc);
+        /* mem2fpmm_pc avoids an assert in slow_path() */
+        cpt->mem2fpmm_pc = loc_to_pc(loc);
     });
     shadow_set_byte(&info, store, SHADOW_DEFINED_BITLEVEL);
-    ASSERT(cpt->fld_fstp_source == NULL, "fld_fstp_source wasn't cleared");
+    ASSERT(cpt->mem2fpmm_source == NULL, "mem2fpmm_source wasn't cleared");
     /* Point at the start addr, as we're going to propagate the whole thing
      * (we might be midway through if the first few bytes are defined and we
      * hit uninit bytes in the middle).
      */
-    cpt->fld_fstp_source = addr - *idx;
+    cpt->mem2fpmm_source = addr - *idx;
     STATS_INC(fldfst_exception);
     return true;
 }
@@ -1530,7 +1561,7 @@ check_undefined_exceptions(bool pushpop, bool write, app_loc_t *loc, app_pc addr
      * noticeable performance hit (PR 622253)
      */
     if (!match && !pushpop && !write)
-        match = check_float_copy(loc, addr, sz, mc, idx);
+        match = check_mem_copy_via_nongpr(loc, addr, sz, mc, idx);
     return match;
 }
 
@@ -2756,26 +2787,26 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             opnd = adjust_memop(&inst, opnd, true, &sz, &pushpop_stackop);
             if (pushpop_stackop)
                 flags |= MEMREF_PUSHPOP;
-            if (cpt->fld_fstp_source != NULL) {
+            if (cpt->mem2fpmm_source != NULL) {
                 /* i#471 fld;fstp heuristic: fstp's dest was marked bitlevel to
                  * get us here.  Do a special-case propagate.
                  */
                 umbra_shadow_memory_info_t info;
-                LOG(3, "propagating fld;fstp from "PFX"\n", cpt->fld_fstp_source);
+                LOG(3, "propagating fld;fstp from "PFX"\n", cpt->mem2fpmm_source);
                 /* We use a fake movs in handle_mem_ref() (can't just do
                  * shadow_copy_range() b/c we need to check base reg for
                  * definedness, check for addressability, etc.)
                  */
                 umbra_shadow_memory_info_init(&info);
-                shadow_set_byte(&info, cpt->fld_fstp_dest, cpt->fld_fstp_prev_shadow);
+                shadow_set_byte(&info, cpt->mem2fpmm_dest, cpt->mem2fpmm_prev_shadow);
 #ifdef X64
                 /* XXX: switch this hack to a proper data structure */
                 ASSERT_NOT_IMPLEMENTED();
 #else
-                shadow_vals[0] = (uint) cpt->fld_fstp_source;
+                shadow_vals[0] = (uint) cpt->mem2fpmm_source;
 #endif
                 flags |= MEMREF_MOVS | MEMREF_USE_VALUES;
-                cpt->fld_fstp_source = NULL;
+                cpt->mem2fpmm_source = NULL;
             } else if (always_defined) {
                 /* w/o MEMREF_USE_VALUES, handle_mem_ref() will use SHADOW_DEFINED */
             } else if (check_definedness) {
@@ -2869,9 +2900,9 @@ slow_path(app_pc pc, app_pc decode_pc)
 #ifdef TOOL_DR_MEMORY
     DODEBUG({
         cls_drmem_t *cpt = (cls_drmem_t *) drmgr_get_cls_field(drcontext, cls_idx_drmem);
-        /* fld_fstp_pc avoids asserting when first set on the fld */
-        ASSERT(cpt->fld_fstp_source == NULL || pc == cpt->fld_fstp_pc,
-               "fld_fstp_source wasn't cleared");
+        /* mem2fpmm_pc avoids asserting when first set on the fld */
+        ASSERT(cpt->mem2fpmm_source == NULL || pc == cpt->mem2fpmm_pc,
+               "mem2fpmm_source wasn't cleared");
     });
 #endif
     return res;

@@ -52,12 +52,12 @@ typedef struct _cls_drmem_t {
     /* for jmp-to-slowpath optimization where we xl8 to get app pc (PR 494769) */
     bool self_translating;
 
-    /* for i#471 fld;fstp heuristic */
-    app_pc fld_fstp_source;
-    app_pc fld_fstp_dest;
-    size_t fld_fstp_prev_shadow;
+    /* for i#471 and i#1453: mem2mem via fp or mm reg heuristic */
+    app_pc mem2fpmm_source;
+    app_pc mem2fpmm_dest;
+    size_t mem2fpmm_prev_shadow;
 #ifdef DEBUG
-    app_pc fld_fstp_pc;
+    app_pc mem2fpmm_pc;
 #endif
 } cls_drmem_t;
 

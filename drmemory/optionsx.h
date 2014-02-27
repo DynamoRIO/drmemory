@@ -686,9 +686,9 @@ OPTION_CLIENT_BOOL(internal, verify_sysnums, false,
 OPTION_CLIENT_BOOL(internal, leave_uninit, false,
                    "Do not mark an uninitialized value as defined once reported",
                    "Do not mark an uninitialized value as defined once reported.  This may result in many reports for the same error.")
-OPTION_CLIENT_BOOL(internal, fld_fstp_prop, true,
-                   "Use heuristic to propagate on fld;fstp sequences",
-                   "Currently, Dr. Memory does not propagate shadow values through floating-point registers.  To avoid false positives on memory copies that use fld;fstp sequences, this option enables a heuristic that propagage just on such sequences.")
+OPTION_CLIENT_BOOL(internal, fpxmm_mem2mem_prop, true,
+                   "Use heuristic to propagate copies through float or xmm regs",
+                   "Currently, Dr. Memory does not propagate shadow values through floating-point or multimedia registers.  To avoid false positives on memory copies that use fld;fstp sequences or moves through xmm registers, this option enables a heuristic that propagage just on such sequences.")
 OPTION_CLIENT_BOOL(internal, leak_scan, true,
                    "Perform leak scan",
                    "Whether to perform the leak scan.  For performance measurement purposes only.")
