@@ -1096,7 +1096,10 @@ check_retaddr_targets_frame(app_pc frame_addr, app_pc next_retaddr)
     if (TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags) &&
         !TESTANY(FP_VERIFY_CALL_TARGET | FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags))
         return true; /* no checks were requested */
-    if (!module_lookup(frame_addr, &frame_mod_start, NULL, &frame_name))
+    if (!module_lookup(frame_addr, &frame_mod_start, NULL, &frame_name) ||
+        /* do not check anything targeting a replaced routine */
+        (frame_addr >= libdr_base && frame_addr < libdr_end) ||
+        (frame_addr >= libtoolbase && frame_addr < libtoolend))
         return true; /* no info */
     if (TEST(FP_VERIFY_CROSS_MODULE_TARGET, ops.fp_flags) ||
         !TEST(FP_DO_NOT_VERIFY_CROSS_MOD_IND, ops.fp_flags)) {
@@ -1539,8 +1542,11 @@ print_callstack(char *buf, size_t bufsz, size_t *sofar, dr_mcontext_t *mc,
             }
         }
 #endif
-        /* XXX: take in top frame (cur func) for prior_ra to find_next_fp? */
-        pc = (ptr_uint_t *) find_next_fp(drcontext, pt, tos, NULL, true/*top frame*/,
+        pc = (ptr_uint_t *) find_next_fp(drcontext, pt, tos,
+                                         /* Pass in the top frame for prior_ra */
+                                         (pcs != NULL && num_frames_printed == 1) ?
+                                         PCS_FRAME_LOC(pcs, 0).addr : NULL,
+                                         true/*top frame*/,
                                          &custom_retaddr);
         scanned = true;
     }
