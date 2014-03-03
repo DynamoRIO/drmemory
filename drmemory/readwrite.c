@@ -1413,10 +1413,9 @@ instr_is_load_to_nongpr(instr_t *inst)
     int opc = instr_get_opcode(inst);
     if (opc == OP_fld)
         return true;
-    if (opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
-        return opnd_is_memory_reference(instr_get_src(inst, 0)) &&
-            opnd_is_reg(instr_get_dst(inst, 0));
-    }
+    /* With the initial i#243 implementation we no longer need to look for
+     * movq/movdqu/movdqa here.
+     */
     return false;
 }
 
@@ -1424,7 +1423,10 @@ static bool
 instr_is_store_from_nongpr(instr_t *inst)
 {
     int opc = instr_get_opcode(inst);
-    if (opc == OP_fstp || opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
+    /* With the initial i#243 implementation we no longer need to look for
+     * movq/movdqu/movdqa here.
+     */
+    if (opc == OP_fstp) {
         return opnd_is_memory_reference(instr_get_dst(inst, 0)) &&
             opnd_is_reg(instr_get_src(inst, 0));
     }
