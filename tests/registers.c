@@ -528,7 +528,7 @@ copy_through_xmm_test(void)
 }
 
 int
-main()
+main(int argc, char *argv[])
 {
 #ifdef UNIX
     /* test PR 408519 */
@@ -838,6 +838,13 @@ GLOBAL_LABEL(FUNCNAME:)
         mov      REG_XBP, REG_XSP
         push     REG_XCX /* dst */
         END_PROLOG
+
+        movdqu   xmm4, [REG_XAX] /* src */
+        xorps    xmm4, xmm4
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movdqu   [REG_XCX], xmm4 /* dst */
+        mov      edx, [REG_XCX + 4] /* uninit, but zeroed by xor */
+        test     edx, edx /* should be no error */
 
         movdqu   xmm0, [REG_XAX] /* src */
         pxor     xmm1, xmm2

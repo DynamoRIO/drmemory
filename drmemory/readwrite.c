@@ -1023,7 +1023,11 @@ reg_is_shadowed(int opc, reg_id_t reg)
             /* XXX i#1453: full propagation is not yet in place so we only
              * shadow for same-size moves in and out
              */
-            ((opc == OP_movdqu || opc == OP_movdqa) &&
+            ((opc == OP_movdqu || opc == OP_movdqa ||
+              /* We also have to instrument clearing of xmm regs, used to zero
+               * data structures.
+               */
+              opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
              reg_is_xmm(reg) && !reg_is_ymm(reg)));
 }
 
@@ -1234,7 +1238,7 @@ result_is_always_defined(instr_t *inst)
         (opc == OP_or &&
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          opnd_get_immed_int(instr_get_src(inst, 0)) == ~0) ||
-        (opc == OP_xor &&
+        ((opc == OP_xor || opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
          opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))) {
         STATS_INC(andor_exception);
         return true;
