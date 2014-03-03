@@ -318,8 +318,19 @@ options_init(const char *opstr)
     if (options.leaks_only || options.perturb_only) {
         option_disable_memory_checks();
 #ifdef WINDOWS
-        if (!option_specified.check_gdi)
+        /* i#1457-c#3: -perturb_only skips callstack ops init, so we must disable
+         * check_gdi and check_handle_leaks
+         */
+        if (option_specified.check_gdi) {
+            if (options.perturb_only && options.check_gdi)
+                usage_error("-perturb_only cannot be used with -check_gdi", "");
+        } else
             options.check_gdi = false;
+        if (option_specified.check_handle_leaks) {
+            if (options.check_handle_leaks && options.perturb_only)
+                usage_error("-perturb_only cannot be used with -check_handle_leaks", "");
+        } else
+            options.check_handle_leaks = false;
 #endif /* WINDOWS */
     }
 #ifdef WINDOWS
