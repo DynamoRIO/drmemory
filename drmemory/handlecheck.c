@@ -55,6 +55,10 @@ static handle_callstack_info_t other_proc_hci;
 #define HANDLE_VERBOSE_2 2
 #define HANDLE_VERBOSE_3 3
 
+/* We use one lock (handle_stack_table lock) for synchronizing all table operations
+ * and payload access.
+ */
+
 /* Hashtable for handle open/close callstack */
 #define HSTACK_TABLE_HASH_BITS 8
 static hashtable_t handle_stack_table;
@@ -62,9 +66,7 @@ static hashtable_t handle_stack_table;
 uint handle_stack_count;
 #endif
 
-/* Hashtable for handle open/close pair, synchronized by
- * explicit hashtable lock.
- */
+/* Hashtable for handle open/close pair */
 #define OPEN_CLOSE_TABLE_BITS 8
 static hashtable_t open_close_table;
 #ifdef STATISTICS
@@ -75,7 +77,6 @@ uint open_close_count;
  * there are multiple handle namespaces: kernel object, gdi object, user object,
  * and they are disjoint, so we have different hashtables for each type.
  */
-/* we use handle_stack_table lock for synchronizing all table operations */
 #define HANDLE_TABLE_HASH_BITS 6
 static hashtable_t kernel_handle_table;
 static hashtable_t gdi_handle_table;
@@ -297,13 +298,25 @@ open_close_pair_free(void *p)
 {
     open_close_pair_t *pair = (open_close_pair_t *)p;
 
+    /* open_close_pair_free should only be called at exit,
+     * so we do not check if we hold lock here
+     */
     DODEBUG({ open_close_pair_print(pair); });
     packed_callstack_free(pair->open.pcs);
     packed_callstack_free(pair->close.pcs);
     global_free(pair, sizeof(*pair), HEAPSTAT_CALLSTACK);
 }
 
-/* Add open/close pair into table, assuming lock is held.
+#ifdef DEBUG
+static bool
+handle_table_lock_self_owns(void)
+{
+    return hashtable_lock_self_owns(&handle_stack_table);
+}
+#endif /* DEBUG */
+
+/* Add open/close pair into table.
+ * The caller must hold the handle table lock.
  * Called from handlecheck_delete_handle_post_syscall if the handle
  * is closed successfully.
  */
@@ -317,24 +330,29 @@ open_close_pair_add(handle_callstack_info_t *hci/* callstack of creation */,
 
     if (!options.filter_handle_leaks)
         return;
+
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     pair = (open_close_pair_t *)hashtable_lookup(&open_close_table, hci->pcs);
     /* we only store one close pcs if there are multiple */
     if (pair != NULL)
         return;
 
     pair = global_alloc(sizeof(*pair), HEAPSTAT_CALLSTACK);
-    /* not clone but point to the same pcs */
+    /* pair->open is copied instead of cloned from hci,
+     * so we need call packed_callstack_add_ref
+     */
     pair->open = *hci;
     packed_callstack_add_ref(hci->pcs);
-    IF_DEBUG(res =)
-        hashtable_add(&open_close_table, (void *)hci->pcs, (void *)pair);
-    ASSERT(res, "failed to add to open_close_table");
-    ASSERT(packed_callstack_cmp(pair->open.pcs, hci->pcs), "pcs should be the same");
+    /* create pair->close.pcs and add it into handle_stack_table */
     syscall_to_loc(&pair->close.loc, sysnum, NULL);
     packed_callstack_record(&pair->close.pcs, mc, &pair->close.loc);
     pair->close.pcs = packed_callstack_add_to_table(&handle_stack_table,
                                                     pair->close.pcs
                                                     _IF_STATS(&handle_stack_count));
+    /* add to open_close_table */
+    IF_DEBUG(res =)
+        hashtable_add(&open_close_table, (void *)hci->pcs, (void *)pair);
+    ASSERT(res, "failed to add to open_close_table");
 }
 
 static void
@@ -350,14 +368,6 @@ handle_table_unlock(void)
     /* we use handle_stack_table lock for synchronizing all table operations */
     hashtable_unlock(&handle_stack_table);
 }
-
-#ifdef DEBUG
-static bool
-handle_table_lock_self_owns(void)
-{
-    return hashtable_lock_self_owns(&handle_stack_table);
-}
-#endif /* DEBUG */
 
 void
 handle_callstack_free(void *p)
@@ -375,12 +385,12 @@ handle_callstack_info_clone(handle_callstack_info_t *src)
     return dst;
 }
 
-/* the caller must hold the lock */
+/* the caller must hold the handle table lock */
 static handle_callstack_info_t *
 handle_callstack_info_alloc(drsys_sysnum_t sysnum, app_pc pc, dr_mcontext_t *mc)
 {
     handle_callstack_info_t *hci;
-    ASSERT(handle_table_lock_self_owns(), "caller must hold handle table lock");
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     hci = global_alloc(sizeof(*hci), HEAPSTAT_CALLSTACK);
     /* assuming pc will never be NULL */
     if (pc == NULL)
@@ -402,13 +412,14 @@ handle_callstack_info_free(handle_callstack_info_t *hci)
     global_free(hci, sizeof(*hci), HEAPSTAT_CALLSTACK);
 }
 
-/* the caller must hold hashtable lock */
-static bool
+/* the caller must hold the handle table lock */
+static void
 handlecheck_handle_add(hashtable_t *table, HANDLE handle,
                        handle_callstack_info_t *hci)
 {
     void *res;
 
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     STATS_INC(num_handle_add);
     /* We replace the old callstack with new callstack if we see
      * duplicated handle in the table, b/c we might have missed a
@@ -428,22 +439,26 @@ handlecheck_handle_add(hashtable_t *table, HANDLE handle,
             packed_callstack_log(hci->pcs, INVALID_FILE);
         });
         handle_callstack_info_free(res);
-        return false;
+        LOG(HANDLE_VERBOSE_1,
+            "WARNING: conflict on adding handle "PFX" back\n", handle);
     }
-    return true;
 }
 
-/* the caller must hold hashtable lock */
+/* the caller must hold the handle table lock */
 static bool
 handlecheck_handle_remove(hashtable_t *table, HANDLE handle,
                           handle_callstack_info_t **hci OUT)
 {
     bool res;
 
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     STATS_INC(num_handle_remove);
     if (hci != NULL) {
         handle_callstack_info_t *info;
         info = hashtable_lookup(table, (void *)handle);
+        /* hashtable_remove calls handle_callstack_info_free to free info,
+         * so we make a copy here and return it to the caller
+         */
         if (info != NULL)
             *hci = handle_callstack_info_clone(info);
         else
@@ -488,6 +503,7 @@ handlecheck_report_leak_on_syscall(dr_mcontext_t *mc, drsys_arg_t *arg,
                        NULL /* aux_pcs */, false /* potential */);
 }
 
+/* the caller must hold the handle table lock */
 static void
 handlecheck_check_open_handle(const char *name,
                               HANDLE handle,
@@ -498,6 +514,7 @@ handlecheck_check_open_handle(const char *name,
     uint count;
     char msg[HANDLECHECK_PRE_MSG_SIZE];
 
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     ASSERT(hci != NULL, "handle callstack info must not be NULL");
     count = packed_callstack_refcount(hci->pcs) - 1 /* hashtable refcount */;
     /* i#1373: use heuristics for better handle leak reports */
@@ -535,12 +552,13 @@ handlecheck_check_open_handle(const char *name,
                        potential);
 }
 
-/* caller must hold handle table lock and open/close table lock */
+/* caller must hold the handle table lock */
 static void
 handlecheck_iterate_handle_table(hashtable_t *table, const char *name)
 {
     uint i;
     hash_entry_t *entry;
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     for (i = 0; i < HASHTABLE_SIZE(table->table_bits); i++) {
         for (entry = table->table[i]; entry != NULL; entry = entry->next) {
             handlecheck_check_open_handle(name,
@@ -550,13 +568,15 @@ handlecheck_iterate_handle_table(hashtable_t *table, const char *name)
     }
 }
 
-/* caller must hold handle table lock and open/close table lock */
+/* caller must hold the handle table lock */
 static bool
 handlecheck_enumerate_handles(void)
 {
     SYSTEM_HANDLE_INFORMATION *list;
     SYSTEM_HANDLE_ENTRY *entry;
     uint i;
+
+    ASSERT(handle_table_lock_self_owns(), "caller must hold the handle table lock");
     /* i#1380: there could be handles closed by other process, i.e., some
      * handle in the table might be closed already, so we have to query the
      * existing handle list from system.
@@ -595,7 +615,6 @@ handlecheck_iterate_handles(void)
     void *drcontext = dr_get_current_drcontext();
 
     handle_table_lock();
-    hashtable_lock(&open_close_table);
 
     /* kernel handles */
     LOG(HANDLE_VERBOSE_3, "enumerating kernel handles");
@@ -613,7 +632,6 @@ handlecheck_iterate_handles(void)
     LOG(HANDLE_VERBOSE_3, "iterating gdi handles");
     handlecheck_iterate_handle_table(&gdi_handle_table, "GDI");
 
-    hashtable_unlock(&open_close_table);
     handle_table_unlock();
 }
 
@@ -705,8 +723,7 @@ handlecheck_create_handle(void *drcontext,
     handle_table_lock();
     hci = handle_callstack_info_alloc(sysnum, pc, mc);
     DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
-    if (!handlecheck_handle_add(table, handle, hci))
-        LOG(HANDLE_VERBOSE_1, "WARNING: fail to add handle "PFX"\n", handle);
+    handlecheck_handle_add(table, handle, hci);
     handle_table_unlock();
 }
 
@@ -766,30 +783,24 @@ handlecheck_delete_handle_post_syscall(void *drcontext, HANDLE handle,
         return;
     }
 
+    handle_table_lock();
     if (success) {
         /* add the pair info */
-        if (options.filter_handle_leaks) {
-            hashtable_lock(&open_close_table);
+        if (options.filter_handle_leaks)
             open_close_pair_add(hci, sysnum, mc);
-            hashtable_unlock(&open_close_table);
-        }
         /* closed handle successfully, free the handle info now */
         handle_callstack_info_free(hci);
     } else {
-        /* failed to delete handle, add handle back */
+        /* failed to close handle, add handle back */
         ASSERT(handle != INVALID_HANDLE_VALUE, "add back invalid handle value");
         table = handlecheck_get_handle_table(type
                                              _IF_DEBUG((void *)handle)
                                              _IF_DEBUG("added back"));
         ASSERT(table != NULL, "fail to get handle table");
         DOLOG(HANDLE_VERBOSE_3, { packed_callstack_log(hci->pcs, INVALID_FILE); });
-        handle_table_lock();
-        if (!handlecheck_handle_add(table, handle, hci)) {
-            LOG(HANDLE_VERBOSE_1,
-                "WARNING: failed to add handle "PFX" back\n", handle);
-        }
-        handle_table_unlock();
+        handlecheck_handle_add(table, handle, hci);
     }
+    handle_table_unlock();
 }
 
 #ifdef STATISTICS
