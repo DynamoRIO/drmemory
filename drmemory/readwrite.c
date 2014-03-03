@@ -1396,7 +1396,8 @@ instr_is_load_to_nongpr(instr_t *inst)
     if (opc == OP_fld)
         return true;
     if (opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
-        return opnd_is_memory_reference(instr_get_src(inst, 0));
+        return opnd_is_memory_reference(instr_get_src(inst, 0)) &&
+            opnd_is_reg(instr_get_dst(inst, 0));
     }
     return false;
 }
@@ -1406,7 +1407,8 @@ instr_is_store_from_nongpr(instr_t *inst)
 {
     int opc = instr_get_opcode(inst);
     if (opc == OP_fstp || opc == OP_movq || opc == OP_movdqu || opc == OP_movdqa) {
-        return opnd_is_memory_reference(instr_get_dst(inst, 0));
+        return opnd_is_memory_reference(instr_get_dst(inst, 0)) &&
+            opnd_is_reg(instr_get_src(inst, 0));
     }
     return false;
 }
@@ -1439,6 +1441,7 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
     opnd_t fstp_mem;
     byte *store_addr = NULL;
     app_pc load_pc, store_pc = NULL;
+    reg_id_t xfer_reg = DR_REG_NULL;
     instr_t inst;
     umbra_shadow_memory_info_t info;
     int num_regs;
@@ -1467,6 +1470,7 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
         return false;
     }
     load_pc = pc;
+    xfer_reg = opnd_get_reg(instr_get_dst(&inst, 0));
     /* We support instructions in between the load and store, as we see
      * such patterns with several different compilers.
      */
@@ -1485,7 +1489,12 @@ check_mem_copy_via_nongpr(app_loc_t *loc, app_pc addr, uint sz, dr_mcontext_t *m
             break;
         if (instr_is_cti(&inst) || instr_is_syscall(&inst) || !instr_opcode_valid(&inst))
             break;
-        if (instr_is_store_from_nongpr(&inst)) {
+        /* XXX: we could check for overlap with the src to ensure it doesn't
+         * change, but it gets complex with our allowance of changes to the
+         * base reg of the store.  We live w/ the risk for now.
+         */
+        if (instr_is_store_from_nongpr(&inst) &&
+            opnd_get_reg(instr_get_src(&inst, 0)) == xfer_reg) {
             store_pc = pc;
             break;
         }
