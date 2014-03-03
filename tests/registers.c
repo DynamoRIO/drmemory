@@ -842,9 +842,17 @@ GLOBAL_LABEL(FUNCNAME:)
         movdqu   xmm4, [REG_XAX] /* src */
         xorps    xmm4, xmm4
         mov      REG_XCX, [REG_XBP - ARG_SZ]
-        movdqu   [REG_XCX], xmm4 /* dst */
+        movdqu   [REG_XCX], xmm4 /* dst: just convenient mem loc */
         mov      edx, [REG_XCX + 4] /* uninit, but zeroed by xor */
         test     edx, edx /* should be no error */
+
+        movq     xmm5, MMWORD [REG_XAX] /* src */
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movdqu   [REG_XCX], xmm5 /* dst: just convenient mem loc */
+        mov      edx, [REG_XCX + 12] /* uninit, but top half zeroed by movq */
+        test     edx, edx /* should be no error */
+        movq     MMWORD [REG_XCX], xmm5 /* make sure movq to mem works */
+        movd     DWORD [REG_XCX], xmm5 /* make sure movd to mem works */
 
         movdqu   xmm0, [REG_XAX] /* src */
         pxor     xmm1, xmm2

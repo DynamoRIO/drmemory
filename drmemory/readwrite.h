@@ -356,6 +356,9 @@ bool
 reg_is_shadowed(int opcode, reg_id_t reg);
 
 bool
+opc_should_propagate_xmm(int opc);
+
+bool
 result_is_always_defined(instr_t *inst);
 
 bool

@@ -307,17 +307,19 @@ addr_reg_ok_for_fastpath(reg_id_t reg)
 }
 
 static bool
-reg_ignore_for_fastpath(int opc, opnd_t reg)
+reg_ignore_for_fastpath(int opc, opnd_t reg, bool dst)
 {
     reg_id_t r = opnd_get_reg(reg);
-    return (!reg_is_shadowed(opc, r));
+    return (!reg_is_shadowed(opc, r) ||
+            /* Ignore xmm sources when not propagating xmm values */
+            (reg_is_xmm(r) && !dst && !opc_should_propagate_xmm(opc)));
 }
 
 static bool
-reg_ok_for_fastpath(int opc, opnd_t reg)
+reg_ok_for_fastpath(int opc, opnd_t reg, bool dst)
 {
     reg_id_t r = opnd_get_reg(reg);
-    return (reg_ignore_for_fastpath(opc, reg) ||
+    return (reg_ignore_for_fastpath(opc, reg, dst) ||
             (reg_is_32bit(r) || reg_is_16bit(r) || reg_is_8bit(r) ||
              /* i#1453: we shadow xmm regs now
               * XXX i#243: but not ymm regs
@@ -381,9 +383,9 @@ opnd_ok_for_fastpath(int opc, opnd_t op, int opnum, bool dst, fastpath_info_t *m
     if (opnd_is_immed_int(op) || opnd_is_pc(op) || opnd_is_instr(op)) {
         return true;
     } else if (opnd_is_reg(op)) {
-        if (!reg_ok_for_fastpath(opc, op))
+        if (!reg_ok_for_fastpath(opc, op, dst))
             return false;
-        if (!reg_ignore_for_fastpath(opc, op)) {
+        if (!reg_ignore_for_fastpath(opc, op, dst)) {
             int num = append_fastpath_opnd(op, dst ? mi->dst : mi->src,
                                            dst ? MAX_FASTPATH_DSTS : MAX_FASTPATH_SRCS);
             if (num == -1)
@@ -456,10 +458,10 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             mi->store = true;
             mi->pushpop = true;
             if (opnd_is_reg(mi->src[0].app)) {
-                if (reg_ignore_for_fastpath(opc, mi->src[0].app)) {
+                if (reg_ignore_for_fastpath(opc, mi->src[0].app, false/*!dst*/)) {
                     mi->src[0].app = opnd_create_null();
                     return true;
-                } else if (reg_ok_for_fastpath(opc, mi->src[0].app)) {
+                } else if (reg_ok_for_fastpath(opc, mi->src[0].app, false/*!dst*/)) {
                     mi->opnum[0] = 0;
                     return true;
                 } else
@@ -488,11 +490,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         mi->dst[0].app = instr_get_dst(inst, 0);
         if (opnd_is_reg(mi->dst[0].app)) {
-            if (reg_ok_for_fastpath(opc, mi->dst[0].app)) {
+            if (reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/)) {
                 mi->src[0].app = instr_get_src(inst, 1);
                 if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*/))
                     return false;
-                if (!reg_ignore_for_fastpath(opc, mi->dst[0].app))
+                if (!reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/))
                     mi->dst[0].app = mi->dst[0].app;
                 mi->load = true;
                 mi->pushpop = true;
@@ -526,13 +528,13 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*/))
             return false;
         mi->dst[0].app = instr_get_dst(inst, 1); /* ebp */
-        if (!reg_ok_for_fastpath(opc, mi->dst[0].app))
+        if (!reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/))
             return false;
         /* for the other dst, ebp->esp, we rely on check_definedness of the src (ebp)
          * and of the dst (esp) (for dst the check is via add_addressing_register_checks()
          */
         mi->src[1].app = instr_get_src(inst, 0); /* ebp */
-        if (!reg_ok_for_fastpath(opc, mi->src[1].app))
+        if (!reg_ok_for_fastpath(opc, mi->src[1].app, true/*dst*/))
             return false;
         mi->load = true;
         mi->pushpop = true;
@@ -572,8 +574,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
         mi->dst[0].app = instr_get_dst(inst, 0);
-        ASSERT(reg_ok_for_fastpath(opc, mi->dst[0].app) &&
-               !reg_ignore_for_fastpath(opc, mi->dst[0].app), "lea handling error");
+        ASSERT(reg_ok_for_fastpath(opc, mi->dst[0].app, true/*dst*/) &&
+               !reg_ignore_for_fastpath(opc, mi->dst[0].app, true/*dst*/),
+               "lea handling error");
         return true;
     } else if (opc == OP_cmpxchg) {
         /* We keep in fastpath by treating as a 3-source 0-dest instr
@@ -766,7 +769,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         if (TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) {
             /* match dst size, shadow slot holds whole dword's worth */
             if (mi->opsz > 0) {
-                ASSERT(mi->opsz <= 4 || mi->check_definedness, "no prop eflags to > 4");
+                ASSERT(mi->opsz <= 4 || mi->check_definedness ||
+                       result_is_always_defined(inst), "no prop eflags to > 4");
                 mi->src_opsz = mi->opsz; /* eflags */
             } else
                 mi->src_opsz = 1; /* eflags */
@@ -777,7 +781,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
     if (mi->opsz == 0 && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst))) {
         /* match src size, shadow slot holds whole dword's worth */
         if (mi->src_opsz > 0) {
-            ASSERT(mi->src_opsz <= 4 || mi->check_definedness, "no prop eflags to > 4");
+            ASSERT(mi->src_opsz <= 4 || mi->check_definedness ||
+                   result_is_always_defined(inst), "no prop eflags to > 4");
             mi->opsz = mi->src_opsz; /* eflags */
         } else
             mi->opsz = 1; /* eflags */
@@ -1236,6 +1241,13 @@ should_share_addr_helper(fastpath_info_t *mi)
     if (!mi->load && !mi->store)
         return false;
     if (mi->mem2mem || mi->load2x || mi->need_offs)
+        return false;
+    /* XXX i#243: we rule out sharing here b/c it's too hard to figure out whether
+     * we can use reg3 down below -- probably we can?  it's hard to ensure.
+     * once we get drreg we should be able to share these and avoid reg
+     * conflicts.
+     */
+    if (mi->opsz >= 16 || mi->src_opsz >= 16)
         return false;
     return true;
 }
@@ -2762,6 +2774,21 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      * as the latter will skip to the end of the fastpath.
      */
     app_pc xl8 = instr_get_app_pc(inst);
+    if (src_opsz > dst_opsz) {
+        /* XXX i#243: what we really want is DRi#1382 to avoid hitting this
+         * at all.  This happens due to sub-register xmm operations.
+         * OP_movq doesn't come here as it ends up as check_definedness
+         * due to the 8-byte memory ref on a store, so we're here for OP_movd
+         * or OP_pextrw or things like that.
+         */
+        ASSERT(opnd_is_reg(src.shadow) && src_opsz == 16 &&
+               (dst_opsz == 8 || dst_opsz == 4), "invalid srcsz <= dstsz case");
+        if (dst_opsz == 8)
+            src.shadow = opnd_create_reg(reg_ptrsz_to_16(opnd_get_reg(src.shadow)));
+        else if (dst_opsz == 4)
+            src.shadow = opnd_create_reg(reg_ptrsz_to_8(opnd_get_reg(src.shadow)));
+        src_opsz = dst_opsz;
+    }
     ASSERT(src_opsz <= dst_opsz, "invalid opsz");
     ASSERT(dst_opsz <= 4 || dst_opsz == 8 || dst_opsz == 10 || dst_opsz == 16,
            "invalid opsz");
@@ -4892,6 +4919,13 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         mi->num_to_propagate > 0) {
         /* we're going to use the whole register */
         ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
+        /* XXX i#243: once we have drreg we should be able to do a better job here
+         * and can use reg3 instead of scratch8 and thus keep sharing on
+         * (currently disabled in should_share_addr_helper()).
+         * How can we guarantee add_dstx2_shadow_write won't use scratch?
+         * Then we can use reg3, which we went to pains to get.
+         */
+        ASSERT(!mi->use_shared, "we're clobbering reg1 potentially");
         if (mi->src_opsz == 16) /* xmm */
             src_val_reg = reg_to_pointer_sized(scratch8);
         else {

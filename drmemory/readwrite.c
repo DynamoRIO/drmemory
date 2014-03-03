@@ -1015,20 +1015,37 @@ opc_2nd_dst_is_extension(uint opc)
 }
 
 bool
+opc_should_propagate_xmm(int opc)
+{
+    return (/* XXX i#1453: full propagation is not yet in place so we only
+             * shadow for same-size moves in and out
+             */
+            opc == OP_movdqu || opc == OP_movdqa ||
+            opc == OP_movss || opc == OP_movsd ||
+            /* We also have to handle sub-16-byte moves for VS2013 */
+            opc == OP_movd || opc == OP_movq ||
+            /* We also have to instrument clearing of xmm regs, used to zero
+             * data structures.  Note that with the current mark-definedness of
+             * everything else xmm related (see result_is_always_defined()) we
+             * don't need this here now, but we will want it long-term.
+             */
+            opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd);
+}
+
+bool
 reg_is_shadowed(int opc, reg_id_t reg)
 {
     /* i#471: we don't yet shadow floating-point regs */
     /* i#243: we don't yet shadow ymm regs */
     return (reg_is_gpr(reg) ||
             /* XXX i#1453: full propagation is not yet in place so we only
-             * shadow for same-size moves in and out
+             * shadow for same-size moves in and out.  However, we have
+             * to mark everything else as defined, so we have to return
+             * true here for all opcodes.  We could remove the opc param, then,
+             * which was plumbed through several fastpath routines that call
+             * into here.
              */
-            ((opc == OP_movdqu || opc == OP_movdqa ||
-              /* We also have to instrument clearing of xmm regs, used to zero
-               * data structures.
-               */
-              opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
-             reg_is_xmm(reg) && !reg_is_ymm(reg)));
+            (reg_is_xmm(reg) && !reg_is_ymm(reg)));
 }
 
 static bool
@@ -1239,7 +1256,17 @@ result_is_always_defined(instr_t *inst)
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          opnd_get_immed_int(instr_get_src(inst, 0)) == ~0) ||
         ((opc == OP_xor || opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd) &&
-         opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1)))) {
+         opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1))) ||
+        /* i#243: until we have full operation mirroring we have to proactively
+         * mark as defined operations that have xmm regs as both sources and
+         * dests, to avoid false positives from our partial xmm propagation.  We
+         * should gradually add to opc_should_propagate_xmm and once we can
+         * propagate on everything we can remove this check here.
+         */
+        (instr_num_dsts(inst) > 0 &&
+         opnd_is_reg(instr_get_dst(inst, 0)) &&
+         reg_is_xmm(opnd_get_reg(instr_get_dst(inst, 0))) &&
+         !opc_should_propagate_xmm(instr_get_opcode(inst)))) {
         STATS_INC(andor_exception);
         return true;
     }
