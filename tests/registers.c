@@ -506,12 +506,14 @@ data16_div_test(void)
 /* i#1453: memory copy through xmm regs */
 void copy_through_xmm_asm(char *dst, char *src);
 void copy_through_xmm_asm_ebp(char *dst, char *src);
+void xmm_operations(char *dst, char *src);
 
 void
 copy_through_xmm_test(void)
 {
     char dst1[16];
     char dst2[16];
+    char dst3[16];
     char uninit[16];
     uninit[0] = 'x';
     copy_through_xmm_asm(dst1, uninit);
@@ -519,6 +521,9 @@ copy_through_xmm_test(void)
         printf("copy failed\n");
     copy_through_xmm_asm_ebp(dst2, uninit);
     if (dst2[0] != 'x')
+        printf("copy failed\n");
+    xmm_operations(dst3, uninit);
+    if (dst3[0] != 'x')
         printf("copy failed\n");
 }
 
@@ -815,6 +820,31 @@ GLOBAL_LABEL(FUNCNAME:)
         movdqu   xmm0, [REG_XAX] /* src */
         mov      REG_XCX, [REG_XBP - ARG_SZ]
         movdqu   [REG_XCX], xmm0 /* dst */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME xmm_operations
+/* void xmm_operations(char *dst, char *src); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        push     REG_XCX /* dst */
+        END_PROLOG
+
+        movdqu   xmm0, [REG_XAX] /* src */
+        pxor     xmm1, xmm2
+        punpcklbw xmm1, xmm2
+        movdqa   xmm1, xmm0
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movdqu   [REG_XCX], xmm1 /* dst */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP

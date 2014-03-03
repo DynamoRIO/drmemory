@@ -256,6 +256,7 @@ initialize_opnd_info(opnd_info_t *info)
     info->app = opnd_create_null();
     info->shadow = opnd_create_null();
     info->offs = opnd_create_null();
+    info->indir_size = OPSZ_NA;
 }
 
 void
@@ -306,18 +307,22 @@ addr_reg_ok_for_fastpath(reg_id_t reg)
 }
 
 static bool
-reg_ignore_for_fastpath(opnd_t reg)
+reg_ignore_for_fastpath(int opc, opnd_t reg)
 {
     reg_id_t r = opnd_get_reg(reg);
-    return (!reg_is_gpr(r) /* always defined if non-gpr */);
+    return (!reg_is_shadowed(opc, r));
 }
 
 static bool
-reg_ok_for_fastpath(opnd_t reg)
+reg_ok_for_fastpath(int opc, opnd_t reg)
 {
     reg_id_t r = opnd_get_reg(reg);
-    return (reg_ignore_for_fastpath(reg) ||
-            (reg_is_32bit(r) || reg_is_16bit(r) || reg_is_8bit(r)));
+    return (reg_ignore_for_fastpath(opc, reg) ||
+            (reg_is_32bit(r) || reg_is_16bit(r) || reg_is_8bit(r) ||
+             /* i#1453: we shadow xmm regs now
+              * XXX i#243: but not ymm regs
+              */
+             (reg_is_xmm(r) && !reg_is_ymm(r))));
 }
 
 /* Up to caller to check rest of reqts for 8+-byte */
@@ -371,14 +376,14 @@ is_alu(fastpath_info_t *mi)
 
 /* Allows 8-byte opnds: up to caller to check other reqts */
 static bool
-opnd_ok_for_fastpath(opnd_t op, int opnum, bool dst, fastpath_info_t *mi)
+opnd_ok_for_fastpath(int opc, opnd_t op, int opnum, bool dst, fastpath_info_t *mi)
 {
     if (opnd_is_immed_int(op) || opnd_is_pc(op) || opnd_is_instr(op)) {
         return true;
     } else if (opnd_is_reg(op)) {
-        if (!reg_ok_for_fastpath(op))
+        if (!reg_ok_for_fastpath(opc, op))
             return false;
-        if (!reg_ignore_for_fastpath(op)) {
+        if (!reg_ignore_for_fastpath(opc, op)) {
             int num = append_fastpath_opnd(op, dst ? mi->dst : mi->src,
                                            dst ? MAX_FASTPATH_DSTS : MAX_FASTPATH_SRCS);
             if (num == -1)
@@ -451,10 +456,10 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             mi->store = true;
             mi->pushpop = true;
             if (opnd_is_reg(mi->src[0].app)) {
-                if (reg_ignore_for_fastpath(mi->src[0].app)) {
+                if (reg_ignore_for_fastpath(opc, mi->src[0].app)) {
                     mi->src[0].app = opnd_create_null();
                     return true;
-                } else if (reg_ok_for_fastpath(mi->src[0].app)) {
+                } else if (reg_ok_for_fastpath(opc, mi->src[0].app)) {
                     mi->opnum[0] = 0;
                     return true;
                 } else
@@ -483,11 +488,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             return false;
         mi->dst[0].app = instr_get_dst(inst, 0);
         if (opnd_is_reg(mi->dst[0].app)) {
-            if (reg_ok_for_fastpath(mi->dst[0].app)) {
+            if (reg_ok_for_fastpath(opc, mi->dst[0].app)) {
                 mi->src[0].app = instr_get_src(inst, 1);
                 if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*/))
                     return false;
-                if (!reg_ignore_for_fastpath(mi->dst[0].app))
+                if (!reg_ignore_for_fastpath(opc, mi->dst[0].app))
                     mi->dst[0].app = mi->dst[0].app;
                 mi->load = true;
                 mi->pushpop = true;
@@ -521,13 +526,13 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (!memop_ok_for_fastpath(mi->src[0].app, false/*no 8-byte*/))
             return false;
         mi->dst[0].app = instr_get_dst(inst, 1); /* ebp */
-        if (!reg_ok_for_fastpath(mi->dst[0].app))
+        if (!reg_ok_for_fastpath(opc, mi->dst[0].app))
             return false;
         /* for the other dst, ebp->esp, we rely on check_definedness of the src (ebp)
          * and of the dst (esp) (for dst the check is via add_addressing_register_checks()
          */
         mi->src[1].app = instr_get_src(inst, 0); /* ebp */
-        if (!reg_ok_for_fastpath(mi->src[1].app))
+        if (!reg_ok_for_fastpath(opc, mi->src[1].app))
             return false;
         mi->load = true;
         mi->pushpop = true;
@@ -567,19 +572,19 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             }
         }
         mi->dst[0].app = instr_get_dst(inst, 0);
-        ASSERT(reg_ok_for_fastpath(mi->dst[0].app) &&
-               !reg_ignore_for_fastpath(mi->dst[0].app), "lea handling error");
+        ASSERT(reg_ok_for_fastpath(opc, mi->dst[0].app) &&
+               !reg_ignore_for_fastpath(opc, mi->dst[0].app), "lea handling error");
         return true;
     } else if (opc == OP_cmpxchg) {
         /* We keep in fastpath by treating as a 3-source 0-dest instr
          * and using check_definedness, bailing to slowpath if any operand
          * is other than fully defined.
          */
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
             return false;
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
             return false;
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 2), 2, false, mi))
             return false;
         mi->check_definedness = true;
         return true;
@@ -588,9 +593,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
          * and using check_definedness, bailing to slowpath if any operand
          * is other than fully defined.
          */
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi) ||
-            !opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi) ||
-            !opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi) ||
+            !opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi) ||
+            !opnd_ok_for_fastpath(opc, instr_get_src(inst, 2), 2, false, mi))
             return false;
         /* Rather than extending the general fastpath arrays we hardcode the final 2 */
         ASSERT(opnd_is_reg(instr_get_src(inst, 3)), "cmpxchg8b srcs changed in DR?");
@@ -599,9 +604,9 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         return true;
     } else if (opc == OP_xadd || opc == OP_xchg) {
         /* PR 495277: since dsts==srcs, if srcs are defined can stay on fastpath */
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
             return false;
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
             return false;
         mi->check_definedness = true;
         return true;
@@ -610,7 +615,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
          * for definedness: thus we can ignore and get on the fastpath,
          * though w/ check_definedness unless word-sized, like all mem2mem
          */
-        if (!opnd_ok_for_fastpath(instr_get_dst(inst, 0), 0, true, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 0), 0, true, mi))
             return false;
         if (opc == OP_movs) {
             mi->src[0].app = instr_get_src(inst, 0);
@@ -618,7 +623,7 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
                 return false;
             mi->mem2mem = true;
         } else {
-            if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
                 return false;
         }
         return true;
@@ -626,10 +631,10 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         /* the other reg opnds are also base regs so we're already checking
          * for definedness: thus we can ignore and get on the fastpath
          */
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
             return false;
         if (opc == OP_scas) {
-            if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
                 return false;
             /* No support for combining two sub-dword w/ diff offs in fastpath */
             mi->check_definedness = true;
@@ -643,11 +648,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
     } else if ((opc == OP_idiv || opc == OP_div) &&
                opnd_get_size(instr_get_dst(inst, 0)) == OPSZ_1) {
         /* treat %ah + %al dsts as single %ax dst so can treat as ALU */
-        if (!opnd_ok_for_fastpath(opnd_create_reg(REG_AX), 0, true, mi))
+        if (!opnd_ok_for_fastpath(opc, opnd_create_reg(REG_AX), 0, true, mi))
             return false;
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
             return false;
-        if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+        if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
             return false;
         return true;
     } else {
@@ -667,31 +672,31 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
              */
             if (opnd_same(instr_get_src(inst, 0), instr_get_src(inst, 1))) {
                 /* just add dst, no srcs */
-                if (!opnd_ok_for_fastpath(instr_get_dst(inst, 0), 0, true, mi))
+                if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 0), 0, true, mi))
                     return false;
                 return true;
             }
         }
 
         if (num_dsts > 0) {
-            if (!opnd_ok_for_fastpath(instr_get_dst(inst, 0), 0, true, mi))
+            if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 0), 0, true, mi))
                 return false;
             if (num_dsts > 1) {
                 if (num_dsts == 2 && opc_2nd_dst_is_extension(opc)) {
-                    if (!opnd_ok_for_fastpath(instr_get_dst(inst, 1), 1, true, mi))
+                    if (!opnd_ok_for_fastpath(opc, instr_get_dst(inst, 1), 1, true, mi))
                         return false;
                 } else
                     return false;
             }
         }
         if (num_srcs > 0) {
-            if (!opnd_ok_for_fastpath(instr_get_src(inst, 0), 0, false, mi))
+            if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 0), 0, false, mi))
                 return false;
             if (num_srcs > 1) {
-                if (!opnd_ok_for_fastpath(instr_get_src(inst, 1), 1, false, mi))
+                if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
                     return false;
                 if (num_srcs > 2) {
-                    if (!opnd_ok_for_fastpath(instr_get_src(inst, 2), 2, false, mi))
+                    if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 2), 2, false, mi))
                         return false;
                 }
             }
@@ -706,19 +711,17 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
             opnd_size_in_bytes(opnd_get_size(mi->dst[0].app)) < 4)
             return false;
 
-        /* We only allow 8-byte or 10-byte memop for floats or 16-byte memop for xmm
-         * if we do no real propagation
+        /* We only allow 8-byte or 10-byte memop for floats if we do
+         * no real propagation.  We do propagate 16-byte xmm.
          */
         if (mi->load && (opnd_get_size(mi->src[0].app) == OPSZ_8 ||
-                         opnd_get_size(mi->src[0].app) == OPSZ_10 ||
-                         opnd_get_size(mi->src[0].app) == OPSZ_16) &&
+                         opnd_get_size(mi->src[0].app) == OPSZ_10) &&
             (!opnd_is_null(mi->src[1].app) || !opnd_is_null(mi->dst[0].app) ||
              TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
             mi->check_definedness = true;
         }
         if (mi->store && (opnd_get_size(mi->dst[0].app) == OPSZ_8 ||
-                          opnd_get_size(mi->dst[0].app) == OPSZ_10 ||
-                          opnd_get_size(mi->dst[0].app) == OPSZ_16) &&
+                          opnd_get_size(mi->dst[0].app) == OPSZ_10) &&
             (!opnd_is_null(mi->dst[1].app) || !opnd_is_null(mi->src[0].app) ||
              TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
             mi->check_definedness = true;
@@ -749,8 +752,10 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         mi->src_reg = opnd_get_reg(mi->src[0].app);
     if (opnd_is_reg(mi->dst[0].app))
         mi->dst_reg = opnd_get_reg(mi->dst[0].app);
-    ASSERT(mi->dst_reg == REG_NULL || reg_is_gpr(mi->dst_reg), "reg fastpath error");
-    ASSERT(mi->src_reg == REG_NULL || reg_is_gpr(mi->src_reg), "reg fastpath error");
+    ASSERT(mi->dst_reg == REG_NULL ||
+           reg_is_shadowed(opc, mi->dst_reg), "reg fastpath error");
+    ASSERT(mi->src_reg == REG_NULL ||
+           reg_is_shadowed(opc, mi->src_reg), "reg fastpath error");
     ASSERT(!mi->pushpop || mi->load || mi->store, "internal error");
 
     if (opnd_is_null(mi->dst[0].app)) {
@@ -860,6 +865,21 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 }
 
 #ifdef TOOL_DR_MEMORY
+static void
+set_reg_shadow_opnds(fastpath_info_t *mi, opnd_info_t *oi, reg_id_t reg)
+{
+    if (reg_is_gpr(reg)) {
+        oi->shadow = opnd_create_shadow_reg_slot(reg);
+        oi->offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
+    } else {
+        ASSERT(reg_is_xmm(reg), "only expect gpr or xmm");
+        /* This points at what we need to de-reference via a scratch reg */
+        oi->shadow = opnd_create_shadow_reg_slot(reg);
+        oi->offs = opnd_create_immed_int(get_shadow_xmm_offs(reg), OPSZ_1);
+        oi->indir_size = reg_get_size(reg);
+    }
+}
+
 /* Translates from sources and dests into shadow operands and offsets
  * and initializes mi->num_to_propagate.  Does not set the offsets
  * of memory operands as those are dynamic and will be set later
@@ -868,7 +888,6 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 static void
 set_shadow_opnds(fastpath_info_t *mi)
 {
-    reg_id_t reg;
     ASSERT(mi != NULL, "invalid args");
     if (opnd_is_memory_reference(mi->dst[0].app)) {
         if (mi->memsz <= 4)
@@ -880,18 +899,16 @@ set_shadow_opnds(fastpath_info_t *mi)
             mi->dst[0].shadow = OPND_CREATE_MEM32(mi->reg1.reg, 0);
         }
     } else if (mi->dst_reg != REG_NULL) {
-        mi->dst[0].shadow = opnd_create_shadow_reg_slot(mi->dst_reg);
-        mi->dst[0].offs = opnd_create_immed_int(reg_offs_in_dword(mi->dst_reg), OPSZ_1);
+        set_reg_shadow_opnds(mi, &mi->dst[0], mi->dst_reg);
     } else
         mi->dst[0].shadow = opnd_create_null();
     if (opnd_is_null(mi->dst[1].app))
         mi->dst[1].shadow = opnd_create_null();
     else {
+        /* We assume no xmm regs are 2nd dests */
         ASSERT(opnd_is_reg(mi->dst[1].app) && reg_is_gpr(opnd_get_reg(mi->dst[1].app)),
                "reg fastpath error");
-        reg = opnd_get_reg(mi->dst[1].app);
-        mi->dst[1].shadow = opnd_create_shadow_reg_slot(reg);
-        mi->dst[1].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
+        set_reg_shadow_opnds(mi, &mi->dst[1], opnd_get_reg(mi->dst[1].app));
     }
     if (opnd_is_memory_reference(mi->src[0].app)) {
         if (!options.check_uninitialized) {
@@ -923,8 +940,7 @@ set_shadow_opnds(fastpath_info_t *mi)
         }
         mi->num_to_propagate++;
     } else if (!opnd_is_null(mi->src[0].app)) {
-        mi->src[0].shadow = opnd_create_shadow_reg_slot(mi->src_reg);
-        mi->src[0].offs = opnd_create_immed_int(reg_offs_in_dword(mi->src_reg), OPSZ_1);
+        set_reg_shadow_opnds(mi, &mi->src[0], mi->src_reg);
         mi->num_to_propagate++;
     } else
         mi->src[0].shadow = opnd_create_null();
@@ -936,21 +952,13 @@ set_shadow_opnds(fastpath_info_t *mi)
     } else if (opnd_is_null(mi->src[1].app))
         mi->src[1].shadow = opnd_create_null();
     else {
-        ASSERT(opnd_is_reg(mi->src[1].app) && reg_is_gpr(opnd_get_reg(mi->src[1].app)),
-               "reg fastpath error");
-        reg = opnd_get_reg(mi->src[1].app);
-        mi->src[1].shadow = opnd_create_shadow_reg_slot(reg);
-        mi->src[1].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
+        set_reg_shadow_opnds(mi, &mi->src[1], opnd_get_reg(mi->src[1].app));
         mi->num_to_propagate++;
     }
     if (opnd_is_null(mi->src[2].app))
         mi->src[2].shadow = opnd_create_null();
     else {
-        ASSERT(opnd_is_reg(mi->src[2].app) && reg_is_gpr(opnd_get_reg(mi->src[2].app)),
-               "reg fastpath error");
-        reg = opnd_get_reg(mi->src[2].app);
-        mi->src[2].shadow = opnd_create_shadow_reg_slot(reg);
-        mi->src[2].offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
+        set_reg_shadow_opnds(mi, &mi->src[2], opnd_get_reg(mi->src[2].app));
         mi->num_to_propagate++;
     }
 }
@@ -1005,7 +1013,7 @@ set_check_definedness_post_regs(void *drcontext, instr_t *inst, fastpath_info_t 
         ASSERT(mi->store && opnd_same(mi->memop, mi->dst[0].app), "mem2mem error");
         ASSERT(opnd_is_memory_reference(mi->src[0].app), "mem2mem error");
         if (mi->memsz == 4 &&
-            !mi->need_offs && !mi->need_nonoffs_reg3 && !mi->zero_rest_of_offs &&
+            !mi->need_offs && !mi->need_offs_early && !mi->zero_rest_of_offs &&
             /* not much point in propagating w/o good addr check */
             options.loads_use_table) {
             /* propagate */
@@ -2691,6 +2699,40 @@ subdword_zero_rest_of_dword(void *drcontext, instrlist_t *bb, instr_t *inst,
          ((char)(opsz == 1 ? (ofnum == 1 ? 0x0c : 0x03) : 0x0f))));
 }
 
+static inline opnd_t
+shadow_reg_indir_opnd(opnd_info_t *info, reg_id_t base)
+{
+    return opnd_create_base_disp
+        (base, REG_NULL, 0, opnd_get_immed_int(info->offs),
+         opnd_size_from_bytes(opnd_size_in_bytes(info->indir_size)/SHADOW_GRANULARITY));
+}
+
+/* May write to the entire pointer-sized expansion of target */
+static inline bool
+load_reg_shadow_val(void *drcontext, instrlist_t *bb, instr_t *inst,
+                    reg_id_t target, opnd_info_t *cur)
+{
+    ASSERT(!opnd_is_null(cur->shadow), "cur opnd can't be null");
+    if (!opnd_is_reg(cur->shadow) || opnd_get_reg(cur->shadow) != target) {
+        if (cur->indir_size != OPSZ_NA) {
+            /* Indirection */
+            reg_id_t indir = reg_to_pointer_sized(target);
+            ASSERT(opnd_get_size(cur->shadow) == OPSZ_PTR, "invalid opnd size");
+            PRE(bb, inst,
+                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(indir),
+                                    cur->shadow));
+            PRE(bb, inst,
+                INSTR_CREATE_mov_ld
+                (drcontext, opnd_create_reg(target), shadow_reg_indir_opnd(cur, indir)));
+        } else {
+            PRE(bb, inst,
+                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(target), cur->shadow));
+        }
+        return true;
+    }
+    return false;
+}
+
 /* Writes the shadow value in src to the eflags (if necessary) and to
  * up to two destinations.
  * src must be a register, not a memory reference.
@@ -2747,22 +2789,23 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                          si8);
     } else
         ASSERT(opnd_is_immed_int(src.shadow), "invalid shadow src");
-    if (src_opsz == 4) {
-        /* copy entire byte shadowing the dword */
-        if (process_eflags)
-            write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
-        if (!opnd_is_null(dst.shadow)) {
-            add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
-                                nowrite_target);
-            PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
-                                                            src.shadow), xl8));
-        }
-    } else if (src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
-        /* copy entire 2 or 4 bytes shadowing the qword */
+    ASSERT(dst.indir_size == OPSZ_NA || src_opsz == 4 || src_opsz == 16,
+           "unexpected shadow reg indir");
+    if (src_opsz == 4 || src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
+        /* copy entire byte(s) (1, 2, or 4) shadowing the dword */
         /* write_shadow_eflags will convert src.shadow to single-byte size */
         if (process_eflags)
             write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
         if (!opnd_is_null(dst.shadow)) {
+            if (dst.indir_size != OPSZ_NA) {
+                /* we're going to use the whole register */
+                ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
+                mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(si8->reg),
+                                        dst.shadow));
+                dst.shadow = shadow_reg_indir_opnd(&dst, si8->reg);
+            }
             add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
                                 nowrite_target);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
@@ -3832,6 +3875,7 @@ insert_lea_preserve_reg(void *drcontext, instrlist_t *bb, instr_t *inst,
 
 /* Fast path for "normal" instructions with a single memory
  * reference using 4-byte addressing registers.
+ * Also handles mem2mem in certain cases.
  * Handles mem-to-reg (including pop), reg-to-mem (including push),
  * ALU ops, and destination-less loads (like cmp and test).
  * Does NOT handle pop into mem.
@@ -3860,7 +3904,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 {
     uint opc = instr_get_opcode(inst);
 #ifdef TOOL_DR_MEMORY
-    reg_id_t scratch8;
+    reg_id_t scratch8, src_val_reg;
     scratch_reg_info_t *si8;
 #endif
     instr_t *nextinstr = INSTR_CREATE_label(drcontext);
@@ -3931,7 +3975,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 (whole_bb_spills_enabled() && mi->load &&
                  (opnd_uses_reg(mi->memop, mi->bb->reg1.reg) ||
                   opnd_uses_reg(mi->memop, mi->bb->reg2.reg))))
-                mi->need_nonoffs_reg3 = true;
+                mi->need_offs_early = true;
         }
     }
     if (!mi->need_offs && mi->opsz < 4 && options.check_uninitialized &&
@@ -3952,6 +3996,11 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          (opc == OP_sar || opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0)))
         mi->need_nonoffs_reg3 = true;
+    if ((mi->src_opsz == 16 || mi->opsz == 16) && !mi->check_definedness) {
+        /* We need a temp reg for indirected shadow memory */
+        ASSERT(!mi->need_nonoffs_reg3, "spill overlap");
+        mi->need_nonoffs_reg3 = true;
+    }
 #endif
 
     check_appval = (opc == OP_and || opc == OP_test || opc == OP_or) &&
@@ -3971,11 +4020,10 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                        * memop for mem2mem or load2x.
                        */
                       mi->need_offs || mi->mem2mem || mi->load2x ||
-                      mi->need_nonoffs_reg3 ||
+                      mi->need_offs_early || mi->need_nonoffs_reg3 ||
                       /* to read the app value for and/test/or memop we need 3rd reg */
                       need_reg3_for_appval,
-                      !need_reg3_for_appval && (!mi->need_nonoffs_reg3 ||
-                                                opnd_is_immed_int(mi->memoffs)),
+                      mi->need_offs || mi->need_offs_early,
                       mi->memop,
                       mi->mem2mem ? mi->src[0].app :
                       (mi->load2x ? mi->src[1].app : opnd_create_null()));
@@ -4346,7 +4394,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 options.check_uninitialized || mi->pushpop_stackop;
             add_shadow_table_lookup(drcontext, bb, inst, mi, need_value,
                                     true/*val in reg2*/,
-                                    mi->need_offs || mi->need_nonoffs_reg3,
+                                    mi->need_offs || mi->need_offs_early,
                                     mi->zero_rest_of_offs,
                                     mi->reg1.reg, mi->reg2.reg, mi->reg3.reg,
                                     true/*jcc short*/, check_alignment);
@@ -4470,7 +4518,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 /* re-lea */
                 ASSERT(mi->reg3.reg != REG_NULL, "need reg3");
                 ASSERT(!(mi->need_offs || mi->mem2mem || mi->load2x ||
-                         mi->need_nonoffs_reg3),
+                         mi->need_offs_early || mi->need_nonoffs_reg3),
                        "shouldn't need reg3 for any other reason");
                 insert_lea_preserve_reg(drcontext, bb, inst, mi, mi->memop);
                 app_val = opnd_create_base_disp(mi->reg3.reg, REG_NULL, 0, 0,
@@ -4562,7 +4610,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
     }
-    ASSERT(mi->memsz <= 4 || mi->num_to_propagate == 0,
+    ASSERT(mi->memsz <= 4 || mi->num_to_propagate == 0 || mi->memsz ==16,
            "propagation not suported for 8-byte memops");
     /* optimization to avoid checks on jcc after cmp/test
      * we can't use mi->check_definedness b/c in fastpath it's used for "go
@@ -4840,6 +4888,18 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         scratch8 = mi->reg1_8;
         si8 = &mi->reg1;
     }
+    if (mi->src_opsz > 4 && !mi->check_definedness/*eflags*/ &&
+        mi->num_to_propagate > 0) {
+        /* we're going to use the whole register */
+        ASSERT(!mi->need_offs, "assuming don't need mi->reg2_8h");
+        if (mi->src_opsz == 16) /* xmm */
+            src_val_reg = reg_to_pointer_sized(scratch8);
+        else {
+            ASSERT_NOT_IMPLEMENTED();
+            src_val_reg = DR_REG_NULL;
+        }
+    } else
+        src_val_reg = scratch8;
 
     ASSERT(mi->num_to_propagate >= 0, "propagation count error");
     ASSERT(options.check_uninitialized || mi->num_to_propagate == 0,
@@ -4861,14 +4921,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
     } else if (mi->num_to_propagate == 1) {
         /* copy src shadow to eflags shadow and dst shadow */
         mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
-        if (!opnd_is_reg(mi->src[0].shadow) ||
-            opnd_get_reg(mi->src[0].shadow) != scratch8) {
-            ASSERT(!opnd_is_null(mi->src[0].shadow), "src can't be null");
-            PRE(bb, inst,
-                INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                    mi->src[0].shadow));
-            mi->src[0].shadow = opnd_create_reg(scratch8);
-        }
+        if (load_reg_shadow_val(drcontext, bb, inst, src_val_reg, &mi->src[0]))
+            mi->src[0].shadow = opnd_create_reg(src_val_reg);
         if (!needs_shadow_op(inst) && opnd_same(mi->src[0].app, mi->dst[0].app)) {
             /* only propagate eflags.  example here: "add $1, mem -> mem" */
             mi->dst[0].shadow = opnd_create_null();
@@ -4902,20 +4956,16 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 mi->src[0] = mi->src[1];
                 mi->src[1] = tmp;
             }
-            if (!opnd_is_reg(mi->src[0].shadow) ||
-                opnd_get_reg(mi->src[0].shadow) != scratch8) {
-                PRE(bb, inst,
-                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                        mi->src[0].shadow));
-                mi->src[0].shadow = opnd_create_reg(scratch8);
-            }
+            if (load_reg_shadow_val(drcontext, bb, inst, src_val_reg, &mi->src[0]))
+                mi->src[0].shadow = opnd_create_reg(src_val_reg);
             ASSERT(opnd_same(mi->src[1].app, mi->dst[0].app), "invalid ALU");
             if (!opnd_is_null(mi->src[2].shadow)) {
                 /* offs not same for {div,idiv}w but for those we do check_definedness */
                 ASSERT(opnd_same(mi->src[0].offs, mi->src[2].offs),
                        "multi-src different offsets on fastpath NYI");
+                ASSERT(mi->src[2].indir_size == OPSZ_NA, "should be !alu_uncombined");
                 PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
+                    INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
                                     mi->src[2].shadow));
             }
         } else {
@@ -4930,26 +4980,40 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              * for 4-byte ALU (not worth keeping extra code paths just for
              * -no_stores_use_tables).
              */
-            if (!opnd_is_reg(mi->src[0].shadow) ||
-                opnd_get_reg(mi->src[0].shadow) != scratch8) {
-                PRE(bb, inst,
-                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                        mi->src[0].shadow));
-                mi->src[0].shadow = opnd_create_reg(scratch8);
-            }
+            if (load_reg_shadow_val(drcontext, bb, inst, src_val_reg, &mi->src[0]))
+                mi->src[0].shadow = opnd_create_reg(src_val_reg);
             /* combine sources now.  must be same offs, which isn't true for
              * 1-byte {mul,imul} but for those we do check_definedness
              */
-            ASSERT(opnd_same(mi->src[1].offs, mi->src[0].offs),
+            ASSERT(opnd_same(mi->src[1].offs, mi->src[0].offs) ||
+                   /* indir_size uses offs to mean something else */
+                   mi->src[0].indir_size != OPSZ_NA ||
+                   mi->src[1].indir_size != OPSZ_NA,
                    "combining srcs w/ different sub-dword offs NYI");
+            if (mi->src[1].indir_size != OPSZ_NA) {
+                ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+                mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
+                PRE(bb, inst,
+                    INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3.reg),
+                                        mi->src[1].shadow));
+                mi->src[1].shadow = shadow_reg_indir_opnd(&mi->src[1], mi->reg3.reg);
+            }
             PRE(bb, inst,
-                INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
+                INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
                                 mi->src[1].shadow));
             if (!opnd_is_null(mi->src[2].shadow)) {
                 ASSERT(opnd_same(mi->src[2].offs, mi->src[0].offs),
                        "combining srcs w/ different sub-dword offs NYI");
+                if (mi->src[2].indir_size != OPSZ_NA) {
+                    ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+                    mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
+                    PRE(bb, inst,
+                        INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(mi->reg3.reg),
+                                            mi->src[2].shadow));
+                    mi->src[2].shadow = shadow_reg_indir_opnd(&mi->src[2], mi->reg3.reg);
+                }
                 PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(scratch8),
+                    INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
                                     mi->src[2].shadow));
             }
         }

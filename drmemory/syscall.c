@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -635,7 +635,7 @@ is_byte_defined(byte *addr)
 static bool
 is_register_defined(reg_id_t reg)
 {
-    return get_shadow_register(reg) == SHADOW_DEFINED;
+    return is_shadow_register_defined(get_shadow_register(reg));
 }
 
 void

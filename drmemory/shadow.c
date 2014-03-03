@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -174,7 +174,6 @@ umbra_map_t *umbra_map;
 
 /* 2 shadow bits per app byte */
 /* we use Umbra's 4B-to-1B and layer 1B-to-2b on top of that */
-#define SHADOW_GRANULARITY 4
 #define SHADOW_MAP_SCALE   UMBRA_MAP_SCALE_DOWN_4X
 #define SHADOW_DEFAULT_VALUE SHADOW_DWORD_UNADDRESSABLE
 #define SHADOW_DEFAULT_VALUE_SIZE 1
@@ -1314,6 +1313,21 @@ const byte shadow_word_addr_not_bit[4][256] = {
  * SHADOWING THE GPR REGISTERS
  */
 
+#ifdef X64
+# define NUM_XMM_REGS 16
+#else
+# define NUM_XMM_REGS 8
+#endif
+
+typedef struct _shadow_aux_registers_t {
+    /* i#243: shadow xmm registers */
+    int xmm[NUM_XMM_REGS];
+#ifdef X64
+    int ymmh[NUM_XMM_REGS];
+#endif
+    /* XXX i#471: add floating-point registers here as well */
+} shadow_aux_registers_t;
+
 /* We keep our shadow register bits in TLS */
 typedef struct _shadow_registers_t {
 #ifdef TOOL_DR_MEMORY
@@ -1335,6 +1349,10 @@ typedef struct _shadow_registers_t {
     /* Used for PR 578892.  Should remain a very small integer so byte is fine. */
     byte in_heap_routine;
     byte padding[2];
+    /* Fourth 4-byte TLS slot, which provides indirection to additional
+     * shadow memory.
+     */
+    shadow_aux_registers_t *aux;
 #else
     /* Avoid empty struct.  FIXME: this is a waste of a tls slot */
     void *bogus;
@@ -1349,17 +1367,39 @@ static uint tls_shadow_base;
 static int tls_idx_shadow = -1;
 
 #ifdef TOOL_DR_MEMORY
+/* For xmm this points at the shadow aux ptr: need a de-ref */
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg)
 {
-    reg_id_t r = reg_to_pointer_sized(reg);
+    uint offs;
+    opnd_size_t opsz;
     ASSERT(options.shadowing, "incorrectly called");
-    ASSERT(reg_is_gpr(reg), "internal shadow reg error");
+    if (reg_is_gpr(reg)) {
+        reg_id_t r = reg_to_pointer_sized(reg);
+        offs = r - DR_REG_XAX;
+        opsz = OPSZ_1;
+    } else {
+        ASSERT(reg_is_xmm(reg), "internal shadow reg error");
+        offs = offsetof(shadow_registers_t, aux);
+        opsz = OPSZ_PTR;
+    }
     return opnd_create_far_base_disp_ex
-        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base + (r - REG_EAX), OPSZ_1,
+        (SEG_FS, REG_NULL, REG_NULL, 1, tls_shadow_base + offs, opsz,
          /* we do NOT want an addr16 prefix since most likely going to run on
           * Core or Core2, and P4 doesn't care that much */
          false, true, false);
+}
+
+uint
+get_shadow_xmm_offs(reg_id_t reg)
+{
+    ASSERT(reg_is_xmm(reg), "incorrectly called");
+#ifdef X64
+    if (reg_is_ymm(reg))
+        return offsetof(shadow_aux_registers_t, ymmh) + sizeof(int)*(reg - DR_REG_YMM0);
+    else
+#endif
+        return offsetof(shadow_aux_registers_t, xmm) + sizeof(int)*(reg - DR_REG_XMM0);
 }
 
 opnd_t
@@ -1404,6 +1444,7 @@ shadow_registers_thread_init(void *drcontext)
 {
 #ifdef TOOL_DR_MEMORY
     static bool first_thread = true;
+    shadow_aux_registers_t *aux;
 #endif
     shadow_registers_t *sr;
 #ifdef UNIX
@@ -1413,15 +1454,20 @@ shadow_registers_thread_init(void *drcontext)
     sr = get_shadow_registers();
 #endif
 #ifdef TOOL_DR_MEMORY
+    aux = thread_alloc(drcontext, sizeof(*sr->aux), HEAPSTAT_SHADOW);
     if (first_thread) {
         first_thread = false;
         /* since we're in late, we consider everything defined
          * (if we were in at init APC, only stack pointer would be defined) */
         memset(sr, SHADOW_DWORD_DEFINED, sizeof(*sr));
+        sr->aux = aux;
+        memset(sr->aux, SHADOW_DWORD_DEFINED, sizeof(*sr->aux));
         sr->eflags = SHADOW_DEFINED;
     } else {
         /* we are in at start for new threads */
         memset(sr, SHADOW_DWORD_UNDEFINED, sizeof(*sr));
+        sr->aux = aux;
+        memset(sr->aux, SHADOW_DWORD_UNDEFINED, sizeof(*sr->aux));
         sr->eflags = SHADOW_UNDEFINED;
 #ifdef UNIX
         /* PR 426162: post-clone, esp and eax are defined */
@@ -1442,6 +1488,11 @@ shadow_registers_thread_init(void *drcontext)
 static void
 shadow_registers_thread_exit(void *drcontext)
 {
+#ifdef TOOL_DR_MEMORY
+    shadow_registers_t *sr = (shadow_registers_t *)
+        drmgr_get_tls_field(drcontext, tls_idx_shadow);
+    thread_free(drcontext, sr->aux, sizeof(*sr->aux), HEAPSTAT_SHADOW);
+#endif
     drmgr_set_tls_field(drcontext, tls_idx_shadow, NULL);
 }
 
@@ -1472,32 +1523,52 @@ shadow_registers_exit(void)
 void
 print_shadow_registers(void)
 {
+    uint i;
     IF_DEBUG(shadow_registers_t *sr = get_shadow_registers());
     ASSERT(options.shadowing, "shouldn't be called");
     LOG(0, "    eax=%02x ecx=%02x edx=%02x ebx=%02x "
         "esp=%02x ebp=%02x esi=%02x edi=%02x efl=%x\n",
         sr->eax, sr->ecx, sr->edx, sr->ebx, sr->esp, sr->ebp,
         sr->esi, sr->edi, sr->eflags);
+    for (i = 0; i < NUM_XMM_REGS; i++) {
+        if (i % 4 == 0)
+            LOG(0, "    ");
+        LOG(0, "xmm%d=%08x ", i, sr->aux->xmm[i]);
+        if (i % 4 == 3)
+            LOG(0, "\n");
+    }
 }
 
-static uint
-reg_shadow_offs(reg_id_t reg)
+static byte *
+reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
 {
     /* REG_NULL means eflags */
     if (reg == REG_NULL)
-        return offsetof(shadow_registers_t, eflags);
-    else
-        return (reg_to_pointer_sized(reg) - REG_EAX);
+        return ((byte *)sr) + offsetof(shadow_registers_t, eflags);
+    else if (reg_is_gpr(reg))
+        return ((byte *)sr) + (reg_to_pointer_sized(reg) - REG_EAX);
+    else {
+#ifdef X64
+        /* Caller must ask for xmm to get low bits (won't all fit in uint) */
+        if (reg_is_ymm(reg))
+            return (byte *) &sr->aux->ymmh[reg - DR_REG_YMM0];
+        else
+#endif
+            return (byte *) &sr->aux->xmm[reg - DR_REG_XMM0];
+    }
 }
 
-static byte
+static uint
 get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
 {
     byte val;
     opnd_size_t sz = reg_get_size(reg);
+    byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
+    if (reg_is_xmm(reg))
+        return *(uint *)addr;
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
-    val = *(((byte*)sr) + reg_shadow_offs(reg));
+    val = *addr;
     if (sz == OPSZ_1) {
         if (reg_is_8bit_high(reg))
             val = (val & 0xc) >> 2;
@@ -1511,9 +1582,11 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
 }
 
 /* Note that any SHADOW_UNADDRESSABLE bit pairs simply mean it's
- * a sub-register
+ * a sub-register.
+ * For ymm registers, returns only the shadow for the high 128 bits --
+ * ask for the corresponding xmm to get the low bits.
  */
-byte
+uint
 get_shadow_register(reg_id_t reg)
 {
     shadow_registers_t *sr = get_shadow_registers();
@@ -1524,7 +1597,7 @@ get_shadow_register(reg_id_t reg)
 /* Note that any SHADOW_UNADDRESSABLE bit pairs simply mean it's
  * a sub-register
  */
-byte
+uint
 get_thread_shadow_register(void *drcontext, reg_id_t reg)
 {
     shadow_registers_t *sr = (shadow_registers_t *)
@@ -1538,10 +1611,13 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
 {
     shadow_registers_t *sr = get_shadow_registers();
     uint shift = bytenum*2;
-    byte *addr;
+    byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
-    ASSERT(reg_is_gpr(reg), "internal shadow reg error");
-    addr = ((byte*)sr) + reg_shadow_offs(reg);
+    while (shift > 7) {
+        ASSERT(reg_is_xmm(reg), "shift too big for GPR");
+        addr++;
+        shift -= 8;
+    }
     *addr = set_2bits_inline(*addr, val, shift);
 }
 
@@ -1549,11 +1625,20 @@ void
 register_shadow_set_dword(reg_id_t reg, uint val)
 {
     shadow_registers_t *sr = get_shadow_registers();
-    byte *addr;
+    byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
-    addr = ((byte*)sr) + reg_shadow_offs(reg);
     *addr = (byte) val;
+}
+
+void
+register_shadow_set_dqword(reg_id_t reg, uint val)
+{
+    shadow_registers_t *sr = get_shadow_registers();
+    byte *addr = reg_shadow_addr(sr, reg);
+    ASSERT(options.shadowing, "incorrectly called");
+    ASSERT(reg_is_xmm(reg), "internal shadow reg error");
+    *(uint *)addr = val;
 }
 
 byte
@@ -1594,11 +1679,14 @@ set_shadow_inheap(uint val)
  * but should never have unaddressable anyway
  */
 bool
-is_shadow_register_defined(byte val)
+is_shadow_register_defined(uint val)
 {
-    return (val == SHADOW_DEFINED ||
-            val == SHADOW_WORD_DEFINED ||
-            val == SHADOW_DWORD_DEFINED);
+    ASSERT(SHADOW_DEFINED == SHADOW_WORD_DEFINED &&
+           SHADOW_DEFINED == SHADOW_DWORD_DEFINED &&
+           SHADOW_DEFINED == SHADOW_QWORD_DEFINED &&
+           SHADOW_DEFINED == SHADOW_DQWORD_DEFINED,
+           "if change bit patterns, change here");
+    return (val == SHADOW_DEFINED);
 }
 #endif /* TOOL_DR_MEMORY */
 

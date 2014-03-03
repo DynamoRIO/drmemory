@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -67,6 +67,7 @@ typedef struct _opnd_info_t {
     opnd_t app;    /* app opnd: if null then other fields are invalid */
     opnd_t shadow; /* either value for src or memref for dst */
     opnd_t offs;   /* sub-dword offset */
+    opnd_size_t indir_size; /* OPSZ_NA, or size of register w/ indirected shadow */
 } opnd_info_t;
 
 #define MAX_FASTPATH_SRCS 3
@@ -108,6 +109,7 @@ typedef struct _fastpath_info_t {
     bool zero_rest_of_offs; /* when calculate mi->offs, zero rest of bits in reg */
     bool pushpop_stackop;
     bool need_offs;
+    bool need_offs_early;
     bool need_nonoffs_reg3;
     bool need_slowpath;
     instr_t *slowpath;

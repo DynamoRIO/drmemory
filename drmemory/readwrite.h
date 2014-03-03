@@ -353,6 +353,9 @@ opnd_t
 adjust_memop(instr_t *inst, opnd_t opnd, bool write, uint *opsz, bool *pushpop_stackop);
 
 bool
+reg_is_shadowed(int opcode, reg_id_t reg);
+
+bool
 result_is_always_defined(instr_t *inst);
 
 bool

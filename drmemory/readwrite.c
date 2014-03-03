@@ -81,7 +81,7 @@ typedef struct _stringop_entry_t {
     byte ignore_next_delete;
 } stringop_entry_t;
 
-/* pusha/popa need 8 dwords */
+/* pusha/popa need 8 dwords, as does a ymm data xfer */
 #define MAX_DWORDS_TRANSFER 8
 #define OPND_SHADOW_ARRAY_LEN (MAX_DWORDS_TRANSFER * sizeof(uint))
 
@@ -1014,14 +1014,32 @@ opc_2nd_dst_is_extension(uint opc)
             opc == OP_mul || opc == OP_imul);
 }
 
+bool
+reg_is_shadowed(int opc, reg_id_t reg)
+{
+    /* i#471: we don't yet shadow floating-point regs */
+    /* i#243: we don't yet shadow ymm regs */
+    return (reg_is_gpr(reg) ||
+            /* XXX i#1453: full propagation is not yet in place so we only
+             * shadow for same-size moves in and out
+             */
+            ((opc == OP_movdqu || opc == OP_movdqa) &&
+             reg_is_xmm(reg) && !reg_is_ymm(reg)));
+}
+
 static bool
-instr_mem_or_gpr_dsts(instr_t *inst)
+instr_propagatable_dsts(instr_t *inst)
 {
     int i;
     bool res = false;
+    int opc = instr_get_opcode(inst);
     for (i = 0; i < instr_num_dsts(inst); i++) {
         opnd_t opnd = instr_get_dst(inst, i);
-        if ((opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) ||
+        /* i#1543, i#243: while we don't yet perform the right shuffling of the
+         * intra-xmm shadow values, we go ahead and shadow and propagate
+         * all xmm operations.  We can incrementally add the operation mirroring.
+         */
+        if ((opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd))) ||
             opnd_is_memory_reference(opnd)) {
             res = true;
         } else {
@@ -1177,7 +1195,7 @@ instr_check_definedness(instr_t *inst)
         /* We consider arith flags as enough to transfer definedness to.
          * Note that we don't shadow the floating-point status word, so
          * most float ops should hit this. */
-        (!instr_mem_or_gpr_dsts(inst) &&
+        (!instr_propagatable_dsts(inst) &&
          !TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) &&
          /* though prefetch has nowhere to propagate uninit shadow vals to, we
           * do not want to raise errors.  so we ignore, under the assumption
@@ -2027,6 +2045,7 @@ integrate_register_shadow(instr_t *inst, int opnum,
                           uint shadow_vals[OPND_SHADOW_ARRAY_LEN],
                           reg_id_t reg, uint shadow, bool pushpop)
 {
+    uint i;
     uint shift = 0;
     /* XXX: shouldn't eflags shadow affect all of the bytes, not just 1st?
      * I.e., pretend eflags is same size as other opnds?
@@ -2063,13 +2082,10 @@ integrate_register_shadow(instr_t *inst, int opnum,
                         SHADOW_DWORD2BYTE(shadow, reg_offs_in_dword(reg)));
     if (regsz > 1) {
         ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
-        shadow_vals[shift + 1] =
-            combine_shadows(shadow_vals[shift + 1], SHADOW_DWORD2BYTE(shadow, 1));
-        if (regsz > 2) {
-            shadow_vals[shift + 2] =
-                combine_shadows(shadow_vals[shift + 2], SHADOW_DWORD2BYTE(shadow, 2));
-            shadow_vals[shift + 3] =
-                combine_shadows(shadow_vals[shift + 3], SHADOW_DWORD2BYTE(shadow, 3));
+        for (i = 1; i < regsz; i++) {
+            ASSERT(shift + i < OPND_SHADOW_ARRAY_LEN, "shadow_vals overflow");
+            shadow_vals[shift + i] =
+                combine_shadows(shadow_vals[shift + i], SHADOW_DWORD2BYTE(shadow, i));
         }
     }
 }
@@ -2138,11 +2154,11 @@ assign_register_shadow(instr_t *inst, int opnum,
     shift *= regsz;
     register_shadow_set_byte(reg, reg_offs_in_dword(reg), shadow_vals[shift + 0]);
     if (regsz > 1) {
+        uint i;
         ASSERT(reg_offs_in_dword(reg) == 0, "invalid reg offs");
-        register_shadow_set_byte(reg, 1, shadow_vals[shift + 1]);
-        if (regsz > 2) {
-            register_shadow_set_byte(reg, 2, shadow_vals[shift + 2]);
-            register_shadow_set_byte(reg, 3, shadow_vals[shift + 3]);
+        for (i = 1; i < regsz; i++) {
+            ASSERT(shift + i < OPND_SHADOW_ARRAY_LEN, "shadow_vals overflow");
+            register_shadow_set_byte(reg, i, shadow_vals[shift + i]);
         }
     }
 }
@@ -2151,13 +2167,12 @@ static void
 register_shadow_mark_defined(reg_id_t reg)
 {
     uint regsz = opnd_size_in_bytes(reg_get_size(reg));
-    register_shadow_set_byte(reg, 0, SHADOW_DEFINED);
-    if (regsz > 1) {
-        register_shadow_set_byte(reg, 1, SHADOW_DEFINED);
-        if (regsz > 2) {
-            register_shadow_set_byte(reg, 2, SHADOW_DEFINED);
-            register_shadow_set_byte(reg, 3, SHADOW_DEFINED);
-        }
+    uint i;
+    if (regsz == 4 && reg_is_gpr(reg))
+        register_shadow_set_dword(reg, SHADOW_DWORD_DEFINED);
+    else {
+        for (i = 0; i < regsz; i++)
+            register_shadow_set_byte(reg, i, SHADOW_DEFINED);
     }
 }
 #endif /* TOOL_DR_MEMORY */
@@ -2752,7 +2767,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
                            check_srcs_after ? &shadow_vals[i*sz] : &shadow_vals[shift]);
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
-            if (reg_is_gpr(reg)) {
+            if (reg_is_shadowed(opc, reg)) {
                 uint shadow = get_shadow_register(reg);
                 sz = opnd_size_in_bytes(reg_get_size(reg));
                 if (always_defined) {
@@ -2892,7 +2907,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
             check_mem_opnd(opc, flags, &loc, opnd, sz, mc, shadow_vals);
         } else if (opnd_is_reg(opnd)) {
             reg_id_t reg = opnd_get_reg(opnd);
-            if (reg_is_gpr(reg)) {
+            if (reg_is_shadowed(opc, reg)) {
                 assign_register_shadow(&inst, i, shadow_vals, reg, pushpop);
             }
         } else
@@ -4791,7 +4806,7 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     uint i;
     app_pc pc = instr_get_app_pc(inst);
     uint opc;
-    bool has_gpr, has_mem, has_noignorable_mem;
+    bool has_shadowed_reg, has_mem, has_noignorable_mem;
     fastpath_info_t mi;
 
     if (go_native)
@@ -4878,8 +4893,8 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
     if (options.pattern != 0 && instr_is_prefetch(inst))
         goto instru_event_bb_insert_done;
 
-    /* if there are no gpr or mem operands, we can ignore it */
-    has_gpr = false;
+    /* if there are no shadowed reg or mem operands, we can ignore it */
+    has_shadowed_reg = false;
     has_mem = false;
     has_noignorable_mem = false;
     for (i = 0; i < instr_num_dsts(inst); i++) {
@@ -4890,18 +4905,20 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
         if (has_mem && opnd_uses_nonignorable_memory(opnd))
             has_noignorable_mem = true;
 #endif
-        if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd))) {
-            has_gpr = true;
-            /* written to => no longer known to be addressable,
-             * unless modified by const amt: we look for push/pop
-             */
-            if (!(opc_is_push(opc) || (opc_is_pop(opc) && i > 0))) {
-                bi->addressable[reg_to_pointer_sized(opnd_get_reg(opnd)) -
-                                DR_REG_XAX] = false;
+        if (opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd))) {
+            has_shadowed_reg = true;
+            if (reg_is_gpr(opnd_get_reg(opnd))) {
+                /* written to => no longer known to be addressable,
+                 * unless modified by const amt: we look for push/pop
+                 */
+                if (!(opc_is_push(opc) || (opc_is_pop(opc) && i > 0))) {
+                    bi->addressable[reg_to_pointer_sized(opnd_get_reg(opnd)) -
+                                    DR_REG_XAX] = false;
+                }
             }
         }
     }
-    if (!has_gpr || !has_mem) {
+    if (!has_shadowed_reg || !has_mem) {
         for (i = 0; i < instr_num_srcs(inst); i++) {
             opnd_t opnd = instr_get_src(inst, i);
             if (opnd_is_memory_reference(opnd) && instr_get_opcode(inst) != OP_lea)
@@ -4910,11 +4927,11 @@ instru_event_bb_insert(void *drcontext, void *tag, instrlist_t *bb, instr_t *ins
             if (has_mem && opnd_uses_nonignorable_memory(opnd))
                 has_noignorable_mem = true;
 #endif
-            if (opnd_is_reg(opnd) && reg_is_gpr(opnd_get_reg(opnd)))
-                has_gpr = true;
+            if (opnd_is_reg(opnd) && reg_is_shadowed(opc, opnd_get_reg(opnd)))
+                has_shadowed_reg = true;
         }
     }
-    if (!has_gpr && !has_mem &&
+    if (!has_shadowed_reg && !has_mem &&
         !TESTANY(EFLAGS_READ_6|EFLAGS_WRITE_6, instr_get_eflags(inst)))
         goto instru_event_bb_insert_done;
 

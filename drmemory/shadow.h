@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2013 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2007-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -27,6 +27,8 @@
 
 /* are we using 4Bto1B, or the default 1Bto2b? */
 #define MAP_4B_TO_1B (!options.check_uninitialized)
+
+#define SHADOW_GRANULARITY 4
 
 /***************************************************************************
  * We track both addressability and definedness for each byte of memory.
@@ -249,6 +251,9 @@ print_shadow_registers(void);
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg);
 
+uint
+get_shadow_xmm_offs(reg_id_t reg);
+
 opnd_t
 opnd_create_shadow_eflags_slot(void);
 
@@ -260,10 +265,16 @@ opnd_t
 opnd_create_seg_base_slot(reg_id_t seg, opnd_size_t opsz);
 #endif
 
-byte
+/* Note that any SHADOW_UNADDRESSABLE bit pairs simply mean it's
+ * a sub-register.
+ * For ymm registers, returns only the shadow for the high 128 bits --
+ * ask for the corresponding xmm to get the low bits.
+ */
+uint
 get_shadow_register(reg_id_t reg);
 
-byte
+/* See comment on get_shadow_register() */
+uint
 get_thread_shadow_register(void *drcontext, reg_id_t reg);
 
 void
@@ -271,6 +282,9 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val);
 
 void
 register_shadow_set_dword(reg_id_t reg, uint val);
+
+void
+register_shadow_set_dqword(reg_id_t reg, uint val);
 
 byte
 get_shadow_eflags(void);
@@ -285,6 +299,6 @@ void
 set_shadow_inheap(uint val);
 
 bool
-is_shadow_register_defined(byte val);
+is_shadow_register_defined(uint val);
 
 #endif /* _SHADOW_H_ */
