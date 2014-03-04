@@ -6405,11 +6405,29 @@ handle_menuiteminfow_access(sysarg_iter_info_t *ii,
             }
         }
         if (check_dwTypeData) {
-            /* kernel sets safe.cch so we don't have to walk the string */
-            if (!report_memarg(ii, arg_info, (byte *) safe.dwTypeData,
-                               (safe.cch + 1/*null*/) * sizeof(wchar_t),
-                               "MENUITEMINFOW.dwTypeData"))
-                return true;
+            /* i#1463: when retrieving, kernel sets safe.cch so we don't have
+             * to walk the string.  When setting, cch is ignored.
+             */
+            if (TEST(SYSARG_WRITE, arg_info->flags)) {
+                if (safe.cbSize > offsetof(MENUITEMINFOW, cch)) {
+                    if (ii->arg->pre) {
+                        /* User must set cch to capacity of dwTypeData */
+                        if (!report_memarg(ii, arg_info, (byte *) &real->cch,
+                                           sizeof(real->cch), "MENUITEMINFOW.cch"))
+                            return true;
+                    }
+                    if (!report_memarg(ii, arg_info, (byte *) safe.dwTypeData,
+                                       (safe.cch + 1/*null*/) * sizeof(wchar_t),
+                                       "MENUITEMINFOW.dwTypeData"))
+                        return true;
+                }
+            } else {
+                handle_cwstring(ii, "MENUITEMINFOW.dwTypeData",
+                                (byte *) safe.dwTypeData, 0, arg_info->param,
+                                arg_info->flags, NULL, true);
+                if (ii->abort)
+                    return true;
+            }
         }
     } else
         WARN("WARNING: unable to read syscall param\n");
