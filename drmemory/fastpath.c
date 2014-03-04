@@ -433,6 +433,10 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         return false;
     if (instr_needs_slowpath(inst))
         return false;
+#ifdef DEBUG
+    if (bi->force_slowpath)
+        return false;
+#endif
 
     if (opc == OP_push || opc == OP_push_imm || opc == OP_call || opc == OP_call_ind) {
         /* all have dst0=esp, dst1=(esp), src0=imm/reg/pc/mem, src1=esp */

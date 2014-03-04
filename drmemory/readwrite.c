@@ -614,6 +614,8 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     hashtable_lock(&bb_table);
     save = (bb_saved_info_t *) hashtable_lookup(&bb_table, info->fragment_info.tag);
 #ifdef TOOL_DR_MEMORY
+    LOG(2, "%s: raw pc="PFX", xl8 pc="PFX"\n", __FUNCTION__, info->raw_mcontext->pc,
+        info->mcontext->pc);
     DOLOG(2, {
         /* We leave the translation as being in our own library, since no
          * other good alternative.  We document this to users.
@@ -3650,6 +3652,7 @@ bb_save_add_entry(app_pc key, bb_saved_info_t *save)
 {
     bb_saved_info_t *old = (bb_saved_info_t *)
         hashtable_add_replace(&bb_table, (void *)key, (void *)save);
+    ASSERT(hashtable_lock_self_owns(&bb_table), "missing lock");
     if (old != NULL) {
         ASSERT(old->ignore_next_delete < UCHAR_MAX, "ignore_next_delete overflow");
         save->ignore_next_delete = old->ignore_next_delete + 1;
@@ -3666,6 +3669,7 @@ bb_save_resurrect_entry(void *key, void *payload, ptr_int_t shift)
      * dr_fragment_app_pc(tag) in a few places which doesn't seem worth it
      */
     bb_saved_info_t *save = (bb_saved_info_t *) payload;
+    ASSERT(hashtable_lock_self_owns(&bb_table), "missing lock");
     save->last_instr = (app_pc) ((ptr_int_t)save->last_instr + shift);
     bb_save_add_entry((app_pc) key, save);
     return true;
@@ -4716,6 +4720,12 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
     bi = thread_alloc(drcontext, sizeof(*bi), HEAPSTAT_PERBB);
     memset(bi, 0, sizeof(*bi));
     *user_data = (void *) bi;
+
+#ifdef DEBUG
+    /* To diagnose fastpath vs slowpath issues on a whole-bb level,
+     * set bi->force_slowpath here (xref i#1458).
+     */
+#endif
 
     LOG(SYSCALL_VERBOSE, "in event_basic_block(tag="PFX")%s%s\n", tag,
         for_trace ? " for trace" : "", translating ? " translating" : "");

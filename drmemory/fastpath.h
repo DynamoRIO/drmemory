@@ -187,6 +187,10 @@ struct _bb_info_t {
     bool pattern_4byte_check_only;
 #ifdef DEBUG
     bool pattern_4byte_check_field_set;
+    /* This is available for diagnostics of slowpath-vs-fastpath on a whole-bb
+     * level, such as needed to figure out i#1458.
+     */
+    bool force_slowpath;
 #endif
     bool first_instr;
     bool added_instru;
