@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2012 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2014 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -324,6 +324,15 @@ Error #2: HANDLE LEAK: Syscall NtDuplicateObject leaks handle with NULL handle p
 \endcode
 
 Detection of these errors can be disabled with the \p -no_check_handle_leaks runtime option.
+
+Handle leak detection is currently an experimental feature, tuned
+conservatively with a filter on the error to avoid false positives.  Call
+stacks with system libraries at the top, or handle leaks that do not occur
+very often, are not reported in the main list of errors.  The full list of
+suspected handle leaks can be found in potential_errors.txt (see \ref
+sec_potential_errors).  In the future we hope to improve the distinction
+between application and system handle leaks and directly report all
+relevant errors.
 
 ********************
 \page page_warning Warning
