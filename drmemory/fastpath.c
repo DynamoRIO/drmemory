@@ -2768,7 +2768,6 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                      fastpath_info_t *mi, opnd_info_t dst,
                      opnd_info_t src, int src_opsz, int dst_opsz,
                      reg_id_t scratch8, scratch_reg_info_t *si8,
-                     instr_t *nowrite_target,
                      bool process_eflags, bool alu_uncombined, bool preserve)
 {
     /* PR 448701: we need to support writes to shadow blocks faulting.
@@ -2776,8 +2775,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
      * a translation.
      */
     /* Be sure to write to eflags before calling add_check_datastore(),
-     * as the latter will skip to the end of the fastpath.
+     * as the latter will skip to the end of this instrumentation.
      */
+    instr_t *skip_write_tgt = INSTR_CREATE_label(drcontext);
     app_pc xl8 = instr_get_app_pc(inst);
     if (src_opsz > dst_opsz) {
         /* XXX i#243: what we really want is DRi#1382 to avoid hitting this
@@ -2839,10 +2839,11 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                 dst.shadow = shadow_reg_indir_opnd(&dst, si8->reg);
             }
             add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
-                                nowrite_target);
+                                skip_write_tgt);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow,
                                                             src.shadow), xl8));
         }
+        PRE(bb, inst, skip_write_tgt);
     } else if (src_opsz == 10) {
         /* We only get here if aligned to 16 bytes and mark_defined.
          * First write 8 bytes; then write 2 bytes.
@@ -2857,7 +2858,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             opnd_t imm8 = shadow_immed(8, SHADOW_DEFINED);
             /* check whole 16 bytes */
             add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
-                                nowrite_target);
+                                skip_write_tgt);
             opnd_set_size(&dst.shadow, OPSZ_8);
             PREXL8M(bb, inst, INSTR_XL8(INSTR_CREATE_mov_st(drcontext, dst.shadow, imm8),
                                         xl8));
@@ -2869,6 +2870,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                      OPSZ_1)), xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
+        PRE(bb, inst, skip_write_tgt);
     } else if (opnd_is_immed_int(src.shadow) && opnd_get_immed_int(src.shadow) == 0 &&
                opnd_is_immed_int(dst.offs)) {
         int ofnum = opnd_get_immed_int(dst.offs);
@@ -2877,7 +2879,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
         if (!opnd_is_null(dst.shadow)) {
             add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
-                                nowrite_target);
+                                skip_write_tgt);
             PREXL8M(bb, inst,
                     INSTR_XL8(INSTR_CREATE_and
                               (drcontext, dst.shadow,
@@ -2885,11 +2887,13 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                                                      OPSZ_1)), xl8));
             mark_eflags_used(drcontext, bb, mi->bb);
         }
+        PRE(bb, inst, skip_write_tgt);
     } else {
         /* dynamically-varying src.shadow or offset */
         opnd_t opreg1, opreg2, memoffs;
         opnd_t shiftby;
         bool wrote_shadow_eflags = false;
+        instr_t *preserve_memoffs_tgt = INSTR_CREATE_label(drcontext);
         ASSERT(scratch8 != REG_NULL, "invalid scratch reg");
         ASSERT(!opnd_is_null(src.offs) &&
                (opnd_is_null(dst.shadow) || !opnd_is_null(dst.offs)),
@@ -2964,8 +2968,9 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             if (process_eflags)
                 write_shadow_eflags(drcontext, bb, inst, REG_NULL, src.shadow);
             if (!opnd_is_null(dst.shadow)) {
+                /* Yes, we want to skip the restore of memoffs if preserve is set */
                 add_check_datastore(drcontext, bb, inst, mi, src.shadow, dst.shadow,
-                                    nowrite_target);
+                                    skip_write_tgt);
             }
             wrote_shadow_eflags = true;
 
@@ -3041,8 +3046,11 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
+                    /* Go to preserve_memoffs_tgt, not skip_write_tgt, as we
+                     * clobbered memoffs already
+                     */
                     add_check_datastore(drcontext, bb, inst, mi, opreg1,
-                                        dst.shadow, nowrite_target);
+                                        dst.shadow, preserve_memoffs_tgt);
                 }
                 wrote_shadow_eflags = true;
             }
@@ -3153,8 +3161,11 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
+                    /* Go to preserve_memoffs_tgt, not skip_write_tgt, as we
+                     * clobbered memoffs already
+                     */
                     add_check_datastore(drcontext, bb, inst, mi, opreg1,
-                                        dst.shadow, nowrite_target);
+                                        dst.shadow, preserve_memoffs_tgt);
                 }
                 wrote_shadow_eflags = true;
             }
@@ -3249,8 +3260,11 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                     write_shadow_eflags(drcontext, bb, inst, REG_NULL, opreg1);
                 }
                 if (!opnd_is_null(dst.shadow)) {
+                    /* Go to preserve_memoffs_tgt, not skip_write_tgt, as we
+                     * clobbered memoffs already
+                     */
                     add_check_datastore(drcontext, bb, inst, mi, opreg1,
-                                        dst.shadow, nowrite_target);
+                                        dst.shadow, preserve_memoffs_tgt);
                 }
                 wrote_shadow_eflags = true;
             }
@@ -3285,6 +3299,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             ASSERT(false, "only one of src and dst can have non-const offs");
         }
 
+        PRE(bb, inst, preserve_memoffs_tgt);
         if (preserve && !opnd_is_null(memoffs)/*nothing clobbered*/) {
             /* XXX: more efficient to combine the 2 dst writes but simpler
              * code-wise for now to fully restore and then put back into cl
@@ -3294,6 +3309,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
             PRE(bb, inst, INSTR_CREATE_shr
                 (drcontext, memoffs, OPND_CREATE_INT8(1)));
         }
+        PRE(bb, inst, skip_write_tgt);
         if (!opnd_is_immed_int(mi->memoffs) && scratch8 != REG_CL) {
             PRE(bb, inst,
                 INSTR_CREATE_xchg(drcontext, opnd_create_reg(DR_REG_XCX),
@@ -3307,22 +3323,21 @@ static inline void
 add_dstX2_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                        fastpath_info_t *mi, opnd_info_t src, int src_opsz, int dst_opsz,
                        reg_id_t scratch8, scratch_reg_info_t *si8,
-                       instr_t *nowrite_target, bool process_eflags,
-                       bool alu_uncombined)
+                       bool process_eflags, bool alu_uncombined)
 {
     /* even if dst1 is empty we need to write to eflags */
     if (!opnd_is_null(mi->dst[0].shadow) ||
         (process_eflags && TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)))) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[0],
                              src, src_opsz, dst_opsz, scratch8, si8,
-                             nowrite_target, process_eflags, alu_uncombined,
+                             process_eflags, alu_uncombined,
                              /* preserve src if we need to write to 2nd dst */
                              !opnd_is_null(mi->dst[1].shadow));
     }
     if (!opnd_is_null(mi->dst[1].shadow)) {
         add_dst_shadow_write(drcontext, bb, inst, mi, mi->dst[1],
                              src, src_opsz, dst_opsz, scratch8, si8,
-                             nowrite_target, process_eflags, alu_uncombined,
+                             process_eflags, alu_uncombined,
                              false/*we assume ok to clobber src*/);
     }
 }
@@ -4883,7 +4898,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          * then src memop propagation to reg below would be wrong?  we
          * need reg2 for below!
          */
-        instr_t *datastore_tgt = INSTR_CREATE_label(drcontext);
         opnd_info_t dst, src;
         initialize_opnd_info(&dst);
         initialize_opnd_info(&src);
@@ -4892,7 +4906,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(mi->reg2.used, "internal reg spill error");
         add_dst_shadow_write(drcontext, bb, inst, mi, dst, src, mi->src_opsz,
                              instr_is_return(inst) ? mi->src_opsz : mi->opsz,
-                             mi->reg2_8, &mi->reg2, datastore_tgt,
+                             mi->reg2_8, &mi->reg2,
                              /* for popf don't write UNADDR to eflags: we handle below */
                              false/*skip eflags*/, false/*!alu_uncombined*/,
                              false/*!preserve -- doesn't matter since src is const*/);
@@ -4904,7 +4918,6 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
              */
             write_shadow_eflags(drcontext, bb, inst, REG_NULL, mi->src[0].shadow);
         }
-        PRE(bb, inst, datastore_tgt);
     }
 
     /* Combine sources and write result to the dests, including eflags.
@@ -4955,7 +4968,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                     * whole dword's shadow to eflags */
                                    mi->check_definedness ? 4 : mi->opsz,/*not src*/
                                    mi->check_definedness ? 4 : mi->opsz,
-                                   scratch8, si8, fastpath_restore, true, false);
+                                   scratch8, si8, true, false);
         }
     } else if (mi->num_to_propagate == 1) {
         /* copy src shadow to eflags shadow and dst shadow */
@@ -4968,8 +4981,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
             mi->dst[0].offs = opnd_create_immed_int(0, OPSZ_1); /* for eflags */
         }
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0], mi->src_opsz,
-                               mi->opsz, mi->reg3_8, &mi->reg3,
-                               fastpath_restore, true, false);
+                               mi->opsz, mi->reg3_8, &mi->reg3, true, false);
         ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
     } else {
         /* combine the N sources and then write to the dest + eflags.
@@ -5058,7 +5070,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],
                                mi->src_opsz, mi->opsz, mi->reg3_8, &mi->reg3,
-                               fastpath_restore, true, alu_uncombined);
+                               true, alu_uncombined);
         ASSERT(!mi->reg3.used || mi->reg3.reg != REG_NULL, "spill error");
 
         /* FIXME: for insert_shadow_op() for shifts, need to
