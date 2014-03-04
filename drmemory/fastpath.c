@@ -5688,13 +5688,6 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         bi->reg1.used ? "used" : "unused",
         bi->reg2.used ? "used" : "unused",
         bi->eflags_used ? "used" : "unused");
-    if (added_instru) {
-        restore_aflags_if_live(drcontext, bb, last, NULL, bi);
-        if (bi->reg1.reg != DR_REG_NULL)
-            insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
-        if (bi->reg2.reg != DR_REG_NULL)
-            insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
-    }
 
     if (!translating) {
         /* Add to table so we can restore on slowpath or a fault */
@@ -5753,6 +5746,17 @@ fastpath_bottom_of_bb(void *drcontext, void *tag, instrlist_t *bb,
         hashtable_lock(&bb_table);
         bb_save_add_entry(tag, save);
         hashtable_unlock(&bb_table);
+    }
+
+    /* We do this *after* recording what to restore, b/c this can change the used
+     * fields (i#1458).
+     */
+    if (added_instru) {
+        restore_aflags_if_live(drcontext, bb, last, NULL, bi);
+        if (bi->reg1.reg != DR_REG_NULL)
+            insert_spill_global(drcontext, bb, last, &bi->reg1, false/*restore*/);
+        if (bi->reg2.reg != DR_REG_NULL)
+            insert_spill_global(drcontext, bb, last, &bi->reg2, false/*restore*/);
     }
 }
 
