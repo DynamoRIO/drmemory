@@ -1231,7 +1231,7 @@ instr_check_definedness(instr_t *inst)
  */
 
 bool
-result_is_always_defined(instr_t *inst)
+result_is_always_defined(instr_t *inst, bool natively)
 {
     /* Even if source operands are undefined, don't consider this instr as
      * reading undefined values if:
@@ -1263,7 +1263,8 @@ result_is_always_defined(instr_t *inst)
          * should gradually add to opc_should_propagate_xmm and once we can
          * propagate on everything we can remove this check here.
          */
-        (instr_num_dsts(inst) > 0 &&
+        (!natively && /* not true natively */
+         instr_num_dsts(inst) > 0 &&
          opnd_is_reg(instr_get_dst(inst, 0)) &&
          reg_is_xmm(opnd_get_reg(instr_get_dst(inst, 0))) &&
          !opc_should_propagate_xmm(instr_get_opcode(inst)))) {
@@ -2726,7 +2727,7 @@ slow_path_with_mc(void *drcontext, app_pc pc, app_pc decode_pc, dr_mcontext_t *m
      * side in our 8-dword-capacity shadow_vals array.
      */
     check_definedness = instr_check_definedness(&inst);
-    always_defined = result_is_always_defined(&inst);
+    always_defined = result_is_always_defined(&inst, false/*us*/);
     pushpop = opc_is_push(opc) || opc_is_pop(opc);
     check_srcs_after = instr_needs_all_srcs_and_vals(&inst);
     if (check_srcs_after) {

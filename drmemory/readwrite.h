@@ -359,7 +359,7 @@ bool
 opc_should_propagate_xmm(int opc);
 
 bool
-result_is_always_defined(instr_t *inst);
+result_is_always_defined(instr_t *inst, bool natively);
 
 bool
 always_check_definedness(instr_t *inst, int opnum);

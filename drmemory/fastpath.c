@@ -770,7 +770,8 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
             /* match dst size, shadow slot holds whole dword's worth */
             if (mi->opsz > 0) {
                 ASSERT(mi->opsz <= 4 || mi->check_definedness ||
-                       result_is_always_defined(inst), "no prop eflags to > 4");
+                       result_is_always_defined(inst, false/*us*/),
+                       "no prop eflags to > 4");
                 mi->src_opsz = mi->opsz; /* eflags */
             } else
                 mi->src_opsz = 1; /* eflags */
@@ -782,7 +783,7 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
         /* match src size, shadow slot holds whole dword's worth */
         if (mi->src_opsz > 0) {
             ASSERT(mi->src_opsz <= 4 || mi->check_definedness ||
-                   result_is_always_defined(inst), "no prop eflags to > 4");
+                   result_is_always_defined(inst, false/*us*/), "no prop eflags to > 4");
             mi->opsz = mi->src_opsz; /* eflags */
         } else
             mi->opsz = 1; /* eflags */
@@ -4069,7 +4070,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
 
     mark_defined =
         !options.check_uninitialized ||
-        result_is_always_defined(inst) ||
+        result_is_always_defined(inst, false/*us*/) ||
         /* no sources (e.g., rdtsc) */
         (opnd_is_null(mi->src[0].app) &&
          !TESTANY(EFLAGS_READ_6, instr_get_eflags(inst))) ||
@@ -5568,7 +5569,7 @@ fastpath_pre_app_instr(void *drcontext, instrlist_t *bb, instr_t *inst,
      * (e.g., xor with self)
      */
     if ((bi->reg1.reg != DR_REG_NULL || bi->reg2.reg != DR_REG_NULL) &&
-        (!result_is_always_defined(inst) ||
+        (!result_is_always_defined(inst, true/*natively*/) ||
          /* if sub-dword then we have to restore for rest of bits */
          opnd_get_size(instr_get_src(inst, 0)) != OPSZ_4)) {
         /* we don't mark as used: if unused so far, no reason to restore */
