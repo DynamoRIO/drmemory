@@ -183,11 +183,12 @@ static void
 pause_if_in_cmd(void)
 {
 #ifdef WINDOWS
-    if (dr_using_console() ||
-        /* i#1157: on win8 dr_using_console() always returns false, so we
-         * always pause unless -batch
-         */
-        (on_win8_or_later() && !batch)) {
+    if (!batch &&
+        (dr_using_console() ||
+         /* i#1157: on win8 dr_using_console() always returns false, so we
+          * always pause unless -batch
+          */
+         on_win8_or_later())) {
         /* If someone double-clicked drmemory.exe, ensure the message
          * stays up instead of the cmd window disappearing (i#1129).
          * Yes, someone already in cmd will have to hit a key, but
