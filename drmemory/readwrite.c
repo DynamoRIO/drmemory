@@ -614,8 +614,9 @@ event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_
     hashtable_lock(&bb_table);
     save = (bb_saved_info_t *) hashtable_lookup(&bb_table, info->fragment_info.tag);
 #ifdef TOOL_DR_MEMORY
-    LOG(2, "%s: raw pc="PFX", xl8 pc="PFX"\n", __FUNCTION__, info->raw_mcontext->pc,
-        info->mcontext->pc);
+    LOG(2, "%s: raw pc="PFX", xl8 pc="PFX", tag="PFX"\n",
+        __FUNCTION__, info->raw_mcontext->pc, info->mcontext->pc,
+        info->fragment_info.tag);
     DOLOG(2, {
         /* We leave the translation as being in our own library, since no
          * other good alternative.  We document this to users.

@@ -837,6 +837,9 @@ pattern_insert_save_aflags(void *drcontext, instrlist_t *ilist, instr_t *save,
         INSTR_CREATE_setcc(drcontext, OP_seto,
                            opnd_create_reg(DR_REG_AL)));
     if (restore_app_xax) {
+        /* FIXME: this needs to store where it's keeping things, for
+         * event_restore_state()
+         */
         /* save aflags into tls slot */
         spill_reg(drcontext, ilist, save, DR_REG_XAX, PATTERN_SLOT_AFLAGS);
         /* restore app xax */

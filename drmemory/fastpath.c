@@ -1841,6 +1841,11 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
          */
         if (bi->aflags_where == AFLAGS_UNKNOWN) {
 #ifdef TOOL_DR_MEMORY
+# if 0 /* FIXME i#1466 */
+            /* FIXME i#1466: I am disabling this as it is buggy for certain
+             * cases of eax being used in an instruction that faults.
+             * i#1466 covers the proper longer-term fix to re-enable.
+             */
             if (!xax_is_used_subsequently(inst) && options.pattern != 0) {
                 /* To keep aflags in %eax, we need a permanent TLS store for
                  * storing app's %eax value. Current implementation uses SLOT 5,
@@ -1857,6 +1862,7 @@ save_aflags_if_live(void *drcontext, instrlist_t *bb, instr_t *inst,
                  */
                 bi->aflags_where = AFLAGS_IN_EAX;
             } else
+# endif
 #endif
                 bi->aflags_where = AFLAGS_IN_TLS;
         }
