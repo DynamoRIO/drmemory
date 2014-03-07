@@ -713,12 +713,17 @@ IMM32.dll!...
 USER32.dll!*
 
 ##################################################
-# i#1155: real bug in VS2012 istream
+# i#1155: real bug in VS2012/VS2013 istream
 
 UNINITIALIZED READ
-name=default i#1155 VS2012 istream
-MSVCP110*.dll!std::_Find_elem<*>
-MSVCP110*.dll!std::num_get<*>::_Getifld
+name=default i#1155 VS2012/VS2013 istream
+MSVCP1*.dll!std::_Find_elem<>
+MSVCP1*.dll!std::num_get<>::_Get?fld
+
+UNINITIALIZED READ
+name=default i#1155-nosyms VS2012/VS2013 istream
+MSVCP1*.dll!std::_Throw_future_error
+MSVCP1*.dll!std::num_get<>::_Get?fld
 
 ##################################################
 # i#960: real mismatches of Windows API layer vs C layer in CRT when we
