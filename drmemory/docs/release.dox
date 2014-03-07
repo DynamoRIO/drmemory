@@ -80,12 +80,17 @@ The changes between \TOOL_VERSION and version 1.6.1 include:
  - On Windows, handle leak detection (-check_handle_leaks) is now on by default
    in full mode.  However, it is still experimental and conservative,
    placing leaks it's not sure about in potential_errors.txt.
+ - Added preliminary shadowing of xmm registers for better Visual Studio
+   2013 support
+ - The pause in cmd on a frontend error is now bypassable by -batch
+ - Various bug fixes
 
 The changes between version 1.6.1 and version 1.6.0 include:
  - Added Windows 8.1 support
  - Added -handle_leaks_only feature for low-overhead handle leak checking
  - Added the -crash_at_unaddressable and -crash_at_error options
  - Added the -no_callstack_use_fp and -callstack_conservative options
+ - Various bug fixes
 
 The changes between version 1.6.0 and version 1.5.1 include:
  - Added a separate category of error report, "potential errors", stored in
