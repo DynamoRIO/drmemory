@@ -576,6 +576,15 @@ get_raw_tls_value(uint offset)
  * STATE RESTORATION
  */
 
+/* Our state restoration model: Only whole-bb scratch regs and aflags
+ * need to be restored (i.e., all local scratch regs are restored
+ * before any app instr).  For each such reg or aflags, we guarantee
+ * that either the app value is in TLS at each app instr (where fault
+ * might happen) or the app value is dead and it's ok to have garbage
+ * in TLS b/c the app will write it before reading (this is all modulo
+ * the app's own fault handler going off on a different path (xref
+ * DRi#400): so we're slightly risky here).
+ */
 bool
 event_restore_state(void *drcontext, bool restore_memory, dr_restore_state_info_t *info)
 {
