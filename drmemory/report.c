@@ -1604,6 +1604,9 @@ report_init(void)
         info_cstack_pfx = INFO_PFX;
         aux_cstack_pfx  = INFO_PFX;
     }
+
+    /* We need our instruction= line to match old DR disasm style for compatibility */
+    disassemble_set_syntax(DR_DISASM_NO_OPND_SIZE);
 }
 
 #ifdef UNIX

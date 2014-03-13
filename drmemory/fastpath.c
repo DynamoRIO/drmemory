@@ -886,7 +886,9 @@ set_reg_shadow_opnds(fastpath_info_t *mi, opnd_info_t *oi, reg_id_t reg)
         /* This points at what we need to de-reference via a scratch reg */
         oi->shadow = opnd_create_shadow_reg_slot(reg);
         oi->offs = opnd_create_immed_int(get_shadow_xmm_offs(reg), OPSZ_1);
-        oi->indir_size = reg_get_size(reg);
+        /* For partial xmm regs we need the opnd size, not reg size */
+        ASSERT(opnd_get_reg(oi->app) == reg, "reg mismatch");
+        oi->indir_size = opnd_get_size(oi->app);
     }
 }
 
