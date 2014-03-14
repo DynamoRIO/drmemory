@@ -251,6 +251,7 @@ print_shadow_registers(void);
 opnd_t
 opnd_create_shadow_reg_slot(reg_id_t reg);
 
+/* Also takes mmx reg */
 uint
 get_shadow_xmm_offs(reg_id_t reg);
 

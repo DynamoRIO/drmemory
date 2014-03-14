@@ -527,6 +527,27 @@ copy_through_xmm_test(void)
         printf("got x\n");
 }
 
+/* i#1473: mmx shadowing */
+void copy_through_mmx(char *dst, char *src);
+void mmx_operations(char *dst, char *src);
+
+void
+mmx_test(void)
+{
+    char dst1[8];
+    char dst2[8];
+    char uninit[8];
+    uninit[0] = 'x';
+    copy_through_mmx(dst1, uninit);
+    if (dst1[0] != 'x')
+        printf("copy failed\n");
+    mmx_operations(dst2, uninit);
+    if (dst2[7] == 'x') /* no error b/c punpcklbw cleared the top */
+        printf("got x\n");
+    if (dst2[3] == 'x') /* uninit! */
+        array[127] = 4;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -565,6 +586,8 @@ main(int argc, char *argv[])
     data16_div_test();
 
     copy_through_xmm_test();
+
+    mmx_test();
 
     return 0;
 }
@@ -860,6 +883,60 @@ GLOBAL_LABEL(FUNCNAME:)
         movdqa   xmm2, xmm1
         mov      REG_XCX, [REG_XBP - ARG_SZ]
         movdqu   [REG_XCX], xmm2 /* dst */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        mov      REG_XSP, REG_XBP
+        pop      REG_XBP
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME copy_through_mmx
+/* void copy_through_mmx(char *dst, char *src); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        END_PROLOG
+
+        movq     mm0, [REG_XAX] /* src */
+        movq     [REG_XCX], mm0 /* dst */
+
+        add      REG_XSP, 0 /* make a legal SEH64 epilog */
+        ret
+        END_FUNC(FUNCNAME)
+#undef FUNCNAME
+
+#define FUNCNAME mmx_operations
+/* void mmx_operations(char *dst, char *src); */
+        DECLARE_FUNC(FUNCNAME)
+GLOBAL_LABEL(FUNCNAME:)
+        mov      REG_XCX, ARG1
+        mov      REG_XAX, ARG2
+        push     REG_XBP
+        mov      REG_XBP, REG_XSP
+        push     REG_XCX /* dst */
+        END_PROLOG
+
+        movq     mm4, [REG_XAX] /* src */
+        pxor     mm4, mm4
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movq     [REG_XCX], mm4 /* dst: just convenient mem loc */
+        mov      edx, [REG_XCX + 4] /* uninit, but zeroed by xor */
+        test     edx, edx /* should be no error */
+
+        movd     mm5, DWORD [REG_XAX] /* src */
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movd     DWORD [REG_XCX], mm5 /* dst: just convenient mem loc */
+        mov      edx, [REG_XCX + 4] /* uninit, but top half zeroed by movd */
+        test     edx, edx /* should be no error */
+
+        movq     mm0, [REG_XAX] /* src */
+        pxor     mm1, mm1
+        punpcklbw mm1, mm0
+        movq     mm2, mm1
+        mov      REG_XCX, [REG_XBP - ARG_SZ]
+        movq     [REG_XCX], mm2 /* dst */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP

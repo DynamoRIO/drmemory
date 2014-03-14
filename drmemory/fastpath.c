@@ -57,6 +57,10 @@ static uint share_xl8_num_flushes;
 #ifdef TOOL_DR_MEMORY
 static bool needs_shadow_op(instr_t *inst);
 
+static bool
+load_reg_shadow_val(void *drcontext, instrlist_t *bb, instr_t *inst,
+                    reg_id_t target, opnd_info_t *cur);
+
 # ifdef DEBUG
 static void
 print_opnd(void *drcontext, opnd_t op, file_t file, const char *prefix)
@@ -312,7 +316,7 @@ reg_ignore_for_fastpath(int opc, opnd_t reg, bool dst)
     reg_id_t r = opnd_get_reg(reg);
     return (!reg_is_shadowed(opc, r) ||
             /* Ignore xmm sources when not propagating xmm values */
-            (reg_is_xmm(r) && !dst && !opc_should_propagate_xmm(opc)));
+            ((reg_is_xmm(r) || reg_is_mmx(r)) && !dst && !opc_should_propagate_xmm(opc)));
 }
 
 static bool
@@ -324,7 +328,9 @@ reg_ok_for_fastpath(int opc, opnd_t reg, bool dst)
              /* i#1453: we shadow xmm regs now
               * XXX i#243: but not ymm regs
               */
-             (reg_is_xmm(r) && !reg_is_ymm(r))));
+             (reg_is_xmm(r) && !reg_is_ymm(r)) ||
+             /* i#1473: propagate mmx regs */
+             reg_is_mmx(r)));
 }
 
 /* Up to caller to check rest of reqts for 8+-byte */
@@ -393,6 +399,8 @@ opnd_ok_for_fastpath(int opc, opnd_t op, int opnum, bool dst, fastpath_info_t *m
             if (!dst)
                 mi->opnum[num] = opnum;
         }
+        if (reg_is_xmm(opnd_get_reg(op)) || reg_is_mmx(opnd_get_reg(op)))
+            mi->shadow_indir = true;
         return true;
     } else if (opnd_is_memory_reference(op)) {
         if (!memop_ok_for_fastpath(op, true/*8-byte ok*/))
@@ -662,6 +670,11 @@ instr_ok_for_instrument_fastpath(instr_t *inst, fastpath_info_t *mi, bb_info_t *
         if (!opnd_ok_for_fastpath(opc, instr_get_src(inst, 1), 1, false, mi))
             return false;
         return true;
+    } else if (opc == OP_pinsrb || opc == OP_pinsrw || opc == OP_pinsrd) {
+        /* XXX i#243: these are tricky as they write to small parts of xmm.
+         * Bail for now.
+         */
+        return false;
     } else {
         /* mi->src[] and mi->dst[] are set in opnd_ok_for_fastpath() */
 
@@ -875,6 +888,12 @@ adjust_opnds_for_fastpath(instr_t *inst, fastpath_info_t *mi)
 }
 
 #ifdef TOOL_DR_MEMORY
+static inline opnd_size_t
+shadow_reg_indir_size(opnd_info_t *info)
+{
+    return opnd_size_from_bytes(opnd_size_in_bytes(info->indir_size)/SHADOW_GRANULARITY);
+}
+
 static void
 set_reg_shadow_opnds(fastpath_info_t *mi, opnd_info_t *oi, reg_id_t reg)
 {
@@ -882,13 +901,15 @@ set_reg_shadow_opnds(fastpath_info_t *mi, opnd_info_t *oi, reg_id_t reg)
         oi->shadow = opnd_create_shadow_reg_slot(reg);
         oi->offs = opnd_create_immed_int(reg_offs_in_dword(reg), OPSZ_1);
     } else {
-        ASSERT(reg_is_xmm(reg), "only expect gpr or xmm");
+        ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "only expect gpr or xmm");
+        ASSERT(mi->shadow_indir, "shadow_indir should be set");
         /* This points at what we need to de-reference via a scratch reg */
         oi->shadow = opnd_create_shadow_reg_slot(reg);
         oi->offs = opnd_create_immed_int(get_shadow_xmm_offs(reg), OPSZ_1);
         /* For partial xmm regs we need the opnd size, not reg size */
         ASSERT(opnd_get_reg(oi->app) == reg, "reg mismatch");
         oi->indir_size = opnd_get_size(oi->app);
+        ASSERT(mi->need_nonoffs_reg3, "spill mismatch");
     }
 }
 
@@ -1254,7 +1275,7 @@ should_share_addr_helper(fastpath_info_t *mi)
      * once we get drreg we should be able to share these and avoid reg
      * conflicts.
      */
-    if (mi->opsz >= 16 || mi->src_opsz >= 16)
+    if (mi->shadow_indir)
         return false;
     return true;
 }
@@ -1954,7 +1975,8 @@ insert_cmp_for_equality(void *drcontext, instrlist_t *bb, instr_t *inst,
  */
 static void
 insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
-                     fastpath_info_t *mi, opnd_t app_op, opnd_t shadow_op)
+                     fastpath_info_t *mi, opnd_info_t *oi,
+                     opnd_t app_op, opnd_t shadow_op)
 {
     ASSERT(!opnd_is_null(shadow_op), "shadow op can't be empty");
     ASSERT(!opnd_is_null(app_op), "app op can't be empty");
@@ -2033,6 +2055,13 @@ insert_check_defined(void *drcontext, instrlist_t *bb, instr_t *inst,
                              opnd_create_base_disp(base, index, 1, disp, OPSZ_1),
                              OPND_CREATE_INT8(1)));
     } else {
+        if (oi != NULL && oi->indir_size != OPSZ_NA) {
+            reg_id_t indir_tgt = reg_to_size(mi->reg3.reg, shadow_reg_indir_size(oi));
+            ASSERT(mi->reg3.reg != DR_REG_NULL, "spill error");
+            mark_scratch_reg_used(drcontext, bb, mi->bb, &mi->reg3);
+            load_reg_shadow_val(drcontext, bb, inst, indir_tgt, oi);
+            shadow_op = opnd_create_reg(indir_tgt);
+        }
         insert_cmp_for_equality(drcontext, bb, inst, shadow_op, SHADOW_DWORD_DEFINED);
     }
 }
@@ -2786,12 +2815,11 @@ static inline opnd_t
 shadow_reg_indir_opnd(opnd_info_t *info, reg_id_t base)
 {
     return opnd_create_base_disp
-        (base, REG_NULL, 0, opnd_get_immed_int(info->offs),
-         opnd_size_from_bytes(opnd_size_in_bytes(info->indir_size)/SHADOW_GRANULARITY));
+        (base, REG_NULL, 0, opnd_get_immed_int(info->offs), shadow_reg_indir_size(info));
 }
 
 /* May write to the entire pointer-sized expansion of target */
-static inline bool
+static bool
 load_reg_shadow_val(void *drcontext, instrlist_t *bb, instr_t *inst,
                     reg_id_t target, opnd_info_t *cur)
 {
@@ -2887,7 +2915,7 @@ add_dst_shadow_write(void *drcontext, instrlist_t *bb, instr_t *inst,
                          si8);
     } else
         ASSERT(opnd_is_immed_int(src.shadow), "invalid shadow src");
-    ASSERT(dst.indir_size == OPSZ_NA || src_opsz == 4 || src_opsz == 16,
+    ASSERT(dst.indir_size == OPSZ_NA || src_opsz == 4 || src_opsz == 8 || src_opsz == 16,
            "unexpected shadow reg indir");
     if (src_opsz == 4 || src_opsz == 8 || src_opsz == 10 || src_opsz == 16) {
         /* copy entire byte(s) (1, 2, or 4) shadowing the dword */
@@ -4092,7 +4120,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         }
     }
     if (!mi->need_offs && mi->opsz < 4 && options.check_uninitialized &&
-        (mi->store || mi->dst_reg != REG_NULL ||
+        (mi->store || reg_is_gpr(mi->dst_reg) ||
          /* if writes eflags we'll need a 3rd reg for write_shadow_eflags */
          (TESTANY(EFLAGS_WRITE_6, instr_get_eflags(inst)) && !mi->check_definedness)))
         mi->need_nonoffs_reg3 = true;
@@ -4109,7 +4137,7 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          opnd_is_immed_int(instr_get_src(inst, 0)) &&
          (opc == OP_sar || opnd_get_immed_int(instr_get_src(inst, 0)) % 8 != 0)))
         mi->need_nonoffs_reg3 = true;
-    if ((mi->src_opsz == 16 || mi->opsz == 16) && !mi->check_definedness) {
+    if (mi->shadow_indir) {
         /* We need a temp reg for indirected shadow memory */
         ASSERT(!mi->need_nonoffs_reg3, "spill overlap");
         mi->need_nonoffs_reg3 = true;
@@ -4598,8 +4626,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
           always_check_definedness(inst, mi->opnum[2])))) {
         LOG(4, "\tchecking definedness of src3 => %d to propagate\n",
             mi->num_to_propagate-1);
-        insert_check_defined(drcontext, bb, marker1, mi, mi->src[2].app,
-                             mi->src[2].shadow);
+        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[2],
+                             mi->src[2].app, mi->src[2].shadow);
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
@@ -4614,8 +4642,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         opnd_info_t tmp;
         LOG(4, "\tchecking definedness of src2 => %d to propagate\n",
             mi->num_to_propagate-1);
-        insert_check_defined(drcontext, bb, marker1, mi, mi->src[1].app,
-                             mi->src[1].shadow);
+        insert_check_defined(drcontext, bb, marker1, mi, &mi->src[1],
+                             mi->src[1].app, mi->src[1].shadow);
         mark_eflags_used(drcontext, bb, mi->bb);
         /* relies on src1 undef going to slowpath so only for !opnd_same */
         if (check_appval && !opnd_same(mi->src[1].app, mi->src[0].app)) {
@@ -4683,8 +4711,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
          * we check src2 since if checked_src2 we swapped 1 and 2
          */
         if (!checked_src2 || !opnd_same(mi->src[2].app, mi->src[0].app)) {
-            insert_check_defined(drcontext, bb, marker1, mi, mi->src[0].app,
-                                 mi->src[0].shadow);
+            insert_check_defined(drcontext, bb, marker1, mi, &mi->src[0],
+                                 mi->src[0].app, mi->src[0].shadow);
             mark_eflags_used(drcontext, bb, mi->bb);
             ASSERT(opnd_is_null(heap_unaddr_shadow), "only 1 unaddr check");
             if (check_ignore_unaddr && opnd_is_null(heap_unaddr_shadow)) {
@@ -4713,12 +4741,12 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         /* we keep on fastpath by hardcoding the 4th & 5th sources */
         opnd_t op4 = instr_get_src(inst, 3);
         opnd_t op5 = instr_get_src(inst, 4);
-        insert_check_defined(drcontext, bb, marker1, mi, op4,
+        insert_check_defined(drcontext, bb, marker1, mi, NULL, op4,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op4)));
         mark_eflags_used(drcontext, bb, mi->bb);
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
-        insert_check_defined(drcontext, bb, marker1, mi, op5,
+        insert_check_defined(drcontext, bb, marker1, mi, NULL, op5,
                              opnd_create_shadow_reg_slot(opnd_get_reg(op5)));
         add_jcc_slowpath(drcontext, bb, marker1,
                          check_ignore_unaddr ? OP_jne : OP_jne_short, mi);
@@ -5012,6 +5040,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
         ASSERT(!mi->use_shared, "we're clobbering reg1 potentially");
         if (mi->src_opsz == 16) /* xmm */
             src_val_reg = reg_to_pointer_sized(scratch8);
+        else if (mi->src_opsz == 8) /* mmx */
+            src_val_reg = reg_ptrsz_to_16(reg_to_pointer_sized(scratch8));
         else {
             ASSERT_NOT_IMPLEMENTED();
             src_val_reg = DR_REG_NULL;

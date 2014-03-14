@@ -1318,6 +1318,7 @@ const byte shadow_word_addr_not_bit[4][256] = {
 #else
 # define NUM_XMM_REGS 8
 #endif
+#define NUM_MMX_REGS 8
 
 typedef struct _shadow_aux_registers_t {
     /* i#243: shadow xmm registers */
@@ -1325,6 +1326,8 @@ typedef struct _shadow_aux_registers_t {
 #ifdef X64
     int ymmh[NUM_XMM_REGS];
 #endif
+    /* i#1473: shadow mmx registers */
+    short mm[NUM_MMX_REGS];
     /* XXX i#471: add floating-point registers here as well */
 } shadow_aux_registers_t;
 
@@ -1379,7 +1382,7 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
         offs = r - DR_REG_XAX;
         opsz = OPSZ_1;
     } else {
-        ASSERT(reg_is_xmm(reg), "internal shadow reg error");
+        ASSERT(reg_is_xmm(reg) || reg_is_mmx(reg), "internal shadow reg error");
         offs = offsetof(shadow_registers_t, aux);
         opsz = OPSZ_PTR;
     }
@@ -1393,13 +1396,16 @@ opnd_create_shadow_reg_slot(reg_id_t reg)
 uint
 get_shadow_xmm_offs(reg_id_t reg)
 {
-    ASSERT(reg_is_xmm(reg), "incorrectly called");
 #ifdef X64
     if (reg_is_ymm(reg))
         return offsetof(shadow_aux_registers_t, ymmh) + sizeof(int)*(reg - DR_REG_YMM0);
-    else
 #endif
+    if (reg_is_xmm(reg))
         return offsetof(shadow_aux_registers_t, xmm) + sizeof(int)*(reg - DR_REG_XMM0);
+    else {
+        ASSERT(reg_is_mmx(reg), "invalid reg");
+        return offsetof(shadow_aux_registers_t, mm) + sizeof(short)*(reg - DR_REG_MM0);
+    }
 }
 
 opnd_t
@@ -1537,6 +1543,11 @@ print_shadow_registers(void)
         if (i % 4 == 3)
             LOG(0, "\n");
     }
+    LOG(0, "    ");
+    for (i = 0; i < NUM_MMX_REGS; i++) {
+        LOG(0, "mm%d=%04x ", i, (unsigned short)sr->aux->mm[i]);
+    }
+    LOG(0, "\n");
 }
 
 static byte *
@@ -1552,9 +1563,13 @@ reg_shadow_addr(shadow_registers_t *sr, reg_id_t reg)
         /* Caller must ask for xmm to get low bits (won't all fit in uint) */
         if (reg_is_ymm(reg))
             return (byte *) &sr->aux->ymmh[reg - DR_REG_YMM0];
-        else
 #endif
+        if (reg_is_xmm(reg))
             return (byte *) &sr->aux->xmm[reg - DR_REG_XMM0];
+        else {
+            ASSERT(reg_is_mmx(reg), "invalid reg");
+            return (byte *) &sr->aux->mm[reg - DR_REG_MM0];
+        }
     }
 }
 
@@ -1565,7 +1580,7 @@ get_shadow_register_common(shadow_registers_t *sr, reg_id_t reg)
     opnd_size_t sz = reg_get_size(reg);
     byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
-    if (reg_is_xmm(reg))
+    if (reg_is_xmm(reg) || reg_is_mmx(reg))
         return *(uint *)addr;
     ASSERT(reg_is_gpr(reg), "internal shadow reg error");
     val = *addr;
@@ -1614,7 +1629,8 @@ register_shadow_set_byte(reg_id_t reg, uint bytenum, uint val)
     byte *addr = reg_shadow_addr(sr, reg);
     ASSERT(options.shadowing, "incorrectly called");
     while (shift > 7) {
-        ASSERT(reg_is_xmm(reg), "shift too big for GPR");
+        ASSERT(reg_is_xmm(reg) ||
+               (shift < 16 && reg_is_mmx(reg)), "shift too big for reg");
         addr++;
         shift -= 8;
     }

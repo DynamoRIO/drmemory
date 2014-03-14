@@ -92,6 +92,7 @@ typedef struct _fastpath_info_t {
     bool pushpop;
     bool mem2mem;
     bool load2x; /* two mem sources */
+    bool shadow_indir; /* involves indirected register shadow memory: xmm or mmx */
 
     /* filled in by adjust_opnds_for_fastpath() */
     reg_id_t src_reg;

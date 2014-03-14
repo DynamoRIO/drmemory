@@ -1066,7 +1066,9 @@ reg_is_shadowed(int opc, reg_id_t reg)
              * which was plumbed through several fastpath routines that call
              * into here.
              */
-            (reg_is_xmm(reg) && !reg_is_ymm(reg)));
+            (reg_is_xmm(reg) && !reg_is_ymm(reg)) ||
+            /* i#1473: propagate mmx */
+            reg_is_mmx(reg));
 }
 
 static bool

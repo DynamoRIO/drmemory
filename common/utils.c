@@ -1170,6 +1170,26 @@ reg_ptrsz_to_8h(reg_id_t reg)
     return reg_32_to_8h(reg);
 }
 
+reg_id_t
+reg_to_size(reg_id_t reg, opnd_size_t size)
+{
+    reg_id_t ptrsz = reg_to_pointer_sized(reg);
+    if (size == OPSZ_1)
+        return reg_ptrsz_to_8(ptrsz);
+    else if (size == OPSZ_2)
+        return reg_ptrsz_to_16(ptrsz);
+    else if (size == OPSZ_4)
+        return IF_X64_ELSE(reg_64_to_32(ptrsz), ptrsz);
+#ifdef X64
+    else if (size == OPSZ_8)
+        return ptrsz;
+#endif
+    else {
+        ASSERT(false, "invalid target reg size");
+        return DR_REG_NULL;
+    }
+}
+
 /***************************************************************************
  * APP INSTRS
  */
