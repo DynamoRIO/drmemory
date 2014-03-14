@@ -2045,18 +2045,27 @@ needs_shadow_op(instr_t *inst)
     case OP_shl:
     case OP_shr:
     case OP_sar:
+    case OP_punpcklbw:
+    case OP_punpcklwd:
+    case OP_punpckldq:
+    case OP_punpcklqdq:
+    case OP_punpckhbw:
+    case OP_punpckhwd:
+    case OP_punpckhdq:
+    case OP_punpckhqdq:
         return true;
     default: return false;
     }
 }
 
-/* Manipulates the one-byte shadow value in register reg that represents an
- * app dword, appropriately for the app instruction inst.
+/* Manipulates the shadow value in register reg that is the product of
+ * combining the sources of instruction inst, prior to storing into the
+ * destination(s) of inst, to mirror the instruction's operation.
  * Keep in sync w/ needs_shadow_op().
  */
 static void
 insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
-                 reg_id_t reg8, reg_id_t scratch8,
+                 reg_id_t reg, reg_id_t scratch8,
                  scratch_reg_info_t *si8/*for scratch8*/)
 {
     /* FIXME: doesn't support non-immed-int operands yet: for those we
@@ -2073,7 +2082,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
                 shift = opsz*8;
             if (shift % 8 == 0) {
                 PRE(bb, inst,
-                    INSTR_CREATE_shl(drcontext, opnd_create_reg(reg8),
+                    INSTR_CREATE_shl(drcontext, opnd_create_reg(reg),
                                      OPND_CREATE_INT8((shift / 8)*2)));
             } else {
                 /* need to merge partial bytes */
@@ -2081,15 +2090,15 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
                 mark_scratch_reg_used(drcontext, bb, mi->bb, si8);
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                        opnd_create_reg(reg8)));
+                                        opnd_create_reg(reg)));
                 PRE(bb, inst,
-                    INSTR_CREATE_shl(drcontext, opnd_create_reg(reg8),
+                    INSTR_CREATE_shl(drcontext, opnd_create_reg(reg),
                                      OPND_CREATE_INT8((((shift-1) / 8)+1)*2)));
                 PRE(bb, inst,
                     INSTR_CREATE_shl(drcontext, opnd_create_reg(scratch8),
                                      OPND_CREATE_INT8((shift / 8)*2)));
                 PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(reg8),
+                    INSTR_CREATE_or(drcontext, opnd_create_reg(reg),
                                     opnd_create_reg(scratch8)));
             }
         } else {
@@ -2109,7 +2118,7 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
             if (shift % 8 == 0) {
                 if (opc == OP_shr) {
                     PRE(bb, inst,
-                        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg8),
+                        INSTR_CREATE_shr(drcontext, opnd_create_reg(reg),
                                          OPND_CREATE_INT8((shift / 8)*2)));
                 } else {
                     /* shift-in bits come from top bit */
@@ -2118,12 +2127,12 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
                     while (shift > 0) {
                         PRE(bb, inst,
                             INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                                opnd_create_reg(reg8)));
+                                                opnd_create_reg(reg)));
                         PRE(bb, inst,
-                            INSTR_CREATE_sar(drcontext, opnd_create_reg(reg8),
+                            INSTR_CREATE_sar(drcontext, opnd_create_reg(reg),
                                              OPND_CREATE_INT8(2)));
                         PRE(bb, inst,
-                            INSTR_CREATE_or(drcontext, opnd_create_reg(reg8),
+                            INSTR_CREATE_or(drcontext, opnd_create_reg(reg),
                                             opnd_create_reg(scratch8)));
                         shift -= 8;
                     }
@@ -2135,15 +2144,15 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
                 ASSERT(opc != OP_sar, "NYI");
                 PRE(bb, inst,
                     INSTR_CREATE_mov_ld(drcontext, opnd_create_reg(scratch8),
-                                        opnd_create_reg(reg8)));
+                                        opnd_create_reg(reg)));
                 PRE(bb, inst,
-                    INSTR_CREATE_shr(drcontext, opnd_create_reg(reg8),
+                    INSTR_CREATE_shr(drcontext, opnd_create_reg(reg),
                                      OPND_CREATE_INT8((((shift-1) / 8)+1)*2)));
                 PRE(bb, inst,
                     INSTR_CREATE_shr(drcontext, opnd_create_reg(scratch8),
                                      OPND_CREATE_INT8((shift / 8)*2)));
                 PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(reg8),
+                    INSTR_CREATE_or(drcontext, opnd_create_reg(reg),
                                     opnd_create_reg(scratch8)));
             }
         } else {
@@ -2153,6 +2162,55 @@ insert_shadow_op(void *drcontext, instrlist_t *bb, fastpath_info_t *mi, instr_t 
         }
         break;
     }
+    case OP_punpcklbw:
+    case OP_punpcklwd:
+    case OP_punpckldq:
+    case OP_punpcklqdq: {
+        /* XXX i#243: until we have real mirroring of the data interleaving,
+         * we make do with at least not raising false positives on the ignored
+         * half of the sources.
+         */
+        PRE(bb, inst,
+            INSTR_CREATE_shl(drcontext, opnd_create_reg(reg),
+                             OPND_CREATE_INT8(opnd_size_in_bytes(reg_get_size(reg))/2)));
+    }
+    case OP_punpckhbw:
+    case OP_punpckhwd:
+    case OP_punpckhdq:
+    case OP_punpckhqdq: {
+        /* XXX i#243: until we have real mirroring of the data interleaving,
+         * we make do with at least not raising false positives on the ignored
+         * half of the sources.
+         */
+        PRE(bb, inst,
+            INSTR_CREATE_shr(drcontext, opnd_create_reg(reg),
+                             OPND_CREATE_INT8(opnd_size_in_bytes(reg_get_size(reg))/2)));
+    }
+    }
+}
+
+/* insert_shadow_op() operates on the destination, after the sources are merged
+ * together using this routine.  This routine merges memsrc and regsrc together,
+ * possibly using the scratch register si8, and puts the result in regsrc.
+ */
+static void
+merge_src_shadows(void *dc, instrlist_t *bb, fastpath_info_t *mi, instr_t *inst,
+                  opnd_t memsrc, reg_id_t regsrc, scratch_reg_info_t *si8)
+{
+    int opc = instr_get_opcode(inst);
+    switch (opc) {
+    case OP_punpcklbw: {
+        /* FIXME i#243: we need to mirror the actual data interleaving, which
+         * is too complex for the fastpath (requires at least one more
+         * scratch register) -- we should do a check_defined and bail to
+         * slowpath.  For now we at least ignore the half that's unused
+         * in insert_shadow_op() (we should remove that once we do the right
+         * thing here).
+         */
+        /* Fall-through */
+    }
+    default:
+        PRE(bb, inst, INSTR_CREATE_or(dc, opnd_create_reg(regsrc), memsrc));
     }
 }
 
@@ -5023,9 +5081,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                 ASSERT(opnd_same(mi->src[0].offs, mi->src[2].offs),
                        "multi-src different offsets on fastpath NYI");
                 ASSERT(mi->src[2].indir_size == OPSZ_NA, "should be !alu_uncombined");
-                PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
-                                    mi->src[2].shadow));
+                merge_src_shadows(drcontext, bb, mi, inst, mi->src[2].shadow,
+                                  src_val_reg, si8);
             }
         } else {
             /* We used to optimize for 4-byte ALU ops by or-ing src into dst instead
@@ -5057,9 +5114,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                         mi->src[1].shadow));
                 mi->src[1].shadow = shadow_reg_indir_opnd(&mi->src[1], mi->reg3.reg);
             }
-            PRE(bb, inst,
-                INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
-                                mi->src[1].shadow));
+            merge_src_shadows(drcontext, bb, mi, inst, mi->src[1].shadow,
+                              src_val_reg, &mi->reg3);
             if (!opnd_is_null(mi->src[2].shadow)) {
                 ASSERT(opnd_same(mi->src[2].offs, mi->src[0].offs),
                        "combining srcs w/ different sub-dword offs NYI");
@@ -5071,9 +5127,8 @@ instrument_fastpath(void *drcontext, instrlist_t *bb, instr_t *inst,
                                             mi->src[2].shadow));
                     mi->src[2].shadow = shadow_reg_indir_opnd(&mi->src[2], mi->reg3.reg);
                 }
-                PRE(bb, inst,
-                    INSTR_CREATE_or(drcontext, opnd_create_reg(src_val_reg),
-                                    mi->src[2].shadow));
+                merge_src_shadows(drcontext, bb, mi, inst, mi->src[2].shadow,
+                                  src_val_reg, &mi->reg3);
             }
         }
         add_dstX2_shadow_write(drcontext, bb, inst, mi, mi->src[0],

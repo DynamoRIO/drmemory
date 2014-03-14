@@ -1029,19 +1029,28 @@ opc_2nd_dst_is_extension(uint opc)
 bool
 opc_should_propagate_xmm(int opc)
 {
-    return (/* XXX i#1453: full propagation is not yet in place so we only
-             * shadow for same-size moves in and out
-             */
-            opc == OP_movdqu || opc == OP_movdqa ||
-            opc == OP_movss || opc == OP_movsd ||
-            /* We also have to handle sub-16-byte moves for VS2013 */
-            opc == OP_movd || opc == OP_movq ||
-            /* We also have to instrument clearing of xmm regs, used to zero
-             * data structures.  Note that with the current mark-definedness of
-             * everything else xmm related (see result_is_always_defined()) we
-             * don't need this here now, but we will want it long-term.
-             */
-            opc == OP_pxor || opc == OP_xorps || opc == OP_xorpd);
+    switch (opc) {
+    /* XXX i#1453: full propagation is not yet in place so we only
+     * shadow for same-size moves in and out
+     */
+    case OP_movdqu:     case OP_movdqa:
+    case OP_movss:      case OP_movsd:
+    /* We also have to handle sub-16-byte moves for VS2013 */
+    case OP_movd:       case OP_movq:
+    /* We also have to instrument clearing of xmm regs, used to zero
+     * data structures.  Note that with the current mark-definedness of
+     * everything else xmm related (see result_is_always_defined()) we
+     * don't need this here now, but we will want it long-term.
+     */
+    case OP_pxor:       case OP_xorps: case OP_xorpd:
+    /* Partial support is in place for these now: */
+    case OP_punpcklbw:  case OP_punpcklwd:
+    case OP_punpckldq:  case OP_punpcklqdq:
+    case OP_punpckhbw:  case OP_punpckhwd:
+    case OP_punpckhdq:  case OP_punpckhqdq:
+        return true;
+    }
+    return false;
 }
 
 bool
@@ -2115,6 +2124,25 @@ integrate_register_shadow(instr_t *inst, int opnum,
             shift = regsz*(reg_to_pointer_sized(reg) - REG_EAX);
             break;
 #endif
+        case OP_punpcklbw:
+        case OP_punpcklwd:
+        case OP_punpckldq:
+        case OP_punpcklqdq:
+            /* XXX i#243: until we have real mirroring of the data interleaving,
+             * we make do with at least not raising false positives on the ignored
+             * half of the sources.
+             */
+            for (i = regsz/2; i < regsz; i++)
+                shadow_vals[i] = SHADOW_DEFINED;
+            break;
+        case OP_punpckhbw:
+        case OP_punpckhwd:
+        case OP_punpckhdq:
+        case OP_punpckhqdq:
+            /* XXX i#243: see comment above */
+            for (i = 0; i < regsz/2; i++)
+                shadow_vals[i] = SHADOW_DEFINED;
+            break;
         default:
             shift = shadow_val_source_shift(inst, opc, opnum, regsz);
             break;

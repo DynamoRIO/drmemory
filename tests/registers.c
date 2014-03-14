@@ -523,8 +523,8 @@ copy_through_xmm_test(void)
     if (dst2[0] != 'x')
         printf("copy failed\n");
     xmm_operations(dst3, uninit);
-    if (dst3[0] != 'x')
-        printf("copy failed\n");
+    if (dst3[15] == 'x')
+        printf("got x\n");
 }
 
 int
@@ -855,11 +855,11 @@ GLOBAL_LABEL(FUNCNAME:)
         movd     DWORD [REG_XCX], xmm5 /* make sure movd to mem works */
 
         movdqu   xmm0, [REG_XAX] /* src */
-        pxor     xmm1, xmm2
-        punpcklbw xmm1, xmm2
-        movdqa   xmm1, xmm0
+        pxor     xmm1, xmm1
+        punpcklbw xmm1, xmm0
+        movdqa   xmm2, xmm1
         mov      REG_XCX, [REG_XBP - ARG_SZ]
-        movdqu   [REG_XCX], xmm1 /* dst */
+        movdqu   [REG_XCX], xmm2 /* dst */
 
         add      REG_XSP, 0 /* make a legal SEH64 epilog */
         mov      REG_XSP, REG_XBP
